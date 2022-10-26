@@ -1,0 +1,28 @@
+name: "Core module - deployment"
+
+on:
+  workflow_dispatch:
+
+  # Temporary disable automatic build
+  #push:
+    #branches:
+    #  - main
+    #paths:
+    #  - '.github/workflows/core.yml'
+    #  - 'core/**'
+
+jobs:
+  core-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: ./.github/workflows/actions/project-cache
+        with:
+          target-dir: core/target
+
+      - name: Publish core
+        working-directory: core
+        run: cargo publish --token ${CRATES_TOKEN}
+        env:
+          CRATES_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
