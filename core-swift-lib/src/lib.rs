@@ -1,5 +1,5 @@
 extern crate core;
 
-pub mod Strings;
-pub mod Rust_to_swift;
-pub mod Swift_to_rust;
+pub mod rust_to_swift;
+pub mod strings;
+pub mod swift_to_rust;

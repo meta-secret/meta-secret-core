@@ -1,6 +1,6 @@
-use crate::Strings::RustByteSlice;
+use crate::strings::RustByteSlice;
+use crypto_box::PublicKey as CryptoBoxPublicKey;
 use crypto_box::SecretKey as CryptoBoxSecretKey;
-use crypto_box::{PublicKey as CryptoBoxPublicKey, KEY_SIZE};
 use ed25519_dalek::Keypair as DalekKeyPair;
 use meta_secret_core::crypto::encoding::Base64EncodedText;
 use meta_secret_core::crypto::key_pair::{DsaKeyPair, TransportDsaKeyPair};
@@ -98,8 +98,8 @@ fn split_and_encode_internal(cfg: SharedSecretConfig, json_struct: &JsonMappedDa
 
 #[cfg(test)]
 pub mod test {
-    use crate::Rust_to_swift::new_keys_pair_internal;
-    use crate::Swift_to_rust::{split_and_encode_internal, JsonMappedData};
+    use crate::rust_to_swift::new_keys_pair_internal;
+    use crate::swift_to_rust::{split_and_encode_internal, JsonMappedData};
     use meta_secret_core::crypto::key_pair::KeyPair;
     use meta_secret_core::crypto::keys::KeyManager;
     use meta_secret_core::shared_secret::data_block::common::SharedSecretConfig;

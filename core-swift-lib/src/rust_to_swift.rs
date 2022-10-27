@@ -1,4 +1,4 @@
-use crate::Strings::RustByteSlice;
+use crate::strings::RustByteSlice;
 use meta_secret_core::crypto::encoding::Base64EncodedText;
 use meta_secret_core::crypto::key_pair::KeyPair;
 use meta_secret_core::crypto::keys::KeyManager;
