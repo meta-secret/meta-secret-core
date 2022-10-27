@@ -2,6 +2,7 @@ use meta_secret_core::crypto::encoding::Base64EncodedText;
 use meta_secret_core::crypto::key_pair::KeyPair;
 use meta_secret_core::crypto::keys::{KeyManager};
 use crate::Strings::RustByteSlice;
+type SizeT = usize;
 
 #[derive(Debug)]
 pub struct KeysPair {
@@ -18,6 +19,15 @@ impl Drop for KeysPair {
 }
 
 #[no_mangle]
+pub extern fn send_string_from_rust(arg: String) -> RustByteSlice {
+    let s = arg;
+    RustByteSlice{
+        bytes: s.as_ptr(),
+        len: s.len() as SizeT,
+    }
+}
+
+#[no_mangle]
 pub extern fn new_keys_pair() -> *mut KeysPair {
     let key_manager = KeyManager::generate();
     let transport_sec_key = key_manager.transport_key_pair.secret_key();
@@ -26,8 +36,8 @@ pub extern fn new_keys_pair() -> *mut KeysPair {
     let dsa_pub_key = key_manager.dsa.public_key();
 
     let keys_pair = KeysPair {
-        transport_pub_key: transport_sec_key,
-        transport_sec_key: transport_pub_key,
+        transport_pub_key,
+        transport_sec_key,
         dsa_pub_key,
         dsa_sec_key,
     };

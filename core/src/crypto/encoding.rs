@@ -1,5 +1,5 @@
 use crypto_box::Nonce;
-use crypto_box::{PublicKey as CryptoBoxPublicKey, KEY_SIZE};
+use crypto_box::{PublicKey as CryptoBoxPublicKey, SecretKey as CryptoBoxSecretKey, KEY_SIZE};
 use image::EncodableLayout;
 use serde::{Deserialize, Serialize};
 
@@ -37,6 +37,15 @@ impl From<&Base64EncodedText> for CryptoBoxPublicKey {
         let bytes: [u8; KEY_SIZE] = bytes.as_slice().try_into().unwrap();
 
         CryptoBoxPublicKey::from(bytes)
+    }
+}
+
+impl From<&Base64EncodedText> for CryptoBoxSecretKey {
+    fn from(encoded: &Base64EncodedText) -> Self {
+        let bytes = base64::decode(&encoded.base64_text).unwrap();
+        let bytes: [u8; KEY_SIZE] = bytes.as_slice().try_into().unwrap();
+
+        CryptoBoxSecretKey::from(bytes)
     }
 }
 
