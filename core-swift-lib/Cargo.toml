@@ -8,8 +8,8 @@ crate-type = ["cdylib", "lib", "staticlib"]
 name = "meta_secret_core_swift"
 
 [dependencies]
-meta-secret-core = "1.2.6"
-#meta-secret-core = { path = "../core"} # Development mode
+#meta-secret-core = "1.2.6"
+meta-secret-core = { path = "../core"} # Development mode
 serde_json = "1.0.87"
 serde = { version = "1.0", features = ["derive"] }
 ed25519-dalek = "1.0"

@@ -26,6 +26,10 @@ impl DsaKeyPair {
         let signature = self.key_pair.sign(text.as_bytes());
         Base64EncodedText::from(signature.as_bytes())
     }
+
+    pub fn encode_key_pair(&self) -> Base64EncodedText {
+        Base64EncodedText::from(self.key_pair.to_bytes().as_slice())
+    }
 }
 
 impl KeyPair for DsaKeyPair {
