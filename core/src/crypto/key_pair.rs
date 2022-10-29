@@ -1,7 +1,7 @@
 use crypto_box::aead::AeadCore;
 use crypto_box::{
     aead::{Aead, OsRng as CryptoBoxOsRng, Payload},
-    ChaChaBox, Nonce, PublicKey as CryptoBoxPublicKey, SecretKey as CryptoBoxSecretKey,
+    ChaChaBox, Nonce,
 };
 use ed25519_dalek::ed25519::signature::Signature;
 use ed25519_dalek::{Keypair, Signer};
@@ -11,6 +11,13 @@ use rand::rngs::OsRng;
 use crate::crypto::encoding::Base64EncodedText;
 use crate::crypto::keys::{AeadAuthData, AeadCipherText, AeadPlainText};
 
+pub type CryptoBoxPublicKey = crypto_box::PublicKey;
+pub type CryptoBoxSecretKey = crypto_box::SecretKey;
+
+pub type DalekKeyPair = ed25519_dalek::Keypair;
+pub type DalekPublicKey = ed25519_dalek::PublicKey;
+pub type DalekSecretKey = ed25519_dalek::SecretKey;
+
 pub trait KeyPair {
     fn generate() -> Self;
     fn public_key(&self) -> Base64EncodedText;
@@ -18,7 +25,7 @@ pub trait KeyPair {
 }
 
 pub struct DsaKeyPair {
-    pub key_pair: Keypair,
+    pub key_pair: DalekKeyPair,
 }
 
 impl DsaKeyPair {
