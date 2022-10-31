@@ -1,16 +1,6 @@
 use crate::strings::RustByteSlice;
 use meta_secret_core::crypto::encoding::serialized_key_manager::SerializedKeyManager;
 use meta_secret_core::crypto::keys::KeyManager;
-type SizeT = usize;
-
-#[no_mangle]
-pub extern "C" fn send_string_from_rust(arg: String) -> RustByteSlice {
-    let s = arg;
-    RustByteSlice {
-        bytes: s.as_ptr(),
-        len: s.len() as SizeT,
-    }
-}
 
 #[no_mangle]
 pub extern "C" fn new_keys_pair() -> *mut SerializedKeyManager {

@@ -11,12 +11,44 @@ use std::str;
 
 type SizeT = usize;
 
+//STRUCTURES
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct JsonMappedData {
+    vault_name: String,
     sender_key_manager: SerializedKeyManager,
     receivers_pub_keys: Vec<Base64EncodedText>,
     secret: String,
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UserSignature {
+    vault_name: String,
+    signature: String,
+    key_manager: SerializedKeyManager
+}
+
+//LIB METHODS
+#[no_mangle]
+pub extern "C" fn generate(json_bytes: *const u8, json_len: SizeT) -> RustByteSlice {
+    let json_string = data_to_json_string(json_bytes, json_len);
+    let mut user_signature: UserSignature = serde_json::from_str(&*json_string).unwrap();
+
+    let name = user_signature.vault_name;
+
+    let serialized_key_manager = new_keys_pair_internal();
+    let key_manager = KeyManager::from(&serialized_key_manager);
+    let signature = key_manager.dsa.sign(name);
+
+    user_signature.signature = signature.base64_text;
+    user_signature.key_manager = serialized_key_manager;
+
+    let user = serde_json::to_string_pretty(&user_signature).unwrap();
+    RustByteSlice {
+        bytes: user.as_ptr(),
+        len: user.len() as SizeT,
+    }
 }
 
 #[no_mangle]
@@ -28,9 +60,8 @@ pub extern "C" fn split_and_encode(json_bytes: *const u8, json_len: SizeT) -> Ru
     };
 
     // JSON parsing
-    let json_bytes_slice = unsafe { slice::from_raw_parts(json_bytes, json_len as usize) };
-    let json_string = str::from_utf8(json_bytes_slice).unwrap();
-    let json_struct: JsonMappedData = serde_json::from_str(json_string).unwrap();
+    let json_string: String = data_to_json_string(json_bytes, json_len);
+    let json_struct: JsonMappedData = serde_json::from_str(&*json_string).unwrap();
 
     let encrypted_shares_json = split_and_encode_internal(cfg, &json_struct);
     RustByteSlice {
@@ -68,6 +99,20 @@ fn split_and_encode_internal(cfg: SharedSecretConfig, json_struct: &JsonMappedDa
     encrypted_shares_json
 }
 
+//PRIVATE METHODS
+fn data_to_json_string(json_bytes: *const u8, json_len: SizeT) -> String {
+    // JSON parsing
+    let json_bytes_slice = unsafe { slice::from_raw_parts(json_bytes, json_len as usize) };
+    let json_string = str::from_utf8(json_bytes_slice).unwrap();
+    json_string.to_string()
+}
+
+pub fn new_keys_pair_internal() -> SerializedKeyManager {
+    let key_manager = KeyManager::generate();
+    SerializedKeyManager::from(&key_manager)
+}
+
+//TESTS
 #[cfg(test)]
 pub mod test {
     use crate::rust_to_swift::new_keys_pair_internal;
