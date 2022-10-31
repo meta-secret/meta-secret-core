@@ -9,7 +9,7 @@ use image::EncodableLayout;
 use rand::rngs::OsRng;
 
 use crate::crypto::encoding::Base64EncodedText;
-use crate::crypto::keys::{AeadAuthData, AeadCipherText, AeadPlainText};
+use crate::crypto::keys::{AeadAuthData, AeadCipherText, AeadPlainText, CommunicationChannel};
 
 pub type CryptoBoxPublicKey = crypto_box::PublicKey;
 pub type CryptoBoxSecretKey = crypto_box::SecretKey;
@@ -88,8 +88,10 @@ impl TransportDsaKeyPair {
             msg: plain_text,
             auth_data: AeadAuthData {
                 associated_data: "checksum".to_string(),
-                sender_public_key: self.public_key(),
-                receiver_public_key: receiver_pk,
+                channel: CommunicationChannel {
+                    sender: self.public_key(),
+                    receiver: receiver_pk,
+                },
                 nonce: self.generate_nonce(),
             },
         };
@@ -99,7 +101,7 @@ impl TransportDsaKeyPair {
 
     pub fn encrypt(&self, plain_text: &AeadPlainText) -> AeadCipherText {
         let auth_data = &plain_text.auth_data;
-        let receiver_pk = CryptoBoxPublicKey::from(&auth_data.receiver_public_key);
+        let receiver_pk = CryptoBoxPublicKey::from(&auth_data.channel.receiver);
         let crypto_box = self.build_cha_cha_box(&receiver_pk);
         let cipher_text = crypto_box
             .encrypt(
@@ -119,10 +121,11 @@ impl TransportDsaKeyPair {
 
     pub fn decrypt(&self, cipher_text: &AeadCipherText, decryption_direction: DecryptionDirection) -> AeadPlainText {
         let auth_data = &cipher_text.auth_data;
+        let channel = &auth_data.channel;
 
         let their_pk = match decryption_direction {
-            DecryptionDirection::Straight => CryptoBoxPublicKey::from(&auth_data.sender_public_key),
-            DecryptionDirection::Backward => CryptoBoxPublicKey::from(&auth_data.receiver_public_key),
+            DecryptionDirection::Straight => CryptoBoxPublicKey::from(&channel.sender),
+            DecryptionDirection::Backward => CryptoBoxPublicKey::from(&channel.receiver),
         };
         let crypto_box = self.build_cha_cha_box(&their_pk);
 
@@ -161,7 +164,7 @@ pub enum DecryptionDirection {
 #[cfg(test)]
 pub mod test {
     use crate::crypto::key_pair::{DecryptionDirection, KeyPair};
-    use crate::crypto::keys::{AeadAuthData, AeadCipherText, AeadPlainText, KeyManager};
+    use crate::crypto::keys::{AeadAuthData, AeadCipherText, AeadPlainText, CommunicationChannel, KeyManager};
 
     #[test]
     fn single_person_encryption() {
@@ -192,8 +195,10 @@ pub mod test {
             msg: "t0p$3cr3t".to_string(),
             auth_data: AeadAuthData {
                 associated_data: "checksum".to_string(),
-                sender_public_key: alice_km.transport_key_pair.public_key(),
-                receiver_public_key: bob_km.transport_key_pair.public_key(),
+                channel: CommunicationChannel {
+                    sender: alice_km.transport_key_pair.public_key(),
+                    receiver: bob_km.transport_key_pair.public_key(),
+                },
                 nonce: alice_km.transport_key_pair.generate_nonce(),
             },
         };
@@ -209,8 +214,7 @@ pub mod test {
             msg: cipher_text.msg,
             auth_data: AeadAuthData {
                 associated_data: cipher_text.auth_data.associated_data,
-                sender_public_key: cipher_text.auth_data.receiver_public_key,
-                receiver_public_key: cipher_text.auth_data.sender_public_key,
+                channel: cipher_text.auth_data.channel.inverse(),
                 nonce: cipher_text.auth_data.nonce,
             },
         };

@@ -36,7 +36,24 @@ pub struct AeadCipherText {
 #[serde(rename_all = "camelCase")]
 pub struct AeadAuthData {
     pub associated_data: String,
-    pub sender_public_key: Base64EncodedText,
-    pub receiver_public_key: Base64EncodedText,
+    pub channel: CommunicationChannel,
     pub nonce: Base64EncodedText,
+}
+
+/// Represents virtual ncrypted communication channel between two points.
+/// Contains public keys of a sender and a receiver
+#[derive(Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommunicationChannel {
+    pub sender: Base64EncodedText,
+    pub receiver: Base64EncodedText,
+}
+
+impl CommunicationChannel {
+    pub fn inverse(self) -> Self {
+        Self {
+            sender: self.receiver,
+            receiver: self.sender,
+        }
+    }
 }
