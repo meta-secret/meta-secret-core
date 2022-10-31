@@ -35,7 +35,7 @@ pub extern "C" fn generate(json_bytes: *const u8, json_len: SizeT) -> RustByteSl
     let json_string = data_to_json_string(json_bytes, json_len);
     let mut user_signature: UserSignature = serde_json::from_str(&*json_string).unwrap();
 
-    let name = user_signature.vault_name;
+    let name = user_signature.vault_name.clone();
 
     let serialized_key_manager = new_keys_pair_internal();
     let key_manager = KeyManager::from(&serialized_key_manager);
@@ -135,6 +135,7 @@ pub mod test {
         let km_3 = KeyManager::generate();
 
         let data = JsonMappedData {
+            vault_name: "name".to_string(),
             sender_key_manager: keys_pair.clone(),
             receivers_pub_keys: vec![
                 keys_pair.transport.public_key,
