@@ -26,12 +26,14 @@ struct JsonMappedData {
 struct UserSignature {
     vault_name: String,
     signature: String,
-    key_manager: SerializedKeyManager,
+    device_id: String,
+    device_name: String,
+    key_manager: Option<SerializedKeyManager>,
 }
 
 //LIB METHODS
 #[no_mangle]
-pub extern "C" fn generate(json_bytes: *const u8, json_len: SizeT) -> RustByteSlice {
+pub extern "C" fn generate_signed_user(json_bytes: *const u8, json_len: SizeT) -> RustByteSlice {
     let json_string = data_to_json_string(json_bytes, json_len);
     let mut user_signature: UserSignature = serde_json::from_str(&*json_string).unwrap();
 
@@ -42,7 +44,7 @@ pub extern "C" fn generate(json_bytes: *const u8, json_len: SizeT) -> RustByteSl
     let signature = key_manager.dsa.sign(name);
 
     user_signature.signature = signature.base64_text;
-    user_signature.key_manager = serialized_key_manager;
+    user_signature.key_manager = Option::from(serialized_key_manager);
 
     let user = serde_json::to_string_pretty(&user_signature).unwrap();
     RustByteSlice {
