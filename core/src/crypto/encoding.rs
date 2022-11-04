@@ -6,10 +6,11 @@ use serde::{Deserialize, Serialize};
 
 pub mod serialized_key_manager {
     use crate::crypto::encoding::Base64EncodedText;
-    use crate::crypto::key_pair::{CryptoBoxPublicKey, CryptoBoxSecretKey, DalekKeyPair};
+    use crate::crypto::key_pair::{CryptoBoxPublicKey, CryptoBoxSecretKey, DalekKeyPair, DalekSignature};
     use crate::crypto::key_pair::{DalekPublicKey, TransportDsaKeyPair};
     use crate::crypto::key_pair::{DsaKeyPair, KeyPair};
     use crate::crypto::keys::KeyManager;
+    use ed25519_dalek::ed25519::signature::Signature;
     use serde::{Deserialize, Serialize};
 
     #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
@@ -77,10 +78,23 @@ pub mod serialized_key_manager {
             DalekPublicKey::from_bytes(&bytes).unwrap()
         }
     }
-    
+
     impl From<&DalekPublicKey> for Base64EncodedText {
         fn from(pk: &DalekPublicKey) -> Self {
             Base64EncodedText::from(&pk.to_bytes())
+        }
+    }
+
+    impl From<&Base64EncodedText> for DalekSignature {
+        fn from(base64: &Base64EncodedText) -> Self {
+            let bytes_vec: Vec<u8> = <Vec<u8>>::from(base64);
+            DalekSignature::from_bytes(bytes_vec.as_slice()).unwrap()
+        }
+    }
+
+    impl From<&DalekSignature> for Base64EncodedText {
+        fn from(sig: &DalekSignature) -> Self {
+            Base64EncodedText::from(sig.as_bytes())
         }
     }
 
@@ -104,7 +118,8 @@ pub mod serialized_key_manager {
 
     #[cfg(test)]
     pub mod test {
-        use crate::crypto::key_pair::{DalekPublicKey, KeyPair};
+        use crate::crypto::encoding::Base64EncodedText;
+        use crate::crypto::key_pair::{DalekPublicKey, DalekSignature, KeyPair};
         use crate::crypto::keys::KeyManager;
 
         #[test]
@@ -113,6 +128,16 @@ pub mod serialized_key_manager {
             let pk_encoded = km.dsa.public_key();
             let pk = DalekPublicKey::from(&pk_encoded);
             assert_eq!(km.dsa.key_pair.public, pk);
+        }
+
+        #[test]
+        fn serialize_signature() {
+            let km = KeyManager::generate();
+            let serialized_sign = km.dsa.sign("text".to_string());
+            let deserialized_sign = DalekSignature::from(&serialized_sign);
+            let serialized_sign_2nd_time = Base64EncodedText::from(&deserialized_sign);
+
+            assert_eq!(serialized_sign, serialized_sign_2nd_time);
         }
     }
 }
@@ -179,9 +204,9 @@ impl From<&Base64EncodedText> for Nonce {
     }
 }
 
-impl From<Base64EncodedText> for Vec<u8> {
-    fn from(data: Base64EncodedText) -> Self {
-        base64::decode(data.base64_text).unwrap()
+impl From<&Base64EncodedText> for Vec<u8> {
+    fn from(data: &Base64EncodedText) -> Self {
+        base64::decode(&data.base64_text).unwrap()
     }
 }
 

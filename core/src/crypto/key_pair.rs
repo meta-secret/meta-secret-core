@@ -3,7 +3,6 @@ use crypto_box::{
     aead::{Aead, OsRng as CryptoBoxOsRng, Payload},
     ChaChaBox, Nonce,
 };
-use ed25519_dalek::ed25519::signature::Signature;
 use ed25519_dalek::{Keypair, Signer};
 use image::EncodableLayout;
 use rand::rngs::OsRng;
@@ -17,6 +16,7 @@ pub type CryptoBoxSecretKey = crypto_box::SecretKey;
 pub type DalekKeyPair = ed25519_dalek::Keypair;
 pub type DalekPublicKey = ed25519_dalek::PublicKey;
 pub type DalekSecretKey = ed25519_dalek::SecretKey;
+pub type DalekSignature = ed25519_dalek::Signature;
 
 pub trait KeyPair {
     fn generate() -> Self;
@@ -30,8 +30,8 @@ pub struct DsaKeyPair {
 
 impl DsaKeyPair {
     pub fn sign(&self, text: String) -> Base64EncodedText {
-        let signature = self.key_pair.sign(text.as_bytes());
-        Base64EncodedText::from(signature.as_bytes())
+        let signature: DalekSignature = self.key_pair.sign(text.as_bytes());
+        Base64EncodedText::from(&signature)
     }
 
     pub fn encode_key_pair(&self) -> Base64EncodedText {
@@ -129,7 +129,7 @@ impl TransportDsaKeyPair {
         };
         let crypto_box = self.build_cha_cha_box(&their_pk);
 
-        let msg_vec: Vec<u8> = cipher_text.msg.clone().into();
+        let msg_vec: Vec<u8> = Vec::from(&cipher_text.msg);
         let decrypted_plaintext: Vec<u8> = crypto_box
             .decrypt(
                 &Nonce::from(&auth_data.nonce),

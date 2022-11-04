@@ -64,7 +64,7 @@ pub struct SecretShareWithOrderingDto {
 
 impl SecretShareWithOrderingDto {
     pub fn to_encrypted_data_block(&self) -> EncryptedDataBlock {
-        EncryptedDataBlock::from_base64(&self.meta_data, self.data.clone())
+        EncryptedDataBlock::from_base64(&self.meta_data, &self.data)
     }
 }
 
