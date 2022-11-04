@@ -97,8 +97,7 @@ fn split_and_encode_internal(cfg: SharedSecretConfig, json_struct: &JsonMappedDa
     }
 
     // Shares to JSon
-    let encrypted_shares_json = serde_json::to_string_pretty(&encrypted_shares).unwrap();
-    encrypted_shares_json
+    serde_json::to_string_pretty(&encrypted_shares).unwrap()
 }
 
 //PRIVATE METHODS

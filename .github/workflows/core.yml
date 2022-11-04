@@ -17,12 +17,18 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
-      - uses: ./.github/workflows/actions/project-cache
+
+      - uses: actions/cache@v3
         with:
-          target-dir: core/target
+          path: |
+            ~/.cargo
+            core/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Publish core
         working-directory: core
-        run: cargo publish --token ${CRATES_TOKEN}
+        run: |
+          cargo test
+          cargo publish --token ${CRATES_TOKEN}
         env:
           CRATES_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
