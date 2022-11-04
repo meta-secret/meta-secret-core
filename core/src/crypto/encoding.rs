@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 
 pub mod serialized_key_manager {
     use crate::crypto::encoding::Base64EncodedText;
-    use crate::crypto::key_pair::TransportDsaKeyPair;
     use crate::crypto::key_pair::{CryptoBoxPublicKey, CryptoBoxSecretKey, DalekKeyPair};
+    use crate::crypto::key_pair::{DalekPublicKey, TransportDsaKeyPair};
     use crate::crypto::key_pair::{DsaKeyPair, KeyPair};
     use crate::crypto::keys::KeyManager;
     use serde::{Deserialize, Serialize};
@@ -70,6 +70,20 @@ pub mod serialized_key_manager {
         }
     }
 
+    impl From<&Base64EncodedText> for DalekPublicKey {
+        fn from(base64_text: &Base64EncodedText) -> Self {
+            let bytes = base64::decode(&base64_text.base64_text).unwrap();
+            let bytes: [u8; 32] = bytes.as_slice().try_into().unwrap();
+            DalekPublicKey::from_bytes(&bytes).unwrap()
+        }
+    }
+    
+    impl From<&DalekPublicKey> for Base64EncodedText {
+        fn from(pk: &DalekPublicKey) -> Self {
+            Base64EncodedText::from(&pk.to_bytes())
+        }
+    }
+
     impl From<&SerializedTransportKeyPair> for TransportDsaKeyPair {
         fn from(serialized_transport: &SerializedTransportKeyPair) -> Self {
             Self {
@@ -85,6 +99,20 @@ pub mod serialized_key_manager {
                 dsa: DsaKeyPair::from(&serialized_km.dsa),
                 transport_key_pair: TransportDsaKeyPair::from(&serialized_km.transport),
             }
+        }
+    }
+
+    #[cfg(test)]
+    pub mod test {
+        use crate::crypto::key_pair::{DalekPublicKey, KeyPair};
+        use crate::crypto::keys::KeyManager;
+
+        #[test]
+        fn from_base64_to_dalek_public_key() {
+            let km = KeyManager::generate();
+            let pk_encoded = km.dsa.public_key();
+            let pk = DalekPublicKey::from(&pk_encoded);
+            assert_eq!(km.dsa.key_pair.public, pk);
         }
     }
 }

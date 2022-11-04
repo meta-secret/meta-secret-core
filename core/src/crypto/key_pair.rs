@@ -48,7 +48,7 @@ impl KeyPair for DsaKeyPair {
     }
 
     fn public_key(&self) -> Base64EncodedText {
-        Base64EncodedText::from(&self.key_pair.public.to_bytes())
+        Base64EncodedText::from(&self.key_pair.public)
     }
 
     fn secret_key(&self) -> Base64EncodedText {
