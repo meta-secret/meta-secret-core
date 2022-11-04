@@ -1,4 +1,4 @@
-name: "Core module - deployment"
+name: "Core Deployment"
 
 on:
   workflow_dispatch:
