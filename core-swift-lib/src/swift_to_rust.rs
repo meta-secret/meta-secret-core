@@ -75,6 +75,30 @@ pub extern "C" fn split_secret(strings_bytes: *const u8, string_len: SizeT) -> R
     }
 }
 
+//Generate json_len
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MetaPasswordIdRequest {
+    name: String,
+    salt: String,
+    key_manager: Option<SerializedKeyManager>
+}
+/*
+#[no_mangle]
+pub extern "C" fn generate_meta_password_id(json_bytes: *const u8, json_len: SizeT) -> RustByteSlice {
+    let json_string = data_to_json_string(json_bytes, json_len);
+    let mut metapassword_request: MetaPasswordIdRequest = serde_json::from_str(&*json_string).unwrap();
+
+    let passId = MetaPasswordId {
+
+    }
+    RustByteSlice {
+        bytes: user.as_ptr(),
+        len: user.len() as SizeT,
+    }
+
+}
+*/
 #[no_mangle]
 pub extern "C" fn encode_secret(json_bytes: *const u8, json_len: SizeT) -> RustByteSlice {
     // JSON parsing
