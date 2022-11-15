@@ -8,6 +8,7 @@ use meta_secret_core::shared_secret::shared_secret::UserShareDto;
 use serde::{Deserialize, Serialize};
 use std::slice;
 use std::str;
+use sha2::{Sha256, Digest};
 
 type SizeT = usize;
 
@@ -76,29 +77,48 @@ pub extern "C" fn split_secret(strings_bytes: *const u8, string_len: SizeT) -> R
 }
 
 //Generate json_len
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
-struct MetaPasswordIdRequest {
-    name: String,
-    salt: String,
-    key_manager: Option<SerializedKeyManager>
+pub struct MetaPasswordId {
+    // SHA256 hash of salt
+    pub id: Option<String>,
+    // Random String up to 30 characters, must be unique
+    pub salt: String,
+    // human readable name given to the password
+    pub name: String,
 }
-/*
+
+impl MetaPasswordId {
+    pub fn new(name: String, salt: String) -> Self {
+        let mut hasher = Sha256::new();
+        hasher.update(name.as_bytes());
+        hasher.update("-".as_bytes());
+        hasher.update(salt.as_bytes());
+
+        let hash_bytes = hex::encode(hasher.finalize());
+
+        Self {
+            id: Option::from(hash_bytes),
+            salt,
+            name,
+        }
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn generate_meta_password_id(json_bytes: *const u8, json_len: SizeT) -> RustByteSlice {
     let json_string = data_to_json_string(json_bytes, json_len);
-    let mut metapassword_request: MetaPasswordIdRequest = serde_json::from_str(&*json_string).unwrap();
+    let meta_password_id: MetaPasswordId = serde_json::from_str(&*json_string).unwrap();
+    let result_obj = MetaPasswordId::new(meta_password_id.name, meta_password_id.salt);
 
-    let passId = MetaPasswordId {
-
-    }
+    // Shares to JSon
+    let result_json = serde_json::to_string_pretty(&result_obj).unwrap();
     RustByteSlice {
-        bytes: user.as_ptr(),
-        len: user.len() as SizeT,
+        bytes: result_json.as_ptr(),
+        len: result_json.len() as SizeT,
     }
-
 }
-*/
+
 #[no_mangle]
 pub extern "C" fn encode_secret(json_bytes: *const u8, json_len: SizeT) -> RustByteSlice {
     // JSON parsing
