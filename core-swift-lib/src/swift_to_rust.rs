@@ -2,13 +2,13 @@ use crate::strings::RustByteSlice;
 use meta_secret_core::crypto::encoding::serialized_key_manager::SerializedKeyManager;
 use meta_secret_core::crypto::encoding::Base64EncodedText;
 use meta_secret_core::crypto::keys::{AeadCipherText, KeyManager};
+use meta_secret_core::sdk::password::MetaPasswordId;
 use meta_secret_core::shared_secret;
 use meta_secret_core::shared_secret::data_block::common::SharedSecretConfig;
 use meta_secret_core::shared_secret::shared_secret::UserShareDto;
 use serde::{Deserialize, Serialize};
 use std::slice;
 use std::str;
-use sha2::{Sha256, Digest};
 
 type SizeT = usize;
 
@@ -76,43 +76,13 @@ pub extern "C" fn split_secret(strings_bytes: *const u8, string_len: SizeT) -> R
     }
 }
 
-//Generate json_len
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct MetaPasswordId {
-    // SHA256 hash of salt
-    pub id: Option<String>,
-    // Random String up to 30 characters, must be unique
-    pub salt: String,
-    // human readable name given to the password
-    pub name: String,
-}
-
-impl MetaPasswordId {
-    pub fn new(name: String, salt: String) -> Self {
-        let mut hasher = Sha256::new();
-        hasher.update(name.as_bytes());
-        hasher.update("-".as_bytes());
-        hasher.update(salt.as_bytes());
-
-        let hash_bytes = hex::encode(hasher.finalize());
-
-        Self {
-            id: Option::from(hash_bytes),
-            salt,
-            name,
-        }
-    }
-}
-
 #[no_mangle]
-pub extern "C" fn generate_meta_password_id(json_bytes: *const u8, json_len: SizeT) -> RustByteSlice {
-    let json_string = data_to_json_string(json_bytes, json_len);
-    let meta_password_id: MetaPasswordId = serde_json::from_str(&*json_string).unwrap();
-    let result_obj = MetaPasswordId::new(meta_password_id.name, meta_password_id.salt);
+pub extern "C" fn generate_meta_password_id(password_id: *const u8, json_len: SizeT) -> RustByteSlice {
+    let password_id = data_to_json_string(password_id, json_len);
+    let meta_password_id = MetaPasswordId::generate(password_id);
 
     // Shares to JSon
-    let result_json = serde_json::to_string_pretty(&result_obj).unwrap();
+    let result_json = serde_json::to_string_pretty(&meta_password_id).unwrap();
     RustByteSlice {
         bytes: result_json.as_ptr(),
         len: result_json.len() as SizeT,
@@ -129,7 +99,7 @@ pub extern "C" fn encode_secret(json_bytes: *const u8, json_len: SizeT) -> RustB
     // Encrypt shares
     let password_share: String = json_struct.secret;
     let receiver_pk = Base64EncodedText {
-        base64_text: json_struct.receivers_pub_keys.clone()
+        base64_text: json_struct.receivers_pub_keys.clone(),
     };
 
     let encrypted_share: AeadCipherText = sender_key_manager
@@ -161,11 +131,11 @@ pub fn new_keys_pair_internal() -> SerializedKeyManager {
 #[cfg(test)]
 pub mod test {
     use crate::rust_to_swift::new_keys_pair_internal;
+    use crate::swift_to_rust::UserSignature;
     use meta_secret_core::crypto::keys::{AeadCipherText, KeyManager};
     use meta_secret_core::shared_secret;
     use meta_secret_core::shared_secret::data_block::common::SharedSecretConfig;
     use meta_secret_core::shared_secret::shared_secret::UserShareDto;
-    use crate::swift_to_rust::{UserSignature};
 
     #[test]
     fn split_and_encode() {
@@ -176,12 +146,12 @@ pub mod test {
         };
 
         // User one
-        let mut user_signature_one = UserSignature{
+        let mut user_signature_one = UserSignature {
             vault_name: "vault_1".to_string(),
             signature: "".to_string(),
             device_id: "1234".to_string(),
             device_name: "iPhone5".to_string(),
-            key_manager: None
+            key_manager: None,
         };
         let name = user_signature_one.vault_name.clone();
         let serialized_key_manager = new_keys_pair_internal();
@@ -192,12 +162,12 @@ pub mod test {
         user_signature_one.key_manager = Option::from(serialized_key_manager);
 
         // User two
-        let mut user_signature_two = UserSignature{
+        let mut user_signature_two = UserSignature {
             vault_name: "vault_2".to_string(),
             signature: "".to_string(),
             device_id: "5678".to_string(),
             device_name: "iPhone6".to_string(),
-            key_manager: None
+            key_manager: None,
         };
         let name = user_signature_two.vault_name.clone();
         let serialized_key_manager = new_keys_pair_internal();
@@ -215,8 +185,7 @@ pub mod test {
         let password_share: String = secret.share_blocks[0].data.base64_text.clone();
         let receiver_pk = user_signature_two.key_manager.unwrap().transport.public_key;
         let km = KeyManager::from(&user_signature_one.key_manager.unwrap());
-        let encrypted_share: AeadCipherText =
-            km.transport_key_pair.encrypt_string(password_share, receiver_pk);
+        let encrypted_share: AeadCipherText = km.transport_key_pair.encrypt_string(password_share, receiver_pk);
 
         println!("result {:?}", encrypted_share);
     }

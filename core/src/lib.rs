@@ -4,9 +4,7 @@ use std::io::BufReader;
 use std::path::Path;
 use std::{fs, io};
 
-use image;
 use image::ImageError;
-use rqrr;
 use rqrr::DeQRError;
 
 use crate::shared_secret::data_block::common::SharedSecretConfig;
@@ -17,6 +15,7 @@ use crate::shared_secret::shared_secret::{
 use crate::RecoveryError::EmptyInput;
 
 pub mod crypto;
+pub mod sdk;
 pub mod shared_secret;
 
 #[derive(Debug, thiserror::Error)]
@@ -37,9 +36,7 @@ pub fn recover_from_shares(users_shares: Vec<UserShareDto>) -> Result<PlainText,
     let mut secret_blocks: Vec<SharedSecretBlock> = vec![];
 
     if users_shares[0].share_blocks.is_empty() {
-        return Err(EmptyInput(
-            "Empty shares list. Nothing to recover".to_string(),
-        ));
+        return Err(EmptyInput("Empty shares list. Nothing to recover".to_string()));
     }
 
     let blocks_num: usize = users_shares[0].share_blocks.len();
@@ -126,10 +123,7 @@ pub fn split(secret: String, config: SharedSecretConfig) -> Result<(), SplitErro
         let share_json = serde_json::to_string_pretty(&share)?;
 
         // Save the JSON structure into the output file
-        fs::write(
-            format!("secrets/shared-secret-{share_index}.json"),
-            share_json.clone(),
-        )?;
+        fs::write(format!("secrets/shared-secret-{share_index}.json"), share_json.clone())?;
 
         //generate qr code
         generate_qr_code(
@@ -181,10 +175,7 @@ pub fn convert_qr_images_to_json_files() -> Result<Vec<String>, QrToJsonParserEr
         }
 
         let json_str = read_qr_code(file_path.as_path())?;
-        fs::write(
-            format!("secrets/shared-secret-{share_index}.json"),
-            json_str.clone(),
-        )?;
+        fs::write(format!("secrets/shared-secret-{share_index}.json"), json_str.clone())?;
 
         shares_json.push(json_str.clone());
 
