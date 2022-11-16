@@ -1,3 +1,4 @@
+use crate::sdk::vault::VaultDoc;
 use rand::{distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -37,6 +38,16 @@ impl MetaPasswordId {
             name,
         }
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct MetaPasswordDoc {
+    pub id: MetaPasswordId,
+    //We need to keep the entire vault here,
+    // because the vault can be changed (new members can appear some members can be deleted),
+    // then we won't b e able to restore  the password if we'd have different members than in original vault
+    pub vault: VaultDoc,
 }
 
 #[cfg(test)]
