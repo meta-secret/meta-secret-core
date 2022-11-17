@@ -16,38 +16,35 @@ type SizeT = usize;
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct JsonMappedData {
-    sender_key_manager: SerializedKeyManager,
-    receivers_pub_keys: String,
+    key_manager: SerializedKeyManager,
+    receiver_pub_key: Base64EncodedText,
     secret: String,
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct UserSignature {
-    vault_name: String,
-    signature: String,
-    device_id: String,
-    device_name: String,
-    key_manager: Option<SerializedKeyManager>,
+struct UserSecurityBox {
+    signature: Base64EncodedText,
+    key_manager: SerializedKeyManager,
 }
 
 //LIB METHODS
 
 //Generate vault and sign
 #[no_mangle]
-pub extern "C" fn generate_signed_user(json_bytes: *const u8, json_len: SizeT) -> RustByteSlice {
-    let json_string = data_to_json_string(json_bytes, json_len);
-    let mut user_signature: UserSignature = serde_json::from_str(&*json_string).unwrap();
+pub extern "C" fn generate_signed_user(device_name_bytes: *const u8, json_len: SizeT) -> RustByteSlice {
+    let device_name = data_to_json_string(device_name_bytes, json_len);
 
-    let name = user_signature.vault_name.clone();
-    let serialized_key_manager = new_keys_pair_internal();
-    let key_manager = KeyManager::from(&serialized_key_manager);
-    let signature = key_manager.dsa.sign(name);
+    let key_manager = KeyManager::generate();
 
-    user_signature.signature = signature.base64_text;
-    user_signature.key_manager = Option::from(serialized_key_manager);
+    let signature = key_manager.dsa.sign(device_name);
+    let security_box = UserSecurityBox {
+        signature,
+        key_manager: SerializedKeyManager::from(&key_manager),
+    };
 
-    let user = serde_json::to_string_pretty(&user_signature).unwrap();
+    let user = serde_json::to_string_pretty(&security_box).unwrap();
+
     RustByteSlice {
         bytes: user.as_ptr(),
         len: user.len() as SizeT,
@@ -94,17 +91,12 @@ pub extern "C" fn encode_secret(json_bytes: *const u8, json_len: SizeT) -> RustB
     // JSON parsing
     let json_string: String = data_to_json_string(json_bytes, json_len);
     let json_struct: JsonMappedData = serde_json::from_str(&*json_string).unwrap();
-    let sender_key_manager = KeyManager::from(&json_struct.sender_key_manager);
+    let key_manager = KeyManager::from(&json_struct.key_manager);
 
     // Encrypt shares
-    let password_share: String = json_struct.secret;
-    let receiver_pk = Base64EncodedText {
-        base64_text: json_struct.receivers_pub_keys.clone(),
-    };
-
-    let encrypted_share: AeadCipherText = sender_key_manager
+    let encrypted_share: AeadCipherText = key_manager
         .transport_key_pair
-        .encrypt_string(password_share, receiver_pk);
+        .encrypt_string(json_struct.secret, json_struct.receiver_pub_key);
 
     // Shares to JSon
     let encrypted_shares_json = serde_json::to_string_pretty(&encrypted_share).unwrap();
@@ -122,23 +114,17 @@ fn data_to_json_string(json_bytes: *const u8, json_len: SizeT) -> String {
     json_string.to_string()
 }
 
-pub fn new_keys_pair_internal() -> SerializedKeyManager {
-    let key_manager = KeyManager::generate();
-    SerializedKeyManager::from(&key_manager)
-}
-
 //TESTS
 #[cfg(test)]
 pub mod test {
-    use crate::rust_to_swift::new_keys_pair_internal;
-    use crate::swift_to_rust::UserSignature;
+    use meta_secret_core::crypto::key_pair::KeyPair;
     use meta_secret_core::crypto::keys::{AeadCipherText, KeyManager};
     use meta_secret_core::shared_secret;
     use meta_secret_core::shared_secret::data_block::common::SharedSecretConfig;
     use meta_secret_core::shared_secret::shared_secret::UserShareDto;
 
     #[test]
-    fn split_and_encode() {
+    fn split_and_encrypt() {
         // Constants & Properties
         let cfg = SharedSecretConfig {
             number_of_shares: 3,
@@ -146,36 +132,10 @@ pub mod test {
         };
 
         // User one
-        let mut user_signature_one = UserSignature {
-            vault_name: "vault_1".to_string(),
-            signature: "".to_string(),
-            device_id: "1234".to_string(),
-            device_name: "iPhone5".to_string(),
-            key_manager: None,
-        };
-        let name = user_signature_one.vault_name.clone();
-        let serialized_key_manager = new_keys_pair_internal();
-        let key_manager = KeyManager::from(&serialized_key_manager);
-        let signature = key_manager.dsa.sign(name);
-
-        user_signature_one.signature = signature.base64_text;
-        user_signature_one.key_manager = Option::from(serialized_key_manager);
+        let key_manager_1 = KeyManager::generate();
 
         // User two
-        let mut user_signature_two = UserSignature {
-            vault_name: "vault_2".to_string(),
-            signature: "".to_string(),
-            device_id: "5678".to_string(),
-            device_name: "iPhone6".to_string(),
-            key_manager: None,
-        };
-        let name = user_signature_two.vault_name.clone();
-        let serialized_key_manager = new_keys_pair_internal();
-        let key_manager = KeyManager::from(&serialized_key_manager);
-        let signature = key_manager.dsa.sign(name);
-
-        user_signature_two.signature = signature.base64_text;
-        user_signature_two.key_manager = Option::from(serialized_key_manager);
+        let key_manager_2 = KeyManager::generate();
 
         // Split
         let shares: Vec<UserShareDto> = shared_secret::split("Secret".to_string(), cfg);
@@ -183,9 +143,10 @@ pub mod test {
         // Encrypt shares
         let secret = shares[0].clone();
         let password_share: String = secret.share_blocks[0].data.base64_text.clone();
-        let receiver_pk = user_signature_two.key_manager.unwrap().transport.public_key;
-        let km = KeyManager::from(&user_signature_one.key_manager.unwrap());
-        let encrypted_share: AeadCipherText = km.transport_key_pair.encrypt_string(password_share, receiver_pk);
+        let receiver_pk = key_manager_2.transport_key_pair.public_key();
+        let encrypted_share: AeadCipherText = key_manager_1
+            .transport_key_pair
+            .encrypt_string(password_share, receiver_pk);
 
         println!("result {:?}", encrypted_share);
     }
