@@ -32,8 +32,8 @@ struct UserSecurityBox {
 
 //Generate vault and sign
 #[no_mangle]
-pub extern "C" fn generate_signed_user(device_name_bytes: *const u8, json_len: SizeT) -> RustByteSlice {
-    let device_name = data_to_json_string(device_name_bytes, json_len);
+pub extern "C" fn generate_signed_user(vault_name_bytes: *const u8, json_len: SizeT) -> RustByteSlice {
+    let device_name = data_to_json_string(vault_name_bytes, json_len);
 
     let key_manager = KeyManager::generate();
 
