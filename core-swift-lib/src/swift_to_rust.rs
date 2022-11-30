@@ -1,14 +1,16 @@
-use crate::strings::RustByteSlice;
+use std::os::raw::{c_char};
+use std::ffi::{CString};
 use meta_secret_core::crypto::encoding::serialized_key_manager::SerializedKeyManager;
 use meta_secret_core::crypto::encoding::Base64EncodedText;
 use meta_secret_core::crypto::keys::{AeadCipherText, KeyManager};
 use meta_secret_core::sdk::password::MetaPasswordId;
-use meta_secret_core::shared_secret;
+use meta_secret_core::{shared_secret};
 use meta_secret_core::shared_secret::data_block::common::SharedSecretConfig;
 use meta_secret_core::shared_secret::shared_secret::UserShareDto;
 use serde::{Deserialize, Serialize};
 use std::slice;
 use std::str;
+use meta_secret_core::crypto::key_pair::{DsaKeyPair};
 
 type SizeT = usize;
 
@@ -16,7 +18,7 @@ type SizeT = usize;
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct JsonMappedData {
-    key_manager: SerializedKeyManager,
+    sender_key_manager: SerializedKeyManager,
     receiver_pub_key: Base64EncodedText,
     secret: String,
 }
@@ -32,7 +34,7 @@ struct UserSecurityBox {
 
 //Generate vault and sign
 #[no_mangle]
-pub extern "C" fn generate_signed_user(vault_name_bytes: *const u8, json_len: SizeT) -> RustByteSlice {
+pub extern "C" fn generate_signed_user(vault_name_bytes: *const u8, json_len: SizeT) -> *mut c_char {
     let device_name = data_to_json_string(vault_name_bytes, json_len);
 
     let key_manager = KeyManager::generate();
@@ -44,16 +46,12 @@ pub extern "C" fn generate_signed_user(vault_name_bytes: *const u8, json_len: Si
     };
 
     let user = serde_json::to_string_pretty(&security_box).unwrap();
-
-    RustByteSlice {
-        bytes: user.as_ptr(),
-        len: user.len() as SizeT,
-    }
+    CString::new(user.to_owned()).unwrap().into_raw()
 }
 
 // Split
 #[no_mangle]
-pub extern "C" fn split_secret(strings_bytes: *const u8, string_len: SizeT) -> RustByteSlice {
+pub extern "C" fn split_secret(strings_bytes: *const u8, string_len: SizeT) -> *mut c_char {
     // Constants & Properties
     let cfg = SharedSecretConfig {
         number_of_shares: 3,
@@ -66,32 +64,26 @@ pub extern "C" fn split_secret(strings_bytes: *const u8, string_len: SizeT) -> R
 
     // Shares to JSon
     let result_json = serde_json::to_string_pretty(&shares).unwrap();
-
-    RustByteSlice {
-        bytes: result_json.as_ptr(),
-        len: result_json.len() as SizeT,
-    }
+    CString::new(result_json.to_owned()).unwrap().into_raw()
 }
 
 #[no_mangle]
-pub extern "C" fn generate_meta_password_id(password_id: *const u8, json_len: SizeT) -> RustByteSlice {
+pub extern "C" fn generate_meta_password_id(password_id: *const u8, json_len: SizeT) -> *mut c_char {
     let password_id = data_to_json_string(password_id, json_len);
     let meta_password_id = MetaPasswordId::generate(password_id);
 
     // Shares to JSon
     let result_json = serde_json::to_string_pretty(&meta_password_id).unwrap();
-    RustByteSlice {
-        bytes: result_json.as_ptr(),
-        len: result_json.len() as SizeT,
-    }
+    CString::new(result_json.to_owned()).unwrap().into_raw()
 }
 
 #[no_mangle]
-pub extern "C" fn encode_secret(json_bytes: *const u8, json_len: SizeT) -> RustByteSlice {
+pub extern "C" fn encrypt_secret(json_bytes: *const u8, json_len: SizeT) -> *mut c_char {
     // JSON parsing
     let json_string: String = data_to_json_string(json_bytes, json_len);
-    let json_struct: JsonMappedData = serde_json::from_str(&*json_string).unwrap();
-    let key_manager = KeyManager::from(&json_struct.key_manager);
+
+    let json_struct: JsonMappedData = serde_json::from_str(&json_string).unwrap();
+    let key_manager = KeyManager::from(&json_struct.sender_key_manager);
 
     // Encrypt shares
     let encrypted_share: AeadCipherText = key_manager
@@ -99,13 +91,50 @@ pub extern "C" fn encode_secret(json_bytes: *const u8, json_len: SizeT) -> RustB
         .encrypt_string(json_struct.secret, json_struct.receiver_pub_key);
 
     // Shares to JSon
-    let encrypted_shares_json = serde_json::to_string_pretty(&encrypted_share).unwrap();
+    let encrypted_shares_json = serde_json::to_string(&encrypted_share).unwrap();
+    CString::new(encrypted_shares_json.to_owned()).unwrap().into_raw()
+}
+
+#[no_mangle]
+pub extern fn rust_string_free(s: *mut c_char) {
+    unsafe {
+        if s.is_null() { return }
+        CString::from_raw(s)
+    };
+}
+/*
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RestoreRequest {
+    device_one: UserSignature,
+    key_manager: KeyManager,
+    secret_share_two: String
+}
+
+#[no_mangle]
+pub extern "C" fn restore_secret(json_bytes: *const u8, json_len: SizeT) -> RustByteSlice {
+    let json_string: String = data_to_json_string(json_bytes, json_len);
+    let json_struct: RestoreRequest = serde_json::from_str(&*json_string).unwrap();
+
+    let share_from_device_2_json: AeadPlainText = json_struct.key_manager.transport_key_pair.decrypt(
+        &pass_share_for_device_1.secret_message.encrypted_text,
+        DecryptionDirection::Backward,
+    );
+
+    let share_from_device_2_json: UserShareDto = serde_json::from_str(&share_from_device_2_json.msg).unwrap();
+
+    let device_1_password_share: UserShareDto = shares[0].clone();
+
+    let password = recover_from_shares(vec![share_from_device_2_json, device_1_password_share]).unwrap();
+    let result_json = serde_json::to_string_pretty(&password).unwrap();
+
     RustByteSlice {
-        bytes: encrypted_shares_json.as_ptr(),
-        len: encrypted_shares_json.len() as SizeT,
+        bytes: result_json.as_ptr(),
+        len: result_json.len() as SizeT,
     }
 }
 
+ */
 //PRIVATE METHODS
 fn data_to_json_string(json_bytes: *const u8, json_len: SizeT) -> String {
     // JSON parsing
