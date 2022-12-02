@@ -60,7 +60,7 @@ impl UserSignature {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct VaultDoc {
     pub vault_name: String,

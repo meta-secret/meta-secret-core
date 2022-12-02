@@ -101,8 +101,8 @@ impl TransportDsaKeyPair {
 
     pub fn encrypt(&self, plain_text: &AeadPlainText) -> AeadCipherText {
         let auth_data = &plain_text.auth_data;
-        let receiver_pk = CryptoBoxPublicKey::from(&auth_data.channel.receiver);
-        let crypto_box = self.build_cha_cha_box(&receiver_pk);
+        let their_pk = CryptoBoxPublicKey::from(&auth_data.channel.receiver);
+        let crypto_box = self.build_cha_cha_box(&their_pk);
         let cipher_text = crypto_box
             .encrypt(
                 &Nonce::from(&auth_data.nonce),
@@ -171,7 +171,7 @@ pub mod test {
         let password = "topSecret".to_string();
 
         let alice_km = KeyManager::generate();
-        let cypher_text = alice_km
+        let cypher_text: AeadCipherText = alice_km
             .transport_key_pair
             .encrypt_string(password.clone(), alice_km.transport_key_pair.public_key());
 
@@ -207,7 +207,11 @@ pub mod test {
         let decrypted_text = bob_km
             .transport_key_pair
             .decrypt(&cipher_text, DecryptionDirection::Straight);
+        assert_eq!(plain_text, decrypted_text);
 
+        let decrypted_text = alice_km
+            .transport_key_pair
+            .decrypt(&cipher_text, DecryptionDirection::Backward);
         assert_eq!(plain_text, decrypted_text);
 
         let cipher_text = AeadCipherText {
