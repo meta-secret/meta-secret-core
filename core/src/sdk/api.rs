@@ -132,3 +132,47 @@ pub struct PasswordRecoveryRequest {
     //The device that has data and must provide data to consumer device
     pub provider: UserSignature,
 }
+
+pub mod basic {
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct MongoDbStats {
+        pub connection: bool,
+        pub registrations: usize,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct HttpStatusDetails {
+        pub http_status: String,
+        pub http_status_code: u16,
+        pub uri: String,
+        pub method: String,
+        pub content_type: Option<String>,
+    }
+}
+
+pub mod membership {
+    use super::MessageStatus;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+    #[serde(rename_all = "camelCase")]
+    pub enum MembershipStatus {
+        VaultNotFound,
+        /// Device is a member of a vault already
+        AlreadyMember,
+        /// Operation finished successfully
+        Finished,
+    }
+
+    #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+    #[serde(rename_all = "camelCase")]
+    pub struct MemberShipResponse {
+        pub status: MessageStatus,
+        pub membeship_status: MembershipStatus,
+        pub msg: String,
+    }
+}

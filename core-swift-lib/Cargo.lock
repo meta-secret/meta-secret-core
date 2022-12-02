@@ -587,7 +587,7 @@ dependencies = [
 
 [[package]]
 name = "meta-secret-core"
-version = "1.4.0"
+version = "1.5.1"
 dependencies = [
  "base64",
  "crypto_box",
