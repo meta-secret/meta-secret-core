@@ -54,7 +54,7 @@ pub struct EncryptedMessage {
 #[serde(rename_all = "camelCase")]
 pub struct VaultInfo {
     pub status: MessageStatus,
-    pub vault_info: VaultInfoStatus,
+    pub vault_info: Option<VaultInfoStatus>,
     pub vault: Option<VaultDoc>,
 }
 
@@ -74,7 +74,7 @@ impl VaultInfo {
     pub fn empty(vault_info: VaultInfoStatus) -> Self {
         VaultInfo {
             status: MessageStatus::Ok,
-            vault_info,
+            vault_info: Some(vault_info),
             vault: None,
         }
     }
@@ -97,7 +97,7 @@ pub enum VaultInfoStatus {
 #[serde(rename_all = "camelCase")]
 pub struct MetaPasswordsResponse {
     pub status: MessageStatus,
-    pub password_status: MetaPasswordsStatus,
+    pub password_status: Option<MetaPasswordsStatus>,
     pub passwords: Vec<MetaPasswordDoc>,
 }
 
