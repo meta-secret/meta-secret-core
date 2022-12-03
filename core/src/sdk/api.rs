@@ -1,7 +1,8 @@
+use serde::{Deserialize, Serialize};
+
 use crate::crypto::keys::AeadCipherText;
 use crate::sdk::password::{MetaPasswordDoc, MetaPasswordId};
 use crate::sdk::vault::{UserSignature, VaultDoc};
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -155,8 +156,9 @@ pub mod basic {
 }
 
 pub mod membership {
-    use super::MessageStatus;
     use serde::{Deserialize, Serialize};
+
+    use super::MessageStatus;
 
     #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
     #[serde(rename_all = "camelCase")]
@@ -172,7 +174,6 @@ pub mod membership {
     #[serde(rename_all = "camelCase")]
     pub struct MemberShipResponse {
         pub status: MessageStatus,
-        pub membeship_status: MembershipStatus,
-        pub msg: String,
+        pub membeship_status: Option<MembershipStatus>,
     }
 }
