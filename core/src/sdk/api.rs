@@ -23,6 +23,7 @@ pub enum SecretDistributionType {
 #[serde(rename_all = "camelCase")]
 pub struct RegistrationResponse {
     pub status: MessageStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub registration: Option<RegistrationStatus>,
 }
 
@@ -54,7 +55,9 @@ pub struct EncryptedMessage {
 #[serde(rename_all = "camelCase")]
 pub struct VaultInfo {
     pub status: MessageStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub vault_info: Option<VaultInfoStatus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub vault: Option<VaultDoc>,
 }
 
@@ -97,6 +100,7 @@ pub enum VaultInfoStatus {
 #[serde(rename_all = "camelCase")]
 pub struct MetaPasswordsResponse {
     pub status: MessageStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub password_status: Option<MetaPasswordsStatus>,
     pub passwords: Vec<MetaPasswordDoc>,
 }
@@ -151,6 +155,7 @@ pub mod basic {
         pub http_status_code: u16,
         pub uri: String,
         pub method: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub content_type: Option<String>,
     }
 }
@@ -174,6 +179,7 @@ pub mod membership {
     #[serde(rename_all = "camelCase")]
     pub struct MemberShipResponse {
         pub status: MessageStatus,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub membeship_status: Option<MembershipStatus>,
     }
 }
