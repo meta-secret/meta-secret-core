@@ -170,6 +170,10 @@ pub struct PasswordRecoveryRequest {
     pub provider: UserSignature,
 }
 
+pub type PasswordRecoveryClaimsResponse = GenericMessage<Vec<PasswordRecoveryRequest>>;
+
+pub type UserSharesResponse = GenericMessage<Vec<SecretDistributionDocData>>;
+
 pub mod basic {
     use serde::{Deserialize, Serialize};
 
