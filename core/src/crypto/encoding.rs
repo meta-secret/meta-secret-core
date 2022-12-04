@@ -62,6 +62,10 @@ pub mod serialized_key_manager {
         }
     }
 
+    //impl TryFrom<&SerializedDsaKeyPair> for DsaKeyPair {
+    //    fn try_from(value: T) -> Result<Self, Self::Error> {}
+    //}
+
     //SerializedKeyManager -> KeyManager
     impl From<&SerializedDsaKeyPair> for DsaKeyPair {
         fn from(serialized_dsa: &SerializedDsaKeyPair) -> Self {
