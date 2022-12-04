@@ -15,7 +15,7 @@ pub struct GenericMessage<T> {
 }
 
 impl<T> GenericMessage<T> {
-    fn just_ok() -> Self {
+    pub fn just_ok() -> Self {
         GenericMessage {
             msg_type: MessageType::Ok,
             data: None,
@@ -23,7 +23,7 @@ impl<T> GenericMessage<T> {
         }
     }
 
-    fn data(data: T) -> Self {
+    pub fn data(data: T) -> Self {
         GenericMessage {
             msg_type: MessageType::Ok,
             data: Some(data),
@@ -31,7 +31,7 @@ impl<T> GenericMessage<T> {
         }
     }
 
-    fn err(error: String) -> Self {
+    pub fn err(error: String) -> Self {
         GenericMessage {
             msg_type: MessageType::Err,
             data: None,
