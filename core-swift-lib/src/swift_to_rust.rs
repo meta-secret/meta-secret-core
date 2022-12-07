@@ -1,19 +1,17 @@
-use meta_secret_core::crypto::encoding::serialized_key_manager::SerializedKeyManager;
-use meta_secret_core::crypto::keys::{AeadCipherText, AeadPlainText, KeyManager};
-use meta_secret_core::shared_secret::data_block::common::SharedSecretConfig;
 use meta_secret_core::crypto::encoding::base64::Base64EncodedText;
-use meta_secret_core::shared_secret::shared_secret::UserShareDto;
+use meta_secret_core::crypto::encoding::serialized_key_manager::SerializedKeyManager;
 use meta_secret_core::crypto::key_pair::DecryptionDirection;
-use meta_secret_core::{recover_from_shares, shared_secret};
+use meta_secret_core::crypto::keys::{AeadCipherText, AeadPlainText, KeyManager};
 use meta_secret_core::sdk::api::SecretDistributionDocData;
 use meta_secret_core::sdk::password::MetaPasswordId;
+use meta_secret_core::shared_secret::data_block::common::SharedSecretConfig;
+use meta_secret_core::shared_secret::shared_secret::UserShareDto;
+use meta_secret_core::{recover_from_shares, shared_secret};
 use serde::{Deserialize, Serialize};
-use std::os::raw::{c_char};
-use std::ffi::{CString};
+use std::ffi::CString;
+use std::os::raw::c_char;
 use std::slice;
 use std::str;
-
-
 
 type SizeT = usize;
 
@@ -123,19 +121,24 @@ pub extern "C" fn restore_secret(json_bytes: *const u8, json_len: SizeT) -> *mut
     let json_string: String = data_to_json_string(json_bytes, json_len);
     let json_struct: RestoreRequest = serde_json::from_str(&json_string).unwrap();
 
-    let key_manager = KeyManager::from(&json_struct.key_manager);
-    let share_from_device_2_json: AeadPlainText = key_manager.transport_key_pair.decrypt(
-        &json_struct.doc_two.secret_message.encrypted_text,
-        DecryptionDirection::Backward,
-    );
+    let key_manager = KeyManager::try_from(&json_struct.key_manager).unwrap();
+    let share_from_device_2_json: AeadPlainText = key_manager
+        .transport_key_pair
+        .decrypt(
+            &json_struct.doc_two.secret_message.encrypted_text,
+            DecryptionDirection::Backward,
+        )
+        .unwrap();
     let share_from_device_2_json: UserShareDto = serde_json::from_str(&share_from_device_2_json.msg).unwrap();
 
-    let share_from_device_1_json: AeadPlainText = key_manager.transport_key_pair.decrypt(
-        &json_struct.doc_one.secret_message.encrypted_text,
-        DecryptionDirection::Backward,
-    );
+    let share_from_device_1_json: AeadPlainText = key_manager
+        .transport_key_pair
+        .decrypt(
+            &json_struct.doc_one.secret_message.encrypted_text,
+            DecryptionDirection::Backward,
+        )
+        .unwrap();
     let share_from_device_1_json: UserShareDto = serde_json::from_str(&share_from_device_1_json.msg).unwrap();
-
 
     // Restored Password to JSon
     let password = recover_from_shares(vec![share_from_device_2_json, share_from_device_1_json]).unwrap();
