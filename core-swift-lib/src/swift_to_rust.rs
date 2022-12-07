@@ -65,7 +65,7 @@ pub extern "C" fn split_secret(strings_bytes: *const u8, string_len: SizeT) -> *
 
     // Shares to JSon
     let result_json = serde_json::to_string_pretty(&shares).unwrap();
-    CString::new(result_json.to_owned()).unwrap().into_raw()
+    CString::new(result_json).unwrap().into_raw()
 }
 
 #[no_mangle]
@@ -75,7 +75,7 @@ pub extern "C" fn generate_meta_password_id(password_id: *const u8, json_len: Si
 
     // Shares to JSon
     let result_json = serde_json::to_string_pretty(&meta_password_id).unwrap();
-    CString::new(result_json.to_owned()).unwrap().into_raw()
+    CString::new(result_json).unwrap().into_raw()
 }
 
 #[no_mangle]
@@ -144,7 +144,7 @@ pub extern "C" fn restore_secret(json_bytes: *const u8, json_len: SizeT) -> *mut
     let password = recover_from_shares(vec![share_from_device_2_json, share_from_device_1_json]).unwrap();
     let result_json = serde_json::to_string_pretty(&password).unwrap();
 
-    CString::new(result_json.to_owned()).unwrap().into_raw()
+    CString::new(result_json).unwrap().into_raw()
 }
 
 //PRIVATE METHODS
