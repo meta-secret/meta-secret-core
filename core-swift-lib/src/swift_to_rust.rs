@@ -5,11 +5,18 @@ use meta_secret_core::sdk::password::MetaPasswordId;
 use meta_secret_core::shared_secret;
 use meta_secret_core::shared_secret::data_block::common::SharedSecretConfig;
 use meta_secret_core::shared_secret::shared_secret::UserShareDto;
+use meta_secret_core::crypto::keys::{AeadCipherText, AeadPlainText, KeyManager};
+use meta_secret_core::{recover_from_shares, shared_secret};
+use meta_secret_core::crypto::encoding::Base64EncodedText;
+use meta_secret_core::sdk::password::MetaPasswordId;
 use serde::{Deserialize, Serialize};
-use std::ffi::CString;
-use std::os::raw::c_char;
+use std::os::raw::{c_char};
+use std::ffi::{CString};
 use std::slice;
 use std::str;
+use meta_secret_core::crypto::key_pair::DecryptionDirection;
+use meta_secret_core::sdk::api::SecretDistributionDocData;
+
 
 type SizeT = usize;
 
@@ -104,39 +111,42 @@ pub extern "C" fn rust_string_free(s: *mut c_char) {
         CString::from_raw(s)
     };
 }
-/*
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RestoreRequest {
-    device_one: UserSignature,
-    key_manager: KeyManager,
-    secret_share_two: String
+    key_manager: SerializedKeyManager,
+    doc_one: SecretDistributionDocData,
+    doc_two: SecretDistributionDocData,
 }
 
 #[no_mangle]
-pub extern "C" fn restore_secret(json_bytes: *const u8, json_len: SizeT) -> RustByteSlice {
+pub extern "C" fn restore_secret(json_bytes: *const u8, json_len: SizeT) -> *mut c_char {
+    // JSON parsing
     let json_string: String = data_to_json_string(json_bytes, json_len);
-    let json_struct: RestoreRequest = serde_json::from_str(&*json_string).unwrap();
+    let json_struct: RestoreRequest = serde_json::from_str(&json_string).unwrap();
 
-    let share_from_device_2_json: AeadPlainText = json_struct.key_manager.transport_key_pair.decrypt(
-        &pass_share_for_device_1.secret_message.encrypted_text,
+    let key_manager = KeyManager::from(&json_struct.key_manager);
+    let share_from_device_2_json: AeadPlainText = key_manager.transport_key_pair.decrypt(
+        &json_struct.doc_two.secret_message.encrypted_text,
         DecryptionDirection::Backward,
     );
-
     let share_from_device_2_json: UserShareDto = serde_json::from_str(&share_from_device_2_json.msg).unwrap();
 
-    let device_1_password_share: UserShareDto = shares[0].clone();
+    let share_from_device_1_json: AeadPlainText = key_manager.transport_key_pair.decrypt(
+        &json_struct.doc_one.secret_message.encrypted_text,
+        DecryptionDirection::Backward,
+    );
+    let share_from_device_1_json: UserShareDto = serde_json::from_str(&share_from_device_1_json.msg).unwrap();
 
-    let password = recover_from_shares(vec![share_from_device_2_json, device_1_password_share]).unwrap();
+
+    // Restored Password to JSon
+    let password = recover_from_shares(vec![share_from_device_2_json, share_from_device_1_json]).unwrap();
     let result_json = serde_json::to_string_pretty(&password).unwrap();
 
-    RustByteSlice {
-        bytes: result_json.as_ptr(),
-        len: result_json.len() as SizeT,
-    }
+    CString::new(result_json.to_owned()).unwrap().into_raw()
 }
 
- */
 //PRIVATE METHODS
 fn data_to_json_string(json_bytes: *const u8, json_len: SizeT) -> String {
     // JSON parsing
