@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_big_array::BigArray;
 
-use crate::crypto::encoding::Base64EncodedText;
+use crate::crypto::encoding::base64::Base64EncodedText;
 use crate::shared_secret::data_block::common;
 use crate::shared_secret::data_block::common::{BlockMetaData, DataBlockParserError};
 
@@ -33,7 +33,7 @@ impl EncryptedDataBlock {
     }
 
     pub fn from_base64(meta_data: &BlockMetaData, data: &Base64EncodedText) -> EncryptedDataBlock {
-        let data_vec = Vec::from(data);
+        let data_vec = Vec::try_from(data).unwrap();
         let data_bytes = data_vec.as_slice();
         EncryptedDataBlock::from_bytes(meta_data, data_bytes).unwrap()
     }
@@ -41,7 +41,7 @@ impl EncryptedDataBlock {
 
 #[cfg(test)]
 mod test {
-    use crate::crypto::encoding::Base64EncodedText;
+    use crate::crypto::encoding::base64::Base64EncodedText;
     use crate::shared_secret::data_block::common::BlockMetaData;
     use crate::shared_secret::data_block::encrypted_data_block::{EncryptedDataBlock, SECRET_DATA_BLOCK_SIZE};
 

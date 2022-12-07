@@ -1,4 +1,4 @@
-use crate::crypto::encoding::Base64EncodedText;
+use crate::crypto::encoding::base64::Base64EncodedText;
 use crate::crypto::key_pair::{DsaKeyPair, KeyPair, TransportDsaKeyPair};
 use serde::{Deserialize, Serialize};
 

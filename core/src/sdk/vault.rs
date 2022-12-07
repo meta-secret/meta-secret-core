@@ -1,7 +1,8 @@
-use crate::crypto::encoding::Base64EncodedText;
+use crate::crypto::encoding::base64::Base64EncodedText;
 use crate::crypto::key_pair::{DalekPublicKey, DalekSignature, KeyPair};
 use crate::crypto::keys::KeyManager;
-use ed25519_dalek::{SignatureError, Verifier};
+use crate::errors::CoreError;
+use ed25519_dalek::Verifier;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
@@ -50,13 +51,14 @@ impl UserSignature {
         }
     }
 
-    pub fn validate(&self) -> Result<(), SignatureError> {
-        let dalek_pk = DalekPublicKey::from(&self.public_key);
-        let dalek_signature = DalekSignature::from(&self.signature);
+    pub fn validate(&self) -> Result<(), CoreError> {
+        let dalek_pk = DalekPublicKey::try_from(&self.public_key)?;
+        let dalek_signature = DalekSignature::try_from(&self.signature)?;
 
         let msg = self.vault_name.as_bytes();
 
-        dalek_pk.verify(msg, &dalek_signature)
+        dalek_pk.verify(msg, &dalek_signature)?;
+        Ok(())
     }
 }
 

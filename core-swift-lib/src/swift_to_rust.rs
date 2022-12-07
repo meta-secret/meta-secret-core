@@ -1,16 +1,15 @@
-use std::os::raw::{c_char};
-use std::ffi::{CString};
+use meta_secret_core::crypto::encoding::base64::Base64EncodedText;
 use meta_secret_core::crypto::encoding::serialized_key_manager::SerializedKeyManager;
-use meta_secret_core::crypto::encoding::Base64EncodedText;
 use meta_secret_core::crypto::keys::{AeadCipherText, KeyManager};
 use meta_secret_core::sdk::password::MetaPasswordId;
-use meta_secret_core::{shared_secret};
+use meta_secret_core::shared_secret;
 use meta_secret_core::shared_secret::data_block::common::SharedSecretConfig;
 use meta_secret_core::shared_secret::shared_secret::UserShareDto;
 use serde::{Deserialize, Serialize};
+use std::ffi::CString;
+use std::os::raw::c_char;
 use std::slice;
 use std::str;
-use meta_secret_core::crypto::key_pair::{DsaKeyPair};
 
 type SizeT = usize;
 
@@ -46,7 +45,7 @@ pub extern "C" fn generate_signed_user(vault_name_bytes: *const u8, json_len: Si
     };
 
     let user = serde_json::to_string_pretty(&security_box).unwrap();
-    CString::new(user.to_owned()).unwrap().into_raw()
+    CString::new(user).unwrap().into_raw()
 }
 
 // Split
@@ -83,22 +82,25 @@ pub extern "C" fn encrypt_secret(json_bytes: *const u8, json_len: SizeT) -> *mut
     let json_string: String = data_to_json_string(json_bytes, json_len);
 
     let json_struct: JsonMappedData = serde_json::from_str(&json_string).unwrap();
-    let key_manager = KeyManager::from(&json_struct.sender_key_manager);
+    let key_manager = KeyManager::try_from(&json_struct.sender_key_manager).unwrap();
 
     // Encrypt shares
     let encrypted_share: AeadCipherText = key_manager
         .transport_key_pair
-        .encrypt_string(json_struct.secret, json_struct.receiver_pub_key);
+        .encrypt_string(json_struct.secret, json_struct.receiver_pub_key)
+        .unwrap();
 
     // Shares to JSon
     let encrypted_shares_json = serde_json::to_string(&encrypted_share).unwrap();
-    CString::new(encrypted_shares_json.to_owned()).unwrap().into_raw()
+    CString::new(encrypted_shares_json).unwrap().into_raw()
 }
 
 #[no_mangle]
-pub extern fn rust_string_free(s: *mut c_char) {
+pub extern "C" fn rust_string_free(s: *mut c_char) {
     unsafe {
-        if s.is_null() { return }
+        if s.is_null() {
+            return;
+        }
         CString::from_raw(s)
     };
 }
@@ -175,7 +177,8 @@ pub mod test {
         let receiver_pk = key_manager_2.transport_key_pair.public_key();
         let encrypted_share: AeadCipherText = key_manager_1
             .transport_key_pair
-            .encrypt_string(password_share, receiver_pk);
+            .encrypt_string(password_share, receiver_pk)
+            .unwrap();
 
         println!("result {:?}", encrypted_share);
     }

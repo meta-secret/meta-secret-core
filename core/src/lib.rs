@@ -15,6 +15,7 @@ use crate::shared_secret::shared_secret::{
 use crate::RecoveryError::EmptyInput;
 
 pub mod crypto;
+pub mod errors;
 pub mod sdk;
 pub mod shared_secret;
 

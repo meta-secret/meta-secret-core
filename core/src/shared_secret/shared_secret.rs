@@ -2,7 +2,7 @@ use std::borrow::Borrow;
 use std::str;
 use std::string::FromUtf8Error;
 
-use crate::crypto::encoding::Base64EncodedText;
+use crate::crypto::encoding::base64::Base64EncodedText;
 use serde::{Deserialize, Serialize};
 use shamirsecretsharing::SSSError;
 

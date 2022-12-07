@@ -7,8 +7,9 @@ use ed25519_dalek::{Keypair, Signer};
 use image::EncodableLayout;
 use rand::rngs::OsRng;
 
-use crate::crypto::encoding::Base64EncodedText;
+use crate::crypto::encoding::base64::Base64EncodedText;
 use crate::crypto::keys::{AeadAuthData, AeadCipherText, AeadPlainText, CommunicationChannel};
+use crate::errors::CoreError;
 
 pub type CryptoBoxPublicKey = crypto_box::PublicKey;
 pub type CryptoBoxSecretKey = crypto_box::SecretKey;
@@ -83,7 +84,11 @@ impl TransportDsaKeyPair {
         ChaChaBox::new(their_pk, &self.secret_key)
     }
 
-    pub fn encrypt_string(&self, plain_text: String, receiver_pk: Base64EncodedText) -> AeadCipherText {
+    pub fn encrypt_string(
+        &self,
+        plain_text: String,
+        receiver_pk: Base64EncodedText,
+    ) -> Result<AeadCipherText, CoreError> {
         let aead_text = AeadPlainText {
             msg: plain_text,
             auth_data: AeadAuthData {
@@ -99,13 +104,13 @@ impl TransportDsaKeyPair {
         self.encrypt(&aead_text)
     }
 
-    pub fn encrypt(&self, plain_text: &AeadPlainText) -> AeadCipherText {
+    pub fn encrypt(&self, plain_text: &AeadPlainText) -> Result<AeadCipherText, CoreError> {
         let auth_data = &plain_text.auth_data;
-        let their_pk = CryptoBoxPublicKey::from(&auth_data.channel.receiver);
+        let their_pk = CryptoBoxPublicKey::try_from(&auth_data.channel.receiver)?;
         let crypto_box = self.build_cha_cha_box(&their_pk);
         let cipher_text = crypto_box
             .encrypt(
-                &Nonce::from(&auth_data.nonce),
+                &Nonce::try_from(&auth_data.nonce)?,
                 Payload {
                     msg: plain_text.msg.clone().as_bytes(),    // your message to encrypt
                     aad: auth_data.associated_data.as_bytes(), // not encrypted, but authenticated in tag
@@ -113,26 +118,32 @@ impl TransportDsaKeyPair {
             )
             .unwrap();
 
-        AeadCipherText {
+        let cipher_text = AeadCipherText {
             msg: Base64EncodedText::from(cipher_text),
             auth_data: plain_text.auth_data.clone(),
-        }
+        };
+
+        Ok(cipher_text)
     }
 
-    pub fn decrypt(&self, cipher_text: &AeadCipherText, decryption_direction: DecryptionDirection) -> AeadPlainText {
+    pub fn decrypt(
+        &self,
+        cipher_text: &AeadCipherText,
+        decryption_direction: DecryptionDirection,
+    ) -> Result<AeadPlainText, CoreError> {
         let auth_data = &cipher_text.auth_data;
         let channel = &auth_data.channel;
 
         let their_pk = match decryption_direction {
-            DecryptionDirection::Straight => CryptoBoxPublicKey::from(&channel.sender),
-            DecryptionDirection::Backward => CryptoBoxPublicKey::from(&channel.receiver),
+            DecryptionDirection::Straight => CryptoBoxPublicKey::try_from(&channel.sender)?,
+            DecryptionDirection::Backward => CryptoBoxPublicKey::try_from(&channel.receiver)?,
         };
         let crypto_box = self.build_cha_cha_box(&their_pk);
 
-        let msg_vec: Vec<u8> = Vec::from(&cipher_text.msg);
+        let msg_vec: Vec<u8> = Vec::try_from(&cipher_text.msg)?;
         let decrypted_plaintext: Vec<u8> = crypto_box
             .decrypt(
-                &Nonce::from(&auth_data.nonce),
+                &Nonce::try_from(&auth_data.nonce)?,
                 Payload {
                     msg: msg_vec.as_bytes(),
                     aad: auth_data.associated_data.as_bytes(),
@@ -140,10 +151,12 @@ impl TransportDsaKeyPair {
             )
             .unwrap();
 
-        AeadPlainText {
-            msg: String::from_utf8(decrypted_plaintext).unwrap(),
+        let plain_text = AeadPlainText {
+            msg: String::from_utf8(decrypted_plaintext)?,
             auth_data: cipher_text.auth_data.clone(),
-        }
+        };
+
+        Ok(plain_text)
     }
 
     pub fn generate_nonce(&self) -> Base64EncodedText {
@@ -165,29 +178,32 @@ pub enum DecryptionDirection {
 pub mod test {
     use crate::crypto::key_pair::{DecryptionDirection, KeyPair};
     use crate::crypto::keys::{AeadAuthData, AeadCipherText, AeadPlainText, CommunicationChannel, KeyManager};
+    use crate::errors::CoreError;
 
     #[test]
-    fn single_person_encryption() {
+    fn single_person_encryption() -> Result<(), CoreError> {
         let password = "topSecret".to_string();
 
         let alice_km = KeyManager::generate();
         let cypher_text: AeadCipherText = alice_km
             .transport_key_pair
-            .encrypt_string(password.clone(), alice_km.transport_key_pair.public_key());
+            .encrypt_string(password.clone(), alice_km.transport_key_pair.public_key())?;
 
         let plain_text = alice_km
             .transport_key_pair
-            .decrypt(&cypher_text, DecryptionDirection::Straight);
+            .decrypt(&cypher_text, DecryptionDirection::Straight)?;
         assert_eq!(password, plain_text.msg);
 
         let plain_text = alice_km
             .transport_key_pair
-            .decrypt(&cypher_text, DecryptionDirection::Backward);
+            .decrypt(&cypher_text, DecryptionDirection::Backward)?;
         assert_eq!(password, plain_text.msg);
+
+        Ok(())
     }
 
     #[test]
-    fn straight_and_backward_decryption() {
+    fn straight_and_backward_decryption() -> Result<(), CoreError> {
         let alice_km = KeyManager::generate();
         let bob_km = KeyManager::generate();
 
@@ -202,16 +218,16 @@ pub mod test {
                 nonce: alice_km.transport_key_pair.generate_nonce(),
             },
         };
-        let cipher_text: AeadCipherText = alice_km.transport_key_pair.encrypt(&plain_text);
+        let cipher_text: AeadCipherText = alice_km.transport_key_pair.encrypt(&plain_text)?;
 
         let decrypted_text = bob_km
             .transport_key_pair
-            .decrypt(&cipher_text, DecryptionDirection::Straight);
+            .decrypt(&cipher_text, DecryptionDirection::Straight)?;
         assert_eq!(plain_text, decrypted_text);
 
         let decrypted_text = alice_km
             .transport_key_pair
-            .decrypt(&cipher_text, DecryptionDirection::Backward);
+            .decrypt(&cipher_text, DecryptionDirection::Backward)?;
         assert_eq!(plain_text, decrypted_text);
 
         let cipher_text = AeadCipherText {
@@ -225,8 +241,10 @@ pub mod test {
 
         let decrypted_text = bob_km
             .transport_key_pair
-            .decrypt(&cipher_text, DecryptionDirection::Backward);
+            .decrypt(&cipher_text, DecryptionDirection::Backward)?;
 
         assert_eq!(plain_text.msg, decrypted_text.msg);
+
+        Ok(())
     }
 }
