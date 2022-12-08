@@ -33,6 +33,18 @@ pub mod base64 {
             }
         }
 
+        impl From<String> for Base64EncodedText {
+            fn from(data: String) -> Self {
+                Base64EncodedText::from(data.as_bytes())
+            }
+        }
+
+        impl From<&str> for Base64EncodedText {
+            fn from(data: &str) -> Self {
+                Base64EncodedText::from(data.as_bytes())
+            }
+        }
+
         impl From<&Array256Bit> for Base64EncodedText {
             fn from(data: &Array256Bit) -> Self {
                 Base64EncodedText::from(data.as_slice())

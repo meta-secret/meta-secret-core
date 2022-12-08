@@ -6,6 +6,7 @@ use crate::crypto::encoding::base64::Base64EncodedText;
 use serde::{Deserialize, Serialize};
 use shamirsecretsharing::SSSError;
 
+use crate::errors::CoreError;
 use crate::shared_secret::data_block::common::{BlockMetaData, SharedSecretConfig};
 use crate::shared_secret::data_block::encrypted_data_block::EncryptedDataBlock;
 use crate::shared_secret::data_block::plain_data_block::{PlainDataBlock, PLAIN_DATA_BLOCK_SIZE};
@@ -51,6 +52,16 @@ impl UserShareDto {
     pub fn get_encrypted_data_block(&self, block_index: usize) -> EncryptedDataBlock {
         let block_dto: &SecretShareWithOrderingDto = self.share_blocks[block_index].borrow();
         block_dto.to_encrypted_data_block()
+    }
+}
+
+impl TryFrom<&Base64EncodedText> for UserShareDto {
+    type Error = CoreError;
+
+    fn try_from(base64_content: &Base64EncodedText) -> Result<Self, Self::Error> {
+        let data = Vec::try_from(base64_content)?;
+        let json = serde_json::from_slice(data.as_slice())?;
+        Ok(json)
     }
 }
 

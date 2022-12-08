@@ -1,6 +1,6 @@
 [package]
 name = "meta-secret-core"
-version = "1.6.0"
+version = "1.6.1"
 edition = "2021"
 license = "Apache-2.0"
 description = "Meta Secret core module"
@@ -17,7 +17,7 @@ name = "meta_secret_core"
 thiserror = "1.0.37"
 
 ed25519-dalek = "1.0.1"
-crypto_box = "0.8.2"
+crypto_box = { version = "0.8.2", features = ["std"] }
 rand = "0.7.3"
 sha2 = "0.10.6"
 

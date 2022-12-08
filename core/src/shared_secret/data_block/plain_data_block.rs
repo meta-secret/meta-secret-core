@@ -21,9 +21,7 @@ impl PlainDataBlock {
         }
 
         match meta_data.size {
-            size if size == 0 || size > PLAIN_DATA_BLOCK_SIZE => {
-                Err(DataBlockParserError::WrongSize)
-            }
+            size if size == 0 || size > PLAIN_DATA_BLOCK_SIZE => Err(DataBlockParserError::WrongSize),
 
             size if size == PLAIN_DATA_BLOCK_SIZE => Ok(PlainDataBlock::new(meta_data, data)),
 

@@ -90,7 +90,7 @@ impl TransportDsaKeyPair {
         receiver_pk: Base64EncodedText,
     ) -> Result<AeadCipherText, CoreError> {
         let aead_text = AeadPlainText {
-            msg: plain_text,
+            msg: Base64EncodedText::from(plain_text.as_bytes()),
             auth_data: AeadAuthData {
                 associated_data: "checksum".to_string(),
                 channel: CommunicationChannel {
@@ -108,15 +108,13 @@ impl TransportDsaKeyPair {
         let auth_data = &plain_text.auth_data;
         let their_pk = CryptoBoxPublicKey::try_from(&auth_data.channel.receiver)?;
         let crypto_box = self.build_cha_cha_box(&their_pk);
-        let cipher_text = crypto_box
-            .encrypt(
-                &Nonce::try_from(&auth_data.nonce)?,
-                Payload {
-                    msg: plain_text.msg.clone().as_bytes(),    // your message to encrypt
-                    aad: auth_data.associated_data.as_bytes(), // not encrypted, but authenticated in tag
-                },
-            )
-            .unwrap();
+        let nonce = &Nonce::try_from(&auth_data.nonce)?;
+        let msg = Vec::try_from(&plain_text.msg)?;
+        let payload = Payload {
+            msg: msg.as_bytes(),                       // your message to encrypt
+            aad: auth_data.associated_data.as_bytes(), // not encrypted, but authenticated in tag
+        };
+        let cipher_text = crypto_box.encrypt(nonce, payload)?;
 
         let cipher_text = AeadCipherText {
             msg: Base64EncodedText::from(cipher_text),
@@ -141,18 +139,15 @@ impl TransportDsaKeyPair {
         let crypto_box = self.build_cha_cha_box(&their_pk);
 
         let msg_vec: Vec<u8> = Vec::try_from(&cipher_text.msg)?;
-        let decrypted_plaintext: Vec<u8> = crypto_box
-            .decrypt(
-                &Nonce::try_from(&auth_data.nonce)?,
-                Payload {
-                    msg: msg_vec.as_bytes(),
-                    aad: auth_data.associated_data.as_bytes(),
-                },
-            )
-            .unwrap();
+        let nonce = &Nonce::try_from(&auth_data.nonce)?;
+        let payload = Payload {
+            msg: msg_vec.as_bytes(),
+            aad: auth_data.associated_data.as_bytes(),
+        };
+        let decrypted_plaintext = crypto_box.decrypt(nonce, payload)?;
 
         let plain_text = AeadPlainText {
-            msg: String::from_utf8(decrypted_plaintext)?,
+            msg: Base64EncodedText::from(decrypted_plaintext),
             auth_data: cipher_text.auth_data.clone(),
         };
 
@@ -176,6 +171,7 @@ pub enum DecryptionDirection {
 
 #[cfg(test)]
 pub mod test {
+    use crate::crypto::encoding::base64::Base64EncodedText;
     use crate::crypto::key_pair::{DecryptionDirection, KeyPair};
     use crate::crypto::keys::{AeadAuthData, AeadCipherText, AeadPlainText, CommunicationChannel, KeyManager};
     use crate::errors::CoreError;
@@ -192,12 +188,12 @@ pub mod test {
         let plain_text = alice_km
             .transport_key_pair
             .decrypt(&cypher_text, DecryptionDirection::Straight)?;
-        assert_eq!(password, plain_text.msg);
+        assert_eq!(Base64EncodedText::from(password.as_bytes()), plain_text.msg);
 
         let plain_text = alice_km
             .transport_key_pair
             .decrypt(&cypher_text, DecryptionDirection::Backward)?;
-        assert_eq!(password, plain_text.msg);
+        assert_eq!(Base64EncodedText::from(password.as_bytes()), plain_text.msg);
 
         Ok(())
     }
@@ -208,7 +204,7 @@ pub mod test {
         let bob_km = KeyManager::generate();
 
         let plain_text = AeadPlainText {
-            msg: "t0p$3cr3t".to_string(),
+            msg: Base64EncodedText::from("t0p$3cr3t"),
             auth_data: AeadAuthData {
                 associated_data: "checksum".to_string(),
                 channel: CommunicationChannel {

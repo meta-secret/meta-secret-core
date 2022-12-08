@@ -23,6 +23,8 @@ pub struct BlockMetaData {
 pub fn parse_data<const BLOCK_SIZE: usize>(block_array: &[u8]) -> [u8; BLOCK_SIZE] {
     let array_size = block_array.len();
 
-    <[u8; BLOCK_SIZE]>::try_from(<&[u8]>::clone(&block_array))
-        .expect(format!("Byte array must be the same length as a data block. Expected size: {BLOCK_SIZE}, actual {array_size}").as_str())
+    <[u8; BLOCK_SIZE]>::try_from(<&[u8]>::clone(&block_array)).expect(
+        format!("Byte array must be the same length as a data block. Expected size: {BLOCK_SIZE}, actual {array_size}")
+            .as_str(),
+    )
 }
