@@ -9,7 +9,7 @@ use rand::rngs::OsRng;
 
 use crate::crypto::encoding::base64::Base64EncodedText;
 use crate::crypto::keys::{AeadAuthData, AeadCipherText, AeadPlainText, CommunicationChannel};
-use crate::errors::CoreError;
+use crate::CoreResult;
 
 pub type CryptoBoxPublicKey = crypto_box::PublicKey;
 pub type CryptoBoxSecretKey = crypto_box::SecretKey;
@@ -84,11 +84,7 @@ impl TransportDsaKeyPair {
         ChaChaBox::new(their_pk, &self.secret_key)
     }
 
-    pub fn encrypt_string(
-        &self,
-        plain_text: String,
-        receiver_pk: Base64EncodedText,
-    ) -> Result<AeadCipherText, CoreError> {
+    pub fn encrypt_string(&self, plain_text: String, receiver_pk: Base64EncodedText) -> CoreResult<AeadCipherText> {
         let aead_text = AeadPlainText {
             msg: Base64EncodedText::from(plain_text.as_bytes()),
             auth_data: AeadAuthData {
@@ -104,7 +100,7 @@ impl TransportDsaKeyPair {
         self.encrypt(&aead_text)
     }
 
-    pub fn encrypt(&self, plain_text: &AeadPlainText) -> Result<AeadCipherText, CoreError> {
+    pub fn encrypt(&self, plain_text: &AeadPlainText) -> CoreResult<AeadCipherText> {
         let auth_data = &plain_text.auth_data;
         let their_pk = CryptoBoxPublicKey::try_from(&auth_data.channel.receiver)?;
         let crypto_box = self.build_cha_cha_box(&their_pk);
@@ -128,7 +124,7 @@ impl TransportDsaKeyPair {
         &self,
         cipher_text: &AeadCipherText,
         decryption_direction: DecryptionDirection,
-    ) -> Result<AeadPlainText, CoreError> {
+    ) -> CoreResult<AeadPlainText> {
         let auth_data = &cipher_text.auth_data;
         let channel = &auth_data.channel;
 
@@ -174,10 +170,10 @@ pub mod test {
     use crate::crypto::encoding::base64::Base64EncodedText;
     use crate::crypto::key_pair::{DecryptionDirection, KeyPair};
     use crate::crypto::keys::{AeadAuthData, AeadCipherText, AeadPlainText, CommunicationChannel, KeyManager};
-    use crate::errors::CoreError;
+    use crate::CoreResult;
 
     #[test]
-    fn single_person_encryption() -> Result<(), CoreError> {
+    fn single_person_encryption() -> CoreResult<()> {
         let password = "topSecret".to_string();
 
         let alice_km = KeyManager::generate();
@@ -199,7 +195,7 @@ pub mod test {
     }
 
     #[test]
-    fn straight_and_backward_decryption() -> Result<(), CoreError> {
+    fn straight_and_backward_decryption() -> CoreResult<()> {
         let alice_km = KeyManager::generate();
         let bob_km = KeyManager::generate();
 

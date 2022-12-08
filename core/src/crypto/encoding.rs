@@ -256,10 +256,10 @@ pub mod serialized_key_manager {
             use crate::crypto::encoding::base64::Base64EncodedText;
             use crate::crypto::key_pair::{DalekPublicKey, DalekSignature, KeyPair};
             use crate::crypto::keys::KeyManager;
-            use crate::errors::CoreError;
+            use crate::CoreResult;
 
             #[test]
-            fn from_base64_to_dalek_public_key() -> Result<(), CoreError> {
+            fn from_base64_to_dalek_public_key() -> CoreResult<()> {
                 let km = KeyManager::generate();
                 let pk_encoded = km.dsa.public_key();
                 let pk = DalekPublicKey::try_from(&pk_encoded)?;
@@ -268,7 +268,7 @@ pub mod serialized_key_manager {
             }
 
             #[test]
-            fn serialize_signature() -> Result<(), CoreError> {
+            fn serialize_signature() -> CoreResult<()> {
                 let km = KeyManager::generate();
                 let serialized_sign = km.dsa.sign("text".to_string());
                 let deserialized_sign = DalekSignature::try_from(&serialized_sign)?;

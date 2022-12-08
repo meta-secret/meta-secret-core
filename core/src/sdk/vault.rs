@@ -1,7 +1,7 @@
 use crate::crypto::encoding::base64::Base64EncodedText;
 use crate::crypto::key_pair::{DalekPublicKey, DalekSignature, KeyPair};
 use crate::crypto::keys::KeyManager;
-use crate::errors::CoreError;
+use crate::CoreResult;
 use ed25519_dalek::Verifier;
 use serde::{Deserialize, Serialize};
 
@@ -51,7 +51,7 @@ impl UserSignature {
         }
     }
 
-    pub fn validate(&self) -> Result<(), CoreError> {
+    pub fn validate(&self) -> CoreResult<()> {
         let dalek_pk = DalekPublicKey::try_from(&self.public_key)?;
         let dalek_signature = DalekSignature::try_from(&self.signature)?;
 

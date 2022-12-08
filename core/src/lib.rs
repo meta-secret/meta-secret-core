@@ -4,6 +4,7 @@ use std::io::BufReader;
 use std::path::Path;
 use std::{fs, io};
 
+use crate::errors::CoreError;
 use image::ImageError;
 use rqrr::DeQRError;
 
@@ -18,6 +19,8 @@ pub mod crypto;
 pub mod errors;
 pub mod sdk;
 pub mod shared_secret;
+
+pub type CoreResult<T> = std::result::Result<T, CoreError>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum RecoveryOperationError {

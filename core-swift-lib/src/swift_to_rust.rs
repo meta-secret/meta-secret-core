@@ -7,6 +7,7 @@ use meta_secret_core::sdk::api::SecretDistributionDocData;
 use meta_secret_core::sdk::password::MetaPasswordId;
 use meta_secret_core::shared_secret::data_block::common::SharedSecretConfig;
 use meta_secret_core::shared_secret::shared_secret::UserShareDto;
+use meta_secret_core::CoreResult;
 use meta_secret_core::{recover_from_shares, shared_secret};
 use serde::{Deserialize, Serialize};
 use std::ffi::CString;
@@ -50,7 +51,7 @@ pub extern "C" fn generate_signed_user(vault_name_bytes: *const u8, len: SizeT) 
     CString::new(user).unwrap().into_raw()
 }
 
-fn generate_signed_user_private(vault_name_bytes: *const u8, len: SizeT) -> Result<String, CoreError> {
+fn generate_signed_user_private(vault_name_bytes: *const u8, len: SizeT) -> CoreResult<String> {
     let device_name = data_to_string(vault_name_bytes, len)?;
 
     let key_manager = KeyManager::generate();
@@ -72,7 +73,7 @@ pub extern "C" fn split_secret(strings_bytes: *const u8, string_len: SizeT) -> *
     CString::new(result_json).unwrap().into_raw()
 }
 
-fn split_secret_internal(strings_bytes: *const u8, string_len: SizeT) -> Result<String, CoreError> {
+fn split_secret_internal(strings_bytes: *const u8, string_len: SizeT) -> CoreResult<String> {
     // Constants & Properties
     let cfg = SharedSecretConfig {
         number_of_shares: 3,
@@ -94,7 +95,7 @@ pub extern "C" fn generate_meta_password_id(password_id: *const u8, json_len: Si
     CString::new(result_json).unwrap().into_raw()
 }
 
-fn generate_meta_password_id_internal(password_id: *const u8, json_len: SizeT) -> Result<String, CoreError> {
+fn generate_meta_password_id_internal(password_id: *const u8, json_len: SizeT) -> CoreResult<String> {
     let password_id = data_to_string(password_id, json_len)?;
     let meta_password_id = MetaPasswordId::generate(password_id);
 
@@ -109,7 +110,7 @@ pub extern "C" fn encrypt_secret(json_bytes: *const u8, json_len: SizeT) -> *mut
     CString::new(encrypted_shares_json).unwrap().into_raw()
 }
 
-fn encrypt_secret_internal(bytes: *const u8, len: SizeT) -> Result<String, CoreError> {
+fn encrypt_secret_internal(bytes: *const u8, len: SizeT) -> CoreResult<String> {
     let data_string: String = data_to_string(bytes, len)?;
 
     let json_struct = JsonMappedData::try_from(&data_string)?;
@@ -158,7 +159,7 @@ pub extern "C" fn restore_secret(bytes: *const u8, len: SizeT) -> *mut c_char {
     CString::new(recovered_secret).unwrap().into_raw()
 }
 
-fn recover_secret_internal(bytes: *const u8, len: SizeT) -> Result<String, CoreError> {
+fn recover_secret_internal(bytes: *const u8, len: SizeT) -> CoreResult<String> {
     let data_string: String = data_to_string(bytes, len)?;
     let restore_task = RestoreTask::try_from(&data_string)?;
 
@@ -183,7 +184,7 @@ fn recover_secret_internal(bytes: *const u8, len: SizeT) -> Result<String, CoreE
 }
 
 //PRIVATE METHODS
-fn data_to_string(bytes: *const u8, len: SizeT) -> Result<String, CoreError> {
+fn data_to_string(bytes: *const u8, len: SizeT) -> CoreResult<String> {
     // JSON parsing
     let bytes_slice = unsafe { slice::from_raw_parts(bytes, len as usize) };
     let result = str::from_utf8(bytes_slice)?;
