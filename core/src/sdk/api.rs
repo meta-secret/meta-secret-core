@@ -31,6 +31,22 @@ impl From<&anyhow::Error> for ErrorMessage {
     }
 }
 
+impl From<&dyn std::error::Error> for ErrorMessage {
+    fn from(err: &dyn std::error::Error) -> Self {
+        let mut stacktrace = vec![];
+
+        let mut current_error = err;
+        while let Some(source) = current_error.source() {
+            let err_msg = format!("{}", current_error);
+            stacktrace.push(err_msg);
+
+            current_error = source;
+        }
+
+        Self { stacktrace }
+    }
+}
+
 impl<T> GenericMessage<T> {
     pub fn just_ok() -> Self {
         GenericMessage {
@@ -50,6 +66,16 @@ impl<T> GenericMessage<T> {
 
     pub fn err(err: anyhow::Error) -> Self {
         let err_msg = ErrorMessage::from(&err);
+
+        GenericMessage {
+            msg_type: MessageType::Err,
+            data: None,
+            err: Some(err_msg),
+        }
+    }
+
+    pub fn std_err(err: &dyn std::error::Error) -> Self {
+        let err_msg = ErrorMessage::from(err);
 
         GenericMessage {
             msg_type: MessageType::Err,
@@ -236,8 +262,10 @@ pub mod membership {
 #[cfg(test)]
 mod test {
     use super::membership::*;
-    use crate::sdk::api::GenericMessage;
+    use crate::sdk::api::{ErrorMessage, GenericMessage};
+    use anyhow::anyhow;
     use serde::{Deserialize, Serialize};
+    use thiserror::__private::AsDynError;
 
     #[test]
     fn test_generic_message() {
@@ -258,5 +286,14 @@ mod test {
         let msg = GenericMessage::data(TestTest { xxx: "yay".to_string() });
         let msg = serde_json::to_string(&msg).unwrap();
         assert_eq!(r#"{"msgType":"ok","data":{"xxx":"yay"}}"#, msg);
+    }
+
+    #[test]
+    fn error_message_test() {
+        let err_msg = ErrorMessage::from(anyhow!("yay").context("my root cause").as_dyn_error());
+        assert_eq!(
+            r#"{"stacktrace":["my root cause"]}"#,
+            serde_json::to_string(&err_msg).unwrap()
+        );
     }
 }
