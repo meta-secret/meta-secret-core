@@ -11,7 +11,24 @@ pub struct GenericMessage<T> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<T>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub err: Option<String>,
+    pub err: Option<ErrorMessage>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ErrorMessage {
+    stacktrace: Vec<String>,
+}
+
+impl From<&anyhow::Error> for ErrorMessage {
+    fn from(err: &anyhow::Error) -> Self {
+        let mut stacktrace = vec![];
+        for cause in err.chain() {
+            stacktrace.push(cause.to_string().trim().to_string());
+        }
+
+        Self { stacktrace }
+    }
 }
 
 impl<T> GenericMessage<T> {
@@ -31,11 +48,13 @@ impl<T> GenericMessage<T> {
         }
     }
 
-    pub fn err(error: String) -> Self {
+    pub fn err(err: anyhow::Error) -> Self {
+        let err_msg = ErrorMessage::from(&err);
+
         GenericMessage {
             msg_type: MessageType::Err,
             data: None,
-            err: Some(error),
+            err: Some(err_msg),
         }
     }
 }
