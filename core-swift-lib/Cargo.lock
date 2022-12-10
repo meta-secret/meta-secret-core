@@ -593,7 +593,7 @@ dependencies = [
 
 [[package]]
 name = "meta-secret-core"
-version = "1.6.2"
+version = "1.6.3"
 dependencies = [
  "anyhow",
  "base64",

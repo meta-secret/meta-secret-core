@@ -1,10 +1,11 @@
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
-#[derive(Debug, PartialEq)]
+#[derive(Error, Debug, Eq, PartialEq)]
 pub enum DataBlockParserError {
-    //Byte array has the wrong size
-    WrongSize,
-    //Invalid byte array
+    #[error("Byte array has wrong size: {0}")]
+    WrongSize(usize),
+    #[error("Invalid (empty) byte array")]
     Invalid,
 }
 

@@ -1,4 +1,6 @@
-use crate::shared_secret::shared_secret::RecoveryError;
+use crate::shared_secret::data_block::common::DataBlockParserError;
+use shamirsecretsharing::SSSError;
+use std::io;
 use std::string::FromUtf8Error;
 
 #[derive(thiserror::Error, Debug)]
@@ -45,12 +47,77 @@ pub enum CoreError {
         source: serde_json::Error,
     },
 
-    #[error("Password recovery error")]
+    #[error("Unsuccesful recovery operation")]
     RecoveryError {
         #[from]
         source: RecoveryError,
     },
 
+    #[error("Data block parsing error")]
+    DataBlockParserError {
+        #[from]
+        source: DataBlockParserError,
+    },
+
+    #[error("Shamir secret sharing operation error")]
+    ShamirError {
+        #[from]
+        source: SSSError,
+    },
+
+    #[error("Split operation failed")]
+    SplitOperationError {
+        #[from]
+        source: SplitError,
+    },
+
+    #[error(transparent)]
+    SharesLoaderError {
+        #[from]
+        source: SharesLoaderError,
+    },
+
     #[error("unknown error")]
     Unknown,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum RecoveryError {
+    #[error("Empty input")]
+    EmptyInput(String),
+    #[error("Invalid share")]
+    InvalidShare(String),
+
+    #[error("Failed recover operation")]
+    ShamirCombineSharesError {
+        #[from]
+        source: SSSError,
+    },
+    #[error("Non utf8 string")]
+    DeserializationError {
+        #[from]
+        source: FromUtf8Error,
+    },
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum SplitError {
+    #[error("Secrets directory can't be created")]
+    SecretsDirectoryError {
+        #[from]
+        source: io::Error,
+    },
+    #[error("User secret share: invalid format (can't be serialized into json)")]
+    UserShareJsonSerializationError {
+        #[from]
+        source: serde_json::Error,
+    },
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum SharesLoaderError {
+    #[error(transparent)]
+    FileSystemError(#[from] io::Error),
+    #[error(transparent)]
+    DeserializationError(#[from] serde_json::error::Error),
 }

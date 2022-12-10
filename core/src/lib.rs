@@ -1,3 +1,5 @@
+extern crate core;
+
 use std::ffi::OsStr;
 use std::fs::File;
 use std::io::BufReader;
@@ -5,15 +7,14 @@ use std::path::Path;
 use std::{fs, io};
 
 use crate::errors::CoreError;
+use errors::{RecoveryError, SharesLoaderError, SplitError};
 use image::ImageError;
 use rqrr::DeQRError;
 
 use crate::shared_secret::data_block::common::SharedSecretConfig;
 use crate::shared_secret::data_block::shared_secret_data_block::SharedSecretBlock;
-use crate::shared_secret::shared_secret::{
-    PlainText, RecoveryError, SharedSecret, SharedSecretEncryption, UserShareDto,
-};
-use crate::RecoveryError::EmptyInput;
+use crate::shared_secret::shared_secret::{PlainText, SharedSecret, SharedSecretEncryption, UserShareDto};
+use errors::RecoveryError::EmptyInput;
 
 pub mod crypto;
 pub mod errors;
@@ -30,17 +31,18 @@ pub enum RecoveryOperationError {
     RecoveryFromSharesError(#[from] RecoveryError),
 }
 
-pub fn recover() -> Result<PlainText, RecoveryOperationError> {
+pub fn recover() -> CoreResult<PlainText> {
     let users_shares = load_users_shares()?;
     let recovered = recover_from_shares(users_shares)?;
     Ok(recovered)
 }
 
-pub fn recover_from_shares(users_shares: Vec<UserShareDto>) -> Result<PlainText, RecoveryError> {
+pub fn recover_from_shares(users_shares: Vec<UserShareDto>) -> CoreResult<PlainText> {
     let mut secret_blocks: Vec<SharedSecretBlock> = vec![];
 
     if users_shares[0].share_blocks.is_empty() {
-        return Err(EmptyInput("Empty shares list. Nothing to recover".to_string()));
+        let err = EmptyInput("Empty shares list. Nothing to recover".to_string());
+        return Err(CoreError::from(err));
     }
 
     let blocks_num: usize = users_shares[0].share_blocks.len();
@@ -49,7 +51,7 @@ pub fn recover_from_shares(users_shares: Vec<UserShareDto>) -> Result<PlainText,
         let mut encrypted_data_blocks = vec![];
 
         for user_share in users_shares.iter() {
-            let encrypted_data_block = user_share.get_encrypted_data_block(block_index);
+            let encrypted_data_block = user_share.get_encrypted_data_block(block_index)?;
             encrypted_data_blocks.push(encrypted_data_block);
         }
 
@@ -65,15 +67,8 @@ pub fn recover_from_shares(users_shares: Vec<UserShareDto>) -> Result<PlainText,
 
     let secret = SharedSecret { secret_blocks };
 
-    secret.recover()
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum SharesLoaderError {
-    #[error(transparent)]
-    FileSystemError(#[from] io::Error),
-    #[error(transparent)]
-    DeserializationError(#[from] serde_json::error::Error),
+    let result = secret.recover()?;
+    Ok(result)
 }
 
 fn load_users_shares() -> Result<Vec<UserShareDto>, SharesLoaderError> {
@@ -102,32 +97,26 @@ fn load_users_shares() -> Result<Vec<UserShareDto>, SharesLoaderError> {
     Ok(users_shares_dto)
 }
 
-#[derive(Debug, thiserror::Error)]
-pub enum SplitError {
-    #[error("Secrets directory can't be created")]
-    SecretsDirectoryError {
-        #[from]
-        source: io::Error,
-    },
-    #[error("User secret share: invalid format (can't be serialized into json)")]
-    UserShareJsonSerializationError {
-        #[from]
-        source: serde_json::Error,
-    },
-}
+pub fn split(secret: String, config: SharedSecretConfig) -> CoreResult<()> {
+    let plain_text = PlainText::from(secret);
+    let shared_secret = SharedSecretEncryption::new(config, &plain_text)?;
 
-pub fn split(secret: String, config: SharedSecretConfig) -> Result<(), SplitError> {
-    let plain_text = PlainText::from_str(secret);
-    let shared_secret = SharedSecretEncryption::new(config, &plain_text);
+    let dir_op = fs::create_dir_all("secrets");
 
-    fs::create_dir_all("secrets")?;
+    if let Err(dir_err) = dir_op {
+        return Err(CoreError::from(SplitError::from(dir_err)));
+    }
 
     for share_index in 0..config.number_of_shares {
         let share: UserShareDto = shared_secret.get_share(share_index);
         let share_json = serde_json::to_string_pretty(&share)?;
 
         // Save the JSON structure into the output file
-        fs::write(format!("secrets/shared-secret-{share_index}.json"), share_json.clone())?;
+        let write_op = fs::write(format!("secrets/shared-secret-{share_index}.json"), share_json.clone());
+
+        if let Err(op_err) = write_op {
+            return Err(CoreError::from(SplitError::from(op_err)));
+        }
 
         //generate qr code
         generate_qr_code(

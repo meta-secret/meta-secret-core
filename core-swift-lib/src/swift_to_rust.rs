@@ -82,7 +82,7 @@ fn split_secret_internal(strings_bytes: *const u8, string_len: SizeT) -> CoreRes
 
     // JSON parsing
     let json_string: String = data_to_string(strings_bytes, string_len)?;
-    let shares: Vec<UserShareDto> = shared_secret::split(json_string, cfg);
+    let shares: Vec<UserShareDto> = shared_secret::split(json_string, cfg)?;
 
     // Shares to JSon
     let result_json = serde_json::to_string_pretty(&shares)?;
@@ -196,12 +196,12 @@ fn data_to_string(bytes: *const u8, len: SizeT) -> CoreResult<String> {
 pub mod test {
     use meta_secret_core::crypto::key_pair::KeyPair;
     use meta_secret_core::crypto::keys::{AeadCipherText, KeyManager};
-    use meta_secret_core::shared_secret;
     use meta_secret_core::shared_secret::data_block::common::SharedSecretConfig;
     use meta_secret_core::shared_secret::shared_secret::UserShareDto;
+    use meta_secret_core::{shared_secret, CoreResult};
 
     #[test]
-    fn split_and_encrypt() {
+    fn split_and_encrypt() -> CoreResult<()> {
         // Constants & Properties
         let cfg = SharedSecretConfig {
             number_of_shares: 3,
@@ -215,7 +215,7 @@ pub mod test {
         let key_manager_2 = KeyManager::generate();
 
         // Split
-        let shares: Vec<UserShareDto> = shared_secret::split("Secret".to_string(), cfg);
+        let shares: Vec<UserShareDto> = shared_secret::split("Secret".to_string(), cfg)?;
 
         // Encrypt shares
         let secret = shares[0].clone();
@@ -223,9 +223,10 @@ pub mod test {
         let receiver_pk = key_manager_2.transport_key_pair.public_key();
         let encrypted_share: AeadCipherText = key_manager_1
             .transport_key_pair
-            .encrypt_string(password_share, receiver_pk)
-            .unwrap();
+            .encrypt_string(password_share, receiver_pk)?;
 
         println!("result {:?}", encrypted_share);
+
+        Ok(())
     }
 }

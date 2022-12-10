@@ -12,8 +12,10 @@ pub struct PlainDataBlock {
     pub data: [u8; PLAIN_DATA_BLOCK_SIZE],
 }
 
-impl PlainDataBlock {
-    pub fn from_bytes(data: &[u8]) -> Result<Self, DataBlockParserError> {
+impl TryFrom<&[u8]> for PlainDataBlock {
+    type Error = DataBlockParserError;
+
+    fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
         let meta_data = BlockMetaData { size: data.len() };
 
         if data == [0; PLAIN_DATA_BLOCK_SIZE] {
@@ -21,8 +23,6 @@ impl PlainDataBlock {
         }
 
         match meta_data.size {
-            size if size == 0 || size > PLAIN_DATA_BLOCK_SIZE => Err(DataBlockParserError::WrongSize),
-
             size if size == PLAIN_DATA_BLOCK_SIZE => Ok(PlainDataBlock::new(meta_data, data)),
 
             size if size < PLAIN_DATA_BLOCK_SIZE => {
@@ -31,12 +31,12 @@ impl PlainDataBlock {
                 Ok(PlainDataBlock::new(meta_data, &extended))
             }
 
-            _ => {
-                panic!("Impossible")
-            }
+            wrong_size => Err(DataBlockParserError::WrongSize(wrong_size)),
         }
     }
+}
 
+impl PlainDataBlock {
     pub fn new(meta_data: BlockMetaData, block_array: &[u8]) -> Self {
         Self {
             meta_data,
@@ -50,23 +50,29 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_plain_data_block_from_bytes() {
-        let block = PlainDataBlock::from_bytes(&[42; 64]).unwrap();
+    fn test_plain_data_block_from_bytes() -> Result<(), DataBlockParserError> {
+        let data = [42; 64].as_slice();
+        let block = PlainDataBlock::try_from(data)?;
         let expected: [u8; 64] = [42; 64];
         assert_eq!(expected, block.data);
 
-        let block = PlainDataBlock::from_bytes(&[1; 1]).unwrap();
+        let block = PlainDataBlock::try_from([1; 1].as_slice())?;
         let mut expected: [u8; 64] = [0; 64];
         expected[0] = 1;
         assert_eq!(1, block.meta_data.size);
         assert_eq!(expected, block.data);
 
-        let block_err = PlainDataBlock::from_bytes(&[1; PLAIN_DATA_BLOCK_SIZE + 1]);
+        let block_err = PlainDataBlock::try_from([1; PLAIN_DATA_BLOCK_SIZE + 1].as_slice());
         assert!(block_err.is_err());
-        assert_eq!(DataBlockParserError::WrongSize, block_err.unwrap_err());
+        assert_eq!(
+            DataBlockParserError::WrongSize(PLAIN_DATA_BLOCK_SIZE + 1),
+            block_err.unwrap_err()
+        );
 
-        let block_err = PlainDataBlock::from_bytes(&[0; PLAIN_DATA_BLOCK_SIZE]);
+        let block_err = PlainDataBlock::try_from([0; PLAIN_DATA_BLOCK_SIZE].as_slice());
         assert!(block_err.is_err());
-        assert_eq!(DataBlockParserError::Invalid, block_err.unwrap_err())
+        assert_eq!(DataBlockParserError::Invalid, block_err.unwrap_err());
+
+        Ok(())
     }
 }

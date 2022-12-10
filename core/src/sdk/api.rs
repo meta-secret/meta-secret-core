@@ -265,16 +265,17 @@ mod test {
     use crate::sdk::api::{ErrorMessage, GenericMessage};
     use anyhow::anyhow;
     use serde::{Deserialize, Serialize};
+    use serde_json::error::Result;
     use thiserror::__private::AsDynError;
 
     #[test]
-    fn test_generic_message() {
+    fn test_generic_message() -> Result<()> {
         let msg: GenericMessage<String> = GenericMessage::just_ok();
-        let msg = serde_json::to_string(&msg).unwrap();
+        let msg = serde_json::to_string(&msg)?;
         assert_eq!(r#"{"msgType":"ok"}"#.to_string(), msg);
 
         let msg = MembershipResponse::data(MembershipStatus::AlreadyMember);
-        let msg = serde_json::to_string(&msg).unwrap();
+        let msg = serde_json::to_string(&msg)?;
         assert_eq!(r#"{"msgType":"ok","data":"alreadyMember"}"#, msg);
 
         #[derive(Debug, Serialize, Deserialize)]
@@ -284,16 +285,17 @@ mod test {
         }
 
         let msg = GenericMessage::data(TestTest { xxx: "yay".to_string() });
-        let msg = serde_json::to_string(&msg).unwrap();
+        let msg = serde_json::to_string(&msg)?;
         assert_eq!(r#"{"msgType":"ok","data":{"xxx":"yay"}}"#, msg);
+
+        Ok(())
     }
 
     #[test]
-    fn error_message_test() {
+    fn error_message_test() -> Result<()> {
         let err_msg = ErrorMessage::from(anyhow!("yay").context("my root cause").as_dyn_error());
-        assert_eq!(
-            r#"{"stacktrace":["my root cause"]}"#,
-            serde_json::to_string(&err_msg).unwrap()
-        );
+        assert_eq!(r#"{"stacktrace":["my root cause"]}"#, serde_json::to_string(&err_msg)?);
+
+        Ok(())
     }
 }

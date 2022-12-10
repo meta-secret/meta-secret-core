@@ -1,37 +1,48 @@
 use std::borrow::Borrow;
 use std::str;
-use std::string::FromUtf8Error;
 
 use crate::crypto::encoding::base64::Base64EncodedText;
+use crate::CoreResult;
 use serde::{Deserialize, Serialize};
-use shamirsecretsharing::SSSError;
 
-use crate::errors::CoreError;
+use crate::errors::RecoveryError::InvalidShare;
+use crate::errors::{CoreError, RecoveryError};
 use crate::shared_secret::data_block::common::{BlockMetaData, SharedSecretConfig};
 use crate::shared_secret::data_block::encrypted_data_block::EncryptedDataBlock;
 use crate::shared_secret::data_block::plain_data_block::{PlainDataBlock, PLAIN_DATA_BLOCK_SIZE};
 use crate::shared_secret::data_block::shared_secret_data_block::SharedSecretBlock;
-use crate::shared_secret::shared_secret::RecoveryError::InvalidShare;
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PlainText {
-    pub text: Vec<u8>,
+    pub text: String,
 }
 
 impl PlainText {
-    pub fn from_str(str: String) -> Self {
-        PlainText { text: str.into_bytes() }
-    }
-
     pub fn to_data_blocks(&self) -> Vec<PlainDataBlock> {
         self.text
+            .clone()
+            .into_bytes()
             .chunks(PLAIN_DATA_BLOCK_SIZE)
-            .map(|block| PlainDataBlock::from_bytes(block).unwrap())
+            .map(|block| PlainDataBlock::try_from(block).unwrap())
             .collect()
     }
+}
 
-    pub fn as_string(&self) -> String {
-        String::from_utf8(self.text.clone()).unwrap()
+impl From<String> for PlainText {
+    fn from(data: String) -> Self {
+        Self { text: data }
+    }
+}
+
+impl From<&str> for PlainText {
+    fn from(str: &str) -> Self {
+        PlainText::from(str.to_string())
+    }
+}
+
+impl ToString for PlainText {
+    fn to_string(&self) -> String {
+        self.text.clone()
     }
 }
 
@@ -49,9 +60,10 @@ pub struct UserShareDto {
 }
 
 impl UserShareDto {
-    pub fn get_encrypted_data_block(&self, block_index: usize) -> EncryptedDataBlock {
-        let block_dto: &SecretShareWithOrderingDto = self.share_blocks[block_index].borrow();
-        block_dto.to_encrypted_data_block()
+    pub fn get_encrypted_data_block(&self, block_index: usize) -> CoreResult<EncryptedDataBlock> {
+        let block_dto = &self.share_blocks[block_index];
+        let data_block = EncryptedDataBlock::try_from(block_dto)?;
+        Ok(data_block)
     }
 }
 
@@ -73,43 +85,29 @@ pub struct SecretShareWithOrderingDto {
     pub data: Base64EncodedText,
 }
 
-impl SecretShareWithOrderingDto {
-    pub fn to_encrypted_data_block(&self) -> EncryptedDataBlock {
-        EncryptedDataBlock::from_base64(&self.meta_data, &self.data)
+impl TryFrom<&SecretShareWithOrderingDto> for EncryptedDataBlock {
+    type Error = CoreError;
+
+    fn try_from(share: &SecretShareWithOrderingDto) -> Result<Self, Self::Error> {
+        let data_vec = Vec::try_from(&share.data)?;
+        let data_bytes = data_vec.as_slice();
+        let block = EncryptedDataBlock::from_bytes(&share.meta_data, data_bytes)?;
+        Ok(block)
     }
 }
 
 pub struct SharedSecretEncryption;
 
 impl SharedSecretEncryption {
-    pub fn new(config: SharedSecretConfig, text: &PlainText) -> SharedSecret {
+    pub fn new(config: SharedSecretConfig, text: &PlainText) -> CoreResult<SharedSecret> {
         let mut secret_blocks = vec![];
         for data_block in text.to_data_blocks() {
-            let secret_block = SharedSecretBlock::create(config, data_block);
+            let secret_block = SharedSecretBlock::create(config, data_block)?;
             secret_blocks.push(secret_block);
         }
 
-        SharedSecret { secret_blocks }
+        Ok(SharedSecret { secret_blocks })
     }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum RecoveryError {
-    #[error("Empty input")]
-    EmptyInput(String),
-    #[error("Invalid share")]
-    InvalidShare(String),
-
-    #[error("Failed recover operation")]
-    ShamirCombineSharesError {
-        #[from]
-        source: SSSError,
-    },
-    #[error("Non utf8 string")]
-    DeserializationError {
-        #[from]
-        source: FromUtf8Error,
-    },
 }
 
 impl SharedSecret {
@@ -139,9 +137,7 @@ impl SharedSecret {
             }
         }
 
-        Ok(PlainText {
-            text: plain_text.into_bytes(),
-        })
+        Ok(PlainText::from(plain_text))
     }
 
     pub fn get_share(&self, share_index: usize) -> UserShareDto {
@@ -167,27 +163,25 @@ impl SharedSecret {
 
 #[cfg(test)]
 mod test {
-    use std::str;
+    use shamirsecretsharing::SSSError;
 
     use super::*;
 
     #[test]
     fn test_plain_text() {
-        let text = PlainText::from_str(String::from("yay"));
+        let text = PlainText::from("yay");
         let data_blocks = text.to_data_blocks();
         assert_eq!(1, data_blocks.len());
     }
 
     #[test]
-    fn split_and_restore_secret() {
+    fn split_and_restore_secret() -> CoreResult<()> {
         let mut plain_text_str = String::new();
         for i in 0..100 {
             plain_text_str.push_str(i.to_string().as_str());
             plain_text_str.push('-')
         }
-        let plain_text = PlainText {
-            text: plain_text_str.into_bytes(),
-        };
+        let plain_text = PlainText::from(plain_text_str);
 
         let secret = SharedSecretEncryption::new(
             SharedSecretConfig {
@@ -195,15 +189,17 @@ mod test {
                 threshold: 3,
             },
             &plain_text,
-        );
+        )?;
 
-        let secret_message = secret.recover().unwrap();
+        let secret_message = secret.recover()?;
         assert_eq!(&plain_text.text, &secret_message.text);
-        println!("message: {:?}", str::from_utf8(&secret_message.text).unwrap())
+        println!("message: {:?}", &secret_message.text);
+
+        Ok(())
     }
 
     #[test]
-    fn shamir_test() {
+    fn shamir_test() -> Result<(), SSSError> {
         let data: Vec<u8> = vec![
             63, 104, 101, 121, 95, 104, 101, 121, 95, 104, 101, 121, 95, 104, 101, 121, 95, 104, 101, 121, 95, 104,
             101, 121, 95, 104, 101, 121, 95, 104, 101, 121, 95, 104, 101, 121, 95, 104, 101, 121, 95, 104, 101, 121,
@@ -212,7 +208,7 @@ mod test {
 
         let count = 5;
         let threshold = 3;
-        let mut shares: Vec<Vec<u8>> = shamirsecretsharing::create_shares(&data, count, threshold).unwrap();
+        let mut shares: Vec<Vec<u8>> = shamirsecretsharing::create_shares(&data, count, threshold)?;
 
         for share in &shares {
             println!("share size: {:?}", share.len());
@@ -222,7 +218,7 @@ mod test {
         shares.remove(0);
 
         // We still have 4 shares, so we should still be able to restore the secret
-        let restored = shamirsecretsharing::combine_shares(&shares).unwrap();
+        let restored = shamirsecretsharing::combine_shares(&shares)?;
         assert_eq!(restored, Some(data));
 
         // Lose a share (for demonstration purposes)
@@ -230,7 +226,9 @@ mod test {
 
         // If we lose another share the secret is lost
         shares.remove(0);
-        let restored2 = shamirsecretsharing::combine_shares(&shares).unwrap();
+        let restored2 = shamirsecretsharing::combine_shares(&shares)?;
         assert_eq!(restored2, None);
+
+        Ok(())
     }
 }

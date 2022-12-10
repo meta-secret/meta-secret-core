@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_big_array::BigArray;
 
-use crate::crypto::encoding::base64::Base64EncodedText;
 use crate::shared_secret::data_block::common;
 use crate::shared_secret::data_block::common::{BlockMetaData, DataBlockParserError};
 
@@ -22,7 +21,7 @@ impl EncryptedDataBlock {
         }
 
         if meta_data.size == 0 || meta_data.size > SECRET_DATA_BLOCK_SIZE {
-            return Err(DataBlockParserError::WrongSize);
+            return Err(DataBlockParserError::WrongSize(meta_data.size));
         }
 
         let share = Self {
@@ -31,27 +30,36 @@ impl EncryptedDataBlock {
 
         Ok(share)
     }
-
-    pub fn from_base64(meta_data: &BlockMetaData, data: &Base64EncodedText) -> EncryptedDataBlock {
-        let data_vec = Vec::try_from(data).unwrap();
-        let data_bytes = data_vec.as_slice();
-        EncryptedDataBlock::from_bytes(meta_data, data_bytes).unwrap()
-    }
 }
 
 #[cfg(test)]
 mod test {
     use crate::crypto::encoding::base64::Base64EncodedText;
+    use crate::errors::CoreError;
     use crate::shared_secret::data_block::common::BlockMetaData;
+    use crate::shared_secret::data_block::common::SharedSecretConfig;
     use crate::shared_secret::data_block::encrypted_data_block::{EncryptedDataBlock, SECRET_DATA_BLOCK_SIZE};
+    use crate::shared_secret::shared_secret::SecretShareWithOrderingDto;
 
     #[test]
-    fn test_encrypted_data_block() {
+    fn test_encrypted_data_block() -> Result<(), CoreError> {
         let meta_data = BlockMetaData { size: 11 };
         let raw_data = vec![1; SECRET_DATA_BLOCK_SIZE];
         let text = Base64EncodedText::from(raw_data.clone());
 
-        let secret = EncryptedDataBlock::from_base64(&meta_data, &text);
+        let secret_share_dto = SecretShareWithOrderingDto {
+            block: 0,
+            config: SharedSecretConfig {
+                number_of_shares: 3,
+                threshold: 2,
+            },
+            meta_data,
+            data: text,
+        };
+
+        let secret = EncryptedDataBlock::try_from(&secret_share_dto)?;
         assert_eq!(raw_data.as_slice(), secret.data.as_slice());
+
+        Ok(())
     }
 }
