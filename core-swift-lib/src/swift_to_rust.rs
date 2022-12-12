@@ -1,3 +1,4 @@
+use anyhow::Context;
 use meta_secret_core::crypto::encoding::base64::Base64EncodedText;
 use meta_secret_core::crypto::encoding::serialized_key_manager::SerializedKeyManager;
 use meta_secret_core::crypto::key_pair::DecryptionDirection;
@@ -155,8 +156,14 @@ impl TryFrom<&String> for RestoreTask {
 
 #[no_mangle]
 pub extern "C" fn restore_secret(bytes: *const u8, len: SizeT) -> *mut c_char {
-    let recovered_secret = recover_secret_internal(bytes, len).unwrap();
-    CString::new(recovered_secret).unwrap().into_raw()
+    let recovered_secret = recover_secret_internal(bytes, len)
+        .with_context(|| "Secret recovery error".to_string())
+        .unwrap();
+
+    CString::new(recovered_secret)
+        .with_context(|| "Secret recovery error: interop".to_string())
+        .unwrap()
+        .into_raw()
 }
 
 fn recover_secret_internal(bytes: *const u8, len: SizeT) -> CoreResult<String> {

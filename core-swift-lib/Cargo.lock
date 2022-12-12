@@ -593,7 +593,7 @@ dependencies = [
 
 [[package]]
 name = "meta-secret-core"
-version = "1.6.3"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "base64",
@@ -617,6 +617,7 @@ dependencies = [
 name = "meta-secret-core-swift"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "base64",
  "crypto_box",
  "ed25519-dalek",
