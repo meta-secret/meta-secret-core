@@ -85,12 +85,12 @@ pub enum RecoveryError {
     #[error("Invalid share")]
     InvalidShare(String),
 
-    #[error("Failed recover operation")]
+    #[error(transparent)]
     ShamirCombineSharesError {
         #[from]
         source: SSSError,
     },
-    #[error("Non utf8 string")]
+    #[error(transparent)]
     DeserializationError {
         #[from]
         source: FromUtf8Error,
