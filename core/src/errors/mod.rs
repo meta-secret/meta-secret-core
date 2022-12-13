@@ -5,67 +5,67 @@ use std::string::FromUtf8Error;
 
 #[derive(thiserror::Error, Debug)]
 pub enum CoreError {
-    #[error("Invalid Base64 content")]
+    #[error(transparent)]
     InvalidBase64Content {
         #[from]
         source: base64::DecodeError,
     },
 
-    #[error("SignatureError")]
+    #[error(transparent)]
     SignatureError {
         #[from]
         source: ed25519_dalek::SignatureError,
     },
 
-    #[error("Invalid array size")]
+    #[error(transparent)]
     InvalidArraySize {
         #[from]
         source: std::array::TryFromSliceError,
     },
 
-    #[error("Invalid utf8 array")]
+    #[error(transparent)]
     StringConversionError {
         #[from]
         source: FromUtf8Error,
     },
 
-    #[error("Utf8 error")]
+    #[error(transparent)]
     Utf8ConversionError {
         #[from]
         source: std::str::Utf8Error,
     },
 
-    #[error("Encryption error")]
+    #[error(transparent)]
     EncryptionError {
         #[from]
         source: crypto_box::aead::Error,
     },
 
-    #[error("Json parsing error")]
+    #[error(transparent)]
     JsonParseError {
         #[from]
         source: serde_json::Error,
     },
 
-    #[error("Unsuccesful recovery operation")]
+    #[error(transparent)]
     RecoveryError {
         #[from]
         source: RecoveryError,
     },
 
-    #[error("Data block parsing error")]
+    #[error(transparent)]
     DataBlockParserError {
         #[from]
         source: DataBlockParserError,
     },
 
-    #[error("Shamir secret sharing operation error")]
+    #[error(transparent)]
     ShamirError {
         #[from]
         source: SSSError,
     },
 
-    #[error("Split operation failed")]
+    #[error(transparent)]
     SplitOperationError {
         #[from]
         source: SplitError,
@@ -76,9 +76,6 @@ pub enum CoreError {
         #[from]
         source: SharesLoaderError,
     },
-
-    #[error("unknown error")]
-    Unknown,
 }
 
 #[derive(Debug, thiserror::Error)]
