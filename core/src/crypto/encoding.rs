@@ -13,22 +13,22 @@ pub mod base64 {
     }
 
     pub mod encoder {
-        use crate::crypto::encoding::Array256Bit;
-
         use super::Base64EncodedText;
+        use crate::crypto::encoding::Array256Bit;
+        use base64::alphabet::URL_SAFE;
+        use base64::engine::fast_portable::{FastPortable, NO_PAD};
+        const URL_SAFE_ENGINE: FastPortable = FastPortable::from(&URL_SAFE, NO_PAD);
 
         impl From<Vec<u8>> for Base64EncodedText {
             fn from(data: Vec<u8>) -> Self {
-                Self {
-                    base64_text: base64::encode(&data),
-                }
+                Base64EncodedText::from(data.as_slice())
             }
         }
 
         impl From<&[u8]> for Base64EncodedText {
             fn from(data: &[u8]) -> Self {
                 Self {
-                    base64_text: base64::encode(data),
+                    base64_text: base64::encode_engine(data, &URL_SAFE_ENGINE),
                 }
             }
         }
@@ -53,16 +53,18 @@ pub mod base64 {
     }
 
     pub mod decoder {
+        use super::Base64EncodedText;
         use crate::crypto::encoding::Array256Bit;
         use crate::errors::CoreError;
-
-        use super::Base64EncodedText;
+        use base64::alphabet::URL_SAFE;
+        use base64::engine::fast_portable::{FastPortable, NO_PAD};
+        const URL_SAFE_ENGINE: FastPortable = FastPortable::from(&URL_SAFE, NO_PAD);
 
         impl TryFrom<&Base64EncodedText> for Vec<u8> {
             type Error = CoreError;
 
             fn try_from(base64: &Base64EncodedText) -> Result<Self, Self::Error> {
-                let data = base64::decode(&base64.base64_text)?;
+                let data = base64::decode_engine(&base64.base64_text, &URL_SAFE_ENGINE)?;
                 Ok(data)
             }
         }
@@ -83,6 +85,10 @@ pub mod base64 {
     #[cfg(test)]
     mod test {
         use super::Base64EncodedText;
+        use crate::CoreResult;
+
+        const TEST_STR: &str = "kjsfdbkjsfhdkjhsfdkjhsfdkjhksfdjhksjfdhksfd";
+        const ENCODED_URL_SAFE_TEST_STR: &str = "a2pzZmRia2pzZmhka2poc2Zka2poc2Zka2poa3NmZGpoa3NqZmRoa3NmZA";
 
         #[test]
         fn from_vec() {
@@ -95,11 +101,24 @@ pub mod base64 {
 
         #[test]
         fn from_bytes() {
-            let encoded = Base64EncodedText::from(b"AAA".as_slice());
+            let encoded = Base64EncodedText::from(TEST_STR.as_bytes());
             let expected = Base64EncodedText {
-                base64_text: "QUFB".to_string(),
+                base64_text: ENCODED_URL_SAFE_TEST_STR.to_string(),
             };
             assert_eq!(encoded, expected);
+        }
+
+        #[test]
+        fn cross_encoding_encoded_vs_url_encoded() -> CoreResult<()> {
+            let data_str = "kjsfdbkjsfhdkjhsfdkjhsfdkjhksfdjhksjfdhksfd";
+            let base64 = Base64EncodedText {
+                base64_text: base64::encode(data_str),
+            };
+
+            let cross_decoded = Vec::try_from(&base64)?;
+            assert_eq!(String::from_utf8(cross_decoded)?, String::from(data_str));
+
+            Ok(())
         }
     }
 }
