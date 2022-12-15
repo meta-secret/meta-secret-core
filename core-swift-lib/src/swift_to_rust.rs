@@ -18,6 +18,153 @@ use std::str;
 
 type SizeT = usize;
 
+//LIB METHODS
+
+//Generate vault and sign
+#[no_mangle]
+pub extern "C" fn generate_signed_user(vault_name_bytes: *const u8, len: SizeT) -> *mut c_char {
+    let user = internal::generate_key_manager(vault_name_bytes, len)
+        .with_context(|| "Error: Signature generation failed".to_string())
+        .unwrap();
+    to_c_str(user)
+}
+
+// Split
+#[no_mangle]
+pub extern "C" fn split_secret(strings_bytes: *const u8, string_len: SizeT) -> *mut c_char {
+    let result_json = internal::split_secret(strings_bytes, string_len).unwrap();
+    to_c_str(result_json)
+}
+
+#[no_mangle]
+pub extern "C" fn generate_meta_password_id(password_id: *const u8, json_len: SizeT) -> *mut c_char {
+    let result_json = internal::generate_meta_password_id(password_id, json_len).unwrap();
+    to_c_str(result_json)
+}
+
+#[no_mangle]
+pub extern "C" fn encrypt_secret(json_bytes: *const u8, json_len: SizeT) -> *mut c_char {
+    let encrypted_shares_json = internal::encrypt_secret(json_bytes, json_len).unwrap();
+    to_c_str(encrypted_shares_json)
+}
+
+#[no_mangle]
+pub extern "C" fn restore_secret(bytes: *const u8, len: SizeT) -> *mut c_char {
+    let recovered_secret = internal::recover_secret(bytes, len)
+        .with_context(|| "Secret recovery error".to_string())
+        .unwrap();
+
+    to_c_str(recovered_secret)
+}
+
+fn to_c_str(str: String) -> *mut c_char {
+    CString::new(str)
+        .with_context(|| "String transformation error".to_string())
+        .unwrap()
+        .into_raw()
+}
+
+mod internal {
+    use super::*;
+
+    pub fn generate_key_manager(vault_name_bytes: *const u8, len: SizeT) -> CoreResult<String> {
+        let device_name = data_to_string(vault_name_bytes, len)?;
+
+        let key_manager = KeyManager::generate();
+
+        let signature = key_manager.dsa.sign(device_name);
+        let security_box = UserSecurityBox {
+            signature,
+            key_manager: SerializedKeyManager::from(&key_manager),
+        };
+
+        let user = serde_json::to_string_pretty(&security_box)?;
+        Ok(user)
+    }
+
+    pub fn split_secret(strings_bytes: *const u8, string_len: SizeT) -> CoreResult<String> {
+        // Constants & Properties
+        let cfg = SharedSecretConfig {
+            number_of_shares: 3,
+            threshold: 2,
+        };
+
+        // JSON parsing
+        let json_string: String = data_to_string(strings_bytes, string_len)?;
+        let shares: Vec<UserShareDto> = shared_secret::split(json_string, cfg)?;
+
+        // Shares to JSon
+        let result_json = serde_json::to_string_pretty(&shares)?;
+        Ok(result_json)
+    }
+
+    pub fn generate_meta_password_id(password_id: *const u8, json_len: SizeT) -> CoreResult<String> {
+        let password_id = data_to_string(password_id, json_len)?;
+        let meta_password_id = MetaPasswordId::generate(password_id);
+
+        // Shares to JSon
+        let result_json = serde_json::to_string_pretty(&meta_password_id)?;
+        Ok(result_json)
+    }
+
+    pub fn encrypt_secret(bytes: *const u8, len: SizeT) -> CoreResult<String> {
+        let data_string: String = data_to_string(bytes, len)?;
+
+        let json_struct = JsonMappedData::try_from(&data_string)?;
+        let key_manager = KeyManager::try_from(&json_struct.sender_key_manager)?;
+
+        // Encrypt shares
+        let encrypted_share: AeadCipherText = key_manager
+            .transport_key_pair
+            .encrypt_string(json_struct.secret, json_struct.receiver_pub_key)?;
+
+        // Shares to JSon
+        let encrypted_shares_json = serde_json::to_string(&encrypted_share)?;
+        Ok(encrypted_shares_json)
+    }
+
+    pub fn recover_secret(bytes: *const u8, len: SizeT) -> CoreResult<String> {
+        let data_string: String = data_to_string(bytes, len)?;
+        let restore_task = RestoreTask::try_from(&data_string)?;
+
+        let key_manager = KeyManager::try_from(&restore_task.key_manager)?;
+        let share_from_device_2_json: AeadPlainText = key_manager.transport_key_pair.decrypt(
+            &restore_task.doc_two.secret_message.encrypted_text,
+            DecryptionDirection::Backward,
+        )?;
+        let share_from_device_2_json = UserShareDto::try_from(&share_from_device_2_json.msg)?;
+
+        let share_from_device_1_json: AeadPlainText = key_manager.transport_key_pair.decrypt(
+            &restore_task.doc_one.secret_message.encrypted_text,
+            DecryptionDirection::Backward,
+        )?;
+
+        let share_from_device_1_json = UserShareDto::try_from(&share_from_device_1_json.msg)?;
+
+        // Restored Password to JSon
+        let password = recover_from_shares(vec![share_from_device_2_json, share_from_device_1_json])?;
+        let result_json = serde_json::to_string_pretty(&password)?;
+        Ok(result_json)
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn rust_string_free(s: *mut c_char) {
+    unsafe {
+        if s.is_null() {
+            return;
+        }
+        CString::from_raw(s)
+    };
+}
+
+fn data_to_string(bytes: *const u8, len: SizeT) -> CoreResult<String> {
+    // JSON parsing
+    let bytes_slice = unsafe { slice::from_raw_parts(bytes, len as usize) };
+    let result = str::from_utf8(bytes_slice)?;
+    Ok(result.to_string())
+}
+
 //STRUCTURES
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,100 +190,6 @@ struct UserSecurityBox {
     key_manager: SerializedKeyManager,
 }
 
-//LIB METHODS
-
-//Generate vault and sign
-#[no_mangle]
-pub extern "C" fn generate_signed_user(vault_name_bytes: *const u8, len: SizeT) -> *mut c_char {
-    let user = generate_signed_user_private(vault_name_bytes, len).unwrap();
-    CString::new(user).unwrap().into_raw()
-}
-
-fn generate_signed_user_private(vault_name_bytes: *const u8, len: SizeT) -> CoreResult<String> {
-    let device_name = data_to_string(vault_name_bytes, len)?;
-
-    let key_manager = KeyManager::generate();
-
-    let signature = key_manager.dsa.sign(device_name);
-    let security_box = UserSecurityBox {
-        signature,
-        key_manager: SerializedKeyManager::from(&key_manager),
-    };
-
-    let user = serde_json::to_string_pretty(&security_box)?;
-    Ok(user)
-}
-
-// Split
-#[no_mangle]
-pub extern "C" fn split_secret(strings_bytes: *const u8, string_len: SizeT) -> *mut c_char {
-    let result_json = split_secret_internal(strings_bytes, string_len).unwrap();
-    CString::new(result_json).unwrap().into_raw()
-}
-
-fn split_secret_internal(strings_bytes: *const u8, string_len: SizeT) -> CoreResult<String> {
-    // Constants & Properties
-    let cfg = SharedSecretConfig {
-        number_of_shares: 3,
-        threshold: 2,
-    };
-
-    // JSON parsing
-    let json_string: String = data_to_string(strings_bytes, string_len)?;
-    let shares: Vec<UserShareDto> = shared_secret::split(json_string, cfg)?;
-
-    // Shares to JSon
-    let result_json = serde_json::to_string_pretty(&shares)?;
-    Ok(result_json)
-}
-
-#[no_mangle]
-pub extern "C" fn generate_meta_password_id(password_id: *const u8, json_len: SizeT) -> *mut c_char {
-    let result_json = generate_meta_password_id_internal(password_id, json_len).unwrap();
-    CString::new(result_json).unwrap().into_raw()
-}
-
-fn generate_meta_password_id_internal(password_id: *const u8, json_len: SizeT) -> CoreResult<String> {
-    let password_id = data_to_string(password_id, json_len)?;
-    let meta_password_id = MetaPasswordId::generate(password_id);
-
-    // Shares to JSon
-    let result_json = serde_json::to_string_pretty(&meta_password_id)?;
-    Ok(result_json)
-}
-
-#[no_mangle]
-pub extern "C" fn encrypt_secret(json_bytes: *const u8, json_len: SizeT) -> *mut c_char {
-    let encrypted_shares_json = encrypt_secret_internal(json_bytes, json_len).unwrap();
-    CString::new(encrypted_shares_json).unwrap().into_raw()
-}
-
-fn encrypt_secret_internal(bytes: *const u8, len: SizeT) -> CoreResult<String> {
-    let data_string: String = data_to_string(bytes, len)?;
-
-    let json_struct = JsonMappedData::try_from(&data_string)?;
-    let key_manager = KeyManager::try_from(&json_struct.sender_key_manager)?;
-
-    // Encrypt shares
-    let encrypted_share: AeadCipherText = key_manager
-        .transport_key_pair
-        .encrypt_string(json_struct.secret, json_struct.receiver_pub_key)?;
-
-    // Shares to JSon
-    let encrypted_shares_json = serde_json::to_string(&encrypted_share)?;
-    Ok(encrypted_shares_json)
-}
-
-#[no_mangle]
-pub extern "C" fn rust_string_free(s: *mut c_char) {
-    unsafe {
-        if s.is_null() {
-            return;
-        }
-        CString::from_raw(s)
-    };
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RestoreTask {
@@ -152,50 +205,6 @@ impl TryFrom<&String> for RestoreTask {
         let json = serde_json::from_str(data)?;
         Ok(json)
     }
-}
-
-#[no_mangle]
-pub extern "C" fn restore_secret(bytes: *const u8, len: SizeT) -> *mut c_char {
-    let recovered_secret = recover_secret_internal(bytes, len)
-        .with_context(|| "Secret recovery error".to_string())
-        .unwrap();
-
-    CString::new(recovered_secret)
-        .with_context(|| "Secret recovery error: interop".to_string())
-        .unwrap()
-        .into_raw()
-}
-
-fn recover_secret_internal(bytes: *const u8, len: SizeT) -> CoreResult<String> {
-    let data_string: String = data_to_string(bytes, len)?;
-    let restore_task = RestoreTask::try_from(&data_string)?;
-
-    let key_manager = KeyManager::try_from(&restore_task.key_manager)?;
-    let share_from_device_2_json: AeadPlainText = key_manager.transport_key_pair.decrypt(
-        &restore_task.doc_two.secret_message.encrypted_text,
-        DecryptionDirection::Backward,
-    )?;
-    let share_from_device_2_json = UserShareDto::try_from(&share_from_device_2_json.msg)?;
-
-    let share_from_device_1_json: AeadPlainText = key_manager.transport_key_pair.decrypt(
-        &restore_task.doc_one.secret_message.encrypted_text,
-        DecryptionDirection::Backward,
-    )?;
-
-    let share_from_device_1_json = UserShareDto::try_from(&share_from_device_1_json.msg)?;
-
-    // Restored Password to JSon
-    let password = recover_from_shares(vec![share_from_device_2_json, share_from_device_1_json])?;
-    let result_json = serde_json::to_string_pretty(&password)?;
-    Ok(result_json)
-}
-
-//PRIVATE METHODS
-fn data_to_string(bytes: *const u8, len: SizeT) -> CoreResult<String> {
-    // JSON parsing
-    let bytes_slice = unsafe { slice::from_raw_parts(bytes, len as usize) };
-    let result = str::from_utf8(bytes_slice)?;
-    Ok(result.to_string())
 }
 
 //TESTS
