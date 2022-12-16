@@ -1,3 +1,5 @@
+use crate::crypto::encoding::base64::Base64EncodedText;
+use crate::crypto::keys::CommunicationChannel;
 use crate::shared_secret::data_block::common::DataBlockParserError;
 use shamirsecretsharing::SSSError;
 use std::io;
@@ -39,6 +41,12 @@ pub enum CoreError {
     EncryptionError {
         #[from]
         source: crypto_box::aead::Error,
+    },
+
+    #[error("The key manager: {key_manager_pk:?} is not a component of the secure communication channel: {channel:?}")]
+    ThirdPartyEncryptionError {
+        key_manager_pk: Base64EncodedText,
+        channel: CommunicationChannel,
     },
 
     #[error(transparent)]

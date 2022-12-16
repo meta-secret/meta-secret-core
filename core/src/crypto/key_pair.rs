@@ -9,6 +9,7 @@ use rand::rngs::OsRng;
 
 use crate::crypto::encoding::base64::Base64EncodedText;
 use crate::crypto::keys::{AeadAuthData, AeadCipherText, AeadPlainText, CommunicationChannel};
+use crate::errors::CoreError;
 use crate::CoreResult;
 
 pub type CryptoBoxPublicKey = crypto_box::PublicKey;
@@ -120,18 +121,21 @@ impl TransportDsaKeyPair {
         Ok(cipher_text)
     }
 
-    pub fn decrypt(
-        &self,
-        cipher_text: &AeadCipherText,
-        decryption_direction: DecryptionDirection,
-    ) -> CoreResult<AeadPlainText> {
+    pub fn decrypt(&self, cipher_text: &AeadCipherText) -> CoreResult<AeadPlainText> {
         let auth_data = &cipher_text.auth_data;
         let channel = &auth_data.channel;
 
-        let their_pk = match decryption_direction {
-            DecryptionDirection::Straight => CryptoBoxPublicKey::try_from(&channel.sender)?,
-            DecryptionDirection::Backward => CryptoBoxPublicKey::try_from(&channel.receiver)?,
-        };
+        let owner_pk = self.public_key();
+
+        let their_pk = match owner_pk {
+            pk if pk == channel.sender => CryptoBoxPublicKey::try_from(&channel.receiver),
+            pk if pk == channel.receiver => CryptoBoxPublicKey::try_from(&channel.sender),
+            _ => Err(CoreError::ThirdPartyEncryptionError {
+                key_manager_pk: owner_pk,
+                channel: channel.clone(),
+            }),
+        }?;
+
         let crypto_box = self.build_cha_cha_box(&their_pk);
 
         let msg_vec: Vec<u8> = Vec::try_from(&cipher_text.msg)?;
@@ -156,20 +160,12 @@ impl TransportDsaKeyPair {
     }
 }
 
-pub enum DecryptionDirection {
-    //Receiver decrypts message.
-    // The message encrypted by sender and we use receiver's secret key and sender's public key to get a password
-    Straight,
-    //Sender gets back its encrypted message and wants to decrypt it.
-    // In this case we use sender's secret key and receiver's public key to derive the encryption password
-    Backward,
-}
-
 #[cfg(test)]
 pub mod test {
     use crate::crypto::encoding::base64::Base64EncodedText;
-    use crate::crypto::key_pair::{DecryptionDirection, KeyPair};
+    use crate::crypto::key_pair::KeyPair;
     use crate::crypto::keys::{AeadAuthData, AeadCipherText, AeadPlainText, CommunicationChannel, KeyManager};
+    use crate::errors::CoreError;
     use crate::CoreResult;
 
     #[test]
@@ -177,18 +173,11 @@ pub mod test {
         let password = "topSecret".to_string();
 
         let alice_km = KeyManager::generate();
-        let cypher_text: AeadCipherText = alice_km
+        let cipher_text: AeadCipherText = alice_km
             .transport_key_pair
             .encrypt_string(password.clone(), alice_km.transport_key_pair.public_key())?;
 
-        let plain_text = alice_km
-            .transport_key_pair
-            .decrypt(&cypher_text, DecryptionDirection::Straight)?;
-        assert_eq!(Base64EncodedText::from(password.as_bytes()), plain_text.msg);
-
-        let plain_text = alice_km
-            .transport_key_pair
-            .decrypt(&cypher_text, DecryptionDirection::Backward)?;
+        let plain_text = alice_km.transport_key_pair.decrypt(&cipher_text)?;
         assert_eq!(Base64EncodedText::from(password.as_bytes()), plain_text.msg);
 
         Ok(())
@@ -212,14 +201,10 @@ pub mod test {
         };
         let cipher_text: AeadCipherText = alice_km.transport_key_pair.encrypt(&plain_text)?;
 
-        let decrypted_text = bob_km
-            .transport_key_pair
-            .decrypt(&cipher_text, DecryptionDirection::Straight)?;
+        let decrypted_text = bob_km.transport_key_pair.decrypt(&cipher_text)?;
         assert_eq!(plain_text, decrypted_text);
 
-        let decrypted_text = alice_km
-            .transport_key_pair
-            .decrypt(&cipher_text, DecryptionDirection::Backward)?;
+        let decrypted_text = alice_km.transport_key_pair.decrypt(&cipher_text)?;
         assert_eq!(plain_text, decrypted_text);
 
         let cipher_text = AeadCipherText {
@@ -231,11 +216,35 @@ pub mod test {
             },
         };
 
-        let decrypted_text = bob_km
-            .transport_key_pair
-            .decrypt(&cipher_text, DecryptionDirection::Backward)?;
+        let decrypted_text = bob_km.transport_key_pair.decrypt(&cipher_text)?;
 
         assert_eq!(plain_text.msg, decrypted_text.msg);
+
+        Ok(())
+    }
+
+    #[test]
+    fn third_party_decryption() -> CoreResult<()> {
+        let alice_km = KeyManager::generate();
+        let bob_km = KeyManager::generate();
+
+        let cipher_text: AeadCipherText = alice_km
+            .transport_key_pair
+            .encrypt_string("secret".to_string(), alice_km.transport_key_pair.public_key())?;
+
+        let error_result = bob_km.transport_key_pair.decrypt(&cipher_text);
+        let error = error_result.unwrap_err();
+
+        match error {
+            CoreError::ThirdPartyEncryptionError {
+                key_manager_pk,
+                channel,
+            } => {
+                assert_eq!(key_manager_pk, bob_km.transport_key_pair.public_key());
+                assert_eq!(channel, cipher_text.auth_data.channel)
+            }
+            _ => panic!("Critical error"),
+        }
 
         Ok(())
     }

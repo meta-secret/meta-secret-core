@@ -18,6 +18,7 @@ use errors::RecoveryError::EmptyInput;
 
 pub mod crypto;
 pub mod errors;
+pub mod node;
 pub mod sdk;
 pub mod shared_secret;
 

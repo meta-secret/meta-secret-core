@@ -1,7 +1,6 @@
 use anyhow::Context;
 use meta_secret_core::crypto::encoding::base64::Base64EncodedText;
 use meta_secret_core::crypto::encoding::serialized_key_manager::SerializedKeyManager;
-use meta_secret_core::crypto::key_pair::DecryptionDirection;
 use meta_secret_core::crypto::keys::{AeadCipherText, AeadPlainText, KeyManager};
 use meta_secret_core::errors::CoreError;
 use meta_secret_core::sdk::api::SecretDistributionDocData;
@@ -32,19 +31,25 @@ pub extern "C" fn generate_signed_user(vault_name_bytes: *const u8, len: SizeT) 
 // Split
 #[no_mangle]
 pub extern "C" fn split_secret(strings_bytes: *const u8, string_len: SizeT) -> *mut c_char {
-    let result_json = internal::split_secret(strings_bytes, string_len).unwrap();
+    let result_json = internal::split_secret(strings_bytes, string_len)
+        .with_context(|| "Error: secret splitting operation failed".to_string())
+        .unwrap();
     to_c_str(result_json)
 }
 
 #[no_mangle]
 pub extern "C" fn generate_meta_password_id(password_id: *const u8, json_len: SizeT) -> *mut c_char {
-    let result_json = internal::generate_meta_password_id(password_id, json_len).unwrap();
+    let result_json = internal::generate_meta_password_id(password_id, json_len)
+        .with_context(|| "Error: meta password id generation failed".to_string())
+        .unwrap();
     to_c_str(result_json)
 }
 
 #[no_mangle]
 pub extern "C" fn encrypt_secret(json_bytes: *const u8, json_len: SizeT) -> *mut c_char {
-    let encrypted_shares_json = internal::encrypt_secret(json_bytes, json_len).unwrap();
+    let encrypted_shares_json = internal::encrypt_secret(json_bytes, json_len)
+        .with_context(|| "Error: encryption operation failed".to_string())
+        .unwrap();
     to_c_str(encrypted_shares_json)
 }
 
@@ -128,16 +133,14 @@ mod internal {
         let restore_task = RestoreTask::try_from(&data_string)?;
 
         let key_manager = KeyManager::try_from(&restore_task.key_manager)?;
-        let share_from_device_2_json: AeadPlainText = key_manager.transport_key_pair.decrypt(
-            &restore_task.doc_two.secret_message.encrypted_text,
-            DecryptionDirection::Backward,
-        )?;
+        let share_from_device_2_json: AeadPlainText = key_manager
+            .transport_key_pair
+            .decrypt(&restore_task.doc_two.secret_message.encrypted_text)?;
         let share_from_device_2_json = UserShareDto::try_from(&share_from_device_2_json.msg)?;
 
-        let share_from_device_1_json: AeadPlainText = key_manager.transport_key_pair.decrypt(
-            &restore_task.doc_one.secret_message.encrypted_text,
-            DecryptionDirection::Backward,
-        )?;
+        let share_from_device_1_json: AeadPlainText = key_manager
+            .transport_key_pair
+            .decrypt(&restore_task.doc_one.secret_message.encrypted_text)?;
 
         let share_from_device_1_json = UserShareDto::try_from(&share_from_device_1_json.msg)?;
 
