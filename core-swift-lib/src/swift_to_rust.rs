@@ -139,12 +139,11 @@ mod internal {
         let restore_task = DecryptTask::try_from(&data_string)?;
         let key_manager = KeyManager::try_from(&restore_task.key_manager)?;
 
-        println!("restore_task {:?}", restore_task.doc );
+        println!("restore_task {:?}", restore_task.doc);
         // Decrypt shares
-        let share_json: AeadPlainText = key_manager.transport_key_pair.decrypt(
-            &restore_task.doc.secret_message.encrypted_text,
-            DecryptionDirection::Straight,
-        )?;
+        let share_json: AeadPlainText = key_manager
+            .transport_key_pair
+            .decrypt(&restore_task.doc.secret_message.encrypted_text)?;
         let share_json = UserShareDto::try_from(&share_json.msg)?;
 
         // Decrypted Share to JSon
