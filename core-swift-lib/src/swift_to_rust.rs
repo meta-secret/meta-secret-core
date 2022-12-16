@@ -49,6 +49,12 @@ pub extern "C" fn encrypt_secret(json_bytes: *const u8, json_len: SizeT) -> *mut
 }
 
 #[no_mangle]
+pub extern "C" fn decrypt_secret(json_bytes: *const u8, json_len: SizeT) -> *mut c_char {
+    let decrypted_shares_json = internal::decrypt_secret(json_bytes, json_len).unwrap();
+    to_c_str(decrypted_shares_json)
+}
+
+#[no_mangle]
 pub extern "C" fn restore_secret(bytes: *const u8, len: SizeT) -> *mut c_char {
     let recovered_secret = internal::recover_secret(bytes, len)
         .with_context(|| "Secret recovery error".to_string())
@@ -123,6 +129,24 @@ mod internal {
         Ok(encrypted_shares_json)
     }
 
+    pub fn decrypt_secret(bytes: *const u8, len: SizeT) -> CoreResult<String> {
+        let data_string: String = data_to_string(bytes, len)?;
+        let restore_task = DecryptTask::try_from(&data_string)?;
+        let key_manager = KeyManager::try_from(&restore_task.key_manager)?;
+
+        println!("restore_task {:?}", restore_task.doc );
+        // Decrypt shares
+        let share_json: AeadPlainText = key_manager.transport_key_pair.decrypt(
+            &restore_task.doc.secret_message.encrypted_text,
+            DecryptionDirection::Straight,
+        )?;
+        let share_json = UserShareDto::try_from(&share_json.msg)?;
+
+        // Decrypted Share to JSon
+        let result_json = serde_json::to_string_pretty(&share_json)?;
+        Ok(result_json)
+    }
+
     pub fn recover_secret(bytes: *const u8, len: SizeT) -> CoreResult<String> {
         let data_string: String = data_to_string(bytes, len)?;
         let restore_task = RestoreTask::try_from(&data_string)?;
@@ -130,13 +154,13 @@ mod internal {
         let key_manager = KeyManager::try_from(&restore_task.key_manager)?;
         let share_from_device_2_json: AeadPlainText = key_manager.transport_key_pair.decrypt(
             &restore_task.doc_two.secret_message.encrypted_text,
-            DecryptionDirection::Backward,
+            DecryptionDirection::Straight,
         )?;
         let share_from_device_2_json = UserShareDto::try_from(&share_from_device_2_json.msg)?;
 
         let share_from_device_1_json: AeadPlainText = key_manager.transport_key_pair.decrypt(
             &restore_task.doc_one.secret_message.encrypted_text,
-            DecryptionDirection::Backward,
+            DecryptionDirection::Straight,
         )?;
 
         let share_from_device_1_json = UserShareDto::try_from(&share_from_device_1_json.msg)?;
@@ -198,7 +222,23 @@ struct RestoreTask {
     doc_two: SecretDistributionDocData,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DecryptTask {
+    key_manager: SerializedKeyManager,
+    doc: SecretDistributionDocData,
+}
+
 impl TryFrom<&String> for RestoreTask {
+    type Error = CoreError;
+
+    fn try_from(data: &String) -> Result<Self, Self::Error> {
+        let json = serde_json::from_str(data)?;
+        Ok(json)
+    }
+}
+
+impl TryFrom<&String> for DecryptTask {
     type Error = CoreError;
 
     fn try_from(data: &String) -> Result<Self, Self::Error> {
