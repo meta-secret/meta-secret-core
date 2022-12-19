@@ -7,6 +7,13 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct UserInfo {
+    pub user_id: String,
+    pub device: DeviceInfo,
+}
+
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct DeviceInfo {
     pub device_name: String,
     pub device_id: String,
@@ -48,6 +55,16 @@ impl UserSignature {
             public_key: key_manager.dsa.public_key(),
             transport_public_key: key_manager.transport_key_pair.public_key(),
             signature: key_manager.dsa.sign(vault_name),
+        }
+    }
+
+    pub fn get_from(key_manager: &KeyManager, user_info: &UserInfo) -> Self {
+        UserSignature {
+            vault_name: user_info.user_id.clone(),
+            device: user_info.device.clone(),
+            public_key: key_manager.dsa.public_key(),
+            transport_public_key: key_manager.transport_key_pair.public_key(),
+            signature: key_manager.dsa.sign(user_info.user_id.clone()),
         }
     }
 
