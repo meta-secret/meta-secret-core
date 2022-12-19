@@ -5,7 +5,8 @@ use crypto_box::{
 };
 use ed25519_dalek::{Keypair, Signer};
 use image::EncodableLayout;
-use rand::rngs::OsRng;
+use rand::rngs::OsRng as RandOsRng;
+use rand::RngCore;
 
 use crate::crypto::encoding::base64::Base64EncodedText;
 use crate::crypto::keys::{AeadAuthData, AeadCipherText, AeadPlainText, CommunicationChannel};
@@ -43,10 +44,17 @@ impl DsaKeyPair {
 
 impl KeyPair for DsaKeyPair {
     fn generate() -> Self {
-        let mut cs_prng = OsRng {};
-        let key_pair = Keypair::generate(&mut cs_prng);
+        let mut sk_arr: [u8; 32] = [0; 32];
 
-        DsaKeyPair { key_pair }
+        let mut cs_prng = RandOsRng {};
+        cs_prng.fill_bytes(&mut sk_arr);
+
+        let sk = DalekSecretKey::from_bytes(&sk_arr).unwrap();
+        let pk = DalekPublicKey::from(&sk);
+
+        DsaKeyPair {
+            key_pair: Keypair { public: pk, secret: sk },
+        }
     }
 
     fn public_key(&self) -> Base64EncodedText {

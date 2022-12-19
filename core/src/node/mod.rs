@@ -13,6 +13,7 @@ pub async fn register(user_sig: &UserSignature) -> Result<RegistrationResponse, 
     let client = reqwest::Client::new();
     let response = client
         .post(format!("{}/register", API_URL))
+        .header("Access-Control-Allow-Origin", API_URL)
         .json(user_sig)
         .send()
         .await?;
@@ -26,6 +27,7 @@ pub async fn get_vault(user_sig: &UserSignature) -> Result<VaultInfoResponse, Er
     let client = reqwest::Client::new();
     let response = client
         .post(format!("{}/getVault", API_URL))
+        .header("Access-Control-Allow-Origin", API_URL)
         .json(user_sig)
         .send()
         .await?;
