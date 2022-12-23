@@ -40,7 +40,7 @@ impl MetaPasswordId {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MetaPasswordDoc {
     pub id: MetaPasswordId,

@@ -1,9 +1,11 @@
 use crypto_box::KEY_SIZE as KEY_SIZE_32_BYTES;
-
 pub type Array256Bit = [u8; KEY_SIZE_32_BYTES];
+
 
 /// Base64 encoding/decoding
 pub mod base64 {
+    extern crate base64;
+
     use serde::{Deserialize, Serialize};
 
     #[derive(Debug, Eq, PartialEq, Hash, Clone, Serialize, Deserialize)]
@@ -85,7 +87,6 @@ pub mod base64 {
     #[cfg(test)]
     mod test {
         use super::Base64EncodedText;
-        use crate::CoreResult;
 
         const TEST_STR: &str = "kjsfdbkjsfhdkjhsfdkjhsfdkjhksfdjhksjfdhksfd";
         const ENCODED_URL_SAFE_TEST_STR: &str = "a2pzZmRia2pzZmhka2poc2Zka2poc2Zka2poa3NmZGpoa3NqZmRoa3NmZA";
@@ -106,19 +107,6 @@ pub mod base64 {
                 base64_text: ENCODED_URL_SAFE_TEST_STR.to_string(),
             };
             assert_eq!(encoded, expected);
-        }
-
-        #[test]
-        fn cross_encoding_encoded_vs_url_encoded() -> CoreResult<()> {
-            let data_str = "kjsfdbkjsfhdkjhsfdkjhsfdkjhksfdjhksjfdhksfd";
-            let base64 = Base64EncodedText {
-                base64_text: base64::encode(data_str),
-            };
-
-            let cross_decoded = Vec::try_from(&base64)?;
-            assert_eq!(String::from_utf8(cross_decoded)?, String::from(data_str));
-
-            Ok(())
         }
     }
 }

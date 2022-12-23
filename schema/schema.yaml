@@ -1,0 +1,25 @@
+
+openapi: 3.0.2
+info:
+  title: Meta Secret Core Models
+  version: 1.0.0
+
+x-cargo-authors:
+  - MetaBynull <metabynull@meta-secret.org>
+
+components:
+  schemas:
+    DeviceInfo:
+      type: object
+      required:
+        - deviceId
+        - deviceName
+      properties:
+        deviceId:
+          type: string
+          minLength: 1
+          maxLength: 100
+        deviceName:
+          type: string
+          minimum: 0
+          maximum: 250

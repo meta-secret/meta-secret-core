@@ -111,14 +111,14 @@ pub enum RegistrationStatus {
     AlreadyExists,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JoinRequest {
     pub member: UserSignature,
     pub candidate: UserSignature,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EncryptedMessage {
     /// Massage receiver who can decrypt message. We can't use a receiver from inside AeadCipherText because it's static
@@ -130,7 +130,7 @@ pub struct EncryptedMessage {
 
 pub type VaultInfoResponse = GenericMessage<VaultInfoData>;
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VaultInfoData {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -175,7 +175,7 @@ pub enum VaultInfoStatus {
 
 pub type MetaPasswordsResponse = GenericMessage<MetaPasswordsData>;
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MetaPasswordsData {
     pub password_status: MetaPasswordsStatus,

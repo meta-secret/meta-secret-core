@@ -22,7 +22,7 @@ type SizeT = usize;
 //Generate vault and sign
 #[no_mangle]
 pub extern "C" fn generate_signed_user(vault_name_bytes: *const u8, len: SizeT) -> *mut c_char {
-    let user = internal::generate_key_manager(vault_name_bytes, len)
+    let user = internal::generate_security_box(vault_name_bytes, len)
         .with_context(|| "Error: Signature generation failed".to_string())
         .unwrap();
     to_c_str(user)
@@ -77,18 +77,11 @@ fn to_c_str(str: String) -> *mut c_char {
 
 mod internal {
     use super::*;
+    use meta_secret_core::crypto::keys::UserSecurityBox;
 
-    pub fn generate_key_manager(vault_name_bytes: *const u8, len: SizeT) -> CoreResult<String> {
+    pub fn generate_security_box(vault_name_bytes: *const u8, len: SizeT) -> CoreResult<String> {
         let device_name = data_to_string(vault_name_bytes, len)?;
-
-        let key_manager = KeyManager::generate();
-
-        let signature = key_manager.dsa.sign(device_name);
-        let security_box = UserSecurityBox {
-            signature,
-            key_manager: SerializedKeyManager::from(&key_manager),
-        };
-
+        let security_box = KeyManager::generate_security_box(device_name);
         let user = serde_json::to_string_pretty(&security_box)?;
         Ok(user)
     }
@@ -207,13 +200,6 @@ impl TryFrom<&String> for JsonMappedData {
         let json = serde_json::from_str(data_string)?;
         Ok(json)
     }
-}
-
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct UserSecurityBox {
-    signature: Base64EncodedText,
-    key_manager: SerializedKeyManager,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "core",
+    "core-swift-lib",
+    "rust-models"
+]

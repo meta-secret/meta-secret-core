@@ -1,25 +1,12 @@
 use crate::crypto::encoding::base64::Base64EncodedText;
 use crate::crypto::key_pair::{DalekPublicKey, DalekSignature, KeyPair};
 use crate::crypto::keys::KeyManager;
+use meta_secret_core_models::models::DeviceInfo;
 use crate::CoreResult;
 use ed25519_dalek::Verifier;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct UserInfo {
-    pub user_id: String,
-    pub device: DeviceInfo,
-}
-
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct DeviceInfo {
-    pub device_name: String,
-    pub device_id: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UserSignature {
     /// distributed vault, unique across entire system
@@ -58,16 +45,6 @@ impl UserSignature {
         }
     }
 
-    pub fn get_from(key_manager: &KeyManager, user_info: &UserInfo) -> Self {
-        UserSignature {
-            vault_name: user_info.user_id.clone(),
-            device: user_info.device.clone(),
-            public_key: key_manager.dsa.public_key(),
-            transport_public_key: key_manager.transport_key_pair.public_key(),
-            signature: key_manager.dsa.sign(user_info.user_id.clone()),
-        }
-    }
-
     pub fn validate(&self) -> CoreResult<()> {
         let dalek_pk = DalekPublicKey::try_from(&self.public_key)?;
         let dalek_signature = DalekSignature::try_from(&self.signature)?;
@@ -79,7 +56,7 @@ impl UserSignature {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VaultDoc {
     pub vault_name: String,
