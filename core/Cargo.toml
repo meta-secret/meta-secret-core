@@ -14,7 +14,7 @@ crate-type = ["cdylib", "lib", "staticlib"]
 name = "meta_secret_core"
 
 [dependencies]
-meta-secret-core-models = { path = "../rust-models" }
+meta-secret-core-models = { version = "0.1.0", path = "../rust-models" }
 
 thiserror = "1.0.37"
 anyhow = "1.0.66"
