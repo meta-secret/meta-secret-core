@@ -9,6 +9,13 @@ x-cargo-authors:
 
 components:
   schemas:
+    Base64EncodedText:
+      type: object
+      required:
+        - base64Text
+      properties:
+        base64Text:
+          type: string
     DeviceInfo:
       type: object
       required:
@@ -23,3 +30,181 @@ components:
           type: string
           minimum: 0
           maximum: 250
+    UserSignature:
+      type: object
+      required:
+        - vaultName
+        - device
+        - publicKey
+        - transportPublicKey
+        - signature
+      properties:
+        vaultName:
+          type: string
+          description: distributed vault, unique across the entire system
+          minLength: 1
+          maxLength: 1000
+        device:
+          $ref: '#/components/schemas/DeviceInfo'
+        publicKey:
+          $ref: '#/components/schemas/Base64EncodedText'
+        transportPublicKey:
+          $ref: '#/components/schemas/Base64EncodedText'
+        signature:
+          $ref: '#/components/schemas/Base64EncodedText'
+
+    SerializedDsaKeyPair:
+      type: object
+      required:
+        - keyPair
+        - publicKey
+      properties:
+        keyPair:
+          $ref: '#/components/schemas/Base64EncodedText'
+        publicKey:
+          $ref: '#/components/schemas/Base64EncodedText'
+
+
+    SerializedTransportKeyPair:
+      type: object
+      required:
+        - secretKey
+        - publicKey
+      properties:
+        secretKey:
+          $ref: '#/components/schemas/Base64EncodedText'
+        publicKey:
+          $ref: '#/components/schemas/Base64EncodedText'
+
+    SerializedKeyManager:
+      type: object
+      required:
+        - dsa
+        - transport
+      properties:
+        dsa:
+          $ref: '#/components/schemas/SerializedDsaKeyPair'
+        transport:
+          $ref: '#/components/schemas/SerializedTransportKeyPair'
+
+    UserSecurityBox:
+      type: object
+      required:
+        - vaultName
+        - signature
+        - keyManager
+      properties:
+        vaultName:
+          type: string
+          minLength: 1
+        signature:
+          $ref: '#/components/schemas/Base64EncodedText'
+        keyManager:
+          $ref: '#/components/schemas/SerializedKeyManager'
+
+    # Encryption
+
+    CommunicationChannel:
+      type: object
+      description: Represents virtual encrypted communication channel between two points.
+      required:
+        - sender
+        - receiver
+      properties:
+        sender:
+          $ref: '#/components/schemas/Base64EncodedText'
+        receiver:
+          $ref: '#/components/schemas/Base64EncodedText'
+
+    AeadAuthData:
+      type: object
+      required:
+        - associatedData
+        - channel
+        - nonce
+      properties:
+        associatedData:
+          type: string
+        channel:
+          $ref: '#/components/schemas/CommunicationChannel'
+        nonce:
+          $ref: '#/components/schemas/Base64EncodedText'
+
+    AeadCipherText:
+      type: object
+      required:
+        - msg
+        - authData
+      properties:
+        msg:
+          $ref: '#/components/schemas/Base64EncodedText'
+        authData:
+          $ref: '#/components/schemas/AeadAuthData'
+
+    AeadPlainText:
+      type: object
+      required:
+        - msg
+        - authData
+      properties:
+        msg:
+          $ref: '#/components/schemas/Base64EncodedText'
+        authData:
+          $ref: '#/components/schemas/AeadAuthData'
+
+    VaultDoc:
+      type: object
+      required:
+        - vaultName
+        - signatures
+        - pendingJoins
+        - declinedJoins
+      properties:
+        vaultName:
+          type: string
+          minLength: 1
+        signatures:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserSignature'
+        pendingJoins:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserSignature'
+        declinedJoins:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserSignature'
+    MetaPasswordId:
+      type: object
+      required:
+        - id
+        - salt
+        - name
+      properties:
+        id:
+          description: SHA256 hash of a salt
+          type: string
+          minLength: 1
+        salt:
+          description: Random String up to 30 characters, must be unique
+          type: string
+          minLength: 1
+        name:
+          description: Human readable name given to the password
+          type: string
+          minLength: 1
+
+    MetaPasswordDoc:
+      type: object
+      required:
+        - id
+        - vault
+      properties:
+        id:
+          $ref: '#/components/schemas/MetaPasswordId'
+        vault:
+          $ref: '#/components/schemas/VaultDoc'
+          description: 'We need to keep the entire vault here, because the vault can be changed (new members can appear some members can be deleted), then we will not be able to restore the password if we would have different members than in original vault'
+
+paths:

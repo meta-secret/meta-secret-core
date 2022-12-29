@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::crypto::keys::AeadCipherText;
-use crate::sdk::password::{MetaPasswordDoc, MetaPasswordId};
-use crate::sdk::vault::{UserSignature, VaultDoc};
+use crate::models::{AeadCipherText, MetaPasswordDoc, MetaPasswordId, UserSignature, VaultDoc};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

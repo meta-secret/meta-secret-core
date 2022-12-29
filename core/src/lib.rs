@@ -21,6 +21,13 @@ pub mod errors;
 pub mod node;
 pub mod sdk;
 pub mod shared_secret;
+pub mod models;
+
+#[macro_use]
+extern crate serde_derive;
+
+extern crate serde;
+extern crate serde_json;
 
 pub type CoreResult<T> = std::result::Result<T, CoreError>;
 

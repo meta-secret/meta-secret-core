@@ -1,10 +1,7 @@
 use anyhow::Context;
-use meta_secret_core::crypto::encoding::base64::Base64EncodedText;
-use meta_secret_core::crypto::encoding::serialized_key_manager::SerializedKeyManager;
-use meta_secret_core::crypto::keys::{AeadCipherText, AeadPlainText, KeyManager};
+use meta_secret_core::crypto::keys::KeyManager;
 use meta_secret_core::errors::CoreError;
 use meta_secret_core::sdk::api::SecretDistributionDocData;
-use meta_secret_core::sdk::password::MetaPasswordId;
 use meta_secret_core::shared_secret::data_block::common::SharedSecretConfig;
 use meta_secret_core::shared_secret::shared_secret::UserShareDto;
 use meta_secret_core::CoreResult;
@@ -14,6 +11,7 @@ use std::ffi::CString;
 use std::os::raw::c_char;
 use std::slice;
 use std::str;
+use meta_secret_core::models::{Base64EncodedText, SerializedKeyManager};
 
 type SizeT = usize;
 
@@ -76,8 +74,8 @@ fn to_c_str(str: String) -> *mut c_char {
 }
 
 mod internal {
+    use meta_secret_core::models::{AeadCipherText, AeadPlainText, MetaPasswordId};
     use super::*;
-    use meta_secret_core::crypto::keys::UserSecurityBox;
 
     pub fn generate_security_box(vault_name_bytes: *const u8, len: SizeT) -> CoreResult<String> {
         let device_name = data_to_string(vault_name_bytes, len)?;
@@ -137,7 +135,7 @@ mod internal {
         let share_json: AeadPlainText = key_manager
             .transport_key_pair
             .decrypt(&restore_task.doc.secret_message.encrypted_text)?;
-        let share_json = UserShareDto::try_from(&share_json.msg)?;
+        let share_json = UserShareDto::try_from(share_json.msg.as_ref())?;
 
         // Decrypted Share to JSon
         let result_json = serde_json::to_string_pretty(&share_json)?;
@@ -152,13 +150,13 @@ mod internal {
         let share_from_device_2_json: AeadPlainText = key_manager
             .transport_key_pair
             .decrypt(&restore_task.doc_two.secret_message.encrypted_text)?;
-        let share_from_device_2_json = UserShareDto::try_from(&share_from_device_2_json.msg)?;
+        let share_from_device_2_json = UserShareDto::try_from(share_from_device_2_json.msg.as_ref())?;
 
         let share_from_device_1_json: AeadPlainText = key_manager
             .transport_key_pair
             .decrypt(&restore_task.doc_one.secret_message.encrypted_text)?;
 
-        let share_from_device_1_json = UserShareDto::try_from(&share_from_device_1_json.msg)?;
+        let share_from_device_1_json = UserShareDto::try_from(share_from_device_1_json.msg.as_ref())?;
 
         // Restored Password to JSon
         let password = recover_from_shares(vec![share_from_device_2_json, share_from_device_1_json])?;
@@ -185,9 +183,9 @@ fn data_to_string(bytes: *const u8, len: SizeT) -> CoreResult<String> {
 }
 
 //STRUCTURES
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct JsonMappedData {
+pub struct JsonMappedData {
     sender_key_manager: SerializedKeyManager,
     receiver_pub_key: Base64EncodedText,
     secret: String,
@@ -239,10 +237,11 @@ impl TryFrom<&String> for DecryptTask {
 #[cfg(test)]
 pub mod test {
     use meta_secret_core::crypto::key_pair::KeyPair;
-    use meta_secret_core::crypto::keys::{AeadCipherText, KeyManager};
+    use meta_secret_core::crypto::keys::KeyManager;
     use meta_secret_core::shared_secret::data_block::common::SharedSecretConfig;
     use meta_secret_core::shared_secret::shared_secret::UserShareDto;
     use meta_secret_core::{shared_secret, CoreResult};
+    use meta_secret_core::models::AeadCipherText;
 
     #[test]
     fn split_and_encrypt() -> CoreResult<()> {
