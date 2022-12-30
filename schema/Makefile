@@ -16,10 +16,19 @@ generate_schema:
 	cp -r ./target/rust-models/src/models ../core/src/
 	#cp -r ./target/rust-models/docs ../core/src/models/
 
-generate_swift_schema:
+generate_schema_swift:
 	openapi-generator-cli generate \
 		-i schema.yaml \
 		-g swift5 \
 		-o ./target/swift-models \
 		--package-name meta-secret-core-models \
+		--skip-validate-spec
+
+generate_schema_type_script:
+	openapi-generator-cli generate \
+		-i schema.yaml \
+		-g javascript \
+		-o ./target/core-models-ts \
+		--package-name meta-secret-core-models \
+		--additional-properties=supportsES6=true,typescriptThreePlus=true \
 		--skip-validate-spec
