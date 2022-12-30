@@ -25,13 +25,11 @@ jobs:
             core/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Publish models
-        working-directory: rust-models
+      - name: Generate rust models
+        working-directory: schema
         run: |
-          cargo test
-          cargo publish --token ${CRATES_TOKEN}
-        env:
-          CRATES_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+          npm install @openapitools/openapi-generator-cli -g
+          make clean generate_schema
 
       - name: Publish core
         working-directory: core
