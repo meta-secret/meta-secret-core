@@ -24,10 +24,11 @@ generate_schema_swift:
 		--package-name meta-secret-core-models \
 		--skip-validate-spec
 
+#--global-property models
 generate_schema_type_script:
 	openapi-generator-cli generate \
 		-i schema.yaml \
-		-g javascript \
+		-g typescript-jquery \
 		-o ./target/core-models-ts \
 		--package-name meta-secret-core-models \
 		--additional-properties=supportsES6=true,typescriptThreePlus=true \
