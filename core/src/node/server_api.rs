@@ -6,7 +6,7 @@ use crate::sdk::api::{
     PasswordRecoveryRequest, RegistrationResponse, SecretDistributionDocData, UserSharesResponse, VaultInfoResponse,
 };
 
-const API_URL: &str = "http://api.meta-secret.org";
+const API_URL: &str = "https://api.meta-secret.org";
 
 /// Register new vault
 pub async fn register(user_sig: &UserSignature) -> Result<RegistrationResponse, Error> {
