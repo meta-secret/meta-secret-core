@@ -167,6 +167,8 @@ pub enum VaultInfoStatus {
     Pending,
     /// Vault members declined to add a device into the vault
     Declined,
+    /// Vault not found
+    NotFound,
     /// Device can't get any information about the vault, because its signature is not in members or pending list
     Unknown,
 }
