@@ -1,7 +1,10 @@
 use reqwest::{Error, Response};
-use crate::models::UserSignature;
 
-use crate::sdk::api::{membership::MembershipResponse, GenericMessage, JoinRequest, MetaPasswordsResponse, PasswordRecoveryClaimsResponse, PasswordRecoveryRequest, RegistrationResponse, SecretDistributionDocData, UserSharesResponse, VaultInfoResponse, MetaPasswordRequest};
+use crate::models::{JoinRequest, MetaPasswordRequest, SecretDistributionDocData, UserSignature};
+use crate::sdk::api::{
+    GenericMessage, membership::MembershipResponse, MetaPasswordsResponse, PasswordRecoveryClaimsResponse,
+    PasswordRecoveryRequest, RegistrationResponse, UserSharesResponse, VaultInfoResponse,
+};
 
 const API_URL: &str = "https://api.meta-secret.org";
 

@@ -1,6 +1,13 @@
 use serde::{Deserialize, Serialize};
 
-use crate::models::{AeadCipherText, MetaPasswordDoc, MetaPasswordId, UserSignature, VaultDoc};
+use crate::models::{AeadCipherText, MetaPasswordDoc, MetaPasswordId, RegistrationStatus, SecretDistributionDocData, UserSignature, VaultDoc, VaultInfoData, VaultInfoStatus};
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum MessageType {
+    Ok,
+    Err,
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -85,57 +92,10 @@ impl<T> GenericMessage<T> {
 
 pub type SecretDistributionDocResponse = GenericMessage<SecretDistributionDocData>;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct SecretDistributionDocData {
-    pub distribution_type: SecretDistributionType,
-    pub meta_password: MetaPasswordRequest,
-    pub secret_message: EncryptedMessage,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub enum SecretDistributionType {
-    Split,
-    Recover,
-}
-
 pub type RegistrationResponse = GenericMessage<RegistrationStatus>;
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub enum RegistrationStatus {
-    Registered,
-    AlreadyExists,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct JoinRequest {
-    pub member: UserSignature,
-    pub candidate: UserSignature,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EncryptedMessage {
-    /// Massage receiver who can decrypt message. We can't use a receiver from inside AeadCipherText because it's static
-    /// and we can't know if a receiver send message back or it's the sender sending message.
-    pub receiver: UserSignature,
-    /// Message text encrypted with receivers' RSA public key
-    pub encrypted_text: AeadCipherText,
-}
 
 pub type VaultInfoResponse = GenericMessage<VaultInfoData>;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct VaultInfoData {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub vault_info: Option<VaultInfoStatus>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub vault: Option<VaultDoc>,
-}
 
 impl VaultInfoData {
     pub fn pending() -> Self {
@@ -158,21 +118,6 @@ impl VaultInfoData {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub enum VaultInfoStatus {
-    /// Device is a member of a vault
-    Member,
-    /// Device is waiting to be added to a vault
-    Pending,
-    /// Vault members declined to add a device into the vault
-    Declined,
-    /// Vault not found
-    NotFound,
-    /// Device can't get any information about the vault, because its signature is not in members or pending list
-    Unknown,
-}
-
 pub type MetaPasswordsResponse = GenericMessage<MetaPasswordsData>;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -182,27 +127,11 @@ pub struct MetaPasswordsData {
     pub passwords: Vec<MetaPasswordDoc>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct MetaPasswordRequest {
-    //Creator of the meta password record
-    pub user_sig: UserSignature,
-    //meta information about password
-    pub meta_password: MetaPasswordDoc,
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum MetaPasswordsStatus {
     Ok,
     VaultNotFound,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub enum MessageType {
-    Ok,
-    Err,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

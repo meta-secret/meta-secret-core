@@ -1,7 +1,6 @@
 use anyhow::Context;
 use meta_secret_core::crypto::keys::KeyManager;
 use meta_secret_core::errors::CoreError;
-use meta_secret_core::sdk::api::SecretDistributionDocData;
 use meta_secret_core::shared_secret::data_block::common::SharedSecretConfig;
 use meta_secret_core::shared_secret::shared_secret::UserShareDto;
 use meta_secret_core::CoreResult;
@@ -11,7 +10,7 @@ use std::ffi::CString;
 use std::os::raw::c_char;
 use std::slice;
 use std::str;
-use meta_secret_core::models::{Base64EncodedText, SerializedKeyManager};
+use meta_secret_core::models::{Base64EncodedText, SecretDistributionDocData, SerializedKeyManager};
 
 type SizeT = usize;
 

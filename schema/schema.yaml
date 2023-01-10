@@ -1,4 +1,3 @@
-
 openapi: 3.0.2
 info:
   title: Meta Secret Core Models
@@ -206,5 +205,90 @@ components:
         vault:
           $ref: '#/components/schemas/VaultDoc'
           description: 'We need to keep the entire vault here, because the vault can be changed (new members can appear some members can be deleted), then we will not be able to restore the password if we would have different members than in original vault'
+
+    SecretDistributionType:
+      type: string
+      enum:
+        - Split
+        - Recover
+
+    MetaPasswordRequest:
+      type: object
+      required:
+        - userSig
+        - metaPassword
+      properties:
+        userSig:
+          description: Creator of the meta password record
+          $ref: '#/components/schemas/UserSignature'
+        metaPassword:
+          description: meta information about password
+          $ref: '#/components/schemas/MetaPasswordDoc'
+
+    EncryptedMessage:
+      type: object
+      required:
+        - receiver
+        - encryptedText
+      properties:
+        receiver:
+          description: "Message receiver who can decrypt message. We can't use a receiver from inside AeadCipherText because it's static and we can't know if a receiver send message back or it's the sender sending message."
+          $ref: '#/components/schemas/UserSignature'
+        encryptedText:
+          description: Message text encrypted with receivers public key
+          $ref: '#/components/schemas/AeadCipherText'
+
+    SecretDistributionDocData:
+      type: object
+      required:
+        - distributionType
+        - metaPassword
+        - secretMessage
+      properties:
+        distributionType:
+          $ref: '#/components/schemas/SecretDistributionType'
+        metaPassword:
+          $ref: '#/components/schemas/MetaPasswordRequest'
+        secretMessage:
+          $ref: '#/components/schemas/EncryptedMessage'
+
+    RegistrationStatus:
+      type: string
+      enum:
+        - Registered
+        - AlreadyExists
+
+    JoinRequest:
+      type: object
+      required:
+        - member
+        - candidate
+      properties:
+        member:
+          $ref: '#/components/schemas/UserSignature'
+        candidate:
+          $ref: '#/components/schemas/UserSignature'
+
+    VaultInfoStatus:
+      type: string
+      description: |
+        `Member`: Device is a member of a vault.
+        `Pending`: Device is waiting to be added to a vault.
+        `Declined`: Vault members declined to add a device into the vault.
+        `NotFound`: Vault not found
+        `Unknown`: Device can't get any information about the vault, because its signature is not in members or pending list
+      enum:
+        - Member
+        - Pending
+        - Declined
+        - NotFound
+        - Unknown
+
+    VaultInfoData:
+      properties:
+        vaultInfo:
+          $ref: '#/components/schemas/VaultInfoStatus'
+        vault:
+          $ref: '#/components/schemas/VaultDoc'
 
 paths:
