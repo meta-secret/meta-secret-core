@@ -1,4 +1,4 @@
-use reqwest::{Error, Response};
+use reqwest::{Client, Error, Response};
 
 use crate::models::{JoinRequest, MetaPasswordRequest, SecretDistributionDocData, UserSignature};
 use crate::sdk::api::{
@@ -10,7 +10,7 @@ const API_URL: &str = "https://api.meta-secret.org";
 
 /// Register new vault
 pub async fn register(user_sig: &UserSignature) -> Result<RegistrationResponse, Error> {
-    let client = reqwest::Client::new();
+    let client = get_reqwest_client();
     let response = client
         .post(format!("{}/register", API_URL))
         .header("Access-Control-Allow-Origin", API_URL)
@@ -24,7 +24,7 @@ pub async fn register(user_sig: &UserSignature) -> Result<RegistrationResponse, 
 }
 
 pub async fn get_vault(user_sig: &UserSignature) -> Result<VaultInfoResponse, Error> {
-    let client = reqwest::Client::new();
+    let client = get_reqwest_client();
     let response = client
         .post(format!("{}/getVault", API_URL))
         .header("Access-Control-Allow-Origin", API_URL)
@@ -38,7 +38,7 @@ pub async fn get_vault(user_sig: &UserSignature) -> Result<VaultInfoResponse, Er
 }
 
 pub async fn decline(join_request: &JoinRequest) -> Result<MembershipResponse, Error> {
-    let client = reqwest::Client::new();
+    let client = get_reqwest_client();
     let response = client
         .post(format!("{}/decline", API_URL))
         .header("Access-Control-Allow-Origin", API_URL)
@@ -52,7 +52,7 @@ pub async fn decline(join_request: &JoinRequest) -> Result<MembershipResponse, E
 }
 
 pub async fn accept(request: &JoinRequest) -> Result<MembershipResponse, Error> {
-    let client = reqwest::Client::new();
+    let client = get_reqwest_client();
     let response = client
         .post(format!("{}/accept", API_URL))
         .header("Access-Control-Allow-Origin", API_URL)
@@ -66,7 +66,7 @@ pub async fn accept(request: &JoinRequest) -> Result<MembershipResponse, Error> 
 }
 
 pub async fn claim_for_password_recovery(request: &PasswordRecoveryRequest) -> Result<PasswordRecoveryRequest, Error> {
-    let client = reqwest::Client::new();
+    let client = get_reqwest_client();
     let response = client
         .post(format!("{}/claimForPasswordRecovery", API_URL))
         .header("Access-Control-Allow-Origin", API_URL)
@@ -80,7 +80,7 @@ pub async fn claim_for_password_recovery(request: &PasswordRecoveryRequest) -> R
 }
 
 pub async fn find_password_recovery_claims(user_sig: &UserSignature) -> Result<PasswordRecoveryClaimsResponse, Error> {
-    let client = reqwest::Client::new();
+    let client = get_reqwest_client();
     let response = client
         .post(format!("{}/findPasswordRecoveryClaims", API_URL))
         .header("Access-Control-Allow-Origin", API_URL)
@@ -94,7 +94,7 @@ pub async fn find_password_recovery_claims(user_sig: &UserSignature) -> Result<P
 }
 
 pub async fn distribute(secret_doc: &SecretDistributionDocData) -> Result<GenericMessage<String>, Error> {
-    let client = reqwest::Client::new();
+    let client = get_reqwest_client();
     let response = client
         .post(format!("{}/distribute", API_URL))
         .header("Access-Control-Allow-Origin", API_URL)
@@ -108,7 +108,7 @@ pub async fn distribute(secret_doc: &SecretDistributionDocData) -> Result<Generi
 }
 
 pub async fn find_shares(user_sig: &UserSignature) -> Result<UserSharesResponse, Error> {
-    let client = reqwest::Client::new();
+    let client = get_reqwest_client();
     let response: Response = client
         .post(format!("{}/findShares", API_URL))
         .header("Access-Control-Allow-Origin", API_URL)
@@ -122,7 +122,7 @@ pub async fn find_shares(user_sig: &UserSignature) -> Result<UserSharesResponse,
 }
 
 pub async fn get_meta_passwords(user_sig: &UserSignature) -> Result<MetaPasswordsResponse, Error> {
-    let client = reqwest::Client::new();
+    let client = get_reqwest_client();
     let response: Response = client
         .post(format!("{}/getMetaPasswords", API_URL))
         .header("Access-Control-Allow-Origin", API_URL)
@@ -136,7 +136,7 @@ pub async fn get_meta_passwords(user_sig: &UserSignature) -> Result<MetaPassword
 }
 
 pub async fn delete_meta_password(meta_pass_request: &MetaPasswordRequest) -> Result<MetaPasswordsResponse, Error> {
-    let client = reqwest::Client::new();
+    let client = get_reqwest_client();
     let response: Response = client
         .post(format!("{}/deleteMetaPassword", API_URL))
         .header("Access-Control-Allow-Origin", API_URL)
@@ -151,7 +151,7 @@ pub async fn delete_meta_password(meta_pass_request: &MetaPasswordRequest) -> Re
 
 ///cloud
 pub async fn join_meta_cloud(user_sig: &UserSignature) -> Result<RegistrationResponse, Error> {
-    let client = reqwest::Client::new();
+    let client = get_reqwest_client();
     let response: Response = client
         .post(format!("{}/joinMetaCloud", API_URL))
         .header("Access-Control-Allow-Origin", API_URL)
@@ -162,4 +162,13 @@ pub async fn join_meta_cloud(user_sig: &UserSignature) -> Result<RegistrationRes
     // Read the response body as a JSON object
     let json: RegistrationResponse = response.json().await?;
     Ok(json)
+}
+
+
+fn get_reqwest_client() -> Client {
+    let client = Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()
+        .unwrap();
+    client
 }
