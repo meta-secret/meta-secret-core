@@ -1,4 +1,4 @@
-use reqwest::{Client, Error, Response};
+use reqwest::{Client, ClientBuilder, Error, Response};
 
 use crate::models::{JoinRequest, MetaPasswordRequest, SecretDistributionDocData, UserSignature};
 use crate::sdk::api::{
@@ -166,7 +166,7 @@ pub async fn join_meta_cloud(user_sig: &UserSignature) -> Result<RegistrationRes
 
 
 fn get_reqwest_client() -> Client {
-    let client = Client::builder()
+    let client = ClientBuilder::new()
         .danger_accept_invalid_certs(true)
         .build()
         .unwrap();
