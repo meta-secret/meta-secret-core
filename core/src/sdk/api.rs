@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use crate::models::{AeadCipherText, MetaPasswordDoc, MetaPasswordId, RegistrationStatus, SecretDistributionDocData, UserSignature, VaultDoc, VaultInfoData, VaultInfoStatus};
+use crate::models::{
+    MembershipStatus, MetaPasswordsData, PasswordRecoveryRequest, RegistrationStatus,
+    SecretDistributionDocData, VaultInfoData, VaultInfoStatus
+};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -120,30 +123,6 @@ impl VaultInfoData {
 
 pub type MetaPasswordsResponse = GenericMessage<MetaPasswordsData>;
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct MetaPasswordsData {
-    pub password_status: MetaPasswordsStatus,
-    pub passwords: Vec<MetaPasswordDoc>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub enum MetaPasswordsStatus {
-    Ok,
-    VaultNotFound,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct PasswordRecoveryRequest {
-    pub id: MetaPasswordId,
-    // The device that needs data ("consumer" - the device that asks provider to provide data)
-    pub consumer: UserSignature,
-    //The device that has data and must provide data to consumer device
-    pub provider: UserSignature,
-}
-
 pub type PasswordRecoveryClaimsResponse = GenericMessage<Vec<PasswordRecoveryRequest>>;
 
 pub type UserSharesResponse = GenericMessage<Vec<SecretDistributionDocData>>;
@@ -170,32 +149,17 @@ pub mod basic {
     }
 }
 
-pub mod membership {
-    use serde::{Deserialize, Serialize};
-
-    use super::GenericMessage;
-
-    #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-    #[serde(rename_all = "camelCase")]
-    pub enum MembershipStatus {
-        VaultNotFound,
-        /// Device is a member of a vault already
-        AlreadyMember,
-        /// Operation finished successfully
-        Finished,
-    }
-
-    pub type MembershipResponse = GenericMessage<MembershipStatus>;
-}
+pub type MembershipResponse = GenericMessage<MembershipStatus>;
 
 #[cfg(test)]
 mod test {
-    use super::membership::*;
-    use crate::sdk::api::{ErrorMessage, GenericMessage};
     use anyhow::anyhow;
     use serde::{Deserialize, Serialize};
     use serde_json::error::Result;
     use thiserror::__private::AsDynError;
+    use crate::models::MembershipStatus;
+
+    use crate::sdk::api::{ErrorMessage, GenericMessage, MembershipResponse};
 
     #[test]
     fn test_generic_message() -> Result<()> {
@@ -205,7 +169,7 @@ mod test {
 
         let msg = MembershipResponse::data(MembershipStatus::AlreadyMember);
         let msg = serde_json::to_string(&msg)?;
-        assert_eq!(r#"{"msgType":"ok","data":"alreadyMember"}"#, msg);
+        assert_eq!(r#"{"msgType":"ok","data":"AlreadyMember"}"#, msg);
 
         #[derive(Debug, Serialize, Deserialize)]
         #[serde(rename_all = "camelCase")]

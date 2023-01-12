@@ -291,4 +291,49 @@ components:
         vault:
           $ref: '#/components/schemas/VaultDoc'
 
+    MetaPasswordsStatus:
+      type: string
+      enum:
+        - Ok
+        - VaultNotFound
+
+    MetaPasswordsData:
+      type: object
+      required:
+        - passwordStatus
+        - passwords
+      properties:
+        passwordStatus:
+          $ref: '#/components/schemas/MetaPasswordsStatus'
+        passwords:
+          type: array
+          items:
+            $ref: '#/components/schemas/MetaPasswordDoc'
+
+    PasswordRecoveryRequest:
+      type: object
+      required:
+        - id
+        - consumer
+        - provider
+      properties:
+        id:
+          $ref: '#/components/schemas/MetaPasswordId'
+        consumer:
+          description: The device that needs data ("consumer" - the device that asks provider to provide data)
+          $ref: '#/components/schemas/UserSignature'
+        provider:
+          description: The device that has data and must provide data to consumer device
+          $ref: '#/components/schemas/UserSignature'
+
+    MembershipStatus:
+      type: string
+      description: |
+        `AlreadyMember`: Device is a member of a vault already.
+        `Finished`: Operation finished successfully.
+      enum:
+        - VaultNotFound
+        - AlreadyMember
+        - Finished
+
 paths:

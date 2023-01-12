@@ -4,3 +4,5 @@
 target
 core/target
 schema/target
+/schema/openapitools.json
+/Cargo.lock

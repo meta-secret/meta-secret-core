@@ -1,6 +1,6 @@
 [package]
 name = "meta-secret-core"
-version = "1.10.3"
+version = "1.10.4"
 edition = "2021"
 license = "Apache-2.0"
 description = "Meta Secret core module"
