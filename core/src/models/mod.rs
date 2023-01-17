@@ -14,6 +14,8 @@ pub mod encrypted_message;
 pub use self::encrypted_message::EncryptedMessage;
 pub mod join_request;
 pub use self::join_request::JoinRequest;
+pub mod membership_request_type;
+pub use self::membership_request_type::MembershipRequestType;
 pub mod membership_status;
 pub use self::membership_status::MembershipStatus;
 pub mod meta_password_doc;
