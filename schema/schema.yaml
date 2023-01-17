@@ -336,4 +336,11 @@ components:
         - AlreadyMember
         - Finished
 
+    MembershipRequestType:
+      type: string
+      enum:
+        - Accept
+        - Decline
+
+
 paths:
