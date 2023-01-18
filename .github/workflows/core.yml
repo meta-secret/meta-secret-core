@@ -31,10 +31,14 @@ jobs:
           npm install @openapitools/openapi-generator-cli -g
           make clean generate_schema
 
-      - name: Publish core
+      - name: Run tests
         working-directory: core
         run: |
           cargo test
+
+      - name: Publish core
+        working-directory: core
+        run: |
           cargo publish --token ${CRATES_TOKEN}
         env:
           CRATES_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
