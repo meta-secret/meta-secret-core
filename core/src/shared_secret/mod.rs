@@ -30,7 +30,7 @@ impl MetaEncryptor {
     ///  - generate meta password id
     ///  - split
     ///  - encrypt each share with ECIES Encryption Scheme
-    pub fn encrypt(self, password: String) -> Vec<MetaCipherShare> {
+    fn encrypt(self, password: String) -> Vec<MetaCipherShare> {
         let cfg = SharedSecretConfig::default();
 
         let key_manager = KeyManager::try_from(self.security_box.key_manager.as_ref()).unwrap();
@@ -58,20 +58,20 @@ impl MetaEncryptor {
     }
 }
 
-pub struct MetaCipherShare {
+struct MetaCipherShare {
     receiver: UserSignature,
     cipher_share: AeadCipherText,
 }
 
 pub struct MetaDistributor {
-    security_box: UserSecurityBox,
-    user_sig: UserSignature,
-    vault: VaultDoc,
+    pub security_box: UserSecurityBox,
+    pub user_sig: UserSignature,
+    pub vault: VaultDoc,
 }
 
 impl MetaDistributor {
     /// Encrypt and distribute password across the cluster
-    async fn distribute(self, password_id: String, password: String) {
+    pub async fn distribute(self, password_id: String, password: String) {
         let encryptor = MetaEncryptor {
             security_box: self.security_box,
             vault: self.vault.clone(),
