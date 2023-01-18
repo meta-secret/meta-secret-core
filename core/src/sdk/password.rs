@@ -2,11 +2,13 @@ use rand::{distributions::Alphanumeric, Rng};
 use sha2::{Digest, Sha256};
 use crate::models::{MetaPasswordId};
 
+const SALT_LENGTH: usize = 8;
+
 impl MetaPasswordId {
     pub fn generate(name: String) -> Self {
         let salt: String = rand::thread_rng()
             .sample_iter(&Alphanumeric)
-            .take(24)
+            .take(SALT_LENGTH)
             .map(char::from)
             .collect();
         MetaPasswordId::build(name, salt)

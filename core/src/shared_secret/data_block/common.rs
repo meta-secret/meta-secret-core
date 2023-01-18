@@ -16,6 +16,15 @@ pub struct SharedSecretConfig {
     pub threshold: usize,
 }
 
+impl Default for SharedSecretConfig {
+    fn default() -> Self {
+        Self {
+            number_of_shares: 3,
+            threshold: 2,
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct BlockMetaData {
     pub size: usize,
