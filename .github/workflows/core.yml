@@ -28,7 +28,7 @@ jobs:
       - name: Generate rust models
         working-directory: schema
         run: |
-          npm install @openapitools/openapi-generator-cli -g
+          npm install @openapitools/openapi-generator-cli
           make clean generate_schema
 
       - name: Run tests
