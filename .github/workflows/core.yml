@@ -29,6 +29,7 @@ jobs:
         working-directory: schema
         run: |
           npm install @openapitools/openapi-generator-cli
+          openapi-generator-cli version-manager set 6.2.1
           make clean generate_schema
 
       - name: Run tests
