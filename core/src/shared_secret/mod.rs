@@ -77,10 +77,12 @@ impl MetaDistributor {
             vault: self.vault.clone(),
         };
 
+        let pass_id = MetaPasswordId::generate(password_id);
+
         let encrypted_shares = encryptor.encrypt(password);
         for cipher_share in encrypted_shares {
             let pass = MetaPasswordDoc {
-                id: Box::new(MetaPasswordId::generate(password_id.clone())),
+                id: Box::new(pass_id.clone()),
                 vault: Box::new(self.vault.clone()),
             };
 
