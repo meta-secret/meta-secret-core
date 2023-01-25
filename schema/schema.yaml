@@ -355,6 +355,17 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SecretDistributionDocData'
-
+    
+    FindSharesRequest:
+      type: object
+      required:
+        - userRequestType
+        - userSignature
+      properties:
+        userRequestType:
+          $ref: '#/components/schemas/SecretDistributionType'
+        userSignature:
+          $ref: '#/components/schemas/UserSignature'
+          
 
 paths:
