@@ -341,6 +341,20 @@ components:
       enum:
         - Accept
         - Decline
+    
+    FindSharesResult:
+      type: object
+      required: 
+        - userRequestType
+        - shares
+      properties:
+        userRequestType: 
+          $ref: '#/components/schemas/SecretDistributionType'
+          description: In case of empty shares in response we need to know what kind of request user just sent.
+        shares:
+          type: array
+          items:
+            $ref: '#/components/schemas/SecretDistributionDocData'
 
 
 paths:

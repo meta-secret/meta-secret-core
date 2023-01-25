@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::{
     MembershipStatus, MetaPasswordsData, PasswordRecoveryRequest, RegistrationStatus,
-    SecretDistributionDocData, VaultInfoData, VaultInfoStatus
+    SecretDistributionDocData, VaultInfoData, VaultInfoStatus, FindSharesResult
 };
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -125,7 +125,7 @@ pub type MetaPasswordsResponse = GenericMessage<MetaPasswordsData>;
 
 pub type PasswordRecoveryClaimsResponse = GenericMessage<Vec<PasswordRecoveryRequest>>;
 
-pub type UserSharesResponse = GenericMessage<Vec<SecretDistributionDocData>>;
+pub type UserSharesResponse = GenericMessage<FindSharesResult>;
 
 pub mod basic {
     use serde::{Deserialize, Serialize};

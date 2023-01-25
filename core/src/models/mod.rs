@@ -12,6 +12,8 @@ pub mod device_info;
 pub use self::device_info::DeviceInfo;
 pub mod encrypted_message;
 pub use self::encrypted_message::EncryptedMessage;
+pub mod find_shares_result;
+pub use self::find_shares_result::FindSharesResult;
 pub mod join_request;
 pub use self::join_request::JoinRequest;
 pub mod membership_request_type;
