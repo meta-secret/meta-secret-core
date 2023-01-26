@@ -1,6 +1,6 @@
 use reqwest::{Client, Error, Response};
 
-use crate::models::{JoinRequest, MetaPasswordRequest, PasswordRecoveryRequest, SecretDistributionDocData, UserSignature};
+use crate::models::{FindSharesRequest, JoinRequest, MetaPasswordRequest, PasswordRecoveryRequest, SecretDistributionDocData, UserSignature};
 use crate::sdk::api::{GenericMessage, MembershipResponse, MetaPasswordsResponse, PasswordRecoveryClaimsResponse, RegistrationResponse, UserSharesResponse, VaultInfoResponse};
 
 const API_URL: &str = "https://api.meta-secret.org";
@@ -104,12 +104,12 @@ pub async fn distribute(secret_doc: &SecretDistributionDocData) -> Result<Generi
     Ok(json)
 }
 
-pub async fn find_shares(user_sig: &UserSignature) -> Result<UserSharesResponse, Error> {
+pub async fn find_shares(request: &FindSharesRequest) -> Result<UserSharesResponse, Error> {
     let client = get_reqwest_client();
     let response: Response = client
         .post(format!("{}/findShares", API_URL))
         .header("Access-Control-Allow-Origin", API_URL)
-        .json(user_sig)
+        .json(request)
         .send()
         .await?;
 
