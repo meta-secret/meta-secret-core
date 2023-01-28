@@ -1,2 +1,2 @@
 pub mod server_api;
-mod db;
+pub mod db;
