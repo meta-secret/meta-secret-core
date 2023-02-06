@@ -2,6 +2,7 @@ use crate::crypto::key_pair::{DalekPublicKey, DalekSignature, KeyPair};
 use crate::crypto::keys::KeyManager;
 use crate::CoreResult;
 use ed25519_dalek::Verifier;
+use rand::Rng;
 use crate::models::{DeviceInfo, UserSignature, VaultDoc};
 
 impl UserSignature {
@@ -17,11 +18,13 @@ impl UserSignature {
     pub fn generate_default_for_tests(key_manager: &KeyManager) -> Self {
         let vault_name = "test_vault".to_string();
 
+        let mut rng = rand::thread_rng();
+
         UserSignature {
             vault_name: vault_name.clone(),
             device: Box::from(DeviceInfo {
                 device_name: "test_device".to_string(),
-                device_id: "123".to_string(),
+                device_id: rng.gen::<u128>().to_string(),
             }),
             public_key: Box::from(key_manager.dsa.public_key()),
             transport_public_key: Box::from(key_manager.transport_key_pair.public_key()),
