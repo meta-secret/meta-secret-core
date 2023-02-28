@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::models::{AeadAuthData, MetaPasswordDoc, MetaPasswordId, MetaVault, UserCredentials};
+use crate::models::{SecretDistributionDocData, MetaPasswordDoc, MetaPasswordId, MetaVault, UserCredentials};
 use crate::shared_secret::shared_secret::UserShareDto;
 
 #[async_trait(? Send)]
@@ -28,5 +28,5 @@ pub trait UserPasswordsRepo: GenericRepo<UserPasswordEntity> {}
 pub struct UserPasswordEntity {
     pub meta_pass_id: MetaPasswordId,
     /// Encrypted UserShareDto-s
-    pub shares: Vec<AeadAuthData>,
+    pub shares: Vec<SecretDistributionDocData>,
 }
