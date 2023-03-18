@@ -13,3 +13,7 @@ pub struct Key {
     pub store: String,
     pub id: String,
 }
+
+pub enum EventType {
+    SignUp
+}
