@@ -35,10 +35,7 @@ pub trait UserCredentialsRepo: SaveCommand<UserCredentials> + GetCommand<UserCre
 
 pub trait MetaVaultRepo: SaveCommand<MetaVault> + GetCommand<MetaVault> {}
 
-pub trait UserPasswordsRepo:
-    SaveCommand<UserPasswordEntity> + GetCommand<UserPasswordEntity>
-{
-}
+pub trait UserPasswordsRepo: SaveCommand<UserPasswordEntity> + GetCommand<UserPasswordEntity> {}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserPasswordEntity {

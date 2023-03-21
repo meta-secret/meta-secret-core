@@ -22,18 +22,15 @@ pub struct UserSignature {
     pub public_key: Box<crate::models::Base64EncodedText>,
     #[serde(rename = "transportPublicKey")]
     pub transport_public_key: Box<crate::models::Base64EncodedText>,
-    #[serde(rename = "signature")]
-    pub signature: Box<crate::models::Base64EncodedText>,
 }
 
 impl UserSignature {
-    pub fn new(vault_name: String, device: crate::models::DeviceInfo, public_key: crate::models::Base64EncodedText, transport_public_key: crate::models::Base64EncodedText, signature: crate::models::Base64EncodedText) -> UserSignature {
+    pub fn new(vault_name: String, device: crate::models::DeviceInfo, public_key: crate::models::Base64EncodedText, transport_public_key: crate::models::Base64EncodedText) -> UserSignature {
         UserSignature {
             vault_name,
             device: Box::new(device),
             public_key: Box::new(public_key),
             transport_public_key: Box::new(transport_public_key),
-            signature: Box::new(signature),
         }
     }
 }

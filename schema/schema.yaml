@@ -29,6 +29,7 @@ components:
           type: string
           minimum: 0
           maximum: 250
+
     UserSignature:
       type: object
       required:
@@ -36,7 +37,6 @@ components:
         - device
         - publicKey
         - transportPublicKey
-        - signature
       properties:
         vaultName:
           type: string
@@ -48,8 +48,6 @@ components:
         publicKey:
           $ref: '#/components/schemas/Base64EncodedText'
         transportPublicKey:
-          $ref: '#/components/schemas/Base64EncodedText'
-        signature:
           $ref: '#/components/schemas/Base64EncodedText'
 
     SerializedDsaKeyPair:

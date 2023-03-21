@@ -28,18 +28,7 @@ impl UserSignature {
             }),
             public_key: Box::from(key_manager.dsa.public_key()),
             transport_public_key: Box::from(key_manager.transport_key_pair.public_key()),
-            signature: Box::from(key_manager.dsa.sign(vault_name)),
         }
-    }
-
-    pub fn validate(&self) -> CoreResult<()> {
-        let pk = DalekPublicKey::try_from(self.public_key.as_ref())?;
-        let signature = DalekSignature::try_from(self.signature.as_ref())?;
-
-        let msg = self.vault_name.as_bytes();
-
-        pk.verify(msg, &signature)?;
-        Ok(())
     }
 }
 

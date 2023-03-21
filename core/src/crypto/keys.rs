@@ -38,7 +38,6 @@ impl UserSecurityBox {
             device: Box::from(device.clone()),
             public_key: Box::from(key_manager.dsa.public_key()),
             transport_public_key: Box::from(key_manager.transport_key_pair.public_key()),
-            signature: Box::from(key_manager.dsa.sign(self.vault_name.clone())),
         }
     }
 }
