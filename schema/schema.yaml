@@ -392,4 +392,52 @@ components:
         device:
           $ref: '#/components/schemas/DeviceInfo'
 
+    KvKey:
+      type: object
+      required:
+        - store
+        - id
+      properties:
+        store:
+          type: string
+        id:
+          type: string
+
+    AppCommandType:
+      type: string
+      description: |
+        Update: The event that contains data and just updates the database (essentially this is an event 
+                that happens as a result of an action that was executed, see Genesis, SingUp and other commands).
+      enum:
+        - Update
+        - Genesis
+        - SignUp
+        - JoinCluster
+
+    KvValueType:
+      type: string
+      enum:
+        - DsaPublicKey
+        - UserSignature
+        - Vault
+        - Error
+
+    KvLogEvent:
+      type: object
+      required:
+        - key
+        - cmdType
+        - valType
+      properties:
+        key:
+          $ref: '#/components/schemas/KvKey'
+        cmdType:
+          $ref: '#/components/schemas/AppCommandType'
+        valType:
+          $ref: '#/components/schemas/KvValueType'
+        value:
+          type: string
+
+
+
 paths:

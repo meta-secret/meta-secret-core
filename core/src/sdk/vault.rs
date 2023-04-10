@@ -1,7 +1,5 @@
-use crate::crypto::key_pair::{DalekPublicKey, DalekSignature, KeyPair};
+use crate::crypto::key_pair::{KeyPair};
 use crate::crypto::keys::KeyManager;
-use crate::CoreResult;
-use ed25519_dalek::Verifier;
 use rand::Rng;
 use crate::models::{DeviceInfo, UserSignature, VaultDoc};
 

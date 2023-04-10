@@ -2,53 +2,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use crate::crypto;
 
-use crate::models::{Base64EncodedText, UserSignature, VaultDoc};
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Key {
-    pub store: String,
-    pub id: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LogEvent {
-    pub key: Key,
-    pub cmd_type: CommandType,
-    pub val_type: ValueType,
-    pub value: Option<Value>,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
-pub enum CommandType {
-    /// The event that contains data and just updates the database
-    /// (essentially this is an event that happens as a result of an action that was executed,
-    /// see Genesis, SingUp and other commands).
-    Update,
-
-    /// Commands
-    Genesis,
-    SignUp,
-    JoinCluster,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
-pub enum ValueType {
-    DsaPublicKey,
-    UserSignature,
-    Vault,
-    Error,
-}
+use crate::models::{AppCommandType, Base64EncodedText, KvKey, KvLogEvent, KvValueType, UserSignature, VaultDoc};
 
 pub struct MetaDb {
     pub meta_store: MetaStore,
 }
 
 pub struct DbLog {
-    pub events: Vec<LogEvent>,
+    pub events: Vec<KvLogEvent>,
 }
 
 pub struct MetaStore {
@@ -73,13 +34,13 @@ pub enum LogCommandError {
     },
 }
 
-fn accept(request: LogEvent, meta_db: MetaDb) -> LogEvent {
+fn accept(request: KvLogEvent, meta_db: MetaDb) -> KvLogEvent {
     let mut maybe_error = None;
-    if request.cmd_type != CommandType::JoinCluster {
+    if request.cmd_type != AppCommandType::JoinCluster {
         maybe_error = Some("Not allowed cmd_type");
     }
 
-    if request.val_type != ValueType::UserSignature {
+    if request.val_type != KvValueType::UserSignature {
         maybe_error = Some("Not allowed val_type");
     }
 
@@ -92,28 +53,28 @@ fn accept(request: LogEvent, meta_db: MetaDb) -> LogEvent {
     }
 
     if let Some(err_msg) = maybe_error {
-        return LogEvent {
+        return KvLogEvent {
             key: request.key,
-            cmd_type: CommandType::Update,
-            val_type: ValueType::Error,
+            cmd_type: AppCommandType::Update,
+            val_type: KvValueType::Error,
             value: Some(serde_json::from_str(err_msg).unwrap()),
         };
     }
 
     let user_sig_and_vault = (request.value, meta_db.meta_store.vault);
     if let (Some(user_sig_val), Some(db_vault)) = user_sig_and_vault {
-        let user_sig: UserSignature = serde_json::from_value(user_sig_val).unwrap();
+        let user_sig: UserSignature = serde_json::from_str(user_sig_val.as_str()).unwrap();
 
         let mut vault = db_vault.clone();
         let members = &mut vault.signatures;
         members.push(user_sig);
 
         //create a log event
-        LogEvent {
-            key: Key { store: request.key.store, id: crypto::utils::rand_uuid_b64_url_enc() },
-            cmd_type: CommandType::Update,
-            val_type: ValueType::Vault,
-            value: Some(serde_json::to_value(vault).unwrap()),
+        KvLogEvent {
+            key: Box::from(KvKey { store: request.key.store, id: crypto::utils::rand_uuid_b64_url_enc() }),
+            cmd_type: AppCommandType::Update,
+            val_type: KvValueType::Vault,
+            value: Some(serde_json::to_string(&vault).unwrap()),
         }
     } else {
         todo!("Impossible!")
@@ -122,14 +83,12 @@ fn accept(request: LogEvent, meta_db: MetaDb) -> LogEvent {
 
 #[cfg(test)]
 pub mod test {
-    use ed25519_dalek::Signer;
-    use serde_json::Value;
     use crate::crypto;
 
     use crate::crypto::key_pair::KeyPair;
     use crate::crypto::keys::KeyManager;
-    use crate::models::{DeviceInfo, UserCredentials, VaultDoc};
-    use crate::node::commit_log::{accept, CommandType, DbLog, Key, LogEvent, MetaDb, MetaStore, ValueType};
+    use crate::models::{DeviceInfo, KvKey, KvLogEvent, KvValueType, UserCredentials, VaultDoc};
+    use crate::node::commit_log::{accept, AppCommandType, MetaDb, MetaStore};
 
     #[test]
     fn test() {
@@ -137,14 +96,14 @@ pub mod test {
 
         let server_km = KeyManager::generate();
 
-        let genesis_event = LogEvent {
-            key: Key {
+        let genesis_event = KvLogEvent {
+            key: Box::from(KvKey {
                 store: "commit_log".to_string(),
                 id: crypto::utils::rand_uuid_b64_url_enc(),
-            },
-            cmd_type: CommandType::Genesis,
-            val_type: ValueType::DsaPublicKey,
-            value: Some(serde_json::to_value(server_km.dsa.public_key()).unwrap()),
+            }),
+            cmd_type: AppCommandType::Genesis,
+            val_type: KvValueType::DsaPublicKey,
+            value: Some(serde_json::to_string(&server_km.dsa.public_key()).unwrap()),
         };
 
 
@@ -156,14 +115,14 @@ pub mod test {
         let a_user_sig = a_s_box.get_user_sig(&a_device);
         let a_creds = UserCredentials::new(a_s_box, a_user_sig.clone());
 
-        let sign_up_event = LogEvent {
-            key: Key {
+        let sign_up_event = KvLogEvent {
+            key: Box::from(KvKey {
                 store: "commit_log".to_string(),
                 id: crypto::utils::rand_uuid_b64_url_enc(),
-            },
-            cmd_type: CommandType::SignUp,
-            val_type: ValueType::UserSignature,
-            value: Some(serde_json::to_value(a_user_sig.clone()).unwrap()),
+            }),
+            cmd_type: AppCommandType::SignUp,
+            val_type: KvValueType::UserSignature,
+            value: Some(serde_json::to_string(&a_user_sig).unwrap()),
         };
 
         command_log.push(sign_up_event);
@@ -172,14 +131,14 @@ pub mod test {
         let b_device = DeviceInfo::new("b".to_string(), "b".to_string());
         let b_user_sig = b_s_box.get_user_sig(&b_device);
 
-        let join_command = LogEvent {
-            key: Key {
+        let join_command = KvLogEvent {
+            key: Box::from(KvKey {
                 store: "commit_log".to_string(),
                 id: crypto::utils::rand_uuid_b64_url_enc()
-            },
-            cmd_type: CommandType::JoinCluster,
-            val_type: ValueType::UserSignature,
-            value: Some(serde_json::to_value(b_user_sig).unwrap()),
+            }),
+            cmd_type: AppCommandType::JoinCluster,
+            val_type: KvValueType::UserSignature,
+            value: Some(serde_json::to_string(&b_user_sig).unwrap()),
         };
 
         let meta_db = MetaDb {
