@@ -1,5 +1,5 @@
 use image::EncodableLayout;
-use rocksdb::{ColumnFamilyDescriptor, DB, DBWithThreadMode, MultiThreaded, Options, SingleThreaded};
+use rocksdb::{ColumnFamilyDescriptor, DB, DBWithThreadMode, Error, MultiThreaded, Options, SingleThreaded};
 
 use crate::models::{KvKey, KvLogEvent};
 use crate::node::db::{GetCommand, SaveCommand};
@@ -35,14 +35,15 @@ pub fn get(key: KvKey) -> Option<KvLogEvent> {
     db_opts.create_if_missing(true);
     {
         let db = DB::open_cf_descriptors(&db_opts, path, vec![cf]).unwrap();
-        let key: &[u8] = log_event.key.id.as_bytes();
-        let log_event = match db.get(key) {
+        let key: &[u8] = key.id.as_bytes();
+        let log_event: KvLogEvent = match db.get(key) {
             Ok(Some(log_event_bytes)) => {
                 let event: KvLogEvent = serde_json::from_slice(log_event_bytes.as_slice()).unwrap();
                 event
             }
-            Ok(None) => None,
-            Err(e) => None,
+            _ => {
+                panic!("yay")
+            }
         };
 
         db.flush().unwrap();
@@ -82,15 +83,5 @@ mod commit_log_repo {
         async fn get(&self, key: &str) -> Result<Option<KvLogEvent>, Self::Error> {
             todo!()
         }
-    }
-}
-
-#[cfg(test)]
-pub mod test {
-    use crate::node::app::save;
-
-    #[test]
-    fn test() {
-        save();
     }
 }

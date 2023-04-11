@@ -1,3 +1,5 @@
+use std::ops::Deref;
+use std::rc::Rc;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use crate::crypto;
@@ -81,31 +83,78 @@ fn accept(request: KvLogEvent, meta_db: MetaDb) -> KvLogEvent {
     }
 }
 
+fn transform(commit_log: Rc<Vec<KvLogEvent>>) -> Result<MetaDb, LogCommandError> {
+    let mut meta_db = MetaDb {
+        meta_store: MetaStore {
+            server_pk: None,
+            vault: None,
+        },
+    };
+
+    for (index, event) in commit_log.iter().enumerate() {
+        match index {
+            0 => {
+                if event.cmd_type == AppCommandType::Genesis {
+                    let server_pk_str = event.value.as_ref().unwrap().as_str();
+                    let server_pk: Base64EncodedText = serde_json::from_str(server_pk_str).unwrap();
+                    meta_db.meta_store.server_pk = Some(server_pk);
+                } else {
+                    return Err(LogCommandError::IllegalDbState { err_msg: "Missing genesis event".to_string() });
+                }
+            }
+            _ => {
+                panic!("yay")
+            }
+        }
+    }
+
+    Ok(meta_db)
+}
+
+fn generate_genesis_event(value: &Base64EncodedText) -> KvLogEvent {
+    KvLogEvent {
+        key: Box::from(KvKey {
+            store: "commit_log".to_string(),
+            id: crypto::utils::rand_uuid_b64_url_enc(),
+        }),
+        cmd_type: AppCommandType::Genesis,
+        val_type: KvValueType::DsaPublicKey,
+        value: Some(serde_json::to_string(&value).unwrap()),
+    }
+}
+
 #[cfg(test)]
 pub mod test {
+    use std::rc::Rc;
     use crate::crypto;
 
     use crate::crypto::key_pair::KeyPair;
     use crate::crypto::keys::KeyManager;
     use crate::models::{DeviceInfo, KvKey, KvLogEvent, KvValueType, UserCredentials, VaultDoc};
-    use crate::node::commit_log::{accept, AppCommandType, MetaDb, MetaStore};
+    use crate::node::commit_log::{accept, AppCommandType, generate_genesis_event, LogCommandError, MetaDb, MetaStore, transform};
+
+    //genesis:
+    // - generate keys on server
+    // - server sends commit log with genesis event to a client
+    // - client reads commit log and adds genesis event into meta_db
+    #[test]
+    fn genesis_event() -> Result<(), LogCommandError> {
+        let server_km = KeyManager::generate();
+
+        let genesis_event = generate_genesis_event(&server_km.dsa.public_key());
+
+        let commit_log = vec![genesis_event];
+        let meta_db = transform(Rc::new(commit_log))?;
+        assert_eq!(meta_db.meta_store.server_pk, Some(server_km.dsa.public_key()));
+        Ok(())
+    }
 
     #[test]
     fn test() {
-        let vault_name = "test".to_string();
-
         let server_km = KeyManager::generate();
+        let genesis_event = generate_genesis_event(&server_km.dsa.public_key());
 
-        let genesis_event = KvLogEvent {
-            key: Box::from(KvKey {
-                store: "commit_log".to_string(),
-                id: crypto::utils::rand_uuid_b64_url_enc(),
-            }),
-            cmd_type: AppCommandType::Genesis,
-            val_type: KvValueType::DsaPublicKey,
-            value: Some(serde_json::to_string(&server_km.dsa.public_key()).unwrap()),
-        };
-
+        let vault_name = "test".to_string();
 
         //server provides to client a commit log that contains only one record (genesis), which contains server's pk
         let mut command_log = vec![genesis_event];
@@ -134,7 +183,7 @@ pub mod test {
         let join_command = KvLogEvent {
             key: Box::from(KvKey {
                 store: "commit_log".to_string(),
-                id: crypto::utils::rand_uuid_b64_url_enc()
+                id: crypto::utils::rand_uuid_b64_url_enc(),
             }),
             cmd_type: AppCommandType::JoinCluster,
             val_type: KvValueType::UserSignature,
@@ -144,12 +193,12 @@ pub mod test {
         let meta_db = MetaDb {
             meta_store: MetaStore {
                 server_pk: None,
-                vault: Some(VaultDoc{
+                vault: Some(VaultDoc {
                     vault_name,
                     signatures: vec![a_user_sig],
                     pending_joins: vec![],
                     declined_joins: vec![],
-                })
+                }),
             },
         };
 
@@ -161,11 +210,4 @@ pub mod test {
             println!("")
         }
     }
-
-    // sign_up (server side)
-    //fn sign_up(server_km: KeyManager, vault: VaultDoc) -> LogEvent {
-    // sign with a server key
-    // save vault in the db
-    //let vault_json_str = serde_json::to_string(&vault).unwrap();
-    //}
 }
