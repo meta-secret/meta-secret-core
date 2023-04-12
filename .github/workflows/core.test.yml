@@ -1,19 +1,15 @@
-name: "Core Deployment"
+name: "Core Testing"
 
 on:
-  workflow_dispatch:
-
-  # Temporary disable automatic build
-  #push:
-    #branches:
-    #  - main
-    #paths:
-    #  - '.github/workflows/core.yml'
-    #  - 'core/**'
+  pull_request:
 
 jobs:
-  core-deploy:
+  core-test:
     runs-on: ubuntu-latest
+
+    concurrency:
+      group: ${{ github.ref }}
+      cancel-in-progress: true
 
     steps:
       - uses: actions/checkout@v3
@@ -33,13 +29,5 @@ jobs:
           make clean generate_schema
 
       - name: Run tests
-        working-directory: core
         run: |
           cargo test
-
-      - name: Publish core
-        working-directory: core
-        run: |
-          cargo publish --token ${CRATES_TOKEN}
-        env:
-          CRATES_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
