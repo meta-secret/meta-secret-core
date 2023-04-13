@@ -1,9 +1,6 @@
-use image::EncodableLayout;
-use rocksdb::{ColumnFamilyDescriptor, DB, DBWithThreadMode, Error, MultiThreaded, Options, SingleThreaded};
+use rocksdb::{ColumnFamilyDescriptor, DBWithThreadMode, Options, SingleThreaded, DB};
 
-use crate::models::{KvKey, KvLogEvent};
-use crate::node::db::{GetCommand, SaveCommand};
-use crate::node::meta_db::CommitLogRepo;
+use crate::node::commit_log::{KvKey, KvLogEvent};
 
 pub fn put(log_event: KvLogEvent) {
     let path = "../target/meta_db";
@@ -53,10 +50,9 @@ pub fn get(key: KvKey) -> Option<KvLogEvent> {
 }
 
 mod commit_log_repo {
+    use crate::node::commit_log::KvLogEvent;
     use async_trait::async_trait;
-    use rocksdb::{DBWithThreadMode, SingleThreaded};
 
-    use crate::models::KvLogEvent;
     use crate::node::db::{GetCommand, SaveCommand};
     use crate::node::meta_db::CommitLogRepo;
 

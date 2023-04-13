@@ -1,6 +1,7 @@
 use anyhow::Context;
 use meta_secret_core::crypto::keys::KeyManager;
 use meta_secret_core::errors::CoreError;
+use meta_secret_core::models::{Base64EncodedText, SecretDistributionDocData, SerializedKeyManager};
 use meta_secret_core::shared_secret::data_block::common::SharedSecretConfig;
 use meta_secret_core::shared_secret::shared_secret::UserShareDto;
 use meta_secret_core::CoreResult;
@@ -10,7 +11,6 @@ use std::ffi::CString;
 use std::os::raw::c_char;
 use std::slice;
 use std::str;
-use meta_secret_core::models::{Base64EncodedText, SecretDistributionDocData, SerializedKeyManager};
 
 type SizeT = usize;
 
@@ -73,8 +73,8 @@ fn to_c_str(str: String) -> *mut c_char {
 }
 
 mod internal {
-    use meta_secret_core::models::{AeadCipherText, AeadPlainText, MetaPasswordId};
     use super::*;
+    use meta_secret_core::models::{AeadCipherText, AeadPlainText, MetaPasswordId};
 
     pub fn generate_security_box(vault_name_bytes: *const u8, len: SizeT) -> CoreResult<String> {
         let device_name = data_to_string(vault_name_bytes, len)?;
@@ -237,10 +237,10 @@ impl TryFrom<&String> for DecryptTask {
 pub mod test {
     use meta_secret_core::crypto::key_pair::KeyPair;
     use meta_secret_core::crypto::keys::KeyManager;
+    use meta_secret_core::models::AeadCipherText;
     use meta_secret_core::shared_secret::data_block::common::SharedSecretConfig;
     use meta_secret_core::shared_secret::shared_secret::UserShareDto;
     use meta_secret_core::{shared_secret, CoreResult};
-    use meta_secret_core::models::AeadCipherText;
 
     #[test]
     fn split_and_encrypt() -> CoreResult<()> {

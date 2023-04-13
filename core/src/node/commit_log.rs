@@ -1,7 +1,9 @@
-use std::rc::Rc;
 use crate::crypto;
+use std::collections::HashSet;
+use std::rc::Rc;
+use crate::crypto::utils::to_id;
 
-use crate::models::{AppCommandType, Base64EncodedText, KvKey, KvLogEvent, KvValueType, UserSignature, VaultDoc};
+use crate::models::{Base64EncodedText, UserSignature, VaultDoc};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -17,19 +19,16 @@ pub struct DbLog {
 #[serde(rename_all = "camelCase")]
 pub struct MetaStore {
     pub server_pk: Option<Base64EncodedText>,
+    pub vaults_index: HashSet<String>,
     pub vault: Option<VaultDoc>,
 }
 
 #[derive(thiserror::Error, Debug)]
 pub enum LogCommandError {
     #[error("Illegal message format: {err_msg:?}")]
-    IllegalCommandFormat {
-        err_msg: String
-    },
+    IllegalCommandFormat { err_msg: String },
     #[error("Illegal database state: {err_msg:?}")]
-    IllegalDbState {
-        err_msg: String
-    },
+    IllegalDbState { err_msg: String },
     #[error(transparent)]
     JsonParseError {
         #[from]
@@ -37,25 +36,86 @@ pub enum LogCommandError {
     },
 }
 
-fn accept_sign_up_request(vault: &VaultDoc) -> KvLogEvent {
-    KvLogEvent {
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+pub enum AppOperation {
+    #[serde(rename = "Genesis")]
+    Genesis,
+    #[serde(rename = "SignUp")]
+    SignUp,
+    #[serde(rename = "JoinCluster")]
+    JoinCluster,
+    #[serde(rename = "VaultsIndex")]
+    VaultsIndex,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+pub enum AppOperationType {
+    #[serde(rename = "Request")]
+    Request(AppOperation),
+    #[serde(rename = "Update")]
+    Update(AppOperation),
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct KvLogEvent {
+    #[serde(rename = "key")]
+    pub key: Box<KvKey>,
+    #[serde(rename = "cmdType")]
+    pub cmd_type: AppOperationType,
+    #[serde(rename = "valType")]
+    pub val_type: KvValueType,
+    #[serde(rename = "value", skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+pub enum KvValueType {
+    #[serde(rename = "DsaPublicKey")]
+    DsaPublicKey,
+    #[serde(rename = "UserSignature")]
+    UserSignature,
+    #[serde(rename = "Vault")]
+    Vault,
+    #[serde(rename = "String")]
+    String,
+    #[serde(rename = "Base64Text")]
+    Base64Text,
+    #[serde(rename = "Error")]
+    Error,
+}
+
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+pub struct KvKey {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "store")]
+    pub store: String,
+}
+
+fn accept_sign_up_request(vault: &VaultDoc) -> Vec<KvLogEvent> {
+    let vault_id = to_id(vault.vault_name.clone());
+    let vaults_index = vaults_index_event(&vault_id);
+
+    let sign_up_event = KvLogEvent {
         key: Box::from(generate_key()),
-        cmd_type: AppCommandType::Update,
+        cmd_type: AppOperationType::Update(AppOperation::SignUp),
         val_type: KvValueType::Vault,
         value: Some(serde_json::to_string(&vault).unwrap()),
-    }
+    };
+
+    vec![sign_up_event, vaults_index]
 }
 
 fn generate_key() -> KvKey {
     KvKey {
         store: "commit_log".to_string(),
-        id: crypto::utils::rand_uuid_b64_url_enc(),
+        id: crypto::utils::rand_uuid_b64_url_enc().base64_text,
     }
 }
 
-fn accept(request: &KvLogEvent, maybe_local_vault: Option<VaultDoc>) -> KvLogEvent {
+fn accept_join_request(request: &KvLogEvent, maybe_local_vault: Option<VaultDoc>) -> KvLogEvent {
     let mut maybe_error = None;
-    if request.cmd_type != AppCommandType::JoinCluster {
+    if request.cmd_type != AppOperationType::Request(AppOperation::JoinCluster) {
         maybe_error = Some("Not allowed cmd_type");
     }
 
@@ -74,7 +134,7 @@ fn accept(request: &KvLogEvent, maybe_local_vault: Option<VaultDoc>) -> KvLogEve
     if let Some(err_msg) = maybe_error {
         return KvLogEvent {
             key: request.key.clone(),
-            cmd_type: AppCommandType::Update,
+            cmd_type: AppOperationType::Update(AppOperation::JoinCluster),
             val_type: KvValueType::Error,
             value: Some(serde_json::from_str(err_msg).unwrap()),
         };
@@ -89,8 +149,8 @@ fn accept(request: &KvLogEvent, maybe_local_vault: Option<VaultDoc>) -> KvLogEve
         members.push(user_sig);
 
         KvLogEvent {
-            key: Box::from(KvKey { store: request.key.store.clone(), id: crypto::utils::rand_uuid_b64_url_enc() }),
-            cmd_type: AppCommandType::Update,
+            key: Box::from(generate_key()),
+            cmd_type: AppOperationType::Update(AppOperation::JoinCluster),
             val_type: KvValueType::Vault,
             value: Some(serde_json::to_string(&vault).unwrap()),
         }
@@ -103,32 +163,58 @@ fn transform(commit_log: Rc<Vec<KvLogEvent>>) -> Result<MetaDb, LogCommandError>
     let mut meta_db = MetaDb {
         meta_store: MetaStore {
             server_pk: None,
+            vaults_index: HashSet::new(),
             vault: None,
         },
     };
 
     for (index, event) in commit_log.iter().enumerate() {
+        let mut meta_store = &mut meta_db.meta_store;
+
         match index {
             0 => {
-                if event.cmd_type == AppCommandType::Genesis {
+                if event.cmd_type == AppOperationType::Update(AppOperation::Genesis) {
                     let server_pk_str = event.value.as_ref().unwrap().as_str();
                     let server_pk: Base64EncodedText = serde_json::from_str(server_pk_str).unwrap();
                     meta_db.meta_store.server_pk = Some(server_pk);
                 } else {
-                    return Err(LogCommandError::IllegalDbState { err_msg: "Missing genesis event".to_string() });
+                    return Err(LogCommandError::IllegalDbState {
+                        err_msg: "Missing genesis event".to_string(),
+                    });
                 }
             }
-            _ => {
-                if event.cmd_type == AppCommandType::Update {
-                    match event.value.as_ref() {
+            _ => match event.cmd_type {
+                AppOperationType::Request(_op) => {
+                    println!("Skip requests");
+                }
+
+                AppOperationType::Update(op) => match op {
+                    AppOperation::Genesis => {
+
+                    }
+                    AppOperation::SignUp => match event.value.as_ref() {
                         None => {}
                         Some(vault_str) => {
                             let vault: VaultDoc = serde_json::from_str(vault_str.as_str()).unwrap();
-                            meta_db.meta_store.vault = Some(vault);
+                            meta_store.vault = Some(vault);
+                        }
+                    },
+                    AppOperation::JoinCluster => match event.value.as_ref() {
+                        None => {}
+                        Some(vault_str) => {
+                            let vault: VaultDoc = serde_json::from_str(vault_str.as_str()).unwrap();
+                            meta_store.vault = Some(vault);
                         }
                     }
-                }
-            }
+                    AppOperation::VaultsIndex => match event.value.as_ref() {
+                        None => {}
+                        Some(vault_id_str) => {
+                            let vault_id: String = serde_json::from_str(vault_id_str.as_str()).unwrap();
+                            meta_store.vaults_index.insert(vault_id);
+                        }
+                    },
+                },
+            },
         }
     }
 
@@ -138,25 +224,34 @@ fn transform(commit_log: Rc<Vec<KvLogEvent>>) -> Result<MetaDb, LogCommandError>
 fn generate_genesis_event(value: &Base64EncodedText) -> KvLogEvent {
     KvLogEvent {
         key: Box::from(generate_key()),
-        cmd_type: AppCommandType::Genesis,
+        cmd_type: AppOperationType::Update(AppOperation::Genesis),
         val_type: KvValueType::DsaPublicKey,
         value: Some(serde_json::to_string(&value).unwrap()),
     }
 }
 
-fn sign_up_event(user_sig: &UserSignature) -> KvLogEvent {
+fn vaults_index_event(vault_hash: &Base64EncodedText) -> KvLogEvent {
     KvLogEvent {
         key: Box::from(generate_key()),
-        cmd_type: AppCommandType::SignUp,
+        cmd_type: AppOperationType::Update(AppOperation::VaultsIndex),
+        val_type: KvValueType::String,
+        value: Some(serde_json::to_string(vault_hash.base64_text.as_str()).unwrap()),
+    }
+}
+
+fn sign_up_request(user_sig: &UserSignature) -> KvLogEvent {
+    KvLogEvent {
+        key: Box::from(generate_key()),
+        cmd_type: AppOperationType::Request(AppOperation::SignUp),
         val_type: KvValueType::UserSignature,
         value: Some(serde_json::to_string(user_sig).unwrap()),
     }
 }
 
-fn join_cluster_event(user_sig: &UserSignature) -> KvLogEvent {
+fn join_cluster_request(user_sig: &UserSignature) -> KvLogEvent {
     KvLogEvent {
         key: Box::from(generate_key()),
-        cmd_type: AppCommandType::JoinCluster,
+        cmd_type: AppOperationType::Request(AppOperation::JoinCluster),
         val_type: KvValueType::UserSignature,
         value: Some(serde_json::to_string(user_sig).unwrap()),
     }
@@ -164,22 +259,44 @@ fn join_cluster_event(user_sig: &UserSignature) -> KvLogEvent {
 
 #[cfg(test)]
 pub mod test {
+    use std::collections::HashSet;
     use std::rc::Rc;
 
     use crate::crypto::key_pair::KeyPair;
     use crate::crypto::keys::KeyManager;
+    use crate::crypto::utils::to_id;
     use crate::models::{DeviceInfo, VaultDoc};
     use crate::node::commit_log::{
-        accept, accept_sign_up_request, generate_genesis_event, join_cluster_event,
-        LogCommandError, sign_up_event, transform
+        accept_join_request, accept_sign_up_request, generate_genesis_event, join_cluster_request, sign_up_request,
+        transform, vaults_index_event, LogCommandError,
     };
+
+    #[test]
+    fn test_vaults_index() -> Result<(), LogCommandError> {
+        let server_km = KeyManager::generate();
+
+        let genesis_event = generate_genesis_event(&server_km.dsa.public_key());
+        let vault_id = to_id("test_vault".to_string());
+        let vaults_index_event = vaults_index_event(&vault_id);
+
+        let commit_log = vec![genesis_event, vaults_index_event];
+
+        let meta_db = transform(Rc::new(commit_log))?;
+
+        let mut expected = HashSet::new();
+        expected.insert(vault_id.base64_text);
+
+        assert_eq!(expected, meta_db.meta_store.vaults_index);
+
+        Ok(())
+    }
 
     //genesis:
     // - generate keys on server
     // - server sends commit log with genesis event to a client
     // - client reads commit log and adds genesis event into meta_db
     #[test]
-    fn genesis_event() -> Result<(), LogCommandError> {
+    fn test_genesis_event() -> Result<(), LogCommandError> {
         let server_km = KeyManager::generate();
 
         let genesis_event = generate_genesis_event(&server_km.dsa.public_key());
@@ -191,7 +308,7 @@ pub mod test {
     }
 
     #[test]
-    fn sign_up() -> Result<(), LogCommandError> {
+    fn test_sign_up() -> Result<(), LogCommandError> {
         let server_km = KeyManager::generate();
         let genesis_event = generate_genesis_event(&server_km.dsa.public_key());
 
@@ -201,7 +318,7 @@ pub mod test {
         let a_device = DeviceInfo::new("a".to_string(), "a".to_string());
         let a_user_sig = a_s_box.get_user_sig(&a_device);
 
-        let sign_up_event = sign_up_event(&a_user_sig);
+        let sign_up_event = sign_up_request(&a_user_sig);
 
         let vault = VaultDoc {
             vault_name,
@@ -211,7 +328,9 @@ pub mod test {
         };
         let sing_up_accept = accept_sign_up_request(&vault);
 
-        let commit_log = vec![genesis_event, sign_up_event, sing_up_accept];
+        let mut commit_log = vec![genesis_event, sign_up_event];
+        commit_log.extend(sing_up_accept);
+
         let meta_db = transform(Rc::new(commit_log))?;
 
         assert_eq!(vault, meta_db.meta_store.vault.unwrap());
@@ -220,7 +339,7 @@ pub mod test {
     }
 
     #[test]
-    fn join_cluster() -> Result<(), LogCommandError> {
+    fn test_join_cluster() -> Result<(), LogCommandError> {
         let server_km = KeyManager::generate();
         let genesis_event = generate_genesis_event(&server_km.dsa.public_key());
 
@@ -230,7 +349,7 @@ pub mod test {
         let a_device = DeviceInfo::new("a".to_string(), "a".to_string());
         let a_user_sig = a_s_box.get_user_sig(&a_device);
 
-        let sign_up_event = sign_up_event(&a_user_sig);
+        let sign_up_event = sign_up_request(&a_user_sig);
 
         let vault = VaultDoc {
             vault_name: vault_name.clone(),
@@ -244,10 +363,15 @@ pub mod test {
         let b_device = DeviceInfo::new("b".to_string(), "b".to_string());
         let b_user_sig = b_s_box.get_user_sig(&b_device);
 
-        let join_request = join_cluster_event(&b_user_sig);
-        let join_cluster_event = accept(&join_request, Some(vault.clone()));
+        let join_request = join_cluster_request(&b_user_sig);
+        let join_cluster_event = accept_join_request(&join_request, Some(vault.clone()));
 
-        let commit_log = vec![genesis_event, sign_up_event, sing_up_accept, join_cluster_event];
+        let mut commit_log = vec![genesis_event, sign_up_event];
+        commit_log.extend(sing_up_accept);
+        commit_log.push(join_cluster_event);
+
+        println!("{}", serde_json::to_string_pretty(&commit_log).unwrap());
+
         let meta_db = transform(Rc::new(commit_log))?;
 
         let expected_sigs = vec![a_user_sig, b_user_sig];

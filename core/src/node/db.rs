@@ -1,9 +1,6 @@
 use async_trait::async_trait;
 
-use crate::models::{
-    MetaPasswordId, MetaVault, SecretDistributionDocData, UserCredentials,
-};
-
+use crate::models::{MetaPasswordId, MetaVault, SecretDistributionDocData, UserCredentials};
 
 #[async_trait(? Send)]
 pub trait SaveCommand<T> {

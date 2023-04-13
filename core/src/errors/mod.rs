@@ -1,8 +1,8 @@
+use crate::models::{Base64EncodedText, CommunicationChannel};
 use crate::shared_secret::data_block::common::DataBlockParserError;
 use shamirsecretsharing::SSSError;
 use std::io;
 use std::string::FromUtf8Error;
-use crate::models::{Base64EncodedText, CommunicationChannel};
 
 #[derive(thiserror::Error, Debug)]
 pub enum CoreError {
