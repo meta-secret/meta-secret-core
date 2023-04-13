@@ -254,5 +254,7 @@ pub mod test {
         assert_eq!(expected_sigs, meta_db.meta_store.vault.unwrap().signatures);
 
         Ok(())
+
+
     }
 }
