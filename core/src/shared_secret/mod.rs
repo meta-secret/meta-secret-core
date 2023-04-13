@@ -1,8 +1,11 @@
-use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
-use crate::CoreResult;
 use crate::crypto::keys::KeyManager;
-use crate::models::{AeadCipherText, EncryptedMessage, MetaPasswordDoc, MetaPasswordId, MetaPasswordRequest, SecretDistributionDocData, SecretDistributionType, UserSecurityBox, UserSignature, VaultDoc};
+use crate::models::{
+    AeadCipherText, EncryptedMessage, MetaPasswordDoc, MetaPasswordId, MetaPasswordRequest, SecretDistributionDocData,
+    SecretDistributionType, UserSecurityBox, UserSignature, VaultDoc,
+};
 use crate::node::server_api;
+use crate::CoreResult;
+use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
 
 pub mod data_block;
 pub mod shared_secret;
@@ -51,7 +54,10 @@ impl MetaEncryptor {
                 .encrypt_string(share_str, receiver_pk)
                 .unwrap();
 
-            encrypted_shares.push(MetaCipherShare { receiver: receiver_sig.clone(), cipher_share: encrypted_share });
+            encrypted_shares.push(MetaCipherShare {
+                receiver: receiver_sig.clone(),
+                cipher_share: encrypted_share,
+            });
         }
 
         encrypted_shares
@@ -88,7 +94,7 @@ impl MetaDistributor {
 
             let cipher_msg = EncryptedMessage {
                 receiver: Box::from(cipher_share.receiver.clone()),
-                encrypted_text: Box::new(cipher_share.cipher_share)
+                encrypted_text: Box::new(cipher_share.cipher_share),
             };
 
             let distribution_share = SecretDistributionDocData {

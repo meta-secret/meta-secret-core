@@ -1,16 +1,16 @@
+use crypto_box::aead::AeadCore;
 use crypto_box::{
     aead::{Aead, OsRng as CryptoBoxOsRng, Payload},
     ChaChaBox, Nonce,
 };
-use crypto_box::aead::AeadCore;
 use ed25519_dalek::{Keypair, Signer};
 use image::EncodableLayout;
-use rand::RngCore;
 use rand::rngs::OsRng as RandOsRng;
+use rand::RngCore;
 
-use crate::CoreResult;
 use crate::errors::CoreError;
 use crate::models::{AeadAuthData, AeadCipherText, AeadPlainText, Base64EncodedText, CommunicationChannel};
+use crate::CoreResult;
 
 pub type CryptoBoxPublicKey = crypto_box::PublicKey;
 pub type CryptoBoxSecretKey = crypto_box::SecretKey;
@@ -137,8 +137,12 @@ impl TransportDsaKeyPair {
         let owner_pk = self.public_key();
 
         let their_pk = match owner_pk {
-            pk if pk.base64_text == channel.sender.base64_text => CryptoBoxPublicKey::try_from(channel.receiver.as_ref()),
-            pk if pk.base64_text == channel.receiver.base64_text => CryptoBoxPublicKey::try_from(channel.sender.as_ref()),
+            pk if pk.base64_text == channel.sender.base64_text => {
+                CryptoBoxPublicKey::try_from(channel.receiver.as_ref())
+            }
+            pk if pk.base64_text == channel.receiver.base64_text => {
+                CryptoBoxPublicKey::try_from(channel.sender.as_ref())
+            }
             _ => Err(CoreError::ThirdPartyEncryptionError {
                 key_manager_pk: owner_pk,
                 channel: channel.as_ref().clone(),
@@ -171,11 +175,11 @@ impl TransportDsaKeyPair {
 
 #[cfg(test)]
 pub mod test {
-    use crate::CoreResult;
     use crate::crypto::key_pair::KeyPair;
     use crate::crypto::keys::KeyManager;
     use crate::errors::CoreError;
     use crate::models::{AeadAuthData, AeadCipherText, AeadPlainText, Base64EncodedText, CommunicationChannel};
+    use crate::CoreResult;
 
     #[test]
     fn single_person_encryption() -> CoreResult<()> {
@@ -187,7 +191,10 @@ pub mod test {
             .encrypt_string(password.clone(), alice_km.transport_key_pair.public_key())?;
 
         let plain_text = alice_km.transport_key_pair.decrypt(&cipher_text)?;
-        assert_eq!(Base64EncodedText::from(password.as_bytes()).base64_text, plain_text.msg.base64_text);
+        assert_eq!(
+            Base64EncodedText::from(password.as_bytes()).base64_text,
+            plain_text.msg.base64_text
+        );
 
         Ok(())
     }

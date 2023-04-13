@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::models::{
-    MembershipStatus, MetaPasswordsData, PasswordRecoveryRequest, RegistrationStatus,
-    SecretDistributionDocData, VaultInfoData, VaultInfoStatus, FindSharesResult
+    FindSharesResult, MembershipStatus, MetaPasswordsData, PasswordRecoveryRequest, RegistrationStatus,
+    SecretDistributionDocData, VaultInfoData, VaultInfoStatus,
 };
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -99,7 +99,6 @@ pub type RegistrationResponse = GenericMessage<RegistrationStatus>;
 
 pub type VaultInfoResponse = GenericMessage<VaultInfoData>;
 
-
 impl VaultInfoData {
     pub fn pending() -> Self {
         Self::empty(VaultInfoStatus::Pending)
@@ -153,11 +152,11 @@ pub type MembershipResponse = GenericMessage<MembershipStatus>;
 
 #[cfg(test)]
 mod test {
+    use crate::models::MembershipStatus;
     use anyhow::anyhow;
     use serde::{Deserialize, Serialize};
     use serde_json::error::Result;
     use thiserror::__private::AsDynError;
-    use crate::models::MembershipStatus;
 
     use crate::sdk::api::{ErrorMessage, GenericMessage, MembershipResponse};
 

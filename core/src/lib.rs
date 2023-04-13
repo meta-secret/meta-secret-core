@@ -18,10 +18,10 @@ use errors::RecoveryError::EmptyInput;
 
 pub mod crypto;
 pub mod errors;
+pub mod models;
 pub mod node;
 pub mod sdk;
 pub mod shared_secret;
-pub mod models;
 
 #[macro_use]
 extern crate serde_derive;

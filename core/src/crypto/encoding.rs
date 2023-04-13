@@ -1,16 +1,15 @@
 use crypto_box::KEY_SIZE as KEY_SIZE_32_BYTES;
 pub type Array256Bit = [u8; KEY_SIZE_32_BYTES];
 
-
 /// Base64 encoding/decoding
 pub mod base64 {
     extern crate base64;
 
     pub mod encoder {
         use crate::crypto::encoding::Array256Bit;
+        use crate::models::Base64EncodedText;
         use base64::alphabet::URL_SAFE;
         use base64::engine::fast_portable::{FastPortable, NO_PAD};
-        use crate::models::Base64EncodedText;
 
         const URL_SAFE_ENGINE: FastPortable = FastPortable::from(&URL_SAFE, NO_PAD);
 
@@ -50,9 +49,9 @@ pub mod base64 {
     pub mod decoder {
         use crate::crypto::encoding::Array256Bit;
         use crate::errors::CoreError;
+        use crate::models::Base64EncodedText;
         use base64::alphabet::URL_SAFE;
         use base64::engine::fast_portable::{FastPortable, NO_PAD};
-        use crate::models::Base64EncodedText;
 
         const URL_SAFE_ENGINE: FastPortable = FastPortable::from(&URL_SAFE, NO_PAD);
 
@@ -234,8 +233,8 @@ pub mod serialized_key_manager {
         pub mod test {
             use crate::crypto::key_pair::{DalekPublicKey, DalekSignature, KeyPair};
             use crate::crypto::keys::KeyManager;
-            use crate::CoreResult;
             use crate::models::Base64EncodedText;
+            use crate::CoreResult;
 
             #[test]
             fn from_base64_to_dalek_public_key() -> CoreResult<()> {

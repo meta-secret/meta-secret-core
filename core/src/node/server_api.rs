@@ -1,7 +1,13 @@
 use reqwest::{Client, Error, Response};
 
-use crate::models::{FindSharesRequest, JoinRequest, MetaPasswordRequest, PasswordRecoveryRequest, SecretDistributionDocData, UserSignature};
-use crate::sdk::api::{GenericMessage, MembershipResponse, MetaPasswordsResponse, PasswordRecoveryClaimsResponse, RegistrationResponse, UserSharesResponse, VaultInfoResponse};
+use crate::models::{
+    FindSharesRequest, JoinRequest, MetaPasswordRequest, PasswordRecoveryRequest, SecretDistributionDocData,
+    UserSignature,
+};
+use crate::sdk::api::{
+    GenericMessage, MembershipResponse, MetaPasswordsResponse, PasswordRecoveryClaimsResponse, RegistrationResponse,
+    UserSharesResponse, VaultInfoResponse,
+};
 
 const API_URL: &str = "https://api.meta-secret.org";
 
@@ -160,7 +166,6 @@ pub async fn join_meta_cloud(user_sig: &UserSignature) -> Result<RegistrationRes
     let json: RegistrationResponse = response.json().await?;
     Ok(json)
 }
-
 
 fn get_reqwest_client() -> Client {
     Client::new()
