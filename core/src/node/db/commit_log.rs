@@ -135,8 +135,7 @@ pub fn generate_key(vault_id: Option<String>) -> KvKey {
     }
 }
 
-/*
-pub fn accept_join_request(request: &KvLogEvent) -> KvLogEvent {
+pub fn accept_join_request(request: &KvLogEvent, vault: &VaultDoc) -> KvLogEvent {
     let mut maybe_error = None;
     if request.cmd_type != AppOperationType::Request(AppOperation::JoinCluster) {
         maybe_error = Some("Not allowed cmd_type");
@@ -159,13 +158,11 @@ pub fn accept_join_request(request: &KvLogEvent) -> KvLogEvent {
         };
     }
 
-    let user_sig_and_vault = (request.value.clone(), maybe_local_vault);
-    if let (Some(user_sig_val), Some(db_vault)) = user_sig_and_vault {
-        let user_sig: UserSignature = serde_json::from_str(user_sig_val.as_str()).unwrap();
+    if let Some(user_sig_str) = request.value.clone() {
+        let user_sig: UserSignature = serde_json::from_str(user_sig_str.as_str()).unwrap();
 
-        let mut vault = db_vault.clone();
-        let members = &mut vault.signatures;
-        members.push(user_sig);
+        let mut new_vault = vault.clone();
+        new_vault.signatures.push(user_sig);
 
         let vault_id = to_id(vault.vault_name.clone());
 
@@ -173,14 +170,12 @@ pub fn accept_join_request(request: &KvLogEvent) -> KvLogEvent {
             key: Box::from(generate_key(Some(vault_id.base64_text))),
             cmd_type: AppOperationType::Update(AppOperation::JoinCluster),
             val_type: KvValueType::Vault,
-            value: Some(serde_json::to_string(&vault).unwrap()),
+            value: Some(serde_json::to_string(&new_vault).unwrap()),
         }
     } else {
         todo!("Impossible!")
     }
 }
-*/
-
 
 pub fn transform(commit_log: Rc<Vec<KvLogEvent>>) -> Result<MetaDb, LogCommandError> {
     let mut meta_db = MetaDb {
@@ -212,7 +207,9 @@ pub fn transform(commit_log: Rc<Vec<KvLogEvent>>) -> Result<MetaDb, LogCommandEr
                 }
 
                 AppOperationType::Update(op) => match op {
-                    AppOperation::Genesis => {}
+                    AppOperation::Genesis => {
+
+                    }
                     AppOperation::SignUp => match event.value.as_ref() {
                         None => {
                             panic!("Invalid request");
@@ -223,7 +220,9 @@ pub fn transform(commit_log: Rc<Vec<KvLogEvent>>) -> Result<MetaDb, LogCommandEr
                         }
                     },
                     AppOperation::JoinCluster => match event.value.as_ref() {
-                        None => {}
+                        None => {
+
+                        }
                         Some(vault_str) => {
                             let vault: VaultDoc = serde_json::from_str(vault_str.as_str()).unwrap();
                             meta_store.vault = Some(vault);
@@ -291,10 +290,7 @@ pub mod test {
     use crate::crypto::keys::KeyManager;
     use crate::crypto::utils::to_id;
     use crate::models::{DeviceInfo, VaultDoc};
-    use crate::node::db::commit_log::{
-        /*accept_join_request*/ accept_sign_up_request, generate_genesis_event, join_cluster_request, sign_up_request,
-        transform, vaults_index_event, KvLogEvent, LogCommandError,
-    };
+    use crate::node::db::commit_log::{accept_sign_up_request, generate_genesis_event, join_cluster_request, sign_up_request, transform, vaults_index_event, KvLogEvent, LogCommandError, accept_join_request};
 
     #[test]
     fn test_vaults_index() -> Result<(), LogCommandError> {
@@ -385,8 +381,14 @@ pub mod test {
         let b_user_sig = b_s_box.get_user_sig(&b_device);
 
         let join_request = join_cluster_request(&b_user_sig);
-        /*
-        let join_cluster_event = accept_join_request(&join_request, Some(vault.clone()));
+
+        let vault = VaultDoc {
+            vault_name,
+            signatures: vec![a_user_sig.clone()],
+            pending_joins: vec![],
+            declined_joins: vec![],
+        };
+        let join_cluster_event = accept_join_request(&join_request, &vault);
 
         let mut commit_log = vec![genesis_event, sign_up_event];
         commit_log.extend(sing_up_accept);
@@ -400,7 +402,6 @@ pub mod test {
 
         let expected_sigs = vec![a_user_sig, b_user_sig];
         assert_eq!(expected_sigs, meta_db.meta_store.vault.unwrap().signatures);
-         */
 
         Ok(())
     }
