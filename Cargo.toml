@@ -1,5 +1,7 @@
 [workspace]
 members = [
     "core",
-    "core-swift-lib"
+    "meta-server-emulator",
+    "meta-test",
+    "core-swift-lib",
 ]

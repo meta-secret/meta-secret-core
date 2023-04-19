@@ -7,10 +7,10 @@ mod test {
     use crate::crypto::utils::to_id;
     use crate::models::DeviceInfo;
     use crate::node::db::commit_log;
-    use crate::node::db::commit_log::{AppOperation, AppOperationType, KvLogEvent};
+    use crate::node::db::commit_log::{AppOperation, AppOperationType, KvLogEvent, transform};
 
     #[test]
-    fn test() {
+    fn app_full_test() {
         let mut server = MockServer::new();
         let request = SyncRequest { vault_id: None, tail_id: None };
         let commit_log = server.sync(request);
@@ -31,26 +31,39 @@ mod test {
 
         let meta_db = commit_log::transform(Rc::new(commit_log)).unwrap();
         if meta_db.meta_store.vaults_index.contains(vault_id.base64_text.as_str()) {
-            // if the vault is already present
-            let join_request = commit_log::join_cluster_request(&a_user_sig);
-            server.request(&join_request)
-        } else {
-            // if a vault is not present
-            let sign_up_request = commit_log::sign_up_request(&a_user_sig);
-            server.request(&sign_up_request)
+            panic!("The vault already exists");
         }
 
-        let request = SyncRequest { vault_id: Some(vault_id.base64_text), tail_id: None };
+        // if a vault is not present
+        let sign_up_request = commit_log::sign_up_request(&a_user_sig);
+        server.request(&sign_up_request);
+
+        let request = SyncRequest { vault_id: Some(vault_id.base64_text.clone()), tail_id: None };
         let commit_log = server.sync(request);
-        println!("!!!! {}", serde_json::to_string_pretty(&commit_log).unwrap());
+        assert_eq!(3, commit_log.len());
 
         //find if your vault is already exists
         // - only server can create new vaults
+        let meta_db = commit_log::transform(Rc::new(commit_log)).unwrap();
+        if !meta_db.meta_store.vaults_index.contains(vault_id.base64_text.as_str()) {
+            panic!("The vault expected to be in the database")
+        }
 
+        let b_s_box = KeyManager::generate_security_box(vault_name.to_string());
+        let b_device = DeviceInfo::new("b".to_string(), "b".to_string());
+        let b_user_sig = b_s_box.get_user_sig(&b_device);
 
-        //apply new events to meta_db?
+        let join_request = commit_log::join_cluster_request(&b_user_sig);
+        server.request(&join_request);
 
-        //check meta_db state
+        let request = SyncRequest { vault_id: Some(vault_id.base64_text.clone()), tail_id: None };
+        let commit_log = server.sync(request);
+        assert_eq!(5, commit_log.len());
+
+        println!("{}", serde_json::to_string_pretty(&commit_log).unwrap());
+
+        let meta_db = commit_log::transform(Rc::new(commit_log)).unwrap();
+        assert_eq!(2, meta_db.meta_store.vault.unwrap().signatures.len());
     }
 
     struct MockServer {
@@ -140,14 +153,21 @@ mod test {
                                     panic!("Invalid event");
                                 }
                                 Some(vault_id) => {
-                                    let maybe_db_vault = self.db.get(vault_id.as_str());
-                                    match maybe_db_vault {
+                                    let maybe_vault_commit_log = self.db.get(vault_id.as_str());
+                                    match maybe_vault_commit_log {
                                         None => {
                                             panic!("Vault not found");
                                         }
                                         Some(commit_log) => {
+
                                             let mut new_commit_log = commit_log.clone();
                                             new_commit_log.push(event.clone());
+
+                                            let vault_meta_db = transform(Rc::new(new_commit_log.clone())).unwrap();
+                                            let vault = &vault_meta_db.meta_store.vault.unwrap();
+                                            let accept_join_event = commit_log::accept_join_request(event, vault);
+
+                                            new_commit_log.push(accept_join_event);
                                             self.db.insert(vault_id, new_commit_log);
                                         }
                                     }

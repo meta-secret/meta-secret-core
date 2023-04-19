@@ -1,6 +1,5 @@
 use crate::models::Base64EncodedText;
-use base64::alphabet::URL_SAFE;
-use base64::engine::fast_portable::{FastPortable, NO_PAD};
+use base64::engine::fast_portable::NO_PAD;
 use rand::{distributions::Alphanumeric, Rng};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;

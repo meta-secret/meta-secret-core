@@ -15,7 +15,7 @@ name = "meta_secret_core"
 
 [dependencies]
 
-thiserror = "1.0.37"
+thiserror = "1.0.40"
 anyhow = "1.0.66"
 
 async-trait = "0.1"
@@ -40,8 +40,6 @@ serde_json = "1.0"
 serde_bytes = "0.11"
 serde-big-array = "0.4"
 serde_derive = "^1.0"
-
-rocksdb = "^0.20"
 
 qrcode-generator = "4.1.6"
 rqrr = "0.5"
