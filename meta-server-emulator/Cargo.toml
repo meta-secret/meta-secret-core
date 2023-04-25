@@ -8,7 +8,8 @@ meta-secret-core = { path = "../core" }
 
 thiserror = "1.0.40"
 
-rusqlite = { version = "0.29.0", features = ["bundled"] }
+diesel = { version = "2.0.0", features = ["sqlite"] }
+diesel_migrations = "2.0.0"
 
 async-trait = "0.1"
 

@@ -6,54 +6,113 @@ pub struct SyncRequest {
 }
 
 pub trait MetaServerEmulator {
-    fn sync(&self, request: SyncRequest) -> Vec<KvLogEvent>;
+    fn sync(&mut self, request: SyncRequest) -> Vec<KvLogEvent>;
     fn send(&mut self, event: &KvLogEvent);
 }
 
 pub mod sqlite_meta_server {
-    use meta_secret_core::crypto::keys::KeyManager;
-    use rusqlite::{Connection, Result};
+    use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl};
+    use diesel::sqlite::SqliteConnection;
+
     use meta_secret_core::crypto::key_pair::KeyPair;
+    use meta_secret_core::crypto::keys::KeyManager;
     use meta_secret_core::node::db::commit_log;
-    use meta_secret_core::node::db::commit_log::KvLogEvent;
+    use meta_secret_core::node::db::commit_log::{KvLogEvent, store_names};
+    use crate::models::{DbLogEvent, NewDbLogEvent};
+    use crate::schema::db_commit_log as schema_log;
+    use crate::schema::db_commit_log::dsl;
+
+    use crate::server::meta_server::{MetaServerEmulator, SyncRequest};
 
     pub struct SqliteMockServer {
         km: KeyManager,
-        //conn: Connection,
+        conn: SqliteConnection,
     }
 
     impl SqliteMockServer {
-        pub fn new() -> Result<Self> {
+        /// conn_url="file:///tmp/test.db"
+        pub fn new(conn_url: &str) -> Self {
             let km = KeyManager::generate();
-            let conn = Connection::open_in_memory()?;
-
-            let create_commit_log_table =
-                "CREATE TABLE commit_log (
-                    id    INTEGER PRIMARY KEY,
-                    event  TEXT NOT NULL
-                )";
-            conn.execute(create_commit_log_table, () /*empty list of parameters.*/)?;
+            let mut conn = SqliteConnection::establish(conn_url).unwrap();
 
             let genesis_event: KvLogEvent = commit_log::generate_genesis_event(&km.dsa.public_key());
-            let genesis_event_json = serde_json::to_string(&genesis_event).unwrap();
+            let db_genesis_event = NewDbLogEvent::from(&genesis_event);
 
-            conn.execute(
-                "INSERT INTO commit_log (event) VALUES (?1)",
-                [genesis_event_json.as_str()],
-            )?;
+            diesel::insert_into(schema_log::table)
+                .values(&db_genesis_event)
+                .execute(&mut conn)
+                .expect("Error saving genesis event");
 
-            let mut stmt = conn.prepare("SELECT event FROM commit_log")?;
-            let rows = stmt.query_map([], |row| row.get(0))?;
-
-            let mut events: Vec<String> = Vec::new();
-
-            for row in rows {
-                events.push(row?);
+            Self {
+                km,
+                conn,
             }
+        }
+    }
 
-            println!("{:?}", events);
+    impl SqliteMockServer {
+        fn find_genesis_event(&mut self) -> KvLogEvent {
+            let db_genesis_evt = dsl::db_commit_log
+                .filter(dsl::store.eq(store_names::GENESIS))
+                .first::<DbLogEvent>(&mut self.conn)
+                .expect("Genesis event must exists");
+            KvLogEvent::from(&db_genesis_evt)
+        }
 
-            Ok(Self { km })
+        fn get_vaults_index(&mut self) -> Vec<KvLogEvent> {
+            let db_vaults_idx = dsl::db_commit_log
+                .filter(dsl::store.eq(store_names::VAULTS_IDX))
+                .load::<DbLogEvent>(&mut self.conn)
+                .expect("Vaults index not exists");
+
+            let vaults_idx: Vec<KvLogEvent> = db_vaults_idx
+                .into_iter()
+                .map(|db_evt| KvLogEvent::from(&db_evt))
+                .collect();
+            vaults_idx
+        }
+
+        fn get_empty_vault_commit_log(&mut self) -> Vec<KvLogEvent> {
+            let genesis_event = self.find_genesis_event();
+            let vaults_idx = self.get_vaults_index();
+
+            let mut commit_log = vec![];
+            commit_log.push(genesis_event);
+            commit_log.extend(vaults_idx);
+
+            commit_log
+        }
+    }
+
+    impl MetaServerEmulator for SqliteMockServer {
+        fn sync(&mut self, request: SyncRequest) -> Vec<KvLogEvent> {
+            let vault_and_tail = (request.vault_id, request.tail_id);
+
+            match vault_and_tail {
+                (Some(request_vault_id), None) => {
+                    let vault_events: Vec<DbLogEvent> = dsl::db_commit_log
+                        .filter(dsl::vault_id.eq(request_vault_id))
+                        .load::<DbLogEvent>(&mut self.conn)
+                        .expect("Error loading vault events");
+
+                    if vault_events.is_empty() {
+                        self.get_empty_vault_commit_log()
+                    } else {
+                        let vaults_idx: Vec<KvLogEvent> = vault_events
+                            .into_iter()
+                            .map(|db_evt| KvLogEvent::from(&db_evt))
+                            .collect();
+                        vaults_idx
+                    }
+                }
+                _ => {
+                    self.get_empty_vault_commit_log()
+                }
+            }
+        }
+
+        fn send(&mut self, event: &KvLogEvent) {
+            todo!()
         }
     }
 }
@@ -61,27 +120,25 @@ pub mod sqlite_meta_server {
 pub mod in_mem_meta_server {
     use std::collections::HashMap;
     use std::rc::Rc;
+
     use meta_secret_core::crypto::key_pair::KeyPair;
     use meta_secret_core::crypto::keys::KeyManager;
     use meta_secret_core::node::db::commit_log;
     use meta_secret_core::node::db::commit_log::{AppOperation, AppOperationType, KvLogEvent};
+
     use crate::server::meta_server::{MetaServerEmulator, SyncRequest};
 
-    pub struct MockServer {
+    pub struct InMemMockServer {
         km: KeyManager,
         // vault name -> commit log
         db: HashMap<String, Vec<KvLogEvent>>,
         server_events: Vec<KvLogEvent>,
     }
 
-    impl MockServer {
+    impl InMemMockServer {
         pub fn new() -> Self {
             let km = KeyManager::generate();
             let genesis_event: KvLogEvent = commit_log::generate_genesis_event(&km.dsa.public_key());
-            //let vault_name = "test";
-            //let vault_id = to_id(vault_name.to_string());
-            //let vaults_index_event = commit_log::vaults_index_event(&vault_id);
-            //db.insert(vault_name.to_string(), test_vault_commit_log);
 
             let server_events = vec![genesis_event];
             let db = HashMap::new();
@@ -90,8 +147,8 @@ pub mod in_mem_meta_server {
         }
     }
 
-    impl MetaServerEmulator for MockServer {
-        fn sync(&self, request: SyncRequest) -> Vec<KvLogEvent> {
+    impl MetaServerEmulator for InMemMockServer {
+        fn sync(&mut self, request: SyncRequest) -> Vec<KvLogEvent> {
             let vault_and_tail = (request.vault_id, request.tail_id);
             match vault_and_tail {
                 (Some(vault_id), None) => {
@@ -204,15 +261,5 @@ pub mod in_mem_meta_server {
                 }
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use crate::server::meta_server::sqlite_meta_server::SqliteMockServer;
-
-    #[test]
-    fn test() {
-        let server = SqliteMockServer::new();
     }
 }
