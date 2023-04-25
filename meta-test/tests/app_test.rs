@@ -6,12 +6,13 @@ mod test {
     use meta_secret_core::models::DeviceInfo;
     use meta_secret_core::node::db::commit_log;
     use meta_secret_core::node::db::commit_log::{AppOperation, AppOperationType};
-    use meta_server_emulator::server::meta_server::in_mem_meta_server::MockServer;
+    use meta_server_emulator::server::meta_server::in_mem_meta_server::InMemMockServer;
     use meta_server_emulator::server::meta_server::{MetaServerEmulator, SyncRequest};
+    use meta_server_emulator::server::meta_server::sqlite_meta_server::SqliteMockServer;
 
     #[test]
     fn app_full_test() {
-        let mut server = MockServer::new();
+        let mut server = InMemMockServer::new();
         let request = SyncRequest { vault_id: None, tail_id: None };
         let commit_log = server.sync(request);
 

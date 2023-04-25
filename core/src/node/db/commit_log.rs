@@ -1,8 +1,8 @@
-use crate::crypto;
-use crate::crypto::utils::to_id;
 use std::collections::HashSet;
 use std::rc::Rc;
 
+use crate::crypto;
+use crate::crypto::utils::to_id;
 use crate::models::{Base64EncodedText, UserSignature, VaultDoc};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -36,6 +36,12 @@ pub enum LogCommandError {
     },
 }
 
+pub mod store_names {
+    pub const GENESIS: &str = "genesis";
+    pub const COMMIT_LOG: &str = "commit_log";
+    pub const VAULTS_IDX: &str = "vaults_idx";
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub enum AppOperation {
     #[serde(rename = "Genesis")]
@@ -64,8 +70,8 @@ pub struct KvLogEvent {
     pub cmd_type: AppOperationType,
     #[serde(rename = "valType")]
     pub val_type: KvValueType,
-    #[serde(rename = "value", skip_serializing_if = "Option::is_none")]
-    pub value: Option<String>,
+    #[serde(rename = "value")]
+    pub value: String,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
@@ -99,7 +105,7 @@ pub fn accept_event_sign_up_request(event: &KvLogEvent) -> Vec<KvLogEvent> {
         panic!("Invalid request");
     }
 
-    let user_sig: UserSignature = serde_json::from_str(event.value.clone().unwrap().as_str()).unwrap();
+    let user_sig: UserSignature = serde_json::from_str(event.value.clone().as_str()).unwrap();
     accept_sign_up_request(&event.key, &user_sig)
 }
 
@@ -115,22 +121,26 @@ pub fn accept_sign_up_request(prev: &KvKey, user_sig: &UserSignature) -> Vec<KvL
     };
 
     let sign_up_event = KvLogEvent {
-        key: generate_key(prev.id.clone(), Some(vault_id)),
+        key: generate_commit_log_key(prev.id.clone(), Some(vault_id)),
         cmd_type: AppOperationType::Update(AppOperation::SignUp),
         val_type: KvValueType::UserSignature,
-        value: Some(serde_json::to_string(&vault).unwrap()),
+        value: serde_json::to_string(&vault).unwrap(),
     };
 
     vec![sign_up_event, vaults_index]
 }
 
-pub fn generate_default_key() -> KvKey {
-    generate_key("-1".to_string(), None)
+pub fn generate_genesis_key() -> KvKey {
+    generate_key(store_names::GENESIS, "-1".to_string(), None)
 }
 
-pub fn generate_key(prev_id: String, vault_id: Option<String>) -> KvKey {
+pub fn generate_commit_log_key(prev_id: String, vault_id: Option<String>) -> KvKey {
+    generate_key(store_names::COMMIT_LOG, prev_id, vault_id)
+}
+
+pub fn generate_key(store_name: &str, prev_id: String, vault_id: Option<String>) -> KvKey {
     KvKey {
-        store: "commit_log".to_string(),
+        store: store_name.to_string(),
         id: crypto::utils::rand_uuid_b64_url_enc().base64_text,
         prev_id,
         vault_id,
@@ -158,33 +168,26 @@ pub fn accept_join_request(request: &KvLogEvent, vault: &VaultDoc) -> KvLogEvent
         maybe_error = Some("Not allowed val_type");
     }
 
-    if let None = request.value {
-        maybe_error = Some("Empty user signature");
-    }
-
     if let Some(err_msg) = maybe_error {
         return KvLogEvent {
             key: generate_next(&request.key),
             cmd_type: AppOperationType::Update(AppOperation::JoinCluster),
             val_type: KvValueType::Error,
-            value: Some(serde_json::from_str(err_msg).unwrap()),
+            value: serde_json::from_str(err_msg).unwrap(),
         };
     }
 
-    if let Some(user_sig_str) = request.value.clone() {
-        let user_sig: UserSignature = serde_json::from_str(user_sig_str.as_str()).unwrap();
+    let user_sig_str = request.value.as_str();
+    let user_sig: UserSignature = serde_json::from_str(user_sig_str).unwrap();
 
-        let mut new_vault = vault.clone();
-        new_vault.signatures.push(user_sig);
+    let mut new_vault = vault.clone();
+    new_vault.signatures.push(user_sig);
 
-        KvLogEvent {
-            key: generate_next(&request.key),
-            cmd_type: AppOperationType::Update(AppOperation::JoinCluster),
-            val_type: KvValueType::Vault,
-            value: Some(serde_json::to_string(&new_vault).unwrap()),
-        }
-    } else {
-        todo!("Impossible!")
+    KvLogEvent {
+        key: generate_next(&request.key),
+        cmd_type: AppOperationType::Update(AppOperation::JoinCluster),
+        val_type: KvValueType::Vault,
+        value: serde_json::to_string(&new_vault).unwrap(),
     }
 }
 
@@ -203,7 +206,7 @@ pub fn transform(commit_log: Rc<Vec<KvLogEvent>>) -> Result<MetaDb, LogCommandEr
         match index {
             0 => {
                 if event.cmd_type == AppOperationType::Update(AppOperation::Genesis) {
-                    let server_pk_str = event.value.as_ref().unwrap().as_str();
+                    let server_pk_str = event.value.as_str();
                     let server_pk: Base64EncodedText = serde_json::from_str(server_pk_str).unwrap();
                     meta_db.meta_store.server_pk = Some(server_pk);
                 } else {
@@ -219,29 +222,18 @@ pub fn transform(commit_log: Rc<Vec<KvLogEvent>>) -> Result<MetaDb, LogCommandEr
 
                 AppOperationType::Update(op) => match op {
                     AppOperation::Genesis => {}
-                    AppOperation::SignUp => match event.value.as_ref() {
-                        None => {
-                            panic!("Invalid request");
-                        }
-                        Some(vault_str) => {
-                            let vault: VaultDoc = serde_json::from_str(vault_str.as_str()).unwrap();
-                            meta_store.vault = Some(vault);
-                        }
-                    },
-                    AppOperation::JoinCluster => match event.value.as_ref() {
-                        None => {}
-                        Some(vault_str) => {
-                            let vault: VaultDoc = serde_json::from_str(vault_str.as_str()).unwrap();
-                            meta_store.vault = Some(vault);
-                        }
-                    },
-                    AppOperation::VaultsIndex => match event.value.as_ref() {
-                        None => {}
-                        Some(vault_id_str) => {
-                            let vault_id: String = serde_json::from_str(vault_id_str.as_str()).unwrap();
-                            meta_store.vaults_index.insert(vault_id);
-                        }
-                    },
+                    AppOperation::SignUp => {
+                        let vault: VaultDoc = serde_json::from_str(event.value.as_str()).unwrap();
+                        meta_store.vault = Some(vault);
+                    }
+                    AppOperation::JoinCluster => {
+                        let vault: VaultDoc = serde_json::from_str(event.value.as_str()).unwrap();
+                        meta_store.vault = Some(vault);
+                    }
+                    AppOperation::VaultsIndex => {
+                        let vault_id: String = serde_json::from_str(event.value.as_str()).unwrap();
+                        meta_store.vaults_index.insert(vault_id);
+                    }
                 },
             },
         }
@@ -252,19 +244,19 @@ pub fn transform(commit_log: Rc<Vec<KvLogEvent>>) -> Result<MetaDb, LogCommandEr
 
 pub fn generate_genesis_event(value: &Base64EncodedText) -> KvLogEvent {
     KvLogEvent {
-        key: generate_default_key(),
+        key: generate_genesis_key(),
         cmd_type: AppOperationType::Update(AppOperation::Genesis),
         val_type: KvValueType::DsaPublicKey,
-        value: Some(serde_json::to_string(&value).unwrap()),
+        value: serde_json::to_string(&value).unwrap(),
     }
 }
 
 pub fn vaults_index_event(prev_id: String, vault_id: String) -> KvLogEvent {
     KvLogEvent {
-        key: generate_key(prev_id, Some(vault_id.clone())),
+        key: generate_commit_log_key(prev_id, Some(vault_id.clone())),
         cmd_type: AppOperationType::Update(AppOperation::VaultsIndex),
         val_type: KvValueType::String,
-        value: Some(serde_json::to_string(vault_id.as_str()).unwrap()),
+        value: serde_json::to_string(vault_id.as_str()).unwrap(),
     }
 }
 
@@ -272,10 +264,10 @@ pub fn sign_up_request(prev_key: &KvKey, user_sig: &UserSignature) -> KvLogEvent
     let vault_id = to_id(user_sig.vault_name.clone());
 
     KvLogEvent {
-        key: generate_key(prev_key.prev_id.clone(), Some(vault_id.base64_text)),
+        key: generate_commit_log_key(prev_key.prev_id.clone(), Some(vault_id.base64_text)),
         cmd_type: AppOperationType::Request(AppOperation::SignUp),
         val_type: KvValueType::UserSignature,
-        value: Some(serde_json::to_string(user_sig).unwrap()),
+        value: serde_json::to_string(user_sig).unwrap(),
     }
 }
 
@@ -284,7 +276,7 @@ pub fn join_cluster_request(prev_key: &KvKey, user_sig: &UserSignature) -> KvLog
         key: generate_next(prev_key),
         cmd_type: AppOperationType::Request(AppOperation::JoinCluster),
         val_type: KvValueType::UserSignature,
-        value: Some(serde_json::to_string(user_sig).unwrap()),
+        value: serde_json::to_string(user_sig).unwrap(),
     }
 }
 
@@ -297,7 +289,7 @@ pub mod test {
     use crate::crypto::keys::KeyManager;
     use crate::crypto::utils::to_id;
     use crate::models::{DeviceInfo, VaultDoc};
-    use crate::node::db::commit_log::{accept_sign_up_request, generate_genesis_event, join_cluster_request, sign_up_request, transform, vaults_index_event, KvLogEvent, LogCommandError, accept_join_request};
+    use crate::node::db::commit_log::{accept_join_request, accept_sign_up_request, generate_genesis_event, join_cluster_request, KvLogEvent, LogCommandError, sign_up_request, transform, vaults_index_event};
 
     #[test]
     fn test_vaults_index() -> Result<(), LogCommandError> {
