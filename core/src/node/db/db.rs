@@ -9,16 +9,24 @@ pub trait SaveCommand<T> {
 }
 
 #[async_trait(? Send)]
-pub trait GetCommand<T> {
-    type Error: std::error::Error;
-    async fn get(&self, key: &str) -> Result<Option<T>, Self::Error>;
-}
-
-#[async_trait(? Send)]
 pub trait FindQuery<T> {
     type Error: std::error::Error;
 
     async fn find(&self, key: &str) -> Result<Vec<T>, Self::Error>;
+}
+
+#[async_trait(? Send)]
+pub trait FindOneQuery<T> {
+    type Error: std::error::Error;
+
+    async fn find_one(&self, key: &str) -> Result<Option<T>, Self::Error>;
+}
+
+#[async_trait(? Send)]
+pub trait FindByAttrQuery<T> {
+    type Error: std::error::Error;
+
+    async fn find_by(&self, attr_name: &str) -> Result<Vec<T>, Self::Error>;
 }
 
 #[async_trait(? Send)]
@@ -28,11 +36,11 @@ pub trait FindAllQuery<T> {
     async fn find_all(&self) -> Result<Vec<T>, Self::Error>;
 }
 
-pub trait UserCredentialsRepo: SaveCommand<UserCredentials> + GetCommand<UserCredentials> {}
+pub trait UserCredentialsRepo: SaveCommand<UserCredentials> + FindQuery<UserCredentials> {}
 
-pub trait MetaVaultRepo: SaveCommand<MetaVault> + GetCommand<MetaVault> {}
+pub trait MetaVaultRepo: SaveCommand<MetaVault> + FindQuery<MetaVault> {}
 
-pub trait UserPasswordsRepo: SaveCommand<UserPasswordEntity> + GetCommand<UserPasswordEntity> {}
+pub trait UserPasswordsRepo: SaveCommand<UserPasswordEntity> + FindQuery<UserPasswordEntity> {}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserPasswordEntity {

@@ -1,4 +1,3 @@
-
 #[cfg(test)]
 mod test {
     use diesel::{Connection, SqliteConnection};
@@ -7,7 +6,8 @@ mod test {
     use meta_server_emulator::server::meta_server::sqlite_meta_server::SqliteMockServer;
     use meta_server_emulator::server::meta_server::{MetaServerEmulator, SyncRequest};
 
-    pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("../meta-server-emulator/migrations");
+    pub const MIGRATIONS: EmbeddedMigrations =
+        embed_migrations!("../meta-server-emulator/migrations");
 
     #[test]
     fn test_brand_new_client() {
@@ -17,10 +17,16 @@ mod test {
         conn.run_pending_migrations(MIGRATIONS).unwrap();
 
         let mut server = SqliteMockServer::new(db_url);
-        let request = SyncRequest { vault_id: None, tail_id: None };
+        let request = SyncRequest {
+            vault_id: None,
+            tail_id: None,
+        };
         let commit_log = server.sync(request);
 
         assert_eq!(1, commit_log.len());
-        assert_eq!(AppOperationType::Update(AppOperation::Genesis), commit_log.first().unwrap().cmd_type);
+        assert_eq!(
+            AppOperationType::Update(AppOperation::Genesis),
+            commit_log.first().unwrap().cmd_type
+        );
     }
 }
