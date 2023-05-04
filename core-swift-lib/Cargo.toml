@@ -8,6 +8,7 @@ crate-type = ["cdylib", "lib", "staticlib"]
 name = "meta_secret_core_swift"
 
 [dependencies]
+openssl = { version = "0.10.52", features = ["vendored"] }
 meta-secret-core = { path = "../core"}
 serde_json = "1.0.87"
 serde = { version = "1.0", features = ["derive"] }

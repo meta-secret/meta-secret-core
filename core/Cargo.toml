@@ -15,6 +15,8 @@ name = "meta_secret_core"
 
 [dependencies]
 
+openssl = { version = "0.10.52", features = ["vendored"] }
+
 thiserror = "1.0.37"
 anyhow = "1.0.66"
 

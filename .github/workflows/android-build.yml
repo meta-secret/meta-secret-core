@@ -1,0 +1,29 @@
+name: "Core Android Build"
+
+on:
+  workflow_dispatch:
+
+jobs:
+  android-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo
+            core/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: build
+        run: |
+          cargo install cross --git https://github.com/cross-rs/cross
+          cross build --release --lib --target aarch64-linux-android1
+
+      - name: make artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: core-build
+          path: target/aarch64-linux-android/release/
