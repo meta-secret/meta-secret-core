@@ -1,11 +1,11 @@
 [package]
-name = "meta-secret-core-swift"
+name = "meta_secret_core_mobile"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "lib", "staticlib"]
-name = "meta_secret_core_swift"
+name = "meta_secret_core_mobile"
 
 [dependencies]
 meta-secret-core = { path = "../core"}
@@ -17,3 +17,4 @@ base64 = "0.20.0-alpha.1"
 sha2 = "0.10.6"
 hex = "0.4"
 anyhow = "1.0.66"
+jni = "0.5.2"
