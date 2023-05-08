@@ -27,7 +27,7 @@ pub fn generate_genesis_event_with_key(key: &KvKey, server_key: &Base64EncodedTe
         key: key.clone(),
         cmd_type: AppOperationType::Update(AppOperation::Genesis),
         val_type: KvValueType::DsaPublicKey,
-        value: serde_json::to_value(&server_key).unwrap(),
+        value: serde_json::to_value(server_key).unwrap(),
     }
 }
 
@@ -36,7 +36,7 @@ pub fn generate_genesis_event(vault_name: &str, server_key: &Base64EncodedText) 
         key: generate_genesis_key(vault_name),
         cmd_type: AppOperationType::Update(AppOperation::Genesis),
         val_type: KvValueType::DsaPublicKey,
-        value: serde_json::to_value(&server_key).unwrap(),
+        value: serde_json::to_value(server_key).unwrap(),
     }
 }
 

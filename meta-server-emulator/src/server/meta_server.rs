@@ -1,6 +1,11 @@
 use meta_secret_core::node::db::models::KvLogEvent;
 
 pub struct SyncRequest {
+    pub vault: Option<VaultSyncRequest>,
+    pub vaults_index: Option<String>
+}
+
+pub struct VaultSyncRequest {
     pub vault_id: Option<String>,
     pub tail_id: Option<String>,
 }
@@ -11,24 +16,21 @@ pub trait MetaServerEmulator {
 }
 
 pub mod sqlite_meta_server {
-    use std::rc::Rc;
-
-    use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl};
+    use diesel::{Connection, ExpressionMethods, QueryDsl, QueryResult, RunQueryDsl};
     use diesel::sqlite::SqliteConnection;
 
     use meta_secret_core::crypto::key_pair::KeyPair;
     use meta_secret_core::crypto::keys::KeyManager;
-    use meta_secret_core::node::db::commit_log;
+    use meta_secret_core::models::Base64EncodedText;
     use meta_secret_core::node::db::commit_log::store_names;
-    use meta_secret_core::node::db::events::genesis;
-    use meta_secret_core::node::db::events::join::accept_join_request;
+    use meta_secret_core::node::db::events::{genesis, index};
     use meta_secret_core::node::db::events::sign_up::accept_event_sign_up_request;
     use meta_secret_core::node::db::models::{AppOperation, AppOperationType, KeyIdGen, KvKeyId, KvLogEvent};
 
     use crate::models::{DbLogEvent, NewDbLogEvent};
     use crate::schema::db_commit_log as schema_log;
     use crate::schema::db_commit_log::dsl;
-    use crate::server::meta_server::{MetaServerEmulator, SyncRequest};
+    use crate::server::meta_server::{MetaServerEmulator, SyncRequest, VaultSyncRequest};
 
     pub struct SqliteMockServer {
         km: KeyManager,
@@ -41,6 +43,10 @@ pub mod sqlite_meta_server {
             let km = KeyManager::generate();
             let conn = SqliteConnection::establish(conn_url).unwrap();
             Self { km, conn }
+        }
+
+        pub fn server_pk(&self) -> Base64EncodedText {
+            self.km.dsa.public_key()
         }
     }
 
@@ -55,16 +61,44 @@ pub mod sqlite_meta_server {
         }
          */
 
-        fn get_vaults_index(&mut self) -> Vec<KvLogEvent> {
-            let db_vaults_idx = dsl::db_commit_log
-                .filter(dsl::store.eq(store_names::VAULTS_IDX))
-                .load::<DbLogEvent>(&mut self.conn)
-                .expect("Vaults index not exists");
+        fn get_vaults_index_from_beginning(&mut self) -> Vec<KvLogEvent> {
+            let genesis_id = index::generate_vaults_genesis_key_id();
+            self.get_vaults_index(genesis_id.key_id.as_str())
+        }
 
-            let vaults_idx: Vec<KvLogEvent> = db_vaults_idx
-                .into_iter()
-                .map(|db_evt| KvLogEvent::from(&db_evt))
-                .collect();
+        fn get_vaults_index(&mut self, tail_id: &str) -> Vec<KvLogEvent> {
+
+            let mut curr_tail_id = tail_id.to_string();
+            let mut vaults_idx = vec![];
+            loop {
+                let db_vaults_idx_result = dsl::db_commit_log
+                    .filter(dsl::key_id.eq(curr_tail_id.clone()))
+                    .first::<DbLogEvent>(&mut self.conn);
+
+                match db_vaults_idx_result {
+                    Ok(db_vaults_idx) => {
+                        let ids_record = KvLogEvent::from(&db_vaults_idx);
+                        vaults_idx.push(ids_record);
+                        curr_tail_id = KvKeyId::generate_next(curr_tail_id.as_str()).key_id.clone();
+                    }
+                    Err(_) => {
+                        break;
+                    }
+                }
+            }
+
+            //check if genesis event exists for vaults index
+            if vaults_idx.is_empty() {
+                //create a genesis event and save into the database
+                let vaults_genesis_event = index::generate_vaults_genesis_event(&self.km.dsa.public_key());
+                diesel::insert_into(schema_log::table)
+                    .values(&NewDbLogEvent::from(&vaults_genesis_event))
+                    .execute(&mut self.conn)
+                    .expect("Error saving vaults genesis event");
+
+                vaults_idx.push(vaults_genesis_event);
+            }
+
             vaults_idx
         }
 
@@ -80,7 +114,7 @@ pub mod sqlite_meta_server {
                 .execute(&mut self.conn)
                 .expect("Error saving genesis event");
 
-            let vaults_idx = self.get_vaults_index();
+            let vaults_idx = self.get_vaults_index_from_beginning();
 
             let mut commit_log = vec![];
             commit_log.push(genesis_event);
@@ -92,27 +126,52 @@ pub mod sqlite_meta_server {
 
     impl MetaServerEmulator for SqliteMockServer {
         fn sync(&mut self, request: SyncRequest) -> Vec<KvLogEvent> {
-            let vault_and_tail = (request.vault_id, request.tail_id);
+            let mut commit_log = vec![];
 
-            match vault_and_tail {
-                (Some(request_vault_id), None) => {
-                    let vault_events: Vec<DbLogEvent> = dsl::db_commit_log
-                        .filter(dsl::vault_id.eq(request_vault_id))
-                        .load::<DbLogEvent>(&mut self.conn)
-                        .expect("Error loading vault events");
+            match request.vaults_index {
+                None => {
+                    commit_log.extend(self.get_vaults_index_from_beginning());
+                    return commit_log;
+                }
+                Some(index_id) => {
+                    commit_log.extend(self.get_vaults_index(index_id.as_str()));
+                    return commit_log;
+                }
+            }
 
-                    if vault_events.is_empty() {
-                        self.get_empty_vault_commit_log(request_vault_id.as_str())
-                    } else {
-                        let vaults_idx: Vec<KvLogEvent> = vault_events
-                            .into_iter()
-                            .map(|db_evt| KvLogEvent::from(&db_evt))
-                            .collect();
-                        vaults_idx
+            match request.vault {
+                None => {
+
+                }
+                Some(vault_request) => {
+                    let vault_and_tail = (vault_request.vault_id, vault_request.tail_id);
+
+                    match vault_and_tail {
+                        (Some(request_vault_id), None) => {
+                            let vault_events: Vec<DbLogEvent> = dsl::db_commit_log
+                                .filter(dsl::vault_id.eq(request_vault_id.clone()))
+                                .load::<DbLogEvent>(&mut self.conn)
+                                .expect("Error loading vault events");
+
+                            if vault_events.is_empty() {
+                                let empty_commit_log = self.get_empty_vault_commit_log(request_vault_id.as_str());
+                                commit_log.extend(empty_commit_log)
+                            } else {
+                                let vaults_idx: Vec<KvLogEvent> = vault_events
+                                    .into_iter()
+                                    .map(|db_evt| KvLogEvent::from(&db_evt))
+                                    .collect();
+                                commit_log.extend(vaults_idx);
+                            }
+                        }
+                        _ => {
+                            println!("no need to do any actions");
+                        }
                     }
                 }
-                _ => vec![],
             }
+
+            commit_log
         }
 
         /// Handle request: all types of requests will be handled and the actions will be executed accordingly
@@ -123,6 +182,11 @@ pub mod sqlite_meta_server {
                         AppOperation::Genesis => {
                             panic!("Not allowed");
                         }
+
+                        AppOperation::VaultsIndex => {
+                            panic!("Not allowed");
+                        }
+
                         AppOperation::SignUp => {
                             // Handled by the server. Add a vault to the system
                             let sign_up_events = accept_event_sign_up_request(event);
@@ -159,7 +223,8 @@ pub mod sqlite_meta_server {
 
                         AppOperation::JoinCluster => {
                             // Just save a request to handle by a vault owner
-                            match event.key.vault_id.clone() {
+                            todo!("not implemented yet");
+                            /*match event.key.vault_id.clone() {
                                 None => {
                                     panic!("Invalid event");
                                 }
@@ -183,10 +248,7 @@ pub mod sqlite_meta_server {
                                         }
                                     }
                                 }
-                            }
-                        }
-                        AppOperation::VaultsIndex => {
-                            panic!("Not allowed");
+                            }*/
                         }
                     }
                 }
@@ -196,6 +258,8 @@ pub mod sqlite_meta_server {
                         panic!("Invalid event");
                     }
                     Some(vault_id) => {
+                        todo!("not implemented yet")
+                        /*
                         let maybe_db_vault = self.db.get(vault_id.as_str());
                         match maybe_db_vault {
                             None => {
@@ -206,7 +270,7 @@ pub mod sqlite_meta_server {
                                 new_commit_log.push(event.clone());
                                 self.db.insert(vault_id, new_commit_log);
                             }
-                        }
+                        }*/
                     }
                 },
             }

@@ -1,11 +1,5 @@
 use meta_secret_core::node::db::models::{KvKey, KvLogEvent};
 
-pub fn put(log_event: KvLogEvent) {}
-
-pub fn get(key: KvKey) -> Option<KvLogEvent> {
-    None
-}
-
 mod commit_log_repo {
     use async_trait::async_trait;
     use meta_secret_core::node::db::db::{FindOneQuery, FindQuery, SaveCommand};

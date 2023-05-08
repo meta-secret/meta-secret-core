@@ -116,6 +116,8 @@ pub trait KeyIdGen {
     fn object_foundation(vault_id: &str, store: &str) -> Self;
 
     fn next(&self) -> Self;
+    fn generate_next(curr_id: &str) -> Self;
+
     fn from_prev_id(prev_id: &str) -> Self;
 }
 
@@ -148,6 +150,14 @@ impl KeyIdGen for KvKeyId {
         Self {
             key_id: curr_id,
             prev_key_id: prev_id.to_string(),
+        }
+    }
+
+    fn generate_next(curr_id: &str) -> Self {
+        let next_id = utils::to_id(curr_id).base64_text;
+        Self {
+            key_id: next_id,
+            prev_key_id: curr_id.to_string(),
         }
     }
 

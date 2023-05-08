@@ -1,7 +1,7 @@
 use crate::crypto::utils;
 use crate::models::{UserSignature, VaultDoc};
 use crate::node::db::commit_log::{generate_commit_log_key, store_names};
-use crate::node::db::events::index::vaults_index_event;
+use crate::node::db::events::index::vaults_index_created_event;
 use crate::node::db::models::{AppOperation, AppOperationType, KeyIdGen, KvKey, KvKeyId, KvLogEvent, KvValueType};
 
 pub fn accept_event_sign_up_request(event: &KvLogEvent) -> Vec<KvLogEvent> {
@@ -35,7 +35,7 @@ pub fn accept_sign_up_request(prev: &KvKey, user_sig: &UserSignature) -> Vec<KvL
         value: serde_json::to_value(&vault).unwrap(),
     };
 
-    let vaults_index = vaults_index_event(&prev.id, vault_id.as_str());
+    let vaults_index = vaults_index_created_event(&prev.id, vault_id.as_str());
 
     vec![sign_up_event, vaults_index]
 }
