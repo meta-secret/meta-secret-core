@@ -6,7 +6,7 @@ use crate::node::db::models::{KeyIdGen, KvLogEvent, LogCommandError, MetaDb};
 async fn sync<R: CommitLogRepo>(repo: R, meta_db: MetaDb) -> Result<MetaDb, LogCommandError> {
     let mut log_events: Vec<KvLogEvent> = vec![];
 
-    let mut tail_id = meta_db.meta_store.tail_id.clone().unwrap();
+    let mut tail_id = meta_db.vault_store.tail_id.clone().unwrap();
 
     loop {
         // update MetaDb with commit log events

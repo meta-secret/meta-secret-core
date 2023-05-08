@@ -4,13 +4,11 @@ use serde_json::Value;
 use crate::crypto::utils;
 use crate::models::{Base64EncodedText, VaultDoc};
 
-pub const PRIMORDIAL: &str = "-1";
-
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MetaDb {
-    pub meta_store: MetaStore,
-    pub vaults: VaultsStore
+    pub vault_store: VaultStore,
+    pub vaults: GlobalIndexStore
 }
 
 pub struct DbLog {
@@ -19,7 +17,7 @@ pub struct DbLog {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct MetaStore {
+pub struct VaultStore {
     pub tail_id: Option<KvKeyId>,
     pub server_pk: Option<Base64EncodedText>,
     pub vault: Option<VaultDoc>,
@@ -27,9 +25,9 @@ pub struct MetaStore {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct VaultsStore {
+pub struct GlobalIndexStore {
     pub tail_id: Option<KvKeyId>,
-    pub vaults_index: HashSet<String>
+    pub global_index: HashSet<String>
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -47,14 +45,14 @@ pub enum LogCommandError {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub enum AppOperation {
-    #[serde(rename = "Genesis")]
-    Genesis,
+    #[serde(rename = "VaultFormation")]
+    VaultFormation,
     #[serde(rename = "SignUp")]
     SignUp,
     #[serde(rename = "JoinCluster")]
     JoinCluster,
-    #[serde(rename = "VaultsIndex")]
-    VaultsIndex,
+    #[serde(rename = "GlobalIndex")]
+    GlobalIndexx,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
@@ -110,8 +108,8 @@ pub struct KvKeyId {
 }
 
 pub trait KeyIdGen {
-    fn genesis(vault_name: &str) -> Self;
-    fn genesis_from_vault_id(vault_id: &str) -> Self;
+    //fn genesis(vault_name: &str) -> Self;
+    //fn genesis_from_vault_id(vault_id: &str) -> Self;
 
     fn object_foundation(vault_id: &str, store: &str) -> Self;
 
@@ -122,25 +120,14 @@ pub trait KeyIdGen {
 }
 
 impl KeyIdGen for KvKeyId {
-    fn genesis(vault_name: &str) -> Self {
-        let id = utils::to_id(vault_name).base64_text;
-        Self::genesis_from_vault_id(id.as_str())
-    }
 
-    fn genesis_from_vault_id(vault_id: &str) -> Self {
-        Self {
-            key_id: vault_id.to_string(),
-            prev_key_id: PRIMORDIAL.to_string(),
-        }
-    }
-
-    fn object_foundation(vault_id: &str, object: &str) -> Self {
-        let full_name = format!("{}:{}", vault_id, object);
+    fn object_foundation(object_id: &str, object_type: &str) -> Self {
+        let full_name = format!("{}:{}", object_id, object_type);
         let id = utils::to_id(full_name.as_str()).base64_text;
 
         Self {
             key_id: id,
-            prev_key_id: vault_id.to_string(),
+            prev_key_id: object_id.to_string(),
         }
     }
 

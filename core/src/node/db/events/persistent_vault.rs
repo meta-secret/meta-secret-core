@@ -1,40 +1,27 @@
+use crate::crypto::utils;
 use crate::models::Base64EncodedText;
 use crate::node::db::commit_log::store_names;
 use crate::node::db::models::{AppOperation, AppOperationType, KeyIdGen, KvKey, KvKeyId, KvLogEvent, KvValueType};
 
-pub fn generate_genesis_key_from_vault_id(vault_id: &str) -> KvKey {
-    let id = KvKeyId::genesis_from_vault_id(vault_id);
+pub fn vault_formation_key_id(vault_id: &str) -> KvKey {
+    let id = KvKeyId::object_foundation(vault_id, store_names::VAULT);
 
     KvKey  {
-        store: store_names::GENESIS.to_string(),
+        store: store_names::VAULT.to_string(),
         id,
         vault_id: Some(vault_id.to_string()),
     }
 }
 
-pub fn generate_genesis_key(vault_name: &str) -> KvKey {
-    let id = KvKeyId::genesis(vault_name);
-
-    KvKey  {
-        store: store_names::GENESIS.to_string(),
-        id: id.clone(),
-        vault_id: Some(id.key_id),
-    }
+pub fn vault_formation_key_id_from_vault_name(vault_name: &str) -> KvKey {
+    let vault_id = utils::to_id(vault_name).base64_text;
+    vault_formation_key_id(vault_id.as_str())
 }
 
-pub fn generate_genesis_event_with_key(key: &KvKey, server_key: &Base64EncodedText) -> KvLogEvent {
+pub fn create_vault_formation_event_on_server(vault_name: &str, server_key: &Base64EncodedText) -> KvLogEvent {
     KvLogEvent {
-        key: key.clone(),
-        cmd_type: AppOperationType::Update(AppOperation::Genesis),
-        val_type: KvValueType::DsaPublicKey,
-        value: serde_json::to_value(server_key).unwrap(),
-    }
-}
-
-pub fn generate_genesis_event(vault_name: &str, server_key: &Base64EncodedText) -> KvLogEvent {
-    KvLogEvent {
-        key: generate_genesis_key(vault_name),
-        cmd_type: AppOperationType::Update(AppOperation::Genesis),
+        key: vault_formation_key_id_from_vault_name(vault_name),
+        cmd_type: AppOperationType::Update(AppOperation::VaultFormation),
         val_type: KvValueType::DsaPublicKey,
         value: serde_json::to_value(server_key).unwrap(),
     }
@@ -47,7 +34,7 @@ pub mod test {
     use crate::crypto::keys::KeyManager;
     use crate::crypto::utils;
     use crate::node::db::commit_log::{store_names, transform};
-    use crate::node::db::events::genesis::{generate_genesis_event, generate_genesis_key};
+    use crate::node::db::events::persistent_vault::{generate_genesis_event, generate_genesis_key};
     use crate::node::db::models::LogCommandError;
 
     #[test]
@@ -71,7 +58,7 @@ pub mod test {
 
         let commit_log = vec![genesis_event];
         let meta_db = transform(Rc::new(commit_log))?;
-        assert_eq!(meta_db.meta_store.server_pk, Some(server_km.dsa.public_key()));
+        assert_eq!(meta_db.vault_store.server_pk, Some(server_km.dsa.public_key()));
         Ok(())
     }
 }

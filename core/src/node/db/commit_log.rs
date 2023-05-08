@@ -2,18 +2,15 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 use crate::models::{Base64EncodedText, VaultDoc};
-use crate::node::db::models::{AppOperation, AppOperationType, KeyIdGen, KvKey, KvKeyId, KvLogEvent, LogCommandError, MetaDb, MetaStore, VaultsStore};
+use crate::node::db::events::global_index::generate_global_index_formation_key_id;
+use crate::node::db::models::{AppOperation, AppOperationType, KeyIdGen, KvKey, KvKeyId, KvLogEvent, LogCommandError, MetaDb, GlobalIndexStore, VaultStore};
 
 pub mod store_names {
-    pub const GENESIS: &str = "genesis";
-    pub const COMMIT_LOG: &str = "commit_log";
-    /// An instance of a vault of the user
-    pub const USER_VAULT: &str = "user_vault";
-    pub const VAULTS_IDX: &str = "vaults_idx";
-}
+    pub const GLOBAL_OBJECT_ID: &str = "meta-secret:global";
 
-pub fn generate_commit_log_key(curr_id: &KvKeyId, vault_id: Option<String>) -> KvKey {
-    generate_key(store_names::COMMIT_LOG, curr_id, vault_id)
+    /// An instance of a vault of the user
+    pub const VAULT: &str = "vault";
+    pub const GLOBAL_IDX: &str = "global_idx";
 }
 
 pub fn generate_key(store_name: &str, curr_id: &KvKeyId, vault_id: Option<String>) -> KvKey {
@@ -34,41 +31,36 @@ pub fn generate_next(prev_key: &KvKey) -> KvKey {
 
 /// Apply new events to the database
 pub fn apply(commit_log: Rc<Vec<KvLogEvent>>, mut meta_db: MetaDb) -> Result<MetaDb, LogCommandError> {
-    for (index, event) in commit_log.iter().enumerate() {
-        let mut meta_store = &mut meta_db.meta_store;
+    for (_index, event) in commit_log.iter().enumerate() {
+        let mut meta_store = &mut meta_db.vault_store;
         let vaults_store = &mut meta_db.vaults;
 
-        match index {
-            0 => {
-                if event.cmd_type == AppOperationType::Update(AppOperation::Genesis) {
-                    let server_pk: Base64EncodedText = serde_json::from_value(event.value.clone()).unwrap();
-                    meta_db.meta_store.server_pk = Some(server_pk);
-                } else {
-                    return Err(LogCommandError::IllegalDbState {
-                        err_msg: "Missing genesis event".to_string(),
-                    });
-                }
+        match event.cmd_type {
+            AppOperationType::Request(_op) => {
+                println!("Skip requests");
             }
-            _ => match event.cmd_type {
-                AppOperationType::Request(_op) => {
-                    println!("Skip requests");
-                }
 
-                AppOperationType::Update(op) => match op {
-                    AppOperation::Genesis => {}
-                    AppOperation::SignUp => {
-                        let vault: VaultDoc = serde_json::from_value(event.value.clone()).unwrap();
-                        meta_store.vault = Some(vault);
-                    }
-                    AppOperation::JoinCluster => {
-                        let vault: VaultDoc = serde_json::from_value(event.value.clone()).unwrap();
-                        meta_store.vault = Some(vault);
-                    }
-                    AppOperation::VaultsIndex => {
+            AppOperationType::Update(op) => match op {
+                AppOperation::VaultFormation => {
+                    let server_pk: Base64EncodedText = serde_json::from_value(event.value.clone()).unwrap();
+                    meta_db.vault_store.server_pk = Some(server_pk);
+                }
+                AppOperation::SignUp => {
+                    let vault: VaultDoc = serde_json::from_value(event.value.clone()).unwrap();
+                    meta_store.vault = Some(vault);
+                }
+                AppOperation::JoinCluster => {
+                    let vault: VaultDoc = serde_json::from_value(event.value.clone()).unwrap();
+                    meta_store.vault = Some(vault);
+                }
+                AppOperation::GlobalIndexx => {
+                    if event.key.id.key_id != generate_global_index_formation_key_id().key_id {
                         let vault_id: String = serde_json::from_value(event.value.clone()).unwrap();
-                        vaults_store.vaults_index.insert(vault_id);
+                        vaults_store.global_index.insert(vault_id);
+                    } else {
+                        // validate server signature of a formation block
                     }
-                },
+                }
             },
         }
     }
@@ -78,14 +70,14 @@ pub fn apply(commit_log: Rc<Vec<KvLogEvent>>, mut meta_db: MetaDb) -> Result<Met
 
 pub fn transform(commit_log: Rc<Vec<KvLogEvent>>) -> Result<MetaDb, LogCommandError> {
     let meta_db = MetaDb {
-        meta_store: MetaStore {
+        vault_store: VaultStore {
             tail_id: None,
             server_pk: None,
             vault: None,
         },
-        vaults: VaultsStore {
+        vaults: GlobalIndexStore {
             tail_id: None,
-            vaults_index: HashSet::new()
+            global_index: HashSet::new(),
         },
     };
 
@@ -93,6 +85,4 @@ pub fn transform(commit_log: Rc<Vec<KvLogEvent>>) -> Result<MetaDb, LogCommandEr
 }
 
 #[cfg(test)]
-pub mod test {
-
-}
+pub mod test {}

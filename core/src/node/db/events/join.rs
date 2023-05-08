@@ -50,7 +50,7 @@ pub mod test {
     use crate::crypto::keys::KeyManager;
     use crate::models::{DeviceInfo, VaultDoc};
     use crate::node::db::commit_log::transform;
-    use crate::node::db::events::genesis::generate_genesis_event;
+    use crate::node::db::events::persistent_vault::generate_genesis_event;
     use crate::node::db::events::join::{accept_join_request, join_cluster_request};
     use crate::node::db::events::sign_up::{accept_sign_up_request, sign_up_request};
     use crate::node::db::models::LogCommandError;
@@ -95,7 +95,7 @@ pub mod test {
         println!("meta db: {}", serde_json::to_string_pretty(&meta_db).unwrap());
 
         let expected_sigs = vec![a_user_sig, b_user_sig];
-        assert_eq!(expected_sigs, meta_db.meta_store.vault.unwrap().signatures);
+        assert_eq!(expected_sigs, meta_db.vault_store.vault.unwrap().signatures);
 
         Ok(())
     }
