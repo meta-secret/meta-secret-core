@@ -1,4 +1,6 @@
-use crate::node::db::commit_log::KvLogEvent;
-use crate::node::db::db::{GetCommand, SaveCommand};
+use crate::node::db::db::{FindOneQuery, FindQuery, SaveCommand};
+use crate::node::db::models::KvLogEvent;
 
-pub trait CommitLogRepo: SaveCommand<KvLogEvent> + GetCommand<KvLogEvent> {}
+pub trait CommitLogRepo: SaveCommand<KvLogEvent> + FindQuery<KvLogEvent> + FindOneQuery<KvLogEvent> {}
+
+pub trait VaultsIndexRepo: SaveCommand<KvLogEvent> + FindQuery<KvLogEvent> + FindOneQuery<KvLogEvent> {}

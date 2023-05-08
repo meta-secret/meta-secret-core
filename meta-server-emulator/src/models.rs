@@ -1,11 +1,12 @@
-use diesel::prelude::*;
 use crate::schema::db_commit_log;
-use meta_secret_core::node::db::commit_log::KvLogEvent;
+use diesel::prelude::*;
+use meta_secret_core::node::db::models::KvLogEvent;
 
 #[derive(Debug, Queryable)]
 pub struct DbLogEvent {
     pub id: i32,
     pub store: String,
+    pub key_id: String,
     pub vault_id: Option<String>,
     pub event: String,
 }
@@ -14,6 +15,7 @@ pub struct DbLogEvent {
 #[diesel(table_name = db_commit_log)]
 pub struct NewDbLogEvent {
     pub store: String,
+    pub key_id: String,
     pub vault_id: Option<String>,
     pub event: String,
 }
@@ -22,6 +24,7 @@ impl From<&KvLogEvent> for NewDbLogEvent {
     fn from(log_event: &KvLogEvent) -> Self {
         Self {
             store: log_event.key.store.clone(),
+            key_id: log_event.key.id.key_id.clone(),
             vault_id: log_event.key.vault_id.clone(),
             event: serde_json::to_string(log_event).unwrap(),
         }
