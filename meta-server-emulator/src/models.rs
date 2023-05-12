@@ -22,8 +22,10 @@ pub struct NewDbLogEvent {
 
 impl From<&KvLogEvent> for NewDbLogEvent {
     fn from(log_event: &KvLogEvent) -> Self {
+        let obj_type_str = format!("{:?}", log_event.key.object_type);
+
         Self {
-            store: log_event.key.store.clone(),
+            store: obj_type_str,
             key_id: log_event.key.id.key_id.clone(),
             vault_id: log_event.key.vault_id.clone(),
             event: serde_json::to_string(log_event).unwrap(),

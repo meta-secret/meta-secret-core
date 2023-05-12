@@ -1,7 +1,7 @@
-use std::rc::Rc;
 use crate::node::db::commit_log;
 use crate::node::db::meta_db::CommitLogRepo;
 use crate::node::db::models::{KeyIdGen, KvLogEvent, LogCommandError, MetaDb};
+use std::rc::Rc;
 
 async fn sync<R: CommitLogRepo>(repo: R, meta_db: MetaDb) -> Result<MetaDb, LogCommandError> {
     let mut log_events: Vec<KvLogEvent> = vec![];

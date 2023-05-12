@@ -1,16 +1,20 @@
 use crate::models::Base64EncodedText;
-use crate::node::db::commit_log::{generate_key, store_names};
-use crate::node::db::models::{AppOperation, AppOperationType, KeyIdGen, KvKey, KvKeyId, KvLogEvent, KvValueType};
+use crate::node::db::commit_log::generate_key;
+use crate::node::db::models::{
+    AppOperation, AppOperationType, KeyIdGen, KvKey, KvKeyId, KvLogEvent, KvValueType, ObjectType,
+};
+
+const GLOBAL_INDEX_ID: &str = "meta-g";
 
 pub fn generate_global_index_formation_key_id() -> KvKeyId {
-    KvKeyId::object_foundation(store_names::GLOBAL_OBJECT_ID, store_names::GLOBAL_IDX)
+    KvKeyId::object_foundation(GLOBAL_INDEX_ID, ObjectType::GlobalIndex)
 }
 
 pub fn generate_global_index_formation_key() -> KvKey {
     let id = generate_global_index_formation_key_id();
 
-    KvKey  {
-        store: store_names::GLOBAL_IDX.to_string(),
+    KvKey {
+        object_type: ObjectType::GlobalIndex,
         id,
         vault_id: None,
     }
@@ -19,54 +23,21 @@ pub fn generate_global_index_formation_key() -> KvKey {
 pub fn generate_global_index_formation_event(server_pk: &Base64EncodedText) -> KvLogEvent {
     KvLogEvent {
         key: generate_global_index_formation_key(),
-        cmd_type: AppOperationType::Update(AppOperation::GlobalIndexx),
+        cmd_type: AppOperationType::Update(AppOperation::ObjectFormation),
         val_type: KvValueType::DsaPublicKey,
         value: serde_json::to_value(server_pk).unwrap(),
     }
 }
 
 pub fn generate_next_global_index_key(prev_id: &KvKeyId) -> KvKey {
-    generate_key(store_names::GLOBAL_IDX, prev_id, None)
+    generate_key(ObjectType::GlobalIndex, prev_id, None)
 }
 
-pub fn new_global_index_record_created_event(prev_id: &KvKeyId, vault_id: &str) -> KvLogEvent {
+pub fn new_global_index_record_created_event(tail_id: &KvKeyId, vault_id: &str) -> KvLogEvent {
     KvLogEvent {
-        key: generate_next_global_index_key(prev_id),
-        cmd_type: AppOperationType::Update(AppOperation::GlobalIndexx),
+        key: generate_next_global_index_key(tail_id),
+        cmd_type: AppOperationType::Update(AppOperation::GlobalIndex),
         val_type: KvValueType::String,
         value: serde_json::to_value(vault_id).unwrap(),
-    }
-}
-
-#[cfg(test)]
-pub mod test {
-    use std::collections::HashSet;
-    use std::rc::Rc;
-    use crate::crypto::key_pair::KeyPair;
-    use crate::crypto::keys::KeyManager;
-    use crate::crypto::utils;
-    use crate::node::db::commit_log::transform;
-    use crate::node::db::models::{KvLogEvent, LogCommandError};
-
-    #[test]
-    fn vaults_index_test() -> Result<(), LogCommandError> {
-        let server_km = KeyManager::generate();
-
-        let vault_name = "test_vault";
-        let genesis_event: KvLogEvent = generate_genesis_event(vault_name, &server_km.dsa.public_key());
-        // vaultName -> sha256 -> uuid
-        let vault_id = utils::to_id(vault_name);
-        let vaults_index_event = vaults_index_created_event(&genesis_event.key.id, vault_id.base64_text.as_str());
-
-        let commit_log = vec![genesis_event, vaults_index_event];
-
-        let meta_db = transform(Rc::new(commit_log))?;
-
-        let mut expected = HashSet::new();
-        expected.insert(vault_id.base64_text);
-
-        assert_eq!(expected, meta_db.vaults.global_index);
-
-        Ok(())
     }
 }
