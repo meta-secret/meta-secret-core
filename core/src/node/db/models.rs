@@ -1,16 +1,14 @@
-use std::collections::HashSet;
 use serde_json::Value;
+use std::collections::HashSet;
 
 use crate::crypto::utils;
 use crate::models::{Base64EncodedText, VaultDoc};
 
-pub const PRIMORDIAL: &str = "-1";
-
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MetaDb {
-    pub meta_store: MetaStore,
-    pub vaults: VaultsStore
+    pub vault_store: VaultStore,
+    pub global_index_store: GlobalIndexStore,
 }
 
 pub struct DbLog {
@@ -19,7 +17,7 @@ pub struct DbLog {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct MetaStore {
+pub struct VaultStore {
     pub tail_id: Option<KvKeyId>,
     pub server_pk: Option<Base64EncodedText>,
     pub vault: Option<VaultDoc>,
@@ -27,9 +25,10 @@ pub struct MetaStore {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct VaultsStore {
+pub struct GlobalIndexStore {
+    pub server_pk: Option<Base64EncodedText>,
     pub tail_id: Option<KvKeyId>,
-    pub vaults_index: HashSet<String>
+    pub global_index: HashSet<String>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -46,15 +45,23 @@ pub enum LogCommandError {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+pub enum ObjectType {
+    #[serde(rename = "Vault")]
+    Vault,
+    #[serde(rename = "GlobalIndex")]
+    GlobalIndex,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub enum AppOperation {
-    #[serde(rename = "Genesis")]
-    Genesis,
+    #[serde(rename = "ObjectFormation")]
+    ObjectFormation,
     #[serde(rename = "SignUp")]
     SignUp,
     #[serde(rename = "JoinCluster")]
     JoinCluster,
-    #[serde(rename = "VaultsIndex")]
-    VaultsIndex,
+    #[serde(rename = "GlobalIndex")]
+    GlobalIndex,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
@@ -93,16 +100,16 @@ pub enum KvValueType {
     Error,
 }
 
-#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KvKey {
     pub id: KvKeyId,
-    pub store: String,
+    pub object_type: ObjectType,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vault_id: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KvKeyId {
     pub key_id: String,
@@ -110,46 +117,29 @@ pub struct KvKeyId {
 }
 
 pub trait KeyIdGen {
-    fn genesis(vault_name: &str) -> Self;
-    fn genesis_from_vault_id(vault_id: &str) -> Self;
-
-    fn object_foundation(vault_id: &str, store: &str) -> Self;
+    fn object_foundation(object_id: &str, object_type: ObjectType) -> Self;
 
     fn next(&self) -> Self;
     fn generate_next(curr_id: &str) -> Self;
-
-    fn from_prev_id(prev_id: &str) -> Self;
 }
 
 impl KeyIdGen for KvKeyId {
-    fn genesis(vault_name: &str) -> Self {
-        let id = utils::to_id(vault_name).base64_text;
-        Self::genesis_from_vault_id(id.as_str())
-    }
-
-    fn genesis_from_vault_id(vault_id: &str) -> Self {
-        Self {
-            key_id: vault_id.to_string(),
-            prev_key_id: PRIMORDIAL.to_string(),
-        }
-    }
-
-    fn object_foundation(vault_id: &str, object: &str) -> Self {
-        let full_name = format!("{}:{}", vault_id, object);
+    fn object_foundation(object_id: &str, object_type: ObjectType) -> Self {
+        let full_name = format!("{}:{:?}", object_id, object_type);
         let id = utils::to_id(full_name.as_str()).base64_text;
 
         Self {
             key_id: id,
-            prev_key_id: vault_id.to_string(),
+            prev_key_id: object_id.to_string(),
         }
     }
 
     fn next(&self) -> Self {
-        let prev_id = self.key_id.as_str();
-        let curr_id = utils::to_id(prev_id).base64_text;
+        let curr_id = self.key_id.as_str();
+        let next_id = utils::to_id(curr_id).base64_text;
         Self {
-            key_id: curr_id,
-            prev_key_id: prev_id.to_string(),
+            key_id: next_id,
+            prev_key_id: curr_id.to_string(),
         }
     }
 
@@ -158,14 +148,6 @@ impl KeyIdGen for KvKeyId {
         Self {
             key_id: next_id,
             prev_key_id: curr_id.to_string(),
-        }
-    }
-
-    fn from_prev_id(prev_id: &str) -> Self {
-        let id = utils::to_id(prev_id).base64_text;
-        Self {
-            key_id: id,
-            prev_key_id: prev_id.to_string(),
         }
     }
 }

@@ -2,23 +2,14 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 use crate::models::{Base64EncodedText, VaultDoc};
-use crate::node::db::models::{AppOperation, AppOperationType, KeyIdGen, KvKey, KvKeyId, KvLogEvent, LogCommandError, MetaDb, MetaStore, VaultsStore};
+use crate::node::db::models::{
+    AppOperation, AppOperationType, GlobalIndexStore, KeyIdGen, KvKey, KvKeyId, KvLogEvent, LogCommandError, MetaDb,
+    ObjectType, VaultStore,
+};
 
-pub mod store_names {
-    pub const GENESIS: &str = "genesis";
-    pub const COMMIT_LOG: &str = "commit_log";
-    /// An instance of a vault of the user
-    pub const USER_VAULT: &str = "user_vault";
-    pub const VAULTS_IDX: &str = "vaults_idx";
-}
-
-pub fn generate_commit_log_key(curr_id: &KvKeyId, vault_id: Option<String>) -> KvKey {
-    generate_key(store_names::COMMIT_LOG, curr_id, vault_id)
-}
-
-pub fn generate_key(store_name: &str, curr_id: &KvKeyId, vault_id: Option<String>) -> KvKey {
+pub fn generate_key(object: ObjectType, curr_id: &KvKeyId, vault_id: Option<String>) -> KvKey {
     KvKey {
-        store: store_name.to_string(),
+        object_type: object,
         id: curr_id.next(),
         vault_id,
     }
@@ -27,48 +18,47 @@ pub fn generate_key(store_name: &str, curr_id: &KvKeyId, vault_id: Option<String
 pub fn generate_next(prev_key: &KvKey) -> KvKey {
     KvKey {
         id: prev_key.id.next(),
-        store: prev_key.store.clone(),
+        object_type: prev_key.object_type,
         vault_id: prev_key.vault_id.clone(),
     }
 }
 
 /// Apply new events to the database
 pub fn apply(commit_log: Rc<Vec<KvLogEvent>>, mut meta_db: MetaDb) -> Result<MetaDb, LogCommandError> {
-    for (index, event) in commit_log.iter().enumerate() {
-        let mut meta_store = &mut meta_db.meta_store;
-        let vaults_store = &mut meta_db.vaults;
+    for (_index, event) in commit_log.iter().enumerate() {
+        let mut meta_store = &mut meta_db.vault_store;
+        let vaults_store = &mut meta_db.global_index_store;
 
-        match index {
-            0 => {
-                if event.cmd_type == AppOperationType::Update(AppOperation::Genesis) {
-                    let server_pk: Base64EncodedText = serde_json::from_value(event.value.clone()).unwrap();
-                    meta_db.meta_store.server_pk = Some(server_pk);
-                } else {
-                    return Err(LogCommandError::IllegalDbState {
-                        err_msg: "Missing genesis event".to_string(),
-                    });
-                }
+        match event.cmd_type {
+            AppOperationType::Request(_op) => {
+                println!("Skip requests");
             }
-            _ => match event.cmd_type {
-                AppOperationType::Request(_op) => {
-                    println!("Skip requests");
-                }
 
-                AppOperationType::Update(op) => match op {
-                    AppOperation::Genesis => {}
-                    AppOperation::SignUp => {
-                        let vault: VaultDoc = serde_json::from_value(event.value.clone()).unwrap();
-                        meta_store.vault = Some(vault);
+            AppOperationType::Update(op) => match op {
+                AppOperation::ObjectFormation => {
+                    let server_pk: Base64EncodedText = serde_json::from_value(event.value.clone()).unwrap();
+
+                    match event.key.object_type {
+                        ObjectType::Vault => {
+                            meta_db.vault_store.server_pk = Some(server_pk);
+                        }
+                        ObjectType::GlobalIndex => {
+                            meta_db.global_index_store.server_pk = Some(server_pk);
+                        }
                     }
-                    AppOperation::JoinCluster => {
-                        let vault: VaultDoc = serde_json::from_value(event.value.clone()).unwrap();
-                        meta_store.vault = Some(vault);
-                    }
-                    AppOperation::VaultsIndex => {
-                        let vault_id: String = serde_json::from_value(event.value.clone()).unwrap();
-                        vaults_store.vaults_index.insert(vault_id);
-                    }
-                },
+                }
+                AppOperation::SignUp => {
+                    let vault: VaultDoc = serde_json::from_value(event.value.clone()).unwrap();
+                    meta_store.vault = Some(vault);
+                }
+                AppOperation::JoinCluster => {
+                    let vault: VaultDoc = serde_json::from_value(event.value.clone()).unwrap();
+                    meta_store.vault = Some(vault);
+                }
+                AppOperation::GlobalIndex => {
+                    let vault_id: String = serde_json::from_value(event.value.clone()).unwrap();
+                    vaults_store.global_index.insert(vault_id);
+                }
             },
         }
     }
@@ -78,14 +68,15 @@ pub fn apply(commit_log: Rc<Vec<KvLogEvent>>, mut meta_db: MetaDb) -> Result<Met
 
 pub fn transform(commit_log: Rc<Vec<KvLogEvent>>) -> Result<MetaDb, LogCommandError> {
     let meta_db = MetaDb {
-        meta_store: MetaStore {
+        vault_store: VaultStore {
             tail_id: None,
             server_pk: None,
             vault: None,
         },
-        vaults: VaultsStore {
+        global_index_store: GlobalIndexStore {
+            server_pk: None,
             tail_id: None,
-            vaults_index: HashSet::new()
+            global_index: HashSet::new(),
         },
     };
 
@@ -93,6 +84,4 @@ pub fn transform(commit_log: Rc<Vec<KvLogEvent>>) -> Result<MetaDb, LogCommandEr
 }
 
 #[cfg(test)]
-pub mod test {
-
-}
+pub mod test {}

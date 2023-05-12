@@ -2,7 +2,7 @@ use meta_secret_core::node::db::models::KvLogEvent;
 
 pub struct SyncRequest {
     pub vault: Option<VaultSyncRequest>,
-    pub vaults_index: Option<String>
+    pub global_index: Option<String>,
 }
 
 pub struct VaultSyncRequest {
@@ -16,25 +16,30 @@ pub trait MetaServerEmulator {
 }
 
 pub mod sqlite_meta_server {
-    use diesel::{Connection, ExpressionMethods, QueryDsl, QueryResult, RunQueryDsl};
     use diesel::sqlite::SqliteConnection;
+    use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl};
 
     use meta_secret_core::crypto::key_pair::KeyPair;
     use meta_secret_core::crypto::keys::KeyManager;
     use meta_secret_core::models::Base64EncodedText;
-    use meta_secret_core::node::db::commit_log::store_names;
-    use meta_secret_core::node::db::events::{genesis, index};
+    use meta_secret_core::node::db::events::global_index;
+    use meta_secret_core::node::db::events::global_index::{
+        generate_global_index_formation_event, new_global_index_record_created_event,
+    };
     use meta_secret_core::node::db::events::sign_up::accept_event_sign_up_request;
-    use meta_secret_core::node::db::models::{AppOperation, AppOperationType, KeyIdGen, KvKeyId, KvLogEvent};
+    use meta_secret_core::node::db::models::{
+        AppOperation, AppOperationType, KeyIdGen, KvKeyId, KvLogEvent, ObjectType,
+    };
 
     use crate::models::{DbLogEvent, NewDbLogEvent};
     use crate::schema::db_commit_log as schema_log;
     use crate::schema::db_commit_log::dsl;
-    use crate::server::meta_server::{MetaServerEmulator, SyncRequest, VaultSyncRequest};
+    use crate::server::meta_server::{MetaServerEmulator, SyncRequest};
 
     pub struct SqliteMockServer {
         km: KeyManager,
         conn: SqliteConnection,
+        global_index_tail_id: Option<KvKeyId>,
     }
 
     impl SqliteMockServer {
@@ -42,7 +47,12 @@ pub mod sqlite_meta_server {
         pub fn new(conn_url: &str) -> Self {
             let km = KeyManager::generate();
             let conn = SqliteConnection::establish(conn_url).unwrap();
-            Self { km, conn }
+            let global_index_tail_id = None;
+            Self {
+                km,
+                conn,
+                global_index_tail_id,
+            }
         }
 
         pub fn server_pk(&self) -> Base64EncodedText {
@@ -51,25 +61,38 @@ pub mod sqlite_meta_server {
     }
 
     impl SqliteMockServer {
-        /*
-        fn find_genesis_event(&mut self) -> KvLogEvent {
-            let db_genesis_evt = dsl::db_commit_log
-                .filter(dsl::store.eq(store_names::GENESIS))
-                .first::<DbLogEvent>(&mut self.conn)
-                .expect("Genesis event must exists");
-            KvLogEvent::from(&db_genesis_evt)
+        fn get_next_free_global_index_id(&mut self) -> KvKeyId {
+            let formation_id = global_index::generate_global_index_formation_key_id();
+
+            let mut existing_id = formation_id.clone();
+            let mut curr_tail_id = formation_id;
+            loop {
+                let global_idx_result = dsl::db_commit_log
+                    .filter(dsl::key_id.eq(curr_tail_id.key_id.as_str()))
+                    .first::<DbLogEvent>(&mut self.conn);
+
+                match global_idx_result {
+                    Ok(_) => {
+                        existing_id = curr_tail_id.clone();
+                        curr_tail_id = curr_tail_id.next();
+                    }
+                    Err(_) => {
+                        break;
+                    }
+                }
+            }
+
+            existing_id
         }
-         */
 
-        fn get_vaults_index_from_beginning(&mut self) -> Vec<KvLogEvent> {
-            let genesis_id = index::generate_vaults_genesis_key_id();
-            self.get_vaults_index(genesis_id.key_id.as_str())
+        fn get_global_index_from_beginning(&mut self) -> Vec<KvLogEvent> {
+            let formation_id = global_index::generate_global_index_formation_key_id();
+            self.get_global_index(formation_id.key_id.as_str())
         }
 
-        fn get_vaults_index(&mut self, tail_id: &str) -> Vec<KvLogEvent> {
-
+        fn get_global_index(&mut self, tail_id: &str) -> Vec<KvLogEvent> {
             let mut curr_tail_id = tail_id.to_string();
-            let mut vaults_idx = vec![];
+            let mut global_idx = vec![];
             loop {
                 let db_vaults_idx_result = dsl::db_commit_log
                     .filter(dsl::key_id.eq(curr_tail_id.clone()))
@@ -78,7 +101,7 @@ pub mod sqlite_meta_server {
                 match db_vaults_idx_result {
                     Ok(db_vaults_idx) => {
                         let ids_record = KvLogEvent::from(&db_vaults_idx);
-                        vaults_idx.push(ids_record);
+                        global_idx.push(ids_record);
                         curr_tail_id = KvKeyId::generate_next(curr_tail_id.as_str()).key_id.clone();
                     }
                     Err(_) => {
@@ -88,39 +111,19 @@ pub mod sqlite_meta_server {
             }
 
             //check if genesis event exists for vaults index
-            if vaults_idx.is_empty() {
+            if global_idx.is_empty() {
                 //create a genesis event and save into the database
-                let vaults_genesis_event = index::generate_vaults_genesis_event(&self.km.dsa.public_key());
+                let formation_event =
+                    generate_global_index_formation_event(&self.km.dsa.public_key());
                 diesel::insert_into(schema_log::table)
-                    .values(&NewDbLogEvent::from(&vaults_genesis_event))
+                    .values(&NewDbLogEvent::from(&formation_event))
                     .execute(&mut self.conn)
                     .expect("Error saving vaults genesis event");
 
-                vaults_idx.push(vaults_genesis_event);
+                global_idx.push(formation_event);
             }
 
-            vaults_idx
-        }
-
-        fn get_empty_vault_commit_log(&mut self, vault_id: &str) -> Vec<KvLogEvent> {
-            let genesis_key = genesis::generate_genesis_key_from_vault_id(vault_id);
-            let genesis_event = genesis::generate_genesis_event_with_key(
-                &genesis_key, &self.km.dsa.public_key(),
-            );
-            let db_genesis_event = NewDbLogEvent::from(&genesis_event);
-
-            diesel::insert_into(schema_log::table)
-                .values(&db_genesis_event)
-                .execute(&mut self.conn)
-                .expect("Error saving genesis event");
-
-            let vaults_idx = self.get_vaults_index_from_beginning();
-
-            let mut commit_log = vec![];
-            commit_log.push(genesis_event);
-            commit_log.extend(vaults_idx);
-
-            commit_log
+            global_idx
         }
     }
 
@@ -128,20 +131,20 @@ pub mod sqlite_meta_server {
         fn sync(&mut self, request: SyncRequest) -> Vec<KvLogEvent> {
             let mut commit_log = vec![];
 
-            match request.vaults_index {
+            match request.global_index {
                 None => {
-                    commit_log.extend(self.get_vaults_index_from_beginning());
-                    return commit_log;
+                    let meta_g = self.get_global_index_from_beginning();
+                    commit_log.extend(meta_g);
                 }
                 Some(index_id) => {
-                    commit_log.extend(self.get_vaults_index(index_id.as_str()));
-                    return commit_log;
+                    let meta_g = self.get_global_index(index_id.as_str());
+                    commit_log.extend(meta_g);
                 }
             }
 
             match request.vault {
                 None => {
-
+                    // Ignore empty requests
                 }
                 Some(vault_request) => {
                     let vault_and_tail = (vault_request.vault_id, vault_request.tail_id);
@@ -153,16 +156,12 @@ pub mod sqlite_meta_server {
                                 .load::<DbLogEvent>(&mut self.conn)
                                 .expect("Error loading vault events");
 
-                            if vault_events.is_empty() {
-                                let empty_commit_log = self.get_empty_vault_commit_log(request_vault_id.as_str());
-                                commit_log.extend(empty_commit_log)
-                            } else {
-                                let vaults_idx: Vec<KvLogEvent> = vault_events
-                                    .into_iter()
-                                    .map(|db_evt| KvLogEvent::from(&db_evt))
-                                    .collect();
-                                commit_log.extend(vaults_idx);
-                            }
+                            let global_idx: Vec<KvLogEvent> = vault_events
+                                .into_iter()
+                                .map(|db_evt| KvLogEvent::from(&db_evt))
+                                .collect();
+
+                            commit_log.extend(global_idx);
                         }
                         _ => {
                             println!("no need to do any actions");
@@ -179,30 +178,45 @@ pub mod sqlite_meta_server {
             match event.cmd_type {
                 AppOperationType::Request(op) => {
                     match op {
-                        AppOperation::Genesis => {
+                        AppOperation::ObjectFormation => {
                             panic!("Not allowed");
                         }
 
-                        AppOperation::VaultsIndex => {
+                        AppOperation::GlobalIndex => {
                             panic!("Not allowed");
                         }
 
                         AppOperation::SignUp => {
                             // Handled by the server. Add a vault to the system
-                            let sign_up_events = accept_event_sign_up_request(event);
                             let vault_id = event.key.vault_id.clone().unwrap();
+                            let vault_formation_id =
+                                KvKeyId::object_foundation(vault_id.as_str(), ObjectType::Vault);
 
-                            let sign_up_key_id = KvKeyId::object_foundation(vault_id.as_str(), store_names::USER_VAULT);
-
-                            let sign_up_event_result = dsl::db_commit_log
-                                .filter(dsl::key_id.eq(sign_up_key_id.key_id))
+                            let vault_formation_event_result = dsl::db_commit_log
+                                .filter(dsl::key_id.eq(vault_formation_id.key_id))
                                 .first::<DbLogEvent>(&mut self.conn);
 
-                            match sign_up_event_result {
+                            match vault_formation_event_result {
                                 Err(_) => {
                                     //vault not found, we can create our new vault
-                                    //let mut commit_log = self.get_empty_vault_commit_log(vault_id.as_str());
-                                    //commit_log.extend(sign_up_events);
+                                    let sign_up_events = accept_event_sign_up_request(
+                                        event.clone(),
+                                        self.server_pk(),
+                                    );
+
+                                    //find the latest global_index_id???
+                                    let global_index_tail_id =
+                                        match self.global_index_tail_id.clone() {
+                                            None => {
+                                                let tail_id = self.get_next_free_global_index_id();
+                                                self.global_index_tail_id = Some(tail_id.clone());
+                                                tail_id
+                                            }
+                                            Some(tail_id) => {
+                                                //we already have latest global index id
+                                                tail_id
+                                            }
+                                        };
 
                                     let sign_up_db_events: Vec<NewDbLogEvent> = sign_up_events
                                         .into_iter()
@@ -213,64 +227,51 @@ pub mod sqlite_meta_server {
                                         .values(&sign_up_db_events)
                                         .execute(&mut self.conn)
                                         .expect("Error saving genesis event");
+
+                                    //update global index
+                                    let global_index_event = new_global_index_record_created_event(
+                                        &global_index_tail_id,
+                                        vault_id.as_str(),
+                                    );
+
+                                    diesel::insert_into(schema_log::table)
+                                        .values(&NewDbLogEvent::from(&global_index_event))
+                                        .execute(&mut self.conn)
+                                        .expect("Error saving vaults genesis event");
                                 }
                                 Ok(sign_up_event) => {
                                     panic!("Vault already exists");
-                                    //send reject response
+                                    //save a reject response in the database
                                 }
                             }
                         }
 
-                        AppOperation::JoinCluster => {
-                            // Just save a request to handle by a vault owner
-                            todo!("not implemented yet");
-                            /*match event.key.vault_id.clone() {
-                                None => {
-                                    panic!("Invalid event");
-                                }
-                                Some(vault_id) => {
-                                    let maybe_vault_commit_log = self.db.get(vault_id.as_str());
-                                    match maybe_vault_commit_log {
-                                        None => {
-                                            panic!("Vault not found");
-                                        }
-                                        Some(commit_log) => {
-                                            let mut new_commit_log = commit_log.clone();
-                                            new_commit_log.push(event.clone());
+                        AppOperation::JoinCluster => match event.key.vault_id.clone() {
+                            None => {
+                                panic!("Invalid JoinCluster request: vault is not set");
+                            }
+                            Some(_vault_id) => {
+                                let join_db_event = NewDbLogEvent::from(event);
 
-                                            let rc_log = Rc::new(new_commit_log.clone());
-                                            let vault_meta_db = commit_log::transform(rc_log).unwrap();
-                                            let vault = &vault_meta_db.meta_store.vault.unwrap();
-                                            let accept_join_event = accept_join_request(event, vault);
-
-                                            new_commit_log.push(accept_join_event);
-                                            self.db.insert(vault_id, new_commit_log);
-                                        }
-                                    }
-                                }
-                            }*/
-                        }
+                                diesel::insert_into(schema_log::table)
+                                    .values(&join_db_event)
+                                    .execute(&mut self.conn)
+                                    .expect("Error saving genesis event");
+                            }
+                        },
                     }
                 }
+
                 //Check validity and just save to the database
-                AppOperationType::Update(_) => match event.key.vault_id.clone() {
-                    None => {
-                        panic!("Invalid event");
+                AppOperationType::Update(op) => match op {
+                    AppOperation::JoinCluster => {}
+                    AppOperation::GlobalIndex => {}
+
+                    AppOperation::ObjectFormation => {
+                        //Skip an update operation (an update generated by server)
                     }
-                    Some(vault_id) => {
-                        todo!("not implemented yet")
-                        /*
-                        let maybe_db_vault = self.db.get(vault_id.as_str());
-                        match maybe_db_vault {
-                            None => {
-                                panic!("Vault not found");
-                            }
-                            Some(commit_log) => {
-                                let mut new_commit_log = commit_log.clone();
-                                new_commit_log.push(event.clone());
-                                self.db.insert(vault_id, new_commit_log);
-                            }
-                        }*/
+                    AppOperation::SignUp => {
+                        //Skip an update operation (an update generated by server)
                     }
                 },
             }
