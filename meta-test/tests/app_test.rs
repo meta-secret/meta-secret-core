@@ -9,7 +9,7 @@ mod test {
     use meta_secret_core::node::db::events::global_index;
     use meta_secret_core::node::db::events::join::join_cluster_request;
     use meta_secret_core::node::db::events::sign_up::sign_up_request;
-    use meta_secret_core::node::db::models::{KeyIdGen, KvKeyId, ObjectType};
+    use meta_secret_core::node::db::models::{KeyIdGen, KvKeyId, ObjectType, VaultId};
     use meta_server_emulator::server::meta_server::sqlite_meta_server::SqliteMockServer;
     use meta_server_emulator::server::meta_server::{
         MetaServerEmulator, SyncRequest, VaultSyncRequest,
@@ -43,7 +43,7 @@ mod test {
         //check whether the vault you are going to use already exists.
         // We need to have meta_db to be able to check if the vault exists
         let vault_name = "test";
-        let vault_id = to_id(vault_name);
+        let vault_id = VaultId::build(vault_name, ObjectType::Vault);
 
         let a_s_box = KeyManager::generate_security_box(vault_name.to_string());
         let a_device = DeviceInfo {
@@ -61,7 +61,7 @@ mod test {
         if meta_db
             .global_index_store
             .global_index
-            .contains(vault_id.as_str())
+            .contains(vault_id.vault_id.as_str())
         {
             panic!("The vault already exists");
         }
@@ -72,7 +72,7 @@ mod test {
 
         let request = SyncRequest {
             vault: Some(VaultSyncRequest {
-                vault_id: Some(vault_id.clone()),
+                vault_id: Some(vault_id.vault_id.clone()),
                 tail_id: None,
             }),
             global_index: None,
@@ -88,7 +88,7 @@ mod test {
 
         let global_index = meta_db.global_index_store.global_index;
 
-        if !global_index.contains(vault_id.as_str()) {
+        if !global_index.contains(vault_id.vault_id.as_str()) {
             panic!("The vault expected to be in the database")
         }
     }
