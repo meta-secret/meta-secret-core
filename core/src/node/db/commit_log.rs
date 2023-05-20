@@ -26,8 +26,8 @@ pub fn generate_next(prev_key: &KvKey) -> KvKey {
 /// Apply new events to the database
 pub fn apply(commit_log: Rc<Vec<KvLogEvent>>, mut meta_db: MetaDb) -> Result<MetaDb, LogCommandError> {
     for (_index, event) in commit_log.iter().enumerate() {
-        let mut meta_store = &mut meta_db.vault_store;
-        let vaults_store = &mut meta_db.global_index_store;
+        let mut vault_store = &mut meta_db.vault_store;
+        let g_store = &mut meta_db.global_index_store;
 
         match event.cmd_type {
             AppOperationType::Request(_op) => {
@@ -41,23 +41,27 @@ pub fn apply(commit_log: Rc<Vec<KvLogEvent>>, mut meta_db: MetaDb) -> Result<Met
                     match event.key.object_type {
                         ObjectType::Vault => {
                             meta_db.vault_store.server_pk = Some(server_pk);
+                            meta_db.vault_store.tail_id = Some(event.key.id.clone())
                         }
                         ObjectType::GlobalIndex => {
                             meta_db.global_index_store.server_pk = Some(server_pk);
+                            meta_db.global_index_store.tail_id = Some(event.key.id.clone())
                         }
                     }
                 }
                 AppOperation::SignUp => {
                     let vault: VaultDoc = serde_json::from_value(event.value.clone()).unwrap();
-                    meta_store.vault = Some(vault);
+                    vault_store.vault = Some(vault);
+                    vault_store.tail_id = Some(event.key.id.clone())
                 }
                 AppOperation::JoinCluster => {
                     let vault: VaultDoc = serde_json::from_value(event.value.clone()).unwrap();
-                    meta_store.vault = Some(vault);
+                    vault_store.vault = Some(vault);
+                    vault_store.tail_id = Some(event.key.id.clone())
                 }
                 AppOperation::GlobalIndex => {
                     let vault_id: String = serde_json::from_value(event.value.clone()).unwrap();
-                    vaults_store.global_index.insert(vault_id);
+                    g_store.global_index.insert(vault_id);
                 }
             },
         }
