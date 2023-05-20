@@ -116,7 +116,21 @@ pub struct KvKeyId {
     pub prev_key_id: String,
 }
 
+pub struct VaultId {
+    pub vault_id: String
+}
+
+impl VaultId {
+    pub fn build(object_name: &str, object_type: ObjectType) -> Self {
+        let full_name = format!("{:?}:{}", object_type, object_name);
+        let vault_id = utils::to_id(full_name.as_str());
+        Self { vault_id }
+    }
+}
+
+
 pub trait KeyIdGen {
+    fn object_foundation_from_id(object_id: &str) -> Self;
     fn object_foundation(object_id: &str, object_type: ObjectType) -> Self;
 
     fn next(&self) -> Self;
@@ -124,19 +138,19 @@ pub trait KeyIdGen {
 }
 
 impl KeyIdGen for KvKeyId {
-    fn object_foundation(object_id: &str, object_type: ObjectType) -> Self {
-        let full_name = format!("{}:{:?}", object_id, object_type);
-        let id = utils::to_id(full_name.as_str()).base64_text;
+    fn object_foundation_from_id(object_id: &str) -> Self {
+        let prev_key_id = utils::to_id("meta-secret-genesis");
+        Self { key_id: object_id.to_string(), prev_key_id }
+    }
 
-        Self {
-            key_id: id,
-            prev_key_id: object_id.to_string(),
-        }
+    fn object_foundation(object_name: &str, object_type: ObjectType) -> Self {
+        let vault_id = VaultId::build(object_name, object_type);
+        Self::object_foundation_from_id(vault_id.vault_id.as_str())
     }
 
     fn next(&self) -> Self {
         let curr_id = self.key_id.as_str();
-        let next_id = utils::to_id(curr_id).base64_text;
+        let next_id = utils::to_id(curr_id);
         Self {
             key_id: next_id,
             prev_key_id: curr_id.to_string(),
@@ -144,10 +158,22 @@ impl KeyIdGen for KvKeyId {
     }
 
     fn generate_next(curr_id: &str) -> Self {
-        let next_id = utils::to_id(curr_id).base64_text;
+        let next_id = utils::to_id(curr_id);
         Self {
             key_id: next_id,
             prev_key_id: curr_id.to_string(),
         }
+    }
+}
+
+
+#[cfg(test)]
+mod test {
+    use crate::node::db::models::{KeyIdGen, KvKeyId, ObjectType};
+
+    #[test]
+    fn test_key_id() {
+        let id = KvKeyId::object_foundation("test", ObjectType::Vault);
+        println!("{:?}", id);
     }
 }

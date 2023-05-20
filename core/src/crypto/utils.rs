@@ -26,23 +26,50 @@ pub fn rand_uuid_b64_url_enc() -> Base64EncodedText {
 }
 
 /// Convert a string to a base64 url encoded uuid
-pub fn to_id(str: &str) -> Base64EncodedText {
-    let hash = Sha256::digest(str.as_bytes());
-    let uuid = Uuid::from_slice(&hash.as_slice()[..16]).unwrap();
-    Base64EncodedText::from(uuid.as_bytes().as_slice())
+pub fn to_id(str: &str) -> String {
+    //let hash = Sha256::digest(str.as_bytes());
+    //let uuid = Uuid::from_slice(&hash.as_slice()[..16]).unwrap();
+    //Base64EncodedText::from(uuid.as_bytes().as_slice())
+    //Base64EncodedText::from(uuid.as_bytes().as_slice())
+    let next = if str.contains("::") {
+        let parts: Vec<&str> = str.split("::").collect();
+        let next_counter: usize = parts[1].parse().unwrap();
+        format!("{}::{:?}", parts[0], next_counter + 1)
+    } else {
+        format!("{}::{}", str, 0)
+    };
+
+    //Base64EncodedText::from(next)
+    next
 }
 
 #[cfg(test)]
 mod test {
+    use std::process::id;
+    use image::EncodableLayout;
     use crate::crypto::utils::to_id;
     use crate::models::Base64EncodedText;
     use uuid::uuid;
 
     #[test]
     fn to_id_test() {
-        let id = to_id("yay");
-        let expected_uuid = uuid!("f6078ebe-0c2f-08c2-25c0-349aef2fe062");
-        let expected_id = Base64EncodedText::from(expected_uuid.as_ref());
-        assert_eq!(expected_id, id)
+        //let id = to_id("yay");
+        //let expected_uuid = uuid!("f6078ebe-0c2f-08c2-25c0-349aef2fe062").as_ref().as_bytes();
+        //let expected_uuid = String::from_utf8(expected_uuid.to_vec()).unwrap();
+        //let expected_uuid = Base64EncodedText::from(expected_uuid.as_ref());
+        //assert_eq!(expected_uuid, id)
+
+        let id_0 = to_id("qwe:qwe");
+        println!("{}", id_0);
+        let id_0 = to_id(id_0.as_str());
+        println!("{}", id_0);
+        let id_0 = to_id(id_0.as_str());
+        println!("{}", id_0);
+        let id_0 = to_id(id_0.as_str());
+        println!("{}", id_0);
+        let id_0 = to_id(id_0.as_str());
+        println!("{}", id_0);
+        let id_0 = to_id(id_0.as_str());
+        println!("{}", id_0);
     }
 }

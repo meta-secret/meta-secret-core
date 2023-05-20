@@ -1,10 +1,17 @@
+use crate::crypto::utils::to_id;
 use crate::models::{UserSignature, VaultDoc};
 use crate::node::db::commit_log::generate_next;
-use crate::node::db::models::{AppOperation, AppOperationType, KvKey, KvLogEvent, KvValueType};
+use crate::node::db::models::{AppOperation, AppOperationType, KeyIdGen, KvKey, KvKeyId, KvLogEvent, KvValueType, ObjectType, VaultId};
 
-pub fn join_cluster_request(prev_key: &KvKey, user_sig: &UserSignature) -> KvLogEvent {
+pub fn join_cluster_request(curr_key_id: &KvKeyId, user_sig: &UserSignature) -> KvLogEvent {
+    let key = KvKey {
+        id: curr_key_id.next(),
+        object_type: ObjectType::Vault,
+        vault_id: Some(VaultId::build(user_sig.vault_name.as_str(), ObjectType::Vault).vault_id),
+    };
+
     KvLogEvent {
-        key: generate_next(prev_key),
+        key,
         cmd_type: AppOperationType::Request(AppOperation::JoinCluster),
         val_type: KvValueType::UserSignature,
         value: serde_json::to_value(user_sig).unwrap(),

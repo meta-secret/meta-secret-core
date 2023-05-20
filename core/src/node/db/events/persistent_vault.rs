@@ -4,19 +4,16 @@ use crate::node::db::models::{
     AppOperation, AppOperationType, KeyIdGen, KvKey, KvKeyId, KvLogEvent, KvValueType, ObjectType,
 };
 
-pub fn vault_formation_key_id(vault_id: &str) -> KvKey {
-    let id = KvKeyId::object_foundation(vault_id, ObjectType::Vault);
+
+pub fn vault_formation_key_id_from_vault_name(vault_name: &str) -> KvKey {
+    let id = KvKeyId::object_foundation(vault_name, ObjectType::Vault);
+    let vault_id = id.key_id.clone();
 
     KvKey {
         object_type: ObjectType::Vault,
         id,
-        vault_id: Some(vault_id.to_string()),
+        vault_id: Some(vault_id),
     }
-}
-
-pub fn vault_formation_key_id_from_vault_name(vault_name: &str) -> KvKey {
-    let vault_id = utils::to_id(vault_name).base64_text;
-    vault_formation_key_id(vault_id.as_str())
 }
 
 pub fn create_vault_formation_event_on_server(vault_name: &str, server_key: &Base64EncodedText) -> KvLogEvent {
