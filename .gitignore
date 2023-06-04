@@ -9,4 +9,10 @@ schema/target
 /schema/node_modules/
 /schema/package.json
 /schema/package-lock.json
-meta_db
+
+/meta-server-serverless/.idea/
+/meta-server-serverless/node_modules/
+/meta-server-serverless/build/
+/meta-server-serverless/Cargo.lock
+/meta-server-serverless/package-lock.json
+/meta-server-serverless/target

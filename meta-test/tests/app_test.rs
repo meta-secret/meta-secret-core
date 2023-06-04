@@ -3,30 +3,34 @@ mod test {
     use std::rc::Rc;
 
     use meta_secret_core::crypto::keys::KeyManager;
-    use meta_secret_core::crypto::utils::to_id;
     use meta_secret_core::models::DeviceInfo;
     use meta_secret_core::node::db::commit_log;
     use meta_secret_core::node::db::events::global_index;
     use meta_secret_core::node::db::events::join::join_cluster_request;
     use meta_secret_core::node::db::events::sign_up::sign_up_request;
     use meta_secret_core::node::db::models::{KeyIdGen, KvKeyId, ObjectType, VaultId};
-    use meta_server_emulator::server::meta_server::sqlite_meta_server::SqliteMockServer;
+    use meta_server_emulator::server::meta_server::MetaServerNode;
     use meta_server_emulator::server::meta_server::{
-        MetaServerEmulator, SyncRequest, VaultSyncRequest,
+        MetaServer, SyncRequest, VaultSyncRequest,
     };
-    use meta_server_emulator::server::slite_db::EmbeddedMigrationsTool;
+    use meta_server_emulator::server::slite_migration::EmbeddedMigrationsTool;
+    use meta_server_emulator::server::sqlite_store::SqlIteStore;
 
-    #[test]
-    fn test_brand_new_client_with_empty_request() {
+    #[tokio::test]
+    async fn test_brand_new_client_with_empty_request() {
         let migration = EmbeddedMigrationsTool::default();
         migration.migrate();
-        let mut server = SqliteMockServer::new(migration.db_url.as_str());
+
+        let store = SqlIteStore {
+            conn_url: migration.db_url,
+        };
+        let server = MetaServerNode::new(store);
 
         let request = SyncRequest {
             vault: None,
             global_index: None,
         };
-        let commit_log = server.sync(request);
+        let commit_log = server.sync(request).await;
         assert_eq!(1, commit_log.len());
 
         let expected_global_idx_formation_event =
@@ -34,11 +38,15 @@ mod test {
         assert_eq!(expected_global_idx_formation_event, commit_log[0]);
     }
 
-    #[test]
-    fn test_sign_up() {
+    #[tokio::test]
+    async fn test_sign_up() {
         let migration = EmbeddedMigrationsTool::default();
         migration.migrate();
-        let mut server = SqliteMockServer::new(migration.db_url.as_str());
+
+        let store = SqlIteStore {
+            conn_url: migration.db_url,
+        };
+        let server = MetaServerNode::new(store);
 
         //check whether the vault you are going to use already exists.
         // We need to have meta_db to be able to check if the vault exists
@@ -56,7 +64,7 @@ mod test {
             vault: None,
             global_index: None,
         };
-        let commit_log = server.sync(request);
+        let commit_log = server.sync(request).await;
         let meta_db = commit_log::transform(Rc::new(commit_log)).unwrap();
         if meta_db
             .global_index_store
@@ -68,7 +76,7 @@ mod test {
 
         // if a vault is not present
         let sign_up_request = sign_up_request(&a_user_sig);
-        server.send(&sign_up_request);
+        server.send(&sign_up_request).await;
 
         let request = SyncRequest {
             vault: Some(VaultSyncRequest {
@@ -78,7 +86,7 @@ mod test {
             global_index: None,
         };
 
-        let commit_log = &server.sync(request);
+        let commit_log = &server.sync(request).await;
         assert_eq!(5, commit_log.len());
 
         //find if your vault is already exists
@@ -93,11 +101,14 @@ mod test {
         }
     }
 
-    #[test]
-    fn test_join_cluster() {
+    #[tokio::test]
+    async fn test_join_cluster() {
         let migration = EmbeddedMigrationsTool::default();
         migration.migrate();
-        let mut server = SqliteMockServer::new(migration.db_url.as_str());
+        let store = SqlIteStore {
+            conn_url: migration.db_url,
+        };
+        let server = MetaServerNode::new(store);
 
         //check whether the vault you are going to use already exists.
         // We need to have meta_db to be able to check if the vault exists
@@ -113,7 +124,7 @@ mod test {
 
         // if a vault is not present
         let sign_up_request = sign_up_request(&a_user_sig);
-        server.send(&sign_up_request);
+        server.send(&sign_up_request).await;
 
         let b_s_box = KeyManager::generate_security_box(vault_name.to_string());
         let b_device = DeviceInfo::new("b".to_string(), "b".to_string());
@@ -127,7 +138,7 @@ mod test {
             global_index: None,
         };
 
-        let commit_log = &server.sync(request);
+        let commit_log = &server.sync(request).await;
         let commit_log_rc = Rc::new(commit_log.clone());
         let meta_db = commit_log::transform(commit_log_rc).unwrap();
 
@@ -138,10 +149,7 @@ mod test {
             &b_user_sig
         );
 
-        println!("join!!!");
-        server.send(&join_request);
-
-        //println!("request: {}", vault_id.key_id);
+        server.send(&join_request).await;
 
         let request = SyncRequest {
             vault: Some(VaultSyncRequest {
@@ -151,8 +159,11 @@ mod test {
             global_index: None,
         };
 
-        let commit_log = server.sync(request);
-        println!("commit_log: {}", serde_json::to_string_pretty(&commit_log).unwrap());
+        let commit_log = server.sync(request).await;
+        for log_event in &commit_log {
+            println!("commit_log: {}", serde_json::to_string(&log_event).unwrap());
+        }
+        //println!("commit_log: {}", serde_json::to_string(&commit_log).unwrap());
         assert_eq!(7, commit_log.len());
 
         let meta_db = commit_log::transform(Rc::new(commit_log)).unwrap();
