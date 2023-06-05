@@ -1,48 +1,36 @@
-use rand::RngCore;
+mod cf_kv_store;
+
 use worker::*;
 use serde::{Serialize, Deserialize};
-use rand::rngs::OsRng as RandOsRng;
-use meta_secret_core::crypto::utils;
-
+use meta_secret_core::node::server::meta_server::{MetaServer, MetaServerNode, SyncRequest};
+use crate::cf_kv_store::CfKvStore;
 
 #[event(fetch)]
-async fn main(req: Request, env: Env, ctx: Context) -> Result<Response> {
-    #[derive(Deserialize, Serialize)]
-    struct Account {
-        id: u64,
-    }
-
+async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     let router = Router::new();
 
     router
-        .get_async("/sync", |_req, ctx| async move {
-
-            match ctx.kv("yay") {
+        .get_async("/sync", |mut req, ctx| async move {
+            match ctx.kv("meta-secret") {
                 Ok(kv) => {
-                    for _i in 0..1500 {
-                        let mut rnd_arr: [u8; 32] = [0; 32];
-                        let mut cs_prng = RandOsRng {};
-                        cs_prng.fill_bytes(&mut rnd_arr);
-                        let rnd_val = rnd_arr.to_vec();
+                    let store = CfKvStore {
+                        kv_store: kv,
+                    };
+                    let server = MetaServerNode::new(store);
 
-                        let hash_str = utils::generate_hash();
-                        let hash = hash_str.as_str();
-                        kv.put(hash, rnd_val).unwrap().execute().await.unwrap();
-                        let val = kv.get(hash).text().await.unwrap().unwrap();
-                    }
+                    let request = req.json::<SyncRequest>().await?;
 
-                    Response::from_json(&String::from("ok"))
+                    let log_events = server.sync(request).await;
+
+                    Response::from_json(&log_events)
                 }
                 Err(err) => {
                     Response::from_json(&err.to_string())
                 }
             }
         })
-        .post_async("/send", |_req, ctx| async move {
-            let account = Account {
-                id: 123,
-            };
-            Response::from_json(&account)
+        .post_async("/send", |_req, _ctx| async move {
+            Response::from_json(&String::from("ok"))
         })
         .run(req, env)
         .await
