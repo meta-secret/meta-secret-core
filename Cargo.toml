@@ -5,3 +5,5 @@ members = [
     "meta-test",
     "core-swift-lib",
 ]
+
+exclude = ["meta-server-serverless"]

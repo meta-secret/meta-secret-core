@@ -3,23 +3,25 @@ use async_trait::async_trait;
 use crate::models::{MetaPasswordId, MetaVault, SecretDistributionDocData, UserCredentials};
 
 #[async_trait(? Send)]
-pub trait SaveCommand<T> {
+pub trait SaveCommand<Data> {
     type Error: std::error::Error;
-    async fn save(&self, key: &str, value: &T) -> Result<(), Self::Error>;
+
+    async fn save(&self, key: &str, value: &Data) -> Result<(), Self::Error>;
 }
+
+#[async_trait(? Send)]
+pub trait FindOneQuery<Data> {
+    type Error: std::error::Error;
+
+    async fn find_one(&self, key: &str) -> Result<Option<Data>, Self::Error>;
+}
+
 
 #[async_trait(? Send)]
 pub trait FindQuery<T> {
     type Error: std::error::Error;
 
     async fn find(&self, key: &str) -> Result<Vec<T>, Self::Error>;
-}
-
-#[async_trait(? Send)]
-pub trait FindOneQuery<T> {
-    type Error: std::error::Error;
-
-    async fn find_one(&self, key: &str) -> Result<Option<T>, Self::Error>;
 }
 
 #[async_trait(? Send)]

@@ -1,0 +1,10 @@
+name = "meta-server-serverless"
+main = "build/worker/shim.mjs"
+compatibility_date = "2023-03-22"
+
+kv_namespaces = [
+    { binding = "yay", id = "3244f26475ba44e68b01aa597ce71d37" }
+]
+
+[build]
+command = "cargo install -q worker-build && worker-build --release"
