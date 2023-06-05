@@ -9,11 +9,8 @@ mod test {
     use meta_secret_core::node::db::events::join::join_cluster_request;
     use meta_secret_core::node::db::events::sign_up::sign_up_request;
     use meta_secret_core::node::db::models::{KeyIdGen, KvKeyId, ObjectType, VaultId};
-    use meta_server_emulator::server::meta_server::MetaServerNode;
-    use meta_server_emulator::server::meta_server::{
-        MetaServer, SyncRequest, VaultSyncRequest,
-    };
-    use meta_server_emulator::server::slite_migration::EmbeddedMigrationsTool;
+    use meta_secret_core::node::server::meta_server::{MetaServer, MetaServerNode, SyncRequest, VaultSyncRequest};
+    use meta_server_emulator::server::sqlite_migration::EmbeddedMigrationsTool;
     use meta_server_emulator::server::sqlite_store::SqlIteStore;
 
     #[tokio::test]

@@ -16,6 +16,8 @@ serde = "1.0.163"
 serde_json = "1.0.96"
 meta-secret-core = { path = "../core" }
 rand = "0.8.5"
+async-trait = "0.1"
+thiserror = "1.0.40"
 
 [profile.release]
 lto = true

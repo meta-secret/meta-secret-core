@@ -1,33 +1,32 @@
-use meta_secret_core::crypto::utils::to_id;
-use meta_secret_core::node::db::models::{KvLogEvent, MetaDb, VaultStore};
+use crate::crypto::utils::to_id;
+use crate::node::db::models::{KvLogEvent, MetaDb, VaultStore};
 use async_trait::async_trait;
 use std::rc::Rc;
-use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
 
-use meta_secret_core::crypto::key_pair::KeyPair;
-use meta_secret_core::crypto::keys::KeyManager;
-use meta_secret_core::models::Base64EncodedText;
-use meta_secret_core::node::db::commit_log::transform;
-use meta_secret_core::node::db::events::global_index;
-use meta_secret_core::node::db::events::global_index::{
+use crate::crypto::key_pair::KeyPair;
+use crate::crypto::keys::KeyManager;
+use crate::models::Base64EncodedText;
+use crate::node::db::commit_log::transform;
+use crate::node::db::events::global_index;
+use crate::node::db::events::global_index::{
     generate_global_index_formation_event, new_global_index_record_created_event,
 };
-use meta_secret_core::node::db::events::join::accept_join_request;
-use meta_secret_core::node::db::events::sign_up::accept_event_sign_up_request;
-use meta_secret_core::node::db::meta_db::CommitLogStore;
-use meta_secret_core::node::db::models::{
-    AppOperation, AppOperationType, KeyIdGen, KvKeyId, ObjectType,
+use crate::node::db::events::join::accept_join_request;
+use crate::node::db::events::sign_up::accept_event_sign_up_request;
+use crate::node::db::meta_db::CommitLogStore;
+use crate::node::db::models::{
+    AppOperation, AppOperationType, KeyIdGen, KvKeyId,
 };
 
-use crate::models::{DbLogEvent, NewDbLogEvent};
-use crate::schema::db_commit_log as schema_log;
-use crate::schema::db_commit_log::dsl;
+use serde::{Serialize, Deserialize};
 
+#[derive(Deserialize, Serialize)]
 pub struct SyncRequest {
     pub vault: Option<VaultSyncRequest>,
     pub global_index: Option<String>,
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct VaultSyncRequest {
     pub vault_id: Option<String>,
     pub tail_id: Option<String>,

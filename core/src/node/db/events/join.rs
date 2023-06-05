@@ -1,4 +1,3 @@
-use crate::crypto::utils::to_id;
 use crate::models::{UserSignature, VaultDoc};
 use crate::node::db::commit_log::generate_next;
 use crate::node::db::models::{AppOperation, AppOperationType, KeyIdGen, KvKey, KvKeyId, KvLogEvent, KvValueType, ObjectType, VaultId};

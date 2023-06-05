@@ -1,4 +1,3 @@
-use crate::crypto::utils;
 use crate::models::{Base64EncodedText, UserSignature, VaultDoc};
 use crate::node::db::events::persistent_vault::create_vault_formation_event_on_server;
 use crate::node::db::models::{

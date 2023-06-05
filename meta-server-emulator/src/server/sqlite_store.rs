@@ -2,9 +2,9 @@ use meta_secret_core::node::db::db::{FindOneQuery, SaveCommand};
 use meta_secret_core::node::db::meta_db::CommitLogStore;
 use meta_secret_core::node::db::models::KvLogEvent;
 use async_trait::async_trait;
-use diesel::{Connection, ExpressionMethods, QueryDsl, QueryResult, RunQueryDsl, SqliteConnection};
+use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection};
 use crate::models::DbLogEvent;
-use crate::schema::db_commit_log::{dsl, event};
+use crate::schema::db_commit_log::dsl;
 use crate::models::{NewDbLogEvent};
 use crate::schema::db_commit_log as schema_log;
 
