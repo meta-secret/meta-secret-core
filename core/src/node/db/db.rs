@@ -38,11 +38,11 @@ pub trait FindAllQuery<T> {
     async fn find_all(&self) -> Result<Vec<T>, Self::Error>;
 }
 
-pub trait UserCredentialsRepo: SaveCommand<UserCredentials> + FindQuery<UserCredentials> {}
+pub trait UserCredentialsRepo: SaveCommand<UserCredentials> + FindOneQuery<UserCredentials> {}
 
-pub trait MetaVaultRepo: SaveCommand<MetaVault> + FindQuery<MetaVault> {}
+pub trait MetaVaultRepo: SaveCommand<MetaVault> + FindOneQuery<MetaVault> {}
 
-pub trait UserPasswordsRepo: SaveCommand<UserPasswordEntity> + FindQuery<UserPasswordEntity> {}
+pub trait UserPasswordsRepo: SaveCommand<UserPasswordEntity> + FindOneQuery<UserPasswordEntity> {}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserPasswordEntity {

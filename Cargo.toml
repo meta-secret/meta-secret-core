@@ -6,4 +6,7 @@ members = [
     "core-swift-lib",
 ]
 
-exclude = ["meta-server-serverless"]
+exclude = [
+    "meta-server-serverless",
+    "wasm"
+]

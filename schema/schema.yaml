@@ -30,21 +30,33 @@ components:
           minimum: 0
           maximum: 250
 
+    MetaVault:
+      type: object
+      description: |
+        It keeps the information about a vault. 
+        It's the origin of the objects generated to create a user vault and generate
+        all necessary credentials and user signatures.
+        MetaVault -> KeyManager -> UserSignature
+      required:
+        - name
+        - device
+      properties:
+        name:
+          description: vault name
+          type: string
+        device:
+          $ref: '#/components/schemas/DeviceInfo'
+
     UserSignature:
       type: object
       required:
-        - vaultName
-        - device
+        - vault
         - publicKey
         - transportPublicKey
       properties:
-        vaultName:
-          type: string
+        vault:
           description: distributed vault, unique across the entire system
-          minLength: 1
-          maxLength: 1000
-        device:
-          $ref: '#/components/schemas/DeviceInfo'
+          $ref: '#/components/schemas/MetaVault'
         publicKey:
           $ref: '#/components/schemas/Base64EncodedText'
         transportPublicKey:
@@ -375,21 +387,5 @@ components:
           $ref: '#/components/schemas/UserSecurityBox'
         userSig:
           $ref: '#/components/schemas/UserSignature'
-
-    MetaVault:
-      type: object
-      description: |
-        It keeps the information about a vault. 
-        It's the origin of the objects generated to create a user vault and generate
-        all necessary credentials and user signatures.
-        MetaVault -> KeyManager -> UserSignature
-      required:
-        - vaultName
-        - device
-      properties:
-        vaultName:
-          type: string
-        device:
-          $ref: '#/components/schemas/DeviceInfo'
 
 paths:
