@@ -16,3 +16,10 @@ schema/target
 /meta-server-serverless/Cargo.lock
 /meta-server-serverless/package-lock.json
 /meta-server-serverless/target
+
+/wasm/target
+/wasm/pkg
+/wasm/**/*.rs.bk
+/wasm/Cargo.lock
+/wasm/bin/
+/wasm/wasm-pack.log

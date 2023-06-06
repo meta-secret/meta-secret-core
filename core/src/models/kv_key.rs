@@ -12,18 +12,18 @@
 
 
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
-pub struct MetaPasswordDoc {
+pub struct KvKey {
     #[serde(rename = "id")]
-    pub id: Box<crate::models::MetaPasswordId>,
-    #[serde(rename = "vault")]
-    pub vault: Box<crate::models::VaultDoc>,
+    pub id: String,
+    #[serde(rename = "store")]
+    pub store: String,
 }
 
-impl MetaPasswordDoc {
-    pub fn new(id: crate::models::MetaPasswordId, vault: crate::models::VaultDoc) -> MetaPasswordDoc {
-        MetaPasswordDoc {
-            id: Box::new(id),
-            vault: Box::new(vault),
+impl KvKey {
+    pub fn new(id: String, store: String) -> KvKey {
+        KvKey {
+            id,
+            store,
         }
     }
 }

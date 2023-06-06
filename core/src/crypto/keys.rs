@@ -1,5 +1,5 @@
 use crate::crypto::key_pair::{DsaKeyPair, KeyPair, TransportDsaKeyPair};
-use crate::models::{CommunicationChannel, DeviceInfo, SerializedKeyManager, UserSecurityBox, UserSignature};
+use crate::models::{CommunicationChannel, DeviceInfo, MetaVault, SerializedKeyManager, UserSecurityBox, UserSignature};
 
 pub struct KeyManager {
     pub dsa: DsaKeyPair,
@@ -32,8 +32,10 @@ impl UserSecurityBox {
         let key_manager: KeyManager = KeyManager::try_from(self.key_manager.as_ref()).unwrap();
 
         UserSignature {
-            vault_name: self.vault_name.clone(),
-            device: Box::from(device.clone()),
+            vault: Box::new(MetaVault {
+                name: self.vault_name.clone(),
+                device: Box::from(device.clone()),
+            }),
             public_key: Box::from(key_manager.dsa.public_key()),
             transport_public_key: Box::from(key_manager.transport_key_pair.public_key()),
         }

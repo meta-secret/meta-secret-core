@@ -14,10 +14,10 @@ pub fn accept_event_sign_up_request(sign_up_request: KvLogEvent, server_pk: Base
 
 pub fn accept_sign_up_request(sign_up_request: KvLogEvent, server_pk: Base64EncodedText) -> Vec<KvLogEvent> {
     let user_sig: UserSignature = serde_json::from_value(sign_up_request.value.clone()).unwrap();
-    let vault_name = user_sig.vault_name.clone();
+    let vault_name = user_sig.vault.name.clone();
 
     let vault = VaultDoc {
-        vault_name: user_sig.vault_name.clone(),
+        vault_name: user_sig.vault.name.clone(),
         signatures: vec![user_sig],
         pending_joins: vec![],
         declined_joins: vec![],
@@ -47,7 +47,7 @@ pub fn accept_sign_up_request(sign_up_request: KvLogEvent, server_pk: Base64Enco
 }
 
 pub fn sign_up_request(user_sig: &UserSignature) -> KvLogEvent {
-    let id = KvKeyId::object_foundation(user_sig.vault_name.as_str(), ObjectType::Vault);
+    let id = KvKeyId::object_foundation(user_sig.vault.name.as_str(), ObjectType::Vault);
 
     let sign_up_key = KvKey {
         id: id.next(),

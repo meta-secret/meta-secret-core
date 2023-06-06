@@ -6,7 +6,7 @@ pub fn join_cluster_request(curr_key_id: &KvKeyId, user_sig: &UserSignature) -> 
     let key = KvKey {
         id: curr_key_id.next(),
         object_type: ObjectType::Vault,
-        vault_id: Some(VaultId::build(user_sig.vault_name.as_str(), ObjectType::Vault).vault_id),
+        vault_id: Some(VaultId::build(user_sig.vault.name.as_str(), ObjectType::Vault).vault_id),
     };
 
     KvLogEvent {
