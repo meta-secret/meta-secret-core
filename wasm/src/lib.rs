@@ -10,7 +10,7 @@ use meta_secret_core::shared_secret::shared_secret::{
 };
 use meta_secret_core::shared_secret::MetaDistributor;
 use wasm_bindgen::prelude::*;
-use meta_secret_core::node::db::db::{FindOneQuery, SaveCommand, UserPasswordEntity};
+use meta_secret_core::node::db::generic_db::{FindOneQuery, SaveCommand, UserPasswordEntity};
 
 use crate::db::meta_pass;
 

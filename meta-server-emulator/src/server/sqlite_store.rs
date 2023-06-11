@@ -1,15 +1,19 @@
-use meta_secret_core::node::db::db::{FindOneQuery, SaveCommand};
-use meta_secret_core::node::db::meta_db::CommitLogStore;
-use meta_secret_core::node::db::models::KvLogEvent;
+use meta_secret_core::node::db::generic_db::{FindOneQuery, KvLogEventRepo, SaveCommand};
+use meta_secret_core::node::db::models::{KvKeyId, KvLogEvent};
 use async_trait::async_trait;
 use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection};
+use meta_secret_core::models::Base64EncodedText;
+use meta_secret_core::node::server::log_events_service::PersistentObjectRepo;
+use meta_secret_core::node::server::meta_server::{MetaServer, MetaServerContext, MetaServerContextState};
 use crate::models::DbLogEvent;
 use crate::schema::db_commit_log::dsl;
 use crate::models::{NewDbLogEvent};
 use crate::schema::db_commit_log as schema_log;
 
-pub struct SqlIteStore {
+pub struct SqlIteServer {
+    /// conn_url="file:///tmp/test.db"
     pub conn_url: String,
+    pub context: MetaServerContextState
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -21,17 +25,8 @@ pub enum SqliteDbError {
     },
 }
 
-impl SqlIteStore {
-    /// conn_url="file:///tmp/test.db"
-    pub fn new(conn_url: String) -> Self {
-        Self {
-            conn_url
-        }
-    }
-}
-
 #[async_trait(? Send)]
-impl SaveCommand<KvLogEvent> for SqlIteStore {
+impl SaveCommand<KvLogEvent> for SqlIteServer {
     type Error = SqliteDbError;
 
     async fn save(&self, _key: &str, value: &KvLogEvent) -> Result<(), Self::Error> {
@@ -45,7 +40,7 @@ impl SaveCommand<KvLogEvent> for SqlIteStore {
 }
 
 #[async_trait(? Send)]
-impl FindOneQuery<KvLogEvent> for SqlIteStore {
+impl FindOneQuery<KvLogEvent> for SqlIteServer {
     type Error = SqliteDbError;
 
     async fn find_one(&self, key: &str) -> Result<Option<KvLogEvent>, Self::Error> {
@@ -59,7 +54,22 @@ impl FindOneQuery<KvLogEvent> for SqlIteStore {
     }
 }
 
-#[async_trait(? Send)]
-impl CommitLogStore for SqlIteStore {
+impl KvLogEventRepo for SqlIteServer {}
+
+impl MetaServerContext for SqlIteServer {
+    fn server_pk(&self) -> Base64EncodedText {
+        self.context.server_pk()
+    }
+
+    fn tail_id(&self) -> Option<KvKeyId> {
+        self.context.global_index_tail_id.clone()
+    }
+}
+
+impl MetaServer for SqlIteServer {
+
+}
+
+impl PersistentObjectRepo for SqlIteServer {
 
 }

@@ -3,7 +3,7 @@ mod cf_kv_store;
 use worker::*;
 use serde::{Serialize, Deserialize};
 use meta_secret_core::node::db::models::KvLogEvent;
-use meta_secret_core::node::server::meta_server::{MetaServer, MetaServerNode, SyncRequest};
+use meta_secret_core::node::server::meta_server::{MetaServer, MetaServerContextState, SyncRequest};
 use crate::cf_kv_store::CfKvStore;
 
 #[event(fetch)]
@@ -17,7 +17,7 @@ async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
                     let store = CfKvStore {
                         kv_store: kv,
                     };
-                    let server = MetaServerNode::new(store);
+                    let server = MetaServerContextState::new(store);
 
                     let request = req.json::<SyncRequest>().await?;
 
@@ -36,7 +36,7 @@ async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
                     let store = CfKvStore {
                         kv_store: kv,
                     };
-                    let server = MetaServerNode::new(store);
+                    let server = MetaServerContextState::new(store);
 
                     let request = req.json::<KvLogEvent>().await?;
                     server.send(&request).await;

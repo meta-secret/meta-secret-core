@@ -1,21 +1,19 @@
 use async_trait::async_trait;
 
-use crate::models::{MetaPasswordId, MetaVault, SecretDistributionDocData, UserCredentials};
+use crate::models::{MetaPasswordId, SecretDistributionDocData};
+use crate::node::db::models::KvLogEvent;
 
 #[async_trait(? Send)]
 pub trait SaveCommand<Data> {
     type Error: std::error::Error;
-
     async fn save(&self, key: &str, value: &Data) -> Result<(), Self::Error>;
 }
 
 #[async_trait(? Send)]
 pub trait FindOneQuery<Data> {
     type Error: std::error::Error;
-
     async fn find_one(&self, key: &str) -> Result<Option<Data>, Self::Error>;
 }
-
 
 #[async_trait(? Send)]
 pub trait FindQuery<T> {
@@ -38,11 +36,9 @@ pub trait FindAllQuery<T> {
     async fn find_all(&self) -> Result<Vec<T>, Self::Error>;
 }
 
-pub trait UserCredentialsRepo: SaveCommand<UserCredentials> + FindOneQuery<UserCredentials> {}
+pub trait KvLogEventRepo: FindOneQuery<KvLogEvent> + SaveCommand<KvLogEvent> {
 
-pub trait MetaVaultRepo: SaveCommand<MetaVault> + FindOneQuery<MetaVault> {}
-
-pub trait UserPasswordsRepo: SaveCommand<UserPasswordEntity> + FindOneQuery<UserPasswordEntity> {}
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserPasswordEntity {
