@@ -1,5 +1,4 @@
-use meta_secret_core::node::db::db::{FindOneQuery, SaveCommand};
-use meta_secret_core::node::db::meta_db::CommitLogStore;
+use meta_secret_core::node::db::generic_db::{FindOneQuery, SaveCommand};
 use meta_secret_core::node::db::models::KvLogEvent;
 use async_trait::async_trait;
 use worker::kv::{KvError, KvStore};
@@ -40,9 +39,4 @@ impl SaveCommand<KvLogEvent> for CfKvStore {
             .await?;
         Ok(())
     }
-}
-
-#[async_trait(? Send)]
-impl CommitLogStore for CfKvStore {
-
 }

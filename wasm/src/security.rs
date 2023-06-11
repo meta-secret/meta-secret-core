@@ -1,20 +1,29 @@
-use meta_secret_core::crypto::keys::KeyManager;
-use meta_secret_core::models::{UserCredentials};
+use std::convert::TryFrom;
 use wasm_bindgen::prelude::*;
-use meta_secret_core::node::app::meta_app::MetaVaultService;
-use meta_secret_core::node::db::db::SaveCommand;
+use wasm_bindgen_test::__rt::Termination;
+
+use meta_secret_core::crypto::keys::KeyManager;
+use meta_secret_core::models::{MetaVault, UserCredentials};
+use meta_secret_core::node::app::meta_app::{MetaVaultService, PersistentMetaVault};
+use meta_secret_core::node::db::generic_db::SaveCommand;
 
 use crate::db::meta_vault::MetaVaultWasmRepo;
+use crate::db::user_credentials;
 use crate::db::user_credentials::UserCredentialsWasmRepo;
-use crate::db::{user_credentials, WasmDbError};
 use crate::log;
 
 #[wasm_bindgen]
 pub async fn get_meta_vault() -> Result<Option<JsValue>, JsValue> {
-    let maybe_meta_vault = internal::find_meta_vault().await.map_err(JsError::from)?;
+    let repo = MetaVaultWasmRepo {
+
+    };
+
+    let maybe_meta_vault = repo.find_meta_vault()
+        .await
+        .map_err(JsError::from)?;
 
     if let Some(meta_vault) = maybe_meta_vault {
-        let meta_vault_js = serde_wasm_bindgen::to_value(&meta_vault)?;
+        let meta_vault_js = meta_vault.to_js()?;
         Ok(Some(meta_vault_js))
     } else {
         Ok(None)
@@ -23,21 +32,40 @@ pub async fn get_meta_vault() -> Result<Option<JsValue>, JsValue> {
 
 #[wasm_bindgen]
 pub async fn create_meta_vault(vault_name: &str, device_name: &str) -> Result<JsValue, JsValue> {
-    let meta_vault_service = MetaVaultService {
-        repo: MetaVaultWasmRepo {},
+    let repo = MetaVaultWasmRepo {
+
     };
 
-    let meta_vault: Result<(), WasmDbError> = meta_vault_service.create_meta_vault(vault_name, device_name).await;
-    let meta_vault_js = serde_wasm_bindgen::to_value(&meta_vault.unwrap())?;
+    let meta_vault = repo
+        .create_meta_vault(vault_name, device_name)
+        .await?;
+
+    let meta_vault_js = meta_vault.to_js()?;
 
     Ok(meta_vault_js)
+}
+
+pub trait ToJsValue {
+    fn to_js(&self) -> Result<JsValue, JsValue>;
+}
+
+impl <T> ToJsValue for T {
+    fn to_js(&self) -> Result<JsValue, JsValue> {
+        Ok(serde_wasm_bindgen::to_value(self)?)
+    }
 }
 
 #[wasm_bindgen]
 pub async fn generate_user_credentials() -> Result<(), JsValue> {
     log("wasm: generate a new security box");
 
-    let maybe_meta_vault = internal::find_meta_vault().await.map_err(JsError::from)?;
+    let repo = MetaVaultWasmRepo {
+
+    };
+
+    let maybe_meta_vault = repo.find_meta_vault()
+        .await
+        .map_err(JsError::from)?;
 
     match maybe_meta_vault {
         Some(meta_vault) => {
@@ -62,16 +90,10 @@ pub async fn generate_user_credentials() -> Result<(), JsValue> {
 }
 
 pub mod internal {
-    use meta_secret_core::models::{MetaVault, UserCredentials};
+    use meta_secret_core::models::UserCredentials;
 
-    use crate::db::meta_vault::MetaVaultWasmRepo;
     use crate::db::user_credentials::UserCredentialsWasmRepo;
     use crate::db::WasmDbError;
-
-    pub async fn find_meta_vault() -> Result<Option<MetaVault>, WasmDbError> {
-        let meta_vault_repo = MetaVaultWasmRepo {};
-        meta_vault_repo.find_meta_vault().await
-    }
 
     pub async fn find_user_credentials() -> Result<Option<UserCredentials>, WasmDbError> {
         let repo = UserCredentialsWasmRepo {};

@@ -1,7 +1,12 @@
-use crate::node::db::db::{MetaVaultRepo, SaveCommand};
+use std::collections::HashMap;
+use std::fmt::Error;
+use crate::node::db::generic_db::{FindOneQuery, SaveCommand};
 use crate::models::device_info::DeviceInfo;
 use crate::models::meta_vault::MetaVault;
-use crate::crypto;
+use async_trait::async_trait;
+use crate::crypto::keys::KeyManager;
+use crate::node::db::models::KvLogEvent;
+use crate::node::server::meta_server::{DataSync, DataTransport, MetaServerContextState, MetaServer};
 
 //запилить клиентскую часть!
 //нам надо регистрацию мета волта взять из веб cli
@@ -9,25 +14,67 @@ use crate::crypto;
 //потом синхронизацию настроить с серваком
 //и наконец - функциональность приложения
 
-pub struct MetaVaultService<T: MetaVaultRepo> {
-    pub repo: T
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/// -----------------------------------------------------------------------------  server side
+
+mod store_conf {
+    //pub const STORE_NAME: &str = "meta_vault";
+    pub const KEY_NAME: &str = "vault";
 }
 
-impl <T: MetaVaultRepo> MetaVaultService<T> {
+use crate::node::db::generic_db::KvLogEventRepo;
 
-    pub async fn create_meta_vault(&self, vault_name: &str, device_name: &str) -> Result<(), <T as SaveCommand<MetaVault>>::Error> {
-        let device = DeviceInfo {
-            device_id: crypto::utils::generate_hash(),
-            device_name: device_name.to_string(),
-        };
 
-        let meta_vault = MetaVault {
-            name: vault_name.to_string(),
-            device: Box::new(device),
-        };
+impl KvLogEventRepo for MetaServerContextState {}
 
-        self.repo
-            .save("vault", &meta_vault)
-            .await
+#[async_trait(? Send)]
+impl FindOneQuery<KvLogEvent> for MetaServerContextState {
+    type Error = Error;
+
+    async fn find_one(&self, key: &str) -> Result<Option<KvLogEvent>, Self::Error> {
+        Ok(None)
     }
+}
+
+#[async_trait(? Send)]
+impl SaveCommand<KvLogEvent> for MetaServerContextState {
+    type Error = Error;
+
+    async fn save(&self, key: &str, value: &KvLogEvent) -> Result<(), Self::Error> {
+        todo!()
+    }
+}
+
+impl MetaServer for MetaServerContextState {
+
+}
+
+fn yay() {
+    let node = MetaServerContextState {
+        km: KeyManager::generate(),
+        global_index_tail_id: None,
+    };
+
+    //let xxx = node.accept_sign_up_request().await;
 }

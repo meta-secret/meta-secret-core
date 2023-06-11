@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 
 pub mod indexed_db {
     use async_trait::async_trait;
-    use meta_secret_core::node::db::db::FindAllQuery;
-    use meta_secret_core::node::db::db::SaveCommand;
+    use meta_secret_core::node::db::generic_db::FindAllQuery;
+    use meta_secret_core::node::db::generic_db::SaveCommand;
     use meta_secret_core::node::db::models::KvLogEvent;
 
     use crate::db::WasmDbError;
@@ -26,8 +26,7 @@ pub mod indexed_db {
     }
 
     #[async_trait(? Send)]
-    impl SaveCommand<KvLogEvent> for CommitLogWasmRepo {
-        type Error = WasmDbError;
+    impl SaveCommand<KvLogEvent, WasmDbError> for CommitLogWasmRepo {
 
         async fn save(&self, key: &str, event: &KvLogEvent) -> Result<(), Self::Error> {
             let event_js = serde_wasm_bindgen::to_value(event)?;

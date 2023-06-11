@@ -1,5 +1,7 @@
 use wasm_bindgen::JsValue;
 use web_sys::DomException;
+use meta_secret_core::node::app::meta_app::PersistentMetaVault;
+use crate::db::meta_vault::MetaVaultWasmRepo;
 
 pub const DB_NAME: &str = "meta_secret_db";
 
@@ -9,16 +11,13 @@ pub enum WasmDbError {
     JsIndexedDbError(DomException),
 
     #[error(transparent)]
-    WasmBindgenError {
+    WasmBindGenError {
         #[from]
         source: serde_wasm_bindgen::Error,
     },
 
     #[error("JsValue error")]
     JsValueError(JsValue),
-
-    #[error("JsValue error")]
-    WasmBindGenJsValueError(wasm_bindgen::JsValue),
 
     #[error("Db error: {0}")]
     DbCustomError(String),
@@ -27,7 +26,7 @@ pub enum WasmDbError {
 pub mod user_credentials {
     use async_trait::async_trait;
     use meta_secret_core::models::UserCredentials;
-    use meta_secret_core::node::db::db::{FindOneQuery, SaveCommand, UserCredentialsRepo};
+    use meta_secret_core::node::db::generic_db::{FindOneQuery, SaveCommand, UserCredentialsRepo};
 
     use crate::db::{WasmDbError, DB_NAME};
     use crate::{idbGet, idbSave};
@@ -46,8 +45,7 @@ pub mod user_credentials {
     }
 
     #[async_trait(? Send)]
-    impl SaveCommand<UserCredentials> for UserCredentialsWasmRepo {
-        type Error = WasmDbError;
+    impl SaveCommand<UserCredentials, WasmDbError> for UserCredentialsWasmRepo {
 
         async fn save(&self, key: &str, creds: &UserCredentials) -> Result<(), Self::Error> {
             let creds_js = serde_wasm_bindgen::to_value(creds)?;
@@ -57,8 +55,7 @@ pub mod user_credentials {
     }
 
     #[async_trait(? Send)]
-    impl FindOneQuery<UserCredentials> for UserCredentialsWasmRepo {
-        type Error = WasmDbError;
+    impl FindOneQuery<UserCredentials, WasmDbError> for UserCredentialsWasmRepo {
 
         async fn find_one(&self, key: &str) -> Result<Option<UserCredentials>, Self::Error> {
             let creds_js = idbGet(DB_NAME, store_conf::STORE_NAME, key).await;
@@ -74,7 +71,7 @@ pub mod user_credentials {
 pub mod meta_vault {
     use async_trait::async_trait;
     use meta_secret_core::models::MetaVault;
-    use meta_secret_core::node::db::db::{FindOneQuery, MetaVaultRepo, SaveCommand};
+    use meta_secret_core::node::db::generic_db::{FindOneQuery, MetaVaultRepo, SaveCommand};
 
     use crate::db::WasmDbError;
     use crate::db::DB_NAME;
@@ -88,8 +85,7 @@ pub mod meta_vault {
     pub struct MetaVaultWasmRepo {}
 
     #[async_trait(? Send)]
-    impl SaveCommand<MetaVault> for MetaVaultWasmRepo {
-        type Error = WasmDbError;
+    impl SaveCommand<MetaVault, WasmDbError> for MetaVaultWasmRepo {
 
         async fn save(&self, key: &str, vault: &MetaVault) -> Result<(), Self::Error> {
             let vault_js = serde_wasm_bindgen::to_value(vault)?;
@@ -99,9 +95,7 @@ pub mod meta_vault {
     }
 
     #[async_trait(? Send)]
-    impl FindOneQuery<MetaVault> for MetaVaultWasmRepo {
-        type Error = WasmDbError;
-
+    impl FindOneQuery<MetaVault, WasmDbError> for MetaVaultWasmRepo {
         async fn find_one(&self, key: &str) -> Result<Option<MetaVault>, Self::Error> {
             let vault_js = idbGet(DB_NAME, store_conf::STORE_NAME, key).await;
             if vault_js.is_undefined() {
@@ -113,9 +107,6 @@ pub mod meta_vault {
         }
     }
 
-    #[async_trait(? Send)]
-    impl MetaVaultRepo for MetaVaultWasmRepo {}
-
     impl MetaVaultWasmRepo {
         pub async fn find_meta_vault(&self) -> Result<Option<MetaVault>, WasmDbError> {
             self.find_one(store_conf::KEY_NAME).await
@@ -125,7 +116,7 @@ pub mod meta_vault {
 
 pub mod meta_pass {
     use async_trait::async_trait;
-    use meta_secret_core::node::db::db::{FindOneQuery, SaveCommand, UserPasswordEntity, UserPasswordsRepo};
+    use meta_secret_core::node::db::generic_db::{FindOneQuery, SaveCommand, UserPasswordEntity, UserPasswordsRepo};
 
     use crate::db::{WasmDbError, DB_NAME};
     use crate::{idbGet, idbSave};
@@ -137,8 +128,7 @@ pub mod meta_pass {
     pub struct UserPasswordsWasmRepo {}
 
     #[async_trait(? Send)]
-    impl SaveCommand<UserPasswordEntity> for UserPasswordsWasmRepo {
-        type Error = WasmDbError;
+    impl SaveCommand<UserPasswordEntity, WasmDbError> for UserPasswordsWasmRepo {
 
         async fn save(&self, key: &str, pass: &UserPasswordEntity) -> Result<(), Self::Error> {
             let pass_js = serde_wasm_bindgen::to_value(pass)?;
@@ -148,8 +138,7 @@ pub mod meta_pass {
     }
 
     #[async_trait(? Send)]
-    impl FindOneQuery<UserPasswordEntity> for UserPasswordsWasmRepo {
-        type Error = WasmDbError;
+    impl FindOneQuery<UserPasswordEntity, WasmDbError> for UserPasswordsWasmRepo {
 
         async fn find_one(&self, key: &str) -> Result<Option<UserPasswordEntity>, Self::Error> {
             let pass_js = idbGet(DB_NAME, store_conf::STORE_NAME, key).await;
@@ -161,7 +150,4 @@ pub mod meta_pass {
             }
         }
     }
-
-    #[async_trait(? Send)]
-    impl UserPasswordsRepo for UserPasswordsWasmRepo {}
 }
