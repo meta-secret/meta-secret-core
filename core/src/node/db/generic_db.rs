@@ -4,15 +4,15 @@ use crate::models::{MetaPasswordId, SecretDistributionDocData};
 use crate::node::db::models::KvLogEvent;
 
 #[async_trait(? Send)]
-pub trait SaveCommand<Data> {
+pub trait SaveCommand {
     type Error: std::error::Error;
-    async fn save(&self, key: &str, value: &Data) -> Result<(), Self::Error>;
+    async fn save(&self, value: &KvLogEvent) -> Result<(), Self::Error>;
 }
 
 #[async_trait(? Send)]
-pub trait FindOneQuery<Data> {
+pub trait FindOneQuery {
     type Error: std::error::Error;
-    async fn find_one(&self, key: &str) -> Result<Option<Data>, Self::Error>;
+    async fn find_one(&self, key: &str) -> Result<Option<KvLogEvent>, Self::Error>;
 }
 
 #[async_trait(? Send)]
@@ -36,9 +36,7 @@ pub trait FindAllQuery<T> {
     async fn find_all(&self) -> Result<Vec<T>, Self::Error>;
 }
 
-pub trait KvLogEventRepo: FindOneQuery<KvLogEvent> + SaveCommand<KvLogEvent> {
-
-}
+pub trait KvLogEventRepo: FindOneQuery + SaveCommand {}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserPasswordEntity {

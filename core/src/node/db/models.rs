@@ -1,5 +1,6 @@
-use serde_json::Value;
 use std::collections::HashSet;
+
+use serde_json::Value;
 
 use crate::crypto::utils;
 use crate::models::{Base64EncodedText, VaultDoc};
@@ -103,77 +104,159 @@ pub enum KvValueType {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KvKey {
-    pub id: KvKeyId,
+    pub key_id: KvKeyId,
     pub object_type: ObjectType,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub vault_id: Option<String>,
+}
+
+impl ObjectCreator<&ObjectDescriptor> for KvKey {
+    fn formation(obj_desc: &ObjectDescriptor) -> Self {
+        Self {
+            key_id: KvKeyId::formation(obj_desc),
+            object_type: obj_desc.object_type,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KvKeyId {
-    pub key_id: String,
-    pub prev_key_id: String,
+    pub obj_id: ObjectId,
+    pub prev_obj_id: String,
 }
 
-pub struct VaultId {
-    pub vault_id: String
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObjectId {
+    pub id: String,
+    pub genesis_id: String,
 }
 
-impl VaultId {
-    pub fn build(object_name: &str, object_type: ObjectType) -> Self {
-        let full_name = format!("{:?}:{}", object_type, object_name);
-        let vault_id = utils::to_id(full_name.as_str());
-        Self { vault_id }
+pub struct Descriptors {}
+
+impl Descriptors {
+    pub fn global_index() -> ObjectDescriptor {
+        ObjectDescriptor {
+            name: String::from("meta-g"),
+            object_type: ObjectType::GlobalIndex,
+        }
     }
 }
 
+pub struct ObjectDescriptor {
+    pub name: String,
+    pub object_type: ObjectType,
+}
+
+impl ObjectDescriptor {
+    pub fn to_id(&self) -> String {
+        utils::to_id(self.full_name().as_str())
+    }
+}
+
+impl ObjectDescriptor {
+    pub fn full_name(&self) -> String {
+        format!("{:?}:{}", self.object_type, self.name)
+    }
+
+    pub fn vault(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            object_type: ObjectType::Vault,
+        }
+    }
+
+    pub fn global_index(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            object_type: ObjectType::GlobalIndex,
+        }
+    }
+}
+
+pub trait ObjectCreator<T> {
+    fn formation(value: T) -> Self;
+}
+
+impl ObjectCreator<&ObjectDescriptor> for ObjectId {
+    fn formation(obj_descriptor: &ObjectDescriptor) -> Self {
+        let genesis_id = obj_descriptor.to_id();
+        Self {
+            id: genesis_id.clone(),
+            genesis_id,
+        }
+    }
+}
+
+impl ObjectCreator<&ObjectDescriptor> for KvKeyId {
+    fn formation(obj_descriptor: &ObjectDescriptor) -> Self {
+        let obj_id = ObjectId::formation(obj_descriptor);
+        KvKeyId::formation(obj_id.id)
+    }
+}
+
+/// Build formation id based on genesis id
+impl ObjectCreator<String> for KvKeyId {
+    fn formation(genesis_id: String) -> Self {
+        let origin_id = utils::to_id("meta-secret-genesis");
+        Self {
+            obj_id: ObjectId {
+                id: genesis_id.clone(),
+                genesis_id,
+            },
+            prev_obj_id: origin_id,
+        }
+    }
+}
+
+impl KvKeyId {
+    pub fn vault_formation(vault_name: &str) -> Self {
+        let vault_desc = ObjectDescriptor::vault(vault_name);
+        KvKeyId::formation(&vault_desc)
+    }
+}
 
 pub trait KeyIdGen {
-    fn object_foundation_from_id(object_id: &str) -> Self;
-    fn object_foundation(object_id: &str, object_type: ObjectType) -> Self;
-
     fn next(&self) -> Self;
-    fn generate_next(curr_id: &str) -> Self;
 }
 
 impl KeyIdGen for KvKeyId {
-    fn object_foundation_from_id(object_id: &str) -> Self {
-        let prev_key_id = utils::to_id("meta-secret-genesis");
-        Self { key_id: object_id.to_string(), prev_key_id }
-    }
-
-    fn object_foundation(object_name: &str, object_type: ObjectType) -> Self {
-        let vault_id = VaultId::build(object_name, object_type);
-        Self::object_foundation_from_id(vault_id.vault_id.as_str())
-    }
-
     fn next(&self) -> Self {
-        let curr_id = self.key_id.as_str();
-        let next_id = utils::to_id(curr_id);
-        Self {
-            key_id: next_id,
-            prev_key_id: curr_id.to_string(),
-        }
-    }
+        let curr_id = self.obj_id.id.clone();
+        let next_id = utils::to_id(curr_id.as_str());
 
-    fn generate_next(curr_id: &str) -> Self {
-        let next_id = utils::to_id(curr_id);
+        let object_id = ObjectId {
+            id: next_id,
+            genesis_id: self.obj_id.genesis_id.clone(),
+        };
+
         Self {
-            key_id: next_id,
-            prev_key_id: curr_id.to_string(),
+            obj_id: object_id,
+            prev_obj_id: curr_id.clone(),
         }
     }
 }
 
+impl KeyIdGen for KvKey {
+    fn next(&self) -> Self {
+        Self {
+            key_id: self.key_id.next(),
+            object_type: self.object_type,
+        }
+    }
+}
 
 #[cfg(test)]
 mod test {
-    use crate::node::db::models::{KeyIdGen, KvKeyId, ObjectType};
+    use crate::node::db::models::{KvKeyId, ObjectCreator, ObjectDescriptor, ObjectType};
 
     #[test]
     fn test_key_id() {
-        let id = KvKeyId::object_foundation("test", ObjectType::Vault);
+        let descriptor = ObjectDescriptor {
+            name: "test".to_string(),
+            object_type: ObjectType::Vault,
+        };
+        let id = KvKeyId::formation(&descriptor);
+
         println!("{:?}", id);
     }
 }

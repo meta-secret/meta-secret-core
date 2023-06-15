@@ -5,16 +5,22 @@ mod test {
     use meta_secret_core::crypto::keys::KeyManager;
     use meta_secret_core::models::DeviceInfo;
     use meta_secret_core::node::db::commit_log;
-    use meta_secret_core::node::db::events::global_index;
     use meta_secret_core::node::db::events::join::join_cluster_request;
-    use meta_secret_core::node::db::events::sign_up::sign_up_request;
-    use meta_secret_core::node::db::generic_db::{FindOneQuery, KvLogEventRepo, SaveCommand};
-    use meta_secret_core::node::db::models::{KeyIdGen, KvKeyId, KvLogEvent, ObjectType, VaultId};
-    use meta_secret_core::node::server::meta_server::{DataSync, DataTransport, MetaServer, MetaServerContext, MetaServerContextState};
+    use meta_secret_core::node::db::events::sign_up::SignUpRequest;
+
+    use meta_secret_core::node::db::models::{
+        Descriptors, KvKeyId, ObjectCreator, ObjectDescriptor, ObjectId,
+    };
+    use meta_secret_core::node::server::meta_server::{DataSync, DataTransport, MetaServerContext, MetaServerContextState};
+    use meta_secret_core::node::server::persistent_object_repo::ObjectFormation;
     use meta_secret_core::node::server::request::{SyncRequest, VaultSyncRequest};
     use meta_server_emulator::server::sqlite_migration::EmbeddedMigrationsTool;
     use meta_server_emulator::server::sqlite_store::SqlIteServer;
 
+    struct ObjectUtilsStruct {}
+
+    impl ObjectFormation for ObjectUtilsStruct {}
+    impl SignUpRequest for ObjectUtilsStruct {}
 
     #[tokio::test]
     async fn test_brand_new_client_with_empty_request() {
@@ -27,12 +33,13 @@ mod test {
             vault: None,
             global_index: None,
         };
-        let commit_log = server.sync(request).await;
+        let commit_log = server.sync_data(request).await;
         assert_eq!(1, commit_log.len());
 
-        let expected_global_idx_formation_event =
-            global_index::generate_global_index_formation_event(&server.server_pk());
-        assert_eq!(expected_global_idx_formation_event, commit_log[0]);
+        let obj_formation = ObjectUtilsStruct {};
+        let expected_global_id_event =
+            obj_formation.formation_event(&Descriptors::global_index(), &server.server_pk());
+        assert_eq!(expected_global_id_event, commit_log[0]);
     }
 
     fn get_sqlite_server(migration: EmbeddedMigrationsTool) -> SqlIteServer {
@@ -55,7 +62,8 @@ mod test {
         //check whether the vault you are going to use already exists.
         // We need to have meta_db to be able to check if the vault exists
         let vault_name = "test";
-        let vault_id = VaultId::build(vault_name, ObjectType::Vault);
+        let vault_desc = ObjectDescriptor::vault(vault_name);
+        let vault_id = ObjectId::formation(&vault_desc);
 
         let a_s_box = KeyManager::generate_security_box(vault_name.to_string());
         let a_device = DeviceInfo {
@@ -68,29 +76,30 @@ mod test {
             vault: None,
             global_index: None,
         };
-        let commit_log = server.sync(request).await;
+        let commit_log = server.sync_data(request).await;
         let meta_db = commit_log::transform(Rc::new(commit_log)).unwrap();
         if meta_db
             .global_index_store
             .global_index
-            .contains(vault_id.vault_id.as_str())
+            .contains(vault_id.id.as_str())
         {
             panic!("The vault already exists");
         }
 
         // if a vault is not present
-        let sign_up_request = sign_up_request(&a_user_sig);
-        server.send(&sign_up_request).await;
+        let obj_utils = ObjectUtilsStruct {};
+        let sign_up_request = obj_utils.sign_up_request(&a_user_sig);
+        server.send_data(&sign_up_request).await;
 
         let request = SyncRequest {
             vault: Some(VaultSyncRequest {
-                vault_id: Some(vault_id.vault_id.clone()),
+                vault_id: Some(vault_id.id.clone()),
                 tail_id: None,
             }),
             global_index: None,
         };
 
-        let commit_log = &server.sync(request).await;
+        let commit_log = &server.sync_data(request).await;
         assert_eq!(5, commit_log.len());
 
         //find if your vault is already exists
@@ -100,7 +109,7 @@ mod test {
 
         let global_index = meta_db.global_index_store.global_index;
 
-        if !global_index.contains(vault_id.vault_id.as_str()) {
+        if !global_index.contains(vault_id.id.as_str()) {
             panic!("The vault expected to be in the database")
         }
     }
@@ -114,7 +123,7 @@ mod test {
         //check whether the vault you are going to use already exists.
         // We need to have meta_db to be able to check if the vault exists
         let vault_name = "test";
-        let vault_id = KvKeyId::object_foundation(vault_name, ObjectType::Vault);
+        let vault_id = KvKeyId::vault_formation(vault_name);
 
         let a_s_box = KeyManager::generate_security_box(vault_name.to_string());
         let a_device = DeviceInfo {
@@ -124,8 +133,9 @@ mod test {
         let a_user_sig = a_s_box.get_user_sig(&a_device);
 
         // if a vault is not present
-        let sign_up_request = sign_up_request(&a_user_sig);
-        server.send(&sign_up_request).await;
+        let obj_utils = ObjectUtilsStruct {};
+        let sign_up_request = obj_utils.sign_up_request(&a_user_sig);
+        server.send_data(&sign_up_request).await;
 
         let b_s_box = KeyManager::generate_security_box(vault_name.to_string());
         let b_device = DeviceInfo::new("b".to_string(), "b".to_string());
@@ -133,34 +143,31 @@ mod test {
 
         let request = SyncRequest {
             vault: Some(VaultSyncRequest {
-                vault_id: Some(vault_id.key_id.clone()),
+                vault_id: Some(vault_id.obj_id.genesis_id.clone()),
                 tail_id: None,
             }),
             global_index: None,
         };
 
-        let commit_log = &server.sync(request).await;
+        let commit_log = &server.sync_data(request).await;
         let commit_log_rc = Rc::new(commit_log.clone());
         let meta_db = commit_log::transform(commit_log_rc).unwrap();
 
         //println!("tail id {:?}", &meta_db.vault_store.tail_id.clone().unwrap());
 
-        let join_request = join_cluster_request(
-            &meta_db.vault_store.tail_id.unwrap(),
-            &b_user_sig
-        );
+        let join_request = join_cluster_request(&meta_db.vault_store.tail_id.unwrap(), &b_user_sig);
 
-        server.send(&join_request).await;
+        server.send_data(&join_request).await;
 
         let request = SyncRequest {
             vault: Some(VaultSyncRequest {
-                vault_id: Some(vault_id.key_id),
+                vault_id: Some(vault_id.obj_id.genesis_id),
                 tail_id: None,
             }),
             global_index: None,
         };
 
-        let commit_log = server.sync(request).await;
+        let commit_log = server.sync_data(request).await;
         for log_event in &commit_log {
             println!("commit_log: {}", serde_json::to_string(&log_event).unwrap());
         }

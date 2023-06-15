@@ -17,7 +17,7 @@ pub enum CfKvDbError {
 }
 
 #[async_trait(? Send)]
-impl FindOneQuery<KvLogEvent> for CfKvStore {
+impl FindOneQuery for CfKvStore {
     type Error = CfKvDbError;
 
     async fn find_one(&self, key: &str) -> Result<Option<KvLogEvent>, Self::Error> {
@@ -27,13 +27,13 @@ impl FindOneQuery<KvLogEvent> for CfKvStore {
 }
 
 #[async_trait(? Send)]
-impl SaveCommand<KvLogEvent> for CfKvStore {
+impl SaveCommand for CfKvStore {
     type Error = CfKvDbError;
 
-    async fn save(&self, _key: &str, value: &KvLogEvent) -> Result<(), Self::Error> {
-        let key_id = value.key.id.key_id.clone();
+    async fn save(&self, value: &KvLogEvent) -> Result<(), Self::Error> {
+        let key_id = value.key.key_id.obj_id.clone();
         self.kv_store
-            .put(key_id.as_str(), value)
+            .put(key_id.id.as_str(), value)
             .unwrap()
             .execute()
             .await?;

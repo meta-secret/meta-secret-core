@@ -45,11 +45,7 @@ pub fn to_id(str: &str) -> String {
 
 #[cfg(test)]
 mod test {
-    use std::process::id;
-    use image::EncodableLayout;
     use crate::crypto::utils::to_id;
-    use crate::models::Base64EncodedText;
-    use uuid::uuid;
 
     #[test]
     fn to_id_test() {

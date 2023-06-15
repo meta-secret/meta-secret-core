@@ -8,6 +8,7 @@ pub mod indexed_db {
 
     use crate::db::WasmDbError;
     use crate::{idbFindAll, idbSave};
+    use crate::security::ToJsValue;
 
     pub struct CommitLogWasmRepo {
         pub db_name: String,
@@ -26,14 +27,15 @@ pub mod indexed_db {
     }
 
     #[async_trait(? Send)]
-    impl SaveCommand<KvLogEvent, WasmDbError> for CommitLogWasmRepo {
+    impl SaveCommand for CommitLogWasmRepo {
+        type Error = WasmDbError;
 
-        async fn save(&self, key: &str, event: &KvLogEvent) -> Result<(), Self::Error> {
-            let event_js = serde_wasm_bindgen::to_value(event)?;
+        async fn save(&self, event: &KvLogEvent) -> Result<(), Self::Error> {
+            let event_js = event.to_js()?;
             idbSave(
                 self.db_name.as_str(),
                 self.store_name.as_str(),
-                key,
+                event.key.key_id.obj_id.id.as_str(),
                 event_js,
             )
             .await;
