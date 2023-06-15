@@ -3,25 +3,8 @@ use std::rc::Rc;
 
 use crate::models::{Base64EncodedText, VaultDoc};
 use crate::node::db::models::{
-    AppOperation, AppOperationType, GlobalIndexStore, KeyIdGen, KvKey, KvKeyId, KvLogEvent, LogCommandError, MetaDb,
-    ObjectType, VaultStore,
+    AppOperation, AppOperationType, GlobalIndexStore, KvLogEvent, LogCommandError, MetaDb, ObjectType, VaultStore,
 };
-
-pub fn generate_key(object: ObjectType, curr_id: &KvKeyId, vault_id: Option<String>) -> KvKey {
-    KvKey {
-        object_type: object,
-        id: curr_id.next(),
-        vault_id,
-    }
-}
-
-pub fn generate_next(prev_key: &KvKey) -> KvKey {
-    KvKey {
-        id: prev_key.id.next(),
-        object_type: prev_key.object_type,
-        vault_id: prev_key.vault_id.clone(),
-    }
-}
 
 /// Apply new events to the database
 pub fn apply(commit_log: Rc<Vec<KvLogEvent>>, mut meta_db: MetaDb) -> Result<MetaDb, LogCommandError> {
@@ -41,23 +24,23 @@ pub fn apply(commit_log: Rc<Vec<KvLogEvent>>, mut meta_db: MetaDb) -> Result<Met
                     match event.key.object_type {
                         ObjectType::Vault => {
                             meta_db.vault_store.server_pk = Some(server_pk);
-                            meta_db.vault_store.tail_id = Some(event.key.id.clone())
+                            meta_db.vault_store.tail_id = Some(event.key.key_id.clone())
                         }
                         ObjectType::GlobalIndex => {
                             meta_db.global_index_store.server_pk = Some(server_pk);
-                            meta_db.global_index_store.tail_id = Some(event.key.id.clone())
+                            meta_db.global_index_store.tail_id = Some(event.key.key_id.clone())
                         }
                     }
                 }
                 AppOperation::SignUp => {
                     let vault: VaultDoc = serde_json::from_value(event.value.clone()).unwrap();
                     vault_store.vault = Some(vault);
-                    vault_store.tail_id = Some(event.key.id.clone())
+                    vault_store.tail_id = Some(event.key.key_id.clone())
                 }
                 AppOperation::JoinCluster => {
                     let vault: VaultDoc = serde_json::from_value(event.value.clone()).unwrap();
                     vault_store.vault = Some(vault);
-                    vault_store.tail_id = Some(event.key.id.clone())
+                    vault_store.tail_id = Some(event.key.key_id.clone())
                 }
                 AppOperation::GlobalIndex => {
                     let vault_id: String = serde_json::from_value(event.value.clone()).unwrap();

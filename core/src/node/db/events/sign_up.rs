@@ -1,64 +1,62 @@
 use crate::models::{Base64EncodedText, UserSignature, VaultDoc};
-use crate::node::db::events::persistent_vault::create_vault_formation_event_on_server;
 use crate::node::db::models::{
-    AppOperation, AppOperationType, KeyIdGen, KvKey, KvKeyId, KvLogEvent, KvValueType, ObjectType,
+    AppOperation, AppOperationType, KeyIdGen, KvKey, KvLogEvent, KvValueType, ObjectCreator, ObjectDescriptor,
+    ObjectType,
 };
+use crate::node::server::persistent_object_repo::ObjectFormation;
 
-pub fn accept_event_sign_up_request(sign_up_request: KvLogEvent, server_pk: Base64EncodedText) -> Vec<KvLogEvent> {
-    if sign_up_request.cmd_type != AppOperationType::Request(AppOperation::SignUp) {
-        panic!("Invalid request");
+pub trait SignUpAction: ObjectFormation {
+    fn sign_up_accept(&self, sign_up_request: &KvLogEvent, server_pk: Base64EncodedText) -> Vec<KvLogEvent> {
+        if sign_up_request.cmd_type != AppOperationType::Request(AppOperation::SignUp) {
+            panic!("Invalid request");
+        }
+
+        let user_sig: UserSignature = serde_json::from_value(sign_up_request.value.clone()).unwrap();
+        let vault_name = user_sig.vault.name.clone();
+
+        let vault = VaultDoc {
+            vault_name: user_sig.vault.name.clone(),
+            signatures: vec![user_sig],
+            pending_joins: vec![],
+            declined_joins: vec![],
+        };
+
+        let obj_desc = ObjectDescriptor::vault(vault_name.as_str());
+        let vault_formation_event = self.formation_event(&obj_desc, &server_pk);
+
+        let expected_sign_request_id = vault_formation_event.key.key_id.next();
+        let actual_sign_up_request_id = sign_up_request.key.key_id.clone();
+        if actual_sign_up_request_id != expected_sign_request_id {
+            panic!(
+                "Invalid request: invalid id. expected_sign_request_id: {:?}, actual_sign_up_request_id: {:?}",
+                expected_sign_request_id, actual_sign_up_request_id
+            );
+        }
+
+        let sign_up_event = KvLogEvent {
+            key: KvKey {
+                object_type: ObjectType::Vault,
+                key_id: expected_sign_request_id.next(),
+            },
+            cmd_type: AppOperationType::Update(AppOperation::SignUp),
+            val_type: KvValueType::Vault,
+            value: serde_json::to_value(&vault).unwrap(),
+        };
+
+        vec![vault_formation_event, sign_up_request.clone(), sign_up_event]
     }
-
-    accept_sign_up_request(sign_up_request, server_pk)
 }
 
-pub fn accept_sign_up_request(sign_up_request: KvLogEvent, server_pk: Base64EncodedText) -> Vec<KvLogEvent> {
-    let user_sig: UserSignature = serde_json::from_value(sign_up_request.value.clone()).unwrap();
-    let vault_name = user_sig.vault.name.clone();
+pub trait SignUpRequest: ObjectFormation {
+    fn sign_up_request(&self, user_sig: &UserSignature) -> KvLogEvent {
+        let obj_desc = ObjectDescriptor::vault(user_sig.vault.name.as_str());
+        let genesis_key = KvKey::formation(&obj_desc);
 
-    let vault = VaultDoc {
-        vault_name: user_sig.vault.name.clone(),
-        signatures: vec![user_sig],
-        pending_joins: vec![],
-        declined_joins: vec![],
-    };
-
-    let vault_formation_event = create_vault_formation_event_on_server(vault_name.as_str(), &server_pk);
-
-    let expected_sign_request_id = vault_formation_event.key.id.next();
-    let actual_sign_up_request_id = sign_up_request.key.id.clone();
-    if actual_sign_up_request_id != expected_sign_request_id {
-        panic!("Invalid request: invalid id. expected_sign_request_id: {:?}, actual_sign_up_request_id: {:?}", expected_sign_request_id, actual_sign_up_request_id);
-    }
-
-    let vault_id = sign_up_request.key.vault_id.clone().unwrap();
-    let sign_up_event = KvLogEvent {
-        key: KvKey {
-            object_type: ObjectType::Vault,
-            id: expected_sign_request_id.next(),
-            vault_id: Some(vault_id),
-        },
-        cmd_type: AppOperationType::Update(AppOperation::SignUp),
-        val_type: KvValueType::Vault,
-        value: serde_json::to_value(&vault).unwrap(),
-    };
-
-    vec![vault_formation_event, sign_up_request, sign_up_event]
-}
-
-pub fn sign_up_request(user_sig: &UserSignature) -> KvLogEvent {
-    let id = KvKeyId::object_foundation(user_sig.vault.name.as_str(), ObjectType::Vault);
-
-    let sign_up_key = KvKey {
-        id: id.next(),
-        object_type: ObjectType::Vault,
-        vault_id: Some(id.key_id),
-    };
-
-    KvLogEvent {
-        key: sign_up_key,
-        cmd_type: AppOperationType::Request(AppOperation::SignUp),
-        val_type: KvValueType::UserSignature,
-        value: serde_json::to_value(user_sig).unwrap(),
+        KvLogEvent {
+            key: genesis_key.next(),
+            cmd_type: AppOperationType::Request(AppOperation::SignUp),
+            val_type: KvValueType::UserSignature,
+            value: serde_json::to_value(user_sig).unwrap(),
+        }
     }
 }

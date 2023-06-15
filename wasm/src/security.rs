@@ -1,15 +1,9 @@
 use std::convert::TryFrom;
 use wasm_bindgen::prelude::*;
-use wasm_bindgen_test::__rt::Termination;
 
 use meta_secret_core::crypto::keys::KeyManager;
-use meta_secret_core::models::{MetaVault, UserCredentials};
-use meta_secret_core::node::app::meta_app::{MetaVaultService, PersistentMetaVault};
-use meta_secret_core::node::db::generic_db::SaveCommand;
+use meta_secret_core::models::{UserCredentials};
 
-use crate::db::meta_vault::MetaVaultWasmRepo;
-use crate::db::user_credentials;
-use crate::db::user_credentials::UserCredentialsWasmRepo;
 use crate::log;
 
 #[wasm_bindgen]

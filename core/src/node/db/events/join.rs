@@ -1,12 +1,12 @@
 use crate::models::{UserSignature, VaultDoc};
-use crate::node::db::commit_log::generate_next;
-use crate::node::db::models::{AppOperation, AppOperationType, KeyIdGen, KvKey, KvKeyId, KvLogEvent, KvValueType, ObjectType, VaultId};
+use crate::node::db::models::{
+    AppOperation, AppOperationType, KeyIdGen, KvKey, KvKeyId, KvLogEvent, KvValueType, ObjectType,
+};
 
 pub fn join_cluster_request(curr_key_id: &KvKeyId, user_sig: &UserSignature) -> KvLogEvent {
     let key = KvKey {
-        id: curr_key_id.next(),
+        key_id: curr_key_id.next(),
         object_type: ObjectType::Vault,
-        vault_id: Some(VaultId::build(user_sig.vault.name.as_str(), ObjectType::Vault).vault_id),
     };
 
     KvLogEvent {
@@ -29,7 +29,7 @@ pub fn accept_join_request(request: &KvLogEvent, vault: &VaultDoc) -> KvLogEvent
 
     if let Some(err_msg) = maybe_error {
         return KvLogEvent {
-            key: generate_next(&request.key),
+            key: request.key.next(),
             cmd_type: AppOperationType::Update(AppOperation::JoinCluster),
             val_type: KvValueType::Error,
             value: serde_json::from_str(err_msg).unwrap(),
@@ -42,7 +42,7 @@ pub fn accept_join_request(request: &KvLogEvent, vault: &VaultDoc) -> KvLogEvent
     new_vault.signatures.push(user_sig);
 
     KvLogEvent {
-        key: generate_next(&request.key),
+        key: request.key.next(),
         cmd_type: AppOperationType::Update(AppOperation::JoinCluster),
         val_type: KvValueType::Vault,
         value: serde_json::to_value(&new_vault).unwrap(),

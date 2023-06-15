@@ -1,6 +1,7 @@
 use crate::crypto::key_pair::{DsaKeyPair, KeyPair, TransportDsaKeyPair};
-use crate::models::{CommunicationChannel, DeviceInfo, MetaVault, SerializedKeyManager, UserSecurityBox, UserSignature};
-
+use crate::models::{
+    CommunicationChannel, DeviceInfo, MetaVault, SerializedKeyManager, UserSecurityBox, UserSignature,
+};
 
 pub struct KeyManager {
     pub dsa: DsaKeyPair,
