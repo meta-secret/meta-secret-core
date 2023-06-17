@@ -12,11 +12,9 @@ use meta_secret_core::shared_secret::MetaDistributor;
 use wasm_bindgen::prelude::*;
 use meta_secret_core::node::db::generic_db::{FindOneQuery, SaveCommand, UserPasswordEntity};
 
-use crate::db::meta_pass;
-
 mod commit_log;
 mod db;
-mod security;
+mod objects;
 mod utils;
 
 /// Json utilities https://github.com/rustwasm/wasm-bindgen/blob/main/crates/js-sys/tests/wasm/JSON.rs
@@ -43,7 +41,7 @@ extern "C" {
 pub async fn get_vault() -> Result<JsValue, JsValue> {
     log("wasm: get vault!");
 
-    let maybe_creds = security::internal::find_user_credentials()
+    let maybe_creds = objects::internal::find_user_credentials()
         .await
         .map_err(JsError::from)?;
 
@@ -76,7 +74,8 @@ pub async fn recover() -> Result<JsValue, JsValue> {
 /// Sync local commit log with server
 #[wasm_bindgen]
 pub async fn sync() -> Result<JsValue, JsValue> {
-    let maybe_creds = security::internal::find_user_credentials()
+    /*
+    let maybe_creds = objects::internal::find_user_credentials()
         .await
         .map_err(JsError::from)?;
 
@@ -146,13 +145,17 @@ pub async fn sync() -> Result<JsValue, JsValue> {
         }
         None => Err(JsValue::from("User credentials not found")),
     }
+
+     */
+    Ok(JsValue::null())
 }
 
 #[wasm_bindgen]
 pub async fn cluster_distribution(pass_id: &str, pass: &str) -> Result<JsValue, JsValue> {
+    /*
     log("wasm: cluster distribution!!!!");
 
-    let maybe_creds = security::internal::find_user_credentials()
+    let maybe_creds = objects::internal::find_user_credentials()
         .await
         .map_err(JsError::from)?;
 
@@ -186,6 +189,9 @@ pub async fn cluster_distribution(pass_id: &str, pass: &str) -> Result<JsValue, 
         }
         None => Err(JsValue::from("Empty user credentials")),
     }
+
+     */
+    Ok(JsValue::null())
 }
 
 #[wasm_bindgen]
@@ -193,6 +199,7 @@ pub async fn membership(
     candidate_user_sig: JsValue,
     request_type: JsValue,
 ) -> Result<JsValue, JsValue> {
+    /*
     let candidate: UserSignature = serde_wasm_bindgen::from_value(candidate_user_sig)?;
     let request_type: MembershipRequestType = serde_wasm_bindgen::from_value(request_type)?;
 
@@ -202,7 +209,7 @@ pub async fn membership(
     );
     log(log_msg.as_str());
 
-    let maybe_user_creds = security::internal::find_user_credentials()
+    let maybe_user_creds = objects::internal::find_user_credentials()
         .await
         .map_err(JsError::from)?;
 
@@ -223,11 +230,14 @@ pub async fn membership(
         }
         None => Err(JsValue::from("Empty user credentials")),
     }
+     */
+    Ok(JsValue::null())
 }
 
 #[wasm_bindgen]
 pub async fn get_meta_passwords() -> Result<JsValue, JsValue> {
-    let maybe_creds = security::internal::find_user_credentials()
+    /*
+    let maybe_creds = objects::internal::find_user_credentials()
         .await
         .map_err(JsError::from)?;
 
@@ -244,11 +254,14 @@ pub async fn get_meta_passwords() -> Result<JsValue, JsValue> {
         }
         None => Err(JsValue::from("User credentials not found")),
     }
+
+     */
+    Ok(JsValue::null())
 }
 
 #[wasm_bindgen]
 pub async fn register() -> Result<JsValue, JsValue> {
-    let maybe_creds = security::internal::find_user_credentials()
+    /*let maybe_creds = objects::internal::find_user_credentials()
         .await
         .map_err(JsError::from)?;
 
@@ -263,13 +276,14 @@ pub async fn register() -> Result<JsValue, JsValue> {
             Ok(register_js)
         }
         None => Err(JsValue::from("User credentials not found")),
-    }
+    }*/
+    Ok(JsValue::null())
 }
 
 /// https://rustwasm.github.io/docs/wasm-bindgen/reference/arbitrary-data-with-serde.html
 #[wasm_bindgen]
 pub fn split(pass: &str) -> Result<JsValue, JsValue> {
-    let plain_text = PlainText::from(pass);
+    /*let plain_text = PlainText::from(pass);
     let config = SharedSecretConfig {
         number_of_shares: 3,
         threshold: 2,
@@ -283,15 +297,17 @@ pub fn split(pass: &str) -> Result<JsValue, JsValue> {
     }
 
     let shares_js = serde_wasm_bindgen::to_value(&res)?;
-    Ok(shares_js)
+    Ok(shares_js)*/
+    Ok(JsValue::null())
 }
 
 #[wasm_bindgen]
 pub fn restore_password(shares_json: JsValue) -> Result<JsValue, JsValue> {
-    log("wasm: restore password, core functionality");
+    /*log("wasm: restore password, core functionality");
 
     let user_shares: Vec<UserShareDto> = serde_wasm_bindgen::from_value(shares_json)?;
 
     let plain_text = recover_from_shares(user_shares).map_err(JsError::from)?;
-    Ok(JsValue::from_str(plain_text.text.as_str()))
+    Ok(JsValue::from_str(plain_text.text.as_str()))*/
+    Ok(JsValue::null())
 }

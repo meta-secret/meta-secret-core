@@ -1,37 +1,35 @@
-use std::convert::TryFrom;
-use wasm_bindgen::prelude::*;
 
-use meta_secret_core::crypto::keys::KeyManager;
-use meta_secret_core::models::{UserCredentials};
+use wasm_bindgen::prelude::*;
+use meta_secret_core::node::app::meta_app::MetaVaultManager;
+use crate::commit_log::CommitLogWasmRepo;
 
 use crate::log;
 
 #[wasm_bindgen]
 pub async fn get_meta_vault() -> Result<Option<JsValue>, JsValue> {
-    let repo = MetaVaultWasmRepo {
-
-    };
-
-    let maybe_meta_vault = repo.find_meta_vault()
+    let meta_vault_manager = CommitLogWasmRepo::default();
+    let maybe_meta_vault = meta_vault_manager
+        .find_meta_vault()
         .await
         .map_err(JsError::from)?;
 
-    if let Some(meta_vault) = maybe_meta_vault {
-        let meta_vault_js = meta_vault.to_js()?;
-        Ok(Some(meta_vault_js))
-    } else {
-        Ok(None)
+    match maybe_meta_vault {
+        Some(meta_vault) => {
+            let meta_vault_js = meta_vault.to_js()?;
+            Ok(Some(meta_vault_js))
+        }
+        None => {
+            Ok(None)
+        }
     }
 }
 
 #[wasm_bindgen]
 pub async fn create_meta_vault(vault_name: &str, device_name: &str) -> Result<JsValue, JsValue> {
-    let repo = MetaVaultWasmRepo {
+    let meta_vault_manager = CommitLogWasmRepo::default();
 
-    };
-
-    let meta_vault = repo
-        .create_meta_vault(vault_name, device_name)
+    let meta_vault = meta_vault_manager
+        .create_meta_vault(vault_name.to_string(), device_name.to_string())
         .await?;
 
     let meta_vault_js = meta_vault.to_js()?;
@@ -49,6 +47,7 @@ impl <T> ToJsValue for T {
     }
 }
 
+/*
 #[wasm_bindgen]
 pub async fn generate_user_credentials() -> Result<(), JsValue> {
     log("wasm: generate a new security box");
@@ -94,3 +93,4 @@ pub mod internal {
         repo.find_user_credentials().await
     }
 }
+*/

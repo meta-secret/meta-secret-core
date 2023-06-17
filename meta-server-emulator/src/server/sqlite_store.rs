@@ -9,9 +9,10 @@ use meta_secret_core::node::db::events::global_index::GlobalIndexAction;
 use meta_secret_core::node::db::events::sign_up::SignUpAction;
 use meta_secret_core::node::db::generic_db::{FindOneQuery, KvLogEventRepo, SaveCommand};
 use meta_secret_core::node::db::models::{KvKeyId, KvLogEvent};
-use meta_secret_core::node::server::meta_server::{MetaServer, MetaServerContext, MetaServerContextState};
-use meta_secret_core::node::server::persistent_object_repo::{ObjectFormation};
-
+use meta_secret_core::node::server::meta_server::{
+    MetaServer, MetaServerContext, MetaServerContextState,
+};
+use meta_secret_core::node::server::persistent_object_repo::ObjectFormation;
 
 pub struct SqlIteServer {
     /// conn_url="file:///tmp/test.db"
@@ -29,10 +30,8 @@ pub enum SqliteDbError {
 }
 
 #[async_trait(? Send)]
-impl SaveCommand for SqlIteServer {
-    type Error = SqliteDbError;
-
-    async fn save(&self, value: &KvLogEvent) -> Result<(), Self::Error> {
+impl SaveCommand<SqliteDbError> for SqlIteServer {
+    async fn save(&self, value: &KvLogEvent) -> Result<(), SqliteDbError> {
         let mut conn = SqliteConnection::establish(self.conn_url.as_str()).unwrap();
 
         diesel::insert_into(schema_log::table)
@@ -43,10 +42,8 @@ impl SaveCommand for SqlIteServer {
 }
 
 #[async_trait(? Send)]
-impl FindOneQuery for SqlIteServer {
-    type Error = SqliteDbError;
-
-    async fn find_one(&self, key: &str) -> Result<Option<KvLogEvent>, Self::Error> {
+impl FindOneQuery<SqliteDbError> for SqlIteServer {
+    async fn find_one(&self, key: &str) -> Result<Option<KvLogEvent>, SqliteDbError> {
         let mut conn = SqliteConnection::establish(self.conn_url.as_str()).unwrap();
 
         let db_event: DbLogEvent = dsl::db_commit_log
@@ -67,20 +64,12 @@ impl MetaServerContext for SqlIteServer {
     }
 }
 
-impl KvLogEventRepo for SqlIteServer {}
+impl KvLogEventRepo<SqliteDbError> for SqlIteServer {}
 
-impl GlobalIndexAction for SqlIteServer {
+impl GlobalIndexAction for SqlIteServer {}
 
-}
+impl MetaServer<SqliteDbError> for SqlIteServer {}
 
-impl MetaServer for SqlIteServer {
+impl ObjectFormation for SqlIteServer {}
 
-}
-
-impl ObjectFormation for SqlIteServer {
-
-}
-
-impl SignUpAction for SqlIteServer {
-
-}
+impl SignUpAction for SqlIteServer {}

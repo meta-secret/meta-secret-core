@@ -11,7 +11,9 @@ mod test {
     use meta_secret_core::node::db::models::{
         Descriptors, KvKeyId, ObjectCreator, ObjectDescriptor, ObjectId,
     };
-    use meta_secret_core::node::server::meta_server::{DataSync, DataTransport, MetaServerContext, MetaServerContextState};
+    use meta_secret_core::node::server::meta_server::{
+        DataSync, DataTransport, MetaServerContext, MetaServerContextState,
+    };
     use meta_secret_core::node::server::persistent_object_repo::ObjectFormation;
     use meta_secret_core::node::server::request::{SyncRequest, VaultSyncRequest};
     use meta_server_emulator::server::sqlite_migration::EmbeddedMigrationsTool;
