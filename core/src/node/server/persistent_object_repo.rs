@@ -1,11 +1,12 @@
 use async_trait::async_trait;
+use std::error::Error;
 
 use crate::models::Base64EncodedText;
 use crate::node::db::generic_db::{FindOneQuery, KvLogEventRepo};
+use crate::node::db::models::Descriptors;
 use crate::node::db::models::{
     AppOperation, AppOperationType, KeyIdGen, KvKey, KvKeyId, KvLogEvent, KvValueType, ObjectCreator, ObjectDescriptor,
 };
-use crate::node::db::models::Descriptors;
 
 pub trait ObjectFormation {
     fn formation_event(&self, obj_desc: &ObjectDescriptor, server_pk: &Base64EncodedText) -> KvLogEvent {
@@ -19,7 +20,7 @@ pub trait ObjectFormation {
 }
 
 #[async_trait(? Send)]
-pub trait PersistentObjectRepo {
+pub trait PersistentObjectRepo<Err> {
     async fn get_object_events_from_beginning(
         &self,
         obj_desc: &ObjectDescriptor,
@@ -30,9 +31,9 @@ pub trait PersistentObjectRepo {
 }
 
 #[async_trait(? Send)]
-impl<T> PersistentObjectRepo for T
-    where
-        T: PersistentObjectQueries + PersistentObjectCommands,
+impl<T, Err> PersistentObjectRepo<Err> for T
+where
+    T: PersistentObjectQueries<Err> + PersistentObjectCommands<Err>,
 {
     async fn get_object_events_from_beginning(
         &self,
@@ -57,18 +58,22 @@ impl<T> PersistentObjectRepo for T
 }
 
 #[async_trait(? Send)]
-pub trait PersistentObjectQueries {
+pub trait PersistentObjectQueries<Err> {
     async fn find_object_events_internal(&self, tail_id: &str) -> Vec<KvLogEvent>;
     async fn get_next_free_id(&self, obj_desc: &ObjectDescriptor) -> KvKeyId;
 }
 
 #[async_trait(? Send)]
-pub trait PersistentObjectCommands {
+pub trait PersistentObjectCommands<Err> {
     async fn init_global_index(&self, public_key: &Base64EncodedText) -> KvLogEvent;
 }
 
 #[async_trait(? Send)]
-impl<T: FindOneQuery> PersistentObjectQueries for T {
+impl<T, Err> PersistentObjectQueries<Err> for T
+where
+    T: FindOneQuery<Err>,
+    Err: Error,
+{
     async fn get_next_free_id(&self, obj_desc: &ObjectDescriptor) -> KvKeyId {
         let formation_id = KvKeyId::formation(obj_desc);
 
@@ -124,7 +129,11 @@ impl<T: FindOneQuery> PersistentObjectQueries for T {
 }
 
 #[async_trait(? Send)]
-impl<T: KvLogEventRepo + ObjectFormation> PersistentObjectCommands for T {
+impl<T, Err> PersistentObjectCommands<Err> for T
+where
+    T: KvLogEventRepo<Err> + ObjectFormation,
+    Err: Error,
+{
     async fn init_global_index(&self, public_key: &Base64EncodedText) -> KvLogEvent {
         //create a genesis event and save into the database
         let formation_event = self.formation_event(&Descriptors::global_index(), public_key);

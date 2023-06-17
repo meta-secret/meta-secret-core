@@ -30,6 +30,10 @@ pub fn apply(commit_log: Rc<Vec<KvLogEvent>>, mut meta_db: MetaDb) -> Result<Met
                             meta_db.global_index_store.server_pk = Some(server_pk);
                             meta_db.global_index_store.tail_id = Some(event.key.key_id.clone())
                         }
+                        ObjectType::MetaVault => {
+                            println!("Meta Vault is an internal object. skip");
+                            todo!("not implemented yet")
+                        }
                     }
                 }
                 AppOperation::SignUp => {
@@ -45,6 +49,9 @@ pub fn apply(commit_log: Rc<Vec<KvLogEvent>>, mut meta_db: MetaDb) -> Result<Met
                 AppOperation::GlobalIndex => {
                     let vault_id: String = serde_json::from_value(event.value.clone()).unwrap();
                     g_store.global_index.insert(vault_id);
+                }
+                AppOperation::MetaVault => {
+                    todo!("not implemented yet");
                 }
             },
         }

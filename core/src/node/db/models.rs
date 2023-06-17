@@ -47,10 +47,12 @@ pub enum LogCommandError {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub enum ObjectType {
-    #[serde(rename = "Vault")]
-    Vault,
     #[serde(rename = "GlobalIndex")]
     GlobalIndex,
+    #[serde(rename = "Vault")]
+    Vault,
+    #[serde(rename = "MetaVault")]
+    MetaVault,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
@@ -63,6 +65,8 @@ pub enum AppOperation {
     JoinCluster,
     #[serde(rename = "GlobalIndex")]
     GlobalIndex,
+    #[serde(rename = "MetaVault")]
+    MetaVault,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
@@ -97,6 +101,8 @@ pub enum KvValueType {
     String,
     #[serde(rename = "Base64Text")]
     Base64Text,
+    #[serde(rename = "MetaVault")]
+    MetaVault,
     #[serde(rename = "Error")]
     Error,
 }
@@ -169,6 +175,13 @@ impl ObjectDescriptor {
         Self {
             name: name.to_string(),
             object_type: ObjectType::GlobalIndex,
+        }
+    }
+
+    pub fn meta_vault(vault_name: &str) -> Self {
+        Self {
+            name: vault_name.to_string(),
+            object_type: ObjectType::MetaVault,
         }
     }
 }
