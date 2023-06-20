@@ -1,9 +1,8 @@
 use std::collections::HashSet;
 
-use serde_json::Value;
-
 use crate::crypto::utils;
-use crate::models::{Base64EncodedText, VaultDoc};
+use crate::models::{Base64EncodedText, MetaVault, UserSignature, VaultDoc};
+use crate::sdk::api::ErrorMessage;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -12,22 +11,18 @@ pub struct MetaDb {
     pub global_index_store: GlobalIndexStore,
 }
 
-pub struct DbLog {
-    pub events: Vec<KvLogEvent>,
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct VaultStore {
     pub tail_id: Option<KvKeyId>,
-    pub server_pk: Option<Base64EncodedText>,
+    pub server_pk: Option<PublicKeyRecord>,
     pub vault: Option<VaultDoc>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct GlobalIndexStore {
-    pub server_pk: Option<Base64EncodedText>,
+    pub server_pk: Option<PublicKeyRecord>,
     pub tail_id: Option<KvKeyId>,
     pub global_index: HashSet<String>,
 }
@@ -48,63 +43,90 @@ pub enum LogCommandError {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub enum ObjectType {
     #[serde(rename = "GlobalIndex")]
-    GlobalIndex,
+    GlobalIndexObj,
     #[serde(rename = "Vault")]
-    Vault,
+    VaultObj,
     #[serde(rename = "MetaVault")]
-    MetaVault,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-pub enum AppOperation {
-    #[serde(rename = "ObjectFormation")]
-    ObjectFormation,
-    #[serde(rename = "SignUp")]
-    SignUp,
-    #[serde(rename = "JoinCluster")]
-    JoinCluster,
-    #[serde(rename = "GlobalIndex")]
-    GlobalIndex,
-    #[serde(rename = "MetaVault")]
-    MetaVault,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-pub enum AppOperationType {
-    #[serde(rename = "Request")]
-    Request(AppOperation),
-    #[serde(rename = "Update")]
-    Update(AppOperation),
+    MetaVaultObj,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct KvLogEvent {
-    #[serde(rename = "key")]
-    pub key: KvKey,
-    #[serde(rename = "cmdType")]
-    pub cmd_type: AppOperationType,
-    #[serde(rename = "valType")]
-    pub val_type: KvValueType,
-    #[serde(rename = "value")]
-    pub value: Value,
+#[serde(rename_all = "camelCase")]
+pub enum KvLogEventRequest {
+    SignUp { event: KvLogEvent<UserSignature> },
+    JoinCluster { event: KvLogEvent<UserSignature> },
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-pub enum KvValueType {
-    #[serde(rename = "DsaPublicKey")]
-    DsaPublicKey,
-    #[serde(rename = "UserSignature")]
-    UserSignature,
-    #[serde(rename = "Vault")]
-    Vault,
-    #[serde(rename = "String")]
-    String,
-    #[serde(rename = "Base64Text")]
-    Base64Text,
-    #[serde(rename = "MetaVault")]
-    MetaVault,
-    #[serde(rename = "Error")]
-    Error,
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum KvLogEventUpdate {
+    Genesis { event: KvLogEvent<PublicKeyRecord> },
+    GlobalIndex { event: KvLogEvent<GlobalIndexRecord> },
+    SignUp { event: KvLogEvent<VaultDoc> },
+    JoinCluster { event: KvLogEvent<VaultDoc> },
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(tag = "log_event_type")]
+pub enum GenericKvLogEvent {
+    Request(KvLogEventRequest),
+    Update(KvLogEventUpdate),
+
+    MetaVault { event: KvLogEvent<MetaVault> },
+    Error { event: KvLogEvent<ErrorMessage> },
+}
+
+pub trait LogEventKeyBasedRecord {
+    fn key(&self) -> &KvKey;
+}
+
+impl LogEventKeyBasedRecord for GenericKvLogEvent {
+    fn key(&self) -> &KvKey {
+        match self {
+            GenericKvLogEvent::Request(request) => {
+                match request {
+                    KvLogEventRequest::SignUp { event } => { &event.key }
+                    KvLogEventRequest::JoinCluster { event } => { &event.key }
+                }
+            }
+            GenericKvLogEvent::Update(op) => {
+                match op {
+                    KvLogEventUpdate::Genesis { event } => { &event.key }
+                    KvLogEventUpdate::GlobalIndex { event } => { &event.key }
+                    KvLogEventUpdate::SignUp { event } => { &event.key }
+                    KvLogEventUpdate::JoinCluster { event } => { &event.key }
+                }
+            }
+            GenericKvLogEvent::MetaVault { event } => { &event.key }
+            GenericKvLogEvent::Error { event } => { &event.key }
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublicKeyRecord {
+    pub pk: Base64EncodedText,
+}
+
+impl From<Base64EncodedText> for PublicKeyRecord {
+    fn from(value: Base64EncodedText) -> Self {
+        Self { pk: value }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GlobalIndexRecord {
+    pub vault_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KvLogEvent<T> {
+    pub key: KvKey,
+    pub value: T,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -143,7 +165,7 @@ impl Descriptors {
     pub fn global_index() -> ObjectDescriptor {
         ObjectDescriptor {
             name: String::from("meta-g"),
-            object_type: ObjectType::GlobalIndex,
+            object_type: ObjectType::GlobalIndexObj,
         }
     }
 }
@@ -167,21 +189,21 @@ impl ObjectDescriptor {
     pub fn vault(name: &str) -> Self {
         Self {
             name: name.to_string(),
-            object_type: ObjectType::Vault,
+            object_type: ObjectType::VaultObj,
         }
     }
 
     pub fn global_index(name: &str) -> Self {
         Self {
             name: name.to_string(),
-            object_type: ObjectType::GlobalIndex,
+            object_type: ObjectType::GlobalIndexObj,
         }
     }
 
     pub fn meta_vault(vault_name: &str) -> Self {
         Self {
             name: vault_name.to_string(),
-            object_type: ObjectType::MetaVault,
+            object_type: ObjectType::MetaVaultObj,
         }
     }
 }
@@ -266,7 +288,7 @@ mod test {
     fn test_key_id() {
         let descriptor = ObjectDescriptor {
             name: "test".to_string(),
-            object_type: ObjectType::Vault,
+            object_type: ObjectType::VaultObj,
         };
         let id = KvKeyId::formation(&descriptor);
 

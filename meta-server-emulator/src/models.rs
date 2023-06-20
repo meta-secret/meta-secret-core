@@ -16,8 +16,8 @@ pub struct NewDbLogEvent {
     pub event: String,
 }
 
-impl From<&KvLogEvent> for NewDbLogEvent {
-    fn from(log_event: &KvLogEvent) -> Self {
+impl<T> From<&KvLogEvent<T>> for NewDbLogEvent {
+    fn from(log_event: &KvLogEvent<T>) -> Self {
         Self {
             key_id: log_event.key.key_id.obj_id.id.clone(),
             event: serde_json::to_string(log_event).unwrap(),
@@ -25,8 +25,8 @@ impl From<&KvLogEvent> for NewDbLogEvent {
     }
 }
 
-impl From<&DbLogEvent> for KvLogEvent {
+impl<T> From<&DbLogEvent> for KvLogEvent<T> {
     fn from(db_event: &DbLogEvent) -> Self {
-        serde_json::from_str::<KvLogEvent>(db_event.event.as_str()).unwrap()
+        serde_json::from_str::<KvLogEvent<T>>(db_event.event.as_str()).unwrap()
     }
 }

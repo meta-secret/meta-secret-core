@@ -1,4 +1,4 @@
-
+use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use meta_secret_core::node::app::meta_app::MetaVaultManager;
 use crate::commit_log::CommitLogWasmRepo;
@@ -7,6 +7,8 @@ use crate::log;
 
 #[wasm_bindgen]
 pub async fn get_meta_vault() -> Result<Option<JsValue>, JsValue> {
+    log("wasm. get meta vault");
+
     let meta_vault_manager = CommitLogWasmRepo::default();
     let maybe_meta_vault = meta_vault_manager
         .find_meta_vault()
@@ -15,10 +17,12 @@ pub async fn get_meta_vault() -> Result<Option<JsValue>, JsValue> {
 
     match maybe_meta_vault {
         Some(meta_vault) => {
+            log("wasm: meta vault has been found");
             let meta_vault_js = meta_vault.to_js()?;
             Ok(Some(meta_vault_js))
         }
         None => {
+            log("wasm: meta vault not present");
             Ok(None)
         }
     }
@@ -30,7 +34,8 @@ pub async fn create_meta_vault(vault_name: &str, device_name: &str) -> Result<Js
 
     let meta_vault = meta_vault_manager
         .create_meta_vault(vault_name.to_string(), device_name.to_string())
-        .await?;
+        .await
+        .map_err(JsError::from)?;
 
     let meta_vault_js = meta_vault.to_js()?;
 
@@ -41,17 +46,18 @@ pub trait ToJsValue {
     fn to_js(&self) -> Result<JsValue, JsValue>;
 }
 
-impl <T> ToJsValue for T {
+impl <T: Serialize> ToJsValue for T {
     fn to_js(&self) -> Result<JsValue, JsValue> {
-        Ok(serde_wasm_bindgen::to_value(self)?)
+        let js_value: JsValue = serde_wasm_bindgen::to_value(self)?;
+        Ok(js_value)
     }
 }
 
-/*
 #[wasm_bindgen]
 pub async fn generate_user_credentials() -> Result<(), JsValue> {
     log("wasm: generate a new security box");
 
+    /*
     let repo = MetaVaultWasmRepo {
 
     };
@@ -80,9 +86,11 @@ pub async fn generate_user_credentials() -> Result<(), JsValue> {
             Err(err_msg)
         }
     }
+    */
+    Ok(())
 }
 
-pub mod internal {
+/*pub mod internal {
     use meta_secret_core::models::UserCredentials;
 
     use crate::db::user_credentials::UserCredentialsWasmRepo;
@@ -92,5 +100,4 @@ pub mod internal {
         let repo = UserCredentialsWasmRepo {};
         repo.find_user_credentials().await
     }
-}
-*/
+}*/

@@ -1,13 +1,16 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use wasm_bindgen::JsValue;
 
 use meta_secret_core::node::db::generic_db::{CommitLogDbConfig, FindAllQuery, FindOneQuery};
 use meta_secret_core::node::db::generic_db::SaveCommand;
-use meta_secret_core::node::db::models::KvLogEvent;
+use meta_secret_core::node::db::models::{KvLogEvent};
 
 use crate::{idbFindAll, idbGet, idbSave};
 use crate::db::WasmDbError;
 use crate::objects::ToJsValue;
+
+use crate::log;
 
 pub struct CommitLogWasmRepo {
     pub db_name: String,
@@ -18,7 +21,7 @@ impl Default for CommitLogWasmRepo {
     fn default() -> Self {
         Self {
             db_name: "meta-secret".to_string(),
-            store_name: "commit-log".to_string(),
+            store_name: "commit_log".to_string(),
         }
     }
 }
@@ -36,8 +39,11 @@ impl FindAllQuery<KvLogEvent> for CommitLogWasmRepo {
 
 #[async_trait(? Send)]
 impl SaveCommand<WasmDbError> for CommitLogWasmRepo {
-    async fn save(&self, event: &KvLogEvent) -> Result<(), Self::Error> {
-        let event_js = event.to_js()?;
+    async fn save(&self, event: &KvLogEvent) -> Result<(), WasmDbError> {
+        let event_js: JsValue = serde_wasm_bindgen::to_value(event)?;
+
+        log(format!("SAVE an object!!!!: {:?}", event_js).as_str());
+
         idbSave(
             self.db_name.as_str(),
             self.store_name.as_str(),
@@ -49,10 +55,14 @@ impl SaveCommand<WasmDbError> for CommitLogWasmRepo {
     }
 }
 
+#[async_trait(? Send)]
 impl FindOneQuery<WasmDbError> for CommitLogWasmRepo {
 
     async fn find_one(&self, key: &str) -> Result<Option<KvLogEvent>, WasmDbError> {
         let vault_js = idbGet(self.db_name.as_str(), self.store_name.as_str(), key).await;
+
+        log(format!("Got an object!!!!: {:?}", vault_js).as_str());
+
         if vault_js.is_undefined() {
             Ok(None)
         } else {

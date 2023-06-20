@@ -1,11 +1,12 @@
-use async_trait::async_trait;
 use std::error::Error;
+
+use async_trait::async_trait;
 
 use crate::models::meta_vault::MetaVault;
 use crate::models::DeviceInfo;
-use crate::node::db::generic_db::{FindOneQuery, KvLogEventRepo, SaveCommand};
+use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::models::{
-    AppOperation, AppOperationType, KvKey, KvLogEvent, KvValueType, ObjectCreator, ObjectDescriptor,
+    GenericKvLogEvent, KvKey, KvLogEvent, ObjectCreator, ObjectDescriptor, ObjectId,
 };
 
 pub mod meta_vault_conf {
@@ -30,21 +31,25 @@ where
             name: vault_name.to_string(),
             device: Box::new(device),
         };
-        let meta_vault_descriptor = ObjectDescriptor::meta_vault(vault_name.as_str());
+        let meta_vault_descriptor = ObjectDescriptor::meta_vault(meta_vault_conf::KEY_NAME);
         let key = KvKey::formation(&meta_vault_descriptor);
-        let event = KvLogEvent {
-            key,
-            cmd_type: AppOperationType::Update(AppOperation::MetaVault),
-            val_type: KvValueType::MetaVault,
-            value: serde_json::to_value(&meta_vault).unwrap(),
-        };
+        let event: KvLogEvent<MetaVault> = KvLogEvent { key, value: meta_vault };
 
-        self.save(&event).await
+        let db_event = GenericKvLogEvent::MetaVault { event };
+
+        self.save(&db_event).await
     }
 
     async fn find_meta_vault(&self) -> Result<Option<MetaVault>, Err> {
-        let maybe_event = self.find_one(meta_vault_conf::KEY_NAME).await?;
-        let event_js = maybe_event.map(|evt| serde_json::from_value(evt.value).unwrap());
-        Ok(event_js)
+        let meta_vault_descriptor = ObjectDescriptor::meta_vault(meta_vault_conf::KEY_NAME);
+        let obj_id = ObjectId::formation(&meta_vault_descriptor);
+
+        let maybe_event = self.find_one(obj_id.id.as_str()).await?;
+
+        if let Some(GenericKvLogEvent::MetaVault { event }) = maybe_event {
+            Ok(Some(event.value))
+        } else {
+            Ok(None)
+        }
     }
 }

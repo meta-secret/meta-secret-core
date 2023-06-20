@@ -43,7 +43,7 @@ impl SaveCommand<SqliteDbError> for SqlIteServer {
 
 #[async_trait(? Send)]
 impl FindOneQuery<SqliteDbError> for SqlIteServer {
-    async fn find_one(&self, key: &str) -> Result<Option<KvLogEvent>, SqliteDbError> {
+    async fn find_one<T>(&self, key: &str) -> Result<Option<KvLogEvent<T>>, SqliteDbError> {
         let mut conn = SqliteConnection::establish(self.conn_url.as_str()).unwrap();
 
         let db_event: DbLogEvent = dsl::db_commit_log
