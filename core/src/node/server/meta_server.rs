@@ -5,18 +5,15 @@ use async_trait::async_trait;
 
 use crate::crypto::key_pair::KeyPair;
 use crate::crypto::keys::KeyManager;
-use crate::models::Base64EncodedText;
+
 use crate::models::UserSignature;
 use crate::node::db::commit_log::transform;
 use crate::node::db::events::global_index::GlobalIndexAction;
 use crate::node::db::events::join::accept_join_request;
 use crate::node::db::events::sign_up::SignUpAction;
 use crate::node::db::generic_db::KvLogEventRepo;
-use crate::node::db::models::{
-    GenericKvLogEvent, GlobalIndexRecord, KvKeyId, LogEventKeyBasedRecord,
-    PublicKeyRecord,
-};
 use crate::node::db::models::{Descriptors, KvLogEvent, ObjectCreator, ObjectDescriptor, ObjectId};
+use crate::node::db::models::{GenericKvLogEvent, KvKeyId, KvLogEventRequest, KvLogEventUpdate, PublicKeyRecord};
 use crate::node::server::persistent_object_repo::{PersistentObjectQueries, PersistentObjectRepo};
 use crate::node::server::request::SyncRequest;
 
@@ -91,23 +88,9 @@ where
     /// Handle request: all types of requests will be handled and the actions will be executed accordingly
     async fn send_data(&self, generic_event: &GenericKvLogEvent) {
         match generic_event {
-            GenericKvLogEvent::GlobalIndex { event } => match event.cmd_type {
-                AppOperationType::Request => {
-                    panic!("Not allowed");
-                }
-                AppOperationType::Update => {
-                    panic!("Not allowed");
-                }
-                AppOperationType::Error => {
-                    panic!("Not allowed");
-                }
-            },
-            GenericKvLogEvent::Genesis { .. } => {
-                panic!("Not allowed");
-            }
-            GenericKvLogEvent::SignUp { event } => {
-                match event.cmd_type {
-                    AppOperationType::Request => {
+            GenericKvLogEvent::Request(request) => {
+                match request {
+                    KvLogEventRequest::SignUp { event } => {
                         // Handled by the server. Add a vault to the system
                         let vault_id = event.key.key_id.obj_id.genesis_id.clone();
                         let vault_formation_event_result = self.find_one(vault_id.as_str()).await;
@@ -122,23 +105,26 @@ where
                             }
                         }
                     }
-                    AppOperationType::Update => {
-                        panic!("Not allowed");
-                    }
-                    AppOperationType::Error => {
-                        panic!("Not allowed");
+                    KvLogEventRequest::JoinCluster { event } => {
+                        let user_sig: UserSignature = event.value.clone();
+                        let obj_desc = ObjectDescriptor::vault(user_sig.vault.name.as_str());
+                        let vault_id = ObjectId::formation(&obj_desc).genesis_id;
+                        self.accept_join_cluster_request(event, vault_id).await;
                     }
                 }
             }
-            GenericKvLogEvent::JoinCluster { event } => match event.cmd_type {
-                AppOperationType::Request => {
-                    let user_sig: UserSignature = event.value;
-                    let obj_desc = ObjectDescriptor::vault(user_sig.vault.name.as_str());
-                    let vault_id = ObjectId::formation(&obj_desc).genesis_id;
-                    self.accept_join_cluster_request(event, vault_id).await;
+
+            GenericKvLogEvent::Update(op) => match op {
+                KvLogEventUpdate::Genesis { .. } => {}
+                KvLogEventUpdate::GlobalIndex { .. } => {
+                    panic!("Not allowed");
                 }
-                AppOperationType::Update => {}
-                AppOperationType::Error => {}
+                KvLogEventUpdate::SignUp { .. } => {
+                    panic!("Not allowed");
+                }
+                KvLogEventUpdate::JoinCluster { .. } => {
+                    panic!("Not allowed");
+                }
             },
             GenericKvLogEvent::MetaVault { .. } => {
                 panic!("Not allowed");
@@ -152,9 +138,9 @@ where
     async fn accept_join_cluster_request(&self, join_event: &KvLogEvent<UserSignature>, genesis_id: String) {
         println!("save join request: {}", serde_json::to_string(&join_event).unwrap());
 
-        let generic_join_event = GenericKvLogEvent::JoinCluster {
+        let generic_join_event = GenericKvLogEvent::Request(KvLogEventRequest::JoinCluster {
             event: join_event.clone(),
-        };
+        });
         self.save(&generic_join_event).await.expect("Error saving join request");
 
         //join cluster update message
@@ -164,7 +150,7 @@ where
 
         let vault_doc = &meta_db.unwrap().vault_store.vault.unwrap();
         let accept_event = accept_join_request(join_event, vault_doc);
-        let generic_accept_event = GenericKvLogEvent::SignUp { event: accept_event };
+        let generic_accept_event = GenericKvLogEvent::Update(KvLogEventUpdate::SignUp { event: accept_event });
 
         self.save(&generic_accept_event)
             .await
@@ -191,9 +177,9 @@ where
 
         //update global index
         let global_index_event = self.new_event(&global_index_tail_id, vault_id.as_str());
-        let global_index_event = GenericKvLogEvent::GlobalIndex {
+        let global_index_event = GenericKvLogEvent::Update(KvLogEventUpdate::GlobalIndex {
             event: global_index_event,
-        };
+        });
 
         self.save(&global_index_event)
             .await
@@ -234,8 +220,8 @@ impl Default for MetaServerContextState {
 }
 
 impl MetaServerContextState {
-    pub fn server_pk(&self) -> Base64EncodedText {
-        self.km.dsa.public_key()
+    pub fn server_pk(&self) -> PublicKeyRecord {
+        PublicKeyRecord::from(self.km.dsa.public_key())
     }
 }
 

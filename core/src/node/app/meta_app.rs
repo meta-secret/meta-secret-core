@@ -5,9 +5,7 @@ use async_trait::async_trait;
 use crate::models::meta_vault::MetaVault;
 use crate::models::DeviceInfo;
 use crate::node::db::generic_db::KvLogEventRepo;
-use crate::node::db::models::{
-    GenericKvLogEvent, KvKey, KvLogEvent, ObjectCreator, ObjectDescriptor, ObjectId,
-};
+use crate::node::db::models::{GenericKvLogEvent, KvKey, KvLogEvent, ObjectCreator, ObjectDescriptor, ObjectId};
 
 pub mod meta_vault_conf {
     pub const KEY_NAME: &str = "main_meta_vault";

@@ -1,6 +1,6 @@
 use crate::schema::db_commit_log;
 use diesel::prelude::*;
-use meta_secret_core::node::db::models::KvLogEvent;
+use meta_secret_core::node::db::models::{GenericKvLogEvent, LogEventKeyBasedRecord};
 
 #[derive(Debug, Queryable)]
 pub struct DbLogEvent {
@@ -16,17 +16,17 @@ pub struct NewDbLogEvent {
     pub event: String,
 }
 
-impl<T> From<&KvLogEvent<T>> for NewDbLogEvent {
-    fn from(log_event: &KvLogEvent<T>) -> Self {
+impl From<&GenericKvLogEvent> for NewDbLogEvent {
+    fn from(log_event: &GenericKvLogEvent) -> Self {
         Self {
-            key_id: log_event.key.key_id.obj_id.id.clone(),
+            key_id: log_event.key().key_id.obj_id.id.clone(),
             event: serde_json::to_string(log_event).unwrap(),
         }
     }
 }
 
-impl<T> From<&DbLogEvent> for KvLogEvent<T> {
+impl From<&DbLogEvent> for GenericKvLogEvent {
     fn from(db_event: &DbLogEvent) -> Self {
-        serde_json::from_str::<KvLogEvent<T>>(db_event.event.as_str()).unwrap()
+        serde_json::from_str::<GenericKvLogEvent>(db_event.event.as_str()).unwrap()
     }
 }

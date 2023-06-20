@@ -1,8 +1,10 @@
 use std::collections::HashSet;
 use std::rc::Rc;
 
-use crate::models::{Base64EncodedText, VaultDoc};
-use crate::node::db::models::{GenericKvLogEvent, GlobalIndexStore, KvLogEventUpdate, LogCommandError, MetaDb, ObjectType, VaultStore};
+use crate::models::VaultDoc;
+use crate::node::db::models::{
+    GenericKvLogEvent, GlobalIndexStore, KvLogEventUpdate, LogCommandError, MetaDb, ObjectType, VaultStore,
+};
 
 /// Apply new events to the database
 pub fn apply(commit_log: Rc<Vec<GenericKvLogEvent>>, mut meta_db: MetaDb) -> Result<MetaDb, LogCommandError> {
@@ -14,39 +16,9 @@ pub fn apply(commit_log: Rc<Vec<GenericKvLogEvent>>, mut meta_db: MetaDb) -> Res
             GenericKvLogEvent::Request(_) => {
                 println!("Skip requests");
             }
-            GenericKvLogEvent::Update(op) => {
-                match op {
-                    KvLogEventUpdate::Genesis { .. } => {
-
-                    }
-                    KvLogEventUpdate::GlobalIndex { .. } => {
-
-                    }
-                    KvLogEventUpdate::SignUp { .. } => {
-
-                    }
-                    KvLogEventUpdate::JoinCluster { .. } => {
-
-                    }
-                }
-
-            }
-            GenericKvLogEvent::MetaVault { .. } => {
-                panic!("Internal event");
-            }
-            GenericKvLogEvent::Error { .. } => {
-                println!("Skip errors");
-            }
-        }
-
-        match event.cmd_type {
-            AppOperationType::Request(_op) => {
-                println!("Skip requests");
-            }
-
-            AppOperationType::Update(op) => match op {
-                AppOperation::ObjectFormation => {
-                    let server_pk: Base64EncodedText = serde_json::from_value(event.value.clone()).unwrap();
+            GenericKvLogEvent::Update(op) => match op {
+                KvLogEventUpdate::Genesis { event } => {
+                    let server_pk = event.value.clone();
 
                     match event.key.object_type {
                         ObjectType::VaultObj => {
@@ -63,24 +35,27 @@ pub fn apply(commit_log: Rc<Vec<GenericKvLogEvent>>, mut meta_db: MetaDb) -> Res
                         }
                     }
                 }
-                AppOperation::SignUp => {
-                    let vault: VaultDoc = serde_json::from_value(event.value.clone()).unwrap();
-                    vault_store.vault = Some(vault);
-                    vault_store.tail_id = Some(event.key.key_id.clone())
-                }
-                AppOperation::JoinCluster => {
-                    let vault: VaultDoc = serde_json::from_value(event.value.clone()).unwrap();
-                    vault_store.vault = Some(vault);
-                    vault_store.tail_id = Some(event.key.key_id.clone())
-                }
-                AppOperation::GlobalIndex => {
-                    let vault_id: String = serde_json::from_value(event.value.clone()).unwrap();
+                KvLogEventUpdate::GlobalIndex { event } => {
+                    let vault_id: String = event.value.vault_id.clone();
                     g_store.global_index.insert(vault_id);
                 }
-                AppOperation::MetaVault => {
-                    todo!("not implemented yet");
+                KvLogEventUpdate::SignUp { event } => {
+                    let vault: VaultDoc = event.value.clone();
+                    vault_store.vault = Some(vault);
+                    vault_store.tail_id = Some(event.key.key_id.clone())
+                }
+                KvLogEventUpdate::JoinCluster { event } => {
+                    let vault: VaultDoc = event.value.clone();
+                    vault_store.vault = Some(vault);
+                    vault_store.tail_id = Some(event.key.key_id.clone())
                 }
             },
+            GenericKvLogEvent::MetaVault { .. } => {
+                panic!("Internal event");
+            }
+            GenericKvLogEvent::Error { .. } => {
+                println!("Skip errors");
+            }
         }
     }
 

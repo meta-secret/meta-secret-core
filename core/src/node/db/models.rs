@@ -84,22 +84,18 @@ pub trait LogEventKeyBasedRecord {
 impl LogEventKeyBasedRecord for GenericKvLogEvent {
     fn key(&self) -> &KvKey {
         match self {
-            GenericKvLogEvent::Request(request) => {
-                match request {
-                    KvLogEventRequest::SignUp { event } => { &event.key }
-                    KvLogEventRequest::JoinCluster { event } => { &event.key }
-                }
-            }
-            GenericKvLogEvent::Update(op) => {
-                match op {
-                    KvLogEventUpdate::Genesis { event } => { &event.key }
-                    KvLogEventUpdate::GlobalIndex { event } => { &event.key }
-                    KvLogEventUpdate::SignUp { event } => { &event.key }
-                    KvLogEventUpdate::JoinCluster { event } => { &event.key }
-                }
-            }
-            GenericKvLogEvent::MetaVault { event } => { &event.key }
-            GenericKvLogEvent::Error { event } => { &event.key }
+            GenericKvLogEvent::Request(request) => match request {
+                KvLogEventRequest::SignUp { event } => &event.key,
+                KvLogEventRequest::JoinCluster { event } => &event.key,
+            },
+            GenericKvLogEvent::Update(op) => match op {
+                KvLogEventUpdate::Genesis { event } => &event.key,
+                KvLogEventUpdate::GlobalIndex { event } => &event.key,
+                KvLogEventUpdate::SignUp { event } => &event.key,
+                KvLogEventUpdate::JoinCluster { event } => &event.key,
+            },
+            GenericKvLogEvent::MetaVault { event } => &event.key,
+            GenericKvLogEvent::Error { event } => &event.key,
         }
     }
 }

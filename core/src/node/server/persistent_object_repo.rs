@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use crate::node::db::generic_db::{FindOneQuery, KvLogEventRepo};
 use crate::node::db::models::{Descriptors, KvLogEventUpdate};
 use crate::node::db::models::{
-    GenericKvLogEvent, LogEventKeyBasedRecord, KeyIdGen, KvKey, KvKeyId, KvLogEvent, ObjectCreator, ObjectDescriptor,
+    GenericKvLogEvent, KeyIdGen, KvKey, KvKeyId, KvLogEvent, LogEventKeyBasedRecord, ObjectCreator, ObjectDescriptor,
     PublicKeyRecord,
 };
 
@@ -31,8 +31,8 @@ pub trait PersistentObjectRepo<Err> {
 
 #[async_trait(? Send)]
 impl<T, Err> PersistentObjectRepo<Err> for T
-    where
-        T: PersistentObjectQueries<Err> + PersistentObjectCommands<Err>,
+where
+    T: PersistentObjectQueries<Err> + PersistentObjectCommands<Err>,
 {
     async fn get_object_events_from_beginning(
         &self,
@@ -70,9 +70,9 @@ pub trait PersistentObjectCommands<Err> {
 
 #[async_trait(? Send)]
 impl<T, Err> PersistentObjectQueries<Err> for T
-    where
-        T: FindOneQuery<Err>,
-        Err: Error,
+where
+    T: FindOneQuery<Err>,
+    Err: Error,
 {
     async fn get_next_free_id(&self, obj_desc: &ObjectDescriptor) -> KvKeyId {
         let formation_id = KvKeyId::formation(obj_desc);
@@ -85,7 +85,7 @@ impl<T, Err> PersistentObjectQueries<Err> for T
             match global_idx_result {
                 Ok(maybe_idx) => match maybe_idx {
                     Some(idx) => {
-                        existing_id = idx.key().key_id;
+                        existing_id = idx.key().key_id.clone();
                         curr_tail_id = existing_id.next();
                     }
                     None => {
@@ -130,14 +130,16 @@ impl<T, Err> PersistentObjectQueries<Err> for T
 
 #[async_trait(? Send)]
 impl<T, Err> PersistentObjectCommands<Err> for T
-    where
-        T: KvLogEventRepo<Err> + ObjectFormation,
-        Err: Error,
+where
+    T: KvLogEventRepo<Err> + ObjectFormation,
+    Err: Error,
 {
     async fn init_global_index(&self, public_key: &PublicKeyRecord) -> KvLogEvent<PublicKeyRecord> {
         //create a genesis event and save into the database
         let formation_log_event = self.formation_event(&Descriptors::global_index(), public_key);
-        let formation_event = GenericKvLogEvent::Update(KvLogEventUpdate::Genesis { event: formation_log_event });
+        let formation_event = GenericKvLogEvent::Update(KvLogEventUpdate::Genesis {
+            event: formation_log_event.clone(),
+        });
 
         self.save(&formation_event).await.unwrap();
 

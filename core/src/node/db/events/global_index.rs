@@ -1,6 +1,4 @@
-use crate::node::db::models::{
-    GlobalIndexRecord, KeyIdGen, KvKey, KvKeyId, KvLogEvent, ObjectType,
-};
+use crate::node::db::models::{GlobalIndexRecord, KeyIdGen, KvKey, KvKeyId, KvLogEvent, ObjectType};
 
 pub trait GlobalIndexAction {
     fn new_event(&self, tail_id: &KvKeyId, vault_id: &str) -> KvLogEvent<GlobalIndexRecord> {

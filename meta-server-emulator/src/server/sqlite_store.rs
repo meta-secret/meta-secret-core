@@ -4,11 +4,10 @@ use crate::schema::db_commit_log as schema_log;
 use crate::schema::db_commit_log::dsl;
 use async_trait::async_trait;
 use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection};
-use meta_secret_core::models::Base64EncodedText;
 use meta_secret_core::node::db::events::global_index::GlobalIndexAction;
 use meta_secret_core::node::db::events::sign_up::SignUpAction;
 use meta_secret_core::node::db::generic_db::{FindOneQuery, KvLogEventRepo, SaveCommand};
-use meta_secret_core::node::db::models::{KvKeyId, KvLogEvent};
+use meta_secret_core::node::db::models::{GenericKvLogEvent, KvKeyId, PublicKeyRecord};
 use meta_secret_core::node::server::meta_server::{
     MetaServer, MetaServerContext, MetaServerContextState,
 };
@@ -31,7 +30,7 @@ pub enum SqliteDbError {
 
 #[async_trait(? Send)]
 impl SaveCommand<SqliteDbError> for SqlIteServer {
-    async fn save(&self, value: &KvLogEvent) -> Result<(), SqliteDbError> {
+    async fn save(&self, value: &GenericKvLogEvent) -> Result<(), SqliteDbError> {
         let mut conn = SqliteConnection::establish(self.conn_url.as_str()).unwrap();
 
         diesel::insert_into(schema_log::table)
@@ -43,19 +42,19 @@ impl SaveCommand<SqliteDbError> for SqlIteServer {
 
 #[async_trait(? Send)]
 impl FindOneQuery<SqliteDbError> for SqlIteServer {
-    async fn find_one<T>(&self, key: &str) -> Result<Option<KvLogEvent<T>>, SqliteDbError> {
+    async fn find_one(&self, key: &str) -> Result<Option<GenericKvLogEvent>, SqliteDbError> {
         let mut conn = SqliteConnection::establish(self.conn_url.as_str()).unwrap();
 
         let db_event: DbLogEvent = dsl::db_commit_log
             .filter(dsl::key_id.eq(key))
             .first::<DbLogEvent>(&mut conn)?;
 
-        Ok(Some(KvLogEvent::from(&db_event)))
+        Ok(Some(GenericKvLogEvent::from(&db_event)))
     }
 }
 
 impl MetaServerContext for SqlIteServer {
-    fn server_pk(&self) -> Base64EncodedText {
+    fn server_pk(&self) -> PublicKeyRecord {
         self.context.server_pk()
     }
 
