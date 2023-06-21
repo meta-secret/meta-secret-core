@@ -1,17 +1,17 @@
-use crate::models::{Base64EncodedText, UserSignature, VaultDoc};
+use crate::models::{UserSignature, VaultDoc};
 use crate::node::db::models::{
-    AppOperation, AppOperationType, KeyIdGen, KvKey, KvLogEvent, KvValueType, ObjectCreator, ObjectDescriptor,
-    ObjectType,
+    GenericKvLogEvent, KeyIdGen, KvKey, KvLogEvent, KvLogEventRequest, KvLogEventUpdate, ObjectCreator,
+    ObjectDescriptor, ObjectType, PublicKeyRecord,
 };
 use crate::node::server::persistent_object_repo::ObjectFormation;
 
 pub trait SignUpAction: ObjectFormation {
-    fn sign_up_accept(&self, sign_up_request: &KvLogEvent, server_pk: Base64EncodedText) -> Vec<KvLogEvent> {
-        if sign_up_request.cmd_type != AppOperationType::Request(AppOperation::SignUp) {
-            panic!("Invalid request");
-        }
-
-        let user_sig: UserSignature = serde_json::from_value(sign_up_request.value.clone()).unwrap();
+    fn sign_up_accept(
+        &self,
+        sign_up_request: &KvLogEvent<UserSignature>,
+        server_pk: &PublicKeyRecord,
+    ) -> Vec<GenericKvLogEvent> {
+        let user_sig: UserSignature = sign_up_request.value.clone();
         let vault_name = user_sig.vault.name.clone();
 
         let vault = VaultDoc {
@@ -35,28 +35,40 @@ pub trait SignUpAction: ObjectFormation {
 
         let sign_up_event = KvLogEvent {
             key: KvKey {
-                object_type: ObjectType::Vault,
+                object_type: ObjectType::VaultObj,
                 key_id: expected_sign_request_id.next(),
             },
-            cmd_type: AppOperationType::Update(AppOperation::SignUp),
-            val_type: KvValueType::Vault,
-            value: serde_json::to_value(&vault).unwrap(),
+            value: vault,
         };
 
-        vec![vault_formation_event, sign_up_request.clone(), sign_up_event]
+        let genesis_update = KvLogEventUpdate::Genesis {
+            event: vault_formation_event,
+        };
+        let vault_formation_event = GenericKvLogEvent::Update(genesis_update);
+
+        let sign_up_request = GenericKvLogEvent::Request(KvLogEventRequest::SignUp {
+            event: sign_up_request.clone(),
+        });
+        let sign_up_event = GenericKvLogEvent::Update(KvLogEventUpdate::SignUp { event: sign_up_event });
+
+        vec![vault_formation_event, sign_up_request, sign_up_event]
     }
 }
 
 pub trait SignUpRequest: ObjectFormation {
-    fn sign_up_request(&self, user_sig: &UserSignature) -> KvLogEvent {
+    fn sign_up_generic_request(&self, user_sig: &UserSignature) -> GenericKvLogEvent {
+        GenericKvLogEvent::Request(KvLogEventRequest::SignUp {
+            event: self.sign_up_request(user_sig),
+        })
+    }
+
+    fn sign_up_request(&self, user_sig: &UserSignature) -> KvLogEvent<UserSignature> {
         let obj_desc = ObjectDescriptor::vault(user_sig.vault.name.as_str());
         let genesis_key = KvKey::formation(&obj_desc);
 
         KvLogEvent {
             key: genesis_key.next(),
-            cmd_type: AppOperationType::Request(AppOperation::SignUp),
-            val_type: KvValueType::UserSignature,
-            value: serde_json::to_value(user_sig).unwrap(),
+            value: user_sig.clone(),
         }
     }
 }

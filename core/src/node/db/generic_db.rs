@@ -1,16 +1,19 @@
 use async_trait::async_trait;
 
 use crate::models::{MetaPasswordId, SecretDistributionDocData};
-use crate::node::db::models::KvLogEvent;
+use crate::node::db::models::{GenericKvLogEvent, LogEventKeyBasedRecord};
 
 #[async_trait(? Send)]
 pub trait SaveCommand<DbErr: std::error::Error> {
-    async fn save(&self, value: &KvLogEvent) -> Result<(), DbErr>;
+    async fn save(&self, key: &str, value: &GenericKvLogEvent) -> Result<(), DbErr>;
+    async fn save_event(&self, value: &GenericKvLogEvent) -> Result<(), DbErr> {
+        self.save(value.key().key_id.obj_id.id.as_str(), value).await
+    }
 }
 
 #[async_trait(? Send)]
 pub trait FindOneQuery<DbErr: std::error::Error> {
-    async fn find_one(&self, key: &str) -> Result<Option<KvLogEvent>, DbErr>;
+    async fn find_one(&self, key: &str) -> Result<Option<GenericKvLogEvent>, DbErr>;
 }
 
 #[async_trait(? Send)]

@@ -1,19 +1,17 @@
-use crate::node::db::models::{
-    AppOperation, AppOperationType, KeyIdGen, KvKey, KvKeyId, KvLogEvent, KvValueType, ObjectType,
-};
+use crate::node::db::models::{GlobalIndexRecord, KeyIdGen, KvKey, KvKeyId, KvLogEvent, ObjectType};
 
 pub trait GlobalIndexAction {
-    fn new_event(&self, tail_id: &KvKeyId, vault_id: &str) -> KvLogEvent {
+    fn new_event(&self, tail_id: &KvKeyId, vault_id: &str) -> KvLogEvent<GlobalIndexRecord> {
         let key = KvKey {
             key_id: tail_id.next(),
-            object_type: ObjectType::GlobalIndex,
+            object_type: ObjectType::GlobalIndexObj,
         };
 
         KvLogEvent {
             key,
-            cmd_type: AppOperationType::Update(AppOperation::GlobalIndex),
-            val_type: KvValueType::String,
-            value: serde_json::to_value(vault_id).unwrap(),
+            value: GlobalIndexRecord {
+                vault_id: vault_id.to_string(),
+            },
         }
     }
 }

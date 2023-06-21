@@ -12,7 +12,7 @@ pub enum WasmDbError {
     JsIndexedDbError(DomException),
 
     #[error(transparent)]
-    WasmBindGenError {
+    SerdeWasmBindGenError {
         #[from]
         source: serde_wasm_bindgen::Error,
     },

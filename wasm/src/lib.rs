@@ -11,6 +11,7 @@ use meta_secret_core::shared_secret::shared_secret::{
 use meta_secret_core::shared_secret::MetaDistributor;
 use wasm_bindgen::prelude::*;
 use meta_secret_core::node::db::generic_db::{FindOneQuery, SaveCommand, UserPasswordEntity};
+use crate::objects::ToJsValue;
 
 mod commit_log;
 mod db;
@@ -41,6 +42,7 @@ extern "C" {
 pub async fn get_vault() -> Result<JsValue, JsValue> {
     log("wasm: get vault!");
 
+    /*
     let maybe_creds = objects::internal::find_user_credentials()
         .await
         .map_err(JsError::from)?;
@@ -52,11 +54,13 @@ pub async fn get_vault() -> Result<JsValue, JsValue> {
                 .await
                 .map_err(JsError::from)?;
 
-            let vault_js = serde_wasm_bindgen::to_value(&vault)?;
+            let vault_js = vault.to_js()?;
             Ok(vault_js)
         }
         None => Err(JsValue::from("Empty user credentials")),
     }
+    */
+    Ok(JsValue::null())
 }
 
 ///https://rustwasm.github.io/wasm-bindgen/examples/closures.html

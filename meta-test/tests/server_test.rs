@@ -7,9 +7,9 @@ mod test {
     use meta_secret_core::node::db::commit_log;
     use meta_secret_core::node::db::events::join::join_cluster_request;
     use meta_secret_core::node::db::events::sign_up::SignUpRequest;
-
     use meta_secret_core::node::db::models::{
-        Descriptors, KvKeyId, ObjectCreator, ObjectDescriptor, ObjectId,
+        Descriptors, GenericKvLogEvent, KvKeyId, KvLogEventRequest, KvLogEventUpdate,
+        ObjectCreator, ObjectDescriptor, ObjectId,
     };
     use meta_secret_core::node::server::meta_server::{
         DataSync, DataTransport, MetaServerContext, MetaServerContextState,
@@ -22,6 +22,7 @@ mod test {
     struct ObjectUtilsStruct {}
 
     impl ObjectFormation for ObjectUtilsStruct {}
+
     impl SignUpRequest for ObjectUtilsStruct {}
 
     #[tokio::test]
@@ -41,6 +42,11 @@ mod test {
         let obj_formation = ObjectUtilsStruct {};
         let expected_global_id_event =
             obj_formation.formation_event(&Descriptors::global_index(), &server.server_pk());
+        let genesis_update = KvLogEventUpdate::Genesis {
+            event: expected_global_id_event,
+        };
+        let expected_global_id_event = GenericKvLogEvent::Update(genesis_update);
+
         assert_eq!(expected_global_id_event, commit_log[0]);
     }
 
@@ -90,7 +96,7 @@ mod test {
 
         // if a vault is not present
         let obj_utils = ObjectUtilsStruct {};
-        let sign_up_request = obj_utils.sign_up_request(&a_user_sig);
+        let sign_up_request = obj_utils.sign_up_generic_request(&a_user_sig);
         server.send_data(&sign_up_request).await;
 
         let request = SyncRequest {
@@ -136,7 +142,7 @@ mod test {
 
         // if a vault is not present
         let obj_utils = ObjectUtilsStruct {};
-        let sign_up_request = obj_utils.sign_up_request(&a_user_sig);
+        let sign_up_request = obj_utils.sign_up_generic_request(&a_user_sig);
         server.send_data(&sign_up_request).await;
 
         let b_s_box = KeyManager::generate_security_box(vault_name.to_string());
@@ -158,6 +164,9 @@ mod test {
         //println!("tail id {:?}", &meta_db.vault_store.tail_id.clone().unwrap());
 
         let join_request = join_cluster_request(&meta_db.vault_store.tail_id.unwrap(), &b_user_sig);
+        let join_request = GenericKvLogEvent::Request(KvLogEventRequest::JoinCluster {
+            event: join_request,
+        });
 
         server.send_data(&join_request).await;
 
