@@ -30,7 +30,7 @@ pub enum SqliteDbError {
 
 #[async_trait(? Send)]
 impl SaveCommand<SqliteDbError> for SqlIteServer {
-    async fn save(&self, value: &GenericKvLogEvent) -> Result<(), SqliteDbError> {
+    async fn save(&self, _key: &str, value: &GenericKvLogEvent) -> Result<(), SqliteDbError> {
         let mut conn = SqliteConnection::establish(self.conn_url.as_str()).unwrap();
 
         diesel::insert_into(schema_log::table)

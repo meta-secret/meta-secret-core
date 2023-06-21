@@ -33,6 +33,10 @@ pub fn apply(commit_log: Rc<Vec<GenericKvLogEvent>>, mut meta_db: MetaDb) -> Res
                             println!("Meta Vault is an internal object. skip");
                             todo!("not implemented yet")
                         }
+                        ObjectType::UserCreds => {
+                            println!("User Creds is an internal object. skip");
+                            todo!("not implemented yet")
+                        }
                     }
                 }
                 KvLogEventUpdate::GlobalIndex { event } => {
@@ -51,6 +55,9 @@ pub fn apply(commit_log: Rc<Vec<GenericKvLogEvent>>, mut meta_db: MetaDb) -> Res
                 }
             },
             GenericKvLogEvent::MetaVault { .. } => {
+                panic!("Internal event");
+            }
+            GenericKvLogEvent::UserCredentials { .. } => {
                 panic!("Internal event");
             }
             GenericKvLogEvent::Error { .. } => {

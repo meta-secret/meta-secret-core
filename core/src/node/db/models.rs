@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::crypto::utils;
-use crate::models::{Base64EncodedText, MetaVault, UserSignature, VaultDoc};
+use crate::models::{Base64EncodedText, MetaVault, UserCredentials, UserSignature, VaultDoc};
 use crate::sdk::api::ErrorMessage;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -42,12 +42,10 @@ pub enum LogCommandError {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub enum ObjectType {
-    #[serde(rename = "GlobalIndex")]
     GlobalIndexObj,
-    #[serde(rename = "Vault")]
     VaultObj,
-    #[serde(rename = "MetaVault")]
     MetaVaultObj,
+    UserCreds,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -74,6 +72,8 @@ pub enum GenericKvLogEvent {
     Update(KvLogEventUpdate),
 
     MetaVault { event: KvLogEvent<MetaVault> },
+    UserCredentials { event: KvLogEvent<UserCredentials> },
+
     Error { event: KvLogEvent<ErrorMessage> },
 }
 
@@ -95,6 +95,7 @@ impl LogEventKeyBasedRecord for GenericKvLogEvent {
                 KvLogEventUpdate::JoinCluster { event } => &event.key,
             },
             GenericKvLogEvent::MetaVault { event } => &event.key,
+            GenericKvLogEvent::UserCredentials { event } => &event.key,
             GenericKvLogEvent::Error { event } => &event.key,
         }
     }
@@ -200,6 +201,13 @@ impl ObjectDescriptor {
         Self {
             name: vault_name.to_string(),
             object_type: ObjectType::MetaVaultObj,
+        }
+    }
+
+    pub fn user_creds(user_creds: &str) -> Self {
+        Self {
+            name: user_creds.to_string(),
+            object_type: ObjectType::UserCreds,
         }
     }
 }

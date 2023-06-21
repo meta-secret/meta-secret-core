@@ -129,6 +129,9 @@ where
             GenericKvLogEvent::MetaVault { .. } => {
                 panic!("Not allowed");
             }
+            GenericKvLogEvent::UserCredentials { .. } => {
+                panic!("Not allowed");
+            }
             GenericKvLogEvent::Error { .. } => {
                 panic!("Not allowed");
             }
@@ -141,7 +144,7 @@ where
         let generic_join_event = GenericKvLogEvent::Request(KvLogEventRequest::JoinCluster {
             event: join_event.clone(),
         });
-        self.save(&generic_join_event).await.expect("Error saving join request");
+        self.save_event(&generic_join_event).await.expect("Error saving join request");
 
         //join cluster update message
         let vault_events = self.find_object_events(genesis_id.as_str()).await;
@@ -152,7 +155,7 @@ where
         let accept_event = accept_join_request(join_event, vault_doc);
         let generic_accept_event = GenericKvLogEvent::Update(KvLogEventUpdate::SignUp { event: accept_event });
 
-        self.save(&generic_accept_event)
+        self.save_event(&generic_accept_event)
             .await
             .expect("Error saving accept event");
     }
@@ -172,7 +175,7 @@ where
         };
 
         for sign_up_event in sign_up_events {
-            self.save(&sign_up_event).await.expect("Error saving sign_up events");
+            self.save_event(&sign_up_event).await.expect("Error saving sign_up events");
         }
 
         //update global index
@@ -181,7 +184,7 @@ where
             event: global_index_event,
         });
 
-        self.save(&global_index_event)
+        self.save_event(&global_index_event)
             .await
             .expect("Error saving vaults genesis event");
     }

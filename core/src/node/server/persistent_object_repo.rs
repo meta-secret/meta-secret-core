@@ -141,7 +141,7 @@ where
             event: formation_log_event.clone(),
         });
 
-        self.save(&formation_event).await.unwrap();
+        self.save_event(&formation_event).await.unwrap();
 
         formation_log_event
     }
