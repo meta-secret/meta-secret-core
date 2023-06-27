@@ -7,6 +7,7 @@ mod test {
     use meta_secret_core::node::db::commit_log;
     use meta_secret_core::node::db::events::join::join_cluster_request;
     use meta_secret_core::node::db::events::sign_up::SignUpRequest;
+    use meta_secret_core::node::db::meta_db::MetaDb;
     use meta_secret_core::node::db::models::{
         Descriptors, GenericKvLogEvent, KvKeyId, KvLogEventRequest, KvLogEventUpdate,
         ObjectCreator, ObjectDescriptor, ObjectId,
@@ -70,7 +71,7 @@ mod test {
         //check whether the vault you are going to use already exists.
         // We need to have meta_db to be able to check if the vault exists
         let vault_name = "test";
-        let vault_desc = ObjectDescriptor::vault(vault_name);
+        let vault_desc = ObjectDescriptor::Vault { name: vault_name.to_string() };
         let vault_id = ObjectId::formation(&vault_desc);
 
         let a_s_box = KeyManager::generate_security_box(vault_name.to_string());
@@ -85,11 +86,11 @@ mod test {
             global_index: None,
         };
         let commit_log = server.sync_data(request).await;
-        let meta_db = commit_log::transform(Rc::new(commit_log)).unwrap();
+        let meta_db: MetaDb = commit_log::transform(Rc::new(commit_log)).unwrap();
         if meta_db
             .global_index_store
             .global_index
-            .contains(vault_id.id.as_str())
+            .contains(vault_id.id_str().as_str())
         {
             panic!("The vault already exists");
         }
@@ -101,8 +102,7 @@ mod test {
 
         let request = SyncRequest {
             vault: Some(VaultSyncRequest {
-                vault_id: Some(vault_id.id.clone()),
-                tail_id: None,
+                tail_id: Some(vault_id),
             }),
             global_index: None,
         };
@@ -117,7 +117,7 @@ mod test {
 
         let global_index = meta_db.global_index_store.global_index;
 
-        if !global_index.contains(vault_id.id.as_str()) {
+        if !global_index.contains(vault_id.id_str().as_str()) {
             panic!("The vault expected to be in the database")
         }
     }
@@ -151,8 +151,7 @@ mod test {
 
         let request = SyncRequest {
             vault: Some(VaultSyncRequest {
-                vault_id: Some(vault_id.obj_id.genesis_id.clone()),
-                tail_id: None,
+                tail_id: Some(vault_id.obj_id().genesis_id().clone()),
             }),
             global_index: None,
         };
@@ -172,8 +171,7 @@ mod test {
 
         let request = SyncRequest {
             vault: Some(VaultSyncRequest {
-                vault_id: Some(vault_id.obj_id.genesis_id),
-                tail_id: None,
+                tail_id: Some(vault_id.obj_id().genesis_id()),
             }),
             global_index: None,
         };

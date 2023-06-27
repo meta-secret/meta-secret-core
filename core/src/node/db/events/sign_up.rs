@@ -21,7 +21,7 @@ pub trait SignUpAction: ObjectFormation {
             declined_joins: vec![],
         };
 
-        let obj_desc = ObjectDescriptor::vault(vault_name.as_str());
+        let obj_desc = ObjectDescriptor::Vault { name: vault_name };
         let vault_formation_event = self.formation_event(&obj_desc, &server_pk);
 
         let expected_sign_request_id = vault_formation_event.key.key_id.next();
@@ -63,7 +63,7 @@ pub trait SignUpRequest: ObjectFormation {
     }
 
     fn sign_up_request(&self, user_sig: &UserSignature) -> KvLogEvent<UserSignature> {
-        let obj_desc = ObjectDescriptor::vault(user_sig.vault.name.as_str());
+        let obj_desc = ObjectDescriptor::Vault { name: user_sig.vault.name.clone() };
         let genesis_key = KvKey::formation(&obj_desc);
 
         KvLogEvent {

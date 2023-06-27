@@ -1,17 +1,23 @@
+use std::error::Error;
+use async_trait::async_trait;
+use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection};
+
+use meta_secret_core::node::app::meta_app::UserCredentialsManager;
+use meta_secret_core::node::db::commit_log::{MetaDbManager, MetaDbManager2};
+use meta_secret_core::node::db::events::global_index::GlobalIndexAction;
+use meta_secret_core::node::db::events::sign_up::SignUpAction;
+use meta_secret_core::node::db::generic_db::{FindOneQuery, KvLogEventRepo, SaveCommand};
+use meta_secret_core::node::db::meta_db::MetaDb;
+use meta_secret_core::node::db::models::{GenericKvLogEvent, KvKeyId, LogCommandError, ObjectDescriptor, ObjectId, PublicKeyRecord};
+use meta_secret_core::node::server::meta_server::{
+    MetaServer, MetaServerContext, MetaServerContextState,
+};
+use meta_secret_core::node::server::persistent_object_repo::{ObjectFormation, PersistentObjectCommands, PersistentObjectQueries, PersistentObjectRepo};
+
 use crate::models::DbLogEvent;
 use crate::models::NewDbLogEvent;
 use crate::schema::db_commit_log as schema_log;
 use crate::schema::db_commit_log::dsl;
-use async_trait::async_trait;
-use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection};
-use meta_secret_core::node::db::events::global_index::GlobalIndexAction;
-use meta_secret_core::node::db::events::sign_up::SignUpAction;
-use meta_secret_core::node::db::generic_db::{FindOneQuery, KvLogEventRepo, SaveCommand};
-use meta_secret_core::node::db::models::{GenericKvLogEvent, KvKeyId, PublicKeyRecord};
-use meta_secret_core::node::server::meta_server::{
-    MetaServer, MetaServerContext, MetaServerContextState,
-};
-use meta_secret_core::node::server::persistent_object_repo::ObjectFormation;
 
 pub struct SqlIteServer {
     /// conn_url="file:///tmp/test.db"
@@ -28,9 +34,11 @@ pub enum SqliteDbError {
     },
 }
 
+
+
 #[async_trait(? Send)]
 impl SaveCommand<SqliteDbError> for SqlIteServer {
-    async fn save(&self, _key: &str, value: &GenericKvLogEvent) -> Result<(), SqliteDbError> {
+    async fn save(&self, _key: &ObjectId, value: &GenericKvLogEvent) -> Result<(), SqliteDbError> {
         let mut conn = SqliteConnection::establish(self.conn_url.as_str()).unwrap();
 
         diesel::insert_into(schema_log::table)
@@ -42,11 +50,11 @@ impl SaveCommand<SqliteDbError> for SqlIteServer {
 
 #[async_trait(? Send)]
 impl FindOneQuery<SqliteDbError> for SqlIteServer {
-    async fn find_one(&self, key: &str) -> Result<Option<GenericKvLogEvent>, SqliteDbError> {
+    async fn find_one(&self, key: &ObjectId) -> Result<Option<GenericKvLogEvent>, SqliteDbError> {
         let mut conn = SqliteConnection::establish(self.conn_url.as_str()).unwrap();
 
         let db_event: DbLogEvent = dsl::db_commit_log
-            .filter(dsl::key_id.eq(key))
+            .filter(dsl::key_id.eq(key.id_str()))
             .first::<DbLogEvent>(&mut conn)?;
 
         Ok(Some(GenericKvLogEvent::from(&db_event)))
@@ -63,12 +71,32 @@ impl MetaServerContext for SqlIteServer {
     }
 }
 
-impl KvLogEventRepo<SqliteDbError> for SqlIteServer {}
+//impl KvLogEventRepo<SqliteDbError> for SqlIteServer {}
 
-impl GlobalIndexAction for SqlIteServer {}
+//impl GlobalIndexAction for SqlIteServer {}
 
-impl MetaServer<SqliteDbError> for SqlIteServer {}
+//impl MetaServer<SqliteDbError> for SqlIteServer {}
 
-impl ObjectFormation for SqlIteServer {}
+//impl ObjectFormation for SqlIteServer {}
 
-impl SignUpAction for SqlIteServer {}
+//impl SignUpAction for SqlIteServer {}
+
+// - - - - - - - - -
+
+pub struct SqliteMetaDbManager {}
+
+#[async_trait(? Send)]
+impl FindOneQuery<SqliteDbError> for SqliteMetaDbManager {
+    async fn find_one(&self, key: &ObjectId) -> Result<Option<GenericKvLogEvent>, SqliteDbError> {
+        todo!()
+    }
+}
+
+#[async_trait(? Send)]
+impl SaveCommand<SqliteDbError> for SqliteMetaDbManager {
+    async fn save(&self, key: &ObjectId, value: &GenericKvLogEvent) -> Result<(), SqliteDbError> {
+        todo!()
+    }
+}
+
+impl KvLogEventRepo<SqliteDbError> for SqliteMetaDbManager {}

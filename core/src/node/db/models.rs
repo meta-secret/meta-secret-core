@@ -1,31 +1,6 @@
-use std::collections::HashSet;
-
 use crate::crypto::utils;
 use crate::models::{Base64EncodedText, MetaVault, UserCredentials, UserSignature, VaultDoc};
 use crate::sdk::api::ErrorMessage;
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct MetaDb {
-    pub vault_store: VaultStore,
-    pub global_index_store: GlobalIndexStore,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct VaultStore {
-    pub tail_id: Option<KvKeyId>,
-    pub server_pk: Option<PublicKeyRecord>,
-    pub vault: Option<VaultDoc>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct GlobalIndexStore {
-    pub server_pk: Option<PublicKeyRecord>,
-    pub tail_id: Option<KvKeyId>,
-    pub global_index: HashSet<String>,
-}
 
 #[derive(thiserror::Error, Debug)]
 pub enum LogCommandError {
@@ -126,6 +101,22 @@ pub struct KvLogEvent<T> {
     pub value: T,
 }
 
+impl KvLogEvent<PublicKeyRecord> {
+    pub fn formation(obj_desc: &ObjectDescriptor, server_pk: &PublicKeyRecord) -> KvLogEvent<PublicKeyRecord> {
+        KvLogEvent {
+            key: KvKey::formation(obj_desc),
+            value: server_pk.clone(),
+        }
+    }
+
+    pub fn global_index_formation(server_pk: PublicKeyRecord) -> KvLogEvent<PublicKeyRecord> {
+        KvLogEvent {
+            key: Descriptors::global_index(),
+            value: server_pk,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KvKey {
@@ -137,39 +128,94 @@ impl ObjectCreator<&ObjectDescriptor> for KvKey {
     fn formation(obj_desc: &ObjectDescriptor) -> Self {
         Self {
             key_id: KvKeyId::formation(obj_desc),
-            object_type: obj_desc.object_type,
+            object_type: ObjectType::from(obj_desc),
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct KvKeyId {
-    pub obj_id: ObjectId,
-    pub prev_obj_id: String,
+pub enum KvKeyId {
+    GenesisKeyId {
+        obj_id: ObjectId
+    },
+    RegularKeyId {
+        obj_id: ObjectId,
+        prev_obj_id: String,
+    },
+}
+
+impl KvKeyId {
+    pub fn obj_id(&self) -> ObjectId {
+        match self {
+            KvKeyId::GenesisKeyId { obj_id } => { obj_id.clone() }
+            KvKeyId::RegularKeyId { obj_id, .. } => { obj_id.clone() }
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ObjectId {
-    pub id: String,
-    pub genesis_id: String,
+pub enum ObjectId {
+    Genesis {
+        id: String
+    },
+    Regular {
+        id: String,
+        genesis_id: String,
+    },
+}
+
+impl ObjectId {
+    pub fn genesis_id(&self) -> Self {
+        match self {
+            ObjectId::Genesis { .. } => {
+                self.clone()
+            }
+            ObjectId::Regular { genesis_id, .. } => {
+                Self::Genesis {
+                    id: genesis_id.clone(),
+                }
+            }
+        }
+    }
+
+    pub fn id_str(&self) -> String {
+        match self {
+            ObjectId::Genesis { id } => { id.clone() }
+            ObjectId::Regular { id, .. } => { id.clone() }
+        }
+    }
 }
 
 pub struct Descriptors {}
 
 impl Descriptors {
     pub fn global_index() -> ObjectDescriptor {
-        ObjectDescriptor {
-            name: String::from("meta-g"),
-            object_type: ObjectType::GlobalIndexObj,
+        ObjectDescriptor::GlobalIndex {
+            name: String::from("meta-g")
         }
     }
 }
 
-pub struct ObjectDescriptor {
-    pub name: String,
-    pub object_type: ObjectType,
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ObjectDescriptor {
+    GlobalIndex { name: String },
+    Vault { name: String },
+    MetaVault { name: String },
+    UserCreds { name: String },
+}
+
+impl From<&ObjectDescriptor> for ObjectType {
+    fn from(desc: &ObjectDescriptor) -> Self {
+        match desc {
+            ObjectDescriptor::GlobalIndex { .. } => { ObjectType::GlobalIndexObj }
+            ObjectDescriptor::Vault { .. } => { ObjectType::VaultObj }
+            ObjectDescriptor::MetaVault { .. } => { ObjectType::MetaVaultObj }
+            ObjectDescriptor::UserCreds { .. } => { ObjectType::UserCreds }
+        }
+    }
 }
 
 impl ObjectDescriptor {
@@ -180,34 +226,16 @@ impl ObjectDescriptor {
 
 impl ObjectDescriptor {
     pub fn full_name(&self) -> String {
-        format!("{:?}:{}", self.object_type, self.name)
+        let object_type = format!("{:?}", self);
+        format!("{:?}:{}", object_type, self.name())
     }
 
-    pub fn vault(name: &str) -> Self {
-        Self {
-            name: name.to_string(),
-            object_type: ObjectType::VaultObj,
-        }
-    }
-
-    pub fn global_index(name: &str) -> Self {
-        Self {
-            name: name.to_string(),
-            object_type: ObjectType::GlobalIndexObj,
-        }
-    }
-
-    pub fn meta_vault(vault_name: &str) -> Self {
-        Self {
-            name: vault_name.to_string(),
-            object_type: ObjectType::MetaVaultObj,
-        }
-    }
-
-    pub fn user_creds(user_creds: &str) -> Self {
-        Self {
-            name: user_creds.to_string(),
-            object_type: ObjectType::UserCreds,
+    pub fn name(&self) -> String {
+        match self {
+            ObjectDescriptor::GlobalIndex { name } => { name.clone() }
+            ObjectDescriptor::Vault { name } => { name.clone() }
+            ObjectDescriptor::MetaVault { name } => { name.clone() }
+            ObjectDescriptor::UserCreds { name } => { name.clone() }
         }
     }
 }
@@ -219,37 +247,29 @@ pub trait ObjectCreator<T> {
 impl ObjectCreator<&ObjectDescriptor> for ObjectId {
     fn formation(obj_descriptor: &ObjectDescriptor) -> Self {
         let genesis_id = obj_descriptor.to_id();
-        Self {
-            id: genesis_id.clone(),
-            genesis_id,
-        }
+        Self::Genesis { id: genesis_id }
     }
 }
 
 impl ObjectCreator<&ObjectDescriptor> for KvKeyId {
     fn formation(obj_descriptor: &ObjectDescriptor) -> Self {
         let obj_id = ObjectId::formation(obj_descriptor);
-        KvKeyId::formation(obj_id.id)
+        KvKeyId::formation(&obj_id)
     }
 }
 
 /// Build formation id based on genesis id
-impl ObjectCreator<String> for KvKeyId {
-    fn formation(genesis_id: String) -> Self {
-        let origin_id = utils::to_id("meta-secret-genesis");
-        Self {
-            obj_id: ObjectId {
-                id: genesis_id.clone(),
-                genesis_id,
-            },
-            prev_obj_id: origin_id,
+impl ObjectCreator<&ObjectId> for KvKeyId {
+    fn formation(genesis_id: &ObjectId) -> Self {
+        Self::GenesisKeyId {
+            obj_id: genesis_id.genesis_id(),
         }
     }
 }
 
 impl KvKeyId {
     pub fn vault_formation(vault_name: &str) -> Self {
-        let vault_desc = ObjectDescriptor::vault(vault_name);
+        let vault_desc = ObjectDescriptor::Vault { name: vault_name.to_string() };
         KvKeyId::formation(&vault_desc)
     }
 }
@@ -260,17 +280,18 @@ pub trait KeyIdGen {
 
 impl KeyIdGen for KvKeyId {
     fn next(&self) -> Self {
-        let curr_id = self.obj_id.id.clone();
-        let next_id = utils::to_id(curr_id.as_str());
+        let obj_id = self.obj_id();
+        let curr_id_str = obj_id.clone().id_str();
+        let next_id_str = utils::to_id(curr_id_str.as_str());
 
-        let object_id = ObjectId {
-            id: next_id,
-            genesis_id: self.obj_id.genesis_id.clone(),
+        let object_id = ObjectId::Regular {
+            id: next_id_str,
+            genesis_id: obj_id.genesis_id().id_str(),
         };
 
-        Self {
+        KvKeyId::RegularKeyId {
             obj_id: object_id,
-            prev_obj_id: curr_id.clone(),
+            prev_obj_id: curr_id_str.clone(),
         }
     }
 }
@@ -286,13 +307,12 @@ impl KeyIdGen for KvKey {
 
 #[cfg(test)]
 mod test {
-    use crate::node::db::models::{KvKeyId, ObjectCreator, ObjectDescriptor, ObjectType};
+    use crate::node::db::models::{KvKeyId, ObjectCreator, ObjectDescriptor};
 
     #[test]
     fn test_key_id() {
-        let descriptor = ObjectDescriptor {
+        let descriptor = ObjectDescriptor::Vault {
             name: "test".to_string(),
-            object_type: ObjectType::VaultObj,
         };
         let id = KvKeyId::formation(&descriptor);
 
