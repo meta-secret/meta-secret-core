@@ -10,7 +10,11 @@ use meta_secret_core::shared_secret::shared_secret::{
 };
 use meta_secret_core::shared_secret::MetaDistributor;
 use wasm_bindgen::prelude::*;
+use meta_secret_core::node::app::meta_app::UserCredentialsManager;
+use meta_secret_core::node::db::commit_log::{MetaDbManager, MetaDbManagerStruct};
 use meta_secret_core::node::db::generic_db::{FindOneQuery, SaveCommand, UserPasswordEntity};
+use meta_secret_core::node::db::meta_db::MetaDb;
+use crate::commit_log::CommitLogWasmRepo;
 use crate::objects::ToJsValue;
 
 mod commit_log;
@@ -41,25 +45,26 @@ extern "C" {
 #[wasm_bindgen]
 pub async fn get_vault() -> Result<JsValue, JsValue> {
     log("wasm: get vault!");
-
-    /*
-    let maybe_creds = objects::internal::find_user_credentials()
+    let meta_vault_manager = CommitLogWasmRepo::default();
+    let maybe_creds = meta_vault_manager.find_user_creds()
         .await
         .map_err(JsError::from)?;
+
+    let meta_db = MetaDb::default();
+    let meta_db_manager = MetaDbManagerStruct {
+
+    };
 
     match maybe_creds {
         Some(creds) => {
             let user_sig = creds.user_sig;
-            let vault = server_api::get_vault(&user_sig)
-                .await
-                .map_err(JsError::from)?;
+            meta_db_manager.apply(???, meta_db)
 
-            let vault_js = vault.to_js()?;
             Ok(vault_js)
         }
         None => Err(JsValue::from("Empty user credentials")),
     }
-    */
+
     Ok(JsValue::null())
 }
 
