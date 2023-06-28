@@ -1,28 +1,22 @@
-use std::error::Error;
+use std::rc::Rc;
+
 use async_trait::async_trait;
 use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection};
 
-use meta_secret_core::node::app::meta_app::UserCredentialsManager;
-use meta_secret_core::node::db::commit_log::{MetaDbManager, MetaDbManager2};
-use meta_secret_core::node::db::events::global_index::GlobalIndexAction;
-use meta_secret_core::node::db::events::sign_up::SignUpAction;
 use meta_secret_core::node::db::generic_db::{FindOneQuery, KvLogEventRepo, SaveCommand};
-use meta_secret_core::node::db::meta_db::MetaDb;
-use meta_secret_core::node::db::models::{GenericKvLogEvent, KvKeyId, LogCommandError, ObjectDescriptor, ObjectId, PublicKeyRecord};
-use meta_secret_core::node::server::meta_server::{
-    MetaServer, MetaServerContext, MetaServerContextState,
-};
-use meta_secret_core::node::server::persistent_object_repo::{ObjectFormation, PersistentObjectCommands, PersistentObjectQueries, PersistentObjectRepo};
+use meta_secret_core::node::db::models::{GenericKvLogEvent};
+use meta_secret_core::node::db::events::object_id::{ObjectId};
+use meta_secret_core::node::server::meta_server::{MetaServerContextState};
 
 use crate::models::DbLogEvent;
 use crate::models::NewDbLogEvent;
 use crate::schema::db_commit_log as schema_log;
 use crate::schema::db_commit_log::dsl;
 
-pub struct SqlIteServer {
+pub struct SqlIteRepo {
     /// conn_url="file:///tmp/test.db"
     pub conn_url: String,
-    pub context: MetaServerContextState,
+    pub context: Rc<MetaServerContextState>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -34,10 +28,8 @@ pub enum SqliteDbError {
     },
 }
 
-
-
 #[async_trait(? Send)]
-impl SaveCommand<SqliteDbError> for SqlIteServer {
+impl SaveCommand<SqliteDbError> for SqlIteRepo {
     async fn save(&self, _key: &ObjectId, value: &GenericKvLogEvent) -> Result<(), SqliteDbError> {
         let mut conn = SqliteConnection::establish(self.conn_url.as_str()).unwrap();
 
@@ -49,7 +41,7 @@ impl SaveCommand<SqliteDbError> for SqlIteServer {
 }
 
 #[async_trait(? Send)]
-impl FindOneQuery<SqliteDbError> for SqlIteServer {
+impl FindOneQuery<SqliteDbError> for SqlIteRepo {
     async fn find_one(&self, key: &ObjectId) -> Result<Option<GenericKvLogEvent>, SqliteDbError> {
         let mut conn = SqliteConnection::establish(self.conn_url.as_str()).unwrap();
 
@@ -61,42 +53,4 @@ impl FindOneQuery<SqliteDbError> for SqlIteServer {
     }
 }
 
-impl MetaServerContext for SqlIteServer {
-    fn server_pk(&self) -> PublicKeyRecord {
-        self.context.server_pk()
-    }
-
-    fn tail_id(&self) -> Option<KvKeyId> {
-        self.context.global_index_tail_id.clone()
-    }
-}
-
-//impl KvLogEventRepo<SqliteDbError> for SqlIteServer {}
-
-//impl GlobalIndexAction for SqlIteServer {}
-
-//impl MetaServer<SqliteDbError> for SqlIteServer {}
-
-//impl ObjectFormation for SqlIteServer {}
-
-//impl SignUpAction for SqlIteServer {}
-
-// - - - - - - - - -
-
-pub struct SqliteMetaDbManager {}
-
-#[async_trait(? Send)]
-impl FindOneQuery<SqliteDbError> for SqliteMetaDbManager {
-    async fn find_one(&self, key: &ObjectId) -> Result<Option<GenericKvLogEvent>, SqliteDbError> {
-        todo!()
-    }
-}
-
-#[async_trait(? Send)]
-impl SaveCommand<SqliteDbError> for SqliteMetaDbManager {
-    async fn save(&self, key: &ObjectId, value: &GenericKvLogEvent) -> Result<(), SqliteDbError> {
-        todo!()
-    }
-}
-
-impl KvLogEventRepo<SqliteDbError> for SqliteMetaDbManager {}
+impl KvLogEventRepo<SqliteDbError> for SqlIteRepo {}

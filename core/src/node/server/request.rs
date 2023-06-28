@@ -1,4 +1,4 @@
-use crate::node::db::models::{ObjectId};
+use crate::node::db::events::object_id::{ObjectId};
 use serde::{Deserialize, Serialize};
 use crate::node::db::meta_db::{MetaDb, VaultStore};
 

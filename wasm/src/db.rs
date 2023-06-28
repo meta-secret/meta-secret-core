@@ -2,7 +2,6 @@ use wasm_bindgen::JsValue;
 use web_sys::DomException;
 use meta_secret_core::node::db::commit_log::MetaDbManager;
 use meta_secret_core::node::db::generic_db::{FindOneQuery, KvLogEventRepo, SaveCommand};
-use meta_secret_core::node::server::persistent_object_repo::PersistentObjectRepo;
 use crate::{idbGet, idbSave};
 use crate::commit_log::CommitLogWasmRepo;
 
@@ -34,11 +33,3 @@ impl KvLogEventRepo<WasmDbError> for CommitLogWasmRepo {
 pub struct MetaDbManagerWasm {
 
 }
-
-//impl MetaDbManager<WasmDbError> for CommitLogWasmRepo {
-
-//}
-
-//impl PersistentObjectRepo<WasmDbError> for MetaDbManagerWasm {
-
-//}

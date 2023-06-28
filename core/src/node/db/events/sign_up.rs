@@ -3,10 +3,13 @@ use crate::node::db::models::{
     GenericKvLogEvent, KeyIdGen, KvKey, KvLogEvent, KvLogEventRequest, KvLogEventUpdate, ObjectCreator,
     ObjectDescriptor, ObjectType, PublicKeyRecord,
 };
-use crate::node::server::persistent_object_repo::ObjectFormation;
 
-pub trait SignUpAction: ObjectFormation {
-    fn sign_up_accept(
+pub struct SignUpAction {
+
+}
+
+impl SignUpAction {
+    pub fn accept(
         &self,
         sign_up_request: &KvLogEvent<UserSignature>,
         server_pk: &PublicKeyRecord,
@@ -22,7 +25,7 @@ pub trait SignUpAction: ObjectFormation {
         };
 
         let obj_desc = ObjectDescriptor::Vault { name: vault_name };
-        let vault_formation_event = self.formation_event(&obj_desc, &server_pk);
+        let vault_formation_event = KvLogEvent::formation(&obj_desc, server_pk);
 
         let expected_sign_request_id = vault_formation_event.key.key_id.next();
         let actual_sign_up_request_id = sign_up_request.key.key_id.clone();
@@ -55,14 +58,18 @@ pub trait SignUpAction: ObjectFormation {
     }
 }
 
-pub trait SignUpRequest: ObjectFormation {
-    fn sign_up_generic_request(&self, user_sig: &UserSignature) -> GenericKvLogEvent {
+pub struct SignUpRequest {
+
+}
+
+impl SignUpRequest {
+    pub fn generic_request(&self, user_sig: &UserSignature) -> GenericKvLogEvent {
         GenericKvLogEvent::Request(KvLogEventRequest::SignUp {
-            event: self.sign_up_request(user_sig),
+            event: self.build_request(user_sig),
         })
     }
 
-    fn sign_up_request(&self, user_sig: &UserSignature) -> KvLogEvent<UserSignature> {
+    pub fn build_request(&self, user_sig: &UserSignature) -> KvLogEvent<UserSignature> {
         let obj_desc = ObjectDescriptor::Vault { name: user_sig.vault.name.clone() };
         let genesis_key = KvKey::formation(&obj_desc);
 

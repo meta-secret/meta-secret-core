@@ -1,28 +1,19 @@
 use std::error::Error;
-
-use async_trait::async_trait;
-
 use crate::models::VaultDoc;
 use crate::node::db::meta_db::{MetaDb};
-use crate::node::db::models::{GenericKvLogEvent, KvLogEventUpdate, LogCommandError, LogEventKeyBasedRecord, ObjectType};
-use crate::node::server::persistent_object_repo::PersistentObjectRepo;
-use crate::node::db::generic_db::KvLogEventRepo;
+use crate::node::server::persistent_object_repo::PersistentObject;
 
-#[async_trait(? Send)]
-pub trait MetaDbManager<Err: std::error::Error> {
-    async fn sync_meta_db(&self, meta_db: MetaDb) -> Result<MetaDb, LogCommandError>;
-    fn transform(&self, commit_log: Vec<GenericKvLogEvent>) -> Result<MetaDb, LogCommandError>;
-    fn apply(&self, commit_log: Vec<GenericKvLogEvent>, meta_db: MetaDb) -> Result<MetaDb, LogCommandError>;
+use crate::node::db::models::{GenericKvLogEvent, KvLogEventUpdate, LogCommandError, LogEventKeyBasedRecord, ObjectType};
+use crate::node::db::generic_db::KvLogEventRepo;
+use std::rc::Rc;
+
+pub struct MetaDbManager<Repo: KvLogEventRepo<Err>, Err: Error> {
+    pub persistent_obj: Rc<PersistentObject<Repo, Err>>,
 }
 
-#[async_trait(? Send)]
-impl<T, Err> MetaDbManager<Err> for T
-    where
-        T: PersistentObjectRepo<Err>,
-        Err: Error
-{
+impl<Repo: KvLogEventRepo<Err>, Err: Error> MetaDbManager<Repo, Err> {
     /// Apply new events to the database
-    fn apply(&self, commit_log: Vec<GenericKvLogEvent>, mut meta_db: MetaDb) -> Result<MetaDb, LogCommandError> {
+    pub fn apply(&self, commit_log: Vec<GenericKvLogEvent>, mut meta_db: MetaDb) -> Result<MetaDb, LogCommandError> {
         for (_index, generic_event) in commit_log.iter().enumerate() {
             let mut vault_store = &mut meta_db.vault_store;
             let g_store = &mut meta_db.global_index_store;
@@ -84,16 +75,18 @@ impl<T, Err> MetaDbManager<Err> for T
         Ok(meta_db)
     }
 
-    fn transform(&self, commit_log: Vec<GenericKvLogEvent>) -> Result<MetaDb, LogCommandError> {
+    pub fn transform(&self, commit_log: Vec<GenericKvLogEvent>) -> Result<MetaDb, LogCommandError> {
         let meta_db = MetaDb::default();
         self.apply(commit_log, meta_db)
     }
 
-    async fn sync_meta_db(&self, mut meta_db: MetaDb) -> Result<MetaDb, LogCommandError> {
+    pub async fn sync_meta_db(&self, mut meta_db: MetaDb) -> Result<MetaDb, LogCommandError> {
         let tail_id = meta_db.vault_store.tail_id.clone();
 
         if let Some(key_id) = tail_id {
-            let tail = self.find_object_events(&key_id.obj_id()).await;
+            let tail = self
+                .persistent_obj
+                .find_object_events(&key_id.obj_id()).await;
 
             if let Some(latest_event) = tail.last() {
                 meta_db.vault_store.tail_id = Some(latest_event.key().key_id.clone());

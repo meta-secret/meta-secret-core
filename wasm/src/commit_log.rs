@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 
 use wasm_bindgen::JsValue;
+use meta_secret_core::node::db::events::object_id::ObjectId;
 
 use meta_secret_core::node::db::generic_db::{CommitLogDbConfig, FindOneQuery};
 use meta_secret_core::node::db::generic_db::SaveCommand;
@@ -28,7 +29,7 @@ impl Default for CommitLogWasmRepo {
 
 #[async_trait(? Send)]
 impl SaveCommand<WasmDbError> for CommitLogWasmRepo {
-    async fn save(&self, key: &str, event: &GenericKvLogEvent) -> Result<(), WasmDbError> {
+    async fn save(&self, key: &ObjectId, event: &GenericKvLogEvent) -> Result<(), WasmDbError> {
         let event_js: JsValue = serde_wasm_bindgen::to_value(event)?;
 
         log(format!("SAVE an object!!!!: {:?}", event_js).as_str());
@@ -36,7 +37,7 @@ impl SaveCommand<WasmDbError> for CommitLogWasmRepo {
         idbSave(
             self.db_name.as_str(),
             self.store_name.as_str(),
-            key,
+            key.id_str().as_str(),
             event_js,
         )
             .await;
@@ -47,8 +48,8 @@ impl SaveCommand<WasmDbError> for CommitLogWasmRepo {
 #[async_trait(? Send)]
 impl FindOneQuery<WasmDbError> for CommitLogWasmRepo {
 
-    async fn find_one(&self, key: &str) -> Result<Option<GenericKvLogEvent>, WasmDbError> {
-        let vault_js = idbGet(self.db_name.as_str(), self.store_name.as_str(), key).await;
+    async fn find_one(&self, key: &ObjectId) -> Result<Option<GenericKvLogEvent>, WasmDbError> {
+        let vault_js = idbGet(self.db_name.as_str(), self.store_name.as_str(), key.id_str().as_str()).await;
 
         log(format!("Got an object!!!!: {:?}", vault_js).as_str());
 
