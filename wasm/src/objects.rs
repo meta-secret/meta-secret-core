@@ -1,9 +1,9 @@
-use serde::Serialize;
-use wasm_bindgen::prelude::*;
+use crate::commit_log::WasmRepo;
 use meta_secret_core::crypto::keys::KeyManager;
 use meta_secret_core::models::{MetaVault, UserCredentials};
 use meta_secret_core::node::app::meta_app::{MetaVaultManager, UserCredentialsManager};
-use crate::commit_log::CommitLogWasmRepo;
+use serde::Serialize;
+use wasm_bindgen::prelude::*;
 
 use crate::log;
 
@@ -11,7 +11,7 @@ use crate::log;
 pub async fn get_meta_vault() -> Result<Option<JsValue>, JsValue> {
     log("wasm. get meta vault");
 
-    let meta_vault_manager = CommitLogWasmRepo::default();
+    let meta_vault_manager = WasmRepo::default();
     let maybe_meta_vault = meta_vault_manager
         .find_meta_vault()
         .await
@@ -32,7 +32,7 @@ pub async fn get_meta_vault() -> Result<Option<JsValue>, JsValue> {
 
 #[wasm_bindgen]
 pub async fn create_meta_vault(vault_name: &str, device_name: &str) -> Result<JsValue, JsValue> {
-    let meta_vault_manager = CommitLogWasmRepo::default();
+    let meta_vault_manager = WasmRepo::default();
 
     let meta_vault = meta_vault_manager
         .create_meta_vault(vault_name.to_string(), device_name.to_string())
@@ -48,7 +48,7 @@ pub trait ToJsValue {
     fn to_js(&self) -> Result<JsValue, JsValue>;
 }
 
-impl <T: Serialize> ToJsValue for T {
+impl<T: Serialize> ToJsValue for T {
     fn to_js(&self) -> Result<JsValue, JsValue> {
         let js_value: JsValue = serde_wasm_bindgen::to_value(self)?;
         Ok(js_value)
@@ -59,7 +59,7 @@ impl <T: Serialize> ToJsValue for T {
 pub async fn generate_user_credentials() -> Result<(), JsValue> {
     log("wasm: generate a new security box");
 
-    let meta_vault_manager = CommitLogWasmRepo::default();
+    let meta_vault_manager = WasmRepo::default();
     let maybe_meta_vault: Option<MetaVault> = meta_vault_manager
         .find_meta_vault()
         .await
@@ -70,7 +70,8 @@ pub async fn generate_user_credentials() -> Result<(), JsValue> {
             let security_box = KeyManager::generate_security_box(meta_vault.name);
             let user_sig = security_box.get_user_sig(&meta_vault.device);
             let creds = UserCredentials::new(security_box, user_sig);
-            meta_vault_manager.save_user_creds(creds)
+            meta_vault_manager
+                .save_user_creds(creds)
                 .await
                 .map_err(JsError::from)?;
 

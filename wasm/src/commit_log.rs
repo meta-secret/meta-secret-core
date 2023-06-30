@@ -1,24 +1,24 @@
 use async_trait::async_trait;
 
-use wasm_bindgen::JsValue;
 use meta_secret_core::node::db::events::object_id::ObjectId;
+use wasm_bindgen::JsValue;
 
-use meta_secret_core::node::db::generic_db::{CommitLogDbConfig, FindOneQuery};
 use meta_secret_core::node::db::generic_db::SaveCommand;
+use meta_secret_core::node::db::generic_db::{CommitLogDbConfig, FindOneQuery, KvLogEventRepo};
 use meta_secret_core::node::db::models::{GenericKvLogEvent, LogEventKeyBasedRecord};
+use meta_secret_core::node::server::meta_server::MetaLogger;
 
-use crate::{idbGet, idbSave};
 use crate::db::WasmDbError;
-
+use crate::{idbGet, idbSave};
 
 use crate::log;
 
-pub struct CommitLogWasmRepo {
+pub struct WasmRepo {
     pub db_name: String,
     pub store_name: String,
 }
 
-impl Default for CommitLogWasmRepo {
+impl Default for WasmRepo {
     fn default() -> Self {
         Self {
             db_name: "meta-secret".to_string(),
@@ -28,11 +28,9 @@ impl Default for CommitLogWasmRepo {
 }
 
 #[async_trait(? Send)]
-impl SaveCommand<WasmDbError> for CommitLogWasmRepo {
+impl SaveCommand<WasmDbError> for WasmRepo {
     async fn save(&self, key: &ObjectId, event: &GenericKvLogEvent) -> Result<(), WasmDbError> {
         let event_js: JsValue = serde_wasm_bindgen::to_value(event)?;
-
-        log(format!("SAVE an object!!!!: {:?}", event_js).as_str());
 
         idbSave(
             self.db_name.as_str(),
@@ -40,18 +38,20 @@ impl SaveCommand<WasmDbError> for CommitLogWasmRepo {
             key.id_str().as_str(),
             event_js,
         )
-            .await;
+        .await;
         Ok(())
     }
 }
 
 #[async_trait(? Send)]
-impl FindOneQuery<WasmDbError> for CommitLogWasmRepo {
-
+impl FindOneQuery<WasmDbError> for WasmRepo {
     async fn find_one(&self, key: &ObjectId) -> Result<Option<GenericKvLogEvent>, WasmDbError> {
-        let vault_js = idbGet(self.db_name.as_str(), self.store_name.as_str(), key.id_str().as_str()).await;
-
-        log(format!("Got an object!!!!: {:?}", vault_js).as_str());
+        let vault_js = idbGet(
+            self.db_name.as_str(),
+            self.store_name.as_str(),
+            key.id_str().as_str(),
+        )
+        .await;
 
         if vault_js.is_undefined() {
             Ok(None)
@@ -62,12 +62,23 @@ impl FindOneQuery<WasmDbError> for CommitLogWasmRepo {
     }
 }
 
-impl CommitLogDbConfig for CommitLogWasmRepo {
+impl KvLogEventRepo<WasmDbError> for WasmRepo {}
+
+impl CommitLogDbConfig for WasmRepo {
     fn db_name(&self) -> String {
         self.db_name.clone()
     }
 
     fn store_name(&self) -> String {
         self.store_name.clone()
+    }
+}
+pub struct WasmMetaLogger {
+
+}
+
+impl MetaLogger for WasmMetaLogger {
+    fn log(&self, msg: &str) {
+        log(msg);
     }
 }
