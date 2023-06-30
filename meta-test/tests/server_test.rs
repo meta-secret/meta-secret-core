@@ -5,19 +5,17 @@ mod test {
 
     use meta_secret_core::crypto::keys::KeyManager;
     use meta_secret_core::models::DeviceInfo;
-
     use meta_secret_core::node::db::commit_log::MetaDbManager;
     use meta_secret_core::node::db::events::join::join_cluster_request;
+    use meta_secret_core::node::db::events::object_id::ObjectId;
     use meta_secret_core::node::db::events::sign_up::SignUpRequest;
     use meta_secret_core::node::db::meta_db::MetaDb;
     use meta_secret_core::node::db::models::{
-        GenericKvLogEvent, KvKeyId, KvLogEvent, KvLogEventRequest, KvLogEventUpdate, ObjectCreator, ObjectDescriptor
+        GenericKvLogEvent, KvKeyId, KvLogEvent, KvLogEventRequest, KvLogEventUpdate, ObjectCreator, ObjectDescriptor,
     };
-    use meta_secret_core::node::db::events::object_id::{ObjectId};
-    use meta_secret_core::node::server::meta_server::{DataSync, DataSyncApi, MetaServerContext, MetaServerContextState};
-    use meta_secret_core::node::server::persistent_object_repo::{PersistentGlobalIndex, PersistentObject};
+    use meta_secret_core::node::server::meta_server::{DataSync, DataSyncApi, DefaultMetaLogger, MetaLogger, MetaServerContext, MetaServerContextState};
+    use meta_secret_core::node::server::persistent_object::{PersistentGlobalIndex, PersistentObject};
     use meta_secret_core::node::server::request::{SyncRequest, VaultSyncRequest};
-
     use meta_server_emulator::server::sqlite_migration::EmbeddedMigrationsTool;
     use meta_server_emulator::server::sqlite_store::{SqliteDbError, SqlIteRepo};
 
@@ -79,9 +77,9 @@ mod test {
         }
 
         // if a vault is not present
-        let request_factory = SignUpRequest {};
-        let sign_up_request = request_factory.generic_request(&a_user_sig);
-        data_sync.send_data(&sign_up_request).await;
+        let sign_up_request_factory = SignUpRequest {};
+        let sign_up_request = sign_up_request_factory.generic_request(&a_user_sig);
+        data_sync.send_data(&sign_up_request, &DefaultMetaLogger::new()).await;
 
         let request = SyncRequest {
             vault: Some(VaultSyncRequest {
@@ -126,7 +124,7 @@ mod test {
         // if a vault is not present
         let obj_utils = SignUpRequest {};
         let sign_up_request = obj_utils.generic_request(&a_user_sig);
-        data_sync.send_data(&sign_up_request).await;
+        data_sync.send_data(&sign_up_request, &DefaultMetaLogger::new()).await;
 
         let b_s_box = KeyManager::generate_security_box(vault_name.to_string());
         let b_device = DeviceInfo::new("b".to_string(), "b".to_string());
@@ -149,7 +147,7 @@ mod test {
             event: join_request,
         });
 
-        data_sync.send_data(&join_request).await;
+        data_sync.send_data(&join_request, &DefaultMetaLogger::new()).await;
 
         let request = SyncRequest {
             vault: Some(VaultSyncRequest {
@@ -174,7 +172,7 @@ mod test {
 
         let sqlite_repo = SqlIteRepo {
             conn_url: migration.db_url,
-            context: context_rc.clone()
+            context: context_rc.clone(),
         };
 
         let sqlite_repo_rc = Rc::new(sqlite_repo);
@@ -184,7 +182,7 @@ mod test {
             global_index: PersistentGlobalIndex {
                 repo: sqlite_repo_rc.clone(),
                 _phantom: PhantomData,
-            }
+            },
         };
 
         let persistent_object_rc = Rc::new(persistent_object);
@@ -193,9 +191,9 @@ mod test {
             persistent_obj: persistent_object_rc.clone(),
             repo: sqlite_repo_rc,
             context: context_rc,
-            meta_db_manager: MetaDbManager {
+            meta_db_manager: Rc::from(MetaDbManager {
                 persistent_obj: persistent_object_rc,
-            },
+            }),
         }
     }
 }

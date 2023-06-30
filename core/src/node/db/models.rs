@@ -206,13 +206,7 @@ impl ObjectDescriptor {
 
 impl ObjectDescriptor {
     pub fn full_name(&self) -> String {
-        let object_type = match self {
-            ObjectDescriptor::GlobalIndex { .. } => { "GlobalIndex" }
-            ObjectDescriptor::Vault { .. } => { "Vault" }
-            ObjectDescriptor::MetaVault { .. } => { "MetaVault" }
-            ObjectDescriptor::UserCreds { .. } => { "UserCreds" }
-        };
-        format!("{}:{}", object_type, self.name())
+        format!("{}:{}", self.to_string(), self.name())
     }
 
     pub fn name(&self) -> String {
@@ -221,6 +215,17 @@ impl ObjectDescriptor {
             ObjectDescriptor::Vault { name } => { name.clone() }
             ObjectDescriptor::MetaVault { name } => { name.clone() }
             ObjectDescriptor::UserCreds { name } => { name.clone() }
+        }
+    }
+}
+
+impl ToString for ObjectDescriptor {
+    fn to_string(&self) -> String {
+        match self {
+            ObjectDescriptor::GlobalIndex { .. } => String::from("GlobalIndex"),
+            ObjectDescriptor::Vault { .. } => String::from("Vault"),
+            ObjectDescriptor::MetaVault { .. } => String::from("MetaVault"),
+            ObjectDescriptor::UserCreds { .. } => String::from("UserCreds")
         }
     }
 }

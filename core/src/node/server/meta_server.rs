@@ -1,38 +1,55 @@
 use std::error::Error;
+use std::rc::Rc;
 
 use async_trait::async_trait;
 
 use crate::crypto::key_pair::KeyPair;
 use crate::crypto::keys::KeyManager;
-use crate::models::UserSignature;
+use crate::models::{UserCredentials, UserSignature};
 use crate::node::db::commit_log::MetaDbManager;
 use crate::node::db::events::join;
-use crate::node::db::events::sign_up::SignUpAction;
-use crate::node::db::generic_db::{KvLogEventRepo};
-use crate::node::db::models::{Descriptors, KvLogEvent, ObjectCreator, ObjectDescriptor};
 use crate::node::db::events::object_id::ObjectId;
+use crate::node::db::events::sign_up::SignUpAction;
+use crate::node::db::generic_db::KvLogEventRepo;
+use crate::node::db::models::{Descriptors, KvLogEvent, ObjectCreator, ObjectDescriptor};
 use crate::node::db::models::{GenericKvLogEvent, KvKeyId, KvLogEventRequest, KvLogEventUpdate, PublicKeyRecord};
-use crate::node::server::persistent_object_repo::PersistentObject;
+use crate::node::server::persistent_object::PersistentObject;
 use crate::node::server::request::SyncRequest;
-use std::rc::Rc;
+
+pub trait MetaLogger {
+    fn log(&self, msg: &str);
+}
+
+pub struct DefaultMetaLogger {}
+
+impl MetaLogger for DefaultMetaLogger {
+    fn log(&self, msg: &str) {
+        println!("{:?}", msg);
+    }
+}
+
+impl DefaultMetaLogger {
+    pub fn new() -> Option<Self> {
+        Some(Self {})
+    }
+}
 
 #[async_trait(? Send)]
 pub trait DataSyncApi<Err> {
     async fn sync_data(&self, request: SyncRequest) -> Result<Vec<GenericKvLogEvent>, Err>;
-    async fn send_data(&self, event: &GenericKvLogEvent);
+    async fn send_data<L: MetaLogger>(&self, event: &GenericKvLogEvent, maybe_logger: &Option<L>);
 }
 
 pub struct DataSync<Repo: KvLogEventRepo<Err>, Err: Error> {
     pub persistent_obj: Rc<PersistentObject<Repo, Err>>,
     pub repo: Rc<Repo>,
     pub context: Rc<MetaServerContextState>,
-    pub meta_db_manager: MetaDbManager<Repo, Err>,
+    pub meta_db_manager: Rc<MetaDbManager<Repo, Err>>,
 }
 
 //MetaServerContext
 #[async_trait(? Send)]
 impl<Repo: KvLogEventRepo<Err>, Err: Error> DataSyncApi<Err> for DataSync<Repo, Err> {
-
     async fn sync_data(&self, request: SyncRequest) -> Result<Vec<GenericKvLogEvent>, Err> {
         let mut commit_log: Vec<GenericKvLogEvent> = vec![];
 
@@ -84,13 +101,18 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> DataSyncApi<Err> for DataSync<Repo, 
     }
 
     /// Handle request: all types of requests will be handled and the actions will be executed accordingly
-    async fn send_data(&self, generic_event: &GenericKvLogEvent) {
+    async fn send_data<L: MetaLogger>(&self, generic_event: &GenericKvLogEvent, maybe_logger: &Option<L>) {
         match generic_event {
             GenericKvLogEvent::Request(request) => {
                 match request {
                     KvLogEventRequest::SignUp { event } => {
                         // Handled by the server. Add a vault to the system
                         let vault_id = event.key.key_id.obj_id().genesis_id();
+
+                        if let Some(logger) = maybe_logger {
+                            logger.log(format!("Looking for a vault: {}", vault_id.id_str()).as_str());
+                        }
+
                         let vault_formation_event_result = self
                             .repo
                             .find_one(&vault_id)
@@ -98,11 +120,25 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> DataSyncApi<Err> for DataSync<Repo, 
 
                         match vault_formation_event_result {
                             Err(_) => {
+                                if let Some(logger) = maybe_logger {
+                                    logger.log("Db Error. But we will register the new vault anyway");
+                                }
                                 self.accept_sign_up_request(event, &vault_id).await;
                             }
-                            Ok(_sign_up_event) => {
-                                panic!("Vault already exists");
-                                //save a reject response in the database
+                            Ok(maybe_sign_up) => {
+                                match maybe_sign_up {
+                                    None => {
+                                        self.accept_sign_up_request(event, &vault_id).await;
+                                    }
+                                    Some(_sign_up) => {
+                                        if let Some(logger) = maybe_logger {
+                                            logger.log("Error. Vault already exists");
+                                        }
+
+                                        panic!("Vault already exists");
+                                        //save a reject response in the database
+                                    }
+                                }
                             }
                         }
                     }
@@ -237,6 +273,15 @@ impl Default for MetaServerContextState {
         Self {
             km,
             global_index_tail_id,
+        }
+    }
+}
+
+impl From<&UserCredentials> for MetaServerContextState {
+    fn from(creds: &UserCredentials) -> Self {
+        Self {
+            km: KeyManager::try_from(creds.security_box.key_manager.as_ref()).unwrap(),
+            global_index_tail_id: None,
         }
     }
 }
