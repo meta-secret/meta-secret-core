@@ -7,7 +7,6 @@ use wasm_bindgen::prelude::*;
 
 use crate::log;
 
-#[wasm_bindgen]
 pub async fn get_meta_vault() -> Result<Option<JsValue>, JsValue> {
     log("wasm. get meta vault");
 
@@ -30,7 +29,6 @@ pub async fn get_meta_vault() -> Result<Option<JsValue>, JsValue> {
     }
 }
 
-#[wasm_bindgen]
 pub async fn create_meta_vault(vault_name: &str, device_name: &str) -> Result<JsValue, JsValue> {
     let meta_vault_manager = WasmRepo::default();
 
@@ -55,7 +53,6 @@ impl<T: Serialize> ToJsValue for T {
     }
 }
 
-#[wasm_bindgen]
 pub async fn generate_user_credentials() -> Result<(), JsValue> {
     log("wasm: generate a new security box");
 

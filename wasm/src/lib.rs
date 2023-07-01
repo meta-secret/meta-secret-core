@@ -1,5 +1,9 @@
-use crate::commit_log::{WasmMetaLogger, WasmRepo};
-use crate::objects::{get_meta_vault, ToJsValue};
+use std::marker::PhantomData;
+use std::rc;
+use std::rc::Rc;
+
+use wasm_bindgen::prelude::*;
+
 use meta_secret_core::models::{
     FindSharesRequest, JoinRequest, MembershipRequestType, SecretDistributionType, UserSignature,
     VaultDoc, VaultInfoData, VaultInfoStatus,
@@ -7,6 +11,7 @@ use meta_secret_core::models::{
 use meta_secret_core::node::app::meta_app::UserCredentialsManager;
 use meta_secret_core::node::db::commit_log::MetaDbManager;
 use meta_secret_core::node::db::events::object_id::ObjectId;
+use meta_secret_core::node::db::events::sign_up::SignUpRequest;
 use meta_secret_core::node::db::generic_db::{FindOneQuery, SaveCommand, UserPasswordEntity};
 use meta_secret_core::node::db::meta_db::MetaDb;
 use meta_secret_core::node::db::models::ObjectDescriptor;
@@ -17,15 +22,13 @@ use meta_secret_core::node::server_api;
 use meta_secret_core::recover_from_shares;
 use meta_secret_core::sdk::api::MessageType;
 use meta_secret_core::shared_secret::data_block::common::SharedSecretConfig;
+use meta_secret_core::shared_secret::MetaDistributor;
 use meta_secret_core::shared_secret::shared_secret::{
     PlainText, SharedSecretEncryption, UserShareDto,
 };
-use meta_secret_core::shared_secret::MetaDistributor;
-use std::marker::PhantomData;
-use std::rc;
-use std::rc::Rc;
-use wasm_bindgen::prelude::*;
-use meta_secret_core::node::db::events::sign_up::SignUpRequest;
+
+use crate::commit_log::{WasmMetaLogger, WasmRepo};
+use crate::objects::{ToJsValue};
 use crate::wasm_app::get_data_sync;
 
 mod commit_log;
@@ -52,6 +55,16 @@ extern "C" {
     pub async fn idbGet(db_name: &str, store_name: &str, key: &str) -> JsValue;
     pub async fn idbSave(db_name: &str, store_name: &str, key: &str, value: JsValue);
     pub async fn idbFindAll(db_name: &str, store_name: &str) -> JsValue;
+}
+
+#[wasm_bindgen]
+pub async fn get_meta_vault() -> Result<Option<JsValue>, JsValue> {
+    objects::get_meta_vault().await
+}
+
+#[wasm_bindgen]
+pub async fn create_meta_vault(vault_name: &str, device_name: &str) -> Result<JsValue, JsValue> {
+    objects::create_meta_vault(vault_name, device_name).await
 }
 
 #[wasm_bindgen]
@@ -88,6 +101,11 @@ pub async fn membership(
     request_type: JsValue,
 ) -> Result<JsValue, JsValue> {
     wasm_app::membership(candidate_user_sig, request_type).await
+}
+
+#[wasm_bindgen]
+pub async fn generate_user_credentials() -> Result<(), JsValue> {
+    objects::generate_user_credentials().await
 }
 
 #[wasm_bindgen]
@@ -170,4 +188,36 @@ pub fn restore_password(shares_json: JsValue) -> Result<JsValue, JsValue> {
     let plain_text = recover_from_shares(user_shares).map_err(JsError::from)?;
     Ok(JsValue::from_str(plain_text.text.as_str()))*/
     Ok(JsValue::null())
+}
+
+#[wasm_bindgen]
+struct WasmMetaServer {
+
+}
+
+#[wasm_bindgen]
+impl WasmMetaServer {
+    pub async fn run_server() {
+        let logger = WasmMetaLogger {};
+
+        let repo = WasmRepo::default();
+
+        let maybe_creds = repo.find_user_creds()
+            .await
+            .unwrap();
+
+        match maybe_creds {
+            Some(creds) => {
+                log("Wasm::register. Sign up");
+                let sign_up_request_factory = SignUpRequest {};
+                let sign_up_request = sign_up_request_factory.generic_request(&creds.user_sig);
+
+                let data_sync = get_data_sync(repo, &creds);
+                data_sync.send_data(&sign_up_request, &Some(logger)).await;
+            }
+            None => {
+                panic!("Empty user credentials");
+            }
+        };
+    }
 }
