@@ -211,15 +211,9 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> DataSync<Repo, Err> {
         let sign_up_events = sign_up_action.accept(event, &server_pk);
 
         //find the latest global_index_id???
-        let global_index_tail_id = match self.context.tail_id().clone() {
-            None => {
-                self.persistent_obj.find_tail_id_by_obj_desc(&ObjectDescriptor::GlobalIndex).await
-            }
-            Some(tail_id) => {
-                //we already have latest global index id
-                tail_id
-            }
-        };
+        let global_index_tail_id = self.persistent_obj
+            .find_tail_id_by_obj_desc(&ObjectDescriptor::GlobalIndex)
+            .await;
 
         for sign_up_event in sign_up_events {
             self

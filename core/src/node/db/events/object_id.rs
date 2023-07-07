@@ -50,7 +50,7 @@ impl IdGen for ObjectId {
             ObjectId::Genesis { id, unit_id } => {
                 ObjectId::Regular { id: next_id_str, prev_id: id.clone(), unit_id: unit_id.clone() }
             }
-            ObjectId::Regular { id, prev_id, unit_id } => {
+            ObjectId::Regular { id, unit_id, .. } => {
                 ObjectId::Regular { id: next_id_str, prev_id: id.clone(), unit_id: unit_id.clone() }
             }
         }
@@ -66,7 +66,7 @@ impl From<&ObjectId> for IdStr {
 impl ObjectId {
     pub fn unit_id(&self) -> ObjectId {
         match self {
-            ObjectId::Unit { id } => {
+            ObjectId::Unit { .. } => {
                 self.clone()
             }
             ObjectId::Genesis { unit_id, .. } => {
@@ -80,7 +80,7 @@ impl ObjectId {
 
     pub fn id_str(&self) -> String {
         match self {
-            ObjectId::Genesis { id, unit_id } => { id.clone() }
+            ObjectId::Genesis { id, .. } => { id.clone() }
             ObjectId::Regular { id, .. } => { id.clone() }
             ObjectId::Unit { id } => { id.clone() }
         }

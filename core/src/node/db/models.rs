@@ -143,7 +143,7 @@ impl KvLogEvent<GlobalIndexRecord> {
         KvLogEvent {
             key,
             value: GlobalIndexRecord {
-                vault_id: vault_id.id,
+                vault_id: vault_id.id.clone(),
             },
         }
     }
