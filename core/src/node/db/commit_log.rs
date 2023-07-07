@@ -24,6 +24,14 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> MetaDbManager<Repo, Err> {
                     println!("Skip requests");
                 }
 
+                GenericKvLogEvent::LocalEvent(_) => {
+                    panic!("Internal event");
+                }
+
+                GenericKvLogEvent::Error { .. } => {
+                    println!("Skip errors");
+                }
+
                 GenericKvLogEvent::Update(op) => match op {
 
                     KvLogEventUpdate::Genesis { event } => {
@@ -31,20 +39,15 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> MetaDbManager<Repo, Err> {
 
                         match event.key.object_type {
                             ObjectType::VaultObj => {
-                                meta_db.vault_store.tail_id = Some(event.key.key_id.clone());
+                                meta_db.vault_store.tail_id = Some(event.key.obj_id.clone());
                                 meta_db.vault_store.server_pk = Some(server_pk)
                             }
                             ObjectType::GlobalIndexObj => {
-                                meta_db.global_index_store.tail_id = Some(event.key.key_id.clone());
+                                meta_db.global_index_store.tail_id = Some(event.key.obj_id.clone());
                                 meta_db.global_index_store.server_pk = Some(server_pk)
                             }
-                            ObjectType::MetaVaultObj => {
-                                println!("Meta Vault is an internal object. skip");
-                                todo!("not implemented yet")
-                            }
-                            ObjectType::UserCreds => {
-                                println!("User Creds is an internal object. skip");
-                                todo!("not implemented yet")
+                            _ => {
+                                panic!("Object type is not alowed to be used here: {:?}", event.key.object_type)
                             }
                         }
                     }
@@ -57,24 +60,15 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> MetaDbManager<Repo, Err> {
                     KvLogEventUpdate::SignUp { event } => {
                         let vault: VaultDoc = event.value.clone();
                         vault_store.vault = Some(vault);
-                        vault_store.tail_id = Some(event.key.key_id.clone())
+                        vault_store.tail_id = Some(event.key.obj_id.clone())
                     }
 
                     KvLogEventUpdate::JoinCluster { event } => {
                         let vault: VaultDoc = event.value.clone();
                         vault_store.vault = Some(vault);
-                        vault_store.tail_id = Some(event.key.key_id.clone())
+                        vault_store.tail_id = Some(event.key.obj_id.clone())
                     }
                 },
-                GenericKvLogEvent::MetaVault { .. } => {
-                    panic!("Internal event");
-                }
-                GenericKvLogEvent::UserCredentials { .. } => {
-                    panic!("Internal event");
-                }
-                GenericKvLogEvent::Error { .. } => {
-                    println!("Skip errors");
-                }
             }
         }
 
@@ -92,10 +86,10 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> MetaDbManager<Repo, Err> {
         if let Some(key_id) = tail_id {
             let tail = self
                 .persistent_obj
-                .find_object_events(&key_id.obj_id()).await;
+                .find_object_events(&key_id).await;
 
             if let Some(latest_event) = tail.last() {
-                meta_db.vault_store.tail_id = Some(latest_event.key().key_id.clone());
+                meta_db.vault_store.tail_id = Some(latest_event.key().obj_id.clone());
 
                 if let GenericKvLogEvent::Update(KvLogEventUpdate::SignUp { event }) = latest_event {
                     meta_db.vault_store.vault = Some(event.value.clone())

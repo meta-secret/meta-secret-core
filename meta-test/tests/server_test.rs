@@ -53,7 +53,7 @@ mod test {
         // We need to have meta_db to be able to check if the vault exists
         let vault_name = "test";
         let vault_desc = ObjectDescriptor::Vault { name: vault_name.to_string() };
-        let vault_id = ObjectId::formation(&vault_desc);
+        let vault_id = ObjectId::unit(&vault_desc);
 
         let a_s_box = KeyManager::generate_security_box(vault_name.to_string());
         let a_device = DeviceInfo {
@@ -112,7 +112,7 @@ mod test {
         //check whether the vault you are going to use already exists.
         // We need to have meta_db to be able to check if the vault exists
         let vault_name = "test";
-        let vault_id = KvKeyId::vault_formation(vault_name);
+        let vault_id = KvKeyId::vault_genesis(vault_name);
 
         let a_s_box = KeyManager::generate_security_box(vault_name.to_string());
         let a_device = DeviceInfo {
@@ -132,7 +132,7 @@ mod test {
 
         let request = SyncRequest {
             vault: Some(VaultSyncRequest {
-                tail_id: Some(vault_id.obj_id().genesis_id()),
+                tail_id: Some(vault_id.obj_id().unit_id()),
             }),
             global_index: None,
         };
@@ -151,7 +151,7 @@ mod test {
 
         let request = SyncRequest {
             vault: Some(VaultSyncRequest {
-                tail_id: Some(vault_id.obj_id().genesis_id()),
+                tail_id: Some(vault_id.obj_id().unit_id()),
             }),
             global_index: None,
         };

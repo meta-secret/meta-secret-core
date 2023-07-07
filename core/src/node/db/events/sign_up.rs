@@ -1,8 +1,9 @@
 use crate::models::{UserSignature, VaultDoc};
 use crate::node::db::models::{
-    GenericKvLogEvent, KeyIdGen, KvKey, KvLogEvent, KvLogEventRequest, KvLogEventUpdate, ObjectCreator,
+    GenericKvLogEvent, KvKey, KvLogEvent, KvLogEventRequest, KvLogEventUpdate, ObjectCreator,
     ObjectDescriptor, ObjectType, PublicKeyRecord,
 };
+use crate::node::db::events::object_id::IdGen;
 
 pub struct SignUpAction {
 
@@ -27,8 +28,8 @@ impl SignUpAction {
         let obj_desc = ObjectDescriptor::Vault { name: vault_name };
         let vault_formation_event = KvLogEvent::formation(&obj_desc, server_pk);
 
-        let expected_sign_request_id = vault_formation_event.key.key_id.next();
-        let actual_sign_up_request_id = sign_up_request.key.key_id.clone();
+        let expected_sign_request_id = vault_formation_event.key.obj_id.next();
+        let actual_sign_up_request_id = sign_up_request.key.obj_id.clone();
         if actual_sign_up_request_id != expected_sign_request_id {
             panic!(
                 "Invalid request: invalid id. expected_sign_request_id: {:?}, actual_sign_up_request_id: {:?}",
@@ -39,7 +40,7 @@ impl SignUpAction {
         let sign_up_event = KvLogEvent {
             key: KvKey {
                 object_type: ObjectType::VaultObj,
-                key_id: expected_sign_request_id.next(),
+                obj_id: expected_sign_request_id.next(),
             },
             value: vault,
         };
@@ -71,7 +72,7 @@ impl SignUpRequest {
 
     pub fn build_request(&self, user_sig: &UserSignature) -> KvLogEvent<UserSignature> {
         let obj_desc = ObjectDescriptor::Vault { name: user_sig.vault.name.clone() };
-        let genesis_key = KvKey::formation(&obj_desc);
+        let genesis_key = KvKey::unit(&obj_desc);
 
         KvLogEvent {
             key: genesis_key.next(),

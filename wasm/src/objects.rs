@@ -1,18 +1,25 @@
-use crate::commit_log::WasmRepo;
-use meta_secret_core::crypto::keys::KeyManager;
-use meta_secret_core::models::{MetaVault, UserCredentials};
-use meta_secret_core::node::app::meta_app::{MetaVaultManager, UserCredentialsManager};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
-use crate::log;
+use meta_secret_core::crypto::keys::KeyManager;
+use meta_secret_core::models::{DeviceInfo, MetaVault, UserCredentials, UserSignature};
+use meta_secret_core::node::app::meta_app::{MetaVaultManager, UserCredentialsManager};
+use meta_secret_core::node::db::events::object_id::ObjectId;
+use meta_secret_core::node::db::events::sign_up::SignUpRequest;
+use meta_secret_core::node::db::generic_db::SaveCommand;
+use meta_secret_core::node::db::models::{DbTail, GenericKvLogEvent, KvKey, KvLogEvent, KvLogEventLocal, KvLogEventUpdate, ObjectCreator, ObjectDescriptor};
+
+use crate::{alert, log};
+use crate::commit_log::{WasmMetaLogger, WasmRepo};
 
 pub async fn get_meta_vault() -> Result<Option<JsValue>, JsValue> {
-    log("wasm. get meta vault");
+    log("wasm::get_meta_vault: get meta vault");
 
-    let meta_vault_manager = WasmRepo::default();
-    let maybe_meta_vault = meta_vault_manager
-        .find_meta_vault()
+    let logger = WasmMetaLogger {};
+
+    let repo = WasmRepo::default();
+    let maybe_meta_vault = repo
+        .find_meta_vault(&logger)
         .await
         .map_err(JsError::from)?;
 
@@ -30,10 +37,13 @@ pub async fn get_meta_vault() -> Result<Option<JsValue>, JsValue> {
 }
 
 pub async fn create_meta_vault(vault_name: &str, device_name: &str) -> Result<JsValue, JsValue> {
-    let meta_vault_manager = WasmRepo::default();
+    log("wasm::create_meta_vault: create a meta vault");
 
-    let meta_vault = meta_vault_manager
-        .create_meta_vault(vault_name.to_string(), device_name.to_string())
+    let logger = WasmMetaLogger {};
+    let repo = WasmRepo::default();
+
+    let meta_vault = repo
+        .create_meta_vault(vault_name.to_string(), device_name.to_string(), &logger)
         .await
         .map_err(JsError::from)?;
 
@@ -54,11 +64,13 @@ impl<T: Serialize> ToJsValue for T {
 }
 
 pub async fn generate_user_credentials() -> Result<(), JsValue> {
-    log("wasm: generate a new security box");
+    log("wasm::generate_user_credentials: generate a new security box");
 
-    let meta_vault_manager = WasmRepo::default();
-    let maybe_meta_vault: Option<MetaVault> = meta_vault_manager
-        .find_meta_vault()
+    let logger = WasmMetaLogger {};
+
+    let repo = WasmRepo::default();
+    let maybe_meta_vault: Option<MetaVault> = repo
+        .find_meta_vault(&logger)
         .await
         .map_err(JsError::from)?;
 
@@ -67,7 +79,7 @@ pub async fn generate_user_credentials() -> Result<(), JsValue> {
             let security_box = KeyManager::generate_security_box(meta_vault.name);
             let user_sig = security_box.get_user_sig(&meta_vault.device);
             let creds = UserCredentials::new(security_box, user_sig);
-            meta_vault_manager
+            repo
                 .save_user_creds(creds)
                 .await
                 .map_err(JsError::from)?;
@@ -75,9 +87,11 @@ pub async fn generate_user_credentials() -> Result<(), JsValue> {
             Ok(())
         }
         None => {
-            let err_msg =
-                JsValue::from("The parameters have not yet set for the vault. Empty meta vault");
-            Err(err_msg)
+            let err_msg = "The parameters have not yet set for the vault. Empty meta vault";
+            log(format!("wasm::generate_user_credentials: error: {:?}", err_msg).as_str());
+            let err = JsValue::from(err_msg);
+
+            Err(err)
         }
     }
 }
