@@ -11,9 +11,11 @@ mod test {
     use meta_secret_core::node::db::events::sign_up::SignUpRequest;
     use meta_secret_core::node::db::meta_db::MetaDb;
     use meta_secret_core::node::db::models::{
-        GenericKvLogEvent, KvKeyId, KvLogEvent, KvLogEventRequest, KvLogEventUpdate, ObjectCreator, ObjectDescriptor,
+        GenericKvLogEvent, KvLogEvent, KvLogEventRequest, KvLogEventUpdate, ObjectCreator, ObjectDescriptor,
     };
-    use meta_secret_core::node::server::meta_server::{DataSync, DataSyncApi, DefaultMetaLogger, MetaLogger, MetaServerContext, MetaServerContextState};
+    use meta_secret_core::node::server::meta_server::{
+        DataSync, DataSyncApi, DefaultMetaLogger, MetaServerContext, MetaServerContextState
+    };
     use meta_secret_core::node::server::persistent_object::{PersistentGlobalIndex, PersistentObject};
     use meta_secret_core::node::server::request::{SyncRequest, VaultSyncRequest};
     use meta_server_emulator::server::sqlite_migration::EmbeddedMigrationsTool;
@@ -112,7 +114,7 @@ mod test {
         //check whether the vault you are going to use already exists.
         // We need to have meta_db to be able to check if the vault exists
         let vault_name = "test";
-        let vault_id = KvKeyId::vault_genesis(vault_name);
+        let vault_id = ObjectId::vault_unit(vault_name);
 
         let a_s_box = KeyManager::generate_security_box(vault_name.to_string());
         let a_device = DeviceInfo {
@@ -132,7 +134,7 @@ mod test {
 
         let request = SyncRequest {
             vault: Some(VaultSyncRequest {
-                tail_id: Some(vault_id.obj_id().unit_id()),
+                tail_id: Some(vault_id.unit_id()),
             }),
             global_index: None,
         };
@@ -151,7 +153,7 @@ mod test {
 
         let request = SyncRequest {
             vault: Some(VaultSyncRequest {
-                tail_id: Some(vault_id.obj_id().unit_id()),
+                tail_id: Some(vault_id.unit_id()),
             }),
             global_index: None,
         };
