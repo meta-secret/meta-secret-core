@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::error::Error;
 
 use crate::node::db::generic_db::{FindOneQuery, KvLogEventRepo, SaveCommand};
-use crate::node::db::models::{GlobalIndexObject};
+use crate::node::db::models::{DbTail, GlobalIndexObject, KvKey, KvLogEventLocal};
 use crate::node::db::events::object_id::{ObjectId, IdGen};
 use crate::node::db::models::{
     GenericKvLogEvent, KvLogEvent, LogEventKeyBasedRecord, ObjectCreator, ObjectDescriptor,
@@ -12,6 +12,7 @@ use std::rc::Rc;
 use async_trait::async_trait;
 use std::marker::PhantomData;
 use std::cell::RefCell;
+use crate::node::app::meta_app::MetaVaultManager;
 
 pub struct PersistentObject<Repo: KvLogEventRepo<Err>, Err: Error> {
     pub repo: Rc<Repo>,
@@ -93,8 +94,29 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> PersistentObject<Repo, Err> {
     }
 
     pub async fn find_tail_id_by_obj_desc(&self, obj_desc: &ObjectDescriptor) -> ObjectId {
-        let formation_id = ObjectId::unit(obj_desc);
-        self.find_tail_id(&formation_id).await
+        let unit_id = ObjectId::unit(obj_desc);
+        self.find_tail_id(&unit_id).await
+    }
+
+    async fn get_db_tail(&self) -> Result<DbTail, Err> {
+        let db_tail_obj_desc = &ObjectDescriptor::Tail;
+        let obj_id = self.find_tail_id_by_obj_desc(db_tail_obj_desc).await;
+        let maybe_db_tail = self.repo.find_one(&obj_id).await?;
+
+        match maybe_db_tail {
+            None => {
+                GenericKvLogEvent::LocalEvent(KvLogEventLocal::Tail {
+                    event:
+                })
+
+                self.repo.save_event(???)
+            }
+            Some(db_tail) => {
+
+            }
+        }
+
+        Ok()
     }
 }
 
@@ -131,6 +153,8 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> PersistentGlobalIndexApi<Repo, Err> 
         Ok(vec![unit_event, genesis_event])
     }
 }
+
+
 
 pub struct InMemKvLogEventRepo {
     pub db: RefCell<HashMap<ObjectId, GenericKvLogEvent>>
