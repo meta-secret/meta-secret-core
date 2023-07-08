@@ -1,6 +1,8 @@
+use std::string::ToString;
+
 use crate::crypto::utils;
 use crate::models::{Base64EncodedText, MetaVault, UserCredentials, UserSignature, VaultDoc};
-use crate::node::db::events::object_id::{IdStr, ObjectId, IdGen};
+use crate::node::db::events::object_id::{IdGen, IdStr, ObjectId};
 use crate::sdk::api::ErrorMessage;
 
 #[derive(thiserror::Error, Debug)]
@@ -26,22 +28,6 @@ pub enum ObjectType {
     UserCreds,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum KvLogEventRequest {
-    SignUp { event: KvLogEvent<UserSignature> },
-    JoinCluster { event: KvLogEvent<UserSignature> },
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum KvLogEventUpdate {
-    Genesis { event: KvLogEvent<PublicKeyRecord> },
-    GlobalIndex { event: KvLogEvent<GlobalIndexRecord> },
-    SignUp { event: KvLogEvent<VaultDoc> },
-    JoinCluster { event: KvLogEvent<VaultDoc> },
-}
-
 /// Local events (persistent objects which lives only in the local environment) which must not be synchronized
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -53,11 +39,34 @@ pub enum KvLogEventLocal {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub enum GlobalIndexObject {
+    Unit { event: KvLogEvent<()> },
+    Genesis { event: KvLogEvent<PublicKeyRecord> },
+    Update { event: KvLogEvent<GlobalIndexRecord> },
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum VaultObject {
+    /// SingUp request
+    Unit { event: KvLogEvent<UserSignature> },
+    Genesis { event: KvLogEvent<PublicKeyRecord> },
+
+    SignUpUpdate { event: KvLogEvent<VaultDoc> },
+
+    JoinUpdate { event: KvLogEvent<VaultDoc> },
+    JoinRequest { event: KvLogEvent<UserSignature> },
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 #[serde(tag = "event_type")]
 pub enum GenericKvLogEvent {
-    Request(KvLogEventRequest),
-    Update(KvLogEventUpdate),
+    GlobalIndex(GlobalIndexObject),
+    Vault(VaultObject),
+
     LocalEvent(KvLogEventLocal),
+
     Error { event: KvLogEvent<ErrorMessage> },
 }
 
@@ -68,16 +77,22 @@ pub trait LogEventKeyBasedRecord {
 impl LogEventKeyBasedRecord for GenericKvLogEvent {
     fn key(&self) -> &KvKey {
         match self {
-            GenericKvLogEvent::Request(request) => match request {
-                KvLogEventRequest::SignUp { event } => &event.key,
-                KvLogEventRequest::JoinCluster { event } => &event.key,
-            },
-            GenericKvLogEvent::Update(op) => match op {
-                KvLogEventUpdate::Genesis { event } => &event.key,
-                KvLogEventUpdate::GlobalIndex { event } => &event.key,
-                KvLogEventUpdate::SignUp { event } => &event.key,
-                KvLogEventUpdate::JoinCluster { event } => &event.key,
-            },
+            GenericKvLogEvent::GlobalIndex(gi_obj) => {
+                match gi_obj {
+                    GlobalIndexObject::Unit { event } => { &event.key }
+                    GlobalIndexObject::Genesis { event } => { &event.key }
+                    GlobalIndexObject::Update { event } => { &event.key }
+                }
+            }
+            GenericKvLogEvent::Vault(vault_obj) => {
+                match vault_obj {
+                    VaultObject::Unit { event } => { &event.key }
+                    VaultObject::Genesis { event } => { &event.key }
+                    VaultObject::SignUpUpdate { event } => { &event.key }
+                    VaultObject::JoinUpdate { event } => { &event.key }
+                    VaultObject::JoinRequest { event } => { &event.key }
+                }
+            }
             GenericKvLogEvent::LocalEvent(op) => match op {
                 KvLogEventLocal::Tail { event } => &event.key,
                 KvLogEventLocal::MetaVault { event } => &event.key,
@@ -121,15 +136,22 @@ pub struct KvLogEvent<T> {
 }
 
 impl KvLogEvent<PublicKeyRecord> {
-    pub fn formation(obj_desc: &ObjectDescriptor, server_pk: &PublicKeyRecord) -> KvLogEvent<PublicKeyRecord> {
+    pub fn genesis(obj_desc: &ObjectDescriptor, server_pk: &PublicKeyRecord) -> KvLogEvent<PublicKeyRecord> {
         KvLogEvent {
-            key: KvKey::unit(obj_desc),
+            key: KvKey::genesis(obj_desc),
             value: server_pk.clone(),
         }
     }
 
-    pub fn global_index_formation(server_pk: &PublicKeyRecord) -> KvLogEvent<PublicKeyRecord> {
-        Self::formation(&ObjectDescriptor::GlobalIndex, server_pk)
+    pub fn global_index_unit() -> KvLogEvent<()> {
+        KvLogEvent {
+            key: KvKey::unit(&ObjectDescriptor::GlobalIndex),
+            value: (),
+        }
+    }
+
+    pub fn global_index_genesis(server_pk: &PublicKeyRecord) -> KvLogEvent<PublicKeyRecord> {
+        Self::genesis(&ObjectDescriptor::GlobalIndex, server_pk)
     }
 }
 
@@ -162,6 +184,10 @@ impl ObjectCreator<&ObjectDescriptor> for KvKey {
             obj_id: ObjectId::unit(obj_desc),
             object_type: ObjectType::from(obj_desc),
         }
+    }
+
+    fn genesis(obj_desc: &ObjectDescriptor) -> Self {
+        Self::unit(obj_desc).next()
     }
 }
 
@@ -224,6 +250,7 @@ impl ToString for ObjectDescriptor {
 
 pub trait ObjectCreator<T> {
     fn unit(value: T) -> Self;
+    fn genesis(obj_desc: &ObjectDescriptor) -> Self;
 }
 
 impl IdGen for KvKey {

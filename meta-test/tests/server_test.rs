@@ -10,9 +10,7 @@ mod test {
     use meta_secret_core::node::db::events::object_id::ObjectId;
     use meta_secret_core::node::db::events::sign_up::SignUpRequest;
     use meta_secret_core::node::db::meta_db::MetaDb;
-    use meta_secret_core::node::db::models::{
-        GenericKvLogEvent, KvLogEvent, KvLogEventRequest, KvLogEventUpdate, ObjectCreator, ObjectDescriptor,
-    };
+    use meta_secret_core::node::db::models::{GenericKvLogEvent, GlobalIndexObject, KvLogEvent, ObjectCreator, ObjectDescriptor, VaultObject};
     use meta_secret_core::node::server::meta_server::{
         DataSync, DataSyncApi, DefaultMetaLogger, MetaServerContext, MetaServerContextState
     };
@@ -33,15 +31,15 @@ mod test {
             global_index: None,
         };
         let commit_log = data_sync.sync_data(request).await.unwrap();
-        assert_eq!(1, commit_log.len());
+        assert_eq!(2, commit_log.len());
 
-        let expected_global_id_event = KvLogEvent::global_index_formation(&data_sync.context.server_pk());
-        let genesis_update = KvLogEventUpdate::Genesis {
+        let expected_global_id_event = KvLogEvent::global_index_genesis(&data_sync.context.server_pk());
+        let genesis_update = GlobalIndexObject::Genesis {
             event: expected_global_id_event,
         };
-        let expected_global_id_event = GenericKvLogEvent::Update(genesis_update);
+        let expected_global_id_event = GenericKvLogEvent::GlobalIndex(genesis_update);
 
-        assert_eq!(expected_global_id_event, commit_log[0]);
+        assert_eq!(expected_global_id_event, commit_log[1]);
     }
 
     #[tokio::test]
@@ -91,7 +89,7 @@ mod test {
         };
 
         let commit_log = data_sync.sync_data(request).await.unwrap();
-        assert_eq!(5, commit_log.len());
+        assert_eq!(6, commit_log.len());
 
         //find if your vault is already exists
         // - only server can create new vaults
@@ -145,7 +143,7 @@ mod test {
         //println!("tail id {:?}", &meta_db.vault_store.tail_id.clone().unwrap());
 
         let join_request = join_cluster_request(&meta_db.vault_store.tail_id.unwrap(), &b_user_sig);
-        let join_request = GenericKvLogEvent::Request(KvLogEventRequest::JoinCluster {
+        let join_request = GenericKvLogEvent::Vault(VaultObject::JoinRequest {
             event: join_request,
         });
 
@@ -160,7 +158,7 @@ mod test {
 
         let commit_log = data_sync.sync_data(request).await.unwrap();
         for log_event in &commit_log {
-            println!("commit_log: {}", serde_json::to_string(log_event).unwrap());
+            println!("commit_log: {}\n", serde_json::to_string(log_event).unwrap());
         }
         //println!("commit_log: {}", serde_json::to_string(&commit_log).unwrap());
         assert_eq!(7, commit_log.len());

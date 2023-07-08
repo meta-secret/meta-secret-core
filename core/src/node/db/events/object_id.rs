@@ -109,6 +109,10 @@ impl ObjectCreator<&ObjectDescriptor> for ObjectId {
         let unit_id = obj_descriptor.to_id();
         Self::Unit { id: unit_id }
     }
+
+    fn genesis(obj_desc: &ObjectDescriptor) -> Self {
+        Self::unit(obj_desc).next()
+    }
 }
 
 

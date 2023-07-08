@@ -7,7 +7,9 @@ use meta_secret_core::node::app::meta_app::{MetaVaultManager, UserCredentialsMan
 use meta_secret_core::node::db::events::object_id::ObjectId;
 use meta_secret_core::node::db::events::sign_up::SignUpRequest;
 use meta_secret_core::node::db::generic_db::SaveCommand;
-use meta_secret_core::node::db::models::{DbTail, GenericKvLogEvent, KvKey, KvLogEvent, KvLogEventLocal, KvLogEventUpdate, ObjectCreator, ObjectDescriptor};
+use meta_secret_core::node::db::models::{
+    DbTail, GenericKvLogEvent, KvKey, KvLogEvent, KvLogEventLocal, ObjectCreator, ObjectDescriptor
+};
 
 use crate::{alert, log};
 use crate::commit_log::{WasmMetaLogger, WasmRepo};

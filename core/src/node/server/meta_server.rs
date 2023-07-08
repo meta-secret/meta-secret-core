@@ -11,8 +11,8 @@ use crate::node::db::events::join;
 use crate::node::db::events::object_id::{IdStr, ObjectId};
 use crate::node::db::events::sign_up::SignUpAction;
 use crate::node::db::generic_db::KvLogEventRepo;
-use crate::node::db::models::{KvLogEvent, ObjectCreator, ObjectDescriptor};
-use crate::node::db::models::{GenericKvLogEvent, KvLogEventRequest, KvLogEventUpdate, PublicKeyRecord};
+use crate::node::db::models::{GlobalIndexObject, KvLogEvent, ObjectCreator, ObjectDescriptor, VaultObject};
+use crate::node::db::models::{GenericKvLogEvent, PublicKeyRecord};
 use crate::node::server::persistent_object::PersistentObject;
 use crate::node::server::request::SyncRequest;
 
@@ -107,9 +107,18 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> DataSyncApi<Err> for DataSync<Repo, 
         }
 
         match generic_event {
-            GenericKvLogEvent::Request(request) => {
-                match request {
-                    KvLogEventRequest::SignUp { event } => {
+            GenericKvLogEvent::GlobalIndex(gi_obj_info) => {
+                match gi_obj_info {
+                    GlobalIndexObject::Unit { .. } => {
+
+                    }
+                    GlobalIndexObject::Genesis { .. } => {}
+                    GlobalIndexObject::Update { .. } => {}
+                }
+            }
+            GenericKvLogEvent::Vault(vault_obj_info) => {
+                match vault_obj_info {
+                    VaultObject::Unit { event } => {
                         // Handled by the server. Add a vault to the system
                         let vault_id = event.key.obj_id.unit_id();
 
@@ -126,9 +135,6 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> DataSyncApi<Err> for DataSync<Repo, 
 
                         match vault_formation_event_result {
                             Err(_) => {
-                                if let Some(logger) = maybe_logger {
-                                    logger.log("Db Error. But we will register the new vault anyway");
-                                }
                                 self.accept_sign_up_request(event, &vault_id_str).await;
                             }
                             Ok(maybe_sign_up) => {
@@ -148,7 +154,16 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> DataSyncApi<Err> for DataSync<Repo, 
                             }
                         }
                     }
-                    KvLogEventRequest::JoinCluster { event } => {
+                    VaultObject::Genesis { .. } => {
+                        panic!("Not allowed");
+                    }
+                    VaultObject::SignUpUpdate { .. } => {
+                        panic!("Not allowed");
+                    }
+                    VaultObject::JoinUpdate { .. } => {
+                        panic!("Not allowed");
+                    }
+                    VaultObject::JoinRequest { event } => {
                         let user_sig: UserSignature = event.value.clone();
                         let obj_desc = ObjectDescriptor::Vault { name: user_sig.vault.name };
                         let vault_id = ObjectId::unit(&obj_desc);
@@ -156,16 +171,7 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> DataSyncApi<Err> for DataSync<Repo, 
                     }
                 }
             }
-
-            GenericKvLogEvent::Update(_) => {
-                panic!("Not allowed");
-            }
-
-            GenericKvLogEvent::LocalEvent(_) => {
-                panic!("Not allowed");
-            }
-
-            GenericKvLogEvent::Error { .. } => {
+            _ => {
                 panic!("Not allowed");
             }
         }
@@ -176,7 +182,7 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> DataSync<Repo, Err> {
     async fn accept_join_cluster_request(&self, join_event: &KvLogEvent<UserSignature>, obj_id: &ObjectId) {
         println!("save join request: {}", serde_json::to_string(&join_event).unwrap());
 
-        let generic_join_event = GenericKvLogEvent::Request(KvLogEventRequest::JoinCluster {
+        let generic_join_event = GenericKvLogEvent::Vault(VaultObject::JoinRequest {
             event: join_event.clone(),
         });
         self
@@ -193,9 +199,13 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> DataSync<Repo, Err> {
 
         let meta_db = self.meta_db_manager.transform(vault_events);
 
-        let vault_doc = &meta_db.unwrap().vault_store.vault.unwrap();
-        let accept_event = join::accept_join_request(join_event, vault_doc);
-        let generic_accept_event = GenericKvLogEvent::Update(KvLogEventUpdate::SignUp { event: accept_event });
+        let generic_accept_event = {
+            let vault_doc = &meta_db.unwrap().vault_store.vault.unwrap();
+
+            GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
+                event: join::accept_join_request(join_event, vault_doc)
+            })
+        };
 
         self.
             repo
@@ -210,11 +220,6 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> DataSync<Repo, Err> {
         let sign_up_action = SignUpAction {};
         let sign_up_events = sign_up_action.accept(event, &server_pk);
 
-        //find the latest global_index_id???
-        let global_index_tail_id = self.persistent_obj
-            .find_tail_id_by_obj_desc(&ObjectDescriptor::GlobalIndex)
-            .await;
-
         for sign_up_event in sign_up_events {
             self
                 .repo
@@ -224,9 +229,13 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> DataSync<Repo, Err> {
         }
 
         //update global index
-        let global_index_event = KvLogEvent::new_global_index_event(&global_index_tail_id, vault_id);
-        let global_index_event = GenericKvLogEvent::Update(KvLogEventUpdate::GlobalIndex {
-            event: global_index_event,
+        //find the latest global_index_id???
+        let global_index_tail_id = self.persistent_obj
+            .find_tail_id_by_obj_desc(&ObjectDescriptor::GlobalIndex)
+            .await;
+
+        let global_index_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Update {
+            event: KvLogEvent::new_global_index_event(&global_index_tail_id, vault_id)
         });
 
         self

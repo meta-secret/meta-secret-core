@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::error::Error;
 
 use crate::node::db::generic_db::{FindOneQuery, KvLogEventRepo, SaveCommand};
-use crate::node::db::models::{KvLogEventUpdate};
+use crate::node::db::models::{GlobalIndexObject};
 use crate::node::db::events::object_id::{ObjectId, IdGen};
 use crate::node::db::models::{
     GenericKvLogEvent, KvLogEvent, LogEventKeyBasedRecord, ObjectCreator, ObjectDescriptor,
@@ -30,9 +30,8 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> PersistentObject<Repo, Err> {
 
         //check if genesis event exists for vaults index
         if commit_log.is_empty() {
-            let formation_event = self.global_index.init(server_pk).await?;
-            let genesis_event = GenericKvLogEvent::Update(KvLogEventUpdate::Genesis { event: formation_event });
-            commit_log.push(genesis_event);
+            let gi_events = self.global_index.init(server_pk).await?;
+            commit_log.extend(gi_events);
         }
 
         Ok(commit_log)
@@ -101,7 +100,7 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> PersistentObject<Repo, Err> {
 
 #[async_trait(? Send)]
 pub trait PersistentGlobalIndexApi<Repo: KvLogEventRepo<Err>, Err: Error> {
-    async fn init(&self, public_key: &PublicKeyRecord) -> Result<KvLogEvent<PublicKeyRecord>, Err>;
+    async fn init(&self, public_key: &PublicKeyRecord) -> Result<Vec<GenericKvLogEvent>, Err>;
 }
 
 pub struct PersistentGlobalIndex<Repo:  KvLogEventRepo<Err>, Err: Error> {
@@ -112,15 +111,24 @@ pub struct PersistentGlobalIndex<Repo:  KvLogEventRepo<Err>, Err: Error> {
 #[async_trait(? Send)]
 impl<Repo: KvLogEventRepo<Err>, Err: Error> PersistentGlobalIndexApi<Repo, Err> for PersistentGlobalIndex<Repo, Err> {
     ///create a genesis event and save into the database
-    async fn init(&self, public_key: &PublicKeyRecord) -> Result<KvLogEvent<PublicKeyRecord>, Err> {
-        let formation_log_event = KvLogEvent::global_index_formation(public_key);
-        let formation_event = GenericKvLogEvent::Update(KvLogEventUpdate::Genesis {
-            event: formation_log_event.clone(),
+    async fn init(&self, public_key: &PublicKeyRecord) -> Result<Vec<GenericKvLogEvent>, Err> {
+        let unit_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Unit {
+            event: KvLogEvent::global_index_unit()
         });
 
-        self.repo.save_event(&formation_event).await?;
+        self.repo
+            .save_event(&unit_event)
+            .await?;
 
-        Ok(formation_log_event)
+        let genesis_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Genesis {
+            event: KvLogEvent::global_index_genesis(public_key),
+        });
+
+        self.repo
+            .save_event(&genesis_event)
+            .await?;
+
+        Ok(vec![unit_event, genesis_event])
     }
 }
 
@@ -167,7 +175,7 @@ mod test {
     use std::ops::Deref;
     use std::rc::Rc;
     use crate::node::db::generic_db::SaveCommand;
-    use crate::node::db::models::{GenericKvLogEvent, KvLogEvent, KvLogEventUpdate, ObjectDescriptor, PublicKeyRecord};
+    use crate::node::db::models::{GenericKvLogEvent, GlobalIndexObject, KvLogEvent, ObjectDescriptor, PublicKeyRecord};
     use crate::node::server::persistent_object::{PersistentObject, PersistentGlobalIndex, InMemKvLogEventRepo};
     use crate::crypto::keys::KeyManager;
     use crate::models::DeviceInfo;
@@ -193,8 +201,8 @@ mod test {
         let user_sig = s_box.get_user_sig(&device);
 
         let server_pk = PublicKeyRecord::from(user_sig.public_key.as_ref().clone());
-        let genesis_log_event = KvLogEvent::global_index_formation(&server_pk);
-        let genesis_event = GenericKvLogEvent::Update(KvLogEventUpdate::Genesis {event: genesis_log_event });
+        let genesis_log_event = KvLogEvent::global_index_genesis(&server_pk);
+        let genesis_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Genesis {event: genesis_log_event });
 
         repo_rc.save_event(&genesis_event).await.unwrap();
 
