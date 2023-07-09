@@ -90,6 +90,10 @@ impl ObjectId {
         ObjectId::unit(&ObjectDescriptor::Tail)
     }
 
+    pub fn global_index() -> ObjectId {
+        ObjectId::unit(&ObjectDescriptor::GlobalIndex)
+    }
+
     pub fn meta_vault_index() -> ObjectId {
         let index_desc = ObjectDescriptor::MetaVault {
             name: meta_vault_conf::META_VAULT_KEY_NAME.to_string()

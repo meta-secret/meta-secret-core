@@ -122,6 +122,15 @@ pub struct DbTail {
     pub global_index: ObjectId,
 }
 
+impl Default for DbTail {
+    fn default() -> Self {
+        DbTail {
+            vault: ObjectId::tail(),
+            global_index: ObjectId::global_index(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GlobalIndexRecord {

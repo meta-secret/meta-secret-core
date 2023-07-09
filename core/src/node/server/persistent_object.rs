@@ -98,25 +98,44 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> PersistentObject<Repo, Err> {
         self.find_tail_id(&unit_id).await
     }
 
-    async fn get_db_tail(&self) -> Result<DbTail, Err> {
+    pub async fn get_db_tail(&self) -> Result<DbTail, Err> {
         let db_tail_obj_desc = &ObjectDescriptor::Tail;
         let obj_id = self.find_tail_id_by_obj_desc(db_tail_obj_desc).await;
         let maybe_db_tail = self.repo.find_one(&obj_id).await?;
 
         match maybe_db_tail {
             None => {
-                GenericKvLogEvent::LocalEvent(KvLogEventLocal::Tail {
-                    event:
-                })
+                let db_tail = DbTail::default();
 
-                self.repo.save_event(???)
+                let tail_event = {
+                    let event = KvLogEvent {
+                        key: KvKey::unit(&ObjectDescriptor::Tail),
+                        value: db_tail.clone(),
+                    };
+                    GenericKvLogEvent::LocalEvent(KvLogEventLocal::Tail { event })
+                };
+
+                self.repo.save_event(&tail_event).await?;
+                Ok(db_tail)
             }
             Some(db_tail) => {
-
+                match db_tail {
+                    GenericKvLogEvent::LocalEvent(local_evt) => {
+                        match local_evt {
+                            KvLogEventLocal::Tail { event } => {
+                                Ok(event.value)
+                            }
+                            _ => {
+                                panic!("DbTail. Invalid data");
+                            }
+                        }
+                    }
+                    _ => {
+                        panic!("DbTail. Invalid event type");
+                    }
+                }
             }
         }
-
-        Ok()
     }
 }
 
