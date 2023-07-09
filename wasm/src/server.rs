@@ -9,7 +9,8 @@ use meta_secret_core::node::db::models::{DbTail, GenericKvLogEvent, KvKey, KvLog
 use meta_secret_core::node::server::meta_server::DataSyncApi;
 use meta_secret_core::node::server::persistent_object::{PersistentGlobalIndex, PersistentObject};
 use crate::commit_log::{WasmMetaLogger, WasmRepo};
-use crate::log;
+use crate::{alert, log};
+use crate::db::WasmDbError;
 use crate::wasm_app::get_data_sync;
 
 #[wasm_bindgen]
@@ -21,87 +22,99 @@ pub struct WasmMetaServer {
 impl WasmMetaServer {
     pub async fn run_server() {
         let logger = Some(WasmMetaLogger {});
+        log("WasmMetaServer::run_server");
 
         let server_repo = WasmRepo::server();
 
-        let maybe_server_creds = server_repo.find_user_creds()
+        let server_creds_result = server_repo.find_user_creds()
+            .await;
+
+        match server_creds_result {
+            Ok(maybe_server_creds) => {
+                match maybe_server_creds {
+                    Some(creds) => {
+                        log("Wasm::run_server()");
+
+                        let client_repo = WasmRepo::default();
+                        let client_repo_rc = Rc::new(client_repo);
+                        let persistent_object = PersistentObject {
+                            repo: client_repo_rc.clone(),
+                            global_index: PersistentGlobalIndex {
+                                repo: client_repo_rc.clone(),
+                                _phantom: PhantomData,
+                            },
+                        };
+
+                        let db_tail = persistent_object.get_db_tail()
+                            .await
+                            .unwrap();
+
+                        let gi_events = persistent_object
+                            .find_object_events(&db_tail.global_index)
+                            .await;
+                        let last_gi_event = gi_events.last().cloned();
+
+                        let vault_events = persistent_object
+                            .find_object_events(&db_tail.vault)
+                            .await;
+                        let last_vault_event = vault_events.last().cloned();
+
+                        let mut client_events: Vec<GenericKvLogEvent> = vec![];
+                        client_events.extend(gi_events);
+                        client_events.extend(vault_events);
+
+                        let client_repo = WasmRepo::default();
+                        let client_data_sync = get_data_sync(client_repo, &creds);
+                        for client_event in client_events {
+                            client_data_sync.send_data(&client_event, &logger).await;
+                        }
+
+                        //update db_tail
+                        let new_db_tail_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::Tail {
+                            event: KvLogEvent {
+                                key: KvKey::unit(&ObjectDescriptor::Tail),
+                                value: DbTail {
+                                    vault: last_vault_event.unwrap().key().obj_id.clone(),
+                                    global_index: last_gi_event.unwrap().key().obj_id.clone(),
+                                }
+                            }
+                        });
+                        client_repo_rc.save_event(&new_db_tail_event)
+                            .await
+                            .unwrap();
+                    }
+                    None => {
+                        Self::generate_server_user_credentials(server_repo).await;
+                    }
+                }
+            }
+            Err(err) => {
+                alert(format!("govnina!!!! {:?}", err).as_str());
+                Self::generate_server_user_credentials(server_repo).await;
+            }
+        }
+    }
+
+    async fn generate_server_user_credentials(server_repo: WasmRepo) {
+        let logger = WasmMetaLogger {};
+
+        let meta_vault = server_repo
+            .create_meta_vault(
+                "meta-server-vault".to_string(),
+                "meta-server-device".to_string(),
+                &logger
+            )
             .await
             .unwrap();
 
-        match maybe_server_creds {
-            Some(creds) => {
-                log("Wasm::run_server()");
+        let security_box = KeyManager::generate_security_box(meta_vault.name);
+        let user_sig = security_box.get_user_sig(&meta_vault.device);
+        let creds = UserCredentials::new(security_box, user_sig);
 
-                let client_repo = WasmRepo::default();
-                let client_repo_rc = Rc::new(client_repo);
-                let persistent_object = PersistentObject {
-                    repo: client_repo_rc.clone(),
-                    global_index: PersistentGlobalIndex {
-                        repo: client_repo_rc.clone(),
-                        _phantom: PhantomData,
-                    },
-                };
-
-                let db_tail = persistent_object.get_db_tail()
-                    .await
-                    .unwrap();
-
-                let gi_events = persistent_object
-                    .find_object_events(&db_tail.global_index)
-                    .await;
-                let last_gi_event = gi_events.last().cloned();
-
-                let vault_events = persistent_object
-                    .find_object_events(&db_tail.vault)
-                    .await;
-                let last_vault_event = vault_events.last().cloned();
-
-                let mut client_events: Vec<GenericKvLogEvent> = vec![];
-                client_events.extend(gi_events);
-                client_events.extend(vault_events);
-
-                let client_repo = WasmRepo::default();
-                let client_data_sync = get_data_sync(client_repo, &creds);
-                for client_event in client_events {
-                    client_data_sync.send_data(&client_event, &logger).await;
-                }
-
-                //update db_tail
-                let new_db_tail_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::Tail {
-                    event: KvLogEvent {
-                        key: KvKey::unit(&ObjectDescriptor::Tail),
-                        value: DbTail {
-                            vault: last_vault_event.unwrap().key().obj_id.clone(),
-                            global_index: last_gi_event.unwrap().key().obj_id.clone(),
-                        }
-                    }
-                });
-                client_repo_rc.save_event(&new_db_tail_event)
-                    .await
-                    .unwrap();
-            }
-            None => {
-                let logger = WasmMetaLogger {};
-
-                let meta_vault = server_repo
-                    .create_meta_vault(
-                        "meta-server-vault".to_string(),
-                        "meta-server-device".to_string(),
-                        &logger
-                    )
-                    .await
-                    .unwrap();
-
-                let security_box = KeyManager::generate_security_box(meta_vault.name);
-                let user_sig = security_box.get_user_sig(&meta_vault.device);
-                let creds = UserCredentials::new(security_box, user_sig);
-
-                server_repo
-                    .save_user_creds(creds)
-                    .await
-                    .unwrap();
-            }
-        };
+        server_repo
+            .save_user_creds(creds)
+            .await
+            .unwrap();
     }
 }
 

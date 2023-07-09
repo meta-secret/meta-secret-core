@@ -1,7 +1,6 @@
 use serde_derive::{Deserialize, Serialize};
 
 use crate::crypto::utils;
-use crate::node::app::meta_app::meta_vault_conf;
 use crate::node::db::models::{ObjectCreator, ObjectDescriptor};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -95,11 +94,7 @@ impl ObjectId {
     }
 
     pub fn meta_vault_index() -> ObjectId {
-        let index_desc = ObjectDescriptor::MetaVault {
-            name: meta_vault_conf::META_VAULT_KEY_NAME.to_string()
-        };
-
-        ObjectId::unit(&index_desc)
+        ObjectId::unit(&ObjectDescriptor::MetaVault)
     }
 
     pub fn vault_unit(vault_name: &str) -> Self {

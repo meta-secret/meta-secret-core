@@ -206,8 +206,8 @@ pub enum ObjectDescriptor {
     GlobalIndex,
     Tail,
     Vault { name: String },
-    MetaVault { name: String },
-    UserCreds { name: String },
+    MetaVault,
+    UserCreds,
 }
 
 impl From<&ObjectDescriptor> for ObjectType {
@@ -236,11 +236,11 @@ impl ObjectDescriptor {
     pub fn name(&self) -> String {
         match self {
             ObjectDescriptor::GlobalIndex => { String::from("meta-g") }
-            ObjectDescriptor::Tail => { "db_tail".to_string() }
+            ObjectDescriptor::Tail => { String::from("db_tail") }
 
             ObjectDescriptor::Vault { name } => { name.clone() }
-            ObjectDescriptor::MetaVault { name } => { name.clone() }
-            ObjectDescriptor::UserCreds { name } => { name.clone() }
+            ObjectDescriptor::MetaVault => { String::from("main_meta_vault") }
+            ObjectDescriptor::UserCreds => { String::from("user_creds") }
         }
     }
 }

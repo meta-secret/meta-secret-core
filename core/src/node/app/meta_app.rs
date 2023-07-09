@@ -10,11 +10,6 @@ use crate::node::db::models::{GenericKvLogEvent, KvLogEventLocal, KvKey, KvLogEv
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::server::meta_server::MetaLogger;
 
-pub mod meta_vault_conf {
-    pub const META_VAULT_KEY_NAME: &str = "main_meta_vault";
-    pub const USER_CREDS_KEY_NAME: &str = "user_creds";
-}
-
 #[async_trait(? Send)]
 pub trait MetaVaultManager<Err: Error> {
     async fn create_meta_vault<L: MetaLogger>(&self, vault_name: String, device_name: String, logger: &L) -> Result<MetaVault, Err>;
@@ -36,7 +31,7 @@ impl<T, Err> MetaVaultManager<Err> for T
             device: Box::new(device),
         };
 
-        let meta_vault_descriptor = ObjectDescriptor::MetaVault { name: vault_name };
+        let meta_vault_descriptor = ObjectDescriptor::MetaVault;
         let key = KvKey::unit(&meta_vault_descriptor);
         let event: KvLogEvent<MetaVault> = KvLogEvent { key, value: meta_vault.clone() };
 
@@ -85,7 +80,7 @@ impl<T, Err> UserCredentialsManager<Err> for T
         Err: Error,
 {
     async fn find_user_creds(&self) -> Result<Option<UserCredentials>, Err> {
-        let user_creds_desc = ObjectDescriptor::UserCreds { name: meta_vault_conf::USER_CREDS_KEY_NAME.to_string() };
+        let user_creds_desc = ObjectDescriptor::UserCreds;
         let obj_id = ObjectId::unit(&user_creds_desc);
         let maybe_creds = self.find_one(&obj_id).await?;
         match maybe_creds {
@@ -100,7 +95,7 @@ impl<T, Err> UserCredentialsManager<Err> for T
     }
 
     async fn save_user_creds(&self, creds: UserCredentials) -> Result<(), Err> {
-        let user_creds_desc = ObjectDescriptor::UserCreds { name: meta_vault_conf::USER_CREDS_KEY_NAME.to_string() };
+        let user_creds_desc = ObjectDescriptor::UserCreds;
         let event = KvLogEvent {
             key: KvKey::unit(&user_creds_desc),
             value: creds,

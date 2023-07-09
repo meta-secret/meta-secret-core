@@ -31,7 +31,7 @@ impl WasmRepo {
     pub fn server() -> WasmRepo {
         WasmRepo {
             db_name: "meta-secret-server".to_string(),
-            store_name: "server_commit_log".to_string(),
+            store_name: "commit_log".to_string(),
         }
     }
 }
