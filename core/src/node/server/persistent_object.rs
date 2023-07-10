@@ -12,7 +12,7 @@ use std::rc::Rc;
 use async_trait::async_trait;
 use std::marker::PhantomData;
 use std::cell::RefCell;
-use crate::node::app::meta_app::MetaVaultManager;
+use crate::node::server::meta_server::MetaLogger;
 
 pub struct PersistentObject<Repo: KvLogEventRepo<Err>, Err: Error> {
     pub repo: Rc<Repo>,
@@ -21,24 +21,29 @@ pub struct PersistentObject<Repo: KvLogEventRepo<Err>, Err: Error> {
 
 impl<Repo: KvLogEventRepo<Err>, Err: Error> PersistentObject<Repo, Err> {
 
-    pub async fn get_object_events_from_beginning(
+    pub async fn get_object_events_from_beginning<L: MetaLogger>(
         &self,
         obj_desc: &ObjectDescriptor,
         server_pk: &PublicKeyRecord,
+        logger: &L
     ) -> Result<Vec<GenericKvLogEvent>, Err> {
+        logger.log("get_object_events_from_beginning");
+
         let formation_id = ObjectId::unit(obj_desc);
-        let mut commit_log = self.find_object_events(&formation_id).await;
+        let mut commit_log = self.find_object_events(&formation_id, logger).await;
 
         //check if genesis event exists for vaults index
         if commit_log.is_empty() {
-            let gi_events = self.global_index.init(server_pk).await?;
+            let gi_events = self.global_index.init(server_pk, logger).await?;
             commit_log.extend(gi_events);
         }
 
         Ok(commit_log)
     }
 
-    pub async fn find_object_events(&self, tail_id: &ObjectId) -> Vec<GenericKvLogEvent> {
+    pub async fn find_object_events<L: MetaLogger>(&self, tail_id: &ObjectId, logger: &L) -> Vec<GenericKvLogEvent> {
+        logger.log("find_object_events");
+
         let mut commit_log: Vec<GenericKvLogEvent> = vec![];
 
         let mut curr_tail_id = tail_id.clone();
@@ -98,14 +103,17 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> PersistentObject<Repo, Err> {
         self.find_tail_id(&unit_id).await
     }
 
-    pub async fn get_db_tail(&self) -> Result<DbTail, Err> {
+    pub async fn get_db_tail(&self, vault_id: &ObjectId) -> Result<DbTail, Err> {
         let db_tail_obj_desc = &ObjectDescriptor::Tail;
         let obj_id = self.find_tail_id_by_obj_desc(db_tail_obj_desc).await;
         let maybe_db_tail = self.repo.find_one(&obj_id).await?;
 
         match maybe_db_tail {
             None => {
-                let db_tail = DbTail::default();
+                let db_tail = DbTail {
+                    vault: vault_id.clone(),
+                    global_index: ObjectId::global_index_unit(),
+                };
 
                 let tail_event = {
                     let event = KvLogEvent {
@@ -141,7 +149,7 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> PersistentObject<Repo, Err> {
 
 #[async_trait(? Send)]
 pub trait PersistentGlobalIndexApi<Repo: KvLogEventRepo<Err>, Err: Error> {
-    async fn init(&self, public_key: &PublicKeyRecord) -> Result<Vec<GenericKvLogEvent>, Err>;
+    async fn init<L: MetaLogger>(&self, public_key: &PublicKeyRecord, logger: &L) -> Result<Vec<GenericKvLogEvent>, Err>;
 }
 
 pub struct PersistentGlobalIndex<Repo:  KvLogEventRepo<Err>, Err: Error> {
@@ -152,7 +160,9 @@ pub struct PersistentGlobalIndex<Repo:  KvLogEventRepo<Err>, Err: Error> {
 #[async_trait(? Send)]
 impl<Repo: KvLogEventRepo<Err>, Err: Error> PersistentGlobalIndexApi<Repo, Err> for PersistentGlobalIndex<Repo, Err> {
     ///create a genesis event and save into the database
-    async fn init(&self, public_key: &PublicKeyRecord) -> Result<Vec<GenericKvLogEvent>, Err> {
+    async fn init<L: MetaLogger>(&self, public_key: &PublicKeyRecord, logger: &L) -> Result<Vec<GenericKvLogEvent>, Err> {
+        logger.log("Init global index");
+
         let unit_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Unit {
             event: KvLogEvent::global_index_unit()
         });

@@ -1,35 +1,5 @@
-use std::marker::PhantomData;
-use std::rc;
-use std::rc::Rc;
 
 use wasm_bindgen::prelude::*;
-
-use meta_secret_core::models::{
-    FindSharesRequest, JoinRequest, MembershipRequestType, SecretDistributionType, UserSignature,
-    VaultDoc, VaultInfoData, VaultInfoStatus,
-};
-use meta_secret_core::node::app::meta_app::UserCredentialsManager;
-use meta_secret_core::node::db::commit_log::MetaDbManager;
-use meta_secret_core::node::db::events::object_id::ObjectId;
-use meta_secret_core::node::db::events::sign_up::SignUpRequest;
-use meta_secret_core::node::db::generic_db::{FindOneQuery, SaveCommand, UserPasswordEntity};
-use meta_secret_core::node::db::meta_db::MetaDb;
-use meta_secret_core::node::db::models::ObjectDescriptor;
-use meta_secret_core::node::server::meta_server::{DataSync, DataSyncApi, MetaServerContextState};
-use meta_secret_core::node::server::persistent_object::{PersistentGlobalIndex, PersistentObject};
-use meta_secret_core::node::server::request::SyncRequest;
-use meta_secret_core::node::server_api;
-use meta_secret_core::recover_from_shares;
-use meta_secret_core::sdk::api::MessageType;
-use meta_secret_core::shared_secret::data_block::common::SharedSecretConfig;
-use meta_secret_core::shared_secret::MetaDistributor;
-use meta_secret_core::shared_secret::shared_secret::{
-    PlainText, SharedSecretEncryption, UserShareDto,
-};
-
-use crate::commit_log::{WasmMetaLogger, WasmRepo};
-use crate::objects::{ToJsValue};
-use crate::wasm_app::get_data_sync;
 
 mod commit_log;
 mod db;

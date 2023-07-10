@@ -122,15 +122,6 @@ pub struct DbTail {
     pub global_index: ObjectId,
 }
 
-impl Default for DbTail {
-    fn default() -> Self {
-        DbTail {
-            vault: ObjectId::tail(),
-            global_index: ObjectId::global_index(),
-        }
-    }
-}
-
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GlobalIndexRecord {
@@ -167,7 +158,7 @@ impl KvLogEvent<PublicKeyRecord> {
 impl KvLogEvent<GlobalIndexRecord> {
     pub fn new_global_index_event(tail_id: &ObjectId, vault_id: &IdStr) -> KvLogEvent<GlobalIndexRecord> {
         let key = KvKey {
-            obj_id: tail_id.next(),
+            obj_id: tail_id.clone(),
             object_type: ObjectType::GlobalIndexObj,
         };
 

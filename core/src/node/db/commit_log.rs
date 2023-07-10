@@ -6,6 +6,7 @@ use crate::node::server::persistent_object::PersistentObject;
 use crate::node::db::models::{GenericKvLogEvent, GlobalIndexObject, LogCommandError, LogEventKeyBasedRecord, VaultObject};
 use crate::node::db::generic_db::KvLogEventRepo;
 use std::rc::Rc;
+use crate::node::server::meta_server::MetaLogger;
 
 
 pub struct MetaDbManager<Repo: KvLogEventRepo<Err>, Err: Error> {
@@ -78,13 +79,15 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> MetaDbManager<Repo, Err> {
         self.apply(commit_log, meta_db)
     }
 
-    pub async fn sync_meta_db(&self, mut meta_db: MetaDb) -> Result<MetaDb, LogCommandError> {
+    pub async fn sync_meta_db<L: MetaLogger>(&self, mut meta_db: MetaDb, logger: &L) -> Result<MetaDb, LogCommandError> {
+        logger.log("Sync meta db");
+
         let tail_id = meta_db.vault_store.tail_id.clone();
 
         if let Some(key_id) = tail_id {
             let tail = self
                 .persistent_obj
-                .find_object_events(&key_id).await;
+                .find_object_events(&key_id, logger).await;
 
             if let Some(latest_event) = tail.last() {
                 meta_db.vault_store.tail_id = Some(latest_event.key().obj_id.clone());

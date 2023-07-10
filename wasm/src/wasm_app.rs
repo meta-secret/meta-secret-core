@@ -26,12 +26,6 @@ pub async fn get_vault() -> Result<JsValue, JsValue> {
         Some(creds) => {
             let meta_db = MetaDb::default();
 
-            let data_sync = get_data_sync(repo, &creds);
-
-            let sync_request = SyncRequest::from(&meta_db);
-            let commit_log = data_sync.sync_data(sync_request).await.unwrap();
-            let meta_db = data_sync.meta_db_manager.apply(commit_log, meta_db).unwrap();
-
             let vault_desc = ObjectDescriptor::Vault {
                 name: creds.user_sig.vault.name.clone(),
             };
@@ -59,12 +53,11 @@ pub async fn get_vault() -> Result<JsValue, JsValue> {
     vault_info.to_js()
 }
 
-pub fn get_data_sync(repo: WasmRepo, creds: &UserCredentials) -> DataSync<WasmRepo, WasmDbError> {
-    let repo_rc = Rc::new(repo);
+pub fn get_data_sync(repo: Rc<WasmRepo>, creds: &UserCredentials) -> DataSync<WasmRepo, WasmDbError> {
     let persistent_object = PersistentObject {
-        repo: repo_rc.clone(),
+        repo: repo.clone(),
         global_index: PersistentGlobalIndex {
-            repo: repo_rc.clone(),
+            repo: repo.clone(),
             _phantom: PhantomData,
         },
     };
@@ -76,13 +69,12 @@ pub fn get_data_sync(repo: WasmRepo, creds: &UserCredentials) -> DataSync<WasmRe
     };
     let meta_db_manager_rc = Rc::new(meta_db_manager);
 
-    let data_sync = DataSync {
+    DataSync {
         persistent_obj: persistent_object_rc,
-        repo: repo_rc,
+        repo,
         context: Rc::new(MetaServerContextState::from(creds)),
         meta_db_manager: meta_db_manager_rc,
-    };
-    data_sync
+    }
 }
 
 /// Sync local commit log with server
