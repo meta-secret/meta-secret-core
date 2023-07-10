@@ -6,18 +6,14 @@ use crate::models::DeviceInfo;
 use crate::models::meta_vault::MetaVault;
 use crate::models::user_credentials::UserCredentials;
 use crate::node::db::generic_db::{KvLogEventRepo};
-use crate::node::db::models::{GenericKvLogEvent, KvKey, KvLogEvent, ObjectCreator, ObjectDescriptor};
+use crate::node::db::models::{GenericKvLogEvent, KvLogEventLocal, KvKey, KvLogEvent, ObjectCreator, ObjectDescriptor};
 use crate::node::db::events::object_id::ObjectId;
-
-pub mod meta_vault_conf {
-    pub const META_VAULT_KEY_NAME: &str = "main_meta_vault";
-    pub const USER_CREDS_KEY_NAME: &str = "user_creds";
-}
+use crate::node::server::meta_server::MetaLogger;
 
 #[async_trait(? Send)]
 pub trait MetaVaultManager<Err: Error> {
-    async fn create_meta_vault(&self, vault_name: String, device_name: String) -> Result<(), Err>;
-    async fn find_meta_vault(&self) -> Result<Option<MetaVault>, Err>;
+    async fn create_meta_vault<L: MetaLogger>(&self, vault_name: String, device_name: String, logger: &L) -> Result<MetaVault, Err>;
+    async fn find_meta_vault<L: MetaLogger>(&self, logger: &L) -> Result<Option<MetaVault>, Err>;
 }
 
 #[async_trait(? Send)]
@@ -26,37 +22,45 @@ impl<T, Err> MetaVaultManager<Err> for T
         T: KvLogEventRepo<Err>,
         Err: Error,
 {
-    async fn create_meta_vault(&self, vault_name: String, device_name: String) -> Result<(), Err> {
+    async fn create_meta_vault<L: MetaLogger>(&self, vault_name: String, device_name: String, logger: &L) -> Result<MetaVault, Err> {
+        logger.log("meta_app::create_meta_vault");
+
         let device = DeviceInfo::from(device_name.to_string());
         let meta_vault = MetaVault {
             name: vault_name.to_string(),
             device: Box::new(device),
         };
 
-        let meta_vault_descriptor = ObjectDescriptor::MetaVault { name: vault_name };
-        let key = KvKey::formation(&meta_vault_descriptor);
-        let event: KvLogEvent<MetaVault> = KvLogEvent { key, value: meta_vault };
+        let meta_vault_descriptor = ObjectDescriptor::MetaVault;
+        let key = KvKey::unit(&meta_vault_descriptor);
+        let event: KvLogEvent<MetaVault> = KvLogEvent { key, value: meta_vault.clone() };
 
-        let db_event = GenericKvLogEvent::MetaVault { event };
+        let db_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::MetaVault { event });
 
-        let main_meta_vault_desc = ObjectDescriptor::MetaVault { name: meta_vault_conf::META_VAULT_KEY_NAME.to_string() };
-        let main_meta_vault_obj_id = ObjectId::formation(&main_meta_vault_desc);
-        self.save(&main_meta_vault_obj_id, &db_event).await?;
+        self.save(&ObjectId::meta_vault_index(), &db_event).await?;
 
-        Ok(())
+        Ok(meta_vault)
     }
 
-    async fn find_meta_vault(&self) -> Result<Option<MetaVault>, Err> {
-        let meta_vault_desc = ObjectDescriptor::MetaVault { name: meta_vault_conf::META_VAULT_KEY_NAME.to_string() };
-        let meta_vault_obj_id = ObjectId::formation(&meta_vault_desc);
+    async fn find_meta_vault<L: MetaLogger>(&self, logger: &L) -> Result<Option<MetaVault>, Err> {
+        logger.log("meta_app::find_meta_vault");
 
-        let maybe_meta_vault = self.find_one(&meta_vault_obj_id).await?;
+        let maybe_meta_vault = self.find_one(&ObjectId::meta_vault_index()).await?;
+
         match maybe_meta_vault {
-            None => Ok(None),
+            None => {
+                logger.log("meta_app::find_meta_vault: meta vault not found");
+                Ok(None)
+            },
             Some(meta_vault) => match meta_vault {
-                GenericKvLogEvent::MetaVault { event } => Ok(Some(event.value)),
+                GenericKvLogEvent::LocalEvent(KvLogEventLocal::MetaVault { event }) => {
+                    Ok(Some(event.value))
+                }
+
                 _ => {
-                    panic!("Meta vault index: Invalid data")
+                    let err_msg = "Meta vault index: Invalid data";
+                    logger.log(err_msg);
+                    panic!("{}", err_msg)
                 }
             },
         }
@@ -76,13 +80,13 @@ impl<T, Err> UserCredentialsManager<Err> for T
         Err: Error,
 {
     async fn find_user_creds(&self) -> Result<Option<UserCredentials>, Err> {
-        let user_creds_desc = ObjectDescriptor::UserCreds { name: meta_vault_conf::USER_CREDS_KEY_NAME.to_string() };
-        let obj_id = ObjectId::formation(&user_creds_desc);
+        let user_creds_desc = ObjectDescriptor::UserCreds;
+        let obj_id = ObjectId::unit(&user_creds_desc);
         let maybe_creds = self.find_one(&obj_id).await?;
         match maybe_creds {
             None => Ok(None),
             Some(user_creds) => match user_creds {
-                GenericKvLogEvent::UserCredentials { event } => Ok(Some(event.value)),
+                GenericKvLogEvent::LocalEvent(KvLogEventLocal::UserCredentials { event }) => Ok(Some(event.value)),
                 _ => {
                     panic!("Meta vault index: Invalid data")
                 }
@@ -91,12 +95,12 @@ impl<T, Err> UserCredentialsManager<Err> for T
     }
 
     async fn save_user_creds(&self, creds: UserCredentials) -> Result<(), Err> {
-        let user_creds_desc = ObjectDescriptor::UserCreds { name: meta_vault_conf::USER_CREDS_KEY_NAME.to_string() };
+        let user_creds_desc = ObjectDescriptor::UserCreds;
         let event = KvLogEvent {
-            key: KvKey::formation(&user_creds_desc),
+            key: KvKey::unit(&user_creds_desc),
             value: creds,
         };
-        let generic_event = GenericKvLogEvent::UserCredentials { event };
+        let generic_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::UserCredentials { event });
 
         self.save_event(&generic_event).await
     }

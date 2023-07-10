@@ -8,7 +8,7 @@ use crate::node::db::events::object_id::ObjectId;
 pub trait SaveCommand<DbErr: std::error::Error> {
     async fn save(&self, key: &ObjectId, value: &GenericKvLogEvent) -> Result<(), DbErr>;
     async fn save_event(&self, value: &GenericKvLogEvent) -> Result<(), DbErr> {
-        self.save(&value.key().key_id.obj_id(), value).await
+        self.save(&value.key().obj_id, value).await
     }
 }
 

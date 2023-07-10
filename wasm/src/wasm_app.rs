@@ -1,4 +1,4 @@
-use crate::commit_log::WasmRepo;
+use crate::commit_log::{WasmMetaLogger, WasmRepo};
 use crate::log;
 use crate::objects::ToJsValue;
 use meta_secret_core::models::{UserCredentials, VaultInfoData, VaultInfoStatus};
@@ -12,6 +12,8 @@ use meta_secret_core::node::server::request::SyncRequest;
 use std::marker::PhantomData;
 use std::rc::Rc;
 use wasm_bindgen::{JsError, JsValue};
+use meta_secret_core::node::db::events::sign_up::SignUpRequest;
+use meta_secret_core::node::db::generic_db::SaveCommand;
 use crate::db::WasmDbError;
 
 pub async fn get_vault() -> Result<JsValue, JsValue> {
@@ -23,12 +25,6 @@ pub async fn get_vault() -> Result<JsValue, JsValue> {
     let vault_info = match maybe_creds {
         Some(creds) => {
             let meta_db = MetaDb::default();
-
-            let data_sync = get_data_sync(repo, &creds);
-
-            let sync_request = SyncRequest::from(&meta_db);
-            let commit_log = data_sync.sync_data(sync_request).await.unwrap();
-            let meta_db = data_sync.meta_db_manager.apply(commit_log, meta_db).unwrap();
 
             let vault_desc = ObjectDescriptor::Vault {
                 name: creds.user_sig.vault.name.clone(),
@@ -57,12 +53,11 @@ pub async fn get_vault() -> Result<JsValue, JsValue> {
     vault_info.to_js()
 }
 
-pub fn get_data_sync(repo: WasmRepo, creds: &UserCredentials) -> DataSync<WasmRepo, WasmDbError> {
-    let repo_rc = Rc::new(repo);
+pub fn get_data_sync(repo: Rc<WasmRepo>, creds: &UserCredentials) -> DataSync<WasmRepo, WasmDbError> {
     let persistent_object = PersistentObject {
-        repo: repo_rc.clone(),
+        repo: repo.clone(),
         global_index: PersistentGlobalIndex {
-            repo: repo_rc.clone(),
+            repo: repo.clone(),
             _phantom: PhantomData,
         },
     };
@@ -74,13 +69,12 @@ pub fn get_data_sync(repo: WasmRepo, creds: &UserCredentials) -> DataSync<WasmRe
     };
     let meta_db_manager_rc = Rc::new(meta_db_manager);
 
-    let data_sync = DataSync {
+    DataSync {
         persistent_obj: persistent_object_rc,
-        repo: repo_rc,
+        repo,
         context: Rc::new(MetaServerContextState::from(creds)),
         meta_db_manager: meta_db_manager_rc,
-    };
-    data_sync
+    }
 }
 
 /// Sync local commit log with server
@@ -240,5 +234,77 @@ pub async fn membership(
         None => Err(JsValue::from("Empty user credentials")),
     }
      */
+    Ok(JsValue::null())
+}
+
+pub async fn get_meta_passwords() -> Result<JsValue, JsValue> {
+    /*
+    let maybe_creds = objects::internal::find_user_credentials()
+        .await
+        .map_err(JsError::from)?;
+
+    match maybe_creds {
+        Some(creds) => {
+            let user_sig = creds.user_sig;
+            log("wasm: get meta passwords");
+            let secrets = server_api::get_meta_passwords(&user_sig)
+                .await
+                .map_err(JsError::from)?;
+
+            let secrets_js = serde_wasm_bindgen::to_value(&secrets)?;
+            Ok(secrets_js)
+        }
+        None => Err(JsValue::from("User credentials not found")),
+    }
+
+     */
+    Ok(JsValue::null())
+}
+
+pub async fn register() -> Result<JsValue, JsValue> {
+    let logger = WasmMetaLogger {};
+
+    let repo = WasmRepo::default();
+
+    let maybe_creds = repo.find_user_creds()
+        .await
+        .map_err(JsError::from)?;
+
+    match maybe_creds {
+        Some(creds) => {
+            log("Wasm::register. Sign up");
+            let sign_up_request_factory = SignUpRequest {};
+            let sign_up_request = sign_up_request_factory.generic_request(&creds.user_sig);
+
+            repo.save_event(&sign_up_request)
+                .await
+                .map_err(JsError::from)?;
+
+            let js_val = serde_wasm_bindgen::to_value(&VaultInfoStatus::Pending)?;
+            Ok(js_val)
+        }
+        None => {
+            log("Registration error: user credentials not found");
+            panic!("Empty user credentials");
+        }
+    }
+}
+
+pub fn split(pass: &str) -> Result<JsValue, JsValue> {
+    /*let plain_text = PlainText::from(pass);
+    let config = SharedSecretConfig {
+        number_of_shares: 3,
+        threshold: 2,
+    };
+    let shared_secret = SharedSecretEncryption::new(config, &plain_text).map_err(JsError::from)?;
+
+    let mut res: Vec<UserShareDto> = vec![];
+    for share_index in 0..config.number_of_shares {
+        let share: UserShareDto = shared_secret.get_share(share_index);
+        res.push(share);
+    }
+
+    let shares_js = serde_wasm_bindgen::to_value(&res)?;
+    Ok(shares_js)*/
     Ok(JsValue::null())
 }

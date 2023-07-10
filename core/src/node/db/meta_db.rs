@@ -1,7 +1,8 @@
 use crate::models::vault_doc::VaultDoc;
-use crate::node::db::models::{KvKeyId, PublicKeyRecord};
+use crate::node::db::models::{PublicKeyRecord};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use crate::node::db::events::object_id::ObjectId;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -30,7 +31,7 @@ impl Default for MetaDb {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct VaultStore {
-    pub tail_id: Option<KvKeyId>,
+    pub tail_id: Option<ObjectId>,
     pub server_pk: Option<PublicKeyRecord>,
     pub vault: Option<VaultDoc>,
 }
@@ -39,6 +40,6 @@ pub struct VaultStore {
 #[serde(rename_all = "camelCase")]
 pub struct GlobalIndexStore {
     pub server_pk: Option<PublicKeyRecord>,
-    pub tail_id: Option<KvKeyId>,
+    pub tail_id: Option<ObjectId>,
     pub global_index: HashSet<String>,
 }

@@ -19,7 +19,7 @@ pub struct NewDbLogEvent {
 impl From<&GenericKvLogEvent> for NewDbLogEvent {
     fn from(log_event: &GenericKvLogEvent) -> Self {
         Self {
-            key_id: log_event.key().key_id.obj_id().id_str().clone(),
+            key_id: log_event.key().obj_id.id_str(),
             event: serde_json::to_string(log_event).unwrap(),
         }
     }

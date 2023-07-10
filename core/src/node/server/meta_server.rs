@@ -8,11 +8,11 @@ use crate::crypto::keys::KeyManager;
 use crate::models::{UserCredentials, UserSignature};
 use crate::node::db::commit_log::MetaDbManager;
 use crate::node::db::events::join;
-use crate::node::db::events::object_id::ObjectId;
+use crate::node::db::events::object_id::{IdGen, IdStr, ObjectId};
 use crate::node::db::events::sign_up::SignUpAction;
 use crate::node::db::generic_db::KvLogEventRepo;
-use crate::node::db::models::{Descriptors, KvLogEvent, ObjectCreator, ObjectDescriptor};
-use crate::node::db::models::{GenericKvLogEvent, KvKeyId, KvLogEventRequest, KvLogEventUpdate, PublicKeyRecord};
+use crate::node::db::models::{GlobalIndexObject, KvLogEvent, ObjectCreator, ObjectDescriptor, VaultObject};
+use crate::node::db::models::{GenericKvLogEvent, PublicKeyRecord};
 use crate::node::server::persistent_object::PersistentObject;
 use crate::node::server::request::SyncRequest;
 
@@ -36,8 +36,8 @@ impl DefaultMetaLogger {
 
 #[async_trait(? Send)]
 pub trait DataSyncApi<Err> {
-    async fn sync_data(&self, request: SyncRequest) -> Result<Vec<GenericKvLogEvent>, Err>;
-    async fn send_data<L: MetaLogger>(&self, event: &GenericKvLogEvent, maybe_logger: &Option<L>);
+    async fn sync_data<L: MetaLogger>(&self, request: SyncRequest, logger: &L) -> Result<Vec<GenericKvLogEvent>, Err>;
+    async fn send_data<L: MetaLogger>(&self, event: &GenericKvLogEvent, logger: &L);
 }
 
 pub struct DataSync<Repo: KvLogEventRepo<Err>, Err: Error> {
@@ -50,22 +50,24 @@ pub struct DataSync<Repo: KvLogEventRepo<Err>, Err: Error> {
 //MetaServerContext
 #[async_trait(? Send)]
 impl<Repo: KvLogEventRepo<Err>, Err: Error> DataSyncApi<Err> for DataSync<Repo, Err> {
-    async fn sync_data(&self, request: SyncRequest) -> Result<Vec<GenericKvLogEvent>, Err> {
+    async fn sync_data<L: MetaLogger>(&self, request: SyncRequest, logger: &L) -> Result<Vec<GenericKvLogEvent>, Err> {
+        logger.log("sync data");
+
         let mut commit_log: Vec<GenericKvLogEvent> = vec![];
 
         match request.global_index {
             None => {
-                let descriptor = Descriptors::global_index();
+                let descriptor = ObjectDescriptor::GlobalIndex;
                 let meta_g = self
                     .persistent_obj
-                    .get_object_events_from_beginning(&descriptor, &self.context.server_pk())
+                    .get_object_events_from_beginning(&descriptor, &self.context.server_pk(), logger)
                     .await?;
                 commit_log.extend(meta_g);
             }
             Some(index_id) => {
                 let meta_g = self
                     .persistent_obj
-                    .find_object_events(&index_id)
+                    .find_object_events(&index_id, logger)
                     .await;
 
                 commit_log.extend(meta_g);
@@ -83,7 +85,7 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> DataSyncApi<Err> for DataSync<Repo, 
 
                         let vault_events = self
                             .persistent_obj
-                            .find_object_events(&request_tail_id)
+                            .find_object_events(&request_tail_id, logger)
                             .await;
 
                         println!("sync. events num: {:?}", vault_events.len());
@@ -101,86 +103,92 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> DataSyncApi<Err> for DataSync<Repo, 
     }
 
     /// Handle request: all types of requests will be handled and the actions will be executed accordingly
-    async fn send_data<L: MetaLogger>(&self, generic_event: &GenericKvLogEvent, maybe_logger: &Option<L>) {
-        match generic_event {
-            GenericKvLogEvent::Request(request) => {
-                match request {
-                    KvLogEventRequest::SignUp { event } => {
-                        // Handled by the server. Add a vault to the system
-                        let vault_id = event.key.key_id.obj_id().genesis_id();
+    async fn send_data<L: MetaLogger>(&self, generic_event: &GenericKvLogEvent, logger: &L) {
+        logger.log("DataSync::send_data");
 
-                        if let Some(logger) = maybe_logger {
-                            logger.log(format!("Looking for a vault: {}", vault_id.id_str()).as_str());
-                        }
+        match generic_event {
+            GenericKvLogEvent::GlobalIndex(gi_obj_info) => {
+                match gi_obj_info {
+                    GlobalIndexObject::Unit { .. } => {
+                        logger.log("Global index not allowed to be sent");
+                        //разобраться с глобал индексом!!!111
+                        //На данный момент вроде бы я записи глобал индекса генерирую на стороне клиента, а надо на сервере
+                        //и когда данные посылаются на сервак, он падает из-за того что тип данных недопустимый
+                    }
+                    GlobalIndexObject::Genesis { .. } => {
+                        logger.log("GlobalIndexObject::Genesis can't be send");
+                    }
+                    GlobalIndexObject::Update { .. } => {
+                        logger.log("GlobalIndexObject::Update can't be send");
+                    }
+                }
+            }
+            GenericKvLogEvent::Vault(vault_obj_info) => {
+                match vault_obj_info {
+                    VaultObject::Unit { event } => {
+                        logger.log("Handle 'vault_object:unit' event");
+                        // Handled by the server. Add a vault to the system
+                        let vault_id = event.key.obj_id.unit_id();
+
+                        logger.log(format!("Looking for a vault: {}", vault_id.id_str()).as_str());
 
                         let vault_formation_event_result = self
                             .repo
                             .find_one(&vault_id)
                             .await;
 
+                        let vault_id_str = IdStr::from(&vault_id);
+
                         match vault_formation_event_result {
                             Err(_) => {
-                                if let Some(logger) = maybe_logger {
-                                    logger.log("Db Error. But we will register the new vault anyway");
-                                }
-                                self.accept_sign_up_request(event, &vault_id).await;
+                                self.accept_sign_up_request(event, &vault_id_str).await;
                             }
                             Ok(maybe_sign_up) => {
                                 match maybe_sign_up {
                                     None => {
-                                        self.accept_sign_up_request(event, &vault_id).await;
+                                        self.accept_sign_up_request(event, &vault_id_str).await;
                                     }
                                     Some(_sign_up) => {
-                                        if let Some(logger) = maybe_logger {
-                                            logger.log("Error. Vault already exists");
-                                        }
-
-                                        panic!("Vault already exists");
-                                        //save a reject response in the database
+                                        logger.log("Error. Vault already exists. Skip");
                                     }
                                 }
                             }
                         }
                     }
-                    KvLogEventRequest::JoinCluster { event } => {
+                    VaultObject::Genesis { .. } => {
+                        logger.log("Genesis event not allowed to send. Skip");
+                    }
+                    VaultObject::SignUpUpdate { .. } => {
+                        logger.log("SignUp update not allowed to send. Skip");
+                    }
+                    VaultObject::JoinUpdate { .. } => {
+                        logger.log("Join with update not allowed to send. Skip");
+                    }
+                    VaultObject::JoinRequest { event } => {
+                        logger.log("Handle join request");
                         let user_sig: UserSignature = event.value.clone();
                         let obj_desc = ObjectDescriptor::Vault { name: user_sig.vault.name };
-                        let vault_id = ObjectId::formation(&obj_desc);
-                        self.accept_join_cluster_request(event, &vault_id).await;
+                        let vault_id = ObjectId::unit(&obj_desc);
+                        self.accept_join_cluster_request(event, &vault_id, logger).await;
                     }
                 }
             }
-
-            GenericKvLogEvent::Update(op) => match op {
-                KvLogEventUpdate::Genesis { .. } => {}
-                KvLogEventUpdate::GlobalIndex { .. } => {
-                    panic!("Not allowed");
-                }
-                KvLogEventUpdate::SignUp { .. } => {
-                    panic!("Not allowed");
-                }
-                KvLogEventUpdate::JoinCluster { .. } => {
-                    panic!("Not allowed");
-                }
-            },
-            GenericKvLogEvent::MetaVault { .. } => {
-                panic!("Not allowed");
+            GenericKvLogEvent::LocalEvent(evt_type) => {
+                logger.log(format!("Local events can't be sent: {:?}", evt_type).as_str());
             }
-            GenericKvLogEvent::UserCredentials { .. } => {
-                panic!("Not allowed");
-            }
-            GenericKvLogEvent::Error { .. } => {
-                panic!("Not allowed");
+            GenericKvLogEvent::Error{ .. } => {
+                logger.log("Errors not yet implemented");
             }
         }
     }
 }
 
 impl<Repo: KvLogEventRepo<Err>, Err: Error> DataSync<Repo, Err> {
-    async fn accept_join_cluster_request(&self, join_event: &KvLogEvent<UserSignature>, obj_id: &ObjectId) {
-        println!("save join request: {}", serde_json::to_string(&join_event).unwrap());
+    async fn accept_join_cluster_request<L: MetaLogger>(
+        &self, join_event: &KvLogEvent<UserSignature>, obj_id: &ObjectId, logger: &L) {
+        logger.log(format!("save join request: {}", serde_json::to_string(&join_event).unwrap()).as_str());
 
-        let generic_join_event = GenericKvLogEvent::Request(KvLogEventRequest::JoinCluster {
+        let generic_join_event = GenericKvLogEvent::Vault(VaultObject::JoinRequest {
             event: join_event.clone(),
         });
         self
@@ -192,14 +200,18 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> DataSync<Repo, Err> {
         //join cluster update message
         let vault_events = self
             .persistent_obj
-            .find_object_events(&obj_id.genesis_id())
+            .find_object_events(&obj_id.unit_id(), logger)
             .await;
 
         let meta_db = self.meta_db_manager.transform(vault_events);
 
-        let vault_doc = &meta_db.unwrap().vault_store.vault.unwrap();
-        let accept_event = join::accept_join_request(join_event, vault_doc);
-        let generic_accept_event = GenericKvLogEvent::Update(KvLogEventUpdate::SignUp { event: accept_event });
+        let generic_accept_event = {
+            let vault_doc = &meta_db.unwrap().vault_store.vault.unwrap();
+
+            GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
+                event: join::accept_join_request(join_event, vault_doc)
+            })
+        };
 
         self.
             repo
@@ -208,20 +220,11 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> DataSync<Repo, Err> {
             .expect("Error saving accept event");
     }
 
-    async fn accept_sign_up_request(&self, event: &KvLogEvent<UserSignature>, vault_id: &ObjectId) {
+    async fn accept_sign_up_request(&self, event: &KvLogEvent<UserSignature>, vault_id: &IdStr) {
         //vault not found, we can create our new vault
         let server_pk = self.context.server_pk();
         let sign_up_action = SignUpAction {};
         let sign_up_events = sign_up_action.accept(event, &server_pk);
-
-        //find the latest global_index_id???
-        let global_index_tail_id = match self.context.tail_id().clone() {
-            None => self.persistent_obj.acuire_next_free_id(&Descriptors::global_index()).await,
-            Some(tail_id) => {
-                //we already have latest global index id
-                tail_id
-            }
-        };
 
         for sign_up_event in sign_up_events {
             self
@@ -232,36 +235,64 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> DataSync<Repo, Err> {
         }
 
         //update global index
-        let global_index_event = KvLogEvent::new_global_index_event(&global_index_tail_id, vault_id);
-        let global_index_event = GenericKvLogEvent::Update(KvLogEventUpdate::GlobalIndex {
-            event: global_index_event,
+        //find the latest global_index_id???
+        let global_index_tail_id = self.persistent_obj
+            .find_tail_id_by_obj_desc(&ObjectDescriptor::GlobalIndex)
+            .await;
+
+        let mut gi_events = vec![];
+        if let ObjectId::Unit { id: _ } = global_index_tail_id.clone() {
+            let unit_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Unit {
+                event: KvLogEvent::global_index_unit()
+            });
+
+            let genesis_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Genesis {
+                event: KvLogEvent::global_index_genesis(&server_pk)
+            });
+
+            gi_events.push(unit_event);
+            gi_events.push(genesis_event);
+        }
+
+        let gi_obj_id = match global_index_tail_id {
+            ObjectId::Unit { .. } => {
+                ObjectId::global_index_unit().next().next()
+            }
+            ObjectId::Genesis { .. } => {
+                ObjectId::global_index_unit().next()
+            }
+            ObjectId::Regular { .. } => {
+                global_index_tail_id.next()
+            }
+        };
+
+        let gi_update_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Update {
+            event: KvLogEvent::new_global_index_event(&gi_obj_id, vault_id)
         });
 
-        self
-            .repo
-            .save_event(&global_index_event)
-            .await
-            .expect("Error saving vaults genesis event");
+        gi_events.push(gi_update_event);
+
+        for gi_event in gi_events {
+            self
+                .repo
+                .save_event(&gi_event)
+                .await
+                .expect("Error saving vaults genesis event");
+        }
     }
 }
 
 pub trait MetaServerContext {
     fn server_pk(&self) -> PublicKeyRecord;
-    fn tail_id(&self) -> Option<KvKeyId>;
 }
 
 pub struct MetaServerContextState {
     pub km: KeyManager,
-    pub global_index_tail_id: Option<KvKeyId>,
 }
 
 impl MetaServerContext for MetaServerContextState {
     fn server_pk(&self) -> PublicKeyRecord {
         PublicKeyRecord::from(self.km.dsa.public_key())
-    }
-
-    fn tail_id(&self) -> Option<KvKeyId> {
-        self.global_index_tail_id.clone()
     }
 }
 
@@ -269,19 +300,14 @@ impl Default for MetaServerContextState {
     /// conn_url="file:///tmp/test.db"
     fn default() -> Self {
         let km = KeyManager::generate();
-        let global_index_tail_id = None;
-        Self {
-            km,
-            global_index_tail_id,
-        }
+        Self { km }
     }
 }
 
 impl From<&UserCredentials> for MetaServerContextState {
     fn from(creds: &UserCredentials) -> Self {
         Self {
-            km: KeyManager::try_from(creds.security_box.key_manager.as_ref()).unwrap(),
-            global_index_tail_id: None,
+            km: KeyManager::try_from(creds.security_box.key_manager.as_ref()).unwrap()
         }
     }
 }

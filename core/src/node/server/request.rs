@@ -15,7 +15,7 @@ pub struct VaultSyncRequest {
 
 impl From<&MetaDb> for SyncRequest {
     fn from(meta_db: &MetaDb) -> Self {
-        let global_index = meta_db.global_index_store.tail_id.clone().map(|tail_id| tail_id.obj_id());
+        let global_index = meta_db.global_index_store.tail_id.clone();
 
         Self {
             vault: Some(VaultSyncRequest::from(&meta_db.vault_store)),
@@ -27,7 +27,7 @@ impl From<&MetaDb> for SyncRequest {
 impl From<&VaultStore> for VaultSyncRequest {
     fn from(vault_store: &VaultStore) -> Self {
         Self {
-            tail_id: vault_store.tail_id.clone().map(|tail_id| tail_id.obj_id()),
+            tail_id: vault_store.tail_id.clone(),
         }
     }
 }

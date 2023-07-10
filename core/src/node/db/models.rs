@@ -1,6 +1,8 @@
+use std::string::ToString;
+
 use crate::crypto::utils;
 use crate::models::{Base64EncodedText, MetaVault, UserCredentials, UserSignature, VaultDoc};
-use crate::node::db::events::object_id::ObjectId;
+use crate::node::db::events::object_id::{IdGen, IdStr, ObjectId};
 use crate::sdk::api::ErrorMessage;
 
 #[derive(thiserror::Error, Debug)]
@@ -20,35 +22,50 @@ pub enum LogCommandError {
 pub enum ObjectType {
     GlobalIndexObj,
     VaultObj,
+
+    Tail,
     MetaVaultObj,
     UserCreds,
 }
 
+/// Local events (persistent objects which lives only in the local environment) which must not be synchronized
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum KvLogEventRequest {
-    SignUp { event: KvLogEvent<UserSignature> },
-    JoinCluster { event: KvLogEvent<UserSignature> },
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum KvLogEventUpdate {
-    Genesis { event: KvLogEvent<PublicKeyRecord> },
-    GlobalIndex { event: KvLogEvent<GlobalIndexRecord> },
-    SignUp { event: KvLogEvent<VaultDoc> },
-    JoinCluster { event: KvLogEvent<VaultDoc> },
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[serde(tag = "log_event_type")]
-pub enum GenericKvLogEvent {
-    Request(KvLogEventRequest),
-    Update(KvLogEventUpdate),
-
+pub enum KvLogEventLocal {
     MetaVault { event: KvLogEvent<MetaVault> },
     UserCredentials { event: KvLogEvent<UserCredentials> },
+    Tail { event: KvLogEvent<DbTail> },
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GlobalIndexObject {
+    Unit { event: KvLogEvent<()> },
+    Genesis { event: KvLogEvent<PublicKeyRecord> },
+    Update { event: KvLogEvent<GlobalIndexRecord> },
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum VaultObject {
+    /// SingUp request
+    Unit { event: KvLogEvent<UserSignature> },
+    Genesis { event: KvLogEvent<PublicKeyRecord> },
+
+    SignUpUpdate { event: KvLogEvent<VaultDoc> },
+
+    JoinUpdate { event: KvLogEvent<VaultDoc> },
+    JoinRequest { event: KvLogEvent<UserSignature> },
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(tag = "event_type")]
+pub enum GenericKvLogEvent {
+    GlobalIndex(GlobalIndexObject),
+    Vault(VaultObject),
+
+    LocalEvent(KvLogEventLocal),
 
     Error { event: KvLogEvent<ErrorMessage> },
 }
@@ -60,18 +77,27 @@ pub trait LogEventKeyBasedRecord {
 impl LogEventKeyBasedRecord for GenericKvLogEvent {
     fn key(&self) -> &KvKey {
         match self {
-            GenericKvLogEvent::Request(request) => match request {
-                KvLogEventRequest::SignUp { event } => &event.key,
-                KvLogEventRequest::JoinCluster { event } => &event.key,
-            },
-            GenericKvLogEvent::Update(op) => match op {
-                KvLogEventUpdate::Genesis { event } => &event.key,
-                KvLogEventUpdate::GlobalIndex { event } => &event.key,
-                KvLogEventUpdate::SignUp { event } => &event.key,
-                KvLogEventUpdate::JoinCluster { event } => &event.key,
-            },
-            GenericKvLogEvent::MetaVault { event } => &event.key,
-            GenericKvLogEvent::UserCredentials { event } => &event.key,
+            GenericKvLogEvent::GlobalIndex(gi_obj) => {
+                match gi_obj {
+                    GlobalIndexObject::Unit { event } => { &event.key }
+                    GlobalIndexObject::Genesis { event } => { &event.key }
+                    GlobalIndexObject::Update { event } => { &event.key }
+                }
+            }
+            GenericKvLogEvent::Vault(vault_obj) => {
+                match vault_obj {
+                    VaultObject::Unit { event } => { &event.key }
+                    VaultObject::Genesis { event } => { &event.key }
+                    VaultObject::SignUpUpdate { event } => { &event.key }
+                    VaultObject::JoinUpdate { event } => { &event.key }
+                    VaultObject::JoinRequest { event } => { &event.key }
+                }
+            }
+            GenericKvLogEvent::LocalEvent(op) => match op {
+                KvLogEventLocal::Tail { event } => &event.key,
+                KvLogEventLocal::MetaVault { event } => &event.key,
+                KvLogEventLocal::UserCredentials { event } => &event.key,
+            }
             GenericKvLogEvent::Error { event } => &event.key,
         }
     }
@@ -89,6 +115,13 @@ impl From<Base64EncodedText> for PublicKeyRecord {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DbTail {
+    pub vault: ObjectId,
+    pub global_index: ObjectId,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GlobalIndexRecord {
@@ -103,29 +136,36 @@ pub struct KvLogEvent<T> {
 }
 
 impl KvLogEvent<PublicKeyRecord> {
-    pub fn formation(obj_desc: &ObjectDescriptor, server_pk: &PublicKeyRecord) -> KvLogEvent<PublicKeyRecord> {
+    pub fn genesis(obj_desc: &ObjectDescriptor, server_pk: &PublicKeyRecord) -> KvLogEvent<PublicKeyRecord> {
         KvLogEvent {
-            key: KvKey::formation(obj_desc),
+            key: KvKey::genesis(obj_desc),
             value: server_pk.clone(),
         }
     }
 
-    pub fn global_index_formation(server_pk: &PublicKeyRecord) -> KvLogEvent<PublicKeyRecord> {
-        Self::formation(&Descriptors::global_index(), server_pk)
+    pub fn global_index_unit() -> KvLogEvent<()> {
+        KvLogEvent {
+            key: KvKey::unit(&ObjectDescriptor::GlobalIndex),
+            value: (),
+        }
+    }
+
+    pub fn global_index_genesis(server_pk: &PublicKeyRecord) -> KvLogEvent<PublicKeyRecord> {
+        Self::genesis(&ObjectDescriptor::GlobalIndex, server_pk)
     }
 }
 
 impl KvLogEvent<GlobalIndexRecord> {
-    pub fn new_global_index_event(tail_id: &KvKeyId, vault_id: &ObjectId) -> KvLogEvent<GlobalIndexRecord> {
+    pub fn new_global_index_event(tail_id: &ObjectId, vault_id: &IdStr) -> KvLogEvent<GlobalIndexRecord> {
         let key = KvKey {
-            key_id: tail_id.next(),
+            obj_id: tail_id.clone(),
             object_type: ObjectType::GlobalIndexObj,
         };
 
         KvLogEvent {
             key,
             value: GlobalIndexRecord {
-                vault_id: vault_id.genesis_id().id_str(),
+                vault_id: vault_id.id.clone(),
             },
         }
     }
@@ -134,66 +174,41 @@ impl KvLogEvent<GlobalIndexRecord> {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KvKey {
-    pub key_id: KvKeyId,
+    pub obj_id: ObjectId,
     pub object_type: ObjectType,
 }
 
 impl ObjectCreator<&ObjectDescriptor> for KvKey {
-    fn formation(obj_desc: &ObjectDescriptor) -> Self {
+    fn unit(obj_desc: &ObjectDescriptor) -> Self {
         Self {
-            key_id: KvKeyId::formation(obj_desc),
+            obj_id: ObjectId::unit(obj_desc),
             object_type: ObjectType::from(obj_desc),
         }
     }
-}
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum KvKeyId {
-    GenesisKeyId {
-        obj_id: ObjectId
-    },
-    RegularKeyId {
-        obj_id: ObjectId,
-        prev_obj_id: String,
-    },
-}
-
-impl KvKeyId {
-    pub fn obj_id(&self) -> ObjectId {
-        match self {
-            KvKeyId::GenesisKeyId { obj_id } => { obj_id.clone() }
-            KvKeyId::RegularKeyId { obj_id, .. } => { obj_id.clone() }
-        }
-    }
-}
-
-pub struct Descriptors {}
-
-impl Descriptors {
-    pub fn global_index() -> ObjectDescriptor {
-        ObjectDescriptor::GlobalIndex {
-            name: String::from("meta-g")
-        }
+    fn genesis(obj_desc: &ObjectDescriptor) -> Self {
+        Self::unit(obj_desc).next()
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ObjectDescriptor {
-    GlobalIndex { name: String },
+    GlobalIndex,
+    Tail,
     Vault { name: String },
-    MetaVault { name: String },
-    UserCreds { name: String },
+    MetaVault,
+    UserCreds,
 }
 
 impl From<&ObjectDescriptor> for ObjectType {
     fn from(desc: &ObjectDescriptor) -> Self {
         match desc {
-            ObjectDescriptor::GlobalIndex { .. } => { ObjectType::GlobalIndexObj }
+            ObjectDescriptor::GlobalIndex => { ObjectType::GlobalIndexObj }
             ObjectDescriptor::Vault { .. } => { ObjectType::VaultObj }
             ObjectDescriptor::MetaVault { .. } => { ObjectType::MetaVaultObj }
             ObjectDescriptor::UserCreds { .. } => { ObjectType::UserCreds }
+            ObjectDescriptor::Tail => { ObjectType::Tail }
         }
     }
 }
@@ -211,10 +226,12 @@ impl ObjectDescriptor {
 
     pub fn name(&self) -> String {
         match self {
-            ObjectDescriptor::GlobalIndex { name } => { name.clone() }
+            ObjectDescriptor::GlobalIndex => { String::from("meta-g") }
+            ObjectDescriptor::Tail => { String::from("db_tail") }
+
             ObjectDescriptor::Vault { name } => { name.clone() }
-            ObjectDescriptor::MetaVault { name } => { name.clone() }
-            ObjectDescriptor::UserCreds { name } => { name.clone() }
+            ObjectDescriptor::MetaVault => { String::from("main_meta_vault") }
+            ObjectDescriptor::UserCreds => { String::from("user_creds") }
         }
     }
 }
@@ -225,80 +242,22 @@ impl ToString for ObjectDescriptor {
             ObjectDescriptor::GlobalIndex { .. } => String::from("GlobalIndex"),
             ObjectDescriptor::Vault { .. } => String::from("Vault"),
             ObjectDescriptor::MetaVault { .. } => String::from("MetaVault"),
-            ObjectDescriptor::UserCreds { .. } => String::from("UserCreds")
+            ObjectDescriptor::UserCreds { .. } => String::from("UserCreds"),
+            ObjectDescriptor::Tail { .. } => String::from("DbTail")
         }
     }
 }
 
 pub trait ObjectCreator<T> {
-    fn formation(value: T) -> Self;
+    fn unit(value: T) -> Self;
+    fn genesis(obj_desc: &ObjectDescriptor) -> Self;
 }
 
-impl ObjectCreator<&ObjectDescriptor> for KvKeyId {
-    fn formation(obj_descriptor: &ObjectDescriptor) -> Self {
-        let obj_id = ObjectId::formation(obj_descriptor);
-        KvKeyId::formation(&obj_id)
-    }
-}
-
-/// Build formation id based on genesis id
-impl ObjectCreator<&ObjectId> for KvKeyId {
-    fn formation(genesis_id: &ObjectId) -> Self {
-        Self::GenesisKeyId {
-            obj_id: genesis_id.genesis_id(),
-        }
-    }
-}
-
-impl KvKeyId {
-    pub fn vault_formation(vault_name: &str) -> Self {
-        let vault_desc = ObjectDescriptor::Vault { name: vault_name.to_string() };
-        KvKeyId::formation(&vault_desc)
-    }
-}
-
-pub trait KeyIdGen {
-    fn next(&self) -> Self;
-}
-
-impl KeyIdGen for KvKeyId {
-    fn next(&self) -> Self {
-        let obj_id = self.obj_id();
-        let curr_id_str = obj_id.id_str();
-        let next_id_str = utils::to_id(curr_id_str.as_str());
-
-        let object_id = ObjectId::Regular {
-            id: next_id_str,
-            genesis_id: obj_id.genesis_id().id_str(),
-        };
-
-        KvKeyId::RegularKeyId {
-            obj_id: object_id,
-            prev_obj_id: curr_id_str,
-        }
-    }
-}
-
-impl KeyIdGen for KvKey {
+impl IdGen for KvKey {
     fn next(&self) -> Self {
         Self {
-            key_id: self.key_id.next(),
+            obj_id: self.obj_id.next(),
             object_type: self.object_type,
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use crate::node::db::models::{KvKeyId, ObjectCreator, ObjectDescriptor};
-
-    #[test]
-    fn test_key_id() {
-        let descriptor = ObjectDescriptor::Vault {
-            name: "test".to_string(),
-        };
-        let id = KvKeyId::formation(&descriptor);
-
-        println!("{:?}", id);
     }
 }

@@ -5,7 +5,7 @@ use wasm_bindgen::JsValue;
 
 use meta_secret_core::node::db::generic_db::SaveCommand;
 use meta_secret_core::node::db::generic_db::{CommitLogDbConfig, FindOneQuery, KvLogEventRepo};
-use meta_secret_core::node::db::models::{GenericKvLogEvent, LogEventKeyBasedRecord};
+use meta_secret_core::node::db::models::{GenericKvLogEvent};
 use meta_secret_core::node::server::meta_server::MetaLogger;
 
 use crate::db::WasmDbError;
@@ -22,6 +22,15 @@ impl Default for WasmRepo {
     fn default() -> Self {
         Self {
             db_name: "meta-secret".to_string(),
+            store_name: "commit_log".to_string(),
+        }
+    }
+}
+
+impl WasmRepo {
+    pub fn server() -> WasmRepo {
+        WasmRepo {
+            db_name: "meta-secret-server".to_string(),
             store_name: "commit_log".to_string(),
         }
     }
@@ -46,18 +55,19 @@ impl SaveCommand<WasmDbError> for WasmRepo {
 #[async_trait(? Send)]
 impl FindOneQuery<WasmDbError> for WasmRepo {
     async fn find_one(&self, key: &ObjectId) -> Result<Option<GenericKvLogEvent>, WasmDbError> {
-        let vault_js = idbGet(
+
+        let obj_js = idbGet(
             self.db_name.as_str(),
             self.store_name.as_str(),
             key.id_str().as_str(),
         )
         .await;
 
-        if vault_js.is_undefined() {
+        if obj_js.is_undefined() {
             Ok(None)
         } else {
-            let vault = serde_wasm_bindgen::from_value(vault_js)?;
-            Ok(Some(vault))
+            let obj = serde_wasm_bindgen::from_value(obj_js)?;
+            Ok(Some(obj))
         }
     }
 }
