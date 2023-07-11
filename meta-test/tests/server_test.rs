@@ -11,7 +11,7 @@ mod test {
     use meta_secret_core::node::db::events::sign_up::SignUpRequest;
     use meta_secret_core::node::db::meta_db::MetaDb;
     use meta_secret_core::node::db::models::{GenericKvLogEvent, GlobalIndexObject, KvLogEvent, ObjectCreator, ObjectDescriptor, VaultObject};
-    use meta_secret_core::node::server::meta_server::{
+    use meta_secret_core::node::server::data_sync::{
         DataSync, DataSyncApi, DefaultMetaLogger, MetaServerContext, MetaServerContextState
     };
     use meta_secret_core::node::server::persistent_object::{PersistentGlobalIndex, PersistentObject};

@@ -1,12 +1,12 @@
 use crate::commit_log::{WasmMetaLogger, WasmRepo};
-use crate::log;
+use crate::{alert, log};
 use crate::objects::ToJsValue;
 use meta_secret_core::models::{UserCredentials, VaultInfoData, VaultInfoStatus};
 use meta_secret_core::node::app::meta_app::UserCredentialsManager;
 use meta_secret_core::node::db::commit_log::MetaDbManager;
 use meta_secret_core::node::db::meta_db::MetaDb;
 use meta_secret_core::node::db::models::ObjectDescriptor;
-use meta_secret_core::node::server::meta_server::{DataSync, DataSyncApi, MetaServerContextState};
+use meta_secret_core::node::server::data_sync::{DataSync, DataSyncApi, MetaServerContextState};
 use meta_secret_core::node::server::persistent_object::{PersistentGlobalIndex, PersistentObject};
 use meta_secret_core::node::server::request::SyncRequest;
 use std::marker::PhantomData;
@@ -15,6 +15,8 @@ use wasm_bindgen::{JsError, JsValue};
 use meta_secret_core::node::db::events::sign_up::SignUpRequest;
 use meta_secret_core::node::db::generic_db::SaveCommand;
 use crate::db::WasmDbError;
+use wasm_bindgen::prelude::*;
+use crate::server::WasmMetaServer;
 
 pub async fn get_vault() -> Result<JsValue, JsValue> {
     log("wasm: get vault!");
@@ -54,14 +56,7 @@ pub async fn get_vault() -> Result<JsValue, JsValue> {
 }
 
 pub fn get_data_sync(repo: Rc<WasmRepo>, creds: &UserCredentials) -> DataSync<WasmRepo, WasmDbError> {
-    let persistent_object = PersistentObject {
-        repo: repo.clone(),
-        global_index: PersistentGlobalIndex {
-            repo: repo.clone(),
-            _phantom: PhantomData,
-        },
-    };
-
+    let persistent_object = get_persistent_object(repo.clone());
     let persistent_object_rc = Rc::new(persistent_object);
 
     let meta_db_manager = MetaDbManager {
@@ -75,6 +70,17 @@ pub fn get_data_sync(repo: Rc<WasmRepo>, creds: &UserCredentials) -> DataSync<Wa
         context: Rc::new(MetaServerContextState::from(creds)),
         meta_db_manager: meta_db_manager_rc,
     }
+}
+
+fn get_persistent_object(repo: Rc<WasmRepo>) -> PersistentObject<WasmRepo, WasmDbError> {
+    let persistent_object = PersistentObject {
+        repo: repo.clone(),
+        global_index: PersistentGlobalIndex {
+            repo,
+            _phantom: PhantomData,
+        },
+    };
+    persistent_object
 }
 
 /// Sync local commit log with server
@@ -261,31 +267,63 @@ pub async fn get_meta_passwords() -> Result<JsValue, JsValue> {
     Ok(JsValue::null())
 }
 
-pub async fn register() -> Result<JsValue, JsValue> {
-    let logger = WasmMetaLogger {};
+#[wasm_bindgen]
+pub struct WasmMetaClient {
+    meta_db: MetaDb,
+    meta_db_manager: MetaDbManager<WasmRepo, WasmDbError>
+}
 
-    let repo = WasmRepo::default();
+#[wasm_bindgen]
+impl WasmMetaClient {
+    pub fn new() -> Self {
+        let repo = WasmRepo::default();
+        let repo_rc = Rc::new(repo);
+        let persistent_object = get_persistent_object(repo_rc);
+        let persistent_object_rc = Rc::new(persistent_object);
 
-    let maybe_creds = repo.find_user_creds()
-        .await
-        .map_err(JsError::from)?;
+        let meta_db_manager = MetaDbManager {
+            persistent_obj: persistent_object_rc.clone(),
+        };
 
-    match maybe_creds {
-        Some(creds) => {
-            log("Wasm::register. Sign up");
-            let sign_up_request_factory = SignUpRequest {};
-            let sign_up_request = sign_up_request_factory.generic_request(&creds.user_sig);
+        let meta_db = MetaDb::default();
 
-            repo.save_event(&sign_up_request)
-                .await
-                .map_err(JsError::from)?;
-
-            let js_val = serde_wasm_bindgen::to_value(&VaultInfoStatus::Pending)?;
-            Ok(js_val)
+        WasmMetaClient {
+            meta_db,
+            meta_db_manager
         }
-        None => {
-            log("Registration error: user credentials not found");
-            panic!("Empty user credentials");
+    }
+
+    pub async fn register(mut self) -> Result<JsValue, JsValue> {
+        let logger = WasmMetaLogger {};
+        let repo = WasmRepo::default();
+
+        self.meta_db = self.meta_db_manager.sync_meta_db(self.meta_db, &logger).await;
+        log(format!("meta db: {:?}", self.meta_db).as_str());
+
+        let maybe_creds = repo.find_user_creds()
+            .await
+            .map_err(JsError::from)?;
+
+        match maybe_creds {
+            Some(creds) => {
+                log("Wasm::register. Sign up");
+
+                //check if vault is already exists in global index
+
+                let sign_up_request_factory = SignUpRequest {};
+                let sign_up_request = sign_up_request_factory.generic_request(&creds.user_sig);
+
+                repo.save_event(&sign_up_request)
+                    .await
+                    .map_err(JsError::from)?;
+
+                let js_val = serde_wasm_bindgen::to_value(&VaultInfoStatus::Pending)?;
+                Ok(js_val)
+            }
+            None => {
+                log("Registration error: user credentials not found");
+                panic!("Empty user credentials");
+            }
         }
     }
 }

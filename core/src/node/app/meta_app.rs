@@ -8,7 +8,7 @@ use crate::models::user_credentials::UserCredentials;
 use crate::node::db::generic_db::{KvLogEventRepo};
 use crate::node::db::models::{GenericKvLogEvent, KvLogEventLocal, KvKey, KvLogEvent, ObjectCreator, ObjectDescriptor};
 use crate::node::db::events::object_id::ObjectId;
-use crate::node::server::meta_server::MetaLogger;
+use crate::node::server::data_sync::MetaLogger;
 
 #[async_trait(? Send)]
 pub trait MetaVaultManager<Err: Error> {
