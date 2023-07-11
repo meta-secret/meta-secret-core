@@ -51,7 +51,7 @@ pub struct DataSync<Repo: KvLogEventRepo<Err>, Err: Error> {
 #[async_trait(? Send)]
 impl<Repo: KvLogEventRepo<Err>, Err: Error> DataSyncApi<Err> for DataSync<Repo, Err> {
     async fn sync_data<L: MetaLogger>(&self, request: SyncRequest, logger: &L) -> Result<Vec<GenericKvLogEvent>, Err> {
-        logger.log("sync data");
+        //logger.log("sync data");
 
         let mut commit_log: Vec<GenericKvLogEvent> = vec![];
 
@@ -236,9 +236,11 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> DataSync<Repo, Err> {
 
         //update global index
         //find the latest global_index_id???
+        let gi_obj_id = ObjectId::unit(&ObjectDescriptor::GlobalIndex);
         let global_index_tail_id = self.persistent_obj
-            .find_tail_id_by_obj_desc(&ObjectDescriptor::GlobalIndex)
-            .await;
+            .find_tail_id(&gi_obj_id)
+            .await
+            .unwrap_or(gi_obj_id);
 
         let mut gi_events = vec![];
         if let ObjectId::Unit { id: _ } = global_index_tail_id.clone() {

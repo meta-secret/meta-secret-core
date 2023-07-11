@@ -23,7 +23,7 @@ pub enum ObjectType {
     GlobalIndexObj,
     VaultObj,
 
-    Tail,
+    DbTail,
     MetaVaultObj,
     UserCreds,
 }
@@ -118,8 +118,8 @@ impl From<Base64EncodedText> for PublicKeyRecord {
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DbTail {
-    pub vault: ObjectId,
-    pub global_index: ObjectId,
+    pub vault: Option<ObjectId>,
+    pub global_index: Option<ObjectId>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
@@ -195,7 +195,7 @@ impl ObjectCreator<&ObjectDescriptor> for KvKey {
 #[serde(rename_all = "camelCase")]
 pub enum ObjectDescriptor {
     GlobalIndex,
-    Tail,
+    DbTail,
     Vault { name: String },
     MetaVault,
     UserCreds,
@@ -208,7 +208,7 @@ impl From<&ObjectDescriptor> for ObjectType {
             ObjectDescriptor::Vault { .. } => { ObjectType::VaultObj }
             ObjectDescriptor::MetaVault { .. } => { ObjectType::MetaVaultObj }
             ObjectDescriptor::UserCreds { .. } => { ObjectType::UserCreds }
-            ObjectDescriptor::Tail => { ObjectType::Tail }
+            ObjectDescriptor::DbTail => { ObjectType::DbTail }
         }
     }
 }
@@ -227,7 +227,7 @@ impl ObjectDescriptor {
     pub fn name(&self) -> String {
         match self {
             ObjectDescriptor::GlobalIndex => { String::from("meta-g") }
-            ObjectDescriptor::Tail => { String::from("db_tail") }
+            ObjectDescriptor::DbTail => { String::from("db_tail") }
 
             ObjectDescriptor::Vault { name } => { name.clone() }
             ObjectDescriptor::MetaVault => { String::from("main_meta_vault") }
@@ -243,7 +243,7 @@ impl ToString for ObjectDescriptor {
             ObjectDescriptor::Vault { .. } => String::from("Vault"),
             ObjectDescriptor::MetaVault { .. } => String::from("MetaVault"),
             ObjectDescriptor::UserCreds { .. } => String::from("UserCreds"),
-            ObjectDescriptor::Tail { .. } => String::from("DbTail")
+            ObjectDescriptor::DbTail { .. } => String::from("DbTail")
         }
     }
 }

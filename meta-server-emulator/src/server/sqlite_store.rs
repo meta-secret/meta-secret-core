@@ -6,7 +6,7 @@ use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnect
 use meta_secret_core::node::db::generic_db::{FindOneQuery, KvLogEventRepo, SaveCommand};
 use meta_secret_core::node::db::models::{GenericKvLogEvent};
 use meta_secret_core::node::db::events::object_id::{ObjectId};
-use meta_secret_core::node::server::meta_server::{MetaServerContextState};
+use meta_secret_core::node::server::data_sync::{MetaServerContextState};
 
 use crate::models::DbLogEvent;
 use crate::models::NewDbLogEvent;

@@ -29,6 +29,11 @@ extern "C" {
 }
 
 #[wasm_bindgen]
+pub fn configure() {
+    utils::set_panic_hook();
+}
+
+#[wasm_bindgen]
 pub async fn get_meta_vault() -> Result<Option<JsValue>, JsValue> {
     objects::get_meta_vault().await
 }
@@ -84,10 +89,6 @@ pub async fn get_meta_passwords() -> Result<JsValue, JsValue> {
     wasm_app::get_meta_passwords().await
 }
 
-#[wasm_bindgen]
-pub async fn register() -> Result<JsValue, JsValue> {
-    wasm_app::register().await
-}
 
 /// https://rustwasm.github.io/docs/wasm-bindgen/reference/arbitrary-data-with-serde.html
 #[wasm_bindgen]

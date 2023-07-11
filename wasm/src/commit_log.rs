@@ -6,7 +6,7 @@ use wasm_bindgen::JsValue;
 use meta_secret_core::node::db::generic_db::SaveCommand;
 use meta_secret_core::node::db::generic_db::{CommitLogDbConfig, FindOneQuery, KvLogEventRepo};
 use meta_secret_core::node::db::models::{GenericKvLogEvent};
-use meta_secret_core::node::server::meta_server::MetaLogger;
+use meta_secret_core::node::server::data_sync::MetaLogger;
 
 use crate::db::WasmDbError;
 use crate::{idbGet, idbSave};

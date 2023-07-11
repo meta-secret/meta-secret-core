@@ -86,7 +86,7 @@ impl ObjectId {
     }
 
     pub fn db_tail() -> ObjectId {
-        ObjectId::unit(&ObjectDescriptor::Tail)
+        ObjectId::unit(&ObjectDescriptor::DbTail)
     }
 
     pub fn global_index_unit() -> ObjectId {

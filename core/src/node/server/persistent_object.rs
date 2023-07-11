@@ -12,7 +12,7 @@ use std::rc::Rc;
 use async_trait::async_trait;
 use std::marker::PhantomData;
 use std::cell::RefCell;
-use crate::node::server::meta_server::MetaLogger;
+use crate::node::server::data_sync::MetaLogger;
 
 pub struct PersistentObject<Repo: KvLogEventRepo<Err>, Err: Error> {
     pub repo: Rc<Repo>,
@@ -42,7 +42,7 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> PersistentObject<Repo, Err> {
     }
 
     pub async fn find_object_events<L: MetaLogger>(&self, tail_id: &ObjectId, logger: &L) -> Vec<GenericKvLogEvent> {
-        logger.log("find_object_events");
+        //logger.log("find_object_events");
 
         let mut commit_log: Vec<GenericKvLogEvent> = vec![];
 
@@ -69,55 +69,67 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> PersistentObject<Repo, Err> {
         commit_log
     }
 
-    pub async fn find_tail_id(&self, curr_id: &ObjectId) -> ObjectId {
+    pub async fn find_tail_id(&self, curr_id: &ObjectId) -> Option<ObjectId> {
 
         let mut existing_id = curr_id.clone();
         let mut curr_tail_id = curr_id.clone();
-        loop {
-            let global_idx_result = self
-                .repo
-                .find_one(&curr_tail_id)
-                .await;
 
-            match global_idx_result {
-                Ok(maybe_idx) => match maybe_idx {
-                    Some(idx) => {
-                        existing_id = idx.key().obj_id.clone();
-                        curr_tail_id = existing_id.next();
+        let initial_global_idx_result = self
+            .repo
+            .find_one(&curr_tail_id)
+            .await;
+
+        match initial_global_idx_result {
+            Ok(_) => {
+                loop {
+                    let global_idx_result = self
+                        .repo
+                        .find_one(&curr_tail_id)
+                        .await;
+
+                    match global_idx_result {
+                        Ok(maybe_idx) => match maybe_idx {
+                            Some(idx) => {
+                                existing_id = idx.key().obj_id.clone();
+                                curr_tail_id = existing_id.next();
+                            }
+                            None => {
+                                break;
+                            }
+                        },
+                        Err(_) => {
+                            break;
+                        }
                     }
-                    None => {
-                        break;
-                    }
-                },
-                Err(_) => {
-                    break;
                 }
+
+                Some(existing_id)
+            }
+            Err(_) => {
+                None
             }
         }
-
-        existing_id
     }
 
-    pub async fn find_tail_id_by_obj_desc(&self, obj_desc: &ObjectDescriptor) -> ObjectId {
+    pub async fn find_tail_id_by_obj_desc(&self, obj_desc: &ObjectDescriptor) -> Option<ObjectId> {
         let unit_id = ObjectId::unit(obj_desc);
         self.find_tail_id(&unit_id).await
     }
 
-    pub async fn get_db_tail(&self, vault_id: &ObjectId) -> Result<DbTail, Err> {
-        let db_tail_obj_desc = &ObjectDescriptor::Tail;
-        let obj_id = self.find_tail_id_by_obj_desc(db_tail_obj_desc).await;
+    pub async fn get_db_tail(&self) -> Result<DbTail, Err> {
+        let obj_id = ObjectId::unit(&ObjectDescriptor::DbTail);
         let maybe_db_tail = self.repo.find_one(&obj_id).await?;
 
         match maybe_db_tail {
             None => {
                 let db_tail = DbTail {
-                    vault: vault_id.clone(),
-                    global_index: ObjectId::global_index_unit(),
+                    vault: None,
+                    global_index: None,
                 };
 
                 let tail_event = {
                     let event = KvLogEvent {
-                        key: KvKey::unit(&ObjectDescriptor::Tail),
+                        key: KvKey::unit(&ObjectDescriptor::DbTail),
                         value: db_tail.clone(),
                     };
                     GenericKvLogEvent::LocalEvent(KvLogEventLocal::Tail { event })
