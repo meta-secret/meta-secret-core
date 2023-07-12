@@ -309,16 +309,21 @@ impl WasmMetaClient {
                 log("Wasm::register. Sign up");
 
                 //check if vault is already exists in global index
+                if self.meta_db.global_index_store.global_index.contains(&creds.user_sig.vault.name) {
+                    alert("Join!!!!!!!!!");
+                    let js_val = serde_wasm_bindgen::to_value(&VaultInfoStatus::Pending)?;
+                    Ok(js_val)
+                } else {
+                    let sign_up_request_factory = SignUpRequest {};
+                    let sign_up_request = sign_up_request_factory.generic_request(&creds.user_sig);
 
-                let sign_up_request_factory = SignUpRequest {};
-                let sign_up_request = sign_up_request_factory.generic_request(&creds.user_sig);
+                    repo.save_event(&sign_up_request)
+                        .await
+                        .map_err(JsError::from)?;
 
-                repo.save_event(&sign_up_request)
-                    .await
-                    .map_err(JsError::from)?;
-
-                let js_val = serde_wasm_bindgen::to_value(&VaultInfoStatus::Pending)?;
-                Ok(js_val)
+                    let js_val = serde_wasm_bindgen::to_value(&VaultInfoStatus::Pending)?;
+                    Ok(js_val)
+                }
             }
             None => {
                 log("Registration error: user credentials not found");
