@@ -69,7 +69,6 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> DataSyncApi<Err> for DataSync<Repo, 
                     .persistent_obj
                     .find_object_events(&index_id, logger)
                     .await;
-
                 commit_log.extend(meta_g);
             }
         }

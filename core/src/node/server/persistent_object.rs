@@ -71,39 +71,47 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> PersistentObject<Repo, Err> {
 
     pub async fn find_tail_id(&self, curr_id: &ObjectId) -> Option<ObjectId> {
 
-        let mut existing_id = curr_id.clone();
-        let mut curr_tail_id = curr_id.clone();
 
         let initial_global_idx_result = self
             .repo
-            .find_one(&curr_tail_id)
+            .find_one(curr_id)
             .await;
 
         match initial_global_idx_result {
-            Ok(_) => {
-                loop {
-                    let global_idx_result = self
-                        .repo
-                        .find_one(&curr_tail_id)
-                        .await;
+            Ok(maybe_gi) => {
+                match maybe_gi {
+                    None => {
+                        None
+                    }
+                    Some(gi) => {
+                        let mut existing_id = gi.key().obj_id.clone();
+                        let mut curr_tail_id = gi.key().obj_id.clone();
 
-                    match global_idx_result {
-                        Ok(maybe_idx) => match maybe_idx {
-                            Some(idx) => {
-                                existing_id = idx.key().obj_id.clone();
-                                curr_tail_id = existing_id.next();
+                        loop {
+                            let global_idx_result = self
+                                .repo
+                                .find_one(&curr_tail_id)
+                                .await;
+
+                            match global_idx_result {
+                                Ok(maybe_idx) => match maybe_idx {
+                                    Some(idx) => {
+                                        existing_id = idx.key().obj_id.clone();
+                                        curr_tail_id = existing_id.next();
+                                    }
+                                    None => {
+                                        break;
+                                    }
+                                },
+                                Err(_) => {
+                                    break;
+                                }
                             }
-                            None => {
-                                break;
-                            }
-                        },
-                        Err(_) => {
-                            break;
                         }
+
+                        Some(existing_id)
                     }
                 }
-
-                Some(existing_id)
             }
             Err(_) => {
                 None
