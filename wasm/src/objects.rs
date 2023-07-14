@@ -2,14 +2,8 @@ use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
 use meta_secret_core::crypto::keys::KeyManager;
-use meta_secret_core::models::{DeviceInfo, MetaVault, UserCredentials, UserSignature};
+use meta_secret_core::models::{MetaVault, UserCredentials};
 use meta_secret_core::node::app::meta_app::{MetaVaultManager, UserCredentialsManager};
-use meta_secret_core::node::db::events::object_id::ObjectId;
-use meta_secret_core::node::db::events::sign_up::SignUpRequest;
-use meta_secret_core::node::db::generic_db::SaveCommand;
-use meta_secret_core::node::db::models::{
-    DbTail, GenericKvLogEvent, KvKey, KvLogEvent, KvLogEventLocal, ObjectCreator, ObjectDescriptor
-};
 
 use crate::{alert, log};
 use crate::commit_log::{WasmMetaLogger, WasmRepo};

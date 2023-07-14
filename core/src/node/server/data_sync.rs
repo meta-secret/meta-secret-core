@@ -11,6 +11,7 @@ use crate::node::db::events::join;
 use crate::node::db::events::object_id::{IdGen, IdStr, ObjectId};
 use crate::node::db::events::sign_up::SignUpAction;
 use crate::node::db::generic_db::KvLogEventRepo;
+use crate::node::db::meta_db::MetaDb;
 use crate::node::db::models::{GlobalIndexObject, KvLogEvent, ObjectCreator, ObjectDescriptor, VaultObject};
 use crate::node::db::models::{GenericKvLogEvent, PublicKeyRecord};
 use crate::node::server::persistent_object::PersistentObject;
@@ -55,6 +56,9 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> DataSyncApi<Err> for DataSync<Repo, 
 
         let mut commit_log: Vec<GenericKvLogEvent> = vec![];
 
+        let mut meta_db = MetaDb::default();
+        meta_db.vault_store.tail_id = request.vault_tail_id.clone().map(|id| id.unit_id());
+
         match request.global_index {
             None => {
                 let descriptor = ObjectDescriptor::GlobalIndex;
@@ -73,26 +77,29 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> DataSyncApi<Err> for DataSync<Repo, 
             }
         }
 
-        match request.vault {
+        match &request.vault_tail_id {
             None => {
                 // Ignore empty requests
             }
-            Some(vault_request) => {
-                match vault_request.tail_id {
-                    Some(request_tail_id) => {
-                        //get all types of objects and build a commit log
+            Some(vault_tail_id) => {
+                let meta_db = self.meta_db_manager.sync_meta_db(meta_db, logger).await;
 
-                        let vault_events = self
-                            .persistent_obj
-                            .find_object_events(&request_tail_id, logger)
-                            .await;
-
-                        println!("sync. events num: {:?}", vault_events.len());
-
-                        commit_log.extend(vault_events);
-                    }
+                match meta_db.vault_store.vault {
                     None => {
-                        println!("no need to do any actions");
+                        panic!("Impossible")
+                    }
+                    Some(server_vault) => {
+                        let signatures: Vec<String> = server_vault.signatures.iter()
+                            .map(|sig| sig.transport_public_key.base64_text.to_string())
+                            .collect();
+
+                        if signatures.contains(&request.sender_pk.pk.base64_text) {
+                            let vault_events = self
+                                .persistent_obj
+                                .find_object_events(vault_tail_id, logger)
+                                .await;
+                            commit_log.extend(vault_events);
+                        }
                     }
                 }
             }
@@ -175,7 +182,7 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> DataSyncApi<Err> for DataSync<Repo, 
             GenericKvLogEvent::LocalEvent(evt_type) => {
                 logger.log(format!("Local events can't be sent: {:?}", evt_type).as_str());
             }
-            GenericKvLogEvent::Error{ .. } => {
+            GenericKvLogEvent::Error { .. } => {
                 logger.log("Errors not yet implemented");
             }
         }

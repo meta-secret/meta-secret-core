@@ -4,17 +4,15 @@ use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 
 use meta_secret_core::crypto::keys::KeyManager;
-use meta_secret_core::models::{UserCredentials, UserSignature};
+use meta_secret_core::models::{UserCredentials};
 use meta_secret_core::node::app::meta_app::{MetaVaultManager, UserCredentialsManager};
 use meta_secret_core::node::db::events::object_id::{IdGen, ObjectId};
-use meta_secret_core::node::db::events::sign_up::{SignUpAction, SignUpRequest};
+use meta_secret_core::node::db::events::sign_up::{SignUpRequest};
 use meta_secret_core::node::db::generic_db::SaveCommand;
-use meta_secret_core::node::db::models::{
-    DbTail, GenericKvLogEvent, KvKey, KvLogEvent, KvLogEventLocal, LogEventKeyBasedRecord, ObjectCreator, ObjectDescriptor,
-};
+use meta_secret_core::node::db::models::{DbTail, GenericKvLogEvent, KvKey, KvLogEvent, KvLogEventLocal, LogEventKeyBasedRecord, ObjectCreator, ObjectDescriptor, PublicKeyRecord};
 use meta_secret_core::node::server::data_sync::{DataSyncApi, MetaLogger};
 use meta_secret_core::node::server::persistent_object::{PersistentGlobalIndex, PersistentObject};
-use meta_secret_core::node::server::request::{SyncRequest, VaultSyncRequest};
+use meta_secret_core::node::server::request::{SyncRequest};
 
 use crate::{alert, log, utils};
 use crate::commit_log::{WasmMetaLogger, WasmRepo};
@@ -70,12 +68,12 @@ impl WasmMetaServer {
 
                                 //logger.log(format!("curr db_tail: {:?}", db_tail).as_str());
 
-                                let maybe_new_tail_for_vault = Self::get_new_tail_for_vault(
+                                let maybe_new_tail_for_vault = WasmMetaServer::get_new_tail_for_vault(
                                     &logger,
                                     &server_repo_rc,
                                     &client_persistent_object,
                                     &server_creds,
-                                    maybe_client_creds,
+                                    maybe_client_creds.clone(),
                                     &db_tail
                                 ).await;
 
@@ -104,11 +102,31 @@ impl WasmMetaServer {
                                         .unwrap();
                                 }
 
-                                let request = SyncRequest {
-                                    vault: Some(VaultSyncRequest {
-                                        tail_id: new_db_tail.vault.clone().map(|vault_id| vault_id.next()),
-                                    }),
-                                    global_index: new_db_tail.global_index.clone().map(|gi| gi.next()),
+                                let request = {
+                                    let vault_id_request = match new_db_tail.vault.clone() {
+                                        None => {
+                                            match &maybe_client_creds {
+                                                None => {
+                                                    None
+                                                }
+                                                Some(client_creds) => {
+                                                    let vault_name = client_creds.user_sig.vault.name.as_str();
+                                                    Some(ObjectId::vault_unit(vault_name))
+                                                }
+                                            }
+                                        }
+                                        Some(vault_id) => {
+                                            Some(vault_id.next())
+                                        }
+                                    };
+
+                                    SyncRequest {
+                                        sender_pk: PublicKeyRecord {
+                                            pk: *maybe_client_creds.unwrap().user_sig.transport_public_key
+                                        },
+                                        global_index: new_db_tail.global_index.clone().map(|gi| gi.next()),
+                                        vault_tail_id: vault_id_request,
+                                    }
                                 };
 
                                 let server_data_sync = get_data_sync(server_repo_rc, &server_creds);

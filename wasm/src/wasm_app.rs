@@ -5,10 +5,8 @@ use meta_secret_core::models::{UserCredentials, VaultInfoData, VaultInfoStatus};
 use meta_secret_core::node::app::meta_app::UserCredentialsManager;
 use meta_secret_core::node::db::commit_log::MetaDbManager;
 use meta_secret_core::node::db::meta_db::MetaDb;
-use meta_secret_core::node::db::models::ObjectDescriptor;
-use meta_secret_core::node::server::data_sync::{DataSync, DataSyncApi, MetaServerContextState};
+use meta_secret_core::node::server::data_sync::{DataSync, MetaServerContextState};
 use meta_secret_core::node::server::persistent_object::{PersistentGlobalIndex, PersistentObject};
-use meta_secret_core::node::server::request::SyncRequest;
 use std::marker::PhantomData;
 use std::rc::Rc;
 use wasm_bindgen::{JsError, JsValue};
@@ -16,44 +14,8 @@ use meta_secret_core::node::db::events::sign_up::SignUpRequest;
 use meta_secret_core::node::db::generic_db::SaveCommand;
 use crate::db::WasmDbError;
 use wasm_bindgen::prelude::*;
+use meta_secret_core::node::db::events::object_id::ObjectId;
 use crate::server::WasmMetaServer;
-
-pub async fn get_vault() -> Result<JsValue, JsValue> {
-    log("wasm: get vault!");
-    let repo = WasmRepo::default();
-
-    let maybe_creds = repo.find_user_creds().await.map_err(JsError::from)?;
-
-    let vault_info = match maybe_creds {
-        Some(creds) => {
-            let meta_db = MetaDb::default();
-
-            let vault_desc = ObjectDescriptor::Vault {
-                name: creds.user_sig.vault.name.clone(),
-            };
-
-            if meta_db
-                .global_index_store
-                .global_index
-                .contains(vault_desc.to_id().as_str())
-            {
-                //if the vault is already present:
-                match meta_db.vault_store.vault {
-                    None => VaultInfoData::empty(VaultInfoStatus::Unknown),
-                    Some(vault_doc) => VaultInfoData {
-                        vault_info: Some(VaultInfoStatus::Member),
-                        vault: Some(Box::new(vault_doc)),
-                    },
-                }
-            } else {
-                VaultInfoData::empty(VaultInfoStatus::NotFound)
-            }
-        }
-        None => panic!("Empty user credentials"),
-    };
-
-    vault_info.to_js()
-}
 
 pub fn get_data_sync(repo: Rc<WasmRepo>, creds: &UserCredentials) -> DataSync<WasmRepo, WasmDbError> {
     let persistent_object = get_persistent_object(repo.clone());
@@ -61,6 +23,7 @@ pub fn get_data_sync(repo: Rc<WasmRepo>, creds: &UserCredentials) -> DataSync<Wa
 
     let meta_db_manager = MetaDbManager {
         persistent_obj: persistent_object_rc.clone(),
+        repo: repo.clone()
     };
     let meta_db_manager_rc = Rc::new(meta_db_manager);
 
@@ -278,11 +241,12 @@ impl WasmMetaClient {
     pub fn new() -> Self {
         let repo = WasmRepo::default();
         let repo_rc = Rc::new(repo);
-        let persistent_object = get_persistent_object(repo_rc);
+        let persistent_object = get_persistent_object(repo_rc.clone());
         let persistent_object_rc = Rc::new(persistent_object);
 
         let meta_db_manager = MetaDbManager {
             persistent_obj: persistent_object_rc.clone(),
+            repo: repo_rc,
         };
 
         let meta_db = MetaDb::default();
@@ -293,10 +257,53 @@ impl WasmMetaClient {
         }
     }
 
+    pub async fn get_vault(mut self) -> Result<JsValue, JsValue> {
+        log("wasm: get vault!");
+
+        let logger = WasmMetaLogger {};
+        WasmMetaServer::new().run_server().await;
+
+        let repo = WasmRepo::default();
+
+        let maybe_creds = repo.find_user_creds()
+            .await
+            .map_err(JsError::from)?;
+
+        let vault_info = match maybe_creds {
+            Some(creds) => {
+                let vault_obj = ObjectId::vault_unit(creds.user_sig.vault.name.as_str());
+                let vault_id = self.meta_db.vault_store.tail_id.unwrap_or(vault_obj);
+
+                self.meta_db.vault_store.tail_id = Some(vault_id.clone());
+                self.meta_db = self.meta_db_manager.sync_meta_db(self.meta_db, &logger).await;
+
+                let global_index = &self.meta_db.global_index_store.global_index;
+                if global_index.contains(vault_id.unit_id().id_str().as_str()) {
+                    //if the vault is already present:
+                    match self.meta_db.vault_store.vault.as_ref() {
+                        None => {
+                            VaultInfoData::empty(VaultInfoStatus::Unknown)
+                        },
+                        Some(vault_doc) => VaultInfoData {
+                            vault_info: Some(VaultInfoStatus::Member),
+                            vault: Some(Box::new(vault_doc.clone())),
+                        },
+                    }
+                } else {
+                    VaultInfoData::empty(VaultInfoStatus::NotFound)
+                }
+            }
+            None => panic!("Empty user credentials"),
+        };
+
+        vault_info.to_js()
+    }
+
     pub async fn register(mut self) -> Result<JsValue, JsValue> {
         let logger = WasmMetaLogger {};
         let repo = WasmRepo::default();
 
+        WasmMetaServer::new().run_server().await;
         self.meta_db = self.meta_db_manager.sync_meta_db(self.meta_db, &logger).await;
         log(format!("meta db: {:?}", self.meta_db).as_str());
 
@@ -309,8 +316,12 @@ impl WasmMetaClient {
                 log("Wasm::register. Sign up");
 
                 //check if vault is already exists in global index
-                if self.meta_db.global_index_store.global_index.contains(&creds.user_sig.vault.name) {
-                    alert("Join!!!!!!!!!");
+                let vault_name = creds.user_sig.vault.name.clone();
+                let vault_id = ObjectId::vault_unit(vault_name.as_str());
+                if self.meta_db.global_index_store.global_index.contains(&vault_id.id_str()) {
+                    // check if I have a vault?
+
+
                     let js_val = serde_wasm_bindgen::to_value(&VaultInfoStatus::Pending)?;
                     Ok(js_val)
                 } else {

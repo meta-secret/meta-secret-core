@@ -43,11 +43,6 @@ pub async fn create_meta_vault(vault_name: &str, device_name: &str) -> Result<Js
     objects::create_meta_vault(vault_name, device_name).await
 }
 
-#[wasm_bindgen]
-pub async fn get_vault() -> Result<JsValue, JsValue> {
-    wasm_app::get_vault().await
-}
-
 ///https://rustwasm.github.io/wasm-bindgen/examples/closures.html
 #[wasm_bindgen]
 pub async fn recover() -> Result<JsValue, JsValue> {
