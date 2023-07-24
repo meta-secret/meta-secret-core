@@ -22,6 +22,7 @@ pub enum LogCommandError {
 pub enum ObjectType {
     GlobalIndexObj,
     VaultObj,
+    MempoolObj,
 
     DbTail,
     MetaVaultObj,
@@ -49,13 +50,32 @@ pub enum GlobalIndexObject {
 #[serde(rename_all = "camelCase")]
 pub enum VaultObject {
     /// SingUp request
-    Unit { event: KvLogEvent<UserSignature> },
-    Genesis { event: KvLogEvent<PublicKeyRecord> },
+    Unit {
+        event: KvLogEvent<UserSignature>,
+    },
+    Genesis {
+        event: KvLogEvent<PublicKeyRecord>,
+    },
 
-    SignUpUpdate { event: KvLogEvent<VaultDoc> },
+    SignUpUpdate {
+        event: KvLogEvent<VaultDoc>,
+    },
 
-    JoinUpdate { event: KvLogEvent<VaultDoc> },
-    JoinRequest { event: KvLogEvent<UserSignature> },
+    JoinUpdate {
+        event: KvLogEvent<VaultDoc>,
+    },
+
+    JoinRequest {
+        event: KvLogEvent<UserSignature>,
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MempoolObject {
+    JoinRequest {
+        event: KvLogEvent<UserSignature>,
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -64,6 +84,8 @@ pub enum VaultObject {
 pub enum GenericKvLogEvent {
     GlobalIndex(GlobalIndexObject),
     Vault(VaultObject),
+
+    Mempool(MempoolObject),
 
     LocalEvent(KvLogEventLocal),
 
@@ -77,27 +99,30 @@ pub trait LogEventKeyBasedRecord {
 impl LogEventKeyBasedRecord for GenericKvLogEvent {
     fn key(&self) -> &KvKey {
         match self {
-            GenericKvLogEvent::GlobalIndex(gi_obj) => {
-                match gi_obj {
-                    GlobalIndexObject::Unit { event } => { &event.key }
-                    GlobalIndexObject::Genesis { event } => { &event.key }
-                    GlobalIndexObject::Update { event } => { &event.key }
+            GenericKvLogEvent::GlobalIndex(gi_obj) => match gi_obj {
+                GlobalIndexObject::Unit { event } => &event.key,
+                GlobalIndexObject::Genesis { event } => &event.key,
+                GlobalIndexObject::Update { event } => &event.key,
+            },
+            GenericKvLogEvent::Vault(vault_obj) => match vault_obj {
+                VaultObject::Unit { event } => &event.key,
+                VaultObject::Genesis { event } => &event.key,
+                VaultObject::SignUpUpdate { event } => &event.key,
+                VaultObject::JoinUpdate { event } => &event.key,
+                VaultObject::JoinRequest { event } => &event.key,
+            },
+            GenericKvLogEvent::Mempool(mem_pool_obj) =>  {
+                match mem_pool_obj {
+                    MempoolObject::JoinRequest { event } => {
+                        &event.key
+                    }
                 }
-            }
-            GenericKvLogEvent::Vault(vault_obj) => {
-                match vault_obj {
-                    VaultObject::Unit { event } => { &event.key }
-                    VaultObject::Genesis { event } => { &event.key }
-                    VaultObject::SignUpUpdate { event } => { &event.key }
-                    VaultObject::JoinUpdate { event } => { &event.key }
-                    VaultObject::JoinRequest { event } => { &event.key }
-                }
-            }
+            },
             GenericKvLogEvent::LocalEvent(op) => match op {
                 KvLogEventLocal::Tail { event } => &event.key,
                 KvLogEventLocal::MetaVault { event } => &event.key,
                 KvLogEventLocal::UserCredentials { event } => &event.key,
-            }
+            },
             GenericKvLogEvent::Error { event } => &event.key,
         }
     }
@@ -120,6 +145,7 @@ impl From<Base64EncodedText> for PublicKeyRecord {
 pub struct DbTail {
     pub vault: Option<ObjectId>,
     pub global_index: Option<ObjectId>,
+    pub mem_pool: Option<ObjectId>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
@@ -195,6 +221,7 @@ impl ObjectCreator<&ObjectDescriptor> for KvKey {
 #[serde(rename_all = "camelCase")]
 pub enum ObjectDescriptor {
     GlobalIndex,
+    Mempool,
     DbTail,
     Vault { name: String },
     MetaVault,
@@ -204,11 +231,12 @@ pub enum ObjectDescriptor {
 impl From<&ObjectDescriptor> for ObjectType {
     fn from(desc: &ObjectDescriptor) -> Self {
         match desc {
-            ObjectDescriptor::GlobalIndex => { ObjectType::GlobalIndexObj }
-            ObjectDescriptor::Vault { .. } => { ObjectType::VaultObj }
-            ObjectDescriptor::MetaVault { .. } => { ObjectType::MetaVaultObj }
-            ObjectDescriptor::UserCreds { .. } => { ObjectType::UserCreds }
-            ObjectDescriptor::DbTail => { ObjectType::DbTail }
+            ObjectDescriptor::GlobalIndex => ObjectType::GlobalIndexObj,
+            ObjectDescriptor::Vault { .. } => ObjectType::VaultObj,
+            ObjectDescriptor::MetaVault { .. } => ObjectType::MetaVaultObj,
+            ObjectDescriptor::UserCreds { .. } => ObjectType::UserCreds,
+            ObjectDescriptor::DbTail => ObjectType::DbTail,
+            ObjectDescriptor::Mempool => ObjectType::MempoolObj
         }
     }
 }
@@ -226,12 +254,14 @@ impl ObjectDescriptor {
 
     pub fn name(&self) -> String {
         match self {
-            ObjectDescriptor::GlobalIndex => { String::from("meta-g") }
-            ObjectDescriptor::DbTail => { String::from("db_tail") }
+            ObjectDescriptor::GlobalIndex => String::from("meta-g"),
+            ObjectDescriptor::Mempool => String::from("mem_pool"),
 
-            ObjectDescriptor::Vault { name } => { name.clone() }
-            ObjectDescriptor::MetaVault => { String::from("main_meta_vault") }
-            ObjectDescriptor::UserCreds => { String::from("user_creds") }
+            ObjectDescriptor::DbTail => String::from("db_tail"),
+
+            ObjectDescriptor::Vault { name } => name.clone(),
+            ObjectDescriptor::MetaVault => String::from("main_meta_vault"),
+            ObjectDescriptor::UserCreds => String::from("user_creds"),
         }
     }
 }
@@ -240,10 +270,11 @@ impl ToString for ObjectDescriptor {
     fn to_string(&self) -> String {
         match self {
             ObjectDescriptor::GlobalIndex { .. } => String::from("GlobalIndex"),
+            ObjectDescriptor::Mempool { .. } => String::from("Mempool"),
             ObjectDescriptor::Vault { .. } => String::from("Vault"),
             ObjectDescriptor::MetaVault { .. } => String::from("MetaVault"),
             ObjectDescriptor::UserCreds { .. } => String::from("UserCreds"),
-            ObjectDescriptor::DbTail { .. } => String::from("DbTail")
+            ObjectDescriptor::DbTail { .. } => String::from("DbTail"),
         }
     }
 }
@@ -260,4 +291,19 @@ impl IdGen for KvKey {
             object_type: self.object_type,
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum VaultInfo {
+    /// Device is a member of a vault
+    Member { vault: VaultDoc },
+    /// Device is waiting to be added to a vault.
+    Pending,
+    /// Vault members declined to add a device into the vault.
+    Declined,
+    /// Vault not found
+    NotFound,
+    /// Device can't get any information about the vault, because its signature is not in members or pending list
+    NotMember,
 }

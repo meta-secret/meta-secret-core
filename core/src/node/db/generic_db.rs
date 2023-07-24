@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 
 use crate::models::{MetaPasswordId, SecretDistributionDocData};
-use crate::node::db::models::{GenericKvLogEvent, LogEventKeyBasedRecord};
 use crate::node::db::events::object_id::ObjectId;
+use crate::node::db::models::{GenericKvLogEvent, LogEventKeyBasedRecord};
 
 #[async_trait(? Send)]
 pub trait SaveCommand<DbErr: std::error::Error> {

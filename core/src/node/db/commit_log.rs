@@ -1,16 +1,15 @@
 use std::error::Error;
 use std::rc::Rc;
 
-use crate::models::{VaultDoc};
+use crate::models::VaultDoc;
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::meta_db::MetaDb;
 use crate::node::db::models::{
-    GenericKvLogEvent, GlobalIndexObject, LogCommandError, LogEventKeyBasedRecord, VaultObject
+    GenericKvLogEvent, GlobalIndexObject, LogCommandError, LogEventKeyBasedRecord, VaultObject,
 };
 use crate::node::server::data_sync::MetaLogger;
 use crate::node::server::persistent_object::PersistentObject;
-
 
 pub struct MetaDbManager<Repo: KvLogEventRepo<Err>, Err: Error> {
     pub persistent_obj: Rc<PersistentObject<Repo, Err>>,
@@ -25,46 +24,45 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> MetaDbManager<Repo, Err> {
             let g_store = &mut meta_db.global_index_store;
 
             match generic_event {
-                GenericKvLogEvent::GlobalIndex(gi_obj_info) => {
-                    match gi_obj_info {
-                        GlobalIndexObject::Unit { .. } => {
-                            println!("Skip. Unit type doesn't contain any data needed for creating a vault object");
-                        }
-                        GlobalIndexObject::Genesis { event } => {
-                            let server_pk = event.value.clone();
-                            meta_db.global_index_store.tail_id = Some(event.key.obj_id.clone());
-                            meta_db.global_index_store.server_pk = Some(server_pk)
-                        }
-                        GlobalIndexObject::Update { event } => {
-                            let vault_id: String = event.value.vault_id.clone();
-                            g_store.global_index.insert(vault_id);
-                        }
+                GenericKvLogEvent::GlobalIndex(gi_obj_info) => match gi_obj_info {
+                    GlobalIndexObject::Unit { .. } => {
+                        println!("Skip. Unit type doesn't contain any data needed for creating a vault object");
                     }
-                }
-                GenericKvLogEvent::Vault(vault_obj_info) => {
-                    match vault_obj_info {
-                        VaultObject::Unit { .. } => {
-                            println!("Skip. Unit type doesn't contain any data needed for creating a vault object");
-                        }
-                        VaultObject::Genesis { event } => {
-                            let server_pk = event.value.clone();
-                            meta_db.vault_store.tail_id = Some(event.key.obj_id.clone());
-                            meta_db.vault_store.server_pk = Some(server_pk)
-                        }
-                        VaultObject::SignUpUpdate { event } => {
-                            let vault: VaultDoc = event.value.clone();
-                            vault_store.vault = Some(vault);
-                            vault_store.tail_id = Some(event.key.obj_id.clone())
-                        }
-                        VaultObject::JoinUpdate { event } => {
-                            let vault: VaultDoc = event.value.clone();
-                            vault_store.vault = Some(vault);
-                            vault_store.tail_id = Some(event.key.obj_id.clone())
-                        }
-                        VaultObject::JoinRequest { .. } => {
-                            println!("Skip 'join' request");
-                        }
+                    GlobalIndexObject::Genesis { event } => {
+                        let server_pk = event.value.clone();
+                        meta_db.global_index_store.tail_id = Some(event.key.obj_id.clone());
+                        meta_db.global_index_store.server_pk = Some(server_pk)
                     }
+                    GlobalIndexObject::Update { event } => {
+                        let vault_id: String = event.value.vault_id.clone();
+                        g_store.global_index.insert(vault_id);
+                    }
+                },
+                GenericKvLogEvent::Vault(vault_obj_info) => match vault_obj_info {
+                    VaultObject::Unit { .. } => {
+                        println!("Skip. Unit type doesn't contain any data needed for creating a vault object");
+                    }
+                    VaultObject::Genesis { event } => {
+                        let server_pk = event.value.clone();
+                        meta_db.vault_store.tail_id = Some(event.key.obj_id.clone());
+                        meta_db.vault_store.server_pk = Some(server_pk)
+                    }
+                    VaultObject::SignUpUpdate { event } => {
+                        let vault: VaultDoc = event.value.clone();
+                        vault_store.vault = Some(vault);
+                        vault_store.tail_id = Some(event.key.obj_id.clone())
+                    }
+                    VaultObject::JoinUpdate { event } => {
+                        let vault: VaultDoc = event.value.clone();
+                        vault_store.vault = Some(vault);
+                        vault_store.tail_id = Some(event.key.obj_id.clone())
+                    }
+                    VaultObject::JoinRequest { .. } => {
+                        println!("Skip 'join' request");
+                    }
+                },
+                GenericKvLogEvent::Mempool(_) => {
+                    panic!("Internal mempool event");
                 }
                 GenericKvLogEvent::LocalEvent(_) => {
                     panic!("Internal event");
@@ -84,7 +82,7 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> MetaDbManager<Repo, Err> {
     }
 
     pub async fn sync_meta_db<L: MetaLogger>(&self, mut meta_db: MetaDb, logger: &L) -> MetaDb {
-        logger.log("Sync meta db");
+        //logger.log("Sync meta db");
 
         let maybe_vault_tail_id = meta_db.vault_store.tail_id.clone();
 
@@ -92,11 +90,7 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> MetaDbManager<Repo, Err> {
             None => {
                 vec![]
             }
-            Some(vault_tail_id) => {
-                self
-                    .persistent_obj
-                    .find_object_events(&vault_tail_id, logger).await
-            }
+            Some(vault_tail_id) => self.persistent_obj.find_object_events(&vault_tail_id, logger).await,
         };
 
         for curr_event in vault_events {
@@ -126,6 +120,9 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> MetaDbManager<Repo, Err> {
                         }
                     }
                 }
+                GenericKvLogEvent::Mempool(_) => {
+                    panic!("Invalid state");
+                }
                 GenericKvLogEvent::LocalEvent(_) => {
                     panic!("Invalid state");
                 }
@@ -139,10 +136,7 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> MetaDbManager<Repo, Err> {
         let maybe_gi_tail_id = meta_db.global_index_store.tail_id.clone();
         let gi_tail_id = maybe_gi_tail_id.unwrap_or(ObjectId::global_index_unit());
 
-        let gi_events = self
-            .persistent_obj
-            .find_object_events(&gi_tail_id, logger)
-            .await;
+        let gi_events = self.persistent_obj.find_object_events(&gi_tail_id, logger).await;
 
         for gi_event in gi_events {
             match &gi_event {
@@ -157,7 +151,10 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> MetaDbManager<Repo, Err> {
                             meta_db.global_index_store.server_pk = Some(event.value.clone());
                         }
                         GlobalIndexObject::Update { event } => {
-                            meta_db.global_index_store.global_index.insert(event.value.vault_id.clone());
+                            meta_db
+                                .global_index_store
+                                .global_index
+                                .insert(event.value.vault_id.clone());
                         }
                     }
                 }

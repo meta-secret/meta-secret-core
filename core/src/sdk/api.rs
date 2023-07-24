@@ -2,8 +2,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::{
     FindSharesResult, MembershipStatus, MetaPasswordsData, PasswordRecoveryRequest, RegistrationStatus,
-    SecretDistributionDocData, VaultInfoData, VaultInfoStatus,
+    SecretDistributionDocData
 };
+use crate::node::db::models::VaultInfo;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -97,28 +98,7 @@ pub type SecretDistributionDocResponse = GenericMessage<SecretDistributionDocDat
 
 pub type RegistrationResponse = GenericMessage<RegistrationStatus>;
 
-pub type VaultInfoResponse = GenericMessage<VaultInfoData>;
-
-impl VaultInfoData {
-    pub fn pending() -> Self {
-        Self::empty(VaultInfoStatus::Pending)
-    }
-
-    pub fn declined() -> Self {
-        Self::empty(VaultInfoStatus::Declined)
-    }
-
-    pub fn unknown() -> Self {
-        Self::empty(VaultInfoStatus::Unknown)
-    }
-
-    pub fn empty(vault_info: VaultInfoStatus) -> Self {
-        Self {
-            vault_info: Some(vault_info),
-            vault: None,
-        }
-    }
-}
+pub type VaultInfoResponse = GenericMessage<VaultInfo>;
 
 pub type MetaPasswordsResponse = GenericMessage<MetaPasswordsData>;
 

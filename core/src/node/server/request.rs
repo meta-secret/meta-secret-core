@@ -1,6 +1,6 @@
-use crate::node::db::events::object_id::{ObjectId};
-use serde::{Deserialize, Serialize};
+use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::models::PublicKeyRecord;
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize)]
 pub struct SyncRequest {

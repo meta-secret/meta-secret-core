@@ -10,14 +10,16 @@ mod test {
     use meta_secret_core::node::db::events::object_id::ObjectId;
     use meta_secret_core::node::db::events::sign_up::SignUpRequest;
     use meta_secret_core::node::db::meta_db::MetaDb;
-    use meta_secret_core::node::db::models::{GenericKvLogEvent, GlobalIndexObject, KvLogEvent, ObjectCreator, ObjectDescriptor, VaultObject};
+    use meta_secret_core::node::db::models::{GenericKvLogEvent, GlobalIndexObject, KvLogEvent, ObjectCreator, ObjectDescriptor, PublicKeyRecord, VaultObject};
     use meta_secret_core::node::server::data_sync::{
-        DataSync, DataSyncApi, DefaultMetaLogger, MetaServerContext, MetaServerContextState
+        DataSync, DataSyncApi, DefaultMetaLogger, MetaServerContext, MetaServerContextState,
     };
-    use meta_secret_core::node::server::persistent_object::{PersistentGlobalIndex, PersistentObject};
-    use meta_secret_core::node::server::request::{SyncRequest, VaultSyncRequest};
+    use meta_secret_core::node::server::persistent_object::{
+        PersistentGlobalIndex, PersistentObject,
+    };
+    use meta_secret_core::node::server::request::SyncRequest;
     use meta_server_emulator::server::sqlite_migration::EmbeddedMigrationsTool;
-    use meta_server_emulator::server::sqlite_store::{SqliteDbError, SqlIteRepo};
+    use meta_server_emulator::server::sqlite_store::{SqlIteRepo, SqliteDbError};
 
     #[tokio::test]
     async fn test_brand_new_client_with_empty_request() {
@@ -26,16 +28,28 @@ mod test {
         let migration = EmbeddedMigrationsTool::default();
         migration.migrate();
 
-        let data_sync = build_data_sync(migration);
+        let vault_name = "test";
+        let a_s_box = KeyManager::generate_security_box(vault_name.to_string());
+        let a_device = DeviceInfo {
+            device_id: "a".to_string(),
+            device_name: "a".to_string(),
+        };
+        let a_user_sig = a_s_box.get_user_sig(&a_device);
 
         let request = SyncRequest {
-            vault: None,
+            sender_pk: PublicKeyRecord {
+                pk: a_user_sig.transport_public_key.as_ref().clone(),
+            },
+            vault_tail_id: None,
             global_index: None,
         };
+
+        let data_sync = build_data_sync(migration);
         let commit_log = data_sync.sync_data(request, &logger).await.unwrap();
         assert_eq!(2, commit_log.len());
 
-        let expected_global_id_event = KvLogEvent::global_index_genesis(&data_sync.context.server_pk());
+        let expected_global_id_event =
+            KvLogEvent::global_index_genesis(&data_sync.context.server_pk());
         let genesis_update = GlobalIndexObject::Genesis {
             event: expected_global_id_event,
         };
@@ -56,7 +70,9 @@ mod test {
         //check whether the vault you are going to use already exists.
         // We need to have meta_db to be able to check if the vault exists
         let vault_name = "test";
-        let vault_desc = ObjectDescriptor::Vault { name: vault_name.to_string() };
+        let vault_desc = ObjectDescriptor::Vault {
+            name: vault_name.to_string(),
+        };
         let vault_id = ObjectId::unit(&vault_desc);
 
         let a_s_box = KeyManager::generate_security_box(vault_name.to_string());
@@ -67,11 +83,17 @@ mod test {
         let a_user_sig = a_s_box.get_user_sig(&a_device);
 
         let request = SyncRequest {
-            vault: None,
+            sender_pk: PublicKeyRecord {
+                pk: a_user_sig.transport_public_key.as_ref().clone(),
+            },
+            vault_tail_id: None,
             global_index: None,
         };
         let commit_log = data_sync.sync_data(request, &logger).await;
-        let meta_db: MetaDb = data_sync.meta_db_manager.transform(commit_log.unwrap()).unwrap();
+        let meta_db: MetaDb = data_sync
+            .meta_db_manager
+            .transform(commit_log.unwrap())
+            .unwrap();
         if meta_db
             .global_index_store
             .global_index
@@ -86,9 +108,10 @@ mod test {
         data_sync.send_data(&sign_up_request, &logger).await;
 
         let request = SyncRequest {
-            vault: Some(VaultSyncRequest {
-                tail_id: Some(vault_id.clone()),
-            }),
+            sender_pk: PublicKeyRecord {
+                pk: a_user_sig.transport_public_key.as_ref().clone(),
+            },
+            vault_tail_id: Some(vault_id.clone()),
             global_index: None,
         };
 
@@ -103,7 +126,7 @@ mod test {
 
         //temporary disabled!
         //if !global_index.contains(vault_id.id_str().as_str()) {
-            //panic!("The vault expected to be in the database")
+        //panic!("The vault expected to be in the database")
         //}
     }
 
@@ -138,9 +161,10 @@ mod test {
         let b_user_sig = b_s_box.get_user_sig(&b_device);
 
         let request = SyncRequest {
-            vault: Some(VaultSyncRequest {
-                tail_id: Some(vault_id.unit_id()),
-            }),
+            sender_pk: PublicKeyRecord {
+                pk: a_user_sig.transport_public_key.as_ref().clone(),
+            },
+            vault_tail_id: Some(vault_id.unit_id()),
             global_index: None,
         };
 
@@ -157,15 +181,19 @@ mod test {
         data_sync.send_data(&join_request, &logger).await;
 
         let request = SyncRequest {
-            vault: Some(VaultSyncRequest {
-                tail_id: Some(vault_id.unit_id()),
-            }),
+            sender_pk: PublicKeyRecord {
+                pk: a_user_sig.transport_public_key.as_ref().clone(),
+            },
+            vault_tail_id: Some(vault_id.unit_id()),
             global_index: None,
         };
 
         let commit_log = data_sync.sync_data(request, &logger).await.unwrap();
         for log_event in &commit_log {
-            println!("commit_log: {}\n", serde_json::to_string(log_event).unwrap());
+            println!(
+                "commit_log: {}\n",
+                serde_json::to_string(log_event).unwrap()
+            );
         }
         //println!("commit_log: {}", serde_json::to_string(&commit_log).unwrap());
         assert_eq!(8, commit_log.len());
@@ -196,10 +224,11 @@ mod test {
 
         DataSync {
             persistent_obj: persistent_object_rc.clone(),
-            repo: sqlite_repo_rc,
+            repo: sqlite_repo_rc.clone(),
             context: context_rc,
             meta_db_manager: Rc::from(MetaDbManager {
                 persistent_obj: persistent_object_rc,
+                repo: sqlite_repo_rc,
             }),
         }
     }

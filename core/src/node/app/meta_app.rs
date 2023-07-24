@@ -2,27 +2,37 @@ use std::error::Error;
 
 use async_trait::async_trait;
 
-use crate::models::DeviceInfo;
 use crate::models::meta_vault::MetaVault;
 use crate::models::user_credentials::UserCredentials;
-use crate::node::db::generic_db::{KvLogEventRepo};
-use crate::node::db::models::{GenericKvLogEvent, KvLogEventLocal, KvKey, KvLogEvent, ObjectCreator, ObjectDescriptor};
+use crate::models::DeviceInfo;
 use crate::node::db::events::object_id::ObjectId;
+use crate::node::db::generic_db::KvLogEventRepo;
+use crate::node::db::models::{GenericKvLogEvent, KvKey, KvLogEvent, KvLogEventLocal, ObjectCreator, ObjectDescriptor};
 use crate::node::server::data_sync::MetaLogger;
 
 #[async_trait(? Send)]
 pub trait MetaVaultManager<Err: Error> {
-    async fn create_meta_vault<L: MetaLogger>(&self, vault_name: String, device_name: String, logger: &L) -> Result<MetaVault, Err>;
+    async fn create_meta_vault<L: MetaLogger>(
+        &self,
+        vault_name: String,
+        device_name: String,
+        logger: &L,
+    ) -> Result<MetaVault, Err>;
     async fn find_meta_vault<L: MetaLogger>(&self, logger: &L) -> Result<Option<MetaVault>, Err>;
 }
 
 #[async_trait(? Send)]
 impl<T, Err> MetaVaultManager<Err> for T
-    where
-        T: KvLogEventRepo<Err>,
-        Err: Error,
+where
+    T: KvLogEventRepo<Err>,
+    Err: Error,
 {
-    async fn create_meta_vault<L: MetaLogger>(&self, vault_name: String, device_name: String, logger: &L) -> Result<MetaVault, Err> {
+    async fn create_meta_vault<L: MetaLogger>(
+        &self,
+        vault_name: String,
+        device_name: String,
+        logger: &L,
+    ) -> Result<MetaVault, Err> {
         logger.log("meta_app::create_meta_vault");
 
         let device = DeviceInfo::from(device_name.to_string());
@@ -33,7 +43,10 @@ impl<T, Err> MetaVaultManager<Err> for T
 
         let meta_vault_descriptor = ObjectDescriptor::MetaVault;
         let key = KvKey::unit(&meta_vault_descriptor);
-        let event: KvLogEvent<MetaVault> = KvLogEvent { key, value: meta_vault.clone() };
+        let event: KvLogEvent<MetaVault> = KvLogEvent {
+            key,
+            value: meta_vault.clone(),
+        };
 
         let db_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::MetaVault { event });
 
@@ -51,11 +64,9 @@ impl<T, Err> MetaVaultManager<Err> for T
             None => {
                 logger.log("meta_app::find_meta_vault: meta vault not found");
                 Ok(None)
-            },
+            }
             Some(meta_vault) => match meta_vault {
-                GenericKvLogEvent::LocalEvent(KvLogEventLocal::MetaVault { event }) => {
-                    Ok(Some(event.value))
-                }
+                GenericKvLogEvent::LocalEvent(KvLogEventLocal::MetaVault { event }) => Ok(Some(event.value)),
 
                 _ => {
                     let err_msg = "Meta vault index: Invalid data";
@@ -75,9 +86,9 @@ pub trait UserCredentialsManager<Err: Error> {
 
 #[async_trait(? Send)]
 impl<T, Err> UserCredentialsManager<Err> for T
-    where
-        T: KvLogEventRepo<Err>,
-        Err: Error,
+where
+    T: KvLogEventRepo<Err>,
+    Err: Error,
 {
     async fn find_user_creds(&self) -> Result<Option<UserCredentials>, Err> {
         let user_creds_desc = ObjectDescriptor::UserCreds;

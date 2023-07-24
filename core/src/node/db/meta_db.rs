@@ -1,8 +1,8 @@
 use crate::models::vault_doc::VaultDoc;
-use crate::node::db::models::{PublicKeyRecord};
+use crate::node::db::events::object_id::ObjectId;
+use crate::node::db::models::PublicKeyRecord;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use crate::node::db::events::object_id::ObjectId;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -23,7 +23,7 @@ impl Default for MetaDb {
                 server_pk: None,
                 tail_id: None,
                 global_index: HashSet::new(),
-            }
+            },
         }
     }
 }
