@@ -4,17 +4,15 @@ use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 
 use meta_secret_core::crypto::keys::KeyManager;
-use meta_secret_core::models::{UserCredentials, UserSignature};
+use meta_secret_core::models::UserCredentials;
 use meta_secret_core::node::app::meta_app::{MetaVaultManager, UserCredentialsManager};
 use meta_secret_core::node::db::events::object_id::{IdGen, ObjectId};
-use meta_secret_core::node::db::events::sign_up::{SignUpAction, SignUpRequest};
+use meta_secret_core::node::db::events::sign_up::SignUpRequest;
 use meta_secret_core::node::db::generic_db::SaveCommand;
-use meta_secret_core::node::db::models::{
-    DbTail, GenericKvLogEvent, KvKey, KvLogEvent, KvLogEventLocal, LogEventKeyBasedRecord, ObjectCreator, ObjectDescriptor,
-};
+use meta_secret_core::node::db::models::{DbTail, GenericKvLogEvent, KvKey, KvLogEvent, KvLogEventLocal, LogEventKeyBasedRecord, ObjectCreator, ObjectDescriptor, PublicKeyRecord};
 use meta_secret_core::node::server::data_sync::{DataSyncApi, MetaLogger};
 use meta_secret_core::node::server::persistent_object::{PersistentGlobalIndex, PersistentObject};
-use meta_secret_core::node::server::request::{SyncRequest, VaultSyncRequest};
+use meta_secret_core::node::server::request::SyncRequest;
 
 use crate::{alert, log, utils};
 use crate::commit_log::{WasmMetaLogger, WasmRepo};
@@ -63,99 +61,158 @@ impl WasmMetaServer {
                             Ok(maybe_client_creds) => {
                                 //log("Wasm::run_server()");
 
-                                let db_tail: DbTail = client_persistent_object
+                                let db_tail_result = client_persistent_object
                                     .get_db_tail()
-                                    .await
-                                    .unwrap();
+                                    .await;
 
-                                //logger.log(format!("curr db_tail: {:?}", db_tail).as_str());
+                                match db_tail_result {
+                                    Ok(db_tail) => {
+                                        let maybe_new_tail_for_vault = WasmMetaServer::get_new_tail_for_vault(
+                                            &logger,
+                                            &server_repo_rc,
+                                            &client_persistent_object,
+                                            &server_creds,
+                                            maybe_client_creds.clone(),
+                                            &db_tail,
+                                        ).await;
 
-                                let maybe_new_tail_for_vault = Self::get_new_tail_for_vault(
-                                    &logger,
-                                    &server_repo_rc,
-                                    &client_persistent_object,
-                                    &server_creds,
-                                    maybe_client_creds,
-                                    &db_tail
-                                ).await;
+                                        let new_tail_for_gi = Self::get_new_tail_for_global_index(
+                                            &client_persistent_object, &db_tail,
+                                        ).await;
 
-                                let new_tail_for_gi = Self::get_new_tail_for_global_index(
-                                    &client_persistent_object, &db_tail
-                                ).await;
+                                        let new_tail_for_mem_pool = Self::get_new_tail_for_mem_pool(
+                                            &client_persistent_object,
+                                            &db_tail,
+                                            &logger,
+                                            &server_repo_rc,
+                                            &server_creds,
+                                        ).await;
 
-                                let new_db_tail = {
-                                    DbTail {
-                                        vault: maybe_new_tail_for_vault,
-                                        global_index: new_tail_for_gi,
+                                        let new_db_tail = {
+                                            DbTail {
+                                                vault: maybe_new_tail_for_vault,
+                                                global_index: new_tail_for_gi,
+                                                mem_pool: new_tail_for_mem_pool.clone(),
+                                            }
+                                        };
+
+                                        if new_db_tail != db_tail {
+                                            //update db_tail
+                                            let new_db_tail_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::Tail {
+                                                event: KvLogEvent {
+                                                    key: KvKey::unit(&ObjectDescriptor::DbTail),
+                                                    value: new_db_tail.clone(),
+                                                }
+                                            });
+
+                                            let saved_event_res = client_repo_rc.save_event(&new_db_tail_event)
+                                                .await;
+
+                                            match saved_event_res {
+                                                Ok(()) => {
+                                                    logger.log("New db tail saved on client side")
+                                                }
+                                                Err(_) => {
+                                                    logger.log("Error saving db tail");
+                                                }
+                                            };
+                                        }
+
+                                        match maybe_client_creds {
+                                            None => {
+                                                logger.log("Nothing to sync. Client creds not exists");
+                                            }
+                                            Some(client_creds) => {
+                                                let request = {
+                                                    let vault_id_request = match new_db_tail.vault.clone() {
+                                                        None => {
+                                                            let vault_name = client_creds.user_sig.vault.name.as_str();
+                                                            Some(ObjectId::vault_unit(vault_name))
+                                                        }
+                                                        Some(vault_id) => {
+                                                            Some(vault_id.next())
+                                                        }
+                                                    };
+
+                                                    SyncRequest {
+                                                        sender_pk: PublicKeyRecord {
+                                                            pk: client_creds.user_sig.transport_public_key.as_ref().clone()
+                                                        },
+                                                        global_index: new_db_tail.global_index.clone().map(|gi| gi.next()),
+                                                        vault_tail_id: vault_id_request,
+                                                    }
+                                                };
+
+                                                let mut latest_gi = new_db_tail.global_index.clone();
+                                                let mut latest_vault_id = new_db_tail.vault.clone();
+
+                                                let server_data_sync = get_data_sync(server_repo_rc, &server_creds);
+                                                let new_events_res = server_data_sync
+                                                    .sync_data(request, &logger)
+                                                    .await;
+
+                                                match new_events_res {
+                                                    Ok(new_events) => {
+                                                        for new_event in new_events {
+                                                            let save_op = client_repo_rc
+                                                                .save_event(&new_event)
+                                                                .await;
+
+                                                            match save_op {
+                                                                Ok(()) => {
+                                                                    match new_event {
+                                                                        GenericKvLogEvent::GlobalIndex(_) => {
+                                                                            latest_gi = Some(new_event.key().obj_id.clone())
+                                                                        }
+                                                                        GenericKvLogEvent::Vault(_) => {
+                                                                            latest_vault_id = Some(new_event.key().obj_id.clone())
+                                                                        }
+                                                                        _ => {
+                                                                            //ignore any non global event
+                                                                        }
+                                                                    }
+                                                                }
+                                                                Err(_) => {
+                                                                    logger.log("Error saving new events to local db");
+                                                                    panic!("Error");
+                                                                }
+                                                            }
+                                                        }
+
+                                                        let latest_db_tail = {
+                                                            DbTail {
+                                                                vault: latest_vault_id,
+                                                                global_index: latest_gi,
+                                                                mem_pool: new_tail_for_mem_pool,
+                                                            }
+                                                        };
+
+                                                        if latest_db_tail != new_db_tail {
+                                                            //update db_tail
+                                                            let latest_db_tail_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::Tail {
+                                                                event: KvLogEvent {
+                                                                    key: KvKey::unit(&ObjectDescriptor::DbTail),
+                                                                    value: latest_db_tail.clone(),
+                                                                }
+                                                            });
+
+                                                            client_repo_rc.save_event(&latest_db_tail_event)
+                                                                .await
+                                                                .unwrap();
+                                                        }
+                                                    }
+                                                    Err(_err) => {
+                                                        logger.log("DataSync error. Error loading events");
+                                                        panic!("Error");
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
-                                };
-
-                                if new_db_tail != db_tail {
-                                    //update db_tail
-                                    let new_db_tail_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::Tail {
-                                        event: KvLogEvent {
-                                            key: KvKey::unit(&ObjectDescriptor::DbTail),
-                                            value: new_db_tail.clone(),
-                                        }
-                                    });
-
-                                    client_repo_rc.save_event(&new_db_tail_event)
-                                        .await
-                                        .unwrap();
-                                }
-
-                                let request = SyncRequest {
-                                    vault: Some(VaultSyncRequest {
-                                        tail_id: new_db_tail.vault.clone().map(|vault_id| vault_id.next()),
-                                    }),
-                                    global_index: new_db_tail.global_index.clone().map(|gi| gi.next()),
-                                };
-
-                                let server_data_sync = get_data_sync(server_repo_rc, &server_creds);
-                                let new_events = server_data_sync
-                                    .sync_data(request, &logger)
-                                    .await
-                                    .expect("Error syncing data");
-
-                                let mut latest_gi = new_db_tail.global_index.clone();
-                                let mut latest_vault_id = new_db_tail.vault.clone();
-
-                                for new_event in new_events {
-                                    client_repo_rc
-                                        .save_event(&new_event)
-                                        .await
-                                        .expect("Error syncing data");
-
-                                    match new_event {
-                                        GenericKvLogEvent::GlobalIndex(_) => {
-                                            latest_gi = Some(new_event.key().obj_id.clone())
-                                        }
-                                        GenericKvLogEvent::Vault(_) => {
-                                            latest_vault_id = Some(new_event.key().obj_id.clone())
-                                        }
-                                        _ => {}
+                                    Err(_) => {
+                                        log("Error! Db tail not exists");
+                                        panic!("Error");
                                     }
-                                }
-
-                                let latest_db_tail = {
-                                    DbTail {
-                                        vault: latest_vault_id,
-                                        global_index: latest_gi,
-                                    }
-                                };
-
-                                if latest_db_tail != new_db_tail {
-                                    //update db_tail
-                                    let latest_db_tail_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::Tail {
-                                        event: KvLogEvent {
-                                            key: KvKey::unit(&ObjectDescriptor::DbTail),
-                                            value: latest_db_tail.clone(),
-                                        }
-                                    });
-
-                                    client_repo_rc.save_event(&latest_db_tail_event)
-                                        .await
-                                        .unwrap();
                                 }
                             }
                             Err(_) => {
@@ -177,9 +234,8 @@ impl WasmMetaServer {
     async fn get_new_tail_for_vault(
         logger: &WasmMetaLogger, server_repo_rc: &Rc<WasmRepo>,
         client_persistent_object: &PersistentObject<WasmRepo, WasmDbError>, server_creds: &UserCredentials,
-        maybe_client_creds: Option<UserCredentials>, db_tail: &DbTail
+        maybe_client_creds: Option<UserCredentials>, db_tail: &DbTail,
     ) -> Option<ObjectId> {
-
         match db_tail.vault.clone() {
             None => {
                 match maybe_client_creds {
@@ -227,19 +283,51 @@ impl WasmMetaServer {
 
     async fn get_new_tail_for_global_index(
         client_persistent_object: &PersistentObject<WasmRepo, WasmDbError>, db_tail: &DbTail) -> Option<ObjectId> {
+        let global_index = db_tail.global_index
+            .clone()
+            .unwrap_or(ObjectId::global_index_unit());
 
-        match db_tail.global_index.clone() {
+        client_persistent_object
+            .find_tail_id(&global_index)
+            .await
+    }
+
+    async fn get_new_tail_for_mem_pool(
+        client_persistent_object: &PersistentObject<WasmRepo, WasmDbError>,
+        db_tail: &DbTail, logger: &WasmMetaLogger,
+        server_repo_rc: &Rc<WasmRepo>,
+        server_creds: &UserCredentials,
+    ) -> Option<ObjectId> {
+
+        let mem_pool_id = match db_tail.mem_pool.clone() {
             None => {
-                client_persistent_object
-                    .find_tail_id(&ObjectId::global_index_unit())
-                    .await
+                ObjectId::mempool_unit()
             }
-            Some(global_index) => {
-                let maybe_last_gi_event = client_persistent_object
-                    .find_tail_id(&global_index)
-                    .await;
+            Some(obj_id) => {
+                obj_id.next()
+            }
+        };
 
-                maybe_last_gi_event
+        let mem_pool_events = client_persistent_object
+            .find_object_events(&mem_pool_id, logger)
+            .await;
+        let last_pool_event = mem_pool_events.last().cloned();
+
+        let mut client_requests: Vec<GenericKvLogEvent> = vec![];
+        client_requests.extend(mem_pool_events);
+
+        let server_data_sync = get_data_sync(server_repo_rc.clone(), server_creds);
+        for client_event in client_requests {
+            logger.log(format!("send mem pool request to server: {:?}", client_event).as_str());
+            server_data_sync.send_data(&client_event, logger).await;
+        }
+
+        match last_pool_event {
+            None => {
+                db_tail.mem_pool.clone()
+            }
+            Some(event) => {
+                Some(event.key().obj_id.clone())
             }
         }
     }

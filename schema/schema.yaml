@@ -279,28 +279,6 @@ components:
         candidate:
           $ref: '#/components/schemas/UserSignature'
 
-    VaultInfoStatus:
-      type: string
-      description: |
-        `Member`: Device is a member of a vault.
-        `Pending`: Device is waiting to be added to a vault.
-        `Declined`: Vault members declined to add a device into the vault.
-        `NotFound`: Vault not found
-        `Unknown`: Device can't get any information about the vault, because its signature is not in members or pending list
-      enum:
-        - Member
-        - Pending
-        - Declined
-        - NotFound
-        - Unknown
-
-    VaultInfoData:
-      properties:
-        vaultInfo:
-          $ref: '#/components/schemas/VaultInfoStatus'
-        vault:
-          $ref: '#/components/schemas/VaultDoc'
-
     MetaPasswordsStatus:
       type: string
       enum:
@@ -387,5 +365,15 @@ components:
           $ref: '#/components/schemas/UserSecurityBox'
         userSig:
           $ref: '#/components/schemas/UserSignature'
+
+    ApplicationState:
+      type: object
+      required:
+        - joinComponent
+      properties:
+        metaVault:
+          $ref: '#/components/schemas/MetaVault'
+        joinComponent:
+          type: boolean
 
 paths:
