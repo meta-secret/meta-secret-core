@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::{
     FindSharesResult, MembershipStatus, MetaPasswordsData, PasswordRecoveryRequest, RegistrationStatus,
-    SecretDistributionDocData
+    SecretDistributionDocData,
 };
 use crate::node::db::models::VaultInfo;
 

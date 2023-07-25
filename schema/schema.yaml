@@ -373,6 +373,8 @@ components:
       properties:
         metaVault:
           $ref: '#/components/schemas/MetaVault'
+        vault:
+          $ref: '#/components/schemas/VaultDoc'
         joinComponent:
           type: boolean
 

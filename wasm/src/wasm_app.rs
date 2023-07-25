@@ -271,6 +271,14 @@ impl WasmMetaClient {
 
         if join {
             self.join_cluster().await;
+            WasmMetaServer::new().run_server().await;
+            let vault_info = self.get_vault().await.unwrap();
+            if let VaultInfo::Member { vault } = vault_info {
+                {
+                    let mut app_state = self.app_state.lock().await;
+                    app_state.vault = Some(Box::new(vault))
+                }
+            }
         } else {
             self.sign_up_action(vault_name, device_name).await;
         }
@@ -374,7 +382,7 @@ impl WasmMetaClient {
         }
     }
 
-    async fn get_vault(&self) -> Result<VaultInfo, JsValue> {
+    pub async fn get_vault(&self) -> Result<VaultInfo, JsValue> {
         log("wasm: get vault!");
 
         let logger = WasmMetaLogger {};

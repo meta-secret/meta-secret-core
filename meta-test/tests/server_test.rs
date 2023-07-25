@@ -10,7 +10,10 @@ mod test {
     use meta_secret_core::node::db::events::object_id::ObjectId;
     use meta_secret_core::node::db::events::sign_up::SignUpRequest;
     use meta_secret_core::node::db::meta_db::MetaDb;
-    use meta_secret_core::node::db::models::{GenericKvLogEvent, GlobalIndexObject, KvLogEvent, ObjectCreator, ObjectDescriptor, PublicKeyRecord, VaultObject};
+    use meta_secret_core::node::db::models::{
+        GenericKvLogEvent, GlobalIndexObject, KvLogEvent, ObjectCreator, ObjectDescriptor,
+        PublicKeyRecord, VaultObject,
+    };
     use meta_secret_core::node::server::data_sync::{
         DataSync, DataSyncApi, DefaultMetaLogger, MetaServerContext, MetaServerContextState,
     };

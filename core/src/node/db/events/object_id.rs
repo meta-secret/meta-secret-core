@@ -97,7 +97,7 @@ impl ObjectId {
         };
         ObjectId::unit(&vault_desc)
     }
-    
+
     pub fn mempool_unit() -> Self {
         ObjectId::unit(&ObjectDescriptor::Mempool)
     }
