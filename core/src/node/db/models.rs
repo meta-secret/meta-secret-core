@@ -67,15 +67,13 @@ pub enum VaultObject {
 
     JoinRequest {
         event: KvLogEvent<UserSignature>,
-    }
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum MempoolObject {
-    JoinRequest {
-        event: KvLogEvent<UserSignature>,
-    }
+    JoinRequest { event: KvLogEvent<UserSignature> },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -111,12 +109,8 @@ impl LogEventKeyBasedRecord for GenericKvLogEvent {
                 VaultObject::JoinUpdate { event } => &event.key,
                 VaultObject::JoinRequest { event } => &event.key,
             },
-            GenericKvLogEvent::Mempool(mem_pool_obj) =>  {
-                match mem_pool_obj {
-                    MempoolObject::JoinRequest { event } => {
-                        &event.key
-                    }
-                }
+            GenericKvLogEvent::Mempool(mem_pool_obj) => match mem_pool_obj {
+                MempoolObject::JoinRequest { event } => &event.key,
             },
             GenericKvLogEvent::LocalEvent(op) => match op {
                 KvLogEventLocal::Tail { event } => &event.key,
@@ -236,7 +230,7 @@ impl From<&ObjectDescriptor> for ObjectType {
             ObjectDescriptor::MetaVault { .. } => ObjectType::MetaVaultObj,
             ObjectDescriptor::UserCreds { .. } => ObjectType::UserCreds,
             ObjectDescriptor::DbTail => ObjectType::DbTail,
-            ObjectDescriptor::Mempool => ObjectType::MempoolObj
+            ObjectDescriptor::Mempool => ObjectType::MempoolObj,
         }
     }
 }

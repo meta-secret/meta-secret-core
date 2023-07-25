@@ -12,6 +12,8 @@
 pub struct ApplicationState {
     #[serde(rename = "metaVault", skip_serializing_if = "Option::is_none")]
     pub meta_vault: Option<Box<crate::models::MetaVault>>,
+    #[serde(rename = "vault", skip_serializing_if = "Option::is_none")]
+    pub vault: Option<Box<crate::models::VaultDoc>>,
     #[serde(rename = "joinComponent")]
     pub join_component: bool,
 }
@@ -20,6 +22,7 @@ impl ApplicationState {
     pub fn new(join_component: bool) -> ApplicationState {
         ApplicationState {
             meta_vault: None,
+            vault: None,
             join_component,
         }
     }

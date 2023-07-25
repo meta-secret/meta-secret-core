@@ -11,6 +11,7 @@ use crate::objects::ToJsValue;
 use wasm_bindgen_futures::spawn_local;
 
 use async_mutex::Mutex as AsyncMutex;
+use meta_secret_core::node::db::models::VaultInfo;
 
 mod commit_log;
 mod db;
@@ -127,6 +128,7 @@ impl ApplicationStateManager {
         let app_state = {
             let state = ApplicationState {
                 meta_vault: None,
+                vault: None,
                 join_component: false,
             };
             Arc::new(AsyncMutex::new(state))
@@ -149,14 +151,23 @@ impl ApplicationStateManager {
             .await
             .unwrap();
 
+        let vault_info = self.meta_client.get_vault().await.unwrap();
+        if let VaultInfo::Member { vault } = vault_info {
+            {
+                let mut app_state = self.app_state.lock().await;
+                app_state.vault = Some(Box::new(vault))
+            }
+        }
+
         {
             let mut app_state = self.app_state.lock().await;
             app_state.meta_vault = meta_vault.map(Box::new);
-            self.on_update();
         }
+
+        self.on_update().await;
     }
 
-    pub fn on_update(&self) {
+    async fn on_update(&self) {
         // update app state in vue
         self.js_app_state.updateJsState();
     }
@@ -168,6 +179,6 @@ impl ApplicationStateManager {
 
     pub async fn sign_up(&self, vault_name: &str, device_name: &str) {
         self.meta_client.sign_up(vault_name, device_name).await;
-        self.on_update();
+        self.on_update().await;
     }
 }

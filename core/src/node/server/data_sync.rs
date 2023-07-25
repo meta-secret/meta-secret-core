@@ -12,7 +12,7 @@ use crate::node::db::events::object_id::{IdGen, IdStr, ObjectId};
 use crate::node::db::events::sign_up::SignUpAction;
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::meta_db::MetaDb;
-use crate::node::db::models::{GenericKvLogEvent, MempoolObject, PublicKeyRecord, KvKey};
+use crate::node::db::models::{GenericKvLogEvent, MempoolObject, PublicKeyRecord};
 use crate::node::db::models::{GlobalIndexObject, KvLogEvent, ObjectCreator, ObjectDescriptor, VaultObject};
 use crate::node::server::persistent_object::PersistentObject;
 use crate::node::server::request::SyncRequest;
@@ -168,11 +168,7 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> DataSyncApi<Err> for DataSync<Repo, 
                         let vault_name = event.value.vault.name.clone();
                         let vault_obj_id = ObjectId::vault_unit(vault_name.as_str());
 
-                        let tail_id = self
-                            .persistent_obj
-                            .find_tail_id(&vault_obj_id)
-                            .await
-                            .unwrap();
+                        let tail_id = self.persistent_obj.find_tail_id(&vault_obj_id).await.unwrap();
 
                         let join_request = GenericKvLogEvent::Vault(VaultObject::JoinRequest {
                             event: join::join_cluster_request(&tail_id, &event.value),
