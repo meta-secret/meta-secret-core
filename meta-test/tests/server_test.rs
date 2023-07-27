@@ -74,7 +74,7 @@ mod test {
         // We need to have meta_db to be able to check if the vault exists
         let vault_name = "test";
         let vault_desc = ObjectDescriptor::Vault {
-            name: vault_name.to_string(),
+            vault_name: vault_name.to_string(),
         };
         let vault_id = ObjectId::unit(&vault_desc);
 

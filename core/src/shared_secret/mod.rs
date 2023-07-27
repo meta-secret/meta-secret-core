@@ -1,11 +1,17 @@
 use crate::crypto::keys::KeyManager;
 use crate::models::{
-    AeadCipherText, EncryptedMessage, MetaPasswordDoc, MetaPasswordId, MetaPasswordRequest, SecretDistributionDocData,
-    SecretDistributionType, UserSecurityBox, UserSignature, VaultDoc,
+    AeadCipherText, EncryptedMessage, MetaPasswordDoc, MetaPasswordId, MetaPasswordRequest,
+    SecretDistributionDocData, SecretDistributionType, UserCredentials, UserSecurityBox, UserSignature, VaultDoc
 };
-use crate::node::server_api;
+use crate::node::db::commit_log::MetaDbManager;
+use crate::node::db::generic_db::KvLogEventRepo;
+
+use crate::node::db::models::ObjectCreator;
+
 use crate::CoreResult;
 use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
+use crate::node::db::events::object_id::{IdGen, ObjectId};
+use crate::node::db::models::{GenericKvLogEvent, KvLogEvent, KvKey, MetaPassObject, ObjectDescriptor};
 
 pub mod data_block;
 pub mod shared_secret;
@@ -69,28 +75,59 @@ struct MetaCipherShare {
     cipher_share: AeadCipherText,
 }
 
-pub struct MetaDistributor {
-    pub security_box: UserSecurityBox,
-    pub user_sig: UserSignature,
+pub struct MetaDistributor<Repo: KvLogEventRepo<Err>, Err: std::error::Error> {
+    pub meta_db_manager: MetaDbManager<Repo, Err>,
+    pub user_creds: UserCredentials,
     pub vault: VaultDoc,
 }
 
-impl MetaDistributor {
+impl <Repo: KvLogEventRepo<Err>, Err: std::error::Error> MetaDistributor<Repo, Err> {
     /// Encrypt and distribute password across the cluster
     pub async fn distribute(self, password_id: String, password: String) {
         let encryptor = MetaEncryptor {
-            security_box: self.security_box,
+            security_box: self.user_creds.security_box.as_ref().clone(),
             vault: self.vault.clone(),
         };
 
-        let pass_id = MetaPasswordId::generate(password_id);
+        let pass = {
+            let pass_id = Box::new(MetaPasswordId::generate(password_id));
+
+            MetaPasswordDoc {
+                id: pass_id,
+                vault: Box::new(self.vault.clone()),
+            }
+        };
+
+        //save meta password!!!
+        let vault_name = self.user_creds.user_sig.vault.name.clone();
+        let meta_pass_obj_desc = ObjectDescriptor::MetaPassword { vault_name };
+
+        let pass_tail_id = self.meta_db_manager
+            .persistent_obj
+            .find_tail_id_by_obj_desc(&meta_pass_obj_desc)
+            .await
+            .map(|id| id.next())
+            .unwrap();
+
+        let meta_pass_event = GenericKvLogEvent::MetaPass(MetaPassObject::Record {
+            event: KvLogEvent {
+                key: KvKey {
+                    obj_id: pass_tail_id,
+                    obj_desc: meta_pass_obj_desc,
+                },
+                value: pass.clone(),
+            },
+        });
+
+        self.meta_db_manager
+            .repo
+            .save_event(&meta_pass_event)
+            .await
+            .unwrap();
+
 
         let encrypted_shares = encryptor.encrypt(password);
         for cipher_share in encrypted_shares {
-            let pass = MetaPasswordDoc {
-                id: Box::new(pass_id.clone()),
-                vault: Box::new(self.vault.clone()),
-            };
 
             let cipher_msg = EncryptedMessage {
                 receiver: Box::from(cipher_share.receiver.clone()),
@@ -100,13 +137,13 @@ impl MetaDistributor {
             let distribution_share = SecretDistributionDocData {
                 distribution_type: SecretDistributionType::Split,
                 meta_password: Box::new(MetaPasswordRequest {
-                    user_sig: Box::new(self.user_sig.clone()),
-                    meta_password: Box::new(pass),
+                    user_sig: Box::new(self.user_creds.user_sig.as_ref().clone()),
+                    meta_password: Box::new(pass.clone()),
                 }),
                 secret_message: Box::new(cipher_msg),
             };
 
-            server_api::distribute(&distribution_share).await.unwrap();
+            //server_api::distribute(&distribution_share).await.unwrap();
         }
     }
 }

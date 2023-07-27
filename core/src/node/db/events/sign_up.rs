@@ -1,58 +1,71 @@
 use crate::models::{UserSignature, VaultDoc};
 use crate::node::db::events::object_id::{IdGen, ObjectId};
-use crate::node::db::models::{
-    GenericKvLogEvent, KvKey, KvLogEvent, LogEventKeyBasedRecord, ObjectCreator, ObjectDescriptor, ObjectType,
-    PublicKeyRecord, VaultObject,
-};
+use crate::node::db::models::{GenericKvLogEvent, KvKey, KvLogEvent, LogEventKeyBasedRecord, MetaPassObject, ObjectCreator, ObjectDescriptor, PublicKeyRecord, VaultObject};
 
 pub struct SignUpAction {}
 
 impl SignUpAction {
+
     pub fn accept(
         &self,
         sign_up_request: &KvLogEvent<UserSignature>,
         server_pk: &PublicKeyRecord,
     ) -> Vec<GenericKvLogEvent> {
+
         match sign_up_request.key.obj_id.clone() {
-            ObjectId::Unit { .. } => match sign_up_request.key.object_type {
-                ObjectType::VaultObj => {
-                    let user_sig: UserSignature = sign_up_request.value.clone();
+            ObjectId::Unit { .. } =>
+                match sign_up_request.key.obj_desc.clone() {
+                    ObjectDescriptor::Vault { vault_name } => {
+                        let user_sig: UserSignature = sign_up_request.value.clone();
 
-                    let genesis_event = {
-                        let vault_name = user_sig.vault.name.clone();
-
-                        let obj_desc = ObjectDescriptor::Vault { name: vault_name };
-                        let genesis_update = VaultObject::Genesis {
-                            event: KvLogEvent::genesis(&obj_desc, server_pk),
-                        };
-                        GenericKvLogEvent::Vault(genesis_update)
-                    };
-
-                    let sign_up_event = {
-                        let vault = VaultDoc {
-                            vault_name: user_sig.vault.name.clone(),
-                            signatures: vec![user_sig],
-                            pending_joins: vec![],
-                            declined_joins: vec![],
+                        let genesis_event = {
+                            let genesis_update = VaultObject::Genesis {
+                                event: KvLogEvent::genesis(&sign_up_request.key.obj_desc, server_pk),
+                            };
+                            GenericKvLogEvent::Vault(genesis_update)
                         };
 
-                        let sign_up_event = KvLogEvent {
-                            key: genesis_event.key().next(),
-                            value: vault,
+                        let sign_up_event = {
+                            let vault = VaultDoc {
+                                vault_name: vault_name.clone(),
+                                signatures: vec![user_sig],
+                                pending_joins: vec![],
+                                declined_joins: vec![],
+                            };
+
+                            let sign_up_event = KvLogEvent {
+                                key: genesis_event.key().next(),
+                                value: vault,
+                            };
+                            GenericKvLogEvent::Vault(VaultObject::SignUpUpdate { event: sign_up_event })
                         };
-                        GenericKvLogEvent::Vault(VaultObject::SignUpUpdate { event: sign_up_event })
-                    };
 
-                    let generic_sign_up_request = GenericKvLogEvent::Vault(VaultObject::Unit {
-                        event: sign_up_request.clone(),
-                    });
+                        let generic_sign_up_request = GenericKvLogEvent::Vault(VaultObject::Unit {
+                            event: sign_up_request.clone(),
+                        });
 
-                    vec![generic_sign_up_request, genesis_event, sign_up_event]
-                }
-                _ => {
-                    panic!("Wrong object type")
-                }
-            },
+                        let meta_pass_unit_event = {
+                            let event = KvLogEvent {
+                                key: KvKey::unit(&ObjectDescriptor::MetaPassword { vault_name: vault_name.clone() }),
+                                value: (),
+                            };
+                            GenericKvLogEvent::MetaPass(MetaPassObject::Unit { event })
+                        };
+
+                        let meta_pass_genesis_event = {
+                            let event = KvLogEvent::genesis(&ObjectDescriptor::MetaPassword { vault_name }, server_pk);
+                            GenericKvLogEvent::MetaPass(MetaPassObject::Genesis { event })
+                        };
+
+                        vec![
+                            generic_sign_up_request, genesis_event, sign_up_event,
+                            meta_pass_unit_event, meta_pass_genesis_event
+                        ]
+                    }
+                    _ => {
+                        panic!("Wrong object type")
+                    }
+                },
             ObjectId::Genesis { .. } => {
                 panic!("Invalid object id");
             }
@@ -73,9 +86,7 @@ impl SignUpRequest {
     }
 
     pub fn build_request(&self, user_sig: &UserSignature) -> KvLogEvent<UserSignature> {
-        let obj_desc = ObjectDescriptor::Vault {
-            name: user_sig.vault.name.clone(),
-        };
+        let obj_desc = ObjectDescriptor::vault(user_sig.vault.name.clone());
 
         KvLogEvent {
             key: KvKey::unit(&obj_desc),

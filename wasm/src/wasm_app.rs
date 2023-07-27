@@ -14,9 +14,12 @@ use meta_secret_core::node::db::events::object_id::ObjectId;
 use meta_secret_core::node::db::events::sign_up::SignUpRequest;
 use meta_secret_core::node::db::generic_db::SaveCommand;
 use meta_secret_core::node::db::meta_db::MetaDb;
-use meta_secret_core::node::db::models::{GenericKvLogEvent, KvKey, KvLogEvent, MempoolObject, ObjectDescriptor, ObjectType, VaultInfo};
+use meta_secret_core::node::db::models::{
+    GenericKvLogEvent, KvKey, KvLogEvent, MempoolObject, ObjectDescriptor, VaultInfo,
+};
 use meta_secret_core::node::server::data_sync::{DataSync, MetaServerContextState};
 use meta_secret_core::node::server::persistent_object::{PersistentGlobalIndex, PersistentObject};
+use meta_secret_core::shared_secret::MetaDistributor;
 
 use crate::{alert, log};
 use crate::commit_log::{WasmMetaLogger, WasmRepo};
@@ -131,49 +134,6 @@ pub async fn sync_shares() -> Result<JsValue, JsValue> {
     Ok(JsValue::null())
 }
 
-pub async fn cluster_distribution(pass_id: &str, pass: &str) -> Result<JsValue, JsValue> {
-    /*
-    log("wasm: cluster distribution!!!!");
-
-    let maybe_creds = objects::internal::find_user_credentials()
-        .await
-        .map_err(JsError::from)?;
-
-    match maybe_creds {
-        Some(creds) => {
-            let user_sig = creds.user_sig;
-            let vault_response = server_api::get_vault(&user_sig)
-                .await
-                .map_err(JsError::from)?;
-
-            let maybe_vault = vault_response.data;
-
-            match maybe_vault {
-                None => Err(JsValue::from("Empty vault response")),
-                Some(vault_info_data) => match vault_info_data.vault {
-                    None => Err(JsValue::from("Vault not found")),
-                    Some(vault) => {
-                        let distributor = MetaDistributor {
-                            security_box: *creds.security_box,
-                            user_sig: *user_sig,
-                            vault: *vault,
-                        };
-
-                        distributor
-                            .distribute(pass_id.to_string(), pass.to_string())
-                            .await;
-                        Ok(JsValue::from_str("Password has been created"))
-                    }
-                },
-            }
-        }
-        None => Err(JsValue::from("Empty user credentials")),
-    }
-
-     */
-    Ok(JsValue::null())
-}
-
 pub async fn membership(
     candidate_user_sig: JsValue,
     request_type: JsValue,
@@ -263,6 +223,46 @@ impl WasmMetaClient {
         }
     }
 
+    pub async fn cluster_distribution(&self, pass_id: &str, pass: &str) {
+        log("wasm: cluster distribution!!!!");
+
+        let repo = WasmRepo::default();
+        let repo_rc = Rc::new(repo);
+
+        let creds = repo_rc.find_user_creds()
+            .await
+            .unwrap()
+            .unwrap();
+
+        let vault_info = self.get_vault()
+            .await
+            .unwrap();
+
+        let persistent_object = get_persistent_object(repo_rc.clone());
+        let persistent_object_rc = Rc::new(persistent_object);
+
+        match vault_info {
+            VaultInfo::Member { vault } => {
+                let distributor = MetaDistributor {
+                    meta_db_manager: MetaDbManager {
+                        persistent_obj: persistent_object_rc,
+                        repo: repo_rc
+                    },
+                    vault,
+                    user_creds: creds,
+                };
+
+                distributor
+                    .distribute(pass_id.to_string(), pass.to_string())
+                    .await;
+            }
+            VaultInfo::Pending => {}
+            VaultInfo::Declined => {}
+            VaultInfo::NotFound => {}
+            VaultInfo::NotMember => {}
+        };
+    }
+
     pub async fn sign_up(&self, vault_name: &str, device_name: &str) {
         let join = {
             let app_state = self.app_state.lock().await;
@@ -294,9 +294,7 @@ impl WasmMetaClient {
         match vault_info_res {
             Ok(vault_info) => {
                 match vault_info {
-                    VaultInfo::Member { vault } => {
-
-                    }
+                    VaultInfo::Member { vault } => {}
                     VaultInfo::Pending => {}
                     VaultInfo::Declined => {}
                     VaultInfo::NotFound => {
@@ -424,7 +422,7 @@ impl WasmMetaClient {
                     VaultInfo::NotFound
                 }
             }
-            None => panic!("Empty user credentials"),
+            None => VaultInfo::NotMember,
         };
 
         Ok(vault_info)
@@ -450,7 +448,7 @@ impl WasmMetaClient {
                     event: KvLogEvent {
                         key: KvKey {
                             obj_id: mem_pool_tail_id,
-                            object_type: ObjectType::MempoolObj
+                            obj_desc: ObjectDescriptor::Mempool,
                         },
                         value: creds.user_sig.as_ref().clone(),
                     }

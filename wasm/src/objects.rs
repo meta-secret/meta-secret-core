@@ -1,9 +1,6 @@
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
-
-use meta_secret_core::crypto::keys::KeyManager;
-use meta_secret_core::models::{MetaVault, UserCredentials};
-use meta_secret_core::node::app::meta_app::{MetaVaultManager, UserCredentialsManager};
+use meta_secret_core::node::app::meta_app::{MetaVaultManager};
 
 use crate::{alert, log};
 use crate::commit_log::{WasmMetaLogger, WasmRepo};

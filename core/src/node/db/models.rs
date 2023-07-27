@@ -1,9 +1,8 @@
 use std::string::ToString;
 
 use crate::crypto::utils;
-use crate::models::{Base64EncodedText, MetaVault, UserCredentials, UserSignature, VaultDoc};
+use crate::models::{Base64EncodedText, MetaPasswordDoc, MetaVault, UserCredentials, UserSignature, VaultDoc};
 use crate::node::db::events::object_id::{IdGen, IdStr, ObjectId};
-use crate::sdk::api::ErrorMessage;
 
 #[derive(thiserror::Error, Debug)]
 pub enum LogCommandError {
@@ -17,25 +16,13 @@ pub enum LogCommandError {
         source: serde_json::Error,
     },
 }
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-pub enum ObjectType {
-    GlobalIndexObj,
-    VaultObj,
-    MempoolObj,
-
-    DbTail,
-    MetaVaultObj,
-    UserCreds,
-}
-
 /// Local events (persistent objects which lives only in the local environment) which must not be synchronized
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum KvLogEventLocal {
-    MetaVault { event: KvLogEvent<MetaVault> },
-    UserCredentials { event: KvLogEvent<UserCredentials> },
-    Tail { event: KvLogEvent<DbTail> },
+    MetaVault { event: Box<KvLogEvent<MetaVault>> },
+    UserCredentials { event: Box<KvLogEvent<UserCredentials>> },
+    Tail { event: Box<KvLogEvent<DbTail>> },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -78,10 +65,26 @@ pub enum MempoolObject {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub enum MetaPassObject {
+    Unit {
+        event: KvLogEvent<()>,
+    },
+    Genesis {
+        event: KvLogEvent<PublicKeyRecord>,
+    },
+    Record {
+        event: KvLogEvent<MetaPasswordDoc>,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 #[serde(tag = "event_type")]
 pub enum GenericKvLogEvent {
     GlobalIndex(GlobalIndexObject),
+
     Vault(VaultObject),
+    MetaPass(MetaPassObject),
 
     Mempool(MempoolObject),
 
@@ -109,6 +112,13 @@ impl LogEventKeyBasedRecord for GenericKvLogEvent {
                 VaultObject::JoinUpdate { event } => &event.key,
                 VaultObject::JoinRequest { event } => &event.key,
             },
+            GenericKvLogEvent::MetaPass(pass_obj) => {
+                match pass_obj {
+                    MetaPassObject::Unit { event } => &event.key,
+                    MetaPassObject::Genesis { event } => &event.key,
+                    MetaPassObject::Record { event } => &event.key,
+                }
+            }
             GenericKvLogEvent::Mempool(mem_pool_obj) => match mem_pool_obj {
                 MempoolObject::JoinRequest { event } => &event.key,
             },
@@ -179,7 +189,7 @@ impl KvLogEvent<GlobalIndexRecord> {
     pub fn new_global_index_event(tail_id: &ObjectId, vault_id: &IdStr) -> KvLogEvent<GlobalIndexRecord> {
         let key = KvKey {
             obj_id: tail_id.clone(),
-            object_type: ObjectType::GlobalIndexObj,
+            obj_desc: ObjectDescriptor::GlobalIndex,
         };
 
         KvLogEvent {
@@ -195,14 +205,14 @@ impl KvLogEvent<GlobalIndexRecord> {
 #[serde(rename_all = "camelCase")]
 pub struct KvKey {
     pub obj_id: ObjectId,
-    pub object_type: ObjectType,
+    pub obj_desc: ObjectDescriptor,
 }
 
 impl ObjectCreator<&ObjectDescriptor> for KvKey {
     fn unit(obj_desc: &ObjectDescriptor) -> Self {
         Self {
             obj_id: ObjectId::unit(obj_desc),
-            object_type: ObjectType::from(obj_desc),
+            obj_desc: obj_desc.clone(),
         }
     }
 
@@ -217,27 +227,20 @@ pub enum ObjectDescriptor {
     GlobalIndex,
     Mempool,
     DbTail,
-    Vault { name: String },
+    Vault { vault_name: String },
+    MetaPassword { vault_name: String},
     MetaVault,
     UserCreds,
 }
 
-impl From<&ObjectDescriptor> for ObjectType {
-    fn from(desc: &ObjectDescriptor) -> Self {
-        match desc {
-            ObjectDescriptor::GlobalIndex => ObjectType::GlobalIndexObj,
-            ObjectDescriptor::Vault { .. } => ObjectType::VaultObj,
-            ObjectDescriptor::MetaVault { .. } => ObjectType::MetaVaultObj,
-            ObjectDescriptor::UserCreds { .. } => ObjectType::UserCreds,
-            ObjectDescriptor::DbTail => ObjectType::DbTail,
-            ObjectDescriptor::Mempool => ObjectType::MempoolObj,
-        }
-    }
-}
 
 impl ObjectDescriptor {
     pub fn to_id(&self) -> String {
         utils::to_id(self.full_name().as_str())
+    }
+
+    pub fn vault(vault_name: String) -> ObjectDescriptor {
+        ObjectDescriptor::Vault { vault_name }
     }
 }
 
@@ -253,7 +256,9 @@ impl ObjectDescriptor {
 
             ObjectDescriptor::DbTail => String::from("db_tail"),
 
-            ObjectDescriptor::Vault { name } => name.clone(),
+            ObjectDescriptor::Vault { vault_name } => vault_name.clone(),
+            ObjectDescriptor::MetaPassword { vault_name } => vault_name.clone(),
+
             ObjectDescriptor::MetaVault => String::from("main_meta_vault"),
             ObjectDescriptor::UserCreds => String::from("user_creds"),
         }
@@ -265,7 +270,10 @@ impl ToString for ObjectDescriptor {
         match self {
             ObjectDescriptor::GlobalIndex { .. } => String::from("GlobalIndex"),
             ObjectDescriptor::Mempool { .. } => String::from("Mempool"),
+
             ObjectDescriptor::Vault { .. } => String::from("Vault"),
+            ObjectDescriptor::MetaPassword { .. } => String::from("MetaPass"),
+
             ObjectDescriptor::MetaVault { .. } => String::from("MetaVault"),
             ObjectDescriptor::UserCreds { .. } => String::from("UserCreds"),
             ObjectDescriptor::DbTail { .. } => String::from("DbTail"),
@@ -282,7 +290,7 @@ impl IdGen for KvKey {
     fn next(&self) -> Self {
         Self {
             obj_id: self.obj_id.next(),
-            object_type: self.object_type,
+            obj_desc: self.obj_desc.clone(),
         }
     }
 }
@@ -300,4 +308,38 @@ pub enum VaultInfo {
     NotFound,
     /// Device can't get any information about the vault, because its signature is not in members or pending list
     NotMember,
+}
+
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ErrorMessage {
+    stacktrace: Vec<String>,
+}
+
+impl From<&anyhow::Error> for ErrorMessage {
+    fn from(err: &anyhow::Error) -> Self {
+        let mut stacktrace = vec![];
+        for cause in err.chain() {
+            stacktrace.push(cause.to_string().trim().to_string());
+        }
+
+        Self { stacktrace }
+    }
+}
+
+impl From<&dyn std::error::Error> for ErrorMessage {
+    fn from(err: &dyn std::error::Error) -> Self {
+        let mut stacktrace = vec![];
+
+        let mut current_error = err;
+        while let Some(source) = current_error.source() {
+            let err_msg = format!("{}", current_error);
+            stacktrace.push(err_msg);
+
+            current_error = source;
+        }
+
+        Self { stacktrace }
+    }
 }
