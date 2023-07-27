@@ -125,7 +125,7 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> PersistentObject<Repo, Err> {
                         key: KvKey::unit(&ObjectDescriptor::DbTail),
                         value: db_tail.clone(),
                     };
-                    GenericKvLogEvent::LocalEvent(KvLogEventLocal::Tail { event })
+                    GenericKvLogEvent::LocalEvent(KvLogEventLocal::Tail { event: Box::new(event) })
                 };
 
                 self.repo.save_event(&tail_event).await?;
@@ -260,8 +260,7 @@ mod test {
 
         repo_rc.save_event(&genesis_event).await.unwrap();
 
-        let index_desc = ObjectDescriptor::GlobalIndex;
-        let free_id = persistent_object.find_tail_id_by_obj_desc(&index_desc).await;
+        let free_id = persistent_object.find_tail_id_by_obj_desc(&ObjectDescriptor::GlobalIndex).await;
 
         println!("Db: ");
         for (_id, event) in repo_rc.db.borrow().deref() {

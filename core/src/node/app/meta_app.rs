@@ -41,14 +41,13 @@ where
             device: Box::new(device),
         };
 
-        let meta_vault_descriptor = ObjectDescriptor::MetaVault;
-        let key = KvKey::unit(&meta_vault_descriptor);
+        let key = KvKey::unit(&ObjectDescriptor::MetaVault);
         let event: KvLogEvent<MetaVault> = KvLogEvent {
             key,
             value: meta_vault.clone(),
         };
 
-        let db_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::MetaVault { event });
+        let db_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::MetaVault { event: Box::new(event) });
 
         self.save(&ObjectId::meta_vault_index(), &db_event).await?;
 
@@ -91,8 +90,7 @@ where
     Err: Error,
 {
     async fn find_user_creds(&self) -> Result<Option<UserCredentials>, Err> {
-        let user_creds_desc = ObjectDescriptor::UserCreds;
-        let obj_id = ObjectId::unit(&user_creds_desc);
+        let obj_id = ObjectId::unit(&ObjectDescriptor::UserCreds);
         let maybe_creds = self.find_one(&obj_id).await?;
         match maybe_creds {
             None => Ok(None),
@@ -106,12 +104,11 @@ where
     }
 
     async fn save_user_creds(&self, creds: UserCredentials) -> Result<(), Err> {
-        let user_creds_desc = ObjectDescriptor::UserCreds;
         let event = KvLogEvent {
-            key: KvKey::unit(&user_creds_desc),
+            key: KvKey::unit(&ObjectDescriptor::UserCreds),
             value: creds,
         };
-        let generic_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::UserCredentials { event });
+        let generic_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::UserCredentials { event: Box::new(event) });
 
         self.save_event(&generic_event).await
     }

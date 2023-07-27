@@ -9,7 +9,10 @@ use meta_secret_core::node::app::meta_app::{MetaVaultManager, UserCredentialsMan
 use meta_secret_core::node::db::events::object_id::{IdGen, ObjectId};
 use meta_secret_core::node::db::events::sign_up::SignUpRequest;
 use meta_secret_core::node::db::generic_db::SaveCommand;
-use meta_secret_core::node::db::models::{DbTail, GenericKvLogEvent, KvKey, KvLogEvent, KvLogEventLocal, LogEventKeyBasedRecord, ObjectCreator, ObjectDescriptor, PublicKeyRecord};
+use meta_secret_core::node::db::models::{
+    DbTail, GenericKvLogEvent, KvKey, KvLogEvent, KvLogEventLocal, LogEventKeyBasedRecord,
+    ObjectCreator, ObjectDescriptor, PublicKeyRecord
+};
 use meta_secret_core::node::server::data_sync::{DataSyncApi, MetaLogger};
 use meta_secret_core::node::server::persistent_object::{PersistentGlobalIndex, PersistentObject};
 use meta_secret_core::node::server::request::SyncRequest;
@@ -99,10 +102,10 @@ impl WasmMetaServer {
                                         if new_db_tail != db_tail {
                                             //update db_tail
                                             let new_db_tail_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::Tail {
-                                                event: KvLogEvent {
+                                                event: Box::new(KvLogEvent {
                                                     key: KvKey::unit(&ObjectDescriptor::DbTail),
                                                     value: new_db_tail.clone(),
-                                                }
+                                                })
                                             });
 
                                             let saved_event_res = client_repo_rc.save_event(&new_db_tail_event)
@@ -190,10 +193,10 @@ impl WasmMetaServer {
                                                         if latest_db_tail != new_db_tail {
                                                             //update db_tail
                                                             let latest_db_tail_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::Tail {
-                                                                event: KvLogEvent {
+                                                                event: Box::new(KvLogEvent {
                                                                     key: KvKey::unit(&ObjectDescriptor::DbTail),
                                                                     value: latest_db_tail.clone(),
-                                                                }
+                                                                })
                                                             });
 
                                                             client_repo_rc.save_event(&latest_db_tail_event)

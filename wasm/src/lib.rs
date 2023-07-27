@@ -78,11 +78,6 @@ pub async fn sync() -> Result<JsValue, JsValue> {
 }
 
 #[wasm_bindgen]
-pub async fn cluster_distribution(pass_id: &str, pass: &str) -> Result<JsValue, JsValue> {
-    wasm_app::cluster_distribution(pass_id, pass).await
-}
-
-#[wasm_bindgen]
 pub async fn membership(
     candidate_user_sig: JsValue,
     request_type: JsValue,
@@ -180,5 +175,9 @@ impl ApplicationStateManager {
     pub async fn sign_up(&self, vault_name: &str, device_name: &str) {
         self.meta_client.sign_up(vault_name, device_name).await;
         self.on_update().await;
+    }
+
+    pub async fn cluster_distribution(&self, pass_id: &str, pass: &str) {
+        self.meta_client.cluster_distribution(pass_id, pass).await
     }
 }

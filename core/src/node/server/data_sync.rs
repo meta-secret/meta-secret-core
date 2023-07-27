@@ -12,7 +12,7 @@ use crate::node::db::events::object_id::{IdGen, IdStr, ObjectId};
 use crate::node::db::events::sign_up::SignUpAction;
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::meta_db::MetaDb;
-use crate::node::db::models::{GenericKvLogEvent, MempoolObject, PublicKeyRecord};
+use crate::node::db::models::{GenericKvLogEvent, MempoolObject, MetaPassObject, PublicKeyRecord};
 use crate::node::db::models::{GlobalIndexObject, KvLogEvent, ObjectCreator, ObjectDescriptor, VaultObject};
 use crate::node::server::persistent_object::PersistentObject;
 use crate::node::server::request::SyncRequest;
@@ -61,10 +61,9 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> DataSyncApi<Err> for DataSync<Repo, 
 
         match request.global_index {
             None => {
-                let descriptor = ObjectDescriptor::GlobalIndex;
                 let meta_g = self
                     .persistent_obj
-                    .get_object_events_from_beginning(&descriptor, &self.context.server_pk(), logger)
+                    .get_object_events_from_beginning(&ObjectDescriptor::GlobalIndex, &self.context.server_pk(), logger)
                     .await?;
                 commit_log.extend(meta_g);
             }
@@ -153,12 +152,15 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> DataSyncApi<Err> for DataSync<Repo, 
                         logger.log("Handle join request");
                         let user_sig: UserSignature = event.value.clone();
                         let obj_desc = ObjectDescriptor::Vault {
-                            name: user_sig.vault.name,
+                            vault_name: user_sig.vault.name,
                         };
                         let vault_id = ObjectId::unit(&obj_desc);
                         self.accept_join_cluster_request(event, &vault_id, logger).await;
                     }
                 }
+            }
+            GenericKvLogEvent::MetaPass(_) => {
+                //TODO save meta pass!!!
             }
             GenericKvLogEvent::Mempool(evt_type) => {
                 // save mempool event in the database

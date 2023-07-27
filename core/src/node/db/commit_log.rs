@@ -61,6 +61,9 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> MetaDbManager<Repo, Err> {
                         println!("Skip 'join' request");
                     }
                 },
+                GenericKvLogEvent::MetaPass(_) => {
+                    //TODO not implemented yet
+                }
                 GenericKvLogEvent::Mempool(_) => {
                     panic!("Internal mempool event");
                 }
@@ -122,6 +125,9 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> MetaDbManager<Repo, Err> {
                 }
                 GenericKvLogEvent::Mempool(_) => {
                     panic!("Invalid state");
+                }
+                GenericKvLogEvent::MetaPass(_) => {
+                    //TODO save meta password!!!!
                 }
                 GenericKvLogEvent::LocalEvent(_) => {
                     panic!("Invalid state");
