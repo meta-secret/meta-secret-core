@@ -16,13 +16,14 @@ pub enum LogCommandError {
         source: serde_json::Error,
     },
 }
+
 /// Local events (persistent objects which lives only in the local environment) which must not be synchronized
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum KvLogEventLocal {
     MetaVault { event: Box<KvLogEvent<MetaVault>> },
     UserCredentials { event: Box<KvLogEvent<UserCredentials>> },
-    Tail { event: Box<KvLogEvent<DbTail>> },
+    DbTail { event: Box<KvLogEvent<DbTail>> },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -66,15 +67,9 @@ pub enum MempoolObject {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum MetaPassObject {
-    Unit {
-        event: KvLogEvent<()>,
-    },
-    Genesis {
-        event: KvLogEvent<PublicKeyRecord>,
-    },
-    Record {
-        event: KvLogEvent<MetaPasswordDoc>,
-    },
+    Unit { event: KvLogEvent<()> },
+    Genesis { event: KvLogEvent<PublicKeyRecord> },
+    Update { event: KvLogEvent<MetaPasswordDoc> },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -112,18 +107,16 @@ impl LogEventKeyBasedRecord for GenericKvLogEvent {
                 VaultObject::JoinUpdate { event } => &event.key,
                 VaultObject::JoinRequest { event } => &event.key,
             },
-            GenericKvLogEvent::MetaPass(pass_obj) => {
-                match pass_obj {
-                    MetaPassObject::Unit { event } => &event.key,
-                    MetaPassObject::Genesis { event } => &event.key,
-                    MetaPassObject::Record { event } => &event.key,
-                }
-            }
+            GenericKvLogEvent::MetaPass(pass_obj) => match pass_obj {
+                MetaPassObject::Unit { event } => &event.key,
+                MetaPassObject::Genesis { event } => &event.key,
+                MetaPassObject::Update { event } => &event.key,
+            },
             GenericKvLogEvent::Mempool(mem_pool_obj) => match mem_pool_obj {
                 MempoolObject::JoinRequest { event } => &event.key,
             },
             GenericKvLogEvent::LocalEvent(op) => match op {
-                KvLogEventLocal::Tail { event } => &event.key,
+                KvLogEventLocal::DbTail { event } => &event.key,
                 KvLogEventLocal::MetaVault { event } => &event.key,
                 KvLogEventLocal::UserCredentials { event } => &event.key,
             },
@@ -147,9 +140,19 @@ impl From<Base64EncodedText> for PublicKeyRecord {
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DbTail {
-    pub vault: Option<ObjectId>,
-    pub global_index: Option<ObjectId>,
-    pub mem_pool: Option<ObjectId>,
+    pub maybe_global_index_id: Option<ObjectId>,
+
+    pub vault_id: DbTailObject,
+    pub meta_pass_id: DbTailObject,
+    
+    pub maybe_mem_pool_id: Option<ObjectId>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Hash, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum DbTailObject {
+    Empty { unit_id: ObjectId },
+    Id { tail_id: ObjectId },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
@@ -228,11 +231,10 @@ pub enum ObjectDescriptor {
     Mempool,
     DbTail,
     Vault { vault_name: String },
-    MetaPassword { vault_name: String},
+    MetaPassword { vault_name: String },
     MetaVault,
     UserCreds,
 }
-
 
 impl ObjectDescriptor {
     pub fn to_id(&self) -> String {
@@ -309,7 +311,6 @@ pub enum VaultInfo {
     /// Device can't get any information about the vault, because its signature is not in members or pending list
     NotMember,
 }
-
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

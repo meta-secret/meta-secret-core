@@ -13,7 +13,7 @@ use meta_secret_core::node::db::events::join::join_cluster_request;
 use meta_secret_core::node::db::events::object_id::ObjectId;
 use meta_secret_core::node::db::events::sign_up::SignUpRequest;
 use meta_secret_core::node::db::generic_db::SaveCommand;
-use meta_secret_core::node::db::meta_db::MetaDb;
+use meta_secret_core::node::db::meta_db::{MetaDb, MetaPassStore, VaultStore};
 use meta_secret_core::node::db::models::{
     GenericKvLogEvent, KvKey, KvLogEvent, MempoolObject, ObjectDescriptor, VaultInfo,
 };
@@ -27,13 +27,14 @@ use crate::db::WasmDbError;
 use crate::objects::ToJsValue;
 use crate::server::WasmMetaServer;
 
-pub fn get_data_sync(repo: Rc<WasmRepo>, creds: &UserCredentials) -> DataSync<WasmRepo, WasmDbError> {
+pub fn get_data_sync(repo: Rc<WasmRepo>, creds: &UserCredentials) -> DataSync<WasmRepo, WasmMetaLogger, WasmDbError> {
     let persistent_object = get_persistent_object(repo.clone());
     let persistent_object_rc = Rc::new(persistent_object);
 
     let meta_db_manager = MetaDbManager {
         persistent_obj: persistent_object_rc.clone(),
         repo: repo.clone(),
+        logger: WasmMetaLogger {},
     };
     let meta_db_manager_rc = Rc::new(meta_db_manager);
 
@@ -42,6 +43,7 @@ pub fn get_data_sync(repo: Rc<WasmRepo>, creds: &UserCredentials) -> DataSync<Wa
         repo,
         context: Rc::new(MetaServerContextState::from(creds)),
         meta_db_manager: meta_db_manager_rc,
+        logger: WasmMetaLogger {},
     }
 }
 
@@ -199,7 +201,7 @@ pub async fn get_meta_passwords() -> Result<JsValue, JsValue> {
 
 pub struct WasmMetaClient {
     meta_db: Arc<Mutex<MetaDb>>,
-    meta_db_manager: MetaDbManager<WasmRepo, WasmDbError>,
+    meta_db_manager: MetaDbManager<WasmRepo, WasmMetaLogger, WasmDbError>,
     app_state: Arc<Mutex<ApplicationState>>,
 }
 
@@ -213,6 +215,7 @@ impl WasmMetaClient {
         let meta_db_manager = MetaDbManager {
             persistent_obj: persistent_object_rc,
             repo: repo_rc,
+            logger: WasmMetaLogger {},
         };
 
         let meta_db = Arc::new(Mutex::new(MetaDb::default()));
@@ -246,7 +249,8 @@ impl WasmMetaClient {
                 let distributor = MetaDistributor {
                     meta_db_manager: MetaDbManager {
                         persistent_obj: persistent_object_rc,
-                        repo: repo_rc
+                        repo: repo_rc,
+                        logger: WasmMetaLogger {},
                     },
                     vault,
                     user_creds: creds,
@@ -396,27 +400,34 @@ impl WasmMetaClient {
             Some(creds) => {
                 let mut meta_db = self.meta_db.lock().await;
 
-                let vault_obj = ObjectId::vault_unit(creds.user_sig.vault.name.as_str());
-                let vault_id = meta_db.vault_store.tail_id.clone().unwrap_or(vault_obj);
+                let vault_unit_id = ObjectId::vault_unit(creds.user_sig.vault.name.as_str());
 
-                meta_db.vault_store.tail_id = Some(vault_id.clone());
+                if meta_db.vault_store == VaultStore::Empty {
+                    meta_db.vault_store = VaultStore::Unit { tail_id: vault_unit_id.clone() }
+                }
 
-                let updated_meta_db = self.meta_db_manager.sync_meta_db(meta_db.clone(), &logger).await;
+                if meta_db.meta_pass_store == MetaPassStore::Empty {
+                    meta_db.meta_pass_store = MetaPassStore::Unit {
+                        tail_id: ObjectId::meta_pass_unit(creds.user_sig.vault.name.as_str())
+                    }
+                }
+
+                let updated_meta_db = self
+                    .meta_db_manager
+                    .sync_meta_db(meta_db.clone())
+                    .await;
 
                 meta_db.vault_store = updated_meta_db.vault_store;
                 meta_db.global_index_store = updated_meta_db.global_index_store;
 
                 let global_index = meta_db.global_index_store.global_index.clone();
-                let vault_obj_id = vault_id.unit_id();
-                if global_index.contains(vault_obj_id.id_str().as_str()) {
+                if global_index.contains(vault_unit_id.id_str().as_str()) {
                     //if the vault is already present:
-                    match meta_db.vault_store.vault.as_ref() {
-                        None => {
-                            VaultInfo::NotMember
+                    match &meta_db.vault_store {
+                        VaultStore::Store { vault, .. } => {
+                            VaultInfo::Member { vault: vault.clone() }
                         }
-                        Some(vault_doc) => {
-                            VaultInfo::Member { vault: vault_doc.clone() }
-                        }
+                        _ => VaultInfo::NotMember
                     }
                 } else {
                     VaultInfo::NotFound

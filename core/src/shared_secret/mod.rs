@@ -1,17 +1,16 @@
 use crate::crypto::keys::KeyManager;
 use crate::models::{
-    AeadCipherText, EncryptedMessage, MetaPasswordDoc, MetaPasswordId, MetaPasswordRequest,
-    SecretDistributionDocData, SecretDistributionType, UserCredentials, UserSecurityBox, UserSignature, VaultDoc
+    AeadCipherText, EncryptedMessage, MetaPasswordDoc, MetaPasswordId, MetaPasswordRequest, SecretDistributionDocData,
+    SecretDistributionType, UserCredentials, UserSecurityBox, UserSignature, VaultDoc,
 };
 use crate::node::db::commit_log::MetaDbManager;
 use crate::node::db::generic_db::KvLogEventRepo;
 
-use crate::node::db::models::ObjectCreator;
-
+use crate::node::db::events::object_id::IdGen;
+use crate::node::db::models::{GenericKvLogEvent, KvKey, KvLogEvent, MetaPassObject, ObjectDescriptor};
+use crate::node::server::data_sync::MetaLogger;
 use crate::CoreResult;
 use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
-use crate::node::db::events::object_id::{IdGen, ObjectId};
-use crate::node::db::models::{GenericKvLogEvent, KvLogEvent, KvKey, MetaPassObject, ObjectDescriptor};
 
 pub mod data_block;
 pub mod shared_secret;
@@ -75,13 +74,13 @@ struct MetaCipherShare {
     cipher_share: AeadCipherText,
 }
 
-pub struct MetaDistributor<Repo: KvLogEventRepo<Err>, Err: std::error::Error> {
-    pub meta_db_manager: MetaDbManager<Repo, Err>,
+pub struct MetaDistributor<Repo: KvLogEventRepo<Err>, L: MetaLogger, Err: std::error::Error> {
+    pub meta_db_manager: MetaDbManager<Repo, L, Err>,
     pub user_creds: UserCredentials,
     pub vault: VaultDoc,
 }
 
-impl <Repo: KvLogEventRepo<Err>, Err: std::error::Error> MetaDistributor<Repo, Err> {
+impl<Repo: KvLogEventRepo<Err>, L: MetaLogger, Err: std::error::Error> MetaDistributor<Repo, L, Err> {
     /// Encrypt and distribute password across the cluster
     pub async fn distribute(self, password_id: String, password: String) {
         let encryptor = MetaEncryptor {
@@ -102,14 +101,15 @@ impl <Repo: KvLogEventRepo<Err>, Err: std::error::Error> MetaDistributor<Repo, E
         let vault_name = self.user_creds.user_sig.vault.name.clone();
         let meta_pass_obj_desc = ObjectDescriptor::MetaPassword { vault_name };
 
-        let pass_tail_id = self.meta_db_manager
+        let pass_tail_id = self
+            .meta_db_manager
             .persistent_obj
             .find_tail_id_by_obj_desc(&meta_pass_obj_desc)
             .await
             .map(|id| id.next())
             .unwrap();
 
-        let meta_pass_event = GenericKvLogEvent::MetaPass(MetaPassObject::Record {
+        let meta_pass_event = GenericKvLogEvent::MetaPass(MetaPassObject::Update {
             event: KvLogEvent {
                 key: KvKey {
                     obj_id: pass_tail_id,
@@ -119,16 +119,10 @@ impl <Repo: KvLogEventRepo<Err>, Err: std::error::Error> MetaDistributor<Repo, E
             },
         });
 
-        self.meta_db_manager
-            .repo
-            .save_event(&meta_pass_event)
-            .await
-            .unwrap();
-
+        self.meta_db_manager.repo.save_event(&meta_pass_event).await.unwrap();
 
         let encrypted_shares = encryptor.encrypt(password);
         for cipher_share in encrypted_shares {
-
             let cipher_msg = EncryptedMessage {
                 receiver: Box::from(cipher_share.receiver.clone()),
                 encrypted_text: Box::new(cipher_share.cipher_share),
