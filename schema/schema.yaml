@@ -370,11 +370,16 @@ components:
       type: object
       required:
         - joinComponent
+        - metaPasswords
       properties:
         metaVault:
           $ref: '#/components/schemas/MetaVault'
         vault:
           $ref: '#/components/schemas/VaultDoc'
+        metaPasswords:
+          type: array
+          items:
+            $ref: '#/components/schemas/MetaPasswordDoc'
         joinComponent:
           type: boolean
 

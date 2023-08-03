@@ -1,24 +1,29 @@
 extern crate core;
 
-use core::task;
-use std::sync::{Arc, Mutex};
+use std::rc::Rc;
+use std::sync::{Arc};
 use wasm_bindgen::prelude::*;
-use meta_secret_core::models::{ApplicationState};
-use crate::wasm_app::WasmMetaClient;
-use meta_secret_core::node::app::meta_app::MetaVaultManager;
+use meta_secret_core::models::{ApplicationState, MetaVault, UserCredentials, VaultDoc};
+use crate::wasm_app::{EmptyMetaClient, InitMetaClient, MetaClientContext, RegisteredMetaClient, WasmMetaClient};
+use meta_secret_core::node::app::meta_app::{MetaVaultManager, UserCredentialsManager};
 use crate::commit_log::{WasmMetaLogger, WasmRepo};
 use crate::objects::ToJsValue;
-use wasm_bindgen_futures::spawn_local;
 
 use async_mutex::Mutex as AsyncMutex;
+use meta_secret_core::node::db::commit_log::MetaDbManager;
+use meta_secret_core::node::db::meta_db::{MetaDb, MetaPassStore};
 use meta_secret_core::node::db::models::VaultInfo;
+use crate::db::WasmDbError;
+use crate::gateway::WasmSyncGateway;
+use crate::virtual_device::{VirtualDevice, VirtualDeviceEvent};
 
 mod commit_log;
 mod db;
 mod objects;
 mod utils;
 mod wasm_app;
-mod server;
+mod gateway;
+mod virtual_device;
 
 /// Json utilities https://github.com/rustwasm/wasm-bindgen/blob/main/crates/js-sys/tests/wasm/JSON.rs
 
@@ -34,7 +39,6 @@ extern "C" {
 
     #[wasm_bindgen(structural, method)]
     pub fn updateJsState(this: &JsAppState);
-
 }
 
 #[wasm_bindgen]
@@ -86,12 +90,6 @@ pub async fn membership(
 }
 
 
-#[wasm_bindgen]
-pub async fn get_meta_passwords() -> Result<JsValue, JsValue> {
-    wasm_app::get_meta_passwords().await
-}
-
-
 /// https://rustwasm.github.io/docs/wasm-bindgen/reference/arbitrary-data-with-serde.html
 #[wasm_bindgen]
 pub fn split(pass: &str) -> Result<JsValue, JsValue> {
@@ -111,9 +109,9 @@ pub fn restore_password(shares_json: JsValue) -> Result<JsValue, JsValue> {
 
 #[wasm_bindgen]
 pub struct ApplicationStateManager {
-    meta_client: WasmMetaClient,
-    app_state: Arc<AsyncMutex<ApplicationState>>,
-    js_app_state: JsAppState
+    meta_client: Rc<WasmMetaClient>,
+    js_app_state: JsAppState,
+    virtual_device: Rc<VirtualDevice>,
 }
 
 #[wasm_bindgen]
@@ -124,42 +122,71 @@ impl ApplicationStateManager {
             let state = ApplicationState {
                 meta_vault: None,
                 vault: None,
+                meta_passwords: vec![],
                 join_component: false,
             };
             Arc::new(AsyncMutex::new(state))
         };
 
-        let meta_client = WasmMetaClient::new(app_state.clone());
+        let client_repo = Rc::new(WasmRepo::default());
+        let meta_client = WasmMetaClient::Empty(EmptyMetaClient {
+            ctx: Rc::new(MetaClientContext::new(app_state.clone(), client_repo.clone()))
+        });
+
         ApplicationStateManager {
-            app_state,
-            meta_client,
-            js_app_state
+            meta_client: Rc::new(meta_client),
+            js_app_state,
+            virtual_device: Rc::new(VirtualDevice::new()),
         }
     }
 
-    pub async fn init(&self) {
-        let logger = WasmMetaLogger {};
+    pub async fn init(&mut self) {
+        self.virtual_device.handle(VirtualDeviceEvent::Init).await;
+        self.virtual_device.handle(VirtualDeviceEvent::SignUp).await;
 
-        let repo = WasmRepo::default();
-        let meta_vault = repo
-            .find_meta_vault(&logger)
-            .await
-            .unwrap();
-
-        let vault_info = self.meta_client.get_vault().await.unwrap();
-        if let VaultInfo::Member { vault } = vault_info {
-            {
-                let mut app_state = self.app_state.lock().await;
-                app_state.vault = Some(Box::new(vault))
+        match self.meta_client.as_ref() {
+            WasmMetaClient::Empty(client) => {
+                let creds_result = client.find_user_creds().await;
+                match creds_result {
+                    Ok(Some(init_client)) => {
+                        init_client.ctx.update_meta_vault(init_client.creds.user_sig.vault.clone()).await;
+                        self.meta_client = Rc::new(WasmMetaClient::Init(init_client));
+                    }
+                    _ => {
+                        //ignore
+                    }
+                }
+            }
+            WasmMetaClient::Init(client) => {
+                let new_client = client.sign_up().await;
+                self.meta_client = Rc::new(WasmMetaClient::Registered(new_client));
+            }
+            WasmMetaClient::Registered(client) => {
+                self.registered_client(client).await;
             }
         }
 
-        {
-            let mut app_state = self.app_state.lock().await;
-            app_state.meta_vault = meta_vault.map(Box::new);
-        }
-
         self.on_update().await;
+    }
+
+    async fn registered_client(&self, client: &RegisteredMetaClient) {
+        match &client.vault_info {
+            VaultInfo::Member { vault } => {
+                client.ctx.update_vault(vault.clone()).await;
+            }
+            VaultInfo::Pending => {
+                //ignore
+            }
+            VaultInfo::Declined => {
+                //ignore
+            }
+            VaultInfo::NotFound => {
+                //ignore
+            }
+            VaultInfo::NotMember => {
+                //ignore
+            }
+        }
     }
 
     async fn on_update(&self) {
@@ -168,16 +195,70 @@ impl ApplicationStateManager {
     }
 
     pub async fn get_state(&self) -> JsValue {
-        let app_state = self.app_state.lock().await;
+        let app_state = match self.meta_client.as_ref() {
+            WasmMetaClient::Empty(client) => {
+                client.ctx.app_state.lock().await
+            }
+            WasmMetaClient::Init(client) => {
+                client.ctx.app_state.lock().await
+            }
+            WasmMetaClient::Registered(client) => {
+                client.ctx.app_state.lock().await
+            }
+        };
+
         app_state.to_js().unwrap()
     }
 
-    pub async fn sign_up(&self, vault_name: &str, device_name: &str) {
-        self.meta_client.sign_up(vault_name, device_name).await;
-        self.on_update().await;
+    pub async fn sign_up(&mut self, vault_name: &str, device_name: &str) {
+        match self.meta_client.as_ref() {
+            WasmMetaClient::Empty(client) => {
+                let new_client_result = client.get_or_create_local_vault(vault_name, device_name).await;
+
+                match new_client_result {
+                    Ok(new_client) => {
+                        self.meta_client = Rc::new(WasmMetaClient::Init(new_client))
+                    }
+                    Err(_) => {}
+                }
+            }
+            WasmMetaClient::Init(_) => {
+                //ignore
+            }
+            WasmMetaClient::Registered(_) => {
+                //ignore
+            }
+        };
+
+        //self.meta_client.sign_up(vault_name, device_name).await;
+        //self.on_update().await;
     }
 
     pub async fn cluster_distribution(&self, pass_id: &str, pass: &str) {
-        self.meta_client.cluster_distribution(pass_id, pass).await
+        match self.meta_client.as_ref() {
+            WasmMetaClient::Empty(_) => {}
+            WasmMetaClient::Init(_) => {}
+            WasmMetaClient::Registered(client) => {
+                client.cluster_distribution(pass_id, pass).await;
+                let passwords = {
+                    let meta_db = client.ctx.meta_db.lock().await;
+                    match &meta_db.meta_pass_store {
+                        MetaPassStore::Store { passwords, .. } => {
+                            passwords.clone()
+                        }
+                        _ => {
+                            vec![]
+                        }
+                    }
+                };
+
+                {
+                    let mut app_state = client.ctx.app_state.lock().await;
+                    app_state.meta_passwords.clear();
+                    app_state.meta_passwords = passwords;
+                    self.on_update().await;
+                }
+            }
+        }
     }
 }

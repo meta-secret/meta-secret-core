@@ -106,7 +106,6 @@ impl<Repo: KvLogEventRepo<Err>, L: MetaLogger, Err: Error> MetaDbManager<Repo, L
                         server_pk: event.value.clone(),
                     },
                     _ => {
-                        self.logger.log("2");
                         panic!("Invalid state")
                     }
                 };
@@ -119,7 +118,6 @@ impl<Repo: KvLogEventRepo<Err>, L: MetaLogger, Err: Error> MetaDbManager<Repo, L
                         vault: event.value.clone(),
                     },
                     _ => {
-                        self.logger.log("3");
                         panic!("Invalid state")
                     }
                 };
@@ -132,7 +130,6 @@ impl<Repo: KvLogEventRepo<Err>, L: MetaLogger, Err: Error> MetaDbManager<Repo, L
                         vault: event.value.clone(),
                     },
                     _ => {
-                        self.logger.log("4");
                         panic!("Invalid state")
                     }
                 };
@@ -145,7 +142,6 @@ impl<Repo: KvLogEventRepo<Err>, L: MetaLogger, Err: Error> MetaDbManager<Repo, L
                         vault: vault.clone(),
                     },
                     _ => {
-                        self.logger.log("5");
                         panic!("Invalid state")
                     }
                 };
@@ -160,7 +156,18 @@ impl<Repo: KvLogEventRepo<Err>, L: MetaLogger, Err: Error> MetaDbManager<Repo, L
                     MetaPassStore::Empty => MetaPassStore::Unit {
                         tail_id: event.key.obj_id.clone(),
                     },
-                    _ => panic!("Invalid state"),
+                    //TODO fix duplicate synchronization
+                    MetaPassStore::Unit { .. } => MetaPassStore::Unit {
+                        tail_id: event.key.obj_id.clone(),
+                    },
+                    _ => {
+                        let err_str = format!(
+                            "Invalid state. Meta pass. Got a unit event, expected db state is Empty or Unit, actual: {:?}",
+                            &meta_db.meta_pass_store
+                        );
+                        self.logger.log(err_str.as_str());
+                        panic!("Invalid state")
+                    }
                 }
             }
             MetaPassObject::Genesis { event } => {
@@ -169,7 +176,19 @@ impl<Repo: KvLogEventRepo<Err>, L: MetaLogger, Err: Error> MetaDbManager<Repo, L
                         tail_id: event.key.obj_id.clone(),
                         server_pk: event.value.clone(),
                     },
-                    _ => panic!("Invalid state"),
+                    //TODO fix duplicate synchronization
+                    MetaPassStore::Genesis { .. } => MetaPassStore::Genesis {
+                        tail_id: event.key.obj_id.clone(),
+                        server_pk: event.value.clone(),
+                    },
+                    _ => {
+                        let err_msg = format!(
+                            "Invalid state. Meta Pass, genesis event. Actual: {:?}, expected: unit",
+                            meta_db.meta_pass_store
+                        );
+                        self.logger.log(err_msg.as_str());
+                        panic!("Invalid state")
+                    }
                 }
             }
             MetaPassObject::Update { event } => {
@@ -195,7 +214,14 @@ impl<Repo: KvLogEventRepo<Err>, L: MetaLogger, Err: Error> MetaDbManager<Repo, L
                             passwords: passwords.clone(),
                         }
                     }
-                    _ => panic!("Invalid state"),
+                    _ => {
+                        let err_msg = format!(
+                            "Invalid state. Meta Pass, update event. Actual state: {:?}, expected: genesis or store",
+                            meta_db.meta_pass_store
+                        );
+                        self.logger.log(err_msg.as_str());
+                        panic!("Invalid state")
+                    }
                 };
             }
         }

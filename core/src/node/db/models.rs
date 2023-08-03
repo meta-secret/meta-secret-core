@@ -144,7 +144,7 @@ pub struct DbTail {
 
     pub vault_id: DbTailObject,
     pub meta_pass_id: DbTailObject,
-    
+
     pub maybe_mem_pool_id: Option<ObjectId>,
 }
 

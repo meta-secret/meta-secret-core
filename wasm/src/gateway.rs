@@ -19,55 +19,59 @@ use crate::commit_log::{WasmMetaLogger, WasmRepo};
 use crate::db::WasmDbError;
 use crate::wasm_app::get_data_sync;
 
-#[wasm_bindgen]
-pub struct WasmMetaServer {}
+pub struct WasmSyncGateway {
+    logger: WasmMetaLogger,
+    server_repo: Rc<WasmRepo>,
+    client_repo: Rc<WasmRepo>
+}
 
-#[wasm_bindgen]
-impl WasmMetaServer {
-    pub fn new() -> WasmMetaServer {
-        WasmMetaServer {}
+impl WasmSyncGateway {
+    pub fn new() -> WasmSyncGateway {
+        WasmSyncGateway {
+            logger: WasmMetaLogger {},
+            server_repo: Rc::new(WasmRepo::server()),
+            client_repo: Rc::new(WasmRepo::default()),
+        }
     }
 
-    #[wasm_bindgen]
-    pub async fn run_server(&self) {
-        let logger = WasmMetaLogger {};
-        //log("WasmMetaServer::run_server");
+    pub fn new_with_virtual_device(client_repo: Rc<WasmRepo>) -> WasmSyncGateway {
+        WasmSyncGateway {
+            logger: WasmMetaLogger {},
+            server_repo: Rc::new(WasmRepo::server()),
+            client_repo,
+        }
+    }
 
-        let server_repo = WasmRepo::server();
-        let server_repo_rc = Rc::new(server_repo);
-
-        let client_repo = WasmRepo::default();
-        let client_repo_rc = Rc::new(client_repo);
-
+    pub async fn sync(&self) {
         let client_persistent_object = PersistentObject {
-            repo: client_repo_rc.clone(),
+            repo: self.client_repo.clone(),
             global_index: PersistentGlobalIndex {
-                repo: client_repo_rc.clone(),
+                repo: self.client_repo.clone(),
                 _phantom: PhantomData,
             },
         };
 
-        let client_creds_result = client_repo_rc.find_user_creds()
+        let client_creds_result = self.client_repo.find_user_creds()
             .await;
 
-        let server_creds_result = server_repo_rc.find_user_creds()
+        let server_creds_result = self.server_repo.find_user_creds()
             .await;
 
         match (server_creds_result, client_creds_result) {
             (Ok(None), _) => {
-                self.generate_server_user_credentials(server_repo_rc).await;
+                self.generate_server_user_credentials().await;
             }
 
             (Err(_), _) => {
-                self.generate_server_user_credentials(server_repo_rc).await;
+                self.generate_server_user_credentials().await;
             }
 
             (_, Err(_)) => {
-                logger.log("Empty client credentials. Skip");
+                self.logger.log("Empty client credentials. Skip");
             }
 
             (_, Ok(None)) => {
-                logger.log("Empty client credentials. Skip");
+                self.logger.log("Empty client credentials. Skip");
             }
 
             (Ok(Some(server_creds)), Ok(Some(client_creds))) => {
@@ -85,16 +89,12 @@ impl WasmMetaServer {
                         ).await;
 
                         let new_tail_for_vault = self.get_new_tail_for_an_obj(
-                            &logger,
-                            &server_repo_rc,
                             &client_persistent_object,
                             &server_creds,
                             &db_tail.vault_id,
                         ).await;
 
                         let new_tail_for_meta_pass = self.get_new_tail_for_an_obj(
-                            &logger,
-                            &server_repo_rc,
                             &client_persistent_object,
                             &server_creds,
                             &db_tail.meta_pass_id,
@@ -103,8 +103,6 @@ impl WasmMetaServer {
                         let new_tail_for_mem_pool = self.get_new_tail_for_mem_pool(
                             &client_persistent_object,
                             &db_tail,
-                            &logger,
-                            &server_repo_rc,
                             &server_creds,
                         ).await;
 
@@ -117,7 +115,7 @@ impl WasmMetaServer {
                         };
 
                         self
-                            .save_updated_db_tail(&logger, client_repo_rc.clone(), db_tail, new_db_tail.clone())
+                            .save_updated_db_tail(db_tail, new_db_tail.clone())
                             .await;
 
                         let sync_request = {
@@ -145,7 +143,7 @@ impl WasmMetaServer {
                         let mut latest_vault_id = new_db_tail.vault_id.clone();
                         let mut latest_meta_pass_id = new_db_tail.meta_pass_id.clone();
 
-                        let server_data_sync = get_data_sync(server_repo_rc, &server_creds);
+                        let server_data_sync = get_data_sync(self.server_repo.clone(), &server_creds);
                         let new_events_res = server_data_sync
                             .sync_data(sync_request)
                             .await;
@@ -153,7 +151,7 @@ impl WasmMetaServer {
                         match new_events_res {
                             Ok(new_events) => {
                                 for new_event in new_events {
-                                    let save_op = client_repo_rc
+                                    let save_op = self.client_repo
                                         .save_event(&new_event)
                                         .await;
 
@@ -179,7 +177,7 @@ impl WasmMetaServer {
                                             }
                                         }
                                         Err(_) => {
-                                            logger.log("Error saving new events to local db");
+                                            self.logger.log("Error saving new events to local db");
                                             panic!("Error");
                                         }
                                     }
@@ -194,11 +192,11 @@ impl WasmMetaServer {
                                 };
 
                                 self
-                                    .save_updated_db_tail(&logger, client_repo_rc, new_db_tail.clone(), latest_db_tail)
+                                    .save_updated_db_tail(new_db_tail.clone(), latest_db_tail)
                                     .await
                             }
                             Err(_err) => {
-                                logger.log("DataSync error. Error loading events");
+                                self.logger.log("DataSync error. Error loading events");
                                 panic!("Error");
                             }
                         }
@@ -212,8 +210,8 @@ impl WasmMetaServer {
         }
     }
 
-    async fn save_updated_db_tail(
-        &self, logger: &WasmMetaLogger, client_repo_rc: Rc<WasmRepo>, db_tail: DbTail, new_db_tail: DbTail) {
+    async fn save_updated_db_tail(&self, db_tail: DbTail, new_db_tail: DbTail) {
+
         if new_db_tail == db_tail {
             return;
         }
@@ -226,23 +224,22 @@ impl WasmMetaServer {
             })
         });
 
-        let saved_event_res = client_repo_rc
+        let saved_event_res = self.client_repo
             .save_event(&new_db_tail_event)
             .await;
 
         match saved_event_res {
             Ok(()) => {
-                logger.log("New db tail saved on client side")
+                self.logger.log("New db tail saved on client side")
             }
             Err(_) => {
-                logger.log("Error saving db tail");
+                self.logger.log("Error saving db tail");
             }
         };
     }
 
     async fn get_new_tail_for_an_obj(
         &self,
-        logger: &WasmMetaLogger, server_repo_rc: &Rc<WasmRepo>,
         client_persistent_object: &PersistentObject<WasmRepo, WasmDbError>, server_creds: &UserCredentials,
         db_tail_obj: &DbTailObject,
     ) -> DbTailObject {
@@ -276,9 +273,9 @@ impl WasmMetaServer {
                 let mut client_events: Vec<GenericKvLogEvent> = vec![];
                 client_events.extend(obj_events);
 
-                let server_data_sync = get_data_sync(server_repo_rc.clone(), server_creds);
+                let server_data_sync = get_data_sync(self.server_repo.clone(), server_creds);
                 for client_event in client_events {
-                    logger.log(format!("send event to server: {:?}", client_event).as_str());
+                    self.logger.log(format!("send event to server: {:?}", client_event).as_str());
                     server_data_sync.send_data(&client_event).await;
                 }
 
@@ -304,9 +301,7 @@ impl WasmMetaServer {
     async fn get_new_tail_for_mem_pool(
         &self,
         client_persistent_object: &PersistentObject<WasmRepo, WasmDbError>,
-        db_tail: &DbTail, logger: &WasmMetaLogger,
-        server_repo_rc: &Rc<WasmRepo>,
-        server_creds: &UserCredentials,
+        db_tail: &DbTail, server_creds: &UserCredentials,
     ) -> Option<ObjectId> {
         let mem_pool_id = match db_tail.maybe_mem_pool_id.clone() {
             None => {
@@ -325,9 +320,9 @@ impl WasmMetaServer {
         let mut client_requests: Vec<GenericKvLogEvent> = vec![];
         client_requests.extend(mem_pool_events);
 
-        let server_data_sync = get_data_sync(server_repo_rc.clone(), server_creds);
+        let server_data_sync = get_data_sync(self.server_repo.clone(), server_creds);
         for client_event in client_requests {
-            logger.log(format!("send mem pool request to server: {:?}", client_event).as_str());
+            self.logger.log(format!("send mem pool request to server: {:?}", client_event).as_str());
             server_data_sync.send_data(&client_event).await;
         }
 
@@ -341,12 +336,12 @@ impl WasmMetaServer {
         }
     }
 
-    async fn generate_server_user_credentials(&self, server_repo: Rc<WasmRepo>) {
+    async fn generate_server_user_credentials(&self) {
         log("Generate user credentials for server");
 
         let logger = WasmMetaLogger {};
 
-        let meta_vault = server_repo
+        let meta_vault = self.server_repo
             .create_meta_vault(
                 "q".to_string(),
                 "meta-server-device".to_string(),
@@ -359,44 +354,19 @@ impl WasmMetaServer {
         let user_sig = security_box.get_user_sig(&meta_vault.device);
         let creds = UserCredentials::new(security_box, user_sig);
 
-        server_repo
-            .save_user_creds(creds.clone())
+        self.server_repo
+            .save_user_creds(&creds)
             .await
             .unwrap();
 
-        Self::generate_vault(server_repo, &creds).await;
+        //self.generate_vault(&creds).await;
     }
 
-    async fn generate_vault(server_repo: Rc<WasmRepo>, server_creds: &UserCredentials) {
-        let logger = WasmMetaLogger {};
-
+    async fn generate_vault(&self, server_creds: &UserCredentials) {
         let sign_up_request_factory = SignUpRequest {};
         let sign_up_request = sign_up_request_factory.generic_request(&server_creds.user_sig);
 
-        let server_data_sync = get_data_sync(server_repo.clone(), server_creds);
+        let server_data_sync = get_data_sync(self.server_repo.clone(), server_creds);
         server_data_sync.send_data(&sign_up_request).await;
     }
 }
-
-/*
-let a_s_box = KeyManager::generate_security_box("qwe".to_string());
-    let a_device = DeviceInfo {
-        device_id: "a".to_string(),
-        device_name: "a".to_string(),
-    };
-    let user_sig = a_s_box.get_user_sig(&a_device);
-
-    let event = KvLogEvent {
-        key: KvKey::formation(&ObjectDescriptor::Tail),
-        value: DbTail {
-            vault: ObjectId::formation(&ObjectDescriptor::Vault { name: "test_vault".to_string() }),
-            global_index: ObjectId::formation(&ObjectDescriptor::GlobalIndex),
-        },
-    };
-    let generic_evt = GenericKvLogEvent::Local(KvLogEventLocal::Tail { event });
-
-    alert("yay!!!");
-
-    meta_vault_manager.save_event(&generic_evt).await;
-    meta_vault_manager.save_event(&generic_evt).await;
-*/

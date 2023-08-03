@@ -116,10 +116,14 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> PersistentObject<Repo, Err> {
         match maybe_db_tail {
             None => {
                 let db_tail = DbTail {
-                    vault_id: DbTailObject::Empty { unit_id: ObjectId::vault_unit(vault_name) },
+                    vault_id: DbTailObject::Empty {
+                        unit_id: ObjectId::vault_unit(vault_name),
+                    },
                     maybe_global_index_id: None,
                     maybe_mem_pool_id: None,
-                    meta_pass_id: DbTailObject::Empty { unit_id: ObjectId::meta_pass_unit(vault_name)},
+                    meta_pass_id: DbTailObject::Empty {
+                        unit_id: ObjectId::meta_pass_unit(vault_name),
+                    },
                 };
 
                 let tail_event = {
