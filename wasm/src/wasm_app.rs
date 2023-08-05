@@ -178,6 +178,16 @@ pub enum WasmMetaClient {
     Registered(RegisteredMetaClient),
 }
 
+impl ToString for WasmMetaClient {
+    fn to_string(&self) -> String {
+        match self {
+            WasmMetaClient::Empty(_) => String::from("Empty"),
+            WasmMetaClient::Init(_) => String::from("Init"),
+            WasmMetaClient::Registered(_) => String::from("Registered")
+        }
+    }
+}
+
 pub struct EmptyMetaClient {
     pub ctx: Rc<MetaClientContext>,
 }

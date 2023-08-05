@@ -253,7 +253,7 @@ impl ObjectDescriptor {
 
     pub fn name(&self) -> String {
         match self {
-            ObjectDescriptor::GlobalIndex => String::from("meta-g"),
+            ObjectDescriptor::GlobalIndex => String::from("index"),
             ObjectDescriptor::Mempool => String::from("mem_pool"),
 
             ObjectDescriptor::DbTail => String::from("db_tail"),
@@ -261,8 +261,8 @@ impl ObjectDescriptor {
             ObjectDescriptor::Vault { vault_name } => vault_name.clone(),
             ObjectDescriptor::MetaPassword { vault_name } => vault_name.clone(),
 
-            ObjectDescriptor::MetaVault => String::from("main_meta_vault"),
-            ObjectDescriptor::UserCreds => String::from("user_creds"),
+            ObjectDescriptor::MetaVault => String::from("index"),
+            ObjectDescriptor::UserCreds => String::from("index"),
         }
     }
 }

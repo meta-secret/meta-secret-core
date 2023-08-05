@@ -17,6 +17,13 @@ use crate::db::WasmDbError;
 use crate::gateway::WasmSyncGateway;
 use crate::virtual_device::{VirtualDevice, VirtualDeviceEvent};
 
+use gloo_timers::callback::Interval;
+use wasm_bindgen_futures::spawn_local;
+//use gloo_timers::future::TimeoutFuture;
+use async_std::future::timeout;
+
+use std::sync::mpsc::channel;
+
 mod commit_log;
 mod db;
 mod objects;
@@ -133,27 +140,83 @@ impl ApplicationStateManager {
             ctx: Rc::new(MetaClientContext::new(app_state.clone(), client_repo.clone()))
         });
 
+        let virtual_device = Rc::new(VirtualDevice::new());
+
+        /*spawn_local(async move{
+            virtual_device.sync().await;
+        });*/
+
+        /*spawn_local(async move {
+            log("Future Done");
+        });*/
+
+        let (tx, rx) = flume::unbounded();
+        //spawn_local(tx.send_async(123).await);
+        spawn_local(async move {
+            //let virtual_device_2 = Rc::new(VirtualDevice::new());
+
+            loop {
+                //virtual_device.sync().await;
+                tx.send_async(123).await;
+                async_std::task::sleep(std::time::Duration::from_secs(1)).await;
+                //TimeoutFuture::new(1_000).await;
+            }
+            //log(rx.recv().unwrap().to_string().as_str());
+        });
+
+        spawn_local(async move {
+            log("Tadadadammm!!!!!!!!!!!!");
+            while let Ok(val) = rx.recv_async().await {
+                log(val.to_string().as_str());
+            }
+        });
+
+        /*let vd = VirtualDevice::new();
+        let interval = Interval::new(1_000, || {
+            spawn_local({
+                vd.sync()
+            });
+        });
+        interval.forget();*/
+
         ApplicationStateManager {
             meta_client: Rc::new(meta_client),
             js_app_state,
-            virtual_device: Rc::new(VirtualDevice::new()),
+            virtual_device,
         }
     }
 
     pub async fn init(&mut self) {
-        self.virtual_device.handle(VirtualDeviceEvent::Init).await;
-        self.virtual_device.handle(VirtualDeviceEvent::SignUp).await;
+        let init_state_result = self.virtual_device
+            .handle(VirtualDeviceEvent::Init)
+            .await;
+
+        match init_state_result {
+            Ok(init_state) => {
+                let registered_result = init_state
+                    .handle(VirtualDeviceEvent::SignUp)
+                    .await;
+
+                if let Ok(registered_state) = registered_result {
+                    self.virtual_device = Rc::new(registered_state);
+                    self.virtual_device.sync().await;
+                }
+            }
+            Err(_) => {
+                log("ERROR!!!")
+            }
+        }
 
         match self.meta_client.as_ref() {
             WasmMetaClient::Empty(client) => {
-                let creds_result = client.find_user_creds().await;
-                match creds_result {
+                let init_client_result = client.find_user_creds().await;
+                match init_client_result {
                     Ok(Some(init_client)) => {
                         init_client.ctx.update_meta_vault(init_client.creds.user_sig.vault.clone()).await;
                         self.meta_client = Rc::new(WasmMetaClient::Init(init_client));
                     }
                     _ => {
-                        //ignore
+                        log("!!!!!!!!!!!!!!!!!!!!!!!!");
                     }
                 }
             }
