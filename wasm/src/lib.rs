@@ -23,6 +23,7 @@ use wasm_bindgen_futures::spawn_local;
 use async_std::future::timeout;
 
 use std::sync::mpsc::channel;
+use flume::Receiver;
 
 mod commit_log;
 mod db;
@@ -118,12 +119,10 @@ pub fn restore_password(shares_json: JsValue) -> Result<JsValue, JsValue> {
 pub struct ApplicationStateManager {
     meta_client: Rc<WasmMetaClient>,
     js_app_state: JsAppState,
-    virtual_device: Rc<VirtualDevice>,
 }
 
 #[wasm_bindgen]
 impl ApplicationStateManager {
-
     pub fn new(js_app_state: JsAppState) -> ApplicationStateManager {
         let app_state = {
             let state = ApplicationState {
@@ -140,72 +139,14 @@ impl ApplicationStateManager {
             ctx: Rc::new(MetaClientContext::new(app_state.clone(), client_repo.clone()))
         });
 
-        let virtual_device = Rc::new(VirtualDevice::new());
-
-        /*spawn_local(async move{
-            virtual_device.sync().await;
-        });*/
-
-        /*spawn_local(async move {
-            log("Future Done");
-        });*/
-
-        let (tx, rx) = flume::unbounded();
-        //spawn_local(tx.send_async(123).await);
-        spawn_local(async move {
-            //let virtual_device_2 = Rc::new(VirtualDevice::new());
-
-            loop {
-                //virtual_device.sync().await;
-                tx.send_async(123).await;
-                async_std::task::sleep(std::time::Duration::from_secs(1)).await;
-                //TimeoutFuture::new(1_000).await;
-            }
-            //log(rx.recv().unwrap().to_string().as_str());
-        });
-
-        spawn_local(async move {
-            log("Tadadadammm!!!!!!!!!!!!");
-            while let Ok(val) = rx.recv_async().await {
-                log(val.to_string().as_str());
-            }
-        });
-
-        /*let vd = VirtualDevice::new();
-        let interval = Interval::new(1_000, || {
-            spawn_local({
-                vd.sync()
-            });
-        });
-        interval.forget();*/
-
         ApplicationStateManager {
             meta_client: Rc::new(meta_client),
             js_app_state,
-            virtual_device,
         }
     }
 
     pub async fn init(&mut self) {
-        let init_state_result = self.virtual_device
-            .handle(VirtualDeviceEvent::Init)
-            .await;
-
-        match init_state_result {
-            Ok(init_state) => {
-                let registered_result = init_state
-                    .handle(VirtualDeviceEvent::SignUp)
-                    .await;
-
-                if let Ok(registered_state) = registered_result {
-                    self.virtual_device = Rc::new(registered_state);
-                    self.virtual_device.sync().await;
-                }
-            }
-            Err(_) => {
-                log("ERROR!!!")
-            }
-        }
+        self.setup_virtual_device();
 
         match self.meta_client.as_ref() {
             WasmMetaClient::Empty(client) => {
@@ -278,15 +219,15 @@ impl ApplicationStateManager {
             WasmMetaClient::Empty(client) => {
                 let new_client_result = client.get_or_create_local_vault(vault_name, device_name).await;
 
-                match new_client_result {
-                    Ok(new_client) => {
-                        self.meta_client = Rc::new(WasmMetaClient::Init(new_client))
-                    }
-                    Err(_) => {}
+                if let Ok(new_client) = new_client_result {
+                    new_client.ctx.enable_join().await;
+                    self.meta_client = Rc::new(WasmMetaClient::Init(new_client));
                 }
+
             }
-            WasmMetaClient::Init(_) => {
+            WasmMetaClient::Init(client) => {
                 //ignore
+                self.meta_client = Rc::new(WasmMetaClient::Registered(client.sign_up().await));
             }
             WasmMetaClient::Registered(_) => {
                 //ignore
@@ -323,5 +264,41 @@ impl ApplicationStateManager {
                 }
             }
         }
+    }
+
+    fn setup_virtual_device(&self) {
+        //let (sender, receiver) = flume::unbounded();
+        //AppReactiveState::build(receiver);
+
+        spawn_local(async move {
+            let mut virtual_device = Rc::new(VirtualDevice::new());
+
+            let init_state_result = virtual_device
+                .handle(VirtualDeviceEvent::Init)
+                .await;
+
+            match init_state_result {
+                Ok(init_state) => {
+                    let registered_result = init_state
+                        .handle(VirtualDeviceEvent::SignUp)
+                        .await;
+
+                    if let Ok(registered_state) = registered_result {
+                        virtual_device = Rc::new(registered_state);
+                        virtual_device.sync().await;
+                    }
+                }
+                Err(_) => {
+                    log("ERROR!!!")
+                }
+            }
+
+            loop {
+                log("Sync virtual device");
+                virtual_device.sync().await;
+                //sender.send_async(value).await;
+                async_std::task::sleep(std::time::Duration::from_secs(1)).await;
+            }
+        });
     }
 }

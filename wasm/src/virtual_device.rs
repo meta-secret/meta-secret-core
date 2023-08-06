@@ -24,10 +24,10 @@ pub enum VirtualDeviceEvent {
 
 impl VirtualDevice {
 
-    pub async fn handle(self, event: VirtualDeviceEvent) -> Result<VirtualDevice, WasmDbError> {
+    pub async fn handle(&self, event: VirtualDeviceEvent) -> Result<VirtualDevice, WasmDbError> {
         self.sync().await;
 
-        match (self.meta_client, &event) {
+        match (&self.meta_client, &event) {
             (WasmMetaClient::Empty(client), VirtualDeviceEvent::Init) => {
                 // init
                 let vault_name = "q";

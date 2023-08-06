@@ -1,8 +1,6 @@
 use std::marker::PhantomData;
 use std::rc::Rc;
 
-use wasm_bindgen::prelude::*;
-
 use meta_secret_core::crypto::keys::KeyManager;
 use meta_secret_core::models::UserCredentials;
 use meta_secret_core::node::app::meta_app::{MetaVaultManager, UserCredentialsManager};
@@ -14,7 +12,7 @@ use meta_secret_core::node::server::data_sync::{DataSyncApi, MetaLogger};
 use meta_secret_core::node::server::persistent_object::{PersistentGlobalIndex, PersistentObject};
 use meta_secret_core::node::server::request::SyncRequest;
 
-use crate::{alert, log, utils};
+use crate::{alert, log};
 use crate::commit_log::{WasmMetaLogger, WasmRepo};
 use crate::db::WasmDbError;
 use crate::wasm_app::get_data_sync;

@@ -468,8 +468,9 @@ impl RegisteredMetaClient {
 
 pub struct MetaClientContext {
     pub meta_db: Arc<Mutex<MetaDb>>,
-    pub meta_db_manager: MetaDbManager<WasmRepo, WasmMetaLogger, WasmDbError>,
     pub app_state: Arc<Mutex<ApplicationState>>,
+
+    pub meta_db_manager: MetaDbManager<WasmRepo, WasmMetaLogger, WasmDbError>,
     pub sync_gateway: Rc<WasmSyncGateway>,
     pub persistent_object: Rc<PersistentObject<WasmRepo, WasmDbError>>,
     pub repo: Rc<WasmRepo>,
