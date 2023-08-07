@@ -16,12 +16,12 @@ pub struct MetaDbManager<Repo: KvLogEventRepo<Err>, L: MetaLogger, Err: Error> {
 }
 
 impl<Repo: KvLogEventRepo<Err>, L: MetaLogger, Err: Error> MetaDbManager<Repo, L, Err> {
-    pub async fn sync_meta_db(&self, meta_db: MetaDb) -> MetaDb {
-        let vault_events = match &meta_db.vault_store.tail_id() {
+    pub async fn sync_meta_db(&self, meta_db: &mut MetaDb) {
+        let vault_events = match meta_db.vault_store.tail_id() {
             None => {
                 vec![]
             }
-            Some(tail_id) => self.persistent_obj.find_object_events(tail_id).await,
+            Some(tail_id) => self.persistent_obj.find_object_events(&tail_id).await,
         };
 
         //sync global index
@@ -44,16 +44,14 @@ impl<Repo: KvLogEventRepo<Err>, L: MetaLogger, Err: Error> MetaDbManager<Repo, L
         commit_log.extend(gi_events);
         commit_log.extend(meta_pass_events);
 
-        self.apply(commit_log, meta_db)
+        self.apply(commit_log, meta_db);
     }
 
     /// Apply new events to the database
-    fn apply(&self, commit_log: Vec<GenericKvLogEvent>, mut meta_db: MetaDb) -> MetaDb {
+    fn apply(&self, commit_log: Vec<GenericKvLogEvent>, meta_db: &mut MetaDb) {
         for (_index, generic_event) in commit_log.iter().enumerate() {
-            self.apply_event(&mut meta_db, generic_event);
+            self.apply_event(meta_db, generic_event);
         }
-
-        meta_db
     }
 
     fn apply_event(&self, meta_db: &mut MetaDb, generic_event: &GenericKvLogEvent) {

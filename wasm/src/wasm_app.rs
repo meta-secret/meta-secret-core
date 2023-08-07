@@ -16,7 +16,7 @@ use meta_secret_core::node::db::meta_db::{MetaDb, MetaPassStore, VaultStore};
 use meta_secret_core::node::db::models::{
     GenericKvLogEvent, KvKey, KvLogEvent, MempoolObject, ObjectDescriptor, VaultInfo,
 };
-use meta_secret_core::node::server::data_sync::{DataSync, MetaServerContextState};
+use meta_secret_core::node::server::data_sync::{DataSync, DataSyncMode, MetaServerContextState};
 use meta_secret_core::node::server::persistent_object::{PersistentGlobalIndex, PersistentObject};
 use meta_secret_core::shared_secret::MetaDistributor;
 
@@ -25,7 +25,7 @@ use crate::db::WasmDbError;
 use crate::gateway::WasmSyncGateway;
 use crate::log;
 
-pub fn get_data_sync(repo: Rc<WasmRepo>, creds: &UserCredentials) -> DataSync<WasmRepo, WasmMetaLogger, WasmDbError> {
+pub fn get_data_sync(repo: Rc<WasmRepo>, creds: &UserCredentials, mode: DataSyncMode) -> DataSync<WasmRepo, WasmMetaLogger, WasmDbError> {
     let persistent_object = get_persistent_object(repo.clone());
     let persistent_object_rc = Rc::new(persistent_object);
 
@@ -42,6 +42,7 @@ pub fn get_data_sync(repo: Rc<WasmRepo>, creds: &UserCredentials) -> DataSync<Wa
         context: Rc::new(MetaServerContextState::from(creds)),
         meta_db_manager: meta_db_manager_rc,
         logger: WasmMetaLogger {},
+        mode
     }
 }
 
@@ -391,15 +392,11 @@ impl InitMetaClient {
             }
         }
 
-        let updated_meta_db = self
+        self
             .ctx
             .meta_db_manager
-            .sync_meta_db(meta_db.clone())
+            .sync_meta_db(&mut meta_db)
             .await;
-
-        meta_db.vault_store = updated_meta_db.vault_store;
-        meta_db.global_index_store = updated_meta_db.global_index_store;
-        meta_db.meta_pass_store = updated_meta_db.meta_pass_store;
 
         let global_index = meta_db.global_index_store.global_index.clone();
 
@@ -454,15 +451,11 @@ impl RegisteredMetaClient {
 
         let mut meta_db = self.ctx.meta_db.lock().await;
 
-        let updated_meta_db = self
+        self
             .ctx.
             meta_db_manager
-            .sync_meta_db(meta_db.clone())
+            .sync_meta_db(&mut meta_db)
             .await;
-
-        meta_db.vault_store = updated_meta_db.vault_store;
-        meta_db.global_index_store = updated_meta_db.global_index_store;
-        meta_db.meta_pass_store = updated_meta_db.meta_pass_store;
     }
 }
 

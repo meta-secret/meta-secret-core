@@ -8,7 +8,7 @@ use meta_secret_core::node::db::events::object_id::{IdGen, ObjectId};
 use meta_secret_core::node::db::events::sign_up::SignUpRequest;
 use meta_secret_core::node::db::generic_db::SaveCommand;
 use meta_secret_core::node::db::models::{DbTail, DbTailObject, GenericKvLogEvent, KvKey, KvLogEvent, KvLogEventLocal, LogEventKeyBasedRecord, ObjectCreator, ObjectDescriptor, PublicKeyRecord};
-use meta_secret_core::node::server::data_sync::{DataSyncApi, MetaLogger};
+use meta_secret_core::node::server::data_sync::{DataSyncApi, DataSyncMode, MetaLogger};
 use meta_secret_core::node::server::persistent_object::{PersistentGlobalIndex, PersistentObject};
 use meta_secret_core::node::server::request::SyncRequest;
 
@@ -141,9 +141,13 @@ impl WasmSyncGateway {
                         let mut latest_vault_id = new_db_tail.vault_id.clone();
                         let mut latest_meta_pass_id = new_db_tail.meta_pass_id.clone();
 
-                        let server_data_sync = get_data_sync(self.server_repo.clone(), &server_creds);
+                        let server_data_sync = get_data_sync(
+                            self.server_repo.clone(),
+                            &server_creds,
+                            DataSyncMode::Server
+                        );
                         let new_events_res = server_data_sync
-                            .sync_data(sync_request)
+                            .receive(sync_request)
                             .await;
 
                         match new_events_res {
@@ -268,13 +272,15 @@ impl WasmSyncGateway {
                     .await;
                 let last_vault_event = obj_events.last().cloned();
 
-                let mut client_events: Vec<GenericKvLogEvent> = vec![];
-                client_events.extend(obj_events);
+                let server_data_sync = get_data_sync(
+                    self.server_repo.clone(),
+                    server_creds,
+                    DataSyncMode::Server
+                );
 
-                let server_data_sync = get_data_sync(self.server_repo.clone(), server_creds);
-                for client_event in client_events {
+                for client_event in obj_events {
                     self.logger.log(format!("send event to server: {:?}", client_event).as_str());
-                    server_data_sync.send_data(&client_event).await;
+                    server_data_sync.send(&client_event).await;
                 }
 
                 let new_tail_id = last_vault_event
@@ -315,13 +321,14 @@ impl WasmSyncGateway {
             .await;
         let last_pool_event = mem_pool_events.last().cloned();
 
-        let mut client_requests: Vec<GenericKvLogEvent> = vec![];
-        client_requests.extend(mem_pool_events);
-
-        let server_data_sync = get_data_sync(self.server_repo.clone(), server_creds);
-        for client_event in client_requests {
+        let server_data_sync = get_data_sync(
+            self.server_repo.clone(),
+            server_creds,
+            DataSyncMode::Server
+        );
+        for client_event in mem_pool_events {
             self.logger.log(format!("send mem pool request to server: {:?}", client_event).as_str());
-            server_data_sync.send_data(&client_event).await;
+            server_data_sync.send(&client_event).await;
         }
 
         match last_pool_event {
@@ -364,7 +371,11 @@ impl WasmSyncGateway {
         let sign_up_request_factory = SignUpRequest {};
         let sign_up_request = sign_up_request_factory.generic_request(&server_creds.user_sig);
 
-        let server_data_sync = get_data_sync(self.server_repo.clone(), server_creds);
-        server_data_sync.send_data(&sign_up_request).await;
+        let server_data_sync = get_data_sync(
+            self.server_repo.clone(),
+            server_creds,
+            DataSyncMode::Server
+        );
+        server_data_sync.send(&sign_up_request).await;
     }
 }

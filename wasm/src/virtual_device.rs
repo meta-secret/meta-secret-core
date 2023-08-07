@@ -1,11 +1,12 @@
 use std::rc::Rc;
 use std::sync::Arc;
 use meta_secret_core::models::ApplicationState;
-use crate::wasm_app::{EmptyMetaClient, MetaClientContext, WasmMetaClient};
+use crate::wasm_app::{EmptyMetaClient, get_data_sync, MetaClientContext, WasmMetaClient};
 use async_mutex::Mutex as AsyncMutex;
 use serde::{Deserialize, Serialize};
 use meta_secret_core::node::db::commit_log::MetaDbManager;
 use meta_secret_core::node::db::meta_db::MetaDb;
+use meta_secret_core::node::server::data_sync::{DataSyncApi, DataSyncMode};
 use crate::commit_log::{WasmMetaLogger, WasmRepo};
 use crate::db::WasmDbError;
 use crate::gateway::WasmSyncGateway;
@@ -25,7 +26,7 @@ pub enum VirtualDeviceEvent {
 impl VirtualDevice {
 
     pub async fn handle(&self, event: VirtualDeviceEvent) -> Result<VirtualDevice, WasmDbError> {
-        self.sync().await;
+        self.gateway_sync().await;
 
         match (&self.meta_client, &event) {
             (WasmMetaClient::Empty(client), VirtualDeviceEvent::Init) => {
@@ -105,7 +106,7 @@ impl VirtualDevice {
         }
     }
 
-    pub async fn sync(&self) {
+    pub async fn gateway_sync(&self) {
         let sync_gateway = match &self.meta_client {
             WasmMetaClient::Empty(client) => {
                 &client.ctx.sync_gateway

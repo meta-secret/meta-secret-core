@@ -9,7 +9,7 @@ use meta_secret_core::node::app::meta_app::{MetaVaultManager, UserCredentialsMan
 use crate::commit_log::{WasmMetaLogger, WasmRepo};
 use crate::objects::ToJsValue;
 
-use async_mutex::Mutex as AsyncMutex;
+use async_mutex::{Mutex as AsyncMutex, MutexGuard};
 use meta_secret_core::node::db::commit_log::MetaDbManager;
 use meta_secret_core::node::db::meta_db::{MetaDb, MetaPassStore};
 use meta_secret_core::node::db::models::VaultInfo;
@@ -146,7 +146,7 @@ impl ApplicationStateManager {
     }
 
     pub async fn init(&mut self) {
-        self.setup_virtual_device();
+        ApplicationStateManager::setup_virtual_device();
 
         match self.meta_client.as_ref() {
             WasmMetaClient::Empty(client) => {
@@ -234,8 +234,7 @@ impl ApplicationStateManager {
             }
         };
 
-        //self.meta_client.sign_up(vault_name, device_name).await;
-        //self.on_update().await;
+        self.on_update().await;
     }
 
     pub async fn cluster_distribution(&self, pass_id: &str, pass: &str) {
@@ -266,7 +265,7 @@ impl ApplicationStateManager {
         }
     }
 
-    fn setup_virtual_device(&self) {
+    fn setup_virtual_device() {
         //let (sender, receiver) = flume::unbounded();
         //AppReactiveState::build(receiver);
 
@@ -285,7 +284,7 @@ impl ApplicationStateManager {
 
                     if let Ok(registered_state) = registered_result {
                         virtual_device = Rc::new(registered_state);
-                        virtual_device.sync().await;
+                        virtual_device.gateway_sync().await;
                     }
                 }
                 Err(_) => {
@@ -295,8 +294,26 @@ impl ApplicationStateManager {
 
             loop {
                 log("Sync virtual device");
-                virtual_device.sync().await;
-                //sender.send_async(value).await;
+                virtual_device.gateway_sync().await;
+
+                match &virtual_device.meta_client {
+                    WasmMetaClient::Empty(client) => {
+                        let mut meta_db_manager = &client.ctx.meta_db_manager;
+                        let mut meta_db = client.ctx.meta_db.lock().await;
+                        meta_db_manager.sync_meta_db(&mut meta_db);
+                    }
+                    WasmMetaClient::Init(client) => {
+                        let mut meta_db_manager = &client.ctx.meta_db_manager;
+                        let mut meta_db = client.ctx.meta_db.lock().await;
+                        meta_db_manager.sync_meta_db(&mut meta_db);
+                    }
+                    WasmMetaClient::Registered(client) => {
+                        let mut meta_db_manager = &client.ctx.meta_db_manager;
+                        let mut meta_db = client.ctx.meta_db.lock().await;
+                        meta_db_manager.sync_meta_db(&mut meta_db);
+                    }
+                };
+
                 async_std::task::sleep(std::time::Duration::from_secs(1)).await;
             }
         });
