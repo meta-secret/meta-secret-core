@@ -1,17 +1,18 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::error::Error;
+use std::marker::PhantomData;
+use std::rc::Rc;
+
+use async_trait::async_trait;
 
 use crate::node::db::events::object_id::{IdGen, ObjectId};
 use crate::node::db::generic_db::{FindOneQuery, KvLogEventRepo, SaveCommand};
-use crate::node::db::models::{DbTail, GlobalIndexObject, KvKey, KvLogEventLocal};
+use crate::node::db::models::{DbTail, DbTailObject, GlobalIndexObject, KvKey, KvLogEventLocal};
 use crate::node::db::models::{
     GenericKvLogEvent, KvLogEvent, LogEventKeyBasedRecord, ObjectCreator, ObjectDescriptor, PublicKeyRecord,
 };
 use crate::node::server::data_sync::MetaLogger;
-use async_trait::async_trait;
-use std::cell::RefCell;
-use std::marker::PhantomData;
-use std::rc::Rc;
 
 pub struct PersistentObject<Repo: KvLogEventRepo<Err>, Err: Error> {
     pub repo: Rc<Repo>,
@@ -28,7 +29,7 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> PersistentObject<Repo, Err> {
         logger.log("get_object_events_from_beginning");
 
         let formation_id = ObjectId::unit(obj_desc);
-        let mut commit_log = self.find_object_events(&formation_id, logger).await;
+        let mut commit_log = self.find_object_events(&formation_id).await;
 
         //check if genesis event exists for vaults index
         if commit_log.is_empty() {
@@ -39,7 +40,7 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> PersistentObject<Repo, Err> {
         Ok(commit_log)
     }
 
-    pub async fn find_object_events<L: MetaLogger>(&self, tail_id: &ObjectId, logger: &L) -> Vec<GenericKvLogEvent> {
+    pub async fn find_object_events(&self, tail_id: &ObjectId) -> Vec<GenericKvLogEvent> {
         //logger.log("find_object_events");
 
         let mut commit_log: Vec<GenericKvLogEvent> = vec![];
@@ -108,16 +109,21 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> PersistentObject<Repo, Err> {
         self.find_tail_id(&unit_id).await
     }
 
-    pub async fn get_db_tail(&self) -> Result<DbTail, Err> {
+    pub async fn get_db_tail(&self, vault_name: &str) -> Result<DbTail, Err> {
         let obj_id = ObjectId::unit(&ObjectDescriptor::DbTail);
         let maybe_db_tail = self.repo.find_one(&obj_id).await?;
 
         match maybe_db_tail {
             None => {
                 let db_tail = DbTail {
-                    vault: None,
-                    global_index: None,
-                    mem_pool: None,
+                    vault_id: DbTailObject::Empty {
+                        unit_id: ObjectId::vault_unit(vault_name),
+                    },
+                    maybe_global_index_id: None,
+                    maybe_mem_pool_id: None,
+                    meta_pass_id: DbTailObject::Empty {
+                        unit_id: ObjectId::meta_pass_unit(vault_name),
+                    },
                 };
 
                 let tail_event = {
@@ -125,7 +131,7 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> PersistentObject<Repo, Err> {
                         key: KvKey::unit(&ObjectDescriptor::DbTail),
                         value: db_tail.clone(),
                     };
-                    GenericKvLogEvent::LocalEvent(KvLogEventLocal::Tail { event: Box::new(event) })
+                    GenericKvLogEvent::LocalEvent(KvLogEventLocal::DbTail { event: Box::new(event) })
                 };
 
                 self.repo.save_event(&tail_event).await?;
@@ -133,7 +139,7 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> PersistentObject<Repo, Err> {
             }
             Some(db_tail) => match db_tail {
                 GenericKvLogEvent::LocalEvent(local_evt) => match local_evt {
-                    KvLogEventLocal::Tail { event } => Ok(event.value),
+                    KvLogEventLocal::DbTail { event } => Ok(event.value),
                     _ => {
                         panic!("DbTail. Invalid data");
                     }
@@ -221,6 +227,10 @@ impl KvLogEventRepo<InMemDbError> for InMemKvLogEventRepo {}
 
 #[cfg(test)]
 mod test {
+    use std::marker::PhantomData;
+    use std::ops::Deref;
+    use std::rc::Rc;
+
     use crate::crypto::keys::KeyManager;
     use crate::models::DeviceInfo;
     use crate::node::db::generic_db::SaveCommand;
@@ -228,9 +238,6 @@ mod test {
         GenericKvLogEvent, GlobalIndexObject, KvLogEvent, ObjectDescriptor, PublicKeyRecord,
     };
     use crate::node::server::persistent_object::{InMemKvLogEventRepo, PersistentGlobalIndex, PersistentObject};
-    use std::marker::PhantomData;
-    use std::ops::Deref;
-    use std::rc::Rc;
 
     #[tokio::test]
     async fn test() {
@@ -260,7 +267,9 @@ mod test {
 
         repo_rc.save_event(&genesis_event).await.unwrap();
 
-        let free_id = persistent_object.find_tail_id_by_obj_desc(&ObjectDescriptor::GlobalIndex).await;
+        let free_id = persistent_object
+            .find_tail_id_by_obj_desc(&ObjectDescriptor::GlobalIndex)
+            .await;
 
         println!("Db: ");
         for (_id, event) in repo_rc.db.borrow().deref() {

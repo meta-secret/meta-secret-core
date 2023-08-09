@@ -14,15 +14,18 @@ pub struct ApplicationState {
     pub meta_vault: Option<Box<crate::models::MetaVault>>,
     #[serde(rename = "vault", skip_serializing_if = "Option::is_none")]
     pub vault: Option<Box<crate::models::VaultDoc>>,
+    #[serde(rename = "metaPasswords")]
+    pub meta_passwords: Vec<crate::models::MetaPasswordDoc>,
     #[serde(rename = "joinComponent")]
     pub join_component: bool,
 }
 
 impl ApplicationState {
-    pub fn new(join_component: bool) -> ApplicationState {
+    pub fn new(meta_passwords: Vec<crate::models::MetaPasswordDoc>, join_component: bool) -> ApplicationState {
         ApplicationState {
             meta_vault: None,
             vault: None,
+            meta_passwords,
             join_component,
         }
     }

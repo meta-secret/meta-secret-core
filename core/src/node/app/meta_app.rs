@@ -79,7 +79,7 @@ where
 
 #[async_trait(? Send)]
 pub trait UserCredentialsManager<Err: Error> {
-    async fn save_user_creds(&self, creds: UserCredentials) -> Result<(), Err>;
+    async fn save_user_creds(&self, creds: &UserCredentials) -> Result<(), Err>;
     async fn find_user_creds(&self) -> Result<Option<UserCredentials>, Err>;
 }
 
@@ -103,10 +103,10 @@ where
         }
     }
 
-    async fn save_user_creds(&self, creds: UserCredentials) -> Result<(), Err> {
+    async fn save_user_creds(&self, creds: &UserCredentials) -> Result<(), Err> {
         let event = KvLogEvent {
             key: KvKey::unit(&ObjectDescriptor::UserCreds),
-            value: creds,
+            value: creds.clone(),
         };
         let generic_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::UserCredentials { event: Box::new(event) });
 

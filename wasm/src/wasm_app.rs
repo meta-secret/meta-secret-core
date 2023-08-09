@@ -6,34 +6,33 @@ use async_mutex::Mutex;
 use wasm_bindgen::{JsError, JsValue};
 
 use meta_secret_core::crypto::keys::KeyManager;
-use meta_secret_core::models::{ApplicationState, MetaVault, UserCredentials};
+use meta_secret_core::models::{ApplicationState, MetaVault, UserCredentials, VaultDoc};
 use meta_secret_core::node::app::meta_app::{MetaVaultManager, UserCredentialsManager};
 use meta_secret_core::node::db::commit_log::MetaDbManager;
-use meta_secret_core::node::db::events::join::join_cluster_request;
 use meta_secret_core::node::db::events::object_id::ObjectId;
 use meta_secret_core::node::db::events::sign_up::SignUpRequest;
 use meta_secret_core::node::db::generic_db::SaveCommand;
-use meta_secret_core::node::db::meta_db::MetaDb;
+use meta_secret_core::node::db::meta_db::{MetaDb, MetaPassStore, VaultStore};
 use meta_secret_core::node::db::models::{
     GenericKvLogEvent, KvKey, KvLogEvent, MempoolObject, ObjectDescriptor, VaultInfo,
 };
-use meta_secret_core::node::server::data_sync::{DataSync, MetaServerContextState};
+use meta_secret_core::node::server::data_sync::{DataSync, DataSyncMode, MetaServerContextState};
 use meta_secret_core::node::server::persistent_object::{PersistentGlobalIndex, PersistentObject};
 use meta_secret_core::shared_secret::MetaDistributor;
 
-use crate::{alert, log};
 use crate::commit_log::{WasmMetaLogger, WasmRepo};
 use crate::db::WasmDbError;
-use crate::objects::ToJsValue;
-use crate::server::WasmMetaServer;
+use crate::gateway::WasmSyncGateway;
+use crate::log;
 
-pub fn get_data_sync(repo: Rc<WasmRepo>, creds: &UserCredentials) -> DataSync<WasmRepo, WasmDbError> {
+pub fn get_data_sync(repo: Rc<WasmRepo>, creds: &UserCredentials, mode: DataSyncMode) -> DataSync<WasmRepo, WasmMetaLogger, WasmDbError> {
     let persistent_object = get_persistent_object(repo.clone());
     let persistent_object_rc = Rc::new(persistent_object);
 
     let meta_db_manager = MetaDbManager {
         persistent_obj: persistent_object_rc.clone(),
         repo: repo.clone(),
+        logger: WasmMetaLogger {},
     };
     let meta_db_manager_rc = Rc::new(meta_db_manager);
 
@@ -42,18 +41,19 @@ pub fn get_data_sync(repo: Rc<WasmRepo>, creds: &UserCredentials) -> DataSync<Wa
         repo,
         context: Rc::new(MetaServerContextState::from(creds)),
         meta_db_manager: meta_db_manager_rc,
+        logger: WasmMetaLogger {},
+        mode
     }
 }
 
-fn get_persistent_object(repo: Rc<WasmRepo>) -> PersistentObject<WasmRepo, WasmDbError> {
-    let persistent_object = PersistentObject {
+pub fn get_persistent_object(repo: Rc<WasmRepo>) -> PersistentObject<WasmRepo, WasmDbError> {
+    PersistentObject {
         repo: repo.clone(),
         global_index: PersistentGlobalIndex {
             repo,
             _phantom: PhantomData,
         },
-    };
-    persistent_object
+    }
 }
 
 /// Sync local commit log with server
@@ -173,83 +173,267 @@ pub async fn membership(
     Ok(JsValue::null())
 }
 
-pub async fn get_meta_passwords() -> Result<JsValue, JsValue> {
-    /*
-    let maybe_creds = objects::internal::find_user_credentials()
-        .await
-        .map_err(JsError::from)?;
+pub enum WasmMetaClient {
+    Empty(EmptyMetaClient),
+    Init(InitMetaClient),
+    Registered(RegisteredMetaClient),
+}
 
-    match maybe_creds {
-        Some(creds) => {
-            let user_sig = creds.user_sig;
-            log("wasm: get meta passwords");
-            let secrets = server_api::get_meta_passwords(&user_sig)
-                .await
-                .map_err(JsError::from)?;
-
-            let secrets_js = serde_wasm_bindgen::to_value(&secrets)?;
-            Ok(secrets_js)
+impl ToString for WasmMetaClient {
+    fn to_string(&self) -> String {
+        match self {
+            WasmMetaClient::Empty(_) => String::from("Empty"),
+            WasmMetaClient::Init(_) => String::from("Init"),
+            WasmMetaClient::Registered(_) => String::from("Registered")
         }
-        None => Err(JsValue::from("User credentials not found")),
     }
-
-     */
-    Ok(JsValue::null())
 }
 
-pub struct WasmMetaClient {
-    meta_db: Arc<Mutex<MetaDb>>,
-    meta_db_manager: MetaDbManager<WasmRepo, WasmDbError>,
-    app_state: Arc<Mutex<ApplicationState>>,
+pub struct EmptyMetaClient {
+    pub ctx: Rc<MetaClientContext>,
 }
 
-impl WasmMetaClient {
-    pub fn new(app_state: Arc<Mutex<ApplicationState>>) -> Self {
-        let repo = WasmRepo::default();
-        let repo_rc = Rc::new(repo);
-        let persistent_object = get_persistent_object(repo_rc.clone());
-        let persistent_object_rc = Rc::new(persistent_object);
+impl EmptyMetaClient {
 
-        let meta_db_manager = MetaDbManager {
-            persistent_obj: persistent_object_rc,
-            repo: repo_rc,
-        };
+    pub async fn find_user_creds(&self) -> Result<Option<InitMetaClient>, WasmDbError> {
+        let maybe_creds = self.ctx.repo.find_user_creds().await?;
 
-        let meta_db = Arc::new(Mutex::new(MetaDb::default()));
-        WasmMetaClient {
-            meta_db,
-            meta_db_manager,
-            app_state,
+        match maybe_creds {
+            Some(creds) => {
+                let new_client = InitMetaClient {
+                    ctx: self.ctx.clone(),
+                    creds: Rc::new(creds)
+                };
+                Ok(Some(new_client))
+            }
+            None => {
+                Ok(None)
+            }
         }
     }
 
+    pub async fn get_or_create_local_vault(&self, vault_name: &str, device_name: &str) -> Result<InitMetaClient, WasmDbError> {
+        let meta_vault = self.create_meta_vault(vault_name, device_name).await?;
+        let creds = self.generate_user_credentials(meta_vault).await?;
+
+        Ok(InitMetaClient {
+            ctx: self.ctx.clone(),
+            creds: Rc::new(creds),
+        })
+    }
+
+    async fn create_meta_vault(&self, vault_name: &str, device_name: &str) -> Result<MetaVault, WasmDbError> {
+        log("wasm::create_meta_vault: create a meta vault");
+
+        let logger = WasmMetaLogger {};
+
+        let maybe_meta_vault = self.ctx.repo
+            .find_meta_vault(&logger)
+            .await?;
+
+        match maybe_meta_vault {
+            None => {
+                self.ctx.repo
+                    .create_meta_vault(vault_name.to_string(), device_name.to_string(), &logger)
+                    .await
+            }
+            Some(meta_vault) => {
+                if meta_vault.name != vault_name || meta_vault.device.device_name != device_name {
+                    Err(WasmDbError::DbCustomError(String::from("Another meta vault already exists in the database")))
+                } else {
+                    Ok(meta_vault)
+                }
+            }
+        }
+    }
+
+    async fn generate_user_credentials(&self, meta_vault: MetaVault) -> Result<UserCredentials, WasmDbError> {
+        log("wasm::generate_user_credentials: generate a new security box");
+
+        let maybe_creds = self.ctx.repo.find_user_creds()
+            .await?;
+
+        match maybe_creds {
+            None => {
+                let security_box = KeyManager::generate_security_box(meta_vault.name);
+                let user_sig = security_box.get_user_sig(&meta_vault.device);
+                let creds = UserCredentials::new(security_box, user_sig);
+                self.ctx.repo
+                    .save_user_creds(&creds)
+                    .await?;
+
+                Ok(creds)
+            }
+            Some(creds) => {
+                Ok(creds)
+            }
+        }
+    }
+}
+
+pub struct InitMetaClient {
+    pub ctx: Rc<MetaClientContext>,
+    pub creds: Rc<UserCredentials>,
+}
+
+impl InitMetaClient {
+    pub async fn sign_up(&self) -> RegisteredMetaClient {
+        let vault_info = self.get_vault().await;
+
+        let join = self.ctx.is_join().await;
+        if join {
+            //TODO we need to know if the user in pending state (waiting for approval)
+            self.join_cluster().await;
+            self.ctx.sync_gateway.sync().await;
+            if let VaultInfo::Member { vault } = &vault_info {
+                self.ctx.update_vault(vault.clone()).await
+            }
+        } else {
+            self.sign_up_action(&vault_info).await;
+        }
+
+        RegisteredMetaClient {
+            ctx: self.ctx.clone(),
+            creds: self.creds.clone(),
+            vault_info,
+        }
+    }
+
+    async fn join_cluster(&self) -> Result<VaultInfo, JsValue> {
+        log("Wasm::register. Join");
+
+        let mem_pool_tail_id = self.ctx
+            .meta_db_manager
+            .persistent_obj
+            .find_tail_id_by_obj_desc(&ObjectDescriptor::Mempool)
+            .await
+            .unwrap_or(ObjectId::mempool_unit());
+
+        let join_request = GenericKvLogEvent::Mempool(MempoolObject::JoinRequest {
+            event: KvLogEvent {
+                key: KvKey {
+                    obj_id: mem_pool_tail_id,
+                    obj_desc: ObjectDescriptor::Mempool,
+                },
+                value: self.creds.user_sig.as_ref().clone(),
+            }
+        });
+
+        self.ctx.repo
+            .save_event(&join_request)
+            .await
+            .map_err(JsError::from)?;
+
+        Ok(VaultInfo::Pending)
+    }
+
+    async fn sign_up_action(&self, vault_info: &VaultInfo) {
+        match vault_info {
+            VaultInfo::Member { vault } => {
+                self.ctx.update_vault(vault.clone()).await;
+            }
+            VaultInfo::Pending => {
+                log("Pending is not expected here");
+            }
+            VaultInfo::Declined => {
+                log("Declined - is not expected here");
+            }
+            VaultInfo::NotFound => {
+                let reg_res = self
+                    .register()
+                    .await;
+
+                match reg_res {
+                    Ok(_vault_info) => {
+                        log("Successful registration");
+                    }
+                    Err(_) => {
+                        log("Error. Registration failed");
+                    }
+                }
+            }
+            VaultInfo::NotMember => {
+                self.ctx.enable_join().await;
+            }
+        }
+    }
+
+    async fn register(&self) -> Result<VaultInfo, WasmDbError> {
+        log("Wasm::register. Sign up");
+
+        let sign_up_request_factory = SignUpRequest {};
+        let sign_up_request = sign_up_request_factory.generic_request(&self.creds.user_sig);
+
+        self.ctx.repo
+            .save_event(&sign_up_request)
+            .await?;
+
+        Ok(VaultInfo::Pending)
+    }
+
+    pub async fn get_vault(&self) -> VaultInfo {
+        log("wasm: get vault!");
+
+        self.ctx.sync_gateway.sync().await;
+
+        let creds = self.creds.clone();
+
+        let mut meta_db = self.ctx.meta_db.lock().await;
+
+        let vault_unit_id = ObjectId::vault_unit(creds.user_sig.vault.name.as_str());
+
+        if meta_db.vault_store == VaultStore::Empty {
+            meta_db.vault_store = VaultStore::Unit { tail_id: vault_unit_id.clone() }
+        }
+
+        if meta_db.meta_pass_store == MetaPassStore::Empty {
+            meta_db.meta_pass_store = MetaPassStore::Unit {
+                tail_id: ObjectId::meta_pass_unit(creds.user_sig.vault.name.as_str())
+            }
+        }
+
+        self
+            .ctx
+            .meta_db_manager
+            .sync_meta_db(&mut meta_db)
+            .await;
+
+        let global_index = meta_db.global_index_store.global_index.clone();
+
+        if global_index.contains(vault_unit_id.id_str().as_str()) {
+            //if the vault is already present:
+            match &meta_db.vault_store {
+                VaultStore::Store { vault, .. } => {
+                    VaultInfo::Member { vault: vault.clone() }
+                }
+                _ => VaultInfo::NotMember
+            }
+        } else {
+            VaultInfo::NotFound
+        }
+    }
+}
+
+pub struct RegisteredMetaClient {
+    pub ctx: Rc<MetaClientContext>,
+    pub creds: Rc<UserCredentials>,
+    pub vault_info: VaultInfo,
+}
+
+impl RegisteredMetaClient {
     pub async fn cluster_distribution(&self, pass_id: &str, pass: &str) {
         log("wasm: cluster distribution!!!!");
 
-        let repo = WasmRepo::default();
-        let repo_rc = Rc::new(repo);
-
-        let creds = repo_rc.find_user_creds()
-            .await
-            .unwrap()
-            .unwrap();
-
-        let vault_info = self.get_vault()
-            .await
-            .unwrap();
-
-        let persistent_object = get_persistent_object(repo_rc.clone());
-        let persistent_object_rc = Rc::new(persistent_object);
-
-        match vault_info {
+        match &self.vault_info {
             VaultInfo::Member { vault } => {
                 let distributor = MetaDistributor {
                     meta_db_manager: MetaDbManager {
-                        persistent_obj: persistent_object_rc,
-                        repo: repo_rc
+                        persistent_obj: self.ctx.persistent_object.clone(),
+                        repo: self.ctx.repo.clone(),
+                        logger: WasmMetaLogger {},
                     },
-                    vault,
-                    user_creds: creds,
+                    vault: vault.clone(),
+                    user_creds: self.creds.as_ref().clone(),
                 };
 
                 distributor
@@ -261,241 +445,83 @@ impl WasmMetaClient {
             VaultInfo::NotFound => {}
             VaultInfo::NotMember => {}
         };
+
+        //sync meta passwords
+        self.ctx.sync_gateway.sync().await;
+
+        let mut meta_db = self.ctx.meta_db.lock().await;
+
+        self
+            .ctx.
+            meta_db_manager
+            .sync_meta_db(&mut meta_db)
+            .await;
+    }
+}
+
+pub struct MetaClientContext {
+    pub meta_db: Arc<Mutex<MetaDb>>,
+    pub app_state: Arc<Mutex<ApplicationState>>,
+
+    pub meta_db_manager: MetaDbManager<WasmRepo, WasmMetaLogger, WasmDbError>,
+    pub sync_gateway: Rc<WasmSyncGateway>,
+    pub persistent_object: Rc<PersistentObject<WasmRepo, WasmDbError>>,
+    pub repo: Rc<WasmRepo>,
+}
+
+impl MetaClientContext {
+    pub fn new(app_state: Arc<Mutex<ApplicationState>>, repo: Rc<WasmRepo>) -> Self {
+        let persistent_object = {
+            let obj = get_persistent_object(repo.clone());
+            Rc::new(obj)
+        };
+
+        let meta_db_manager = MetaDbManager {
+            persistent_obj: persistent_object.clone(),
+            repo: repo.clone(),
+            logger: WasmMetaLogger {},
+        };
+
+        let meta_db = Arc::new(Mutex::new(MetaDb::default()));
+        MetaClientContext {
+            meta_db,
+            meta_db_manager,
+            app_state,
+            sync_gateway: Rc::new(WasmSyncGateway::new()),
+            persistent_object,
+            repo,
+        }
     }
 
-    pub async fn sign_up(&self, vault_name: &str, device_name: &str) {
-        let join = {
+    pub async fn is_join(&self) -> bool {
+        {
             let app_state = self.app_state.lock().await;
             app_state.join_component
-        };
-
-        if join {
-            self.join_cluster().await;
-            WasmMetaServer::new().run_server().await;
-            let vault_info = self.get_vault().await.unwrap();
-            if let VaultInfo::Member { vault } = vault_info {
-                {
-                    let mut app_state = self.app_state.lock().await;
-                    app_state.vault = Some(Box::new(vault))
-                }
-            }
-        } else {
-            self.sign_up_action(vault_name, device_name).await;
         }
     }
 
-    async fn sign_up_action(&self, vault_name: &str, device_name: &str) {
-        self.create_local_vault(vault_name, device_name)
-            .await
-            .expect("Error");
-
-        let vault_info_res = self.get_vault().await;
-
-        match vault_info_res {
-            Ok(vault_info) => {
-                match vault_info {
-                    VaultInfo::Member { vault } => {}
-                    VaultInfo::Pending => {}
-                    VaultInfo::Declined => {}
-                    VaultInfo::NotFound => {
-                        let reg_res = self
-                            .register()
-                            .await;
-
-                        match reg_res {
-                            Ok(_vault_info) => {
-                                log("Successful registration");
-                            }
-                            Err(_) => {
-                                log("Error. Registration failed");
-                            }
-                        }
-                    }
-                    VaultInfo::NotMember => {
-                        //join!!!
-                        {
-                            let mut app_state = self.app_state.lock().await;
-                            app_state.join_component = true;
-                        }
-                    }
-                }
-            }
-            Err(_) => {
-                log("Error. Can't get vault");
-            }
+    pub async fn update_vault(&self, vault: VaultDoc) {
+        {
+            let mut app_state = self.app_state.lock().await;
+            app_state.vault = Some(Box::new(vault))
         }
     }
 
-    async fn create_local_vault(&self, vault_name: &str, device_name: &str) -> Result<(), JsValue> {
-        self.create_meta_vault(vault_name, device_name).await?;
-        self.generate_user_credentials().await
-    }
-
-    pub async fn create_meta_vault(&self, vault_name: &str, device_name: &str) -> Result<JsValue, JsValue> {
-        log("wasm::create_meta_vault: create a meta vault");
-
-        let logger = WasmMetaLogger {};
-        let repo = WasmRepo::default();
-
-        let meta_vault = repo
-            .create_meta_vault(vault_name.to_string(), device_name.to_string(), &logger)
-            .await
-            .map_err(JsError::from)?;
-
-        let meta_vault_js = meta_vault.to_js()?;
-
-        Ok(meta_vault_js)
-    }
-
-    async fn generate_user_credentials(&self) -> Result<(), JsValue> {
-        log("wasm::generate_user_credentials: generate a new security box");
-
-        let logger = WasmMetaLogger {};
-
-        let repo = WasmRepo::default();
-        let maybe_meta_vault: Option<MetaVault> = repo
-            .find_meta_vault(&logger)
-            .await
-            .map_err(JsError::from)?;
-
-        match maybe_meta_vault {
-            Some(meta_vault) => {
-                let security_box = KeyManager::generate_security_box(meta_vault.name);
-                let user_sig = security_box.get_user_sig(&meta_vault.device);
-                let creds = UserCredentials::new(security_box, user_sig);
-                repo
-                    .save_user_creds(creds)
-                    .await
-                    .map_err(JsError::from)?;
-
-                Ok(())
-            }
-            None => {
-                let err_msg = "The parameters have not yet set for the vault. Empty meta vault";
-                log(format!("wasm::generate_user_credentials: error: {:?}", err_msg).as_str());
-                let err = JsValue::from(err_msg);
-
-                Err(err)
-            }
+    pub async fn update_meta_vault(&self, meta_vault: Box<MetaVault>) {
+        {
+            let mut app_state = self.app_state.lock().await;
+            app_state.meta_vault = Some(meta_vault)
         }
     }
 
-    pub async fn get_vault(&self) -> Result<VaultInfo, JsValue> {
-        log("wasm: get vault!");
-
-        let logger = WasmMetaLogger {};
-        WasmMetaServer::new().run_server().await;
-
-        let repo = WasmRepo::default();
-
-        let maybe_creds = repo.find_user_creds()
-            .await
-            .map_err(JsError::from)?;
-
-        let vault_info = match maybe_creds {
-            Some(creds) => {
-                let mut meta_db = self.meta_db.lock().await;
-
-                let vault_obj = ObjectId::vault_unit(creds.user_sig.vault.name.as_str());
-                let vault_id = meta_db.vault_store.tail_id.clone().unwrap_or(vault_obj);
-
-                meta_db.vault_store.tail_id = Some(vault_id.clone());
-
-                let updated_meta_db = self.meta_db_manager.sync_meta_db(meta_db.clone(), &logger).await;
-
-                meta_db.vault_store = updated_meta_db.vault_store;
-                meta_db.global_index_store = updated_meta_db.global_index_store;
-
-                let global_index = meta_db.global_index_store.global_index.clone();
-                let vault_obj_id = vault_id.unit_id();
-                if global_index.contains(vault_obj_id.id_str().as_str()) {
-                    //if the vault is already present:
-                    match meta_db.vault_store.vault.as_ref() {
-                        None => {
-                            VaultInfo::NotMember
-                        }
-                        Some(vault_doc) => {
-                            VaultInfo::Member { vault: vault_doc.clone() }
-                        }
-                    }
-                } else {
-                    VaultInfo::NotFound
-                }
-            }
-            None => VaultInfo::NotMember,
-        };
-
-        Ok(vault_info)
-    }
-
-    async fn join_cluster(&self) -> Result<VaultInfo, JsValue> {
-        let repo = WasmRepo::default();
-
-        let maybe_creds = repo.find_user_creds()
-            .await
-            .map_err(JsError::from)?;
-
-        match maybe_creds {
-            Some(creds) => {
-                log("Wasm::register. Join");
-
-                let mem_pool_tail_id = self.meta_db_manager.persistent_obj
-                    .find_tail_id_by_obj_desc(&ObjectDescriptor::Mempool)
-                    .await
-                    .unwrap_or(ObjectId::mempool_unit());
-
-                let join_request = GenericKvLogEvent::Mempool(MempoolObject::JoinRequest {
-                    event: KvLogEvent {
-                        key: KvKey {
-                            obj_id: mem_pool_tail_id,
-                            obj_desc: ObjectDescriptor::Mempool,
-                        },
-                        value: creds.user_sig.as_ref().clone(),
-                    }
-                });
-
-                repo
-                    .save_event(&join_request)
-                    .await
-                    .map_err(JsError::from)?;
-
-                Ok(VaultInfo::Pending)
-            }
-            None => {
-                log("Registration error: user credentials not found");
-                panic!("Empty user credentials");
-            }
-        }
-    }
-
-    async fn register(&self) -> Result<VaultInfo, JsValue> {
-        let repo = WasmRepo::default();
-
-        let maybe_creds = repo.find_user_creds()
-            .await
-            .map_err(JsError::from)?;
-
-        match maybe_creds {
-            Some(creds) => {
-                log("Wasm::register. Sign up");
-
-                let sign_up_request_factory = SignUpRequest {};
-                let sign_up_request = sign_up_request_factory.generic_request(&creds.user_sig);
-
-                repo
-                    .save_event(&sign_up_request)
-                    .await
-                    .map_err(JsError::from)?;
-
-                Ok(VaultInfo::Pending)
-            }
-            None => {
-                log("Registration error: user credentials not found");
-                panic!("Empty user credentials");
-            }
+    pub async fn enable_join(&self) {
+        {
+            let mut app_state = self.app_state.lock().await;
+            app_state.join_component = true;
         }
     }
 }
+
 
 pub fn split(pass: &str) -> Result<JsValue, JsValue> {
     /*let plain_text = PlainText::from(pass);

@@ -22,7 +22,7 @@ pub enum ObjectId {
         id: String,
         prev_id: String,
         unit_id: String,
-    }
+    },
 }
 
 pub struct IdStr {
@@ -93,6 +93,13 @@ impl ObjectId {
 
     pub fn vault_unit(vault_name: &str) -> Self {
         let vault_desc = ObjectDescriptor::Vault {
+            vault_name: vault_name.to_string(),
+        };
+        ObjectId::unit(&vault_desc)
+    }
+
+    pub fn meta_pass_unit(vault_name: &str) -> Self {
+        let vault_desc = ObjectDescriptor::MetaPassword {
             vault_name: vault_name.to_string(),
         };
         ObjectId::unit(&vault_desc)
