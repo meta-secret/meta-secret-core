@@ -11,8 +11,8 @@ use crate::objects::ToJsValue;
 
 use async_mutex::{Mutex as AsyncMutex, MutexGuard};
 use meta_secret_core::node::db::commit_log::MetaDbManager;
-use meta_secret_core::node::db::meta_db::{MetaDb, MetaPassStore};
-use meta_secret_core::node::db::models::VaultInfo;
+use meta_secret_core::node::db::meta_db::{MetaDb, MetaPassStore, VaultStore};
+use meta_secret_core::node::db::models::{GenericKvLogEvent, VaultInfo, VaultObject};
 use crate::db::WasmDbError;
 use crate::gateway::WasmSyncGateway;
 use crate::virtual_device::{VirtualDevice, VirtualDeviceEvent};
@@ -24,6 +24,8 @@ use async_std::future::timeout;
 
 use std::sync::mpsc::channel;
 use flume::Receiver;
+use meta_secret_core::node::db::generic_db::{FindOneQuery, SaveCommand};
+use meta_secret_core::node::db::events::join;
 
 mod commit_log;
 mod db;
@@ -267,7 +269,6 @@ impl ApplicationStateManager {
 
     fn setup_virtual_device() {
         //let (sender, receiver) = flume::unbounded();
-        //AppReactiveState::build(receiver);
 
         spawn_local(async move {
             let mut virtual_device = Rc::new(VirtualDevice::new());
@@ -298,19 +299,60 @@ impl ApplicationStateManager {
 
                 match &virtual_device.meta_client {
                     WasmMetaClient::Empty(client) => {
-                        let mut meta_db_manager = &client.ctx.meta_db_manager;
+                        let meta_db_manager = &client.ctx.meta_db_manager;
                         let mut meta_db = client.ctx.meta_db.lock().await;
-                        meta_db_manager.sync_meta_db(&mut meta_db);
+                        let _ = meta_db_manager.sync_meta_db(&mut meta_db).await;
                     }
                     WasmMetaClient::Init(client) => {
                         let mut meta_db_manager = &client.ctx.meta_db_manager;
                         let mut meta_db = client.ctx.meta_db.lock().await;
-                        meta_db_manager.sync_meta_db(&mut meta_db);
+                        let _ = meta_db_manager.sync_meta_db(&mut meta_db).await;
+
+                        if let VaultStore::Store { tail_id, vault, .. } = &meta_db.vault_store {
+
+                            let latest_event = meta_db_manager
+                                .persistent_obj
+                                .repo
+                                .find_one(tail_id).await;
+
+                            if let Ok(Some(GenericKvLogEvent::Vault(VaultObject::JoinRequest {event}))) = latest_event {
+                                let accept_event = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
+                                    event: join::accept_join_request(&event, vault),
+                                });
+
+                                let _ = meta_db_manager
+                                    .persistent_obj
+                                    .repo
+                                    .save_event(&accept_event)
+                                    .await;
+                            }
+                        };
+
                     }
                     WasmMetaClient::Registered(client) => {
                         let mut meta_db_manager = &client.ctx.meta_db_manager;
                         let mut meta_db = client.ctx.meta_db.lock().await;
-                        meta_db_manager.sync_meta_db(&mut meta_db);
+                        let _ = meta_db_manager.sync_meta_db(&mut meta_db).await;
+
+                        if let VaultStore::Store { tail_id, vault, .. } = &meta_db.vault_store {
+
+                            let latest_event = meta_db_manager
+                                .persistent_obj
+                                .repo
+                                .find_one(tail_id).await;
+
+                            if let Ok(Some(GenericKvLogEvent::Vault(VaultObject::JoinRequest {event}))) = latest_event {
+                                let accept_event = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
+                                    event: join::accept_join_request(&event, vault),
+                                });
+
+                                let _ = meta_db_manager
+                                    .persistent_obj
+                                    .repo
+                                    .save_event(&accept_event)
+                                    .await;
+                            }
+                        };
                     }
                 };
 

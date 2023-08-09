@@ -145,23 +145,10 @@ impl<Repo: KvLogEventRepo<Err>, L: MetaLogger, Err: Error> DataSyncApi<Err> for 
     async fn send(&self, generic_event: &GenericKvLogEvent) {
         match self.mode {
             DataSyncMode::App => {
-                self.app_processing(generic_event).await;
+                //skip
             }
             DataSyncMode::Server => {
                 self.server_processing(generic_event).await;
-            }
-        }
-    }
-}
-
-impl<Repo: KvLogEventRepo<Err>, L: MetaLogger, Err: Error> DataSync<Repo, L, Err> {
-    async fn app_processing(&self, generic_event: &GenericKvLogEvent) {
-        match generic_event {
-            GenericKvLogEvent::Vault(VaultObject::JoinRequest { event }) => {
-                self.accept_join_cluster_request(event).await;
-            }
-            _ => {
-                panic!("Invalid event");
             }
         }
     }
@@ -306,40 +293,6 @@ impl<Repo: KvLogEventRepo<Err>, L: MetaLogger, Err: Error> DataSync<Repo, L, Err
 }
 
 impl<Repo: KvLogEventRepo<Err>, L: MetaLogger, Err: Error> DataSync<Repo, L, Err> {
-    async fn accept_join_cluster_request(&self, join_event: &KvLogEvent<UserSignature>) {
-        //join cluster update message
-        let vault_unit_id = {
-            let user_sig = join_event.value.clone();
-            ObjectId::vault_unit(user_sig.vault.name.as_str())
-        };
-
-        let mut meta_db = MetaDb::default();
-        meta_db.vault_store = VaultStore::Unit { tail_id: vault_unit_id };
-
-        self.meta_db_manager.sync_meta_db(&mut meta_db).await;
-
-        match meta_db.vault_store {
-            VaultStore::Empty => {
-                panic!("Invalid state");
-            }
-            VaultStore::Unit { .. } => {
-                panic!("Invalid state");
-            }
-            VaultStore::Genesis { .. } => {
-                panic!("Invalid state");
-            }
-            VaultStore::Store { vault, .. } => {
-                let accept_event = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
-                    event: join::accept_join_request(join_event, &vault),
-                });
-
-                self.repo
-                    .save_event(&accept_event)
-                    .await
-                    .expect("Error saving accept event");
-            }
-        }
-    }
 
     async fn accept_sign_up_request(&self, event: &KvLogEvent<UserSignature>, vault_id: &IdStr) {
         //vault not found, we can create our new vault
