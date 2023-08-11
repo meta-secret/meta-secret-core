@@ -4,9 +4,8 @@ use crate::models::{
     SecretDistributionType, UserCredentials, UserSecurityBox, UserSignature, VaultDoc,
 };
 use crate::node::db::commit_log::MetaDbManager;
-use crate::node::db::generic_db::KvLogEventRepo;
-
 use crate::node::db::events::object_id::IdGen;
+use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::models::{GenericKvLogEvent, KvKey, KvLogEvent, MetaPassObject, ObjectDescriptor};
 use crate::node::server::data_sync::MetaLogger;
 use crate::CoreResult;
@@ -128,7 +127,7 @@ impl<Repo: KvLogEventRepo<Err>, L: MetaLogger, Err: std::error::Error> MetaDistr
                 encrypted_text: Box::new(cipher_share.cipher_share),
             };
 
-            let distribution_share = SecretDistributionDocData {
+            let _distribution_share = SecretDistributionDocData {
                 distribution_type: SecretDistributionType::Split,
                 meta_password: Box::new(MetaPasswordRequest {
                     user_sig: Box::new(self.user_creds.user_sig.as_ref().clone()),

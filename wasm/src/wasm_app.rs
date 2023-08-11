@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -16,45 +15,12 @@ use meta_secret_core::node::db::meta_db::{MetaDb, MetaPassStore, VaultStore};
 use meta_secret_core::node::db::models::{
     GenericKvLogEvent, KvKey, KvLogEvent, MempoolObject, ObjectDescriptor, VaultInfo,
 };
-use meta_secret_core::node::server::data_sync::{DataSync, DataSyncMode, MetaServerContextState};
-use meta_secret_core::node::server::persistent_object::{PersistentGlobalIndex, PersistentObject};
+use meta_secret_core::node::db::persistent_object::PersistentObject;
 use meta_secret_core::shared_secret::MetaDistributor;
 
 use crate::commit_log::{WasmMetaLogger, WasmRepo};
 use crate::db::WasmDbError;
-use crate::gateway::WasmSyncGateway;
 use crate::log;
-
-pub fn get_data_sync(repo: Rc<WasmRepo>, creds: &UserCredentials, mode: DataSyncMode) -> DataSync<WasmRepo, WasmMetaLogger, WasmDbError> {
-    let persistent_object = get_persistent_object(repo.clone());
-    let persistent_object_rc = Rc::new(persistent_object);
-
-    let meta_db_manager = MetaDbManager {
-        persistent_obj: persistent_object_rc.clone(),
-        repo: repo.clone(),
-        logger: WasmMetaLogger {},
-    };
-    let meta_db_manager_rc = Rc::new(meta_db_manager);
-
-    DataSync {
-        persistent_obj: persistent_object_rc,
-        repo,
-        context: Rc::new(MetaServerContextState::from(creds)),
-        meta_db_manager: meta_db_manager_rc,
-        logger: WasmMetaLogger {},
-        mode
-    }
-}
-
-pub fn get_persistent_object(repo: Rc<WasmRepo>) -> PersistentObject<WasmRepo, WasmDbError> {
-    PersistentObject {
-        repo: repo.clone(),
-        global_index: PersistentGlobalIndex {
-            repo,
-            _phantom: PhantomData,
-        },
-    }
-}
 
 /// Sync local commit log with server
 pub async fn sync_shares() -> Result<JsValue, JsValue> {
@@ -194,7 +160,6 @@ pub struct EmptyMetaClient {
 }
 
 impl EmptyMetaClient {
-
     pub async fn find_user_creds(&self) -> Result<Option<InitMetaClient>, WasmDbError> {
         let maybe_creds = self.ctx.repo.find_user_creds().await?;
 
@@ -202,7 +167,7 @@ impl EmptyMetaClient {
             Some(creds) => {
                 let new_client = InitMetaClient {
                     ctx: self.ctx.clone(),
-                    creds: Rc::new(creds)
+                    creds: Rc::new(creds),
                 };
                 Ok(Some(new_client))
             }
@@ -234,7 +199,7 @@ impl EmptyMetaClient {
         match maybe_meta_vault {
             None => {
                 self.ctx.repo
-                    .create_meta_vault(vault_name.to_string(), device_name.to_string(), &logger)
+                    .create_meta_vault(vault_name.to_string(), device_name.to_string())
                     .await
             }
             Some(meta_vault) => {
@@ -284,7 +249,7 @@ impl InitMetaClient {
         if join {
             //TODO we need to know if the user in pending state (waiting for approval)
             self.join_cluster().await;
-            self.ctx.sync_gateway.sync().await;
+
             if let VaultInfo::Member { vault } = &vault_info {
                 self.ctx.update_vault(vault.clone()).await
             }
@@ -374,8 +339,6 @@ impl InitMetaClient {
     pub async fn get_vault(&self) -> VaultInfo {
         log("wasm: get vault!");
 
-        self.ctx.sync_gateway.sync().await;
-
         let creds = self.creds.clone();
 
         let mut meta_db = self.ctx.meta_db.lock().await;
@@ -430,7 +393,7 @@ impl RegisteredMetaClient {
                     meta_db_manager: MetaDbManager {
                         persistent_obj: self.ctx.persistent_object.clone(),
                         repo: self.ctx.repo.clone(),
-                        logger: WasmMetaLogger {},
+                        logger: Rc::new(WasmMetaLogger {}),
                     },
                     vault: vault.clone(),
                     user_creds: self.creds.as_ref().clone(),
@@ -445,9 +408,6 @@ impl RegisteredMetaClient {
             VaultInfo::NotFound => {}
             VaultInfo::NotMember => {}
         };
-
-        //sync meta passwords
-        self.ctx.sync_gateway.sync().await;
 
         let mut meta_db = self.ctx.meta_db.lock().await;
 
@@ -464,30 +424,21 @@ pub struct MetaClientContext {
     pub app_state: Arc<Mutex<ApplicationState>>,
 
     pub meta_db_manager: MetaDbManager<WasmRepo, WasmMetaLogger, WasmDbError>,
-    pub sync_gateway: Rc<WasmSyncGateway>,
-    pub persistent_object: Rc<PersistentObject<WasmRepo, WasmDbError>>,
+    pub persistent_object: Rc<PersistentObject<WasmRepo, WasmMetaLogger, WasmDbError>>,
     pub repo: Rc<WasmRepo>,
 }
 
 impl MetaClientContext {
     pub fn new(app_state: Arc<Mutex<ApplicationState>>, repo: Rc<WasmRepo>) -> Self {
-        let persistent_object = {
-            let obj = get_persistent_object(repo.clone());
-            Rc::new(obj)
-        };
-
-        let meta_db_manager = MetaDbManager {
-            persistent_obj: persistent_object.clone(),
-            repo: repo.clone(),
-            logger: WasmMetaLogger {},
-        };
+        let logger = Rc::new(WasmMetaLogger {});
+        let persistent_object = Rc::new(PersistentObject::new(repo.clone(), logger.clone()));
+        let meta_db_manager = MetaDbManager::from(persistent_object.clone());
 
         let meta_db = Arc::new(Mutex::new(MetaDb::default()));
         MetaClientContext {
             meta_db,
             meta_db_manager,
             app_state,
-            sync_gateway: Rc::new(WasmSyncGateway::new()),
             persistent_object,
             repo,
         }

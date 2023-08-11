@@ -15,7 +15,7 @@ wasm-bindgen = { version = "0.2.87", features = ["serde-serialize"] }
 
 gloo-timers = "0.2.6"
 
-async-std = { version="1.12.0", features = ["wasm-bindgen-futures", "futures-channel"] }
+async-std = { version = "1.12.0", features = ["wasm-bindgen-futures", "futures-channel"] }
 flume = "0.10.14"
 
 async-trait = "0.1"

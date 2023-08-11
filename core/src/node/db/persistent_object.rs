@@ -14,26 +14,26 @@ use crate::node::db::models::{
 };
 use crate::node::server::data_sync::MetaLogger;
 
-pub struct PersistentObject<Repo: KvLogEventRepo<Err>, Err: Error> {
+pub struct PersistentObject<Repo: KvLogEventRepo<Err>, Logger: MetaLogger, Err: Error> {
     pub repo: Rc<Repo>,
-    pub global_index: PersistentGlobalIndex<Repo, Err>,
+    pub global_index: PersistentGlobalIndex<Repo, Logger, Err>,
+    pub logger: Rc<Logger>,
 }
 
-impl<Repo: KvLogEventRepo<Err>, Err: Error> PersistentObject<Repo, Err> {
-    pub async fn get_object_events_from_beginning<L: MetaLogger>(
+impl<Repo: KvLogEventRepo<Err>, Logger: MetaLogger, Err: Error> PersistentObject<Repo, Logger, Err> {
+    pub async fn get_object_events_from_beginning(
         &self,
         obj_desc: &ObjectDescriptor,
         server_pk: &PublicKeyRecord,
-        logger: &L,
     ) -> Result<Vec<GenericKvLogEvent>, Err> {
-        logger.log("get_object_events_from_beginning");
+        self.logger.log("get_object_events_from_beginning");
 
         let formation_id = ObjectId::unit(obj_desc);
         let mut commit_log = self.find_object_events(&formation_id).await;
 
         //check if genesis event exists for vaults index
         if commit_log.is_empty() {
-            let gi_events = self.global_index.init(server_pk, logger).await?;
+            let gi_events = self.global_index.init(server_pk).await?;
             commit_log.extend(gi_events);
         }
 
@@ -153,28 +153,26 @@ impl<Repo: KvLogEventRepo<Err>, Err: Error> PersistentObject<Repo, Err> {
 }
 
 #[async_trait(? Send)]
-pub trait PersistentGlobalIndexApi<Repo: KvLogEventRepo<Err>, Err: Error> {
-    async fn init<L: MetaLogger>(
-        &self,
-        public_key: &PublicKeyRecord,
-        logger: &L,
-    ) -> Result<Vec<GenericKvLogEvent>, Err>;
+pub trait PersistentGlobalIndexApi<Repo: KvLogEventRepo<Err>, Logger: MetaLogger, Err: Error> {
+    async fn init(&self, public_key: &PublicKeyRecord) -> Result<Vec<GenericKvLogEvent>, Err>;
 }
 
-pub struct PersistentGlobalIndex<Repo: KvLogEventRepo<Err>, Err: Error> {
+pub struct PersistentGlobalIndex<Repo: KvLogEventRepo<Err>, Logger: MetaLogger, Err: Error> {
     pub repo: Rc<Repo>,
     pub _phantom: PhantomData<Err>,
+    pub logger: Rc<Logger>,
 }
 
 #[async_trait(? Send)]
-impl<Repo: KvLogEventRepo<Err>, Err: Error> PersistentGlobalIndexApi<Repo, Err> for PersistentGlobalIndex<Repo, Err> {
+impl<Repo, Logger, Err> PersistentGlobalIndexApi<Repo, Logger, Err> for PersistentGlobalIndex<Repo, Logger, Err>
+where
+    Repo: KvLogEventRepo<Err>,
+    Logger: MetaLogger,
+    Err: Error,
+{
     ///create a genesis event and save into the database
-    async fn init<L: MetaLogger>(
-        &self,
-        public_key: &PublicKeyRecord,
-        logger: &L,
-    ) -> Result<Vec<GenericKvLogEvent>, Err> {
-        logger.log("Init global index");
+    async fn init(&self, public_key: &PublicKeyRecord) -> Result<Vec<GenericKvLogEvent>, Err> {
+        self.logger.log("Init global index");
 
         let unit_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Unit {
             event: KvLogEvent::global_index_unit(),
@@ -225,9 +223,22 @@ impl SaveCommand<InMemDbError> for InMemKvLogEventRepo {
 
 impl KvLogEventRepo<InMemDbError> for InMemKvLogEventRepo {}
 
+impl<Repo: KvLogEventRepo<Err>, Logger: MetaLogger, Err: Error> PersistentObject<Repo, Logger, Err> {
+    pub fn new(repo: Rc<Repo>, logger: Rc<Logger>) -> Self {
+        PersistentObject {
+            repo: repo.clone(),
+            global_index: PersistentGlobalIndex {
+                repo,
+                _phantom: PhantomData,
+                logger: logger.clone(),
+            },
+            logger,
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
-    use std::marker::PhantomData;
     use std::ops::Deref;
     use std::rc::Rc;
 
@@ -237,20 +248,15 @@ mod test {
     use crate::node::db::models::{
         GenericKvLogEvent, GlobalIndexObject, KvLogEvent, ObjectDescriptor, PublicKeyRecord,
     };
-    use crate::node::server::persistent_object::{InMemKvLogEventRepo, PersistentGlobalIndex, PersistentObject};
+    use crate::node::db::persistent_object::{InMemKvLogEventRepo, PersistentObject};
+    use crate::node::server::data_sync::DefaultMetaLogger;
 
     #[tokio::test]
     async fn test() {
         let repo = InMemKvLogEventRepo::new();
         let repo_rc = Rc::new(repo);
 
-        let persistent_object = PersistentObject {
-            repo: repo_rc.clone(),
-            global_index: PersistentGlobalIndex {
-                repo: repo_rc.clone(),
-                _phantom: PhantomData,
-            },
-        };
+        let persistent_object = PersistentObject::new(repo_rc.clone(), Rc::new(DefaultMetaLogger {}));
 
         let s_box = KeyManager::generate_security_box("test_vault".to_string());
         let device = DeviceInfo {

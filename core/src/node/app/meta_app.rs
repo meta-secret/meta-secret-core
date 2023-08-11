@@ -2,6 +2,7 @@ use std::error::Error;
 
 use async_trait::async_trait;
 
+use crate::crypto::keys::KeyManager;
 use crate::models::meta_vault::MetaVault;
 use crate::models::user_credentials::UserCredentials;
 use crate::models::DeviceInfo;
@@ -12,12 +13,7 @@ use crate::node::server::data_sync::MetaLogger;
 
 #[async_trait(? Send)]
 pub trait MetaVaultManager<Err: Error> {
-    async fn create_meta_vault<L: MetaLogger>(
-        &self,
-        vault_name: String,
-        device_name: String,
-        logger: &L,
-    ) -> Result<MetaVault, Err>;
+    async fn create_meta_vault(&self, vault_name: String, device_name: String) -> Result<MetaVault, Err>;
     async fn find_meta_vault<L: MetaLogger>(&self, logger: &L) -> Result<Option<MetaVault>, Err>;
 }
 
@@ -27,14 +23,7 @@ where
     T: KvLogEventRepo<Err>,
     Err: Error,
 {
-    async fn create_meta_vault<L: MetaLogger>(
-        &self,
-        vault_name: String,
-        device_name: String,
-        logger: &L,
-    ) -> Result<MetaVault, Err> {
-        logger.log("meta_app::create_meta_vault");
-
+    async fn create_meta_vault(&self, vault_name: String, device_name: String) -> Result<MetaVault, Err> {
         let device = DeviceInfo::from(device_name.to_string());
         let meta_vault = MetaVault {
             name: vault_name.to_string(),
@@ -81,6 +70,8 @@ where
 pub trait UserCredentialsManager<Err: Error> {
     async fn save_user_creds(&self, creds: &UserCredentials) -> Result<(), Err>;
     async fn find_user_creds(&self) -> Result<Option<UserCredentials>, Err>;
+    async fn generate_use_creds(&self, vault_name: String, device_name: String) -> UserCredentials;
+    async fn get_or_generate_user_creds(&self, vault_name: String, device_name: String) -> UserCredentials;
 }
 
 #[async_trait(? Send)]
@@ -111,5 +102,29 @@ where
         let generic_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::UserCredentials { event: Box::new(event) });
 
         self.save_event(&generic_event).await
+    }
+
+    async fn generate_use_creds(&self, vault_name: String, device_name: String) -> UserCredentials {
+        let meta_vault = self.create_meta_vault(vault_name, device_name).await.unwrap();
+
+        let security_box = KeyManager::generate_security_box(meta_vault.name);
+        let user_sig = security_box.get_user_sig(&meta_vault.device);
+        let creds = UserCredentials::new(security_box, user_sig);
+
+        self.save_user_creds(&creds).await.unwrap();
+
+        creds
+    }
+
+    async fn get_or_generate_user_creds(&self, vault_name: String, device_name: String) -> UserCredentials {
+        let server_creds_result = self.find_user_creds().await;
+
+        match server_creds_result {
+            Ok(maybe_creds) => match maybe_creds {
+                None => self.generate_use_creds(vault_name, device_name).await,
+                Some(creds) => creds,
+            },
+            Err(_) => self.generate_use_creds(vault_name, device_name).await,
+        }
     }
 }

@@ -1,6 +1,6 @@
-use crate::errors::CoreError;
 use shamirsecretsharing as sss;
 
+use crate::errors::CoreError;
 use crate::shared_secret::data_block::common::{BlockMetaData, SharedSecretConfig};
 use crate::shared_secret::data_block::encrypted_data_block::EncryptedDataBlock;
 use crate::shared_secret::data_block::plain_data_block::PlainDataBlock;
