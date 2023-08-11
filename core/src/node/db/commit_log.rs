@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::rc::Rc;
 
 use crate::node::db::generic_db::KvLogEventRepo;
@@ -9,19 +8,14 @@ use crate::node::db::models::{
 use crate::node::db::persistent_object::PersistentObject;
 use crate::node::server::data_sync::MetaLogger;
 
-pub struct MetaDbManager<Repo: KvLogEventRepo<Err>, Logger: MetaLogger, Err: Error> {
-    pub persistent_obj: Rc<PersistentObject<Repo, Logger, Err>>,
-    pub repo: Rc<Repo>,
-    pub logger: Rc<Logger>,
+pub struct MetaDbManager {
+    pub persistent_obj: Rc<PersistentObject>,
+    pub repo: Rc<dyn KvLogEventRepo>,
+    pub logger: Rc<dyn MetaLogger>,
 }
 
-impl<Repo, Logger, Err> From<Rc<PersistentObject<Repo, Logger, Err>>> for MetaDbManager<Repo, Logger, Err>
-where
-    Repo: KvLogEventRepo<Err>,
-    Logger: MetaLogger,
-    Err: Error,
-{
-    fn from(persistent_object: Rc<PersistentObject<Repo, Logger, Err>>) -> Self {
+impl From<Rc<PersistentObject>> for MetaDbManager {
+    fn from(persistent_object: Rc<PersistentObject>) -> Self {
         MetaDbManager {
             persistent_obj: persistent_object.clone(),
             repo: persistent_object.repo.clone(),
@@ -30,7 +24,7 @@ where
     }
 }
 
-impl<Repo: KvLogEventRepo<Err>, Logger: MetaLogger, Err: Error> MetaDbManager<Repo, Logger, Err> {
+impl MetaDbManager {
     pub async fn sync_meta_db(&self, meta_db: &mut MetaDb) {
         let vault_events = match meta_db.vault_store.tail_id() {
             None => {

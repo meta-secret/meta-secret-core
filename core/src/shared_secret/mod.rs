@@ -5,9 +5,9 @@ use crate::models::{
 };
 use crate::node::db::commit_log::MetaDbManager;
 use crate::node::db::events::object_id::IdGen;
-use crate::node::db::generic_db::KvLogEventRepo;
+
 use crate::node::db::models::{GenericKvLogEvent, KvKey, KvLogEvent, MetaPassObject, ObjectDescriptor};
-use crate::node::server::data_sync::MetaLogger;
+
 use crate::CoreResult;
 use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
 
@@ -73,13 +73,13 @@ struct MetaCipherShare {
     cipher_share: AeadCipherText,
 }
 
-pub struct MetaDistributor<Repo: KvLogEventRepo<Err>, L: MetaLogger, Err: std::error::Error> {
-    pub meta_db_manager: MetaDbManager<Repo, L, Err>,
+pub struct MetaDistributor {
+    pub meta_db_manager: MetaDbManager,
     pub user_creds: UserCredentials,
     pub vault: VaultDoc,
 }
 
-impl<Repo: KvLogEventRepo<Err>, L: MetaLogger, Err: std::error::Error> MetaDistributor<Repo, L, Err> {
+impl MetaDistributor {
     /// Encrypt and distribute password across the cluster
     pub async fn distribute(self, password_id: String, password: String) {
         let encryptor = MetaEncryptor {

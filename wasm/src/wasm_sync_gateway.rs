@@ -5,11 +5,9 @@ use meta_secret_core::node::db::persistent_object::PersistentObject;
 use meta_secret_core::node::server::server_app::MpscDataTransfer;
 
 use crate::commit_log::{WasmMetaLogger, WasmRepo};
-use crate::db::WasmDbError;
-use crate::log;
 
 pub enum WasmSyncGateway {
-    WasmGateway { gateway: SyncGateway<WasmRepo, WasmMetaLogger, WasmDbError> }
+    WasmGateway { gateway: SyncGateway }
 }
 
 impl WasmSyncGateway {

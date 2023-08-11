@@ -3,23 +3,17 @@ use std::time::Duration;
 
 use flume::{Receiver, RecvError, Sender};
 
-use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::models::GenericKvLogEvent;
 use crate::node::server::data_sync::{DataSync, DataSyncApi, DataSyncMessage, MetaLogger};
 
-pub struct ServerApp<Repo: KvLogEventRepo<Err>, Logger: MetaLogger, Err: std::error::Error> {
+pub struct ServerApp {
     pub timeout: Duration,
-    pub data_sync: DataSync<Repo, Logger, Err>,
+    pub data_sync: DataSync,
     pub data_transfer: Rc<MpscReceiver>,
-    pub logger: Rc<Logger>,
+    pub logger: Rc<dyn MetaLogger>,
 }
 
-impl<Repo, Logger, Err> ServerApp<Repo, Logger, Err>
-where
-    Repo: KvLogEventRepo<Err>,
-    Logger: MetaLogger,
-    Err: std::error::Error,
-{
+impl ServerApp {
     pub async fn run(&self) {
         loop {
             async_std::task::sleep(self.timeout).await;

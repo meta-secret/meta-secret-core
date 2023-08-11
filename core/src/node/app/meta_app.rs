@@ -3,27 +3,23 @@ use std::error::Error;
 use async_trait::async_trait;
 
 use crate::crypto::keys::KeyManager;
+use crate::models::DeviceInfo;
 use crate::models::meta_vault::MetaVault;
 use crate::models::user_credentials::UserCredentials;
-use crate::models::DeviceInfo;
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::models::{GenericKvLogEvent, KvKey, KvLogEvent, KvLogEventLocal, ObjectCreator, ObjectDescriptor};
 use crate::node::server::data_sync::MetaLogger;
 
 #[async_trait(? Send)]
-pub trait MetaVaultManager<Err: Error> {
-    async fn create_meta_vault(&self, vault_name: String, device_name: String) -> Result<MetaVault, Err>;
-    async fn find_meta_vault<L: MetaLogger>(&self, logger: &L) -> Result<Option<MetaVault>, Err>;
+pub trait MetaVaultManager {
+    async fn create_meta_vault(&self, vault_name: String, device_name: String) -> Result<MetaVault, Box<dyn Error>>;
+    async fn find_meta_vault<L: MetaLogger>(&self, logger: &L) -> Result<Option<MetaVault>, Box<dyn Error>>;
 }
 
 #[async_trait(? Send)]
-impl<T, Err> MetaVaultManager<Err> for T
-where
-    T: KvLogEventRepo<Err>,
-    Err: Error,
-{
-    async fn create_meta_vault(&self, vault_name: String, device_name: String) -> Result<MetaVault, Err> {
+impl<T> MetaVaultManager for T where T: KvLogEventRepo {
+    async fn create_meta_vault(&self, vault_name: String, device_name: String) -> Result<MetaVault, Box<dyn Error>> {
         let device = DeviceInfo::from(device_name.to_string());
         let meta_vault = MetaVault {
             name: vault_name.to_string(),
@@ -43,7 +39,7 @@ where
         Ok(meta_vault)
     }
 
-    async fn find_meta_vault<L: MetaLogger>(&self, logger: &L) -> Result<Option<MetaVault>, Err> {
+    async fn find_meta_vault<L: MetaLogger>(&self, logger: &L) -> Result<Option<MetaVault>, Box<dyn Error>> {
         logger.log("meta_app::find_meta_vault");
 
         let maybe_meta_vault = self.find_one(&ObjectId::meta_vault_index()).await?;
@@ -67,20 +63,16 @@ where
 }
 
 #[async_trait(? Send)]
-pub trait UserCredentialsManager<Err: Error> {
-    async fn save_user_creds(&self, creds: &UserCredentials) -> Result<(), Err>;
-    async fn find_user_creds(&self) -> Result<Option<UserCredentials>, Err>;
-    async fn generate_use_creds(&self, vault_name: String, device_name: String) -> UserCredentials;
+pub trait UserCredentialsManager:  KvLogEventRepo {
+    async fn save_user_creds(&self, creds: &UserCredentials) -> Result<(), Box<dyn Error>>;
+    async fn find_user_creds(&self) -> Result<Option<UserCredentials>, Box<dyn Error>>;
+    async fn generate_user_creds(&self, vault_name: String, device_name: String) -> UserCredentials;
     async fn get_or_generate_user_creds(&self, vault_name: String, device_name: String) -> UserCredentials;
 }
 
 #[async_trait(? Send)]
-impl<T, Err> UserCredentialsManager<Err> for T
-where
-    T: KvLogEventRepo<Err>,
-    Err: Error,
-{
-    async fn find_user_creds(&self) -> Result<Option<UserCredentials>, Err> {
+impl<T> UserCredentialsManager for T where T: KvLogEventRepo {
+    async fn find_user_creds(&self) -> Result<Option<UserCredentials>, Box<dyn Error>> {
         let obj_id = ObjectId::unit(&ObjectDescriptor::UserCreds);
         let maybe_creds = self.find_one(&obj_id).await?;
         match maybe_creds {
@@ -94,7 +86,7 @@ where
         }
     }
 
-    async fn save_user_creds(&self, creds: &UserCredentials) -> Result<(), Err> {
+    async fn save_user_creds(&self, creds: &UserCredentials) -> Result<(), Box<dyn Error>> {
         let event = KvLogEvent {
             key: KvKey::unit(&ObjectDescriptor::UserCreds),
             value: creds.clone(),
@@ -104,7 +96,7 @@ where
         self.save_event(&generic_event).await
     }
 
-    async fn generate_use_creds(&self, vault_name: String, device_name: String) -> UserCredentials {
+    async fn generate_user_creds(&self, vault_name: String, device_name: String) -> UserCredentials {
         let meta_vault = self.create_meta_vault(vault_name, device_name).await.unwrap();
 
         let security_box = KeyManager::generate_security_box(meta_vault.name);
@@ -121,10 +113,10 @@ where
 
         match server_creds_result {
             Ok(maybe_creds) => match maybe_creds {
-                None => self.generate_use_creds(vault_name, device_name).await,
+                None => self.generate_user_creds(vault_name, device_name).await,
                 Some(creds) => creds,
             },
-            Err(_) => self.generate_use_creds(vault_name, device_name).await,
+            Err(_) => self.generate_user_creds(vault_name, device_name).await,
         }
     }
 }

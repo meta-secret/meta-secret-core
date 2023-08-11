@@ -5,33 +5,27 @@ use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::models::{GenericKvLogEvent, LogEventKeyBasedRecord};
 
 #[async_trait(? Send)]
-pub trait SaveCommand<DbErr: std::error::Error> {
-    async fn save(&self, key: &ObjectId, value: &GenericKvLogEvent) -> Result<(), DbErr>;
-    async fn save_event(&self, value: &GenericKvLogEvent) -> Result<(), DbErr> {
+pub trait SaveCommand {
+
+    async fn save(&self, key: &ObjectId, value: &GenericKvLogEvent) -> Result<(), Box<dyn std::error::Error>>;
+    async fn save_event(&self, value: &GenericKvLogEvent) -> Result<(), Box<dyn std::error::Error>> {
         self.save(&value.key().obj_id, value).await
     }
 }
 
 #[async_trait(? Send)]
-pub trait FindOneQuery<DbErr: std::error::Error> {
-    async fn find_one(&self, key: &ObjectId) -> Result<Option<GenericKvLogEvent>, DbErr>;
+pub trait FindOneQuery {
+    async fn find_one(&self, key: &ObjectId) -> Result<Option<GenericKvLogEvent>, Box<dyn std::error::Error>>;
 }
 
 #[async_trait(? Send)]
 pub trait FindQuery<T> {
-    type Error: std::error::Error;
-
-    async fn find(&self, key: &ObjectId) -> Result<Vec<T>, Self::Error>;
+    async fn find(&self, key: &ObjectId) -> Result<Vec<T>, Box<dyn std::error::Error>>;
 }
 
-#[async_trait(? Send)]
-pub trait FindAllQuery<T> {
-    type Error: std::error::Error;
+pub trait KvLogEventRepo: FindOneQuery + SaveCommand {
 
-    async fn find_all(&self) -> Result<Vec<T>, Self::Error>;
 }
-
-pub trait KvLogEventRepo<DbErr: std::error::Error>: FindOneQuery<DbErr> + SaveCommand<DbErr> {}
 
 pub trait CommitLogDbConfig {
     fn db_name(&self) -> String;

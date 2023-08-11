@@ -2,8 +2,6 @@ extern crate core;
 
 use wasm_bindgen::prelude::*;
 
-use crate::objects::ToJsValue;
-
 mod commit_log;
 mod db;
 mod objects;
@@ -45,11 +43,6 @@ extern "C" {
 #[wasm_bindgen]
 pub fn configure() {
     utils::set_panic_hook();
-}
-
-#[wasm_bindgen]
-pub async fn get_meta_vault() -> Result<Option<JsValue>, JsValue> {
-    objects::get_meta_vault().await
 }
 
 ///https://rustwasm.github.io/wasm-bindgen/examples/closures.html

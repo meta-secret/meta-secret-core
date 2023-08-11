@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::rc::Rc;
 
 use async_trait::async_trait;
@@ -29,8 +30,8 @@ pub enum SqliteDbError {
 }
 
 #[async_trait(? Send)]
-impl SaveCommand<SqliteDbError> for SqlIteRepo {
-    async fn save(&self, _key: &ObjectId, value: &GenericKvLogEvent) -> Result<(), SqliteDbError> {
+impl SaveCommand for SqlIteRepo {
+    async fn save(&self, _key: &ObjectId, value: &GenericKvLogEvent) -> Result<(), Box<dyn Error>> {
         let mut conn = SqliteConnection::establish(self.conn_url.as_str()).unwrap();
 
         diesel::insert_into(schema_log::table)
@@ -41,8 +42,8 @@ impl SaveCommand<SqliteDbError> for SqlIteRepo {
 }
 
 #[async_trait(? Send)]
-impl FindOneQuery<SqliteDbError> for SqlIteRepo {
-    async fn find_one(&self, key: &ObjectId) -> Result<Option<GenericKvLogEvent>, SqliteDbError> {
+impl FindOneQuery for SqlIteRepo {
+    async fn find_one(&self, key: &ObjectId) -> Result<Option<GenericKvLogEvent>, Box<dyn Error>> {
         let mut conn = SqliteConnection::establish(self.conn_url.as_str()).unwrap();
 
         let db_event: DbLogEvent = dsl::db_commit_log
@@ -53,4 +54,4 @@ impl FindOneQuery<SqliteDbError> for SqlIteRepo {
     }
 }
 
-impl KvLogEventRepo<SqliteDbError> for SqlIteRepo {}
+impl KvLogEventRepo for SqlIteRepo {}
