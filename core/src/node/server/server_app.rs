@@ -22,8 +22,6 @@ where
 {
     pub async fn run(&self) {
         loop {
-            self.logger.log("wasm. server. run!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-
             async_std::task::sleep(self.timeout).await;
 
             while let Ok(sync_message) = self.data_transfer.receive().await {

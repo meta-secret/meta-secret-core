@@ -97,20 +97,15 @@ impl VirtualDevice {
         let _ = device_repo
             .get_or_generate_user_creds(String::from("q"), String::from("virtual-device"))
             .await;
-        log("1");
 
         let gateway = WasmSyncGateway::new_with_custom_repo(virtual_device.ctx.repo.clone(), data_transfer.clone());
-        log("2");
 
         let init_state_result = virtual_device
             .handle(VirtualDeviceEvent::Init, &gateway)
             .await;
 
-        log("3");
-
         match init_state_result {
             Ok(init_state) => {
-                log("4");
                 let registered_result = init_state
                     .handle(VirtualDeviceEvent::SignUp, &gateway)
                     .await;
@@ -126,10 +121,8 @@ impl VirtualDevice {
         }
 
         loop {
-            log("vd loooooooooooooooop!!!");
             async_std::task::sleep(std::time::Duration::from_secs(1)).await;
 
-            log("Sync virtual device");
             gateway.sync().await;
 
             match &virtual_device.meta_client {
@@ -198,7 +191,6 @@ impl VirtualDevice {
         match (&self.meta_client, &event) {
             (WasmMetaClient::Empty(client), VirtualDeviceEvent::Init) => {
                 // init
-                log("wasm: handle 1");
 
                 let vault_name = "q";
                 let device_name = "virtual-device";
@@ -207,8 +199,6 @@ impl VirtualDevice {
                     .get_or_create_local_vault(vault_name, device_name)
                     .await?;
 
-                log("wasm: handle 2");
-
                 Ok(VirtualDevice {
                     meta_client: WasmMetaClient::Init(init_client),
                     ctx: client.ctx.clone(),
@@ -216,7 +206,6 @@ impl VirtualDevice {
                 })
             }
             (WasmMetaClient::Init(client), VirtualDeviceEvent::SignUp) => {
-                log("wasm: handle 3");
                 Ok(VirtualDevice {
                     meta_client: WasmMetaClient::Registered(client.sign_up().await),
                     ctx: client.ctx.clone(),
@@ -224,8 +213,7 @@ impl VirtualDevice {
                 })
             }
             _ => {
-                //log(format!("Invalid state!!!!!!!!!!!!!!!: state: {:?}, event: {:?}", self.meta_client.to_string(), &event).as_str());
-                alert("!!!!");
+                log(format!("Invalid state!!!!!!!!!!!!!!!: state: {:?}, event: {:?}", self.meta_client.to_string(), &event).as_str());
                 panic!("Invalid state")
             }
         }

@@ -38,7 +38,6 @@ impl WasmSyncGateway {
     pub async fn sync(&self) {
         match self {
             WasmSyncGateway::WasmGateway { gateway } => {
-                log("wasm: gateway: sync");
                 gateway.sync().await;
             }
         }

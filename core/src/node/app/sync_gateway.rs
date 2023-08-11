@@ -26,10 +26,8 @@ where
     Err: std::error::Error,
 {
     pub async fn sync(&self) {
-        self.logger.log("wasm. gateway: sync");
 
         let creds_result = self.repo.find_user_creds().await;
-        self.logger.log("wasm.user creds!");
 
         match creds_result {
             Err(_) => {
@@ -95,9 +93,7 @@ where
                         let mut latest_vault_id = new_db_tail.vault_id.clone();
                         let mut latest_meta_pass_id = new_db_tail.meta_pass_id.clone();
 
-                        self.logger.log("wasm. waiting responce from server!");
                         let new_events_res = self.data_transfer.on_update().await;
-                        self.logger.log("wasm. GOT responce from server!");
 
                         match new_events_res {
                             Ok(new_events) => {

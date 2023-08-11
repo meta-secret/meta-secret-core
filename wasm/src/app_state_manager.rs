@@ -66,7 +66,6 @@ impl ApplicationStateManager {
                         });
                     }
                     _ => {
-                        crate::log("!!!!!!!!!!!!!!!!!!!!!!!!");
                         spawn_local(async move {
                             let _ = WasmServer::run(data_transfer).await;
                         });

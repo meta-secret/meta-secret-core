@@ -9,7 +9,6 @@ use meta_secret_core::node::server::server_app::{MpscDataTransfer, ServerApp};
 
 use crate::commit_log::{WasmMetaLogger, WasmRepo};
 use crate::db::WasmDbError;
-use crate::log;
 
 pub struct WasmServer {
     server: ServerApp<WasmRepo, WasmMetaLogger, WasmDbError>,
@@ -17,8 +16,6 @@ pub struct WasmServer {
 
 impl WasmServer {
     pub async fn run(data_transfer: Rc<MpscDataTransfer>) -> WasmServer {
-        log("Run server!!!!!!!!!!!!!!!!!11");
-
         let repo = Rc::new(WasmRepo::server());
         let logger = Rc::new(WasmMetaLogger {});
         let persistent_obj = {
