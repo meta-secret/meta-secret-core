@@ -2,6 +2,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use async_mutex::Mutex;
+use serde::ser::Error;
 use wasm_bindgen::{JsError, JsValue};
 
 use meta_secret_core::crypto::keys::KeyManager;
@@ -160,7 +161,7 @@ pub struct EmptyMetaClient {
 }
 
 impl EmptyMetaClient {
-    pub async fn find_user_creds(&self) -> Result<Option<InitMetaClient>, WasmDbError> {
+    pub async fn find_user_creds(&self) -> Result<Option<InitMetaClient>, Box<dyn std::error::Error>> {
         let maybe_creds = self.ctx.repo.find_user_creds().await?;
 
         match maybe_creds {
@@ -177,7 +178,7 @@ impl EmptyMetaClient {
         }
     }
 
-    pub async fn get_or_create_local_vault(&self, vault_name: &str, device_name: &str) -> Result<InitMetaClient, WasmDbError> {
+    pub async fn get_or_create_local_vault(&self, vault_name: &str, device_name: &str) -> Result<InitMetaClient, Box<dyn std::error::Error>> {
         let meta_vault = self.create_meta_vault(vault_name, device_name).await?;
         let creds = self.generate_user_credentials(meta_vault).await?;
 
@@ -187,7 +188,7 @@ impl EmptyMetaClient {
         })
     }
 
-    async fn create_meta_vault(&self, vault_name: &str, device_name: &str) -> Result<MetaVault, WasmDbError> {
+    async fn create_meta_vault(&self, vault_name: &str, device_name: &str) -> Result<MetaVault, Box<dyn std::error::Error>> {
         log("wasm::create_meta_vault: create a meta vault");
 
         let logger = WasmMetaLogger {};
@@ -204,7 +205,11 @@ impl EmptyMetaClient {
             }
             Some(meta_vault) => {
                 if meta_vault.name != vault_name || meta_vault.device.device_name != device_name {
-                    Err(WasmDbError::DbCustomError(String::from("Another meta vault already exists in the database")))
+                    let err = {
+                        let err_msg = String::from("Another meta vault already exists in the database");
+                        WasmDbError::DbCustomError(err_msg)
+                    };
+                    Err(Box::from(err))
                 } else {
                     Ok(meta_vault)
                 }
@@ -212,7 +217,7 @@ impl EmptyMetaClient {
         }
     }
 
-    async fn generate_user_credentials(&self, meta_vault: MetaVault) -> Result<UserCredentials, WasmDbError> {
+    async fn generate_user_credentials(&self, meta_vault: MetaVault) -> Result<UserCredentials, Box<dyn std::error::Error>> {
         log("wasm::generate_user_credentials: generate a new security box");
 
         let maybe_creds = self.ctx.repo.find_user_creds()
@@ -264,7 +269,7 @@ impl InitMetaClient {
         }
     }
 
-    async fn join_cluster(&self) -> Result<VaultInfo, JsValue> {
+    async fn join_cluster(&self) {
         log("Wasm::register. Join");
 
         let mem_pool_tail_id = self.ctx
@@ -284,12 +289,9 @@ impl InitMetaClient {
             }
         });
 
-        self.ctx.repo
+        let _ = self.ctx.repo
             .save_event(&join_request)
-            .await
-            .map_err(JsError::from)?;
-
-        Ok(VaultInfo::Pending)
+            .await;
     }
 
     async fn sign_up_action(&self, vault_info: &VaultInfo) {
@@ -323,7 +325,7 @@ impl InitMetaClient {
         }
     }
 
-    async fn register(&self) -> Result<VaultInfo, WasmDbError> {
+    async fn register(&self) -> Result<VaultInfo, Box<dyn std::error::Error>> {
         log("Wasm::register. Sign up");
 
         let sign_up_request_factory = SignUpRequest {};
@@ -423,8 +425,8 @@ pub struct MetaClientContext {
     pub meta_db: Arc<Mutex<MetaDb>>,
     pub app_state: Arc<Mutex<ApplicationState>>,
 
-    pub meta_db_manager: MetaDbManager<WasmRepo, WasmMetaLogger, WasmDbError>,
-    pub persistent_object: Rc<PersistentObject<WasmRepo, WasmMetaLogger, WasmDbError>>,
+    pub meta_db_manager: MetaDbManager,
+    pub persistent_object: Rc<PersistentObject>,
     pub repo: Rc<WasmRepo>,
 }
 

@@ -17,7 +17,7 @@ use meta_secret_core::node::server::server_app::MpscDataTransfer;
 
 use crate::commit_log::{WasmMetaLogger, WasmRepo};
 use crate::db::WasmDbError;
-use crate::{alert, log};
+use crate::log;
 use crate::wasm_app::{EmptyMetaClient, MetaClientContext, WasmMetaClient};
 use crate::wasm_sync_gateway::WasmSyncGateway;
 
@@ -184,7 +184,7 @@ impl VirtualDevice {
     }
 
 
-    pub async fn handle(&self, event: VirtualDeviceEvent, gateway: &WasmSyncGateway) -> Result<VirtualDevice, WasmDbError> {
+    pub async fn handle(&self, event: VirtualDeviceEvent, gateway: &WasmSyncGateway) -> Result<VirtualDevice, Box<dyn std::error::Error>> {
         log("wasm: handle");
         gateway.sync().await;
 

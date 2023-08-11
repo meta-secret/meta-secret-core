@@ -1,3 +1,4 @@
+use std::error::Error;
 use async_trait::async_trait;
 use wasm_bindgen::JsValue;
 
@@ -8,7 +9,6 @@ use meta_secret_core::node::db::models::GenericKvLogEvent;
 use meta_secret_core::node::server::data_sync::MetaLogger;
 
 use crate::{idbGet, idbSave};
-use crate::db::WasmDbError;
 use crate::log;
 
 pub struct WasmRepo {
@@ -42,8 +42,8 @@ impl WasmRepo {
 }
 
 #[async_trait(? Send)]
-impl SaveCommand<WasmDbError> for WasmRepo {
-    async fn save(&self, key: &ObjectId, event: &GenericKvLogEvent) -> Result<(), WasmDbError> {
+impl SaveCommand for WasmRepo {
+    async fn save(&self, key: &ObjectId, event: &GenericKvLogEvent) -> Result<(), Box<dyn Error>> {
         let event_js: JsValue = serde_wasm_bindgen::to_value(event)?;
 
         idbSave(
@@ -58,8 +58,8 @@ impl SaveCommand<WasmDbError> for WasmRepo {
 }
 
 #[async_trait(? Send)]
-impl FindOneQuery<WasmDbError> for WasmRepo {
-    async fn find_one(&self, key: &ObjectId) -> Result<Option<GenericKvLogEvent>, WasmDbError> {
+impl FindOneQuery for WasmRepo {
+    async fn find_one(&self, key: &ObjectId) -> Result<Option<GenericKvLogEvent>, Box<dyn Error>> {
         let obj_js = idbGet(
             self.db_name.as_str(),
             self.store_name.as_str(),
@@ -76,7 +76,7 @@ impl FindOneQuery<WasmDbError> for WasmRepo {
     }
 }
 
-impl KvLogEventRepo<WasmDbError> for WasmRepo {}
+impl KvLogEventRepo for WasmRepo {}
 
 impl CommitLogDbConfig for WasmRepo {
     fn db_name(&self) -> String {

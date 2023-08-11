@@ -11,7 +11,7 @@ use crate::commit_log::{WasmMetaLogger, WasmRepo};
 use crate::db::WasmDbError;
 
 pub struct WasmServer {
-    server: ServerApp<WasmRepo, WasmMetaLogger, WasmDbError>,
+    server: ServerApp,
 }
 
 impl WasmServer {

@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use crate::node::app::meta_app::UserCredentialsManager;
 use crate::node::db::events::object_id::{IdGen, ObjectId};
-use crate::node::db::generic_db::KvLogEventRepo;
+
 use crate::node::db::models::{
     DbTail, DbTailObject, GenericKvLogEvent, KvKey, KvLogEvent, KvLogEventLocal, LogEventKeyBasedRecord, ObjectCreator,
     ObjectDescriptor, PublicKeyRecord,
@@ -12,21 +12,15 @@ use crate::node::server::data_sync::{DataSyncMessage, MetaLogger};
 use crate::node::server::request::SyncRequest;
 use crate::node::server::server_app::MpscSender;
 
-pub struct SyncGateway<Repo: KvLogEventRepo<Err>, Logger: MetaLogger, Err: std::error::Error> {
-    pub logger: Rc<Logger>,
-    pub repo: Rc<Repo>,
-    pub persistent_object: Rc<PersistentObject<Repo, Logger, Err>>,
+pub struct SyncGateway {
+    pub logger: Rc<dyn MetaLogger>,
+    pub repo: Rc<dyn UserCredentialsManager>,
+    pub persistent_object: Rc<PersistentObject>,
     pub data_transfer: Rc<MpscSender>,
 }
 
-impl<Repo, Logger, Err> SyncGateway<Repo, Logger, Err>
-where
-    Repo: KvLogEventRepo<Err>,
-    Logger: MetaLogger,
-    Err: std::error::Error,
-{
+impl SyncGateway {
     pub async fn sync(&self) {
-
         let creds_result = self.repo.find_user_creds().await;
 
         match creds_result {

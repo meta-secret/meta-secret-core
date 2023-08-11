@@ -36,17 +36,17 @@ impl DefaultMetaLogger {
 }
 
 #[async_trait(? Send)]
-pub trait DataSyncApi<Err> {
-    async fn replication(&self, request: SyncRequest) -> Result<Vec<GenericKvLogEvent>, Err>;
+pub trait DataSyncApi {
+    async fn replication(&self, request: SyncRequest) -> Result<Vec<GenericKvLogEvent>, Box<dyn Error>>;
     async fn send(&self, event: &GenericKvLogEvent);
 }
 
-pub struct DataSync<Repo: KvLogEventRepo<Err>, L: MetaLogger, Err: Error> {
-    pub persistent_obj: Rc<PersistentObject<Repo, L, Err>>,
-    pub repo: Rc<Repo>,
+pub struct DataSync {
+    pub persistent_obj: Rc<PersistentObject>,
+    pub repo: Rc<dyn KvLogEventRepo>,
     pub context: Rc<MetaServerContextState>,
-    pub meta_db_manager: Rc<MetaDbManager<Repo, L, Err>>,
-    pub logger: Rc<L>,
+    pub meta_db_manager: Rc<MetaDbManager>,
+    pub logger: Rc<dyn MetaLogger>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -58,13 +58,8 @@ pub enum DataSyncMessage {
 
 //MetaServerContext
 #[async_trait(? Send)]
-impl<Repo, L, Err> DataSyncApi<Err> for DataSync<Repo, L, Err>
-where
-    Repo: KvLogEventRepo<Err>,
-    L: MetaLogger,
-    Err: Error,
-{
-    async fn replication(&self, request: SyncRequest) -> Result<Vec<GenericKvLogEvent>, Err> {
+impl DataSyncApi for DataSync {
+    async fn replication(&self, request: SyncRequest) -> Result<Vec<GenericKvLogEvent>, Box<dyn Error>> {
         let mut commit_log: Vec<GenericKvLogEvent> = vec![];
 
         let mut meta_db = {
@@ -142,7 +137,7 @@ where
     }
 }
 
-impl<Repo: KvLogEventRepo<Err>, L: MetaLogger, Err: Error> DataSync<Repo, L, Err> {
+impl DataSync {
     async fn server_processing(&self, generic_event: &GenericKvLogEvent) {
         self.logger.log("DataSync::event processing");
 
@@ -249,7 +244,7 @@ impl<Repo: KvLogEventRepo<Err>, L: MetaLogger, Err: Error> DataSync<Repo, L, Err
     }
 }
 
-impl<Repo: KvLogEventRepo<Err>, L: MetaLogger, Err: Error> DataSync<Repo, L, Err> {
+impl DataSync {
     async fn get_user_sig(&self, tail_id: &ObjectId) -> Vec<UserSignature> {
         let sig_result = self.get_vault_unit_signature(tail_id).await;
         match sig_result {
@@ -263,8 +258,8 @@ impl<Repo: KvLogEventRepo<Err>, L: MetaLogger, Err: Error> DataSync<Repo, L, Err
     }
 }
 
-impl<Repo: KvLogEventRepo<Err>, L: MetaLogger, Err: Error> DataSync<Repo, L, Err> {
-    async fn get_vault_unit_signature(&self, tail_id: &ObjectId) -> Result<Option<UserSignature>, Err> {
+impl DataSync {
+    async fn get_vault_unit_signature(&self, tail_id: &ObjectId) -> Result<Option<UserSignature>, Box<dyn Error>> {
         let maybe_unit_event = self.repo.find_one(tail_id).await?;
 
         match maybe_unit_event {
@@ -280,7 +275,7 @@ impl<Repo: KvLogEventRepo<Err>, L: MetaLogger, Err: Error> DataSync<Repo, L, Err
     }
 }
 
-impl<Repo: KvLogEventRepo<Err>, L: MetaLogger, Err: Error> DataSync<Repo, L, Err> {
+impl DataSync {
     async fn accept_sign_up_request(&self, event: &KvLogEvent<UserSignature>, vault_id: &IdStr) {
         //vault not found, we can create our new vault
         let server_pk = self.context.server_pk();
