@@ -9,7 +9,6 @@
  */
 
 /// CommunicationChannel : Represents virtual encrypted communication channel between two points.
-
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 pub struct CommunicationChannel {
     #[serde(rename = "sender")]

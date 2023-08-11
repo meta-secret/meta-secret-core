@@ -1,7 +1,8 @@
-use crate::models::Base64EncodedText;
 use rand::{distributions::Alphanumeric, Rng};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
+
+use crate::models::Base64EncodedText;
 
 const SEED_LENGTH: usize = 64;
 

@@ -1,8 +1,9 @@
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
-use meta_secret_core::node::app::meta_app::{MetaVaultManager};
 
-use crate::{alert, log};
+use meta_secret_core::node::app::meta_app::MetaVaultManager;
+
+use crate::log;
 use crate::commit_log::{WasmMetaLogger, WasmRepo};
 
 pub async fn get_meta_vault() -> Result<Option<JsValue>, JsValue> {

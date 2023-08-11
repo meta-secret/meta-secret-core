@@ -1,9 +1,11 @@
+use std::collections::HashSet;
+
+use serde::{Deserialize, Serialize};
+
 use crate::models::vault_doc::VaultDoc;
 use crate::models::MetaPasswordDoc;
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::models::PublicKeyRecord;
-use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]

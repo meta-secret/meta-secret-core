@@ -1,7 +1,8 @@
+use rand::Rng;
+
 use crate::crypto::key_pair::KeyPair;
 use crate::crypto::keys::KeyManager;
 use crate::models::{DeviceInfo, MetaVault, UserSignature, VaultDoc};
-use rand::Rng;
 
 impl UserSignature {
     pub fn to_initial_vault_doc(self) -> VaultDoc {
