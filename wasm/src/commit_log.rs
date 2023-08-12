@@ -39,6 +39,13 @@ impl WasmRepo {
             store_name: String::from("commit_log"),
         }
     }
+
+    pub fn virtual_device_2() -> WasmRepo {
+        WasmRepo {
+            db_name: String::from("meta-secret-v-device-2"),
+            store_name: String::from("commit_log"),
+        }
+    }
 }
 
 #[async_trait(? Send)]

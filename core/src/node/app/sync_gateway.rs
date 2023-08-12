@@ -25,16 +25,16 @@ impl SyncGateway {
 
         match creds_result {
             Err(_) => {
-                self.logger.log("Empty client credentials. Skip");
+                //self.logger.log("Empty client credentials. Skip");
+                //skip
             }
 
             Ok(None) => {
-                self.logger.log("Empty client credentials. Skip");
+                //self.logger.log("Empty client credentials. Skip");
+                //skip
             }
 
             Ok(Some(client_creds)) => {
-                self.logger.log("wasm. start syncing");
-
                 let vault_name = client_creds.user_sig.vault.name.as_str();
                 let db_tail_result = self.persistent_object.get_db_tail(vault_name).await;
 

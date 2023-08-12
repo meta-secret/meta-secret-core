@@ -73,7 +73,7 @@ impl MetaDbManager {
             }
             GenericKvLogEvent::MetaPass(meta_pass_obj) => {
                 self.apply_meta_pass_event(meta_db, meta_pass_obj);
-            }
+            },
             GenericKvLogEvent::Mempool(_) => {
                 self.logger.log("Error. Mempool events not for meta db");
                 panic!("Internal mempool event");
@@ -92,64 +92,79 @@ impl MetaDbManager {
     fn apply_vault_event(&self, meta_db: &mut MetaDb, vault_obj: &VaultObject) {
         match vault_obj {
             VaultObject::Unit { event } => {
-                meta_db.vault_store = match &meta_db.vault_store {
-                    VaultStore::Empty => VaultStore::Unit {
-                        tail_id: event.key.obj_id.clone(),
+                match &meta_db.vault_store {
+                    VaultStore::Empty => {
+                        meta_db.vault_store = VaultStore::Unit {
+                            tail_id: event.key.obj_id.clone(),
+                        }
                     },
-                    VaultStore::Unit { .. } => VaultStore::Unit {
-                        tail_id: event.key.obj_id.clone(),
+                    VaultStore::Unit { .. } => {
+                        meta_db.vault_store = VaultStore::Unit {
+                            tail_id: event.key.obj_id.clone(),
+                        }
                     },
                     _ => {
                         self.logger
-                            .log(format!("Invalid vault store state: {:?}", &meta_db.vault_store).as_str());
-                        panic!("Invalid state")
+                            .log(format!("Unit event. Invalid vault store state: {:?}", &meta_db).as_str());
                     }
                 }
             }
             VaultObject::Genesis { event } => {
-                meta_db.vault_store = match &meta_db.vault_store {
-                    VaultStore::Unit { .. } => VaultStore::Genesis {
-                        tail_id: event.key.obj_id.clone(),
-                        server_pk: event.value.clone(),
+                match &meta_db.vault_store {
+                    VaultStore::Unit { .. } => {
+                        meta_db.vault_store = VaultStore::Genesis {
+                            tail_id: event.key.obj_id.clone(),
+                            server_pk: event.value.clone(),
+                        }
                     },
                     _ => {
-                        panic!("Invalid state")
+                        self.logger
+                            .log(format!("Genesis event. Invalid vault store state: {:?}", &meta_db).as_str());
                     }
                 };
             }
             VaultObject::SignUpUpdate { event } => {
-                meta_db.vault_store = match &meta_db.vault_store {
-                    VaultStore::Genesis { server_pk, .. } => VaultStore::Store {
-                        tail_id: event.key.obj_id.clone(),
-                        server_pk: server_pk.clone(),
-                        vault: event.value.clone(),
+                match &meta_db.vault_store {
+                    VaultStore::Genesis { server_pk, .. } => {
+                        meta_db.vault_store = VaultStore::Store {
+                            tail_id: event.key.obj_id.clone(),
+                            server_pk: server_pk.clone(),
+                            vault: event.value.clone(),
+                        }
                     },
                     _ => {
-                        panic!("Invalid state")
+                        //self.logger
+                          //  .log(format!( "SignUp event. Invalid vault store state: {:?}", &meta_db).as_str());
                     }
                 };
             }
             VaultObject::JoinUpdate { event } => {
-                meta_db.vault_store = match &meta_db.vault_store {
-                    VaultStore::Store { server_pk, .. } => VaultStore::Store {
-                        tail_id: event.key.obj_id.clone(),
-                        server_pk: server_pk.clone(),
-                        vault: event.value.clone(),
+               match &meta_db.vault_store {
+                    VaultStore::Store { server_pk, .. } => {
+                        meta_db.vault_store = VaultStore::Store {
+                            tail_id: event.key.obj_id.clone(),
+                            server_pk: server_pk.clone(),
+                            vault: event.value.clone(),
+                        }
                     },
                     _ => {
-                        panic!("Invalid state")
+                        self.logger
+                            .log(format!("JoinUpdate event. Invalid vault store state: {:?}", &meta_db).as_str());
                     }
                 };
             }
             VaultObject::JoinRequest { event } => {
-                meta_db.vault_store = match &meta_db.vault_store {
-                    VaultStore::Store { server_pk, vault, .. } => VaultStore::Store {
-                        tail_id: event.key.obj_id.clone(),
-                        server_pk: server_pk.clone(),
-                        vault: vault.clone(),
+                match &meta_db.vault_store {
+                    VaultStore::Store { server_pk, vault, .. } => {
+                        meta_db.vault_store = VaultStore::Store {
+                            tail_id: event.key.obj_id.clone(),
+                            server_pk: server_pk.clone(),
+                            vault: vault.clone(),
+                        }
                     },
                     _ => {
-                        panic!("Invalid state")
+                        self.logger
+                            .log(format!("JoinRequest event. Invalid vault store state: {:?}", &meta_db).as_str());
                     }
                 };
             }

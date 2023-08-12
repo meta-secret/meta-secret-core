@@ -1,5 +1,6 @@
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::Duration;
 
 use wasm_bindgen::prelude::wasm_bindgen;
 use meta_secret_core::models::ApplicationState;
@@ -11,11 +12,12 @@ use meta_secret_core::node::db::models::VaultInfo;
 use meta_secret_core::node::server::server_app::MpscDataTransfer;
 use crate::commit_log::WasmRepo;
 
-use crate::{JsAppState, log};
+use crate::{alert, JsAppState, log};
 use crate::objects::ToJsValue;
 use crate::virtual_device::VirtualDevice;
 use crate::wasm_app::{EmptyMetaClient, MetaClientContext, RegisteredMetaClient, WasmMetaClient};
 use crate::wasm_server::WasmServer;
+use crate::wasm_sync_gateway::WasmSyncGateway;
 
 #[wasm_bindgen]
 pub struct ApplicationStateManager {
@@ -51,37 +53,61 @@ impl ApplicationStateManager {
         log("wasm: Init App State Manager");
         let data_transfer = Rc::new(MpscDataTransfer::new());
 
-        VirtualDevice::setup_virtual_device(data_transfer.clone());
+        let device_repo_1 = Rc::new(WasmRepo::virtual_device());
+        VirtualDevice::setup_virtual_device(device_repo_1, data_transfer.clone());
+
+        let device_repo_2 = Rc::new(WasmRepo::virtual_device_2());
+        VirtualDevice::setup_virtual_device(device_repo_2, data_transfer.clone());
+
+        ApplicationStateManager::run_server(&data_transfer);
+        ApplicationStateManager::run_client_gateway(data_transfer);
 
         match self.meta_client.as_ref() {
             WasmMetaClient::Empty(client) => {
                 let init_client_result = client.find_user_creds().await;
-                match init_client_result {
-                    Ok(Some(init_client)) => {
-                        init_client.ctx.update_meta_vault(init_client.creds.user_sig.vault.clone()).await;
-                        self.meta_client = Rc::new(WasmMetaClient::Init(init_client));
+                if let Ok(Some(init_client)) = init_client_result {
+                    init_client.ctx.update_meta_vault(init_client.creds.user_sig.vault.clone()).await;
 
-                        spawn_local(async move {
-                            let _ = WasmServer::run(data_transfer).await;
-                        });
-                    }
-                    _ => {
-                        spawn_local(async move {
-                            let _ = WasmServer::run(data_transfer).await;
-                        });
+                    let vault_info = init_client.get_vault().await;
+                    if let VaultInfo::Member { .. } = &vault_info {
+                        self.meta_client = Rc::new(WasmMetaClient::Registered(init_client.sign_up().await));
+                    } else {
+                        self.meta_client = Rc::new(WasmMetaClient::Init(init_client));
                     }
                 }
             }
             WasmMetaClient::Init(client) => {
                 let new_client = client.sign_up().await;
+                if let VaultInfo::Member { vault } = &new_client.vault_info {
+                    MetaClientContext::update_vault(&new_client.ctx, vault.clone()).await;
+                }
                 self.meta_client = Rc::new(WasmMetaClient::Registered(new_client));
             }
             WasmMetaClient::Registered(client) => {
                 self.registered_client(client).await;
+
             }
         }
 
         self.on_update().await;
+    }
+
+    fn run_client_gateway(data_transfer: Rc<MpscDataTransfer>) {
+        let data_transfer_client = data_transfer.clone();
+        spawn_local(async move {
+            let gateway = WasmSyncGateway::new(data_transfer_client);
+            loop {
+                async_std::task::sleep(Duration::from_secs(1)).await;
+                gateway.sync().await;
+            }
+        });
+    }
+
+    fn run_server(data_transfer: &Rc<MpscDataTransfer>) {
+        let data_transfer_server = data_transfer.clone();
+        spawn_local(async move {
+            let _ = WasmServer::run(data_transfer_server).await;
+        });
     }
 
     async fn registered_client(&self, client: &RegisteredMetaClient) {
@@ -149,8 +175,10 @@ impl ApplicationStateManager {
 
     pub async fn cluster_distribution(&self, pass_id: &str, pass: &str) {
         match self.meta_client.as_ref() {
-            WasmMetaClient::Empty(_) => {}
-            WasmMetaClient::Init(_) => {}
+            WasmMetaClient::Empty(_) => {
+            }
+            WasmMetaClient::Init(_) => {
+            }
             WasmMetaClient::Registered(client) => {
                 client.cluster_distribution(pass_id, pass).await;
                 let passwords = {

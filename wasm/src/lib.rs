@@ -45,18 +45,6 @@ pub fn configure() {
     utils::set_panic_hook();
 }
 
-///https://rustwasm.github.io/wasm-bindgen/examples/closures.html
-#[wasm_bindgen]
-pub async fn recover() -> Result<JsValue, JsValue> {
-    log("wasm recover!");
-
-    /*
-    server_api::claim_for_password_recovery(&recovery_request)
-    */
-
-    Ok(JsValue::null())
-}
-
 /// Sync local commit log with server
 #[wasm_bindgen]
 pub async fn sync() -> Result<JsValue, JsValue> {

@@ -436,7 +436,7 @@ impl MetaClientContext {
         let persistent_object = Rc::new(PersistentObject::new(repo.clone(), logger.clone()));
         let meta_db_manager = MetaDbManager::from(persistent_object.clone());
 
-        let meta_db = Arc::new(Mutex::new(MetaDb::default()));
+        let meta_db = Arc::new(Mutex::new(MetaDb::new(String::from("client"))));
         MetaClientContext {
             meta_db,
             meta_db_manager,

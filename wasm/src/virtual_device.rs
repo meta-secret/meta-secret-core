@@ -59,7 +59,7 @@ impl VirtualDevice {
             };
 
             MetaClientContext {
-                meta_db: Arc::new(AsyncMutex::new(MetaDb::default())),
+                meta_db: Arc::new(AsyncMutex::new(MetaDb::new(String::from("virtual-device")))),
                 meta_db_manager,
                 app_state,
                 persistent_object: persistent_object.clone(),
@@ -79,19 +79,17 @@ impl VirtualDevice {
         }
     }
 
-    pub fn setup_virtual_device(data_transfer: Rc<MpscDataTransfer>) {
+    pub fn setup_virtual_device(device_repo: Rc<WasmRepo>, data_transfer: Rc<MpscDataTransfer>) {
         log("wasm: Setup virtual device");
         spawn_local(async move {
-            Self::event_handler(data_transfer).await;
+            Self::event_handler(device_repo, data_transfer).await;
         });
     }
 
-    async fn event_handler(data_transfer: Rc<MpscDataTransfer>) {
+    async fn event_handler(device_repo: Rc<WasmRepo>, data_transfer: Rc<MpscDataTransfer>) {
         log("wasm: run virtual device event handler");
 
         let mut virtual_device = Rc::new(VirtualDevice::new(data_transfer.clone()));
-
-        let device_repo = Rc::new(WasmRepo::virtual_device());
 
         log("wasm: generate device creds");
         let _ = device_repo

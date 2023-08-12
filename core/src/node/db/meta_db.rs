@@ -10,14 +10,16 @@ use crate::node::db::models::PublicKeyRecord;
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct MetaDb {
+    pub id: String,
     pub vault_store: VaultStore,
     pub global_index_store: GlobalIndexStore,
     pub meta_pass_store: MetaPassStore,
 }
 
-impl Default for MetaDb {
-    fn default() -> Self {
+impl  MetaDb {
+    pub fn new(id: String) -> Self {
         Self {
+            id,
             vault_store: VaultStore::Empty,
             global_index_store: GlobalIndexStore {
                 server_pk: None,

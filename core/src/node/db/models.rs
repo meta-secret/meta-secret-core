@@ -3,6 +3,7 @@ use std::string::ToString;
 use crate::crypto::utils;
 use crate::models::{Base64EncodedText, MetaPasswordDoc, MetaVault, UserCredentials, UserSignature, VaultDoc};
 use crate::node::db::events::object_id::{IdGen, IdStr, ObjectId};
+use crate::models::SecretDistributionDocData;
 
 #[derive(thiserror::Error, Debug)]
 pub enum LogCommandError {
@@ -24,6 +25,8 @@ pub enum KvLogEventLocal {
     MetaVault { event: Box<KvLogEvent<MetaVault>> },
     UserCredentials { event: Box<KvLogEvent<UserCredentials>> },
     DbTail { event: Box<KvLogEvent<DbTail>> },
+
+    SecretShare { event: KvLogEvent<SecretDistributionDocData> }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -62,6 +65,7 @@ pub enum VaultObject {
 #[serde(rename_all = "camelCase")]
 pub enum MempoolObject {
     JoinRequest { event: KvLogEvent<UserSignature> },
+    SecretShare { event: KvLogEvent<SecretDistributionDocData> }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -114,11 +118,13 @@ impl LogEventKeyBasedRecord for GenericKvLogEvent {
             },
             GenericKvLogEvent::Mempool(mem_pool_obj) => match mem_pool_obj {
                 MempoolObject::JoinRequest { event } => &event.key,
+                MempoolObject::SecretShare { event } => &event.key
             },
             GenericKvLogEvent::LocalEvent(op) => match op {
                 KvLogEventLocal::DbTail { event } => &event.key,
                 KvLogEventLocal::MetaVault { event } => &event.key,
                 KvLogEventLocal::UserCredentials { event } => &event.key,
+                KvLogEventLocal::SecretShare { event } => &event.key
             },
             GenericKvLogEvent::Error { event } => &event.key,
         }
@@ -231,7 +237,10 @@ pub enum ObjectDescriptor {
     Mempool,
     DbTail,
     Vault { vault_name: String },
+
     MetaPassword { vault_name: String },
+    SecretShare { meta_pass_id: String },
+
     MetaVault,
     UserCreds,
 }
@@ -259,7 +268,9 @@ impl ObjectDescriptor {
             ObjectDescriptor::DbTail => String::from("db_tail"),
 
             ObjectDescriptor::Vault { vault_name } => vault_name.clone(),
+
             ObjectDescriptor::MetaPassword { vault_name } => vault_name.clone(),
+            ObjectDescriptor::SecretShare {  meta_pass_id} => meta_pass_id.clone(),
 
             ObjectDescriptor::MetaVault => String::from("index"),
             ObjectDescriptor::UserCreds => String::from("index"),
@@ -274,7 +285,9 @@ impl ToString for ObjectDescriptor {
             ObjectDescriptor::Mempool { .. } => String::from("Mempool"),
 
             ObjectDescriptor::Vault { .. } => String::from("Vault"),
+
             ObjectDescriptor::MetaPassword { .. } => String::from("MetaPass"),
+            ObjectDescriptor::SecretShare { .. } => String::from("SecretShare"),
 
             ObjectDescriptor::MetaVault { .. } => String::from("MetaVault"),
             ObjectDescriptor::UserCreds { .. } => String::from("UserCreds"),

@@ -63,7 +63,7 @@ impl DataSyncApi for DataSync {
         let mut commit_log: Vec<GenericKvLogEvent> = vec![];
 
         let mut meta_db = {
-            let mut meta_db = MetaDb::default();
+            let mut meta_db = MetaDb::new(String::from("server"));
             match &request.vault_tail_id {
                 None => meta_db.vault_store = VaultStore::Empty,
                 Some(request_vault_tail_id) => {
@@ -180,8 +180,8 @@ impl DataSync {
                     VaultObject::SignUpUpdate { .. } => {
                         self.logger.log("SignUp update not allowed to send. Skip");
                     }
-                    VaultObject::JoinUpdate { .. } => {
-                        self.logger.log("Join with update not allowed to send. Skip");
+                    VaultObject::JoinUpdate {  ..} => {
+                        let _ =self.repo.save_event(generic_event).await;
                     }
                     VaultObject::JoinRequest { .. } => {
                         //self.logger.log("Handle join request");
@@ -230,6 +230,9 @@ impl DataSync {
                                 let _ = self.repo.save_event(&join_request).await;
                             }
                         }
+                    }
+                    MempoolObject::SecretShare { .. } => {
+                        // ignore on server
                     }
                 }
             }
