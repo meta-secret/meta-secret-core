@@ -143,18 +143,18 @@ impl MetaDb {
                     }
                     GlobalIndexObject::Update { .. } => {
                         self.logger
-                            .log("Error: applying gi event: update. Invalid state: Empty. Must be Genesis or Store");
+                            .info("Error: applying gi event: update. Invalid state: Empty. Must be Genesis or Store");
                         panic!("Invalid state");
                     }
                 }
             }
             GlobalIndexStore::Genesis { server_pk, .. } => match gi_event {
                 GlobalIndexObject::Unit { .. } => {
-                    self.logger.log("Invalid event. Must be at least Genesis");
+                    self.logger.info("Invalid event. Must be at least Genesis");
                     panic!("Invalid state");
                 }
                 GlobalIndexObject::Genesis { .. } => {
-                    self.logger.log("Invalid event. Meta db is already has Genesis");
+                    self.logger.info("Invalid event. Meta db is already has Genesis");
                     panic!("Invalid state");
                 }
                 GlobalIndexObject::Update { event } => {
@@ -170,11 +170,11 @@ impl MetaDb {
             },
             GlobalIndexStore::Store { mut global_index, .. } => match gi_event {
                 GlobalIndexObject::Unit { .. } => {
-                    self.logger.log("Invalid event: unit. MetaDb state is: store");
+                    self.logger.info("Invalid event: unit. MetaDb state is: store");
                     panic!("Invalid event");
                 }
                 GlobalIndexObject::Genesis { .. } => {
-                    self.logger.log("Invalid event: genesis. MetaDb state is: store");
+                    self.logger.info("Invalid event: genesis. MetaDb state is: store");
                     panic!("Invalid event");
                 }
                 GlobalIndexObject::Update { event } => {

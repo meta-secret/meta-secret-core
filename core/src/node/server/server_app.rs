@@ -31,7 +31,7 @@ impl ServerApp {
                                 data
                             }
                             Err(_) => {
-                                self.logger.log("Server. Sync Error");
+                                self.logger.info("Server. Sync Error");
                                 vec![]
                             }
                         };

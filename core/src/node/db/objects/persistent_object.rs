@@ -27,7 +27,7 @@ impl PersistentObject {
         obj_desc: &ObjectDescriptor,
         server_pk: &PublicKeyRecord,
     ) -> Result<Vec<GenericKvLogEvent>, Box<dyn Error>> {
-        self.logger.log("get_object_events_from_beginning");
+        self.logger.info("get_object_events_from_beginning");
 
         let formation_id = ObjectId::unit(obj_desc);
         let mut commit_log = self.find_object_events(&formation_id).await;
@@ -168,7 +168,7 @@ pub struct PersistentGlobalIndex {
 impl PersistentGlobalIndexApi for PersistentGlobalIndex {
     ///create a genesis event and save into the database
     async fn init(&self, public_key: &PublicKeyRecord) -> Result<Vec<GenericKvLogEvent>, Box<dyn Error>> {
-        self.logger.log("Init global index");
+        self.logger.info("Init global index");
 
         let unit_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Unit {
             event: KvLogEvent::global_index_unit(),

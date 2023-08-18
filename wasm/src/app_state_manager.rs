@@ -33,6 +33,7 @@ impl ApplicationStateManager {
         let logger = Rc::new(WasmMetaLogger {
             id: LoggerId::Client
         });
+        logger.info("New. Application State Manager");
 
         let app_state = {
             let state = ApplicationState {
@@ -61,11 +62,13 @@ impl ApplicationStateManager {
         let client_logger = Rc::new(WasmMetaLogger {
             id: LoggerId::Client
         });
+        client_logger.info("Initialize Application State Manager");
 
-        client_logger.log("Init App State Manager");
+        client_logger.info("Init App State Manager");
         let data_transfer = Rc::new(MpscDataTransfer::new());
 
         ApplicationStateManager::run_server(&data_transfer);
+
         ApplicationStateManager::run_client_gateway(data_transfer.clone(), client_logger);
 
         let vd1_logger = Rc::new(WasmMetaLogger {

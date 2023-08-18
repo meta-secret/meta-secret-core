@@ -33,7 +33,19 @@ extern "C" {
     pub fn alert(s: &str);
 
     #[wasm_bindgen(js_namespace = console)]
-    pub fn log(s: &str);
+    pub fn debug(s: &str);
+    #[wasm_bindgen(js_namespace = console)]
+    pub fn info(s: &str);
+
+    #[wasm_bindgen(js_namespace = console)]
+    pub fn warn(s: &str);
+
+    #[wasm_bindgen(js_namespace = console)]
+    pub fn error(s: &str);
+}
+
+#[wasm_bindgen]
+extern "C" {
     pub async fn idbGet(db_name: &str, store_name: &str, key: &str) -> JsValue;
     pub async fn idbSave(db_name: &str, store_name: &str, key: &str, value: JsValue);
 

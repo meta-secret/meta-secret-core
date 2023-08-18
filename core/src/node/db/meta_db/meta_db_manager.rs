@@ -70,6 +70,8 @@ impl MetaDbManager {
     }
 
     fn apply_event(&self, meta_db: &mut MetaDb, generic_event: &GenericKvLogEvent) {
+        self.logger.info(format!("Apply event: ").as_str());
+
         match generic_event {
             GenericKvLogEvent::GlobalIndex(gi_event) => {
                 meta_db.apply_global_index_event(gi_event);
@@ -81,18 +83,18 @@ impl MetaDbManager {
                 self.apply_meta_pass_event(meta_db, meta_pass_obj);
             }
             GenericKvLogEvent::Mempool(_) => {
-                self.logger.log("Error. Mempool events not for meta db");
+                self.logger.info("Error. Mempool events not for meta db");
                 panic!("Internal mempool event");
             }
             GenericKvLogEvent::LocalEvent(_) => {
-                self.logger.log("Error. LocalEvents not for sync");
+                self.logger.info("Error. LocalEvents not for sync");
                 panic!("Internal event");
             }
             GenericKvLogEvent::SecretShare(_) => {
                 //not yet implemented
             }
             GenericKvLogEvent::Error { .. } => {
-                self.logger.log("Skip. errors");
+                self.logger.info("Skip. errors");
                 println!("Skip errors");
             }
         }
@@ -113,7 +115,7 @@ impl MetaDbManager {
                 }
                 _ => {
                     self.logger
-                        .log(format!("Unit event. Invalid vault store state: {:?}", &meta_db.vault_store).as_str());
+                        .info(format!("Unit event. Invalid vault store state: {:?}", &meta_db.vault_store).as_str());
                 }
             },
             VaultObject::Genesis { event } => {
@@ -125,7 +127,7 @@ impl MetaDbManager {
                         }
                     }
                     _ => {
-                        self.logger.log(
+                        self.logger.info(
                             format!("Genesis event. Invalid vault store state: {:?}", &meta_db.vault_store).as_str(),
                         );
                     }
@@ -141,7 +143,7 @@ impl MetaDbManager {
                         }
                     }
                     _ => {
-                        self.logger.log(
+                        self.logger.debug(
                             format!("SignUp event. Invalid vault store state: {:?}", &meta_db.vault_store).as_str(),
                         );
                     }
@@ -157,7 +159,7 @@ impl MetaDbManager {
                         }
                     }
                     _ => {
-                        self.logger.log(
+                        self.logger.info(
                             format!(
                                 "JoinUpdate event. Invalid vault store state: {:?}",
                                 &meta_db.vault_store
@@ -177,7 +179,7 @@ impl MetaDbManager {
                         }
                     }
                     _ => {
-                        self.logger.log(
+                        self.logger.info(
                             format!(
                                 "JoinRequest event. Invalid vault store state: {:?}",
                                 &meta_db.vault_store
@@ -206,7 +208,7 @@ impl MetaDbManager {
                             "Invalid state. Meta pass. Got a unit event, expected db state is Empty or Unit, actual: {:?}",
                             &meta_db.meta_pass_store
                         );
-                        self.logger.log(err_str.as_str());
+                        self.logger.info(err_str.as_str());
                         panic!("Invalid state")
                     }
                 }
@@ -227,7 +229,7 @@ impl MetaDbManager {
                             "Invalid state. Meta Pass, genesis event. Actual: {:?}, expected: unit",
                             meta_db.meta_pass_store
                         );
-                        self.logger.log(err_msg.as_str());
+                        self.logger.info(err_msg.as_str());
                         panic!("Invalid state")
                     }
                 }
@@ -260,7 +262,7 @@ impl MetaDbManager {
                             "Invalid state. Meta Pass, update event. Actual state: {:?}, expected: genesis or store",
                             meta_db.meta_pass_store
                         );
-                        self.logger.log(err_msg.as_str());
+                        self.logger.info(err_msg.as_str());
                         panic!("Invalid state")
                     }
                 };

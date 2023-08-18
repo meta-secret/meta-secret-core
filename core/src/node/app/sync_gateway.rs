@@ -29,13 +29,13 @@ impl SyncGateway {
         match creds_result {
             Err(_) => {
                 self.logger
-                    .log(format!("Gw type: {:?}, Error. User credentials db error. Skip", self.id).as_str());
+                    .debug(format!("Gw type: {:?}, Error. User credentials db error. Skip", self.id).as_str());
                 //skip
             }
 
             Ok(None) => {
                 self.logger
-                    .log(format!("Gw type: {:?}, Error. Empty user credentials. Skip", self.id).as_str());
+                    .debug(format!("Gw type: {:?}, Error. Empty user credentials. Skip", self.id).as_str());
                 //skip
             }
 
@@ -53,7 +53,6 @@ impl SyncGateway {
 
                         let new_tail_for_mem_pool = self.get_new_tail_for_mem_pool(&db_tail).await;
 
-                        self.logger.log("Create new db tail");
                         let new_db_tail = DbTail {
                             vault_id: new_tail_for_vault,
                             meta_pass_id: new_tail_for_meta_pass,
@@ -89,8 +88,6 @@ impl SyncGateway {
                         let mut latest_vault_id = new_db_tail.vault_id.clone();
                         let mut latest_meta_pass_id = new_db_tail.meta_pass_id.clone();
 
-                        self.logger
-                            .log(format!("id: {:?}.sync events!!!!!!!!!!!", self.id).as_str());
                         let new_events_res = self
                             .data_transfer
                             .send_and_get(DataSyncMessage::SyncRequest(sync_request))
@@ -98,8 +95,8 @@ impl SyncGateway {
 
                         match new_events_res {
                             Ok(new_events) => {
-                                self.logger
-                                    .log(format!("id: {:?}. New events: {:?}", self.id, new_events).as_str());
+                                /*self.logger
+                                    .log(format!("id: {:?}. New events: {:?}", self.id, new_events).as_str());*/
 
                                 for new_event in new_events {
                                     let save_op = self.repo.save_event(&new_event).await;
@@ -126,7 +123,7 @@ impl SyncGateway {
                                             }
                                         }
                                         Err(_) => {
-                                            self.logger.log("Error saving new events to local db");
+                                            self.logger.info("Error saving new events to local db");
                                             panic!("Error");
                                         }
                                     }
@@ -143,13 +140,13 @@ impl SyncGateway {
                                 self.save_updated_db_tail(new_db_tail.clone(), latest_db_tail).await
                             }
                             Err(_err) => {
-                                self.logger.log("DataSync error. Error loading events");
+                                self.logger.error("DataSync error. Error loading events");
                                 panic!("Error");
                             }
                         }
                     }
                     Err(_) => {
-                        self.logger.log("Error! Db tail not exists");
+                        self.logger.error("Error! Db tail not exists");
                         panic!("Error");
                     }
                 }
@@ -173,9 +170,9 @@ impl SyncGateway {
         let saved_event_res = self.repo.save_event(&new_db_tail_event).await;
 
         match saved_event_res {
-            Ok(()) => self.logger.log("New db tail saved"),
+            Ok(()) => self.logger.info("New db tail saved"),
             Err(_) => {
-                self.logger.log("Error saving db tail");
+                self.logger.info("Error saving db tail");
             }
         };
     }
@@ -202,9 +199,8 @@ impl SyncGateway {
 
                 for client_event in obj_events {
                     self.logger
-                        .log(format!("send event to server. May stuck!!! : {:?}", client_event).as_str());
+                        .debug(format!("Send event to server. May stuck if server won't response!!! : {:?}", client_event).as_str());
                     self.data_transfer.just_send(DataSyncMessage::Event(client_event)).await;
-                    self.logger.log("AFTER SEND!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
                 }
 
                 let new_tail_id = last_vault_event
@@ -235,7 +231,7 @@ impl SyncGateway {
 
         for client_event in mem_pool_events {
             self.logger
-                .log(format!("send mem pool request to server: {:?}", client_event).as_str());
+                .debug(format!("send mem pool request to server: {:?}", client_event).as_str());
             self.data_transfer.just_send(DataSyncMessage::Event(client_event)).await;
         }
 
