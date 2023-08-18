@@ -2,26 +2,26 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use async_mutex::Mutex;
-use serde::ser::Error;
-use wasm_bindgen::{JsError, JsValue};
+use wasm_bindgen::JsValue;
 
 use meta_secret_core::crypto::keys::KeyManager;
 use meta_secret_core::models::{ApplicationState, MetaVault, UserCredentials, VaultDoc};
 use meta_secret_core::node::app::meta_app::{MetaVaultManager, UserCredentialsManager};
-use meta_secret_core::node::db::commit_log::MetaDbManager;
+use meta_secret_core::node::db::actions::sign_up::SignUpRequest;
+use meta_secret_core::node::db::meta_db::meta_db_manager::MetaDbManager;
+use meta_secret_core::node::db::events::common::{MempoolObject, VaultInfo};
+use meta_secret_core::node::db::events::generic_log_event::GenericKvLogEvent;
+use meta_secret_core::node::db::events::kv_log_event::{KvKey, KvLogEvent};
+use meta_secret_core::node::db::events::object_descriptor::ObjectDescriptor;
 use meta_secret_core::node::db::events::object_id::ObjectId;
-use meta_secret_core::node::db::events::sign_up::SignUpRequest;
 use meta_secret_core::node::db::generic_db::SaveCommand;
-use meta_secret_core::node::db::meta_db::{MetaDb, MetaPassStore, VaultStore};
-use meta_secret_core::node::db::models::{
-    GenericKvLogEvent, KvKey, KvLogEvent, MempoolObject, ObjectDescriptor, VaultInfo,
-};
-use meta_secret_core::node::db::persistent_object::PersistentObject;
-use meta_secret_core::shared_secret::MetaDistributor;
+use meta_secret_core::node::db::meta_db::meta_db_view::{MetaDb, MetaPassStore, VaultStore};
+use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
+use meta_secret_core::node::server::data_sync::MetaLogger;
+use meta_secret_core::secret::MetaDistributor;
 
 use crate::commit_log::{WasmMetaLogger, WasmRepo};
 use crate::db::WasmDbError;
-use crate::log;
 
 /// Sync local commit log with server
 pub async fn sync_shares() -> Result<JsValue, JsValue> {
@@ -158,6 +158,7 @@ impl ToString for WasmMetaClient {
 
 pub struct EmptyMetaClient {
     pub ctx: Rc<MetaClientContext>,
+    pub logger: Rc<dyn MetaLogger>
 }
 
 impl EmptyMetaClient {
@@ -169,6 +170,7 @@ impl EmptyMetaClient {
                 let new_client = InitMetaClient {
                     ctx: self.ctx.clone(),
                     creds: Rc::new(creds),
+                    logger: self.logger.clone()
                 };
                 Ok(Some(new_client))
             }
@@ -185,13 +187,16 @@ impl EmptyMetaClient {
         Ok(InitMetaClient {
             ctx: self.ctx.clone(),
             creds: Rc::new(creds),
+            logger: self.logger.clone()
         })
     }
 
-    async fn create_meta_vault(&self, vault_name: &str, device_name: &str) -> Result<MetaVault, Box<dyn std::error::Error>> {
-        log("wasm::create_meta_vault: create a meta vault");
+    async fn create_meta_vault(&self, vault_name: &str, device_name: &str,) -> Result<MetaVault, Box<dyn std::error::Error>> {
+        self.logger.log("wasm::create_meta_vault: create a meta vault");
 
-        let logger = WasmMetaLogger {};
+        let logger = WasmMetaLogger {
+            id: self.logger.id()
+        };
 
         let maybe_meta_vault = self.ctx.repo
             .find_meta_vault(&logger)
@@ -218,7 +223,7 @@ impl EmptyMetaClient {
     }
 
     async fn generate_user_credentials(&self, meta_vault: MetaVault) -> Result<UserCredentials, Box<dyn std::error::Error>> {
-        log("wasm::generate_user_credentials: generate a new security box");
+        self.logger.log("wasm::generate_user_credentials: generate a new security box");
 
         let maybe_creds = self.ctx.repo.find_user_creds()
             .await?;
@@ -244,6 +249,7 @@ impl EmptyMetaClient {
 pub struct InitMetaClient {
     pub ctx: Rc<MetaClientContext>,
     pub creds: Rc<UserCredentials>,
+    pub logger: Rc<dyn MetaLogger>
 }
 
 impl InitMetaClient {
@@ -266,11 +272,12 @@ impl InitMetaClient {
             ctx: self.ctx.clone(),
             creds: self.creds.clone(),
             vault_info,
+            logger: self.logger.clone()
         }
     }
 
     async fn join_cluster(&self) {
-        log("Wasm::register. Join");
+        self.logger.log("Wasm::register. Join");
 
         let mem_pool_tail_id = self.ctx
             .meta_db_manager
@@ -300,10 +307,10 @@ impl InitMetaClient {
                 self.ctx.update_vault(vault.clone()).await;
             }
             VaultInfo::Pending => {
-                log("Pending is not expected here");
+                self.logger.log("Pending is not expected here");
             }
             VaultInfo::Declined => {
-                log("Declined - is not expected here");
+                self.logger.log("Declined - is not expected here");
             }
             VaultInfo::NotFound => {
                 let reg_res = self
@@ -312,10 +319,10 @@ impl InitMetaClient {
 
                 match reg_res {
                     Ok(_vault_info) => {
-                        log("Successful registration");
+                        self.logger.log("Successful registration");
                     }
                     Err(_) => {
-                        log("Error. Registration failed");
+                        self.logger.log("Error. Registration failed");
                     }
                 }
             }
@@ -326,7 +333,7 @@ impl InitMetaClient {
     }
 
     async fn register(&self) -> Result<VaultInfo, Box<dyn std::error::Error>> {
-        log("Wasm::register. Sign up");
+        self.logger.log("Wasm::register. Sign up");
 
         let sign_up_request_factory = SignUpRequest {};
         let sign_up_request = sign_up_request_factory.generic_request(&self.creds.user_sig);
@@ -339,7 +346,7 @@ impl InitMetaClient {
     }
 
     pub async fn get_vault(&self) -> VaultInfo {
-        log("wasm: get vault!");
+        self.logger.log("wasm: get vault!");
 
         let creds = self.creds.clone();
 
@@ -363,9 +370,7 @@ impl InitMetaClient {
             .sync_meta_db(&mut meta_db)
             .await;
 
-        let global_index = meta_db.global_index_store.global_index.clone();
-
-        if global_index.contains(vault_unit_id.id_str().as_str()) {
+        if meta_db.global_index_store.contains(vault_unit_id.id_str()) {
             //if the vault is already present:
             match &meta_db.vault_store {
                 VaultStore::Store { vault, .. } => {
@@ -383,11 +388,12 @@ pub struct RegisteredMetaClient {
     pub ctx: Rc<MetaClientContext>,
     pub creds: Rc<UserCredentials>,
     pub vault_info: VaultInfo,
+    logger: Rc<dyn MetaLogger>
 }
 
 impl RegisteredMetaClient {
     pub async fn cluster_distribution(&self, pass_id: &str, pass: &str) {
-        log("wasm: cluster distribution!!!!");
+        self.logger.log("wasm: cluster distribution!!!!");
 
         match &self.vault_info {
             VaultInfo::Member { vault } => {
@@ -395,7 +401,7 @@ impl RegisteredMetaClient {
                     meta_db_manager: MetaDbManager {
                         persistent_obj: self.ctx.persistent_object.clone(),
                         repo: self.ctx.repo.clone(),
-                        logger: Rc::new(WasmMetaLogger {}),
+                        logger: self.logger.clone()
                     },
                     vault: vault.clone(),
                     user_creds: self.creds.as_ref().clone(),
@@ -431,12 +437,11 @@ pub struct MetaClientContext {
 }
 
 impl MetaClientContext {
-    pub fn new(app_state: Arc<Mutex<ApplicationState>>, repo: Rc<WasmRepo>) -> Self {
-        let logger = Rc::new(WasmMetaLogger {});
+    pub fn new(app_state: Arc<Mutex<ApplicationState>>, repo: Rc<WasmRepo>, logger: Rc<dyn MetaLogger>) -> Self {
         let persistent_object = Rc::new(PersistentObject::new(repo.clone(), logger.clone()));
         let meta_db_manager = MetaDbManager::from(persistent_object.clone());
 
-        let meta_db = Arc::new(Mutex::new(MetaDb::new(String::from("client"))));
+        let meta_db = Arc::new(Mutex::new(MetaDb::new(String::from("client"), logger)));
         MetaClientContext {
             meta_db,
             meta_db_manager,

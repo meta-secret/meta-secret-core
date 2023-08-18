@@ -1,6 +1,7 @@
 use crate::schema::db_commit_log;
 use diesel::prelude::*;
-use meta_secret_core::node::db::models::{GenericKvLogEvent, LogEventKeyBasedRecord};
+use meta_secret_core::node::db::events::common::LogEventKeyBasedRecord;
+use meta_secret_core::node::db::events::generic_log_event::GenericKvLogEvent;
 
 #[derive(Debug, Queryable)]
 pub struct DbLogEvent {

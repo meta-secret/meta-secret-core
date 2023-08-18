@@ -1,17 +1,18 @@
-use serde_json::de::Read;
-use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
-use crate::CoreResult;
 use crate::crypto::keys::KeyManager;
 use crate::models::{
     AeadCipherText, EncryptedMessage, MetaPasswordDoc, MetaPasswordId, MetaPasswordRequest, SecretDistributionDocData,
     SecretDistributionType, UserCredentials, UserSecurityBox, UserSignature, VaultDoc,
 };
-use crate::node::db::commit_log::MetaDbManager;
+use crate::node::db::events::common::ObjectCreator;
+use crate::node::db::events::common::{MetaPassObject, SecretShareObject};
+use crate::node::db::events::generic_log_event::GenericKvLogEvent;
+use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
+use crate::node::db::events::local::KvLogEventLocal;
+use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{IdGen, ObjectId};
-use crate::node::db::models::{
-    GenericKvLogEvent, KvKey, KvLogEvent, KvLogEventLocal, MempoolObject, MetaPassObject, ObjectDescriptor,
-};
-use crate::node::db::models::ObjectCreator;
+use crate::node::db::meta_db::meta_db_manager::MetaDbManager;
+use crate::CoreResult;
+use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
 
 pub mod data_block;
 pub mod shared_secret;
@@ -142,26 +143,27 @@ impl MetaDistributor {
             let meta_pass_id = pass.id.id.clone();
 
             let secret_share_event = if counter == 0 {
-                GenericKvLogEvent::LocalEvent(KvLogEventLocal::SecretShare {
+                GenericKvLogEvent::LocalEvent(KvLogEventLocal::LocalSecretShare {
                     event: KvLogEvent {
-                        key: KvKey::unit(&ObjectDescriptor::SecretShare { meta_pass_id }),
+                        key: KvKey::unit(&ObjectDescriptor::LocalSecretShare { meta_pass_id }),
                         value: distribution_share,
                     },
                 })
             } else {
-                let mem_pool_tail_id = self
+                let obj_desc = ObjectDescriptor::from(&distribution_share);
+                let tail_id = self
                     .meta_db_manager
                     .persistent_obj
-                    .find_tail_id_by_obj_desc(&ObjectDescriptor::Mempool)
+                    .find_tail_id_by_obj_desc(&obj_desc)
                     .await
                     .map(|id| id.next())
                     .unwrap_or(ObjectId::mempool_unit());
 
-                GenericKvLogEvent::Mempool(MempoolObject::SecretShare {
+                GenericKvLogEvent::SecretShare(SecretShareObject::Split {
                     event: KvLogEvent {
                         key: KvKey {
-                            obj_id: mem_pool_tail_id,
-                            obj_desc: ObjectDescriptor::SecretShare { meta_pass_id },
+                            obj_id: tail_id,
+                            obj_desc,
                         },
                         value: distribution_share,
                     },

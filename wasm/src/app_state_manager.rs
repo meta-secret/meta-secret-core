@@ -7,27 +7,33 @@ use meta_secret_core::models::ApplicationState;
 use async_mutex::Mutex as AsyncMutex;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::spawn_local;
-use meta_secret_core::node::db::meta_db::MetaPassStore;
-use meta_secret_core::node::db::models::VaultInfo;
+use meta_secret_core::node::db::meta_db::meta_db_view::MetaPassStore;
+use meta_secret_core::node::db::events::common::VaultInfo;
+use meta_secret_core::node::server::data_sync::MetaLogger;
 use meta_secret_core::node::server::server_app::MpscDataTransfer;
-use crate::commit_log::WasmRepo;
+use crate::commit_log::{WasmMetaLogger, WasmRepo};
 
-use crate::{alert, JsAppState, log};
+use crate::{alert, JsAppState};
 use crate::objects::ToJsValue;
 use crate::virtual_device::VirtualDevice;
 use crate::wasm_app::{EmptyMetaClient, MetaClientContext, RegisteredMetaClient, WasmMetaClient};
 use crate::wasm_server::WasmServer;
 use crate::wasm_sync_gateway::WasmSyncGateway;
+use meta_secret_core::node::server::data_sync::LoggerId;
 
 #[wasm_bindgen]
 pub struct ApplicationStateManager {
     meta_client: Rc<WasmMetaClient>,
-    js_app_state: JsAppState,
+    js_app_state: JsAppState
 }
 
 #[wasm_bindgen]
 impl ApplicationStateManager {
     pub fn new(js_app_state: JsAppState) -> ApplicationStateManager {
+        let logger = Rc::new(WasmMetaLogger {
+            id: LoggerId::Client
+        });
+
         let app_state = {
             let state = ApplicationState {
                 meta_vault: None,
@@ -39,28 +45,37 @@ impl ApplicationStateManager {
         };
 
         let client_repo = Rc::new(WasmRepo::default());
+        let ctx = MetaClientContext::new(app_state.clone(), client_repo.clone(), logger.clone());
         let meta_client = WasmMetaClient::Empty(EmptyMetaClient {
-            ctx: Rc::new(MetaClientContext::new(app_state.clone(), client_repo.clone()))
+            ctx: Rc::new(ctx),
+            logger: logger.clone()
         });
 
         ApplicationStateManager {
             meta_client: Rc::new(meta_client),
-            js_app_state,
+            js_app_state
         }
     }
 
     pub async fn init(&mut self) {
-        log("wasm: Init App State Manager");
+        let client_logger = Rc::new(WasmMetaLogger {
+            id: LoggerId::Client
+        });
+
+        client_logger.log("Init App State Manager");
         let data_transfer = Rc::new(MpscDataTransfer::new());
 
-        let device_repo_1 = Rc::new(WasmRepo::virtual_device());
-        VirtualDevice::setup_virtual_device(device_repo_1, data_transfer.clone());
-
-        let device_repo_2 = Rc::new(WasmRepo::virtual_device_2());
-        VirtualDevice::setup_virtual_device(device_repo_2, data_transfer.clone());
-
         ApplicationStateManager::run_server(&data_transfer);
-        ApplicationStateManager::run_client_gateway(data_transfer);
+        ApplicationStateManager::run_client_gateway(data_transfer.clone(), client_logger);
+
+        let vd1_logger = Rc::new(WasmMetaLogger {
+          id: LoggerId::Vd1
+        });
+        let device_repo_1 = Rc::new(WasmRepo::virtual_device());
+        VirtualDevice::setup_virtual_device(device_repo_1, data_transfer.clone(), vd1_logger);
+
+        //let device_repo_2 = Rc::new(WasmRepo::virtual_device_2());
+        //VirtualDevice::setup_virtual_device(device_repo_2, data_transfer.clone());
 
         match self.meta_client.as_ref() {
             WasmMetaClient::Empty(client) => {
@@ -92,10 +107,10 @@ impl ApplicationStateManager {
         self.on_update().await;
     }
 
-    fn run_client_gateway(data_transfer: Rc<MpscDataTransfer>) {
+    fn run_client_gateway(data_transfer: Rc<MpscDataTransfer>, logger: Rc<dyn MetaLogger>) {
         let data_transfer_client = data_transfer.clone();
         spawn_local(async move {
-            let gateway = WasmSyncGateway::new(data_transfer_client);
+            let gateway = WasmSyncGateway::new(data_transfer_client, String::from("client-gateway"), logger);
             loop {
                 async_std::task::sleep(Duration::from_secs(1)).await;
                 gateway.sync().await;
@@ -133,7 +148,9 @@ impl ApplicationStateManager {
     pub async fn sign_up(&mut self, vault_name: &str, device_name: &str) {
         match self.meta_client.as_ref() {
             WasmMetaClient::Empty(client) => {
-                let new_client_result = client.get_or_create_local_vault(vault_name, device_name).await;
+                let new_client_result = client
+                    .get_or_create_local_vault(vault_name, device_name)
+                    .await;
 
                 if let Ok(new_client) = new_client_result {
                     new_client.ctx.enable_join().await;

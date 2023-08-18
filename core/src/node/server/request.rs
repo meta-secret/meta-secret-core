@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::node::db::events::common::PublicKeyRecord;
 use crate::node::db::events::object_id::ObjectId;
-use crate::node::db::models::PublicKeyRecord;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SyncRequest {

@@ -5,8 +5,8 @@ use wasm_bindgen::JsValue;
 use meta_secret_core::node::db::events::object_id::ObjectId;
 use meta_secret_core::node::db::generic_db::{CommitLogDbConfig, FindOneQuery, KvLogEventRepo};
 use meta_secret_core::node::db::generic_db::SaveCommand;
-use meta_secret_core::node::db::models::GenericKvLogEvent;
-use meta_secret_core::node::server::data_sync::MetaLogger;
+use meta_secret_core::node::db::events::generic_log_event::GenericKvLogEvent;
+use meta_secret_core::node::server::data_sync::{LoggerId, MetaLogger};
 
 use crate::{idbGet, idbSave};
 use crate::log;
@@ -95,10 +95,16 @@ impl CommitLogDbConfig for WasmRepo {
     }
 }
 
-pub struct WasmMetaLogger {}
+pub struct WasmMetaLogger {
+    pub id: LoggerId
+}
 
 impl MetaLogger for WasmMetaLogger {
     fn log(&self, msg: &str) {
-        log(msg);
+        log(format!("id: {:?}. {:?}", self.id, msg).as_str());
+    }
+
+    fn id(&self) -> LoggerId {
+        self.id.clone()
     }
 }

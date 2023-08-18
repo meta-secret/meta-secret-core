@@ -1,18 +1,21 @@
 use std::rc::Rc;
 
 use crate::node::app::meta_app::UserCredentialsManager;
+use crate::node::db::events::common::{LogEventKeyBasedRecord, ObjectCreator, PublicKeyRecord};
+use crate::node::db::events::db_tail::{DbTail, DbTailObject};
+use crate::node::db::events::generic_log_event::GenericKvLogEvent;
+use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
+use crate::node::db::events::local::KvLogEventLocal;
+use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{IdGen, ObjectId};
 
-use crate::node::db::models::{
-    DbTail, DbTailObject, GenericKvLogEvent, KvKey, KvLogEvent, KvLogEventLocal, LogEventKeyBasedRecord, ObjectCreator,
-    ObjectDescriptor, PublicKeyRecord,
-};
-use crate::node::db::persistent_object::PersistentObject;
+use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::server::data_sync::{DataSyncMessage, MetaLogger};
 use crate::node::server::request::SyncRequest;
 use crate::node::server::server_app::MpscSender;
 
 pub struct SyncGateway {
+    pub id: String,
     pub logger: Rc<dyn MetaLogger>,
     pub repo: Rc<dyn UserCredentialsManager>,
     pub persistent_object: Rc<PersistentObject>,
@@ -25,12 +28,14 @@ impl SyncGateway {
 
         match creds_result {
             Err(_) => {
-                //self.logger.log("Empty client credentials. Skip");
+                self.logger
+                    .log(format!("Gw type: {:?}, Error. User credentials db error. Skip", self.id).as_str());
                 //skip
             }
 
             Ok(None) => {
-                //self.logger.log("Empty client credentials. Skip");
+                self.logger
+                    .log(format!("Gw type: {:?}, Error. Empty user credentials. Skip", self.id).as_str());
                 //skip
             }
 
@@ -48,6 +53,7 @@ impl SyncGateway {
 
                         let new_tail_for_mem_pool = self.get_new_tail_for_mem_pool(&db_tail).await;
 
+                        self.logger.log("Create new db tail");
                         let new_db_tail = DbTail {
                             vault_id: new_tail_for_vault,
                             meta_pass_id: new_tail_for_meta_pass,
@@ -79,18 +85,22 @@ impl SyncGateway {
                             }
                         };
 
-                        self.data_transfer
-                            .send(DataSyncMessage::SyncRequest(sync_request))
-                            .await;
-
                         let mut latest_gi = new_db_tail.maybe_global_index_id.clone();
                         let mut latest_vault_id = new_db_tail.vault_id.clone();
                         let mut latest_meta_pass_id = new_db_tail.meta_pass_id.clone();
 
-                        let new_events_res = self.data_transfer.on_update().await;
+                        self.logger
+                            .log(format!("id: {:?}.sync events!!!!!!!!!!!", self.id).as_str());
+                        let new_events_res = self
+                            .data_transfer
+                            .send_and_get(DataSyncMessage::SyncRequest(sync_request))
+                            .await;
 
                         match new_events_res {
                             Ok(new_events) => {
+                                self.logger
+                                    .log(format!("id: {:?}. New events: {:?}", self.id, new_events).as_str());
+
                                 for new_event in new_events {
                                     let save_op = self.repo.save_event(&new_event).await;
 
@@ -163,7 +173,7 @@ impl SyncGateway {
         let saved_event_res = self.repo.save_event(&new_db_tail_event).await;
 
         match saved_event_res {
-            Ok(()) => self.logger.log("New db tail saved on client side"),
+            Ok(()) => self.logger.log("New db tail saved"),
             Err(_) => {
                 self.logger.log("Error saving db tail");
             }
@@ -173,7 +183,7 @@ impl SyncGateway {
     async fn get_new_tail_for_an_obj(&self, db_tail_obj: &DbTailObject) -> DbTailObject {
         match db_tail_obj {
             DbTailObject::Empty { unit_id } => {
-                let maybe_tail_id = self.persistent_object.find_tail_id(&unit_id).await;
+                let maybe_tail_id = self.persistent_object.find_tail_id(unit_id).await;
                 match maybe_tail_id {
                     None => DbTailObject::Empty {
                         unit_id: unit_id.clone(),
@@ -192,8 +202,9 @@ impl SyncGateway {
 
                 for client_event in obj_events {
                     self.logger
-                        .log(format!("send event to server: {:?}", client_event).as_str());
-                    self.data_transfer.send(DataSyncMessage::Event(client_event)).await;
+                        .log(format!("send event to server. May stuck!!! : {:?}", client_event).as_str());
+                    self.data_transfer.just_send(DataSyncMessage::Event(client_event)).await;
+                    self.logger.log("AFTER SEND!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
                 }
 
                 let new_tail_id = last_vault_event
@@ -225,7 +236,7 @@ impl SyncGateway {
         for client_event in mem_pool_events {
             self.logger
                 .log(format!("send mem pool request to server: {:?}", client_event).as_str());
-            self.data_transfer.send(DataSyncMessage::Event(client_event)).await;
+            self.data_transfer.just_send(DataSyncMessage::Event(client_event)).await;
         }
 
         match last_pool_event {

@@ -1,11 +1,12 @@
+use crate::node::db::events::common::MetaPassObject;
+use crate::node::db::events::generic_log_event::GenericKvLogEvent;
+
+use crate::node::db::events::vault_event::VaultObject;
 use std::rc::Rc;
 
 use crate::node::db::generic_db::KvLogEventRepo;
-use crate::node::db::meta_db::{MetaDb, MetaPassStore, TailId, VaultStore};
-use crate::node::db::models::{
-    GenericKvLogEvent, GlobalIndexObject, LogEventKeyBasedRecord, MetaPassObject, VaultObject,
-};
-use crate::node::db::persistent_object::PersistentObject;
+use crate::node::db::meta_db::meta_db_view::{MetaDb, MetaPassStore, TailId, VaultStore};
+use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::server::data_sync::MetaLogger;
 
 pub struct MetaDbManager {
@@ -35,8 +36,13 @@ impl MetaDbManager {
 
         //sync global index
         let gi_events = {
-            let gi_tail_id = &meta_db.global_index_store.tail_id;
-            self.persistent_obj.find_object_events(gi_tail_id).await
+            let maybe_gi_tail_id = &meta_db.global_index_store.tail_id();
+            match maybe_gi_tail_id {
+                None => {
+                    vec![]
+                }
+                Some(tail_id) => self.persistent_obj.find_object_events(tail_id).await,
+            }
         };
 
         let meta_pass_events = {
@@ -65,15 +71,15 @@ impl MetaDbManager {
 
     fn apply_event(&self, meta_db: &mut MetaDb, generic_event: &GenericKvLogEvent) {
         match generic_event {
-            GenericKvLogEvent::GlobalIndex(_) => {
-                self.apply_global_index_event(meta_db, generic_event);
+            GenericKvLogEvent::GlobalIndex(gi_event) => {
+                meta_db.apply_global_index_event(gi_event);
             }
             GenericKvLogEvent::Vault(vault_obj_info) => {
                 self.apply_vault_event(meta_db, vault_obj_info);
             }
             GenericKvLogEvent::MetaPass(meta_pass_obj) => {
                 self.apply_meta_pass_event(meta_db, meta_pass_obj);
-            },
+            }
             GenericKvLogEvent::Mempool(_) => {
                 self.logger.log("Error. Mempool events not for meta db");
                 panic!("Internal mempool event");
@@ -81,6 +87,9 @@ impl MetaDbManager {
             GenericKvLogEvent::LocalEvent(_) => {
                 self.logger.log("Error. LocalEvents not for sync");
                 panic!("Internal event");
+            }
+            GenericKvLogEvent::SecretShare(_) => {
+                //not yet implemented
             }
             GenericKvLogEvent::Error { .. } => {
                 self.logger.log("Skip. errors");
@@ -91,24 +100,22 @@ impl MetaDbManager {
 
     fn apply_vault_event(&self, meta_db: &mut MetaDb, vault_obj: &VaultObject) {
         match vault_obj {
-            VaultObject::Unit { event } => {
-                match &meta_db.vault_store {
-                    VaultStore::Empty => {
-                        meta_db.vault_store = VaultStore::Unit {
-                            tail_id: event.key.obj_id.clone(),
-                        }
-                    },
-                    VaultStore::Unit { .. } => {
-                        meta_db.vault_store = VaultStore::Unit {
-                            tail_id: event.key.obj_id.clone(),
-                        }
-                    },
-                    _ => {
-                        self.logger
-                            .log(format!("Unit event. Invalid vault store state: {:?}", &meta_db).as_str());
+            VaultObject::Unit { event } => match &meta_db.vault_store {
+                VaultStore::Empty => {
+                    meta_db.vault_store = VaultStore::Unit {
+                        tail_id: event.key.obj_id.clone(),
                     }
                 }
-            }
+                VaultStore::Unit { .. } => {
+                    meta_db.vault_store = VaultStore::Unit {
+                        tail_id: event.key.obj_id.clone(),
+                    }
+                }
+                _ => {
+                    self.logger
+                        .log(format!("Unit event. Invalid vault store state: {:?}", &meta_db.vault_store).as_str());
+                }
+            },
             VaultObject::Genesis { event } => {
                 match &meta_db.vault_store {
                     VaultStore::Unit { .. } => {
@@ -116,10 +123,11 @@ impl MetaDbManager {
                             tail_id: event.key.obj_id.clone(),
                             server_pk: event.value.clone(),
                         }
-                    },
+                    }
                     _ => {
-                        self.logger
-                            .log(format!("Genesis event. Invalid vault store state: {:?}", &meta_db).as_str());
+                        self.logger.log(
+                            format!("Genesis event. Invalid vault store state: {:?}", &meta_db.vault_store).as_str(),
+                        );
                     }
                 };
             }
@@ -131,25 +139,31 @@ impl MetaDbManager {
                             server_pk: server_pk.clone(),
                             vault: event.value.clone(),
                         }
-                    },
+                    }
                     _ => {
-                        //self.logger
-                          //  .log(format!( "SignUp event. Invalid vault store state: {:?}", &meta_db).as_str());
+                        self.logger.log(
+                            format!("SignUp event. Invalid vault store state: {:?}", &meta_db.vault_store).as_str(),
+                        );
                     }
                 };
             }
             VaultObject::JoinUpdate { event } => {
-               match &meta_db.vault_store {
+                match &meta_db.vault_store {
                     VaultStore::Store { server_pk, .. } => {
                         meta_db.vault_store = VaultStore::Store {
                             tail_id: event.key.obj_id.clone(),
                             server_pk: server_pk.clone(),
                             vault: event.value.clone(),
                         }
-                    },
+                    }
                     _ => {
-                        self.logger
-                            .log(format!("JoinUpdate event. Invalid vault store state: {:?}", &meta_db).as_str());
+                        self.logger.log(
+                            format!(
+                                "JoinUpdate event. Invalid vault store state: {:?}",
+                                &meta_db.vault_store
+                            )
+                            .as_str(),
+                        );
                     }
                 };
             }
@@ -161,10 +175,15 @@ impl MetaDbManager {
                             server_pk: server_pk.clone(),
                             vault: vault.clone(),
                         }
-                    },
+                    }
                     _ => {
-                        self.logger
-                            .log(format!("JoinRequest event. Invalid vault store state: {:?}", &meta_db).as_str());
+                        self.logger.log(
+                            format!(
+                                "JoinRequest event. Invalid vault store state: {:?}",
+                                &meta_db.vault_store
+                            )
+                            .as_str(),
+                        );
                     }
                 };
             }
@@ -248,30 +267,21 @@ impl MetaDbManager {
             }
         }
     }
+}
 
-    fn apply_global_index_event(&self, meta_db: &mut MetaDb, gi_event: &GenericKvLogEvent) {
-        match gi_event {
-            GenericKvLogEvent::GlobalIndex(gi_obj) => {
-                meta_db.global_index_store.tail_id = gi_event.key().obj_id.clone();
+#[cfg(test)]
+mod test {
+    use crate::node::db::in_mem_db::InMemKvLogEventRepo;
+    use crate::node::db::meta_db::meta_db_manager::MetaDbManager;
+    use crate::node::db::objects::persistent_object::PersistentObject;
+    use crate::node::server::data_sync::{DefaultMetaLogger, LoggerId};
+    use std::rc::Rc;
 
-                match gi_obj {
-                    GlobalIndexObject::Unit { .. } => {
-                        //ignore
-                    }
-                    GlobalIndexObject::Genesis { event } => {
-                        meta_db.global_index_store.server_pk = Some(event.value.clone());
-                    }
-                    GlobalIndexObject::Update { event } => {
-                        meta_db
-                            .global_index_store
-                            .global_index
-                            .insert(event.value.vault_id.clone());
-                    }
-                }
-            }
-            _ => {
-                panic!("Invalid state");
-            }
-        }
+    #[test]
+    fn test() {
+        let repo = Rc::new(InMemKvLogEventRepo::default());
+        let logger = Rc::new(DefaultMetaLogger { id: LoggerId::Client });
+        let persistent_object = Rc::new(PersistentObject::new(repo, logger));
+        let _manager = MetaDbManager::from(persistent_object);
     }
 }

@@ -1,9 +1,10 @@
 use crate::models::{UserSignature, VaultDoc};
+use crate::node::db::events::common::{LogEventKeyBasedRecord, MetaPassObject, ObjectCreator, PublicKeyRecord};
+use crate::node::db::events::generic_log_event::GenericKvLogEvent;
+use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
+use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{IdGen, ObjectId};
-use crate::node::db::models::{
-    GenericKvLogEvent, KvKey, KvLogEvent, LogEventKeyBasedRecord, MetaPassObject, ObjectCreator, ObjectDescriptor,
-    PublicKeyRecord, VaultObject,
-};
+use crate::node::db::events::vault_event::VaultObject;
 
 pub struct SignUpAction {}
 
@@ -85,17 +86,6 @@ pub struct SignUpRequest {}
 
 impl SignUpRequest {
     pub fn generic_request(&self, user_sig: &UserSignature) -> GenericKvLogEvent {
-        GenericKvLogEvent::Vault(VaultObject::Unit {
-            event: self.build_request(user_sig),
-        })
-    }
-
-    pub fn build_request(&self, user_sig: &UserSignature) -> KvLogEvent<UserSignature> {
-        let obj_desc = ObjectDescriptor::vault(user_sig.vault.name.clone());
-
-        KvLogEvent {
-            key: KvKey::unit(&obj_desc),
-            value: user_sig.clone(),
-        }
+        GenericKvLogEvent::Vault(VaultObject::unit(user_sig))
     }
 }

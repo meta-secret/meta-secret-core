@@ -1,5 +1,5 @@
-use crate::shared_secret::data_block::common;
-use crate::shared_secret::data_block::common::{BlockMetaData, DataBlockParserError};
+use crate::secret::data_block::common;
+use crate::secret::data_block::common::{BlockMetaData, DataBlockParserError};
 
 /**
  * 64 byte chunk of data that will be split by shamir secret sharing method
