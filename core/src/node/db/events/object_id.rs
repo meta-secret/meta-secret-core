@@ -1,7 +1,8 @@
 use serde_derive::{Deserialize, Serialize};
 
 use crate::crypto::utils;
-use crate::node::db::models::{ObjectCreator, ObjectDescriptor};
+use crate::node::db::events::common::ObjectCreator;
+use crate::node::db::events::object_descriptor::ObjectDescriptor;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

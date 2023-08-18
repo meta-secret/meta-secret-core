@@ -6,10 +6,10 @@ use serde::{Deserialize, Serialize};
 use crate::errors::RecoveryError::InvalidShare;
 use crate::errors::{CoreError, RecoveryError};
 use crate::models::Base64EncodedText;
-use crate::shared_secret::data_block::common::{BlockMetaData, SharedSecretConfig};
-use crate::shared_secret::data_block::encrypted_data_block::EncryptedDataBlock;
-use crate::shared_secret::data_block::plain_data_block::{PlainDataBlock, PLAIN_DATA_BLOCK_SIZE};
-use crate::shared_secret::data_block::shared_secret_data_block::SharedSecretBlock;
+use crate::secret::data_block::common::{BlockMetaData, SharedSecretConfig};
+use crate::secret::data_block::encrypted_data_block::EncryptedDataBlock;
+use crate::secret::data_block::plain_data_block::{PlainDataBlock, PLAIN_DATA_BLOCK_SIZE};
+use crate::secret::data_block::shared_secret_data_block::SharedSecretBlock;
 use crate::CoreResult;
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]

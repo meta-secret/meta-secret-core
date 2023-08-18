@@ -1,6 +1,7 @@
 use crate::models::{UserSignature, VaultDoc};
+use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
+use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{IdGen, ObjectId};
-use crate::node::db::models::{KvKey, KvLogEvent, ObjectDescriptor};
 
 pub fn join_cluster_request(curr_obj_id: &ObjectId, user_sig: &UserSignature) -> KvLogEvent<UserSignature> {
     let key = KvKey {

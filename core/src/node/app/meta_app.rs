@@ -3,12 +3,16 @@ use std::error::Error;
 use async_trait::async_trait;
 
 use crate::crypto::keys::KeyManager;
-use crate::models::DeviceInfo;
 use crate::models::meta_vault::MetaVault;
 use crate::models::user_credentials::UserCredentials;
+use crate::models::DeviceInfo;
+use crate::node::db::events::common::ObjectCreator;
+use crate::node::db::events::generic_log_event::GenericKvLogEvent;
+use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
+use crate::node::db::events::local::KvLogEventLocal;
+use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::generic_db::KvLogEventRepo;
-use crate::node::db::models::{GenericKvLogEvent, KvKey, KvLogEvent, KvLogEventLocal, ObjectCreator, ObjectDescriptor};
 use crate::node::server::data_sync::MetaLogger;
 
 #[async_trait(? Send)]
@@ -18,7 +22,10 @@ pub trait MetaVaultManager {
 }
 
 #[async_trait(? Send)]
-impl<T> MetaVaultManager for T where T: KvLogEventRepo {
+impl<T> MetaVaultManager for T
+where
+    T: KvLogEventRepo,
+{
     async fn create_meta_vault(&self, vault_name: String, device_name: String) -> Result<MetaVault, Box<dyn Error>> {
         let device = DeviceInfo::from(device_name.to_string());
         let meta_vault = MetaVault {
@@ -63,7 +70,7 @@ impl<T> MetaVaultManager for T where T: KvLogEventRepo {
 }
 
 #[async_trait(? Send)]
-pub trait UserCredentialsManager:  KvLogEventRepo {
+pub trait UserCredentialsManager: KvLogEventRepo {
     async fn save_user_creds(&self, creds: &UserCredentials) -> Result<(), Box<dyn Error>>;
     async fn find_user_creds(&self) -> Result<Option<UserCredentials>, Box<dyn Error>>;
     async fn generate_user_creds(&self, vault_name: String, device_name: String) -> UserCredentials;
@@ -71,7 +78,10 @@ pub trait UserCredentialsManager:  KvLogEventRepo {
 }
 
 #[async_trait(? Send)]
-impl<T> UserCredentialsManager for T where T: KvLogEventRepo {
+impl<T> UserCredentialsManager for T
+where
+    T: KvLogEventRepo,
+{
     async fn find_user_creds(&self) -> Result<Option<UserCredentials>, Box<dyn Error>> {
         let obj_id = ObjectId::unit(&ObjectDescriptor::UserCreds);
         let maybe_creds = self.find_one(&obj_id).await?;

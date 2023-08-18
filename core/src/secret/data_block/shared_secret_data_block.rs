@@ -1,9 +1,9 @@
 use shamirsecretsharing as sss;
 
 use crate::errors::CoreError;
-use crate::shared_secret::data_block::common::{BlockMetaData, SharedSecretConfig};
-use crate::shared_secret::data_block::encrypted_data_block::EncryptedDataBlock;
-use crate::shared_secret::data_block::plain_data_block::PlainDataBlock;
+use crate::secret::data_block::common::{BlockMetaData, SharedSecretConfig};
+use crate::secret::data_block::encrypted_data_block::EncryptedDataBlock;
+use crate::secret::data_block::plain_data_block::PlainDataBlock;
 
 /// A PlainDataBlock (64 bytes of plain text) transformed into a shared secret
 #[derive(Debug)]
@@ -36,9 +36,9 @@ impl SharedSecretBlock {
 #[cfg(test)]
 mod test {
     use crate::errors::CoreError;
-    use crate::shared_secret::data_block::common::SharedSecretConfig;
-    use crate::shared_secret::data_block::plain_data_block::PlainDataBlock;
-    use crate::shared_secret::data_block::shared_secret_data_block::SharedSecretBlock;
+    use crate::secret::data_block::common::SharedSecretConfig;
+    use crate::secret::data_block::plain_data_block::PlainDataBlock;
+    use crate::secret::data_block::shared_secret_data_block::SharedSecretBlock;
 
     #[test]
     fn test_shared_secret_block() -> Result<(), CoreError> {

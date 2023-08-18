@@ -17,16 +17,16 @@ use errors::RecoveryError::EmptyInput;
 use errors::{RecoveryError, SharesLoaderError, SplitError};
 
 use crate::errors::CoreError;
-use crate::shared_secret::data_block::common::SharedSecretConfig;
-use crate::shared_secret::data_block::shared_secret_data_block::SharedSecretBlock;
-use crate::shared_secret::shared_secret::{PlainText, SharedSecret, SharedSecretEncryption, UserShareDto};
+use crate::secret::data_block::common::SharedSecretConfig;
+use crate::secret::data_block::shared_secret_data_block::SharedSecretBlock;
+use crate::secret::shared_secret::{PlainText, SharedSecret, SharedSecretEncryption, UserShareDto};
 
 pub mod crypto;
 pub mod errors;
 pub mod models;
 pub mod node;
 pub mod sdk;
-pub mod shared_secret;
+pub mod secret;
 
 pub type CoreResult<T> = std::result::Result<T, CoreError>;
 

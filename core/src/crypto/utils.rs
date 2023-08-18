@@ -26,6 +26,12 @@ pub fn rand_uuid_b64_url_enc() -> Base64EncodedText {
     Base64EncodedText::from(uuid_bytes.as_slice())
 }
 
+pub fn generate_uuid_b64_url_enc(value: String) -> String {
+    let hash = Sha256::digest(value.as_bytes());
+    let uuid = Uuid::from_slice(&hash.as_slice()[..16]).unwrap();
+    Base64EncodedText::from(uuid.as_bytes().as_slice()).base64_text
+}
+
 /// Convert a string to a base64 url encoded uuid
 pub fn to_id(str: &str) -> String {
     //let hash = Sha256::digest(str.as_bytes());

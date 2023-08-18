@@ -2,10 +2,10 @@ use anyhow::Context;
 use meta_secret_core::crypto::keys::KeyManager;
 use meta_secret_core::errors::CoreError;
 use meta_secret_core::models::{Base64EncodedText, SecretDistributionDocData, SerializedKeyManager};
-use meta_secret_core::shared_secret::data_block::common::SharedSecretConfig;
-use meta_secret_core::shared_secret::shared_secret::UserShareDto;
+use meta_secret_core::recover_from_shares;
+use meta_secret_core::secret::data_block::common::SharedSecretConfig;
+use meta_secret_core::secret::shared_secret::UserShareDto;
 use meta_secret_core::CoreResult;
-use meta_secret_core::{recover_from_shares, shared_secret};
 use serde::{Deserialize, Serialize};
 use std::ffi::CString;
 use std::os::raw::c_char;
@@ -75,6 +75,7 @@ fn to_c_str(str: String) -> *mut c_char {
 mod internal {
     use super::*;
     use meta_secret_core::models::{AeadCipherText, AeadPlainText, MetaPasswordId};
+    use meta_secret_core::secret;
 
     pub fn generate_security_box(vault_name_bytes: *const u8, len: SizeT) -> CoreResult<String> {
         let device_name = data_to_string(vault_name_bytes, len)?;
@@ -92,7 +93,7 @@ mod internal {
 
         // JSON parsing
         let json_string: String = data_to_string(strings_bytes, string_len)?;
-        let shares: Vec<UserShareDto> = shared_secret::split(json_string, cfg)?;
+        let shares: Vec<UserShareDto> = secret::split(json_string, cfg)?;
 
         // Shares to JSon
         let result_json = serde_json::to_string_pretty(&shares)?;
@@ -238,9 +239,9 @@ pub mod test {
     use meta_secret_core::crypto::key_pair::KeyPair;
     use meta_secret_core::crypto::keys::KeyManager;
     use meta_secret_core::models::AeadCipherText;
-    use meta_secret_core::shared_secret::data_block::common::SharedSecretConfig;
-    use meta_secret_core::shared_secret::shared_secret::UserShareDto;
-    use meta_secret_core::{shared_secret, CoreResult};
+    use meta_secret_core::secret::data_block::common::SharedSecretConfig;
+    use meta_secret_core::secret::shared_secret::UserShareDto;
+    use meta_secret_core::{secret, CoreResult};
 
     #[test]
     fn split_and_encrypt() -> CoreResult<()> {
@@ -257,7 +258,7 @@ pub mod test {
         let key_manager_2 = KeyManager::generate();
 
         // Split
-        let shares: Vec<UserShareDto> = shared_secret::split("Secret".to_string(), cfg)?;
+        let shares: Vec<UserShareDto> = secret::split("Secret".to_string(), cfg)?;
 
         // Encrypt shares
         let secret = shares[0].clone();

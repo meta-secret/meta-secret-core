@@ -1,9 +1,10 @@
+use std::ffi::c_long;
 use std::rc::Rc;
 use std::time::Duration;
 
 use flume::{Receiver, RecvError, Sender};
 
-use crate::node::db::models::GenericKvLogEvent;
+use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::server::data_sync::{DataSync, DataSyncApi, DataSyncMessage, MetaLogger};
 
 pub struct ServerApp {
@@ -21,10 +22,16 @@ impl ServerApp {
             while let Ok(sync_message) = self.data_transfer.receive().await {
                 match sync_message {
                     DataSyncMessage::SyncRequest(request) => {
+                        //self.logger.log(format!("Server. Received sync request: {:?}", request).as_str());
+
                         let new_events_result = self.data_sync.replication(request).await;
                         let new_events = match new_events_result {
-                            Ok(data) => data,
+                            Ok(data) => {
+                                //self.logger.log(format!("New events for a client: {:?}", data).as_str());
+                                data
+                            }
                             Err(_) => {
+                                self.logger.log("Server. Sync Error");
                                 vec![]
                             }
                         };
@@ -74,11 +81,12 @@ impl MpscDataTransfer {
 }
 
 impl MpscSender {
-    pub async fn send(&self, message: DataSyncMessage) {
+    pub async fn just_send(&self, message: DataSyncMessage) {
         let _ = self.sender.send_async(message).await;
     }
 
-    pub async fn on_update(&self) -> Result<Vec<GenericKvLogEvent>, RecvError> {
+    pub async fn send_and_get(&self, message: DataSyncMessage) -> Result<Vec<GenericKvLogEvent>, RecvError> {
+        let _ = self.sender.send_async(message).await;
         self.receiver.recv_async().await
     }
 }

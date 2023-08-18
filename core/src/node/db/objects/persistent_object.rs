@@ -1,17 +1,18 @@
-use std::cell::RefCell;
-use std::collections::HashMap;
 use std::error::Error;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
+use crate::node::db::events::common::{LogEventKeyBasedRecord, ObjectCreator, PublicKeyRecord};
+use crate::node::db::events::db_tail::{DbTail, DbTailObject};
+use crate::node::db::events::generic_log_event::GenericKvLogEvent;
+use crate::node::db::events::global_index::GlobalIndexObject;
+use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
+use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use async_trait::async_trait;
 
+use crate::node::db::events::local::KvLogEventLocal;
 use crate::node::db::events::object_id::{IdGen, ObjectId};
-use crate::node::db::generic_db::{FindOneQuery, KvLogEventRepo, SaveCommand};
-use crate::node::db::models::{DbTail, DbTailObject, GlobalIndexObject, KvKey, KvLogEventLocal};
-use crate::node::db::models::{
-    GenericKvLogEvent, KvLogEvent, LogEventKeyBasedRecord, ObjectCreator, ObjectDescriptor, PublicKeyRecord,
-};
+use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::server::data_sync::MetaLogger;
 
 pub struct PersistentObject {
@@ -68,20 +69,25 @@ impl PersistentObject {
         commit_log
     }
 
-    pub async fn find_tail_id(&self, curr_id: &ObjectId) -> Option<ObjectId> {
-        let initial_global_idx_result = self.repo.find_one(curr_id).await;
+    pub async fn find_tail_id_by_obj_desc(&self, obj_desc: &ObjectDescriptor) -> Option<ObjectId> {
+        let unit_id = ObjectId::unit(obj_desc);
+        self.find_tail_id(&unit_id).await
+    }
 
-        match initial_global_idx_result {
-            Ok(maybe_gi) => match maybe_gi {
+    pub async fn find_tail_id(&self, curr_id: &ObjectId) -> Option<ObjectId> {
+        let curr_result = self.repo.find_one(curr_id).await;
+
+        match curr_result {
+            Ok(maybe_id) => match maybe_id {
                 None => None,
-                Some(gi) => {
-                    let mut existing_id = gi.key().obj_id.clone();
-                    let mut curr_tail_id = gi.key().obj_id.clone();
+                Some(id) => {
+                    let mut existing_id = id.key().obj_id.clone();
+                    let mut curr_tail_id = id.key().obj_id.clone();
 
                     loop {
-                        let global_idx_result = self.repo.find_one(&curr_tail_id).await;
+                        let found_event_result = self.repo.find_one(&curr_tail_id).await;
 
-                        match global_idx_result {
+                        match found_event_result {
                             Ok(maybe_idx) => match maybe_idx {
                                 Some(idx) => {
                                     existing_id = idx.key().obj_id.clone();
@@ -102,11 +108,6 @@ impl PersistentObject {
             },
             Err(_) => None,
         }
-    }
-
-    pub async fn find_tail_id_by_obj_desc(&self, obj_desc: &ObjectDescriptor) -> Option<ObjectId> {
-        let unit_id = ObjectId::unit(obj_desc);
-        self.find_tail_id(&unit_id).await
     }
 
     pub async fn get_db_tail(&self, vault_name: &str) -> Result<DbTail, Box<dyn Error>> {
@@ -185,39 +186,6 @@ impl PersistentGlobalIndexApi for PersistentGlobalIndex {
     }
 }
 
-pub struct InMemKvLogEventRepo {
-    pub db: RefCell<HashMap<ObjectId, GenericKvLogEvent>>,
-}
-
-impl InMemKvLogEventRepo {
-    fn new() -> InMemKvLogEventRepo {
-        InMemKvLogEventRepo {
-            db: RefCell::new(HashMap::new()),
-        }
-    }
-}
-
-#[derive(thiserror::Error, Debug)]
-pub enum InMemDbError {}
-
-#[async_trait(? Send)]
-impl FindOneQuery for InMemKvLogEventRepo {
-    async fn find_one(&self, key: &ObjectId) -> Result<Option<GenericKvLogEvent>, Box<dyn Error>> {
-        let maybe_value = self.db.borrow().get(key).cloned();
-        Ok(maybe_value)
-    }
-}
-
-#[async_trait(? Send)]
-impl SaveCommand for InMemKvLogEventRepo {
-    async fn save(&self, key: &ObjectId, value: &GenericKvLogEvent) -> Result<(), Box<dyn Error>> {
-        self.db.borrow_mut().insert(key.clone(), value.clone());
-        Ok(())
-    }
-}
-
-impl KvLogEventRepo for InMemKvLogEventRepo {}
-
 impl PersistentObject {
     pub fn new(repo: Rc<dyn KvLogEventRepo>, logger: Rc<dyn MetaLogger>) -> Self {
         PersistentObject {
@@ -234,24 +202,25 @@ impl PersistentObject {
 
 #[cfg(test)]
 mod test {
-    use std::ops::Deref;
     use std::rc::Rc;
 
     use crate::crypto::keys::KeyManager;
     use crate::models::DeviceInfo;
+    use crate::node::db::events::common::{LogEventKeyBasedRecord, PublicKeyRecord};
+    use crate::node::db::events::generic_log_event::GenericKvLogEvent;
+    use crate::node::db::events::global_index::GlobalIndexObject;
+    use crate::node::db::events::object_descriptor::ObjectDescriptor;
     use crate::node::db::generic_db::SaveCommand;
-    use crate::node::db::models::{
-        GenericKvLogEvent, GlobalIndexObject, KvLogEvent, ObjectDescriptor, PublicKeyRecord,
-    };
-    use crate::node::db::persistent_object::{InMemKvLogEventRepo, PersistentObject};
-    use crate::node::server::data_sync::DefaultMetaLogger;
+    use crate::node::db::in_mem_db::InMemKvLogEventRepo;
+    use crate::node::db::objects::persistent_object::PersistentObject;
+    use crate::node::server::data_sync::{DefaultMetaLogger, LoggerId};
 
     #[tokio::test]
     async fn test() {
-        let repo = InMemKvLogEventRepo::new();
-        let repo_rc = Rc::new(repo);
+        let logger = Rc::new(DefaultMetaLogger { id: LoggerId::Client });
+        let repo = Rc::new(InMemKvLogEventRepo::default());
 
-        let persistent_object = PersistentObject::new(repo_rc.clone(), Rc::new(DefaultMetaLogger {}));
+        let persistent_object = PersistentObject::new(repo.clone(), logger);
 
         let s_box = KeyManager::generate_security_box("test_vault".to_string());
         let device = DeviceInfo {
@@ -260,22 +229,21 @@ mod test {
         };
         let user_sig = s_box.get_user_sig(&device);
 
-        let server_pk = PublicKeyRecord::from(user_sig.public_key.as_ref().clone());
-        let genesis_log_event = KvLogEvent::global_index_genesis(&server_pk);
-        let genesis_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Genesis {
-            event: genesis_log_event,
-        });
+        let unit_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::unit());
+        repo.save_event(&unit_event).await.unwrap();
 
-        repo_rc.save_event(&genesis_event).await.unwrap();
+        let genesis_event = {
+            let server_pk = PublicKeyRecord::from(user_sig.public_key.as_ref().clone());
+            GenericKvLogEvent::GlobalIndex(GlobalIndexObject::genesis(&server_pk))
+        };
 
-        let free_id = persistent_object
+        repo.save_event(&genesis_event).await.unwrap();
+
+        let tail_id = persistent_object
             .find_tail_id_by_obj_desc(&ObjectDescriptor::GlobalIndex)
-            .await;
+            .await
+            .unwrap();
 
-        println!("Db: ");
-        for (_id, event) in repo_rc.db.borrow().deref() {
-            println!(" {:?}", event);
-        }
-        println!("tail id: {:?}", free_id);
+        assert_eq!(genesis_event.key().obj_id.id_str(), tail_id.id_str());
     }
 }

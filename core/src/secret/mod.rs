@@ -3,11 +3,14 @@ use crate::models::{
     AeadCipherText, EncryptedMessage, MetaPasswordDoc, MetaPasswordId, MetaPasswordRequest, SecretDistributionDocData,
     SecretDistributionType, UserCredentials, UserSecurityBox, UserSignature, VaultDoc,
 };
-use crate::node::db::commit_log::MetaDbManager;
-use crate::node::db::events::object_id::IdGen;
-
-use crate::node::db::models::{GenericKvLogEvent, KvKey, KvLogEvent, MetaPassObject, ObjectDescriptor};
-
+use crate::node::db::events::common::ObjectCreator;
+use crate::node::db::events::common::{MetaPassObject, SecretShareObject};
+use crate::node::db::events::generic_log_event::GenericKvLogEvent;
+use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
+use crate::node::db::events::local::KvLogEventLocal;
+use crate::node::db::events::object_descriptor::ObjectDescriptor;
+use crate::node::db::events::object_id::{IdGen, ObjectId};
+use crate::node::db::meta_db::meta_db_manager::MetaDbManager;
 use crate::CoreResult;
 use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
 
@@ -121,13 +124,14 @@ impl MetaDistributor {
         self.meta_db_manager.repo.save_event(&meta_pass_event).await.unwrap();
 
         let encrypted_shares = encryptor.encrypt(password);
-        for cipher_share in encrypted_shares {
+
+        for (counter, cipher_share) in encrypted_shares.iter().enumerate() {
             let cipher_msg = EncryptedMessage {
                 receiver: Box::from(cipher_share.receiver.clone()),
-                encrypted_text: Box::new(cipher_share.cipher_share),
+                encrypted_text: Box::new(cipher_share.cipher_share.clone()),
             };
 
-            let _distribution_share = SecretDistributionDocData {
+            let distribution_share = SecretDistributionDocData {
                 distribution_type: SecretDistributionType::Split,
                 meta_password: Box::new(MetaPasswordRequest {
                     user_sig: Box::new(self.user_creds.user_sig.as_ref().clone()),
@@ -136,7 +140,37 @@ impl MetaDistributor {
                 secret_message: Box::new(cipher_msg),
             };
 
-            //server_api::distribute(&distribution_share).await.unwrap();
+            let meta_pass_id = pass.id.id.clone();
+
+            let secret_share_event = if counter == 0 {
+                GenericKvLogEvent::LocalEvent(KvLogEventLocal::LocalSecretShare {
+                    event: KvLogEvent {
+                        key: KvKey::unit(&ObjectDescriptor::LocalSecretShare { meta_pass_id }),
+                        value: distribution_share,
+                    },
+                })
+            } else {
+                let obj_desc = ObjectDescriptor::from(&distribution_share);
+                let tail_id = self
+                    .meta_db_manager
+                    .persistent_obj
+                    .find_tail_id_by_obj_desc(&obj_desc)
+                    .await
+                    .map(|id| id.next())
+                    .unwrap_or(ObjectId::mempool_unit());
+
+                GenericKvLogEvent::SecretShare(SecretShareObject::Split {
+                    event: KvLogEvent {
+                        key: KvKey {
+                            obj_id: tail_id,
+                            obj_desc,
+                        },
+                        value: distribution_share,
+                    },
+                })
+            };
+
+            let _ = self.meta_db_manager.repo.save_event(&secret_share_event).await;
         }
     }
 }

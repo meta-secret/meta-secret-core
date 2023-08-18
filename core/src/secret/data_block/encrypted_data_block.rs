@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 use serde_big_array::BigArray;
 
-use crate::shared_secret::data_block::common;
-use crate::shared_secret::data_block::common::{BlockMetaData, DataBlockParserError};
+use crate::secret::data_block::common;
+use crate::secret::data_block::common::{BlockMetaData, DataBlockParserError};
 
 pub const SECRET_DATA_BLOCK_SIZE: usize = 113;
 
@@ -36,10 +36,10 @@ impl EncryptedDataBlock {
 mod test {
     use crate::errors::CoreError;
     use crate::models::Base64EncodedText;
-    use crate::shared_secret::data_block::common::BlockMetaData;
-    use crate::shared_secret::data_block::common::SharedSecretConfig;
-    use crate::shared_secret::data_block::encrypted_data_block::{EncryptedDataBlock, SECRET_DATA_BLOCK_SIZE};
-    use crate::shared_secret::shared_secret::SecretShareWithOrderingDto;
+    use crate::secret::data_block::common::BlockMetaData;
+    use crate::secret::data_block::common::SharedSecretConfig;
+    use crate::secret::data_block::encrypted_data_block::{EncryptedDataBlock, SECRET_DATA_BLOCK_SIZE};
+    use crate::secret::shared_secret::SecretShareWithOrderingDto;
 
     #[test]
     fn test_encrypted_data_block() -> Result<(), CoreError> {
