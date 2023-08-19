@@ -44,12 +44,14 @@ impl MetaDb {
         let vault_unit_id = ObjectId::vault_unit(vault_name);
 
         if self.vault_store == VaultStore::Empty {
-            self.vault_store = VaultStore::Unit { tail_id: vault_unit_id.clone() }
+            self.vault_store = VaultStore::Unit {
+                tail_id: vault_unit_id.clone(),
+            }
         }
 
         if self.meta_pass_store == MetaPassStore::Empty {
             self.meta_pass_store = MetaPassStore::Unit {
-                tail_id: ObjectId::meta_pass_unit(vault_name)
+                tail_id: ObjectId::meta_pass_unit(vault_name),
             }
         }
     }
@@ -153,9 +155,7 @@ impl MetaPassStore {
             MetaPassStore::Genesis { .. } => {
                 vec![]
             }
-            MetaPassStore::Store { passwords, .. } => {
-                passwords.clone()
-            }
+            MetaPassStore::Store { passwords, .. } => passwords.clone(),
         }
     }
 }

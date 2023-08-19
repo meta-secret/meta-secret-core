@@ -28,7 +28,7 @@ pub fn rand_uuid_b64_url_enc() -> Base64EncodedText {
 }
 
 pub fn rand_64bit_b64_url_enc() -> Base64EncodedText {
-    let uuid= Uuid::new_v4().as_u64_pair().0.to_le_bytes().to_vec();
+    let uuid = Uuid::new_v4().as_u64_pair().0.to_le_bytes().to_vec();
     Base64EncodedText::from(uuid)
 }
 

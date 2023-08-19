@@ -1,9 +1,9 @@
 use crate::node::db::events::common::MetaPassObject;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 
+use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::events::vault_event::VaultObject;
 use std::rc::Rc;
-use crate::node::db::events::object_id::ObjectId;
 
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::meta_db::meta_db_view::{MetaDb, MetaPassStore, TailId, VaultStore};
@@ -43,7 +43,9 @@ impl MetaDbManager {
 
             match maybe_gi_tail_id {
                 None => {
-                    self.persistent_obj.find_object_events(&ObjectId::global_index_unit()).await
+                    self.persistent_obj
+                        .find_object_events(&ObjectId::global_index_unit())
+                        .await
                 }
                 Some(tail_id) => self.persistent_obj.find_object_events(tail_id).await,
             }

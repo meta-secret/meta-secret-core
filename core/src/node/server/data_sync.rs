@@ -343,10 +343,7 @@ impl DataSync {
         //update global index
         //find the latest global_index_id???
         let gi_obj_id = ObjectId::unit(&ObjectDescriptor::GlobalIndex);
-        let global_index_tail_id = self.persistent_obj
-            .find_tail_id(&gi_obj_id)
-            .await
-            .unwrap_or(gi_obj_id);
+        let global_index_tail_id = self.persistent_obj.find_tail_id(&gi_obj_id).await.unwrap_or(gi_obj_id);
 
         let mut gi_events = vec![];
         if let ObjectId::Unit { id: _ } = global_index_tail_id.clone() {
