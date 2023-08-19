@@ -8,8 +8,7 @@ use meta_secret_core::node::db::generic_db::SaveCommand;
 use meta_secret_core::node::db::events::generic_log_event::GenericKvLogEvent;
 use meta_secret_core::node::server::data_sync::{LoggerId, MetaLogger};
 
-use crate::{idbGet, idbSave};
-use crate::log;
+use crate::{debug, error, idbGet, idbSave, info, warn};
 
 pub struct WasmRepo {
     pub db_name: String,
@@ -100,11 +99,29 @@ pub struct WasmMetaLogger {
 }
 
 impl MetaLogger for WasmMetaLogger {
-    fn log(&self, msg: &str) {
-        log(format!("id: {:?}. {:?}", self.id, msg).as_str());
+    fn debug(&self, msg: &str) {
+        debug(self.get_message(msg).as_str());
+    }
+
+    fn info(&self, msg: &str) {
+        info(self.get_message(msg).as_str());
+    }
+
+    fn warn(&self, msg: &str) {
+        warn(self.get_message(msg).as_str());
+    }
+
+    fn error(&self, msg: &str) {
+        error(self.get_message(msg).as_str());
     }
 
     fn id(&self) -> LoggerId {
         self.id.clone()
+    }
+}
+
+impl WasmMetaLogger {
+    fn get_message(&self, msg: &str) -> String {
+        format!("[{:?}]: {:?}", self.id, msg)
     }
 }

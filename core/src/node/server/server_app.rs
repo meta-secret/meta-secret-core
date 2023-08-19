@@ -22,16 +22,18 @@ impl ServerApp {
             while let Ok(sync_message) = self.data_transfer.receive().await {
                 match sync_message {
                     DataSyncMessage::SyncRequest(request) => {
-                        //self.logger.log(format!("Server. Received sync request: {:?}", request).as_str());
+                        self.logger
+                            .debug(format!("Received sync request: {:?}", request).as_str());
 
                         let new_events_result = self.data_sync.replication(request).await;
                         let new_events = match new_events_result {
                             Ok(data) => {
-                                //self.logger.log(format!("New events for a client: {:?}", data).as_str());
+                                self.logger
+                                    .debug(format!("New events for a client: {:?}", data).as_str());
                                 data
                             }
                             Err(_) => {
-                                self.logger.log("Server. Sync Error");
+                                self.logger.error("Server. Sync Error");
                                 vec![]
                             }
                         };

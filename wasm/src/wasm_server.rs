@@ -4,7 +4,7 @@ use std::time::Duration;
 use meta_secret_core::node::app::meta_app::UserCredentialsManager;
 use meta_secret_core::node::db::meta_db::meta_db_manager::MetaDbManager;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
-use meta_secret_core::node::server::data_sync::{DataSync, LoggerId, MetaServerContextState};
+use meta_secret_core::node::server::data_sync::{DataSync, LoggerId, MetaLogger, MetaServerContextState};
 use meta_secret_core::node::server::server_app::{MpscDataTransfer, ServerApp};
 
 use crate::commit_log::{WasmMetaLogger, WasmRepo};
@@ -20,6 +20,9 @@ impl WasmServer {
         let logger = Rc::new(WasmMetaLogger {
             id: LoggerId::Server
         });
+
+        logger.info("Run wasm server");
+
         let persistent_obj = {
             let obj = PersistentObject::new(repo.clone(), logger.clone());
             Rc::new(obj)

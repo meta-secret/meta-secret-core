@@ -2,10 +2,10 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use async_mutex::Mutex;
-use wasm_bindgen::JsValue;
+use wasm_bindgen::{JsError, JsValue};
 
 use meta_secret_core::crypto::keys::KeyManager;
-use meta_secret_core::models::{ApplicationState, MetaVault, UserCredentials, VaultDoc};
+use meta_secret_core::models::{ApplicationState, MetaPasswordDoc, MetaVault, UserCredentials, VaultDoc};
 use meta_secret_core::node::app::meta_app::{MetaVaultManager, UserCredentialsManager};
 use meta_secret_core::node::db::actions::sign_up::SignUpRequest;
 use meta_secret_core::node::db::meta_db::meta_db_manager::MetaDbManager;
@@ -18,127 +18,13 @@ use meta_secret_core::node::db::generic_db::SaveCommand;
 use meta_secret_core::node::db::meta_db::meta_db_view::{MetaDb, MetaPassStore, VaultStore};
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::server::data_sync::MetaLogger;
+use meta_secret_core::secret::data_block::common::SharedSecretConfig;
 use meta_secret_core::secret::MetaDistributor;
+use meta_secret_core::secret::shared_secret::{PlainText, SharedSecretEncryption, UserShareDto};
 
 use crate::commit_log::{WasmMetaLogger, WasmRepo};
 use crate::db::WasmDbError;
-
-/// Sync local commit log with server
-pub async fn sync_shares() -> Result<JsValue, JsValue> {
-    /*
-    let maybe_creds = objects::internal::find_user_credentials()
-        .await
-        .map_err(JsError::from)?;
-
-    match maybe_creds {
-        Some(creds) => {
-            let find_shares_request = FindSharesRequest {
-                user_request_type: SecretDistributionType::Split,
-                user_signature: creds.user_sig,
-            };
-
-            let shares_response = server_api::find_shares(&find_shares_request)
-                .await
-                .map_err(JsError::from)?;
-
-            match shares_response.msg_type {
-                MessageType::Ok => {
-                    let shares_result = shares_response.data.unwrap();
-                    for share in shares_result.shares {
-                        match share.distribution_type {
-                            SecretDistributionType::Split => {
-                                log("wasm, sync: split");
-
-                                let user_passes_repo = meta_pass::UserPasswordsWasmRepo {};
-
-                                let pass_id = &share.meta_password.meta_password.id.id;
-                                let maybe_user_pass: Option<UserPasswordEntity> = user_passes_repo
-                                    .find_one(pass_id.as_str())
-                                    .await
-                                    .map_err(JsError::from)?;
-
-                                let user_pass_entity = match maybe_user_pass {
-                                    Some(mut user_pass) => {
-                                        user_pass.shares.push(share.clone());
-                                        user_pass
-                                    }
-                                    None => UserPasswordEntity {
-                                        meta_pass_id: *share.meta_password.meta_password.id.clone(),
-                                        shares: vec![share.clone()],
-                                    },
-                                };
-
-                                alert("Save user pass!!!");
-                                user_passes_repo
-                                    .save(pass_id.as_str(), &user_pass_entity)
-                                    .await
-                                    .map_err(JsError::from)?;
-                            }
-                            SecretDistributionType::Recover => {
-                                //restore password
-                                log("wasm, sync: recover");
-                            }
-                        }
-                    }
-                }
-                MessageType::Err => {
-                    let err_js =
-                        serde_wasm_bindgen::to_value(&shares_response.err.unwrap()).unwrap();
-                    log(format!("wasm, sync: error: {:?}", err_js).as_str());
-                    //Err(err_js);
-                }
-            }
-
-            log("wasm, sync: save to db");
-
-            //save shares to db
-            Ok(JsValue::null())
-        }
-        None => Err(JsValue::from("User credentials not found")),
-    }
-
-     */
-    Ok(JsValue::null())
-}
-
-pub async fn membership(
-    candidate_user_sig: JsValue,
-    request_type: JsValue,
-) -> Result<JsValue, JsValue> {
-    /*
-    let candidate: UserSignature = serde_wasm_bindgen::from_value(candidate_user_sig)?;
-    let request_type: MembershipRequestType = serde_wasm_bindgen::from_value(request_type)?;
-
-    let log_msg = format!(
-        "wasm: membership request. type: {:?}, candidate: {:?}",
-        request_type, candidate
-    );
-    log(log_msg.as_str());
-
-    let maybe_user_creds = objects::internal::find_user_credentials()
-        .await
-        .map_err(JsError::from)?;
-
-    match maybe_user_creds {
-        Some(user_creds) => {
-            let join_request = JoinRequest {
-                member: user_creds.user_sig,
-                candidate: Box::new(candidate),
-            };
-
-            let secrets = match request_type {
-                MembershipRequestType::Accept => server_api::accept(&join_request).await.unwrap(),
-                MembershipRequestType::Decline => server_api::decline(&join_request).await.unwrap(),
-            };
-
-            let secrets_js = serde_wasm_bindgen::to_value(&secrets)?;
-            Ok(secrets_js)
-        }
-        None => Err(JsValue::from("Empty user credentials")),
-    }
-     */
-    Ok(JsValue::null())
-}
+use crate::alert;
 
 pub enum WasmMetaClient {
     Empty(EmptyMetaClient),
@@ -158,7 +44,7 @@ impl ToString for WasmMetaClient {
 
 pub struct EmptyMetaClient {
     pub ctx: Rc<MetaClientContext>,
-    pub logger: Rc<dyn MetaLogger>
+    pub logger: Rc<dyn MetaLogger>,
 }
 
 impl EmptyMetaClient {
@@ -170,7 +56,7 @@ impl EmptyMetaClient {
                 let new_client = InitMetaClient {
                     ctx: self.ctx.clone(),
                     creds: Rc::new(creds),
-                    logger: self.logger.clone()
+                    logger: self.logger.clone(),
                 };
                 Ok(Some(new_client))
             }
@@ -187,12 +73,12 @@ impl EmptyMetaClient {
         Ok(InitMetaClient {
             ctx: self.ctx.clone(),
             creds: Rc::new(creds),
-            logger: self.logger.clone()
+            logger: self.logger.clone(),
         })
     }
 
-    async fn create_meta_vault(&self, vault_name: &str, device_name: &str,) -> Result<MetaVault, Box<dyn std::error::Error>> {
-        self.logger.log("wasm::create_meta_vault: create a meta vault");
+    async fn create_meta_vault(&self, vault_name: &str, device_name: &str) -> Result<MetaVault, Box<dyn std::error::Error>> {
+        self.logger.info("wasm::create_meta_vault: create a meta vault");
 
         let logger = WasmMetaLogger {
             id: self.logger.id()
@@ -223,7 +109,7 @@ impl EmptyMetaClient {
     }
 
     async fn generate_user_credentials(&self, meta_vault: MetaVault) -> Result<UserCredentials, Box<dyn std::error::Error>> {
-        self.logger.log("wasm::generate_user_credentials: generate a new security box");
+        self.logger.info("wasm::generate_user_credentials: generate a new security box");
 
         let maybe_creds = self.ctx.repo.find_user_creds()
             .await?;
@@ -249,11 +135,12 @@ impl EmptyMetaClient {
 pub struct InitMetaClient {
     pub ctx: Rc<MetaClientContext>,
     pub creds: Rc<UserCredentials>,
-    pub logger: Rc<dyn MetaLogger>
+    pub logger: Rc<dyn MetaLogger>,
 }
 
 impl InitMetaClient {
     pub async fn sign_up(&self) -> RegisteredMetaClient {
+        self.logger.info("InitClient: sign up");
         let vault_info = self.get_vault().await;
 
         let join = self.ctx.is_join().await;
@@ -272,12 +159,12 @@ impl InitMetaClient {
             ctx: self.ctx.clone(),
             creds: self.creds.clone(),
             vault_info,
-            logger: self.logger.clone()
+            logger: self.logger.clone(),
         }
     }
 
     async fn join_cluster(&self) {
-        self.logger.log("Wasm::register. Join");
+        self.logger.info("Wasm::register. Join");
 
         let mem_pool_tail_id = self.ctx
             .meta_db_manager
@@ -307,10 +194,10 @@ impl InitMetaClient {
                 self.ctx.update_vault(vault.clone()).await;
             }
             VaultInfo::Pending => {
-                self.logger.log("Pending is not expected here");
+                self.logger.info("Pending is not expected here");
             }
             VaultInfo::Declined => {
-                self.logger.log("Declined - is not expected here");
+                self.logger.info("Declined - is not expected here");
             }
             VaultInfo::NotFound => {
                 let reg_res = self
@@ -319,10 +206,10 @@ impl InitMetaClient {
 
                 match reg_res {
                     Ok(_vault_info) => {
-                        self.logger.log("Successful registration");
+                        self.logger.info("Successful registration");
                     }
                     Err(_) => {
-                        self.logger.log("Error. Registration failed");
+                        self.logger.info("Error. Registration failed");
                     }
                 }
             }
@@ -333,7 +220,7 @@ impl InitMetaClient {
     }
 
     async fn register(&self) -> Result<VaultInfo, Box<dyn std::error::Error>> {
-        self.logger.log("Wasm::register. Sign up");
+        self.logger.info("Wasm::register. Sign up");
 
         let sign_up_request_factory = SignUpRequest {};
         let sign_up_request = sign_up_request_factory.generic_request(&self.creds.user_sig);
@@ -346,23 +233,14 @@ impl InitMetaClient {
     }
 
     pub async fn get_vault(&self) -> VaultInfo {
-        self.logger.log("wasm: get vault!");
+        self.logger.debug("Get vault");
 
         let creds = self.creds.clone();
 
         let mut meta_db = self.ctx.meta_db.lock().await;
-
-        let vault_unit_id = ObjectId::vault_unit(creds.user_sig.vault.name.as_str());
-
-        if meta_db.vault_store == VaultStore::Empty {
-            meta_db.vault_store = VaultStore::Unit { tail_id: vault_unit_id.clone() }
-        }
-
-        if meta_db.meta_pass_store == MetaPassStore::Empty {
-            meta_db.meta_pass_store = MetaPassStore::Unit {
-                tail_id: ObjectId::meta_pass_unit(creds.user_sig.vault.name.as_str())
-            }
-        }
+        let vault_name = creds.user_sig.vault.name.as_str();
+        meta_db.update_vault_info(vault_name);
+        let vault_unit_id = ObjectId::vault_unit(vault_name);
 
         self
             .ctx
@@ -388,20 +266,25 @@ pub struct RegisteredMetaClient {
     pub ctx: Rc<MetaClientContext>,
     pub creds: Rc<UserCredentials>,
     pub vault_info: VaultInfo,
-    logger: Rc<dyn MetaLogger>
+    logger: Rc<dyn MetaLogger>,
 }
 
 impl RegisteredMetaClient {
     pub async fn cluster_distribution(&self, pass_id: &str, pass: &str) {
-        self.logger.log("wasm: cluster distribution!!!!");
+        self.logger.info("wasm: cluster distribution!!!!");
+
+        let mut meta_db = self.ctx.meta_db.lock().await;
 
         match &self.vault_info {
             VaultInfo::Member { vault } => {
+                let vault_name = vault.vault_name.clone();
+                meta_db.update_vault_info(vault_name.as_str());
+
                 let distributor = MetaDistributor {
                     meta_db_manager: MetaDbManager {
                         persistent_obj: self.ctx.persistent_object.clone(),
                         repo: self.ctx.repo.clone(),
-                        logger: self.logger.clone()
+                        logger: self.logger.clone(),
                     },
                     vault: vault.clone(),
                     user_creds: self.creds.as_ref().clone(),
@@ -416,8 +299,6 @@ impl RegisteredMetaClient {
             VaultInfo::NotFound => {}
             VaultInfo::NotMember => {}
         };
-
-        let mut meta_db = self.ctx.meta_db.lock().await;
 
         self
             .ctx.
@@ -434,6 +315,7 @@ pub struct MetaClientContext {
     pub meta_db_manager: MetaDbManager,
     pub persistent_object: Rc<PersistentObject>,
     pub repo: Rc<WasmRepo>,
+    pub logger: Rc<dyn MetaLogger>,
 }
 
 impl MetaClientContext {
@@ -441,13 +323,14 @@ impl MetaClientContext {
         let persistent_object = Rc::new(PersistentObject::new(repo.clone(), logger.clone()));
         let meta_db_manager = MetaDbManager::from(persistent_object.clone());
 
-        let meta_db = Arc::new(Mutex::new(MetaDb::new(String::from("client"), logger)));
+        let meta_db = Arc::new(Mutex::new(MetaDb::new(String::from("client"), logger.clone())));
         MetaClientContext {
             meta_db,
             meta_db_manager,
             app_state,
             persistent_object,
             repo,
+            logger
         }
     }
 
@@ -459,10 +342,15 @@ impl MetaClientContext {
     }
 
     pub async fn update_vault(&self, vault: VaultDoc) {
-        {
-            let mut app_state = self.app_state.lock().await;
-            app_state.vault = Some(Box::new(vault))
-        }
+        self.logger.info(format!("App state. Update vault: {:?}", &vault).as_str());
+
+        let mut app_state = self.app_state.lock().await;
+        app_state.vault = Some(Box::new(vault));
+    }
+
+    pub async fn update_meta_passwords(&self, passes: &Vec<MetaPasswordDoc>) {
+        let mut app_state = self.app_state.lock().await;
+        app_state.meta_passwords = passes.clone();
     }
 
     pub async fn update_meta_vault(&self, meta_vault: Box<MetaVault>) {
@@ -482,7 +370,7 @@ impl MetaClientContext {
 
 
 pub fn split(pass: &str) -> Result<JsValue, JsValue> {
-    /*let plain_text = PlainText::from(pass);
+    let plain_text = PlainText::from(pass);
     let config = SharedSecretConfig {
         number_of_shares: 3,
         threshold: 2,
@@ -496,6 +384,5 @@ pub fn split(pass: &str) -> Result<JsValue, JsValue> {
     }
 
     let shares_js = serde_wasm_bindgen::to_value(&res)?;
-    Ok(shares_js)*/
-    Ok(JsValue::null())
+    Ok(shares_js)
 }

@@ -33,7 +33,19 @@ extern "C" {
     pub fn alert(s: &str);
 
     #[wasm_bindgen(js_namespace = console)]
-    pub fn log(s: &str);
+    pub fn debug(s: &str);
+    #[wasm_bindgen(js_namespace = console)]
+    pub fn info(s: &str);
+
+    #[wasm_bindgen(js_namespace = console)]
+    pub fn warn(s: &str);
+
+    #[wasm_bindgen(js_namespace = console)]
+    pub fn error(s: &str);
+}
+
+#[wasm_bindgen]
+extern "C" {
     pub async fn idbGet(db_name: &str, store_name: &str, key: &str) -> JsValue;
     pub async fn idbSave(db_name: &str, store_name: &str, key: &str, value: JsValue);
 
@@ -44,21 +56,6 @@ extern "C" {
 pub fn configure() {
     utils::set_panic_hook();
 }
-
-/// Sync local commit log with server
-#[wasm_bindgen]
-pub async fn sync() -> Result<JsValue, JsValue> {
-    wasm_app::sync_shares().await
-}
-
-#[wasm_bindgen]
-pub async fn membership(
-    candidate_user_sig: JsValue,
-    request_type: JsValue,
-) -> Result<JsValue, JsValue> {
-    wasm_app::membership(candidate_user_sig, request_type).await
-}
-
 
 /// https://rustwasm.github.io/docs/wasm-bindgen/reference/arbitrary-data-with-serde.html
 #[wasm_bindgen]

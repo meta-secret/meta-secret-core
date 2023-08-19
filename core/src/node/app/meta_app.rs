@@ -27,10 +27,9 @@ where
     T: KvLogEventRepo,
 {
     async fn create_meta_vault(&self, vault_name: String, device_name: String) -> Result<MetaVault, Box<dyn Error>> {
-        let device = DeviceInfo::from(device_name.to_string());
         let meta_vault = MetaVault {
             name: vault_name.to_string(),
-            device: Box::new(device),
+            device: Box::new(DeviceInfo::from(device_name.to_string())),
         };
 
         let key = KvKey::unit(&ObjectDescriptor::MetaVault);
@@ -47,13 +46,13 @@ where
     }
 
     async fn find_meta_vault<L: MetaLogger>(&self, logger: &L) -> Result<Option<MetaVault>, Box<dyn Error>> {
-        logger.log("meta_app::find_meta_vault");
+        logger.info("meta_app::find_meta_vault");
 
         let maybe_meta_vault = self.find_one(&ObjectId::meta_vault_index()).await?;
 
         match maybe_meta_vault {
             None => {
-                logger.log("meta_app::find_meta_vault: meta vault not found");
+                logger.info("meta_app::find_meta_vault: meta vault not found");
                 Ok(None)
             }
             Some(meta_vault) => match meta_vault {
@@ -61,7 +60,7 @@ where
 
                 _ => {
                     let err_msg = "Meta vault index: Invalid data";
-                    logger.log(err_msg);
+                    logger.info(err_msg);
                     panic!("{}", err_msg)
                 }
             },
