@@ -30,6 +30,7 @@ pub struct ApplicationStateManager {
 #[wasm_bindgen]
 impl ApplicationStateManager {
     pub fn new(js_app_state: JsAppState) -> ApplicationStateManager {
+
         let logger = Rc::new(WasmMetaLogger {
             id: LoggerId::Client
         });
@@ -69,7 +70,7 @@ impl ApplicationStateManager {
 
         ApplicationStateManager::run_server(&data_transfer);
 
-        ApplicationStateManager::run_client_gateway(data_transfer.clone(), client_logger);
+        ApplicationStateManager::run_client_gateway(data_transfer.clone(), client_logger.clone());
 
         let vd1_logger = Rc::new(WasmMetaLogger {
           id: LoggerId::Vd1
@@ -80,15 +81,38 @@ impl ApplicationStateManager {
         //let device_repo_2 = Rc::new(WasmRepo::virtual_device_2());
         //VirtualDevice::setup_virtual_device(device_repo_2, data_transfer.clone());
 
+        self.setup_meta_client(client_logger).await;
+
+        self.on_update().await;
+    }
+
+    async fn setup_meta_client(&mut self, logger: Rc<WasmMetaLogger>) {
+        logger.info("Setup meta client");
+
         match self.meta_client.as_ref() {
             WasmMetaClient::Empty(client) => {
                 let init_client_result = client.find_user_creds().await;
                 if let Ok(Some(init_client)) = init_client_result {
-                    init_client.ctx.update_meta_vault(init_client.creds.user_sig.vault.clone()).await;
+                    init_client
+                        .ctx
+                        .update_meta_vault(init_client.creds.user_sig.vault.clone())
+                        .await;
 
                     let vault_info = init_client.get_vault().await;
-                    if let VaultInfo::Member { .. } = &vault_info {
-                        self.meta_client = Rc::new(WasmMetaClient::Registered(init_client.sign_up().await));
+                    if let VaultInfo::Member { vault } = &vault_info {
+                        let new_meta_client = init_client.sign_up().await;
+
+                        {
+                            let meta_db = client.ctx.meta_db.lock().await;
+                            new_meta_client.ctx.update_vault(vault.clone()).await;
+                            new_meta_client
+                                .ctx
+                                .update_meta_passwords(&meta_db.meta_pass_store.passwords())
+                                .await;
+                        }
+
+                        let registered_client = WasmMetaClient::Registered(new_meta_client);
+                        self.meta_client = Rc::new(registered_client);
                     } else {
                         self.meta_client = Rc::new(WasmMetaClient::Init(init_client));
                     }
@@ -103,14 +127,12 @@ impl ApplicationStateManager {
             }
             WasmMetaClient::Registered(client) => {
                 self.registered_client(client).await;
-
             }
         }
-
-        self.on_update().await;
     }
 
     fn run_client_gateway(data_transfer: Rc<MpscDataTransfer>, logger: Rc<dyn MetaLogger>) {
+        logger.info("Run client gateway");
         let data_transfer_client = data_transfer.clone();
         spawn_local(async move {
             let gateway = WasmSyncGateway::new(data_transfer_client, String::from("client-gateway"), logger);
@@ -178,6 +200,10 @@ impl ApplicationStateManager {
     }
 
     pub async fn get_state(&self) -> JsValue {
+        let logger = WasmMetaLogger {
+            id: LoggerId::Client
+        };
+
         let app_state = match self.meta_client.as_ref() {
             WasmMetaClient::Empty(client) => {
                 client.ctx.app_state.lock().await
@@ -189,6 +215,8 @@ impl ApplicationStateManager {
                 client.ctx.app_state.lock().await
             }
         };
+
+        logger.debug(format!("Current app state for js: {:?}", app_state).as_str());
 
         app_state.to_js().unwrap()
     }

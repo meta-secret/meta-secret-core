@@ -191,7 +191,7 @@ impl DataSyncApi for DataSync {
 impl DataSync {
     async fn server_processing(&self, generic_event: &GenericKvLogEvent) {
         self.logger
-            .info(format!("DataSync::event processing: {:?}", generic_event).as_str());
+            .debug(format!("DataSync::event processing: {:?}", generic_event).as_str());
 
         match generic_event {
             GenericKvLogEvent::GlobalIndex(_) => {
@@ -343,7 +343,10 @@ impl DataSync {
         //update global index
         //find the latest global_index_id???
         let gi_obj_id = ObjectId::unit(&ObjectDescriptor::GlobalIndex);
-        let global_index_tail_id = self.persistent_obj.find_tail_id(&gi_obj_id).await.unwrap_or(gi_obj_id);
+        let global_index_tail_id = self.persistent_obj
+            .find_tail_id(&gi_obj_id)
+            .await
+            .unwrap_or(gi_obj_id);
 
         let mut gi_events = vec![];
         if let ObjectId::Unit { id: _ } = global_index_tail_id.clone() {
@@ -361,7 +364,7 @@ impl DataSync {
 
         let gi_obj_id = match global_index_tail_id {
             ObjectId::Unit { .. } => ObjectId::global_index_unit().next().next(),
-            ObjectId::Genesis { .. } => ObjectId::global_index_unit().next(),
+            ObjectId::Genesis { .. } => ObjectId::global_index_genesis().next(),
             ObjectId::Regular { .. } => global_index_tail_id.next(),
         };
 

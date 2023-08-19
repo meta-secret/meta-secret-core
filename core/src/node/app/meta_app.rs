@@ -27,10 +27,9 @@ where
     T: KvLogEventRepo,
 {
     async fn create_meta_vault(&self, vault_name: String, device_name: String) -> Result<MetaVault, Box<dyn Error>> {
-        let device = DeviceInfo::from(device_name.to_string());
         let meta_vault = MetaVault {
             name: vault_name.to_string(),
-            device: Box::new(device),
+            device: Box::new(DeviceInfo::from(device_name.to_string())),
         };
 
         let key = KvKey::unit(&ObjectDescriptor::MetaVault);

@@ -95,8 +95,8 @@ impl SyncGateway {
 
                         match new_events_res {
                             Ok(new_events) => {
-                                /*self.logger
-                                    .log(format!("id: {:?}. New events: {:?}", self.id, new_events).as_str());*/
+                                let log_msg = format!("id: {:?}. Sync gateway. New events: {:?}", self.id, new_events);
+                                self.logger.debug(log_msg.as_str());
 
                                 for new_event in new_events {
                                     let save_op = self.repo.save_event(&new_event).await;
@@ -123,7 +123,7 @@ impl SyncGateway {
                                             }
                                         }
                                         Err(_) => {
-                                            self.logger.info("Error saving new events to local db");
+                                            self.logger.error("Error saving new events to local db");
                                             panic!("Error");
                                         }
                                     }
@@ -198,8 +198,13 @@ impl SyncGateway {
                 let last_vault_event = obj_events.last().cloned();
 
                 for client_event in obj_events {
-                    self.logger
-                        .debug(format!("Send event to server. May stuck if server won't response!!! : {:?}", client_event).as_str());
+                    self.logger.debug(
+                        format!(
+                            "Send event to server. May stuck if server won't response!!! : {:?}",
+                            client_event
+                        )
+                        .as_str(),
+                    );
                     self.data_transfer.just_send(DataSyncMessage::Event(client_event)).await;
                 }
 

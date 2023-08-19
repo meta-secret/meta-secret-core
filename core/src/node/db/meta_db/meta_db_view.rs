@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
@@ -18,6 +19,16 @@ pub struct MetaDb {
     pub logger: Rc<dyn MetaLogger>,
 }
 
+impl Display for MetaDb {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "(id: {}, vault: {:?}, gi: {:?}, meta pass: {:?})",
+            self.id, self.vault_store, self.global_index_store, self.meta_pass_store
+        )
+    }
+}
+
 impl MetaDb {
     pub fn new(id: String, logger: Rc<dyn MetaLogger>) -> Self {
         Self {
@@ -26,6 +37,20 @@ impl MetaDb {
             global_index_store: GlobalIndexStore::Empty,
             meta_pass_store: MetaPassStore::Empty,
             logger,
+        }
+    }
+
+    pub fn update_vault_info(&mut self, vault_name: &str) {
+        let vault_unit_id = ObjectId::vault_unit(vault_name);
+
+        if self.vault_store == VaultStore::Empty {
+            self.vault_store = VaultStore::Unit { tail_id: vault_unit_id.clone() }
+        }
+
+        if self.meta_pass_store == MetaPassStore::Empty {
+            self.meta_pass_store = MetaPassStore::Unit {
+                tail_id: ObjectId::meta_pass_unit(vault_name)
+            }
         }
     }
 }
@@ -87,6 +112,7 @@ impl TailId for GlobalIndexStore {
         }
     }
 }
+
 impl GlobalIndexStore {
     pub fn contains(&self, vault_id: String) -> bool {
         match self {
@@ -115,6 +141,25 @@ pub enum MetaPassStore {
     },
 }
 
+impl MetaPassStore {
+    pub fn passwords(&self) -> Vec<MetaPasswordDoc> {
+        match self {
+            MetaPassStore::Empty => {
+                vec![]
+            }
+            MetaPassStore::Unit { .. } => {
+                vec![]
+            }
+            MetaPassStore::Genesis { .. } => {
+                vec![]
+            }
+            MetaPassStore::Store { passwords, .. } => {
+                passwords.clone()
+            }
+        }
+    }
+}
+
 impl TailId for MetaPassStore {
     fn tail_id(&self) -> Option<ObjectId> {
         match self {
@@ -128,6 +173,9 @@ impl TailId for MetaPassStore {
 
 impl MetaDb {
     pub fn apply_global_index_event(&mut self, gi_event: &GlobalIndexObject) {
+        self.logger
+            .debug(format!("Apply global index event: {:?}", gi_event).as_str());
+
         let gi_store = self.global_index_store.clone();
         match gi_store {
             GlobalIndexStore::Empty => {
@@ -143,18 +191,18 @@ impl MetaDb {
                     }
                     GlobalIndexObject::Update { .. } => {
                         self.logger
-                            .info("Error: applying gi event: update. Invalid state: Empty. Must be Genesis or Store");
+                            .error("Error: applying gi event: update. Invalid state: Empty. Must be Genesis or Store");
                         panic!("Invalid state");
                     }
                 }
             }
             GlobalIndexStore::Genesis { server_pk, .. } => match gi_event {
                 GlobalIndexObject::Unit { .. } => {
-                    self.logger.info("Invalid event. Must be at least Genesis");
+                    self.logger.error("Invalid event. Must be at least Genesis");
                     panic!("Invalid state");
                 }
                 GlobalIndexObject::Genesis { .. } => {
-                    self.logger.info("Invalid event. Meta db is already has Genesis");
+                    self.logger.error("Invalid event. Meta db is already has Genesis");
                     panic!("Invalid state");
                 }
                 GlobalIndexObject::Update { event } => {
@@ -170,11 +218,11 @@ impl MetaDb {
             },
             GlobalIndexStore::Store { mut global_index, .. } => match gi_event {
                 GlobalIndexObject::Unit { .. } => {
-                    self.logger.info("Invalid event: unit. MetaDb state is: store");
+                    self.logger.error("Invalid event: unit. MetaDb state is: store");
                     panic!("Invalid event");
                 }
                 GlobalIndexObject::Genesis { .. } => {
-                    self.logger.info("Invalid event: genesis. MetaDb state is: store");
+                    self.logger.error("Invalid event: genesis. MetaDb state is: store");
                     panic!("Invalid event");
                 }
                 GlobalIndexObject::Update { event } => {
@@ -213,6 +261,7 @@ mod test {
         let server_pk = PublicKeyRecord::from(user_sig.public_key.as_ref().clone());
 
         meta_db.apply_global_index_event(&GlobalIndexObject::unit());
+
         let genesis_event = &GlobalIndexObject::genesis(&server_pk);
         meta_db.apply_global_index_event(genesis_event);
 

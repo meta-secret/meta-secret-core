@@ -1,4 +1,4 @@
-use rand::Rng;
+use crate::crypto;
 
 use crate::crypto::key_pair::KeyPair;
 use crate::crypto::keys::KeyManager;
@@ -17,14 +17,12 @@ impl UserSignature {
     pub fn generate_default_for_tests(key_manager: &KeyManager) -> Self {
         let vault_name = "test_vault".to_string();
 
-        let mut rng = rand::thread_rng();
-
         UserSignature {
             vault: Box::new(MetaVault {
                 name: vault_name,
                 device: Box::from(DeviceInfo {
                     device_name: "test_device".to_string(),
-                    device_id: rng.gen::<u128>().to_string(),
+                    device_id: crypto::utils::rand_uuid_b64_url_enc().base64_text,
                 }),
             }),
             public_key: Box::from(key_manager.dsa.public_key()),

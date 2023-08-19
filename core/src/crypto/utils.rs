@@ -1,3 +1,4 @@
+use image::EncodableLayout;
 use rand::{distributions::Alphanumeric, Rng};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -22,8 +23,13 @@ pub fn generate_hash() -> String {
 /// Generate random uuid encoded with base64 url encoding
 pub fn rand_uuid_b64_url_enc() -> Base64EncodedText {
     let uuid = Uuid::new_v4();
-    let uuid_bytes = uuid.as_bytes();
-    Base64EncodedText::from(uuid_bytes.as_slice())
+    let uuid_bytes = uuid.as_bytes().as_slice();
+    Base64EncodedText::from(uuid_bytes)
+}
+
+pub fn rand_64bit_b64_url_enc() -> Base64EncodedText {
+    let uuid= Uuid::new_v4().as_u64_pair().0.to_le_bytes().to_vec();
+    Base64EncodedText::from(uuid)
 }
 
 pub fn generate_uuid_b64_url_enc(value: String) -> String {

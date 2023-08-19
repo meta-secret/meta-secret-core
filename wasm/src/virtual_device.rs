@@ -64,6 +64,7 @@ impl VirtualDevice {
                 app_state,
                 persistent_object: persistent_object.clone(),
                 repo: virtual_device_repo,
+                logger: logger.clone()
             }
         };
         let ctx = Rc::new(ctx);
@@ -139,6 +140,8 @@ impl VirtualDevice {
                 WasmMetaClient::Init(client) => {
                     let meta_db_manager = &client.ctx.meta_db_manager;
                     let mut meta_db = client.ctx.meta_db.lock().await;
+                    meta_db.update_vault_info(client.creds.user_sig.vault.name.as_str());
+
                     let _ = meta_db_manager.sync_meta_db(&mut meta_db).await;
 
                     if let VaultStore::Store { tail_id, vault, .. } = &meta_db.vault_store {
@@ -163,6 +166,8 @@ impl VirtualDevice {
                 WasmMetaClient::Registered(client) => {
                     let meta_db_manager = &client.ctx.meta_db_manager;
                     let mut meta_db = client.ctx.meta_db.lock().await;
+                    meta_db.update_vault_info(client.creds.user_sig.vault.name.as_str());
+
                     let _ = meta_db_manager.sync_meta_db(&mut meta_db).await;
 
                     if let VaultStore::Store { tail_id, vault, .. } = &meta_db.vault_store {
@@ -173,7 +178,7 @@ impl VirtualDevice {
 
                         if let Ok(Some(GenericKvLogEvent::Vault(VaultObject::JoinRequest { event }))) = latest_event {
                             let accept_event = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
-                                event: join::accept_join_request(&event, &vault),
+                                event: join::accept_join_request(&event, vault),
                             });
 
                             let _ = meta_db_manager

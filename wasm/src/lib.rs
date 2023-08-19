@@ -57,21 +57,6 @@ pub fn configure() {
     utils::set_panic_hook();
 }
 
-/// Sync local commit log with server
-#[wasm_bindgen]
-pub async fn sync() -> Result<JsValue, JsValue> {
-    wasm_app::sync_shares().await
-}
-
-#[wasm_bindgen]
-pub async fn membership(
-    candidate_user_sig: JsValue,
-    request_type: JsValue,
-) -> Result<JsValue, JsValue> {
-    wasm_app::membership(candidate_user_sig, request_type).await
-}
-
-
 /// https://rustwasm.github.io/docs/wasm-bindgen/reference/arbitrary-data-with-serde.html
 #[wasm_bindgen]
 pub fn split(pass: &str) -> Result<JsValue, JsValue> {

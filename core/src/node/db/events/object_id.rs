@@ -88,6 +88,10 @@ impl ObjectId {
         ObjectId::unit(&ObjectDescriptor::GlobalIndex)
     }
 
+    pub fn global_index_genesis() -> ObjectId {
+        ObjectId::genesis(&ObjectDescriptor::GlobalIndex)
+    }
+
     pub fn meta_vault_index() -> ObjectId {
         ObjectId::unit(&ObjectDescriptor::MetaVault)
     }

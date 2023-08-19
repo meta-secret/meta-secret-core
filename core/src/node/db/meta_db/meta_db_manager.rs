@@ -3,6 +3,7 @@ use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 
 use crate::node::db::events::vault_event::VaultObject;
 use std::rc::Rc;
+use crate::node::db::events::object_id::ObjectId;
 
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::meta_db::meta_db_view::{MetaDb, MetaPassStore, TailId, VaultStore};
@@ -27,6 +28,8 @@ impl From<Rc<PersistentObject>> for MetaDbManager {
 
 impl MetaDbManager {
     pub async fn sync_meta_db(&self, meta_db: &mut MetaDb) {
+        self.logger.debug("Sync meta db");
+
         let vault_events = match meta_db.vault_store.tail_id() {
             None => {
                 vec![]
@@ -37,9 +40,10 @@ impl MetaDbManager {
         //sync global index
         let gi_events = {
             let maybe_gi_tail_id = &meta_db.global_index_store.tail_id();
+
             match maybe_gi_tail_id {
                 None => {
-                    vec![]
+                    self.persistent_obj.find_object_events(&ObjectId::global_index_unit()).await
                 }
                 Some(tail_id) => self.persistent_obj.find_object_events(tail_id).await,
             }
@@ -67,10 +71,12 @@ impl MetaDbManager {
         for (_index, generic_event) in commit_log.iter().enumerate() {
             self.apply_event(meta_db, generic_event);
         }
+
+        self.logger.debug(format!("Updated meta db: {}", meta_db).as_str())
     }
 
     fn apply_event(&self, meta_db: &mut MetaDb, generic_event: &GenericKvLogEvent) {
-        self.logger.info(format!("Apply event: ").as_str());
+        self.logger.debug(format!("Apply event: {:?}", generic_event).as_str());
 
         match generic_event {
             GenericKvLogEvent::GlobalIndex(gi_event) => {
@@ -101,6 +107,9 @@ impl MetaDbManager {
     }
 
     fn apply_vault_event(&self, meta_db: &mut MetaDb, vault_obj: &VaultObject) {
+        self.logger
+            .debug(format!("Apply vault event: {:?}", vault_obj).as_str());
+
         match vault_obj {
             VaultObject::Unit { event } => match &meta_db.vault_store {
                 VaultStore::Empty => {
@@ -114,8 +123,8 @@ impl MetaDbManager {
                     }
                 }
                 _ => {
-                    self.logger
-                        .info(format!("Unit event. Invalid vault store state: {:?}", &meta_db.vault_store).as_str());
+                    let msg_str = format!("Unit event. Invalid vault store state: {:?}", &meta_db.vault_store);
+                    self.logger.error(msg_str.as_str());
                 }
             },
             VaultObject::Genesis { event } => {
@@ -127,9 +136,8 @@ impl MetaDbManager {
                         }
                     }
                     _ => {
-                        self.logger.info(
-                            format!("Genesis event. Invalid vault store state: {:?}", &meta_db.vault_store).as_str(),
-                        );
+                        let msg_error = format!("Genesis event. Invalid vault store state: {:?}", &meta_db.vault_store);
+                        self.logger.error(msg_error.as_str());
                     }
                 };
             }
@@ -143,9 +151,8 @@ impl MetaDbManager {
                         }
                     }
                     _ => {
-                        self.logger.debug(
-                            format!("SignUp event. Invalid vault store state: {:?}", &meta_db.vault_store).as_str(),
-                        );
+                        let err_msg = format!("SignUp event. Invalid vault store state: {:?}", &meta_db.vault_store);
+                        self.logger.error(err_msg.as_str());
                     }
                 };
             }
@@ -159,13 +166,11 @@ impl MetaDbManager {
                         }
                     }
                     _ => {
-                        self.logger.info(
-                            format!(
-                                "JoinUpdate event. Invalid vault store state: {:?}",
-                                &meta_db.vault_store
-                            )
-                            .as_str(),
+                        let err_msg = format!(
+                            "JoinUpdate event. Invalid vault store state: {:?}",
+                            &meta_db.vault_store
                         );
+                        self.logger.info(err_msg.as_str());
                     }
                 };
             }
@@ -179,13 +184,11 @@ impl MetaDbManager {
                         }
                     }
                     _ => {
-                        self.logger.info(
-                            format!(
-                                "JoinRequest event. Invalid vault store state: {:?}",
-                                &meta_db.vault_store
-                            )
-                            .as_str(),
+                        let err_msg = format!(
+                            "JoinRequest event. Invalid vault store state: {:?}",
+                            &meta_db.vault_store
                         );
+                        self.logger.error(err_msg.as_str());
                     }
                 };
             }
@@ -193,6 +196,8 @@ impl MetaDbManager {
     }
 
     fn apply_meta_pass_event(&self, meta_db: &mut MetaDb, meta_pass_obj: &MetaPassObject) {
+        self.logger.debug("Apply meta pass event");
+
         match meta_pass_obj {
             MetaPassObject::Unit { event } => {
                 meta_db.meta_pass_store = match &meta_db.meta_pass_store {
