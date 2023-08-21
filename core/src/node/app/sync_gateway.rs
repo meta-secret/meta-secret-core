@@ -10,7 +10,8 @@ use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{IdGen, ObjectId};
 
 use crate::node::db::objects::persistent_object::PersistentObject;
-use crate::node::server::data_sync::{DataSyncMessage, MetaLogger};
+use crate::node::logger::MetaLogger;
+use crate::node::server::data_sync::DataSyncMessage;
 use crate::node::server::request::SyncRequest;
 use crate::node::server::server_app::MpscSender;
 

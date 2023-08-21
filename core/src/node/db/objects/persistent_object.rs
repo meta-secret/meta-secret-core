@@ -13,7 +13,9 @@ use async_trait::async_trait;
 use crate::node::db::events::local::KvLogEventLocal;
 use crate::node::db::events::object_id::{IdGen, ObjectId};
 use crate::node::db::generic_db::KvLogEventRepo;
-use crate::node::server::data_sync::MetaLogger;
+use crate::node::logger::MetaLogger;
+use crate::models::user_signature::UserSignature;
+use crate::node::db::events::vault_event::VaultObject;
 
 pub struct PersistentObject {
     pub repo: Rc<dyn KvLogEventRepo>,
@@ -151,6 +153,27 @@ impl PersistentObject {
             },
         }
     }
+
+    pub(crate) async fn get_user_sig(&self, tail_id: &ObjectId) -> Vec<UserSignature> {
+        let sig_result = self.get_vault_unit_signature(tail_id).await;
+        match sig_result {
+            Ok(Some(vault_sig)) => {
+                vec![vault_sig]
+            }
+            _ => {
+                vec![]
+            }
+        }
+    }
+
+    async fn get_vault_unit_signature(&self, tail_id: &ObjectId) -> Result<Option<UserSignature>, Box<dyn Error>> {
+        let maybe_unit_event = self.repo.find_one(tail_id).await?;
+
+        match maybe_unit_event {
+            Some(GenericKvLogEvent::Vault(VaultObject::Unit { event })) => Ok(Some(event.value)),
+            _ => Ok(None),
+        }
+    }
 }
 
 #[async_trait(? Send)]
@@ -213,7 +236,7 @@ mod test {
     use crate::node::db::generic_db::SaveCommand;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_object::PersistentObject;
-    use crate::node::server::data_sync::{DefaultMetaLogger, LoggerId};
+    use crate::node::logger::{DefaultMetaLogger, LoggerId};
 
     #[tokio::test]
     async fn test() {

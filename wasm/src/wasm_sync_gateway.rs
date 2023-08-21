@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use meta_secret_core::node::app::sync_gateway::SyncGateway;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
-use meta_secret_core::node::server::data_sync::MetaLogger;
+use meta_secret_core::node::logger::MetaLogger;
 use meta_secret_core::node::server::server_app::MpscDataTransfer;
 
 use crate::commit_log::{WasmRepo};

@@ -9,7 +9,7 @@ use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::spawn_local;
 use meta_secret_core::node::db::meta_db::meta_db_view::MetaPassStore;
 use meta_secret_core::node::db::events::common::VaultInfo;
-use meta_secret_core::node::server::data_sync::MetaLogger;
+use meta_secret_core::node::logger::MetaLogger;
 use meta_secret_core::node::server::server_app::MpscDataTransfer;
 use crate::commit_log::{WasmMetaLogger, WasmRepo};
 
@@ -19,7 +19,7 @@ use crate::virtual_device::VirtualDevice;
 use crate::wasm_app::{EmptyMetaClient, MetaClientContext, RegisteredMetaClient, WasmMetaClient};
 use crate::wasm_server::WasmServer;
 use crate::wasm_sync_gateway::WasmSyncGateway;
-use meta_secret_core::node::server::data_sync::LoggerId;
+use meta_secret_core::node::logger::LoggerId;
 
 #[wasm_bindgen]
 pub struct ApplicationStateManager {

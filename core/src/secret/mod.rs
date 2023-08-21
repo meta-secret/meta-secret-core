@@ -16,6 +16,7 @@ use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto}
 
 pub mod data_block;
 pub mod shared_secret;
+use std::rc::Rc;
 
 pub fn split(secret: String, config: SharedSecretConfig) -> CoreResult<Vec<UserShareDto>> {
     let plain_text = PlainText::from(secret);
@@ -77,8 +78,8 @@ struct MetaCipherShare {
 }
 
 pub struct MetaDistributor {
-    pub meta_db_manager: MetaDbManager,
-    pub user_creds: UserCredentials,
+    pub meta_db_manager: Rc<MetaDbManager>,
+    pub user_creds: Rc<UserCredentials>,
     pub vault: VaultDoc,
 }
 
@@ -157,7 +158,7 @@ impl MetaDistributor {
                     .find_tail_id_by_obj_desc(&obj_desc)
                     .await
                     .map(|id| id.next())
-                    .unwrap_or(ObjectId::mempool_unit());
+                    .unwrap_or(ObjectId::unit(&obj_desc));
 
                 GenericKvLogEvent::SecretShare(SecretShareObject::Split {
                     event: KvLogEvent {
@@ -170,7 +171,80 @@ impl MetaDistributor {
                 })
             };
 
-            let _ = self.meta_db_manager.repo.save_event(&secret_share_event).await;
+            let _ = self.meta_db_manager
+                .repo
+                .save_event(&secret_share_event)
+                .await;
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::node::server::data_sync::test::DataSyncTestContext;
+    use crate::node::db::events::vault_event::VaultObject;
+    use crate::node::server::data_sync::DataSyncApi;
+    use crate::node::db::events::common::{LogEventKeyBasedRecord, PublicKeyRecord};
+    use crate::node::db::actions::join;
+    use crate::models::DeviceInfo;
+
+    #[tokio::test]
+    async fn test() {
+        let ctx = DataSyncTestContext::new();
+        let data_sync = ctx.data_sync;
+
+        let vault_unit = GenericKvLogEvent::Vault(VaultObject::unit(&ctx.user_sig));
+        data_sync.send(&vault_unit).await;
+
+        let _user_pk = PublicKeyRecord::from(ctx.user_sig.public_key.as_ref().clone());
+
+        let vault_unit_id = ObjectId::vault_unit("test_vault");
+        let vault_tail_id = ctx.persistent_obj.find_tail_id(&vault_unit_id).await.unwrap();
+        let vault_event = ctx.persistent_obj.repo.find_one(&vault_tail_id).await.unwrap().unwrap();
+
+        let s_box = KeyManager::generate_security_box("test_vault".to_string());
+        let device = DeviceInfo {
+            device_id: "b".to_string(),
+            device_name: "b".to_string(),
+        };
+        let user_sig = s_box.get_user_sig(&device);
+
+        if let GenericKvLogEvent::Vault(VaultObject::SignUpUpdate { event }) = vault_event {
+            let vault = event.value;
+            let join_request = join::join_cluster_request(&vault_unit_id.next().next(), &user_sig);
+            let kv_join_event = join::accept_join_request(&join_request, &vault);
+            let accept_event = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
+                event: kv_join_event.clone(),
+            });
+            let _ = ctx.meta_db_manager
+                .persistent_obj
+                .repo
+                .save_event(&accept_event)
+                .await;
+
+            let distributor = MetaDistributor {
+                meta_db_manager: ctx.meta_db_manager,
+                user_creds: ctx.user_creds,
+                vault: kv_join_event.value,
+            };
+
+            distributor.distribute(String::from("test"), String::from("t0p$ecret")).await;
+
+            println!("-----------");
+            let mut db = ctx.repo.db.take().values().cloned().collect::<Vec<GenericKvLogEvent>>();
+            db.sort_by(|a, b| {
+                let a_id = a.key().obj_id.id_str();
+                let b_id = b.key().obj_id.id_str();
+                a_id.as_str().partial_cmp(b_id.as_str()).unwrap()
+            });
+
+            println!("total events: {}", db.len());
+            for event in db {
+                println!("event: {}", serde_json::to_string(&event).unwrap());
+            }
+        } else {
+            panic!("Invalid event")
         }
     }
 }

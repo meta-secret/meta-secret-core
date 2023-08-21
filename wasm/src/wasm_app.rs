@@ -17,7 +17,7 @@ use meta_secret_core::node::db::events::object_id::ObjectId;
 use meta_secret_core::node::db::generic_db::SaveCommand;
 use meta_secret_core::node::db::meta_db::meta_db_view::{MetaDb, MetaPassStore, VaultStore};
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
-use meta_secret_core::node::server::data_sync::MetaLogger;
+use meta_secret_core::node::logger::MetaLogger;
 use meta_secret_core::secret::data_block::common::SharedSecretConfig;
 use meta_secret_core::secret::MetaDistributor;
 use meta_secret_core::secret::shared_secret::{PlainText, SharedSecretEncryption, UserShareDto};
@@ -281,13 +281,13 @@ impl RegisteredMetaClient {
                 meta_db.update_vault_info(vault_name.as_str());
 
                 let distributor = MetaDistributor {
-                    meta_db_manager: MetaDbManager {
+                    meta_db_manager: Rc::new(MetaDbManager {
                         persistent_obj: self.ctx.persistent_object.clone(),
                         repo: self.ctx.repo.clone(),
                         logger: self.logger.clone(),
-                    },
+                    }),
                     vault: vault.clone(),
-                    user_creds: self.creds.as_ref().clone(),
+                    user_creds: self.creds.clone(),
                 };
 
                 distributor

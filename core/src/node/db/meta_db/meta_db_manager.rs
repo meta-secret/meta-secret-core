@@ -8,7 +8,7 @@ use std::rc::Rc;
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::meta_db::meta_db_view::{MetaDb, MetaPassStore, TailId, VaultStore};
 use crate::node::db::objects::persistent_object::PersistentObject;
-use crate::node::server::data_sync::MetaLogger;
+use crate::node::logger::MetaLogger;
 
 pub struct MetaDbManager {
     pub persistent_obj: Rc<PersistentObject>,
@@ -283,8 +283,8 @@ mod test {
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::meta_db::meta_db_manager::MetaDbManager;
     use crate::node::db::objects::persistent_object::PersistentObject;
-    use crate::node::server::data_sync::{DefaultMetaLogger, LoggerId};
     use std::rc::Rc;
+    use crate::node::logger::{DefaultMetaLogger, LoggerId};
 
     #[test]
     fn test() {

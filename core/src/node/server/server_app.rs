@@ -1,11 +1,11 @@
-use std::ffi::c_long;
 use std::rc::Rc;
 use std::time::Duration;
 
 use flume::{Receiver, RecvError, Sender};
 
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
-use crate::node::server::data_sync::{DataSync, DataSyncApi, DataSyncMessage, MetaLogger};
+use crate::node::logger::MetaLogger;
+use crate::node::server::data_sync::{DataSync, DataSyncApi, DataSyncMessage};
 
 pub struct ServerApp {
     pub timeout: Duration,

@@ -13,7 +13,7 @@ use crate::node::db::events::local::KvLogEventLocal;
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::generic_db::KvLogEventRepo;
-use crate::node::server::data_sync::MetaLogger;
+use crate::node::logger::MetaLogger;
 
 #[async_trait(? Send)]
 pub trait MetaVaultManager {

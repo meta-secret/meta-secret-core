@@ -59,8 +59,8 @@ impl ObjectDescriptor {
             ObjectDescriptor::Mempool => String::from("mem_pool"),
 
             ObjectDescriptor::DbTail => String::from("db_tail"),
-
             ObjectDescriptor::Vault { vault_name } => vault_name.clone(),
+
             ObjectDescriptor::SecretShareDistribution {
                 meta_pass_id,
                 action_type,
@@ -70,7 +70,7 @@ impl ObjectDescriptor {
                 name.push_str(action_type.to_string().as_str());
                 name.push_str(device.device_id.as_str());
 
-                utils::to_id(name.as_str())
+                name
             }
 
             ObjectDescriptor::MetaPassword { vault_name } => vault_name.clone(),

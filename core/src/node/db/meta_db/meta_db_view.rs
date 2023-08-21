@@ -8,7 +8,7 @@ use crate::models::MetaPasswordDoc;
 use crate::node::db::events::common::PublicKeyRecord;
 use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::object_id::ObjectId;
-use crate::node::server::data_sync::MetaLogger;
+use crate::node::logger::MetaLogger;
 use std::rc::Rc;
 
 pub struct MetaDb {
@@ -242,8 +242,8 @@ mod test {
     use crate::node::db::events::kv_log_event::KvLogEvent;
     use crate::node::db::events::object_id::{IdGen, IdStr, ObjectId};
     use crate::node::db::meta_db::meta_db_view::{GlobalIndexStore, MetaDb};
-    use crate::node::server::data_sync::{DefaultMetaLogger, LoggerId};
     use std::rc::Rc;
+    use crate::node::logger::{DefaultMetaLogger, LoggerId};
 
     #[test]
     fn test_appy_global_index_event() {

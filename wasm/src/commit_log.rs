@@ -6,8 +6,7 @@ use meta_secret_core::node::db::events::object_id::ObjectId;
 use meta_secret_core::node::db::generic_db::{CommitLogDbConfig, FindOneQuery, KvLogEventRepo};
 use meta_secret_core::node::db::generic_db::SaveCommand;
 use meta_secret_core::node::db::events::generic_log_event::GenericKvLogEvent;
-use meta_secret_core::node::server::data_sync::{LoggerId, MetaLogger};
-
+use meta_secret_core::node::logger::{LoggerId, MetaLogger};
 use crate::{debug, error, idbGet, idbSave, info, warn};
 
 pub struct WasmRepo {

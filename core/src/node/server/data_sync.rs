@@ -20,55 +20,8 @@ use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::meta_db::meta_db_manager::MetaDbManager;
 use crate::node::db::meta_db::meta_db_view::{MetaDb, VaultStore};
 use crate::node::db::objects::persistent_object::PersistentObject;
+use crate::node::logger::MetaLogger;
 use crate::node::server::request::SyncRequest;
-
-pub trait MetaLogger {
-    fn debug(&self, msg: &str);
-    fn info(&self, msg: &str);
-    fn warn(&self, msg: &str);
-    fn error(&self, msg: &str);
-
-    fn id(&self) -> LoggerId;
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum LoggerId {
-    Client,
-    Server,
-    Vd1,
-    Vd2,
-}
-
-pub struct DefaultMetaLogger {
-    pub id: LoggerId,
-}
-
-impl MetaLogger for DefaultMetaLogger {
-    fn debug(&self, msg: &str) {
-        println!("{:?}", msg);
-    }
-    fn info(&self, msg: &str) {
-        println!("{:?}", msg);
-    }
-
-    fn warn(&self, msg: &str) {
-        println!("{:?}", msg);
-    }
-
-    fn error(&self, msg: &str) {
-        println!("{:?}", msg);
-    }
-
-    fn id(&self) -> LoggerId {
-        self.id.clone()
-    }
-}
-
-impl DefaultMetaLogger {
-    pub fn new(id: LoggerId) -> Option<Self> {
-        Some(Self { id })
-    }
-}
 
 #[async_trait(? Send)]
 pub trait DataSyncApi {
@@ -97,87 +50,11 @@ impl DataSyncApi for DataSync {
     async fn replication(&self, request: SyncRequest) -> Result<Vec<GenericKvLogEvent>, Box<dyn Error>> {
         let mut commit_log: Vec<GenericKvLogEvent> = vec![];
 
-        match &request.global_index {
-            None => {
-                let meta_g = self
-                    .persistent_obj
-                    .get_object_events_from_beginning(&ObjectDescriptor::GlobalIndex, &self.context.server_pk())
-                    .await?;
-                commit_log.extend(meta_g);
-            }
-            Some(index_id) => {
-                let meta_g = self.persistent_obj.find_object_events(index_id).await;
-                commit_log.extend(meta_g);
-            }
-        }
+        self.global_index_replication(&request, &mut commit_log).await?;
 
-        match &request.vault_tail_id {
-            None => {
-                // Ignore empty requests
-            }
-            Some(vault_tail_id) => {
-                let mut meta_db = {
-                    let mut meta_db = MetaDb::new(String::from("server"), self.logger.clone());
-                    match &request.vault_tail_id {
-                        None => meta_db.vault_store = VaultStore::Empty,
-                        Some(request_vault_tail_id) => {
-                            meta_db.vault_store = VaultStore::Unit {
-                                tail_id: request_vault_tail_id.unit_id(),
-                            }
-                        }
-                    }
+        self.vault_replication(&request, &mut commit_log).await;
 
-                    meta_db
-                };
-
-                self.meta_db_manager.sync_meta_db(&mut meta_db).await;
-
-                let vault_signatures = match &meta_db.vault_store {
-                    VaultStore::Empty => {
-                        self.logger.info("Empty vault store");
-                        vec![]
-                    }
-                    VaultStore::Unit { tail_id } => self.get_user_sig(tail_id).await,
-                    VaultStore::Genesis { tail_id, .. } => self.get_user_sig(tail_id).await,
-                    VaultStore::Store { vault, .. } => vault.signatures.clone(),
-                };
-
-                let vault_signatures: Vec<String> = vault_signatures
-                    .iter()
-                    .map(|sig| sig.public_key.base64_text.clone())
-                    .collect();
-
-                if vault_signatures.contains(&request.sender_pk.pk.base64_text) {
-                    let vault_events = self.persistent_obj.find_object_events(vault_tail_id).await;
-                    commit_log.extend(vault_events);
-                } else {
-                    self.logger.info(
-                        format!(
-                            "The client is not a member of the vault. Client pk: {:?}, vault: {:?}",
-                            &request.sender_pk, meta_db.vault_store
-                        )
-                        .as_str(),
-                    );
-                    self.logger.info(
-                        format!(
-                            "Vault sigs: {:?}, sender sig: {:?}",
-                            vault_signatures, &request.sender_pk.pk.base64_text
-                        )
-                        .as_str(),
-                    );
-                }
-            }
-        }
-
-        match &request.meta_pass_tail_id {
-            None => {
-                // Ignore empty requests
-            }
-            Some(meta_pass_tail_id) => {
-                let meta_pass_events = self.persistent_obj.find_object_events(meta_pass_tail_id).await;
-                commit_log.extend(meta_pass_events);
-            }
-        }
+        self.meta_pass_replication(&request, &mut commit_log).await;
 
         Ok(commit_log)
     }
@@ -191,7 +68,7 @@ impl DataSyncApi for DataSync {
 impl DataSync {
     async fn server_processing(&self, generic_event: &GenericKvLogEvent) {
         self.logger
-            .debug(format!("DataSync::event processing: {:?}", generic_event).as_str());
+            .debug(format!("DataSync::event_processing: {:?}", generic_event).as_str());
 
         match generic_event {
             GenericKvLogEvent::GlobalIndex(_) => {
@@ -299,27 +176,93 @@ impl DataSync {
             }
         }
     }
-}
 
-impl DataSync {
-    async fn get_user_sig(&self, tail_id: &ObjectId) -> Vec<UserSignature> {
-        let sig_result = self.get_vault_unit_signature(tail_id).await;
-        match sig_result {
-            Ok(Some(vault_sig)) => {
-                vec![vault_sig]
+    async fn global_index_replication(&self, request: &SyncRequest, commit_log: &mut Vec<GenericKvLogEvent>) -> Result<(), Box<dyn Error>> {
+        match &request.global_index {
+            None => {
+                let meta_g = self
+                    .persistent_obj
+                    .get_object_events_from_beginning(&ObjectDescriptor::GlobalIndex, &self.context.server_pk())
+                    .await?;
+                commit_log.extend(meta_g);
             }
-            _ => {
-                vec![]
+            Some(index_id) => {
+                let meta_g = self.persistent_obj.find_object_events(index_id).await;
+                commit_log.extend(meta_g);
+            }
+        }
+        Ok(())
+    }
+
+    async fn vault_replication(&self, request: &SyncRequest, commit_log: &mut Vec<GenericKvLogEvent>) {
+        match &request.vault_tail_id {
+            None => {
+                // Ignore empty requests
+            }
+            Some(vault_tail_id) => {
+                let mut meta_db = {
+                    let mut meta_db = MetaDb::new(String::from("server"), self.logger.clone());
+                    match &request.vault_tail_id {
+                        None => meta_db.vault_store = VaultStore::Empty,
+                        Some(request_vault_tail_id) => {
+                            meta_db.vault_store = VaultStore::Unit {
+                                tail_id: request_vault_tail_id.unit_id(),
+                            }
+                        }
+                    }
+
+                    meta_db
+                };
+
+                self.meta_db_manager.sync_meta_db(&mut meta_db).await;
+
+                let vault_signatures = match &meta_db.vault_store {
+                    VaultStore::Empty => {
+                        self.logger.info("Empty vault store");
+                        vec![]
+                    }
+                    VaultStore::Unit { tail_id } => self.persistent_obj.get_user_sig(tail_id).await,
+                    VaultStore::Genesis { tail_id, .. } => self.persistent_obj.get_user_sig(tail_id).await,
+                    VaultStore::Store { vault, .. } => vault.signatures.clone(),
+                };
+
+                let vault_signatures: Vec<String> = vault_signatures
+                    .iter()
+                    .map(|sig| sig.public_key.base64_text.clone())
+                    .collect();
+
+                if vault_signatures.contains(&request.sender_pk.pk.base64_text) {
+                    let vault_events = self.persistent_obj.find_object_events(vault_tail_id).await;
+                    commit_log.extend(vault_events);
+                } else {
+                    self.logger.info(
+                        format!(
+                            "The client is not a member of the vault. Client pk: {:?}, vault: {:?}",
+                            &request.sender_pk, meta_db.vault_store
+                        )
+                            .as_str(),
+                    );
+                    self.logger.info(
+                        format!(
+                            "Vault sigs: {:?}, sender sig: {:?}",
+                            vault_signatures, &request.sender_pk.pk.base64_text
+                        )
+                            .as_str(),
+                    );
+                }
             }
         }
     }
 
-    async fn get_vault_unit_signature(&self, tail_id: &ObjectId) -> Result<Option<UserSignature>, Box<dyn Error>> {
-        let maybe_unit_event = self.repo.find_one(tail_id).await?;
-
-        match maybe_unit_event {
-            Some(GenericKvLogEvent::Vault(VaultObject::Unit { event })) => Ok(Some(event.value)),
-            _ => Ok(None),
+    async fn meta_pass_replication(&self, request: &SyncRequest, commit_log: &mut Vec<GenericKvLogEvent>) {
+        match &request.meta_pass_tail_id {
+            None => {
+                // Ignore empty requests
+            }
+            Some(meta_pass_tail_id) => {
+                let meta_pass_events = self.persistent_obj.find_object_events(meta_pass_tail_id).await;
+                commit_log.extend(meta_pass_events);
+            }
         }
     }
 }
@@ -411,46 +354,22 @@ impl From<&UserCredentials> for MetaServerContextState {
 }
 
 #[cfg(test)]
-mod test {
+pub mod test {
     use super::*;
     use crate::models::DeviceInfo;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use std::rc::Rc;
+    use crate::node::logger::{DefaultMetaLogger, LoggerId};
 
     #[tokio::test]
-    async fn test_accept_sign_up() {}
+    async fn test_accept_sign_up() {
+        let ctx = DataSyncTestContext::new();
+        let data_sync = ctx.data_sync;
 
-    #[tokio::test]
-    async fn test() {
-        let repo = Rc::new(InMemKvLogEventRepo::default());
-        let logger = Rc::new(DefaultMetaLogger { id: LoggerId::Client });
-
-        let persistent_object = Rc::new(PersistentObject::new(repo.clone(), logger.clone()));
-        let meta_db_manager = Rc::new(MetaDbManager::from(persistent_object.clone()));
-
-        let s_box = KeyManager::generate_security_box("test_vault".to_string());
-        let device = DeviceInfo {
-            device_id: "a".to_string(),
-            device_name: "a".to_string(),
-        };
-        let user_sig = s_box.get_user_sig(&device);
-        let user_creds = UserCredentials {
-            security_box: Box::new(s_box),
-            user_sig: Box::new(user_sig.clone()),
-        };
-
-        let data_sync = DataSync {
-            persistent_obj: persistent_object,
-            repo,
-            context: Rc::new(MetaServerContextState::from(&user_creds)),
-            meta_db_manager,
-            logger,
-        };
-
-        let vault_unit = GenericKvLogEvent::Vault(VaultObject::unit(&user_sig));
+        let vault_unit = GenericKvLogEvent::Vault(VaultObject::unit(&ctx.user_sig));
         data_sync.send(&vault_unit).await;
 
-        let user_pk = PublicKeyRecord::from(user_sig.public_key.as_ref().clone());
+        let user_pk = PublicKeyRecord::from(ctx.user_sig.public_key.as_ref().clone());
 
         let request = SyncRequest {
             sender_pk: user_pk,
@@ -460,12 +379,95 @@ mod test {
         };
         let events = data_sync.replication(request).await.unwrap();
 
-        let db_events = data_sync
-            .persistent_obj
-            .find_tail_id_by_obj_desc(&ObjectDescriptor::vault(String::from("test_vault")))
-            .await;
+        match &events[0] {
+            GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Unit { event }) => {
+                assert!(event.key.obj_id.is_unit());
+            }
+            _ => panic!("Invalid event")
+        }
 
-        //println!("{:?}", events.iter().len());
-        println!("{:?}", events.len());
+        match &events[1] {
+            GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Genesis { event }) => {
+                assert!(event.key.obj_id.is_genesis());
+            }
+            _ => panic!("Invalid event")
+        }
+
+        match &events[2] {
+            GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Update { event }) => {
+                assert_eq!(event.key.obj_id.unit_id().next().next(), event.key.obj_id);
+            }
+            _ => panic!("Invalid event")
+        }
+
+        match &events[3] {
+            GenericKvLogEvent::Vault(VaultObject::Unit { event }) => {
+                assert!(event.key.obj_id.is_unit());
+            }
+            _ => panic!("Invalid event")
+        }
+
+        match &events[4] {
+            GenericKvLogEvent::Vault(VaultObject::Genesis { event }) => {
+                assert!(event.key.obj_id.is_genesis());
+            }
+            _ => panic!("Invalid event")
+        }
+
+        match &events[5] {
+            GenericKvLogEvent::Vault(VaultObject::SignUpUpdate { event }) => {
+                assert_eq!(event.key.obj_id.unit_id().next().next(), event.key.obj_id);
+            }
+            _ => panic!("Invalid event")
+        }
+    }
+
+    pub struct DataSyncTestContext {
+        pub logger: Rc<DefaultMetaLogger>,
+        pub repo: Rc<InMemKvLogEventRepo>,
+        pub persistent_obj: Rc<PersistentObject>,
+        pub meta_db_manager: Rc<MetaDbManager>,
+        pub data_sync: DataSync,
+        pub user_sig: Rc<UserSignature>,
+        pub user_creds: Rc<UserCredentials>
+    }
+
+    impl DataSyncTestContext {
+        pub fn new() -> Self {
+            let repo = Rc::new(InMemKvLogEventRepo::default());
+            let logger = Rc::new(DefaultMetaLogger { id: LoggerId::Client });
+
+            let persistent_object = Rc::new(PersistentObject::new(repo.clone(), logger.clone()));
+            let meta_db_manager = Rc::new(MetaDbManager::from(persistent_object.clone()));
+
+            let s_box = KeyManager::generate_security_box("test_vault".to_string());
+            let device = DeviceInfo {
+                device_id: "a".to_string(),
+                device_name: "a".to_string(),
+            };
+            let user_sig = s_box.get_user_sig(&device);
+            let user_creds = Rc::new(UserCredentials {
+                security_box: Box::new(s_box),
+                user_sig: Box::new(user_sig.clone()),
+            });
+
+            let data_sync = DataSync {
+                persistent_obj: persistent_object.clone(),
+                repo: repo.clone(),
+                context: Rc::new(MetaServerContextState::from(user_creds.as_ref())),
+                meta_db_manager: meta_db_manager.clone(),
+                logger: logger.clone(),
+            };
+
+            Self {
+                logger,
+                repo,
+                persistent_obj: persistent_object,
+                meta_db_manager,
+                data_sync,
+                user_sig: Rc::new(user_sig),
+                user_creds,
+            }
+        }
     }
 }
