@@ -12,7 +12,7 @@ use crate::node::db::events::common::ObjectCreator;
 use crate::node::db::events::common::{MempoolObject, MetaPassObject, PublicKeyRecord};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::global_index::GlobalIndexObject;
-use crate::node::db::events::kv_log_event::KvLogEvent;
+use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{IdGen, IdStr, ObjectId};
 use crate::node::db::events::vault_event::VaultObject;
@@ -80,7 +80,14 @@ impl DataSync {
                     VaultObject::Unit { event } => {
                         self.logger.info("Handle 'vault_object:unit' event");
                         // Handled by the server. Add a vault to the system
-                        let vault_id = event.key.obj_id.unit_id();
+                        let vault_id = match &event.key {
+                            KvKey::Empty => {
+                                panic!("Invalid event")
+                            }
+                            KvKey::Key { obj_id, .. } => {
+                                obj_id.unit_id()
+                            }
+                        };
 
                         self.logger
                             .info(format!("Looking for a vault: {}", vault_id.id_str()).as_str());
@@ -381,42 +388,84 @@ pub mod test {
 
         match &events[0] {
             GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Unit { event }) => {
-                assert!(event.key.obj_id.is_unit());
+                match &event.key {
+                    KvKey::Empty => {
+                        panic!()
+                    }
+                    KvKey::Key { obj_id, .. } => {
+                        assert!(obj_id.is_unit());
+                    }
+                }
             }
             _ => panic!("Invalid event")
         }
 
         match &events[1] {
             GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Genesis { event }) => {
-                assert!(event.key.obj_id.is_genesis());
+                match &event.key {
+                    KvKey::Empty => {
+                        panic!()
+                    }
+                    KvKey::Key { obj_id, .. } => {
+                        assert!(obj_id.is_genesis());
+                    }
+                }
             }
             _ => panic!("Invalid event")
         }
 
         match &events[2] {
             GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Update { event }) => {
-                assert_eq!(event.key.obj_id.unit_id().next().next(), event.key.obj_id);
+                match event.key.clone() {
+                    KvKey::Empty => {
+                        panic!()
+                    }
+                    KvKey::Key { obj_id, .. } => {
+                        assert_eq!(obj_id.unit_id().next().next(), obj_id);
+                    }
+                }
             }
             _ => panic!("Invalid event")
         }
 
         match &events[3] {
             GenericKvLogEvent::Vault(VaultObject::Unit { event }) => {
-                assert!(event.key.obj_id.is_unit());
+                match event.key.clone() {
+                    KvKey::Empty => {
+                        panic!()
+                    }
+                    KvKey::Key { obj_id, .. } => {
+                        assert!(obj_id.is_unit());
+                    }
+                }
             }
             _ => panic!("Invalid event")
         }
 
         match &events[4] {
             GenericKvLogEvent::Vault(VaultObject::Genesis { event }) => {
-                assert!(event.key.obj_id.is_genesis());
+                match event.key.clone() {
+                    KvKey::Empty => {
+                        panic!()
+                    }
+                    KvKey::Key { obj_id, .. } => {
+                        assert!(obj_id.is_genesis());
+                    }
+                }
             }
             _ => panic!("Invalid event")
         }
 
         match &events[5] {
             GenericKvLogEvent::Vault(VaultObject::SignUpUpdate { event }) => {
-                assert_eq!(event.key.obj_id.unit_id().next().next(), event.key.obj_id);
+                match event.key.clone() {
+                    KvKey::Empty => {
+                        panic!()
+                    }
+                    KvKey::Key { obj_id, .. } => {
+                        assert_eq!(obj_id.unit_id().next().next(), obj_id);
+                    }
+                }
             }
             _ => panic!("Invalid event")
         }

@@ -104,18 +104,28 @@ impl SyncGateway {
 
                                     match save_op {
                                         Ok(()) => {
+                                            let key = match new_event.key() {
+                                                KvKey::Empty => {
+                                                    self.logger.error("Invalid state. Empty key!");
+                                                    panic!("Invalid state. Empty key!")
+                                                }
+                                                KvKey::Key { obj_id, .. } => {
+                                                    obj_id.clone()
+                                                }
+                                            };
+
                                             match new_event {
                                                 GenericKvLogEvent::GlobalIndex(_) => {
-                                                    latest_gi = Some(new_event.key().obj_id.clone())
+                                                    latest_gi = Some(key)
                                                 }
                                                 GenericKvLogEvent::Vault(_) => {
                                                     latest_vault_id = DbTailObject::Id {
-                                                        tail_id: new_event.key().obj_id.clone(),
+                                                        tail_id: key.clone(),
                                                     }
                                                 }
                                                 GenericKvLogEvent::MetaPass(_) => {
                                                     latest_meta_pass_id = DbTailObject::Id {
-                                                        tail_id: new_event.key().obj_id.clone(),
+                                                        tail_id: key.clone(),
                                                     }
                                                 }
                                                 _ => {
@@ -210,7 +220,16 @@ impl SyncGateway {
                 }
 
                 let new_tail_id = last_vault_event
-                    .map(|event| event.key().obj_id.clone())
+                    .map(|event| {
+                        match event.key() {
+                            KvKey::Empty => {
+                                panic!("Invalid event");
+                            }
+                            KvKey::Key { obj_id, .. } => {
+                                obj_id.clone()
+                            }
+                        }
+                    })
                     .unwrap_or(tail_id.clone());
                 DbTailObject::Id { tail_id: new_tail_id }
             }
@@ -243,7 +262,16 @@ impl SyncGateway {
 
         match last_pool_event {
             None => db_tail.maybe_mem_pool_id.clone(),
-            Some(event) => Some(event.key().obj_id.clone()),
+            Some(event) => {
+                match event.key() {
+                    KvKey::Empty => {
+                        None
+                    }
+                    KvKey::Key { obj_id, .. } => {
+                        Some(obj_id.clone())
+                    }
+                }
+            },
         }
     }
 }

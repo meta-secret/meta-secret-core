@@ -3,13 +3,21 @@ use async_trait::async_trait;
 use crate::models::{MetaPasswordId, SecretDistributionDocData};
 use crate::node::db::events::common::LogEventKeyBasedRecord;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
+use crate::node::db::events::kv_log_event::KvKey;
 use crate::node::db::events::object_id::ObjectId;
 
 #[async_trait(? Send)]
 pub trait SaveCommand {
     async fn save(&self, key: &ObjectId, value: &GenericKvLogEvent) -> Result<(), Box<dyn std::error::Error>>;
     async fn save_event(&self, value: &GenericKvLogEvent) -> Result<(), Box<dyn std::error::Error>> {
-        self.save(&value.key().obj_id, value).await
+        match &value.key() {
+            KvKey::Empty => {
+                panic!("Invalid event. Empty event")
+            }
+            KvKey::Key{ obj_id, .. } => {
+                self.save(&obj_id, value).await
+            }
+        }
     }
 }
 

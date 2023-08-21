@@ -114,7 +114,7 @@ impl MetaDistributor {
 
         let meta_pass_event = GenericKvLogEvent::MetaPass(MetaPassObject::Update {
             event: KvLogEvent {
-                key: KvKey {
+                key: KvKey::Key {
                     obj_id: pass_tail_id,
                     obj_desc: meta_pass_obj_desc,
                 },
@@ -162,7 +162,7 @@ impl MetaDistributor {
 
                 GenericKvLogEvent::SecretShare(SecretShareObject::Split {
                     event: KvLogEvent {
-                        key: KvKey {
+                        key: KvKey::Key {
                             obj_id: tail_id,
                             obj_desc,
                         },
@@ -231,11 +231,26 @@ mod test {
 
             distributor.distribute(String::from("test"), String::from("t0p$ecret")).await;
 
-            println!("-----------");
             let mut db = ctx.repo.db.take().values().cloned().collect::<Vec<GenericKvLogEvent>>();
             db.sort_by(|a, b| {
-                let a_id = a.key().obj_id.id_str();
-                let b_id = b.key().obj_id.id_str();
+                let a_id = match a.key() {
+                    KvKey::Empty => {
+                        panic!()
+                    }
+                    KvKey::Key { obj_id, .. } => {
+                        obj_id.id_str()
+                    }
+                };
+
+                let b_id = match b.key() {
+                    KvKey::Empty => {
+                        panic!()
+                    }
+                    KvKey::Key { obj_id, .. } => {
+                        obj_id.id_str()
+                    }
+                };
+
                 a_id.as_str().partial_cmp(b_id.as_str()).unwrap()
             });
 

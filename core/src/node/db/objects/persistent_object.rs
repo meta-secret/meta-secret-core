@@ -55,8 +55,15 @@ impl PersistentObject {
             match curr_db_event_result {
                 Ok(maybe_curr_db_event) => match maybe_curr_db_event {
                     Some(curr_db_event) => {
-                        curr_tail_id = curr_db_event.key().obj_id.next();
-                        commit_log.push(curr_db_event);
+                        match curr_db_event.key() {
+                            KvKey::Empty => {
+                                panic!("Invalid state");
+                            }
+                            KvKey::Key { obj_id, .. } => {
+                                curr_tail_id = obj_id.next();
+                                commit_log.push(curr_db_event);
+                            }
+                        }
                     }
                     None => {
                         break;
@@ -83,29 +90,43 @@ impl PersistentObject {
             Ok(maybe_id) => match maybe_id {
                 None => None,
                 Some(id) => {
-                    let mut existing_id = id.key().obj_id.clone();
-                    let mut curr_tail_id = id.key().obj_id.clone();
+                    match id.key() {
+                        KvKey::Empty => {
+                            None
+                        }
+                        KvKey::Key { obj_id, .. } => {
+                            let mut existing_id = obj_id.clone();
+                            let mut curr_tail_id = obj_id.clone();
 
-                    loop {
-                        let found_event_result = self.repo.find_one(&curr_tail_id).await;
+                            loop {
+                                let found_event_result = self.repo.find_one(&curr_tail_id).await;
 
-                        match found_event_result {
-                            Ok(maybe_idx) => match maybe_idx {
-                                Some(idx) => {
-                                    existing_id = idx.key().obj_id.clone();
-                                    curr_tail_id = existing_id.next();
+                                match found_event_result {
+                                    Ok(maybe_idx) => match maybe_idx {
+                                        Some(idx) => {
+                                            match idx.key() {
+                                                KvKey::Empty => {
+                                                    panic!("Invalid state");
+                                                }
+                                                KvKey::Key { obj_id, .. } => {
+                                                    existing_id = obj_id.clone();
+                                                    curr_tail_id = existing_id.next();
+                                                }
+                                            }
+                                        }
+                                        None => {
+                                            break;
+                                        }
+                                    },
+                                    Err(_) => {
+                                        break;
+                                    }
                                 }
-                                None => {
-                                    break;
-                                }
-                            },
-                            Err(_) => {
-                                break;
                             }
+
+                            Some(existing_id)
                         }
                     }
-
-                    Some(existing_id)
                 }
             },
             Err(_) => None,
@@ -232,6 +253,7 @@ mod test {
     use crate::node::db::events::common::{LogEventKeyBasedRecord, PublicKeyRecord};
     use crate::node::db::events::generic_log_event::GenericKvLogEvent;
     use crate::node::db::events::global_index::GlobalIndexObject;
+    use crate::node::db::events::kv_log_event::KvKey;
     use crate::node::db::events::object_descriptor::ObjectDescriptor;
     use crate::node::db::generic_db::SaveCommand;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
@@ -267,6 +289,13 @@ mod test {
             .await
             .unwrap();
 
-        assert_eq!(genesis_event.key().obj_id.id_str(), tail_id.id_str());
+        match genesis_event.key() {
+            KvKey::Empty => {
+                panic!("Invalid state");
+            }
+            KvKey::Key { obj_id, .. } => {
+                assert_eq!(obj_id.id_str(), tail_id.id_str());
+            }
+        }
     }
 }
