@@ -8,7 +8,7 @@ use crate::crypto::keys::KeyManager;
 use crate::models::{UserCredentials, UserSignature};
 use crate::node::db::actions::join;
 use crate::node::db::actions::sign_up::SignUpAction;
-use crate::node::db::events::common::ObjectCreator;
+use crate::node::db::events::common::{ObjectCreator, SharedSecretObject};
 use crate::node::db::events::common::{MempoolObject, MetaPassObject, PublicKeyRecord};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::global_index::GlobalIndexObject;
@@ -56,6 +56,8 @@ impl DataSyncApi for DataSync {
 
         self.meta_pass_replication(&request, &mut commit_log).await;
 
+        self.shared_secret_replication(&request, &mut commit_log).await;
+
         Ok(commit_log)
     }
 
@@ -81,7 +83,7 @@ impl DataSync {
                         self.logger.info("Handle 'vault_object:unit' event");
                         // Handled by the server. Add a vault to the system
                         let vault_id = match &event.key {
-                            KvKey::Empty => {
+                            KvKey::Empty { .. } => {
                                 panic!("Invalid event")
                             }
                             KvKey::Key { obj_id, .. } => {
@@ -170,8 +172,27 @@ impl DataSync {
                 }
             }
 
-            GenericKvLogEvent::SecretShare(_) => {
-                let _ = self.repo.save_event(generic_event).await;
+            GenericKvLogEvent::SharedSecret(sss_obj) => {
+                match sss_obj {
+                    SharedSecretObject::Split { event } => {
+                        let obj_desc = event.key.obj_desc();
+                        let tail_id = self.persistent_obj
+                            .find_tail_id_by_obj_desc(&obj_desc)
+                            .await
+                            .unwrap_or(ObjectId::unit(&obj_desc));
+
+                        let split_event = GenericKvLogEvent::SharedSecret(SharedSecretObject::Split {
+                            event: KvLogEvent {
+                                key: KvKey::Empty { obj_desc },
+                                value: event.value.clone(),
+                            },
+                        });
+                        let _ = self.repo.save(&tail_id, &split_event).await;
+                    }
+                    SharedSecretObject::Recover { .. } => {
+                        //not implemented yet
+                    }
+                }
             }
 
             GenericKvLogEvent::LocalEvent(evt_type) => {
@@ -199,6 +220,24 @@ impl DataSync {
             }
         }
         Ok(())
+    }
+
+    async fn shared_secret_replication(&self, request: &SyncRequest, commit_log: &mut Vec<GenericKvLogEvent>) {
+        match &request.vault_tail_id {
+            None => {
+                // Ignore empty vault requests
+            }
+            Some(_) => {
+                let obj_desc = ObjectDescriptor::SharedSecret {
+                    vault_name: request.sender.vault.name.clone(),
+                    device_id: request.sender.vault.device.device_id.clone(),
+                };
+                let obj_id = ObjectId::unit(&obj_desc);
+
+                let events = self.persistent_obj.find_object_events(&obj_id).await;
+                commit_log.extend(events);
+            }
+        }
     }
 
     async fn vault_replication(&self, request: &SyncRequest, commit_log: &mut Vec<GenericKvLogEvent>) {
@@ -238,21 +277,21 @@ impl DataSync {
                     .map(|sig| sig.public_key.base64_text.clone())
                     .collect();
 
-                if vault_signatures.contains(&request.sender_pk.pk.base64_text) {
+                if vault_signatures.contains(&request.sender.public_key.base64_text) {
                     let vault_events = self.persistent_obj.find_object_events(vault_tail_id).await;
                     commit_log.extend(vault_events);
                 } else {
                     self.logger.info(
                         format!(
                             "The client is not a member of the vault. Client pk: {:?}, vault: {:?}",
-                            &request.sender_pk, meta_db.vault_store
+                            &request.sender, meta_db.vault_store
                         )
                             .as_str(),
                     );
                     self.logger.info(
                         format!(
                             "Vault sigs: {:?}, sender sig: {:?}",
-                            vault_signatures, &request.sender_pk.pk.base64_text
+                            vault_signatures, &request.sender.public_key.base64_text
                         )
                             .as_str(),
                     );
@@ -376,10 +415,8 @@ pub mod test {
         let vault_unit = GenericKvLogEvent::Vault(VaultObject::unit(&ctx.user_sig));
         data_sync.send(&vault_unit).await;
 
-        let user_pk = PublicKeyRecord::from(ctx.user_sig.public_key.as_ref().clone());
-
         let request = SyncRequest {
-            sender_pk: user_pk,
+            sender: ctx.user_sig.as_ref().clone(),
             vault_tail_id: Some(ObjectId::vault_unit("test_vault")),
             meta_pass_tail_id: None,
             global_index: None,
@@ -389,7 +426,7 @@ pub mod test {
         match &events[0] {
             GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Unit { event }) => {
                 match &event.key {
-                    KvKey::Empty => {
+                    KvKey::Empty { .. } => {
                         panic!()
                     }
                     KvKey::Key { obj_id, .. } => {
@@ -403,7 +440,7 @@ pub mod test {
         match &events[1] {
             GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Genesis { event }) => {
                 match &event.key {
-                    KvKey::Empty => {
+                    KvKey::Empty { .. } => {
                         panic!()
                     }
                     KvKey::Key { obj_id, .. } => {
@@ -417,7 +454,7 @@ pub mod test {
         match &events[2] {
             GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Update { event }) => {
                 match event.key.clone() {
-                    KvKey::Empty => {
+                    KvKey::Empty { .. } => {
                         panic!()
                     }
                     KvKey::Key { obj_id, .. } => {
@@ -431,7 +468,7 @@ pub mod test {
         match &events[3] {
             GenericKvLogEvent::Vault(VaultObject::Unit { event }) => {
                 match event.key.clone() {
-                    KvKey::Empty => {
+                    KvKey::Empty { .. } => {
                         panic!()
                     }
                     KvKey::Key { obj_id, .. } => {
@@ -445,7 +482,7 @@ pub mod test {
         match &events[4] {
             GenericKvLogEvent::Vault(VaultObject::Genesis { event }) => {
                 match event.key.clone() {
-                    KvKey::Empty => {
+                    KvKey::Empty { .. } => {
                         panic!()
                     }
                     KvKey::Key { obj_id, .. } => {
@@ -459,7 +496,7 @@ pub mod test {
         match &events[5] {
             GenericKvLogEvent::Vault(VaultObject::SignUpUpdate { event }) => {
                 match event.key.clone() {
-                    KvKey::Empty => {
+                    KvKey::Empty { .. } => {
                         panic!()
                     }
                     KvKey::Key { obj_id, .. } => {
@@ -478,7 +515,7 @@ pub mod test {
         pub meta_db_manager: Rc<MetaDbManager>,
         pub data_sync: DataSync,
         pub user_sig: Rc<UserSignature>,
-        pub user_creds: Rc<UserCredentials>
+        pub user_creds: Rc<UserCredentials>,
     }
 
     impl DataSyncTestContext {

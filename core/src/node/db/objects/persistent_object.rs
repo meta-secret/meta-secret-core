@@ -2,7 +2,7 @@ use std::error::Error;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
-use crate::node::db::events::common::{LogEventKeyBasedRecord, ObjectCreator, PublicKeyRecord};
+use crate::node::db::events::common::{LogEventKeyBasedRecord, ObjectCreator, PublicKeyRecord, SharedSecretObject};
 use crate::node::db::events::db_tail::{DbTail, DbTailObject};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::global_index::GlobalIndexObject;
@@ -55,15 +55,19 @@ impl PersistentObject {
             match curr_db_event_result {
                 Ok(maybe_curr_db_event) => match maybe_curr_db_event {
                     Some(curr_db_event) => {
-                        match curr_db_event.key() {
-                            KvKey::Empty => {
-                                panic!("Invalid state");
-                            }
-                            KvKey::Key { obj_id, .. } => {
-                                curr_tail_id = obj_id.next();
-                                commit_log.push(curr_db_event);
+                        if let GenericKvLogEvent::SharedSecret(secret_obj) = &curr_db_event {
+                            match secret_obj {
+                                SharedSecretObject::Split { .. } => {
+                                    self.repo.delete(&curr_tail_id).await
+                                }
+                                SharedSecretObject::Recover { .. } => {
+                                    //not implemented yet
+                                }
                             }
                         }
+                        
+                        curr_tail_id = curr_tail_id.next();
+                        commit_log.push(curr_db_event);
                     }
                     None => {
                         break;
@@ -91,7 +95,7 @@ impl PersistentObject {
                 None => None,
                 Some(id) => {
                     match id.key() {
-                        KvKey::Empty => {
+                        KvKey::Empty{ .. } => {
                             None
                         }
                         KvKey::Key { obj_id, .. } => {
@@ -105,7 +109,7 @@ impl PersistentObject {
                                     Ok(maybe_idx) => match maybe_idx {
                                         Some(idx) => {
                                             match idx.key() {
-                                                KvKey::Empty => {
+                                                KvKey::Empty{ .. } => {
                                                     panic!("Invalid state");
                                                 }
                                                 KvKey::Key { obj_id, .. } => {
@@ -290,7 +294,7 @@ mod test {
             .unwrap();
 
         match genesis_event.key() {
-            KvKey::Empty => {
+            KvKey::Empty{ .. } => {
                 panic!("Invalid state");
             }
             KvKey::Key { obj_id, .. } => {

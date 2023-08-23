@@ -7,10 +7,10 @@ use meta_secret_core::models::ApplicationState;
 use async_mutex::Mutex as AsyncMutex;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::spawn_local;
-use meta_secret_core::node::db::meta_db::meta_db_view::MetaPassStore;
+use meta_secret_core::node::db::meta_db::meta_db_view::{MetaPassStore, VaultStore};
 use meta_secret_core::node::db::events::common::VaultInfo;
 use meta_secret_core::node::logger::MetaLogger;
-use meta_secret_core::node::server::server_app::MpscDataTransfer;
+use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use crate::commit_log::{WasmMetaLogger, WasmRepo};
 
 use crate::{alert, JsAppState};
@@ -70,8 +70,6 @@ impl ApplicationStateManager {
 
         ApplicationStateManager::run_server(&data_transfer);
 
-        ApplicationStateManager::run_client_gateway(data_transfer.clone(), client_logger.clone());
-
         let vd1_logger = Rc::new(WasmMetaLogger {
           id: LoggerId::Vd1
         });
@@ -81,7 +79,13 @@ impl ApplicationStateManager {
         //let device_repo_2 = Rc::new(WasmRepo::virtual_device_2());
         //VirtualDevice::setup_virtual_device(device_repo_2, data_transfer.clone());
 
-        self.setup_meta_client(client_logger).await;
+        self.setup_meta_client(client_logger.clone()).await;
+
+        ApplicationStateManager::run_client_gateway(
+            data_transfer.clone(),
+            client_logger.clone(),
+            self.meta_client.get_ctx()
+        );
 
         self.on_update().await;
     }
@@ -131,7 +135,7 @@ impl ApplicationStateManager {
         }
     }
 
-    fn run_client_gateway(data_transfer: Rc<MpscDataTransfer>, logger: Rc<dyn MetaLogger>) {
+    fn run_client_gateway(data_transfer: Rc<MpscDataTransfer>, logger: Rc<dyn MetaLogger>, ctx: Rc<MetaClientContext>) {
         logger.info("Run client gateway");
         let data_transfer_client = data_transfer.clone();
         spawn_local(async move {
@@ -139,6 +143,16 @@ impl ApplicationStateManager {
             loop {
                 async_std::task::sleep(Duration::from_secs(1)).await;
                 gateway.sync().await;
+
+                let meta_db = ctx.meta_db.lock().await;
+                match &meta_db.vault_store {
+                    VaultStore::Store { vault, .. } => {
+                        gateway.sync_shared_secrets(vault, ).await;
+                    }
+                    _ => {
+                        //skip
+                    }
+                }
             }
         });
     }

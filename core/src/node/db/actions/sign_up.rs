@@ -15,7 +15,7 @@ impl SignUpAction {
         server_pk: &PublicKeyRecord,
     ) -> Vec<GenericKvLogEvent> {
         match &sign_up_request.key {
-            KvKey::Empty => {
+            KvKey::Empty { .. } => {
                 panic!("SignUp error. Empty key");
             }
             KvKey::Key { obj_id, obj_desc } => {

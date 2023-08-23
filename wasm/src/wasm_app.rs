@@ -42,6 +42,22 @@ impl ToString for WasmMetaClient {
     }
 }
 
+impl WasmMetaClient {
+    pub fn get_ctx(&self) -> Rc<MetaClientContext> {
+        match self {
+            WasmMetaClient::Empty(client) => {
+                client.ctx.clone()
+            }
+            WasmMetaClient::Init(client) => {
+                client.ctx.clone()
+            }
+            WasmMetaClient::Registered(client) => {
+                client.ctx.clone()
+            }
+        }
+    }
+}
+
 pub struct EmptyMetaClient {
     pub ctx: Rc<MetaClientContext>,
     pub logger: Rc<dyn MetaLogger>,
@@ -175,7 +191,7 @@ impl InitMetaClient {
 
         let join_request = GenericKvLogEvent::Mempool(MempoolObject::JoinRequest {
             event: KvLogEvent {
-                key: KvKey {
+                key: KvKey::Key {
                     obj_id: mem_pool_tail_id,
                     obj_desc: ObjectDescriptor::Mempool,
                 },

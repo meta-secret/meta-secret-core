@@ -49,6 +49,8 @@ extern "C" {
     pub async fn idbGet(db_name: &str, store_name: &str, key: &str) -> JsValue;
     pub async fn idbSave(db_name: &str, store_name: &str, key: &str, value: JsValue);
 
+    pub async fn idbDelete(db_name: &str, store_name: &str, key: &str);
+
     pub async fn idbFindAll(db_name: &str, store_name: &str) -> JsValue;
 }
 

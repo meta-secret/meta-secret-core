@@ -99,7 +99,7 @@ impl MetaDbManager {
                 self.logger.info("Error. LocalEvents not for sync");
                 panic!("Internal event");
             }
-            GenericKvLogEvent::SecretShare(_) => {
+            GenericKvLogEvent::SharedSecret(_) => {
                 //not yet implemented
             }
             GenericKvLogEvent::Error { .. } => {
@@ -116,7 +116,7 @@ impl MetaDbManager {
         match vault_obj {
             VaultObject::Unit { event } => {
                 let obj_id = match event.key.clone() {
-                    KvKey::Empty => {
+                    KvKey::Empty { .. } => {
                         panic!("Invalid event. Empty key")
                     }
                     KvKey::Key { obj_id, .. } => {
@@ -142,7 +142,7 @@ impl MetaDbManager {
             },
             VaultObject::Genesis { event } => {
                 let obj_id = match event.key.clone() {
-                    KvKey::Empty => {
+                    KvKey::Empty { .. } => {
                         panic!("Invalid event. Empty key")
                     }
                     KvKey::Key { obj_id, .. } => {
@@ -165,7 +165,7 @@ impl MetaDbManager {
             }
             VaultObject::SignUpUpdate { event } => {
                 let obj_id = match event.key.clone() {
-                    KvKey::Empty => {
+                    KvKey::Empty { .. } => {
                         panic!("Invalid event. Empty key")
                     }
                     KvKey::Key { obj_id, .. } => {
@@ -189,7 +189,7 @@ impl MetaDbManager {
             }
             VaultObject::JoinUpdate { event } => {
                 let obj_id = match event.key.clone() {
-                    KvKey::Empty => {
+                    KvKey::Empty { .. } => {
                         panic!("Invalid event. Empty key")
                     }
                     KvKey::Key { obj_id, .. } => {
@@ -216,7 +216,7 @@ impl MetaDbManager {
             }
             VaultObject::JoinRequest { event } => {
                 let obj_id = match event.key.clone() {
-                    KvKey::Empty => {
+                    KvKey::Empty { .. } => {
                         panic!("Invalid event. Empty key")
                     }
                     KvKey::Key { obj_id, .. } => {
@@ -251,7 +251,7 @@ impl MetaDbManager {
             MetaPassObject::Unit { event } => {
                 meta_db.meta_pass_store = {
                     let obj_id = match event.key.clone() {
-                        KvKey::Empty => {
+                        KvKey::Empty { .. } => {
                             panic!("Invalid event. Empty key")
                         }
                         KvKey::Key { obj_id, .. } => {
@@ -281,7 +281,7 @@ impl MetaDbManager {
             MetaPassObject::Genesis { event } => {
                 meta_db.meta_pass_store = {
                     let obj_id = match event.key.clone() {
-                        KvKey::Empty => {
+                        KvKey::Empty { .. } => {
                             panic!("Invalid event. Empty key")
                         }
                         KvKey::Key { obj_id, .. } => {
@@ -313,7 +313,7 @@ impl MetaDbManager {
             MetaPassObject::Update { event } => {
                 meta_db.meta_pass_store = {
                     let obj_id = match event.key.clone() {
-                        KvKey::Empty => {
+                        KvKey::Empty { .. } => {
                             panic!("Invalid event. Empty key")
                         }
                         KvKey::Key { obj_id, .. } => {

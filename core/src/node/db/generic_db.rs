@@ -9,13 +9,14 @@ use crate::node::db::events::object_id::ObjectId;
 #[async_trait(? Send)]
 pub trait SaveCommand {
     async fn save(&self, key: &ObjectId, value: &GenericKvLogEvent) -> Result<(), Box<dyn std::error::Error>>;
-    async fn save_event(&self, value: &GenericKvLogEvent) -> Result<(), Box<dyn std::error::Error>> {
+    async fn save_event(&self, value: &GenericKvLogEvent) -> Result<ObjectId, Box<dyn std::error::Error>> {
         match &value.key() {
-            KvKey::Empty => {
+            KvKey::Empty { .. } => {
                 panic!("Invalid event. Empty event")
             }
             KvKey::Key{ obj_id, .. } => {
-                self.save(&obj_id, value).await
+                self.save(obj_id, value).await;
+                Ok(obj_id.clone())
             }
         }
     }
@@ -27,11 +28,16 @@ pub trait FindOneQuery {
 }
 
 #[async_trait(? Send)]
+pub trait DeleteCommand {
+    async fn delete(&self, key: &ObjectId);
+}
+
+#[async_trait(? Send)]
 pub trait FindQuery<T> {
     async fn find(&self, key: &ObjectId) -> Result<Vec<T>, Box<dyn std::error::Error>>;
 }
 
-pub trait KvLogEventRepo: FindOneQuery + SaveCommand {}
+pub trait KvLogEventRepo: FindOneQuery + SaveCommand + DeleteCommand {}
 
 pub trait CommitLogDbConfig {
     fn db_name(&self) -> String;

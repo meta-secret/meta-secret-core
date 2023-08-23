@@ -51,7 +51,7 @@ mod test {
         match unit {
             GlobalIndexObject::Unit { event } => {
                 match event.key {
-                    KvKey::Empty => {
+                    KvKey::Empty { .. } => {
                         panic!()
                     }
                     KvKey::Key { obj_id, .. } => {

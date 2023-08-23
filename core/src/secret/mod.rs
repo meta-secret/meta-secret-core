@@ -4,7 +4,7 @@ use crate::models::{
     SecretDistributionType, UserCredentials, UserSecurityBox, UserSignature, VaultDoc,
 };
 use crate::node::db::events::common::ObjectCreator;
-use crate::node::db::events::common::{MetaPassObject, SecretShareObject};
+use crate::node::db::events::common::{MetaPassObject, SharedSecretObject};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::local::KvLogEventLocal;
@@ -126,7 +126,7 @@ impl MetaDistributor {
 
         let encrypted_shares = encryptor.encrypt(password);
 
-        for (counter, cipher_share) in encrypted_shares.iter().enumerate() {
+        for cipher_share in encrypted_shares.iter() {
             let cipher_msg = EncryptedMessage {
                 receiver: Box::from(cipher_share.receiver.clone()),
                 encrypted_text: Box::new(cipher_share.cipher_share.clone()),
@@ -143,15 +143,28 @@ impl MetaDistributor {
 
             let meta_pass_id = pass.id.id.clone();
 
-            let secret_share_event = if counter == 0 {
-                GenericKvLogEvent::LocalEvent(KvLogEventLocal::LocalSecretShare {
+            if cipher_share.receiver.vault.device.device_id == self.user_creds.user_sig.vault.device.device_id {
+                let secret_share_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::LocalSecretShare {
                     event: KvLogEvent {
                         key: KvKey::unit(&ObjectDescriptor::LocalSecretShare { meta_pass_id }),
                         value: distribution_share,
                     },
-                })
+                });
+
+                let _ = self.meta_db_manager
+                    .repo
+                    .save_event(&secret_share_event)
+                    .await;
+
             } else {
                 let obj_desc = ObjectDescriptor::from(&distribution_share);
+                let secret_share_event = GenericKvLogEvent::SharedSecret(SharedSecretObject::Split {
+                    event: KvLogEvent {
+                        key: KvKey::Empty { obj_desc: obj_desc.clone() },
+                        value: distribution_share,
+                    },
+                });
+
                 let tail_id = self
                     .meta_db_manager
                     .persistent_obj
@@ -160,21 +173,11 @@ impl MetaDistributor {
                     .map(|id| id.next())
                     .unwrap_or(ObjectId::unit(&obj_desc));
 
-                GenericKvLogEvent::SecretShare(SecretShareObject::Split {
-                    event: KvLogEvent {
-                        key: KvKey::Key {
-                            obj_id: tail_id,
-                            obj_desc,
-                        },
-                        value: distribution_share,
-                    },
-                })
+                let _ = self.meta_db_manager
+                    .repo
+                    .save(&tail_id, &secret_share_event)
+                    .await;
             };
-
-            let _ = self.meta_db_manager
-                .repo
-                .save_event(&secret_share_event)
-                .await;
         }
     }
 }
@@ -203,16 +206,24 @@ mod test {
         let vault_tail_id = ctx.persistent_obj.find_tail_id(&vault_unit_id).await.unwrap();
         let vault_event = ctx.persistent_obj.repo.find_one(&vault_tail_id).await.unwrap().unwrap();
 
-        let s_box = KeyManager::generate_security_box("test_vault".to_string());
-        let device = DeviceInfo {
+        let s_box_b = KeyManager::generate_security_box("test_vault".to_string());
+        let device_b = DeviceInfo {
             device_id: "b".to_string(),
             device_name: "b".to_string(),
         };
-        let user_sig = s_box.get_user_sig(&device);
+        let user_sig_b = s_box_b.get_user_sig(&device_b);
+
+        let s_box_c = KeyManager::generate_security_box("test_vault".to_string());
+        let device_c = DeviceInfo {
+            device_id: "c".to_string(),
+            device_name: "c".to_string(),
+        };
+        let user_sig_c = s_box_c.get_user_sig(&device_c);
 
         if let GenericKvLogEvent::Vault(VaultObject::SignUpUpdate { event }) = vault_event {
             let vault = event.value;
-            let join_request = join::join_cluster_request(&vault_unit_id.next().next(), &user_sig);
+
+            let join_request = join::join_cluster_request(&vault_unit_id.next().next(), &user_sig_b);
             let kv_join_event = join::accept_join_request(&join_request, &vault);
             let accept_event = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
                 event: kv_join_event.clone(),
@@ -223,10 +234,21 @@ mod test {
                 .save_event(&accept_event)
                 .await;
 
+            let join_request_c = join::join_cluster_request(&vault_unit_id.next().next().next(), &user_sig_c);
+            let kv_join_event_c = join::accept_join_request(&join_request_c, &kv_join_event.value);
+            let accept_event_c = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
+                event: kv_join_event_c.clone(),
+            });
+            let _ = ctx.meta_db_manager
+                .persistent_obj
+                .repo
+                .save_event(&accept_event_c)
+                .await;
+
             let distributor = MetaDistributor {
                 meta_db_manager: ctx.meta_db_manager,
                 user_creds: ctx.user_creds,
-                vault: kv_join_event.value,
+                vault: kv_join_event_c.value,
             };
 
             distributor.distribute(String::from("test"), String::from("t0p$ecret")).await;
@@ -234,8 +256,8 @@ mod test {
             let mut db = ctx.repo.db.take().values().cloned().collect::<Vec<GenericKvLogEvent>>();
             db.sort_by(|a, b| {
                 let a_id = match a.key() {
-                    KvKey::Empty => {
-                        panic!()
+                    KvKey::Empty { obj_desc } => {
+                        obj_desc.to_id()
                     }
                     KvKey::Key { obj_id, .. } => {
                         obj_id.id_str()
@@ -243,8 +265,8 @@ mod test {
                 };
 
                 let b_id = match b.key() {
-                    KvKey::Empty => {
-                        panic!()
+                    KvKey::Empty { obj_desc } => {
+                        obj_desc.to_id()
                     }
                     KvKey::Key { obj_id, .. } => {
                         obj_id.id_str()
@@ -256,7 +278,17 @@ mod test {
 
             println!("total events: {}", db.len());
             for event in db {
-                println!("event: {}", serde_json::to_string(&event).unwrap());
+                println!("event:");
+                let id = match event.key() {
+                    KvKey::Empty { obj_desc } => {
+                        obj_desc.to_id()
+                    }
+                    KvKey::Key { obj_id, .. } => {
+                        obj_id.id_str()
+                    }
+                };
+                println!(" key: {}", serde_json::to_string(&id).unwrap());
+                println!(" event: {}", serde_json::to_string(&event).unwrap());
             }
         } else {
             panic!("Invalid event")

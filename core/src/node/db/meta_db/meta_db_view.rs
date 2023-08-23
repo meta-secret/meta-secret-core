@@ -186,7 +186,7 @@ impl MetaDb {
                     }
                     GlobalIndexObject::Genesis { event } => {
                         let obj_id = match &event.key {
-                            KvKey::Empty => {
+                            KvKey::Empty { .. } => {
                                 panic!("Invalid event. Empty key")
                             }
                             KvKey::Key { obj_id, .. } => {
@@ -220,7 +220,7 @@ impl MetaDb {
                     global_index_set.insert(event.value.vault_id.clone());
 
                     let obj_id = match &event.key {
-                        KvKey::Empty => {
+                        KvKey::Empty { .. } => {
                             panic!("Invalid event. Empty key")
                         }
                         KvKey::Key { obj_id, .. } => {
@@ -288,7 +288,7 @@ mod test {
         let vault_id = IdStr::from(obj_id);
 
         match genesis_event.key() {
-            KvKey::Empty => {
+            KvKey::Empty { .. } => {
                 panic!()
             }
             KvKey::Key { .. } => {

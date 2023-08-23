@@ -1,4 +1,2 @@
-use async_trait::async_trait;
-
-#[async_trait(? Send)]
-trait InMemMetaVaultRepo {}
+#[cfg(test)]
+mod test {}

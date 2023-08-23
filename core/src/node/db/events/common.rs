@@ -36,7 +36,7 @@ impl MetaPassObject {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum SecretShareObject {
+pub enum SharedSecretObject {
     Split {
         event: KvLogEvent<SecretDistributionDocData>,
     },
@@ -45,11 +45,11 @@ pub enum SecretShareObject {
     },
 }
 
-impl SecretShareObject {
+impl SharedSecretObject {
     pub fn key(&self) -> &KvKey {
         match self {
-            SecretShareObject::Split { event } => &event.key,
-            SecretShareObject::Recover { event } => &event.key,
+            SharedSecretObject::Split { event } => &event.key,
+            SharedSecretObject::Recover { event } => &event.key,
         }
     }
 }
