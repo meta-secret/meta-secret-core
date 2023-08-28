@@ -13,7 +13,7 @@ use crate::node::db::events::local::KvLogEventLocal;
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::generic_db::KvLogEventRepo;
-use crate::node::server::data_sync::MetaLogger;
+use crate::node::logger::MetaLogger;
 
 #[async_trait(? Send)]
 pub trait MetaVaultManager {
@@ -70,7 +70,7 @@ where
 
 #[async_trait(? Send)]
 pub trait UserCredentialsManager: KvLogEventRepo {
-    async fn save_user_creds(&self, creds: &UserCredentials) -> Result<(), Box<dyn Error>>;
+    async fn save_user_creds(&self, creds: &UserCredentials) -> Result<ObjectId, Box<dyn Error>>;
     async fn find_user_creds(&self) -> Result<Option<UserCredentials>, Box<dyn Error>>;
     async fn generate_user_creds(&self, vault_name: String, device_name: String) -> UserCredentials;
     async fn get_or_generate_user_creds(&self, vault_name: String, device_name: String) -> UserCredentials;
@@ -95,7 +95,7 @@ where
         }
     }
 
-    async fn save_user_creds(&self, creds: &UserCredentials) -> Result<(), Box<dyn Error>> {
+    async fn save_user_creds(&self, creds: &UserCredentials) -> Result<ObjectId, Box<dyn Error>> {
         let event = KvLogEvent {
             key: KvKey::unit(&ObjectDescriptor::UserCreds),
             value: creds.clone(),

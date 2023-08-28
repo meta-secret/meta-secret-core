@@ -1,6 +1,7 @@
 use crate::models::{Base64EncodedText, MetaPasswordDoc, SecretDistributionDocData, UserSignature, VaultDoc};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
+use crate::models::password_recovery_request::PasswordRecoveryRequest;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,20 +37,24 @@ impl MetaPassObject {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum SecretShareObject {
+pub enum SharedSecretObject {
     Split {
         event: KvLogEvent<SecretDistributionDocData>,
     },
     Recover {
         event: KvLogEvent<SecretDistributionDocData>,
     },
+    RecoveryRequest {
+        event: KvLogEvent<PasswordRecoveryRequest>,
+    },
 }
 
-impl SecretShareObject {
+impl SharedSecretObject {
     pub fn key(&self) -> &KvKey {
         match self {
-            SecretShareObject::Split { event } => &event.key,
-            SecretShareObject::Recover { event } => &event.key,
+            SharedSecretObject::Split { event } => &event.key,
+            SharedSecretObject::Recover { event } => &event.key,
+            SharedSecretObject::RecoveryRequest { event } => &event.key,
         }
     }
 }

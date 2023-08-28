@@ -1,6 +1,8 @@
 extern crate core;
 
 use wasm_bindgen::prelude::*;
+use meta_secret_core::recover_from_shares;
+use meta_secret_core::secret::shared_secret::UserShareDto;
 
 mod commit_log;
 mod db;
@@ -49,6 +51,8 @@ extern "C" {
     pub async fn idbGet(db_name: &str, store_name: &str, key: &str) -> JsValue;
     pub async fn idbSave(db_name: &str, store_name: &str, key: &str, value: JsValue);
 
+    pub async fn idbDelete(db_name: &str, store_name: &str, key: &str);
+
     pub async fn idbFindAll(db_name: &str, store_name: &str) -> JsValue;
 }
 
@@ -65,11 +69,10 @@ pub fn split(pass: &str) -> Result<JsValue, JsValue> {
 
 #[wasm_bindgen]
 pub fn restore_password(shares_json: JsValue) -> Result<JsValue, JsValue> {
-    /*log("wasm: restore password, core functionality");
+    info("wasm: restore password, core functionality");
 
     let user_shares: Vec<UserShareDto> = serde_wasm_bindgen::from_value(shares_json)?;
 
     let plain_text = recover_from_shares(user_shares).map_err(JsError::from)?;
-    Ok(JsValue::from_str(plain_text.text.as_str()))*/
-    Ok(JsValue::null())
+    Ok(JsValue::from_str(plain_text.text.as_str()))
 }

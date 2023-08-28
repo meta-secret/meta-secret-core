@@ -1,9 +1,10 @@
 use std::rc::Rc;
+use meta_secret_core::models::{UserSignature, VaultDoc};
 
 use meta_secret_core::node::app::sync_gateway::SyncGateway;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
-use meta_secret_core::node::server::data_sync::MetaLogger;
-use meta_secret_core::node::server::server_app::MpscDataTransfer;
+use meta_secret_core::node::logger::MetaLogger;
+use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 
 use crate::commit_log::{WasmRepo};
 
@@ -23,6 +24,7 @@ impl WasmSyncGateway {
         gateway_id: String,
         logger: Rc<dyn MetaLogger>
     ) -> WasmSyncGateway {
+        logger.info("Create new wasm sync gateway instance");
 
         let persistent_object = {
             let obj = PersistentObject::new(repo.clone(), logger.clone());
@@ -44,6 +46,14 @@ impl WasmSyncGateway {
         match self {
             WasmSyncGateway::WasmGateway { gateway } => {
                 gateway.sync().await;
+            }
+        }
+    }
+
+    pub async fn sync_shared_secrets(&self, vault: &VaultDoc) {
+        match self {
+            WasmSyncGateway::WasmGateway { gateway } => {
+                gateway.send_shared_secrets(vault).await;
             }
         }
     }

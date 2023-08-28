@@ -14,8 +14,8 @@ use meta_secret_core::node::db::generic_db::{FindOneQuery, SaveCommand};
 use meta_secret_core::node::db::meta_db::meta_db_view::{MetaDb, VaultStore};
 use meta_secret_core::node::db::events::generic_log_event::GenericKvLogEvent;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
-use meta_secret_core::node::server::data_sync::MetaLogger;
-use meta_secret_core::node::server::server_app::MpscDataTransfer;
+use meta_secret_core::node::logger::MetaLogger;
+use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 
 use crate::commit_log::WasmRepo;
 use crate::wasm_app::{EmptyMetaClient, MetaClientContext, WasmMetaClient};
@@ -161,6 +161,8 @@ impl VirtualDevice {
                                 .save_event(&accept_event)
                                 .await;
                         }
+
+                        gateway.sync_shared_secrets(vault).await;
                     };
                 }
                 WasmMetaClient::Registered(client) => {
@@ -187,6 +189,8 @@ impl VirtualDevice {
                                 .save_event(&accept_event)
                                 .await;
                         }
+
+                        gateway.sync_shared_secrets(vault).await;
                     };
                 }
             };

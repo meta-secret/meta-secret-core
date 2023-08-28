@@ -8,8 +8,9 @@ use crate::models::MetaPasswordDoc;
 use crate::node::db::events::common::PublicKeyRecord;
 use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::object_id::ObjectId;
-use crate::node::server::data_sync::MetaLogger;
+use crate::node::logger::MetaLogger;
 use std::rc::Rc;
+use crate::node::db::events::kv_log_event::KvKey;
 
 pub struct MetaDb {
     pub id: String,
@@ -184,8 +185,17 @@ impl MetaDb {
                         //nothing to do
                     }
                     GlobalIndexObject::Genesis { event } => {
+                        let obj_id = match &event.key {
+                            KvKey::Empty { .. } => {
+                                panic!("Invalid event. Empty key")
+                            }
+                            KvKey::Key { obj_id, .. } => {
+                                obj_id
+                            }
+                        };
+
                         self.global_index_store = GlobalIndexStore::Genesis {
-                            tail_id: event.key.obj_id.clone(),
+                            tail_id: obj_id.clone(),
                             server_pk: event.value.clone(),
                         }
                     }
@@ -209,8 +219,17 @@ impl MetaDb {
                     let mut global_index_set = HashSet::new();
                     global_index_set.insert(event.value.vault_id.clone());
 
+                    let obj_id = match &event.key {
+                        KvKey::Empty { .. } => {
+                            panic!("Invalid event. Empty key")
+                        }
+                        KvKey::Key { obj_id, .. } => {
+                            obj_id
+                        }
+                    };
+
                     self.global_index_store = GlobalIndexStore::Store {
-                        tail_id: event.key.obj_id.clone(),
+                        tail_id: obj_id.clone(),
                         server_pk: server_pk.clone(),
                         global_index: global_index_set,
                     }
@@ -239,11 +258,11 @@ mod test {
     use crate::models::DeviceInfo;
     use crate::node::db::events::common::PublicKeyRecord;
     use crate::node::db::events::global_index::GlobalIndexObject;
-    use crate::node::db::events::kv_log_event::KvLogEvent;
+    use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
     use crate::node::db::events::object_id::{IdGen, IdStr, ObjectId};
     use crate::node::db::meta_db::meta_db_view::{GlobalIndexStore, MetaDb};
-    use crate::node::server::data_sync::{DefaultMetaLogger, LoggerId};
     use std::rc::Rc;
+    use crate::node::logger::{DefaultMetaLogger, LoggerId};
 
     #[test]
     fn test_appy_global_index_event() {
@@ -268,15 +287,22 @@ mod test {
         let obj_id = &ObjectId::vault_unit("test_vault");
         let vault_id = IdStr::from(obj_id);
 
-        meta_db.apply_global_index_event(&GlobalIndexObject::Update {
-            event: KvLogEvent::new_global_index_event(&genesis_event.key().obj_id.next(), &vault_id),
-        });
-
-        match meta_db.global_index_store {
-            GlobalIndexStore::Store { global_index, .. } => {
-                assert_eq!(1, global_index.len())
+        match genesis_event.key() {
+            KvKey::Empty { .. } => {
+                panic!()
             }
-            _ => panic!("Invalid state"),
+            KvKey::Key { .. } => {
+                meta_db.apply_global_index_event(&GlobalIndexObject::Update {
+                    event: KvLogEvent::new_global_index_event(&obj_id.next(), &vault_id),
+                });
+
+                match meta_db.global_index_store {
+                    GlobalIndexStore::Store { global_index, .. } => {
+                        assert_eq!(1, global_index.len())
+                    }
+                    _ => panic!("Invalid state"),
+                }
+            }
         }
     }
 }

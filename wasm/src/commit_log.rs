@@ -3,12 +3,11 @@ use async_trait::async_trait;
 use wasm_bindgen::JsValue;
 
 use meta_secret_core::node::db::events::object_id::ObjectId;
-use meta_secret_core::node::db::generic_db::{CommitLogDbConfig, FindOneQuery, KvLogEventRepo};
+use meta_secret_core::node::db::generic_db::{CommitLogDbConfig, DeleteCommand, FindOneQuery, KvLogEventRepo};
 use meta_secret_core::node::db::generic_db::SaveCommand;
 use meta_secret_core::node::db::events::generic_log_event::GenericKvLogEvent;
-use meta_secret_core::node::server::data_sync::{LoggerId, MetaLogger};
-
-use crate::{debug, error, idbGet, idbSave, info, warn};
+use meta_secret_core::node::logger::{LoggerId, MetaLogger};
+use crate::{debug, error, idbDelete, idbGet, idbSave, info, warn};
 
 pub struct WasmRepo {
     pub db_name: String,
@@ -79,6 +78,13 @@ impl FindOneQuery for WasmRepo {
             let obj = serde_wasm_bindgen::from_value(obj_js)?;
             Ok(Some(obj))
         }
+    }
+}
+
+#[async_trait(? Send)]
+impl DeleteCommand for WasmRepo {
+    async fn delete(&self, key: &ObjectId) {
+        idbDelete(self.db_name.as_str(), self.store_name.as_str(), key.id_str().as_str()).await;
     }
 }
 

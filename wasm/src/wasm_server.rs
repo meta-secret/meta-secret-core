@@ -2,13 +2,14 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use meta_secret_core::node::app::meta_app::UserCredentialsManager;
+use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::db::meta_db::meta_db_manager::MetaDbManager;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
-use meta_secret_core::node::server::data_sync::{DataSync, LoggerId, MetaLogger, MetaServerContextState};
-use meta_secret_core::node::server::server_app::{MpscDataTransfer, ServerApp};
+use meta_secret_core::node::logger::{LoggerId, MetaLogger};
+use meta_secret_core::node::server::data_sync::{DataSync, MetaServerContextState};
+use meta_secret_core::node::server::server_app::ServerApp;
 
 use crate::commit_log::{WasmMetaLogger, WasmRepo};
-use crate::db::WasmDbError;
 
 pub struct WasmServer {
     server: ServerApp,

@@ -17,7 +17,6 @@ pub use self::meta_password_request::MetaPasswordRequest;
 pub use self::meta_passwords_data::MetaPasswordsData;
 pub use self::meta_passwords_status::MetaPasswordsStatus;
 pub use self::meta_vault::MetaVault;
-pub use self::password_recovery_request::PasswordRecoveryRequest;
 pub use self::registration_status::RegistrationStatus;
 pub use self::secret_distribution_doc_data::SecretDistributionDocData;
 pub use self::secret_distribution_type::SecretDistributionType;

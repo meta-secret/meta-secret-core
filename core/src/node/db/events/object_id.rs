@@ -80,6 +80,22 @@ impl ObjectId {
         }
     }
 
+    pub fn is_unit(&self) -> bool {
+        match self {
+            ObjectId::Unit { .. } => true,
+            ObjectId::Genesis { .. } => false,
+            ObjectId::Regular { .. } => false
+        }
+    }
+
+    pub fn is_genesis(&self) -> bool {
+        match self {
+            ObjectId::Unit { .. } => false,
+            ObjectId::Genesis { .. } => true,
+            ObjectId::Regular { .. } => false
+        }
+    }
+
     pub fn db_tail() -> ObjectId {
         ObjectId::unit(&ObjectDescriptor::DbTail)
     }

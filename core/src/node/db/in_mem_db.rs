@@ -1,6 +1,6 @@
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::object_id::ObjectId;
-use crate::node::db::generic_db::{FindOneQuery, KvLogEventRepo, SaveCommand};
+use crate::node::db::generic_db::{DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand};
 use async_trait::async_trait;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -34,6 +34,13 @@ impl SaveCommand for InMemKvLogEventRepo {
     async fn save(&self, key: &ObjectId, value: &GenericKvLogEvent) -> Result<(), Box<dyn Error>> {
         self.db.borrow_mut().insert(key.clone(), value.clone());
         Ok(())
+    }
+}
+
+#[async_trait(? Send)]
+impl DeleteCommand for InMemKvLogEventRepo {
+    async fn delete(&self, key: &ObjectId) {
+        let _ = self.db.borrow_mut().remove(key);
     }
 }
 

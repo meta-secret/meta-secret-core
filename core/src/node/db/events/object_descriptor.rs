@@ -1,5 +1,5 @@
 use crate::crypto::utils;
-use crate::models::{DeviceInfo, SecretDistributionDocData, SecretDistributionType};
+use crate::models::SecretDistributionDocData;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -18,10 +18,11 @@ pub enum ObjectDescriptor {
     LocalSecretShare {
         meta_pass_id: String,
     },
-    SecretShareDistribution {
-        meta_pass_id: String,
-        action_type: SecretDistributionType,
-        device: DeviceInfo,
+
+    /// Secret distribution (split, recover, recovery request and so on)
+    SharedSecret {
+        vault_name: String,
+        device_id: String,
     },
 
     MetaVault,
@@ -30,11 +31,9 @@ pub enum ObjectDescriptor {
 
 impl From<&SecretDistributionDocData> for ObjectDescriptor {
     fn from(value: &SecretDistributionDocData) -> Self {
-        ObjectDescriptor::SecretShareDistribution {
-            meta_pass_id: value.meta_password.meta_password.id.id.clone(),
-            action_type: value.distribution_type,
-            device: value.secret_message.receiver.vault.device.as_ref().clone(),
-        }
+        let vault_name = value.meta_password.meta_password.vault.vault_name.clone();
+        let device_id = value.secret_message.receiver.vault.device.device_id.clone();
+        ObjectDescriptor::SharedSecret { vault_name, device_id, }
     }
 }
 
@@ -59,18 +58,14 @@ impl ObjectDescriptor {
             ObjectDescriptor::Mempool => String::from("mem_pool"),
 
             ObjectDescriptor::DbTail => String::from("db_tail"),
-
             ObjectDescriptor::Vault { vault_name } => vault_name.clone(),
-            ObjectDescriptor::SecretShareDistribution {
-                meta_pass_id,
-                action_type,
-                device,
-            } => {
-                let mut name = meta_pass_id.clone();
-                name.push_str(action_type.to_string().as_str());
-                name.push_str(device.device_id.as_str());
 
-                utils::to_id(name.as_str())
+            ObjectDescriptor::SharedSecret { vault_name, device_id } => {
+                let mut name = vault_name.clone();
+                name.push('-');
+                name.push_str(device_id.as_str());
+
+                name
             }
 
             ObjectDescriptor::MetaPassword { vault_name } => vault_name.clone(),
@@ -89,10 +84,10 @@ impl ToString for ObjectDescriptor {
             ObjectDescriptor::Mempool { .. } => String::from("Mempool"),
 
             ObjectDescriptor::Vault { .. } => String::from("Vault"),
-            ObjectDescriptor::SecretShareDistribution { .. } => String::from("ShareDist"),
+            ObjectDescriptor::SharedSecret { .. } => String::from("SharedSecret"),
 
             ObjectDescriptor::MetaPassword { .. } => String::from("MetaPass"),
-            ObjectDescriptor::LocalSecretShare { .. } => String::from("SecretShare"),
+            ObjectDescriptor::LocalSecretShare { .. } => String::from("LocalSecretShare"),
 
             ObjectDescriptor::MetaVault { .. } => String::from("MetaVault"),
             ObjectDescriptor::UserCreds { .. } => String::from("UserCreds"),

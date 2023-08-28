@@ -2,7 +2,7 @@ use std::error::Error;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
-use crate::node::db::events::common::{LogEventKeyBasedRecord, ObjectCreator, PublicKeyRecord};
+use crate::node::db::events::common::{LogEventKeyBasedRecord, ObjectCreator, PublicKeyRecord, SharedSecretObject};
 use crate::node::db::events::db_tail::{DbTail, DbTailObject};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::global_index::GlobalIndexObject;
@@ -13,7 +13,9 @@ use async_trait::async_trait;
 use crate::node::db::events::local::KvLogEventLocal;
 use crate::node::db::events::object_id::{IdGen, ObjectId};
 use crate::node::db::generic_db::KvLogEventRepo;
-use crate::node::server::data_sync::MetaLogger;
+use crate::node::logger::MetaLogger;
+use crate::models::user_signature::UserSignature;
+use crate::node::db::events::vault_event::VaultObject;
 
 pub struct PersistentObject {
     pub repo: Rc<dyn KvLogEventRepo>,
@@ -53,7 +55,11 @@ impl PersistentObject {
             match curr_db_event_result {
                 Ok(maybe_curr_db_event) => match maybe_curr_db_event {
                     Some(curr_db_event) => {
-                        curr_tail_id = curr_db_event.key().obj_id.next();
+                        if let GenericKvLogEvent::SharedSecret(_) = &curr_db_event {
+                            self.repo.delete(&curr_tail_id).await;
+                        }
+                        
+                        curr_tail_id = curr_tail_id.next();
                         commit_log.push(curr_db_event);
                     }
                     None => {
@@ -75,30 +81,29 @@ impl PersistentObject {
     }
 
     pub async fn find_tail_id(&self, curr_id: &ObjectId) -> Option<ObjectId> {
-        let curr_result = self.repo.find_one(curr_id).await;
+        let curr_result = self.repo
+            .find_one(curr_id)
+            .await;
 
         match curr_result {
-            Ok(maybe_id) => match maybe_id {
-                None => None,
-                Some(id) => {
-                    let mut existing_id = id.key().obj_id.clone();
-                    let mut curr_tail_id = id.key().obj_id.clone();
+            Ok(maybe_event) => match maybe_event {
+                None => {
+                    None
+                },
+                Some(_curr_event) => {
+                    let mut existing_id =  curr_id.clone();
+                    let mut curr_tail_id = curr_id.clone();
 
                     loop {
                         let found_event_result = self.repo.find_one(&curr_tail_id).await;
 
                         match found_event_result {
-                            Ok(maybe_idx) => match maybe_idx {
-                                Some(idx) => {
-                                    existing_id = idx.key().obj_id.clone();
-                                    curr_tail_id = existing_id.next();
-                                }
-                                None => {
-                                    break;
-                                }
-                            },
-                            Err(_) => {
-                                break;
+                            Ok(Some(_curr_tail)) => {
+                                existing_id = curr_tail_id.clone();
+                                curr_tail_id = curr_tail_id.next();
+                            }
+                            _ => {
+                                break
                             }
                         }
                     }
@@ -149,6 +154,27 @@ impl PersistentObject {
                     panic!("DbTail. Invalid event type");
                 }
             },
+        }
+    }
+
+    pub(crate) async fn get_user_sig(&self, tail_id: &ObjectId) -> Vec<UserSignature> {
+        let sig_result = self.get_vault_unit_signature(tail_id).await;
+        match sig_result {
+            Ok(Some(vault_sig)) => {
+                vec![vault_sig]
+            }
+            _ => {
+                vec![]
+            }
+        }
+    }
+
+    async fn get_vault_unit_signature(&self, tail_id: &ObjectId) -> Result<Option<UserSignature>, Box<dyn Error>> {
+        let maybe_unit_event = self.repo.find_one(tail_id).await?;
+
+        match maybe_unit_event {
+            Some(GenericKvLogEvent::Vault(VaultObject::Unit { event })) => Ok(Some(event.value)),
+            _ => Ok(None),
         }
     }
 }
@@ -208,42 +234,116 @@ mod test {
     use crate::models::DeviceInfo;
     use crate::node::db::events::common::{LogEventKeyBasedRecord, PublicKeyRecord};
     use crate::node::db::events::generic_log_event::GenericKvLogEvent;
-    use crate::node::db::events::global_index::GlobalIndexObject;
+    use crate::node::db::events::global_index::{GlobalIndexObject, GlobalIndexRecord};
+    use crate::node::db::events::kv_log_event::KvKey;
     use crate::node::db::events::object_descriptor::ObjectDescriptor;
-    use crate::node::db::generic_db::SaveCommand;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_object::PersistentObject;
-    use crate::node::server::data_sync::{DefaultMetaLogger, LoggerId};
+    use crate::node::db::events::kv_log_event::KvLogEvent;
+    use crate::node::db::events::object_id::{IdGen, ObjectId};
+    use crate::node::logger::{DefaultMetaLogger, LoggerId};
 
     #[tokio::test]
-    async fn test() {
-        let logger = Rc::new(DefaultMetaLogger { id: LoggerId::Client });
-        let repo = Rc::new(InMemKvLogEventRepo::default());
-
-        let persistent_object = PersistentObject::new(repo.clone(), logger);
-
-        let s_box = KeyManager::generate_security_box("test_vault".to_string());
-        let device = DeviceInfo {
-            device_id: "a".to_string(),
-            device_name: "a".to_string(),
+    async fn test_find_events() {
+        let persistent_object = {
+            let logger = Rc::new(DefaultMetaLogger { id: LoggerId::Client });
+            let repo = Rc::new(InMemKvLogEventRepo::default());
+            PersistentObject::new(repo.clone(), logger)
         };
-        let user_sig = s_box.get_user_sig(&device);
+
+        let user_sig = {
+            let s_box = KeyManager::generate_security_box("test_vault".to_string());
+            let device = DeviceInfo {
+                device_id: "a".to_string(),
+                device_name: "a".to_string(),
+            };
+            s_box.get_user_sig(&device)
+        };
 
         let unit_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::unit());
-        repo.save_event(&unit_event).await.unwrap();
+        persistent_object
+            .repo
+            .save_event(&unit_event).await.unwrap();
 
         let genesis_event = {
             let server_pk = PublicKeyRecord::from(user_sig.public_key.as_ref().clone());
             GenericKvLogEvent::GlobalIndex(GlobalIndexObject::genesis(&server_pk))
         };
 
-        repo.save_event(&genesis_event).await.unwrap();
+        let vault_1_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Update {
+            event: KvLogEvent {
+                key: KvKey::Empty {
+                    obj_desc: ObjectDescriptor::GlobalIndex,
+                },
+                value: GlobalIndexRecord {
+                    vault_id: String::from("vault_1"),
+                },
+            },
+        });
+
+        persistent_object
+            .repo
+            .save_event(&genesis_event)
+            .await
+            .unwrap();
+
+        persistent_object
+            .repo
+            .save(&ObjectId::global_index_genesis().next(), &vault_1_event)
+            .await
+            .unwrap();
 
         let tail_id = persistent_object
             .find_tail_id_by_obj_desc(&ObjectDescriptor::GlobalIndex)
             .await
             .unwrap();
 
-        assert_eq!(genesis_event.key().obj_id.id_str(), tail_id.id_str());
+        assert_eq!(String::from("GlobalIndex:index::2"), tail_id.id_str());
+    }
+
+    #[tokio::test]
+    async fn test_global_index() {
+        let persistent_object = {
+            let logger = Rc::new(DefaultMetaLogger { id: LoggerId::Client });
+            let repo = Rc::new(InMemKvLogEventRepo::default());
+            PersistentObject::new(repo.clone(), logger)
+        };
+
+        let user_sig = {
+            let s_box = KeyManager::generate_security_box("test_vault".to_string());
+            let device = DeviceInfo {
+                device_id: "a".to_string(),
+                device_name: "a".to_string(),
+            };
+            s_box.get_user_sig(&device)
+        };
+
+        let unit_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::unit());
+        persistent_object
+            .repo
+            .save_event(&unit_event).await.unwrap();
+
+        let genesis_event = {
+            let server_pk = PublicKeyRecord::from(user_sig.public_key.as_ref().clone());
+            GenericKvLogEvent::GlobalIndex(GlobalIndexObject::genesis(&server_pk))
+        };
+
+        persistent_object
+            .repo
+            .save_event(&genesis_event).await.unwrap();
+
+        let tail_id = persistent_object
+            .find_tail_id_by_obj_desc(&ObjectDescriptor::GlobalIndex)
+            .await
+            .unwrap();
+
+        match genesis_event.key() {
+            KvKey::Empty{ .. } => {
+                panic!("Invalid state");
+            }
+            KvKey::Key { obj_id, .. } => {
+                assert_eq!(obj_id.id_str(), tail_id.id_str());
+            }
+        }
     }
 }
