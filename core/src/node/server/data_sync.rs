@@ -8,7 +8,7 @@ use crate::crypto::keys::KeyManager;
 use crate::models::{UserCredentials, UserSignature};
 use crate::node::db::actions::join;
 use crate::node::db::actions::sign_up::SignUpAction;
-use crate::node::db::events::common::{ObjectCreator, SharedSecretObject};
+use crate::node::db::events::common::{LogEventKeyBasedRecord, ObjectCreator, SharedSecretObject};
 use crate::node::db::events::common::{MempoolObject, MetaPassObject, PublicKeyRecord};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::global_index::GlobalIndexObject;
@@ -173,26 +173,42 @@ impl DataSync {
             }
 
             GenericKvLogEvent::SharedSecret(sss_obj) => {
-                match sss_obj {
-                    SharedSecretObject::Split { event } => {
-                        let obj_desc = event.key.obj_desc();
-                        let tail_id = self.persistent_obj
-                            .find_tail_id_by_obj_desc(&obj_desc)
-                            .await
-                            .unwrap_or(ObjectId::unit(&obj_desc));
+                let obj_desc = generic_event.key().obj_desc();
 
-                        let split_event = GenericKvLogEvent::SharedSecret(SharedSecretObject::Split {
+                let slot_id = self.persistent_obj
+                    .find_tail_id_by_obj_desc(&obj_desc)
+                    .await
+                    .map(|id| id.next())
+                    .unwrap_or(ObjectId::unit(&obj_desc));
+
+                let shared_secret_event = match sss_obj {
+                    SharedSecretObject::Split { event } => {
+                        GenericKvLogEvent::SharedSecret(SharedSecretObject::Split {
                             event: KvLogEvent {
                                 key: KvKey::Empty { obj_desc },
                                 value: event.value.clone(),
                             },
-                        });
-                        let _ = self.repo.save(&tail_id, &split_event).await;
+                        })
                     }
-                    SharedSecretObject::Recover { .. } => {
-                        //not implemented yet
+                    SharedSecretObject::Recover { event } => {
+                        GenericKvLogEvent::SharedSecret(SharedSecretObject::Recover {
+                            event: KvLogEvent {
+                                key: KvKey::Empty { obj_desc },
+                                value: event.value.clone(),
+                            }
+                        })
                     }
-                }
+                    SharedSecretObject::RecoveryRequest { event } => {
+                       GenericKvLogEvent::SharedSecret(SharedSecretObject::RecoveryRequest {
+                            event: KvLogEvent {
+                                key: KvKey::Empty { obj_desc },
+                                value: event.value.clone(),
+                            },
+                        })
+                    }
+                };
+
+                let _ = self.repo.save(&slot_id, &shared_secret_event).await;
             }
 
             GenericKvLogEvent::LocalEvent(evt_type) => {

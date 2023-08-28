@@ -24,6 +24,7 @@ impl WasmSyncGateway {
         gateway_id: String,
         logger: Rc<dyn MetaLogger>
     ) -> WasmSyncGateway {
+        logger.info("Create new wasm sync gateway instance");
 
         let persistent_object = {
             let obj = PersistentObject::new(repo.clone(), logger.clone());

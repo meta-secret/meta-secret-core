@@ -235,6 +235,20 @@ impl ApplicationStateManager {
         app_state.to_js().unwrap()
     }
 
+    pub async fn recover(&self, meta_pass_id: JsValue) {
+        match self.meta_client.as_ref() {
+            WasmMetaClient::Empty(_) => {
+
+            }
+            WasmMetaClient::Init(_) => {
+
+            }
+            WasmMetaClient::Registered(client) => {
+                client.recovery_request(meta_pass_id).await;
+            }
+        }
+    }
+
     pub async fn cluster_distribution(&self, pass_id: &str, pass: &str) {
         match self.meta_client.as_ref() {
             WasmMetaClient::Empty(_) => {

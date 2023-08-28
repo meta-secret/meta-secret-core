@@ -5,15 +5,18 @@ use async_mutex::Mutex;
 use wasm_bindgen::{JsError, JsValue};
 
 use meta_secret_core::crypto::keys::KeyManager;
-use meta_secret_core::models::{ApplicationState, MetaPasswordDoc, MetaVault, UserCredentials, VaultDoc};
+use meta_secret_core::models::{
+    ApplicationState, MetaPasswordDoc, MetaPasswordId, MetaVault, UserCredentials, VaultDoc}
+;
+use meta_secret_core::models::password_recovery_request::PasswordRecoveryRequest;
 use meta_secret_core::node::app::meta_app::{MetaVaultManager, UserCredentialsManager};
 use meta_secret_core::node::db::actions::sign_up::SignUpRequest;
 use meta_secret_core::node::db::meta_db::meta_db_manager::MetaDbManager;
-use meta_secret_core::node::db::events::common::{MempoolObject, VaultInfo};
+use meta_secret_core::node::db::events::common::{MempoolObject, ObjectCreator, SharedSecretObject, VaultInfo};
 use meta_secret_core::node::db::events::generic_log_event::GenericKvLogEvent;
 use meta_secret_core::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use meta_secret_core::node::db::events::object_descriptor::ObjectDescriptor;
-use meta_secret_core::node::db::events::object_id::ObjectId;
+use meta_secret_core::node::db::events::object_id::{IdGen, ObjectId};
 use meta_secret_core::node::db::generic_db::SaveCommand;
 use meta_secret_core::node::db::meta_db::meta_db_view::{MetaDb, MetaPassStore, VaultStore};
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
@@ -321,6 +324,60 @@ impl RegisteredMetaClient {
             meta_db_manager
             .sync_meta_db(&mut meta_db)
             .await;
+    }
+
+    pub async fn recovery_request(&self, meta_pass_id: JsValue) {
+        match &self.vault_info {
+            VaultInfo::Member { vault } => {
+                let mut meta_db = self.ctx.meta_db.lock().await;
+
+                for curr_sig in &vault.signatures {
+                    if self.creds.user_sig.public_key.base64_text == curr_sig.public_key.base64_text {
+                        continue;
+                    }
+
+                    let id: MetaPasswordId = serde_wasm_bindgen::from_value(meta_pass_id.clone())
+                        .unwrap();
+
+                    let recovery_request = PasswordRecoveryRequest {
+                        id: Box::new(id),
+                        consumer: Box::new(curr_sig.clone()),
+                        provider: self.creds.user_sig.clone(),
+                    };
+
+                    let obj_desc = ObjectDescriptor::SharedSecret {
+                        vault_name: curr_sig.vault.name.clone(),
+                        device_id: curr_sig.vault.device.device_id.clone(),
+                    };
+                    let generic_event = GenericKvLogEvent::SharedSecret(SharedSecretObject::RecoveryRequest {
+                        event: KvLogEvent {
+                            key: KvKey::Empty { obj_desc: obj_desc.clone() },
+                            value: recovery_request,
+                        },
+                    });
+
+                    let slot_id = self.ctx.persistent_object
+                        .find_tail_id_by_obj_desc(&obj_desc)
+                        .await
+                        .map(|id| id.next())
+                        .unwrap_or(ObjectId::unit(&obj_desc));
+
+                    let _ = self.ctx.repo
+                        .save(&slot_id, &generic_event)
+                        .await;
+                }
+
+                self
+                    .ctx.
+                    meta_db_manager
+                    .sync_meta_db(&mut meta_db)
+                    .await;
+            }
+            VaultInfo::Pending => {}
+            VaultInfo::Declined => {}
+            VaultInfo::NotFound => {}
+            VaultInfo::NotMember => {}
+        }
     }
 }
 

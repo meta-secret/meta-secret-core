@@ -26,7 +26,7 @@ pub struct SyncGateway {
 }
 
 impl SyncGateway {
-    pub async fn send_shared_secrets(&self, vault_doc: &VaultDoc) {
+    pub async fn  send_shared_secrets(&self, vault_doc: &VaultDoc) {
         let creds_result = self.repo.find_user_creds().await;
 
         if let Ok(Some(client_creds)) = creds_result {
@@ -140,8 +140,6 @@ impl SyncGateway {
                                     let key = if let GenericKvLogEvent::SharedSecret(sss_obj) = &new_event {
                                         match sss_obj {
                                             SharedSecretObject::Split { event } => {
-                                                self.logger.warn("GOT secret SHARE!!!!!");
-
                                                 let local_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::LocalSecretShare {
                                                     event: event.clone()
                                                 });
@@ -153,9 +151,35 @@ impl SyncGateway {
                                                 let _ = self.repo.save(&obj_id, &local_event).await;
                                                 obj_id
                                             }
-                                            SharedSecretObject::Recover { .. } => {
-                                                // not implemented yet
-                                                panic!("Not implemented yet")
+
+                                            SharedSecretObject::RecoveryRequest { event } => {
+                                                let obj_desc = event.key.obj_desc();
+                                                let slot_id = self.persistent_object
+                                                    .find_tail_id_by_obj_desc(&obj_desc)
+                                                    .await
+                                                    .map(|id| id.next())
+                                                    .unwrap_or(ObjectId::unit(&obj_desc));
+
+                                                let _ = self.repo
+                                                    .save(&slot_id, &new_event)
+                                                    .await;
+
+                                                slot_id
+                                            }
+
+                                            SharedSecretObject::Recover { event } => {
+                                                let obj_desc = event.key.obj_desc();
+                                                let slot_id = self.persistent_object
+                                                    .find_tail_id_by_obj_desc(&obj_desc)
+                                                    .await
+                                                    .map(|id| id.next())
+                                                    .unwrap_or(ObjectId::unit(&obj_desc));
+
+                                                let _ = self.repo
+                                                    .save(&slot_id, &new_event)
+                                                    .await;
+
+                                                slot_id
                                             }
                                         }
                                     } else {

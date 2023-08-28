@@ -15,7 +15,7 @@ pub trait SaveCommand {
                 panic!("Invalid event. Empty event")
             }
             KvKey::Key{ obj_id, .. } => {
-                self.save(obj_id, value).await;
+                let _ = self.save(obj_id, value).await;
                 Ok(obj_id.clone())
             }
         }
