@@ -11,8 +11,10 @@ use crate::node::db::events::local::KvLogEventLocal;
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{IdGen, ObjectId};
 use crate::node::db::meta_db::meta_db_manager::MetaDbManager;
+use crate::node::logger::MetaLogger;
 use crate::CoreResult;
 use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
+use crate::node::db::generic_db::KvLogEventRepo;
 
 pub mod data_block;
 pub mod shared_secret;
@@ -77,13 +79,13 @@ struct MetaCipherShare {
     cipher_share: AeadCipherText,
 }
 
-pub struct MetaDistributor {
-    pub meta_db_manager: Rc<MetaDbManager>,
+pub struct MetaDistributor<Repo: KvLogEventRepo, Logger: MetaLogger> {
+    pub meta_db_manager: Rc<MetaDbManager<Repo, Logger>>,
     pub user_creds: Rc<UserCredentials>,
     pub vault: VaultDoc,
 }
 
-impl MetaDistributor {
+impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDistributor<Repo, Logger> {
     /// Encrypt and distribute password across the cluster
     pub async fn distribute(self, password_id: String, password: String) {
         let encryptor = MetaEncryptor {
@@ -191,6 +193,7 @@ mod test {
     use crate::node::db::events::common::{LogEventKeyBasedRecord, PublicKeyRecord};
     use crate::node::db::actions::join;
     use crate::models::DeviceInfo;
+    use crate::node::db::generic_db::{FindOneQuery, SaveCommand};
 
     #[tokio::test]
     async fn test() {
@@ -204,7 +207,7 @@ mod test {
 
         let vault_unit_id = ObjectId::vault_unit("test_vault");
         let vault_tail_id = ctx.persistent_obj.find_tail_id(&vault_unit_id).await.unwrap();
-        let vault_event = ctx.persistent_obj.repo.find_one(&vault_tail_id).await.unwrap().unwrap();
+        let vault_event = ctx.repo.find_one(&vault_tail_id).await.unwrap().unwrap();
 
         let s_box_b = KeyManager::generate_security_box("test_vault".to_string());
         let device_b = DeviceInfo {

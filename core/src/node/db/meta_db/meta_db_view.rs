@@ -12,15 +12,15 @@ use crate::node::logger::MetaLogger;
 use std::rc::Rc;
 use crate::node::db::events::kv_log_event::KvKey;
 
-pub struct MetaDb {
+pub struct MetaDb<Logger: MetaLogger> {
     pub id: String,
     pub vault_store: VaultStore,
     pub global_index_store: GlobalIndexStore,
     pub meta_pass_store: MetaPassStore,
-    pub logger: Rc<dyn MetaLogger>,
+    pub logger: Rc<Logger>,
 }
 
-impl Display for MetaDb {
+impl<Logger: MetaLogger> Display for MetaDb<Logger> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -30,8 +30,8 @@ impl Display for MetaDb {
     }
 }
 
-impl MetaDb {
-    pub fn new(id: String, logger: Rc<dyn MetaLogger>) -> Self {
+impl<Logger: MetaLogger> MetaDb<Logger> {
+    pub fn new(id: String, logger: Rc<Logger>) -> Self {
         Self {
             id,
             vault_store: VaultStore::Empty,
@@ -172,7 +172,7 @@ impl TailId for MetaPassStore {
     }
 }
 
-impl MetaDb {
+impl<Logger: MetaLogger> MetaDb<Logger> {
     pub fn apply_global_index_event(&mut self, gi_event: &GlobalIndexObject) {
         self.logger
             .debug(format!("Apply global index event: {:?}", gi_event).as_str());

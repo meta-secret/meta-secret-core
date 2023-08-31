@@ -1,18 +1,16 @@
 extern crate core;
 
 use wasm_bindgen::prelude::*;
+use meta_secret_core::models::ApplicationState;
 use meta_secret_core::recover_from_shares;
-use meta_secret_core::secret::shared_secret::UserShareDto;
+use meta_secret_core::secret::data_block::common::SharedSecretConfig;
+use meta_secret_core::secret::shared_secret::{PlainText, SharedSecretEncryption, UserShareDto};
 
-mod commit_log;
-mod db;
+mod wasm_repo;
 mod objects;
 mod utils;
-pub mod wasm_app;
-mod virtual_device;
-mod wasm_sync_gateway;
-mod app_state_manager;
 mod wasm_server;
+mod wasm_app_state_manager;
 
 /// Json utilities https://github.com/rustwasm/wasm-bindgen/blob/main/crates/js-sys/tests/wasm/JSON.rs
 
@@ -26,8 +24,8 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 extern "C" {
     pub type JsAppState;
 
-    #[wasm_bindgen(structural, method)]
-    pub fn updateJsState(this: &JsAppState);
+    #[wasm_bindgen(method)]
+    pub async fn updateJsState(this: &JsAppState, app_state: JsValue);
 }
 
 #[wasm_bindgen]
@@ -64,7 +62,21 @@ pub fn configure() {
 /// https://rustwasm.github.io/docs/wasm-bindgen/reference/arbitrary-data-with-serde.html
 #[wasm_bindgen]
 pub fn split(pass: &str) -> Result<JsValue, JsValue> {
-    wasm_app::split(pass)
+    let plain_text = PlainText::from(pass);
+    let config = SharedSecretConfig {
+        number_of_shares: 3,
+        threshold: 2,
+    };
+    let shared_secret = SharedSecretEncryption::new(config, &plain_text).map_err(JsError::from)?;
+
+    let mut res: Vec<UserShareDto> = vec![];
+    for share_index in 0..config.number_of_shares {
+        let share: UserShareDto = shared_secret.get_share(share_index);
+        res.push(share);
+    }
+
+    let shares_js = serde_wasm_bindgen::to_value(&res)?;
+    Ok(shares_js)
 }
 
 #[wasm_bindgen]

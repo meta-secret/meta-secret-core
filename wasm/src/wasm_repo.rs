@@ -1,4 +1,5 @@
-use std::error::Error;
+
+use anyhow::anyhow;
 use async_trait::async_trait;
 use wasm_bindgen::JsValue;
 
@@ -48,8 +49,9 @@ impl WasmRepo {
 
 #[async_trait(? Send)]
 impl SaveCommand for WasmRepo {
-    async fn save(&self, key: &ObjectId, event: &GenericKvLogEvent) -> Result<(), Box<dyn Error>> {
-        let event_js: JsValue = serde_wasm_bindgen::to_value(event)?;
+    async fn save(&self, key: &ObjectId, event: &GenericKvLogEvent) -> anyhow::Result<ObjectId> {
+        let event_js: JsValue = serde_wasm_bindgen::to_value(event)
+            .map_err(|err| anyhow!("Error parsing data to save: {:?}", err))?;
 
         idbSave(
             self.db_name.as_str(),
@@ -58,13 +60,13 @@ impl SaveCommand for WasmRepo {
             event_js,
         )
             .await;
-        Ok(())
+        Ok(key.clone())
     }
 }
 
 #[async_trait(? Send)]
 impl FindOneQuery for WasmRepo {
-    async fn find_one(&self, key: &ObjectId) -> Result<Option<GenericKvLogEvent>, Box<dyn Error>> {
+    async fn find_one(&self, key: &ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>> {
         let obj_js = idbGet(
             self.db_name.as_str(),
             self.store_name.as_str(),
@@ -75,7 +77,8 @@ impl FindOneQuery for WasmRepo {
         if obj_js.is_undefined() {
             Ok(None)
         } else {
-            let obj = serde_wasm_bindgen::from_value(obj_js)?;
+            let obj = serde_wasm_bindgen::from_value(obj_js)
+                .map_err(|err| anyhow!("Error parsing found value: {:?}", err))?;
             Ok(Some(obj))
         }
     }

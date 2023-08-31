@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::rc::Rc;
 
 use async_trait::async_trait;
@@ -20,21 +19,21 @@ use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::meta_db::meta_db_manager::MetaDbManager;
 use crate::node::db::meta_db::meta_db_view::{MetaDb, VaultStore};
 use crate::node::db::objects::persistent_object::PersistentObject;
-use crate::node::logger::MetaLogger;
+use crate::node::logger::{MetaLogger};
 use crate::node::server::request::SyncRequest;
 
 #[async_trait(? Send)]
 pub trait DataSyncApi {
-    async fn replication(&self, request: SyncRequest) -> Result<Vec<GenericKvLogEvent>, Box<dyn Error>>;
+    async fn replication(&self, request: SyncRequest) -> anyhow::Result<Vec<GenericKvLogEvent>>;
     async fn send(&self, event: &GenericKvLogEvent);
 }
 
-pub struct DataSync {
-    pub persistent_obj: Rc<PersistentObject>,
-    pub repo: Rc<dyn KvLogEventRepo>,
+pub struct DataSync<Repo: KvLogEventRepo, Logger: MetaLogger> {
+    pub persistent_obj: Rc<PersistentObject<Repo, Logger>>,
+    pub repo: Rc<Repo>,
     pub context: Rc<MetaServerContextState>,
-    pub meta_db_manager: Rc<MetaDbManager>,
-    pub logger: Rc<dyn MetaLogger>,
+    pub meta_db_manager: Rc<MetaDbManager<Repo, Logger>>,
+    pub logger: Rc<Logger>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -46,8 +45,8 @@ pub enum DataSyncMessage {
 
 //MetaServerContext
 #[async_trait(? Send)]
-impl DataSyncApi for DataSync {
-    async fn replication(&self, request: SyncRequest) -> Result<Vec<GenericKvLogEvent>, Box<dyn Error>> {
+impl<Repo: KvLogEventRepo, Logger: MetaLogger> DataSyncApi for DataSync<Repo, Logger> {
+    async fn replication(&self, request: SyncRequest) -> anyhow::Result<Vec<GenericKvLogEvent>> {
         let mut commit_log: Vec<GenericKvLogEvent> = vec![];
 
         self.global_index_replication(&request, &mut commit_log).await?;
@@ -67,7 +66,7 @@ impl DataSyncApi for DataSync {
     }
 }
 
-impl DataSync {
+impl<Repo: KvLogEventRepo, Logger: MetaLogger> DataSync<Repo, Logger> {
     async fn server_processing(&self, generic_event: &GenericKvLogEvent) {
         self.logger
             .debug(format!("DataSync::event_processing: {:?}", generic_event).as_str());
@@ -221,7 +220,7 @@ impl DataSync {
         }
     }
 
-    async fn global_index_replication(&self, request: &SyncRequest, commit_log: &mut Vec<GenericKvLogEvent>) -> Result<(), Box<dyn Error>> {
+    async fn global_index_replication(&self, request: &SyncRequest, commit_log: &mut Vec<GenericKvLogEvent>) -> anyhow::Result<()> {
         match &request.global_index {
             None => {
                 let meta_g = self
@@ -329,7 +328,7 @@ impl DataSync {
     }
 }
 
-impl DataSync {
+impl<Repo: KvLogEventRepo, Logger: MetaLogger> DataSync<Repo, Logger> {
     async fn accept_sign_up_request(&self, event: &KvLogEvent<UserSignature>, vault_id: &IdStr) {
         //vault not found, we can create our new vault
         self.logger.info("Accept SignUp request");
@@ -527,9 +526,9 @@ pub mod test {
     pub struct DataSyncTestContext {
         pub logger: Rc<DefaultMetaLogger>,
         pub repo: Rc<InMemKvLogEventRepo>,
-        pub persistent_obj: Rc<PersistentObject>,
-        pub meta_db_manager: Rc<MetaDbManager>,
-        pub data_sync: DataSync,
+        pub persistent_obj: Rc<PersistentObject<InMemKvLogEventRepo, DefaultMetaLogger>>,
+        pub meta_db_manager: Rc<MetaDbManager<InMemKvLogEventRepo, DefaultMetaLogger>>,
+        pub data_sync: DataSync<InMemKvLogEventRepo, DefaultMetaLogger>,
         pub user_sig: Rc<UserSignature>,
         pub user_creds: Rc<UserCredentials>,
     }

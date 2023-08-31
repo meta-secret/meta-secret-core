@@ -5,16 +5,19 @@ use crate::node::common::data_transfer::MpscReceiver;
 
 use crate::node::logger::MetaLogger;
 use crate::node::server::data_sync::{DataSync, DataSyncApi, DataSyncMessage};
+use crate::node::db::generic_db::KvLogEventRepo;
 
-pub struct ServerApp {
+pub struct ServerApp<Repo: KvLogEventRepo, Logger: MetaLogger> {
     pub timeout: Duration,
-    pub data_sync: DataSync,
+    pub data_sync: DataSync<Repo, Logger>,
     pub data_transfer: Rc<MpscReceiver>,
-    pub logger: Rc<dyn MetaLogger>,
+    pub logger: Rc<Logger>,
 }
 
-impl ServerApp {
+impl<Repo: KvLogEventRepo, Logger: MetaLogger> ServerApp<Repo, Logger> {
     pub async fn run(&self) {
+        self.logger.info("Run server app");
+
         loop {
             async_std::task::sleep(self.timeout).await;
 

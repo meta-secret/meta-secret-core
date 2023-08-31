@@ -18,6 +18,8 @@ name = "meta_secret_core"
 thiserror = "1.0.40"
 anyhow = "1.0.66"
 
+async-mutex = "1.4.0"
+
 async-trait = "0.1"
 flume = "0.10.14"
 
@@ -57,3 +59,4 @@ features = [
 
 [dev-dependencies]
 tokio = { version = "1.20.1", features = ["macros"] }
+pretty_assertions = "1"

@@ -3,29 +3,27 @@ use std::sync::Arc;
 
 use async_mutex::Mutex as AsyncMutex;
 use serde::{Deserialize, Serialize};
-use wasm_bindgen_futures::spawn_local;
 
-use meta_secret_core::models::ApplicationState;
-use meta_secret_core::node::app::meta_app::UserCredentialsManager;
-use meta_secret_core::node::db::meta_db::meta_db_manager::MetaDbManager;
-use meta_secret_core::node::db::actions::join;
-use meta_secret_core::node::db::events::vault_event::VaultObject;
-use meta_secret_core::node::db::generic_db::{FindOneQuery, SaveCommand};
-use meta_secret_core::node::db::meta_db::meta_db_view::{MetaDb, VaultStore};
-use meta_secret_core::node::db::events::generic_log_event::GenericKvLogEvent;
-use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
-use meta_secret_core::node::logger::MetaLogger;
-use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
+use crate::models::ApplicationState;
+use crate::node::app::meta_manager::UserCredentialsManager;
+use crate::node::db::meta_db::meta_db_manager::MetaDbManager;
+use crate::node::db::actions::join;
+use crate::node::db::events::vault_event::VaultObject;
+use crate::node::db::generic_db::{KvLogEventRepo};
+use crate::node::db::meta_db::meta_db_view::{MetaDb, VaultStore};
+use crate::node::db::events::generic_log_event::GenericKvLogEvent;
+use crate::node::db::objects::persistent_object::PersistentObject;
+use crate::node::logger::MetaLogger;
+use crate::node::common::data_transfer::MpscDataTransfer;
 
-use crate::commit_log::WasmRepo;
-use crate::wasm_app::{EmptyMetaClient, MetaClientContext, WasmMetaClient};
-use crate::wasm_sync_gateway::WasmSyncGateway;
+use crate::node::app::meta_app::{EmptyMetaClient, MetaClientContext, MetaClient};
+use crate::node::app::sync_gateway::SyncGateway;
 
-pub struct VirtualDevice {
-    pub meta_client: WasmMetaClient,
-    pub ctx: Rc<MetaClientContext>,
+pub struct VirtualDevice<Repo: KvLogEventRepo, Logger: MetaLogger> {
+    pub meta_client: MetaClient<Repo, Logger>,
+    pub ctx: Rc<MetaClientContext<Repo, Logger>>,
     pub data_transfer: Rc<MpscDataTransfer>,
-    pub logger: Rc<dyn MetaLogger>
+    pub logger: Rc<Logger>
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -35,8 +33,8 @@ pub enum VirtualDeviceEvent {
     SignUp,
 }
 
-impl VirtualDevice {
-    pub fn new(data_transfer: Rc<MpscDataTransfer>, logger: Rc<dyn MetaLogger>) -> VirtualDevice {
+impl<Repo: KvLogEventRepo, Logger: MetaLogger> VirtualDevice<Repo, Logger> {
+    pub fn new(virtual_device_repo: Rc<Repo>, data_transfer: Rc<MpscDataTransfer>, logger: Rc<Logger>) -> VirtualDevice<Repo, Logger> {
         let app_state = {
             let state = ApplicationState {
                 meta_vault: None,
@@ -48,8 +46,6 @@ impl VirtualDevice {
         };
 
         let ctx = {
-            let virtual_device_repo = Rc::new(WasmRepo::virtual_device());
-
             let persistent_object = Rc::new(PersistentObject::new(virtual_device_repo.clone(), logger.clone()));
 
             let meta_db_manager = MetaDbManager {
@@ -75,31 +71,27 @@ impl VirtualDevice {
         };
 
         Self {
-            meta_client: WasmMetaClient::Empty(empty_meta_client),
+            meta_client: MetaClient::Empty(empty_meta_client),
             ctx,
             data_transfer,
             logger: logger.clone(),
         }
     }
 
-    pub fn setup_virtual_device(device_repo: Rc<WasmRepo>, data_transfer: Rc<MpscDataTransfer>, logger: Rc<dyn MetaLogger>) {
-        logger.info("Setup virtual device");
-        spawn_local(async move {
-            Self::event_handler(device_repo, data_transfer, logger).await;
-        });
-    }
-
-    async fn event_handler(device_repo: Rc<WasmRepo>, data_transfer: Rc<MpscDataTransfer>, logger: Rc<dyn MetaLogger>) {
+    pub async fn event_handler(device_repo: Rc<Repo>, data_transfer: Rc<MpscDataTransfer>, logger: Rc<Logger>) {
         logger.info("Run virtual device event handler");
 
-        let mut virtual_device = Rc::new(VirtualDevice::new(data_transfer.clone(), logger.clone()));
+        let mut virtual_device = {
+            let vd = VirtualDevice::new(device_repo.clone(), data_transfer.clone(), logger.clone());
+            Rc::new(vd)
+        };
 
         logger.info("Generate device creds");
         let _ = device_repo
             .get_or_generate_user_creds(String::from("q"), String::from("virtual-device"))
             .await;
 
-        let gateway = WasmSyncGateway::new_with_custom_repo(
+        let gateway = SyncGateway::new(
             virtual_device.ctx.repo.clone(),
             data_transfer.clone(),
             String::from("vd-gateway"),
@@ -132,12 +124,12 @@ impl VirtualDevice {
             gateway.sync().await;
 
             match &virtual_device.meta_client {
-                WasmMetaClient::Empty(client) => {
+                MetaClient::Empty(client) => {
                     let meta_db_manager = &client.ctx.meta_db_manager;
                     let mut meta_db = client.ctx.meta_db.lock().await;
                     let _ = meta_db_manager.sync_meta_db(&mut meta_db).await;
                 }
-                WasmMetaClient::Init(client) => {
+                MetaClient::Init(client) => {
                     let meta_db_manager = &client.ctx.meta_db_manager;
                     let mut meta_db = client.ctx.meta_db.lock().await;
                     meta_db.update_vault_info(client.creds.user_sig.vault.name.as_str());
@@ -162,10 +154,10 @@ impl VirtualDevice {
                                 .await;
                         }
 
-                        gateway.sync_shared_secrets(vault).await;
+                        gateway.send_shared_secrets(vault).await;
                     };
                 }
-                WasmMetaClient::Registered(client) => {
+                MetaClient::Registered(client) => {
                     let meta_db_manager = &client.ctx.meta_db_manager;
                     let mut meta_db = client.ctx.meta_db.lock().await;
                     meta_db.update_vault_info(client.creds.user_sig.vault.name.as_str());
@@ -190,7 +182,7 @@ impl VirtualDevice {
                                 .await;
                         }
 
-                        gateway.sync_shared_secrets(vault).await;
+                        gateway.send_shared_secrets(vault).await;
                     };
                 }
             };
@@ -198,11 +190,11 @@ impl VirtualDevice {
     }
 
 
-    pub async fn handle(&self, event: VirtualDeviceEvent) -> Result<VirtualDevice, Box<dyn std::error::Error>> {
-        self.logger.info(format!("wasm: handle event: {:?}", event).as_str());
+    pub async fn handle(&self, event: VirtualDeviceEvent) -> anyhow::Result<VirtualDevice<Repo, Logger>> {
+        self.logger.info(format!("handle event: {:?}", event).as_str());
 
         match (&self.meta_client, &event) {
-            (WasmMetaClient::Empty(client), VirtualDeviceEvent::Init) => {
+            (MetaClient::Empty(client), VirtualDeviceEvent::Init) => {
                 // init
 
                 let vault_name = "q";
@@ -213,22 +205,27 @@ impl VirtualDevice {
                     .await?;
 
                 Ok(VirtualDevice {
-                    meta_client: WasmMetaClient::Init(init_client),
+                    meta_client: MetaClient::Init(init_client),
                     ctx: client.ctx.clone(),
                     data_transfer: self.data_transfer.clone(),
                     logger: self.logger.clone()
                 })
             }
-            (WasmMetaClient::Init(client), VirtualDeviceEvent::SignUp) => {
+            (MetaClient::Init(client), VirtualDeviceEvent::SignUp) => {
                 Ok(VirtualDevice {
-                    meta_client: WasmMetaClient::Registered(client.sign_up().await),
+                    meta_client: MetaClient::Registered(client.sign_up().await),
                     ctx: client.ctx.clone(),
                     data_transfer: self.data_transfer.clone(),
                     logger: self.logger.clone()
                 })
             }
             _ => {
-                self.logger.info(format!("Invalid state!!!!!!!!!!!!!!!: state: {:?}, event: {:?}", self.meta_client.to_string(), &event).as_str());
+                let msg = format!(
+                    "Invalid state!!!!!!!!!!!!!!!: state: {:?}, event: {:?}",
+                    self.meta_client.to_string(),
+                    &event
+                );
+                self.logger.info(msg.as_str());
                 panic!("Invalid state")
             }
         }

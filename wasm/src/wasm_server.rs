@@ -1,7 +1,7 @@
 use std::rc::Rc;
 use std::time::Duration;
 
-use meta_secret_core::node::app::meta_app::UserCredentialsManager;
+use meta_secret_core::node::app::meta_manager::UserCredentialsManager;
 use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::db::meta_db::meta_db_manager::MetaDbManager;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
@@ -9,20 +9,21 @@ use meta_secret_core::node::logger::{LoggerId, MetaLogger};
 use meta_secret_core::node::server::data_sync::{DataSync, MetaServerContextState};
 use meta_secret_core::node::server::server_app::ServerApp;
 
-use crate::commit_log::{WasmMetaLogger, WasmRepo};
+use crate::wasm_repo::{WasmMetaLogger, WasmRepo};
 
 pub struct WasmServer {
-    server: ServerApp,
+    pub server: Rc<ServerApp<WasmRepo, WasmMetaLogger>>,
 }
 
 impl WasmServer {
-    pub async fn run(data_transfer: Rc<MpscDataTransfer>) -> WasmServer {
+
+    pub async fn new(data_transfer: Rc<MpscDataTransfer>) -> WasmServer {
         let repo = Rc::new(WasmRepo::server());
         let logger = Rc::new(WasmMetaLogger {
             id: LoggerId::Server
         });
 
-        logger.info("Run wasm server");
+        logger.info("New wasm server");
 
         let persistent_obj = {
             let obj = PersistentObject::new(repo.clone(), logger.clone());
@@ -50,10 +51,8 @@ impl WasmServer {
             logger: logger.clone(),
         };
 
-        server.run().await;
-
         WasmServer {
-            server
+            server: Rc::new(server)
         }
     }
 }

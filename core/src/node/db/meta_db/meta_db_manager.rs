@@ -11,14 +11,14 @@ use crate::node::db::meta_db::meta_db_view::{MetaDb, MetaPassStore, TailId, Vaul
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::logger::MetaLogger;
 
-pub struct MetaDbManager {
-    pub persistent_obj: Rc<PersistentObject>,
-    pub repo: Rc<dyn KvLogEventRepo>,
-    pub logger: Rc<dyn MetaLogger>,
+pub struct MetaDbManager<Repo: KvLogEventRepo, Logger: MetaLogger> {
+    pub persistent_obj: Rc<PersistentObject<Repo, Logger>>,
+    pub repo: Rc<Repo>,
+    pub logger: Rc<Logger>,
 }
 
-impl From<Rc<PersistentObject>> for MetaDbManager {
-    fn from(persistent_object: Rc<PersistentObject>) -> Self {
+impl<Repo: KvLogEventRepo, Logger: MetaLogger> From<Rc<PersistentObject<Repo, Logger>>> for MetaDbManager<Repo, Logger> {
+    fn from(persistent_object: Rc<PersistentObject<Repo, Logger>>) -> Self {
         MetaDbManager {
             persistent_obj: persistent_object.clone(),
             repo: persistent_object.repo.clone(),
@@ -27,8 +27,8 @@ impl From<Rc<PersistentObject>> for MetaDbManager {
     }
 }
 
-impl MetaDbManager {
-    pub async fn sync_meta_db(&self, meta_db: &mut MetaDb) {
+impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDbManager<Repo, Logger> {
+    pub async fn sync_meta_db(&self, meta_db: &mut MetaDb<Logger>) {
         self.logger.debug("Sync meta db");
 
         let vault_events = match meta_db.vault_store.tail_id() {
@@ -70,7 +70,7 @@ impl MetaDbManager {
     }
 
     /// Apply new events to the database
-    fn apply(&self, commit_log: Vec<GenericKvLogEvent>, meta_db: &mut MetaDb) {
+    fn apply(&self, commit_log: Vec<GenericKvLogEvent>, meta_db: &mut MetaDb<Logger>) {
         for (_index, generic_event) in commit_log.iter().enumerate() {
             self.apply_event(meta_db, generic_event);
         }
@@ -78,7 +78,7 @@ impl MetaDbManager {
         self.logger.debug(format!("Updated meta db: {}", meta_db).as_str())
     }
 
-    fn apply_event(&self, meta_db: &mut MetaDb, generic_event: &GenericKvLogEvent) {
+    fn apply_event(&self, meta_db: &mut MetaDb<Logger>, generic_event: &GenericKvLogEvent) {
         self.logger.debug(format!("Apply event: {:?}", generic_event).as_str());
 
         match generic_event {
@@ -109,7 +109,7 @@ impl MetaDbManager {
         }
     }
 
-    fn apply_vault_event(&self, meta_db: &mut MetaDb, vault_obj: &VaultObject) {
+    fn apply_vault_event(&self, meta_db: &mut MetaDb<Logger>, vault_obj: &VaultObject) {
         self.logger
             .debug(format!("Apply vault event: {:?}", vault_obj).as_str());
 
@@ -244,7 +244,7 @@ impl MetaDbManager {
         }
     }
 
-    fn apply_meta_pass_event(&self, meta_db: &mut MetaDb, meta_pass_obj: &MetaPassObject) {
+    fn apply_meta_pass_event(&self, meta_db: &mut MetaDb<Logger>, meta_pass_obj: &MetaPassObject) {
         self.logger.debug("Apply meta pass event");
 
         match meta_pass_obj {

@@ -31,19 +31,19 @@ pub enum SqliteDbError {
 
 #[async_trait(? Send)]
 impl SaveCommand for SqlIteRepo {
-    async fn save(&self, _key: &ObjectId, value: &GenericKvLogEvent) -> Result<(), Box<dyn Error>> {
+    async fn save(&self, _key: &ObjectId, value: &GenericKvLogEvent) -> anyhow::Result<ObjectId> {
         let mut conn = SqliteConnection::establish(self.conn_url.as_str()).unwrap();
 
         diesel::insert_into(schema_log::table)
             .values(&NewDbLogEvent::from(value))
             .execute(&mut conn)?;
-        Ok(())
+        Ok(_key.clone())
     }
 }
 
 #[async_trait(? Send)]
 impl FindOneQuery for SqlIteRepo {
-    async fn find_one(&self, key: &ObjectId) -> Result<Option<GenericKvLogEvent>, Box<dyn Error>> {
+    async fn find_one(&self, key: &ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>> {
         let mut conn = SqliteConnection::establish(self.conn_url.as_str()).unwrap();
 
         let db_event: DbLogEvent = dsl::db_commit_log

@@ -1,8 +1,7 @@
-use std::error::Error;
 use std::rc::Rc;
-use crate::models::{UserCredentials, VaultDoc};
+use crate::models::{VaultDoc};
 
-use crate::node::app::meta_app::UserCredentialsManager;
+use crate::node::app::meta_manager::UserCredentialsManager;
 use crate::node::db::events::common::{LogEventKeyBasedRecord, ObjectCreator, SharedSecretObject};
 use crate::node::db::events::db_tail::{DbTail, DbTailObject};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
@@ -16,17 +15,42 @@ use crate::node::logger::MetaLogger;
 use crate::node::server::data_sync::DataSyncMessage;
 use crate::node::server::request::SyncRequest;
 use crate::node::common::data_transfer::MpscSender;
+use crate::node::db::generic_db::KvLogEventRepo;
+use crate::node::common::data_transfer::MpscDataTransfer;
 
-pub struct SyncGateway {
+pub struct SyncGateway<Repo: KvLogEventRepo, Logger: MetaLogger> {
     pub id: String,
-    pub logger: Rc<dyn MetaLogger>,
-    pub repo: Rc<dyn UserCredentialsManager>,
-    pub persistent_object: Rc<PersistentObject>,
+    pub logger: Rc<Logger>,
+    pub repo: Rc<Repo>,
+    pub persistent_object: Rc<PersistentObject<Repo, Logger>>,
     pub data_transfer: Rc<MpscSender>,
 }
 
-impl SyncGateway {
-    pub async fn  send_shared_secrets(&self, vault_doc: &VaultDoc) {
+impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
+
+    pub fn new(
+        repo: Rc<Repo>,
+        data_transfer: Rc<MpscDataTransfer>,
+        gateway_id: String,
+        logger: Rc<Logger>,
+    ) -> SyncGateway<Repo, Logger> {
+        logger.info("Create new wasm sync gateway instance");
+
+        let persistent_object = {
+            let obj = PersistentObject::new(repo.clone(), logger.clone());
+            Rc::new(obj)
+        };
+
+        SyncGateway {
+            id: gateway_id,
+            logger,
+            repo,
+            persistent_object,
+            data_transfer: data_transfer.mpsc_sender.clone(),
+        }
+    }
+
+    pub async fn send_shared_secrets(&self, vault_doc: &VaultDoc) {
         let creds_result = self.repo.find_user_creds().await;
 
         if let Ok(Some(client_creds)) = creds_result {
@@ -282,7 +306,7 @@ impl SyncGateway {
                             "Send event to server. May stuck if server won't response!!! : {:?}",
                             client_event
                         )
-                        .as_str(),
+                            .as_str(),
                     );
                     self.data_transfer.just_send(DataSyncMessage::Event(client_event)).await;
                 }
@@ -339,7 +363,7 @@ impl SyncGateway {
                         Some(obj_id.clone())
                     }
                 }
-            },
+            }
         }
     }
 }
