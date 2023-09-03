@@ -32,7 +32,6 @@ pub struct DataSync<Repo: KvLogEventRepo, Logger: MetaLogger> {
     pub persistent_obj: Rc<PersistentObject<Repo, Logger>>,
     pub repo: Rc<Repo>,
     pub context: Rc<MetaServerContextState>,
-    pub meta_db_manager: Rc<MetaDbManager<Repo, Logger>>,
     pub logger: Rc<Logger>,
 }
 
@@ -255,7 +254,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> DataSync<Repo, Logger> {
         }
     }
 
-    async fn vault_replication(&self, request: &SyncRequest, commit_log: &mut Vec<GenericKvLogEvent>) {
+    pub async fn vault_replication(&self, request: &SyncRequest, commit_log: &mut Vec<GenericKvLogEvent>) {
         match &request.vault_tail_id {
             None => {
                 // Ignore empty requests
@@ -274,8 +273,6 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> DataSync<Repo, Logger> {
 
                     meta_db
                 };
-
-                self.meta_db_manager.sync_meta_db(&mut meta_db).await;
 
                 let vault_signatures = match &meta_db.vault_store {
                     VaultStore::Empty => {

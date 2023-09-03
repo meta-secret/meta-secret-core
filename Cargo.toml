@@ -4,9 +4,9 @@ members = [
     "meta-server-emulator",
     "meta-test",
     "core-swift-lib",
+    "wasm"
 ]
 
 exclude = [
-    "meta-server-serverless",
-    "wasm"
+    "meta-server-serverless"
 ]

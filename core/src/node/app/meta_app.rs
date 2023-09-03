@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 use anyhow::anyhow;
@@ -149,7 +150,6 @@ pub struct InitMetaClient<Repo: KvLogEventRepo, Logger: MetaLogger> {
 }
 
 impl<Repo: KvLogEventRepo, Logger: MetaLogger> InitMetaClient<Repo, Logger> {
-
     pub async fn sign_up(&self) -> RegisteredMetaClient<Repo, Logger> {
         self.logger.info("InitClient: sign up");
         let vault_info = self.get_vault().await;
@@ -284,7 +284,6 @@ impl<Repo, Logger> RegisteredMetaClient<Repo, Logger>
     where
         Repo: KvLogEventRepo,
         Logger: MetaLogger {
-
     pub async fn cluster_distribution(&self, pass_id: &str, pass: &str) {
         self.logger.info("cluster distribution!!!!");
 
@@ -375,25 +374,18 @@ impl<Repo, Logger> RegisteredMetaClient<Repo, Logger>
 }
 
 pub struct MetaClientContext<Repo: KvLogEventRepo, Logger: MetaLogger> {
-    pub meta_db: Arc<Mutex<MetaDb<Logger>>>,
-    pub app_state: Arc<Mutex<ApplicationState>>,
-
-    pub meta_db_manager: MetaDbManager<Repo, Logger>,
     pub persistent_object: Rc<PersistentObject<Repo, Logger>>,
     pub repo: Rc<Repo>,
     pub logger: Rc<Logger>,
 }
 
 impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaClientContext<Repo, Logger> {
-    pub fn new(app_state: Arc<Mutex<ApplicationState>>, repo: Rc<Repo>, logger: Rc<Logger>) -> Self {
+    pub fn new(app_state: RefCell<ApplicationState>, repo: Rc<Repo>, logger: Rc<Logger>) -> Self {
         let persistent_object = Rc::new(PersistentObject::new(repo.clone(), logger.clone()));
         let meta_db_manager = MetaDbManager::from(persistent_object.clone());
 
         let meta_db = Arc::new(Mutex::new(MetaDb::new(String::from("client"), logger.clone())));
         MetaClientContext {
-            meta_db,
-            meta_db_manager,
-            app_state,
             persistent_object,
             repo,
             logger,
@@ -401,35 +393,28 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaClientContext<Repo, Logger> {
     }
 
     pub async fn is_join(&self) -> bool {
-        {
-            let app_state = self.app_state.lock().await;
-            app_state.join_component
-        }
+        self.app_state.borrow().join_component
     }
 
     pub async fn update_vault(&self, vault: VaultDoc) {
         self.logger.info(format!("App state. Update vault: {:?}", &vault).as_str());
 
-        let mut app_state = self.app_state.lock().await;
+        let mut app_state = self.app_state.borrow_mut();
         app_state.vault = Some(Box::new(vault));
     }
 
     pub async fn update_meta_passwords(&self, passes: &Vec<MetaPasswordDoc>) {
-        let mut app_state = self.app_state.lock().await;
+        let mut app_state = self.app_state.borrow_mut();
         app_state.meta_passwords = passes.clone();
     }
 
     pub async fn update_meta_vault(&self, meta_vault: Box<MetaVault>) {
-        {
-            let mut app_state = self.app_state.lock().await;
-            app_state.meta_vault = Some(meta_vault)
-        }
+        let mut app_state = self.app_state.borrow_mut();
+        app_state.meta_vault = Some(meta_vault)
     }
 
     pub async fn enable_join(&self) {
-        {
-            let mut app_state = self.app_state.lock().await;
-            app_state.join_component = true;
-        }
+        let mut app_state = self.app_state.borrow_mut();
+        app_state.join_component = true;
     }
 }

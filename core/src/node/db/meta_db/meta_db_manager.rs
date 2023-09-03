@@ -40,7 +40,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDbManager<Repo, Logger> {
 
         //sync global index
         let gi_events = {
-            let maybe_gi_tail_id = &meta_db.global_index_store.tail_id();
+            let maybe_gi_tail_id = meta_db.global_index_store.tail_id();
 
             match maybe_gi_tail_id {
                 None => {
@@ -48,16 +48,20 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDbManager<Repo, Logger> {
                         .find_object_events(&ObjectId::global_index_unit())
                         .await
                 }
-                Some(tail_id) => self.persistent_obj.find_object_events(tail_id).await,
+                Some(tail_id) => self
+                    .persistent_obj
+                    .find_object_events(&tail_id).await,
             }
         };
 
         let meta_pass_events = {
-            match &meta_db.meta_pass_store.tail_id() {
+            match meta_db.meta_pass_store.tail_id() {
                 None => {
                     vec![]
                 }
-                Some(tail_id) => self.persistent_obj.find_object_events(tail_id).await,
+                Some(tail_id) => self
+                    .persistent_obj
+                    .find_object_events(&tail_id).await,
             }
         };
 
@@ -78,15 +82,19 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDbManager<Repo, Logger> {
         self.logger.debug(format!("Updated meta db: {}", meta_db).as_str())
     }
 
-    fn apply_event(&self, meta_db: &mut MetaDb<Logger>, generic_event: &GenericKvLogEvent) {
+    fn apply_event(&self, meta_db: MetaDb<Logger>, generic_event: &GenericKvLogEvent) -> MetaDb<Logger> {
         self.logger.debug(format!("Apply event: {:?}", generic_event).as_str());
+
+        let mut new_meta_db = MetaDb {
+            ..meta_db
+        };
 
         match generic_event {
             GenericKvLogEvent::GlobalIndex(gi_event) => {
-                meta_db.apply_global_index_event(gi_event);
+                new_meta_db = meta_db.apply_global_index_event(gi_event);
             }
             GenericKvLogEvent::Vault(vault_obj_info) => {
-                self.apply_vault_event(meta_db, vault_obj_info);
+                new_meta_db = meta_db.apply_vault_event(vault_obj_info);
             }
             GenericKvLogEvent::MetaPass(meta_pass_obj) => {
                 self.apply_meta_pass_event(meta_db, meta_pass_obj);
@@ -107,158 +115,25 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDbManager<Repo, Logger> {
                 println!("Skip errors");
             }
         }
-    }
 
-    fn apply_vault_event(&self, meta_db: &mut MetaDb<Logger>, vault_obj: &VaultObject) {
-        self.logger
-            .debug(format!("Apply vault event: {:?}", vault_obj).as_str());
-
-        match vault_obj {
-            VaultObject::Unit { event } => {
-                let obj_id = match event.key.clone() {
-                    KvKey::Empty { .. } => {
-                        panic!("Invalid event. Empty key")
-                    }
-                    KvKey::Key { obj_id, .. } => {
-                        obj_id
-                    }
-                };
-                match &meta_db.vault_store {
-                    VaultStore::Empty => {
-                        meta_db.vault_store = VaultStore::Unit {
-                            tail_id: obj_id,
-                        }
-                    }
-                    VaultStore::Unit { .. } => {
-                        meta_db.vault_store = VaultStore::Unit {
-                            tail_id: obj_id,
-                        }
-                    }
-                    _ => {
-                        let msg_str = format!("Unit event. Invalid vault store state: {:?}", &meta_db.vault_store);
-                        self.logger.error(msg_str.as_str());
-                    }
-                }
-            },
-            VaultObject::Genesis { event } => {
-                let obj_id = match event.key.clone() {
-                    KvKey::Empty { .. } => {
-                        panic!("Invalid event. Empty key")
-                    }
-                    KvKey::Key { obj_id, .. } => {
-                        obj_id
-                    }
-                };
-
-                match &meta_db.vault_store {
-                    VaultStore::Unit { .. } => {
-                        meta_db.vault_store = VaultStore::Genesis {
-                            tail_id: obj_id,
-                            server_pk: event.value.clone(),
-                        }
-                    }
-                    _ => {
-                        let msg_error = format!("Genesis event. Invalid vault store state: {:?}", &meta_db.vault_store);
-                        self.logger.error(msg_error.as_str());
-                    }
-                };
-            }
-            VaultObject::SignUpUpdate { event } => {
-                let obj_id = match event.key.clone() {
-                    KvKey::Empty { .. } => {
-                        panic!("Invalid event. Empty key")
-                    }
-                    KvKey::Key { obj_id, .. } => {
-                        obj_id
-                    }
-                };
-
-                match &meta_db.vault_store {
-                    VaultStore::Genesis { server_pk, .. } => {
-                        meta_db.vault_store = VaultStore::Store {
-                            tail_id: obj_id,
-                            server_pk: server_pk.clone(),
-                            vault: event.value.clone(),
-                        }
-                    }
-                    _ => {
-                        let err_msg = format!("SignUp event. Invalid vault store state: {:?}", &meta_db.vault_store);
-                        self.logger.error(err_msg.as_str());
-                    }
-                };
-            }
-            VaultObject::JoinUpdate { event } => {
-                let obj_id = match event.key.clone() {
-                    KvKey::Empty { .. } => {
-                        panic!("Invalid event. Empty key")
-                    }
-                    KvKey::Key { obj_id, .. } => {
-                        obj_id
-                    }
-                };
-
-                match &meta_db.vault_store {
-                    VaultStore::Store { server_pk, .. } => {
-                        meta_db.vault_store = VaultStore::Store {
-                            tail_id: obj_id,
-                            server_pk: server_pk.clone(),
-                            vault: event.value.clone(),
-                        }
-                    }
-                    _ => {
-                        let err_msg = format!(
-                            "JoinUpdate event. Invalid vault store state: {:?}",
-                            &meta_db.vault_store
-                        );
-                        self.logger.info(err_msg.as_str());
-                    }
-                };
-            }
-            VaultObject::JoinRequest { event } => {
-                let obj_id = match event.key.clone() {
-                    KvKey::Empty { .. } => {
-                        panic!("Invalid event. Empty key")
-                    }
-                    KvKey::Key { obj_id, .. } => {
-                        obj_id
-                    }
-                };
-
-                match &meta_db.vault_store {
-                    VaultStore::Store { server_pk, vault, .. } => {
-                        meta_db.vault_store = VaultStore::Store {
-                            tail_id: obj_id,
-                            server_pk: server_pk.clone(),
-                            vault: vault.clone(),
-                        }
-                    }
-                    _ => {
-                        let err_msg = format!(
-                            "JoinRequest event. Invalid vault store state: {:?}",
-                            &meta_db.vault_store
-                        );
-                        self.logger.error(err_msg.as_str());
-                    }
-                };
-            }
-        }
+        new_meta_db
     }
 
     fn apply_meta_pass_event(&self, meta_db: &mut MetaDb<Logger>, meta_pass_obj: &MetaPassObject) {
         self.logger.debug("Apply meta pass event");
 
-        match meta_pass_obj {
-            MetaPassObject::Unit { event } => {
-                meta_db.meta_pass_store = {
-                    let obj_id = match event.key.clone() {
-                        KvKey::Empty { .. } => {
-                            panic!("Invalid event. Empty key")
-                        }
-                        KvKey::Key { obj_id, .. } => {
-                            obj_id
-                        }
-                    };
+        let obj_id = match meta_pass_obj.key().clone() {
+            KvKey::Empty { .. } => {
+                panic!("Invalid event. Empty key")
+            }
+            KvKey::Key { obj_id, .. } => {
+                obj_id
+            }
+        };
 
+        match meta_pass_obj {
+            MetaPassObject::Unit { .. } => {
+                meta_db.meta_pass_store = {
                     match &meta_db.meta_pass_store {
                         MetaPassStore::Empty => MetaPassStore::Unit {
                             tail_id: obj_id,
@@ -280,21 +155,12 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDbManager<Repo, Logger> {
             }
             MetaPassObject::Genesis { event } => {
                 meta_db.meta_pass_store = {
-                    let obj_id = match event.key.clone() {
-                        KvKey::Empty { .. } => {
-                            panic!("Invalid event. Empty key")
-                        }
-                        KvKey::Key { obj_id, .. } => {
-                            obj_id
-                        }
-                    };
-
                     match &meta_db.meta_pass_store {
                         MetaPassStore::Unit { .. } => MetaPassStore::Genesis {
                             tail_id: obj_id,
                             server_pk: event.value.clone(),
                         },
-                        //TODO fix duplicate synchronization
+
                         MetaPassStore::Genesis { .. } => MetaPassStore::Genesis {
                             tail_id: obj_id,
                             server_pk: event.value.clone(),
@@ -312,15 +178,6 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDbManager<Repo, Logger> {
             }
             MetaPassObject::Update { event } => {
                 meta_db.meta_pass_store = {
-                    let obj_id = match event.key.clone() {
-                        KvKey::Empty { .. } => {
-                            panic!("Invalid event. Empty key")
-                        }
-                        KvKey::Key { obj_id, .. } => {
-                            obj_id
-                        }
-                    };
-
                     match meta_db.meta_pass_store.clone() {
                         MetaPassStore::Genesis { server_pk, .. } => {
                             let passwords = vec![event.value.clone()];

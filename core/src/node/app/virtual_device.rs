@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -42,7 +43,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> VirtualDevice<Repo, Logger> {
                 meta_passwords: vec![],
                 join_component: false,
             };
-            Arc::new(AsyncMutex::new(state))
+            RefCell::new(state)
         };
 
         let ctx = {
