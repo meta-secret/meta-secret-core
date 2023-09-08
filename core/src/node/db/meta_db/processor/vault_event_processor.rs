@@ -1,11 +1,12 @@
 use crate::node::db::events::kv_log_event::KvKey;
 use crate::node::db::events::vault_event::VaultObject;
-use crate::node::db::meta_db::meta_db_view::{MetaDb, VaultStore};
+use crate::node::db::meta_db::meta_db_view::MetaDb;
+use crate::node::db::meta_db::store::vault_store::VaultStore;
 use crate::node::logger::MetaLogger;
 
 impl<Logger: MetaLogger> MetaDb<Logger> {
 
-    pub fn apply_vault_event(self, vault_obj: &VaultObject) -> MetaDb<Logger> {
+    pub fn apply_vault_event(&mut self, vault_obj: &VaultObject) {
         self.logger
             .debug(format!("Apply vault event: {:?}", vault_obj).as_str());
 
@@ -13,20 +14,16 @@ impl<Logger: MetaLogger> MetaDb<Logger> {
             panic!("Invalid event. Empty key")
         };
 
-        let mut new_meta_db = MetaDb {
-            ..self
-        };
-
         match vault_obj {
             VaultObject::Unit { .. } => {
                 match self.vault_store {
                     VaultStore::Empty => {
-                        new_meta_db.vault_store = VaultStore::Unit {
+                        self.vault_store = VaultStore::Unit {
                             tail_id: obj_id,
                         }
                     }
                     VaultStore::Unit { .. } => {
-                        new_meta_db.vault_store = VaultStore::Unit {
+                        self.vault_store = VaultStore::Unit {
                             tail_id: obj_id,
                         }
                     }
@@ -39,7 +36,7 @@ impl<Logger: MetaLogger> MetaDb<Logger> {
             VaultObject::Genesis { event } => {
                 match &self.vault_store {
                     VaultStore::Unit { .. } => {
-                        new_meta_db.vault_store = VaultStore::Genesis {
+                        self.vault_store = VaultStore::Genesis {
                             tail_id: obj_id,
                             server_pk: event.value.clone(),
                         }
@@ -53,7 +50,7 @@ impl<Logger: MetaLogger> MetaDb<Logger> {
             VaultObject::SignUpUpdate { event } => {
                 match &self.vault_store {
                     VaultStore::Genesis { server_pk, .. } => {
-                        new_meta_db.vault_store = VaultStore::Store {
+                        self.vault_store = VaultStore::Store {
                             tail_id: obj_id,
                             server_pk: server_pk.clone(),
                             vault: event.value.clone(),
@@ -68,7 +65,7 @@ impl<Logger: MetaLogger> MetaDb<Logger> {
             VaultObject::JoinUpdate { event } => {
                 match &self.vault_store {
                     VaultStore::Store { server_pk, .. } => {
-                        new_meta_db.vault_store = VaultStore::Store {
+                        self.vault_store = VaultStore::Store {
                             tail_id: obj_id,
                             server_pk: server_pk.clone(),
                             vault: event.value.clone(),
@@ -86,7 +83,7 @@ impl<Logger: MetaLogger> MetaDb<Logger> {
             VaultObject::JoinRequest { .. } => {
                 match &self.vault_store {
                     VaultStore::Store { server_pk, vault, .. } => {
-                        new_meta_db.vault_store = VaultStore::Store {
+                        self.vault_store = VaultStore::Store {
                             tail_id: obj_id,
                             server_pk: server_pk.clone(),
                             vault: vault.clone(),
@@ -102,24 +99,23 @@ impl<Logger: MetaLogger> MetaDb<Logger> {
                 };
             }
         }
-
-        new_meta_db
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::node::db::meta_db::meta_db_view::{MetaDb, VaultStore};
+    use crate::node::db::meta_db::meta_db_view::MetaDb;
     use crate::node::logger::{DefaultMetaLogger, LoggerId};
     use std::rc::Rc;
     use crate::crypto::keys::KeyManager;
     use crate::models::DeviceInfo;
     use crate::node::db::events::object_id::ObjectId;
     use crate::node::db::events::vault_event::VaultObject;
+    use crate::node::db::meta_db::store::vault_store::VaultStore;
 
     #[test]
     fn test() {
-        let meta_db = MetaDb::new(
+        let mut meta_db = MetaDb::new(
             String::from("test"),
             Rc::new(DefaultMetaLogger::new(LoggerId::Test))
         );
@@ -133,8 +129,8 @@ mod test {
         let user_sig = s_box.get_user_sig(&device);
 
         let vault_obj = VaultObject::unit(&user_sig);
-        let new_meta_db = meta_db.apply_vault_event(&vault_obj);
-        match new_meta_db.vault_store {
+        meta_db.apply_vault_event(&vault_obj);
+        match meta_db.vault_store {
             VaultStore::Unit { tail_id } => {
                 assert_eq!(ObjectId::vault_unit(vault_name.as_str()) , tail_id);
             }

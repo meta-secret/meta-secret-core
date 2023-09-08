@@ -10,7 +10,7 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::local::KvLogEventLocal;
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{IdGen, ObjectId};
-use crate::node::db::meta_db::meta_db_manager::MetaDbManager;
+use crate::node::db::meta_db::meta_db_service::MetaDbService;
 use crate::node::logger::MetaLogger;
 use crate::CoreResult;
 use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
@@ -80,7 +80,7 @@ struct MetaCipherShare {
 }
 
 pub struct MetaDistributor<Repo: KvLogEventRepo, Logger: MetaLogger> {
-    pub meta_db_manager: Rc<MetaDbManager<Repo, Logger>>,
+    pub meta_db_service: Rc<MetaDbService<Repo, Logger>>,
     pub user_creds: Rc<UserCredentials>,
     pub vault: VaultDoc,
 }
@@ -107,7 +107,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDistributor<Repo, Logger> {
         let meta_pass_obj_desc = ObjectDescriptor::MetaPassword { vault_name };
 
         let pass_tail_id = self
-            .meta_db_manager
+            .meta_db_service
             .persistent_obj
             .find_tail_id_by_obj_desc(&meta_pass_obj_desc)
             .await
@@ -124,7 +124,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDistributor<Repo, Logger> {
             },
         });
 
-        self.meta_db_manager.repo.save_event(&meta_pass_event).await.unwrap();
+        self.meta_db_service.repo.save_event(&meta_pass_event).await.unwrap();
 
         let encrypted_shares = encryptor.encrypt(password);
 
@@ -153,7 +153,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDistributor<Repo, Logger> {
                     },
                 });
 
-                let _ = self.meta_db_manager
+                let _ = self.meta_db_service
                     .repo
                     .save_event(&secret_share_event)
                     .await;
@@ -168,14 +168,14 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDistributor<Repo, Logger> {
                 });
 
                 let tail_id = self
-                    .meta_db_manager
+                    .meta_db_service
                     .persistent_obj
                     .find_tail_id_by_obj_desc(&obj_desc)
                     .await
                     .map(|id| id.next())
                     .unwrap_or(ObjectId::unit(&obj_desc));
 
-                let _ = self.meta_db_manager
+                let _ = self.meta_db_service
                     .repo
                     .save(&tail_id, &secret_share_event)
                     .await;
@@ -231,8 +231,7 @@ mod test {
             let accept_event = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
                 event: kv_join_event.clone(),
             });
-            let _ = ctx.meta_db_manager
-                .persistent_obj
+            let _ = ctx
                 .repo
                 .save_event(&accept_event)
                 .await;
@@ -242,14 +241,13 @@ mod test {
             let accept_event_c = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
                 event: kv_join_event_c.clone(),
             });
-            let _ = ctx.meta_db_manager
-                .persistent_obj
+            let _ = ctx
                 .repo
                 .save_event(&accept_event_c)
                 .await;
 
             let distributor = MetaDistributor {
-                meta_db_manager: ctx.meta_db_manager,
+                meta_db_service: ctx.meta_db_service,
                 user_creds: ctx.user_creds,
                 vault: kv_join_event_c.value,
             };

@@ -11,15 +11,14 @@ use meta_secret_core::models::meta_password_id::MetaPasswordId;
 use std::rc::Rc;
 use meta_secret_core::node::logger::LoggerId;
 use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
+use meta_secret_core::node::db::meta_db::meta_db_service::MetaDbService;
 use crate::wasm_server::WasmServer;
+use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 
 #[wasm_bindgen]
 pub struct WasmApplicationStateManager {
     app_manager: ApplicationStateManager<WasmRepo, WasmMetaLogger, WasmStateUpdateManager>,
-    app_state: ApplicationState,
-
-    meta_db: Arc<Mutex<MetaDb<Logger>>>,
-    meta_db_manager: MetaDbManager<Repo, Logger>,
+    meta_db_service: Rc<MetaDbService<WasmRepo, WasmMetaLogger>>
 }
 
 #[wasm_bindgen]
@@ -40,7 +39,13 @@ impl WasmApplicationStateManager {
 
         let data_transfer = Rc::new(MpscDataTransfer::new());
 
-        let wasm_server = Rc::new(WasmServer::new(data_transfer.clone()).await);
+        let persistent_obj = {
+            let obj = PersistentObject::new(client_repo.clone(), client_logger.clone());
+            Rc::new(obj)
+        };
+
+        let meta_db_service = Rc::new(MetaDbService::new(String::from("Client"), persistent_obj.clone()));
+        let wasm_server = Rc::new(WasmServer::new(data_transfer.clone(), meta_db_service.clone(), persistent_obj).await);
 
         let update_manager = Rc::new(WasmStateUpdateManager {
             js_app_state
@@ -52,9 +57,10 @@ impl WasmApplicationStateManager {
             wasm_server.server.clone(),
             data_transfer,
             update_manager,
+            meta_db_service.clone()
         );
 
-        WasmApplicationStateManager { app_manager }
+        WasmApplicationStateManager { app_manager, meta_db_service }
     }
 
 
@@ -62,6 +68,11 @@ impl WasmApplicationStateManager {
         let server = self.app_manager.server.clone();
         spawn_local(async move {
             let _ = server.run().await;
+        });
+
+        let meta_db_service = self.meta_db_service.clone();
+        spawn_local(async move {
+            meta_db_service.run().await;
         });
 
         let device_repo = self.app_manager.device_repo.clone();
@@ -101,8 +112,7 @@ impl WasmApplicationStateManager {
     pub async fn recover_js(&mut self, meta_pass_id_js: JsValue) {
         let meta_pass_id: MetaPasswordId = serde_wasm_bindgen::from_value(meta_pass_id_js)
             .unwrap();
-        let vault_info = self.app_manager.recover(meta_pass_id).await;
-        self.app_state
+        self.app_manager.recover(meta_pass_id).await;
     }
 }
 

@@ -12,16 +12,17 @@ use crate::models::{
 use crate::models::password_recovery_request::PasswordRecoveryRequest;
 use crate::node::app::meta_manager::{MetaVaultManager, UserCredentialsManager};
 use crate::node::db::actions::sign_up::SignUpRequest;
-use crate::node::db::meta_db::meta_db_manager::MetaDbManager;
+use crate::node::db::meta_db::meta_db_service::MetaDbService;
 use crate::node::db::events::common::{MempoolObject, ObjectCreator, SharedSecretObject, VaultInfo};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{IdGen, ObjectId};
-use crate::node::db::generic_db::{KvLogEventRepo};
-use crate::node::db::meta_db::meta_db_view::{MetaDb, VaultStore};
+use crate::node::db::generic_db::KvLogEventRepo;
+use crate::node::db::meta_db::meta_db_view::MetaDb;
+use crate::node::db::meta_db::store::vault_store::VaultStore;
 use crate::node::db::objects::persistent_object::PersistentObject;
-use crate::node::logger::{MetaLogger};
+use crate::node::logger::MetaLogger;
 use crate::secret::MetaDistributor;
 
 pub enum MetaClient<Repo: KvLogEventRepo, Logger: MetaLogger> {
@@ -178,8 +179,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> InitMetaClient<Repo, Logger> {
         self.logger.info("register. Join");
 
         let mem_pool_tail_id = self.ctx
-            .meta_db_manager
-            .persistent_obj
+            .persistent_object
             .find_tail_id_by_obj_desc(&ObjectDescriptor::Mempool)
             .await
             .unwrap_or(ObjectId::mempool_unit());
@@ -248,28 +248,12 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> InitMetaClient<Repo, Logger> {
 
         let creds = self.creds.clone();
 
-        let mut meta_db = self.ctx.meta_db.lock().await;
+        let meta_db_service = self.ctx.meta_db_service.clone();
         let vault_name = creds.user_sig.vault.name.as_str();
-        meta_db.update_vault_info(vault_name);
+        let _ = meta_db_service.update_with_vault(vault_name.to_string()).await;
+
         let vault_unit_id = ObjectId::vault_unit(vault_name);
-
-        self
-            .ctx
-            .meta_db_manager
-            .sync_meta_db(&mut meta_db)
-            .await;
-
-        if meta_db.global_index_store.contains(vault_unit_id.id_str()) {
-            //if the vault is already present:
-            match &meta_db.vault_store {
-                VaultStore::Store { vault, .. } => {
-                    VaultInfo::Member { vault: vault.clone() }
-                }
-                _ => VaultInfo::NotMember
-            }
-        } else {
-            VaultInfo::NotFound
-        }
+        meta_db_service.get_vault_info(vault_unit_id).await.unwrap()
     }
 }
 
@@ -287,19 +271,13 @@ impl<Repo, Logger> RegisteredMetaClient<Repo, Logger>
     pub async fn cluster_distribution(&self, pass_id: &str, pass: &str) {
         self.logger.info("cluster distribution!!!!");
 
-        let mut meta_db = self.ctx.meta_db.lock().await;
-
         match &self.vault_info {
             VaultInfo::Member { vault } => {
                 let vault_name = vault.vault_name.clone();
-                meta_db.update_vault_info(vault_name.as_str());
+                self.ctx.meta_db_service.update_with_vault(vault_name).await;
 
                 let distributor = MetaDistributor {
-                    meta_db_manager: Rc::new(MetaDbManager {
-                        persistent_obj: self.ctx.persistent_object.clone(),
-                        repo: self.ctx.repo.clone(),
-                        logger: self.logger.clone(),
-                    }),
+                    meta_db_service: self.ctx.meta_db_service.clone(),
                     vault: vault.clone(),
                     user_creds: self.creds.clone(),
                 };
@@ -316,16 +294,13 @@ impl<Repo, Logger> RegisteredMetaClient<Repo, Logger>
 
         self
             .ctx.
-            meta_db_manager
-            .sync_meta_db(&mut meta_db)
+            meta_db_service.sync_db()
             .await;
     }
 
     pub async fn recovery_request(&self, meta_pass_id: MetaPasswordId) {
         match &self.vault_info {
             VaultInfo::Member { vault } => {
-                let mut meta_db = self.ctx.meta_db.lock().await;
-
                 for curr_sig in &vault.signatures {
                     if self.creds.user_sig.public_key.base64_text == curr_sig.public_key.base64_text {
                         continue;
@@ -359,11 +334,7 @@ impl<Repo, Logger> RegisteredMetaClient<Repo, Logger>
                         .await;
                 }
 
-                self
-                    .ctx.
-                    meta_db_manager
-                    .sync_meta_db(&mut meta_db)
-                    .await;
+                self.ctx.meta_db_service.sync_db().await
             }
             VaultInfo::Pending => {}
             VaultInfo::Declined => {}
@@ -377,18 +348,20 @@ pub struct MetaClientContext<Repo: KvLogEventRepo, Logger: MetaLogger> {
     pub persistent_object: Rc<PersistentObject<Repo, Logger>>,
     pub repo: Rc<Repo>,
     pub logger: Rc<Logger>,
+    pub meta_db_service: Rc<MetaDbService<Repo, Logger>>,
+    pub app_state: RefCell<ApplicationState>,
 }
 
 impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaClientContext<Repo, Logger> {
-    pub fn new(app_state: RefCell<ApplicationState>, repo: Rc<Repo>, logger: Rc<Logger>) -> Self {
+    pub fn new(app_state: RefCell<ApplicationState>, repo: Rc<Repo>, logger: Rc<Logger>, meta_db_service: Rc<MetaDbService<Repo, Logger>>) -> Self {
         let persistent_object = Rc::new(PersistentObject::new(repo.clone(), logger.clone()));
-        let meta_db_manager = MetaDbManager::from(persistent_object.clone());
 
-        let meta_db = Arc::new(Mutex::new(MetaDb::new(String::from("client"), logger.clone())));
         MetaClientContext {
             persistent_object,
             repo,
             logger,
+            meta_db_service,
+            app_state
         }
     }
 
@@ -403,7 +376,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaClientContext<Repo, Logger> {
         app_state.vault = Some(Box::new(vault));
     }
 
-    pub async fn update_meta_passwords(&self, passes: &Vec<MetaPasswordDoc>) {
+    pub async fn update_meta_passwords(&self, passes: Vec<MetaPasswordDoc>) {
         let mut app_state = self.app_state.borrow_mut();
         app_state.meta_passwords = passes.clone();
     }

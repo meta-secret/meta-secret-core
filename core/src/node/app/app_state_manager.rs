@@ -3,7 +3,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use crate::models::ApplicationState;
-use crate::node::db::meta_db::meta_db_view::{MetaPassStore, VaultStore};
+use crate::node::db::meta_db::store::meta_pass_store::MetaPassStore;
 use crate::node::db::events::common::VaultInfo;
 use crate::node::logger::MetaLogger;
 use crate::node::common::data_transfer::MpscDataTransfer;
@@ -14,6 +14,8 @@ use crate::models::MetaPasswordId;
 use crate::node::app::meta_app::{EmptyMetaClient, MetaClient, MetaClientContext, RegisteredMetaClient};
 use crate::node::app::sync_gateway::SyncGateway;
 use crate::node::db::generic_db::KvLogEventRepo;
+use crate::node::db::meta_db::meta_db_service::MetaDbService;
+use crate::node::db::meta_db::store::vault_store::VaultStore;
 use crate::node::server::server_app::ServerApp;
 
 #[async_trait(? Send)]
@@ -95,8 +97,8 @@ impl <Repo, Logger, State> ApplicationStateManager <Repo, Logger, State>
 
                 client.cluster_distribution(pass_id, pass).await;
                 let passwords = {
-                    let meta_db = client.ctx.meta_db.lock().await;
-                    match &meta_db.meta_pass_store {
+                    let pass_store = client.ctx.meta_db_service.get_meta_pass_store().await.unwrap();
+                    match pass_store {
                         MetaPassStore::Store { passwords, .. } => {
                             passwords.clone()
                         }
@@ -129,7 +131,7 @@ impl<Repo, Logger, State> ApplicationStateManager<Repo, Logger, State>
         logger: Rc<Logger>, vd_logger: Rc<Logger>,
         server: Rc<ServerApp<Repo, Logger>>,
         data_transfer: Rc<MpscDataTransfer>,
-        state: Rc<State>) -> ApplicationStateManager<Repo, Logger, State> {
+        state: Rc<State>, meta_db_service: Rc<MetaDbService<Repo, Logger>>) -> ApplicationStateManager<Repo, Logger, State> {
 
         logger.info("New. Application State Manager");
 
@@ -143,7 +145,8 @@ impl<Repo, Logger, State> ApplicationStateManager<Repo, Logger, State>
             RefCell::new(state)
         };
 
-        let ctx = MetaClientContext::new(app_state, client_repo.clone(), logger.clone());
+        let ctx = MetaClientContext::new(app_state, client_repo.clone(), logger.clone(), meta_db_service);
+
         let meta_client = MetaClient::Empty(EmptyMetaClient {
             ctx: Rc::new(ctx),
             logger: logger.clone()
@@ -177,11 +180,12 @@ impl<Repo, Logger, State> ApplicationStateManager<Repo, Logger, State>
                         let new_meta_client = init_client.sign_up().await;
 
                         {
-                            let meta_db = client.ctx.meta_db.lock().await;
                             new_meta_client.ctx.update_vault(vault.clone()).await;
+                            let meta_pass_store = client.ctx.meta_db_service.get_meta_pass_store().await.unwrap();
+
                             new_meta_client
                                 .ctx
-                                .update_meta_passwords(&meta_db.meta_pass_store.passwords())
+                                .update_meta_passwords(meta_pass_store.passwords())
                                 .await;
                         }
 
@@ -214,10 +218,13 @@ impl<Repo, Logger, State> ApplicationStateManager<Repo, Logger, State>
             async_std::task::sleep(Duration::from_secs(1)).await;
             gateway.sync().await;
 
-            let meta_db = ctx.meta_db.lock().await;
-            match &meta_db.vault_store {
+            let vault_store = ctx.meta_db_service.get_vault_store()
+                .await
+                .unwrap();
+
+            match vault_store {
                 VaultStore::Store { vault, .. } => {
-                    gateway.send_shared_secrets(vault).await;
+                    gateway.send_shared_secrets(&vault).await;
                 }
                 _ => {
                     //skip

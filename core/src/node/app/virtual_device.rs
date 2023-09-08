@@ -7,18 +7,19 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::ApplicationState;
 use crate::node::app::meta_manager::UserCredentialsManager;
-use crate::node::db::meta_db::meta_db_manager::MetaDbManager;
+use crate::node::db::meta_db::meta_db_service::MetaDbService;
 use crate::node::db::actions::join;
 use crate::node::db::events::vault_event::VaultObject;
-use crate::node::db::generic_db::{KvLogEventRepo};
-use crate::node::db::meta_db::meta_db_view::{MetaDb, VaultStore};
+use crate::node::db::generic_db::KvLogEventRepo;
+use crate::node::db::meta_db::meta_db_view::MetaDb;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::logger::MetaLogger;
 use crate::node::common::data_transfer::MpscDataTransfer;
 
-use crate::node::app::meta_app::{EmptyMetaClient, MetaClientContext, MetaClient};
+use crate::node::app::meta_app::{EmptyMetaClient, MetaClient, MetaClientContext};
 use crate::node::app::sync_gateway::SyncGateway;
+use crate::node::db::meta_db::store::vault_store::VaultStore;
 
 pub struct VirtualDevice<Repo: KvLogEventRepo, Logger: MetaLogger> {
     pub meta_client: MetaClient<Repo, Logger>,
@@ -49,15 +50,10 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> VirtualDevice<Repo, Logger> {
         let ctx = {
             let persistent_object = Rc::new(PersistentObject::new(virtual_device_repo.clone(), logger.clone()));
 
-            let meta_db_manager = MetaDbManager {
-                persistent_obj: persistent_object.clone(),
-                repo: virtual_device_repo.clone(),
-                logger: logger.clone(),
-            };
+            let meta_db_service = Rc::new(MetaDbService::new(String::from("virtual_device"), persistent_object.clone()));
 
             MetaClientContext {
-                meta_db: Arc::new(AsyncMutex::new(MetaDb::new(String::from("virtual-device"), logger.clone()))),
-                meta_db_manager,
+                meta_db_service,
                 app_state,
                 persistent_object: persistent_object.clone(),
                 repo: virtual_device_repo,
@@ -126,64 +122,66 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> VirtualDevice<Repo, Logger> {
 
             match &virtual_device.meta_client {
                 MetaClient::Empty(client) => {
-                    let meta_db_manager = &client.ctx.meta_db_manager;
-                    let mut meta_db = client.ctx.meta_db.lock().await;
-                    let _ = meta_db_manager.sync_meta_db(&mut meta_db).await;
+                    client.ctx
+                        .meta_db_service
+                        .sync_db()
+                        .await;
                 }
                 MetaClient::Init(client) => {
-                    let meta_db_manager = &client.ctx.meta_db_manager;
-                    let mut meta_db = client.ctx.meta_db.lock().await;
-                    meta_db.update_vault_info(client.creds.user_sig.vault.name.as_str());
+                    client.ctx.meta_db_service
+                        .update_with_vault(client.creds.user_sig.vault.name.clone())
+                        .await;
 
-                    let _ = meta_db_manager.sync_meta_db(&mut meta_db).await;
+                    let vault_store = client.ctx.meta_db_service.get_vault_store()
+                        .await
+                        .unwrap();
 
-                    if let VaultStore::Store { tail_id, vault, .. } = &meta_db.vault_store {
-                        let latest_event = meta_db_manager
-                            .persistent_obj
-                            .repo
-                            .find_one(tail_id).await;
+                    if let VaultStore::Store { tail_id, vault, .. } = vault_store {
+                        let latest_event = client.ctx.repo
+                            .find_one(&tail_id)
+                            .await;
 
                         if let Ok(Some(GenericKvLogEvent::Vault(VaultObject::JoinRequest { event }))) = latest_event {
                             let accept_event = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
-                                event: join::accept_join_request(&event, vault),
+                                event: join::accept_join_request(&event, &vault),
                             });
 
-                            let _ = meta_db_manager
-                                .persistent_obj
+                            let _ = client.ctx
                                 .repo
                                 .save_event(&accept_event)
                                 .await;
                         }
 
-                        gateway.send_shared_secrets(vault).await;
+                        gateway.send_shared_secrets(&vault).await;
                     };
                 }
                 MetaClient::Registered(client) => {
-                    let meta_db_manager = &client.ctx.meta_db_manager;
-                    let mut meta_db = client.ctx.meta_db.lock().await;
-                    meta_db.update_vault_info(client.creds.user_sig.vault.name.as_str());
+                    client.ctx.meta_db_service
+                        .update_with_vault(client.creds.user_sig.vault.name.clone())
+                        .await;
 
-                    let _ = meta_db_manager.sync_meta_db(&mut meta_db).await;
+                    let vault_store = client.ctx.meta_db_service.get_vault_store()
+                        .await
+                        .unwrap();
 
-                    if let VaultStore::Store { tail_id, vault, .. } = &meta_db.vault_store {
-                        let latest_event = meta_db_manager
-                            .persistent_obj
+                    if let VaultStore::Store { tail_id, vault, .. } = vault_store {
+                        let latest_event = client.ctx
                             .repo
-                            .find_one(tail_id).await;
+                            .find_one(&tail_id)
+                            .await;
 
                         if let Ok(Some(GenericKvLogEvent::Vault(VaultObject::JoinRequest { event }))) = latest_event {
                             let accept_event = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
-                                event: join::accept_join_request(&event, vault),
+                                event: join::accept_join_request(&event, &vault),
                             });
 
-                            let _ = meta_db_manager
-                                .persistent_obj
+                            let _ = client.ctx
                                 .repo
                                 .save_event(&accept_event)
                                 .await;
                         }
 
-                        gateway.send_shared_secrets(vault).await;
+                        gateway.send_shared_secrets(&vault).await;
                     };
                 }
             };

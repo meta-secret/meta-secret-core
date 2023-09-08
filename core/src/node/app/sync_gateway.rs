@@ -46,7 +46,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
             logger,
             repo,
             persistent_object,
-            data_transfer: data_transfer.mpsc_sender.clone(),
+            data_transfer: data_transfer.mpsc_service.clone(),
         }
     }
 

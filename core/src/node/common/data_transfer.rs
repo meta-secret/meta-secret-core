@@ -4,8 +4,8 @@ use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::server::data_sync::DataSyncMessage;
 
 pub struct MpscDataTransfer {
-    pub mpsc_sender: Rc<MpscSender>,
-    pub mpsc_receiver: Rc<MpscReceiver>,
+    pub mpsc_service: Rc<MpscSender>,
+    pub mpsc_client: Rc<MpscReceiver>,
 }
 
 pub struct MpscSender {
@@ -20,15 +20,15 @@ pub struct MpscReceiver {
 
 impl MpscDataTransfer {
     pub fn new() -> MpscDataTransfer {
-        let (client_sender, client_receiver) = flume::unbounded();
         let (server_sender, server_receiver) = flume::unbounded();
+        let (client_sender, client_receiver) = flume::unbounded();
 
         MpscDataTransfer {
-            mpsc_sender: Rc::new(MpscSender {
+            mpsc_service: Rc::new(MpscSender {
                 sender: client_sender,
                 receiver: server_receiver,
             }),
-            mpsc_receiver: Rc::new(MpscReceiver {
+            mpsc_client: Rc::new(MpscReceiver {
                 callback: server_sender,
                 receiver: client_receiver,
             }),

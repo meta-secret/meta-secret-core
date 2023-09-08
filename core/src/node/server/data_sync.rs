@@ -16,10 +16,10 @@ use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{IdGen, IdStr, ObjectId};
 use crate::node::db::events::vault_event::VaultObject;
 use crate::node::db::generic_db::KvLogEventRepo;
-use crate::node::db::meta_db::meta_db_manager::MetaDbManager;
-use crate::node::db::meta_db::meta_db_view::{MetaDb, VaultStore};
+use crate::node::db::meta_db::meta_db_view::MetaDb;
+use crate::node::db::meta_db::store::vault_store::VaultStore;
 use crate::node::db::objects::persistent_object::PersistentObject;
-use crate::node::logger::{MetaLogger};
+use crate::node::logger::MetaLogger;
 use crate::node::server::request::SyncRequest;
 
 #[async_trait(? Send)]
@@ -417,6 +417,7 @@ pub mod test {
     use crate::models::DeviceInfo;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use std::rc::Rc;
+    use crate::node::db::meta_db::meta_db_service::MetaDbService;
     use crate::node::logger::{DefaultMetaLogger, LoggerId};
 
     #[tokio::test]
@@ -524,7 +525,7 @@ pub mod test {
         pub logger: Rc<DefaultMetaLogger>,
         pub repo: Rc<InMemKvLogEventRepo>,
         pub persistent_obj: Rc<PersistentObject<InMemKvLogEventRepo, DefaultMetaLogger>>,
-        pub meta_db_manager: Rc<MetaDbManager<InMemKvLogEventRepo, DefaultMetaLogger>>,
+        pub meta_db_service: Rc<MetaDbService<InMemKvLogEventRepo, DefaultMetaLogger>>,
         pub data_sync: DataSync<InMemKvLogEventRepo, DefaultMetaLogger>,
         pub user_sig: Rc<UserSignature>,
         pub user_creds: Rc<UserCredentials>,
@@ -536,7 +537,7 @@ pub mod test {
             let logger = Rc::new(DefaultMetaLogger { id: LoggerId::Client });
 
             let persistent_object = Rc::new(PersistentObject::new(repo.clone(), logger.clone()));
-            let meta_db_manager = Rc::new(MetaDbManager::from(persistent_object.clone()));
+            let meta_db_service = Rc::new(MetaDbService::new(String::from("test"), persistent_object.clone()));
 
             let s_box = KeyManager::generate_security_box("test_vault".to_string());
             let device = DeviceInfo {
@@ -553,7 +554,6 @@ pub mod test {
                 persistent_obj: persistent_object.clone(),
                 repo: repo.clone(),
                 context: Rc::new(MetaServerContextState::from(user_creds.as_ref())),
-                meta_db_manager: meta_db_manager.clone(),
                 logger: logger.clone(),
             };
 
@@ -561,7 +561,7 @@ pub mod test {
                 logger,
                 repo,
                 persistent_obj: persistent_object,
-                meta_db_manager,
+                meta_db_service,
                 data_sync,
                 user_sig: Rc::new(user_sig),
                 user_creds,

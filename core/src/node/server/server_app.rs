@@ -6,14 +6,14 @@ use crate::node::common::data_transfer::MpscReceiver;
 use crate::node::logger::MetaLogger;
 use crate::node::server::data_sync::{DataSync, DataSyncApi, DataSyncMessage};
 use crate::node::db::generic_db::KvLogEventRepo;
-use crate::node::db::meta_db::meta_db_manager::MetaDbManager;
+use crate::node::db::meta_db::meta_db_service::MetaDbService;
 
 pub struct ServerApp<Repo: KvLogEventRepo, Logger: MetaLogger> {
     pub timeout: Duration,
     pub data_sync: DataSync<Repo, Logger>,
     pub data_transfer: Rc<MpscReceiver>,
     pub logger: Rc<Logger>,
-    pub meta_db_manager: Rc<MetaDbManager<Repo, Logger>>,
+    pub meta_db_service: Rc<MetaDbService<Repo, Logger>>,
 }
 
 impl<Repo: KvLogEventRepo, Logger: MetaLogger> ServerApp<Repo, Logger> {
@@ -28,8 +28,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> ServerApp<Repo, Logger> {
                     DataSyncMessage::SyncRequest(request) => {
                         //check if the user is a member of the vault
 
-                        self.meta_db_manager.sync_meta_db(&mut meta_db).await;
-
+                        self.meta_db_service.sync_db().await;
 
                         self.logger
                             .debug(format!("Received sync request: {:?}", request).as_str());

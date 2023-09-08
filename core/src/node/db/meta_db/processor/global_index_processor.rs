@@ -1,11 +1,13 @@
 use std::collections::HashSet;
+
 use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::KvKey;
-use crate::node::db::meta_db::meta_db_view::{GlobalIndexStore, MetaDb};
+use crate::node::db::meta_db::meta_db_view::MetaDb;
+use crate::node::db::meta_db::store::global_index_store::GlobalIndexStore;
 use crate::node::logger::MetaLogger;
 
 impl<Logger: MetaLogger> MetaDb<Logger> {
-    pub fn apply_global_index_event(self, gi_event: &GlobalIndexObject) -> MetaDb<Logger> {
+    pub fn apply_global_index_event(&mut self, gi_event: &GlobalIndexObject) {
         self.logger
             .debug(format!("Apply global index event: {:?}", gi_event).as_str());
 
@@ -19,15 +21,12 @@ impl<Logger: MetaLogger> MetaDb<Logger> {
             GlobalIndexStore::Empty => {
                 match gi_event {
                     GlobalIndexObject::Unit { .. } => {
-                        self
+                        // ignore
                     }
                     GlobalIndexObject::Genesis { event } => {
-                        MetaDb {
-                            global_index_store: GlobalIndexStore::Genesis {
-                                tail_id: obj_id.clone(),
-                                server_pk: event.value.clone(),
-                            },
-                            ..self
+                        self.global_index_store = GlobalIndexStore::Genesis {
+                            tail_id: obj_id.clone(),
+                            server_pk: event.value.clone(),
                         }
                     }
                     GlobalIndexObject::Update { .. } => {
@@ -43,20 +42,18 @@ impl<Logger: MetaLogger> MetaDb<Logger> {
                     panic!("Invalid state");
                 }
                 GlobalIndexObject::Genesis { .. } => {
-                    self.logger.error("Invalid event. Meta db is already has Genesis");
-                    panic!("Invalid state");
+                    let err_msg = String::from("Invalid event. Meta db already has Genesis");
+                    self.logger.error(err_msg.as_str());
+                    panic!("{}", err_msg);
                 }
                 GlobalIndexObject::Update { event } => {
                     let mut global_index_set = HashSet::new();
                     global_index_set.insert(event.value.vault_id.clone());
 
-                    MetaDb {
-                        global_index_store: GlobalIndexStore::Store {
-                            tail_id: obj_id.clone(),
-                            server_pk: server_pk.clone(),
-                            global_index: global_index_set,
-                        },
-                        ..self
+                    self.global_index_store = GlobalIndexStore::Store {
+                        tail_id: obj_id.clone(),
+                        server_pk: server_pk.clone(),
+                        global_index: global_index_set,
                     }
                 }
             },
@@ -71,7 +68,6 @@ impl<Logger: MetaLogger> MetaDb<Logger> {
                 }
                 GlobalIndexObject::Update { event } => {
                     global_index.insert(event.value.vault_id.clone());
-                    self
                 }
             }
         }
@@ -80,16 +76,17 @@ impl<Logger: MetaLogger> MetaDb<Logger> {
 
 #[cfg(test)]
 mod test {
-    use crate::node::db::meta_db::meta_db_view::MetaDb;
     use std::rc::Rc;
+
     use crate::node::db::events::global_index::GlobalIndexObject;
+    use crate::node::db::meta_db::meta_db_view::MetaDb;
     use crate::node::logger::{DefaultMetaLogger, LoggerId};
 
     #[test]
     fn test() {
-        let meta_db = MetaDb::new(
+        let mut meta_db = MetaDb::new(
             String::from("test"),
-            Rc::new(DefaultMetaLogger::new(LoggerId::Test))
+            Rc::new(DefaultMetaLogger::new(LoggerId::Test)),
         );
 
         let gi_event = GlobalIndexObject::unit();
