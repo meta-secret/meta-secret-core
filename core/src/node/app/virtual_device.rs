@@ -1,8 +1,5 @@
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::Arc;
-
-use async_mutex::Mutex as AsyncMutex;
 use serde::{Deserialize, Serialize};
 
 use crate::models::ApplicationState;
@@ -11,7 +8,6 @@ use crate::node::db::meta_db::meta_db_service::MetaDbService;
 use crate::node::db::actions::join;
 use crate::node::db::events::vault_event::VaultObject;
 use crate::node::db::generic_db::KvLogEventRepo;
-use crate::node::db::meta_db::meta_db_view::MetaDb;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::logger::MetaLogger;

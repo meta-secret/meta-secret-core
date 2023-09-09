@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use meta_secret_core::node::app::meta_manager::UserCredentialsManager;
 use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
+use meta_secret_core::node::db::generic_db::KvLogEventRepo;
 use meta_secret_core::node::db::meta_db::meta_db_service::MetaDbService;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::logger::{LoggerId, MetaLogger};
@@ -11,16 +12,17 @@ use meta_secret_core::node::server::server_app::ServerApp;
 
 use crate::wasm_repo::{WasmMetaLogger, WasmRepo};
 
-pub struct WasmServer {
-    pub server: Rc<ServerApp<WasmRepo, WasmMetaLogger>>,
+pub struct WasmServer<Repo: KvLogEventRepo> {
+    pub server: Rc<ServerApp<Repo, WasmMetaLogger>>,
 }
 
-impl WasmServer {
+impl<Repo: KvLogEventRepo> WasmServer<Repo> {
+    
     pub async fn new(
-        data_transfer: Rc<MpscDataTransfer>, meta_db_service: Rc<MetaDbService<WasmRepo, WasmMetaLogger>>,
-        persistent_obj: Rc<PersistentObject<WasmRepo, WasmMetaLogger>>,
-    ) -> WasmServer {
-        let repo = Rc::new(WasmRepo::server());
+        repo: Rc<Repo>,
+        data_transfer: Rc<MpscDataTransfer>, meta_db_service: Rc<MetaDbService<Repo, WasmMetaLogger>>,
+        persistent_obj: Rc<PersistentObject<Repo, WasmMetaLogger>>,
+    ) -> WasmServer<Repo> {
         let logger = Rc::new(WasmMetaLogger {
             id: LoggerId::Server
         });

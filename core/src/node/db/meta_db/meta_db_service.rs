@@ -54,9 +54,9 @@ enum MetaDbRequestMessage {
 }
 
 enum MetaDbResponseMessage {
-    GetVaultInfo { vault: VaultInfo },
-    GetVaultStore { vault_store: VaultStore },
-    GetMetaPassStore { meta_pass_store: MetaPassStore }
+    VaultInfo { vault: VaultInfo },
+    VaultStore { vault_store: VaultStore },
+    MetaPassStore { meta_pass_store: MetaPassStore }
 }
 
 impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDbService<Repo, Logger> {
@@ -81,7 +81,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDbService<Repo, Logger> {
         let msg = self.client_receiver.recv_async().await?;
 
         match msg {
-            MetaDbResponseMessage::GetVaultInfo { vault } => {
+            MetaDbResponseMessage::VaultInfo { vault } => {
                 Ok(vault)
             }
             _ => {
@@ -98,7 +98,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDbService<Repo, Logger> {
         let msg = self.client_receiver.recv_async().await?;
 
         match msg {
-            MetaDbResponseMessage::GetVaultStore { vault_store } => {
+            MetaDbResponseMessage::VaultStore { vault_store } => {
                 Ok(vault_store)
             }
             _ => Err(anyhow!("Invalid message"))
@@ -113,7 +113,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDbService<Repo, Logger> {
             let msg = self.client_receiver.recv_async().await?;
 
             match msg {
-                MetaDbResponseMessage::GetMetaPassStore { meta_pass_store } => {
+                MetaDbResponseMessage::MetaPassStore { meta_pass_store } => {
                     Ok(meta_pass_store)
                 }
                 _ => Err(anyhow!("Invalid message"))
@@ -144,17 +144,17 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDbService<Repo, Logger> {
                         VaultInfo::NotFound
                     };
 
-                    let response = MetaDbResponseMessage::GetVaultInfo { vault: vault_info };
+                    let response = MetaDbResponseMessage::VaultInfo { vault: vault_info };
                     let _ = self.client_sender.send_async(response).await;
                 }
                 MetaDbRequestMessage::GetVaultStore => {
-                    let response = MetaDbResponseMessage::GetVaultStore {
+                    let response = MetaDbResponseMessage::VaultStore {
                         vault_store: meta_db.vault_store.clone()
                     };
                     let _ = self.client_sender.send_async(response).await;
                 }
                 MetaDbRequestMessage::GetMetaPassStore => {
-                    let response = MetaDbResponseMessage::GetMetaPassStore {
+                    let response = MetaDbResponseMessage::MetaPassStore {
                         meta_pass_store: meta_db.meta_pass_store.clone()
                     };
                     let _ = self.client_sender.send_async(response).await;

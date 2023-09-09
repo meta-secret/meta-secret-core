@@ -45,7 +45,13 @@ impl WasmApplicationStateManager {
         };
 
         let meta_db_service = Rc::new(MetaDbService::new(String::from("Client"), persistent_obj.clone()));
-        let wasm_server = Rc::new(WasmServer::new(data_transfer.clone(), meta_db_service.clone(), persistent_obj).await);
+
+        let wasm_server = {
+            let server_repo = Rc::new(WasmRepo::server());
+            let server = WasmServer::new(server_repo, data_transfer.clone(), meta_db_service.clone(), persistent_obj)
+                .await;
+            Rc::new(server)
+        };
 
         let update_manager = Rc::new(WasmStateUpdateManager {
             js_app_state

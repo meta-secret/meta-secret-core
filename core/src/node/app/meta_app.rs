@@ -1,10 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::Arc;
 use anyhow::anyhow;
-
-use async_mutex::Mutex;
-
 use crate::crypto::keys::KeyManager;
 use crate::models::{
     ApplicationState, MetaPasswordDoc, MetaPasswordId, MetaVault, UserCredentials, VaultDoc}
@@ -19,8 +15,6 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{IdGen, ObjectId};
 use crate::node::db::generic_db::KvLogEventRepo;
-use crate::node::db::meta_db::meta_db_view::MetaDb;
-use crate::node::db::meta_db::store::vault_store::VaultStore;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::logger::MetaLogger;
 use crate::secret::MetaDistributor;

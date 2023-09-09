@@ -1,7 +1,5 @@
 use std::fmt::{Display, Formatter};
 
-use serde::{Deserialize, Serialize};
-
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::logger::MetaLogger;
 use std::rc::Rc;
@@ -12,22 +10,16 @@ use crate::node::db::meta_db::store::{
 };
 use crate::node::db::meta_db::store::meta_pass_store::MetaPassStore;
 
+pub trait TailId {
+    fn tail_id(&self) -> Option<ObjectId>;
+}
+
 pub struct MetaDb<Logger: MetaLogger> {
     pub id: String,
     pub vault_store: VaultStore,
     pub global_index_store: GlobalIndexStore,
     pub meta_pass_store: MetaPassStore,
     pub logger: Rc<Logger>,
-}
-
-impl<Logger: MetaLogger> Display for MetaDb<Logger> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "(id: {}, vault: {:?}, gi: {:?}, meta pass: {:?})",
-            self.id, self.vault_store, self.global_index_store, self.meta_pass_store
-        )
-    }
 }
 
 impl<Logger: MetaLogger> MetaDb<Logger> {
@@ -55,7 +47,7 @@ impl<Logger: MetaLogger> MetaDb<Logger> {
 
         match generic_event {
             GenericKvLogEvent::GlobalIndex(gi_event) => {
-                self.apply_global_index_event(gi_event);
+                self.global_index_store.apply(gi_event);
             }
             GenericKvLogEvent::Vault(vault_obj_info) => {
                 self.apply_vault_event(vault_obj_info);
@@ -98,8 +90,14 @@ impl<Logger: MetaLogger> MetaDb<Logger> {
     }
 }
 
-pub trait TailId {
-    fn tail_id(&self) -> Option<ObjectId>;
+impl<Logger: MetaLogger> Display for MetaDb<Logger> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "(id: {}, vault: {:?}, gi: {:?}, meta pass: {:?})",
+            self.id, self.vault_store, self.global_index_store, self.meta_pass_store
+        )
+    }
 }
 
 #[cfg(test)]
@@ -130,10 +128,10 @@ mod test {
         let user_sig = s_box.get_user_sig(&device);
         let server_pk = PublicKeyRecord::from(user_sig.public_key.as_ref().clone());
 
-        meta_db.apply_global_index_event(&GlobalIndexObject::unit());
+        meta_db.global_index_store.apply(&GlobalIndexObject::unit());
 
         let genesis_event = &GlobalIndexObject::genesis(&server_pk);
-        meta_db.apply_global_index_event(genesis_event);
+        meta_db.global_index_store.apply(genesis_event);
 
         let obj_id = &ObjectId::vault_unit("test_vault");
         let vault_id = IdStr::from(obj_id);
@@ -143,7 +141,7 @@ mod test {
                 panic!()
             }
             KvKey::Key { .. } => {
-                meta_db.apply_global_index_event(&GlobalIndexObject::Update {
+                meta_db.global_index_store.apply(&GlobalIndexObject::Update {
                     event: KvLogEvent::new_global_index_event(&obj_id.next(), &vault_id),
                 });
 
