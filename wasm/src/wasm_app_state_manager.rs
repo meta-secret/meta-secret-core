@@ -1,110 +1,162 @@
+use std::sync::Arc;
+use std::time::Duration;
+
+use async_trait::async_trait;
+use wasm_bindgen::JsValue;
+use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen_futures::spawn_local;
+
+use meta_secret_core::models::application_state::ApplicationState;
+use meta_secret_core::models::MetaPasswordId;
 use meta_secret_core::node::app::app_state_manager::{ApplicationStateManager, StateUpdateManager};
 use meta_secret_core::node::app::virtual_device::VirtualDevice;
-use crate::wasm_repo::{WasmMetaLogger, WasmRepo};
-use async_trait::async_trait;
-use wasm_bindgen::prelude::wasm_bindgen;
-use wasm_bindgen::JsValue;
-use crate::{configure, JsAppState};
-use meta_secret_core::models::application_state::ApplicationState;
-use meta_secret_core::models::meta_password_id::MetaPasswordId;
-use std::rc::Rc;
-use meta_secret_core::node::logger::LoggerId;
 use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::db::meta_db::meta_db_service::MetaDbService;
-use crate::wasm_server::WasmServer;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
+use meta_secret_core::node::logger::LoggerId;
+use meta_secret_core::node::server::data_sync::DataSync;
+use meta_secret_core::node::server::server_app::ServerApp;
+use meta_secret_core::node::app::sync_gateway::SyncGateway;
+
+use crate::{configure, JsAppState};
+use crate::wasm_repo::{WasmMetaLogger, WasmRepo};
 
 #[wasm_bindgen]
 pub struct WasmApplicationStateManager {
     app_manager: ApplicationStateManager<WasmRepo, WasmMetaLogger, WasmStateUpdateManager>,
-    meta_db_service: Rc<MetaDbService<WasmRepo, WasmMetaLogger>>
 }
 
 #[wasm_bindgen]
 impl WasmApplicationStateManager {
-    pub async fn new(js_app_state: JsAppState) -> WasmApplicationStateManager {
+    pub async fn init(js_app_state: JsAppState) -> WasmApplicationStateManager {
         configure();
 
-        let client_repo = Rc::new(WasmRepo::default());
-        let device_repo = Rc::new(WasmRepo::virtual_device());
+        let data_transfer = Arc::new(MpscDataTransfer::new());
 
-        let client_logger = Rc::new(WasmMetaLogger {
-            id: LoggerId::Client
-        });
+        let mut app_manager = WasmApplicationStateManager::client_setup(data_transfer.clone(), js_app_state);
+        WasmApplicationStateManager::server_setup(data_transfer.clone()).await;
+        WasmApplicationStateManager::virtual_device_setup(data_transfer);
 
-        let vd_logger = Rc::new(WasmMetaLogger {
+        app_manager.setup_meta_client().await;
+        app_manager.on_update().await;
+
+        WasmApplicationStateManager { app_manager }
+    }
+
+    fn virtual_device_setup(data_transfer: Arc<MpscDataTransfer>) {
+        let logger = Arc::new(WasmMetaLogger {
             id: LoggerId::Vd1
         });
 
-        let data_transfer = Rc::new(MpscDataTransfer::new());
+        let device_repo = Arc::new(WasmRepo::virtual_device());
+        let persistent_object = Arc::new(PersistentObject::new(device_repo.clone(), logger.clone()));
 
-        let persistent_obj = {
-            let obj = PersistentObject::new(client_repo.clone(), client_logger.clone());
-            Rc::new(obj)
-        };
+        let meta_db_service = MetaDbService::new(
+            String::from("virtual_device"),
+            persistent_object.clone()
+        );
+        let meta_db_service = Arc::new(meta_db_service);
+        let vd_meta_db_service = meta_db_service.clone();
 
-        let meta_db_service = Rc::new(MetaDbService::new(String::from("Client"), persistent_obj.clone()));
-
-        let wasm_server = {
-            let server_repo = Rc::new(WasmRepo::server());
-            let server = WasmServer::new(server_repo, data_transfer.clone(), meta_db_service.clone(), persistent_obj)
-                .await;
-            Rc::new(server)
-        };
-
-        let update_manager = Rc::new(WasmStateUpdateManager {
-            js_app_state
+        spawn_local(async move {
+            vd_meta_db_service.run().await;
         });
 
-        let app_manager = ApplicationStateManager::new(
-            client_repo, device_repo,
-            client_logger, vd_logger,
-            wasm_server.server.clone(),
-            data_transfer,
-            update_manager,
-            meta_db_service.clone()
-        );
+        spawn_local(async move {
+            let device_logger = Arc::new(WasmMetaLogger {
+                id: LoggerId::Vd1
+            });
 
-        WasmApplicationStateManager { app_manager, meta_db_service }
+            VirtualDevice::event_handler(
+                persistent_object,
+                meta_db_service,
+                data_transfer,
+                device_logger,
+            ).await;
+        });
     }
 
-
-    pub async fn init(mut self) -> WasmApplicationStateManager {
-        let server = self.app_manager.server.clone();
-        spawn_local(async move {
-            let _ = server.run().await;
+    async fn server_setup(data_transfer: Arc<MpscDataTransfer>) {
+        let server_logger = Arc::new(WasmMetaLogger {
+            id: LoggerId::Server
         });
 
-        let meta_db_service = self.meta_db_service.clone();
+        let server_persistent_obj = {
+            let server_repo = Arc::new(WasmRepo::server());
+
+            let obj = PersistentObject::new(server_repo.clone(), server_logger.clone());
+            Arc::new(obj)
+        };
+
+        let meta_db_service = Arc::new(MetaDbService::new(
+            String::from("Server"),
+            server_persistent_obj.clone(),
+        ));
+        let server_meta_db_service = meta_db_service.clone();
+
         spawn_local(async move {
             meta_db_service.run().await;
         });
 
-        let device_repo = self.app_manager.device_repo.clone();
-        let data_transfer = self.app_manager.data_transfer.clone();
-        let logger = self.app_manager.vd_logger.clone();
-        spawn_local(async move {
-            VirtualDevice::event_handler(
-                device_repo,
-                data_transfer,
-                logger,
-            ).await;
+        let data_sync = Arc::new(DataSync::new(server_persistent_obj.clone(), server_logger.clone()).await);
+
+        let server = Arc::new(ServerApp {
+            timeout: Duration::from_secs(1),
+            data_sync,
+            data_transfer: data_transfer.mpsc_client.clone(),
+            logger: server_logger.clone(),
+            meta_db_service: server_meta_db_service,
         });
 
-        self.app_manager.setup_meta_client().await;
-        let ctx = self.app_manager.meta_client.get_ctx();
-        let repo = ctx.repo.clone();
-        let data_transfer = self.app_manager.data_transfer.clone();
-        let client_logger_for_client_gw = ctx.logger.clone();
-
+        let server_async = server.clone();
         spawn_local(async move {
-            ApplicationStateManager::<WasmRepo, WasmMetaLogger, WasmStateUpdateManager>::run_client_gateway(data_transfer, ctx, repo, client_logger_for_client_gw).await;
+            server_async.run().await;
+        });
+    }
+
+    fn client_setup(data_transfer: Arc<MpscDataTransfer>, js_app_state: JsAppState) -> ApplicationStateManager<WasmRepo, WasmMetaLogger, WasmStateUpdateManager> {
+        let client_logger = Arc::new(WasmMetaLogger {
+            id: LoggerId::Client
         });
 
-        self.app_manager.on_update().await;
+        let client_repo = Arc::new(WasmRepo::default());
 
-        self
+        let persistent_obj = {
+            let obj = PersistentObject::new(client_repo.clone(), client_logger.clone());
+            Arc::new(obj)
+        };
+
+        let meta_db_service = Arc::new(MetaDbService::new(
+            String::from("Client"),
+            persistent_obj.clone(),
+        ));
+        let client_meta_db_service = meta_db_service.clone();
+        let gateway_meta_db_service = meta_db_service.clone();
+
+        spawn_local(async move {
+            meta_db_service.run().await;
+        });
+
+        let gateway_client_logger = client_logger.clone();
+        let gateway_data_transfer = data_transfer.clone();
+        spawn_local(async move {
+            let sync_gateway = SyncGateway::new(
+                client_repo, gateway_data_transfer, String::from("client-gateway"), gateway_client_logger
+            );
+            sync_gateway.run(gateway_meta_db_service).await;
+        });
+
+        let update_manager = Arc::new(WasmStateUpdateManager {
+            js_app_state
+        });
+
+        ApplicationStateManager::new(
+            persistent_obj,
+            client_meta_db_service,
+            client_logger,
+            data_transfer,
+            update_manager
+        )
     }
 
     pub async fn sign_up(&mut self, vault_name: &str, device_name: &str) {

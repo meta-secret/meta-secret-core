@@ -1,6 +1,6 @@
-use std::rc::Rc;
-use anyhow::anyhow;
+use std::sync::Arc;
 
+use anyhow::anyhow;
 use flume::{Receiver, Sender};
 
 use crate::node::db::events::common::VaultInfo;
@@ -13,9 +13,9 @@ use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::logger::MetaLogger;
 
 pub struct MetaDbService<Repo: KvLogEventRepo, Logger: MetaLogger> {
-    pub persistent_obj: Rc<PersistentObject<Repo, Logger>>,
-    pub repo: Rc<Repo>,
-    pub logger: Rc<Logger>,
+    pub persistent_obj: Arc<PersistentObject<Repo, Logger>>,
+    pub repo: Arc<Repo>,
+    pub logger: Arc<Logger>,
     pub meta_db_id: String,
 
     service_sender: Sender<MetaDbRequestMessage>,
@@ -26,7 +26,7 @@ pub struct MetaDbService<Repo: KvLogEventRepo, Logger: MetaLogger> {
 }
 
 impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDbService<Repo, Logger> {
-    pub fn new(db_id: String, persistent_object: Rc<PersistentObject<Repo, Logger>>) -> Self {
+    pub fn new(db_id: String, persistent_object: Arc<PersistentObject<Repo, Logger>>) -> Self {
         let (service_sender, service_receiver) = flume::bounded(1);
         let (client_sender, client_receiver) = flume::bounded(1);
 
@@ -50,13 +50,13 @@ enum MetaDbRequestMessage {
     SetVault { vault_name: String },
     GetVaultInfo { vault_id: ObjectId },
     GetVaultStore,
-    GetMetaPassStore
+    GetMetaPassStore,
 }
 
 enum MetaDbResponseMessage {
     VaultInfo { vault: VaultInfo },
     VaultStore { vault_store: VaultStore },
-    MetaPassStore { meta_pass_store: MetaPassStore }
+    MetaPassStore { meta_pass_store: MetaPassStore },
 }
 
 impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDbService<Repo, Logger> {
@@ -106,19 +106,19 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDbService<Repo, Logger> {
     }
 
     pub async fn get_meta_pass_store(&self) -> anyhow::Result<MetaPassStore> {
-            let _ = self.service_sender
-                .send_async(MetaDbRequestMessage::GetMetaPassStore)
-                .await;
+        let _ = self.service_sender
+            .send_async(MetaDbRequestMessage::GetMetaPassStore)
+            .await;
 
-            let msg = self.client_receiver.recv_async().await?;
+        let msg = self.client_receiver.recv_async().await?;
 
-            match msg {
-                MetaDbResponseMessage::MetaPassStore { meta_pass_store } => {
-                    Ok(meta_pass_store)
-                }
-                _ => Err(anyhow!("Invalid message"))
+        match msg {
+            MetaDbResponseMessage::MetaPassStore { meta_pass_store } => {
+                Ok(meta_pass_store)
             }
+            _ => Err(anyhow!("Invalid message"))
         }
+    }
 
     pub async fn run(&self) {
         let mut meta_db = MetaDb::new(self.meta_db_id.clone(), self.logger.clone());
@@ -211,7 +211,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDbService<Repo, Logger> {
 
 #[cfg(test)]
 mod test {
-    use std::rc::Rc;
+    use std::sync::Arc;
 
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::meta_db::meta_db_service::MetaDbService;
@@ -220,9 +220,9 @@ mod test {
 
     #[tokio::test]
     async fn test() {
-        let repo = Rc::new(InMemKvLogEventRepo::default());
-        let logger = Rc::new(DefaultMetaLogger { id: LoggerId::Client });
-        let persistent_object = Rc::new(PersistentObject::new(repo, logger));
+        let repo = Arc::new(InMemKvLogEventRepo::default());
+        let logger = Arc::new(DefaultMetaLogger { id: LoggerId::Client });
+        let persistent_object = Arc::new(PersistentObject::new(repo, logger));
         let _manager = MetaDbService::new(String::from("test_db"), persistent_object);
     }
 }

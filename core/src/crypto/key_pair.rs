@@ -1,16 +1,16 @@
-use crypto_box::aead::AeadCore;
 use crypto_box::{
     aead::{Aead, OsRng as CryptoBoxOsRng, Payload},
     ChaChaBox, Nonce,
 };
+use crypto_box::aead::AeadCore;
 use ed25519_dalek::{Keypair, Signer};
 use image::EncodableLayout;
-use rand::rngs::OsRng as RandOsRng;
 use rand::RngCore;
+use rand::rngs::OsRng as RandOsRng;
 
+use crate::CoreResult;
 use crate::errors::CoreError;
 use crate::models::{AeadAuthData, AeadCipherText, AeadPlainText, Base64EncodedText, CommunicationChannel};
-use crate::CoreResult;
 
 pub type CryptoBoxPublicKey = crypto_box::PublicKey;
 pub type CryptoBoxSecretKey = crypto_box::SecretKey;
@@ -175,11 +175,11 @@ impl TransportDsaKeyPair {
 
 #[cfg(test)]
 pub mod test {
+    use crate::CoreResult;
     use crate::crypto::key_pair::KeyPair;
     use crate::crypto::keys::KeyManager;
     use crate::errors::CoreError;
     use crate::models::{AeadAuthData, AeadCipherText, AeadPlainText, Base64EncodedText, CommunicationChannel};
-    use crate::CoreResult;
 
     #[test]
     fn single_person_encryption() -> CoreResult<()> {

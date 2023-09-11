@@ -8,7 +8,6 @@ use meta_secret_core::secret::shared_secret::{PlainText, SharedSecretEncryption,
 pub mod wasm_repo;
 pub mod objects;
 pub mod utils;
-pub mod wasm_server;
 pub mod wasm_app_state_manager;
 
 /// Json utilities https://github.com/rustwasm/wasm-bindgen/blob/main/crates/js-sys/tests/wasm/JSON.rs

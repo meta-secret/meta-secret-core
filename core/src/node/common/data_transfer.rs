@@ -1,11 +1,13 @@
+use std::sync::Arc;
+
 use flume::{Receiver, RecvError, Sender};
-use std::rc::Rc;
+
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::server::data_sync::DataSyncMessage;
 
 pub struct MpscDataTransfer {
-    pub mpsc_service: Rc<MpscSender>,
-    pub mpsc_client: Rc<MpscReceiver>,
+    pub mpsc_service: Arc<MpscSender>,
+    pub mpsc_client: Arc<MpscReceiver>,
 }
 
 pub struct MpscSender {
@@ -20,15 +22,15 @@ pub struct MpscReceiver {
 
 impl MpscDataTransfer {
     pub fn new() -> MpscDataTransfer {
-        let (server_sender, server_receiver) = flume::unbounded();
-        let (client_sender, client_receiver) = flume::unbounded();
+        let (server_sender, server_receiver) = flume::bounded(1);
+        let (client_sender, client_receiver) = flume::bounded(1);
 
         MpscDataTransfer {
-            mpsc_service: Rc::new(MpscSender {
+            mpsc_service: Arc::new(MpscSender {
                 sender: client_sender,
                 receiver: server_receiver,
             }),
-            mpsc_client: Rc::new(MpscReceiver {
+            mpsc_client: Arc::new(MpscReceiver {
                 callback: server_sender,
                 receiver: client_receiver,
             }),

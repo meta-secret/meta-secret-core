@@ -1,24 +1,25 @@
+use std::sync::Arc;
+
+use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
+use crate::CoreResult;
 use crate::crypto::keys::KeyManager;
 use crate::models::{
     AeadCipherText, EncryptedMessage, MetaPasswordDoc, MetaPasswordId, MetaPasswordRequest, SecretDistributionDocData,
     SecretDistributionType, UserCredentials, UserSecurityBox, UserSignature, VaultDoc,
 };
-use crate::node::db::events::common::ObjectCreator;
 use crate::node::db::events::common::{MetaPassObject, SharedSecretObject};
+use crate::node::db::events::common::ObjectCreator;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::local::KvLogEventLocal;
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{IdGen, ObjectId};
-use crate::node::db::meta_db::meta_db_service::MetaDbService;
-use crate::node::logger::MetaLogger;
-use crate::CoreResult;
-use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
 use crate::node::db::generic_db::KvLogEventRepo;
+use crate::node::db::objects::persistent_object::PersistentObject;
+use crate::node::logger::MetaLogger;
 
 pub mod data_block;
 pub mod shared_secret;
-use std::rc::Rc;
 
 pub fn split(secret: String, config: SharedSecretConfig) -> CoreResult<Vec<UserShareDto>> {
     let plain_text = PlainText::from(secret);
@@ -80,8 +81,8 @@ struct MetaCipherShare {
 }
 
 pub struct MetaDistributor<Repo: KvLogEventRepo, Logger: MetaLogger> {
-    pub meta_db_service: Rc<MetaDbService<Repo, Logger>>,
-    pub user_creds: Rc<UserCredentials>,
+    pub persistent_obj: Arc<PersistentObject<Repo, Logger>>,
+    pub user_creds: Arc<UserCredentials>,
     pub vault: VaultDoc,
 }
 
@@ -107,7 +108,6 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDistributor<Repo, Logger> {
         let meta_pass_obj_desc = ObjectDescriptor::MetaPassword { vault_name };
 
         let pass_tail_id = self
-            .meta_db_service
             .persistent_obj
             .find_tail_id_by_obj_desc(&meta_pass_obj_desc)
             .await
@@ -124,7 +124,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDistributor<Repo, Logger> {
             },
         });
 
-        self.meta_db_service.repo.save_event(&meta_pass_event).await.unwrap();
+        self.persistent_obj.repo.save_event(&meta_pass_event).await.unwrap();
 
         let encrypted_shares = encryptor.encrypt(password);
 
@@ -153,7 +153,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDistributor<Repo, Logger> {
                     },
                 });
 
-                let _ = self.meta_db_service
+                let _ = self.persistent_obj
                     .repo
                     .save_event(&secret_share_event)
                     .await;
@@ -168,14 +168,13 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDistributor<Repo, Logger> {
                 });
 
                 let tail_id = self
-                    .meta_db_service
                     .persistent_obj
                     .find_tail_id_by_obj_desc(&obj_desc)
                     .await
                     .map(|id| id.next())
                     .unwrap_or(ObjectId::unit(&obj_desc));
 
-                let _ = self.meta_db_service
+                let _ = self.persistent_obj
                     .repo
                     .save(&tail_id, &secret_share_event)
                     .await;
@@ -186,14 +185,15 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDistributor<Repo, Logger> {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::node::server::data_sync::test::DataSyncTestContext;
-    use crate::node::db::events::vault_event::VaultObject;
-    use crate::node::server::data_sync::DataSyncApi;
-    use crate::node::db::events::common::{LogEventKeyBasedRecord, PublicKeyRecord};
-    use crate::node::db::actions::join;
     use crate::models::DeviceInfo;
+    use crate::node::db::actions::join;
+    use crate::node::db::events::common::{LogEventKeyBasedRecord, PublicKeyRecord};
+    use crate::node::db::events::vault_event::VaultObject;
     use crate::node::db::generic_db::{FindOneQuery, SaveCommand};
+    use crate::node::server::data_sync::DataSyncApi;
+    use crate::node::server::data_sync::test::DataSyncTestContext;
+
+    use super::*;
 
     #[tokio::test]
     async fn test() {
@@ -247,7 +247,7 @@ mod test {
                 .await;
 
             let distributor = MetaDistributor {
-                meta_db_service: ctx.meta_db_service,
+                persistent_obj: ctx.persistent_obj,
                 user_creds: ctx.user_creds,
                 vault: kv_join_event_c.value,
             };

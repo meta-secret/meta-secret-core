@@ -1,24 +1,24 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
+use async_trait::async_trait;
+
+use crate::models::user_signature::UserSignature;
 use crate::node::db::events::common::{ObjectCreator, PublicKeyRecord};
 use crate::node::db::events::db_tail::{DbTail, DbTailObject};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::object_descriptor::ObjectDescriptor;
-use async_trait::async_trait;
-
 use crate::node::db::events::local::KvLogEventLocal;
+use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{IdGen, ObjectId};
+use crate::node::db::events::vault_event::VaultObject;
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::logger::MetaLogger;
-use crate::models::user_signature::UserSignature;
-use crate::node::db::events::vault_event::VaultObject;
 
 pub struct PersistentObject<Repo: KvLogEventRepo, Logger: MetaLogger> {
-    pub repo: Rc<Repo>,
-    pub global_index: PersistentGlobalIndex<Repo, Logger>,
-    pub logger: Rc<Logger>,
+    pub repo: Arc<Repo>,
+    pub global_index: Arc<PersistentGlobalIndex<Repo, Logger>>,
+    pub logger: Arc<Logger>,
 }
 
 impl<Repo: KvLogEventRepo, Logger: MetaLogger> PersistentObject<Repo, Logger> {
@@ -183,8 +183,8 @@ pub trait PersistentGlobalIndexApi {
 }
 
 pub struct PersistentGlobalIndex<Repo: KvLogEventRepo, Logger: MetaLogger> {
-    pub repo: Rc<Repo>,
-    pub logger: Rc<Logger>,
+    pub repo: Arc<Repo>,
+    pub logger: Arc<Logger>,
 }
 
 #[async_trait(? Send)]
@@ -210,13 +210,13 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> PersistentGlobalIndexApi for Pers
 }
 
 impl<Repo: KvLogEventRepo, Logger: MetaLogger> PersistentObject<Repo, Logger> {
-    pub fn new(repo: Rc<Repo>, logger: Rc<Logger>) -> Self {
+    pub fn new(repo: Arc<Repo>, logger: Arc<Logger>) -> Self {
         PersistentObject {
             repo: repo.clone(),
-            global_index: PersistentGlobalIndex {
+            global_index: Arc::new(PersistentGlobalIndex {
                 repo,
                 logger: logger.clone(),
-            },
+            }),
             logger,
         }
     }
@@ -224,7 +224,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> PersistentObject<Repo, Logger> {
 
 #[cfg(test)]
 mod test {
-    use std::rc::Rc;
+    use std::sync::Arc;
 
     use crate::crypto::keys::KeyManager;
     use crate::models::DeviceInfo;
@@ -232,19 +232,19 @@ mod test {
     use crate::node::db::events::generic_log_event::GenericKvLogEvent;
     use crate::node::db::events::global_index::{GlobalIndexObject, GlobalIndexRecord};
     use crate::node::db::events::kv_log_event::KvKey;
+    use crate::node::db::events::kv_log_event::KvLogEvent;
     use crate::node::db::events::object_descriptor::ObjectDescriptor;
+    use crate::node::db::events::object_id::{IdGen, ObjectId};
+    use crate::node::db::generic_db::SaveCommand;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_object::PersistentObject;
-    use crate::node::db::events::kv_log_event::KvLogEvent;
-    use crate::node::db::events::object_id::{IdGen, ObjectId};
     use crate::node::logger::{DefaultMetaLogger, LoggerId};
-    use crate::node::db::generic_db::SaveCommand;
 
     #[tokio::test]
     async fn test_find_events() {
         let persistent_object = {
-            let logger = Rc::new(DefaultMetaLogger { id: LoggerId::Client });
-            let repo = Rc::new(InMemKvLogEventRepo::default());
+            let logger = Arc::new(DefaultMetaLogger { id: LoggerId::Client });
+            let repo = Arc::new(InMemKvLogEventRepo::default());
             PersistentObject::new(repo.clone(), logger)
         };
 
@@ -303,8 +303,8 @@ mod test {
     #[tokio::test]
     async fn test_global_index() {
         let persistent_object = {
-            let logger = Rc::new(DefaultMetaLogger { id: LoggerId::Client });
-            let repo = Rc::new(InMemKvLogEventRepo::default());
+            let logger = Arc::new(DefaultMetaLogger { id: LoggerId::Client });
+            let repo = Arc::new(InMemKvLogEventRepo::default());
             PersistentObject::new(repo.clone(), logger)
         };
 

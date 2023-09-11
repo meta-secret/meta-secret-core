@@ -104,20 +104,21 @@ impl<Logger: MetaLogger> MetaDb<Logger> {
 
 #[cfg(test)]
 mod test {
-    use crate::node::db::meta_db::meta_db_view::MetaDb;
-    use crate::node::logger::{DefaultMetaLogger, LoggerId};
-    use std::rc::Rc;
+    use std::sync::Arc;
+
     use crate::crypto::keys::KeyManager;
     use crate::models::DeviceInfo;
     use crate::node::db::events::object_id::ObjectId;
     use crate::node::db::events::vault_event::VaultObject;
+    use crate::node::db::meta_db::meta_db_view::MetaDb;
     use crate::node::db::meta_db::store::vault_store::VaultStore;
+    use crate::node::logger::{DefaultMetaLogger, LoggerId};
 
     #[test]
     fn test() {
         let mut meta_db = MetaDb::new(
             String::from("test"),
-            Rc::new(DefaultMetaLogger::new(LoggerId::Test))
+            Arc::new(DefaultMetaLogger::new(LoggerId::Test))
         );
 
         let vault_name = String::from("test_vault");

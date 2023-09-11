@@ -1,9 +1,11 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
+
+use async_trait::async_trait;
+
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::generic_db::{DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand};
-use async_trait::async_trait;
-use std::cell::RefCell;
-use std::collections::HashMap;
 
 pub struct InMemKvLogEventRepo {
     pub db: RefCell<HashMap<ObjectId, GenericKvLogEvent>>,

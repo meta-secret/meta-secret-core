@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use crate::models::UserSignature;
 
+use crate::models::UserSignature;
 use crate::node::db::events::object_id::ObjectId;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

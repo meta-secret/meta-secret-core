@@ -1,27 +1,27 @@
 use std::cell::RefCell;
-use std::rc::Rc;
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
 
 use crate::models::ApplicationState;
+use crate::node::app::meta_app::{EmptyMetaClient, MetaClient, MetaClientContext};
 use crate::node::app::meta_manager::UserCredentialsManager;
-use crate::node::db::meta_db::meta_db_service::MetaDbService;
+use crate::node::app::sync_gateway::SyncGateway;
+use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::db::actions::join;
+use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::vault_event::VaultObject;
 use crate::node::db::generic_db::KvLogEventRepo;
-use crate::node::db::events::generic_log_event::GenericKvLogEvent;
+use crate::node::db::meta_db::meta_db_service::MetaDbService;
+use crate::node::db::meta_db::store::vault_store::VaultStore;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::logger::MetaLogger;
-use crate::node::common::data_transfer::MpscDataTransfer;
-
-use crate::node::app::meta_app::{EmptyMetaClient, MetaClient, MetaClientContext};
-use crate::node::app::sync_gateway::SyncGateway;
-use crate::node::db::meta_db::store::vault_store::VaultStore;
 
 pub struct VirtualDevice<Repo: KvLogEventRepo, Logger: MetaLogger> {
     pub meta_client: MetaClient<Repo, Logger>,
-    pub ctx: Rc<MetaClientContext<Repo, Logger>>,
-    pub data_transfer: Rc<MpscDataTransfer>,
-    pub logger: Rc<Logger>
+    pub ctx: Arc<MetaClientContext>,
+    pub data_transfer: Arc<MpscDataTransfer>,
+    pub logger: Arc<Logger>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -32,35 +32,31 @@ pub enum VirtualDeviceEvent {
 }
 
 impl<Repo: KvLogEventRepo, Logger: MetaLogger> VirtualDevice<Repo, Logger> {
-    pub fn new(virtual_device_repo: Rc<Repo>, data_transfer: Rc<MpscDataTransfer>, logger: Rc<Logger>) -> VirtualDevice<Repo, Logger> {
-        let app_state = {
-            let state = ApplicationState {
-                meta_vault: None,
-                vault: None,
-                meta_passwords: vec![],
-                join_component: false,
-            };
-            RefCell::new(state)
-        };
-
+    pub fn new(
+        persistent_object: Arc<PersistentObject<Repo, Logger>>,
+        meta_db_service: Arc<MetaDbService<Repo, Logger>>,
+        data_transfer: Arc<MpscDataTransfer>, logger: Arc<Logger>,
+    ) -> VirtualDevice<Repo, Logger> {
         let ctx = {
-            let persistent_object = Rc::new(PersistentObject::new(virtual_device_repo.clone(), logger.clone()));
+            let app_state = {
+                let state = ApplicationState {
+                    meta_vault: None,
+                    vault: None,
+                    meta_passwords: vec![],
+                    join_component: false,
+                };
+                RefCell::new(state)
+            };
 
-            let meta_db_service = Rc::new(MetaDbService::new(String::from("virtual_device"), persistent_object.clone()));
-
-            MetaClientContext {
-                meta_db_service,
-                app_state,
-                persistent_object: persistent_object.clone(),
-                repo: virtual_device_repo,
-                logger: logger.clone()
-            }
+            MetaClientContext { app_state }
         };
-        let ctx = Rc::new(ctx);
+        let ctx = Arc::new(ctx);
 
         let empty_meta_client = EmptyMetaClient {
             ctx: ctx.clone(),
-            logger: logger.clone()
+            logger: logger.clone(),
+            persistent_obj: persistent_object,
+            meta_db_service,
         };
 
         Self {
@@ -71,24 +67,31 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> VirtualDevice<Repo, Logger> {
         }
     }
 
-    pub async fn event_handler(device_repo: Rc<Repo>, data_transfer: Rc<MpscDataTransfer>, logger: Rc<Logger>) {
+    pub async fn event_handler(
+        persistent_object: Arc<PersistentObject<Repo, Logger>>,
+        meta_db_service: Arc<MetaDbService<Repo, Logger>>,
+        data_transfer: Arc<MpscDataTransfer>, logger: Arc<Logger>,
+    ) {
         logger.info("Run virtual device event handler");
 
         let mut virtual_device = {
-            let vd = VirtualDevice::new(device_repo.clone(), data_transfer.clone(), logger.clone());
-            Rc::new(vd)
+            let vd = VirtualDevice::new(
+                persistent_object.clone(), meta_db_service.clone(), data_transfer.clone(), logger.clone()
+            );
+            Arc::new(vd)
         };
 
         logger.info("Generate device creds");
-        let _ = device_repo
+        let _ = persistent_object
+            .repo
             .get_or_generate_user_creds(String::from("q"), String::from("virtual-device"))
             .await;
 
         let gateway = SyncGateway::new(
-            virtual_device.ctx.repo.clone(),
+            persistent_object.repo.clone(),
             data_transfer.clone(),
             String::from("vd-gateway"),
-            logger.clone()
+            logger.clone(),
         );
 
         let init_state_result = virtual_device
@@ -102,7 +105,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> VirtualDevice<Repo, Logger> {
                     .await;
 
                 if let Ok(registered_state) = registered_result {
-                    virtual_device = Rc::new(registered_state);
+                    virtual_device = Arc::new(registered_state);
                     gateway.sync().await;
                 }
             }
@@ -117,23 +120,20 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> VirtualDevice<Repo, Logger> {
             gateway.sync().await;
 
             match &virtual_device.meta_client {
-                MetaClient::Empty(client) => {
-                    client.ctx
-                        .meta_db_service
-                        .sync_db()
-                        .await;
+                MetaClient::Empty(_) => {
+                    meta_db_service.sync_db().await;
                 }
                 MetaClient::Init(client) => {
-                    client.ctx.meta_db_service
+                    meta_db_service
                         .update_with_vault(client.creds.user_sig.vault.name.clone())
                         .await;
 
-                    let vault_store = client.ctx.meta_db_service.get_vault_store()
+                    let vault_store = meta_db_service.get_vault_store()
                         .await
                         .unwrap();
 
                     if let VaultStore::Store { tail_id, vault, .. } = vault_store {
-                        let latest_event = client.ctx.repo
+                        let latest_event = client.persistent_obj.repo
                             .find_one(&tail_id)
                             .await;
 
@@ -142,7 +142,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> VirtualDevice<Repo, Logger> {
                                 event: join::accept_join_request(&event, &vault),
                             });
 
-                            let _ = client.ctx
+                            let _ = client.persistent_obj
                                 .repo
                                 .save_event(&accept_event)
                                 .await;
@@ -152,16 +152,16 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> VirtualDevice<Repo, Logger> {
                     };
                 }
                 MetaClient::Registered(client) => {
-                    client.ctx.meta_db_service
+                    meta_db_service
                         .update_with_vault(client.creds.user_sig.vault.name.clone())
                         .await;
 
-                    let vault_store = client.ctx.meta_db_service.get_vault_store()
+                    let vault_store = meta_db_service.get_vault_store()
                         .await
                         .unwrap();
 
                     if let VaultStore::Store { tail_id, vault, .. } = vault_store {
-                        let latest_event = client.ctx
+                        let latest_event = client.persistent_obj
                             .repo
                             .find_one(&tail_id)
                             .await;
@@ -171,7 +171,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> VirtualDevice<Repo, Logger> {
                                 event: join::accept_join_request(&event, &vault),
                             });
 
-                            let _ = client.ctx
+                            let _ = client.persistent_obj
                                 .repo
                                 .save_event(&accept_event)
                                 .await;
@@ -203,7 +203,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> VirtualDevice<Repo, Logger> {
                     meta_client: MetaClient::Init(init_client),
                     ctx: client.ctx.clone(),
                     data_transfer: self.data_transfer.clone(),
-                    logger: self.logger.clone()
+                    logger: self.logger.clone(),
                 })
             }
             (MetaClient::Init(client), VirtualDeviceEvent::SignUp) => {
@@ -211,7 +211,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> VirtualDevice<Repo, Logger> {
                     meta_client: MetaClient::Registered(client.sign_up().await),
                     ctx: client.ctx.clone(),
                     data_transfer: self.data_transfer.clone(),
-                    logger: self.logger.clone()
+                    logger: self.logger.clone(),
                 })
             }
             _ => {

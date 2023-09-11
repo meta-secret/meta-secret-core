@@ -1,22 +1,17 @@
 use std::cell::RefCell;
-use std::rc::Rc;
-use std::time::Duration;
-
-use crate::models::ApplicationState;
-use crate::node::db::meta_db::store::meta_pass_store::MetaPassStore;
-use crate::node::db::events::common::VaultInfo;
-use crate::node::logger::MetaLogger;
-use crate::node::common::data_transfer::MpscDataTransfer;
-
+use std::sync::Arc;
 use async_trait::async_trait;
 
+use crate::models::ApplicationState;
 use crate::models::MetaPasswordId;
 use crate::node::app::meta_app::{EmptyMetaClient, MetaClient, MetaClientContext, RegisteredMetaClient};
-use crate::node::app::sync_gateway::SyncGateway;
+use crate::node::common::data_transfer::MpscDataTransfer;
+use crate::node::db::events::common::VaultInfo;
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::meta_db::meta_db_service::MetaDbService;
-use crate::node::db::meta_db::store::vault_store::VaultStore;
-use crate::node::server::server_app::ServerApp;
+use crate::node::db::meta_db::store::meta_pass_store::MetaPassStore;
+use crate::node::db::objects::persistent_object::PersistentObject;
+use crate::node::logger::MetaLogger;
 
 #[async_trait(? Send)]
 pub trait StateUpdateManager {
@@ -29,17 +24,11 @@ pub struct ApplicationStateManager<Repo, Logger, StateManager>
         Logger: MetaLogger,
         StateManager: StateUpdateManager {
 
-    pub state_manager: Rc<StateManager>,
-
-    pub meta_client: Rc<MetaClient<Repo, Logger>>,
-
-    pub device_repo: Rc<Repo>,
-    pub server: Rc<ServerApp<Repo, Logger>>,
-
-    pub client_logger: Rc<Logger>,
-    pub vd_logger: Rc<Logger>,
-
-    pub data_transfer: Rc<MpscDataTransfer>,
+    pub state_manager: Arc<StateManager>,
+    pub meta_client: Arc<MetaClient<Repo, Logger>>,
+    pub client_logger: Arc<Logger>,
+    pub data_transfer: Arc<MpscDataTransfer>,
+    pub meta_db_service: Arc<MetaDbService<Repo, Logger>>
 }
 
 impl <Repo, Logger, State> ApplicationStateManager <Repo, Logger, State>
@@ -57,12 +46,12 @@ impl <Repo, Logger, State> ApplicationStateManager <Repo, Logger, State>
 
                 if let Ok(new_client) = new_client_result {
                     new_client.ctx.enable_join().await;
-                    self.meta_client = Rc::new(MetaClient::Init(new_client));
+                    self.meta_client = Arc::new(MetaClient::Init(new_client));
                 }
             }
             MetaClient::Init(client) => {
                 //ignore
-                self.meta_client = Rc::new(MetaClient::Registered(client.sign_up().await));
+                self.meta_client = Arc::new(MetaClient::Registered(client.sign_up().await));
             }
             MetaClient::Registered(_) => {
                 //ignore
@@ -97,7 +86,7 @@ impl <Repo, Logger, State> ApplicationStateManager <Repo, Logger, State>
 
                 client.cluster_distribution(pass_id, pass).await;
                 let passwords = {
-                    let pass_store = client.ctx.meta_db_service.get_meta_pass_store().await.unwrap();
+                    let pass_store = self.meta_db_service.get_meta_pass_store().await.unwrap();
                     match pass_store {
                         MetaPassStore::Store { passwords, .. } => {
                             passwords.clone()
@@ -127,37 +116,40 @@ impl<Repo, Logger, State> ApplicationStateManager<Repo, Logger, State>
         State: StateUpdateManager {
 
     pub fn new(
-        client_repo: Rc<Repo>, device_repo: Rc<Repo>,
-        logger: Rc<Logger>, vd_logger: Rc<Logger>,
-        server: Rc<ServerApp<Repo, Logger>>,
-        data_transfer: Rc<MpscDataTransfer>,
-        state: Rc<State>, meta_db_service: Rc<MetaDbService<Repo, Logger>>) -> ApplicationStateManager<Repo, Logger, State> {
+        persistent_obj: Arc<PersistentObject<Repo, Logger>>,
+        meta_db_service: Arc<MetaDbService<Repo, Logger>>,
+        logger: Arc<Logger>,
+        data_transfer: Arc<MpscDataTransfer>,
+        state: Arc<State>
+    ) -> ApplicationStateManager<Repo, Logger, State> {
 
         logger.info("New. Application State Manager");
 
-        let app_state = {
-            let state = ApplicationState {
-                meta_vault: None,
-                vault: None,
-                meta_passwords: vec![],
-                join_component: false,
+        let ctx = {
+            let app_state = {
+                let state = ApplicationState {
+                    meta_vault: None,
+                    vault: None,
+                    meta_passwords: vec![],
+                    join_component: false,
+                };
+                RefCell::new(state)
             };
-            RefCell::new(state)
+
+            MetaClientContext::new(app_state)
         };
 
-        let ctx = MetaClientContext::new(app_state, client_repo.clone(), logger.clone(), meta_db_service);
-
         let meta_client = MetaClient::Empty(EmptyMetaClient {
-            ctx: Rc::new(ctx),
-            logger: logger.clone()
+            ctx: Arc::new(ctx),
+            logger: logger.clone(),
+            persistent_obj,
+            meta_db_service: meta_db_service.clone(),
         });
 
         ApplicationStateManager {
-            meta_client: Rc::new(meta_client),
+            meta_db_service,
+            meta_client: Arc::new(meta_client),
             client_logger: logger,
-            vd_logger,
-            device_repo,
-            server,
             data_transfer,
             state_manager: state
         }
@@ -181,7 +173,7 @@ impl<Repo, Logger, State> ApplicationStateManager<Repo, Logger, State>
 
                         {
                             new_meta_client.ctx.update_vault(vault.clone()).await;
-                            let meta_pass_store = client.ctx.meta_db_service.get_meta_pass_store().await.unwrap();
+                            let meta_pass_store = self.meta_db_service.get_meta_pass_store().await.unwrap();
 
                             new_meta_client
                                 .ctx
@@ -190,9 +182,9 @@ impl<Repo, Logger, State> ApplicationStateManager<Repo, Logger, State>
                         }
 
                         let registered_client = MetaClient::Registered(new_meta_client);
-                        self.meta_client = Rc::new(registered_client);
+                        self.meta_client = Arc::new(registered_client);
                     } else {
-                        self.meta_client = Rc::new(MetaClient::Init(init_client));
+                        self.meta_client = Arc::new(MetaClient::Init(init_client));
                     }
                 }
             }
@@ -201,34 +193,10 @@ impl<Repo, Logger, State> ApplicationStateManager<Repo, Logger, State>
                 if let VaultInfo::Member { vault } = &new_client.vault_info {
                     MetaClientContext::update_vault(&new_client.ctx, vault.clone()).await;
                 }
-                self.meta_client = Rc::new(MetaClient::Registered(new_client));
+                self.meta_client = Arc::new(MetaClient::Registered(new_client));
             }
             MetaClient::Registered(client) => {
                 self.registered_client(client).await;
-            }
-        }
-    }
-
-    pub async fn run_client_gateway(data_transfer_client: Rc<MpscDataTransfer>, ctx: Rc<MetaClientContext<Repo, Logger>>, repo: Rc<Repo>, client_logger: Rc<Logger>) {
-        let gateway = SyncGateway::new(
-            repo, data_transfer_client, String::from("client-gateway"), client_logger
-        );
-
-        loop {
-            async_std::task::sleep(Duration::from_secs(1)).await;
-            gateway.sync().await;
-
-            let vault_store = ctx.meta_db_service.get_vault_store()
-                .await
-                .unwrap();
-
-            match vault_store {
-                VaultStore::Store { vault, .. } => {
-                    gateway.send_shared_secrets(&vault).await;
-                }
-                _ => {
-                    //skip
-                }
             }
         }
     }

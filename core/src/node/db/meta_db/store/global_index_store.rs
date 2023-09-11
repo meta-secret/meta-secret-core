@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+
 use crate::node::db::events::common::PublicKeyRecord;
 use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::KvKey;
@@ -105,10 +106,10 @@ impl TailId for GlobalIndexStore {
 
 #[cfg(test)]
 mod test {
-    use std::rc::Rc;
+    use std::sync::Arc;
+
     use crate::models::Base64EncodedText;
     use crate::node::db::events::common::PublicKeyRecord;
-
     use crate::node::db::events::global_index::GlobalIndexObject;
     use crate::node::db::events::kv_log_event::KvLogEvent;
     use crate::node::db::events::object_id::{IdGen, IdStr, ObjectId};
@@ -119,7 +120,7 @@ mod test {
     fn test_happy_case() {
         let mut meta_db = MetaDb::new(
             String::from("test"),
-            Rc::new(DefaultMetaLogger::new(LoggerId::Test)),
+            Arc::new(DefaultMetaLogger::new(LoggerId::Test)),
         );
 
         let unit_event = GlobalIndexObject::unit();

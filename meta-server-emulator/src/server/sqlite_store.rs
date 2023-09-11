@@ -1,5 +1,5 @@
 use std::error::Error;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection};
@@ -17,7 +17,7 @@ use crate::schema::db_commit_log::dsl;
 pub struct SqlIteRepo {
     /// conn_url="file:///tmp/test.db"
     pub conn_url: String,
-    pub context: Rc<MetaServerContextState>,
+    pub context: Arc<MetaServerContextState>,
 }
 
 #[derive(thiserror::Error, Debug)]

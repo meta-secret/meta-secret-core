@@ -1,6 +1,6 @@
-use crate::crypto::utils;
 use rand::{distributions::Alphanumeric, Rng};
 
+use crate::crypto::utils;
 use crate::models::MetaPasswordId;
 
 const SALT_LENGTH: usize = 8;

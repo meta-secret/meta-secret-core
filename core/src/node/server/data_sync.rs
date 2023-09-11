@@ -1,10 +1,11 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 
 use crate::crypto::key_pair::KeyPair;
 use crate::crypto::keys::KeyManager;
 use crate::models::{UserCredentials, UserSignature};
+use crate::node::app::meta_manager::UserCredentialsManager;
 use crate::node::db::actions::join;
 use crate::node::db::actions::sign_up::SignUpAction;
 use crate::node::db::events::common::{LogEventKeyBasedRecord, ObjectCreator, SharedSecretObject};
@@ -29,10 +30,9 @@ pub trait DataSyncApi {
 }
 
 pub struct DataSync<Repo: KvLogEventRepo, Logger: MetaLogger> {
-    pub persistent_obj: Rc<PersistentObject<Repo, Logger>>,
-    pub repo: Rc<Repo>,
-    pub context: Rc<MetaServerContextState>,
-    pub logger: Rc<Logger>,
+    pub persistent_obj: Arc<PersistentObject<Repo, Logger>>,
+    pub context: Arc<MetaServerContextState>,
+    pub logger: Arc<Logger>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -66,6 +66,21 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> DataSyncApi for DataSync<Repo, Lo
 }
 
 impl<Repo: KvLogEventRepo, Logger: MetaLogger> DataSync<Repo, Logger> {
+    pub async fn new(persistent_obj: Arc<PersistentObject<Repo, Logger>>, logger: Arc<Logger>) -> Self {
+        let server_creds = persistent_obj
+            .repo
+            .get_or_generate_user_creds(String::from("q"), String::from("server"))
+            .await;
+
+        DataSync {
+            persistent_obj: persistent_obj.clone(),
+            context: Arc::new(MetaServerContextState::from(&server_creds)),
+            logger: logger.clone(),
+        }
+    }
+}
+
+impl<Repo: KvLogEventRepo, Logger: MetaLogger> DataSync<Repo, Logger> {
     async fn server_processing(&self, generic_event: &GenericKvLogEvent) {
         self.logger
             .debug(format!("DataSync::event_processing: {:?}", generic_event).as_str());
@@ -92,7 +107,8 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> DataSync<Repo, Logger> {
                         self.logger
                             .info(format!("Looking for a vault: {}", vault_id.id_str()).as_str());
 
-                        let vault_formation_event_result = self.repo.find_one(&vault_id).await;
+                        let vault_formation_event_result = self.persistent_obj.repo
+                            .find_one(&vault_id).await;
 
                         let vault_id_str = IdStr::from(&vault_id);
 
@@ -117,7 +133,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> DataSync<Repo, Logger> {
                         self.logger.info("SignUp update not allowed to send. Skip");
                     }
                     VaultObject::JoinUpdate { .. } => {
-                        let _ = self.repo.save_event(generic_event).await;
+                        let _ = self.persistent_obj.repo.save_event(generic_event).await;
                     }
                     VaultObject::JoinRequest { .. } => {
                         //self.logger.log("Handle join request");
@@ -135,7 +151,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> DataSync<Repo, Logger> {
                 }
                 MetaPassObject::Update { event } => {
                     let meta_pass_event = GenericKvLogEvent::MetaPass(MetaPassObject::Update { event: event.clone() });
-                    let save_command = self.repo.save_event(&meta_pass_event).await;
+                    let save_command = self.persistent_obj.repo.save_event(&meta_pass_event).await;
 
                     if save_command.is_err() {
                         let err_msg = String::from("Error saving meta pass request");
@@ -163,7 +179,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> DataSync<Repo, Logger> {
                                     event: join::join_cluster_request(&vault_tail_id, &event.value),
                                 });
 
-                                let _ = self.repo.save_event(&join_request).await;
+                                let _ = self.persistent_obj.repo.save_event(&join_request).await;
                             }
                         }
                     }
@@ -197,7 +213,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> DataSync<Repo, Logger> {
                         })
                     }
                     SharedSecretObject::RecoveryRequest { event } => {
-                       GenericKvLogEvent::SharedSecret(SharedSecretObject::RecoveryRequest {
+                        GenericKvLogEvent::SharedSecret(SharedSecretObject::RecoveryRequest {
                             event: KvLogEvent {
                                 key: KvKey::Empty { obj_desc },
                                 value: event.value.clone(),
@@ -206,7 +222,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> DataSync<Repo, Logger> {
                     }
                 };
 
-                let _ = self.repo.save(&slot_id, &shared_secret_event).await;
+                let _ = self.persistent_obj.repo.save(&slot_id, &shared_secret_event).await;
             }
 
             GenericKvLogEvent::LocalEvent(evt_type) => {
@@ -260,7 +276,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> DataSync<Repo, Logger> {
                 // Ignore empty requests
             }
             Some(vault_tail_id) => {
-                let mut meta_db = {
+                let meta_db = {
                     let mut meta_db = MetaDb::new(String::from("server"), self.logger.clone());
                     match &request.vault_tail_id {
                         None => meta_db.vault_store = VaultStore::Empty,
@@ -335,7 +351,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> DataSync<Repo, Logger> {
         let sign_up_events = sign_up_action.accept(event, &server_pk);
 
         for sign_up_event in sign_up_events {
-            self.repo
+            self.persistent_obj.repo
                 .save_event(&sign_up_event)
                 .await
                 .expect("Error saving sign_up events");
@@ -373,7 +389,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> DataSync<Repo, Logger> {
         gi_events.push(gi_update_event);
 
         for gi_event in gi_events {
-            self.repo
+            self.persistent_obj.repo
                 .save_event(&gi_event)
                 .await
                 .expect("Error saving vaults genesis event");
@@ -413,12 +429,12 @@ impl From<&UserCredentials> for MetaServerContextState {
 
 #[cfg(test)]
 pub mod test {
-    use super::*;
     use crate::models::DeviceInfo;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
-    use std::rc::Rc;
     use crate::node::db::meta_db::meta_db_service::MetaDbService;
     use crate::node::logger::{DefaultMetaLogger, LoggerId};
+
+    use super::*;
 
     #[tokio::test]
     async fn test_accept_sign_up() {
@@ -522,22 +538,22 @@ pub mod test {
     }
 
     pub struct DataSyncTestContext {
-        pub logger: Rc<DefaultMetaLogger>,
-        pub repo: Rc<InMemKvLogEventRepo>,
-        pub persistent_obj: Rc<PersistentObject<InMemKvLogEventRepo, DefaultMetaLogger>>,
-        pub meta_db_service: Rc<MetaDbService<InMemKvLogEventRepo, DefaultMetaLogger>>,
+        pub logger: Arc<DefaultMetaLogger>,
+        pub repo: Arc<InMemKvLogEventRepo>,
+        pub persistent_obj: Arc<PersistentObject<InMemKvLogEventRepo, DefaultMetaLogger>>,
+        pub meta_db_service: Arc<MetaDbService<InMemKvLogEventRepo, DefaultMetaLogger>>,
         pub data_sync: DataSync<InMemKvLogEventRepo, DefaultMetaLogger>,
-        pub user_sig: Rc<UserSignature>,
-        pub user_creds: Rc<UserCredentials>,
+        pub user_sig: Arc<UserSignature>,
+        pub user_creds: Arc<UserCredentials>,
     }
 
     impl DataSyncTestContext {
         pub fn new() -> Self {
-            let repo = Rc::new(InMemKvLogEventRepo::default());
-            let logger = Rc::new(DefaultMetaLogger { id: LoggerId::Client });
+            let repo = Arc::new(InMemKvLogEventRepo::default());
+            let logger = Arc::new(DefaultMetaLogger { id: LoggerId::Client });
 
-            let persistent_object = Rc::new(PersistentObject::new(repo.clone(), logger.clone()));
-            let meta_db_service = Rc::new(MetaDbService::new(String::from("test"), persistent_object.clone()));
+            let persistent_object = Arc::new(PersistentObject::new(repo.clone(), logger.clone()));
+            let meta_db_service = Arc::new(MetaDbService::new(String::from("test"), persistent_object.clone()));
 
             let s_box = KeyManager::generate_security_box("test_vault".to_string());
             let device = DeviceInfo {
@@ -545,15 +561,14 @@ pub mod test {
                 device_name: "a".to_string(),
             };
             let user_sig = s_box.get_user_sig(&device);
-            let user_creds = Rc::new(UserCredentials {
+            let user_creds = Arc::new(UserCredentials {
                 security_box: Box::new(s_box),
                 user_sig: Box::new(user_sig.clone()),
             });
 
             let data_sync = DataSync {
                 persistent_obj: persistent_object.clone(),
-                repo: repo.clone(),
-                context: Rc::new(MetaServerContextState::from(user_creds.as_ref())),
+                context: Arc::new(MetaServerContextState::from(user_creds.as_ref())),
                 logger: logger.clone(),
             };
 
@@ -563,7 +578,7 @@ pub mod test {
                 persistent_obj: persistent_object,
                 meta_db_service,
                 data_sync,
-                user_sig: Rc::new(user_sig),
+                user_sig: Arc::new(user_sig),
                 user_creds,
             }
         }

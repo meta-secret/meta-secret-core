@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 
 use crate::crypto::keys::KeyManager;
+use crate::models::DeviceInfo;
 use crate::models::meta_vault::MetaVault;
 use crate::models::user_credentials::UserCredentials;
-use crate::models::DeviceInfo;
 use crate::node::db::events::common::ObjectCreator;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};

@@ -1,5 +1,4 @@
 use crate::crypto;
-
 use crate::crypto::key_pair::KeyPair;
 use crate::crypto::keys::KeyManager;
 use crate::models::{DeviceInfo, MetaVault, UserSignature, VaultDoc};

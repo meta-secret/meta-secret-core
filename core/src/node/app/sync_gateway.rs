@@ -1,7 +1,10 @@
-use std::rc::Rc;
-use crate::models::{VaultDoc};
+use std::sync::Arc;
+use std::time::Duration;
 
+use crate::models::VaultDoc;
 use crate::node::app::meta_manager::UserCredentialsManager;
+use crate::node::common::data_transfer::MpscDataTransfer;
+use crate::node::common::data_transfer::MpscSender;
 use crate::node::db::events::common::{LogEventKeyBasedRecord, ObjectCreator, SharedSecretObject};
 use crate::node::db::events::db_tail::{DbTail, DbTailObject};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
@@ -9,36 +12,35 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::local::KvLogEventLocal;
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{IdGen, ObjectId};
-
+use crate::node::db::generic_db::KvLogEventRepo;
+use crate::node::db::meta_db::meta_db_service::MetaDbService;
+use crate::node::db::meta_db::store::vault_store::VaultStore;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::logger::MetaLogger;
 use crate::node::server::data_sync::DataSyncMessage;
 use crate::node::server::request::SyncRequest;
-use crate::node::common::data_transfer::MpscSender;
-use crate::node::db::generic_db::KvLogEventRepo;
-use crate::node::common::data_transfer::MpscDataTransfer;
 
 pub struct SyncGateway<Repo: KvLogEventRepo, Logger: MetaLogger> {
     pub id: String,
-    pub logger: Rc<Logger>,
-    pub repo: Rc<Repo>,
-    pub persistent_object: Rc<PersistentObject<Repo, Logger>>,
-    pub data_transfer: Rc<MpscSender>,
+    pub logger: Arc<Logger>,
+    pub repo: Arc<Repo>,
+    pub persistent_object: Arc<PersistentObject<Repo, Logger>>,
+    pub data_transfer: Arc<MpscSender>,
 }
 
 impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
 
     pub fn new(
-        repo: Rc<Repo>,
-        data_transfer: Rc<MpscDataTransfer>,
+        repo: Arc<Repo>,
+        data_transfer: Arc<MpscDataTransfer>,
         gateway_id: String,
-        logger: Rc<Logger>,
+        logger: Arc<Logger>,
     ) -> SyncGateway<Repo, Logger> {
         logger.info("Create new wasm sync gateway instance");
 
         let persistent_object = {
             let obj = PersistentObject::new(repo.clone(), logger.clone());
-            Rc::new(obj)
+            Arc::new(obj)
         };
 
         SyncGateway {
@@ -47,6 +49,26 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
             repo,
             persistent_object,
             data_transfer: data_transfer.mpsc_service.clone(),
+        }
+    }
+
+    pub async fn run(&self, meta_db_service: Arc<MetaDbService<Repo, Logger>>) {
+        loop {
+            async_std::task::sleep(Duration::from_secs(1)).await;
+            self.sync().await;
+
+            let vault_store = meta_db_service.get_vault_store()
+                .await
+                .unwrap();
+
+            match vault_store {
+                VaultStore::Store { vault, .. } => {
+                    self.send_shared_secrets(&vault).await;
+                }
+                _ => {
+                    //skip
+                }
+            }
         }
     }
 

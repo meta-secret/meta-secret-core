@@ -17,7 +17,7 @@ wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 async fn pass_async() {
     configure();
 
-    let client_repo = Rc::new(InMemKvLogEventRepo::default());
+    let client_repo = Arc::new(InMemKvLogEventRepo::default());
     let maybe_obj = client_repo.find_one(&ObjectId::vault_unit("test-vault")).await.unwrap();
     assert!(maybe_obj.is_none());
 }
