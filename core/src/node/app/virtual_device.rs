@@ -89,9 +89,10 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> VirtualDevice<Repo, Logger> {
 
         let gateway = SyncGateway::new(
             persistent_object.repo.clone(),
+            meta_db_service.clone(),
             data_transfer.clone(),
             String::from("vd-gateway"),
-            logger.clone(),
+            logger.clone()
         );
 
         let init_state_result = virtual_device

@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use crate::models::ApplicationState;
 use crate::models::MetaPasswordId;
 use crate::node::app::meta_app::{EmptyMetaClient, MetaClient, MetaClientContext, RegisteredMetaClient};
+use crate::node::app::sync_gateway::SyncGateway;
 use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::db::events::common::VaultInfo;
 use crate::node::db::generic_db::KvLogEventRepo;
@@ -22,20 +23,23 @@ pub struct ApplicationStateManager<Repo, Logger, StateManager>
     where
         Repo: KvLogEventRepo,
         Logger: MetaLogger,
-        StateManager: StateUpdateManager {
+        StateManager: StateUpdateManager,
+{
 
     pub state_manager: Arc<StateManager>,
     pub meta_client: Arc<MetaClient<Repo, Logger>>,
     pub client_logger: Arc<Logger>,
     pub data_transfer: Arc<MpscDataTransfer>,
-    pub meta_db_service: Arc<MetaDbService<Repo, Logger>>
+    pub meta_db_service: Arc<MetaDbService<Repo, Logger>>,
+    pub sync_gateway: Arc<SyncGateway<Repo, Logger>>
 }
 
 impl <Repo, Logger, State> ApplicationStateManager <Repo, Logger, State>
     where
         Repo: KvLogEventRepo,
         Logger: MetaLogger,
-        State: StateUpdateManager {
+        State: StateUpdateManager,
+{
 
     pub async fn sign_up(&mut self, vault_name: &str, device_name: &str) {
         match self.meta_client.as_ref() {
@@ -113,14 +117,17 @@ impl<Repo, Logger, State> ApplicationStateManager<Repo, Logger, State>
     where
         Repo: KvLogEventRepo,
         Logger: MetaLogger,
-        State: StateUpdateManager {
+        State: StateUpdateManager,
+
+{
 
     pub fn new(
         persistent_obj: Arc<PersistentObject<Repo, Logger>>,
         meta_db_service: Arc<MetaDbService<Repo, Logger>>,
         logger: Arc<Logger>,
         data_transfer: Arc<MpscDataTransfer>,
-        state: Arc<State>
+        state: Arc<State>,
+        sync_gateway: Arc<SyncGateway<Repo, Logger>>
     ) -> ApplicationStateManager<Repo, Logger, State> {
 
         logger.info("New. Application State Manager");
@@ -151,7 +158,8 @@ impl<Repo, Logger, State> ApplicationStateManager<Repo, Logger, State>
             meta_client: Arc::new(meta_client),
             client_logger: logger,
             data_transfer,
-            state_manager: state
+            state_manager: state,
+            sync_gateway
         }
     }
 

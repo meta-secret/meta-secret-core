@@ -212,7 +212,6 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDbService<Repo, Logger> {
 #[cfg(test)]
 mod test {
     use std::sync::Arc;
-
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::meta_db::meta_db_service::MetaDbService;
     use crate::node::db::objects::persistent_object::PersistentObject;

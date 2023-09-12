@@ -254,7 +254,7 @@ mod test {
 
             distributor.distribute(String::from("test"), String::from("t0p$ecret")).await;
 
-            let mut db = ctx.repo.db.take().values().cloned().collect::<Vec<GenericKvLogEvent>>();
+            let mut db = ctx.repo.db.lock().unwrap().values().cloned().collect::<Vec<GenericKvLogEvent>>();
             db.sort_by(|a, b| {
                 let a_id = match a.key() {
                     KvKey::Empty { obj_desc } => {

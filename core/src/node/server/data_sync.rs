@@ -553,7 +553,10 @@ pub mod test {
             let logger = Arc::new(DefaultMetaLogger { id: LoggerId::Client });
 
             let persistent_object = Arc::new(PersistentObject::new(repo.clone(), logger.clone()));
-            let meta_db_service = Arc::new(MetaDbService::new(String::from("test"), persistent_object.clone()));
+            let meta_db_service = Arc::new(MetaDbService::new(
+                String::from("test"),
+                persistent_object.clone()
+            ));
 
             let s_box = KeyManager::generate_security_box("test_vault".to_string());
             let device = DeviceInfo {

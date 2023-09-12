@@ -26,12 +26,14 @@ pub struct SyncGateway<Repo: KvLogEventRepo, Logger: MetaLogger> {
     pub repo: Arc<Repo>,
     pub persistent_object: Arc<PersistentObject<Repo, Logger>>,
     pub data_transfer: Arc<MpscSender>,
+    pub meta_db_service: Arc<MetaDbService<Repo, Logger>>
 }
 
 impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
 
     pub fn new(
         repo: Arc<Repo>,
+        meta_db_service: Arc<MetaDbService<Repo, Logger>>,
         data_transfer: Arc<MpscDataTransfer>,
         gateway_id: String,
         logger: Arc<Logger>,
@@ -49,15 +51,16 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
             repo,
             persistent_object,
             data_transfer: data_transfer.mpsc_service.clone(),
+            meta_db_service,
         }
     }
 
-    pub async fn run(&self, meta_db_service: Arc<MetaDbService<Repo, Logger>>) {
+    pub async fn run(&self) {
         loop {
             async_std::task::sleep(Duration::from_secs(1)).await;
             self.sync().await;
 
-            let vault_store = meta_db_service.get_vault_store()
+            let vault_store = self.meta_db_service.get_vault_store()
                 .await
                 .unwrap();
 

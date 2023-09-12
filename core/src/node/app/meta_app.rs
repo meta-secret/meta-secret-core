@@ -27,7 +27,12 @@ pub enum MetaClient<Repo: KvLogEventRepo, Logger: MetaLogger> {
     Registered(RegisteredMetaClient<Repo, Logger>),
 }
 
-impl<Repo, Logger> ToString for MetaClient<Repo, Logger> where Repo: KvLogEventRepo, Logger: MetaLogger {
+impl<Repo, Logger> ToString for MetaClient<Repo, Logger>
+    where
+        Repo: KvLogEventRepo,
+        Logger: MetaLogger,
+
+{
     fn to_string(&self) -> String {
         match self {
             MetaClient::Empty(_) => String::from("Empty"),
@@ -40,7 +45,8 @@ impl<Repo, Logger> ToString for MetaClient<Repo, Logger> where Repo: KvLogEventR
 impl<Repo, Logger> MetaClient<Repo, Logger>
     where
         Repo: KvLogEventRepo,
-        Logger: MetaLogger
+        Logger: MetaLogger,
+
 {
     pub fn get_ctx(&self) -> Arc<MetaClientContext> {
         match self {
@@ -275,7 +281,9 @@ pub struct RegisteredMetaClient<Repo: KvLogEventRepo, Logger: MetaLogger> {
 impl<Repo, Logger> RegisteredMetaClient<Repo, Logger>
     where
         Repo: KvLogEventRepo,
-        Logger: MetaLogger {
+        Logger: MetaLogger,
+
+{
     pub async fn cluster_distribution(&self, pass_id: &str, pass: &str) {
         self.logger.info("cluster distribution!!!!");
 

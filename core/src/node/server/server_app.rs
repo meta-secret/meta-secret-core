@@ -18,7 +18,9 @@ pub struct ServerApp<Repo: KvLogEventRepo, Logger: MetaLogger> {
 impl<Repo, Logger> ServerApp<Repo, Logger>
     where
         Repo: KvLogEventRepo,
-        Logger: MetaLogger {
+        Logger: MetaLogger,
+
+{
 
     pub async fn run(&self) {
         self.logger.info("Run server app");

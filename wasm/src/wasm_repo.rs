@@ -1,13 +1,15 @@
-
+use std::ops::Deref;
+use std::sync::{Arc, Mutex};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use wasm_bindgen::JsValue;
 
+use meta_secret_core::node::db::events::generic_log_event::GenericKvLogEvent;
 use meta_secret_core::node::db::events::object_id::ObjectId;
 use meta_secret_core::node::db::generic_db::{CommitLogDbConfig, DeleteCommand, FindOneQuery, KvLogEventRepo};
 use meta_secret_core::node::db::generic_db::SaveCommand;
-use meta_secret_core::node::db::events::generic_log_event::GenericKvLogEvent;
 use meta_secret_core::node::logger::{LoggerId, MetaLogger};
+
 use crate::{debug, error, idbDelete, idbGet, idbSave, info, warn};
 
 pub struct WasmRepo {
@@ -47,32 +49,25 @@ impl WasmRepo {
     }
 }
 
-#[async_trait(? Send)]
+#[async_trait]
 impl SaveCommand for WasmRepo {
     async fn save(&self, key: &ObjectId, event: &GenericKvLogEvent) -> anyhow::Result<ObjectId> {
+        let self_arc = Arc::new(self.clone());
+
         let event_js: JsValue = serde_wasm_bindgen::to_value(event)
             .map_err(|err| anyhow!("Error parsing data to save: {:?}", err))?;
 
-        idbSave(
-            self.db_name.as_str(),
-            self.store_name.as_str(),
-            key.id_str().as_str(),
-            event_js,
-        )
-            .await;
+        let save_op = idbSave(self_arc.db_name.clone(), self_arc.store_name.clone(), key.id_str(), event_js).await;
+
         Ok(key.clone())
     }
 }
 
-#[async_trait(? Send)]
+#[async_trait]
 impl FindOneQuery for WasmRepo {
     async fn find_one(&self, key: &ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>> {
-        let obj_js = idbGet(
-            self.db_name.as_str(),
-            self.store_name.as_str(),
-            key.id_str().as_str(),
-        )
-            .await;
+        let self_arc = Arc::new(self.clone());
+        let obj_js = idbGet(self_arc.db_name.clone(), self_arc.store_name.clone(), key.id_str().as_str().to_string());
 
         if obj_js.is_undefined() {
             Ok(None)
@@ -84,10 +79,12 @@ impl FindOneQuery for WasmRepo {
     }
 }
 
-#[async_trait(? Send)]
+#[async_trait]
 impl DeleteCommand for WasmRepo {
     async fn delete(&self, key: &ObjectId) {
-        idbDelete(self.db_name.as_str(), self.store_name.as_str(), key.id_str().as_str()).await;
+        async move {
+            idbDelete(self.db_name.as_str(), self.store_name.as_str(), key.id_str().as_str()).await
+        }
     }
 }
 
@@ -104,7 +101,7 @@ impl CommitLogDbConfig for WasmRepo {
 }
 
 pub struct WasmMetaLogger {
-    pub id: LoggerId
+    pub id: LoggerId,
 }
 
 impl MetaLogger for WasmMetaLogger {

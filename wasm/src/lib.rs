@@ -44,8 +44,8 @@ extern "C" {
 
 #[wasm_bindgen]
 extern "C" {
-    pub async fn idbGet(db_name: &str, store_name: &str, key: &str) -> JsValue;
-    pub async fn idbSave(db_name: &str, store_name: &str, key: &str, value: JsValue);
+    pub async fn idbGet(db_name: String, store_name: String, key: String) -> JsValue;
+    pub async fn idbSave(db_name: String, store_name: String, key: String, value: JsValue);
 
     pub async fn idbDelete(db_name: &str, store_name: &str, key: &str);
 
