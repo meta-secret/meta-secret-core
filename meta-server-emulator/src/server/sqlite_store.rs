@@ -29,7 +29,7 @@ pub enum SqliteDbError {
     },
 }
 
-#[async_trait]
+#[async_trait(? Send)]
 impl SaveCommand for SqlIteRepo {
     async fn save(&self, _key: &ObjectId, value: &GenericKvLogEvent) -> anyhow::Result<ObjectId> {
         let mut conn = SqliteConnection::establish(self.conn_url.as_str()).unwrap();
@@ -41,7 +41,7 @@ impl SaveCommand for SqlIteRepo {
     }
 }
 
-#[async_trait]
+#[async_trait(? Send)]
 impl FindOneQuery for SqlIteRepo {
     async fn find_one(&self, key: &ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>> {
         let mut conn = SqliteConnection::establish(self.conn_url.as_str()).unwrap();
@@ -54,7 +54,7 @@ impl FindOneQuery for SqlIteRepo {
     }
 }
 
-#[async_trait]
+#[async_trait(? Send)]
 impl DeleteCommand for SqlIteRepo {
     async fn delete(&self, key: &ObjectId) {
         let mut conn = SqliteConnection::establish(self.conn_url.as_str()).unwrap();

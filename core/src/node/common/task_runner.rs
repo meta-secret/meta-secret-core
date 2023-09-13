@@ -1,29 +1,28 @@
 use std::future::Future;
 use async_trait::async_trait;
 
-#[async_trait]
+#[async_trait(? Send)]
 pub trait TaskRunner{
-    async fn spawn<F>(&self, future: F) where F: Future<Output=()> + Send + 'static;
-}
-
-pub struct RustTaskRunner {}
-
-#[async_trait]
-impl TaskRunner for RustTaskRunner {
-    async fn spawn<F>(&self, future: F) where F: Future<Output=()> + Send + 'static {
-        use async_std::task;
-        task::spawn(async move {
-            future.await;
-        }).await;
-    }
+    async fn spawn(&self, future: impl Future<Output=()> + 'static);
 }
 
 #[cfg(test)]
 mod test {
+    use std::future::Future;
     use std::ops::Deref;
     use std::sync::{Arc, Mutex};
+    use async_trait::async_trait;
+    use crate::node::common::task_runner::{TaskRunner};
 
-    use crate::node::common::task_runner::{RustTaskRunner, TaskRunner};
+    pub struct RustTaskRunner {}
+
+    #[async_trait(? Send)]
+    impl TaskRunner for RustTaskRunner {
+        async fn spawn(&self, future: impl Future<Output=()> + 'static) {
+            use tokio::task;
+            let _ = task::spawn_local(future).await;
+        }
+    }
 
     #[tokio::test]
     async fn spawn_test() {

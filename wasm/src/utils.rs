@@ -6,10 +6,9 @@ use wasm_bindgen_futures::spawn_local;
 
 pub struct WasmTaskRunner {}
 
-#[async_trait]
+#[async_trait(? Send)]
 impl TaskRunner for WasmTaskRunner {
-    async fn spawn<F>(&self, future: F) where F: Future<Output=()> + Send + 'static {
-        //let future = Box::pin(future);
+    async fn spawn(&self, future: impl Future<Output=()> + 'static) {
         spawn_local(async move {
             future.await;
         });

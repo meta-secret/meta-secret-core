@@ -5,8 +5,8 @@ use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::kv_log_event::KvKey;
 use crate::node::db::events::object_id::ObjectId;
 
-#[async_trait]
-pub trait SaveCommand: Send + Sync {
+#[async_trait(? Send)]
+pub trait SaveCommand {
     async fn save(&self, key: &ObjectId, value: &GenericKvLogEvent) -> anyhow::Result<ObjectId>;
 
     async fn save_event(&self, value: &GenericKvLogEvent) -> anyhow::Result<ObjectId> {
@@ -22,23 +22,23 @@ pub trait SaveCommand: Send + Sync {
     }
 }
 
-#[async_trait]
-pub trait FindOneQuery: Send + Sync {
+#[async_trait(? Send)]
+pub trait FindOneQuery {
     async fn find_one(&self, key: &ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>>;
 }
 
-#[async_trait]
-pub trait DeleteCommand: Send + Sync {
+#[async_trait(? Send)]
+pub trait DeleteCommand {
     async fn delete(&self, key: &ObjectId);
 }
 
-#[async_trait]
+#[async_trait(? Send)]
 pub trait FindQuery<T> {
     async fn find(&self, key: &ObjectId) -> anyhow::Result<Vec<T>>;
 }
 
-#[async_trait]
-pub trait KvLogEventRepo: FindOneQuery + SaveCommand + DeleteCommand + Send + Sync {}
+#[async_trait(? Send)]
+pub trait KvLogEventRepo: FindOneQuery + SaveCommand + DeleteCommand + 'static {}
 
 pub trait CommitLogDbConfig {
     fn db_name(&self) -> String;

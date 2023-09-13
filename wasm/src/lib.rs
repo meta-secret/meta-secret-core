@@ -22,6 +22,9 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 extern "C" {
     pub type JsAppState;
 
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> JsAppState;
+
     #[wasm_bindgen(method)]
     pub async fn updateJsState(this: &JsAppState, app_state: JsValue);
 }

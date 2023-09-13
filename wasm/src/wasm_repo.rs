@@ -1,5 +1,7 @@
-use std::ops::Deref;
-use std::sync::{Arc, Mutex};
+use std::future::Future;
+use std::marker::PhantomData;
+use std::sync::Arc;
+
 use anyhow::anyhow;
 use async_trait::async_trait;
 use wasm_bindgen::JsValue;
@@ -49,25 +51,29 @@ impl WasmRepo {
     }
 }
 
-#[async_trait]
+#[async_trait(? Send)]
 impl SaveCommand for WasmRepo {
     async fn save(&self, key: &ObjectId, event: &GenericKvLogEvent) -> anyhow::Result<ObjectId> {
-        let self_arc = Arc::new(self.clone());
-
         let event_js: JsValue = serde_wasm_bindgen::to_value(event)
             .map_err(|err| anyhow!("Error parsing data to save: {:?}", err))?;
 
-        let save_op = idbSave(self_arc.db_name.clone(), self_arc.store_name.clone(), key.id_str(), event_js).await;
+        idbSave(self.db_name.clone(), self.store_name.clone(), key.id_str(), event_js).await;
 
         Ok(key.clone())
     }
 }
 
-#[async_trait]
+pub struct JsDb<F: Future<Output=anyhow::Result<ObjectId>> + Send> {
+    pub db_name: String,
+    pub store_name: String,
+    _phantom: PhantomData<F>,
+}
+
+#[async_trait(? Send)]
 impl FindOneQuery for WasmRepo {
     async fn find_one(&self, key: &ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>> {
         let self_arc = Arc::new(self.clone());
-        let obj_js = idbGet(self_arc.db_name.clone(), self_arc.store_name.clone(), key.id_str().as_str().to_string());
+        let obj_js = idbGet(self_arc.db_name.clone(), self_arc.store_name.clone(), key.id_str().as_str().to_string()).await;
 
         if obj_js.is_undefined() {
             Ok(None)
@@ -79,12 +85,10 @@ impl FindOneQuery for WasmRepo {
     }
 }
 
-#[async_trait]
+#[async_trait(? Send)]
 impl DeleteCommand for WasmRepo {
     async fn delete(&self, key: &ObjectId) {
-        async move {
-            idbDelete(self.db_name.as_str(), self.store_name.as_str(), key.id_str().as_str()).await
-        }
+        idbDelete(self.db_name.as_str(), self.store_name.as_str(), key.id_str().as_str()).await
     }
 }
 

@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::ops::Deref;
 use std::sync::Arc;
 use async_trait::async_trait;
 
@@ -13,21 +14,22 @@ use crate::node::db::meta_db::meta_db_service::MetaDbService;
 use crate::node::db::meta_db::store::meta_pass_store::MetaPassStore;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::logger::MetaLogger;
+use async_mutex::Mutex as AsyncMutex;
 
 #[async_trait(? Send)]
-pub trait StateUpdateManager {
-    async fn update_state(&self, new_state: ApplicationState);
+pub trait JsAppStateManager {
+    async fn update_js_state(&self, new_state: ApplicationState);
 }
 
 pub struct ApplicationStateManager<Repo, Logger, StateManager>
     where
         Repo: KvLogEventRepo,
         Logger: MetaLogger,
-        StateManager: StateUpdateManager,
+        StateManager: JsAppStateManager,
 {
 
     pub state_manager: Arc<StateManager>,
-    pub meta_client: Arc<MetaClient<Repo, Logger>>,
+    pub meta_client: Arc<AsyncMutex<MetaClient<Repo, Logger>>>,
     pub client_logger: Arc<Logger>,
     pub data_transfer: Arc<MpscDataTransfer>,
     pub meta_db_service: Arc<MetaDbService<Repo, Logger>>,
@@ -38,11 +40,13 @@ impl <Repo, Logger, State> ApplicationStateManager <Repo, Logger, State>
     where
         Repo: KvLogEventRepo,
         Logger: MetaLogger,
-        State: StateUpdateManager,
+        State: JsAppStateManager,
 {
 
-    pub async fn sign_up(&mut self, vault_name: &str, device_name: &str) {
-        match self.meta_client.as_ref() {
+    pub async fn sign_up(&self, vault_name: &str, device_name: &str) {
+        let mut curr_meta_client = self.meta_client.lock().await;
+
+        match curr_meta_client.deref() {
             MetaClient::Empty(client) => {
                 let new_client_result = client
                     .get_or_create_local_vault(vault_name, device_name)
@@ -50,12 +54,12 @@ impl <Repo, Logger, State> ApplicationStateManager <Repo, Logger, State>
 
                 if let Ok(new_client) = new_client_result {
                     new_client.ctx.enable_join().await;
-                    self.meta_client = Arc::new(MetaClient::Init(new_client));
+                    *curr_meta_client = MetaClient::Init(new_client);
                 }
             }
             MetaClient::Init(client) => {
                 //ignore
-                self.meta_client = Arc::new(MetaClient::Registered(client.sign_up().await));
+                *curr_meta_client = MetaClient::Registered(client.sign_up().await);
             }
             MetaClient::Registered(_) => {
                 //ignore
@@ -66,7 +70,9 @@ impl <Repo, Logger, State> ApplicationStateManager <Repo, Logger, State>
     }
 
     pub async fn recover(&self, meta_pass_id: MetaPasswordId) {
-        match self.meta_client.as_ref() {
+        let curr_meta_client = self.meta_client.lock().await;
+
+        match curr_meta_client.deref() {
             MetaClient::Empty(_) => {
 
             }
@@ -80,7 +86,9 @@ impl <Repo, Logger, State> ApplicationStateManager <Repo, Logger, State>
     }
 
     pub async fn cluster_distribution(&self, pass_id: &str, pass: &str) {
-        match self.meta_client.as_ref() {
+        let curr_meta_client = self.meta_client.lock().await;
+
+        match curr_meta_client.deref() {
             MetaClient::Empty(_) => {
             }
             MetaClient::Init(_) => {
@@ -117,8 +125,7 @@ impl<Repo, Logger, State> ApplicationStateManager<Repo, Logger, State>
     where
         Repo: KvLogEventRepo,
         Logger: MetaLogger,
-        State: StateUpdateManager,
-
+        State: JsAppStateManager
 {
 
     pub fn new(
@@ -155,7 +162,7 @@ impl<Repo, Logger, State> ApplicationStateManager<Repo, Logger, State>
 
         ApplicationStateManager {
             meta_db_service,
-            meta_client: Arc::new(meta_client),
+            meta_client: Arc::new(AsyncMutex::new(meta_client)),
             client_logger: logger,
             data_transfer,
             state_manager: state,
@@ -163,10 +170,12 @@ impl<Repo, Logger, State> ApplicationStateManager<Repo, Logger, State>
         }
     }
 
-    pub async fn setup_meta_client(&mut self) {
+    pub async fn setup_meta_client(&self) {
         self.client_logger.info("Setup meta client");
 
-        match self.meta_client.as_ref() {
+        let mut curr_meta_client = self.meta_client.lock().await;
+
+        match curr_meta_client.deref() {
             MetaClient::Empty(client) => {
                 let init_client_result = client.find_user_creds().await;
                 if let Ok(Some(init_client)) = init_client_result {
@@ -188,11 +197,9 @@ impl<Repo, Logger, State> ApplicationStateManager<Repo, Logger, State>
                                 .update_meta_passwords(meta_pass_store.passwords())
                                 .await;
                         }
-
-                        let registered_client = MetaClient::Registered(new_meta_client);
-                        self.meta_client = Arc::new(registered_client);
+                        *curr_meta_client = MetaClient::Registered(new_meta_client);
                     } else {
-                        self.meta_client = Arc::new(MetaClient::Init(init_client));
+                        *curr_meta_client = MetaClient::Init(init_client);
                     }
                 }
             }
@@ -201,7 +208,7 @@ impl<Repo, Logger, State> ApplicationStateManager<Repo, Logger, State>
                 if let VaultInfo::Member { vault } = &new_client.vault_info {
                     MetaClientContext::update_vault(&new_client.ctx, vault.clone()).await;
                 }
-                self.meta_client = Arc::new(MetaClient::Registered(new_client));
+                *curr_meta_client = MetaClient::Registered(new_client);
             }
             MetaClient::Registered(client) => {
                 self.registered_client(client).await;
@@ -231,11 +238,13 @@ impl<Repo, Logger, State> ApplicationStateManager<Repo, Logger, State>
 
     pub async fn on_update(&self) {
         // update app state in vue
-        self.state_manager.update_state(self.get_state().await).await
+        self.state_manager.update_js_state(self.get_state().await).await
     }
 
     pub async fn get_state(&self) -> ApplicationState {
-        let app_state = match self.meta_client.as_ref() {
+        let curr_meta_client = self.meta_client.lock().await;
+
+        let app_state = match curr_meta_client.deref() {
             MetaClient::Empty(client) => {
                 client.ctx.app_state.borrow()
             }

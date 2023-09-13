@@ -22,7 +22,7 @@ impl Default for InMemKvLogEventRepo {
 #[derive(thiserror::Error, Debug)]
 pub enum InMemDbError {}
 
-#[async_trait]
+#[async_trait(? Send)]
 impl FindOneQuery for InMemKvLogEventRepo {
     async fn find_one(&self, key: &ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>> {
         let maybe_value = self.db.lock().unwrap().get(key).cloned();
@@ -30,7 +30,7 @@ impl FindOneQuery for InMemKvLogEventRepo {
     }
 }
 
-#[async_trait]
+#[async_trait(? Send)]
 impl SaveCommand for InMemKvLogEventRepo {
     async fn save(&self, key: &ObjectId, value: &GenericKvLogEvent) -> anyhow::Result<ObjectId> {
         let mut db = self.db.lock().unwrap();
@@ -39,7 +39,7 @@ impl SaveCommand for InMemKvLogEventRepo {
     }
 }
 
-#[async_trait]
+#[async_trait(? Send)]
 impl DeleteCommand for InMemKvLogEventRepo {
     async fn delete(&self, key: &ObjectId) {
         let mut db = self.db.lock().unwrap();

@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use flume::{Receiver, Sender};
+use crate::node::common::task_runner::TaskRunner;
 
 use crate::node::db::events::common::VaultInfo;
 use crate::node::db::events::object_id::ObjectId;
@@ -23,6 +24,20 @@ pub struct MetaDbService<Repo: KvLogEventRepo, Logger: MetaLogger> {
 
     client_sender: Sender<MetaDbResponseMessage>,
     client_receiver: Receiver<MetaDbResponseMessage>,
+}
+
+pub struct MetaDbServiceTaskRunner<Runner: TaskRunner, Repo: KvLogEventRepo, Logger: MetaLogger> {
+    pub meta_db_service: Arc<MetaDbService<Repo, Logger>>,
+    pub task_runner: Arc<Runner>
+}
+
+impl<Runner: TaskRunner, Repo: KvLogEventRepo, Logger: MetaLogger> MetaDbServiceTaskRunner<Runner, Repo, Logger> {
+    pub async fn run_task(&self) {
+        let service = self.meta_db_service.clone();
+        self.task_runner.spawn(async move {
+            service.run().await;
+        }).await;
+    }
 }
 
 impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDbService<Repo, Logger> {
