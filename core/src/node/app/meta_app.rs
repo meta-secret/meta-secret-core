@@ -1,131 +1,395 @@
-use std::error::Error;
+use std::cell::RefCell;
+use std::sync::Arc;
 
-use async_trait::async_trait;
+use anyhow::anyhow;
 
 use crate::crypto::keys::KeyManager;
-use crate::models::meta_vault::MetaVault;
-use crate::models::user_credentials::UserCredentials;
-use crate::models::DeviceInfo;
-use crate::node::db::events::common::ObjectCreator;
+use crate::models::{
+    ApplicationState, MetaPasswordDoc, MetaPasswordId, MetaVault, UserCredentials, VaultDoc}
+;
+use crate::models::password_recovery_request::PasswordRecoveryRequest;
+use crate::node::app::meta_manager::{MetaVaultManager, UserCredentialsManager};
+use crate::node::db::actions::sign_up::SignUpRequest;
+use crate::node::db::events::common::{MempoolObject, ObjectCreator, SharedSecretObject, VaultInfo};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::local::KvLogEventLocal;
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
-use crate::node::db::events::object_id::ObjectId;
+use crate::node::db::events::object_id::{IdGen, ObjectId};
 use crate::node::db::generic_db::KvLogEventRepo;
+use crate::node::db::meta_db::meta_db_service::MetaDbService;
+use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::logger::MetaLogger;
+use crate::secret::MetaDistributor;
 
-#[async_trait(? Send)]
-pub trait MetaVaultManager {
-    async fn create_meta_vault(&self, vault_name: String, device_name: String) -> Result<MetaVault, Box<dyn Error>>;
-    async fn find_meta_vault<L: MetaLogger>(&self, logger: &L) -> Result<Option<MetaVault>, Box<dyn Error>>;
+pub enum MetaClient<Repo: KvLogEventRepo, Logger: MetaLogger> {
+    Empty(EmptyMetaClient<Repo, Logger>),
+    Init(InitMetaClient<Repo, Logger>),
+    Registered(RegisteredMetaClient<Repo, Logger>),
 }
 
-#[async_trait(? Send)]
-impl<T> MetaVaultManager for T
-where
-    T: KvLogEventRepo,
+impl<Repo, Logger> ToString for MetaClient<Repo, Logger>
+    where
+        Repo: KvLogEventRepo,
+        Logger: MetaLogger,
+
 {
-    async fn create_meta_vault(&self, vault_name: String, device_name: String) -> Result<MetaVault, Box<dyn Error>> {
-        let meta_vault = MetaVault {
-            name: vault_name.to_string(),
-            device: Box::new(DeviceInfo::from(device_name.to_string())),
-        };
+    fn to_string(&self) -> String {
+        match self {
+            MetaClient::Empty(_) => String::from("Empty"),
+            MetaClient::Init(_) => String::from("Init"),
+            MetaClient::Registered(_) => String::from("Registered")
+        }
+    }
+}
 
-        let key = KvKey::unit(&ObjectDescriptor::MetaVault);
-        let event: KvLogEvent<MetaVault> = KvLogEvent {
-            key,
-            value: meta_vault.clone(),
-        };
+impl<Repo, Logger> MetaClient<Repo, Logger>
+    where
+        Repo: KvLogEventRepo,
+        Logger: MetaLogger,
 
-        let db_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::MetaVault { event: Box::new(event) });
+{
+    pub fn get_ctx(&self) -> Arc<MetaClientContext> {
+        match self {
+            MetaClient::Empty(client) => {
+                client.ctx.clone()
+            }
+            MetaClient::Init(client) => {
+                client.ctx.clone()
+            }
+            MetaClient::Registered(client) => {
+                client.ctx.clone()
+            }
+        }
+    }
+}
 
-        self.save(&ObjectId::meta_vault_index(), &db_event).await?;
+pub struct EmptyMetaClient<Repo: KvLogEventRepo, Logger: MetaLogger> {
+    pub ctx: Arc<MetaClientContext>,
+    pub logger: Arc<Logger>,
+    pub persistent_obj: Arc<PersistentObject<Repo, Logger>>,
+    pub meta_db_service: Arc<MetaDbService<Repo, Logger>>
+}
 
-        Ok(meta_vault)
+impl<Repo: KvLogEventRepo, Logger: MetaLogger> EmptyMetaClient<Repo, Logger> {
+    pub async fn find_user_creds(&self) -> anyhow::Result<Option<InitMetaClient<Repo, Logger>>> {
+        let maybe_creds = self.persistent_obj.repo.find_user_creds().await?;
+
+        match maybe_creds {
+            Some(creds) => {
+                let new_client = InitMetaClient {
+                    ctx: self.ctx.clone(),
+                    creds: Arc::new(creds),
+                    logger: self.logger.clone(),
+                    persistent_obj: self.persistent_obj.clone(),
+                    meta_db_service: self.meta_db_service.clone(),
+                };
+                Ok(Some(new_client))
+            }
+            None => {
+                Ok(None)
+            }
+        }
     }
 
-    async fn find_meta_vault<L: MetaLogger>(&self, logger: &L) -> Result<Option<MetaVault>, Box<dyn Error>> {
-        logger.info("meta_app::find_meta_vault");
+    pub async fn get_or_create_local_vault(&self, vault_name: &str, device_name: &str) -> anyhow::Result<InitMetaClient<Repo, Logger>> {
+        let meta_vault = self.create_meta_vault(vault_name, device_name).await?;
+        let creds = self.generate_user_credentials(meta_vault).await?;
 
-        let maybe_meta_vault = self.find_one(&ObjectId::meta_vault_index()).await?;
+        Ok(InitMetaClient {
+            ctx: self.ctx.clone(),
+            creds: Arc::new(creds),
+            logger: self.logger.clone(),
+            persistent_obj: self.persistent_obj.clone(),
+            meta_db_service: self.meta_db_service.clone()
+        })
+    }
+
+    async fn create_meta_vault(&self, vault_name: &str, device_name: &str) -> anyhow::Result<MetaVault> {
+        self.logger.info("create_meta_vault: create a meta vault");
+
+
+        let maybe_meta_vault = self.persistent_obj.repo
+            .find_meta_vault()
+            .await?;
 
         match maybe_meta_vault {
             None => {
-                logger.info("meta_app::find_meta_vault: meta vault not found");
-                Ok(None)
+                self.persistent_obj.repo
+                    .create_meta_vault(vault_name.to_string(), device_name.to_string())
+                    .await
             }
-            Some(meta_vault) => match meta_vault {
-                GenericKvLogEvent::LocalEvent(KvLogEventLocal::MetaVault { event }) => Ok(Some(event.value)),
-
-                _ => {
-                    let err_msg = "Meta vault index: Invalid data";
-                    logger.info(err_msg);
-                    panic!("{}", err_msg)
+            Some(meta_vault) => {
+                if meta_vault.name != vault_name || meta_vault.device.device_name != device_name {
+                    Err(anyhow!("Another meta vault already exists in the database"))
+                } else {
+                    Ok(meta_vault)
                 }
-            },
+            }
         }
     }
-}
 
-#[async_trait(? Send)]
-pub trait UserCredentialsManager: KvLogEventRepo {
-    async fn save_user_creds(&self, creds: &UserCredentials) -> Result<ObjectId, Box<dyn Error>>;
-    async fn find_user_creds(&self) -> Result<Option<UserCredentials>, Box<dyn Error>>;
-    async fn generate_user_creds(&self, vault_name: String, device_name: String) -> UserCredentials;
-    async fn get_or_generate_user_creds(&self, vault_name: String, device_name: String) -> UserCredentials;
-}
+    async fn generate_user_credentials(&self, meta_vault: MetaVault) -> anyhow::Result<UserCredentials> {
+        self.logger.info("generate_user_credentials: generate a new security box");
 
-#[async_trait(? Send)]
-impl<T> UserCredentialsManager for T
-where
-    T: KvLogEventRepo,
-{
-    async fn find_user_creds(&self) -> Result<Option<UserCredentials>, Box<dyn Error>> {
-        let obj_id = ObjectId::unit(&ObjectDescriptor::UserCreds);
-        let maybe_creds = self.find_one(&obj_id).await?;
+        let maybe_creds = self.persistent_obj.repo.find_user_creds()
+            .await?;
+
         match maybe_creds {
-            None => Ok(None),
-            Some(user_creds) => match user_creds {
-                GenericKvLogEvent::LocalEvent(KvLogEventLocal::UserCredentials { event }) => Ok(Some(event.value)),
-                _ => {
-                    panic!("Meta vault index: Invalid data")
+            None => {
+                let security_box = KeyManager::generate_security_box(meta_vault.name);
+                let user_sig = security_box.get_user_sig(&meta_vault.device);
+                let creds = UserCredentials::new(security_box, user_sig);
+                self.persistent_obj.repo
+                    .save_user_creds(&creds)
+                    .await?;
+
+                Ok(creds)
+            }
+            Some(creds) => {
+                Ok(creds)
+            }
+        }
+    }
+}
+
+pub struct InitMetaClient<Repo: KvLogEventRepo, Logger: MetaLogger> {
+    pub ctx: Arc<MetaClientContext>,
+    pub creds: Arc<UserCredentials>,
+    pub logger: Arc<Logger>,
+    pub persistent_obj: Arc<PersistentObject<Repo, Logger>>,
+    pub meta_db_service: Arc<MetaDbService<Repo, Logger>>
+}
+
+impl<Repo: KvLogEventRepo, Logger: MetaLogger> InitMetaClient<Repo, Logger> {
+    pub async fn sign_up(&self) -> RegisteredMetaClient<Repo, Logger> {
+        self.logger.info("InitClient: sign up");
+        let vault_info = self.get_vault().await;
+
+        let join = self.ctx.is_join().await;
+        if join {
+            //TODO we need to know if the user in pending state (waiting for approval)
+            self.join_cluster().await;
+
+            if let VaultInfo::Member { vault } = &vault_info {
+                self.ctx.update_vault(vault.clone()).await
+            }
+        } else {
+            self.sign_up_action(&vault_info).await;
+        }
+
+        RegisteredMetaClient {
+            ctx: self.ctx.clone(),
+            creds: self.creds.clone(),
+            vault_info,
+            logger: self.logger.clone(),
+            persistent_obj: self.persistent_obj.clone(),
+            meta_db_service: self.meta_db_service.clone(),
+        }
+    }
+
+    async fn join_cluster(&self) {
+        self.logger.info("register. Join");
+
+        let mem_pool_tail_id = self
+            .persistent_obj
+            .find_tail_id_by_obj_desc(&ObjectDescriptor::Mempool)
+            .await
+            .unwrap_or(ObjectId::mempool_unit());
+
+        let join_request = GenericKvLogEvent::Mempool(MempoolObject::JoinRequest {
+            event: KvLogEvent {
+                key: KvKey::Key {
+                    obj_id: mem_pool_tail_id,
+                    obj_desc: ObjectDescriptor::Mempool,
+                },
+                value: self.creds.user_sig.as_ref().clone(),
+            }
+        });
+
+        let _ = self.persistent_obj.repo
+            .save_event(&join_request)
+            .await;
+    }
+
+    async fn sign_up_action(&self, vault_info: &VaultInfo) {
+        match vault_info {
+            VaultInfo::Member { vault } => {
+                self.ctx.update_vault(vault.clone()).await;
+            }
+            VaultInfo::Pending => {
+                self.logger.info("Pending is not expected here");
+            }
+            VaultInfo::Declined => {
+                self.logger.info("Declined - is not expected here");
+            }
+            VaultInfo::NotFound => {
+                let reg_res = self
+                    .register()
+                    .await;
+
+                match reg_res {
+                    Ok(_vault_info) => {
+                        self.logger.info("Successful registration");
+                    }
+                    Err(_) => {
+                        self.logger.info("Error. Registration failed");
+                    }
                 }
-            },
+            }
+            VaultInfo::NotMember => {
+                self.ctx.enable_join().await;
+            }
         }
     }
 
-    async fn save_user_creds(&self, creds: &UserCredentials) -> Result<ObjectId, Box<dyn Error>> {
-        let event = KvLogEvent {
-            key: KvKey::unit(&ObjectDescriptor::UserCreds),
-            value: creds.clone(),
+    async fn register(&self) -> anyhow::Result<VaultInfo> {
+        self.logger.info("register. Sign up");
+
+        let sign_up_request_factory = SignUpRequest {};
+        let sign_up_request = sign_up_request_factory.generic_request(&self.creds.user_sig);
+
+        self.persistent_obj.repo
+            .save_event(&sign_up_request)
+            .await?;
+
+        Ok(VaultInfo::Pending)
+    }
+
+    pub async fn get_vault(&self) -> VaultInfo {
+        self.logger.debug("Get vault");
+
+        let creds = self.creds.clone();
+
+        let meta_db_service = self.meta_db_service.clone();
+        let vault_name = creds.user_sig.vault.name.as_str();
+        let _ = meta_db_service.update_with_vault(vault_name.to_string()).await;
+
+        let vault_unit_id = ObjectId::vault_unit(vault_name);
+        meta_db_service.get_vault_info(vault_unit_id).await.unwrap()
+    }
+}
+
+pub struct RegisteredMetaClient<Repo: KvLogEventRepo, Logger: MetaLogger> {
+    pub ctx: Arc<MetaClientContext>,
+    pub creds: Arc<UserCredentials>,
+    pub vault_info: VaultInfo,
+    pub logger: Arc<Logger>,
+    pub persistent_obj: Arc<PersistentObject<Repo, Logger>>,
+    pub meta_db_service: Arc<MetaDbService<Repo, Logger>>
+}
+
+impl<Repo, Logger> RegisteredMetaClient<Repo, Logger>
+    where
+        Repo: KvLogEventRepo,
+        Logger: MetaLogger,
+
+{
+    pub async fn cluster_distribution(&self, pass_id: &str, pass: &str) {
+        self.logger.info("cluster distribution!!!!");
+
+        match &self.vault_info {
+            VaultInfo::Member { vault } => {
+                let vault_name = vault.vault_name.clone();
+                self.meta_db_service.update_with_vault(vault_name).await;
+
+                let distributor = MetaDistributor {
+                    persistent_obj: self.persistent_obj.clone(),
+                    vault: vault.clone(),
+                    user_creds: self.creds.clone(),
+                };
+
+                distributor
+                    .distribute(pass_id.to_string(), pass.to_string())
+                    .await;
+            }
+            VaultInfo::Pending => {}
+            VaultInfo::Declined => {}
+            VaultInfo::NotFound => {}
+            VaultInfo::NotMember => {}
         };
-        let generic_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::UserCredentials { event: Box::new(event) });
 
-        self.save_event(&generic_event).await
+        self.meta_db_service
+            .sync_db()
+            .await;
     }
 
-    async fn generate_user_creds(&self, vault_name: String, device_name: String) -> UserCredentials {
-        let meta_vault = self.create_meta_vault(vault_name, device_name).await.unwrap();
+    pub async fn recovery_request(&self, meta_pass_id: MetaPasswordId) {
+        match &self.vault_info {
+            VaultInfo::Member { vault } => {
+                for curr_sig in &vault.signatures {
+                    if self.creds.user_sig.public_key.base64_text == curr_sig.public_key.base64_text {
+                        continue;
+                    }
 
-        let security_box = KeyManager::generate_security_box(meta_vault.name);
-        let user_sig = security_box.get_user_sig(&meta_vault.device);
-        let creds = UserCredentials::new(security_box, user_sig);
+                    let recovery_request = PasswordRecoveryRequest {
+                        id: Box::new(meta_pass_id.clone()),
+                        consumer: Box::new(curr_sig.clone()),
+                        provider: self.creds.user_sig.clone(),
+                    };
 
-        self.save_user_creds(&creds).await.unwrap();
+                    let obj_desc = ObjectDescriptor::SharedSecret {
+                        vault_name: curr_sig.vault.name.clone(),
+                        device_id: curr_sig.vault.device.device_id.clone(),
+                    };
+                    let generic_event = GenericKvLogEvent::SharedSecret(SharedSecretObject::RecoveryRequest {
+                        event: KvLogEvent {
+                            key: KvKey::Empty { obj_desc: obj_desc.clone() },
+                            value: recovery_request,
+                        },
+                    });
 
-        creds
-    }
+                    let slot_id = self.persistent_obj
+                        .find_tail_id_by_obj_desc(&obj_desc)
+                        .await
+                        .map(|id| id.next())
+                        .unwrap_or(ObjectId::unit(&obj_desc));
 
-    async fn get_or_generate_user_creds(&self, vault_name: String, device_name: String) -> UserCredentials {
-        let server_creds_result = self.find_user_creds().await;
+                    let _ = self.persistent_obj
+                        .repo
+                        .save(&slot_id, &generic_event)
+                        .await;
+                }
 
-        match server_creds_result {
-            Ok(maybe_creds) => match maybe_creds {
-                None => self.generate_user_creds(vault_name, device_name).await,
-                Some(creds) => creds,
-            },
-            Err(_) => self.generate_user_creds(vault_name, device_name).await,
+                self.meta_db_service.sync_db().await
+            }
+            VaultInfo::Pending => {}
+            VaultInfo::Declined => {}
+            VaultInfo::NotFound => {}
+            VaultInfo::NotMember => {}
         }
+    }
+}
+
+pub struct MetaClientContext {
+    pub app_state: RefCell<ApplicationState>
+}
+
+impl MetaClientContext {
+    pub fn new(app_state: RefCell<ApplicationState>) -> Self {
+        MetaClientContext { app_state }
+    }
+
+    pub async fn is_join(&self) -> bool {
+        self.app_state.borrow().join_component
+    }
+
+    pub async fn update_vault(&self, vault: VaultDoc) {
+        let mut app_state = self.app_state.borrow_mut();
+        app_state.vault = Some(Box::new(vault));
+    }
+
+    pub async fn update_meta_passwords(&self, passes: Vec<MetaPasswordDoc>) {
+        let mut app_state = self.app_state.borrow_mut();
+        app_state.meta_passwords = passes.clone();
+    }
+
+    pub async fn update_meta_vault(&self, meta_vault: Box<MetaVault>) {
+        let mut app_state = self.app_state.borrow_mut();
+        app_state.meta_vault = Some(meta_vault)
+    }
+
+    pub async fn enable_join(&self) {
+        let mut app_state = self.app_state.borrow_mut();
+        app_state.join_component = true;
     }
 }

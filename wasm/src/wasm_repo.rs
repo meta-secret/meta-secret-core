@@ -1,12 +1,17 @@
-use std::error::Error;
+use std::future::Future;
+use std::marker::PhantomData;
+use std::sync::Arc;
+
+use anyhow::anyhow;
 use async_trait::async_trait;
 use wasm_bindgen::JsValue;
 
+use meta_secret_core::node::db::events::generic_log_event::GenericKvLogEvent;
 use meta_secret_core::node::db::events::object_id::ObjectId;
 use meta_secret_core::node::db::generic_db::{CommitLogDbConfig, DeleteCommand, FindOneQuery, KvLogEventRepo};
 use meta_secret_core::node::db::generic_db::SaveCommand;
-use meta_secret_core::node::db::events::generic_log_event::GenericKvLogEvent;
 use meta_secret_core::node::logger::{LoggerId, MetaLogger};
+
 use crate::{debug, error, idbDelete, idbGet, idbSave, info, warn};
 
 pub struct WasmRepo {
@@ -48,34 +53,33 @@ impl WasmRepo {
 
 #[async_trait(? Send)]
 impl SaveCommand for WasmRepo {
-    async fn save(&self, key: &ObjectId, event: &GenericKvLogEvent) -> Result<(), Box<dyn Error>> {
-        let event_js: JsValue = serde_wasm_bindgen::to_value(event)?;
+    async fn save(&self, key: &ObjectId, event: &GenericKvLogEvent) -> anyhow::Result<ObjectId> {
+        let event_js: JsValue = serde_wasm_bindgen::to_value(event)
+            .map_err(|err| anyhow!("Error parsing data to save: {:?}", err))?;
 
-        idbSave(
-            self.db_name.as_str(),
-            self.store_name.as_str(),
-            key.id_str().as_str(),
-            event_js,
-        )
-            .await;
-        Ok(())
+        idbSave(self.db_name.clone(), self.store_name.clone(), key.id_str(), event_js).await;
+
+        Ok(key.clone())
     }
+}
+
+pub struct JsDb<F: Future<Output=anyhow::Result<ObjectId>> + Send> {
+    pub db_name: String,
+    pub store_name: String,
+    _phantom: PhantomData<F>,
 }
 
 #[async_trait(? Send)]
 impl FindOneQuery for WasmRepo {
-    async fn find_one(&self, key: &ObjectId) -> Result<Option<GenericKvLogEvent>, Box<dyn Error>> {
-        let obj_js = idbGet(
-            self.db_name.as_str(),
-            self.store_name.as_str(),
-            key.id_str().as_str(),
-        )
-            .await;
+    async fn find_one(&self, key: &ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>> {
+        let self_arc = Arc::new(self.clone());
+        let obj_js = idbGet(self_arc.db_name.clone(), self_arc.store_name.clone(), key.id_str().as_str().to_string()).await;
 
         if obj_js.is_undefined() {
             Ok(None)
         } else {
-            let obj = serde_wasm_bindgen::from_value(obj_js)?;
+            let obj = serde_wasm_bindgen::from_value(obj_js)
+                .map_err(|err| anyhow!("Error parsing found value: {:?}", err))?;
             Ok(Some(obj))
         }
     }
@@ -84,7 +88,7 @@ impl FindOneQuery for WasmRepo {
 #[async_trait(? Send)]
 impl DeleteCommand for WasmRepo {
     async fn delete(&self, key: &ObjectId) {
-        idbDelete(self.db_name.as_str(), self.store_name.as_str(), key.id_str().as_str()).await;
+        idbDelete(self.db_name.as_str(), self.store_name.as_str(), key.id_str().as_str()).await
     }
 }
 
@@ -101,7 +105,7 @@ impl CommitLogDbConfig for WasmRepo {
 }
 
 pub struct WasmMetaLogger {
-    pub id: LoggerId
+    pub id: LoggerId,
 }
 
 impl MetaLogger for WasmMetaLogger {

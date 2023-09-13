@@ -42,8 +42,9 @@ pub struct GlobalIndexRecord {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use crate::node::db::events::object_id::ObjectId;
+
+    use super::*;
 
     #[test]
     fn unit_test() {

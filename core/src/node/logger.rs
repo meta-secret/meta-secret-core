@@ -1,4 +1,5 @@
-pub trait MetaLogger {
+
+pub trait MetaLogger: Send + Sync + 'static {
     fn debug(&self, msg: &str);
     fn info(&self, msg: &str);
     fn warn(&self, msg: &str);
@@ -13,6 +14,7 @@ pub enum LoggerId {
     Server,
     Vd1,
     Vd2,
+    Test,
 }
 
 pub struct DefaultMetaLogger {
@@ -41,7 +43,7 @@ impl MetaLogger for DefaultMetaLogger {
 }
 
 impl DefaultMetaLogger {
-    pub fn new(id: LoggerId) -> Option<Self> {
-        Some(Self { id })
+    pub fn new(id: LoggerId) -> Self {
+        Self { id }
     }
 }

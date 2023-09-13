@@ -1,5 +1,5 @@
 use std::error::Error;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection};
@@ -17,7 +17,7 @@ use crate::schema::db_commit_log::dsl;
 pub struct SqlIteRepo {
     /// conn_url="file:///tmp/test.db"
     pub conn_url: String,
-    pub context: Rc<MetaServerContextState>,
+    pub context: Arc<MetaServerContextState>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -31,19 +31,19 @@ pub enum SqliteDbError {
 
 #[async_trait(? Send)]
 impl SaveCommand for SqlIteRepo {
-    async fn save(&self, _key: &ObjectId, value: &GenericKvLogEvent) -> Result<(), Box<dyn Error>> {
+    async fn save(&self, _key: &ObjectId, value: &GenericKvLogEvent) -> anyhow::Result<ObjectId> {
         let mut conn = SqliteConnection::establish(self.conn_url.as_str()).unwrap();
 
         diesel::insert_into(schema_log::table)
             .values(&NewDbLogEvent::from(value))
             .execute(&mut conn)?;
-        Ok(())
+        Ok(_key.clone())
     }
 }
 
 #[async_trait(? Send)]
 impl FindOneQuery for SqlIteRepo {
-    async fn find_one(&self, key: &ObjectId) -> Result<Option<GenericKvLogEvent>, Box<dyn Error>> {
+    async fn find_one(&self, key: &ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>> {
         let mut conn = SqliteConnection::establish(self.conn_url.as_str()).unwrap();
 
         let db_event: DbLogEvent = dsl::db_commit_log

@@ -1,22 +1,25 @@
+use std::sync::Arc;
+
+use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
+use crate::CoreResult;
 use crate::crypto::keys::KeyManager;
 use crate::models::{
     AeadCipherText, EncryptedMessage, MetaPasswordDoc, MetaPasswordId, MetaPasswordRequest, SecretDistributionDocData,
     SecretDistributionType, UserCredentials, UserSecurityBox, UserSignature, VaultDoc,
 };
-use crate::node::db::events::common::ObjectCreator;
 use crate::node::db::events::common::{MetaPassObject, SharedSecretObject};
+use crate::node::db::events::common::ObjectCreator;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::local::KvLogEventLocal;
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{IdGen, ObjectId};
-use crate::node::db::meta_db::meta_db_manager::MetaDbManager;
-use crate::CoreResult;
-use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
+use crate::node::db::generic_db::KvLogEventRepo;
+use crate::node::db::objects::persistent_object::PersistentObject;
+use crate::node::logger::MetaLogger;
 
 pub mod data_block;
 pub mod shared_secret;
-use std::rc::Rc;
 
 pub fn split(secret: String, config: SharedSecretConfig) -> CoreResult<Vec<UserShareDto>> {
     let plain_text = PlainText::from(secret);
@@ -77,13 +80,13 @@ struct MetaCipherShare {
     cipher_share: AeadCipherText,
 }
 
-pub struct MetaDistributor {
-    pub meta_db_manager: Rc<MetaDbManager>,
-    pub user_creds: Rc<UserCredentials>,
+pub struct MetaDistributor<Repo: KvLogEventRepo, Logger: MetaLogger> {
+    pub persistent_obj: Arc<PersistentObject<Repo, Logger>>,
+    pub user_creds: Arc<UserCredentials>,
     pub vault: VaultDoc,
 }
 
-impl MetaDistributor {
+impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDistributor<Repo, Logger> {
     /// Encrypt and distribute password across the cluster
     pub async fn distribute(self, password_id: String, password: String) {
         let encryptor = MetaEncryptor {
@@ -105,7 +108,6 @@ impl MetaDistributor {
         let meta_pass_obj_desc = ObjectDescriptor::MetaPassword { vault_name };
 
         let pass_tail_id = self
-            .meta_db_manager
             .persistent_obj
             .find_tail_id_by_obj_desc(&meta_pass_obj_desc)
             .await
@@ -122,7 +124,7 @@ impl MetaDistributor {
             },
         });
 
-        self.meta_db_manager.repo.save_event(&meta_pass_event).await.unwrap();
+        self.persistent_obj.repo.save_event(&meta_pass_event).await.unwrap();
 
         let encrypted_shares = encryptor.encrypt(password);
 
@@ -151,7 +153,7 @@ impl MetaDistributor {
                     },
                 });
 
-                let _ = self.meta_db_manager
+                let _ = self.persistent_obj
                     .repo
                     .save_event(&secret_share_event)
                     .await;
@@ -166,14 +168,13 @@ impl MetaDistributor {
                 });
 
                 let tail_id = self
-                    .meta_db_manager
                     .persistent_obj
                     .find_tail_id_by_obj_desc(&obj_desc)
                     .await
                     .map(|id| id.next())
                     .unwrap_or(ObjectId::unit(&obj_desc));
 
-                let _ = self.meta_db_manager
+                let _ = self.persistent_obj
                     .repo
                     .save(&tail_id, &secret_share_event)
                     .await;
@@ -184,13 +185,15 @@ impl MetaDistributor {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::node::server::data_sync::test::DataSyncTestContext;
-    use crate::node::db::events::vault_event::VaultObject;
-    use crate::node::server::data_sync::DataSyncApi;
-    use crate::node::db::events::common::{LogEventKeyBasedRecord, PublicKeyRecord};
-    use crate::node::db::actions::join;
     use crate::models::DeviceInfo;
+    use crate::node::db::actions::join;
+    use crate::node::db::events::common::{LogEventKeyBasedRecord, PublicKeyRecord};
+    use crate::node::db::events::vault_event::VaultObject;
+    use crate::node::db::generic_db::{FindOneQuery, SaveCommand};
+    use crate::node::server::data_sync::DataSyncApi;
+    use crate::node::server::data_sync::test::DataSyncTestContext;
+
+    use super::*;
 
     #[tokio::test]
     async fn test() {
@@ -204,7 +207,7 @@ mod test {
 
         let vault_unit_id = ObjectId::vault_unit("test_vault");
         let vault_tail_id = ctx.persistent_obj.find_tail_id(&vault_unit_id).await.unwrap();
-        let vault_event = ctx.persistent_obj.repo.find_one(&vault_tail_id).await.unwrap().unwrap();
+        let vault_event = ctx.repo.find_one(&vault_tail_id).await.unwrap().unwrap();
 
         let s_box_b = KeyManager::generate_security_box("test_vault".to_string());
         let device_b = DeviceInfo {
@@ -228,8 +231,7 @@ mod test {
             let accept_event = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
                 event: kv_join_event.clone(),
             });
-            let _ = ctx.meta_db_manager
-                .persistent_obj
+            let _ = ctx
                 .repo
                 .save_event(&accept_event)
                 .await;
@@ -239,21 +241,20 @@ mod test {
             let accept_event_c = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
                 event: kv_join_event_c.clone(),
             });
-            let _ = ctx.meta_db_manager
-                .persistent_obj
+            let _ = ctx
                 .repo
                 .save_event(&accept_event_c)
                 .await;
 
             let distributor = MetaDistributor {
-                meta_db_manager: ctx.meta_db_manager,
+                persistent_obj: ctx.persistent_obj,
                 user_creds: ctx.user_creds,
                 vault: kv_join_event_c.value,
             };
 
             distributor.distribute(String::from("test"), String::from("t0p$ecret")).await;
 
-            let mut db = ctx.repo.db.take().values().cloned().collect::<Vec<GenericKvLogEvent>>();
+            let mut db = ctx.repo.db.lock().unwrap().values().cloned().collect::<Vec<GenericKvLogEvent>>();
             db.sort_by(|a, b| {
                 let a_id = match a.key() {
                     KvKey::Empty { obj_desc } => {

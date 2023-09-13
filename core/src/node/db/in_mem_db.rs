@@ -1,19 +1,20 @@
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
+use async_trait::async_trait;
+
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::generic_db::{DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand};
-use async_trait::async_trait;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::error::Error;
 
 pub struct InMemKvLogEventRepo {
-    pub db: RefCell<HashMap<ObjectId, GenericKvLogEvent>>,
+    pub db: Arc<Mutex<HashMap<ObjectId, GenericKvLogEvent>>>,
 }
 
 impl Default for InMemKvLogEventRepo {
     fn default() -> Self {
         InMemKvLogEventRepo {
-            db: RefCell::new(HashMap::new()),
+            db: Arc::new(Mutex::new(HashMap::default()))
         }
     }
 }
@@ -23,24 +24,26 @@ pub enum InMemDbError {}
 
 #[async_trait(? Send)]
 impl FindOneQuery for InMemKvLogEventRepo {
-    async fn find_one(&self, key: &ObjectId) -> Result<Option<GenericKvLogEvent>, Box<dyn Error>> {
-        let maybe_value = self.db.borrow().get(key).cloned();
+    async fn find_one(&self, key: &ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>> {
+        let maybe_value = self.db.lock().unwrap().get(key).cloned();
         Ok(maybe_value)
     }
 }
 
 #[async_trait(? Send)]
 impl SaveCommand for InMemKvLogEventRepo {
-    async fn save(&self, key: &ObjectId, value: &GenericKvLogEvent) -> Result<(), Box<dyn Error>> {
-        self.db.borrow_mut().insert(key.clone(), value.clone());
-        Ok(())
+    async fn save(&self, key: &ObjectId, value: &GenericKvLogEvent) -> anyhow::Result<ObjectId> {
+        let mut db = self.db.lock().unwrap();
+        db.insert(key.clone(), value.clone());
+        Ok(key.clone())
     }
 }
 
 #[async_trait(? Send)]
 impl DeleteCommand for InMemKvLogEventRepo {
     async fn delete(&self, key: &ObjectId) {
-        let _ = self.db.borrow_mut().remove(key);
+        let mut db = self.db.lock().unwrap();
+        let _ = db.remove(key);
     }
 }
 

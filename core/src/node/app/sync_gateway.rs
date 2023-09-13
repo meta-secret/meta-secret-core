@@ -1,8 +1,10 @@
-use std::error::Error;
-use std::rc::Rc;
-use crate::models::{UserCredentials, VaultDoc};
+use std::sync::Arc;
+use std::time::Duration;
 
-use crate::node::app::meta_app::UserCredentialsManager;
+use crate::models::VaultDoc;
+use crate::node::app::meta_manager::UserCredentialsManager;
+use crate::node::common::data_transfer::MpscDataTransfer;
+use crate::node::common::data_transfer::MpscSender;
 use crate::node::db::events::common::{LogEventKeyBasedRecord, ObjectCreator, SharedSecretObject};
 use crate::node::db::events::db_tail::{DbTail, DbTailObject};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
@@ -10,23 +12,70 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::local::KvLogEventLocal;
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{IdGen, ObjectId};
-
+use crate::node::db::generic_db::KvLogEventRepo;
+use crate::node::db::meta_db::meta_db_service::MetaDbService;
+use crate::node::db::meta_db::store::vault_store::VaultStore;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::logger::MetaLogger;
 use crate::node::server::data_sync::DataSyncMessage;
 use crate::node::server::request::SyncRequest;
-use crate::node::common::data_transfer::MpscSender;
 
-pub struct SyncGateway {
+pub struct SyncGateway<Repo: KvLogEventRepo, Logger: MetaLogger> {
     pub id: String,
-    pub logger: Rc<dyn MetaLogger>,
-    pub repo: Rc<dyn UserCredentialsManager>,
-    pub persistent_object: Rc<PersistentObject>,
-    pub data_transfer: Rc<MpscSender>,
+    pub logger: Arc<Logger>,
+    pub repo: Arc<Repo>,
+    pub persistent_object: Arc<PersistentObject<Repo, Logger>>,
+    pub data_transfer: Arc<MpscSender>,
+    pub meta_db_service: Arc<MetaDbService<Repo, Logger>>
 }
 
-impl SyncGateway {
-    pub async fn  send_shared_secrets(&self, vault_doc: &VaultDoc) {
+impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
+
+    pub fn new(
+        repo: Arc<Repo>,
+        meta_db_service: Arc<MetaDbService<Repo, Logger>>,
+        data_transfer: Arc<MpscDataTransfer>,
+        gateway_id: String,
+        logger: Arc<Logger>,
+    ) -> SyncGateway<Repo, Logger> {
+        logger.info("Create new wasm sync gateway instance");
+
+        let persistent_object = {
+            let obj = PersistentObject::new(repo.clone(), logger.clone());
+            Arc::new(obj)
+        };
+
+        SyncGateway {
+            id: gateway_id,
+            logger,
+            repo,
+            persistent_object,
+            data_transfer: data_transfer.mpsc_service.clone(),
+            meta_db_service,
+        }
+    }
+
+    pub async fn run(&self) {
+        loop {
+            async_std::task::sleep(Duration::from_secs(1)).await;
+            self.sync().await;
+
+            let vault_store = self.meta_db_service.get_vault_store()
+                .await
+                .unwrap();
+
+            match vault_store {
+                VaultStore::Store { vault, .. } => {
+                    self.send_shared_secrets(&vault).await;
+                }
+                _ => {
+                    //skip
+                }
+            }
+        }
+    }
+
+    pub async fn send_shared_secrets(&self, vault_doc: &VaultDoc) {
         let creds_result = self.repo.find_user_creds().await;
 
         if let Ok(Some(client_creds)) = creds_result {
@@ -282,7 +331,7 @@ impl SyncGateway {
                             "Send event to server. May stuck if server won't response!!! : {:?}",
                             client_event
                         )
-                        .as_str(),
+                            .as_str(),
                     );
                     self.data_transfer.just_send(DataSyncMessage::Event(client_event)).await;
                 }
@@ -339,7 +388,7 @@ impl SyncGateway {
                         Some(obj_id.clone())
                     }
                 }
-            },
+            }
         }
     }
 }
