@@ -22,3 +22,6 @@ generate_typescript_models:
 install_wasm_pack:
 	curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 	cargo install cargo-generate
+
+wasm_test:
+	cd wasm && wasm-pack test --firefox
