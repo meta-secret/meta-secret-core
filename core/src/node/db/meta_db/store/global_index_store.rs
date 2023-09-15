@@ -32,7 +32,6 @@ pub enum GlobalIndexStore {
 }
 
 impl GlobalIndexStore {
-
     pub fn apply(&mut self, gi_event: &GlobalIndexObject) {
         let KvKey::Key { obj_id, .. } = gi_event.key() else {
             panic!("Invalid event. Empty key");
@@ -55,41 +54,39 @@ impl GlobalIndexStore {
                     }
                 }
             }
-            GlobalIndexStore::Genesis { server_pk, .. } => {
-                match gi_event {
-                    GlobalIndexObject::Unit { .. } => {
-                        panic!("Invalid event. Must be at least Genesis");
-                    }
-                    GlobalIndexObject::Genesis { .. } => {
-                        let err_msg = String::from("Invalid event. Meta db already has Genesis");
-                        panic!("{}", err_msg);
-                    }
-                    GlobalIndexObject::Update { event } => {
-                        let mut global_index_set = HashSet::new();
-                        global_index_set.insert(event.value.vault_id.clone());
+            GlobalIndexStore::Genesis { server_pk, .. } => match gi_event {
+                GlobalIndexObject::Unit { .. } => {
+                    panic!("Invalid event. Must be at least Genesis");
+                }
+                GlobalIndexObject::Genesis { .. } => {
+                    let err_msg = String::from("Invalid event. Meta db already has Genesis");
+                    panic!("{}", err_msg);
+                }
+                GlobalIndexObject::Update { event } => {
+                    let mut global_index_set = HashSet::new();
+                    global_index_set.insert(event.value.vault_id.clone());
 
-                        *self = GlobalIndexStore::Store {
-                            tail_id: obj_id.clone(),
-                            server_pk: server_pk.clone(),
-                            global_index: global_index_set,
-                        };
-                    }
+                    *self = GlobalIndexStore::Store {
+                        tail_id: obj_id.clone(),
+                        server_pk: server_pk.clone(),
+                        global_index: global_index_set,
+                    };
                 }
-            }
-            GlobalIndexStore::Store { global_index, tail_id, .. } => {
-                match gi_event {
-                    GlobalIndexObject::Unit { .. } => {
-                        panic!("Invalid event: unit. MetaDb state is: store");
-                    }
-                    GlobalIndexObject::Genesis { .. } => {
-                        panic!("Invalid event: genesis. MetaDb state is: store");
-                    }
-                    GlobalIndexObject::Update { event } => {
-                        global_index.insert(event.value.vault_id.clone());
-                        *tail_id = obj_id.clone();
-                    }
+            },
+            GlobalIndexStore::Store {
+                global_index, tail_id, ..
+            } => match gi_event {
+                GlobalIndexObject::Unit { .. } => {
+                    panic!("Invalid event: unit. MetaDb state is: store");
                 }
-            }
+                GlobalIndexObject::Genesis { .. } => {
+                    panic!("Invalid event: genesis. MetaDb state is: store");
+                }
+                GlobalIndexObject::Update { event } => {
+                    global_index.insert(event.value.vault_id.clone());
+                    *tail_id = obj_id.clone();
+                }
+            },
         }
     }
 }
@@ -118,10 +115,7 @@ mod test {
 
     #[test]
     fn test_happy_case() {
-        let mut meta_db = MetaDb::new(
-            String::from("test"),
-            Arc::new(DefaultMetaLogger::new(LoggerId::Test)),
-        );
+        let mut meta_db = MetaDb::new(String::from("test"), Arc::new(DefaultMetaLogger::new(LoggerId::Test)));
 
         let unit_event = GlobalIndexObject::unit();
         meta_db.global_index_store.apply(&unit_event);
@@ -130,9 +124,7 @@ mod test {
         meta_db.global_index_store.apply(&genesis);
 
         let update = {
-            let obj_id = &ObjectId::vault_unit("test_vault")
-                .next()
-                .next();
+            let obj_id = &ObjectId::vault_unit("test_vault").next().next();
             let vault_id = IdStr::from(obj_id);
 
             GlobalIndexObject::Update {

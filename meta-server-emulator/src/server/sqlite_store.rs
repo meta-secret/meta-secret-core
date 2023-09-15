@@ -6,7 +6,9 @@ use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnect
 
 use meta_secret_core::node::db::events::generic_log_event::GenericKvLogEvent;
 use meta_secret_core::node::db::events::object_id::ObjectId;
-use meta_secret_core::node::db::generic_db::{DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand};
+use meta_secret_core::node::db::generic_db::{
+    DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand,
+};
 use meta_secret_core::node::server::data_sync::MetaServerContextState;
 
 use crate::models::DbLogEvent;
@@ -59,8 +61,7 @@ impl DeleteCommand for SqlIteRepo {
     async fn delete(&self, key: &ObjectId) {
         let mut conn = SqliteConnection::establish(self.conn_url.as_str()).unwrap();
 
-        let event = dsl::db_commit_log
-            .filter(dsl::key_id.eq(key.id_str()));
+        let event = dsl::db_commit_log.filter(dsl::key_id.eq(key.id_str()));
 
         diesel::delete(event)
             .execute(&mut conn)

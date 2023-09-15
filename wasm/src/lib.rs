@@ -1,14 +1,14 @@
 extern crate core;
 
-use wasm_bindgen::prelude::*;
 use meta_secret_core::recover_from_shares;
 use meta_secret_core::secret::data_block::common::SharedSecretConfig;
 use meta_secret_core::secret::shared_secret::{PlainText, SharedSecretEncryption, UserShareDto};
+use wasm_bindgen::prelude::*;
 
-pub mod wasm_repo;
 pub mod objects;
 pub mod utils;
 pub mod wasm_app_state_manager;
+pub mod wasm_repo;
 
 /// Json utilities https://github.com/rustwasm/wasm-bindgen/blob/main/crates/js-sys/tests/wasm/JSON.rs
 

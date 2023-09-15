@@ -1,5 +1,5 @@
-use crate::models::{Base64EncodedText, MetaPasswordDoc, SecretDistributionDocData, UserSignature, VaultDoc};
 use crate::models::password_recovery_request::PasswordRecoveryRequest;
+use crate::models::{Base64EncodedText, MetaPasswordDoc, SecretDistributionDocData, UserSignature, VaultDoc};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
 

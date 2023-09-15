@@ -99,16 +99,13 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> DataSync<Repo, Logger> {
                             KvKey::Empty { .. } => {
                                 panic!("Invalid event")
                             }
-                            KvKey::Key { obj_id, .. } => {
-                                obj_id.unit_id()
-                            }
+                            KvKey::Key { obj_id, .. } => obj_id.unit_id(),
                         };
 
                         self.logger
                             .info(format!("Looking for a vault: {}", vault_id.id_str()).as_str());
 
-                        let vault_formation_event_result = self.persistent_obj.repo
-                            .find_one(&vault_id).await;
+                        let vault_formation_event_result = self.persistent_obj.repo.find_one(&vault_id).await;
 
                         let vault_id_str = IdStr::from(&vault_id);
 
@@ -189,27 +186,26 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> DataSync<Repo, Logger> {
             GenericKvLogEvent::SharedSecret(sss_obj) => {
                 let obj_desc = generic_event.key().obj_desc();
 
-                let slot_id = self.persistent_obj
+                let slot_id = self
+                    .persistent_obj
                     .find_tail_id_by_obj_desc(&obj_desc)
                     .await
                     .map(|id| id.next())
                     .unwrap_or(ObjectId::unit(&obj_desc));
 
                 let shared_secret_event = match sss_obj {
-                    SharedSecretObject::Split { event } => {
-                        GenericKvLogEvent::SharedSecret(SharedSecretObject::Split {
-                            event: KvLogEvent {
-                                key: KvKey::Empty { obj_desc },
-                                value: event.value.clone(),
-                            },
-                        })
-                    }
+                    SharedSecretObject::Split { event } => GenericKvLogEvent::SharedSecret(SharedSecretObject::Split {
+                        event: KvLogEvent {
+                            key: KvKey::Empty { obj_desc },
+                            value: event.value.clone(),
+                        },
+                    }),
                     SharedSecretObject::Recover { event } => {
                         GenericKvLogEvent::SharedSecret(SharedSecretObject::Recover {
                             event: KvLogEvent {
                                 key: KvKey::Empty { obj_desc },
                                 value: event.value.clone(),
-                            }
+                            },
                         })
                     }
                     SharedSecretObject::RecoveryRequest { event } => {
@@ -235,7 +231,11 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> DataSync<Repo, Logger> {
         }
     }
 
-    async fn global_index_replication(&self, request: &SyncRequest, commit_log: &mut Vec<GenericKvLogEvent>) -> anyhow::Result<()> {
+    async fn global_index_replication(
+        &self,
+        request: &SyncRequest,
+        commit_log: &mut Vec<GenericKvLogEvent>,
+    ) -> anyhow::Result<()> {
         match &request.global_index {
             None => {
                 let meta_g = self
@@ -314,14 +314,14 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> DataSync<Repo, Logger> {
                             "The client is not a member of the vault. Client pk: {:?}, vault: {:?}",
                             &request.sender, meta_db.vault_store
                         )
-                            .as_str(),
+                        .as_str(),
                     );
                     self.logger.info(
                         format!(
                             "Vault sigs: {:?}, sender sig: {:?}",
                             vault_signatures, &request.sender.public_key.base64_text
                         )
-                            .as_str(),
+                        .as_str(),
                     );
                 }
             }
@@ -351,7 +351,8 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> DataSync<Repo, Logger> {
         let sign_up_events = sign_up_action.accept(event, &server_pk);
 
         for sign_up_event in sign_up_events {
-            self.persistent_obj.repo
+            self.persistent_obj
+                .repo
                 .save_event(&sign_up_event)
                 .await
                 .expect("Error saving sign_up events");
@@ -389,7 +390,8 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> DataSync<Repo, Logger> {
         gi_events.push(gi_update_event);
 
         for gi_event in gi_events {
-            self.persistent_obj.repo
+            self.persistent_obj
+                .repo
                 .save_event(&gi_event)
                 .await
                 .expect("Error saving vaults genesis event");
@@ -453,87 +455,75 @@ pub mod test {
         let events = data_sync.replication(request).await.unwrap();
 
         match &events[0] {
-            GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Unit { event }) => {
-                match &event.key {
-                    KvKey::Empty { .. } => {
-                        panic!()
-                    }
-                    KvKey::Key { obj_id, .. } => {
-                        assert!(obj_id.is_unit());
-                    }
+            GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Unit { event }) => match &event.key {
+                KvKey::Empty { .. } => {
+                    panic!()
                 }
-            }
-            _ => panic!("Invalid event")
+                KvKey::Key { obj_id, .. } => {
+                    assert!(obj_id.is_unit());
+                }
+            },
+            _ => panic!("Invalid event"),
         }
 
         match &events[1] {
-            GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Genesis { event }) => {
-                match &event.key {
-                    KvKey::Empty { .. } => {
-                        panic!()
-                    }
-                    KvKey::Key { obj_id, .. } => {
-                        assert!(obj_id.is_genesis());
-                    }
+            GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Genesis { event }) => match &event.key {
+                KvKey::Empty { .. } => {
+                    panic!()
                 }
-            }
-            _ => panic!("Invalid event")
+                KvKey::Key { obj_id, .. } => {
+                    assert!(obj_id.is_genesis());
+                }
+            },
+            _ => panic!("Invalid event"),
         }
 
         match &events[2] {
-            GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Update { event }) => {
-                match event.key.clone() {
-                    KvKey::Empty { .. } => {
-                        panic!()
-                    }
-                    KvKey::Key { obj_id, .. } => {
-                        assert_eq!(obj_id.unit_id().next().next(), obj_id);
-                    }
+            GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Update { event }) => match event.key.clone() {
+                KvKey::Empty { .. } => {
+                    panic!()
                 }
-            }
-            _ => panic!("Invalid event")
+                KvKey::Key { obj_id, .. } => {
+                    assert_eq!(obj_id.unit_id().next().next(), obj_id);
+                }
+            },
+            _ => panic!("Invalid event"),
         }
 
         match &events[3] {
-            GenericKvLogEvent::Vault(VaultObject::Unit { event }) => {
-                match event.key.clone() {
-                    KvKey::Empty { .. } => {
-                        panic!()
-                    }
-                    KvKey::Key { obj_id, .. } => {
-                        assert!(obj_id.is_unit());
-                    }
+            GenericKvLogEvent::Vault(VaultObject::Unit { event }) => match event.key.clone() {
+                KvKey::Empty { .. } => {
+                    panic!()
                 }
-            }
-            _ => panic!("Invalid event")
+                KvKey::Key { obj_id, .. } => {
+                    assert!(obj_id.is_unit());
+                }
+            },
+            _ => panic!("Invalid event"),
         }
 
         match &events[4] {
-            GenericKvLogEvent::Vault(VaultObject::Genesis { event }) => {
-                match event.key.clone() {
-                    KvKey::Empty { .. } => {
-                        panic!()
-                    }
-                    KvKey::Key { obj_id, .. } => {
-                        assert!(obj_id.is_genesis());
-                    }
+            GenericKvLogEvent::Vault(VaultObject::Genesis { event }) => match event.key.clone() {
+                KvKey::Empty { .. } => {
+                    panic!()
                 }
-            }
-            _ => panic!("Invalid event")
+                KvKey::Key { obj_id, .. } => {
+                    assert!(obj_id.is_genesis());
+                }
+            },
+            _ => panic!("Invalid event"),
         }
 
         match &events[5] {
-            GenericKvLogEvent::Vault(VaultObject::SignUpUpdate { event }) => {
-                match event.key.clone() {
-                    KvKey::Empty { .. } => {
-                        panic!()
-                    }
-                    KvKey::Key { obj_id, .. } => {
-                        assert_eq!(obj_id.unit_id().next().next(), obj_id);
-                    }
+            GenericKvLogEvent::Vault(VaultObject::SignUpUpdate { event }) => match event.key.clone() {
+                KvKey::Empty { .. } => {
+                    panic!()
                 }
-            }
-            _ => panic!("Invalid event")
+                KvKey::Key { obj_id, .. } => {
+                    assert_eq!(obj_id.unit_id().next().next(), obj_id);
+                }
+            },
+            _ => panic!("Invalid event"),
         }
     }
 
@@ -553,10 +543,7 @@ pub mod test {
             let logger = Arc::new(DefaultMetaLogger { id: LoggerId::Client });
 
             let persistent_object = Arc::new(PersistentObject::new(repo.clone(), logger.clone()));
-            let meta_db_service = Arc::new(MetaDbService::new(
-                String::from("test"),
-                persistent_object.clone()
-            ));
+            let meta_db_service = Arc::new(MetaDbService::new(String::from("test"), persistent_object.clone()));
 
             let s_box = KeyManager::generate_security_box("test_vault".to_string());
             let device = DeviceInfo {

@@ -1,4 +1,3 @@
-
 pub trait MetaLogger: Send + Sync + 'static {
     fn debug(&self, msg: &str);
     fn info(&self, msg: &str);

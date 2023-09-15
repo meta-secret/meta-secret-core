@@ -3,11 +3,8 @@ use std::sync::Arc;
 
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::object_id::ObjectId;
-use crate::node::db::meta_db::store::{
-    global_index_store::GlobalIndexStore,
-    vault_store::VaultStore
-};
 use crate::node::db::meta_db::store::meta_pass_store::MetaPassStore;
+use crate::node::db::meta_db::store::{global_index_store::GlobalIndexStore, vault_store::VaultStore};
 use crate::node::logger::MetaLogger;
 
 pub trait TailId {

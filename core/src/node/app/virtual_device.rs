@@ -35,7 +35,8 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> VirtualDevice<Repo, Logger> {
     pub fn new(
         persistent_object: Arc<PersistentObject<Repo, Logger>>,
         meta_db_service: Arc<MetaDbService<Repo, Logger>>,
-        data_transfer: Arc<MpscDataTransfer>, logger: Arc<Logger>,
+        data_transfer: Arc<MpscDataTransfer>,
+        logger: Arc<Logger>,
     ) -> VirtualDevice<Repo, Logger> {
         let ctx = {
             let app_state = {
@@ -70,13 +71,17 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> VirtualDevice<Repo, Logger> {
     pub async fn event_handler(
         persistent_object: Arc<PersistentObject<Repo, Logger>>,
         meta_db_service: Arc<MetaDbService<Repo, Logger>>,
-        data_transfer: Arc<MpscDataTransfer>, logger: Arc<Logger>,
+        data_transfer: Arc<MpscDataTransfer>,
+        logger: Arc<Logger>,
     ) {
         logger.info("Run virtual device event handler");
 
         let mut virtual_device = {
             let vd = VirtualDevice::new(
-                persistent_object.clone(), meta_db_service.clone(), data_transfer.clone(), logger.clone()
+                persistent_object.clone(),
+                meta_db_service.clone(),
+                data_transfer.clone(),
+                logger.clone(),
             );
             Arc::new(vd)
         };
@@ -92,26 +97,24 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> VirtualDevice<Repo, Logger> {
             meta_db_service.clone(),
             data_transfer.clone(),
             String::from("vd-gateway"),
-            logger.clone()
+            logger.clone(),
         );
 
-        let init_state_result = virtual_device
-            .handle(VirtualDeviceEvent::Init)
-            .await;
+        let init_state_result = virtual_device.handle(VirtualDeviceEvent::Init).await;
 
         match init_state_result {
             Ok(init_state) => {
-                let registered_result = init_state
-                    .handle(VirtualDeviceEvent::SignUp)
-                    .await;
+                let registered_result = init_state.handle(VirtualDeviceEvent::SignUp).await;
 
                 if let Ok(registered_state) = registered_result {
                     virtual_device = Arc::new(registered_state);
                     gateway.sync().await;
                 }
             }
-            Err(_) => {
-                logger.error("ERROR!!!")
+            Err(err) => {
+                logger.error(format!("Init state result: {:?}", err).as_str());
+                logger.error("ERROR!!!");
+                panic!("Vd error");
             }
         }
 
@@ -129,24 +132,17 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> VirtualDevice<Repo, Logger> {
                         .update_with_vault(client.creds.user_sig.vault.name.clone())
                         .await;
 
-                    let vault_store = meta_db_service.get_vault_store()
-                        .await
-                        .unwrap();
+                    let vault_store = meta_db_service.get_vault_store().await.unwrap();
 
                     if let VaultStore::Store { tail_id, vault, .. } = vault_store {
-                        let latest_event = client.persistent_obj.repo
-                            .find_one(&tail_id)
-                            .await;
+                        let latest_event = client.persistent_obj.repo.find_one(&tail_id).await;
 
                         if let Ok(Some(GenericKvLogEvent::Vault(VaultObject::JoinRequest { event }))) = latest_event {
                             let accept_event = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
                                 event: join::accept_join_request(&event, &vault),
                             });
 
-                            let _ = client.persistent_obj
-                                .repo
-                                .save_event(&accept_event)
-                                .await;
+                            let _ = client.persistent_obj.repo.save_event(&accept_event).await;
                         }
 
                         gateway.send_shared_secrets(&vault).await;
@@ -157,25 +153,17 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> VirtualDevice<Repo, Logger> {
                         .update_with_vault(client.creds.user_sig.vault.name.clone())
                         .await;
 
-                    let vault_store = meta_db_service.get_vault_store()
-                        .await
-                        .unwrap();
+                    let vault_store = meta_db_service.get_vault_store().await.unwrap();
 
                     if let VaultStore::Store { tail_id, vault, .. } = vault_store {
-                        let latest_event = client.persistent_obj
-                            .repo
-                            .find_one(&tail_id)
-                            .await;
+                        let latest_event = client.persistent_obj.repo.find_one(&tail_id).await;
 
                         if let Ok(Some(GenericKvLogEvent::Vault(VaultObject::JoinRequest { event }))) = latest_event {
                             let accept_event = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
                                 event: join::accept_join_request(&event, &vault),
                             });
 
-                            let _ = client.persistent_obj
-                                .repo
-                                .save_event(&accept_event)
-                                .await;
+                            let _ = client.persistent_obj.repo.save_event(&accept_event).await;
                         }
 
                         gateway.send_shared_secrets(&vault).await;
@@ -185,20 +173,15 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> VirtualDevice<Repo, Logger> {
         }
     }
 
-
     pub async fn handle(&self, event: VirtualDeviceEvent) -> anyhow::Result<VirtualDevice<Repo, Logger>> {
         self.logger.info(format!("handle event: {:?}", event).as_str());
 
         match (&self.meta_client, &event) {
             (MetaClient::Empty(client), VirtualDeviceEvent::Init) => {
-                // init
-
                 let vault_name = "q";
                 let device_name = "virtual-device";
 
-                let init_client = client
-                    .get_or_create_local_vault(vault_name, device_name)
-                    .await?;
+                let init_client = client.get_or_create_local_vault(vault_name, device_name).await?;
 
                 Ok(VirtualDevice {
                     meta_client: MetaClient::Init(init_client),
@@ -207,20 +190,14 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> VirtualDevice<Repo, Logger> {
                     logger: self.logger.clone(),
                 })
             }
-            (MetaClient::Init(client), VirtualDeviceEvent::SignUp) => {
-                Ok(VirtualDevice {
-                    meta_client: MetaClient::Registered(client.sign_up().await),
-                    ctx: client.ctx.clone(),
-                    data_transfer: self.data_transfer.clone(),
-                    logger: self.logger.clone(),
-                })
-            }
+            (MetaClient::Init(client), VirtualDeviceEvent::SignUp) => Ok(VirtualDevice {
+                meta_client: MetaClient::Registered(client.sign_up().await),
+                ctx: client.ctx.clone(),
+                data_transfer: self.data_transfer.clone(),
+                logger: self.logger.clone(),
+            }),
             _ => {
-                let msg = format!(
-                    "Invalid state!!!!!!!!!!!!!!!: state: {:?}, event: {:?}",
-                    self.meta_client.to_string(),
-                    &event
-                );
+                let msg = format!("Invalid state: {:?}, event: {:?}", self.meta_client.to_string(), &event);
                 self.logger.info(msg.as_str());
                 panic!("Invalid state")
             }

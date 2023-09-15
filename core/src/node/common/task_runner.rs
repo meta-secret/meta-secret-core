@@ -4,7 +4,7 @@ use async_trait::async_trait;
 
 #[async_trait(? Send)]
 pub trait TaskRunner {
-    async fn spawn(&self, future: impl Future<Output=()> + 'static);
+    async fn spawn(&self, future: impl Future<Output = ()> + 'static);
 }
 
 #[cfg(test)]
@@ -21,7 +21,7 @@ mod test {
 
     #[async_trait(? Send)]
     impl TaskRunner for RustTaskRunner {
-        async fn spawn(&self, future: impl Future<Output=()> + 'static) {
+        async fn spawn(&self, future: impl Future<Output = ()> + 'static) {
             let local = tokio::task::LocalSet::new();
 
             local.spawn_local(async move {
@@ -38,10 +38,12 @@ mod test {
         let shared_obj_2 = shared_obj.clone();
 
         let runner = RustTaskRunner {};
-        runner.spawn(async move {
-            println!("1. Async task");
-            shared_obj.replace(true);
-        }).await;
+        runner
+            .spawn(async move {
+                println!("1. Async task");
+                shared_obj.replace(true);
+            })
+            .await;
 
         println!("2. Main thread");
 

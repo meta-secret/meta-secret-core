@@ -56,7 +56,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> PersistentObject<Repo, Logger> {
                         if let GenericKvLogEvent::SharedSecret(_) = &curr_db_event {
                             self.repo.delete(&curr_tail_id).await;
                         }
-                        
+
                         curr_tail_id = curr_tail_id.next();
                         commit_log.push(curr_db_event);
                     }
@@ -79,17 +79,13 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> PersistentObject<Repo, Logger> {
     }
 
     pub async fn find_tail_id(&self, curr_id: &ObjectId) -> Option<ObjectId> {
-        let curr_result = self.repo
-            .find_one(curr_id)
-            .await;
+        let curr_result = self.repo.find_one(curr_id).await;
 
         match curr_result {
             Ok(maybe_event) => match maybe_event {
-                None => {
-                    None
-                },
+                None => None,
                 Some(_curr_event) => {
-                    let mut existing_id =  curr_id.clone();
+                    let mut existing_id = curr_id.clone();
                     let mut curr_tail_id = curr_id.clone();
 
                     loop {
@@ -100,9 +96,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> PersistentObject<Repo, Logger> {
                                 existing_id = curr_tail_id.clone();
                                 curr_tail_id = curr_tail_id.next();
                             }
-                            _ => {
-                                break
-                            }
+                            _ => break,
                         }
                     }
 
@@ -258,11 +252,7 @@ mod test {
         };
 
         let unit_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::unit());
-        persistent_object
-            .repo
-            .save_event(&unit_event)
-            .await
-            .unwrap();
+        persistent_object.repo.save_event(&unit_event).await.unwrap();
 
         let genesis_event = {
             let server_pk = PublicKeyRecord::from(user_sig.public_key.as_ref().clone());
@@ -280,11 +270,7 @@ mod test {
             },
         });
 
-        persistent_object
-            .repo
-            .save_event(&genesis_event)
-            .await
-            .unwrap();
+        persistent_object.repo.save_event(&genesis_event).await.unwrap();
 
         persistent_object
             .repo
@@ -318,18 +304,14 @@ mod test {
         };
 
         let unit_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::unit());
-        persistent_object
-            .repo
-            .save_event(&unit_event).await.unwrap();
+        persistent_object.repo.save_event(&unit_event).await.unwrap();
 
         let genesis_event = {
             let server_pk = PublicKeyRecord::from(user_sig.public_key.as_ref().clone());
             GenericKvLogEvent::GlobalIndex(GlobalIndexObject::genesis(&server_pk))
         };
 
-        persistent_object
-            .repo
-            .save_event(&genesis_event).await.unwrap();
+        persistent_object.repo.save_event(&genesis_event).await.unwrap();
 
         let tail_id = persistent_object
             .find_tail_id_by_obj_desc(&ObjectDescriptor::GlobalIndex)
@@ -337,7 +319,7 @@ mod test {
             .unwrap();
 
         match genesis_event.key() {
-            KvKey::Empty{ .. } => {
+            KvKey::Empty { .. } => {
                 panic!("Invalid state");
             }
             KvKey::Key { obj_id, .. } => {

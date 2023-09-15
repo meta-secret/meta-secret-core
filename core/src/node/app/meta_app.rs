@@ -4,10 +4,8 @@ use std::sync::Arc;
 use anyhow::anyhow;
 
 use crate::crypto::keys::KeyManager;
-use crate::models::{
-    ApplicationState, MetaPasswordDoc, MetaPasswordId, MetaVault, UserCredentials, VaultDoc}
-;
 use crate::models::password_recovery_request::PasswordRecoveryRequest;
+use crate::models::{ApplicationState, MetaPasswordDoc, MetaPasswordId, MetaVault, UserCredentials, VaultDoc};
 use crate::node::app::meta_manager::{MetaVaultManager, UserCredentialsManager};
 use crate::node::db::actions::sign_up::SignUpRequest;
 use crate::node::db::events::common::{MempoolObject, ObjectCreator, SharedSecretObject, VaultInfo};
@@ -28,37 +26,29 @@ pub enum MetaClient<Repo: KvLogEventRepo, Logger: MetaLogger> {
 }
 
 impl<Repo, Logger> ToString for MetaClient<Repo, Logger>
-    where
-        Repo: KvLogEventRepo,
-        Logger: MetaLogger,
-
+where
+    Repo: KvLogEventRepo,
+    Logger: MetaLogger,
 {
     fn to_string(&self) -> String {
         match self {
             MetaClient::Empty(_) => String::from("Empty"),
             MetaClient::Init(_) => String::from("Init"),
-            MetaClient::Registered(_) => String::from("Registered")
+            MetaClient::Registered(_) => String::from("Registered"),
         }
     }
 }
 
 impl<Repo, Logger> MetaClient<Repo, Logger>
-    where
-        Repo: KvLogEventRepo,
-        Logger: MetaLogger,
-
+where
+    Repo: KvLogEventRepo,
+    Logger: MetaLogger,
 {
     pub fn get_ctx(&self) -> Arc<MetaClientContext> {
         match self {
-            MetaClient::Empty(client) => {
-                client.ctx.clone()
-            }
-            MetaClient::Init(client) => {
-                client.ctx.clone()
-            }
-            MetaClient::Registered(client) => {
-                client.ctx.clone()
-            }
+            MetaClient::Empty(client) => client.ctx.clone(),
+            MetaClient::Init(client) => client.ctx.clone(),
+            MetaClient::Registered(client) => client.ctx.clone(),
         }
     }
 }
@@ -67,7 +57,7 @@ pub struct EmptyMetaClient<Repo: KvLogEventRepo, Logger: MetaLogger> {
     pub ctx: Arc<MetaClientContext>,
     pub logger: Arc<Logger>,
     pub persistent_obj: Arc<PersistentObject<Repo, Logger>>,
-    pub meta_db_service: Arc<MetaDbService<Repo, Logger>>
+    pub meta_db_service: Arc<MetaDbService<Repo, Logger>>,
 }
 
 impl<Repo: KvLogEventRepo, Logger: MetaLogger> EmptyMetaClient<Repo, Logger> {
@@ -85,13 +75,15 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> EmptyMetaClient<Repo, Logger> {
                 };
                 Ok(Some(new_client))
             }
-            None => {
-                Ok(None)
-            }
+            None => Ok(None),
         }
     }
 
-    pub async fn get_or_create_local_vault(&self, vault_name: &str, device_name: &str) -> anyhow::Result<InitMetaClient<Repo, Logger>> {
+    pub async fn get_or_create_local_vault(
+        &self,
+        vault_name: &str,
+        device_name: &str,
+    ) -> anyhow::Result<InitMetaClient<Repo, Logger>> {
         let meta_vault = self.create_meta_vault(vault_name, device_name).await?;
         let creds = self.generate_user_credentials(meta_vault).await?;
 
@@ -100,21 +92,19 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> EmptyMetaClient<Repo, Logger> {
             creds: Arc::new(creds),
             logger: self.logger.clone(),
             persistent_obj: self.persistent_obj.clone(),
-            meta_db_service: self.meta_db_service.clone()
+            meta_db_service: self.meta_db_service.clone(),
         })
     }
 
     async fn create_meta_vault(&self, vault_name: &str, device_name: &str) -> anyhow::Result<MetaVault> {
-        self.logger.info("create_meta_vault: create a meta vault");
+        self.logger.info("Create a meta vault");
 
-
-        let maybe_meta_vault = self.persistent_obj.repo
-            .find_meta_vault()
-            .await?;
+        let maybe_meta_vault = self.persistent_obj.repo.find_meta_vault().await?;
 
         match maybe_meta_vault {
             None => {
-                self.persistent_obj.repo
+                self.persistent_obj
+                    .repo
                     .create_meta_vault(vault_name.to_string(), device_name.to_string())
                     .await
             }
@@ -129,25 +119,28 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> EmptyMetaClient<Repo, Logger> {
     }
 
     async fn generate_user_credentials(&self, meta_vault: MetaVault) -> anyhow::Result<UserCredentials> {
-        self.logger.info("generate_user_credentials: generate a new security box");
+        self.logger
+            .info("generate_user_credentials: generate a new security box");
 
-        let maybe_creds = self.persistent_obj.repo.find_user_creds()
-            .await?;
+        let maybe_creds = self.persistent_obj.repo.find_user_creds().await?;
 
         match maybe_creds {
             None => {
                 let security_box = KeyManager::generate_security_box(meta_vault.name);
                 let user_sig = security_box.get_user_sig(&meta_vault.device);
                 let creds = UserCredentials::new(security_box, user_sig);
-                self.persistent_obj.repo
-                    .save_user_creds(&creds)
-                    .await?;
+                self.persistent_obj.repo.save_user_creds(&creds).await?;
 
+                self.logger.info(
+                    format!(
+                        "User creds has been generated. Pk: {}",
+                        creds.user_sig.public_key.base64_text
+                    )
+                    .as_str(),
+                );
                 Ok(creds)
             }
-            Some(creds) => {
-                Ok(creds)
-            }
+            Some(creds) => Ok(creds),
         }
     }
 }
@@ -157,7 +150,7 @@ pub struct InitMetaClient<Repo: KvLogEventRepo, Logger: MetaLogger> {
     pub creds: Arc<UserCredentials>,
     pub logger: Arc<Logger>,
     pub persistent_obj: Arc<PersistentObject<Repo, Logger>>,
-    pub meta_db_service: Arc<MetaDbService<Repo, Logger>>
+    pub meta_db_service: Arc<MetaDbService<Repo, Logger>>,
 }
 
 impl<Repo: KvLogEventRepo, Logger: MetaLogger> InitMetaClient<Repo, Logger> {
@@ -203,12 +196,10 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> InitMetaClient<Repo, Logger> {
                     obj_desc: ObjectDescriptor::Mempool,
                 },
                 value: self.creds.user_sig.as_ref().clone(),
-            }
+            },
         });
 
-        let _ = self.persistent_obj.repo
-            .save_event(&join_request)
-            .await;
+        let _ = self.persistent_obj.repo.save_event(&join_request).await;
     }
 
     async fn sign_up_action(&self, vault_info: &VaultInfo) {
@@ -223,9 +214,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> InitMetaClient<Repo, Logger> {
                 self.logger.info("Declined - is not expected here");
             }
             VaultInfo::NotFound => {
-                let reg_res = self
-                    .register()
-                    .await;
+                let reg_res = self.register().await;
 
                 match reg_res {
                     Ok(_vault_info) => {
@@ -248,9 +237,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> InitMetaClient<Repo, Logger> {
         let sign_up_request_factory = SignUpRequest {};
         let sign_up_request = sign_up_request_factory.generic_request(&self.creds.user_sig);
 
-        self.persistent_obj.repo
-            .save_event(&sign_up_request)
-            .await?;
+        self.persistent_obj.repo.save_event(&sign_up_request).await?;
 
         Ok(VaultInfo::Pending)
     }
@@ -275,14 +262,13 @@ pub struct RegisteredMetaClient<Repo: KvLogEventRepo, Logger: MetaLogger> {
     pub vault_info: VaultInfo,
     pub logger: Arc<Logger>,
     pub persistent_obj: Arc<PersistentObject<Repo, Logger>>,
-    pub meta_db_service: Arc<MetaDbService<Repo, Logger>>
+    pub meta_db_service: Arc<MetaDbService<Repo, Logger>>,
 }
 
 impl<Repo, Logger> RegisteredMetaClient<Repo, Logger>
-    where
-        Repo: KvLogEventRepo,
-        Logger: MetaLogger,
-
+where
+    Repo: KvLogEventRepo,
+    Logger: MetaLogger,
 {
     pub async fn cluster_distribution(&self, pass_id: &str, pass: &str) {
         self.logger.info("cluster distribution!!!!");
@@ -298,9 +284,7 @@ impl<Repo, Logger> RegisteredMetaClient<Repo, Logger>
                     user_creds: self.creds.clone(),
                 };
 
-                distributor
-                    .distribute(pass_id.to_string(), pass.to_string())
-                    .await;
+                distributor.distribute(pass_id.to_string(), pass.to_string()).await;
             }
             VaultInfo::Pending => {}
             VaultInfo::Declined => {}
@@ -308,9 +292,7 @@ impl<Repo, Logger> RegisteredMetaClient<Repo, Logger>
             VaultInfo::NotMember => {}
         };
 
-        self.meta_db_service
-            .sync_db()
-            .await;
+        self.meta_db_service.sync_db().await;
     }
 
     pub async fn recovery_request(&self, meta_pass_id: MetaPasswordId) {
@@ -333,21 +315,21 @@ impl<Repo, Logger> RegisteredMetaClient<Repo, Logger>
                     };
                     let generic_event = GenericKvLogEvent::SharedSecret(SharedSecretObject::RecoveryRequest {
                         event: KvLogEvent {
-                            key: KvKey::Empty { obj_desc: obj_desc.clone() },
+                            key: KvKey::Empty {
+                                obj_desc: obj_desc.clone(),
+                            },
                             value: recovery_request,
                         },
                     });
 
-                    let slot_id = self.persistent_obj
+                    let slot_id = self
+                        .persistent_obj
                         .find_tail_id_by_obj_desc(&obj_desc)
                         .await
                         .map(|id| id.next())
                         .unwrap_or(ObjectId::unit(&obj_desc));
 
-                    let _ = self.persistent_obj
-                        .repo
-                        .save(&slot_id, &generic_event)
-                        .await;
+                    let _ = self.persistent_obj.repo.save(&slot_id, &generic_event).await;
                 }
 
                 self.meta_db_service.sync_db().await
@@ -361,7 +343,7 @@ impl<Repo, Logger> RegisteredMetaClient<Repo, Logger>
 }
 
 pub struct MetaClientContext {
-    pub app_state: RefCell<ApplicationState>
+    pub app_state: RefCell<ApplicationState>,
 }
 
 impl MetaClientContext {

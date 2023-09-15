@@ -234,10 +234,10 @@ pub mod serialized_key_manager {
 
         #[cfg(test)]
         pub mod test {
-            use crate::CoreResult;
             use crate::crypto::key_pair::{DalekPublicKey, DalekSignature, KeyPair};
             use crate::crypto::keys::KeyManager;
             use crate::models::Base64EncodedText;
+            use crate::CoreResult;
 
             #[test]
             fn from_base64_to_dalek_public_key() -> CoreResult<()> {

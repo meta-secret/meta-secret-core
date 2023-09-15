@@ -24,12 +24,10 @@ impl From<&GenericKvLogEvent> for NewDbLogEvent {
             KvKey::Empty { .. } => {
                 panic!("Empty key can't be saved to the database")
             }
-            KvKey::Key { obj_id, .. } => {
-                Self {
-                    key_id: obj_id.id_str(),
-                    event: serde_json::to_string(log_event).unwrap(),
-                }
-            }
+            KvKey::Key { obj_id, .. } => Self {
+                key_id: obj_id.id_str(),
+                event: serde_json::to_string(log_event).unwrap(),
+            },
         }
     }
 }

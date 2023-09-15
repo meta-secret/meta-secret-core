@@ -14,7 +14,7 @@ pub struct InMemKvLogEventRepo {
 impl Default for InMemKvLogEventRepo {
     fn default() -> Self {
         InMemKvLogEventRepo {
-            db: Arc::new(Mutex::new(HashMap::default()))
+            db: Arc::new(Mutex::new(HashMap::default())),
         }
     }
 }
