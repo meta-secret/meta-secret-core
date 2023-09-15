@@ -84,7 +84,7 @@ impl ObjectId {
         match self {
             ObjectId::Unit { .. } => true,
             ObjectId::Genesis { .. } => false,
-            ObjectId::Regular { .. } => false
+            ObjectId::Regular { .. } => false,
         }
     }
 
@@ -92,7 +92,7 @@ impl ObjectId {
         match self {
             ObjectId::Unit { .. } => false,
             ObjectId::Genesis { .. } => true,
-            ObjectId::Regular { .. } => false
+            ObjectId::Regular { .. } => false,
         }
     }
 

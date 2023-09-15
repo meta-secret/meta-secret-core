@@ -26,11 +26,10 @@ pub struct SyncGateway<Repo: KvLogEventRepo, Logger: MetaLogger> {
     pub repo: Arc<Repo>,
     pub persistent_object: Arc<PersistentObject<Repo, Logger>>,
     pub data_transfer: Arc<MpscSender>,
-    pub meta_db_service: Arc<MetaDbService<Repo, Logger>>
+    pub meta_db_service: Arc<MetaDbService<Repo, Logger>>,
 }
 
 impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
-
     pub fn new(
         repo: Arc<Repo>,
         meta_db_service: Arc<MetaDbService<Repo, Logger>>,
@@ -60,9 +59,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
             async_std::task::sleep(Duration::from_secs(1)).await;
             self.sync().await;
 
-            let vault_store = self.meta_db_service.get_vault_store()
-                .await
-                .unwrap();
+            let vault_store = self.meta_db_service.get_vault_store().await.unwrap();
 
             match vault_store {
                 VaultStore::Store { vault, .. } => {
@@ -91,9 +88,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
                     device_id: user_sig.vault.device.device_id.clone(),
                 };
                 let obj_id = ObjectId::unit(&obj_desc);
-                let events = self.persistent_object
-                    .find_object_events(&obj_id)
-                    .await;
+                let events = self.persistent_object.find_object_events(&obj_id).await;
 
                 for event in events {
                     self.logger
@@ -126,21 +121,13 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
 
                 match db_tail_result {
                     Ok(db_tail) => {
-                        let new_tail_for_gi = self
-                            .get_new_tail_for_global_index(&db_tail)
-                            .await;
+                        let new_tail_for_gi = self.get_new_tail_for_global_index(&db_tail).await;
 
-                        let new_tail_for_vault = self
-                            .get_new_tail_for_an_obj(&db_tail.vault_id)
-                            .await;
+                        let new_tail_for_vault = self.get_new_tail_for_an_obj(&db_tail.vault_id).await;
 
-                        let new_tail_for_meta_pass = self
-                            .get_new_tail_for_an_obj(&db_tail.meta_pass_id)
-                            .await;
+                        let new_tail_for_meta_pass = self.get_new_tail_for_an_obj(&db_tail.meta_pass_id).await;
 
-                        let new_tail_for_mem_pool = self
-                            .get_new_tail_for_mem_pool(&db_tail)
-                            .await;
+                        let new_tail_for_mem_pool = self.get_new_tail_for_mem_pool(&db_tail).await;
 
                         let new_db_tail = DbTail {
                             vault_id: new_tail_for_vault,
@@ -189,12 +176,13 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
                                     let key = if let GenericKvLogEvent::SharedSecret(sss_obj) = &new_event {
                                         match sss_obj {
                                             SharedSecretObject::Split { event } => {
-                                                let local_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::LocalSecretShare {
-                                                    event: event.clone()
-                                                });
+                                                let local_event =
+                                                    GenericKvLogEvent::LocalEvent(KvLogEventLocal::LocalSecretShare {
+                                                        event: event.clone(),
+                                                    });
 
                                                 let obj_desc = ObjectDescriptor::LocalSecretShare {
-                                                    meta_pass_id: event.value.meta_password.meta_password.id.id.clone()
+                                                    meta_pass_id: event.value.meta_password.meta_password.id.id.clone(),
                                                 };
                                                 let obj_id = ObjectId::unit(&obj_desc);
                                                 let _ = self.repo.save(&obj_id, &local_event).await;
@@ -203,53 +191,46 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
 
                                             SharedSecretObject::RecoveryRequest { event } => {
                                                 let obj_desc = event.key.obj_desc();
-                                                let slot_id = self.persistent_object
+                                                let slot_id = self
+                                                    .persistent_object
                                                     .find_tail_id_by_obj_desc(&obj_desc)
                                                     .await
                                                     .map(|id| id.next())
                                                     .unwrap_or(ObjectId::unit(&obj_desc));
 
-                                                let _ = self.repo
-                                                    .save(&slot_id, &new_event)
-                                                    .await;
+                                                let _ = self.repo.save(&slot_id, &new_event).await;
 
                                                 slot_id
                                             }
 
                                             SharedSecretObject::Recover { event } => {
                                                 let obj_desc = event.key.obj_desc();
-                                                let slot_id = self.persistent_object
+                                                let slot_id = self
+                                                    .persistent_object
                                                     .find_tail_id_by_obj_desc(&obj_desc)
                                                     .await
                                                     .map(|id| id.next())
                                                     .unwrap_or(ObjectId::unit(&obj_desc));
 
-                                                let _ = self.repo
-                                                    .save(&slot_id, &new_event)
-                                                    .await;
+                                                let _ = self.repo.save(&slot_id, &new_event).await;
 
                                                 slot_id
                                             }
                                         }
                                     } else {
-                                        self.repo.save_event(&new_event)
+                                        self.repo
+                                            .save_event(&new_event)
                                             .await
                                             .expect("Error saving secret share")
                                     };
 
                                     match new_event {
-                                        GenericKvLogEvent::GlobalIndex(_) => {
-                                            latest_gi = Some(key)
-                                        }
+                                        GenericKvLogEvent::GlobalIndex(_) => latest_gi = Some(key),
                                         GenericKvLogEvent::Vault(_) => {
-                                            latest_vault_id = DbTailObject::Id {
-                                                tail_id: key.clone(),
-                                            }
+                                            latest_vault_id = DbTailObject::Id { tail_id: key.clone() }
                                         }
                                         GenericKvLogEvent::MetaPass(_) => {
-                                            latest_meta_pass_id = DbTailObject::Id {
-                                                tail_id: key.clone(),
-                                            }
+                                            latest_meta_pass_id = DbTailObject::Id { tail_id: key.clone() }
                                         }
                                         _ => {
                                             //ignore any non global event
@@ -331,21 +312,17 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
                             "Send event to server. May stuck if server won't response!!! : {:?}",
                             client_event
                         )
-                            .as_str(),
+                        .as_str(),
                     );
                     self.data_transfer.just_send(DataSyncMessage::Event(client_event)).await;
                 }
 
                 let new_tail_id = last_vault_event
-                    .map(|event| {
-                        match event.key() {
-                            KvKey::Empty { .. } => {
-                                panic!("Invalid event");
-                            }
-                            KvKey::Key { obj_id, .. } => {
-                                obj_id.clone()
-                            }
+                    .map(|event| match event.key() {
+                        KvKey::Empty { .. } => {
+                            panic!("Invalid event");
                         }
+                        KvKey::Key { obj_id, .. } => obj_id.clone(),
                     })
                     .unwrap_or(tail_id.clone());
                 DbTailObject::Id { tail_id: new_tail_id }
@@ -379,16 +356,10 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
 
         match last_pool_event {
             None => db_tail.maybe_mem_pool_id.clone(),
-            Some(event) => {
-                match event.key() {
-                    KvKey::Empty { .. } => {
-                        None
-                    }
-                    KvKey::Key { obj_id, .. } => {
-                        Some(obj_id.clone())
-                    }
-                }
-            }
+            Some(event) => match event.key() {
+                KvKey::Empty { .. } => None,
+                KvKey::Key { obj_id, .. } => Some(obj_id.clone()),
+            },
         }
     }
 }

@@ -58,8 +58,8 @@ impl KvLogEvent<GlobalIndexRecord> {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum KvKey {
-    Empty{
-        obj_desc: ObjectDescriptor
+    Empty {
+        obj_desc: ObjectDescriptor,
     },
     Key {
         obj_id: ObjectId,
@@ -83,8 +83,8 @@ impl ObjectCreator<&ObjectDescriptor> for KvKey {
 impl KvKey {
     pub fn obj_desc(&self) -> ObjectDescriptor {
         match self {
-            KvKey::Empty{ obj_desc } => obj_desc.clone(),
-            KvKey::Key { obj_desc, .. } => obj_desc.clone()
+            KvKey::Empty { obj_desc } => obj_desc.clone(),
+            KvKey::Key { obj_desc, .. } => obj_desc.clone(),
         }
     }
 }
@@ -92,15 +92,11 @@ impl KvKey {
 impl IdGen for KvKey {
     fn next(&self) -> Self {
         match self {
-            KvKey::Empty{ .. } => {
-                self.clone()
-            }
-            KvKey::Key { obj_id, obj_desc } => {
-                Self::Key {
-                    obj_id: obj_id.next(),
-                    obj_desc: obj_desc.clone(),
-                }
-            }
+            KvKey::Empty { .. } => self.clone(),
+            KvKey::Key { obj_id, obj_desc } => Self::Key {
+                obj_id: obj_id.next(),
+                obj_desc: obj_desc.clone(),
+            },
         }
     }
 }

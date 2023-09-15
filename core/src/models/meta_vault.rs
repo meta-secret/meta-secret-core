@@ -9,7 +9,8 @@
  */
 
 /// MetaVault : It keeps the information about a vault.  It's the origin of the objects generated to create a user vault and generate all necessary credentials and user signatures. MetaVault -> KeyManager -> UserSignature
-#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MetaVault {
     /// vault name
     #[serde(rename = "name")]

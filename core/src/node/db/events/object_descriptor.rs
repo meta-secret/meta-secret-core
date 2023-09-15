@@ -33,7 +33,7 @@ impl From<&SecretDistributionDocData> for ObjectDescriptor {
     fn from(value: &SecretDistributionDocData) -> Self {
         let vault_name = value.meta_password.meta_password.vault.vault_name.clone();
         let device_id = value.secret_message.receiver.vault.device.device_id.clone();
-        ObjectDescriptor::SharedSecret { vault_name, device_id, }
+        ObjectDescriptor::SharedSecret { vault_name, device_id }
     }
 }
 

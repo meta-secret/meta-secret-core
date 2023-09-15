@@ -5,7 +5,6 @@ use crate::node::db::meta_db::store::vault_store::VaultStore;
 use crate::node::logger::MetaLogger;
 
 impl<Logger: MetaLogger> MetaDb<Logger> {
-
     pub fn apply_vault_event(&mut self, vault_obj: &VaultObject) {
         self.logger
             .debug(format!("Apply vault event: {:?}", vault_obj).as_str());
@@ -15,24 +14,14 @@ impl<Logger: MetaLogger> MetaDb<Logger> {
         };
 
         match vault_obj {
-            VaultObject::Unit { .. } => {
-                match self.vault_store {
-                    VaultStore::Empty => {
-                        self.vault_store = VaultStore::Unit {
-                            tail_id: obj_id,
-                        }
-                    }
-                    VaultStore::Unit { .. } => {
-                        self.vault_store = VaultStore::Unit {
-                            tail_id: obj_id,
-                        }
-                    }
-                    _ => {
-                        let msg_str = format!("Unit event. Invalid vault store state: {:?}", self.vault_store);
-                        self.logger.error(msg_str.as_str());
-                    }
+            VaultObject::Unit { .. } => match self.vault_store {
+                VaultStore::Empty => self.vault_store = VaultStore::Unit { tail_id: obj_id },
+                VaultStore::Unit { .. } => self.vault_store = VaultStore::Unit { tail_id: obj_id },
+                _ => {
+                    let msg_str = format!("Unit event. Invalid vault store state: {:?}", self.vault_store);
+                    self.logger.error(msg_str.as_str());
                 }
-            }
+            },
             VaultObject::Genesis { event } => {
                 match &self.vault_store {
                     VaultStore::Unit { .. } => {
@@ -72,10 +61,7 @@ impl<Logger: MetaLogger> MetaDb<Logger> {
                         }
                     }
                     _ => {
-                        let err_msg = format!(
-                            "JoinUpdate event. Invalid vault store state: {:?}",
-                            self.vault_store
-                        );
+                        let err_msg = format!("JoinUpdate event. Invalid vault store state: {:?}", self.vault_store);
                         self.logger.info(err_msg.as_str());
                     }
                 };
@@ -90,10 +76,7 @@ impl<Logger: MetaLogger> MetaDb<Logger> {
                         }
                     }
                     _ => {
-                        let err_msg = format!(
-                            "JoinRequest event. Invalid vault store state: {:?}",
-                            self.vault_store
-                        );
+                        let err_msg = format!("JoinRequest event. Invalid vault store state: {:?}", self.vault_store);
                         self.logger.error(err_msg.as_str());
                     }
                 };
@@ -116,10 +99,7 @@ mod test {
 
     #[test]
     fn test() {
-        let mut meta_db = MetaDb::new(
-            String::from("test"),
-            Arc::new(DefaultMetaLogger::new(LoggerId::Test))
-        );
+        let mut meta_db = MetaDb::new(String::from("test"), Arc::new(DefaultMetaLogger::new(LoggerId::Test)));
 
         let vault_name = String::from("test_vault");
         let s_box = KeyManager::generate_security_box(vault_name.clone());
@@ -133,7 +113,7 @@ mod test {
         meta_db.apply_vault_event(&vault_obj);
         match meta_db.vault_store {
             VaultStore::Unit { tail_id } => {
-                assert_eq!(ObjectId::vault_unit(vault_name.as_str()) , tail_id);
+                assert_eq!(ObjectId::vault_unit(vault_name.as_str()), tail_id);
             }
             _ => {
                 panic!("Invalid state");

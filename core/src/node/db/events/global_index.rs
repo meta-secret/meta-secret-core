@@ -50,22 +50,18 @@ mod test {
     fn unit_test() {
         let unit = GlobalIndexObject::unit();
         match unit {
-            GlobalIndexObject::Unit { event } => {
-                match event.key {
-                    KvKey::Empty { .. } => {
-                        panic!()
-                    }
-                    KvKey::Key { obj_id, .. } => {
-                        match obj_id {
-                            ObjectId::Unit { id } => {
-                                assert_eq!("GlobalIndex:index::0", id);
-                            }
-                            _ => {
-                                panic!("Invalid event");
-                            }
-                        }
-                    }
+            GlobalIndexObject::Unit { event } => match event.key {
+                KvKey::Empty { .. } => {
+                    panic!()
                 }
+                KvKey::Key { obj_id, .. } => match obj_id {
+                    ObjectId::Unit { id } => {
+                        assert_eq!("GlobalIndex:index::0", id);
+                    }
+                    _ => {
+                        panic!("Invalid event");
+                    }
+                },
             },
             _ => {
                 panic!("Invalid event");

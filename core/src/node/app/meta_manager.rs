@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 
 use crate::crypto::keys::KeyManager;
-use crate::models::DeviceInfo;
 use crate::models::meta_vault::MetaVault;
 use crate::models::user_credentials::UserCredentials;
+use crate::models::DeviceInfo;
 use crate::node::db::events::common::ObjectCreator;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
@@ -35,9 +35,7 @@ where
             value: meta_vault.clone(),
         };
 
-        let db_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::MetaVault {
-            event: Box::new(event)
-        });
+        let db_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::MetaVault { event: Box::new(event) });
 
         self.save(&ObjectId::meta_vault_index(), &db_event).await?;
 
@@ -48,13 +46,9 @@ where
         let maybe_meta_vault = self.find_one(&ObjectId::meta_vault_index()).await?;
 
         match maybe_meta_vault {
-            None => {
-                Ok(None)
-            }
+            None => Ok(None),
             Some(meta_vault) => match meta_vault {
-                GenericKvLogEvent::LocalEvent(KvLogEventLocal::MetaVault { event }) => {
-                    Ok(Some(event.value))
-                },
+                GenericKvLogEvent::LocalEvent(KvLogEventLocal::MetaVault { event }) => Ok(Some(event.value)),
 
                 _ => {
                     let err_msg = "Meta vault index: Invalid data";
@@ -84,9 +78,7 @@ where
         match maybe_creds {
             None => Ok(None),
             Some(user_creds) => match user_creds {
-                GenericKvLogEvent::LocalEvent(KvLogEventLocal::UserCredentials { event }) => {
-                    Ok(Some(event.value))
-                },
+                GenericKvLogEvent::LocalEvent(KvLogEventLocal::UserCredentials { event }) => Ok(Some(event.value)),
                 _ => {
                     panic!("Meta vault index: Invalid data")
                 }
@@ -99,9 +91,7 @@ where
             key: KvKey::unit(&ObjectDescriptor::UserCreds),
             value: creds.clone(),
         };
-        let generic_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::UserCredentials {
-            event: Box::new(event)
-        });
+        let generic_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::UserCredentials { event: Box::new(event) });
 
         self.save_event(&generic_event).await
     }

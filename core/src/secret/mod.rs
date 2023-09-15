@@ -1,14 +1,12 @@
 use std::sync::Arc;
 
-use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
-use crate::CoreResult;
 use crate::crypto::keys::KeyManager;
 use crate::models::{
     AeadCipherText, EncryptedMessage, MetaPasswordDoc, MetaPasswordId, MetaPasswordRequest, SecretDistributionDocData,
     SecretDistributionType, UserCredentials, UserSecurityBox, UserSignature, VaultDoc,
 };
-use crate::node::db::events::common::{MetaPassObject, SharedSecretObject};
 use crate::node::db::events::common::ObjectCreator;
+use crate::node::db::events::common::{MetaPassObject, SharedSecretObject};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::local::KvLogEventLocal;
@@ -17,6 +15,8 @@ use crate::node::db::events::object_id::{IdGen, ObjectId};
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::logger::MetaLogger;
+use crate::CoreResult;
+use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
 
 pub mod data_block;
 pub mod shared_secret;
@@ -153,16 +153,14 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDistributor<Repo, Logger> {
                     },
                 });
 
-                let _ = self.persistent_obj
-                    .repo
-                    .save_event(&secret_share_event)
-                    .await;
-
+                let _ = self.persistent_obj.repo.save_event(&secret_share_event).await;
             } else {
                 let obj_desc = ObjectDescriptor::from(&distribution_share);
                 let secret_share_event = GenericKvLogEvent::SharedSecret(SharedSecretObject::Split {
                     event: KvLogEvent {
-                        key: KvKey::Empty { obj_desc: obj_desc.clone() },
+                        key: KvKey::Empty {
+                            obj_desc: obj_desc.clone(),
+                        },
                         value: distribution_share,
                     },
                 });
@@ -174,10 +172,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDistributor<Repo, Logger> {
                     .map(|id| id.next())
                     .unwrap_or(ObjectId::unit(&obj_desc));
 
-                let _ = self.persistent_obj
-                    .repo
-                    .save(&tail_id, &secret_share_event)
-                    .await;
+                let _ = self.persistent_obj.repo.save(&tail_id, &secret_share_event).await;
             };
         }
     }
@@ -190,8 +185,8 @@ mod test {
     use crate::node::db::events::common::{LogEventKeyBasedRecord, PublicKeyRecord};
     use crate::node::db::events::vault_event::VaultObject;
     use crate::node::db::generic_db::{FindOneQuery, SaveCommand};
-    use crate::node::server::data_sync::DataSyncApi;
     use crate::node::server::data_sync::test::DataSyncTestContext;
+    use crate::node::server::data_sync::DataSyncApi;
 
     use super::*;
 
@@ -231,20 +226,14 @@ mod test {
             let accept_event = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
                 event: kv_join_event.clone(),
             });
-            let _ = ctx
-                .repo
-                .save_event(&accept_event)
-                .await;
+            let _ = ctx.repo.save_event(&accept_event).await;
 
             let join_request_c = join::join_cluster_request(&vault_unit_id.next().next().next(), &user_sig_c);
             let kv_join_event_c = join::accept_join_request(&join_request_c, &kv_join_event.value);
             let accept_event_c = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
                 event: kv_join_event_c.clone(),
             });
-            let _ = ctx
-                .repo
-                .save_event(&accept_event_c)
-                .await;
+            let _ = ctx.repo.save_event(&accept_event_c).await;
 
             let distributor = MetaDistributor {
                 persistent_obj: ctx.persistent_obj,
@@ -252,26 +241,27 @@ mod test {
                 vault: kv_join_event_c.value,
             };
 
-            distributor.distribute(String::from("test"), String::from("t0p$ecret")).await;
+            distributor
+                .distribute(String::from("test"), String::from("t0p$ecret"))
+                .await;
 
-            let mut db = ctx.repo.db.lock().unwrap().values().cloned().collect::<Vec<GenericKvLogEvent>>();
+            let mut db = ctx
+                .repo
+                .db
+                .lock()
+                .unwrap()
+                .values()
+                .cloned()
+                .collect::<Vec<GenericKvLogEvent>>();
             db.sort_by(|a, b| {
                 let a_id = match a.key() {
-                    KvKey::Empty { obj_desc } => {
-                        obj_desc.to_id()
-                    }
-                    KvKey::Key { obj_id, .. } => {
-                        obj_id.id_str()
-                    }
+                    KvKey::Empty { obj_desc } => obj_desc.to_id(),
+                    KvKey::Key { obj_id, .. } => obj_id.id_str(),
                 };
 
                 let b_id = match b.key() {
-                    KvKey::Empty { obj_desc } => {
-                        obj_desc.to_id()
-                    }
-                    KvKey::Key { obj_id, .. } => {
-                        obj_id.id_str()
-                    }
+                    KvKey::Empty { obj_desc } => obj_desc.to_id(),
+                    KvKey::Key { obj_id, .. } => obj_id.id_str(),
                 };
 
                 a_id.as_str().partial_cmp(b_id.as_str()).unwrap()
@@ -281,12 +271,8 @@ mod test {
             for event in db {
                 println!("event:");
                 let id = match event.key() {
-                    KvKey::Empty { obj_desc } => {
-                        obj_desc.to_id()
-                    }
-                    KvKey::Key { obj_id, .. } => {
-                        obj_id.id_str()
-                    }
+                    KvKey::Empty { obj_desc } => obj_desc.to_id(),
+                    KvKey::Key { obj_id, .. } => obj_id.id_str(),
                 };
                 println!(" key: {}", serde_json::to_string(&id).unwrap());
                 println!(" event: {}", serde_json::to_string(&event).unwrap());

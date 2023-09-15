@@ -9,7 +9,8 @@
  */
 
 /// CommunicationChannel : Represents virtual encrypted communication channel between two points.
-#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CommunicationChannel {
     #[serde(rename = "sender")]
     pub sender: Box<crate::models::Base64EncodedText>,
