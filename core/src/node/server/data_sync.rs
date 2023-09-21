@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use crate::crypto::key_pair::KeyPair;
 use crate::crypto::keys::KeyManager;
 use crate::models::{UserCredentials, UserSignature};
-use crate::node::app::meta_manager::UserCredentialsManager;
+use crate::node::app::meta_vault_manager::UserCredentialsManager;
 use crate::node::db::actions::join;
 use crate::node::db::actions::sign_up::SignUpAction;
 use crate::node::db::events::common::{LogEventKeyBasedRecord, ObjectCreator, SharedSecretObject};
@@ -569,7 +569,7 @@ pub mod test {
                 meta_db_service,
                 data_sync,
                 user_sig: Arc::new(user_sig),
-                user_creds,
+                user_creds: user_creds.clone(),
             }
         }
     }

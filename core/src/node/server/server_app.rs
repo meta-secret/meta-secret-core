@@ -1,7 +1,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::node::common::data_transfer::MpscReceiver;
+use crate::node::common::data_transfer::MpscDataTransfer;
+use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::meta_db::meta_db_service::MetaDbService;
 use crate::node::logger::MetaLogger;
@@ -10,7 +11,7 @@ use crate::node::server::data_sync::{DataSync, DataSyncApi, DataSyncMessage};
 pub struct ServerApp<Repo: KvLogEventRepo, Logger: MetaLogger> {
     pub timeout: Duration,
     pub data_sync: Arc<DataSync<Repo, Logger>>,
-    pub data_transfer: Arc<MpscReceiver>,
+    pub data_transfer: Arc<MpscDataTransfer<DataSyncMessage, Vec<GenericKvLogEvent>>>,
     pub logger: Arc<Logger>,
     pub meta_db_service: Arc<MetaDbService<Repo, Logger>>,
 }
@@ -26,7 +27,7 @@ where
         loop {
             async_std::task::sleep(self.timeout).await;
 
-            while let Ok(sync_message) = self.data_transfer.receive().await {
+            while let Ok(sync_message) = self.data_transfer.service_receive().await {
                 match sync_message {
                     DataSyncMessage::SyncRequest(request) => {
                         //check if the user is a member of the vault
@@ -49,7 +50,7 @@ where
                             }
                         };
 
-                        self.data_transfer.reply(new_events).await;
+                        self.data_transfer.send_to_client(new_events).await;
                     }
                     DataSyncMessage::Event(event) => {
                         self.data_sync.send(&event).await;

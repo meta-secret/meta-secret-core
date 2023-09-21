@@ -24,4 +24,4 @@ install_wasm_pack:
 	cargo install cargo-generate
 
 wasm_test:
-	cd wasm && wasm-pack test --firefox
+	cd wasm && wasm-pack test --chrome

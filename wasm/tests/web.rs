@@ -45,7 +45,7 @@ async fn pass_async() {
 
 async fn run_app() {
     let app_manager = WasmApplicationStateManager::init_in_mem().await;
-    async_std::task::sleep(Duration::from_secs(5)).await;
+    async_std::task::sleep(Duration::from_secs(3)).await;
     app_manager.sign_up("q", "web").await;
-    async_std::task::sleep(Duration::from_secs(5)).await;
+    async_std::task::sleep(Duration::from_secs(3)).await;
 }
