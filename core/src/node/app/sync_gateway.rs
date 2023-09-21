@@ -2,9 +2,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::models::VaultDoc;
-use crate::node::app::meta_manager::UserCredentialsManager;
+use crate::node::app::meta_vault_manager::UserCredentialsManager;
 use crate::node::common::data_transfer::MpscDataTransfer;
-use crate::node::common::data_transfer::MpscSender;
 use crate::node::db::events::common::{LogEventKeyBasedRecord, ObjectCreator, SharedSecretObject};
 use crate::node::db::events::db_tail::{DbTail, DbTailObject};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
@@ -25,7 +24,7 @@ pub struct SyncGateway<Repo: KvLogEventRepo, Logger: MetaLogger> {
     pub logger: Arc<Logger>,
     pub repo: Arc<Repo>,
     pub persistent_object: Arc<PersistentObject<Repo, Logger>>,
-    pub data_transfer: Arc<MpscSender>,
+    pub data_transfer: Arc<MpscDataTransfer<DataSyncMessage, Vec<GenericKvLogEvent>>>,
     pub meta_db_service: Arc<MetaDbService<Repo, Logger>>,
 }
 
@@ -33,7 +32,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
     pub fn new(
         repo: Arc<Repo>,
         meta_db_service: Arc<MetaDbService<Repo, Logger>>,
-        data_transfer: Arc<MpscDataTransfer>,
+        data_transfer: Arc<MpscDataTransfer<DataSyncMessage, Vec<GenericKvLogEvent>>>,
         gateway_id: String,
         logger: Arc<Logger>,
     ) -> SyncGateway<Repo, Logger> {
@@ -49,7 +48,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
             logger,
             repo,
             persistent_object,
-            data_transfer: data_transfer.mpsc_service.clone(),
+            data_transfer: data_transfer.clone(),
             meta_db_service,
         }
     }
@@ -93,7 +92,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
                 for event in events {
                     self.logger
                         .debug(format!("Send shared secret event to server: {:?}", event).as_str());
-                    self.data_transfer.just_send(DataSyncMessage::Event(event)).await;
+                    self.data_transfer.send_to_service(DataSyncMessage::Event(event)).await;
                 }
             }
         }
@@ -164,7 +163,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
 
                         let new_events_res = self
                             .data_transfer
-                            .send_and_get(DataSyncMessage::SyncRequest(sync_request))
+                            .send_to_service_and_get(DataSyncMessage::SyncRequest(sync_request))
                             .await;
 
                         match new_events_res {
@@ -314,7 +313,9 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
                         )
                         .as_str(),
                     );
-                    self.data_transfer.just_send(DataSyncMessage::Event(client_event)).await;
+                    self.data_transfer
+                        .send_to_service(DataSyncMessage::Event(client_event))
+                        .await;
                 }
 
                 let new_tail_id = last_vault_event
@@ -351,7 +352,9 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
         for client_event in mem_pool_events {
             self.logger
                 .debug(format!("send mem pool request to server: {:?}", client_event).as_str());
-            self.data_transfer.just_send(DataSyncMessage::Event(client_event)).await;
+            self.data_transfer
+                .send_to_service(DataSyncMessage::Event(client_event))
+                .await;
         }
 
         match last_pool_event {
