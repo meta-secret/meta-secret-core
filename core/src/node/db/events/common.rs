@@ -5,20 +5,22 @@ use crate::node::db::events::object_descriptor::ObjectDescriptor;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum MempoolObject {
+#[serde(tag = "mem_pool_obj")]
+pub enum MemPoolObject {
     JoinRequest { event: KvLogEvent<UserSignature> },
 }
 
-impl MempoolObject {
+impl MemPoolObject {
     pub fn key(&self) -> &KvKey {
         match self {
-            MempoolObject::JoinRequest { event } => &event.key,
+            MemPoolObject::JoinRequest { event } => &event.key,
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(tag = "meta_pass_obj")]
 pub enum MetaPassObject {
     Unit { event: KvLogEvent<()> },
     Genesis { event: KvLogEvent<PublicKeyRecord> },
@@ -37,6 +39,7 @@ impl MetaPassObject {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(tag = "shared_secret_obj")]
 pub enum SharedSecretObject {
     Split {
         event: KvLogEvent<SecretDistributionDocData>,

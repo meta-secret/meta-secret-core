@@ -1,4 +1,4 @@
-use crate::node::db::events::common::{LogEventKeyBasedRecord, MempoolObject, MetaPassObject, SharedSecretObject};
+use crate::node::db::events::common::{LogEventKeyBasedRecord, MemPoolObject, MetaPassObject, SharedSecretObject};
 use crate::node::db::events::error::ErrorMessage;
 use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
@@ -13,7 +13,7 @@ pub enum GenericKvLogEvent {
     Vault(VaultObject),
     MetaPass(MetaPassObject),
     SharedSecret(SharedSecretObject),
-    Mempool(MempoolObject),
+    MemPool(MemPoolObject),
     LocalEvent(KvLogEventLocal),
 
     Error { event: KvLogEvent<ErrorMessage> },
@@ -26,7 +26,7 @@ impl LogEventKeyBasedRecord for GenericKvLogEvent {
             GenericKvLogEvent::Vault(vault_obj) => vault_obj.key(),
             GenericKvLogEvent::MetaPass(pass_obj) => pass_obj.key(),
             GenericKvLogEvent::SharedSecret(obj) => obj.key(),
-            GenericKvLogEvent::Mempool(mem_pool_obj) => mem_pool_obj.key(),
+            GenericKvLogEvent::MemPool(mem_pool_obj) => mem_pool_obj.key(),
             GenericKvLogEvent::LocalEvent(op) => op.key(),
             GenericKvLogEvent::Error { event } => &event.key,
         }

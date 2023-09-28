@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::time::Duration;
+use tracing::{debug, error, info};
 
 use crate::models::VaultDoc;
 use crate::node::app::meta_vault_manager::UserCredentialsManager;
@@ -12,53 +13,28 @@ use crate::node::db::events::local::KvLogEventLocal;
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{IdGen, ObjectId};
 use crate::node::db::generic_db::KvLogEventRepo;
-use crate::node::db::meta_db::meta_db_service::MetaDbService;
+use crate::node::db::meta_db::meta_db_service::MetaDbServiceProxy;
 use crate::node::db::meta_db::store::vault_store::VaultStore;
 use crate::node::db::objects::persistent_object::PersistentObject;
-use crate::node::logger::MetaLogger;
 use crate::node::server::data_sync::DataSyncMessage;
 use crate::node::server::request::SyncRequest;
 
-pub struct SyncGateway<Repo: KvLogEventRepo, Logger: MetaLogger> {
+pub struct SyncGateway<Repo: KvLogEventRepo> {
     pub id: String,
-    pub logger: Arc<Logger>,
     pub repo: Arc<Repo>,
-    pub persistent_object: Arc<PersistentObject<Repo, Logger>>,
-    pub data_transfer: Arc<MpscDataTransfer<DataSyncMessage, Vec<GenericKvLogEvent>>>,
-    pub meta_db_service: Arc<MetaDbService<Repo, Logger>>,
+    pub persistent_object: Arc<PersistentObject<Repo>>,
+    pub server_data_transfer: Arc<MpscDataTransfer<DataSyncMessage, Vec<GenericKvLogEvent>>>,
+    pub meta_db_service_proxy: Arc<MetaDbServiceProxy>,
 }
 
-impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
-    pub fn new(
-        repo: Arc<Repo>,
-        meta_db_service: Arc<MetaDbService<Repo, Logger>>,
-        data_transfer: Arc<MpscDataTransfer<DataSyncMessage, Vec<GenericKvLogEvent>>>,
-        gateway_id: String,
-        logger: Arc<Logger>,
-    ) -> SyncGateway<Repo, Logger> {
-        logger.info("Create new wasm sync gateway instance");
-
-        let persistent_object = {
-            let obj = PersistentObject::new(repo.clone(), logger.clone());
-            Arc::new(obj)
-        };
-
-        SyncGateway {
-            id: gateway_id,
-            logger,
-            repo,
-            persistent_object,
-            data_transfer: data_transfer.clone(),
-            meta_db_service,
-        }
-    }
-
+impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
     pub async fn run(&self) {
+        info!("Run sync gateway");
+
         loop {
-            async_std::task::sleep(Duration::from_secs(1)).await;
             self.sync().await;
 
-            let vault_store = self.meta_db_service.get_vault_store().await.unwrap();
+            let vault_store = self.meta_db_service_proxy.get_vault_store().await.unwrap();
 
             match vault_store {
                 VaultStore::Store { vault, .. } => {
@@ -68,6 +44,8 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
                     //skip
                 }
             }
+
+            async_std::task::sleep(Duration::from_millis(300)).await;
         }
     }
 
@@ -90,9 +68,10 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
                 let events = self.persistent_object.find_object_events(&obj_id).await;
 
                 for event in events {
-                    self.logger
-                        .debug(format!("Send shared secret event to server: {:?}", event).as_str());
-                    self.data_transfer.send_to_service(DataSyncMessage::Event(event)).await;
+                    debug!("Send shared secret event to server: {:?}", event);
+                    self.server_data_transfer
+                        .send_to_service(DataSyncMessage::Event(event))
+                        .await;
                 }
             }
         }
@@ -103,14 +82,12 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
 
         match creds_result {
             Err(_) => {
-                self.logger
-                    .debug(format!("Gw type: {:?}, Error. User credentials db error. Skip", self.id).as_str());
+                debug!("Gw type: {:?}, Error. User credentials db error. Skip", self.id);
                 //skip
             }
 
             Ok(None) => {
-                self.logger
-                    .debug(format!("Gw type: {:?}, Error. Empty user credentials. Skip", self.id).as_str());
+                debug!("Gw type: {:?}, Error. Empty user credentials. Skip", self.id);
                 //skip
             }
 
@@ -162,14 +139,14 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
                         let mut latest_meta_pass_id = new_db_tail.meta_pass_id.clone();
 
                         let new_events_res = self
-                            .data_transfer
+                            .server_data_transfer
                             .send_to_service_and_get(DataSyncMessage::SyncRequest(sync_request))
                             .await;
 
                         match new_events_res {
                             Ok(new_events) => {
                                 let log_msg = format!("id: {:?}. Sync gateway. New events: {:?}", self.id, new_events);
-                                self.logger.debug(log_msg.as_str());
+                                //debug!(log_msg.as_str());
 
                                 for new_event in new_events {
                                     let key = if let GenericKvLogEvent::SharedSecret(sss_obj) = &new_event {
@@ -184,7 +161,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
                                                     meta_pass_id: event.value.meta_password.meta_password.id.id.clone(),
                                                 };
                                                 let obj_id = ObjectId::unit(&obj_desc);
-                                                let _ = self.repo.save(&obj_id, &local_event).await;
+                                                let _ = self.repo.save(obj_id.clone(), local_event).await;
                                                 obj_id
                                             }
 
@@ -197,7 +174,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
                                                     .map(|id| id.next())
                                                     .unwrap_or(ObjectId::unit(&obj_desc));
 
-                                                let _ = self.repo.save(&slot_id, &new_event).await;
+                                                let _ = self.repo.save(slot_id.clone(), new_event.clone()).await;
 
                                                 slot_id
                                             }
@@ -211,14 +188,14 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
                                                     .map(|id| id.next())
                                                     .unwrap_or(ObjectId::unit(&obj_desc));
 
-                                                let _ = self.repo.save(&slot_id, &new_event).await;
+                                                let _ = self.repo.save(slot_id.clone(), new_event.clone()).await;
 
                                                 slot_id
                                             }
                                         }
                                     } else {
                                         self.repo
-                                            .save_event(&new_event)
+                                            .save_event(new_event.clone())
                                             .await
                                             .expect("Error saving secret share")
                                     };
@@ -248,13 +225,13 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
                                 self.save_updated_db_tail(new_db_tail.clone(), latest_db_tail).await
                             }
                             Err(_err) => {
-                                self.logger.error("DataSync error. Error loading events");
+                                error!("DataSync error. Error loading events");
                                 panic!("Error");
                             }
                         }
                     }
                     Err(_) => {
-                        self.logger.error("Error! Db tail not exists");
+                        error!("Error! Db tail not exists");
                         panic!("Error");
                     }
                 }
@@ -275,12 +252,12 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
             }),
         });
 
-        let saved_event_res = self.repo.save_event(&new_db_tail_event).await;
+        let saved_event_res = self.repo.save_event(new_db_tail_event).await;
 
         match saved_event_res {
-            Ok(_) => self.logger.info("New db tail saved"),
+            Ok(_) => info!("New db tail saved"),
             Err(_) => {
-                self.logger.info("Error saving db tail");
+                info!("Error saving db tail");
             }
         };
     }
@@ -288,7 +265,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
     async fn get_new_tail_for_an_obj(&self, db_tail_obj: &DbTailObject) -> DbTailObject {
         match db_tail_obj {
             DbTailObject::Empty { unit_id } => {
-                let maybe_tail_id = self.persistent_object.find_tail_id(unit_id).await;
+                let maybe_tail_id = self.persistent_object.find_tail_id(unit_id.clone()).await;
                 match maybe_tail_id {
                     None => DbTailObject::Empty {
                         unit_id: unit_id.clone(),
@@ -306,14 +283,11 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
                 let last_vault_event = obj_events.last().cloned();
 
                 for client_event in obj_events {
-                    self.logger.debug(
-                        format!(
-                            "Send event to server. May stuck if server won't response!!! : {:?}",
-                            client_event
-                        )
-                        .as_str(),
+                    debug!(
+                        "Send event to server. May stuck if server won't response!!! : {:?}",
+                        client_event
                     );
-                    self.data_transfer
+                    self.server_data_transfer
                         .send_to_service(DataSyncMessage::Event(client_event))
                         .await;
                 }
@@ -337,7 +311,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
             .clone()
             .unwrap_or(ObjectId::global_index_unit());
 
-        self.persistent_object.find_tail_id(&global_index).await
+        self.persistent_object.find_tail_id(global_index).await
     }
 
     async fn get_new_tail_for_mem_pool(&self, db_tail: &DbTail) -> Option<ObjectId> {
@@ -350,9 +324,8 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> SyncGateway<Repo, Logger> {
         let last_pool_event = mem_pool_events.last().cloned();
 
         for client_event in mem_pool_events {
-            self.logger
-                .debug(format!("send mem pool request to server: {:?}", client_event).as_str());
-            self.data_transfer
+            debug!("send mem pool request to server: {:?}", client_event);
+            self.server_data_transfer
                 .send_to_service(DataSyncMessage::Event(client_event))
                 .await;
         }

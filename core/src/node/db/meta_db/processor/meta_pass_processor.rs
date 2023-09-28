@@ -2,11 +2,12 @@ use crate::node::db::events::common::MetaPassObject;
 use crate::node::db::events::kv_log_event::KvKey;
 use crate::node::db::meta_db::meta_db_view::MetaDb;
 use crate::node::db::meta_db::store::meta_pass_store::MetaPassStore;
-use crate::node::logger::MetaLogger;
 
-impl<Logger: MetaLogger> MetaDb<Logger> {
+use tracing::{debug, info};
+
+impl MetaDb {
     pub fn apply_meta_pass_event(&mut self, meta_pass_obj: &MetaPassObject) {
-        self.logger.debug("Apply meta pass event");
+        debug!("Apply meta pass event");
 
         let obj_id = match meta_pass_obj.key().clone() {
             KvKey::Empty { .. } => {
@@ -25,7 +26,7 @@ impl<Logger: MetaLogger> MetaDb<Logger> {
                             "Invalid state. Meta pass. Got a unit event, expected db state is Empty or Unit, actual: {:?}",
                             &self.meta_pass_store
                         );
-                        self.logger.info(err_str.as_str());
+                        info!(err_str);
                         panic!("Invalid state")
                     }
                 }
@@ -46,7 +47,7 @@ impl<Logger: MetaLogger> MetaDb<Logger> {
                             "Invalid state. Meta Pass, genesis event. Actual: {:?}, expected: unit",
                             self.meta_pass_store
                         );
-                        self.logger.info(err_msg.as_str());
+                        info!(err_msg);
                         panic!("Invalid state")
                     }
                 }
@@ -69,7 +70,7 @@ impl<Logger: MetaLogger> MetaDb<Logger> {
                         "Invalid state. Meta Pass, update event. Actual state: {:?}, expected: genesis or store",
                         self.meta_pass_store
                     );
-                    self.logger.info(err_msg.as_str());
+                    info!(err_msg);
                     panic!("Invalid state")
                 }
             },

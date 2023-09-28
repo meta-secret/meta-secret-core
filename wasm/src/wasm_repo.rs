@@ -1,14 +1,13 @@
-use crate::{debug, error, info, warn};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use indexed_db_futures::prelude::*;
 use indexed_db_futures::IdbDatabase;
+use js_sys::Object;
 use meta_secret_core::node::db::events::generic_log_event::GenericKvLogEvent;
 use meta_secret_core::node::db::events::object_id::ObjectId;
 use meta_secret_core::node::db::generic_db::{
     CommitLogDbConfig, DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand,
 };
-use meta_secret_core::node::logger::{LoggerId, MetaLogger};
 use wasm_bindgen::JsValue;
 use web_sys::IdbTransactionMode;
 
@@ -58,8 +57,8 @@ impl WasmRepo {
 
 #[async_trait(? Send)]
 impl SaveCommand for WasmRepo {
-    async fn save(&self, key: &ObjectId, event: &GenericKvLogEvent) -> anyhow::Result<ObjectId> {
-        let event_js: JsValue = serde_wasm_bindgen::to_value(event)
+    async fn save(&self, key: ObjectId, event: GenericKvLogEvent) -> anyhow::Result<ObjectId> {
+        let event_js: JsValue = serde_wasm_bindgen::to_value(&event)
             .map_err(|err| anyhow!("Error parsing data to save: {:?}", err))?;
 
         let db = open_db(self.db_name.as_str()).await;
@@ -82,24 +81,28 @@ impl SaveCommand for WasmRepo {
 
 #[async_trait(? Send)]
 impl FindOneQuery for WasmRepo {
-    async fn find_one(&self, key: &ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>> {
+    async fn find_one(&self, key: ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>> {
         let db = open_db(self.db_name.as_str()).await;
         let tx = db.transaction_on_one(self.store_name.as_str()).unwrap();
         let store = tx.object_store(self.store_name.as_str()).unwrap();
-        let maybe_obj_js: Option<JsValue> = store
-            .get_owned(key.id_str().as_str())
-            .unwrap()
-            .await
-            .unwrap();
+        let future: OptionalJsValueFuture = store.get_owned(key.id_str().as_str()).unwrap();
+        let maybe_obj_js: Option<JsValue> = future.await.unwrap();
 
         if let Some(obj_js) = maybe_obj_js {
-            use js_sys::Object;
-            let obj_js = Object::from_entries(&obj_js).unwrap();
-            let obj_js: JsValue = JsValue::from(obj_js);
+            if obj_js.is_undefined() {
+                return Ok(None);
+            }
 
-            let obj = serde_wasm_bindgen::from_value(obj_js)
-                .map_err(|err| anyhow!("Js object error parsing: {}", err))?;
-            Ok(Some(obj))
+            match Object::from_entries(&obj_js) {
+                Ok(obj_js) => {
+                    let obj_js: JsValue = JsValue::from(obj_js);
+
+                    let obj = serde_wasm_bindgen::from_value(obj_js)
+                        .map_err(|err| anyhow!("Js object error parsing: {}", err))?;
+                    Ok(Some(obj))
+                }
+                Err(_) => Err(anyhow!("IndexedDb object error parsing")),
+            }
         } else {
             Ok(None)
         }
@@ -108,9 +111,9 @@ impl FindOneQuery for WasmRepo {
 
 #[async_trait(? Send)]
 impl DeleteCommand for WasmRepo {
-    async fn delete(&self, key: &ObjectId) {
+    async fn delete(&self, key: ObjectId) {
         let db = open_db(self.db_name.as_str()).await;
-        let tx = db
+        let tx: IdbTransaction = db
             .transaction_on_one_with_mode(self.store_name.as_str(), IdbTransactionMode::Readwrite)
             .unwrap();
         let store = tx.object_store(self.store_name.as_str()).unwrap();
@@ -124,7 +127,7 @@ pub async fn open_db(db_name: &str) -> IdbDatabase {
 
     let on_upgrade_task = move |evt: &IdbVersionChangeEvent| -> Result<(), JsValue> {
         // Check if the object store exists; create it if it doesn't
-        if let None = evt.db().object_store_names().find(|n| n == "commit_log") {
+        if !evt.db().object_store_names().any(|n| &n == "commit_log") {
             evt.db().create_object_store("commit_log").unwrap();
         }
         Ok(())
@@ -144,37 +147,5 @@ impl CommitLogDbConfig for WasmRepo {
 
     fn store_name(&self) -> String {
         self.store_name.clone()
-    }
-}
-
-pub struct WasmMetaLogger {
-    pub id: LoggerId,
-}
-
-impl MetaLogger for WasmMetaLogger {
-    fn debug(&self, msg: &str) {
-        debug(self.get_message(msg).as_str());
-    }
-
-    fn info(&self, msg: &str) {
-        info(self.get_message(msg).as_str());
-    }
-
-    fn warn(&self, msg: &str) {
-        warn(self.get_message(msg).as_str());
-    }
-
-    fn error(&self, msg: &str) {
-        error(self.get_message(msg).as_str());
-    }
-
-    fn id(&self) -> LoggerId {
-        self.id.clone()
-    }
-}
-
-impl WasmMetaLogger {
-    fn get_message(&self, msg: &str) -> String {
-        format!("[{:?}]: {:?}", self.id, msg)
     }
 }

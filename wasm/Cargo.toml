@@ -9,16 +9,15 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["console_error_panic_hook"]
-wasm-bindgen = [ "instant/wasm-bindgen" ]
 
 [dependencies]
 tracing = "0.1.37"
 tracing-subscriber = "0.3.17"
+tracing-wasm = "0.2.1"
 
 wasm-bindgen = { version = "0.2.87", features = ["serde-serialize"] }
 
 indexed_db_futures = "0.3.0"
-instant = { version = "0.1", features = [ "wasm-bindgen", "inaccurate" ] }
 
 gloo-timers = "0.2.6"
 

@@ -7,15 +7,15 @@ use crate::node::db::events::object_id::ObjectId;
 
 #[async_trait(? Send)]
 pub trait SaveCommand {
-    async fn save(&self, key: &ObjectId, value: &GenericKvLogEvent) -> anyhow::Result<ObjectId>;
+    async fn save(&self, key: ObjectId, value: GenericKvLogEvent) -> anyhow::Result<ObjectId>;
 
-    async fn save_event(&self, value: &GenericKvLogEvent) -> anyhow::Result<ObjectId> {
+    async fn save_event(&self, value: GenericKvLogEvent) -> anyhow::Result<ObjectId> {
         match &value.key() {
             KvKey::Empty { .. } => {
                 panic!("Invalid event. Empty event")
             }
             KvKey::Key { obj_id, .. } => {
-                let _ = self.save(obj_id, value).await;
+                let _ = self.save(obj_id.clone(), value.clone()).await;
                 Ok(obj_id.clone())
             }
         }
@@ -23,18 +23,18 @@ pub trait SaveCommand {
 }
 
 #[async_trait(? Send)]
-pub trait FindOneQuery {
-    async fn find_one(&self, key: &ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>>;
+pub trait FindOneQuery: Send {
+    async fn find_one(&self, key: ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>>;
 }
 
 #[async_trait(? Send)]
 pub trait DeleteCommand {
-    async fn delete(&self, key: &ObjectId);
+    async fn delete(&self, key: ObjectId);
 }
 
 #[async_trait(? Send)]
 pub trait FindQuery<T> {
-    async fn find(&self, key: &ObjectId) -> anyhow::Result<Vec<T>>;
+    async fn find(&self, key: ObjectId) -> anyhow::Result<Vec<T>>;
 }
 
 #[async_trait(? Send)]

@@ -59,8 +59,7 @@ impl GlobalIndexStore {
                     panic!("Invalid event. Must be at least Genesis");
                 }
                 GlobalIndexObject::Genesis { .. } => {
-                    let err_msg = String::from("Invalid event. Meta db already has Genesis");
-                    panic!("{}", err_msg);
+                    //Skip. Meta db already has Genesis
                 }
                 GlobalIndexObject::Update { event } => {
                     let mut global_index_set = HashSet::new();
@@ -103,19 +102,16 @@ impl TailId for GlobalIndexStore {
 
 #[cfg(test)]
 mod test {
-    use std::sync::Arc;
-
     use crate::models::Base64EncodedText;
     use crate::node::db::events::common::PublicKeyRecord;
     use crate::node::db::events::global_index::GlobalIndexObject;
     use crate::node::db::events::kv_log_event::KvLogEvent;
     use crate::node::db::events::object_id::{IdGen, IdStr, ObjectId};
     use crate::node::db::meta_db::meta_db_view::MetaDb;
-    use crate::node::logger::{DefaultMetaLogger, LoggerId};
 
     #[test]
     fn test_happy_case() {
-        let mut meta_db = MetaDb::new(String::from("test"), Arc::new(DefaultMetaLogger::new(LoggerId::Test)));
+        let mut meta_db = MetaDb::new(String::from("test"));
 
         let unit_event = GlobalIndexObject::unit();
         meta_db.global_index_store.apply(&unit_event);
@@ -132,7 +128,6 @@ mod test {
             }
         };
         meta_db.global_index_store.apply(&update);
-        println!("{:?}", meta_db.global_index_store);
         assert!(meta_db.global_index_store.contains(String::from("Vault:test_vault::2")));
     }
 }

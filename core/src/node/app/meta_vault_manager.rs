@@ -37,13 +37,13 @@ where
 
         let db_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::MetaVault { event: Box::new(event) });
 
-        self.save(&ObjectId::meta_vault_index(), &db_event).await?;
+        self.save(ObjectId::meta_vault_index(), db_event).await?;
 
         Ok(meta_vault)
     }
 
     async fn find_meta_vault(&self) -> anyhow::Result<Option<MetaVault>> {
-        let maybe_meta_vault = self.find_one(&ObjectId::meta_vault_index()).await?;
+        let maybe_meta_vault = self.find_one(ObjectId::meta_vault_index()).await?;
 
         match maybe_meta_vault {
             None => Ok(None),
@@ -72,9 +72,19 @@ impl<T> UserCredentialsManager for T
 where
     T: KvLogEventRepo,
 {
+    async fn save_user_creds(&self, creds: &UserCredentials) -> anyhow::Result<ObjectId> {
+        let event = KvLogEvent {
+            key: KvKey::unit(&ObjectDescriptor::UserCreds),
+            value: creds.clone(),
+        };
+        let generic_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::UserCredentials { event: Box::new(event) });
+
+        self.save_event(generic_event).await
+    }
+
     async fn find_user_creds(&self) -> anyhow::Result<Option<UserCredentials>> {
         let obj_id = ObjectId::unit(&ObjectDescriptor::UserCreds);
-        let maybe_creds = self.find_one(&obj_id).await?;
+        let maybe_creds = self.find_one(obj_id).await?;
         match maybe_creds {
             None => Ok(None),
             Some(user_creds) => match user_creds {
@@ -84,16 +94,6 @@ where
                 }
             },
         }
-    }
-
-    async fn save_user_creds(&self, creds: &UserCredentials) -> anyhow::Result<ObjectId> {
-        let event = KvLogEvent {
-            key: KvKey::unit(&ObjectDescriptor::UserCreds),
-            value: creds.clone(),
-        };
-        let generic_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::UserCredentials { event: Box::new(event) });
-
-        self.save_event(&generic_event).await
     }
 
     async fn generate_user_creds(&self, vault_name: String, device_name: String) -> UserCredentials {
