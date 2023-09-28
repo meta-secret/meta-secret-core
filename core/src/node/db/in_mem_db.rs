@@ -1,5 +1,6 @@
+use async_mutex::Mutex;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 
@@ -24,16 +25,16 @@ pub enum InMemDbError {}
 
 #[async_trait(? Send)]
 impl FindOneQuery for InMemKvLogEventRepo {
-    async fn find_one(&self, key: &ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>> {
-        let maybe_value = self.db.lock().unwrap().get(key).cloned();
+    async fn find_one(&self, key: ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>> {
+        let maybe_value = self.db.lock().await.get(&key).cloned();
         Ok(maybe_value)
     }
 }
 
 #[async_trait(? Send)]
 impl SaveCommand for InMemKvLogEventRepo {
-    async fn save(&self, key: &ObjectId, value: &GenericKvLogEvent) -> anyhow::Result<ObjectId> {
-        let mut db = self.db.lock().unwrap();
+    async fn save(&self, key: ObjectId, value: GenericKvLogEvent) -> anyhow::Result<ObjectId> {
+        let mut db = self.db.lock().await;
         db.insert(key.clone(), value.clone());
         Ok(key.clone())
     }
@@ -41,9 +42,9 @@ impl SaveCommand for InMemKvLogEventRepo {
 
 #[async_trait(? Send)]
 impl DeleteCommand for InMemKvLogEventRepo {
-    async fn delete(&self, key: &ObjectId) {
-        let mut db = self.db.lock().unwrap();
-        let _ = db.remove(key);
+    async fn delete(&self, key: ObjectId) {
+        let mut db = self.db.lock().await;
+        let _ = db.remove(&key);
     }
 }
 

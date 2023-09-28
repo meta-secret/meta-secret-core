@@ -5,6 +5,7 @@ use meta_secret_core::secret::data_block::common::SharedSecretConfig;
 use meta_secret_core::secret::shared_secret::{PlainText, SharedSecretEncryption, UserShareDto};
 use wasm_bindgen::prelude::*;
 
+pub mod app_state_manager;
 pub mod objects;
 pub mod utils;
 pub mod wasm_app_state_manager;
@@ -20,13 +21,8 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 #[wasm_bindgen]
 extern "C" {
-    pub type JsAppState;
-
-    #[wasm_bindgen(constructor)]
-    pub fn new() -> JsAppState;
-
-    #[wasm_bindgen(method)]
-    pub async fn updateJsState(this: &JsAppState, app_state: JsValue);
+    #[wasm_bindgen]
+    pub async fn updateJsState(app_state: JsValue);
 }
 
 #[wasm_bindgen]
@@ -58,6 +54,8 @@ extern "C" {
 #[wasm_bindgen]
 pub fn configure() {
     utils::set_panic_hook();
+
+    tracing_wasm::set_as_global_default();
 }
 
 /// https://rustwasm.github.io/docs/wasm-bindgen/reference/arbitrary-data-with-serde.html

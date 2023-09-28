@@ -25,7 +25,7 @@ impl SignUpAction {
 
                         let genesis_event = {
                             let genesis_update = VaultObject::Genesis {
-                                event: KvLogEvent::genesis(&obj_desc, server_pk),
+                                event: KvLogEvent::genesis(obj_desc, server_pk),
                             };
                             GenericKvLogEvent::Vault(genesis_update)
                         };

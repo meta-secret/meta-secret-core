@@ -4,6 +4,7 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(tag = "vault_obj")]
 pub enum VaultObject {
     /// SingUp request
     Unit {

@@ -3,6 +3,7 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(tag = "gi_obj")]
 pub enum GlobalIndexObject {
     Unit { event: KvLogEvent<()> },
     Genesis { event: KvLogEvent<PublicKeyRecord> },

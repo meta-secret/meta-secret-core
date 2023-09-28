@@ -14,7 +14,7 @@ use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{IdGen, ObjectId};
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object::PersistentObject;
-use crate::node::logger::MetaLogger;
+
 use crate::CoreResult;
 use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
 
@@ -80,13 +80,13 @@ struct MetaCipherShare {
     cipher_share: AeadCipherText,
 }
 
-pub struct MetaDistributor<Repo: KvLogEventRepo, Logger: MetaLogger> {
-    pub persistent_obj: Arc<PersistentObject<Repo, Logger>>,
+pub struct MetaDistributor<Repo: KvLogEventRepo> {
+    pub persistent_obj: Arc<PersistentObject<Repo>>,
     pub user_creds: Arc<UserCredentials>,
     pub vault: VaultDoc,
 }
 
-impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDistributor<Repo, Logger> {
+impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
     /// Encrypt and distribute password across the cluster
     pub async fn distribute(self, password_id: String, password: String) {
         let encryptor = MetaEncryptor {
@@ -124,7 +124,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDistributor<Repo, Logger> {
             },
         });
 
-        self.persistent_obj.repo.save_event(&meta_pass_event).await.unwrap();
+        self.persistent_obj.repo.save_event(meta_pass_event).await.unwrap();
 
         let encrypted_shares = encryptor.encrypt(password);
 
@@ -153,7 +153,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDistributor<Repo, Logger> {
                     },
                 });
 
-                let _ = self.persistent_obj.repo.save_event(&secret_share_event).await;
+                let _ = self.persistent_obj.repo.save_event(secret_share_event).await;
             } else {
                 let obj_desc = ObjectDescriptor::from(&distribution_share);
                 let secret_share_event = GenericKvLogEvent::SharedSecret(SharedSecretObject::Split {
@@ -172,7 +172,7 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDistributor<Repo, Logger> {
                     .map(|id| id.next())
                     .unwrap_or(ObjectId::unit(&obj_desc));
 
-                let _ = self.persistent_obj.repo.save(&tail_id, &secret_share_event).await;
+                let _ = self.persistent_obj.repo.save(tail_id, secret_share_event).await;
             };
         }
     }
@@ -196,13 +196,13 @@ mod test {
         let data_sync = ctx.data_sync;
 
         let vault_unit = GenericKvLogEvent::Vault(VaultObject::unit(&ctx.user_sig));
-        data_sync.send(&vault_unit).await;
+        data_sync.send(vault_unit).await;
 
         let _user_pk = PublicKeyRecord::from(ctx.user_sig.public_key.as_ref().clone());
 
         let vault_unit_id = ObjectId::vault_unit("test_vault");
-        let vault_tail_id = ctx.persistent_obj.find_tail_id(&vault_unit_id).await.unwrap();
-        let vault_event = ctx.repo.find_one(&vault_tail_id).await.unwrap().unwrap();
+        let vault_tail_id = ctx.persistent_obj.find_tail_id(vault_unit_id.clone()).await.unwrap();
+        let vault_event = ctx.repo.find_one(vault_tail_id).await.unwrap().unwrap();
 
         let s_box_b = KeyManager::generate_security_box("test_vault".to_string());
         let device_b = DeviceInfo {
@@ -226,14 +226,14 @@ mod test {
             let accept_event = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
                 event: kv_join_event.clone(),
             });
-            let _ = ctx.repo.save_event(&accept_event).await;
+            let _ = ctx.repo.save_event(accept_event).await;
 
             let join_request_c = join::join_cluster_request(&vault_unit_id.next().next().next(), &user_sig_c);
             let kv_join_event_c = join::accept_join_request(&join_request_c, &kv_join_event.value);
             let accept_event_c = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
                 event: kv_join_event_c.clone(),
             });
-            let _ = ctx.repo.save_event(&accept_event_c).await;
+            let _ = ctx.repo.save_event(accept_event_c).await;
 
             let distributor = MetaDistributor {
                 persistent_obj: ctx.persistent_obj,
@@ -249,7 +249,7 @@ mod test {
                 .repo
                 .db
                 .lock()
-                .unwrap()
+                .await
                 .values()
                 .cloned()
                 .collect::<Vec<GenericKvLogEvent>>();

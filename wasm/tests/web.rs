@@ -4,7 +4,7 @@ use meta_secret_core::node::db::generic_db::{FindOneQuery, SaveCommand};
 use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
 use meta_secret_web_cli::wasm_app_state_manager::WasmApplicationStateManager;
 use meta_secret_web_cli::wasm_repo::{WasmMetaLogger, WasmRepo};
-use meta_secret_web_cli::{alert, configure, JsAppState};
+use meta_secret_web_cli::{alert, configure};
 use std::rc::Rc;
 use wasm_bindgen::JsValue;
 ///
@@ -17,7 +17,6 @@ use meta_secret_core::node::db::events::generic_log_event::GenericKvLogEvent;
 use meta_secret_core::node::db::events::global_index::{GlobalIndexObject, GlobalIndexRecord};
 use meta_secret_core::node::db::events::kv_log_event::KvLogEvent;
 use meta_secret_core::node::db::events::vault_event::VaultObject;
-//use meta_secret_web_cli::wasm_repo::open_db;
 use std::time::Duration;
 
 wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
@@ -45,7 +44,9 @@ async fn pass_async() {
 
 async fn run_app() {
     let app_manager = WasmApplicationStateManager::init_in_mem().await;
-    async_std::task::sleep(Duration::from_secs(3)).await;
+    async_std::task::sleep(Duration::from_secs(5)).await;
     app_manager.sign_up("q", "web").await;
     async_std::task::sleep(Duration::from_secs(3)).await;
+    //join
+    app_manager.sign_up("q", "web").await;
 }

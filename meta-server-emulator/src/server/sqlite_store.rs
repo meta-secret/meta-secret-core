@@ -33,11 +33,11 @@ pub enum SqliteDbError {
 
 #[async_trait(? Send)]
 impl SaveCommand for SqlIteRepo {
-    async fn save(&self, _key: &ObjectId, value: &GenericKvLogEvent) -> anyhow::Result<ObjectId> {
+    async fn save(&self, _key: ObjectId, value: GenericKvLogEvent) -> anyhow::Result<ObjectId> {
         let mut conn = SqliteConnection::establish(self.conn_url.as_str()).unwrap();
 
         diesel::insert_into(schema_log::table)
-            .values(&NewDbLogEvent::from(value))
+            .values(&NewDbLogEvent::from(&value))
             .execute(&mut conn)?;
         Ok(_key.clone())
     }
@@ -45,7 +45,7 @@ impl SaveCommand for SqlIteRepo {
 
 #[async_trait(? Send)]
 impl FindOneQuery for SqlIteRepo {
-    async fn find_one(&self, key: &ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>> {
+    async fn find_one(&self, key: ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>> {
         let mut conn = SqliteConnection::establish(self.conn_url.as_str()).unwrap();
 
         let db_event: DbLogEvent = dsl::db_commit_log
@@ -58,7 +58,7 @@ impl FindOneQuery for SqlIteRepo {
 
 #[async_trait(? Send)]
 impl DeleteCommand for SqlIteRepo {
-    async fn delete(&self, key: &ObjectId) {
+    async fn delete(&self, key: ObjectId) {
         let mut conn = SqliteConnection::establish(self.conn_url.as_str()).unwrap();
 
         let event = dsl::db_commit_log.filter(dsl::key_id.eq(key.id_str()));

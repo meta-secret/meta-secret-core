@@ -12,7 +12,7 @@ pub struct MpscServiceChannel<Request> {
 
 impl<Request> MpscServiceChannel<Request> {
     fn new() -> MpscServiceChannel<Request> {
-        let (server_sender, server_receiver) = flume::bounded(1);
+        let (server_sender, server_receiver) = flume::unbounded();
         MpscServiceChannel {
             sender: server_sender,
             receiver: server_receiver,
@@ -27,7 +27,7 @@ pub struct MpscClientChannel<Response> {
 
 impl<Response> MpscClientChannel<Response> {
     fn new() -> MpscClientChannel<Response> {
-        let (client_sender, client_receiver) = flume::bounded(1);
+        let (client_sender, client_receiver) = flume::unbounded();
         MpscClientChannel {
             sender: client_sender,
             receiver: client_receiver,

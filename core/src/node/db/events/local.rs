@@ -5,6 +5,7 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 /// Local events (persistent objects which lives only in the local environment) which must not be synchronized
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(tag = "local_evt_obj")]
 pub enum KvLogEventLocal {
     MetaVault {
         event: Box<KvLogEvent<MetaVault>>,

@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use crate::node::common::task_runner::TaskRunner;
+use crate::node::common::data_transfer::MpscDataTransfer;
 use anyhow::anyhow;
-use flume::{Receiver, Sender};
+use tracing::info;
 
 use crate::node::db::events::common::VaultInfo;
 use crate::node::db::events::object_id::ObjectId;
@@ -11,58 +11,15 @@ use crate::node::db::meta_db::meta_db_view::{MetaDb, TailId};
 use crate::node::db::meta_db::store::meta_pass_store::MetaPassStore;
 use crate::node::db::meta_db::store::vault_store::VaultStore;
 use crate::node::db::objects::persistent_object::PersistentObject;
-use crate::node::logger::MetaLogger;
 
-pub struct MetaDbService<Repo: KvLogEventRepo, Logger: MetaLogger> {
-    pub persistent_obj: Arc<PersistentObject<Repo, Logger>>,
+pub struct MetaDbService<Repo: KvLogEventRepo> {
+    pub persistent_obj: Arc<PersistentObject<Repo>>,
     pub repo: Arc<Repo>,
-    pub logger: Arc<Logger>,
     pub meta_db_id: String,
-
-    service_sender: Sender<MetaDbRequestMessage>,
-    service_receiver: Receiver<MetaDbRequestMessage>,
-
-    client_sender: Sender<MetaDbResponseMessage>,
-    client_receiver: Receiver<MetaDbResponseMessage>,
+    pub data_transfer: Arc<MpscDataTransfer<MetaDbRequestMessage, MetaDbResponseMessage>>,
 }
 
-pub struct MetaDbServiceTaskRunner<Runner: TaskRunner, Repo: KvLogEventRepo, Logger: MetaLogger> {
-    pub meta_db_service: Arc<MetaDbService<Repo, Logger>>,
-    pub task_runner: Arc<Runner>,
-}
-
-impl<Runner: TaskRunner, Repo: KvLogEventRepo, Logger: MetaLogger> MetaDbServiceTaskRunner<Runner, Repo, Logger> {
-    pub async fn run_task(&self) {
-        let service = self.meta_db_service.clone();
-        self.task_runner
-            .spawn(async move {
-                service.run().await;
-            })
-            .await;
-    }
-}
-
-impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDbService<Repo, Logger> {
-    pub fn new(db_id: String, persistent_object: Arc<PersistentObject<Repo, Logger>>) -> Self {
-        let (service_sender, service_receiver) = flume::bounded(1);
-        let (client_sender, client_receiver) = flume::bounded(1);
-
-        MetaDbService {
-            persistent_obj: persistent_object.clone(),
-            repo: persistent_object.repo.clone(),
-            logger: persistent_object.logger.clone(),
-            meta_db_id: db_id,
-
-            service_sender,
-            service_receiver,
-
-            client_sender,
-            client_receiver,
-        }
-    }
-}
-
-enum MetaDbRequestMessage {
+pub enum MetaDbRequestMessage {
     Sync,
     SetVault { vault_name: String },
     GetVaultInfo { vault_id: ObjectId },
@@ -70,71 +27,19 @@ enum MetaDbRequestMessage {
     GetMetaPassStore,
 }
 
-enum MetaDbResponseMessage {
+pub enum MetaDbResponseMessage {
     VaultInfo { vault: VaultInfo },
     VaultStore { vault_store: VaultStore },
     MetaPassStore { meta_pass_store: MetaPassStore },
 }
 
-impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDbService<Repo, Logger> {
-    pub async fn sync_db(&self) {
-        let _ = self.service_sender.send_async(MetaDbRequestMessage::Sync).await;
-    }
-
-    pub async fn update_with_vault(&self, vault_name: String) {
-        let _ = self
-            .service_sender
-            .send_async(MetaDbRequestMessage::SetVault { vault_name })
-            .await;
-        self.sync_db().await;
-    }
-
-    pub async fn get_vault_info(&self, vault_id: ObjectId) -> anyhow::Result<VaultInfo> {
-        let _ = self
-            .service_sender
-            .send_async(MetaDbRequestMessage::GetVaultInfo { vault_id })
-            .await;
-
-        let msg = self.client_receiver.recv_async().await?;
-
-        match msg {
-            MetaDbResponseMessage::VaultInfo { vault } => Ok(vault),
-            _ => Err(anyhow!("Invalid message")),
-        }
-    }
-
-    pub async fn get_vault_store(&self) -> anyhow::Result<VaultStore> {
-        let _ = self
-            .service_sender
-            .send_async(MetaDbRequestMessage::GetVaultStore)
-            .await;
-
-        let msg = self.client_receiver.recv_async().await?;
-
-        match msg {
-            MetaDbResponseMessage::VaultStore { vault_store } => Ok(vault_store),
-            _ => Err(anyhow!("Invalid message")),
-        }
-    }
-
-    pub async fn get_meta_pass_store(&self) -> anyhow::Result<MetaPassStore> {
-        let _ = self
-            .service_sender
-            .send_async(MetaDbRequestMessage::GetMetaPassStore)
-            .await;
-
-        let msg = self.client_receiver.recv_async().await?;
-
-        match msg {
-            MetaDbResponseMessage::MetaPassStore { meta_pass_store } => Ok(meta_pass_store),
-            _ => Err(anyhow!("Invalid message")),
-        }
-    }
-
+impl<Repo: KvLogEventRepo> MetaDbService<Repo> {
     pub async fn run(&self) {
-        let mut meta_db = MetaDb::new(self.meta_db_id.clone(), self.logger.clone());
+        info!("Run meta_db service");
 
-        while let Ok(msg) = self.service_receiver.recv_async().await {
+        let mut meta_db = MetaDb::new(self.meta_db_id.clone());
+
+        while let Ok(msg) = self.data_transfer.service_receive().await {
             match msg {
                 MetaDbRequestMessage::Sync => self.sync_meta_db(&mut meta_db).await,
                 MetaDbRequestMessage::SetVault { vault_name } => meta_db.update_vault_info(vault_name.as_str()),
@@ -150,26 +55,26 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDbService<Repo, Logger> {
                     };
 
                     let response = MetaDbResponseMessage::VaultInfo { vault: vault_info };
-                    let _ = self.client_sender.send_async(response).await;
+                    let _ = self.data_transfer.send_to_client(response).await;
                 }
                 MetaDbRequestMessage::GetVaultStore => {
                     let response = MetaDbResponseMessage::VaultStore {
                         vault_store: meta_db.vault_store.clone(),
                     };
-                    let _ = self.client_sender.send_async(response).await;
+                    let _ = self.data_transfer.send_to_client(response).await;
                 }
                 MetaDbRequestMessage::GetMetaPassStore => {
                     let response = MetaDbResponseMessage::MetaPassStore {
                         meta_pass_store: meta_db.meta_pass_store.clone(),
                     };
-                    let _ = self.client_sender.send_async(response).await;
+                    let _ = self.data_transfer.send_to_client(response).await;
                 }
             }
         }
     }
 
-    async fn sync_meta_db(&self, meta_db: &mut MetaDb<Logger>) {
-        self.logger.debug("Sync meta db");
+    async fn sync_meta_db(&self, meta_db: &mut MetaDb) {
+        //debug!("Sync meta db");
 
         let vault_events = match meta_db.vault_store.tail_id() {
             None => {
@@ -210,19 +115,56 @@ impl<Repo: KvLogEventRepo, Logger: MetaLogger> MetaDbService<Repo, Logger> {
     }
 }
 
-#[cfg(test)]
-mod test {
-    use crate::node::db::in_mem_db::InMemKvLogEventRepo;
-    use crate::node::db::meta_db::meta_db_service::MetaDbService;
-    use crate::node::db::objects::persistent_object::PersistentObject;
-    use crate::node::logger::{DefaultMetaLogger, LoggerId};
-    use std::sync::Arc;
+pub struct MetaDbServiceProxy {
+    pub data_transfer: Arc<MpscDataTransfer<MetaDbRequestMessage, MetaDbResponseMessage>>,
+}
 
-    #[tokio::test]
-    async fn test() {
-        let repo = Arc::new(InMemKvLogEventRepo::default());
-        let logger = Arc::new(DefaultMetaLogger { id: LoggerId::Client });
-        let persistent_object = Arc::new(PersistentObject::new(repo, logger));
-        let _manager = MetaDbService::new(String::from("test_db"), persistent_object);
+impl MetaDbServiceProxy {
+    pub async fn sync_db(&self) {
+        let _ = self.data_transfer.send_to_service(MetaDbRequestMessage::Sync).await;
+    }
+
+    pub async fn update_with_vault(&self, vault_name: String) {
+        let _ = self
+            .data_transfer
+            .send_to_service(MetaDbRequestMessage::SetVault { vault_name })
+            .await;
+        self.sync_db().await;
+    }
+
+    pub async fn get_vault_info(&self, vault_id: ObjectId) -> anyhow::Result<VaultInfo> {
+        let msg = self
+            .data_transfer
+            .send_to_service_and_get(MetaDbRequestMessage::GetVaultInfo { vault_id })
+            .await?;
+
+        match msg {
+            MetaDbResponseMessage::VaultInfo { vault } => Ok(vault),
+            _ => Err(anyhow!("Invalid message")),
+        }
+    }
+
+    pub async fn get_vault_store(&self) -> anyhow::Result<VaultStore> {
+        let msg = self
+            .data_transfer
+            .send_to_service_and_get(MetaDbRequestMessage::GetVaultStore)
+            .await?;
+
+        match msg {
+            MetaDbResponseMessage::VaultStore { vault_store } => Ok(vault_store),
+            _ => Err(anyhow!("Invalid message")),
+        }
+    }
+
+    pub async fn get_meta_pass_store(&self) -> anyhow::Result<MetaPassStore> {
+        let msg = self
+            .data_transfer
+            .send_to_service_and_get(MetaDbRequestMessage::GetMetaPassStore)
+            .await?;
+
+        match msg {
+            MetaDbResponseMessage::MetaPassStore { meta_pass_store } => Ok(meta_pass_store),
+            _ => Err(anyhow!("Invalid message")),
+        }
     }
 }

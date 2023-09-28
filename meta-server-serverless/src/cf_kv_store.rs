@@ -1,10 +1,10 @@
+use async_trait::async_trait;
 use meta_secret_core::node::db::generic_db::{FindOneQuery, SaveCommand};
 use meta_secret_core::node::db::models::KvLogEvent;
-use async_trait::async_trait;
 use worker::kv::{KvError, KvStore};
 
 pub struct CfKvStore {
-    pub kv_store: KvStore
+    pub kv_store: KvStore,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -12,7 +12,7 @@ pub enum CfKvDbError {
     #[error(transparent)]
     CfKvError {
         #[from]
-        source: KvError
+        source: KvError,
     },
 }
 
