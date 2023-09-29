@@ -59,7 +59,7 @@ async fn print_events(server_repo: Arc<InMemKvLogEventRepo>) {
 
     let events = server_repo.as_ref().db.as_ref().clone().lock().await;
 
-    assert_eq!(10, events.len());
+    assert_eq!(12, events.len());
 
     {
         let meta_vault_unit_id = ObjectId::unit(&ObjectDescriptor::MetaVault);
@@ -86,16 +86,19 @@ async fn print_events(server_repo: Arc<InMemKvLogEventRepo>) {
             vault_name: vault_name.clone(),
         });
         let vault_genesis = vault_unit.next();
-        let vault_regular = vault_genesis.next();
+        let vault_sign_up_update = vault_genesis.next();
+        let vault_join_request = vault_sign_up_update.next();
+        let vault_join_update = vault_join_request.next();
 
         assert!(events.contains_key(&vault_unit));
         assert!(events.contains_key(&vault_genesis));
-        assert!(events.contains_key(&vault_regular));
+        assert!(events.contains_key(&vault_sign_up_update));
+        assert!(events.contains_key(&vault_join_request));
+        assert!(events.contains_key(&vault_join_update));
     }
 
-    //TODO check server_pk for genesis events
-
     {
+        //meta pass
         let meta_pass_unit = ObjectId::unit(&ObjectDescriptor::MetaPassword { vault_name });
         assert!(events.contains_key(&meta_pass_unit));
         assert!(events.contains_key(&meta_pass_unit.next()));

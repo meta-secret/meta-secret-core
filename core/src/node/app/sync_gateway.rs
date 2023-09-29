@@ -106,8 +106,6 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             }
 
             Ok(Some(client_creds)) => {
-                info!("sync!!!!");
-
                 let vault_name = client_creds.user_sig.vault.name.as_str();
                 let db_tail_result = self
                     .persistent_object

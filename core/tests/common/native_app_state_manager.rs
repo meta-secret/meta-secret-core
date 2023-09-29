@@ -18,7 +18,7 @@ use meta_secret_core::node::common::meta_tracing::{client_span, server_span, vd_
 use meta_secret_core::node::db::events::generic_log_event::GenericKvLogEvent;
 use meta_secret_core::node::db::events::object_id::ObjectId;
 use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
-use meta_secret_core::node::db::meta_db::meta_db_service::{MetaDbService, MetaDbServiceProxy};
+use meta_secret_core::node::db::meta_db::meta_db_service::{MetaDbDataTransfer, MetaDbService, MetaDbServiceProxy};
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::server::data_sync::ServerDataSync;
 use meta_secret_core::node::server::server_app::{ServerApp, ServerDataTransfer};
@@ -64,7 +64,9 @@ impl NativeApplicationStateManager {
             dt: dt_meta_client.clone(),
         });
 
-        let meta_db_data_transfer = Arc::new(MpscDataTransfer::new());
+        let meta_db_data_transfer = Arc::new(MetaDbDataTransfer {
+            dt: MpscDataTransfer::new(),
+        });
         let meta_db_service_proxy = Arc::new(MetaDbServiceProxy {
             dt: meta_db_data_transfer.clone(),
         });
@@ -152,7 +154,9 @@ impl NativeApplicationStateManager {
         js_app_state: Arc<NoOpJsAppStateManager>,
         db: Arc<Mutex<HashMap<ObjectId, GenericKvLogEvent>>>,
     ) {
-        let vd_meta_db_data_transfer = Arc::new(MpscDataTransfer::new());
+        let vd_meta_db_data_transfer = Arc::new(MetaDbDataTransfer {
+            dt: MpscDataTransfer::new(),
+        });
         let vd_meta_db_service_proxy = Arc::new(MetaDbServiceProxy {
             dt: vd_meta_db_data_transfer.clone(),
         });
@@ -247,7 +251,9 @@ impl NativeApplicationStateManager {
     ) {
         info!("Server initialization");
 
-        let meta_db_data_transfer = Arc::new(MpscDataTransfer::new());
+        let meta_db_data_transfer = Arc::new(MetaDbDataTransfer {
+            dt: MpscDataTransfer::new(),
+        });
 
         //run meta_db service
         let db_meta = db.clone();
