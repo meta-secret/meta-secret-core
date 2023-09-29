@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::node::common::data_transfer::MpscDataTransfer;
 use anyhow::anyhow;
-use tracing::info;
+use tracing::{debug, info, instrument, Instrument, Level};
 
 use crate::node::db::events::common::VaultInfo;
 use crate::node::db::events::object_id::ObjectId;
@@ -16,7 +16,11 @@ pub struct MetaDbService<Repo: KvLogEventRepo> {
     pub persistent_obj: Arc<PersistentObject<Repo>>,
     pub repo: Arc<Repo>,
     pub meta_db_id: String,
-    pub data_transfer: Arc<MpscDataTransfer<MetaDbRequestMessage, MetaDbResponseMessage>>,
+    pub data_transfer: Arc<MetaDbDataTransfer>,
+}
+
+pub struct MetaDbDataTransfer {
+    pub dt: MpscDataTransfer<MetaDbRequestMessage, MetaDbResponseMessage>,
 }
 
 pub enum MetaDbRequestMessage {
@@ -34,16 +38,24 @@ pub enum MetaDbResponseMessage {
 }
 
 impl<Repo: KvLogEventRepo> MetaDbService<Repo> {
+    #[instrument(skip_all)]
     pub async fn run(&self) {
         info!("Run meta_db service");
 
         let mut meta_db = MetaDb::new(self.meta_db_id.clone());
 
-        while let Ok(msg) = self.data_transfer.service_receive().await {
+        while let Ok(msg) = self.data_transfer.dt.service_receive().in_current_span().await {
+            self.sync_meta_db(&mut meta_db).in_current_span().await;
+
             match msg {
-                MetaDbRequestMessage::Sync => self.sync_meta_db(&mut meta_db).await,
-                MetaDbRequestMessage::SetVault { vault_name } => meta_db.update_vault_info(vault_name.as_str()),
+                MetaDbRequestMessage::Sync => self.sync_meta_db(&mut meta_db).in_current_span().await,
+                MetaDbRequestMessage::SetVault { vault_name } => {
+                    info!("Update meta_db with vault: {:?}", vault_name);
+                    meta_db.update_vault_info(vault_name.as_str());
+                }
                 MetaDbRequestMessage::GetVaultInfo { vault_id } => {
+                    self.sync_meta_db(&mut meta_db).in_current_span().await;
+
                     let vault_info = if meta_db.global_index_store.contains(vault_id.unit_id().id_str()) {
                         //if the vault is already present:
                         match &meta_db.vault_store {
@@ -55,32 +67,32 @@ impl<Repo: KvLogEventRepo> MetaDbService<Repo> {
                     };
 
                     let response = MetaDbResponseMessage::VaultInfo { vault: vault_info };
-                    let _ = self.data_transfer.send_to_client(response).await;
+                    let _ = self.data_transfer.dt.send_to_client(response).in_current_span().await;
                 }
                 MetaDbRequestMessage::GetVaultStore => {
                     let response = MetaDbResponseMessage::VaultStore {
                         vault_store: meta_db.vault_store.clone(),
                     };
-                    let _ = self.data_transfer.send_to_client(response).await;
+                    let _ = self.data_transfer.dt.send_to_client(response).in_current_span().await;
                 }
                 MetaDbRequestMessage::GetMetaPassStore => {
                     let response = MetaDbResponseMessage::MetaPassStore {
                         meta_pass_store: meta_db.meta_pass_store.clone(),
                     };
-                    let _ = self.data_transfer.send_to_client(response).await;
+                    let _ = self.data_transfer.dt.send_to_client(response).in_current_span().await;
                 }
             }
         }
     }
 
     async fn sync_meta_db(&self, meta_db: &mut MetaDb) {
-        //debug!("Sync meta db");
+        debug!("Sync meta db");
 
         let vault_events = match meta_db.vault_store.tail_id() {
             None => {
                 vec![]
             }
-            Some(tail_id) => self.persistent_obj.find_object_events(&tail_id).await,
+            Some(tail_id) => self.persistent_obj.find_object_events(&tail_id).in_current_span().await,
         };
 
         //sync global index
@@ -91,9 +103,10 @@ impl<Repo: KvLogEventRepo> MetaDbService<Repo> {
                 None => {
                     self.persistent_obj
                         .find_object_events(&ObjectId::global_index_unit())
+                        .in_current_span()
                         .await
                 }
-                Some(tail_id) => self.persistent_obj.find_object_events(&tail_id).await,
+                Some(tail_id) => self.persistent_obj.find_object_events(&tail_id).in_current_span().await,
             }
         };
 
@@ -102,7 +115,7 @@ impl<Repo: KvLogEventRepo> MetaDbService<Repo> {
                 None => {
                     vec![]
                 }
-                Some(tail_id) => self.persistent_obj.find_object_events(&tail_id).await,
+                Some(tail_id) => self.persistent_obj.find_object_events(&tail_id).in_current_span().await,
             }
         };
 
@@ -116,26 +129,38 @@ impl<Repo: KvLogEventRepo> MetaDbService<Repo> {
 }
 
 pub struct MetaDbServiceProxy {
-    pub data_transfer: Arc<MpscDataTransfer<MetaDbRequestMessage, MetaDbResponseMessage>>,
+    pub dt: Arc<MetaDbDataTransfer>,
 }
 
 impl MetaDbServiceProxy {
     pub async fn sync_db(&self) {
-        let _ = self.data_transfer.send_to_service(MetaDbRequestMessage::Sync).await;
+        let _ = self
+            .dt
+            .dt
+            .send_to_service(MetaDbRequestMessage::Sync)
+            .in_current_span()
+            .await;
     }
 
+    #[instrument(skip_all)]
     pub async fn update_with_vault(&self, vault_name: String) {
+        info!("Update with vault: {:?}", vault_name);
+
         let _ = self
-            .data_transfer
+            .dt
+            .dt
             .send_to_service(MetaDbRequestMessage::SetVault { vault_name })
+            .in_current_span()
             .await;
-        self.sync_db().await;
+        self.sync_db().in_current_span().await;
     }
 
     pub async fn get_vault_info(&self, vault_id: ObjectId) -> anyhow::Result<VaultInfo> {
         let msg = self
-            .data_transfer
+            .dt
+            .dt
             .send_to_service_and_get(MetaDbRequestMessage::GetVaultInfo { vault_id })
+            .in_current_span()
             .await?;
 
         match msg {
@@ -146,20 +171,29 @@ impl MetaDbServiceProxy {
 
     pub async fn get_vault_store(&self) -> anyhow::Result<VaultStore> {
         let msg = self
-            .data_transfer
+            .dt
+            .dt
             .send_to_service_and_get(MetaDbRequestMessage::GetVaultStore)
+            .in_current_span()
             .await?;
 
         match msg {
             MetaDbResponseMessage::VaultStore { vault_store } => Ok(vault_store),
-            _ => Err(anyhow!("Invalid message")),
+            MetaDbResponseMessage::VaultInfo { .. } => {
+                Err(anyhow!("Invalid message. Expected VaultStore, got VaultInfo"))
+            }
+            MetaDbResponseMessage::MetaPassStore { .. } => {
+                Err(anyhow!("Invalid message. Expected VaultStore, got MetaPassStore"))
+            }
         }
     }
 
     pub async fn get_meta_pass_store(&self) -> anyhow::Result<MetaPassStore> {
         let msg = self
-            .data_transfer
+            .dt
+            .dt
             .send_to_service_and_get(MetaDbRequestMessage::GetMetaPassStore)
+            .in_current_span()
             .await?;
 
         match msg {

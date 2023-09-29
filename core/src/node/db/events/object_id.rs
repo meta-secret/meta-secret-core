@@ -26,6 +26,7 @@ pub enum ObjectId {
     },
 }
 
+#[derive(Debug)]
 pub struct IdStr {
     pub id: String,
 }

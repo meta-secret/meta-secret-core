@@ -1,4 +1,5 @@
 use flume::{Receiver, RecvError, Sender};
+use tracing::{instrument, Instrument};
 
 pub struct MpscDataTransfer<Request, Response> {
     pub service_channel: MpscServiceChannel<Request>,
@@ -12,7 +13,7 @@ pub struct MpscServiceChannel<Request> {
 
 impl<Request> MpscServiceChannel<Request> {
     fn new() -> MpscServiceChannel<Request> {
-        let (server_sender, server_receiver) = flume::unbounded();
+        let (server_sender, server_receiver) = flume::bounded(1);
         MpscServiceChannel {
             sender: server_sender,
             receiver: server_receiver,
@@ -27,7 +28,7 @@ pub struct MpscClientChannel<Response> {
 
 impl<Response> MpscClientChannel<Response> {
     fn new() -> MpscClientChannel<Response> {
-        let (client_sender, client_receiver) = flume::unbounded();
+        let (client_sender, client_receiver) = flume::bounded(1);
         MpscClientChannel {
             sender: client_sender,
             receiver: client_receiver,
@@ -45,21 +46,25 @@ impl<Request, Response> MpscDataTransfer<Request, Response> {
 }
 
 impl<Request, Response> MpscDataTransfer<Request, Response> {
+    #[instrument(skip_all)]
     pub async fn send_to_service(&self, message: Request) {
-        let _ = self.service_channel.sender.send_async(message).await;
+        let _ = self.service_channel.sender.send_async(message).in_current_span().await;
     }
 
+    #[instrument(skip_all)]
     pub async fn service_receive(&self) -> Result<Request, RecvError> {
-        self.service_channel.receiver.recv_async().await
+        self.service_channel.receiver.recv_async().in_current_span().await
     }
 
+    #[instrument(skip_all)]
     pub async fn send_to_service_and_get(&self, message: Request) -> Result<Response, RecvError> {
-        let _ = self.service_channel.sender.send_async(message).await;
+        let _ = self.service_channel.sender.send_async(message).in_current_span().await;
         //receive a message from the service via client channel
-        self.client_channel.receiver.recv_async().await
+        self.client_channel.receiver.recv_async().in_current_span().await
     }
 
+    #[instrument(skip_all)]
     pub async fn send_to_client(&self, events: Response) {
-        let _ = self.client_channel.sender.send_async(events).await;
+        let _ = self.client_channel.sender.send_async(events).in_current_span().await;
     }
 }

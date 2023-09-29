@@ -2,6 +2,7 @@ use async_mutex::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use tracing::Level;
 
 use meta_secret_core::node::app::meta_app::messaging::{GenericAppStateRequest, SignUpRequest};
 use meta_secret_core::node::db::events::common::ObjectCreator;
@@ -15,14 +16,14 @@ mod common;
 
 #[tokio::test]
 async fn server_test() {
+    tracing_subscriber::fmt().with_max_level(Level::INFO).pretty().init();
+
     let server_db = Arc::new(Mutex::new(HashMap::default()));
     let server_repo = Arc::new(InMemKvLogEventRepo { db: server_db.clone() });
 
     let app_manager = NativeApplicationStateManager::init(server_db).await;
 
     async_std::task::sleep(Duration::from_secs(3)).await;
-
-    println!("MUST HAPPEN 3 SEC AFTER VD setup");
 
     let sign_up_request = GenericAppStateRequest::SignUp(SignUpRequest {
         vault_name: String::from("q"),
@@ -34,7 +35,14 @@ async fn server_test() {
         .send_request(sign_up_request.clone())
         .await;
 
-    async_std::task::sleep(Duration::from_secs(3)).await;
+    async_std::task::sleep(Duration::from_secs(1)).await;
+
+    app_manager
+        .meta_client_proxy
+        .send_request(sign_up_request.clone())
+        .await;
+
+    async_std::task::sleep(Duration::from_secs(1)).await;
 
     app_manager
         .meta_client_proxy

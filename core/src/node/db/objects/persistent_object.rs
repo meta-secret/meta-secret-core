@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tracing::info;
+use tracing::{info, Instrument};
 
 use crate::models::user_signature::UserSignature;
 use crate::node::db::events::common::{ObjectCreator, PublicKeyRecord};
@@ -28,7 +28,7 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
         info!("get_object_events_from_beginning");
 
         let unit_id = ObjectId::unit(obj_desc);
-        let commit_log = self.find_object_events(&unit_id).await;
+        let commit_log = self.find_object_events(&unit_id).in_current_span().await;
 
         Ok(commit_log)
     }
@@ -40,13 +40,13 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
 
         let mut curr_tail_id = tail_id.clone();
         loop {
-            let curr_db_event_result = self.repo.find_one(curr_tail_id.clone()).await;
+            let curr_db_event_result = self.repo.find_one(curr_tail_id.clone()).in_current_span().await;
 
             match curr_db_event_result {
                 Ok(maybe_curr_db_event) => match maybe_curr_db_event {
                     Some(curr_db_event) => {
                         if let GenericKvLogEvent::SharedSecret(_) = &curr_db_event {
-                            self.repo.delete(curr_tail_id.clone()).await;
+                            self.repo.delete(curr_tail_id.clone()).in_current_span().await;
                         }
 
                         curr_tail_id = curr_tail_id.next();
@@ -67,11 +67,11 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
 
     pub async fn find_tail_id_by_obj_desc(&self, obj_desc: &ObjectDescriptor) -> Option<ObjectId> {
         let unit_id = ObjectId::unit(obj_desc);
-        self.find_tail_id(unit_id).await
+        self.find_tail_id(unit_id).in_current_span().await
     }
 
     pub async fn find_tail_id(&self, curr_id: ObjectId) -> Option<ObjectId> {
-        let curr_result = self.repo.find_one(curr_id.clone()).await;
+        let curr_result = self.repo.find_one(curr_id.clone()).in_current_span().await;
 
         match curr_result {
             Ok(maybe_event) => match maybe_event {
@@ -81,7 +81,7 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
                     let mut curr_tail_id = curr_id.clone();
 
                     loop {
-                        let found_event_result = self.repo.find_one(curr_tail_id.clone()).await;
+                        let found_event_result = self.repo.find_one(curr_tail_id.clone()).in_current_span().await;
 
                         match found_event_result {
                             Ok(Some(_curr_tail)) => {
@@ -101,7 +101,7 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
 
     pub async fn get_db_tail(&self, vault_name: &str) -> anyhow::Result<DbTail> {
         let obj_id = ObjectId::unit(&ObjectDescriptor::DbTail);
-        let maybe_db_tail = self.repo.find_one(obj_id).await?;
+        let maybe_db_tail = self.repo.find_one(obj_id).in_current_span().await?;
 
         match maybe_db_tail {
             None => {
@@ -124,7 +124,7 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
                     GenericKvLogEvent::LocalEvent(KvLogEventLocal::DbTail { event: Box::new(event) })
                 };
 
-                self.repo.save_event(tail_event).await?;
+                self.repo.save_event(tail_event).in_current_span().await?;
                 Ok(db_tail)
             }
             Some(db_tail) => match db_tail {
@@ -142,7 +142,7 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
     }
 
     pub async fn get_user_sig(&self, tail_id: ObjectId) -> Vec<UserSignature> {
-        let sig_result = self.get_vault_unit_signature(tail_id).await;
+        let sig_result = self.get_vault_unit_signature(tail_id).in_current_span().await;
         match sig_result {
             Ok(Some(vault_sig)) => {
                 vec![vault_sig]
@@ -154,7 +154,7 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
     }
 
     async fn get_vault_unit_signature(&self, tail_id: ObjectId) -> anyhow::Result<Option<UserSignature>> {
-        let maybe_unit_event = self.repo.find_one(tail_id).await?;
+        let maybe_unit_event = self.repo.find_one(tail_id).in_current_span().await?;
 
         match maybe_unit_event {
             Some(GenericKvLogEvent::Vault(VaultObject::Unit { event })) => Ok(Some(event.value)),
@@ -182,13 +182,13 @@ impl<Repo: KvLogEventRepo> PersistentGlobalIndexApi for PersistentGlobalIndex<Re
             event: KvLogEvent::global_index_unit(),
         });
 
-        self.repo.save_event(unit_event.clone()).await?;
+        self.repo.save_event(unit_event.clone()).in_current_span().await?;
 
         let genesis_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Genesis {
             event: KvLogEvent::global_index_genesis(public_key),
         });
 
-        self.repo.save_event(genesis_event.clone()).await?;
+        self.repo.save_event(genesis_event.clone()).in_current_span().await?;
 
         Ok(vec![unit_event, genesis_event])
     }
@@ -206,6 +206,7 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
 #[cfg(test)]
 mod test {
     use std::sync::Arc;
+    use tracing::Instrument;
 
     use crate::crypto::keys::KeyManager;
     use crate::models::DeviceInfo;
@@ -237,7 +238,12 @@ mod test {
         };
 
         let unit_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::unit());
-        persistent_object.repo.save_event(unit_event).await.unwrap();
+        persistent_object
+            .repo
+            .save_event(unit_event)
+            .in_current_span()
+            .await
+            .unwrap();
 
         let genesis_event = {
             let server_pk = PublicKeyRecord::from(user_sig.public_key.as_ref().clone());
@@ -255,7 +261,12 @@ mod test {
             },
         });
 
-        persistent_object.repo.save_event(genesis_event).await.unwrap();
+        persistent_object
+            .repo
+            .save_event(genesis_event)
+            .in_current_span()
+            .await
+            .unwrap();
 
         persistent_object
             .repo

@@ -8,6 +8,7 @@ use meta_secret_core::node::db::events::object_id::ObjectId;
 use meta_secret_core::node::db::generic_db::{
     CommitLogDbConfig, DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand,
 };
+use tracing::Instrument;
 use wasm_bindgen::JsValue;
 use web_sys::IdbTransactionMode;
 
@@ -50,7 +51,7 @@ impl WasmRepo {
 
 impl WasmRepo {
     pub async fn delete_db(&self) {
-        let db = open_db(self.db_name.as_str()).await;
+        let db = open_db(self.db_name.as_str()).in_current_span().await;
         db.delete().unwrap();
     }
 }
@@ -61,7 +62,7 @@ impl SaveCommand for WasmRepo {
         let event_js: JsValue = serde_wasm_bindgen::to_value(&event)
             .map_err(|err| anyhow!("Error parsing data to save: {:?}", err))?;
 
-        let db = open_db(self.db_name.as_str()).await;
+        let db = open_db(self.db_name.as_str()).in_current_span().await;
         let tx = db
             .transaction_on_one_with_mode(self.store_name.as_str(), IdbTransactionMode::Readwrite)
             .unwrap();
@@ -70,7 +71,7 @@ impl SaveCommand for WasmRepo {
             .put_key_val_owned(key.id_str().as_str(), &event_js)
             .unwrap();
 
-        tx.await.into_result().unwrap();
+        tx.in_current_span().await.into_result().unwrap();
         // All of the requests in the transaction have already finished so we can just drop it to
         // avoid the unused future warning, or assign it to _.
         //let _ = tx;
@@ -82,11 +83,11 @@ impl SaveCommand for WasmRepo {
 #[async_trait(? Send)]
 impl FindOneQuery for WasmRepo {
     async fn find_one(&self, key: ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>> {
-        let db = open_db(self.db_name.as_str()).await;
+        let db = open_db(self.db_name.as_str()).in_current_span().await;
         let tx = db.transaction_on_one(self.store_name.as_str()).unwrap();
         let store = tx.object_store(self.store_name.as_str()).unwrap();
         let future: OptionalJsValueFuture = store.get_owned(key.id_str().as_str()).unwrap();
-        let maybe_obj_js: Option<JsValue> = future.await.unwrap();
+        let maybe_obj_js: Option<JsValue> = future.in_current_span().await.unwrap();
 
         if let Some(obj_js) = maybe_obj_js {
             if obj_js.is_undefined() {
@@ -112,13 +113,13 @@ impl FindOneQuery for WasmRepo {
 #[async_trait(? Send)]
 impl DeleteCommand for WasmRepo {
     async fn delete(&self, key: ObjectId) {
-        let db = open_db(self.db_name.as_str()).await;
+        let db = open_db(self.db_name.as_str()).in_current_span().await;
         let tx: IdbTransaction = db
             .transaction_on_one_with_mode(self.store_name.as_str(), IdbTransactionMode::Readwrite)
             .unwrap();
         let store = tx.object_store(self.store_name.as_str()).unwrap();
         store.delete_owned(key.id_str().as_str()).unwrap();
-        tx.await.into_result().unwrap();
+        tx.in_current_span().await.into_result().unwrap();
     }
 }
 
@@ -135,7 +136,7 @@ pub async fn open_db(db_name: &str) -> IdbDatabase {
 
     db_req.set_on_upgrade_needed(Some(on_upgrade_task));
 
-    db_req.into_future().await.unwrap()
+    db_req.into_future().in_current_span().await.unwrap()
 }
 
 impl KvLogEventRepo for WasmRepo {}

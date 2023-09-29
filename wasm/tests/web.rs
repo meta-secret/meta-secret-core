@@ -3,7 +3,7 @@ use meta_secret_core::node::db::events::object_id::ObjectId;
 use meta_secret_core::node::db::generic_db::{FindOneQuery, SaveCommand};
 use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
 use meta_secret_web_cli::wasm_app_state_manager::WasmApplicationStateManager;
-use meta_secret_web_cli::wasm_repo::{WasmMetaLogger, WasmRepo};
+use meta_secret_web_cli::wasm_repo::WasmRepo;
 use meta_secret_web_cli::{alert, configure};
 use std::rc::Rc;
 use wasm_bindgen::JsValue;
@@ -23,30 +23,39 @@ wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 
 #[wasm_bindgen_test]
 async fn pass_async() {
-    configure();
-
-    //open_db("meta-secret").await;
-    WasmRepo::default().delete_db().await;
-    WasmRepo::server().delete_db().await;
-    WasmRepo::virtual_device().delete_db().await;
+    //open_db("meta-secret").in_current_span().await;
+    WasmRepo::default().delete_db().in_current_span().await;
+    WasmRepo::server().delete_db().in_current_span().await;
+    WasmRepo::virtual_device()
+        .delete_db()
+        .in_current_span()
+        .await;
 
     //let obj_id = &ObjectId::global_index_unit();
     //let event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::unit());
 
-    //repo.save(&obj_id, &event).await;
-    //let db_event = repo.find_one(obj_id).await;
+    //repo.save(&obj_id, &event).in_current_span().await;
+    //let db_event = repo.find_one(obj_id).in_current_span().await;
     //println!("{:?}", db_event);
     //alert("qwe");
 
-    async_std::task::sleep(Duration::from_secs(1)).await;
-    run_app().await;
+    async_std::task::sleep(Duration::from_secs(1))
+        .in_current_span()
+        .await;
+    run_app().in_current_span().await;
 }
 
 async fn run_app() {
-    let app_manager = WasmApplicationStateManager::init_in_mem().await;
-    async_std::task::sleep(Duration::from_secs(5)).await;
-    app_manager.sign_up("q", "web").await;
-    async_std::task::sleep(Duration::from_secs(3)).await;
+    let app_manager = WasmApplicationStateManager::init_in_mem()
+        .in_current_span()
+        .await;
+    async_std::task::sleep(Duration::from_secs(5))
+        .in_current_span()
+        .await;
+    app_manager.sign_up("q", "web").in_current_span().await;
+    async_std::task::sleep(Duration::from_secs(3))
+        .in_current_span()
+        .await;
     //join
-    app_manager.sign_up("q", "web").await;
+    app_manager.sign_up("q", "web").in_current_span().await;
 }

@@ -1,10 +1,9 @@
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, instrument, Instrument};
 
 use crate::models::VaultDoc;
 use crate::node::app::meta_vault_manager::UserCredentialsManager;
-use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::db::events::common::{LogEventKeyBasedRecord, ObjectCreator, SharedSecretObject};
 use crate::node::db::events::db_tail::{DbTail, DbTailObject};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
@@ -18,39 +17,48 @@ use crate::node::db::meta_db::store::vault_store::VaultStore;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::server::data_sync::DataSyncMessage;
 use crate::node::server::request::SyncRequest;
+use crate::node::server::server_app::ServerDataTransfer;
 
 pub struct SyncGateway<Repo: KvLogEventRepo> {
     pub id: String,
     pub repo: Arc<Repo>,
     pub persistent_object: Arc<PersistentObject<Repo>>,
-    pub server_data_transfer: Arc<MpscDataTransfer<DataSyncMessage, Vec<GenericKvLogEvent>>>,
+    pub server_dt: Arc<ServerDataTransfer>,
     pub meta_db_service_proxy: Arc<MetaDbServiceProxy>,
 }
 
 impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
+    #[instrument(skip_all)]
     pub async fn run(&self) {
         info!("Run sync gateway");
 
         loop {
-            self.sync().await;
+            self.sync().in_current_span().await;
 
-            let vault_store = self.meta_db_service_proxy.get_vault_store().await.unwrap();
+            let vault_store = self
+                .meta_db_service_proxy
+                .get_vault_store()
+                .in_current_span()
+                .await
+                .unwrap();
 
             match vault_store {
                 VaultStore::Store { vault, .. } => {
-                    self.send_shared_secrets(&vault).await;
+                    self.send_shared_secrets(&vault).in_current_span().await;
                 }
                 _ => {
                     //skip
                 }
             }
 
-            async_std::task::sleep(Duration::from_millis(300)).await;
+            async_std::task::sleep(Duration::from_millis(300))
+                .in_current_span()
+                .await;
         }
     }
 
     pub async fn send_shared_secrets(&self, vault_doc: &VaultDoc) {
-        let creds_result = self.repo.find_user_creds().await;
+        let creds_result = self.repo.find_user_creds().in_current_span().await;
 
         if let Ok(Some(client_creds)) = creds_result {
             let user_pk = client_creds.user_sig.public_key.base64_text;
@@ -65,12 +73,18 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                     device_id: user_sig.vault.device.device_id.clone(),
                 };
                 let obj_id = ObjectId::unit(&obj_desc);
-                let events = self.persistent_object.find_object_events(&obj_id).await;
+                let events = self
+                    .persistent_object
+                    .find_object_events(&obj_id)
+                    .in_current_span()
+                    .await;
 
                 for event in events {
                     debug!("Send shared secret event to server: {:?}", event);
-                    self.server_data_transfer
+                    self.server_dt
+                        .dt
                         .send_to_service(DataSyncMessage::Event(event))
+                        .in_current_span()
                         .await;
                 }
             }
@@ -78,7 +92,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
     }
 
     pub async fn sync(&self) {
-        let creds_result = self.repo.find_user_creds().await;
+        let creds_result = self.repo.find_user_creds().in_current_span().await;
 
         match creds_result {
             Err(_) => {
@@ -92,18 +106,41 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             }
 
             Ok(Some(client_creds)) => {
+                info!("sync!!!!");
+
                 let vault_name = client_creds.user_sig.vault.name.as_str();
-                let db_tail_result = self.persistent_object.get_db_tail(vault_name).await;
+                let db_tail_result = self
+                    .persistent_object
+                    .get_db_tail(vault_name)
+                    .in_current_span()
+                    .in_current_span()
+                    .await;
 
                 match db_tail_result {
                     Ok(db_tail) => {
-                        let new_tail_for_gi = self.get_new_tail_for_global_index(&db_tail).await;
+                        let new_tail_for_gi = self
+                            .get_new_tail_for_global_index(&db_tail)
+                            .in_current_span()
+                            .in_current_span()
+                            .await;
 
-                        let new_tail_for_vault = self.get_new_tail_for_an_obj(&db_tail.vault_id).await;
+                        let new_tail_for_vault = self
+                            .get_new_tail_for_an_obj(&db_tail.vault_id)
+                            .in_current_span()
+                            .in_current_span()
+                            .await;
 
-                        let new_tail_for_meta_pass = self.get_new_tail_for_an_obj(&db_tail.meta_pass_id).await;
+                        let new_tail_for_meta_pass = self
+                            .get_new_tail_for_an_obj(&db_tail.meta_pass_id)
+                            .in_current_span()
+                            .in_current_span()
+                            .await;
 
-                        let new_tail_for_mem_pool = self.get_new_tail_for_mem_pool(&db_tail).await;
+                        let new_tail_for_mem_pool = self
+                            .get_new_tail_for_mem_pool(&db_tail)
+                            .in_current_span()
+                            .in_current_span()
+                            .await;
 
                         let new_db_tail = DbTail {
                             vault_id: new_tail_for_vault,
@@ -113,7 +150,10 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                             maybe_mem_pool_id: new_tail_for_mem_pool.clone(),
                         };
 
-                        self.save_updated_db_tail(db_tail, new_db_tail.clone()).await;
+                        self.save_updated_db_tail(db_tail, new_db_tail.clone())
+                            .in_current_span()
+                            .in_current_span()
+                            .await;
 
                         let sync_request = {
                             let vault_id_request = match &new_db_tail.vault_id {
@@ -139,14 +179,16 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                         let mut latest_meta_pass_id = new_db_tail.meta_pass_id.clone();
 
                         let new_events_res = self
-                            .server_data_transfer
+                            .server_dt
+                            .dt
                             .send_to_service_and_get(DataSyncMessage::SyncRequest(sync_request))
+                            .in_current_span()
+                            .in_current_span()
                             .await;
 
                         match new_events_res {
                             Ok(new_events) => {
-                                let log_msg = format!("id: {:?}. Sync gateway. New events: {:?}", self.id, new_events);
-                                //debug!(log_msg.as_str());
+                                debug!("id: {:?}. Sync gateway. New events: {:?}", self.id, new_events);
 
                                 for new_event in new_events {
                                     let key = if let GenericKvLogEvent::SharedSecret(sss_obj) = &new_event {
@@ -161,7 +203,8 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                                                     meta_pass_id: event.value.meta_password.meta_password.id.id.clone(),
                                                 };
                                                 let obj_id = ObjectId::unit(&obj_desc);
-                                                let _ = self.repo.save(obj_id.clone(), local_event).await;
+                                                let _ =
+                                                    self.repo.save(obj_id.clone(), local_event).in_current_span().await;
                                                 obj_id
                                             }
 
@@ -287,7 +330,8 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                         "Send event to server. May stuck if server won't response!!! : {:?}",
                         client_event
                     );
-                    self.server_data_transfer
+                    self.server_dt
+                        .dt
                         .send_to_service(DataSyncMessage::Event(client_event))
                         .await;
                 }
@@ -325,7 +369,8 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
 
         for client_event in mem_pool_events {
             debug!("send mem pool request to server: {:?}", client_event);
-            self.server_data_transfer
+            self.server_dt
+                .dt
                 .send_to_service(DataSyncMessage::Event(client_event))
                 .await;
         }

@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use std::sync::Arc;
-use tracing::info;
+use tracing::{error, info, instrument, Instrument};
 
 use crate::models::ApplicationState;
 use crate::node::app::app_state_update_manager::JsAppStateManager;
@@ -9,6 +9,7 @@ use crate::node::app::meta_app::app_state::{ConfiguredAppState, EmptyAppState, G
 use crate::node::app::meta_app::messaging::{
     ClusterDistributionRequest, GenericAppStateRequest, GenericAppStateResponse, RecoveryRequest, SignUpRequest,
 };
+use crate::node::app::sync_gateway::SyncGateway;
 use crate::node::common::actor::{ActionHandler, ServiceState};
 use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::db::events::common::VaultInfo;
@@ -16,9 +17,14 @@ use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::meta_db::store::meta_pass_store::MetaPassStore;
 
 pub struct MetaClientService<Repo: KvLogEventRepo, StateManager: JsAppStateManager> {
-    pub data_transfer: Arc<MpscDataTransfer<GenericAppStateRequest, GenericAppStateResponse>>,
+    pub data_transfer: Arc<MetaClientDataTransfer>,
     pub meta_client: Arc<MetaClient<Repo>>,
     pub state_manager: Arc<StateManager>,
+    pub sync_gateway: Arc<SyncGateway<Repo>>,
+}
+
+pub struct MetaClientDataTransfer {
+    pub dt: MpscDataTransfer<GenericAppStateRequest, GenericAppStateResponse>,
 }
 
 /// SignUp handler
@@ -28,22 +34,26 @@ where
     Repo: KvLogEventRepo,
     StateManager: JsAppStateManager,
 {
+    #[instrument(skip_all)]
     async fn handle(&self, request: SignUpRequest, state: &mut ServiceState<GenericAppState>) {
         match &state.state {
             GenericAppState::Empty(EmptyAppState { app_state }) => {
                 let creds_result = self
                     .meta_client
                     .get_or_create_local_vault(request.vault_name.as_str(), request.device_name.as_str())
+                    .in_current_span()
                     .await;
+
+                self.sync_gateway.sync().in_current_span().await;
 
                 if let Ok(creds) = creds_result {
                     let mut new_app_state = app_state.clone();
 
-                    //TODO check in the global index (via meta_db_service)
-                    // that if you are already a member of the vault.
-                    // Enable join you you are not a vault member, otherwise change the state to Registered
-                    let vault_info = self.meta_client.get_vault(&creds).await;
+                    let vault_info = self.meta_client.get_vault(&creds).in_current_span().await;
+
+                    info!("VAULTT infa: {:?}", vault_info);
                     if let VaultInfo::NotMember = vault_info {
+                        info!("ACTIVATE JOIIINNN. state: {:?}", state.state);
                         new_app_state.join_component = true;
                     }
 
@@ -56,10 +66,20 @@ where
                 }
             }
             GenericAppState::Configured(configured) => {
-                state.state = GenericAppState::Joined(self.meta_client.sign_up(&mut configured.clone()).await);
+                let vault_info = self.meta_client.get_vault(&configured.creds).in_current_span().await;
+
+                info!("VAULTT infa: {:?}", vault_info);
+                if let VaultInfo::NotMember = vault_info {
+                    info!("ACTIVATE JOIIINNN. state: {:?}", state.state);
+                    //configured.app_state.join_component = true;
+                }
+
+                info!("CONFIGURE!!!! {:?}", state.state);
+                let joined_app_state = self.meta_client.sign_up(configured).in_current_span().await;
+                state.state = GenericAppState::Joined(joined_app_state);
             }
             GenericAppState::Joined(_) => {
-                panic!("ignore sign up requests (device has been already joined");
+                error!("ignore sign up requests (device has been already joined");
             }
         }
     }
@@ -72,9 +92,13 @@ where
 
     StateManager: JsAppStateManager,
 {
+    #[instrument(skip_all)]
     async fn handle(&self, request: RecoveryRequest, state: &mut ServiceState<GenericAppState>) {
         if let GenericAppState::Joined(app_state) = &state.state {
-            self.meta_client.recovery_request(request.meta_pass_id, app_state).await;
+            self.meta_client
+                .recovery_request(request.meta_pass_id, app_state)
+                .in_current_span()
+                .await;
         } else {
             panic!("Invalid request. Recovery request not allowed if the state is not 'Joined'");
         }
@@ -89,6 +113,7 @@ where
 
     StateManager: JsAppStateManager,
 {
+    #[instrument(skip_all)]
     async fn handle(&self, request: ClusterDistributionRequest, state: &mut ServiceState<GenericAppState>) {
         if let GenericAppState::Joined(app_state) = &state.state {
             self.meta_client
@@ -122,16 +147,18 @@ where
 impl<Repo, StateManager> MetaClientService<Repo, StateManager>
 where
     Repo: KvLogEventRepo,
-
     StateManager: JsAppStateManager,
 {
+    #[instrument(skip_all)]
     pub async fn run(&self) {
         info!("Run meta_app service");
 
         let mut service_state = self.build_service_state().await;
 
-        while let Ok(request) = self.data_transfer.service_receive().await {
-            info!("MetaApp. Handle request: {:?}", &request);
+        while let Ok(request) = self.data_transfer.dt.service_receive().await {
+            info!("Handle: {:?}", &request);
+
+            self.sync_gateway.sync().in_current_span().await;
 
             match request {
                 GenericAppStateRequest::SignUp(sign_up_request) => {
@@ -190,16 +217,16 @@ where
     }
 
     pub async fn send_request(&self, request: GenericAppStateRequest) {
-        self.data_transfer.send_to_service(request).await
+        self.data_transfer.dt.send_to_service(request).await
     }
 }
 
 pub struct MetaClientAccessProxy {
-    pub data_transfer: Arc<MpscDataTransfer<GenericAppStateRequest, GenericAppStateResponse>>,
+    pub dt: Arc<MetaClientDataTransfer>,
 }
 
 impl MetaClientAccessProxy {
     pub async fn send_request(&self, request: GenericAppStateRequest) {
-        self.data_transfer.send_to_service(request).await
+        self.dt.dt.send_to_service(request).await
     }
 }

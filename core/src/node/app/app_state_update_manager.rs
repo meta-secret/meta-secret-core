@@ -1,8 +1,8 @@
 use crate::models::ApplicationState;
 use crate::node::db::generic_db::KvLogEventRepo;
 use async_trait::async_trait;
+use log::debug;
 use std::sync::Arc;
-use tracing::info;
 
 #[async_trait(? Send)]
 pub trait JsAppStateManager {
@@ -14,11 +14,10 @@ pub struct NoOpJsAppStateManager {}
 #[async_trait(? Send)]
 impl JsAppStateManager for NoOpJsAppStateManager {
     async fn update_js_state(&self, new_state: ApplicationState) {
-        let msg = format!(
+        debug!(
             "NoOp state manager. Update js state: {}",
             serde_json::to_string(&new_state).unwrap()
         );
-        info!(msg);
     }
 }
 

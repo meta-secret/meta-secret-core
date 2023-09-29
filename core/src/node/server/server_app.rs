@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::{error, info, instrument, Instrument};
 
 use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::db::events::common::ObjectCreator;
@@ -14,25 +14,30 @@ use crate::node::server::data_sync::{DataSyncApi, DataSyncMessage, MetaServerCon
 
 pub struct ServerApp<Repo: KvLogEventRepo> {
     pub data_sync: Arc<ServerDataSync<Repo>>,
-    pub data_transfer: Arc<MpscDataTransfer<DataSyncMessage, Vec<GenericKvLogEvent>>>,
+    pub data_transfer: Arc<ServerDataTransfer>,
     pub meta_db_service_proxy: Arc<MetaDbServiceProxy>,
+}
+
+pub struct ServerDataTransfer {
+    pub dt: MpscDataTransfer<DataSyncMessage, Vec<GenericKvLogEvent>>,
 }
 
 impl<Repo> ServerApp<Repo>
 where
     Repo: KvLogEventRepo,
 {
+    #[instrument(skip(self))]
     pub async fn run(&self) {
         info!("Run server app");
 
-        self.gi_initialization().await;
+        self.gi_initialization().in_current_span().await;
 
-        while let Ok(sync_message) = self.data_transfer.service_receive().await {
+        while let Ok(sync_message) = self.data_transfer.dt.service_receive().in_current_span().await {
             match sync_message {
                 DataSyncMessage::SyncRequest(request) => {
-                    self.meta_db_service_proxy.sync_db().await;
+                    self.meta_db_service_proxy.sync_db().in_current_span().await;
 
-                    let new_events_result = self.data_sync.replication(request).await;
+                    let new_events_result = self.data_sync.replication(request).in_current_span().await;
                     let new_events = match new_events_result {
                         Ok(data) => {
                             //debug!(format!("New events for a client: {:?}", data).as_str());
@@ -44,10 +49,10 @@ where
                         }
                     };
 
-                    self.data_transfer.send_to_client(new_events).await;
+                    self.data_transfer.dt.send_to_client(new_events).in_current_span().await;
                 }
                 DataSyncMessage::Event(event) => {
-                    self.data_sync.send(event).await;
+                    self.data_sync.send(event).in_current_span().await;
                 }
             }
         }
@@ -60,6 +65,7 @@ where
             .persistent_obj
             .repo
             .find_one(ObjectId::unit(&ObjectDescriptor::GlobalIndex))
+            .in_current_span()
             .await;
 
         let maybe_gi_genesis = self
@@ -67,6 +73,7 @@ where
             .persistent_obj
             .repo
             .find_one(ObjectId::genesis(&ObjectDescriptor::GlobalIndex))
+            .in_current_span()
             .await;
 
         let gi_genesis_exists = matches!(maybe_gi_genesis, Ok(Some(_)));
@@ -75,7 +82,13 @@ where
         //If either of unit or genesis not exists then create initial records for the global index
         if !gi_unit_exists || !gi_genesis_exists {
             let server_pk = self.data_sync.context.server_pk();
-            let _meta_g = self.data_sync.persistent_obj.global_index.gi_init(&server_pk).await;
+            let _meta_g = self
+                .data_sync
+                .persistent_obj
+                .global_index
+                .gi_init(&server_pk)
+                .in_current_span()
+                .await;
         }
     }
 }

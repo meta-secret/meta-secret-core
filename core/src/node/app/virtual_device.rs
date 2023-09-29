@@ -5,7 +5,6 @@ use crate::node::app::meta_app::messaging::{GenericAppStateRequest, SignUpReques
 use crate::node::app::meta_app::meta_app_service::MetaClientAccessProxy;
 use crate::node::app::meta_vault_manager::UserCredentialsManager;
 use crate::node::app::sync_gateway::SyncGateway;
-use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::db::actions::join;
 use crate::node::db::events::common::VaultInfo;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
@@ -14,14 +13,14 @@ use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::meta_db::meta_db_service::MetaDbServiceProxy;
 use crate::node::db::meta_db::store::vault_store::VaultStore;
 use crate::node::db::objects::persistent_object::PersistentObject;
-use crate::node::server::data_sync::DataSyncMessage;
+use crate::node::server::server_app::ServerDataTransfer;
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::{info, instrument, Instrument};
 
 pub struct VirtualDevice<Repo: KvLogEventRepo> {
     pub meta_client: Arc<MetaClient<Repo>>,
     pub meta_client_proxy: Arc<MetaClientAccessProxy>,
-    pub data_transfer: Arc<MpscDataTransfer<DataSyncMessage, Vec<GenericKvLogEvent>>>,
+    pub server_dt: Arc<ServerDataTransfer>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -36,7 +35,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
         persistent_object: Arc<PersistentObject<Repo>>,
         meta_client_access_proxy: Arc<MetaClientAccessProxy>,
         meta_db_service_proxy: Arc<MetaDbServiceProxy>,
-        server_data_transfer: Arc<MpscDataTransfer<DataSyncMessage, Vec<GenericKvLogEvent>>>,
+        dt: Arc<ServerDataTransfer>,
     ) -> VirtualDevice<Repo> {
         Self {
             meta_client: Arc::new(MetaClient {
@@ -44,15 +43,17 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
                 meta_db_service_proxy: meta_db_service_proxy.clone(),
             }),
             meta_client_proxy: meta_client_access_proxy,
-            data_transfer: server_data_transfer,
+            server_dt: dt,
         }
     }
 
+    #[instrument(skip_all)]
     pub async fn event_handler(
         persistent_object: Arc<PersistentObject<Repo>>,
         meta_client_access_proxy: Arc<MetaClientAccessProxy>,
         meta_db_service_proxy: Arc<MetaDbServiceProxy>,
-        server_data_transfer: Arc<MpscDataTransfer<DataSyncMessage, Vec<GenericKvLogEvent>>>,
+        dt: Arc<ServerDataTransfer>,
+        gateway: Arc<SyncGateway<Repo>>
     ) {
         info!("Run virtual device event handler");
 
@@ -61,7 +62,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
                 persistent_object.clone(),
                 meta_client_access_proxy.clone(),
                 meta_db_service_proxy.clone(),
-                server_data_transfer.clone(),
+                dt.clone(),
             );
             Arc::new(vd)
         };
@@ -70,15 +71,8 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
         let creds = persistent_object
             .repo
             .get_or_generate_user_creds(String::from("q"), String::from("virtual-device"))
+            .in_current_span()
             .await;
-
-        let gateway = SyncGateway {
-            id: String::from("vd-gateway"),
-            repo: persistent_object.repo.clone(),
-            persistent_object,
-            server_data_transfer,
-            meta_db_service_proxy,
-        };
 
         let vault_name = "q";
         let device_name = "virtual-device";
@@ -92,9 +86,10 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
         virtual_device
             .meta_client_proxy
             .send_request(sign_up_request.clone())
+            .in_current_span()
             .await;
 
-        let vault_info = virtual_device.meta_client.get_vault(&creds).await;
+        let vault_info = virtual_device.meta_client.get_vault(&creds).in_current_span().await;
         if let VaultInfo::Member { .. } = vault_info {
             //vd is already a member of a vault
         } else {
@@ -102,39 +97,42 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
             virtual_device
                 .meta_client_proxy
                 .send_request(sign_up_request.clone())
+                .in_current_span()
                 .await;
         }
 
         loop {
-            gateway.sync().await;
+            gateway.sync().in_current_span().await;
 
             let meta_db_service = virtual_device.meta_client.meta_db_service_proxy.clone();
-            meta_db_service.sync_db().await;
+            meta_db_service.sync_db().in_current_span().await;
 
             meta_db_service
                 .update_with_vault(creds.user_sig.vault.name.clone())
+                .in_current_span()
                 .await;
 
-            let vault_store = meta_db_service.get_vault_store().await.unwrap();
+            let vault_store = meta_db_service.get_vault_store().in_current_span().await.unwrap();
 
             if let VaultStore::Store { tail_id, vault, .. } = vault_store {
                 let vd_repo = virtual_device.meta_client.persistent_obj.repo.clone();
 
-                let latest_event = vd_repo.find_one(tail_id).await;
+                let latest_event = vd_repo.find_one(tail_id).in_current_span().await;
 
                 if let Ok(Some(GenericKvLogEvent::Vault(VaultObject::JoinRequest { event }))) = latest_event {
-                    info!("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
                     let accept_event = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
                         event: join::accept_join_request(&event, &vault),
                     });
 
-                    let _ = vd_repo.save_event(accept_event).await;
+                    let _ = vd_repo.save_event(accept_event).in_current_span().await;
                 }
 
-                gateway.send_shared_secrets(&vault).await;
+                gateway.send_shared_secrets(&vault).in_current_span().await;
             };
 
-            async_std::task::sleep(std::time::Duration::from_millis(300)).await;
+            async_std::task::sleep(std::time::Duration::from_millis(300))
+                .in_current_span()
+                .await;
         }
     }
 }

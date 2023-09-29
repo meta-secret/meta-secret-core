@@ -1,5 +1,4 @@
 use std::fmt::{Display, Formatter};
-use std::sync::Arc;
 use tracing::info;
 
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
