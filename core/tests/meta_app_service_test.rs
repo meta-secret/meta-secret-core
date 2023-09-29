@@ -2,6 +2,7 @@ use async_mutex::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use tracing::Level;
 
 use meta_secret_core::node::app::meta_app::messaging::{GenericAppStateRequest, SignUpRequest};
 use meta_secret_core::node::db::events::common::ObjectCreator;
@@ -15,14 +16,14 @@ mod common;
 
 #[tokio::test]
 async fn server_test() {
+    tracing_subscriber::fmt().with_max_level(Level::INFO).pretty().init();
+
     let server_db = Arc::new(Mutex::new(HashMap::default()));
     let server_repo = Arc::new(InMemKvLogEventRepo { db: server_db.clone() });
 
     let app_manager = NativeApplicationStateManager::init(server_db).await;
 
     async_std::task::sleep(Duration::from_secs(3)).await;
-
-    println!("MUST HAPPEN 3 SEC AFTER VD setup");
 
     let sign_up_request = GenericAppStateRequest::SignUp(SignUpRequest {
         vault_name: String::from("q"),
@@ -34,7 +35,14 @@ async fn server_test() {
         .send_request(sign_up_request.clone())
         .await;
 
-    async_std::task::sleep(Duration::from_secs(3)).await;
+    async_std::task::sleep(Duration::from_secs(1)).await;
+
+    app_manager
+        .meta_client_proxy
+        .send_request(sign_up_request.clone())
+        .await;
+
+    async_std::task::sleep(Duration::from_secs(1)).await;
 
     app_manager
         .meta_client_proxy
@@ -51,7 +59,7 @@ async fn print_events(server_repo: Arc<InMemKvLogEventRepo>) {
 
     let events = server_repo.as_ref().db.as_ref().clone().lock().await;
 
-    assert_eq!(10, events.len());
+    assert_eq!(12, events.len());
 
     {
         let meta_vault_unit_id = ObjectId::unit(&ObjectDescriptor::MetaVault);
@@ -78,16 +86,19 @@ async fn print_events(server_repo: Arc<InMemKvLogEventRepo>) {
             vault_name: vault_name.clone(),
         });
         let vault_genesis = vault_unit.next();
-        let vault_regular = vault_genesis.next();
+        let vault_sign_up_update = vault_genesis.next();
+        let vault_join_request = vault_sign_up_update.next();
+        let vault_join_update = vault_join_request.next();
 
         assert!(events.contains_key(&vault_unit));
         assert!(events.contains_key(&vault_genesis));
-        assert!(events.contains_key(&vault_regular));
+        assert!(events.contains_key(&vault_sign_up_update));
+        assert!(events.contains_key(&vault_join_request));
+        assert!(events.contains_key(&vault_join_update));
     }
 
-    //TODO check server_pk for genesis events
-
     {
+        //meta pass
         let meta_pass_unit = ObjectId::unit(&ObjectDescriptor::MetaPassword { vault_name });
         assert!(events.contains_key(&meta_pass_unit));
         assert!(events.contains_key(&meta_pass_unit.next()));

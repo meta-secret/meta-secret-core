@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use anyhow::anyhow;
-use tracing::{debug, info};
+use log::error;
+use tracing::{debug, info, instrument, Instrument};
 
 use crate::crypto::keys::KeyManager;
 use crate::models::password_recovery_request::PasswordRecoveryRequest;
@@ -26,7 +27,7 @@ pub struct MetaClient<Repo: KvLogEventRepo> {
 
 impl<Repo: KvLogEventRepo> MetaClient<Repo> {
     pub async fn find_user_creds(&self, curr_state: &GenericAppState) -> anyhow::Result<Option<ConfiguredAppState>> {
-        let maybe_creds = self.persistent_obj.repo.find_user_creds().await?;
+        let maybe_creds = self.persistent_obj.repo.find_user_creds().in_current_span().await?;
 
         match maybe_creds {
             None => Ok(None),
@@ -37,13 +38,17 @@ impl<Repo: KvLogEventRepo> MetaClient<Repo> {
         }
     }
 
+    #[instrument(skip_all)]
     pub async fn get_or_create_local_vault(
         &self,
         vault_name: &str,
         device_name: &str,
     ) -> anyhow::Result<UserCredentials> {
-        let meta_vault = self.create_meta_vault(vault_name, device_name).await?;
-        let creds = self.generate_user_credentials(meta_vault).await?;
+        let meta_vault = self
+            .create_meta_vault(vault_name, device_name)
+            .in_current_span()
+            .await?;
+        let creds = self.generate_user_credentials(meta_vault).in_current_span().await?;
         Ok(creds)
     }
 
@@ -69,10 +74,11 @@ impl<Repo: KvLogEventRepo> MetaClient<Repo> {
         }
     }
 
+    #[instrument(skip(self))]
     async fn generate_user_credentials(&self, meta_vault: MetaVault) -> anyhow::Result<UserCredentials> {
         info!("generate_user_credentials: generate a new security box");
 
-        let maybe_creds = self.persistent_obj.repo.find_user_creds().await?;
+        let maybe_creds = self.persistent_obj.repo.find_user_creds().in_current_span().await?;
 
         match maybe_creds {
             None => {
@@ -93,8 +99,8 @@ impl<Repo: KvLogEventRepo> MetaClient<Repo> {
 }
 
 impl<Repo: KvLogEventRepo> MetaClient<Repo> {
-    pub async fn sign_up(&self, curr_state: &mut ConfiguredAppState) -> JoinedAppState {
-        info!("MetaClient: sign up");
+    #[instrument(skip_all)]
+    pub async fn sign_up(&self, curr_state: &ConfiguredAppState) -> JoinedAppState {
         let vault_info = self.get_vault(&curr_state.creds).await;
 
         let join = curr_state.app_state.join_component;
@@ -103,7 +109,8 @@ impl<Repo: KvLogEventRepo> MetaClient<Repo> {
 
         if join {
             //TODO we need to know if the user in pending state (waiting for approval)
-            self.join_cluster(curr_state.clone()).await;
+            info!("Join to cluster: {:?}", curr_state.creds.user_sig.vault.name.clone());
+            self.join_cluster(curr_state.clone()).in_current_span().await;
 
             if let VaultInfo::Member { vault } = &vault_info {
                 updated_app_state.vault = Some(Box::new(vault.clone()))
@@ -120,7 +127,7 @@ impl<Repo: KvLogEventRepo> MetaClient<Repo> {
     }
 
     async fn join_cluster(&self, curr_state: ConfiguredAppState) {
-        info!("Registration: Join");
+        info!("Registration: Join cluster");
 
         let mem_pool_tail_id = self
             .persistent_obj
@@ -141,10 +148,11 @@ impl<Repo: KvLogEventRepo> MetaClient<Repo> {
         let _ = self.persistent_obj.repo.save_event(join_request).await;
     }
 
-    async fn sign_up_action(&self, vault_info: &VaultInfo, curr_state: &mut ConfiguredAppState) {
+    #[instrument(skip_all)]
+    async fn sign_up_action(&self, vault_info: &VaultInfo, curr_state: &ConfiguredAppState) {
         match vault_info {
             VaultInfo::Member { .. } => {
-                // ignore
+                info!("The client is already signed up")
             }
             VaultInfo::Pending => {
                 info!("Pending is not expected here");
@@ -155,34 +163,40 @@ impl<Repo: KvLogEventRepo> MetaClient<Repo> {
             VaultInfo::NotFound => {
                 info!("Register a new vault: {:?}", curr_state.creds.user_sig.vault);
 
-                let reg_res = self.register(&curr_state.creds).await;
+                let reg_res = self.register(&curr_state.creds).in_current_span().await;
 
                 match reg_res {
-                    Ok(_vault_info) => {
-                        info!("Successful registration");
+                    Ok(vault_info) => {
+                        info!("Successful registration, vault: {:?}", vault_info);
                     }
-                    Err(_) => {
-                        info!("Error. Registration failed");
+                    Err(err) => {
+                        error!("Error. Registration failed: {:?}", err);
                     }
                 }
             }
             VaultInfo::NotMember => {
-                curr_state.app_state.join_component = true;
+                panic!("Invalid state: sign_up action. The client is not a member of a vault.")
             }
         }
     }
 
+    #[instrument(skip_all)]
     async fn register(&self, creds: &UserCredentials) -> anyhow::Result<VaultInfo> {
-        info!("register. Sign up");
+        info!("Register. Sign up");
 
         let sign_up_request_factory = SignUpRequest {};
         let sign_up_request = sign_up_request_factory.generic_request(&creds.user_sig);
 
-        self.persistent_obj.repo.save_event(sign_up_request).await?;
+        self.persistent_obj
+            .repo
+            .save_event(sign_up_request)
+            .in_current_span()
+            .await?;
 
         Ok(VaultInfo::Pending)
     }
 
+    #[instrument(skip_all)]
     pub async fn get_vault(&self, creds: &UserCredentials) -> VaultInfo {
         debug!("Get vault");
 
@@ -190,10 +204,15 @@ impl<Repo: KvLogEventRepo> MetaClient<Repo> {
         let _ = self
             .meta_db_service_proxy
             .update_with_vault(vault_name.to_string())
+            .in_current_span()
             .await;
 
         let vault_unit_id = ObjectId::vault_unit(vault_name);
-        self.meta_db_service_proxy.get_vault_info(vault_unit_id).await.unwrap()
+        self.meta_db_service_proxy
+            .get_vault_info(vault_unit_id)
+            .in_current_span()
+            .await
+            .unwrap()
     }
 }
 

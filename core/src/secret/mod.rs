@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use tracing::Instrument;
 
 use crate::crypto::keys::KeyManager;
 use crate::models::{
@@ -110,6 +111,7 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
         let pass_tail_id = self
             .persistent_obj
             .find_tail_id_by_obj_desc(&meta_pass_obj_desc)
+            .in_current_span()
             .await
             .map(|id| id.next())
             .unwrap();
@@ -124,7 +126,12 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
             },
         });
 
-        self.persistent_obj.repo.save_event(meta_pass_event).await.unwrap();
+        self.persistent_obj
+            .repo
+            .save_event(meta_pass_event)
+            .in_current_span()
+            .await
+            .unwrap();
 
         let encrypted_shares = encryptor.encrypt(password);
 
@@ -153,7 +160,12 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
                     },
                 });
 
-                let _ = self.persistent_obj.repo.save_event(secret_share_event).await;
+                let _ = self
+                    .persistent_obj
+                    .repo
+                    .save_event(secret_share_event)
+                    .in_current_span()
+                    .await;
             } else {
                 let obj_desc = ObjectDescriptor::from(&distribution_share);
                 let secret_share_event = GenericKvLogEvent::SharedSecret(SharedSecretObject::Split {

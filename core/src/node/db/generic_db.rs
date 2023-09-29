@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use tracing::Instrument;
 
 use crate::node::db::events::common::LogEventKeyBasedRecord;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
@@ -15,7 +16,7 @@ pub trait SaveCommand {
                 panic!("Invalid event. Empty event")
             }
             KvKey::Key { obj_id, .. } => {
-                let _ = self.save(obj_id.clone(), value.clone()).await;
+                let _ = self.save(obj_id.clone(), value.clone()).in_current_span().await;
                 Ok(obj_id.clone())
             }
         }

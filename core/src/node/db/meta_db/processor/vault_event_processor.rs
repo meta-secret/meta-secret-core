@@ -46,7 +46,7 @@ impl MetaDb {
                         }
                     }
                     _ => {
-                        let err_msg = format!("SignUp event. Invalid vault store state: {:?}", self.vault_store);
+                        //let err_msg = format!("SignUp event. Invalid vault store state: {:?}", self.vault_store);
                         //panic!("{}", err_msg);
                     }
                 };

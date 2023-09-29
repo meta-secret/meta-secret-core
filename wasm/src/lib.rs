@@ -3,6 +3,8 @@ extern crate core;
 use meta_secret_core::recover_from_shares;
 use meta_secret_core::secret::data_block::common::SharedSecretConfig;
 use meta_secret_core::secret::shared_secret::{PlainText, SharedSecretEncryption, UserShareDto};
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 use wasm_bindgen::prelude::*;
 
 pub mod app_state_manager;
@@ -10,6 +12,11 @@ pub mod objects;
 pub mod utils;
 pub mod wasm_app_state_manager;
 pub mod wasm_repo;
+
+use tracing_subscriber::fmt::format::Pretty;
+use tracing_subscriber::fmt::time::UtcTime;
+use tracing_subscriber::prelude::*;
+use tracing_web::{performance_layer, MakeConsoleWriter};
 
 /// Json utilities https://github.com/rustwasm/wasm-bindgen/blob/main/crates/js-sys/tests/wasm/JSON.rs
 
@@ -55,7 +62,20 @@ extern "C" {
 pub fn configure() {
     utils::set_panic_hook();
 
-    tracing_wasm::set_as_global_default();
+    let fmt_layer = tracing_subscriber::fmt::layer()
+        .without_time()
+        .with_ansi(false)
+        //.with_max_level(Level::INFO)
+        .pretty() // Only partially supported across browsers
+        .with_timer(UtcTime::rfc_3339()) // std::time is not available in browsers
+        .with_writer(MakeConsoleWriter); // write events to the console
+
+    let perf_layer = performance_layer().with_details_from_fields(Pretty::default());
+
+    tracing_subscriber::registry()
+        .with(fmt_layer)
+        .with(perf_layer)
+        .init();
 }
 
 /// https://rustwasm.github.io/docs/wasm-bindgen/reference/arbitrary-data-with-serde.html

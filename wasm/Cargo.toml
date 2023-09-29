@@ -12,8 +12,8 @@ default = ["console_error_panic_hook"]
 
 [dependencies]
 tracing = "0.1.37"
-tracing-subscriber = "0.3.17"
-tracing-wasm = "0.2.1"
+tracing-subscriber = { version = "0.3.17", default-features = false, features = ["fmt", "time"] }
+tracing-web = "0.1.2"
 
 wasm-bindgen = { version = "0.2.87", features = ["serde-serialize"] }
 

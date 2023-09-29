@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use tracing::{instrument, Instrument};
 
 use crate::crypto::keys::KeyManager;
 use crate::models::meta_vault::MetaVault;
@@ -82,9 +83,10 @@ where
         self.save_event(generic_event).await
     }
 
+    #[instrument(skip_all)]
     async fn find_user_creds(&self) -> anyhow::Result<Option<UserCredentials>> {
         let obj_id = ObjectId::unit(&ObjectDescriptor::UserCreds);
-        let maybe_creds = self.find_one(obj_id).await?;
+        let maybe_creds = self.find_one(obj_id).in_current_span().await?;
         match maybe_creds {
             None => Ok(None),
             Some(user_creds) => match user_creds {

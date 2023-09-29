@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tracing::{debug, info};
+use tracing::{debug, info, instrument, Instrument};
 
 use crate::crypto::key_pair::KeyPair;
 use crate::crypto::keys::KeyManager;
@@ -48,20 +48,28 @@ impl<Repo: KvLogEventRepo> DataSyncApi for ServerDataSync<Repo> {
     async fn replication(&self, request: SyncRequest) -> anyhow::Result<Vec<GenericKvLogEvent>> {
         let mut commit_log: Vec<GenericKvLogEvent> = vec![];
 
-        self.global_index_replication(&request, &mut commit_log).await?;
+        self.global_index_replication(&request, &mut commit_log)
+            .in_current_span()
+            .await?;
 
-        self.vault_replication(&request, &mut commit_log).await;
+        self.vault_replication(&request, &mut commit_log)
+            .in_current_span()
+            .await;
 
-        self.meta_pass_replication(&request, &mut commit_log).await;
+        self.meta_pass_replication(&request, &mut commit_log)
+            .in_current_span()
+            .await;
 
-        self.shared_secret_replication(&request, &mut commit_log).await;
+        self.shared_secret_replication(&request, &mut commit_log)
+            .in_current_span()
+            .await;
 
         Ok(commit_log)
     }
 
     /// Handle request: all types of requests will be handled and the actions will be executed accordingly
     async fn send(&self, generic_event: GenericKvLogEvent) {
-        self.server_processing(generic_event).await;
+        self.server_processing(generic_event).in_current_span().await;
     }
 }
 
@@ -70,6 +78,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
         let server_creds = persistent_obj
             .repo
             .get_or_generate_user_creds(String::from("q"), String::from("server"))
+            .in_current_span()
             .await;
 
         ServerDataSync {
@@ -80,6 +89,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
 }
 
 impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
+    #[instrument(skip_all)]
     async fn server_processing(&self, generic_event: GenericKvLogEvent) {
         debug!("DataSync::event_processing: {:?}", &generic_event);
 
@@ -102,13 +112,20 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
 
                         info!("Looking for a vault: {}", vault_id.id_str());
 
-                        let vault_formation_event_result = self.persistent_obj.repo.find_one(vault_id.clone()).await;
+                        let vault_formation_event_result = self
+                            .persistent_obj
+                            .repo
+                            .find_one(vault_id.clone())
+                            .in_current_span()
+                            .await;
 
                         let vault_id_str = IdStr::from(&vault_id);
 
                         match vault_formation_event_result {
                             Err(_) => {
-                                self.accept_sign_up_request(event, &vault_id_str).await;
+                                self.accept_sign_up_request(event, &vault_id_str)
+                                    .in_current_span()
+                                    .await;
                             }
                             Ok(maybe_sign_up) => match maybe_sign_up {
                                 None => {
@@ -305,12 +322,10 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
                     let vault_events = self.persistent_obj.find_object_events(vault_tail_id).await;
                     commit_log.extend(vault_events);
                 } else {
-                    let msg = format!(
+                    info!(
                         "The client is not a member of the vault. Client pk: {:?}, vault store: {:?}",
                         &request.sender, meta_db.vault_store
                     );
-
-                    //info!(msg.as_str(), );
                 }
             }
         }
@@ -332,7 +347,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
 impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
     async fn accept_sign_up_request(&self, event: &KvLogEvent<UserSignature>, vault_id: &IdStr) {
         //vault not found, we can create our new vault
-        info!("Accept SignUp request");
+        info!("Accept SignUp request, for the vault: {:?}", vault_id);
 
         let server_pk = self.context.server_pk();
         let sign_up_action = SignUpAction {};
@@ -426,7 +441,7 @@ pub mod test {
     use crate::models::DeviceInfo;
     use crate::node::common::data_transfer::MpscDataTransfer;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
-    use crate::node::db::meta_db::meta_db_service::MetaDbService;
+    use crate::node::db::meta_db::meta_db_service::{MetaDbDataTransfer, MetaDbService};
 
     use super::*;
 
@@ -537,7 +552,9 @@ pub mod test {
                 persistent_obj: persistent_object.clone(),
                 repo: persistent_object.repo.clone(),
                 meta_db_id: String::from("test"),
-                data_transfer: Arc::new(MpscDataTransfer::new()),
+                data_transfer: Arc::new(MetaDbDataTransfer {
+                    dt: MpscDataTransfer::new(),
+                }),
             });
 
             let s_box = KeyManager::generate_security_box("test_vault".to_string());
