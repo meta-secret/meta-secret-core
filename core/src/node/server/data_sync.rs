@@ -441,7 +441,7 @@ pub mod test {
     use crate::models::DeviceInfo;
     use crate::node::common::data_transfer::MpscDataTransfer;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
-    use crate::node::db::meta_db::meta_db_service::MetaDbService;
+    use crate::node::db::meta_db::meta_db_service::{MetaDbDataTransfer, MetaDbService};
 
     use super::*;
 
@@ -552,7 +552,9 @@ pub mod test {
                 persistent_obj: persistent_object.clone(),
                 repo: persistent_object.repo.clone(),
                 meta_db_id: String::from("test"),
-                data_transfer: Arc::new(MpscDataTransfer::new()),
+                data_transfer: Arc::new(MetaDbDataTransfer {
+                    dt: MpscDataTransfer::new(),
+                }),
             });
 
             let s_box = KeyManager::generate_security_box("test_vault".to_string());
