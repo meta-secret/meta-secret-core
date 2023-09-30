@@ -87,8 +87,6 @@ impl MetaDb {
 
 #[cfg(test)]
 mod test {
-    use std::sync::Arc;
-
     use crate::crypto::keys::KeyManager;
     use crate::models::DeviceInfo;
     use crate::node::db::events::object_id::ObjectId;

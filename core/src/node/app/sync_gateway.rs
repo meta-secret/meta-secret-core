@@ -35,22 +35,6 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         loop {
             self.sync().in_current_span().await;
 
-            let vault_store = self
-                .meta_db_service_proxy
-                .get_vault_store()
-                .in_current_span()
-                .await
-                .unwrap();
-
-            match vault_store {
-                VaultStore::Store { vault, .. } => {
-                    self.send_shared_secrets(&vault).in_current_span().await;
-                }
-                _ => {
-                    //skip
-                }
-            }
-
             async_std::task::sleep(Duration::from_millis(300))
                 .in_current_span()
                 .await;
@@ -276,6 +260,26 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                         panic!("Error");
                     }
                 }
+
+                self.sync_shared_secrets(vault_name).await;
+            }
+        }
+    }
+
+    async fn sync_shared_secrets(&self, vault_name: &str) {
+        let vault_store = self
+            .meta_db_service_proxy
+            .get_vault_store(vault_name.to_string())
+            .in_current_span()
+            .await
+            .unwrap();
+
+        match vault_store {
+            VaultStore::Store { vault, .. } => {
+                self.send_shared_secrets(&vault).in_current_span().await;
+            }
+            _ => {
+                //skip
             }
         }
     }
@@ -296,7 +300,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         let saved_event_res = self.repo.save_event(new_db_tail_event).await;
 
         match saved_event_res {
-            Ok(_) => info!("New db tail saved"),
+            Ok(_) => debug!("New db tail saved"),
             Err(_) => {
                 info!("Error saving db tail");
             }

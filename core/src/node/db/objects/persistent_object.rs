@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tracing::{info, Instrument};
+use tracing::{debug, info, Instrument};
 
 use crate::models::user_signature::UserSignature;
 use crate::node::db::events::common::{ObjectCreator, PublicKeyRecord};
@@ -25,7 +25,7 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
         &self,
         obj_desc: &ObjectDescriptor,
     ) -> anyhow::Result<Vec<GenericKvLogEvent>> {
-        info!("get_object_events_from_beginning");
+        debug!("get_object_events_from_beginning");
 
         let unit_id = ObjectId::unit(obj_desc);
         let commit_log = self.find_object_events(&unit_id).in_current_span().await;

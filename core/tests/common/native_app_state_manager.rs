@@ -1,10 +1,7 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread;
-
-use async_mutex::Mutex;
 use tokio::runtime::Builder;
-use tracing::{info, info_span, instrument, Instrument};
+use tracing::{info, instrument, Instrument};
 
 use meta_secret_core::node::app::app_state_update_manager::NoOpJsAppStateManager;
 use meta_secret_core::node::app::client_meta_app::MetaClient;
@@ -15,8 +12,6 @@ use meta_secret_core::node::app::sync_gateway::SyncGateway;
 use meta_secret_core::node::app::virtual_device::VirtualDevice;
 use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::meta_tracing::{client_span, server_span, vd_span};
-use meta_secret_core::node::db::events::generic_log_event::GenericKvLogEvent;
-use meta_secret_core::node::db::events::object_id::ObjectId;
 use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
 use meta_secret_core::node::db::meta_db::meta_db_service::{MetaDbDataTransfer, MetaDbService, MetaDbServiceProxy};
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
@@ -30,32 +25,38 @@ pub struct NativeApplicationStateManager {
 }
 
 impl NativeApplicationStateManager {
-    pub async fn init(server_db: Arc<Mutex<HashMap<ObjectId, GenericKvLogEvent>>>) -> NativeApplicationStateManager {
+    pub async fn init(
+        client_repo: Arc<InMemKvLogEventRepo>,
+        server_repo: Arc<InMemKvLogEventRepo>,
+        vd_repo: Arc<InMemKvLogEventRepo>,
+    ) -> NativeApplicationStateManager {
         let server_data_transfer = Arc::new(ServerDataTransfer {
             dt: MpscDataTransfer::new(),
         });
 
-        NativeApplicationStateManager::server_setup(server_db.clone(), server_data_transfer.clone()).await;
+        NativeApplicationStateManager::server_setup(server_repo, server_data_transfer.clone()).await;
 
         let device_state_manager = Arc::new(NoOpJsAppStateManager {});
 
-        let vd_db = Arc::new(Mutex::new(HashMap::default()));
-        NativeApplicationStateManager::virtual_device_setup(server_data_transfer.clone(), device_state_manager, vd_db)
-            .await;
+        NativeApplicationStateManager::virtual_device_setup(
+            vd_repo,
+            server_data_transfer.clone(),
+            device_state_manager,
+        )
+        .await;
 
         let client_state_manager = Arc::new(NoOpJsAppStateManager {});
 
-        NativeApplicationStateManager::client_setup(server_data_transfer.clone(), client_state_manager).await
+        NativeApplicationStateManager::client_setup(client_repo, server_data_transfer, client_state_manager).await
     }
 
     #[instrument(name = "Client", skip_all)]
     pub async fn client_setup(
+        client_repo: Arc<InMemKvLogEventRepo>,
         server_dt: Arc<ServerDataTransfer>,
         js_app_state: Arc<NoOpJsAppStateManager>,
     ) -> NativeApplicationStateManager {
         info!("Client setup");
-
-        let db = Arc::new(Mutex::new(HashMap::default()));
 
         let dt_meta_client = Arc::new(MetaClientDataTransfer {
             dt: MpscDataTransfer::new(),
@@ -72,14 +73,12 @@ impl NativeApplicationStateManager {
         });
 
         //run meta db service
-        let db_for_meta_db = db.clone();
+        let client_repo_for_meta_db = client_repo.clone();
         thread::spawn(move || {
             let rt = Builder::new_current_thread().enable_all().build().unwrap();
             rt.block_on(async {
-                let client_repo = Arc::new(InMemKvLogEventRepo { db: db_for_meta_db });
-
                 let persistent_obj = {
-                    let obj = PersistentObject::new(client_repo.clone());
+                    let obj = PersistentObject::new(client_repo_for_meta_db);
                     Arc::new(obj)
                 };
 
@@ -95,10 +94,8 @@ impl NativeApplicationStateManager {
 
         //run meta client sync gateway
         let dt_for_gateway = server_dt.clone();
-        let db_for_sync_gw = db.clone();
         let proxy_for_sync_gw = meta_db_service_proxy.clone();
 
-        let client_repo = Arc::new(InMemKvLogEventRepo { db: db_for_sync_gw });
         let sync_gateway = Arc::new(SyncGateway {
             id: String::from("client-gateway"),
             repo: client_repo.clone(),
@@ -118,8 +115,6 @@ impl NativeApplicationStateManager {
         thread::spawn(move || {
             let rt = Builder::new_current_thread().enable_all().build().unwrap();
             rt.block_on(async {
-                let client_repo = Arc::new(InMemKvLogEventRepo { db });
-
                 let persistent_obj = {
                     let obj = PersistentObject::new(client_repo.clone());
                     Arc::new(obj)
@@ -150,9 +145,9 @@ impl NativeApplicationStateManager {
 
     #[instrument(name = "Vd", skip_all)]
     pub async fn virtual_device_setup(
+        vd_repo: Arc<InMemKvLogEventRepo>,
         dt: Arc<ServerDataTransfer>,
         js_app_state: Arc<NoOpJsAppStateManager>,
-        db: Arc<Mutex<HashMap<ObjectId, GenericKvLogEvent>>>,
     ) {
         let vd_meta_db_data_transfer = Arc::new(MetaDbDataTransfer {
             dt: MpscDataTransfer::new(),
@@ -169,17 +164,15 @@ impl NativeApplicationStateManager {
         });
 
         //run vd meta db service
-        let vd_db_meta_db = db.clone();
+        let vd_repo_meta_db = vd_repo.clone();
         thread::spawn(move || {
             let rt = Builder::new_current_thread().enable_all().build().unwrap();
             rt.block_on(async {
-                let device_repo = Arc::new(InMemKvLogEventRepo { db: vd_db_meta_db });
-
-                let persistent_obj = Arc::new(PersistentObject::new(device_repo.clone()));
+                let persistent_obj = Arc::new(PersistentObject::new(vd_repo_meta_db.clone()));
 
                 let meta_db_service = MetaDbService {
                     persistent_obj: persistent_obj.clone(),
-                    repo: device_repo.clone(),
+                    repo: vd_repo_meta_db,
                     meta_db_id: String::from("virtual_device"),
                     data_transfer: vd_meta_db_data_transfer,
                 };
@@ -188,8 +181,7 @@ impl NativeApplicationStateManager {
             });
         });
 
-        let device_repo = Arc::new(InMemKvLogEventRepo { db: db.clone() });
-        let persistent_object = Arc::new(PersistentObject::new(device_repo.clone()));
+        let persistent_object = Arc::new(PersistentObject::new(vd_repo.clone()));
         let gateway = Arc::new(SyncGateway {
             id: String::from("vd-gateway"),
             repo: persistent_object.repo.clone(),
@@ -199,15 +191,13 @@ impl NativeApplicationStateManager {
         });
 
         //run meta client service
-        let vd_db_meta_client = db.clone();
+        let vd_db_meta_client = vd_repo.clone();
         let service_proxy_for_client = vd_meta_db_service_proxy.clone();
         let mc_gw = gateway.clone();
         thread::spawn(move || {
             let rt = Builder::new_current_thread().enable_all().build().unwrap();
             rt.block_on(async {
-                let device_repo = Arc::new(InMemKvLogEventRepo { db: vd_db_meta_client });
-
-                let persistent_object = Arc::new(PersistentObject::new(device_repo.clone()));
+                let persistent_object = Arc::new(PersistentObject::new(vd_db_meta_client));
 
                 let meta_client_service = {
                     let meta_client = Arc::new(MetaClient {
@@ -245,10 +235,7 @@ impl NativeApplicationStateManager {
     }
 
     #[instrument(name = "MetaServer", skip_all)]
-    pub async fn server_setup(
-        db: Arc<Mutex<HashMap<ObjectId, GenericKvLogEvent>>>,
-        server_dt: Arc<ServerDataTransfer>,
-    ) {
+    pub async fn server_setup(server_repo: Arc<InMemKvLogEventRepo>, server_dt: Arc<ServerDataTransfer>) {
         info!("Server initialization");
 
         let meta_db_data_transfer = Arc::new(MetaDbDataTransfer {
@@ -256,21 +243,19 @@ impl NativeApplicationStateManager {
         });
 
         //run meta_db service
-        let db_meta = db.clone();
         let dt_for_meta = meta_db_data_transfer.clone();
+        let server_repo_for_meta = server_repo.clone();
         thread::spawn(move || {
             let rt = Builder::new_current_thread().enable_all().build().unwrap();
             rt.block_on(async {
-                let server_repo = Arc::new(InMemKvLogEventRepo { db: db_meta });
-
                 let server_persistent_obj = {
-                    let obj = PersistentObject::new(server_repo.clone());
+                    let obj = PersistentObject::new(server_repo_for_meta.clone());
                     Arc::new(obj)
                 };
 
                 let meta_db_service = MetaDbService {
                     persistent_obj: server_persistent_obj,
-                    repo: server_repo,
+                    repo: server_repo_for_meta,
                     meta_db_id: String::from("Server"),
                     data_transfer: dt_for_meta,
                 };
@@ -280,19 +265,19 @@ impl NativeApplicationStateManager {
         });
 
         //run server
-        let db_server = db.clone();
-        let dt_for_server = meta_db_data_transfer.clone();
         thread::spawn(move || {
             let rt = Builder::new_current_thread().enable_all().build().unwrap();
             rt.block_on(async {
-                let server_repo = Arc::new(InMemKvLogEventRepo { db: db_server });
-
                 let server_persistent_obj = {
                     let obj = PersistentObject::new(server_repo.clone());
                     Arc::new(obj)
                 };
 
-                let server_data_sync = ServerDataSync::new(server_persistent_obj)
+                let meta_db_service_proxy = Arc::new(MetaDbServiceProxy {
+                    dt: meta_db_data_transfer,
+                });
+
+                let server_data_sync = ServerDataSync::new(server_persistent_obj, meta_db_service_proxy)
                     .instrument(server_span())
                     .await;
                 let data_sync = Arc::new(server_data_sync);
@@ -300,7 +285,6 @@ impl NativeApplicationStateManager {
                 let server = Arc::new(ServerApp {
                     data_sync,
                     data_transfer: server_dt,
-                    meta_db_service_proxy: Arc::new(MetaDbServiceProxy { dt: dt_for_server }),
                 });
                 server.run().instrument(server_span()).await;
             });

@@ -53,7 +53,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
         meta_client_access_proxy: Arc<MetaClientAccessProxy>,
         meta_db_service_proxy: Arc<MetaDbServiceProxy>,
         dt: Arc<ServerDataTransfer>,
-        gateway: Arc<SyncGateway<Repo>>
+        gateway: Arc<SyncGateway<Repo>>,
     ) {
         info!("Run virtual device event handler");
 
@@ -101,18 +101,16 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
                 .await;
         }
 
+        let vault_name = creds.user_sig.vault.name.clone();
         loop {
             gateway.sync().in_current_span().await;
 
             let meta_db_service = virtual_device.meta_client.meta_db_service_proxy.clone();
-            meta_db_service.sync_db().in_current_span().await;
-
-            meta_db_service
-                .update_with_vault(creds.user_sig.vault.name.clone())
+            let vault_store = meta_db_service
+                .get_vault_store(vault_name.clone())
                 .in_current_span()
-                .await;
-
-            let vault_store = meta_db_service.get_vault_store().in_current_span().await.unwrap();
+                .await
+                .unwrap();
 
             if let VaultStore::Store { tail_id, vault, .. } = vault_store {
                 let vd_repo = virtual_device.meta_client.persistent_obj.repo.clone();

@@ -7,7 +7,6 @@ use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::generic_db::KvLogEventRepo;
-use crate::node::db::meta_db::meta_db_service::MetaDbServiceProxy;
 use crate::node::db::objects::persistent_object::PersistentGlobalIndexApi;
 
 use crate::node::server::data_sync::{DataSyncApi, DataSyncMessage, MetaServerContext, ServerDataSync};
@@ -15,7 +14,6 @@ use crate::node::server::data_sync::{DataSyncApi, DataSyncMessage, MetaServerCon
 pub struct ServerApp<Repo: KvLogEventRepo> {
     pub data_sync: Arc<ServerDataSync<Repo>>,
     pub data_transfer: Arc<ServerDataTransfer>,
-    pub meta_db_service_proxy: Arc<MetaDbServiceProxy>,
 }
 
 pub struct ServerDataTransfer {
@@ -35,8 +33,6 @@ where
         while let Ok(sync_message) = self.data_transfer.dt.service_receive().in_current_span().await {
             match sync_message {
                 DataSyncMessage::SyncRequest(request) => {
-                    self.meta_db_service_proxy.sync_db().in_current_span().await;
-
                     let new_events_result = self.data_sync.replication(request).in_current_span().await;
                     let new_events = match new_events_result {
                         Ok(data) => {

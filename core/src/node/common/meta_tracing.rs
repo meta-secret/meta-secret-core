@@ -1,8 +1,8 @@
 use tracing::{info_span, Span};
 
-const SERVER_SPAN: &str = "MetaServer";
-const CLIENT_SPAN: &str = "MetaClient";
-const VD_SPAN: &str = "Vd";
+pub const SERVER_SPAN: &str = "MetaServer";
+pub const CLIENT_SPAN: &str = "MetaClient";
+pub const VD_SPAN: &str = "Vd";
 
 pub fn server_span() -> Span {
     info_span!(SERVER_SPAN)
