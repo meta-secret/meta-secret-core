@@ -265,7 +265,7 @@ where
         });
 
         let data_sync = Arc::new(
-            ServerDataSync::new(server_persistent_obj.clone())
+            ServerDataSync::new(server_persistent_obj.clone(), meta_db_service_proxy.clone())
                 .in_current_span()
                 .await,
         );
@@ -273,7 +273,6 @@ where
         let server = Arc::new(ServerApp {
             data_sync,
             data_transfer: server_dt.clone(),
-            meta_db_service_proxy,
         });
 
         let server_async = server.clone();

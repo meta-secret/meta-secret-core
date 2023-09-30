@@ -204,7 +204,7 @@ mod test {
 
     #[tokio::test]
     async fn test() {
-        let ctx = DataSyncTestContext::new();
+        let ctx = DataSyncTestContext::default();
         let data_sync = ctx.data_sync;
 
         let vault_unit = GenericKvLogEvent::Vault(VaultObject::unit(&ctx.user_sig));

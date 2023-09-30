@@ -23,7 +23,6 @@ wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 
 #[wasm_bindgen_test]
 async fn pass_async() {
-    //open_db("meta-secret").in_current_span().await;
     WasmRepo::default().delete_db().await;
     WasmRepo::server().delete_db().await;
     WasmRepo::virtual_device().delete_db().await;

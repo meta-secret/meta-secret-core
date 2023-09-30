@@ -200,16 +200,10 @@ impl<Repo: KvLogEventRepo> MetaClient<Repo> {
     pub async fn get_vault(&self, creds: &UserCredentials) -> VaultInfo {
         debug!("Get vault");
 
-        let vault_name = creds.user_sig.vault.name.as_str();
-        let _ = self
-            .meta_db_service_proxy
-            .update_with_vault(vault_name.to_string())
-            .in_current_span()
-            .await;
+        let vault_name = creds.user_sig.vault.name.clone();
 
-        let vault_unit_id = ObjectId::vault_unit(vault_name);
         self.meta_db_service_proxy
-            .get_vault_info(vault_unit_id)
+            .get_vault_info(vault_name)
             .in_current_span()
             .await
             .unwrap()
@@ -225,9 +219,6 @@ where
 
         match &app_state.vault_info {
             VaultInfo::Member { vault } => {
-                let vault_name = vault.vault_name.clone();
-                self.meta_db_service_proxy.update_with_vault(vault_name).await;
-
                 let distributor = MetaDistributor {
                     persistent_obj: self.persistent_obj.clone(),
                     vault: vault.clone(),
@@ -241,8 +232,6 @@ where
             VaultInfo::NotFound => {}
             VaultInfo::NotMember => {}
         };
-
-        self.meta_db_service_proxy.sync_db().await;
     }
 
     pub async fn recovery_request(&self, meta_pass_id: MetaPasswordId, app_state: &JoinedAppState) {
@@ -281,8 +270,6 @@ where
 
                     let _ = self.persistent_obj.repo.save(slot_id, generic_event).await;
                 }
-
-                self.meta_db_service_proxy.sync_db().await
             }
             VaultInfo::Pending => {}
             VaultInfo::Declined => {}

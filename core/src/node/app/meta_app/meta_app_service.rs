@@ -51,9 +51,7 @@ where
 
                     let vault_info = self.meta_client.get_vault(&creds).in_current_span().await;
 
-                    info!("VAULTT infa: {:?}", vault_info);
                     if let VaultInfo::NotMember = vault_info {
-                        info!("ACTIVATE JOIIINNN. state: {:?}", state.state);
                         new_app_state.join_component = true;
                     }
 
@@ -66,15 +64,6 @@ where
                 }
             }
             GenericAppState::Configured(configured) => {
-                let vault_info = self.meta_client.get_vault(&configured.creds).in_current_span().await;
-
-                info!("VAULTT infa: {:?}", vault_info);
-                if let VaultInfo::NotMember = vault_info {
-                    info!("ACTIVATE JOIIINNN. state: {:?}", state.state);
-                    //configured.app_state.join_component = true;
-                }
-
-                info!("CONFIGURE!!!! {:?}", state.state);
                 let joined_app_state = self.meta_client.sign_up(configured).in_current_span().await;
                 state.state = GenericAppState::Joined(joined_app_state);
             }
@@ -124,7 +113,7 @@ where
                 let pass_store = self
                     .meta_client
                     .meta_db_service_proxy
-                    .get_meta_pass_store()
+                    .get_meta_pass_store(app_state.creds.user_sig.vault.name.clone())
                     .await
                     .unwrap();
                 match pass_store {
@@ -187,7 +176,9 @@ where
         if let Ok(Some(configured_app_state)) = maybe_configured_app_state {
             let vault_info = self.meta_client.get_vault(&configured_app_state.creds).await;
 
-            if let VaultInfo::Member { .. } = &vault_info {
+            if let VaultInfo::Member { vault } = &vault_info {
+                let vault_name = vault.vault_name.clone();
+
                 service_state.state = GenericAppState::Joined(JoinedAppState {
                     app_state: configured_app_state.app_state,
                     creds: configured_app_state.creds,
@@ -197,7 +188,7 @@ where
                 let meta_pass_store = self
                     .meta_client
                     .meta_db_service_proxy
-                    .get_meta_pass_store()
+                    .get_meta_pass_store(vault_name)
                     .await
                     .unwrap();
 
