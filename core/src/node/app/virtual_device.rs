@@ -89,7 +89,11 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
             .in_current_span()
             .await;
 
-        let vault_info = virtual_device.meta_client.get_vault(&creds).in_current_span().await;
+        let vault_info = virtual_device
+            .meta_client
+            .get_vault(creds.user_sig.vault.name.clone())
+            .in_current_span()
+            .await;
         if let VaultInfo::Member { .. } = vault_info {
             //vd is already a member of a vault
         } else {
@@ -125,7 +129,18 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
                     let _ = vd_repo.save_event(accept_event).in_current_span().await;
                 }
 
-                gateway.send_shared_secrets(&vault).in_current_span().await;
+                let db_tail = virtual_device
+                    .meta_client
+                    .persistent_obj
+                    .get_db_tail(vault_name.as_str())
+                    .in_current_span()
+                    .await
+                    .unwrap();
+
+                gateway
+                    .sync_shared_secrets(&vault.vault_name, &creds, &db_tail)
+                    .in_current_span()
+                    .await;
             };
 
             async_std::task::sleep(std::time::Duration::from_millis(300))

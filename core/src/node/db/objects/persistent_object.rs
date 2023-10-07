@@ -114,6 +114,7 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
                     meta_pass_id: DbTailObject::Empty {
                         unit_id: ObjectId::meta_pass_unit(vault_name),
                     },
+                    s_s_audit: None,
                 };
 
                 let tail_event = {
@@ -210,7 +211,7 @@ mod test {
 
     use crate::crypto::keys::KeyManager;
     use crate::models::DeviceInfo;
-    use crate::node::db::events::common::{LogEventKeyBasedRecord, PublicKeyRecord};
+    use crate::node::db::events::common::{LogEventKeyBasedRecord, ObjectCreator, PublicKeyRecord};
     use crate::node::db::events::generic_log_event::GenericKvLogEvent;
     use crate::node::db::events::global_index::{GlobalIndexObject, GlobalIndexRecord};
     use crate::node::db::events::kv_log_event::KvKey;
@@ -252,9 +253,7 @@ mod test {
 
         let vault_1_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Update {
             event: KvLogEvent {
-                key: KvKey::Empty {
-                    obj_desc: ObjectDescriptor::GlobalIndex,
-                },
+                key: KvKey::unit(&ObjectDescriptor::GlobalIndex),
                 value: GlobalIndexRecord {
                     vault_id: String::from("vault_1"),
                 },
@@ -313,13 +312,6 @@ mod test {
             .await
             .unwrap();
 
-        match genesis_event.key() {
-            KvKey::Empty { .. } => {
-                panic!("Invalid state");
-            }
-            KvKey::Key { obj_id, .. } => {
-                assert_eq!(obj_id.id_str(), tail_id.id_str());
-            }
-        }
+        assert_eq!(genesis_event.key().obj_id.id_str(), tail_id.id_str());
     }
 }

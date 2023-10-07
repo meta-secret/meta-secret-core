@@ -7,7 +7,7 @@ use crate::node::db::events::vault_event::VaultObject;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[serde(tag = "event_type")]
+#[serde(tag = "__generic_event_type")]
 pub enum GenericKvLogEvent {
     GlobalIndex(GlobalIndexObject),
     Vault(VaultObject),

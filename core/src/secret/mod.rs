@@ -10,7 +10,6 @@ use crate::node::db::events::common::ObjectCreator;
 use crate::node::db::events::common::{MetaPassObject, SharedSecretObject};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::local::KvLogEventLocal;
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{IdGen, ObjectId};
 use crate::node::db::generic_db::KvLogEventRepo;
@@ -118,7 +117,7 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
 
         let meta_pass_event = GenericKvLogEvent::MetaPass(MetaPassObject::Update {
             event: KvLogEvent {
-                key: KvKey::Key {
+                key: KvKey {
                     obj_id: pass_tail_id,
                     obj_desc: meta_pass_obj_desc,
                 },
@@ -150,12 +149,10 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
                 secret_message: Box::new(cipher_msg),
             };
 
-            let meta_pass_id = pass.id.id.clone();
-
             if cipher_share.receiver.vault.device.device_id == self.user_creds.user_sig.vault.device.device_id {
-                let secret_share_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::LocalSecretShare {
+                let secret_share_event = GenericKvLogEvent::SharedSecret(SharedSecretObject::Split {
                     event: KvLogEvent {
-                        key: KvKey::unit(&ObjectDescriptor::LocalSecretShare { meta_pass_id }),
+                        key: KvKey::unit(&ObjectDescriptor::from(&distribution_share)),
                         value: distribution_share,
                     },
                 });
@@ -170,9 +167,7 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
                 let obj_desc = ObjectDescriptor::from(&distribution_share);
                 let secret_share_event = GenericKvLogEvent::SharedSecret(SharedSecretObject::Split {
                     event: KvLogEvent {
-                        key: KvKey::Empty {
-                            obj_desc: obj_desc.clone(),
-                        },
+                        key: KvKey::unit(&ObjectDescriptor::from(&distribution_share)),
                         value: distribution_share,
                     },
                 });
@@ -266,15 +261,8 @@ mod test {
                 .cloned()
                 .collect::<Vec<GenericKvLogEvent>>();
             db.sort_by(|a, b| {
-                let a_id = match a.key() {
-                    KvKey::Empty { obj_desc } => obj_desc.to_id(),
-                    KvKey::Key { obj_id, .. } => obj_id.id_str(),
-                };
-
-                let b_id = match b.key() {
-                    KvKey::Empty { obj_desc } => obj_desc.to_id(),
-                    KvKey::Key { obj_id, .. } => obj_id.id_str(),
-                };
+                let a_id = a.key().obj_id.id_str();
+                let b_id = b.key().obj_id.id_str();
 
                 a_id.as_str().partial_cmp(b_id.as_str()).unwrap()
             });
@@ -282,10 +270,7 @@ mod test {
             println!("total events: {}", db.len());
             for event in db {
                 println!("event:");
-                let id = match event.key() {
-                    KvKey::Empty { obj_desc } => obj_desc.to_id(),
-                    KvKey::Key { obj_id, .. } => obj_id.id_str(),
-                };
+                let id = event.key().obj_id.id_str();
                 println!(" key: {}", serde_json::to_string(&id).unwrap());
                 println!(" event: {}", serde_json::to_string(&event).unwrap());
             }

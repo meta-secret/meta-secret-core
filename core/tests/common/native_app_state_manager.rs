@@ -21,7 +21,7 @@ use meta_secret_core::node::server::server_app::{ServerApp, ServerDataTransfer};
 pub struct NativeApplicationStateManager {
     pub state_manager: Arc<NoOpJsAppStateManager>,
     pub meta_client_proxy: Arc<MetaClientAccessProxy>,
-    pub data_transfer: Arc<ServerDataTransfer>,
+    pub server_data_transfer: Arc<ServerDataTransfer>,
 }
 
 impl NativeApplicationStateManager {
@@ -139,7 +139,7 @@ impl NativeApplicationStateManager {
         Self {
             state_manager: js_app_state,
             meta_client_proxy,
-            data_transfer: server_dt,
+            server_data_transfer: server_dt,
         }
     }
 

@@ -11,4 +11,6 @@ pub struct SyncRequest {
     pub meta_pass_tail_id: Option<ObjectId>,
 
     pub global_index: Option<ObjectId>,
+    
+    pub s_s_audit: Option<ObjectId>
 }

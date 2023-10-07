@@ -5,16 +5,15 @@ use log::error;
 use tracing::{debug, info, instrument, Instrument};
 
 use crate::crypto::keys::KeyManager;
-use crate::models::password_recovery_request::PasswordRecoveryRequest;
-use crate::models::{MetaPasswordId, MetaVault, UserCredentials};
+use crate::models::{MetaVault, UserCredentials};
 use crate::node::app::meta_app::app_state::{ConfiguredAppState, GenericAppState, JoinedAppState};
 use crate::node::app::meta_vault_manager::{MetaVaultManager, UserCredentialsManager};
 use crate::node::db::actions::sign_up::SignUpRequest;
-use crate::node::db::events::common::{MemPoolObject, ObjectCreator, SharedSecretObject, VaultInfo};
+use crate::node::db::events::common::{MemPoolObject, VaultInfo};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
-use crate::node::db::events::object_id::{IdGen, ObjectId};
+use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::meta_db::meta_db_service::MetaDbServiceProxy;
 use crate::node::db::objects::persistent_object::PersistentObject;
@@ -101,22 +100,22 @@ impl<Repo: KvLogEventRepo> MetaClient<Repo> {
 impl<Repo: KvLogEventRepo> MetaClient<Repo> {
     #[instrument(skip_all)]
     pub async fn sign_up(&self, curr_state: &ConfiguredAppState) -> JoinedAppState {
-        let vault_info = self.get_vault(&curr_state.creds).await;
-
         let join = curr_state.app_state.join_component;
-
-        let mut updated_app_state = curr_state.app_state.clone();
 
         if join {
             //TODO we need to know if the user in pending state (waiting for approval)
             info!("Join to cluster: {:?}", curr_state.creds.user_sig.vault.name.clone());
             self.join_cluster(curr_state.clone()).in_current_span().await;
-
-            if let VaultInfo::Member { vault } = &vault_info {
-                updated_app_state.vault = Some(Box::new(vault.clone()))
-            }
         } else {
+            let vault_info = self.get_vault(curr_state.creds.user_sig.vault.name.clone()).await;
             self.sign_up_action(&vault_info, curr_state).await;
+        }
+
+        let mut updated_app_state = curr_state.app_state.clone();
+
+        let vault_info = self.get_vault(curr_state.creds.user_sig.vault.name.clone()).await;
+        if let VaultInfo::Member { vault } = &vault_info {
+            updated_app_state.vault = Some(Box::new(vault.clone()))
         }
 
         JoinedAppState {
@@ -131,15 +130,15 @@ impl<Repo: KvLogEventRepo> MetaClient<Repo> {
 
         let mem_pool_tail_id = self
             .persistent_obj
-            .find_tail_id_by_obj_desc(&ObjectDescriptor::Mempool)
+            .find_tail_id_by_obj_desc(&ObjectDescriptor::MemPool)
             .await
             .unwrap_or(ObjectId::mempool_unit());
 
         let join_request = GenericKvLogEvent::MemPool(MemPoolObject::JoinRequest {
             event: KvLogEvent {
-                key: KvKey::Key {
+                key: KvKey {
                     obj_id: mem_pool_tail_id,
-                    obj_desc: ObjectDescriptor::Mempool,
+                    obj_desc: ObjectDescriptor::MemPool,
                 },
                 value: curr_state.creds.user_sig.as_ref().clone(),
             },
@@ -197,10 +196,8 @@ impl<Repo: KvLogEventRepo> MetaClient<Repo> {
     }
 
     #[instrument(skip_all)]
-    pub async fn get_vault(&self, creds: &UserCredentials) -> VaultInfo {
+    pub async fn get_vault(&self, vault_name: String) -> VaultInfo {
         debug!("Get vault");
-
-        let vault_name = creds.user_sig.vault.name.clone();
 
         self.meta_db_service_proxy
             .get_vault_info(vault_name)
@@ -215,66 +212,19 @@ where
     Repo: KvLogEventRepo,
 {
     pub async fn cluster_distribution(&self, pass_id: &str, pass: &str, app_state: &JoinedAppState) {
-        info!("cluster distribution!!!!");
+        info!("Cluster distribution. App state: {:?}", app_state);
 
-        match &app_state.vault_info {
-            VaultInfo::Member { vault } => {
-                let distributor = MetaDistributor {
-                    persistent_obj: self.persistent_obj.clone(),
-                    vault: vault.clone(),
-                    user_creds: Arc::new(app_state.creds.clone()),
-                };
+        if let VaultInfo::Member { vault } = &app_state.vault_info {
+            let distributor = MetaDistributor {
+                persistent_obj: self.persistent_obj.clone(),
+                vault: vault.clone(),
+                user_creds: Arc::new(app_state.creds.clone()),
+            };
 
-                distributor.distribute(pass_id.to_string(), pass.to_string()).await;
-            }
-            VaultInfo::Pending => {}
-            VaultInfo::Declined => {}
-            VaultInfo::NotFound => {}
-            VaultInfo::NotMember => {}
-        };
-    }
-
-    pub async fn recovery_request(&self, meta_pass_id: MetaPasswordId, app_state: &JoinedAppState) {
-        match &app_state.vault_info {
-            VaultInfo::Member { vault } => {
-                for curr_sig in &vault.signatures {
-                    if app_state.creds.user_sig.public_key.base64_text == curr_sig.public_key.base64_text {
-                        continue;
-                    }
-
-                    let recovery_request = PasswordRecoveryRequest {
-                        id: Box::new(meta_pass_id.clone()),
-                        consumer: Box::new(curr_sig.clone()),
-                        provider: app_state.creds.user_sig.clone(),
-                    };
-
-                    let obj_desc = ObjectDescriptor::SharedSecret {
-                        vault_name: curr_sig.vault.name.clone(),
-                        device_id: curr_sig.vault.device.device_id.clone(),
-                    };
-                    let generic_event = GenericKvLogEvent::SharedSecret(SharedSecretObject::RecoveryRequest {
-                        event: KvLogEvent {
-                            key: KvKey::Empty {
-                                obj_desc: obj_desc.clone(),
-                            },
-                            value: recovery_request,
-                        },
-                    });
-
-                    let slot_id = self
-                        .persistent_obj
-                        .find_tail_id_by_obj_desc(&obj_desc)
-                        .await
-                        .map(|id| id.next())
-                        .unwrap_or(ObjectId::unit(&obj_desc));
-
-                    let _ = self.persistent_obj.repo.save(slot_id, generic_event).await;
-                }
-            }
-            VaultInfo::Pending => {}
-            VaultInfo::Declined => {}
-            VaultInfo::NotFound => {}
-            VaultInfo::NotMember => {}
+            distributor.distribute(pass_id.to_string(), pass.to_string()).await;
+        } else {
+            error!("Password distribution is not available. The user is not a member of the vault");
+            panic!();
         }
     }
 }

@@ -2,10 +2,10 @@ use crate::models::password_recovery_request::PasswordRecoveryRequest;
 use crate::models::{Base64EncodedText, MetaPasswordDoc, SecretDistributionDocData, UserSignature, VaultDoc};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
+use crate::node::db::events::object_id::ObjectId;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[serde(tag = "mem_pool_obj")]
 pub enum MemPoolObject {
     JoinRequest { event: KvLogEvent<UserSignature> },
 }
@@ -20,7 +20,6 @@ impl MemPoolObject {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[serde(tag = "meta_pass_obj")]
 pub enum MetaPassObject {
     Unit { event: KvLogEvent<()> },
     Genesis { event: KvLogEvent<PublicKeyRecord> },
@@ -39,7 +38,6 @@ impl MetaPassObject {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[serde(tag = "shared_secret_obj")]
 pub enum SharedSecretObject {
     Split {
         event: KvLogEvent<SecretDistributionDocData>,
@@ -50,6 +48,9 @@ pub enum SharedSecretObject {
     RecoveryRequest {
         event: KvLogEvent<PasswordRecoveryRequest>,
     },
+    Audit {
+        event: KvLogEvent<ObjectId>,
+    },
 }
 
 impl SharedSecretObject {
@@ -58,6 +59,7 @@ impl SharedSecretObject {
             SharedSecretObject::Split { event } => &event.key,
             SharedSecretObject::Recover { event } => &event.key,
             SharedSecretObject::RecoveryRequest { event } => &event.key,
+            SharedSecretObject::Audit { event } => &event.key,
         }
     }
 }
@@ -85,6 +87,7 @@ pub trait ObjectCreator<T> {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(tag = "__vault_ingo")]
 pub enum VaultInfo {
     /// Device is a member of a vault
     Member { vault: VaultDoc },

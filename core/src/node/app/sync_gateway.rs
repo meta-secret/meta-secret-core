@@ -1,8 +1,9 @@
 use std::sync::Arc;
 use std::time::Duration;
+
 use tracing::{debug, error, info, instrument, Instrument};
 
-use crate::models::VaultDoc;
+use crate::models::UserCredentials;
 use crate::node::app::meta_vault_manager::UserCredentialsManager;
 use crate::node::db::events::common::{LogEventKeyBasedRecord, ObjectCreator, SharedSecretObject};
 use crate::node::db::events::db_tail::{DbTail, DbTailObject};
@@ -35,43 +36,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         loop {
             self.sync().in_current_span().await;
 
-            async_std::task::sleep(Duration::from_millis(300))
-                .in_current_span()
-                .await;
-        }
-    }
-
-    pub async fn send_shared_secrets(&self, vault_doc: &VaultDoc) {
-        let creds_result = self.repo.find_user_creds().in_current_span().await;
-
-        if let Ok(Some(client_creds)) = creds_result {
-            let user_pk = client_creds.user_sig.public_key.base64_text;
-
-            for user_sig in &vault_doc.signatures {
-                if user_pk == user_sig.public_key.base64_text.clone() {
-                    continue;
-                }
-
-                let obj_desc = ObjectDescriptor::SharedSecret {
-                    vault_name: user_sig.vault.name.clone(),
-                    device_id: user_sig.vault.device.device_id.clone(),
-                };
-                let obj_id = ObjectId::unit(&obj_desc);
-                let events = self
-                    .persistent_object
-                    .find_object_events(&obj_id)
-                    .in_current_span()
-                    .await;
-
-                for event in events {
-                    debug!("Send shared secret event to server: {:?}", event);
-                    self.server_dt
-                        .dt
-                        .send_to_service(DataSyncMessage::Event(event))
-                        .in_current_span()
-                        .await;
-                }
-            }
+            async_std::task::sleep(Duration::from_millis(300)).await;
         }
     }
 
@@ -91,49 +56,33 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
 
             Ok(Some(client_creds)) => {
                 let vault_name = client_creds.user_sig.vault.name.as_str();
-                let db_tail_result = self
-                    .persistent_object
-                    .get_db_tail(vault_name)
-                    .in_current_span()
-                    .in_current_span()
-                    .await;
+                let db_tail_result = self.persistent_object.get_db_tail(vault_name).in_current_span().await;
 
                 match db_tail_result {
                     Ok(db_tail) => {
-                        let new_tail_for_gi = self
-                            .get_new_tail_for_global_index(&db_tail)
-                            .in_current_span()
-                            .in_current_span()
-                            .await;
+                        let new_gi_tail = self.get_new_tail_for_global_index(&db_tail).in_current_span().await;
 
-                        let new_tail_for_vault = self
-                            .get_new_tail_for_an_obj(&db_tail.vault_id)
-                            .in_current_span()
-                            .in_current_span()
-                            .await;
+                        let new_vault_tail_id = self.get_new_tail_for_an_obj(&db_tail.vault_id).in_current_span().await;
 
-                        let new_tail_for_meta_pass = self
+                        let new_meta_pass_tail_id = self
                             .get_new_tail_for_an_obj(&db_tail.meta_pass_id)
                             .in_current_span()
-                            .in_current_span()
                             .await;
 
-                        let new_tail_for_mem_pool = self
-                            .get_new_tail_for_mem_pool(&db_tail)
-                            .in_current_span()
-                            .in_current_span()
-                            .await;
+                        let new_mem_pool_tail_id = self.get_new_tail_for_mem_pool(&db_tail).in_current_span().await;
+
+                        let new_audit_tail = self.sync_shared_secrets(vault_name, &client_creds, &db_tail).await;
 
                         let new_db_tail = DbTail {
-                            vault_id: new_tail_for_vault,
-                            meta_pass_id: new_tail_for_meta_pass,
+                            vault_id: new_vault_tail_id,
+                            meta_pass_id: new_meta_pass_tail_id,
 
-                            maybe_global_index_id: new_tail_for_gi,
-                            maybe_mem_pool_id: new_tail_for_mem_pool.clone(),
+                            maybe_global_index_id: new_gi_tail,
+                            maybe_mem_pool_id: new_mem_pool_tail_id.clone(),
+                            s_s_audit: new_audit_tail.clone(),
                         };
 
                         self.save_updated_db_tail(db_tail, new_db_tail.clone())
-                            .in_current_span()
                             .in_current_span()
                             .await;
 
@@ -153,77 +102,29 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                                 global_index: new_db_tail.maybe_global_index_id.clone().map(|gi| gi.next()),
                                 vault_tail_id: Some(vault_id_request),
                                 meta_pass_tail_id: Some(meta_pass_id_request),
+                                s_s_audit: new_audit_tail.clone(),
                             }
                         };
 
                         let mut latest_gi = new_db_tail.maybe_global_index_id.clone();
                         let mut latest_vault_id = new_db_tail.vault_id.clone();
                         let mut latest_meta_pass_id = new_db_tail.meta_pass_id.clone();
+                        let mut latest_audit_tail = new_audit_tail.clone();
 
-                        let new_events_res = self
+                        let new_server_events_res = self
                             .server_dt
                             .dt
                             .send_to_service_and_get(DataSyncMessage::SyncRequest(sync_request))
                             .in_current_span()
-                            .in_current_span()
                             .await;
 
-                        match new_events_res {
+                        match new_server_events_res {
                             Ok(new_events) => {
                                 debug!("id: {:?}. Sync gateway. New events: {:?}", self.id, new_events);
 
                                 for new_event in new_events {
-                                    let key = if let GenericKvLogEvent::SharedSecret(sss_obj) = &new_event {
-                                        match sss_obj {
-                                            SharedSecretObject::Split { event } => {
-                                                let local_event =
-                                                    GenericKvLogEvent::LocalEvent(KvLogEventLocal::LocalSecretShare {
-                                                        event: event.clone(),
-                                                    });
-
-                                                let obj_desc = ObjectDescriptor::LocalSecretShare {
-                                                    meta_pass_id: event.value.meta_password.meta_password.id.id.clone(),
-                                                };
-                                                let obj_id = ObjectId::unit(&obj_desc);
-                                                let _ =
-                                                    self.repo.save(obj_id.clone(), local_event).in_current_span().await;
-                                                obj_id
-                                            }
-
-                                            SharedSecretObject::RecoveryRequest { event } => {
-                                                let obj_desc = event.key.obj_desc();
-                                                let slot_id = self
-                                                    .persistent_object
-                                                    .find_tail_id_by_obj_desc(&obj_desc)
-                                                    .await
-                                                    .map(|id| id.next())
-                                                    .unwrap_or(ObjectId::unit(&obj_desc));
-
-                                                let _ = self.repo.save(slot_id.clone(), new_event.clone()).await;
-
-                                                slot_id
-                                            }
-
-                                            SharedSecretObject::Recover { event } => {
-                                                let obj_desc = event.key.obj_desc();
-                                                let slot_id = self
-                                                    .persistent_object
-                                                    .find_tail_id_by_obj_desc(&obj_desc)
-                                                    .await
-                                                    .map(|id| id.next())
-                                                    .unwrap_or(ObjectId::unit(&obj_desc));
-
-                                                let _ = self.repo.save(slot_id.clone(), new_event.clone()).await;
-
-                                                slot_id
-                                            }
-                                        }
-                                    } else {
-                                        self.repo
-                                            .save_event(new_event.clone())
-                                            .await
-                                            .expect("Error saving secret share")
-                                    };
+                                    let obj_id = self.repo.save_event(new_event.clone()).in_current_span().await;
+                                    let key = obj_id.unwrap();
 
                                     match new_event {
                                         GenericKvLogEvent::GlobalIndex(_) => latest_gi = Some(key),
@@ -232,6 +133,9 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                                         }
                                         GenericKvLogEvent::MetaPass(_) => {
                                             latest_meta_pass_id = DbTailObject::Id { tail_id: key.clone() }
+                                        }
+                                        GenericKvLogEvent::SharedSecret(SharedSecretObject::Audit { event }) => {
+                                            latest_audit_tail = Some(event.value)
                                         }
                                         _ => {
                                             //ignore any non global event
@@ -244,7 +148,8 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                                     meta_pass_id: latest_meta_pass_id,
 
                                     maybe_global_index_id: latest_gi,
-                                    maybe_mem_pool_id: new_tail_for_mem_pool,
+                                    maybe_mem_pool_id: new_mem_pool_tail_id,
+                                    s_s_audit: latest_audit_tail,
                                 };
 
                                 self.save_updated_db_tail(new_db_tail.clone(), latest_db_tail).await
@@ -260,13 +165,16 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                         panic!("Error");
                     }
                 }
-
-                self.sync_shared_secrets(vault_name).await;
             }
         }
     }
 
-    async fn sync_shared_secrets(&self, vault_name: &str) {
+    pub async fn sync_shared_secrets(
+        &self,
+        vault_name: &str,
+        creds: &UserCredentials,
+        db_tail: &DbTail,
+    ) -> Option<ObjectId> {
         let vault_store = self
             .meta_db_service_proxy
             .get_vault_store(vault_name.to_string())
@@ -274,13 +182,58 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             .await
             .unwrap();
 
-        match vault_store {
-            VaultStore::Store { vault, .. } => {
-                self.send_shared_secrets(&vault).in_current_span().await;
+        if let VaultStore::Store { vault, .. } = vault_store {
+            let s_s_audit_tail = db_tail
+                .s_s_audit
+                .clone()
+                .map(|tail_id| tail_id.next())
+                .unwrap_or(ObjectId::unit(&ObjectDescriptor::SharedSecretAudit {
+                    vault_name: vault_name.to_string(),
+                }));
+
+            let audit_events = self
+                .persistent_object
+                .find_object_events(&s_s_audit_tail)
+                .in_current_span()
+                .await;
+
+            let user_pk = creds.user_sig.public_key.base64_text.clone();
+
+            for user_sig in &vault.signatures {
+                if user_pk == user_sig.public_key.base64_text.clone() {
+                    continue;
+                }
+
+                let transfer = &self.server_dt.dt;
+
+                for audit_event in &audit_events {
+                    if let GenericKvLogEvent::SharedSecret(SharedSecretObject::Audit { event }) = audit_event {
+                        let ss_event_res = self.repo.find_one(event.value.clone()).await;
+
+                        let Ok(Some(ss_event)) = ss_event_res else {
+                            panic!("Invalid event type: not an audit event");
+                        };
+
+                        let GenericKvLogEvent::SharedSecret(ss_obj) = &ss_event else {
+                            panic!("Invalid event type: not shared secret");
+                        };
+
+                        if let SharedSecretObject::Audit { .. } = ss_obj {
+                            panic!("Audit log events not allowed");
+                        }
+
+                        debug!("Send shared secret event to server: {:?}", event);
+                        transfer
+                            .send_to_service(DataSyncMessage::Event(ss_event.clone()))
+                            .in_current_span()
+                            .await;
+                    }
+                }
             }
-            _ => {
-                //skip
-            }
+
+            audit_events.last().map(|evt| evt.key().obj_id.clone())
+        } else {
+            panic!("User is not a member of the vault");
         }
     }
 
@@ -309,15 +262,14 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
 
     async fn get_new_tail_for_an_obj(&self, db_tail_obj: &DbTailObject) -> DbTailObject {
         match db_tail_obj {
-            DbTailObject::Empty { unit_id } => {
-                let maybe_tail_id = self.persistent_object.find_tail_id(unit_id.clone()).await;
-                match maybe_tail_id {
-                    None => DbTailObject::Empty {
-                        unit_id: unit_id.clone(),
-                    },
-                    Some(tail_id) => DbTailObject::Id { tail_id },
-                }
-            }
+            DbTailObject::Empty { unit_id } => self
+                .persistent_object
+                .find_tail_id(unit_id.clone())
+                .await
+                .map(|tail_id| DbTailObject::Id { tail_id })
+                .unwrap_or(DbTailObject::Empty {
+                    unit_id: unit_id.clone(),
+                }),
             DbTailObject::Id { tail_id } => {
                 let tail_id_sync = match tail_id {
                     ObjectId::Unit { .. } => tail_id.clone(),
@@ -339,13 +291,9 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                 }
 
                 let new_tail_id = last_vault_event
-                    .map(|event| match event.key() {
-                        KvKey::Empty { .. } => {
-                            panic!("Invalid event");
-                        }
-                        KvKey::Key { obj_id, .. } => obj_id.clone(),
-                    })
+                    .map(|event| event.key().obj_id.clone())
                     .unwrap_or(tail_id.clone());
+
                 DbTailObject::Id { tail_id: new_tail_id }
             }
         }
@@ -379,10 +327,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
 
         match last_pool_event {
             None => db_tail.maybe_mem_pool_id.clone(),
-            Some(event) => match event.key() {
-                KvKey::Empty { .. } => None,
-                KvKey::Key { obj_id, .. } => Some(obj_id.clone()),
-            },
+            Some(event) => Some(event.key().obj_id.clone()),
         }
     }
 }

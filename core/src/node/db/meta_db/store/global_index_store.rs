@@ -33,9 +33,7 @@ pub enum GlobalIndexStore {
 
 impl GlobalIndexStore {
     pub fn apply(&mut self, gi_event: &GlobalIndexObject) {
-        let KvKey::Key { obj_id, .. } = gi_event.key() else {
-            panic!("Invalid event. Empty key");
-        };
+        let KvKey { obj_id, .. } = gi_event.key();
 
         match self {
             GlobalIndexStore::Empty => {

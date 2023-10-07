@@ -1,5 +1,4 @@
 use crate::node::db::events::common::MetaPassObject;
-use crate::node::db::events::kv_log_event::KvKey;
 use crate::node::db::meta_db::meta_db_view::MetaDb;
 use crate::node::db::meta_db::store::meta_pass_store::MetaPassStore;
 
@@ -9,12 +8,7 @@ impl MetaDb {
     pub fn apply_meta_pass_event(&mut self, meta_pass_obj: &MetaPassObject) {
         debug!("Apply meta pass event");
 
-        let obj_id = match meta_pass_obj.key().clone() {
-            KvKey::Empty { .. } => {
-                panic!("Invalid event. Empty key")
-            }
-            KvKey::Key { obj_id, .. } => obj_id,
-        };
+        let obj_id = meta_pass_obj.key().obj_id.clone();
 
         match meta_pass_obj {
             MetaPassObject::Unit { .. } => {

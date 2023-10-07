@@ -1,4 +1,5 @@
 use std::fmt::{Display, Formatter};
+
 use tracing::info;
 
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
@@ -96,7 +97,7 @@ mod test {
     use crate::models::DeviceInfo;
     use crate::node::db::events::common::PublicKeyRecord;
     use crate::node::db::events::global_index::GlobalIndexObject;
-    use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
+    use crate::node::db::events::kv_log_event::KvLogEvent;
     use crate::node::db::events::object_id::{IdGen, IdStr, ObjectId};
     use crate::node::db::meta_db::meta_db_view::MetaDb;
     use crate::node::db::meta_db::store::global_index_store::GlobalIndexStore;
@@ -121,22 +122,15 @@ mod test {
         let obj_id = &ObjectId::vault_unit("test_vault");
         let vault_id = IdStr::from(obj_id);
 
-        match genesis_event.key() {
-            KvKey::Empty { .. } => {
-                panic!()
-            }
-            KvKey::Key { .. } => {
-                meta_db.global_index_store.apply(&GlobalIndexObject::Update {
-                    event: KvLogEvent::new_global_index_event(&obj_id.next(), &vault_id),
-                });
+        meta_db.global_index_store.apply(&GlobalIndexObject::Update {
+            event: KvLogEvent::new_global_index_event(&obj_id.next(), &vault_id),
+        });
 
-                match meta_db.global_index_store {
-                    GlobalIndexStore::Store { global_index, .. } => {
-                        assert_eq!(1, global_index.len())
-                    }
-                    _ => panic!("Invalid state"),
-                }
+        match meta_db.global_index_store {
+            GlobalIndexStore::Store { global_index, .. } => {
+                assert_eq!(1, global_index.len())
             }
+            _ => panic!("Invalid state"),
         }
     }
 }

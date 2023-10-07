@@ -2,7 +2,7 @@ use crate::models::MetaPasswordId;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[serde(tag = "app_state_request")]
+#[serde(tag = "__app_state_request")]
 pub enum GenericAppStateRequest {
     SignUp(SignUpRequest),
     Recover(RecoveryRequest),

@@ -41,7 +41,7 @@ impl KvLogEvent<PublicKeyRecord> {
 
 impl KvLogEvent<GlobalIndexRecord> {
     pub fn new_global_index_event(tail_id: &ObjectId, vault_id: &IdStr) -> KvLogEvent<GlobalIndexRecord> {
-        let key = KvKey::Key {
+        let key = KvKey {
             obj_id: tail_id.clone(),
             obj_desc: ObjectDescriptor::GlobalIndex,
         };
@@ -57,19 +57,14 @@ impl KvLogEvent<GlobalIndexRecord> {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum KvKey {
-    Empty {
-        obj_desc: ObjectDescriptor,
-    },
-    Key {
-        obj_id: ObjectId,
-        obj_desc: ObjectDescriptor,
-    },
+pub struct KvKey {
+    pub obj_id: ObjectId,
+    pub obj_desc: ObjectDescriptor,
 }
 
 impl ObjectCreator<&ObjectDescriptor> for KvKey {
     fn unit(obj_desc: &ObjectDescriptor) -> Self {
-        Self::Key {
+        Self {
             obj_id: ObjectId::unit(obj_desc),
             obj_desc: obj_desc.clone(),
         }
@@ -80,23 +75,11 @@ impl ObjectCreator<&ObjectDescriptor> for KvKey {
     }
 }
 
-impl KvKey {
-    pub fn obj_desc(&self) -> ObjectDescriptor {
-        match self {
-            KvKey::Empty { obj_desc } => obj_desc.clone(),
-            KvKey::Key { obj_desc, .. } => obj_desc.clone(),
-        }
-    }
-}
-
 impl IdGen for KvKey {
     fn next(&self) -> Self {
-        match self {
-            KvKey::Empty { .. } => self.clone(),
-            KvKey::Key { obj_id, obj_desc } => Self::Key {
-                obj_id: obj_id.next(),
-                obj_desc: obj_desc.clone(),
-            },
+        Self {
+            obj_id: self.obj_id.next(),
+            obj_desc: self.obj_desc.clone(),
         }
     }
 }

@@ -6,6 +6,7 @@ use crate::node::db::events::object_descriptor::ObjectDescriptor;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(tag = "__obj_id")]
 pub enum ObjectId {
     /// In category theory, a unit type is a fundamental concept that arises in the study of types and functions.
     /// It is often denoted as the unit object, represented by the symbol "1" or "Unit."
@@ -128,7 +129,7 @@ impl ObjectId {
     }
 
     pub fn mempool_unit() -> Self {
-        ObjectId::unit(&ObjectDescriptor::Mempool)
+        ObjectId::unit(&ObjectDescriptor::MemPool)
     }
 }
 

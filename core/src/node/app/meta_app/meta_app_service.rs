@@ -1,8 +1,9 @@
-use async_trait::async_trait;
 use std::sync::Arc;
+
+use async_trait::async_trait;
 use tracing::{error, info, instrument, Instrument};
 
-use crate::models::ApplicationState;
+use crate::models::{ApplicationState, UserCredentials};
 use crate::node::app::app_state_update_manager::JsAppStateManager;
 use crate::node::app::client_meta_app::MetaClient;
 use crate::node::app::meta_app::app_state::{ConfiguredAppState, EmptyAppState, GenericAppState, JoinedAppState};
@@ -12,6 +13,7 @@ use crate::node::app::meta_app::messaging::{
 use crate::node::app::sync_gateway::SyncGateway;
 use crate::node::common::actor::{ActionHandler, ServiceState};
 use crate::node::common::data_transfer::MpscDataTransfer;
+use crate::node::db::actions::recover::RecoveryAction;
 use crate::node::db::events::common::VaultInfo;
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::meta_db::store::meta_pass_store::MetaPassStore;
@@ -47,13 +49,7 @@ where
                 self.sync_gateway.sync().in_current_span().await;
 
                 if let Ok(creds) = creds_result {
-                    let mut new_app_state = app_state.clone();
-
-                    let vault_info = self.meta_client.get_vault(&creds).in_current_span().await;
-
-                    if let VaultInfo::NotMember = vault_info {
-                        new_app_state.join_component = true;
-                    }
+                    let new_app_state = self.update_app_state(app_state, &creds).await;
 
                     let new_generic_app_state = ConfiguredAppState {
                         app_state: new_app_state,
@@ -74,6 +70,47 @@ where
     }
 }
 
+impl<Repo, StateManager> MetaClientService<Repo, StateManager>
+where
+    Repo: KvLogEventRepo,
+    StateManager: JsAppStateManager,
+{
+    async fn update_app_state(&self, app_state: &ApplicationState, creds: &UserCredentials) -> ApplicationState {
+        let mut new_app_state = app_state.clone();
+        new_app_state.meta_vault = Some(creds.user_sig.vault.clone());
+
+        let vault_info = self
+            .meta_client
+            .get_vault(creds.user_sig.vault.name.clone())
+            .in_current_span()
+            .await;
+
+        match vault_info {
+            VaultInfo::Member { vault } => {
+                let vault_name = vault.vault_name.clone();
+
+                new_app_state.vault = Some(Box::new(vault));
+
+                let meta_pass_store = self
+                    .meta_client
+                    .meta_db_service_proxy
+                    .get_meta_pass_store(vault_name)
+                    .await
+                    .unwrap();
+                new_app_state.meta_passwords = meta_pass_store.passwords();
+            }
+            VaultInfo::Pending => {}
+            VaultInfo::Declined => {}
+            VaultInfo::NotFound => {}
+            VaultInfo::NotMember => {
+                new_app_state.join_component = true;
+            }
+        }
+
+        new_app_state
+    }
+}
+
 #[async_trait(? Send)]
 impl<Repo, StateManager> ActionHandler<RecoveryRequest, GenericAppState> for MetaClientService<Repo, StateManager>
 where
@@ -84,12 +121,15 @@ where
     #[instrument(skip_all)]
     async fn handle(&self, request: RecoveryRequest, state: &mut ServiceState<GenericAppState>) {
         if let GenericAppState::Joined(app_state) = &state.state {
-            self.meta_client
+            let recovery_action = RecoveryAction {
+                persistent_obj: self.meta_client.persistent_obj.clone(),
+            };
+            recovery_action
                 .recovery_request(request.meta_pass_id, app_state)
                 .in_current_span()
                 .await;
         } else {
-            panic!("Invalid request. Recovery request not allowed if the state is not 'Joined'");
+            panic!("Invalid request. Recovery request not allowed when the state is not 'Joined'");
         }
     }
 }
@@ -145,9 +185,34 @@ where
         let mut service_state = self.build_service_state().await;
 
         while let Ok(request) = self.data_transfer.dt.service_receive().await {
-            info!("Handle: {:?}", &request);
+            info!(
+                "Action execution. Request {:?}, state: {:?}",
+                &request, &service_state.state
+            );
 
             self.sync_gateway.sync().in_current_span().await;
+
+            match &mut service_state.state {
+                GenericAppState::Empty(_) => {}
+                GenericAppState::Configured(configured_app_state) => {
+                    let new_app_state = self
+                        .update_app_state(&configured_app_state.app_state, &configured_app_state.creds)
+                        .await;
+
+                    configured_app_state.app_state = new_app_state;
+                }
+                GenericAppState::Joined(joined_app_state) => {
+                    let new_app_state = self
+                        .update_app_state(&joined_app_state.app_state, &joined_app_state.creds)
+                        .await;
+
+                    joined_app_state.app_state = new_app_state;
+                    joined_app_state.vault_info = self
+                        .meta_client
+                        .get_vault(joined_app_state.creds.user_sig.vault.name.clone())
+                        .await
+                }
+            }
 
             match request {
                 GenericAppStateRequest::SignUp(sign_up_request) => {
@@ -173,14 +238,22 @@ where
         };
 
         let maybe_configured_app_state = self.meta_client.find_user_creds(&service_state.state).await;
+
+        let app_state = service_state.state.get_state();
+
         if let Ok(Some(configured_app_state)) = maybe_configured_app_state {
-            let vault_info = self.meta_client.get_vault(&configured_app_state.creds).await;
+            let new_app_state = self.update_app_state(&app_state, &configured_app_state.creds).await;
+
+            let vault_info = self
+                .meta_client
+                .get_vault(configured_app_state.creds.user_sig.vault.name.clone())
+                .await;
 
             if let VaultInfo::Member { vault } = &vault_info {
                 let vault_name = vault.vault_name.clone();
 
                 service_state.state = GenericAppState::Joined(JoinedAppState {
-                    app_state: configured_app_state.app_state,
+                    app_state: new_app_state,
                     creds: configured_app_state.creds,
                     vault_info,
                 });

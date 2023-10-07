@@ -9,9 +9,7 @@ impl MetaDb {
     pub fn apply_vault_event(&mut self, vault_obj: &VaultObject) {
         debug!("Apply vault event: {:?}", vault_obj);
 
-        let KvKey::Key { obj_id, .. } = vault_obj.key().clone() else {
-            panic!("Invalid event. Empty key")
-        };
+        let KvKey { obj_id, .. } = vault_obj.key().clone();
 
         match vault_obj {
             VaultObject::Unit { .. } => match self.vault_store {
