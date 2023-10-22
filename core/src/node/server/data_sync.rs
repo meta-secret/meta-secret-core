@@ -226,7 +226,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
                 self.persistent_obj.find_object_events(index_id).await
             }
         };
-        
+
         Ok(events)
     }
 
@@ -270,7 +270,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
                 }
             }
         };
-        
+
         events
     }
 
@@ -329,7 +329,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
         let gi_obj_id = match global_index_tail_id {
             ObjectId::Unit { .. } => ObjectId::global_index_unit().next().next(),
             ObjectId::Genesis { .. } => ObjectId::global_index_genesis().next(),
-            ObjectId::Regular { .. } => global_index_tail_id.next(),
+            ObjectId::Artifact { .. } => global_index_tail_id.next(),
         };
 
         let gi_update_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Update {

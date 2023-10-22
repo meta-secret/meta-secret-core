@@ -20,11 +20,30 @@ pub enum ObjectId {
     /// is responsible to create a persistent object
     Genesis { id: String, unit_id: String },
     /// Any regular request or update event in the objects' lifetime
-    Regular {
+    Artifact {
         id: String,
         prev_id: String,
         unit_id: String,
     },
+}
+
+/// In category theory, a unit type is a fundamental concept that arises in the study of types and functions.
+/// It is often denoted as the unit object, represented by the symbol "1" or "Unit."
+/// The unit type serves as a foundational element within category theory,
+/// providing a way to represent the absence of information or the presence of a single unique value.
+///
+/// Same here, Unit is a initial request to create/initialize an object, it's step zero.
+pub struct UnitId(String);
+
+pub struct GenesisId {
+    id: String,
+    unit_id: UnitId
+}
+
+pub struct ArtifactId {
+    id: String,
+    prev_id: String,
+    unit_id: UnitId
 }
 
 #[derive(Debug)]
@@ -45,12 +64,12 @@ impl IdGen for ObjectId {
                 id: next_id_str,
                 unit_id: id.clone(),
             },
-            ObjectId::Genesis { id, unit_id } => ObjectId::Regular {
+            ObjectId::Genesis { id, unit_id } => ObjectId::Artifact {
                 id: next_id_str,
                 prev_id: id.clone(),
                 unit_id: unit_id.clone(),
             },
-            ObjectId::Regular { id, unit_id, .. } => ObjectId::Regular {
+            ObjectId::Artifact { id, unit_id, .. } => ObjectId::Artifact {
                 id: next_id_str,
                 prev_id: id.clone(),
                 unit_id: unit_id.clone(),
@@ -70,14 +89,14 @@ impl ObjectId {
         match self {
             ObjectId::Unit { .. } => self.clone(),
             ObjectId::Genesis { unit_id, .. } => ObjectId::Unit { id: unit_id.clone() },
-            ObjectId::Regular { unit_id, .. } => Self::Unit { id: unit_id.clone() },
+            ObjectId::Artifact { unit_id, .. } => Self::Unit { id: unit_id.clone() },
         }
     }
 
     pub fn id_str(&self) -> String {
         match self {
             ObjectId::Genesis { id, .. } => id.clone(),
-            ObjectId::Regular { id, .. } => id.clone(),
+            ObjectId::Artifact { id, .. } => id.clone(),
             ObjectId::Unit { id } => id.clone(),
         }
     }
@@ -86,7 +105,7 @@ impl ObjectId {
         match self {
             ObjectId::Unit { .. } => true,
             ObjectId::Genesis { .. } => false,
-            ObjectId::Regular { .. } => false,
+            ObjectId::Artifact { .. } => false,
         }
     }
 
@@ -94,7 +113,7 @@ impl ObjectId {
         match self {
             ObjectId::Unit { .. } => false,
             ObjectId::Genesis { .. } => true,
-            ObjectId::Regular { .. } => false,
+            ObjectId::Artifact { .. } => false,
         }
     }
 

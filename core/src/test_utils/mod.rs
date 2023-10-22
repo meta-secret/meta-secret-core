@@ -178,7 +178,7 @@ pub mod meta_test_utils {
 
             let db_tail_event = self.events.get(&db_tail_unit).unwrap();
             if let GenericKvLogEvent::LocalEvent(KvLogEventLocal::DbTail { event }) = db_tail_event {
-                if let Some(ObjectId::Regular { unit_id, id, prev_id }) = &event.value.maybe_global_index_id {
+                if let Some(ObjectId::Artifact { unit_id, id, prev_id }) = &event.value.maybe_global_index_id {
                     assert_eq!(String::from("GlobalIndex:index::0"), unit_id.clone());
                     assert_eq!(String::from("GlobalIndex:index::1"), prev_id.clone());
                     assert_eq!(String::from("GlobalIndex:index::2"), id.clone());

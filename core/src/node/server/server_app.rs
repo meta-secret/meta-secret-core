@@ -9,7 +9,7 @@ use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object::PersistentGlobalIndexApi;
 
-use crate::node::server::data_sync::{DataSyncApi, DataSyncMessage, MetaServerContext, ServerDataSync};
+use crate::node::server::data_sync::{DataSyncApi, DataSyncMessage, ServerDataSync};
 
 pub struct ServerApp<Repo: KvLogEventRepo> {
     pub data_sync: ServerDataSync<Repo>,

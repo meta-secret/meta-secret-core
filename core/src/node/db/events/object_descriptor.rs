@@ -1,5 +1,6 @@
 use crate::crypto::utils;
-use crate::models::{DeviceInfo, MetaPasswordId, SecretDistributionDocData, SecretDistributionType};
+use crate::models::{MetaPasswordId, SecretDistributionDocData, SecretDistributionType};
+use crate::node::common::model::device::DeviceId;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -65,7 +66,7 @@ impl SharedSecretDescriptor {
 pub struct SharedSecretEventId {
     pub vault_name: String,
     pub meta_pass_id: MetaPasswordId,
-    pub receiver: DeviceInfo,
+    pub receiver: DeviceId
 }
 
 impl SharedSecretEventId {
@@ -73,7 +74,7 @@ impl SharedSecretEventId {
         let pattern = [
             self.vault_name.as_str(),
             self.meta_pass_id.id.as_str(),
-            self.receiver.device_id.as_str(),
+            self.receiver.to_string().as_str(),
         ];
         pattern.join("-")
     }
@@ -160,7 +161,6 @@ impl ObjectDescriptor {
             ObjectDescriptor::SharedSecretAudit { .. } => String::from("SSAudit"),
 
             ObjectDescriptor::MetaPassword { .. } => String::from("MetaPass"),
-            ObjectDescriptor::MetaVault { .. } => String::from("MetaVault"),
             ObjectDescriptor::DeviceCredsIndex { .. } => String::from("UserCreds"),
             ObjectDescriptor::DbTail { .. } => String::from("DbTail"),
         }
@@ -169,7 +169,9 @@ impl ObjectDescriptor {
 
 #[cfg(test)]
 mod test {
-    use crate::models::{DeviceInfo, MetaPasswordId};
+    use crate::crypto::keys::{KeyManager, OpenBox, SecretBox};
+    use crate::models::{MetaPasswordId};
+    use crate::node::common::model::device::DeviceId;
     use crate::node::db::events::object_descriptor::{ObjectDescriptor, SharedSecretDescriptor, SharedSecretEventId};
 
     #[test]
@@ -196,17 +198,18 @@ mod test {
 
     #[test]
     fn test_shared_secret_split() {
+        let key_manager = KeyManager::generate();
+        let secret_box = SecretBox::from(key_manager);
+        let device_id = DeviceId::from(&OpenBox::from(&secret_box));
+
         let event_id = SharedSecretEventId {
             vault_name: String::from("test_vault"),
             meta_pass_id: MetaPasswordId::build(String::from("test_meta_pass"), String::from("salt")),
-            receiver: DeviceInfo {
-                device_id: "test_device".to_string(),
-                device_name: "321".to_string(),
-            },
+            receiver: device_id,
         };
 
         let obj_desc = ObjectDescriptor::SharedSecret(SharedSecretDescriptor::Split(event_id));
-        let expected = String::from("SSSplit:test_vault-cqH6kknDPPWHmlYXEaKJWA-test_device::0");
+        let expected = format!("SSSplit:test_vault-{}::0", device_id.to_string());
         assert_eq!(expected, obj_desc.to_id())
     }
 }

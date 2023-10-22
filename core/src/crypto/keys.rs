@@ -1,16 +1,17 @@
+use crate::crypto::encoding::base64::Base64Text;
 use crate::crypto::key_pair::{DsaKeyPair, KeyPair, TransportDsaKeyPair};
-use crate::models::{Base64EncodedText, CommunicationChannel};
+use crate::models::{CommunicationChannel};
 
 pub struct KeyManager {
     pub dsa: DsaKeyPair,
     pub transport_key_pair: TransportDsaKeyPair,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenBox {
-    pub dsa_pk: Base64EncodedText,
-    pub transport_pk: Base64EncodedText,
+    pub dsa_pk: Base64Text,
+    pub transport_pk: Base64Text,
 }
 
 /// Serializable version of KeyManager
@@ -33,15 +34,15 @@ impl From<&SecretBox> for OpenBox {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SerializedDsaKeyPair {
-    pub key_pair: Base64EncodedText,
-    pub public_key: Base64EncodedText,
+    pub key_pair: Base64Text,
+    pub public_key: Base64Text,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SerializedTransportKeyPair {
-    pub secret_key: Base64EncodedText,
-    pub public_key: Base64EncodedText,
+    pub secret_key: Base64Text,
+    pub public_key: Base64Text,
 }
 
 

@@ -6,22 +6,28 @@ pub type Array256Bit = [u8; KEY_SIZE_32_BYTES];
 pub mod base64 {
     extern crate base64;
 
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct Base64Text {
+        #[serde(rename = "base64Text")]
+        pub base64_text: String,
+    }
+
     pub mod encoder {
         use base64::alphabet::URL_SAFE;
         use base64::engine::fast_portable::{FastPortable, NO_PAD};
 
         use crate::crypto::encoding::Array256Bit;
-        use crate::models::Base64EncodedText;
+        use crate::crypto::encoding::base64::Base64Text;
 
         const URL_SAFE_ENGINE: FastPortable = FastPortable::from(&URL_SAFE, NO_PAD);
 
-        impl From<Vec<u8>> for Base64EncodedText {
+        impl From<Vec<u8>> for Base64Text {
             fn from(data: Vec<u8>) -> Self {
-                Base64EncodedText::from(data.as_slice())
+                Base64Text::from(data.as_slice())
             }
         }
 
-        impl From<&[u8]> for Base64EncodedText {
+        impl From<&[u8]> for Base64Text {
             fn from(data: &[u8]) -> Self {
                 Self {
                     base64_text: base64::encode_engine(data, &URL_SAFE_ENGINE),
@@ -29,21 +35,21 @@ pub mod base64 {
             }
         }
 
-        impl From<String> for Base64EncodedText {
+        impl From<String> for Base64Text {
             fn from(data: String) -> Self {
-                Base64EncodedText::from(data.as_bytes())
+                Base64Text::from(data.as_bytes())
             }
         }
 
-        impl From<&str> for Base64EncodedText {
+        impl From<&str> for Base64Text {
             fn from(data: &str) -> Self {
-                Base64EncodedText::from(data.as_bytes())
+                Base64Text::from(data.as_bytes())
             }
         }
 
-        impl From<&Array256Bit> for Base64EncodedText {
+        impl From<&Array256Bit> for Base64Text {
             fn from(data: &Array256Bit) -> Self {
-                Base64EncodedText::from(data.as_slice())
+                Base64Text::from(data.as_slice())
             }
         }
     }
@@ -53,24 +59,24 @@ pub mod base64 {
         use base64::engine::fast_portable::{FastPortable, NO_PAD};
 
         use crate::crypto::encoding::Array256Bit;
+        use crate::crypto::encoding::base64::Base64Text;
         use crate::errors::CoreError;
-        use crate::models::Base64EncodedText;
 
         const URL_SAFE_ENGINE: FastPortable = FastPortable::from(&URL_SAFE, NO_PAD);
 
-        impl TryFrom<&Base64EncodedText> for Vec<u8> {
+        impl TryFrom<&Base64Text> for Vec<u8> {
             type Error = CoreError;
 
-            fn try_from(base64: &Base64EncodedText) -> Result<Self, Self::Error> {
+            fn try_from(base64: &Base64Text) -> Result<Self, Self::Error> {
                 let data = base64::decode_engine(&base64.base64_text, &URL_SAFE_ENGINE)?;
                 Ok(data)
             }
         }
 
-        impl TryFrom<&Base64EncodedText> for Array256Bit {
+        impl TryFrom<&Base64Text> for Array256Bit {
             type Error = CoreError;
 
-            fn try_from(encoded: &Base64EncodedText) -> Result<Self, Self::Error> {
+            fn try_from(encoded: &Base64Text) -> Result<Self, Self::Error> {
                 //decode base64 string
                 let bytes_vec = Vec::try_from(encoded)?;
                 //try to cast an array to a fixed size array
@@ -82,15 +88,15 @@ pub mod base64 {
 
     #[cfg(test)]
     mod test {
-        use crate::models::Base64EncodedText;
+        use crate::crypto::encoding::base64::Base64Text;
 
         const TEST_STR: &str = "kjsfdbkjsfhdkjhsfdkjhsfdkjhksfdjhksjfdhksfd";
         const ENCODED_URL_SAFE_TEST_STR: &str = "a2pzZmRia2pzZmhka2poc2Zka2poc2Zka2poa3NmZGpoa3NqZmRoa3NmZA";
 
         #[test]
         fn from_vec() {
-            let encoded = Base64EncodedText::from(vec![65, 65, 65]);
-            let expected = Base64EncodedText {
+            let encoded = Base64Text::from(vec![65, 65, 65]);
+            let expected = Base64Text {
                 base64_text: "QUFB".to_string(),
             };
             assert_eq!(encoded, expected);
@@ -98,8 +104,8 @@ pub mod base64 {
 
         #[test]
         fn from_bytes() {
-            let encoded = Base64EncodedText::from(TEST_STR.as_bytes());
-            let expected = Base64EncodedText {
+            let encoded = Base64Text::from(TEST_STR.as_bytes());
+            let expected = Base64Text {
                 base64_text: ENCODED_URL_SAFE_TEST_STR.to_string(),
             };
             assert_eq!(encoded, expected);
@@ -108,15 +114,13 @@ pub mod base64 {
 }
 
 pub mod serialized_key_manager {
-    use crate::models::Base64EncodedText;
 
     pub mod encoder {
         use ed25519_dalek::ed25519::signature::Signature;
+        use crate::crypto::encoding::base64::Base64Text;
 
         use crate::crypto::key_pair::{DalekPublicKey, DalekSignature, DsaKeyPair, KeyPair, TransportDsaKeyPair};
         use crate::crypto::keys::{KeyManager, SecretBox, SerializedDsaKeyPair, SerializedTransportKeyPair};
-
-        use super::Base64EncodedText;
 
         // KeyManager -> SecretBox
         impl From<KeyManager> for SecretBox {
@@ -146,29 +150,28 @@ pub mod serialized_key_manager {
             }
         }
 
-        impl From<&DalekPublicKey> for Base64EncodedText {
+        impl From<&DalekPublicKey> for Base64Text {
             fn from(pk: &DalekPublicKey) -> Self {
-                Base64EncodedText::from(&pk.to_bytes())
+                Base64Text::from(&pk.to_bytes())
             }
         }
 
-        impl From<&DalekSignature> for Base64EncodedText {
+        impl From<&DalekSignature> for Base64Text {
             fn from(sig: &DalekSignature) -> Self {
-                Base64EncodedText::from(sig.as_bytes())
+                Base64Text::from(sig.as_bytes())
             }
         }
     }
 
     pub mod decoder {
         use crate::crypto::encoding::Array256Bit;
+        use crate::crypto::encoding::base64::Base64Text;
         use crate::crypto::key_pair::{
             CryptoBoxPublicKey, CryptoBoxSecretKey, DalekKeyPair, DalekPublicKey, DalekSignature, DsaKeyPair,
             TransportDsaKeyPair,
         };
         use crate::crypto::keys::{KeyManager, SecretBox, SerializedDsaKeyPair, SerializedTransportKeyPair};
         use crate::errors::CoreError;
-
-        use super::Base64EncodedText;
 
         impl TryFrom<&SerializedDsaKeyPair> for DsaKeyPair {
             type Error = CoreError;
@@ -180,20 +183,20 @@ pub mod serialized_key_manager {
             }
         }
 
-        impl TryFrom<&Base64EncodedText> for DalekPublicKey {
+        impl TryFrom<&Base64Text> for DalekPublicKey {
             type Error = CoreError;
 
-            fn try_from(base64_text: &Base64EncodedText) -> Result<Self, Self::Error> {
+            fn try_from(base64_text: &Base64Text) -> Result<Self, Self::Error> {
                 let bytes = Array256Bit::try_from(base64_text)?;
                 let pk = DalekPublicKey::from_bytes(&bytes)?;
                 Ok(pk)
             }
         }
 
-        impl TryFrom<&Base64EncodedText> for DalekSignature {
+        impl TryFrom<&Base64Text> for DalekSignature {
             type Error = CoreError;
 
-            fn try_from(base64: &Base64EncodedText) -> Result<Self, Self::Error> {
+            fn try_from(base64: &Base64Text) -> Result<Self, Self::Error> {
                 let bytes_vec: Vec<u8> = Vec::try_from(base64)?;
                 let sign = DalekSignature::from_bytes(bytes_vec.as_slice())?;
                 Ok(sign)
@@ -234,8 +237,8 @@ pub mod serialized_key_manager {
         pub mod test {
             use crate::crypto::key_pair::{DalekPublicKey, DalekSignature, KeyPair};
             use crate::crypto::keys::KeyManager;
-            use crate::models::Base64EncodedText;
             use crate::CoreResult;
+            use crate::crypto::encoding::base64::Base64Text;
 
             #[test]
             fn from_base64_to_dalek_public_key() -> CoreResult<()> {
@@ -251,7 +254,7 @@ pub mod serialized_key_manager {
                 let km = KeyManager::generate();
                 let serialized_sign = km.dsa.sign("text".to_string());
                 let deserialized_sign = DalekSignature::try_from(&serialized_sign)?;
-                let serialized_sign_2nd_time = Base64EncodedText::from(&deserialized_sign);
+                let serialized_sign_2nd_time = Base64Text::from(&deserialized_sign);
 
                 assert_eq!(serialized_sign, serialized_sign_2nd_time);
                 Ok(())
@@ -265,32 +268,32 @@ pub mod cryptobox {
         use crypto_box::Nonce;
 
         use crate::crypto::encoding::Array256Bit;
+        use crate::crypto::encoding::base64::Base64Text;
         use crate::crypto::key_pair::{CryptoBoxPublicKey, CryptoBoxSecretKey};
         use crate::errors::CoreError;
-        use crate::models::Base64EncodedText;
 
-        impl TryFrom<&Base64EncodedText> for CryptoBoxPublicKey {
+        impl TryFrom<&Base64Text> for CryptoBoxPublicKey {
             type Error = CoreError;
 
-            fn try_from(encoded: &Base64EncodedText) -> Result<Self, Self::Error> {
+            fn try_from(encoded: &Base64Text) -> Result<Self, Self::Error> {
                 let byte_array = Array256Bit::try_from(encoded)?;
                 Ok(CryptoBoxPublicKey::from(byte_array))
             }
         }
 
-        impl TryFrom<&Base64EncodedText> for CryptoBoxSecretKey {
+        impl TryFrom<&Base64Text> for CryptoBoxSecretKey {
             type Error = CoreError;
 
-            fn try_from(encoded: &Base64EncodedText) -> Result<Self, Self::Error> {
+            fn try_from(encoded: &Base64Text) -> Result<Self, Self::Error> {
                 let byte_array = Array256Bit::try_from(encoded)?;
                 Ok(CryptoBoxSecretKey::from(byte_array))
             }
         }
 
-        impl TryFrom<&Base64EncodedText> for Nonce {
+        impl TryFrom<&Base64Text> for Nonce {
             type Error = CoreError;
 
-            fn try_from(encoded: &Base64EncodedText) -> Result<Self, Self::Error> {
+            fn try_from(encoded: &Base64Text) -> Result<Self, Self::Error> {
                 let vec = Vec::try_from(encoded)?;
                 let byte_array: [u8; 24] = vec.as_slice().try_into()?;
                 Ok(Nonce::from(byte_array))

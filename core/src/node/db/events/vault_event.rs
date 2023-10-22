@@ -1,4 +1,5 @@
-use crate::models::{VaultDoc};
+use crate::node::common::model::user::UserDataCandidate;
+use crate::node::common::model::vault::VaultData;
 use crate::node::db::events::common::PublicKeyRecord;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 
@@ -7,22 +8,16 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 pub enum VaultObject {
     /// SingUp request
     Unit {
-        event: KvLogEvent<UserSignature????>,
+        event: KvLogEvent<UserDataCandidate>,
     },
     Genesis {
         event: KvLogEvent<PublicKeyRecord>,
     },
-
-    SignUpUpdate {
-        event: KvLogEvent<VaultDoc>,
-    },
-
     JoinUpdate {
-        event: KvLogEvent<VaultDoc>,
+        event: KvLogEvent<VaultData>,
     },
-
     JoinRequest {
-        event: KvLogEvent<UserSignature>,
+        event: KvLogEvent<UserDataCandidate>,
     },
 }
 
@@ -31,7 +26,6 @@ impl VaultObject {
         match self {
             VaultObject::Unit { event } => &event.key,
             VaultObject::Genesis { event } => &event.key,
-            VaultObject::SignUpUpdate { event } => &event.key,
             VaultObject::JoinUpdate { event } => &event.key,
             VaultObject::JoinRequest { event } => &event.key,
         }
@@ -39,7 +33,7 @@ impl VaultObject {
 }
 
 impl VaultObject {
-    pub fn unit(user_sig: &UserSignature) -> Self {
+    pub fn unit(user_sig: &UserDataCandidate) -> Self {
         VaultObject::Unit {
             event: KvLogEvent::vault_unit(user_sig),
         }

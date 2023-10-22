@@ -1,4 +1,4 @@
-use crate::models::UserSignature;
+use crate::node::common::model::user::UserDataCandidate;
 use crate::node::db::events::common::{ObjectCreator, PublicKeyRecord};
 use crate::node::db::events::global_index::GlobalIndexRecord;
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
@@ -19,8 +19,8 @@ impl KvLogEvent<PublicKeyRecord> {
         }
     }
 
-    pub fn vault_unit(user_sig: &UserSignature) -> KvLogEvent<UserSignature> {
-        let obj_desc = &ObjectDescriptor::vault(user_sig.vault.name.clone());
+    pub fn vault_unit(user_sig: &UserDataCandidate) -> KvLogEvent<UserDataCandidate> {
+        let obj_desc = &ObjectDescriptor::vault(user_sig.data.vault_name.clone());
         KvLogEvent {
             key: KvKey::unit(obj_desc),
             value: user_sig.clone(),
