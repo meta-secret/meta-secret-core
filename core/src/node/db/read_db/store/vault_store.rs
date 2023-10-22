@@ -1,7 +1,7 @@
 use crate::models::VaultDoc;
 use crate::node::db::events::common::PublicKeyRecord;
 use crate::node::db::events::object_id::ObjectId;
-use crate::node::db::meta_db::meta_db_view::TailId;
+use crate::node::db::read_db::read_db_view::TailId;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]

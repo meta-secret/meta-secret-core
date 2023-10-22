@@ -114,17 +114,16 @@ pub mod serialized_key_manager {
         use ed25519_dalek::ed25519::signature::Signature;
 
         use crate::crypto::key_pair::{DalekPublicKey, DalekSignature, DsaKeyPair, KeyPair, TransportDsaKeyPair};
-        use crate::crypto::keys::KeyManager;
-        use crate::models::{SerializedDsaKeyPair, SerializedKeyManager, SerializedTransportKeyPair};
+        use crate::crypto::keys::{KeyManager, SecretBox, SerializedDsaKeyPair, SerializedTransportKeyPair};
 
         use super::Base64EncodedText;
 
-        // KeyManager -> SerializedKeyManager
-        impl From<&KeyManager> for SerializedKeyManager {
-            fn from(key_manager: &KeyManager) -> Self {
+        // KeyManager -> SecretBox
+        impl From<KeyManager> for SecretBox {
+            fn from(key_manager: KeyManager) -> Self {
                 Self {
-                    dsa: Box::from(SerializedDsaKeyPair::from(&key_manager.dsa)),
-                    transport: Box::from(SerializedTransportKeyPair::from(&key_manager.transport_key_pair)),
+                    dsa:SerializedDsaKeyPair::from(&key_manager.dsa),
+                    transport: SerializedTransportKeyPair::from(&key_manager.transport_key_pair),
                 }
             }
         }
@@ -132,8 +131,8 @@ pub mod serialized_key_manager {
         impl From<&TransportDsaKeyPair> for SerializedTransportKeyPair {
             fn from(transport: &TransportDsaKeyPair) -> Self {
                 Self {
-                    secret_key: Box::from(transport.secret_key()),
-                    public_key: Box::from(transport.public_key()),
+                    secret_key: transport.secret_key(),
+                    public_key: transport.public_key(),
                 }
             }
         }
@@ -141,8 +140,8 @@ pub mod serialized_key_manager {
         impl From<&DsaKeyPair> for SerializedDsaKeyPair {
             fn from(dsa: &DsaKeyPair) -> Self {
                 Self {
-                    key_pair: Box::from(dsa.encode_key_pair()),
-                    public_key: Box::from(dsa.public_key()),
+                    key_pair: dsa.encode_key_pair(),
+                    public_key: dsa.public_key(),
                 }
             }
         }
@@ -166,9 +165,8 @@ pub mod serialized_key_manager {
             CryptoBoxPublicKey, CryptoBoxSecretKey, DalekKeyPair, DalekPublicKey, DalekSignature, DsaKeyPair,
             TransportDsaKeyPair,
         };
-        use crate::crypto::keys::KeyManager;
+        use crate::crypto::keys::{KeyManager, SecretBox, SerializedDsaKeyPair, SerializedTransportKeyPair};
         use crate::errors::CoreError;
-        use crate::models::{SerializedDsaKeyPair, SerializedKeyManager, SerializedTransportKeyPair};
 
         use super::Base64EncodedText;
 
@@ -176,7 +174,7 @@ pub mod serialized_key_manager {
             type Error = CoreError;
 
             fn try_from(serialized_dsa: &SerializedDsaKeyPair) -> Result<Self, Self::Error> {
-                let key_pair_vec: Vec<u8> = Vec::try_from(serialized_dsa.key_pair.as_ref())?;
+                let key_pair_vec: Vec<u8> = Vec::try_from(&serialized_dsa.key_pair)?;
                 let key_pair = DalekKeyPair::from_bytes(key_pair_vec.as_slice())?;
                 Ok(Self { key_pair })
             }
@@ -206,9 +204,9 @@ pub mod serialized_key_manager {
             type Error = CoreError;
 
             fn try_from(serialized_transport: &SerializedTransportKeyPair) -> Result<Self, Self::Error> {
-                let sk_bytes = Array256Bit::try_from(serialized_transport.secret_key.as_ref())?;
+                let sk_bytes = Array256Bit::try_from(&serialized_transport.secret_key)?;
                 let secret_key = CryptoBoxSecretKey::from(sk_bytes);
-                let pk_bytes = Array256Bit::try_from(serialized_transport.public_key.as_ref())?;
+                let pk_bytes = Array256Bit::try_from(&serialized_transport.public_key)?;
                 let public_key = CryptoBoxPublicKey::from(pk_bytes);
 
                 let key_pair = Self { secret_key, public_key };
@@ -217,12 +215,12 @@ pub mod serialized_key_manager {
             }
         }
 
-        impl TryFrom<&SerializedKeyManager> for KeyManager {
+        impl TryFrom<&SecretBox> for KeyManager {
             type Error = CoreError;
 
-            fn try_from(serialized_km: &SerializedKeyManager) -> Result<Self, Self::Error> {
-                let dsa = DsaKeyPair::try_from(serialized_km.dsa.as_ref())?;
-                let transport_key_pair = TransportDsaKeyPair::try_from(serialized_km.transport.as_ref())?;
+            fn try_from(serialized_km: &SecretBox) -> Result<Self, Self::Error> {
+                let dsa = DsaKeyPair::try_from(&serialized_km.dsa)?;
+                let transport_key_pair = TransportDsaKeyPair::try_from(&serialized_km.transport)?;
                 let key_manager = Self {
                     dsa,
                     transport_key_pair,

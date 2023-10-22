@@ -27,6 +27,7 @@ pub mod models;
 pub mod node;
 pub mod sdk;
 pub mod secret;
+pub mod test_utils;
 
 pub type CoreResult<T> = std::result::Result<T, CoreError>;
 

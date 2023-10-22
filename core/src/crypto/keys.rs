@@ -1,12 +1,49 @@
 use crate::crypto::key_pair::{DsaKeyPair, KeyPair, TransportDsaKeyPair};
-use crate::models::{
-    CommunicationChannel, DeviceInfo, MetaVault, SerializedKeyManager, UserSecurityBox, UserSignature,
-};
+use crate::models::{Base64EncodedText, CommunicationChannel};
 
 pub struct KeyManager {
     pub dsa: DsaKeyPair,
     pub transport_key_pair: TransportDsaKeyPair,
 }
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenBox {
+    pub dsa_pk: Base64EncodedText,
+    pub transport_pk: Base64EncodedText,
+}
+
+/// Serializable version of KeyManager
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretBox {
+    pub dsa: SerializedDsaKeyPair,
+    pub transport: SerializedTransportKeyPair,
+}
+
+impl From<&SecretBox> for OpenBox {
+    fn from(secret_box: &SecretBox) -> Self {
+        Self {
+            dsa_pk: secret_box.dsa.public_key.clone(),
+            transport_pk: secret_box.transport.public_key.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SerializedDsaKeyPair {
+    pub key_pair: Base64EncodedText,
+    pub public_key: Base64EncodedText,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SerializedTransportKeyPair {
+    pub secret_key: Base64EncodedText,
+    pub public_key: Base64EncodedText,
+}
+
 
 /// Key manager can be used only with a single vault name (in the future they will be independent entities)
 impl KeyManager {
@@ -17,30 +54,9 @@ impl KeyManager {
         }
     }
 
-    pub fn generate_security_box(vault_name: String) -> UserSecurityBox {
+    pub fn generate_secret_box() -> SecretBox {
         let key_manager = KeyManager::generate();
-
-        let signature = Box::from(key_manager.dsa.sign(vault_name.clone()));
-        UserSecurityBox {
-            vault_name,
-            signature,
-            key_manager: Box::from(SerializedKeyManager::from(&key_manager)),
-        }
-    }
-}
-
-impl UserSecurityBox {
-    pub fn get_user_sig(&self, device: &DeviceInfo) -> UserSignature {
-        let key_manager: KeyManager = KeyManager::try_from(self.key_manager.as_ref()).unwrap();
-
-        UserSignature {
-            vault: Box::new(MetaVault {
-                name: self.vault_name.clone(),
-                device: Box::from(device.clone()),
-            }),
-            public_key: Box::from(key_manager.dsa.public_key()),
-            transport_public_key: Box::from(key_manager.transport_key_pair.public_key()),
-        }
+        SecretBox::from(key_manager)
     }
 }
 

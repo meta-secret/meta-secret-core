@@ -39,8 +39,7 @@ pub enum ObjectDescriptor {
         vault_name: String,
     },
 
-    MetaVault,
-    UserCreds,
+    DeviceCredsIndex,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -134,8 +133,7 @@ impl ObjectDescriptor {
             ObjectDescriptor::SharedSecretAudit { vault_name } => vault_name.clone(),
 
             ObjectDescriptor::MetaPassword { vault_name } => vault_name.clone(),
-            ObjectDescriptor::MetaVault => String::from("index"),
-            ObjectDescriptor::UserCreds => String::from("index"),
+            ObjectDescriptor::DeviceCredsIndex => String::from("index"),
         }
     }
 }
@@ -163,7 +161,7 @@ impl ObjectDescriptor {
 
             ObjectDescriptor::MetaPassword { .. } => String::from("MetaPass"),
             ObjectDescriptor::MetaVault { .. } => String::from("MetaVault"),
-            ObjectDescriptor::UserCreds { .. } => String::from("UserCreds"),
+            ObjectDescriptor::DeviceCredsIndex { .. } => String::from("UserCreds"),
             ObjectDescriptor::DbTail { .. } => String::from("DbTail"),
         }
     }

@@ -3,7 +3,6 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tracing::{error, info, instrument, Instrument};
 
-use crate::models::{ApplicationState, UserCredentials};
 use crate::node::app::app_state_update_manager::JsAppStateManager;
 use crate::node::app::client_meta_app::MetaClient;
 use crate::node::app::meta_app::app_state::{ConfiguredAppState, EmptyAppState, GenericAppState, JoinedAppState};
@@ -13,16 +12,19 @@ use crate::node::app::meta_app::messaging::{
 use crate::node::app::sync_gateway::SyncGateway;
 use crate::node::common::actor::{ActionHandler, ServiceState};
 use crate::node::common::data_transfer::MpscDataTransfer;
+use crate::node::common::model::ApplicationState;
+use crate::node::common::model::device::DeviceCredentials;
 use crate::node::db::actions::recover::RecoveryAction;
 use crate::node::db::events::common::VaultInfo;
 use crate::node::db::generic_db::KvLogEventRepo;
-use crate::node::db::meta_db::store::meta_pass_store::MetaPassStore;
+use crate::node::db::read_db::store::meta_pass_store::MetaPassStore;
 
 pub struct MetaClientService<Repo: KvLogEventRepo, StateManager: JsAppStateManager> {
     pub data_transfer: Arc<MetaClientDataTransfer>,
     pub meta_client: Arc<MetaClient<Repo>>,
     pub state_manager: Arc<StateManager>,
     pub sync_gateway: Arc<SyncGateway<Repo>>,
+    pub device_creds: DeviceCredentials,
 }
 
 pub struct MetaClientDataTransfer {
@@ -38,26 +40,19 @@ where
 {
     #[instrument(skip_all)]
     async fn handle(&self, request: SignUpRequest, state: &mut ServiceState<GenericAppState>) {
+        info!("Handle sign up request");
+
         match &state.state {
             GenericAppState::Empty(EmptyAppState { app_state }) => {
-                let creds_result = self
-                    .meta_client
-                    .get_or_create_local_vault(request.vault_name.as_str(), request.device_name.as_str())
-                    .in_current_span()
-                    .await;
-
                 self.sync_gateway.sync().in_current_span().await;
+                let new_app_state = self.update_app_state(app_state, &self.user_creds).await;
 
-                if let Ok(creds) = creds_result {
-                    let new_app_state = self.update_app_state(app_state, &creds).await;
+                let new_generic_app_state = ConfiguredAppState {
+                    app_state: new_app_state,
+                    creds: self.user_creds.clone(),
+                };
 
-                    let new_generic_app_state = ConfiguredAppState {
-                        app_state: new_app_state,
-                        creds,
-                    };
-
-                    state.state = GenericAppState::Configured(new_generic_app_state);
-                }
+                state.state = GenericAppState::Configured(new_generic_app_state);
             }
             GenericAppState::Configured(configured) => {
                 let joined_app_state = self.meta_client.sign_up(configured).in_current_span().await;
@@ -75,9 +70,9 @@ where
     Repo: KvLogEventRepo,
     StateManager: JsAppStateManager,
 {
-    async fn update_app_state(&self, app_state: &ApplicationState, creds: &UserCredentials) -> ApplicationState {
+    async fn update_app_state(&self, app_state: &ApplicationState, creds: DeviceCredentials) -> ApplicationState {
         let mut new_app_state = app_state.clone();
-        new_app_state.meta_vault = Some(creds.user_sig.vault.clone());
+        new_app_state.device_creds = Some(creds);
 
         let vault_info = self
             .meta_client
@@ -89,11 +84,11 @@ where
             VaultInfo::Member { vault } => {
                 let vault_name = vault.vault_name.clone();
 
-                new_app_state.vault = Some(Box::new(vault));
+                new_app_state.vault = Some(vault);
 
                 let meta_pass_store = self
                     .meta_client
-                    .meta_db_service_proxy
+                    .read_db_service_proxy
                     .get_meta_pass_store(vault_name)
                     .await
                     .unwrap();
@@ -115,7 +110,6 @@ where
 impl<Repo, StateManager> ActionHandler<RecoveryRequest, GenericAppState> for MetaClientService<Repo, StateManager>
 where
     Repo: KvLogEventRepo,
-
     StateManager: JsAppStateManager,
 {
     #[instrument(skip_all)]
@@ -129,7 +123,7 @@ where
                 .in_current_span()
                 .await;
         } else {
-            panic!("Invalid request. Recovery request not allowed when the state is not 'Joined'");
+            error!("Invalid request. Recovery request not allowed when the state is not 'Joined'");
         }
     }
 }
@@ -152,7 +146,7 @@ where
             let passwords = {
                 let pass_store = self
                     .meta_client
-                    .meta_db_service_proxy
+                    .read_db_service_proxy
                     .get_meta_pass_store(app_state.creds.user_sig.vault.name.clone())
                     .await
                     .unwrap();
@@ -168,7 +162,7 @@ where
             app_state.meta_passwords.clear();
             app_state.meta_passwords = passwords;
         } else {
-            panic!("Invalid request. Distribution request not allowed if the state is not 'Joined'")
+            error!("Invalid request. Distribution request not allowed if the state is not 'Joined'")
         }
     }
 }
@@ -193,7 +187,9 @@ where
             self.sync_gateway.sync().in_current_span().await;
 
             match &mut service_state.state {
-                GenericAppState::Empty(_) => {}
+                GenericAppState::Empty(_) => {
+                    error!("Empty app state");
+                }
                 GenericAppState::Configured(configured_app_state) => {
                     let new_app_state = self
                         .update_app_state(&configured_app_state.app_state, &configured_app_state.creds)
@@ -260,7 +256,7 @@ where
 
                 let meta_pass_store = self
                     .meta_client
-                    .meta_db_service_proxy
+                    .read_db_service_proxy
                     .get_meta_pass_store(vault_name)
                     .await
                     .unwrap();

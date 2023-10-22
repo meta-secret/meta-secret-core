@@ -2,7 +2,7 @@ use crate::node::db::events::common::{LogEventKeyBasedRecord, MemPoolObject, Met
 use crate::node::db::events::error::ErrorMessage;
 use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::local::KvLogEventLocal;
+use crate::node::db::events::local::{DbTailObject, DeviceCredentialsObject};
 use crate::node::db::events::vault_event::VaultObject;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -14,7 +14,10 @@ pub enum GenericKvLogEvent {
     MetaPass(MetaPassObject),
     SharedSecret(SharedSecretObject),
     MemPool(MemPoolObject),
-    LocalEvent(KvLogEventLocal),
+
+    /// Local events (persistent objects which lives only in the local environment) which must not be synchronized
+    DeviceCredentials(DeviceCredentialsObject),
+    DbTail(DbTailObject),
 
     Error { event: KvLogEvent<ErrorMessage> },
 }
@@ -27,8 +30,17 @@ impl LogEventKeyBasedRecord for GenericKvLogEvent {
             GenericKvLogEvent::MetaPass(pass_obj) => pass_obj.key(),
             GenericKvLogEvent::SharedSecret(obj) => obj.key(),
             GenericKvLogEvent::MemPool(mem_pool_obj) => mem_pool_obj.key(),
-            GenericKvLogEvent::LocalEvent(op) => op.key(),
             GenericKvLogEvent::Error { event } => &event.key,
+            GenericKvLogEvent::DeviceCredentials(obj) => &obj.event.key,
+            GenericKvLogEvent::DbTail(obj) => &obj.event.key
         }
     }
+}
+
+pub trait UnitEvent<T> {
+    fn unit(value: T) -> Self;
+}
+
+pub trait UnitEventEmptyValue {
+    fn unit() -> Self;
 }

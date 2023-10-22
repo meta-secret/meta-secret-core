@@ -15,8 +15,8 @@ use meta_secret_core::node::app::meta_app::messaging::{
 };
 
 use crate::app_state_manager::ApplicationStateManager;
-use crate::wasm_repo::WasmRepo;
 use crate::{configure, updateJsState};
+use crate::wasm_repo::WasmRepo;
 
 pub struct JsJsAppStateManager {}
 
@@ -58,7 +58,10 @@ impl WasmApplicationStateManager {
             vd_js_app_state: Arc::new(NoOpJsAppStateManager {}),
         };
 
-        let app_state_manager = ApplicationStateManager::init(cfg).await;
+        let app_state_manager = ApplicationStateManager::init(cfg)
+            .await
+            .expect("Application state manager must be initialized");
+
         WasmApplicationStateManager {
             app_manager: GenericApplicationStateManager::InMem { app_state_manager },
         }
@@ -77,13 +80,18 @@ impl WasmApplicationStateManager {
             vd_js_app_state: Arc::new(JsJsAppStateManager {}),
         };
 
-        let app_state_manager = ApplicationStateManager::init(cfg).await;
+        let app_state_manager = ApplicationStateManager::init(cfg)
+            .await
+            .expect("Application state manager must be initialized");
+
         WasmApplicationStateManager {
             app_manager: GenericApplicationStateManager::Wasm { app_state_manager },
         }
     }
 
     pub async fn sign_up(&self, vault_name: &str, device_name: &str) {
+        info!("Send sign up request");
+
         let request = GenericAppStateRequest::SignUp(SignUpRequest {
             vault_name: vault_name.to_string(),
             device_name: device_name.to_string(),

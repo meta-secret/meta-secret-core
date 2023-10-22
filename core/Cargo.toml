@@ -3,55 +3,51 @@ name = "meta-secret-core"
 version = "2.0.0"
 edition = "2021"
 license = "Apache-2.0"
-description = "Meta Secret core module"
+description = "Meta Secret Core Module"
 homepage = "https://github.com/meta-secret/meta-secret-core"
 documentation = "https://github.com/meta-secret/meta-secret-core/blob/main/core/README.md"
 repository = "https://github.com/meta-secret/meta-secret-core"
 readme = "README.md"
+
+[features]
+test_utils = []
 
 [lib]
 crate-type = ["cdylib", "lib", "staticlib"]
 name = "meta_secret_core"
 
 [dependencies]
-chrono = "0.4.31"
+thiserror.workspace = true
+anyhow.workspace = true
 
-thiserror = "1.0.40"
-anyhow = "1.0.66"
+async-trait.workspace = true
+flume.workspace = true
+async-mutex.workspace = true
+async-std = { workspace = true, features = ["unstable"] }
 
-tracing = {version = "0.1.37"  }
-tracing-subscriber = {version = "0.3.17", features = ["json", "env-filter"]}
+serde.workspace = true
+serde_json.workspace = true
+serde_derive.workspace = true
 
-async-mutex = "1.4.0"
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["json", "env-filter"] }
 
-async-trait = "0.1"
-flume = "0.11.0"
-
-reqwest = { version = "0.11.13", features = ["json"] }
-async-std = { version = "1.12.0", features = ["unstable"] }
-
-ed25519-dalek = "1.0.1"
-crypto_box = { version = "0.8.2", features = ["std"] }
-rand = "0.8.5"
-getrandom = { version = "0.2.8", features = ["js"] }
-sha2 = { version = "0.10.6", features = ["oid"] }
-base64 = "0.20.0"
-
-hex = "0.4"
-
+ed25519-dalek.workspace = true
+crypto_box.workspace = true
+rand.workspace = true
+getrandom.workspace = true
+sha2.workspace = true
+base64.workspace = true
+hex.workspace = true
 #https://github.com/dsprenkels/sss-rs
-shamirsecretsharing = "0.1"
+shamirsecretsharing.workspace = true
 
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
 serde_bytes = "0.11"
 serde-big-array = "0.4"
-serde_derive = "^1.0"
 
 qrcode-generator = "4.1.6"
 rqrr = "0.5"
 image = "0.24"
-log = "0.4.20"
 
 [dependencies.uuid]
 version = "1.3.0"
@@ -61,7 +57,6 @@ features = [
     "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
 ]
 
-
 [dev-dependencies]
-tokio = { version = "1.20.1", features = ["macros"] }
+tokio = { version = "1.20.1", features = ["full"] }
 pretty_assertions = "1"

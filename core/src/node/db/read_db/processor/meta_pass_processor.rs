@@ -1,10 +1,10 @@
 use crate::node::db::events::common::MetaPassObject;
-use crate::node::db::meta_db::meta_db_view::MetaDb;
-use crate::node::db::meta_db::store::meta_pass_store::MetaPassStore;
+use crate::node::db::read_db::read_db_view::ReadDb;
+use crate::node::db::read_db::store::meta_pass_store::MetaPassStore;
 
-use tracing::{debug, info};
+use tracing::{debug, error};
 
-impl MetaDb {
+impl ReadDb {
     pub fn apply_meta_pass_event(&mut self, meta_pass_obj: &MetaPassObject) {
         debug!("Apply meta pass event");
 
@@ -20,7 +20,7 @@ impl MetaDb {
                             "Invalid state. Meta pass. Got a unit event, expected db state is Empty or Unit, actual: {:?}",
                             &self.meta_pass_store
                         );
-                        info!(err_str);
+                        error!(err_str);
                         panic!("Invalid state")
                     }
                 }
@@ -41,7 +41,7 @@ impl MetaDb {
                             "Invalid state. Meta Pass, genesis event. Actual: {:?}, expected: unit",
                             self.meta_pass_store
                         );
-                        info!(err_msg);
+                        error!(err_msg);
                         panic!("Invalid state")
                     }
                 }
@@ -64,7 +64,7 @@ impl MetaDb {
                         "Invalid state. Meta Pass, update event. Actual state: {:?}, expected: genesis or store",
                         self.meta_pass_store
                     );
-                    info!(err_msg);
+                    error!(err_msg);
                     panic!("Invalid state")
                 }
             },

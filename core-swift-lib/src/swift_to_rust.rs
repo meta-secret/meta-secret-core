@@ -79,7 +79,7 @@ mod internal {
 
     pub fn generate_security_box(vault_name_bytes: *const u8, len: SizeT) -> CoreResult<String> {
         let device_name = data_to_string(vault_name_bytes, len)?;
-        let security_box = KeyManager::generate_security_box(device_name);
+        let security_box = KeyManager::generate_secret_box(device_name);
         let user = serde_json::to_string_pretty(&security_box)?;
         Ok(user)
     }

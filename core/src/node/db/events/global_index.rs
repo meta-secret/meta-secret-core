@@ -1,4 +1,5 @@
 use crate::node::db::events::common::PublicKeyRecord;
+use crate::node::db::events::generic_log_event::UnitEventEmptyValue;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -19,13 +20,15 @@ impl GlobalIndexObject {
     }
 }
 
-impl GlobalIndexObject {
-    pub fn unit() -> Self {
+impl UnitEventEmptyValue for GlobalIndexObject {
+    fn unit() -> Self {
         GlobalIndexObject::Unit {
             event: KvLogEvent::global_index_unit(),
         }
     }
+}
 
+impl GlobalIndexObject {
     pub fn genesis(server_pk: &PublicKeyRecord) -> Self {
         let genesis_log_event = KvLogEvent::global_index_genesis(server_pk);
         GlobalIndexObject::Genesis {

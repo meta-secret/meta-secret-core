@@ -1,20 +1,21 @@
 use std::sync::Arc;
+
 use tracing::Instrument;
 
 use crate::crypto::keys::KeyManager;
 use crate::models::{
     AeadCipherText, EncryptedMessage, MetaPasswordDoc, MetaPasswordId, MetaPasswordRequest, SecretDistributionDocData,
-    SecretDistributionType, UserCredentials, UserSecurityBox, UserSignature, VaultDoc,
+    SecretDistributionType, UserSignature, VaultDoc,
 };
+use crate::node::app_models::{UserCredentials, SecurityBox};
 use crate::node::db::events::common::ObjectCreator;
 use crate::node::db::events::common::{MetaPassObject, SharedSecretObject};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
-use crate::node::db::events::object_id::{IdGen, ObjectId};
+use crate::node::db::events::object_id::{IdGen};
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object::PersistentObject;
-
 use crate::CoreResult;
 use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
 
@@ -35,7 +36,7 @@ pub fn split(secret: String, config: SharedSecretConfig) -> CoreResult<Vec<UserS
 }
 
 pub struct MetaEncryptor {
-    security_box: UserSecurityBox,
+    security_box: SecurityBox,
     vault: VaultDoc,
 }
 
@@ -47,7 +48,7 @@ impl MetaEncryptor {
     fn encrypt(self, password: String) -> Vec<MetaCipherShare> {
         let cfg = SharedSecretConfig::default();
 
-        let key_manager = KeyManager::try_from(self.security_box.key_manager.as_ref()).unwrap();
+        let key_manager = KeyManager::try_from(&self.security_box.key_manager).unwrap();
 
         let shares = split(password, cfg).unwrap();
 
@@ -87,10 +88,9 @@ pub struct MetaDistributor<Repo: KvLogEventRepo> {
 }
 
 impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
-    /// Encrypt and distribute password across the cluster
     pub async fn distribute(self, password_id: String, password: String) {
         let encryptor = MetaEncryptor {
-            security_box: self.user_creds.security_box.as_ref().clone(),
+            security_box: self.user_creds.security_box.clone(),
             vault: self.vault.clone(),
         };
 
@@ -105,7 +105,9 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
 
         //save meta password!!!
         let vault_name = self.user_creds.user_sig.vault.name.clone();
-        let meta_pass_obj_desc = ObjectDescriptor::MetaPassword { vault_name };
+        let meta_pass_obj_desc = ObjectDescriptor::MetaPassword {
+            vault_name: vault_name.clone(),
+        };
 
         let pass_tail_id = self
             .persistent_obj
@@ -143,44 +145,49 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
             let distribution_share = SecretDistributionDocData {
                 distribution_type: SecretDistributionType::Split,
                 meta_password: Box::new(MetaPasswordRequest {
-                    user_sig: Box::new(self.user_creds.user_sig.as_ref().clone()),
+                    user_sig: Box::new(self.user_creds.user_sig.clone()),
                     meta_password: Box::new(pass.clone()),
                 }),
                 secret_message: Box::new(cipher_msg),
             };
 
-            if cipher_share.receiver.vault.device.device_id == self.user_creds.user_sig.vault.device.device_id {
-                let secret_share_event = GenericKvLogEvent::SharedSecret(SharedSecretObject::Split {
-                    event: KvLogEvent {
-                        key: KvKey::unit(&ObjectDescriptor::from(&distribution_share)),
-                        value: distribution_share,
-                    },
-                });
-
-                let _ = self
-                    .persistent_obj
-                    .repo
-                    .save_event(secret_share_event)
-                    .in_current_span()
-                    .await;
-            } else {
-                let obj_desc = ObjectDescriptor::from(&distribution_share);
-                let secret_share_event = GenericKvLogEvent::SharedSecret(SharedSecretObject::Split {
-                    event: KvLogEvent {
-                        key: KvKey::unit(&ObjectDescriptor::from(&distribution_share)),
-                        value: distribution_share,
-                    },
-                });
-
-                let tail_id = self
-                    .persistent_obj
-                    .find_tail_id_by_obj_desc(&obj_desc)
-                    .await
-                    .map(|id| id.next())
-                    .unwrap_or(ObjectId::unit(&obj_desc));
-
-                let _ = self.persistent_obj.repo.save(tail_id, secret_share_event).await;
+            let split_key = {
+                let split_obj_desc = ObjectDescriptor::from(&distribution_share);
+                KvKey::unit(&split_obj_desc)
             };
+
+            let audit_obj_desc = ObjectDescriptor::SharedSecretAudit {
+                vault_name: vault_name.clone(),
+            };
+
+            // create an audit event
+            let audit_free_slot = self.persistent_obj.find_free_id_by_obj_desc(&audit_obj_desc).await;
+
+            let audit_event = GenericKvLogEvent::SharedSecret(SharedSecretObject::Audit {
+                event: KvLogEvent {
+                    key: KvKey {
+                        obj_id: audit_free_slot,
+                        obj_desc: audit_obj_desc.clone(),
+                    },
+                    value: split_key.obj_id.clone(),
+                },
+            });
+
+            let _ = self.persistent_obj.repo.save_event(audit_event).await.unwrap();
+
+            let secret_share_event = GenericKvLogEvent::SharedSecret(SharedSecretObject::Split {
+                event: KvLogEvent {
+                    key: split_key,
+                    value: distribution_share,
+                },
+            });
+
+            let _ = self
+                .persistent_obj
+                .repo
+                .save_event(secret_share_event)
+                .in_current_span()
+                .await;
         }
     }
 }
@@ -194,11 +201,13 @@ mod test {
     use crate::node::db::generic_db::{FindOneQuery, SaveCommand};
     use crate::node::server::data_sync::test::DataSyncTestContext;
     use crate::node::server::data_sync::DataSyncApi;
+    use crate::test_utils::meta_test_utils::MetaAppTestVerifier;
+    use std::ops::Deref;
 
     use super::*;
 
     #[tokio::test]
-    async fn test() {
+    async fn test_distribute() -> anyhow::Result<()> {
         let ctx = DataSyncTestContext::default();
         let data_sync = ctx.data_sync;
 
@@ -209,33 +218,33 @@ mod test {
 
         let vault_unit_id = ObjectId::vault_unit("test_vault");
         let vault_tail_id = ctx.persistent_obj.find_tail_id(vault_unit_id.clone()).await.unwrap();
-        let vault_event = ctx.repo.find_one(vault_tail_id).await.unwrap().unwrap();
+        let vault_event = ctx.repo.find_one(vault_tail_id).await?;
 
-        let s_box_b = KeyManager::generate_security_box("test_vault".to_string());
+        let s_box_b = KeyManager::generate_secret_box("test_vault".to_string());
         let device_b = DeviceInfo {
             device_id: "b".to_string(),
             device_name: "b".to_string(),
         };
         let user_sig_b = s_box_b.get_user_sig(&device_b);
 
-        let s_box_c = KeyManager::generate_security_box("test_vault".to_string());
+        let s_box_c = KeyManager::generate_secret_box("test_vault".to_string());
         let device_c = DeviceInfo {
             device_id: "c".to_string(),
             device_name: "c".to_string(),
         };
         let user_sig_c = s_box_c.get_user_sig(&device_c);
 
-        if let GenericKvLogEvent::Vault(VaultObject::SignUpUpdate { event }) = vault_event {
+        if let Some(GenericKvLogEvent::Vault(VaultObject::SignUpUpdate { event })) = vault_event {
             let vault = event.value;
 
-            let join_request = join::join_cluster_request(&vault_unit_id.next().next(), &user_sig_b);
+            let join_request = join::join_cluster_request(&vault_unit_id.next(), &user_sig_b);
             let kv_join_event = join::accept_join_request(&join_request, &vault);
             let accept_event = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
                 event: kv_join_event.clone(),
             });
             let _ = ctx.repo.save_event(accept_event).await;
 
-            let join_request_c = join::join_cluster_request(&vault_unit_id.next().next().next(), &user_sig_c);
+            let join_request_c = join::join_cluster_request(&vault_unit_id.next().next(), &user_sig_c);
             let kv_join_event_c = join::accept_join_request(&join_request_c, &kv_join_event.value);
             let accept_event_c = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
                 event: kv_join_event_c.clone(),
@@ -267,15 +276,27 @@ mod test {
                 a_id.as_str().partial_cmp(b_id.as_str()).unwrap()
             });
 
+            {
+                let events = ctx.repo.as_ref().db.as_ref().lock().await.deref().clone();
+
+                let verifier = MetaAppTestVerifier {
+                    vault_name: ctx.user_sig.vault.name.clone(),
+                    events,
+                };
+                //verifier.client_verification();
+            }
+
             println!("total events: {}", db.len());
             for event in db {
                 println!("event:");
                 let id = event.key().obj_id.id_str();
                 println!(" key: {}", serde_json::to_string(&id).unwrap());
-                println!(" event: {}", serde_json::to_string(&event).unwrap());
+                println!(" event: {}", serde_json::to_string_pretty(&event).unwrap());
             }
         } else {
             panic!("Invalid event")
         }
+
+        Ok(())
     }
 }

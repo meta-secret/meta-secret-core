@@ -1,4 +1,5 @@
-use crate::models::{ApplicationState, UserCredentials};
+use crate::models::ApplicationState;
+use crate::node::app_models::UserCredentials;
 use crate::node::db::events::common::VaultInfo;
 
 #[derive(Clone, Debug)]

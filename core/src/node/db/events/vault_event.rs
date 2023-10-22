@@ -1,4 +1,4 @@
-use crate::models::{UserSignature, VaultDoc};
+use crate::models::{VaultDoc};
 use crate::node::db::events::common::PublicKeyRecord;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 
@@ -7,7 +7,7 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 pub enum VaultObject {
     /// SingUp request
     Unit {
-        event: KvLogEvent<UserSignature>,
+        event: KvLogEvent<UserSignature????>,
     },
     Genesis {
         event: KvLogEvent<PublicKeyRecord>,

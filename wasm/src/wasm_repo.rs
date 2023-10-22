@@ -59,17 +59,15 @@ impl WasmRepo {
 #[async_trait(? Send)]
 impl SaveCommand for WasmRepo {
     async fn save(&self, key: ObjectId, event: GenericKvLogEvent) -> anyhow::Result<ObjectId> {
-        let event_js: JsValue = serde_wasm_bindgen::to_value(&event)
-            .map_err(|err| anyhow!("Error parsing data to save: {:?}", err))?;
+        let event_js: JsValue =
+            serde_wasm_bindgen::to_value(&event).map_err(|err| anyhow!("Error parsing data to save: {:?}", err))?;
 
         let db = open_db(self.db_name.as_str()).in_current_span().await;
         let tx = db
             .transaction_on_one_with_mode(self.store_name.as_str(), IdbTransactionMode::Readwrite)
             .unwrap();
         let store = tx.object_store(self.store_name.as_str()).unwrap();
-        store
-            .put_key_val_owned(key.id_str().as_str(), &event_js)
-            .unwrap();
+        store.put_key_val_owned(key.id_str().as_str(), &event_js).unwrap();
 
         tx.in_current_span().await.into_result().unwrap();
         // All of the requests in the transaction have already finished so we can just drop it to

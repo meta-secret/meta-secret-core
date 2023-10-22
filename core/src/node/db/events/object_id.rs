@@ -13,7 +13,7 @@ pub enum ObjectId {
     /// The unit type serves as a foundational element within category theory,
     /// providing a way to represent the absence of information or the presence of a single unique value.
     ///
-    /// Same here, Unit is a inittial request to create/initialize an object, it's step zero.
+    /// Same here, Unit is a initial request to create/initialize an object, it's step zero.
     Unit { id: String },
     /// Next step after Unit is Genesis, it's a first step in object initialization,
     /// it contains digital signature and public key of the actor (for instance it could be meta secret server) that
@@ -108,10 +108,6 @@ impl ObjectId {
 
     pub fn global_index_genesis() -> ObjectId {
         ObjectId::genesis(&ObjectDescriptor::GlobalIndex)
-    }
-
-    pub fn meta_vault_index() -> ObjectId {
-        ObjectId::unit(&ObjectDescriptor::MetaVault)
     }
 
     pub fn vault_unit(vault_name: &str) -> Self {

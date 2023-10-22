@@ -1,11 +1,11 @@
 use crate::node::db::events::kv_log_event::KvKey;
 use crate::node::db::events::vault_event::VaultObject;
-use crate::node::db::meta_db::meta_db_view::MetaDb;
-use crate::node::db::meta_db::store::vault_store::VaultStore;
+use crate::node::db::read_db::read_db_view::ReadDb;
+use crate::node::db::read_db::store::vault_store::VaultStore;
 
 use tracing::{debug, error, info};
 
-impl MetaDb {
+impl ReadDb {
     pub fn apply_vault_event(&mut self, vault_obj: &VaultObject) {
         debug!("Apply vault event: {:?}", vault_obj);
 
@@ -89,15 +89,15 @@ mod test {
     use crate::models::DeviceInfo;
     use crate::node::db::events::object_id::ObjectId;
     use crate::node::db::events::vault_event::VaultObject;
-    use crate::node::db::meta_db::meta_db_view::MetaDb;
-    use crate::node::db::meta_db::store::vault_store::VaultStore;
+    use crate::node::db::read_db::read_db_view::ReadDb;
+    use crate::node::db::read_db::store::vault_store::VaultStore;
 
     #[test]
     fn test() {
-        let mut meta_db = MetaDb::new(String::from("test"));
+        let mut read_db = ReadDb::new(String::from("test"));
 
         let vault_name = String::from("test_vault");
-        let s_box = KeyManager::generate_security_box(vault_name.clone());
+        let s_box = KeyManager::generate_secret_box(vault_name.clone());
         let device = DeviceInfo {
             device_id: "a".to_string(),
             device_name: "a".to_string(),
@@ -105,8 +105,8 @@ mod test {
         let user_sig = s_box.get_user_sig(&device);
 
         let vault_obj = VaultObject::unit(&user_sig);
-        meta_db.apply_vault_event(&vault_obj);
-        match meta_db.vault_store {
+        read_db.apply_vault_event(&vault_obj);
+        match read_db.vault_store {
             VaultStore::Unit { tail_id } => {
                 assert_eq!(ObjectId::vault_unit(vault_name.as_str()), tail_id);
             }

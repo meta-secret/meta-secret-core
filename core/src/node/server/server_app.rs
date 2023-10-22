@@ -12,7 +12,7 @@ use crate::node::db::objects::persistent_object::PersistentGlobalIndexApi;
 use crate::node::server::data_sync::{DataSyncApi, DataSyncMessage, MetaServerContext, ServerDataSync};
 
 pub struct ServerApp<Repo: KvLogEventRepo> {
-    pub data_sync: Arc<ServerDataSync<Repo>>,
+    pub data_sync: ServerDataSync<Repo>,
     pub data_transfer: Arc<ServerDataTransfer>,
 }
 

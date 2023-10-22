@@ -15,102 +15,6 @@ components:
       properties:
         base64Text:
           type: string
-    DeviceInfo:
-      type: object
-      required:
-        - deviceId
-        - deviceName
-      properties:
-        deviceId:
-          type: string
-          minLength: 1
-          maxLength: 100
-        deviceName:
-          type: string
-          minimum: 0
-          maximum: 250
-
-    MetaVault:
-      type: object
-      description: |
-        It keeps the information about a vault. 
-        It's the origin of the objects generated to create a user vault and generate
-        all necessary credentials and user signatures.
-        MetaVault -> KeyManager -> UserSignature
-      required:
-        - name
-        - device
-      properties:
-        name:
-          description: vault name
-          type: string
-        device:
-          $ref: '#/components/schemas/DeviceInfo'
-
-    UserSignature:
-      type: object
-      required:
-        - vault
-        - publicKey
-        - transportPublicKey
-      properties:
-        vault:
-          description: distributed vault, unique across the entire system
-          $ref: '#/components/schemas/MetaVault'
-        publicKey:
-          $ref: '#/components/schemas/Base64EncodedText'
-        transportPublicKey:
-          $ref: '#/components/schemas/Base64EncodedText'
-
-    SerializedDsaKeyPair:
-      type: object
-      required:
-        - keyPair
-        - publicKey
-      properties:
-        keyPair:
-          $ref: '#/components/schemas/Base64EncodedText'
-        publicKey:
-          $ref: '#/components/schemas/Base64EncodedText'
-
-
-    SerializedTransportKeyPair:
-      type: object
-      required:
-        - secretKey
-        - publicKey
-      properties:
-        secretKey:
-          $ref: '#/components/schemas/Base64EncodedText'
-        publicKey:
-          $ref: '#/components/schemas/Base64EncodedText'
-
-    SerializedKeyManager:
-      type: object
-      required:
-        - dsa
-        - transport
-      properties:
-        dsa:
-          $ref: '#/components/schemas/SerializedDsaKeyPair'
-        transport:
-          $ref: '#/components/schemas/SerializedTransportKeyPair'
-
-    UserSecurityBox:
-      type: object
-      required:
-        - vaultName
-        - signature
-        - keyManager
-      properties:
-        vaultName:
-          type: string
-          minLength: 1
-        signature:
-          $ref: '#/components/schemas/Base64EncodedText'
-        keyManager:
-          $ref: '#/components/schemas/SerializedKeyManager'
-
     # Encryption
 
     CommunicationChannel:
@@ -353,17 +257,6 @@ components:
         userRequestType:
           $ref: '#/components/schemas/SecretDistributionType'
         userSignature:
-          $ref: '#/components/schemas/UserSignature'
-
-    UserCredentials:
-      type: object
-      required:
-        - securityBox
-        - userSig
-      properties:
-        securityBox:
-          $ref: '#/components/schemas/UserSecurityBox'
-        userSig:
           $ref: '#/components/schemas/UserSignature'
 
     ApplicationState:

@@ -3,9 +3,9 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{IdGen, ObjectId};
 
-pub fn join_cluster_request(curr_obj_id: &ObjectId, user_sig: &UserSignature) -> KvLogEvent<UserSignature> {
+pub fn join_cluster_request(vault_tail_id: &ObjectId, user_sig: &UserSignature) -> KvLogEvent<UserSignature> {
     let key = KvKey {
-        obj_id: curr_obj_id.next(),
+        obj_id: vault_tail_id.next(),
         obj_desc: ObjectDescriptor::Vault {
             vault_name: user_sig.vault.name.clone(),
         },

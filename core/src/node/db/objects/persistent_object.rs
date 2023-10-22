@@ -1,15 +1,20 @@
+use anyhow::anyhow;
 use std::sync::Arc;
 
+use crate::crypto::keys::KeyManager;
+use crate::models::MetaVault;
 use async_trait::async_trait;
-use tracing::{debug, info, Instrument};
+use tracing::{debug, info, instrument, Instrument};
 
 use crate::models::user_signature::UserSignature;
+use crate::node::app::device_creds_manager::{MetaVaultManager, DeviceCredentialsManager};
+use crate::node::app_models::UserCredentials;
 use crate::node::db::events::common::{ObjectCreator, PublicKeyRecord};
-use crate::node::db::events::db_tail::{DbTail, DbTailObject};
+use crate::node::db::events::db_tail::{DbTail, ObjectIdDbEvent};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::local::KvLogEventLocal;
+use crate::node::db::events::local::DbTailObject;
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{IdGen, ObjectId};
 use crate::node::db::events::vault_event::VaultObject;
@@ -65,6 +70,13 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
         commit_log
     }
 
+    pub async fn find_free_id_by_obj_desc(&self, obj_desc: &ObjectDescriptor) -> ObjectId {
+        self.find_tail_id_by_obj_desc(obj_desc)
+            .await
+            .map(|tail_id| tail_id.next())
+            .unwrap_or(ObjectId::unit(obj_desc))
+    }
+
     pub async fn find_tail_id_by_obj_desc(&self, obj_desc: &ObjectDescriptor) -> Option<ObjectId> {
         let unit_id = ObjectId::unit(obj_desc);
         self.find_tail_id(unit_id).in_current_span().await
@@ -106,12 +118,12 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
         match maybe_db_tail {
             None => {
                 let db_tail = DbTail {
-                    vault_id: DbTailObject::Empty {
+                    vault_id: ObjectIdDbEvent::Empty {
                         unit_id: ObjectId::vault_unit(vault_name),
                     },
                     maybe_global_index_id: None,
                     maybe_mem_pool_id: None,
-                    meta_pass_id: DbTailObject::Empty {
+                    meta_pass_id: ObjectIdDbEvent::Empty {
                         unit_id: ObjectId::meta_pass_unit(vault_name),
                     },
                     s_s_audit: None,
@@ -122,21 +134,17 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
                         key: KvKey::unit(&ObjectDescriptor::DbTail),
                         value: db_tail.clone(),
                     };
-                    GenericKvLogEvent::LocalEvent(KvLogEventLocal::DbTail { event: Box::new(event) })
+                    GenericKvLogEvent::DbTail(DbTailObject { event })
                 };
 
                 self.repo.save_event(tail_event).in_current_span().await?;
                 Ok(db_tail)
             }
-            Some(db_tail) => match db_tail {
-                GenericKvLogEvent::LocalEvent(local_evt) => match local_evt {
-                    KvLogEventLocal::DbTail { event } => Ok(event.value),
-                    _ => {
-                        panic!("DbTail. Invalid data");
-                    }
-                },
-                _ => {
-                    panic!("DbTail. Invalid event type");
+            Some(db_tail) => {
+                if let GenericKvLogEvent::DbTail(DbTailObject { event }) = db_tail {
+                    Ok(event.value)
+                } else {
+                    Err(anyhow!("DbTail. Invalid event type: {:?}", db_tail))
                 }
             },
         }
@@ -160,6 +168,64 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
         match maybe_unit_event {
             Some(GenericKvLogEvent::Vault(VaultObject::Unit { event })) => Ok(Some(event.value)),
             _ => Ok(None),
+        }
+    }
+
+    #[instrument(skip_all)]
+    pub async fn get_or_create_local_vault(
+        &self,
+        vault_name: &str,
+        device_name: &str,
+    ) -> anyhow::Result<UserCredentials> {
+        let meta_vault = self
+            .create_meta_vault(vault_name, device_name)
+            .in_current_span()
+            .await?;
+        let creds = self.generate_user_credentials(meta_vault).in_current_span().await?;
+        Ok(creds)
+    }
+
+    async fn create_meta_vault(&self, vault_name: &str, device_name: &str) -> anyhow::Result<MetaVault> {
+        info!("Create a meta vault");
+
+        let maybe_meta_vault = self.repo.find_meta_vault().await?;
+
+        match maybe_meta_vault {
+            None => {
+                self.repo
+                    .create_meta_vault(vault_name.to_string(), device_name.to_string())
+                    .await
+            }
+            Some(meta_vault) => {
+                if meta_vault.name != vault_name || meta_vault.device.device_name != device_name {
+                    Err(anyhow!("Another meta vault already exists in the database"))
+                } else {
+                    Ok(meta_vault)
+                }
+            }
+        }
+    }
+
+    #[instrument(skip(self))]
+    async fn generate_user_credentials(&self, meta_vault: MetaVault) -> anyhow::Result<UserCredentials> {
+        info!("generate_user_credentials: generate a new security box");
+
+        let maybe_creds = self.repo.find_device_creds().in_current_span().await?;
+
+        match maybe_creds {
+            None => {
+                let security_box = KeyManager::generate_secret_box(meta_vault.name);
+                let user_sig = security_box.get_user_sig(&meta_vault.device);
+                let creds = UserCredentials { security_box, user_sig };
+                self.repo.save_device_creds(&creds).await?;
+
+                info!(
+                    "User creds has been generated. Pk: {}",
+                    creds.user_sig.public_key.base64_text
+                );
+                Ok(creds)
+            }
+            Some(creds) => Ok(creds),
         }
     }
 }
@@ -212,7 +278,7 @@ mod test {
     use crate::crypto::keys::KeyManager;
     use crate::models::DeviceInfo;
     use crate::node::db::events::common::{LogEventKeyBasedRecord, ObjectCreator, PublicKeyRecord};
-    use crate::node::db::events::generic_log_event::GenericKvLogEvent;
+    use crate::node::db::events::generic_log_event::{GenericKvLogEvent, UnitEventEmptyValue};
     use crate::node::db::events::global_index::{GlobalIndexObject, GlobalIndexRecord};
     use crate::node::db::events::kv_log_event::KvKey;
     use crate::node::db::events::kv_log_event::KvLogEvent;
@@ -230,7 +296,7 @@ mod test {
         };
 
         let user_sig = {
-            let s_box = KeyManager::generate_security_box("test_vault".to_string());
+            let s_box = KeyManager::generate_secret_box("test_vault".to_string());
             let device = DeviceInfo {
                 device_id: "a".to_string(),
                 device_name: "a".to_string(),
@@ -289,7 +355,7 @@ mod test {
         };
 
         let user_sig = {
-            let s_box = KeyManager::generate_security_box("test_vault".to_string());
+            let s_box = KeyManager::generate_secret_box("test_vault".to_string());
             let device = DeviceInfo {
                 device_id: "a".to_string(),
                 device_name: "a".to_string(),

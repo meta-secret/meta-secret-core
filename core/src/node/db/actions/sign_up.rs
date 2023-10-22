@@ -5,6 +5,7 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{IdGen, ObjectId};
 use crate::node::db::events::vault_event::VaultObject;
+use tracing::error;
 
 pub struct SignUpAction {}
 
@@ -74,6 +75,7 @@ impl SignUpAction {
                 ]
             }
             _ => {
+                error!("Invalid object id");
                 panic!("Invalid object id");
             }
         }
