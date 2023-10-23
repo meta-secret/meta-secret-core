@@ -2,7 +2,7 @@ use crate::node::common::model::user::UserDataCandidate;
 use crate::node::db::events::common::{ObjectCreator, PublicKeyRecord};
 use crate::node::db::events::global_index::GlobalIndexRecord;
 use crate::node::db::events::object_descriptor::{GlobalIndexDescriptor, ObjectDescriptor};
-use crate::node::db::events::object_id::{IdGen, IdStr, ObjectId};
+use crate::node::db::events::object_id::{Next, ObjectId};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,10 +40,10 @@ impl KvLogEvent<PublicKeyRecord> {
 }
 
 impl KvLogEvent<GlobalIndexRecord> {
-    pub fn new_global_index_event(tail_id: &ObjectId, vault_id: &IdStr, gi_desc: GlobalIndexDescriptor) -> KvLogEvent<GlobalIndexRecord> {
+    pub fn new_global_index_event(tail_id: &ObjectId, vault_id: &IdStr,) -> KvLogEvent<GlobalIndexRecord> {
         let key = KvKey {
             obj_id: tail_id.clone(),
-            obj_desc: ObjectDescriptor::GlobalIndex(gi_desc),
+            obj_desc: ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index),
         };
 
         KvLogEvent {
@@ -75,7 +75,7 @@ impl ObjectCreator<&ObjectDescriptor> for KvKey {
     }
 }
 
-impl IdGen for KvKey {
+impl Next for KvKey {
     fn next(&self) -> Self {
         Self {
             obj_id: self.obj_id.next(),

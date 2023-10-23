@@ -63,7 +63,6 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
         //let vault_name = self.creds.user_sig.vault.name.clone();
 
 
-
         loop {
             self.gateway.sync().in_current_span().await?;
 

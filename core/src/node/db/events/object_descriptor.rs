@@ -128,7 +128,7 @@ impl From<&SecretDistributionDocData> for ObjectDescriptor {
 
 impl ObjectDescriptor {
     pub fn to_id(&self) -> String {
-        utils::to_id(self.fqdn().as_str())
+        utils::next_id(self.fqdn().as_str())
     }
 
     pub fn vault(vault_name: String) -> ObjectDescriptor {
