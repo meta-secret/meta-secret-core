@@ -8,6 +8,7 @@ use crate::crypto::keys::KeyManager;
 use crate::models::UserSignature;
 use crate::node::app_models::UserCredentials;
 use crate::node::common::model::device::DeviceCredentials;
+use crate::node::common::model::user::UserDataCandidate;
 use crate::node::db::actions::join;
 use crate::node::db::actions::sign_up::SignUpAction;
 use crate::node::db::actions::ss_replication::SharedSecretReplicationAction;
@@ -16,7 +17,7 @@ use crate::node::db::events::common::ObjectCreator;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::KvLogEvent;
-use crate::node::db::events::object_descriptor::ObjectDescriptor;
+use crate::node::db::events::object_descriptor::{GlobalIndexDescriptor, ObjectDescriptor};
 use crate::node::db::events::object_id::{IdGen, IdStr, ObjectId};
 use crate::node::db::events::vault_event::VaultObject;
 use crate::node::db::generic_db::KvLogEventRepo;
@@ -142,9 +143,6 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
                     VaultObject::Genesis { .. } => {
                         info!("Genesis event not allowed to send. Skip");
                     }
-                    VaultObject::SignUpUpdate { .. } => {
-                        info!("SignUp update not allowed to send. Skip");
-                    }
                     VaultObject::JoinUpdate { .. } => {
                         let _ = self.persistent_obj.repo.save_event(generic_event).await;
                     }
@@ -219,7 +217,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
             None => {
                 self
                     .persistent_obj
-                    .get_object_events_from_beginning(&ObjectDescriptor::GlobalIndex)
+                    .get_object_events_from_beginning(&ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index))
                     .await?
             }
             Some(index_id) => {
@@ -287,7 +285,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
 }
 
 impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
-    async fn accept_sign_up_request(&self, event: &KvLogEvent<UserSignature>, vault_id: &IdStr) {
+    async fn accept_sign_up_request(&self, event: &KvLogEvent<UserDataCandidate>, vault_id: &IdStr) {
         //vault not found, we can create our new vault
         info!("Accept SignUp request, for the vault: {:?}", vault_id);
 
@@ -303,9 +301,12 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
                 .expect("Error saving sign_up events");
         }
 
-        //update global index
+        self.update_global_index(vault_id, &server_pk).await;
+    }
+
+    async fn update_global_index(&self, vault_id: &IdStr, server_pk: &PublicKeyRecord) {
         //find the latest global_index_id???
-        let gi_obj_id = ObjectId::unit(&ObjectDescriptor::GlobalIndex);
+        let gi_obj_id = ObjectId::unit(&ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index));
         let global_index_tail_id = self
             .persistent_obj
             .find_tail_id(gi_obj_id.clone())
@@ -333,7 +334,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
         };
 
         let gi_update_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Update {
-            event: KvLogEvent::new_global_index_event(&gi_obj_id, vault_id),
+            event: KvLogEvent::new_global_index_event(&gi_obj_id, vault_id, GlobalIndexDescriptor::Index),
         });
 
         gi_events.push(gi_update_event);
@@ -345,6 +346,13 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
                 .await
                 .expect("Error saving vaults genesis event");
         }
+
+        let vault_idx_unit_id = ObjectId::unit(&ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::VaultIndex));
+        let vault_idx_evt = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::VaultIndex {
+            event: KvLogEvent::new_global_index_event(&vault_idx_unit_id, vault_id, GlobalIndexDescriptor::VaultIndex),
+        });
+
+        self.persistent_obj.repo.save_event(vault_idx_evt).await.expect("error");
     }
 }
 

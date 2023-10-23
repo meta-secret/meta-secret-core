@@ -4,10 +4,11 @@ use std::time::Duration;
 use tracing::{debug, error, info, instrument, Instrument};
 
 use crate::node::app::device_creds_manager::DeviceCredentialsManager;
-use crate::node::app_models::UserCredentials;
+use crate::node::common::model::device::DeviceCredentials;
 use crate::node::db::events::common::{LogEventKeyBasedRecord, ObjectCreator, SharedSecretObject};
 use crate::node::db::events::db_tail::{DbTail, ObjectIdDbEvent};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
+use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::local::DbTailObject;
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
@@ -25,33 +26,27 @@ pub struct SyncGateway<Repo: KvLogEventRepo> {
     pub persistent_object: Arc<PersistentObject<Repo>>,
     pub server_dt: Arc<ServerDataTransfer>,
     pub read_db_service_proxy: Arc<ReadDbServiceProxy>,
+    pub device_creds: DeviceCredentials
 }
 
 impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
     #[instrument(skip_all)]
-    pub async fn run(&self) {
+    pub async fn run(&self) -> anyhow::Result<()> {
         info!("Run sync gateway");
 
         loop {
-            self.sync().in_current_span().await;
+            self.sync().in_current_span().await?;
             async_std::task::sleep(Duration::from_millis(300)).await;
         }
     }
 
-    pub async fn sync(&self) {
-        let creds_result = self.persistent_object.repo.find_device_creds().in_current_span().await;
-
-        let Ok(Some(client_creds)) = creds_result else {
-            debug!("Gw type: {:?}, Error. Empty user credentials. Skip", self.id);
-            return;
-        };
-
+    pub async fn sync(&self) -> anyhow::Result<()> {
         let vault_name = client_creds.user_sig.vault.name.as_str();
         let db_tail_result = self.persistent_object.get_db_tail(vault_name).in_current_span().await;
 
         let Ok(db_tail) = db_tail_result else {
             error!("Error! Db tail not exists");
-            return;
+            return Ok(());
         };
 
         let new_gi_tail = self.get_new_tail_for_global_index(&db_tail).in_current_span().await;
@@ -78,7 +73,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
 
         self.save_updated_db_tail(db_tail, new_db_tail.clone())
             .in_current_span()
-            .await;
+            .await?;
 
         let sync_request = {
             let vault_id_request = match &new_db_tail.vault_id {
@@ -114,19 +109,34 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
 
         let Ok(new_events) = new_server_events_res else {
             error!("DataSync error. Error loading events");
-            return;
+            return Ok(());
         };
 
         debug!("id: {:?}. Sync gateway. New events: {:?}", self.id, new_events);
 
         for new_event in new_events {
-            let obj_id = self.persistent_object.repo.save_event(new_event.clone()).in_current_span().await;
-            let key = obj_id.unwrap();
+            let key = self.persistent_object.repo.save_event(new_event.clone()).in_current_span().await?;
 
             match new_event {
-                GenericKvLogEvent::GlobalIndex(_) => latest_gi = Some(key),
-                GenericKvLogEvent::Vault(_) => latest_vault_id = ObjectIdDbEvent::Id { tail_id: key.clone() },
-                GenericKvLogEvent::MetaPass(_) => latest_meta_pass_id = ObjectIdDbEvent::Id { tail_id: key.clone() },
+                GenericKvLogEvent::GlobalIndex(gi_obj) => {
+                    if let GlobalIndexObject::Update { event } = gi_obj {
+                        let gi_record = event.value;
+                        let gi_obj_id = ObjectId::Unit { id: gi_record.vault_id };
+                        let vault_idx_evt = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::VaultIndex {
+                            event: KvLogEvent::new_global_index_event(&gi_obj_id, gi_obj_id., GlobalIndexDescriptor::VaultIndex),
+                        });
+                        self.persistent_object.repo.save_event(vault_idx_evt)
+
+                    }
+
+                    latest_gi = Some(key)
+                },
+                GenericKvLogEvent::Vault(_) => {
+                    latest_vault_id = ObjectIdDbEvent::Id { tail_id: key.clone() }
+                },
+                GenericKvLogEvent::MetaPass(_) => {
+                    latest_meta_pass_id = ObjectIdDbEvent::Id { tail_id: key.clone() }
+                },
                 GenericKvLogEvent::SharedSecret(SharedSecretObject::Audit { event }) => {
                     latest_audit_tail = Some(event.value)
                 }
@@ -220,9 +230,9 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         audit_events.last().map(|evt| evt.key().obj_id.clone())
     }
 
-    async fn save_updated_db_tail(&self, db_tail: DbTail, new_db_tail: DbTail) {
+    async fn save_updated_db_tail(&self, db_tail: DbTail, new_db_tail: DbTail) -> anyhow::Result<()> {
         if new_db_tail == db_tail {
-            return;
+            return Ok(());
         }
 
         //update db_tail
@@ -233,14 +243,8 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             },
         });
 
-        let saved_event_res = self.persistent_object.repo.save_event(new_db_tail_event).await;
-
-        match saved_event_res {
-            Ok(_) => debug!("New db tail saved"),
-            Err(_) => {
-                info!("Error saving db tail");
-            }
-        };
+        self.persistent_object.repo.save_event(new_db_tail_event).await?;
+        Ok(())
     }
 
     async fn get_new_tail_for_an_obj(&self, db_tail_obj: &ObjectIdDbEvent) -> ObjectIdDbEvent {

@@ -6,9 +6,11 @@ use crate::node::common::model::device::DeviceId;
 #[serde(rename_all = "camelCase")]
 #[serde(tag = "__obj_desc")]
 pub enum ObjectDescriptor {
-    GlobalIndex,
+    GlobalIndex(GlobalIndexDescriptor),
+
     MemPool,
     DbTail,
+
     Vault {
         vault_name: String,
     },
@@ -41,6 +43,24 @@ pub enum ObjectDescriptor {
     },
 
     DeviceCredsIndex,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GlobalIndexDescriptor {
+    Index,
+    /// An id of a vault. We have global index to keep track and being able to iterate over all vaults,
+    /// and to be able to check if a particular vault exists we ned to have vault index
+    VaultIndex
+}
+
+impl GlobalIndexDescriptor {
+    pub fn as_id_str(&self) -> String {
+        match self {
+            GlobalIndexDescriptor::Index => String::from("index"),
+            GlobalIndexDescriptor::VaultIndex => String::from("vault_idx")
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -124,7 +144,6 @@ impl ObjectDescriptor {
 
     pub fn object_name(&self) -> String {
         match self {
-            ObjectDescriptor::GlobalIndex => String::from("index"),
             ObjectDescriptor::MemPool => String::from("mem_pool"),
 
             ObjectDescriptor::DbTail => String::from("db_tail"),
@@ -135,6 +154,8 @@ impl ObjectDescriptor {
 
             ObjectDescriptor::MetaPassword { vault_name } => vault_name.clone(),
             ObjectDescriptor::DeviceCredsIndex => String::from("index"),
+            ObjectDescriptor::GlobalIndex(desc) => desc.as_id_str()
+
         }
     }
 }
@@ -172,11 +193,11 @@ mod test {
     use crate::crypto::keys::{KeyManager, OpenBox, SecretBox};
     use crate::models::{MetaPasswordId};
     use crate::node::common::model::device::DeviceId;
-    use crate::node::db::events::object_descriptor::{ObjectDescriptor, SharedSecretDescriptor, SharedSecretEventId};
+    use crate::node::db::events::object_descriptor::{GlobalIndexDescriptor, ObjectDescriptor, SharedSecretDescriptor, SharedSecretEventId};
 
     #[test]
     fn test_global_index() {
-        let obj_desc = ObjectDescriptor::GlobalIndex;
+        let obj_desc = ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index);
         assert_eq!(String::from("GlobalIndex:index::0"), obj_desc.to_id())
     }
 

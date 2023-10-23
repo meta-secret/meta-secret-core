@@ -2,7 +2,8 @@ use std::sync::Arc;
 use tracing::{error, info, instrument, Instrument};
 
 use crate::node::common::data_transfer::MpscDataTransfer;
-use crate::node::db::events::common::ObjectCreator;
+use crate::node::common::model::device::DeviceCredentials;
+use crate::node::db::events::common::{ObjectCreator, PublicKeyRecord};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::ObjectId;
@@ -14,6 +15,7 @@ use crate::node::server::data_sync::{DataSyncApi, DataSyncMessage, ServerDataSyn
 pub struct ServerApp<Repo: KvLogEventRepo> {
     pub data_sync: ServerDataSync<Repo>,
     pub data_transfer: Arc<ServerDataTransfer>,
+    pub device_creds: DeviceCredentials
 }
 
 pub struct ServerDataTransfer {
@@ -77,7 +79,7 @@ where
 
         //If either of unit or genesis not exists then create initial records for the global index
         if !gi_unit_exists || !gi_genesis_exists {
-            let server_pk = self.data_sync.context.server_pk();
+            let server_pk = PublicKeyRecord::from(self.device_creds.secret_box.dsa.public_key.clone());
             let _meta_g = self
                 .data_sync
                 .persistent_obj

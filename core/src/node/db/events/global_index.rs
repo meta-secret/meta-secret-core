@@ -7,7 +7,9 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 pub enum GlobalIndexObject {
     Unit { event: KvLogEvent<()> },
     Genesis { event: KvLogEvent<PublicKeyRecord> },
+
     Update { event: KvLogEvent<GlobalIndexRecord> },
+    VaultIndex { event: KvLogEvent<GlobalIndexRecord> },
 }
 
 impl GlobalIndexObject {
@@ -16,6 +18,7 @@ impl GlobalIndexObject {
             GlobalIndexObject::Unit { event } => &event.key,
             GlobalIndexObject::Genesis { event } => &event.key,
             GlobalIndexObject::Update { event } => &event.key,
+            GlobalIndexObject::VaultIndex { event } => &event.key
         }
     }
 }
@@ -30,9 +33,8 @@ impl UnitEventEmptyValue for GlobalIndexObject {
 
 impl GlobalIndexObject {
     pub fn genesis(server_pk: &PublicKeyRecord) -> Self {
-        let genesis_log_event = KvLogEvent::global_index_genesis(server_pk);
         GlobalIndexObject::Genesis {
-            event: genesis_log_event,
+            event: KvLogEvent::global_index_genesis(server_pk),
         }
     }
 }

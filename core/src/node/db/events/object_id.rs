@@ -2,7 +2,7 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::crypto::utils;
 use crate::node::db::events::common::ObjectCreator;
-use crate::node::db::events::object_descriptor::ObjectDescriptor;
+use crate::node::db::events::object_descriptor::{GlobalIndexDescriptor, ObjectDescriptor};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -122,11 +122,11 @@ impl ObjectId {
     }
 
     pub fn global_index_unit() -> ObjectId {
-        ObjectId::unit(&ObjectDescriptor::GlobalIndex)
+        ObjectId::unit(&ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index))
     }
 
     pub fn global_index_genesis() -> ObjectId {
-        ObjectId::genesis(&ObjectDescriptor::GlobalIndex)
+        ObjectId::genesis(&ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index))
     }
 
     pub fn vault_unit(vault_name: &str) -> Self {

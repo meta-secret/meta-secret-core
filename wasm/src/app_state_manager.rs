@@ -7,7 +7,7 @@ use meta_secret_core::node::app::app_state_update_manager::{
     ApplicationStateManagerConfigurator, JsAppStateManager,
 };
 use meta_secret_core::node::app::client_meta_app::MetaClient;
-use meta_secret_core::node::app::meta_app::meta_app_service::{
+use meta_secret_core::node::app::meta_app::meta_client_service::{
     MetaClientAccessProxy, MetaClientDataTransfer, MetaClientService,
 };
 use meta_secret_core::node::app::device_creds_manager::DeviceCredentialsManager;
@@ -213,7 +213,7 @@ impl<Repo, State> ApplicationStateManager<Repo, State>
                 meta_client: meta_client.clone(),
                 state_manager: js_app_state.clone(),
                 sync_gateway: gateway.clone(),
-                user_creds: creds.clone()
+                device_creds: creds.clone()
             }
         };
 

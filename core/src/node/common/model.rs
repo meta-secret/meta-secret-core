@@ -100,7 +100,7 @@ pub mod user {
 pub mod vault {
     use std::collections::HashMap;
     use crate::node::common::model::device::DeviceId;
-    use crate::node::common::model::user::UserMembership;
+    use crate::node::common::model::user::{UserData, UserMembership};
 
     #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -116,13 +116,54 @@ pub mod vault {
         /// Device is a member of a vault
         Member { vault: VaultData },
         /// Device is waiting to be added to a vault.
-        Pending,
+        Pending { user: UserData },
         /// Vault members declined to add a device into the vault.
-        Declined,
+        Declined { user: UserData },
         /// Vault not found
         NotFound,
         /// Device can't get any information about the vault, because its signature is not in members or pending list
         NotMember,
+    }
+}
+
+mod crypto {
+    use crate::crypto::encoding::base64::Base64Text;
+    use crate::node::common::model::user::UserData;
+
+    #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct AeadAuthData {
+        pub associated_data: String,
+        pub channel: CommunicationChannel,
+        pub nonce: Base64Text,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct AeadCipherText {
+        pub msg: Base64Text,
+        pub auth_data: AeadAuthData,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct AeadPlainText {
+        pub msg: Base64Text,
+        pub auth_data: AeadAuthData,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct CommunicationChannel {
+        pub sender: Base64Text,
+        pub receiver: Base64Text,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct EncryptedMessage {
+        pub receiver: UserData,
+        pub encrypted_text: AeadCipherText,
     }
 }
 

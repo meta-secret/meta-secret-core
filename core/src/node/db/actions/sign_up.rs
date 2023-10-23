@@ -6,13 +6,14 @@ use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{IdGen, ObjectId};
 use crate::node::db::events::vault_event::VaultObject;
 use tracing::error;
+use crate::node::common::model::user::UserDataCandidate;
 
 pub struct SignUpAction {}
 
 impl SignUpAction {
     pub fn accept(
         &self,
-        sign_up_request: &KvLogEvent<UserSignature>,
+        sign_up_request: &KvLogEvent<UserDataCandidate>,
         server_pk: &PublicKeyRecord,
     ) -> Vec<GenericKvLogEvent> {
         match &sign_up_request.key {

@@ -15,7 +15,6 @@ use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::common::model::ApplicationState;
 use crate::node::common::model::device::DeviceCredentials;
 use crate::node::db::actions::recover::RecoveryAction;
-use crate::node::db::events::common::VaultInfo;
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::read_db::store::meta_pass_store::MetaPassStore;
 

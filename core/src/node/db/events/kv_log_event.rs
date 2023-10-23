@@ -1,7 +1,7 @@
 use crate::node::common::model::user::UserDataCandidate;
 use crate::node::db::events::common::{ObjectCreator, PublicKeyRecord};
 use crate::node::db::events::global_index::GlobalIndexRecord;
-use crate::node::db::events::object_descriptor::ObjectDescriptor;
+use crate::node::db::events::object_descriptor::{GlobalIndexDescriptor, ObjectDescriptor};
 use crate::node::db::events::object_id::{IdGen, IdStr, ObjectId};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -29,21 +29,21 @@ impl KvLogEvent<PublicKeyRecord> {
 
     pub fn global_index_unit() -> KvLogEvent<()> {
         KvLogEvent {
-            key: KvKey::unit(&ObjectDescriptor::GlobalIndex),
+            key: KvKey::unit(&ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index)),
             value: (),
         }
     }
 
     pub fn global_index_genesis(server_pk: &PublicKeyRecord) -> KvLogEvent<PublicKeyRecord> {
-        Self::genesis(&ObjectDescriptor::GlobalIndex, server_pk)
+        Self::genesis(&ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index), server_pk)
     }
 }
 
 impl KvLogEvent<GlobalIndexRecord> {
-    pub fn new_global_index_event(tail_id: &ObjectId, vault_id: &IdStr) -> KvLogEvent<GlobalIndexRecord> {
+    pub fn new_global_index_event(tail_id: &ObjectId, vault_id: &IdStr, gi_desc: GlobalIndexDescriptor) -> KvLogEvent<GlobalIndexRecord> {
         let key = KvKey {
             obj_id: tail_id.clone(),
-            obj_desc: ObjectDescriptor::GlobalIndex,
+            obj_desc: ObjectDescriptor::GlobalIndex(gi_desc),
         };
 
         KvLogEvent {

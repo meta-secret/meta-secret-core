@@ -1,14 +1,11 @@
-use anyhow::anyhow;
 use std::sync::Arc;
 
-use crate::crypto::keys::KeyManager;
-use crate::models::MetaVault;
+use anyhow::anyhow;
 use async_trait::async_trait;
 use tracing::{debug, info, instrument, Instrument};
 
-use crate::models::user_signature::UserSignature;
-use crate::node::app::device_creds_manager::{MetaVaultManager, DeviceCredentialsManager};
-use crate::node::app_models::UserCredentials;
+use crate::crypto::keys::KeyManager;
+use crate::node::app::device_creds_manager::DeviceCredentialsManager;
 use crate::node::db::events::common::{ObjectCreator, PublicKeyRecord};
 use crate::node::db::events::db_tail::{DbTail, ObjectIdDbEvent};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
@@ -146,7 +143,7 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
                 } else {
                     Err(anyhow!("DbTail. Invalid event type: {:?}", db_tail))
                 }
-            },
+            }
         }
     }
 
@@ -183,27 +180,6 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
             .await?;
         let creds = self.generate_user_credentials(meta_vault).in_current_span().await?;
         Ok(creds)
-    }
-
-    async fn create_meta_vault(&self, vault_name: &str, device_name: &str) -> anyhow::Result<MetaVault> {
-        info!("Create a meta vault");
-
-        let maybe_meta_vault = self.repo.find_meta_vault().await?;
-
-        match maybe_meta_vault {
-            None => {
-                self.repo
-                    .create_meta_vault(vault_name.to_string(), device_name.to_string())
-                    .await
-            }
-            Some(meta_vault) => {
-                if meta_vault.name != vault_name || meta_vault.device.device_name != device_name {
-                    Err(anyhow!("Another meta vault already exists in the database"))
-                } else {
-                    Ok(meta_vault)
-                }
-            }
-        }
     }
 
     #[instrument(skip(self))]
@@ -273,10 +249,10 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
 #[cfg(test)]
 mod test {
     use std::sync::Arc;
+
     use tracing::Instrument;
 
     use crate::crypto::keys::KeyManager;
-    use crate::models::DeviceInfo;
     use crate::node::db::events::common::{LogEventKeyBasedRecord, ObjectCreator, PublicKeyRecord};
     use crate::node::db::events::generic_log_event::{GenericKvLogEvent, UnitEventEmptyValue};
     use crate::node::db::events::global_index::{GlobalIndexObject, GlobalIndexRecord};

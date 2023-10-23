@@ -2,11 +2,9 @@ use std::sync::Arc;
 
 use crate::node::app::client_meta_app::MetaClient;
 use crate::node::app::meta_app::messaging::{GenericAppStateRequest, SignUpRequest};
-use crate::node::app::meta_app::meta_app_service::MetaClientAccessProxy;
+use crate::node::app::meta_app::meta_client_service::MetaClientAccessProxy;
 use crate::node::app::sync_gateway::SyncGateway;
-use crate::node::app_models::UserCredentials;
 use crate::node::db::actions::join;
-use crate::node::db::events::common::VaultInfo;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::vault_event::VaultObject;
 use crate::node::db::generic_db::KvLogEventRepo;
@@ -16,13 +14,14 @@ use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::server::server_app::ServerDataTransfer;
 use serde::{Deserialize, Serialize};
 use tracing::{info, instrument, Instrument};
+use crate::node::common::model::device::DeviceCredentials;
 
 pub struct VirtualDevice<Repo: KvLogEventRepo> {
     pub meta_client: Arc<MetaClient<Repo>>,
     pub meta_client_proxy: Arc<MetaClientAccessProxy>,
     pub server_dt: Arc<ServerDataTransfer>,
     gateway: Arc<SyncGateway<Repo>>,
-    creds: UserCredentials,
+    creds: DeviceCredentials,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -40,7 +39,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
         read_db_service_proxy: Arc<ReadDbServiceProxy>,
         server_dt: Arc<ServerDataTransfer>,
         gateway: Arc<SyncGateway<Repo>>,
-        creds: UserCredentials
+        creds: DeviceCredentials
     ) -> anyhow::Result<VirtualDevice<Repo>> {
         info!("Run virtual device event handler");
 
@@ -57,44 +56,16 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
             creds: creds.clone()
         };
 
-        let vault_name = "q";
-        let device_name = "virtual-device";
-
-        let sign_up_request = GenericAppStateRequest::SignUp(SignUpRequest {
-            vault_name: String::from(vault_name),
-            device_name: String::from(device_name),
-        });
-
-        //prepare for sign_up
-        meta_client_access_proxy
-            .send_request(sign_up_request.clone())
-            .in_current_span()
-            .await;
-
-        let vault_info = meta_client
-            .get_vault(String::from(vault_name))
-            .in_current_span()
-            .await;
-
-        if let VaultInfo::Member { .. } = vault_info {
-            //vd is already a member of a vault
-        } else {
-            //send a register request
-            virtual_device
-                .meta_client_proxy
-                .send_request(sign_up_request.clone())
-                .in_current_span()
-                .await;
-        }
-
         Ok(virtual_device)
     }
 
     pub async fn run(&self) {
-        let vault_name = self.creds.user_sig.vault.name.clone();
+        //let vault_name = self.creds.user_sig.vault.name.clone();
+
+
 
         loop {
-            self.gateway.sync().in_current_span().await;
+            self.gateway.sync().in_current_span().await?;
 
             let read_db_service = self.meta_client.read_db_service_proxy.clone();
             let vault_store = read_db_service
