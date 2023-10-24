@@ -3,16 +3,16 @@ use std::time::Duration;
 
 use tracing::{debug, error, info, instrument, Instrument};
 
-use crate::node::app::device_creds_manager::DeviceCredentialsManager;
 use crate::node::common::model::device::DeviceCredentials;
-use crate::node::db::events::common::{LogEventKeyBasedRecord, ObjectCreator, SharedSecretObject};
+use crate::node::db::events::common::SharedSecretObject;
 use crate::node::db::events::db_tail::{DbTail, ObjectIdDbEvent};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::local::DbTailObject;
-use crate::node::db::events::object_descriptor::ObjectDescriptor;
-use crate::node::db::events::object_id::{IdGen, ObjectId};
+use crate::node::db::events::object_descriptor::{ObjectDescriptor};
+use crate::node::db::events::object_descriptor::global_index::GlobalIndexDescriptor;
+use crate::node::db::events::object_id::{Next, ObjectId, UnitId};
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::read_db::read_db_service::ReadDbServiceProxy;
 use crate::node::db::read_db::store::vault_store::VaultStore;
@@ -77,12 +77,12 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
 
         let sync_request = {
             let vault_id_request = match &new_db_tail.vault_id {
-                ObjectIdDbEvent::Empty { unit_id } => unit_id.clone(),
+                ObjectIdDbEvent::Empty { obj_desc } => ObjectId::unit(obj_desc),
                 ObjectIdDbEvent::Id { tail_id } => tail_id.next(),
             };
 
             let meta_pass_id_request = match &new_db_tail.meta_pass_id {
-                ObjectIdDbEvent::Empty { unit_id } => unit_id.clone(),
+                ObjectIdDbEvent::Empty { obj_desc } => ObjectId::unit(obj_desc),
                 ObjectIdDbEvent::Id { tail_id } => tail_id.next(),
             };
 
@@ -119,11 +119,21 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
 
             match new_event {
                 GenericKvLogEvent::GlobalIndex(gi_obj) => {
+
                     if let GlobalIndexObject::Update { event } = gi_obj {
-                        let gi_record = event.value;
-                        let gi_obj_id = ObjectId::Unit { id: gi_record.vault_id };
+                        let vault_unit_id = event.value;
+                        let idx_desc = ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::VaultIndex {
+                            vault_id: vault_unit_id.clone()
+                        });
+
                         let vault_idx_evt = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::VaultIndex {
-                            event: KvLogEvent::new_global_index_event(&gi_obj_id, gi_obj_id., GlobalIndexDescriptor::VaultIndex),
+                            event: KvLogEvent {
+                                key: KvKey {
+                                    obj_id: UnitId::unit(&idx_desc),
+                                    obj_desc: idx_desc,
+                                },
+                                value: vault_unit_id,
+                            }
                         });
                         self.persistent_object.repo.save_event(vault_idx_evt)
 
@@ -138,7 +148,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                     latest_meta_pass_id = ObjectIdDbEvent::Id { tail_id: key.clone() }
                 },
                 GenericKvLogEvent::SharedSecret(SharedSecretObject::Audit { event }) => {
-                    latest_audit_tail = Some(event.value)
+                    latest_audit_tail = Some(ObjectId::from(event.value))
                 }
                 _ => {
                     //ignore any non global event
@@ -249,7 +259,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
 
     async fn get_new_tail_for_an_obj(&self, db_tail_obj: &ObjectIdDbEvent) -> ObjectIdDbEvent {
         match db_tail_obj {
-            ObjectIdDbEvent::Empty { unit_id } => self
+            ObjectIdDbEvent::Empty { obj_desc } => self
                 .persistent_object
                 .find_tail_id(unit_id.clone())
                 .await

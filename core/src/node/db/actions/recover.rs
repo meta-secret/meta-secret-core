@@ -162,7 +162,7 @@ mod test {
                 panic!("Invalid event");
             };
 
-            assert_eq!(recovery_request_desc.to_id(), event.value.id_str());
+            assert_eq!(recovery_request_desc.to_fqdn(), event.value.id_str());
         }
 
         {

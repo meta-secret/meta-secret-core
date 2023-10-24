@@ -1,8 +1,8 @@
 use serde_derive::{Deserialize, Serialize};
 
-use crate::crypto::utils::IdStrGenerator;
-use crate::node::db::events::common::ObjectCreator;
-use crate::node::db::events::object_descriptor::{GlobalIndexDescriptor, ObjectDescriptor};
+use crate::crypto::utils::NextId;
+use crate::node::db::events::object_descriptor::{ObjectDescriptor, ObjectDescriptorId};
+use crate::node::db::events::object_descriptor::global_index::GlobalIndexDescriptor;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -13,6 +13,10 @@ pub enum ObjectId {
     Artifact(ArtifactId),
 }
 
+pub trait Next<To> {
+    fn next(self) -> To;
+}
+
 /// In category theory, a unit type is a fundamental concept that arises in the study of types and functions.
 /// It is often denoted as the unit object, represented by the symbol "1" or "Unit."
 /// The unit type serves as a foundational element within category theory,
@@ -21,14 +25,83 @@ pub enum ObjectId {
 /// Same here, Unit is a initial request to create/initialize an object, it's step zero.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct UnitId(String);
+pub struct UnitId {
+    pub id: ObjectDescriptorId,
+}
 
-impl From<UnitId> for GenesisId {
-    fn from(unit_id: UnitId) -> Self {
-        Self {
-            id: IdStrGenerator::next_id_str(unit_id.0.as_str()),
-            unit_id,
+impl Next<GenesisId> for UnitId {
+    fn next(self) -> GenesisId {
+        GenesisId {
+            id: self.id.next_id(),
+            unit_id: self,
         }
+    }
+}
+
+impl From<UnitId> for ObjectId {
+    fn from(value: UnitId) -> Self {
+        ObjectId::Unit(value)
+    }
+}
+
+impl From<GenesisId> for ObjectId {
+    fn from(value: GenesisId) -> Self {
+        ObjectId::Genesis(value)
+    }
+}
+
+impl From<ArtifactId> for ObjectId {
+    fn from(value: ArtifactId) -> Self {
+        ObjectId::Artifact(value)
+    }
+}
+
+impl ObjectId {
+    pub fn unit(obj_desc: &ObjectDescriptor) -> Self {
+        ObjectId::Unit(UnitId::unit(obj_desc)) 
+    }
+}
+
+impl Next<ObjectId> for ObjectId {
+    fn next(self) -> ObjectId {
+        match self {
+            ObjectId::Unit(unit_id) => ObjectId::from(unit_id.next()),
+            ObjectId::Genesis(genesis_id) => ObjectId::from(genesis_id.next()),
+            ObjectId::Artifact(artifact_id) => ObjectId::from(artifact_id.next())
+        }
+    }
+}
+
+impl UnitId {
+    pub fn unit(obj_descriptor: &ObjectDescriptor) -> UnitId {
+        let fqdn = obj_descriptor.to_fqdn();
+        UnitId { id: fqdn.next_id() }
+    }
+
+    pub fn db_tail() -> UnitId {
+        UnitId::unit(&ObjectDescriptor::DbTail)
+    }
+
+    pub fn global_index() -> UnitId {
+        UnitId::unit(&ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index))
+    }
+
+    pub fn vault_unit(vault_name: &str) -> UnitId {
+        let vault_desc = ObjectDescriptor::Vault {
+            vault_name: vault_name.to_string(),
+        };
+        UnitId::unit(&vault_desc)
+    }
+
+    pub fn meta_pass_unit(vault_name: &str) -> Self {
+        let vault_desc = ObjectDescriptor::MetaPassword {
+            vault_name: vault_name.to_string(),
+        };
+        UnitId::unit(&vault_desc)
+    }
+
+    pub fn mempool_unit() -> Self {
+        UnitId::unit(&ObjectDescriptor::MemPool)
     }
 }
 
@@ -38,17 +111,28 @@ impl From<UnitId> for GenesisId {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GenesisId {
-    id: String,
-    unit_id: UnitId
+    id: ObjectDescriptorId,
+    unit_id: UnitId,
 }
 
-impl From<GenesisId> for ArtifactId {
-    fn from(genesis_id: GenesisId) -> Self {
-        Self {
-            id: IdStrGenerator::next_id_str(genesis_id.id.as_str()),
-            prev_id: genesis_id.id,
-            unit_id: genesis_id.unit_id,
+impl Next<ArtifactId> for GenesisId {
+    fn next(self) -> ArtifactId {
+        ArtifactId {
+            id: self.id.next_id(),
+            prev_id: self.id,
+            unit_id: self.unit_id,
         }
+    }
+}
+
+impl GenesisId {
+    pub fn genesis(obj_desc: &ObjectDescriptor) -> GenesisId {
+        let unit_id = UnitId::unit(obj_desc);
+        unit_id.next()
+    }
+
+    pub fn global_index_genesis() -> GenesisId {
+        GenesisId::genesis(&ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index))
     }
 }
 
@@ -56,111 +140,18 @@ impl From<GenesisId> for ArtifactId {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArtifactId {
-    id: String,
-    prev_id: String,
-    unit_id: UnitId
+    id: ObjectDescriptorId,
+    prev_id: ObjectDescriptorId,
+    unit_id: UnitId,
 }
 
 /// Generate next artifact from the previous one
-impl From<ArtifactId> for ArtifactId {
-    fn from(curr: ArtifactId) -> Self {
-        Self {
-            id: IdStrGenerator::next_id_str(curr.id.as_str()),
-            prev_id: curr.id,
-            unit_id: curr.unit_id,
+impl Next<ArtifactId> for ArtifactId {
+    fn next(self) -> ArtifactId {
+        ArtifactId {
+            id: self.id.next_id(),
+            prev_id: self.id,
+            unit_id: self.unit_id,
         }
-    }
-}
-
-pub trait Next {
-    fn next(&self) -> Self;
-}
-
-impl Next for ObjectId {
-    fn next( self) -> ObjectId {
-        match self {
-            ObjectId::Unit(unit_id) => {
-                ObjectId::Genesis(GenesisId::from(unit_id))
-            }
-            ObjectId::Genesis(genesis_id) => {
-                ObjectId::Artifact(ArtifactId::from(genesis_id))
-            }
-            ObjectId::Artifact(artifact_id) => {
-                ObjectId::Artifact(ArtifactId::from(artifact_id))
-            }
-        }
-    }
-}
-
-impl ObjectId {
-    pub fn unit_id(&self) -> UnitId {
-        match self {
-            ObjectId::Unit(unit_id) => unit_id.clone(),
-            ObjectId::Genesis(genesis_id) => genesis_id.unit_id.clone(),
-            ObjectId::Artifact(artifact_id) => artifact_id.unit_id.clone()
-        }
-    }
-
-    pub fn id_str(&self) -> String {
-        match self {
-            ObjectId::Unit(unit_id) => unit_id.0.clone(),
-            ObjectId::Genesis(genesis_id) => genesis_id.id.clone(),
-            ObjectId::Artifact(artifact_id) => artifact_id.id.clone(),
-        }
-    }
-
-    pub fn db_tail() -> ObjectId {
-        ObjectId::unit(&ObjectDescriptor::DbTail)
-    }
-
-    pub fn global_index_unit() -> ObjectId {
-        ObjectId::unit(&ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index))
-    }
-
-    pub fn global_index_genesis() -> ObjectId {
-        ObjectId::genesis(&ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index))
-    }
-
-    pub fn vault_unit(vault_name: &str) -> Self {
-        let vault_desc = ObjectDescriptor::Vault {
-            vault_name: vault_name.to_string(),
-        };
-        ObjectId::unit(&vault_desc)
-    }
-
-    pub fn meta_pass_unit(vault_name: &str) -> Self {
-        let vault_desc = ObjectDescriptor::MetaPassword {
-            vault_name: vault_name.to_string(),
-        };
-        ObjectId::unit(&vault_desc)
-    }
-
-    pub fn mempool_unit() -> Self {
-        ObjectId::unit(&ObjectDescriptor::MemPool)
-    }
-}
-
-impl ObjectCreator<&ObjectDescriptor> for ObjectId {
-    fn unit(obj_descriptor: &ObjectDescriptor) -> Self {
-        let unit_id = obj_descriptor.to_id();
-        Self::Unit(UnitId(unit_id))
-    }
-
-    fn genesis(obj_desc: &ObjectDescriptor) -> Self {
-        Self::unit(obj_desc).next()
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use crate::node::db::events::common::ObjectCreator;
-    use crate::node::db::events::object_descriptor::ObjectDescriptor;
-    use crate::node::db::events::object_id::ObjectId;
-
-    #[test]
-    fn json_parsing_test() {
-        let obj_id = ObjectId::unit(&ObjectDescriptor::Vault { vault_name: String::from("test")});
-        let obj_id_json = serde_json::to_string(&obj_id).unwrap();
-        println!("{}", obj_id_json);
     }
 }

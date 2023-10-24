@@ -1,23 +1,11 @@
 use async_trait::async_trait;
-use tracing::Instrument;
 
-use crate::node::db::events::common::LogEventKeyBasedRecord;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
-use crate::node::db::events::kv_log_event::KvKey;
 use crate::node::db::events::object_id::ObjectId;
 
 #[async_trait(? Send)]
 pub trait SaveCommand {
-    async fn save(&self, key: ObjectId, value: GenericKvLogEvent) -> anyhow::Result<ObjectId>;
-
-    async fn save_event(&self, value: GenericKvLogEvent) -> anyhow::Result<ObjectId> {
-        match &value.key() {
-            KvKey { obj_id, .. } => {
-                let _ = self.save(obj_id.clone(), value.clone()).in_current_span().await;
-                Ok(obj_id.clone())
-            }
-        }
-    }
+    async fn save(&self, value: GenericKvLogEvent) -> anyhow::Result<ObjectId>;
 }
 
 #[async_trait(? Send)]

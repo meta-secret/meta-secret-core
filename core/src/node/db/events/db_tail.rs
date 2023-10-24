@@ -1,4 +1,5 @@
-use crate::node::db::events::object_id::ObjectId;
+use crate::node::db::events::object_descriptor::ObjectDescriptor;
+use crate::node::db::events::object_id::{ArtifactId, ObjectId, UnitId};
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -15,6 +16,6 @@ pub struct DbTail {
 #[serde(rename_all = "camelCase")]
 #[serde(tag = "__db_tail_obj")]
 pub enum ObjectIdDbEvent {
-    Empty { unit_id: ObjectId },
+    Empty { obj_desc: ObjectDescriptor },
     Id { tail_id: ObjectId },
 }

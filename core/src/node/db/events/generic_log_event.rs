@@ -1,8 +1,9 @@
-use crate::node::db::events::common::{LogEventKeyBasedRecord, MemPoolObject, MetaPassObject, SharedSecretObject};
+use crate::node::db::events::common::{MemPoolObject, MetaPassObject, SharedSecretObject};
 use crate::node::db::events::error::ErrorMessage;
 use crate::node::db::events::global_index::GlobalIndexObject;
-use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
+use crate::node::db::events::kv_log_event::{GenericKvKey, KvLogEvent};
 use crate::node::db::events::local::{DbTailObject, DeviceCredentialsObject};
+use crate::node::db::events::object_id::{ArtifactId, ObjectId};
 use crate::node::db::events::vault_event::VaultObject;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -19,20 +20,28 @@ pub enum GenericKvLogEvent {
     DeviceCredentials(DeviceCredentialsObject),
     DbTail(DbTailObject),
 
-    Error { event: KvLogEvent<ErrorMessage> },
+    Error { event: KvLogEvent<ArtifactId, ErrorMessage> },
 }
 
-impl LogEventKeyBasedRecord for GenericKvLogEvent {
-    fn key(&self) -> &KvKey {
+pub trait ObjIdExtractor {
+    fn obj_id(&self) -> ObjectId;
+}
+
+pub trait KeyExtractor {
+    fn key(&self) -> GenericKvKey;
+}
+
+impl ObjIdExtractor for GenericKvLogEvent {
+    fn obj_id(&self) -> ObjectId {
         match self {
-            GenericKvLogEvent::GlobalIndex(gi_obj) => gi_obj.key(),
-            GenericKvLogEvent::Vault(vault_obj) => vault_obj.key(),
-            GenericKvLogEvent::MetaPass(pass_obj) => pass_obj.key(),
-            GenericKvLogEvent::SharedSecret(obj) => obj.key(),
-            GenericKvLogEvent::MemPool(mem_pool_obj) => mem_pool_obj.key(),
-            GenericKvLogEvent::Error { event } => &event.key,
-            GenericKvLogEvent::DeviceCredentials(obj) => &obj.event.key,
-            GenericKvLogEvent::DbTail(obj) => &obj.event.key
+            GenericKvLogEvent::GlobalIndex(obj) => obj.obj_id(),
+            GenericKvLogEvent::Vault(obj) => obj.obj_id(),
+            GenericKvLogEvent::MetaPass(obj) => obj.obj_id(),
+            GenericKvLogEvent::SharedSecret(obj) => obj.obj_id(),
+            GenericKvLogEvent::MemPool(obj) => obj.obj_id(),
+            GenericKvLogEvent::DeviceCredentials(obj) => obj.obj_id(),
+            GenericKvLogEvent::DbTail(obj) => obj.obj_id(),
+            GenericKvLogEvent::Error { event } => event.key.obj_id.clone(),
         }
     }
 }

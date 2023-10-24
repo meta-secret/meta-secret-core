@@ -13,7 +13,7 @@ use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::local::DbTailObject;
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
-use crate::node::db::events::object_id::{IdGen, ObjectId};
+use crate::node::db::events::object_id::{IdGen, Next, ObjectId};
 use crate::node::db::events::vault_event::VaultObject;
 use crate::node::db::generic_db::KvLogEventRepo;
 
@@ -95,7 +95,13 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
                         match found_event_result {
                             Ok(Some(_curr_tail)) => {
                                 existing_id = curr_tail_id.clone();
-                                curr_tail_id = curr_tail_id.next();
+                                match existing_id {
+                                    ObjectId::Unit(id) => {
+                                        curr_tail_id = id.next();
+                                    }
+                                    ObjectId::Genesis(_) => {}
+                                    ObjectId::Artifact(_) => {}
+                                }
                             }
                             _ => break,
                         }

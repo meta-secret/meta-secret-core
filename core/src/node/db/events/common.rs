@@ -1,20 +1,21 @@
 use crate::crypto::encoding::base64::Base64Text;
 use crate::models::password_recovery_request::PasswordRecoveryRequest;
-use crate::models::{Base64EncodedText, MetaPasswordDoc, SecretDistributionDocData, UserSignature, VaultDoc};
-use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::object_descriptor::ObjectDescriptor;
-use crate::node::db::events::object_id::ObjectId;
+use crate::models::{MetaPasswordDoc, SecretDistributionDocData};
+use crate::node::common::model::user::UserDataCandidate;
+use crate::node::db::events::generic_log_event::ObjIdExtractor;
+use crate::node::db::events::kv_log_event::KvLogEvent;
+use crate::node::db::events::object_id::{ArtifactId, GenesisId, ObjectId, UnitId};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum MemPoolObject {
-    JoinRequest { event: KvLogEvent<UserSignature> },
+    JoinRequest { event: KvLogEvent<ArtifactId, UserDataCandidate> },
 }
 
-impl MemPoolObject {
-    pub fn key(&self) -> &KvKey {
+impl ObjIdExtractor for MemPoolObject {
+    fn obj_id(&self) -> ObjectId {
         match self {
-            MemPoolObject::JoinRequest { event } => &event.key,
+            MemPoolObject::JoinRequest { event } => ObjectId::from(event.key.obj_id.clone())
         }
     }
 }
@@ -22,17 +23,17 @@ impl MemPoolObject {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum MetaPassObject {
-    Unit { event: KvLogEvent<()> },
-    Genesis { event: KvLogEvent<PublicKeyRecord> },
-    Update { event: KvLogEvent<MetaPasswordDoc> },
+    Unit { event: KvLogEvent<UnitId, ()> },
+    Genesis { event: KvLogEvent<GenesisId, PublicKeyRecord> },
+    Update { event: KvLogEvent<ArtifactId, MetaPasswordDoc> },
 }
 
-impl MetaPassObject {
-    pub fn key(&self) -> &KvKey {
+impl ObjIdExtractor for MetaPassObject {
+    fn obj_id(&self) -> ObjectId {
         match self {
-            MetaPassObject::Unit { event } => &event.key,
-            MetaPassObject::Genesis { event } => &event.key,
-            MetaPassObject::Update { event } => &event.key,
+            MetaPassObject::Unit { event } => ObjectId::from(event.key.obj_id.clone()),
+            MetaPassObject::Genesis { event } => ObjectId::from(event.key.obj_id.clone()),
+            MetaPassObject::Update { event } => ObjectId::from(event.key.obj_id.clone())
         }
     }
 }
@@ -41,32 +42,28 @@ impl MetaPassObject {
 #[serde(rename_all = "camelCase")]
 pub enum SharedSecretObject {
     Split {
-        event: KvLogEvent<SecretDistributionDocData>,
+        event: KvLogEvent<UnitId, SecretDistributionDocData>,
     },
     Recover {
-        event: KvLogEvent<SecretDistributionDocData>,
+        event: KvLogEvent<UnitId, SecretDistributionDocData>,
     },
     RecoveryRequest {
-        event: KvLogEvent<PasswordRecoveryRequest>,
+        event: KvLogEvent<UnitId, PasswordRecoveryRequest>,
     },
     Audit {
-        event: KvLogEvent<ObjectId>,
+        event: KvLogEvent<ArtifactId, ArtifactId>,
     },
 }
 
-impl SharedSecretObject {
-    pub fn key(&self) -> &KvKey {
+impl ObjIdExtractor for SharedSecretObject {
+    fn obj_id(&self) -> ObjectId {
         match self {
-            SharedSecretObject::Split { event } => &event.key,
-            SharedSecretObject::Recover { event } => &event.key,
-            SharedSecretObject::RecoveryRequest { event } => &event.key,
-            SharedSecretObject::Audit { event } => &event.key,
+            SharedSecretObject::Split { event } => ObjectId::from(event.key.obj_id.clone()),
+            SharedSecretObject::Recover { event } => ObjectId::from(event.key.obj_id.clone()),
+            SharedSecretObject::RecoveryRequest { event } => ObjectId::from(event.key.obj_id.clone()),
+            SharedSecretObject::Audit { event } => ObjectId::from(event.key.obj_id.clone())
         }
     }
-}
-
-pub trait LogEventKeyBasedRecord {
-    fn key(&self) -> &KvKey;
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -79,10 +76,5 @@ impl From<Base64Text> for PublicKeyRecord {
     fn from(value: Base64Text) -> Self {
         Self { pk: value }
     }
-}
-
-pub trait ObjectCreator<T> {
-    fn unit(value: T) -> Self;
-    fn genesis(obj_desc: &ObjectDescriptor) -> Self;
 }
 
