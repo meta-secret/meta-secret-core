@@ -4,7 +4,7 @@ use tracing::Instrument;
 
 use crate::crypto::keys::KeyManager;
 use crate::models::{
-    AeadCipherText, EncryptedMessage, MetaPasswordDoc, MetaPasswordId, MetaPasswordRequest, SecretDistributionDocData,
+    AeadCipherText, EncryptedMessage, MetaPasswordData, MetaPasswordId, MetaPasswordRequest, SecretDistributionDocData,
     SecretDistributionType, UserSignature, VaultDoc,
 };
 use crate::node::app_models::{UserCredentials, SecurityBox};
@@ -97,7 +97,7 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
         let pass = {
             let pass_id = Box::new(MetaPasswordId::generate(password_id));
 
-            MetaPasswordDoc {
+            MetaPasswordData {
                 id: pass_id,
                 vault: Box::new(self.vault.clone()),
             }

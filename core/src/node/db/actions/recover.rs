@@ -2,13 +2,15 @@ use std::sync::Arc;
 
 use tracing::error;
 
-use crate::models::{MetaPasswordId, PasswordRecoveryRequest};
 use crate::node::app::meta_app::app_state::JoinedAppState;
-use crate::node::db::events::common::{ObjectCreator, SharedSecretObject, VaultInfo};
+use crate::node::common::model::{MetaPasswordId, PasswordRecoveryRequest};
+use crate::node::common::model::vault::VaultInfo;
+use crate::node::db::events::common::{SharedSecretObject};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::object_descriptor::{ObjectDescriptor, SharedSecretDescriptor, SharedSecretEventId};
-use crate::node::db::events::object_id::{IdGen, ObjectId};
+use crate::node::db::events::object_descriptor::{ObjectDescriptor};
+use crate::node::db::events::object_descriptor::shared_secret::{SharedSecretDescriptor, SharedSecretEventId};
+use crate::node::db::events::object_id::{Next, ObjectId};
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object::PersistentObject;
 
@@ -92,10 +94,13 @@ mod test {
 
     use crate::models::{ApplicationState, VaultDoc};
     use crate::node::app::meta_app::app_state::JoinedAppState;
+    use crate::node::common::model::ApplicationState;
+    use crate::node::common::model::vault::VaultInfo;
     use crate::node::db::actions::recover::RecoveryAction;
     use crate::node::db::events::common::{LogEventKeyBasedRecord, ObjectCreator, SharedSecretObject, VaultInfo};
     use crate::node::db::events::generic_log_event::GenericKvLogEvent;
     use crate::node::db::events::object_descriptor::{ObjectDescriptor, SharedSecretDescriptor, SharedSecretEventId};
+    use crate::node::db::events::object_descriptor::shared_secret::SharedSecretEventId;
     use crate::node::db::events::object_id::ObjectId;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_object::PersistentObject;

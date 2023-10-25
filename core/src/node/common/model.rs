@@ -1,5 +1,6 @@
-use crate::models::MetaPasswordDoc;
+use crate::node::common::model::crypto::EncryptedMessage;
 use crate::node::common::model::device::DeviceCredentials;
+use crate::node::common::model::user::UserId;
 use crate::node::common::model::vault::VaultData;
 
 pub mod device {
@@ -54,7 +55,15 @@ pub mod device {
 }
 
 pub mod user {
-    use crate::node::common::model::device::DeviceData;
+    use crate::node::common::model::device::{DeviceData, DeviceId};
+    use crate::node::db::events::object_descriptor::ObjectDescriptorFqdn;
+
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct UserId {
+        device_id: DeviceId,
+        vault_id: ObjectDescriptorFqdn
+    }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -167,11 +176,81 @@ mod crypto {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SecretDistributionType {
+    Split,
+    Recover,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretDistributionDocData {
+    pub distribution_type: SecretDistributionType,
+    pub meta_password: MetaPasswordRequest,
+    pub secret_message: EncryptedMessage,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RegistrationStatus {
+    Registered,
+    AlreadyExists,
+}
+
+impl ToString for RegistrationStatus {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Registered => String::from("Registered"),
+            Self::AlreadyExists => String::from("AlreadyExists"),
+        }
+    }
+}
+
+impl Default for RegistrationStatus {
+    fn default() -> RegistrationStatus {
+        Self::Registered
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PasswordRecoveryRequest {
+    pub id: MetaPasswordId,
+    pub consumer: UserId,
+    pub provider: UserId,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MetaPasswordRequest {
+    pub user_id: UserId,
+    pub meta_password: MetaPasswordData,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MetaPasswordId {
+    /// SHA256 hash of a salt
+    pub id: String,
+    /// Random String up to 30 characters, must be unique
+    pub salt: String,
+    /// Human readable name given to the password
+    pub name: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MetaPasswordData {
+    pub id: MetaPasswordId,
+    pub vault: VaultData,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApplicationState {
     pub device_creds: Option<DeviceCredentials>,
     pub vault: Option<VaultData>,
-    pub meta_passwords: Vec<MetaPasswordDoc>,
+    pub meta_passwords: Vec<MetaPasswordData>,
     pub join_component: bool,
 }

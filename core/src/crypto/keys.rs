@@ -1,6 +1,5 @@
 use crate::crypto::encoding::base64::Base64Text;
 use crate::crypto::key_pair::{DsaKeyPair, KeyPair, TransportDsaKeyPair};
-use crate::models::{CommunicationChannel};
 
 pub struct KeyManager {
     pub dsa: DsaKeyPair,
@@ -59,6 +58,12 @@ impl KeyManager {
         let key_manager = KeyManager::generate();
         SecretBox::from(key_manager)
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CommunicationChannel {
+    pub sender: Base64Text,
+    pub receiver: Base64Text,
 }
 
 impl CommunicationChannel {

@@ -1,4 +1,4 @@
-use crate::models::MetaPasswordDoc;
+use crate::models::MetaPasswordData;
 use crate::node::db::events::common::PublicKeyRecord;
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::read_db::read_db_view::TailId;
@@ -17,12 +17,12 @@ pub enum MetaPassStore {
     Store {
         tail_id: ObjectId,
         server_pk: PublicKeyRecord,
-        passwords: Vec<MetaPasswordDoc>,
+        passwords: Vec<MetaPasswordData>,
     },
 }
 
 impl MetaPassStore {
-    pub fn passwords(&self) -> Vec<MetaPasswordDoc> {
+    pub fn passwords(&self) -> Vec<MetaPasswordData> {
         match self {
             MetaPassStore::Empty => {
                 vec![]

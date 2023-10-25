@@ -13,8 +13,8 @@ impl ReadDb {
 
         match vault_obj {
             VaultObject::Unit { .. } => match self.vault_store {
-                VaultStore::Empty => self.vault_store = VaultStore::Unit { tail_id: obj_id },
-                VaultStore::Unit { .. } => self.vault_store = VaultStore::Unit { tail_id: obj_id },
+                VaultStore::Empty => self.vault_store = VaultStore::Unit { id: obj_id },
+                VaultStore::Unit { .. } => self.vault_store = VaultStore::Unit { id: obj_id },
                 _ => {
                     let msg_str = format!("Unit event. Invalid vault store state: {:?}", self.vault_store);
                     error!(msg_str);
@@ -24,7 +24,7 @@ impl ReadDb {
                 match &self.vault_store {
                     VaultStore::Unit { .. } => {
                         self.vault_store = VaultStore::Genesis {
-                            tail_id: obj_id,
+                            id: obj_id,
                             server_pk: event.value.clone(),
                         }
                     }
@@ -107,7 +107,7 @@ mod test {
         let vault_obj = VaultObject::unit(&user_sig);
         read_db.apply_vault_event(&vault_obj);
         match read_db.vault_store {
-            VaultStore::Unit { tail_id } => {
+            VaultStore::Unit { id: tail_id } => {
                 assert_eq!(ObjectId::vault_unit(vault_name.as_str()), tail_id);
             }
             _ => {

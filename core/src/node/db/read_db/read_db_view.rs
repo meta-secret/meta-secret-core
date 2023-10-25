@@ -69,7 +69,7 @@ impl ReadDb {
 
         if self.vault_store == VaultStore::Empty {
             self.vault_store = VaultStore::Unit {
-                tail_id: vault_unit_id.clone(),
+                id: vault_unit_id.clone(),
             }
         }
 

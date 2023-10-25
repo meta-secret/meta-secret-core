@@ -4,16 +4,19 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use tracing::{debug, info, instrument, Instrument};
 
-use crate::crypto::keys::KeyManager;
+use crate::crypto::keys::{KeyManager, OpenBox};
 use crate::node::app::device_creds_manager::DeviceCredentialsManager;
-use crate::node::db::events::common::{ObjectCreator, PublicKeyRecord};
+use crate::node::common::model::device::{DeviceCredentials, DeviceData};
+use crate::node::common::model::user::{UserData, UserDataCandidate};
+use crate::node::db::events::common::{PublicKeyRecord};
 use crate::node::db::events::db_tail::{DbTail, ObjectIdDbEvent};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
+use crate::node::db::events::generic_log_event::GenericKvLogEvent::DeviceCredentials;
 use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::local::DbTailObject;
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
-use crate::node::db::events::object_id::{IdGen, Next, ObjectId};
+use crate::node::db::events::object_id::{Next, ObjectId, UnitId};
 use crate::node::db::events::vault_event::VaultObject;
 use crate::node::db::generic_db::KvLogEventRepo;
 
@@ -42,7 +45,7 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
 
         let mut curr_tail_id = tail_id.clone();
         loop {
-            let curr_db_event_result = self.repo.find_one(curr_tail_id.clone()).in_current_span().await;
+            let curr_db_event_result = self.repo.find_one(curr_tail_id.clone()).await;
 
             match curr_db_event_result {
                 Ok(maybe_curr_db_event) => match maybe_curr_db_event {
@@ -95,13 +98,7 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
                         match found_event_result {
                             Ok(Some(_curr_tail)) => {
                                 existing_id = curr_tail_id.clone();
-                                match existing_id {
-                                    ObjectId::Unit(id) => {
-                                        curr_tail_id = id.next();
-                                    }
-                                    ObjectId::Genesis(_) => {}
-                                    ObjectId::Artifact(_) => {}
-                                }
+                                curr_tail_id = curr_tail_id.next();
                             }
                             _ => break,
                         }
@@ -122,12 +119,12 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
             None => {
                 let db_tail = DbTail {
                     vault_id: ObjectIdDbEvent::Empty {
-                        unit_id: ObjectId::vault_unit(vault_name),
+                        obj_desc: ObjectDescriptor::Vault{ vault_name: vault_name.to_string() },
                     },
                     maybe_global_index_id: None,
                     maybe_mem_pool_id: None,
                     meta_pass_id: ObjectIdDbEvent::Empty {
-                        unit_id: ObjectId::meta_pass_unit(vault_name),
+                        obj_desc: ObjectDescriptor::MetaPassword { vault_name: vault_name.to_string() },
                     },
                     s_s_audit: None,
                 };
@@ -153,24 +150,14 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
         }
     }
 
-    pub async fn get_user_sig(&self, tail_id: ObjectId) -> Vec<UserSignature> {
-        let sig_result = self.get_vault_unit_signature(tail_id).in_current_span().await;
-        match sig_result {
-            Ok(Some(vault_sig)) => {
-                vec![vault_sig]
-            }
-            _ => {
-                vec![]
-            }
-        }
-    }
+    #[instrument(skip_all)]
+    pub async fn get_unit_sig(&self, unit_id: UnitId) -> Vec<UserDataCandidate> {
+        let vault_event_res =self.repo.find_one(ObjectId::from(unit_id)).await;
 
-    async fn get_vault_unit_signature(&self, tail_id: ObjectId) -> anyhow::Result<Option<UserSignature>> {
-        let maybe_unit_event = self.repo.find_one(tail_id).in_current_span().await?;
-
-        match maybe_unit_event {
-            Some(GenericKvLogEvent::Vault(VaultObject::Unit { event })) => Ok(Some(event.value)),
-            _ => Ok(None),
+        if let Ok(Some(GenericKvLogEvent::Vault(VaultObject::Unit { event }))) = vault_event_res {
+            vec![event.value]
+        } else {
+            vec![]
         }
     }
 
@@ -179,7 +166,7 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
         &self,
         vault_name: &str,
         device_name: &str,
-    ) -> anyhow::Result<UserCredentials> {
+    ) -> anyhow::Result<UserDataCandidate> {
         let meta_vault = self
             .create_meta_vault(vault_name, device_name)
             .in_current_span()
@@ -189,17 +176,21 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
     }
 
     #[instrument(skip(self))]
-    async fn generate_user_credentials(&self, meta_vault: MetaVault) -> anyhow::Result<UserCredentials> {
+    async fn generate_user_credentials(&self, device_name: String, vault_name: String) -> anyhow::Result<UserDataCandidate> {
         info!("generate_user_credentials: generate a new security box");
 
         let maybe_creds = self.repo.find_device_creds().in_current_span().await?;
 
         match maybe_creds {
             None => {
-                let security_box = KeyManager::generate_secret_box(meta_vault.name);
-                let user_sig = security_box.get_user_sig(&meta_vault.device);
-                let creds = UserCredentials { security_box, user_sig };
-                self.repo.save_device_creds(&creds).await?;
+                let security_box = KeyManager::generate_secret_box();
+                let user_data = UserData {
+                    vault_name,
+                    device: DeviceData::from(device_name, OpenBox::from(&security_box)),
+                };
+
+                let creds = DeviceCredentials { security_box, user_data };
+                self.repo.save_device_creds(creds).await?;
 
                 info!(
                     "User creds has been generated. Pk: {}",

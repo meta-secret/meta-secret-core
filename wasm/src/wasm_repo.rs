@@ -8,10 +8,10 @@ use meta_secret_core::node::db::events::object_id::ObjectId;
 use meta_secret_core::node::db::generic_db::{
     CommitLogDbConfig, DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand,
 };
-use tracing::Instrument;
+use tracing::{Instrument, instrument};
 use wasm_bindgen::JsValue;
 use web_sys::IdbTransactionMode;
-use meta_secret_core::node::db::events::kv_log_event::KvKey;
+use tracing::Level;
 
 pub struct WasmRepo {
     pub db_name: String,
@@ -60,8 +60,7 @@ impl WasmRepo {
 #[async_trait(? Send)]
 impl SaveCommand for WasmRepo {
     async fn save(&self, event: GenericKvLogEvent) -> anyhow::Result<ObjectId> {
-        let event_js: JsValue = serde_wasm_bindgen::to_value(&event)
-            .map_err(|err| anyhow!("Error parsing data to save: {:?}", err))?;
+        let event_js: JsValue = serde_wasm_bindgen::to_value(&event)?;
 
         let db = open_db(self.db_name.as_str()).in_current_span().await;
         let tx = db
@@ -70,20 +69,22 @@ impl SaveCommand for WasmRepo {
 
         let store = tx.object_store(self.store_name.as_str()).unwrap();
 
-        let obj_id = event.obj_id();
-        store.put_key_val_owned(obj_id, &event_js).unwrap();
+        let obj_id_js = serde_wasm_bindgen::to_value(&event.obj_id())?;
+        store.put_key_val_owned(obj_id_js, &event_js).unwrap();
 
         tx.in_current_span().await.into_result().unwrap();
         // All of the requests in the transaction have already finished so we can just drop it to
         // avoid the unused future warning, or assign it to _.
         //let _ = tx;
 
-        Ok(obj_id.clone())
+        Ok(event.obj_id().clone())
     }
 }
 
 #[async_trait(? Send)]
 impl FindOneQuery for WasmRepo {
+
+    #[instrument(level = Level::DEBUG)]
     async fn find_one(&self, key: ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>> {
         let db = open_db(self.db_name.as_str()).in_current_span().await;
         let tx = db.transaction_on_one(self.store_name.as_str()).unwrap();
@@ -100,8 +101,7 @@ impl FindOneQuery for WasmRepo {
                 Ok(obj_js) => {
                     let obj_js: JsValue = JsValue::from(obj_js);
 
-                    let obj = serde_wasm_bindgen::from_value(obj_js)
-                        .map_err(|err| anyhow!("Js object error parsing: {}", err))?;
+                    let obj = serde_wasm_bindgen::from_value(obj_js)?;
                     Ok(Some(obj))
                 }
                 Err(_) => Err(anyhow!("IndexedDb object error parsing")),
@@ -114,6 +114,8 @@ impl FindOneQuery for WasmRepo {
 
 #[async_trait(? Send)]
 impl DeleteCommand for WasmRepo {
+
+    #[instrument(level = Level::DEBUG)]
     async fn delete(&self, key: ObjectId) {
         let db = open_db(self.db_name.as_str()).in_current_span().await;
         let tx: IdbTransaction = db
@@ -125,6 +127,7 @@ impl DeleteCommand for WasmRepo {
     }
 }
 
+#[instrument(level = Level::DEBUG)]
 pub async fn open_db(db_name: &str) -> IdbDatabase {
     let mut db_req: OpenDbRequest = IdbDatabase::open_u32(db_name, 1).unwrap();
 
