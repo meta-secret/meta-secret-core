@@ -51,6 +51,8 @@ impl WasmRepo {
 }
 
 impl WasmRepo {
+
+    #[instrument(level = Level::DEBUG)]
     pub async fn delete_db(&self) {
         let db = open_db(self.db_name.as_str()).in_current_span().await;
         db.delete().unwrap();
@@ -59,6 +61,8 @@ impl WasmRepo {
 
 #[async_trait(? Send)]
 impl SaveCommand for WasmRepo {
+
+    #[instrument(level = Level::DEBUG)]
     async fn save(&self, event: GenericKvLogEvent) -> anyhow::Result<ObjectId> {
         let event_js: JsValue = serde_wasm_bindgen::to_value(&event)?;
 

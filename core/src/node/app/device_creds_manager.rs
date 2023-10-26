@@ -24,10 +24,10 @@ impl<T: KvLogEventRepo> DeviceCredentialsManager for T {
     async fn save_device_creds(&self, creds: DeviceCredentials) -> anyhow::Result<ObjectId> {
         let generic_event = {
             let creds_obj = DeviceCredentialsObject::unit(creds.clone());
-            GenericKvLogEvent::DeviceCredentials(creds_obj)
+            GenericKvLogEvent::Credentials(creds_obj)
         };
 
-        self.save_event(generic_event).await
+        self.save(generic_event).await
     }
 
     #[instrument(skip_all)]
@@ -39,7 +39,7 @@ impl<T: KvLogEventRepo> DeviceCredentialsManager for T {
             return Ok(None);
         }
 
-        if let Some(GenericKvLogEvent::DeviceCredentials(DeviceCredentialsObject { event })) = maybe_creds {
+        if let Some(GenericKvLogEvent::Credentials(DeviceCredentialsObject { event })) = maybe_creds {
             return Ok(Some(event.value))
         } else {
             Err(anyhow!("Meta vault index: Invalid event type"))

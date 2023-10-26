@@ -40,7 +40,13 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         }
     }
 
+    ///First level of synchronization
+    ///  - global index, server PK - when user has no account
+    ///  - vault, meta pass... - user has been registered
+    ///
+
     pub async fn sync(&self) -> anyhow::Result<()> {
+
         let vault_name = client_creds.user_sig.vault.name.as_str();
         let db_tail_result = self.persistent_object.get_db_tail(vault_name).in_current_span().await;
 
@@ -66,8 +72,8 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             vault_id: new_vault_tail_id,
             meta_pass_id: new_meta_pass_tail_id,
 
-            maybe_global_index_id: new_gi_tail,
-            maybe_mem_pool_id: new_mem_pool_tail_id.clone(),
+            global_index_id: new_gi_tail,
+            mem_pool_id: new_mem_pool_tail_id.clone(),
             s_s_audit: new_audit_tail.clone(),
         };
 
@@ -88,14 +94,14 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
 
             SyncRequest {
                 sender: client_creds.user_sig.clone(),
-                global_index: new_db_tail.maybe_global_index_id.clone().map(|gi| gi.next()),
+                global_index: new_db_tail.global_index_id.clone().map(|gi| gi.next()),
                 vault_tail_id: Some(vault_id_request),
                 meta_pass_tail_id: Some(meta_pass_id_request),
                 s_s_audit: new_audit_tail.clone(),
             }
         };
 
-        let mut latest_gi = new_db_tail.maybe_global_index_id.clone();
+        let mut latest_gi = new_db_tail.global_index_id.clone();
         let mut latest_vault_id = new_db_tail.vault_id.clone();
         let mut latest_meta_pass_id = new_db_tail.meta_pass_id.clone();
         let mut latest_audit_tail = new_audit_tail.clone();
@@ -115,7 +121,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         debug!("id: {:?}. Sync gateway. New events: {:?}", self.id, new_events);
 
         for new_event in new_events {
-            let key = self.persistent_object.repo.save_event(new_event.clone()).in_current_span().await?;
+            let key = self.persistent_object.repo.save(new_event.clone()).in_current_span().await?;
 
             match new_event {
                 GenericKvLogEvent::GlobalIndex(gi_obj) => {
@@ -135,7 +141,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                                 value: vault_unit_id,
                             }
                         });
-                        self.persistent_object.repo.save_event(vault_idx_evt)
+                        self.persistent_object.repo.save(vault_idx_evt)
 
                     }
 
@@ -160,8 +166,8 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             vault_id: latest_vault_id,
             meta_pass_id: latest_meta_pass_id,
 
-            maybe_global_index_id: latest_gi,
-            maybe_mem_pool_id: new_mem_pool_tail_id,
+            global_index_id: latest_gi,
+            mem_pool_id: new_mem_pool_tail_id,
             s_s_audit: latest_audit_tail,
         };
 
@@ -253,7 +259,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             },
         });
 
-        self.persistent_object.repo.save_event(new_db_tail_event).await?;
+        self.persistent_object.repo.save(new_db_tail_event).await?;
         Ok(())
     }
 
@@ -298,15 +304,15 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
 
     async fn get_new_tail_for_global_index(&self, db_tail: &DbTail) -> Option<ObjectId> {
         let global_index = db_tail
-            .maybe_global_index_id
+            .global_index_id
             .clone()
-            .unwrap_or(ObjectId::global_index_unit());
+            .unwrap_or(ObjectId::from(UnitId::global_index()));
 
         self.persistent_object.find_tail_id(global_index).await
     }
 
     async fn get_new_tail_for_mem_pool(&self, db_tail: &DbTail) -> Option<ObjectId> {
-        let mem_pool_id = match db_tail.maybe_mem_pool_id.clone() {
+        let mem_pool_id = match db_tail.mem_pool_id.clone() {
             None => ObjectId::mempool_unit(),
             Some(obj_id) => obj_id.next(),
         };
@@ -323,7 +329,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         }
 
         match last_pool_event {
-            None => db_tail.maybe_mem_pool_id.clone(),
+            None => db_tail.mem_pool_id.clone(),
             Some(event) => Some(event.key().obj_id.clone()),
         }
     }

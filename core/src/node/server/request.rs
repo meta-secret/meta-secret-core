@@ -4,13 +4,24 @@ use crate::node::common::model::device::DeviceData;
 use crate::node::db::events::object_id::ObjectId;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct SyncRequest {
-    pub sender: DeviceData,
+pub enum SyncRequest {
+    Basic {
+        sender: DeviceData,
+        request: BasicSyncRequest
+    },
+    Auth {
+        sender: DeviceData,
+        request: AuthSyncRequest
+    }
+}
 
-    pub vault_tail_id: Option<ObjectId>,
-    pub meta_pass_tail_id: Option<ObjectId>,
+pub struct BasicSyncRequest {
+    global_index: ObjectId,
+}
 
-    pub global_index: Option<ObjectId>,
-
-    pub s_s_audit: Option<ObjectId>,
+pub struct AuthSyncRequest {
+    pub basic: BasicSyncRequest,
+    pub vault_tail_id: ObjectId,
+    pub meta_pass_tail_id: ObjectId,
+    pub s_s_audit: ObjectId,
 }

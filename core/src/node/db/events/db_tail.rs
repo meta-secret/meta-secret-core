@@ -1,21 +1,27 @@
-use crate::node::db::events::object_descriptor::ObjectDescriptor;
-use crate::node::db::events::object_id::{ArtifactId, ObjectId, UnitId};
+use crate::node::db::events::object_id::ObjectId;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DbTail {
-    pub maybe_global_index_id: Option<ObjectId>,
-    pub maybe_mem_pool_id: Option<ObjectId>,
-
-    pub vault_id: ObjectIdDbEvent,
-    pub meta_pass_id: ObjectIdDbEvent,
-    pub s_s_audit: Option<ObjectId>,
+    pub global_index_id: Option<ObjectId>,
+    pub mem_pool_id: Option<ObjectId>,
+    pub auth: Option<AuthDbTail>
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Hash, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[serde(tag = "__db_tail_obj")]
-pub enum ObjectIdDbEvent {
-    Empty { obj_desc: ObjectDescriptor },
-    Id { tail_id: ObjectId },
+pub struct AuthDbTail {
+    pub vault_id: ObjectId,
+    pub meta_pass_id: ObjectId,
+    pub s_s_audit: ObjectId,
+}
+
+impl Default for DbTail {
+    fn default() -> Self {
+        Self {
+            global_index_id: None,
+            mem_pool_id: None,
+            auth: None,
+        }
+    }
 }

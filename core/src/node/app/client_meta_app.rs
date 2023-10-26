@@ -82,7 +82,7 @@ impl<Repo: KvLogEventRepo> MetaClient<Repo> {
             },
         });
 
-        let _ = self.persistent_obj.repo.save_event(join_request).await;
+        let _ = self.persistent_obj.repo.save(join_request).await;
     }
 
     #[instrument(skip_all)]
@@ -126,7 +126,7 @@ impl<Repo: KvLogEventRepo> MetaClient<Repo> {
 
         self.persistent_obj
             .repo
-            .save_event(sign_up_request)
+            .save(sign_up_request)
             .in_current_span()
             .await?;
 

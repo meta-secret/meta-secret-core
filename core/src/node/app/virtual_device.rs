@@ -83,7 +83,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
                         event: join::accept_join_request(&event, &vault),
                     });
 
-                    let _ = vd_repo.save_event(accept_event).in_current_span().await;
+                    let _ = vd_repo.save(accept_event).in_current_span().await;
                 }
 
                 let db_tail = self

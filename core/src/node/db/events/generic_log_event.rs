@@ -17,7 +17,7 @@ pub enum GenericKvLogEvent {
     MemPool(MemPoolObject),
 
     /// Local events (persistent objects which lives only in the local environment) which must not be synchronized
-    DeviceCredentials(DeviceCredentialsObject),
+    Credentials(DeviceCredentialsObject),
     DbTail(DbTailObject),
 
     Error { event: KvLogEvent<ArtifactId, ErrorMessage> },
@@ -39,7 +39,7 @@ impl ObjIdExtractor for GenericKvLogEvent {
             GenericKvLogEvent::MetaPass(obj) => obj.obj_id(),
             GenericKvLogEvent::SharedSecret(obj) => obj.obj_id(),
             GenericKvLogEvent::MemPool(obj) => obj.obj_id(),
-            GenericKvLogEvent::DeviceCredentials(obj) => obj.obj_id(),
+            GenericKvLogEvent::Credentials(obj) => obj.obj_id(),
             GenericKvLogEvent::DbTail(obj) => obj.obj_id(),
             GenericKvLogEvent::Error { event } => event.key.obj_id.clone(),
         }

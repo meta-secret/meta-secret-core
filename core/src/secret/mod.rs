@@ -129,7 +129,7 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
 
         self.persistent_obj
             .repo
-            .save_event(meta_pass_event)
+            .save(meta_pass_event)
             .in_current_span()
             .await
             .unwrap();
@@ -173,7 +173,7 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
                 },
             });
 
-            let _ = self.persistent_obj.repo.save_event(audit_event).await.unwrap();
+            let _ = self.persistent_obj.repo.save(audit_event).await.unwrap();
 
             let secret_share_event = GenericKvLogEvent::SharedSecret(SharedSecretObject::Split {
                 event: KvLogEvent {
@@ -185,7 +185,7 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
             let _ = self
                 .persistent_obj
                 .repo
-                .save_event(secret_share_event)
+                .save(secret_share_event)
                 .in_current_span()
                 .await;
         }
@@ -242,14 +242,14 @@ mod test {
             let accept_event = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
                 event: kv_join_event.clone(),
             });
-            let _ = ctx.repo.save_event(accept_event).await;
+            let _ = ctx.repo.save(accept_event).await;
 
             let join_request_c = join::join_cluster_request(&vault_unit_id.next().next(), &user_sig_c);
             let kv_join_event_c = join::accept_join_request(&join_request_c, &kv_join_event.value);
             let accept_event_c = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
                 event: kv_join_event_c.clone(),
             });
-            let _ = ctx.repo.save_event(accept_event_c).await;
+            let _ = ctx.repo.save(accept_event_c).await;
 
             let distributor = MetaDistributor {
                 persistent_obj: ctx.persistent_obj,

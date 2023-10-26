@@ -5,20 +5,17 @@ use tracing::{debug, error, info, instrument, Instrument};
 
 use crate::crypto::key_pair::KeyPair;
 use crate::crypto::keys::KeyManager;
-use crate::models::UserSignature;
-use crate::node::app_models::UserCredentials;
 use crate::node::common::model::device::DeviceCredentials;
 use crate::node::common::model::user::UserDataCandidate;
 use crate::node::db::actions::join;
 use crate::node::db::actions::sign_up::SignUpAction;
 use crate::node::db::actions::ss_replication::SharedSecretReplicationAction;
 use crate::node::db::events::common::{MemPoolObject, MetaPassObject, PublicKeyRecord};
-use crate::node::db::events::common::ObjectCreator;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::KvLogEvent;
-use crate::node::db::events::object_descriptor::{GlobalIndexDescriptor, ObjectDescriptor};
-use crate::node::db::events::object_id::{IdGen, IdStr, ObjectId};
+use crate::node::db::events::object_descriptor::global_index::GlobalIndexDescriptor;
+use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::vault_event::VaultObject;
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object::PersistentObject;
@@ -48,6 +45,8 @@ pub enum DataSyncMessage {
 
 #[async_trait(? Send)]
 impl<Repo: KvLogEventRepo> DataSyncApi for ServerDataSync<Repo> {
+
+    #[instrument(skip(self))]
     async fn replication(&self, request: SyncRequest) -> anyhow::Result<Vec<GenericKvLogEvent>> {
         let mut commit_log: Vec<GenericKvLogEvent> = vec![];
 
@@ -144,7 +143,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
                         info!("Genesis event not allowed to send. Skip");
                     }
                     VaultObject::JoinUpdate { .. } => {
-                        let _ = self.persistent_obj.repo.save_event(generic_event).await;
+                        let _ = self.persistent_obj.repo.save(generic_event).await;
                     }
                     VaultObject::JoinRequest { .. } => {
                         //self.logger.log("Handle join request");
@@ -162,7 +161,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
                 }
                 MetaPassObject::Update { event } => {
                     let meta_pass_event = GenericKvLogEvent::MetaPass(MetaPassObject::Update { event: event.clone() });
-                    let save_command = self.persistent_obj.repo.save_event(meta_pass_event).await;
+                    let save_command = self.persistent_obj.repo.save(meta_pass_event).await;
 
                     if save_command.is_err() {
                         let err_msg = String::from("Error saving meta pass request");
@@ -190,7 +189,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
                                     event: join::join_cluster_request(&vault_tail_id, &event.value),
                                 });
 
-                                let _ = self.persistent_obj.repo.save_event(join_request).await;
+                                let _ = self.persistent_obj.repo.save(join_request).await;
                             }
                         }
                     }
@@ -198,12 +197,12 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
             }
 
             GenericKvLogEvent::SharedSecret(_) => {
-                let _ = self.persistent_obj.repo.save_event(generic_event.clone()).await;
+                let _ = self.persistent_obj.repo.save(generic_event.clone()).await;
             }
             GenericKvLogEvent::Error { .. } => {
                 info!("Errors not yet implemented");
             }
-            GenericKvLogEvent::DeviceCredentials(evt_type) => {
+            GenericKvLogEvent::Credentials(evt_type) => {
                 info!("Local events can't be sent: {:?}", evt_type);
             }
             GenericKvLogEvent::DbTail(evt_type) => {
@@ -215,9 +214,10 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
     async fn global_index_replication(&self, request: &SyncRequest) -> anyhow::Result<Vec<GenericKvLogEvent>> {
         let events = match &request.global_index {
             None => {
+                let obj_desc = ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index);
                 self
                     .persistent_obj
-                    .get_object_events_from_beginning(&ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index))
+                    .get_object_events_from_beginning(&obj_desc)
                     .await?
             }
             Some(index_id) => {
@@ -296,7 +296,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
         for sign_up_event in sign_up_events {
             self.persistent_obj
                 .repo
-                .save_event(sign_up_event)
+                .save(sign_up_event)
                 .await
                 .expect("Error saving sign_up events");
         }
@@ -342,7 +342,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
         for gi_event in gi_events {
             self.persistent_obj
                 .repo
-                .save_event(gi_event)
+                .save(gi_event)
                 .await
                 .expect("Error saving vaults genesis event");
         }
@@ -352,7 +352,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
             event: KvLogEvent::new_global_index_event(&vault_idx_unit_id, vault_id, GlobalIndexDescriptor::VaultIndex),
         });
 
-        self.persistent_obj.repo.save_event(vault_idx_evt).await.expect("error");
+        self.persistent_obj.repo.save(vault_idx_evt).await.expect("error");
     }
 }
 

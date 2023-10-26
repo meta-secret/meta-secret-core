@@ -12,15 +12,15 @@ pub struct KvLogEvent<Id, T> {
 }
 
 impl KvLogEvent<GenesisId, PublicKeyRecord> {
-    pub fn genesis(obj_desc: &ObjectDescriptor, server_pk: &PublicKeyRecord) -> KvLogEvent<GenesisId, PublicKeyRecord> {
+    pub fn genesis(obj_desc: ObjectDescriptor, server_pk: &PublicKeyRecord) -> KvLogEvent<GenesisId, PublicKeyRecord> {
         KvLogEvent {
             key: KvKey::genesis(obj_desc),
             value: server_pk.clone(),
         }
     }
 
-    pub fn vault_unit(user_sig: &UserDataCandidate) -> KvLogEvent<UnitId, UserDataCandidate> {
-        let obj_desc = &ObjectDescriptor::vault(user_sig.data.vault_name.clone());
+    pub fn vault_unit(user_sig: UserDataCandidate) -> KvLogEvent<UnitId, UserDataCandidate> {
+        let obj_desc = &ObjectDescriptor::vault(user_sig.data.vault_name);
         KvLogEvent {
             key: KvKey::unit(obj_desc),
             value: user_sig.clone(),
@@ -73,7 +73,7 @@ pub struct KvKey<Id> {
 }
 
 impl KvKey<UnitId> {
-    pub fn unit(obj_desc: &ObjectDescriptor) -> Self {
+    pub fn unit(obj_desc: ObjectDescriptor) -> Self {
         Self {
             obj_id: UnitId::unit(obj_desc),
             obj_desc: obj_desc.clone(),
@@ -82,11 +82,11 @@ impl KvKey<UnitId> {
 }
 
 impl KvKey<GenesisId> {
-    pub fn genesis(obj_desc: &ObjectDescriptor) -> Self {
-        let unit_id = KvKey::unit(obj_desc);
+    pub fn genesis(obj_desc: ObjectDescriptor) -> Self {
+        let unit_id = KvKey::unit(obj_desc.clone());
         Self {
             obj_id: unit_id.next().obj_id,
-            obj_desc: ObjectDescriptor::MemPool,
+            obj_desc,
         }
     }
 }

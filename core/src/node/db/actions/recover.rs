@@ -70,7 +70,7 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
                 })
             };
 
-            let _ = self.persistent_obj.repo.save_event(audit_event).await;
+            let _ = self.persistent_obj.repo.save(audit_event).await;
 
             let recovery_request_event = GenericKvLogEvent::SharedSecret(SharedSecretObject::RecoveryRequest {
                 event: KvLogEvent {
@@ -82,7 +82,7 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
                 },
             });
 
-            let _ = self.persistent_obj.repo.save_event(recovery_request_event).await;
+            let _ = self.persistent_obj.repo.save(recovery_request_event).await;
         }
     }
 }

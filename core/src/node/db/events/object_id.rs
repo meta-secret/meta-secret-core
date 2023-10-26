@@ -1,6 +1,7 @@
 use serde_derive::{Deserialize, Serialize};
 
 use crate::crypto::utils::NextId;
+use crate::node::common::model::vault::VaultName;
 use crate::node::db::events::object_descriptor::{ObjectDescriptor, ObjectDescriptorId};
 use crate::node::db::events::object_descriptor::global_index::GlobalIndexDescriptor;
 
@@ -57,7 +58,7 @@ impl From<ArtifactId> for ObjectId {
 }
 
 impl ObjectId {
-    pub fn unit(obj_desc: &ObjectDescriptor) -> Self {
+    pub fn unit(obj_desc: ObjectDescriptor) -> Self {
         ObjectId::Unit(UnitId::unit(obj_desc)) 
     }
 }
@@ -73,35 +74,31 @@ impl Next<ObjectId> for ObjectId {
 }
 
 impl UnitId {
-    pub fn unit(obj_descriptor: &ObjectDescriptor) -> UnitId {
+    pub fn unit(obj_descriptor: ObjectDescriptor) -> UnitId {
         let fqdn = obj_descriptor.to_fqdn();
         UnitId { id: fqdn.next_id() }
     }
 
     pub fn db_tail() -> UnitId {
-        UnitId::unit(&ObjectDescriptor::DbTail)
+        UnitId::unit(ObjectDescriptor::DbTail)
     }
 
     pub fn global_index() -> UnitId {
-        UnitId::unit(&ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index))
+        UnitId::unit(ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index))
     }
 
-    pub fn vault_unit(vault_name: &str) -> UnitId {
-        let vault_desc = ObjectDescriptor::Vault {
-            vault_name: vault_name.to_string(),
-        };
-        UnitId::unit(&vault_desc)
+    pub fn vault_unit(vault_name: VaultName) -> UnitId {
+        let vault_desc = ObjectDescriptor::Vault { vault_name };
+        UnitId::unit(vault_desc)
     }
 
-    pub fn meta_pass_unit(vault_name: &str) -> Self {
-        let vault_desc = ObjectDescriptor::MetaPassword {
-            vault_name: vault_name.to_string(),
-        };
-        UnitId::unit(&vault_desc)
+    pub fn meta_pass_unit(vault_name: VaultName) -> Self {
+        let vault_desc = ObjectDescriptor::MetaPassword { vault_name };
+        UnitId::unit(vault_desc)
     }
 
     pub fn mempool_unit() -> Self {
-        UnitId::unit(&ObjectDescriptor::MemPool)
+        UnitId::unit(ObjectDescriptor::MemPool)
     }
 }
 
@@ -126,13 +123,13 @@ impl Next<ArtifactId> for GenesisId {
 }
 
 impl GenesisId {
-    pub fn genesis(obj_desc: &ObjectDescriptor) -> GenesisId {
+    pub fn genesis(obj_desc: ObjectDescriptor) -> GenesisId {
         let unit_id = UnitId::unit(obj_desc);
         unit_id.next()
     }
 
     pub fn global_index_genesis() -> GenesisId {
-        GenesisId::genesis(&ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index))
+        GenesisId::genesis(ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index))
     }
 }
 

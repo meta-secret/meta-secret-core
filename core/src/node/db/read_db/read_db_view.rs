@@ -55,7 +55,7 @@ impl ReadDb {
             GenericKvLogEvent::Error { .. } => {
                 info!("Skip. errors");
             }
-            GenericKvLogEvent::DeviceCredentials(_) => {
+            GenericKvLogEvent::Credentials(_) => {
                 error!("Error. LocalEvents not for sync");
             }
             GenericKvLogEvent::DbTail(_) => {

@@ -20,7 +20,7 @@ impl ObjIdExtractor for DeviceCredentialsObject {
 impl UnitEvent<DeviceCredentials> for DeviceCredentialsObject {
     fn unit(value: DeviceCredentials) -> Self {
         let event = KvLogEvent {
-            key: KvKey::unit(&ObjectDescriptor::DeviceCredsIndex),
+            key: KvKey::unit(ObjectDescriptor::DeviceCredsIndex),
             value,
         };
 
@@ -42,7 +42,7 @@ impl ObjIdExtractor for DbTailObject {
 
 impl UnitEvent<DbTail> for DbTailObject {
     fn unit(value: DbTail) -> Self {
-        let key = KvKey::unit(&ObjectDescriptor::DbTail);
+        let key = KvKey::unit(ObjectDescriptor::DbTail);
         let event = KvLogEvent { key, value };
         Self { event }
     }

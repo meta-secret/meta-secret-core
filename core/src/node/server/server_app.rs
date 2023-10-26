@@ -35,7 +35,10 @@ where
         while let Ok(sync_message) = self.data_transfer.dt.service_receive().in_current_span().await {
             match sync_message {
                 DataSyncMessage::SyncRequest(request) => {
-                    let new_events_result = self.data_sync.replication(request).in_current_span().await;
+                    let new_events_result = self.data_sync
+                        .replication(request)
+                        .await;
+
                     let new_events = match new_events_result {
                         Ok(data) => {
                             //debug!(format!("New events for a client: {:?}", data).as_str());

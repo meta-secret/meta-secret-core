@@ -1,3 +1,4 @@
+use crate::node::common::model::vault::VaultName;
 use crate::node::db::events::object_descriptor::global_index::GlobalIndexDescriptor;
 use crate::node::db::events::object_descriptor::shared_secret::SharedSecretDescriptor;
 
@@ -11,11 +12,11 @@ pub enum ObjectDescriptor {
     DbTail,
 
     Vault {
-        vault_name: String,
+        vault_name: VaultName,
     },
 
     MetaPassword {
-        vault_name: String,
+        vault_name: VaultName,
     },
 
     /// Secret distribution (split, recover, recovery request and so on)
@@ -38,7 +39,7 @@ pub enum ObjectDescriptor {
     /// By looking into the audit log (since the audit contains the information about what secret shares were created and sent)
     /// we know what split/recover events needs to be sent synchronized
     SharedSecretAudit {
-        vault_name: String,
+        vault_name: VaultName,
     },
 
     DeviceCredsIndex,
@@ -63,7 +64,7 @@ impl ObjectDescriptor {
         self.fqdn()
     }
 
-    pub fn vault(vault_name: String) -> ObjectDescriptor {
+    pub fn vault(vault_name: VaultName) -> ObjectDescriptor {
         ObjectDescriptor::Vault { vault_name }
     }
 }
@@ -159,8 +160,8 @@ pub mod global_index {
 }
 
 pub mod shared_secret {
-    use crate::models::{MetaPasswordId, SecretDistributionDocData, SecretDistributionType};
     use crate::node::common::model::device::DeviceId;
+    use crate::node::common::model::{MetaPasswordId, SecretDistributionDocData, SecretDistributionType};
     use crate::node::db::events::object_descriptor::{ObjectDescriptor, ObjectType};
 
     #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -242,8 +243,9 @@ pub mod shared_secret {
 #[cfg(test)]
 mod test {
     use crate::crypto::keys::{KeyManager, OpenBox, SecretBox};
-    use crate::models::MetaPasswordId;
     use crate::node::common::model::device::DeviceId;
+    use crate::node::common::model::MetaPasswordId;
+    use crate::node::common::model::vault::VaultName;
     use crate::node::db::events::object_descriptor::global_index::GlobalIndexDescriptor;
     use crate::node::db::events::object_descriptor::ObjectDescriptor;
     use crate::node::db::events::object_descriptor::shared_secret::{SharedSecretDescriptor, SharedSecretEventId};
@@ -257,7 +259,7 @@ mod test {
     #[test]
     fn test_vault() {
         let obj_desc = ObjectDescriptor::Vault {
-            vault_name: String::from("test"),
+            vault_name: VaultName::from(String::from("test")),
         };
         assert_eq!(String::from("Vault:test::0"), obj_desc.to_fqdn())
     }
@@ -265,7 +267,7 @@ mod test {
     #[test]
     fn test_meta_pass() {
         let obj_desc = ObjectDescriptor::MetaPassword {
-            vault_name: String::from("test"),
+            vault_name: VaultName::from(String::from("test")),
         };
         assert_eq!(String::from("MetaPass:test::0"), obj_desc.to_fqdn())
     }

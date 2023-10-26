@@ -10,17 +10,21 @@ pub mod device {
     use crate::crypto::keys::OpenBox;
     use crate::crypto::keys::SecretBox;
 
+    #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct DeviceId(String);
+
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct DeviceName(String);
+
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct DeviceData {
         id: DeviceId,
-        name: String,
+        name: DeviceName,
         pub keys: OpenBox,
     }
-
-    #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct DeviceId(String);
 
     #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -36,7 +40,7 @@ pub mod device {
     }
 
     impl DeviceData {
-        pub fn from(device_name: String, open_box: OpenBox) -> Self {
+        pub fn from(device_name: DeviceName, open_box: OpenBox) -> Self {
             Self {
                 name: device_name,
                 id: DeviceId::from(&open_box),
@@ -56,19 +60,19 @@ pub mod device {
 
 pub mod user {
     use crate::node::common::model::device::{DeviceData, DeviceId};
-    use crate::node::db::events::object_descriptor::ObjectDescriptorFqdn;
+    use crate::node::common::model::vault::VaultName;
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct UserId {
-        device_id: DeviceId,
-        vault_id: ObjectDescriptorFqdn
+        vault_name: VaultName,
+        device_id: DeviceId
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct UserData {
-        pub vault_name: String,
+        pub vault_name: VaultName,
         pub device: DeviceData,
     }
 
@@ -111,10 +115,20 @@ pub mod vault {
     use crate::node::common::model::device::DeviceId;
     use crate::node::common::model::user::{UserData, UserMembership};
 
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct VaultName(String);
+
+    impl From<String> for VaultName {
+        fn from(vault_name: String) -> Self {
+            Self(vault_name)
+        }
+    }
+
     #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct VaultData {
-        pub vault_name: String,
+        pub vault_name: VaultName,
         pub users: HashMap<DeviceId, UserMembership>,
     }
 
