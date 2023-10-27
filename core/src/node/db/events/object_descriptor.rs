@@ -8,7 +8,6 @@ use crate::node::db::events::object_descriptor::shared_secret::SharedSecretDescr
 pub enum ObjectDescriptor {
     GlobalIndex(GlobalIndexDescriptor),
 
-    MemPool,
     DbTail,
 
     Vault {
@@ -21,26 +20,6 @@ pub enum ObjectDescriptor {
 
     /// Secret distribution (split, recover, recovery request and so on)
     SharedSecret(SharedSecretDescriptor),
-
-    /// This Audit log allows to recreate a lifetime of the secret sharing workflow and allows to have a consistent view
-    ///across the cluster on what events of the secret sharing happened at what time.
-    /// All the nodes of the system can use this log to sync data (split, recover events) exactly once and keep track
-    /// of secret shares across the cluster and sync/replicate those shares efficiently between nodes and have more deterministic
-    /// flow of actions and events for the secret sharing mechanism.
-    ///
-    /// We will add new events into the audit log which will indicate that the event has been happened.
-    /// For instance:
-    /// we want to send a secret share from one device to another device.
-    ///  - the device_a creates a new SharedSecretAuditDescriptor::SplitEvent and puts it into the audit table (which contains the object_id of the split event).
-    ///  - the device_a creates a SharedSecretDescriptor::Split event (which contains an actual secret share (data))
-    ///  - sync gateway sends the audit event to the server, and sends the split event also to the server
-    ///  - when device_b syncs the data, the server looks into the audit table, analyses tail records, takes all split/recover events to be sent to the device.
-    ///
-    /// By looking into the audit log (since the audit contains the information about what secret shares were created and sent)
-    /// we know what split/recover events needs to be sent synchronized
-    SharedSecretAudit {
-        vault_name: VaultName,
-    },
 
     DeviceCredsIndex,
 }
@@ -80,13 +59,10 @@ impl ObjectDescriptor {
 
     pub fn object_name(&self) -> String {
         match self {
-            ObjectDescriptor::MemPool => String::from("mem_pool"),
-
             ObjectDescriptor::DbTail => String::from("db_tail"),
             ObjectDescriptor::Vault { vault_name } => vault_name.clone(),
 
             ObjectDescriptor::SharedSecret(s_s_descriptor) => s_s_descriptor.as_id_str(),
-            ObjectDescriptor::SharedSecretAudit { vault_name } => vault_name.clone(),
 
             ObjectDescriptor::MetaPassword { vault_name } => vault_name.clone(),
             ObjectDescriptor::DeviceCredsIndex => String::from("index"),
@@ -109,12 +85,9 @@ impl ObjectType for ObjectDescriptor {
     fn object_type(&self) -> String {
         match self {
             ObjectDescriptor::GlobalIndex(gi_desc) => gi_desc.object_type(),
-            ObjectDescriptor::MemPool { .. } => String::from("MemPool"),
 
             ObjectDescriptor::Vault { .. } => String::from("Vault"),
             ObjectDescriptor::SharedSecret(ss_desc) => ss_desc.object_type(),
-
-            ObjectDescriptor::SharedSecretAudit { .. } => String::from("SSAudit"),
 
             ObjectDescriptor::MetaPassword { .. } => String::from("MetaPass"),
             ObjectDescriptor::DeviceCredsIndex { .. } => String::from("UserCreds"),
@@ -162,6 +135,7 @@ pub mod global_index {
 pub mod shared_secret {
     use crate::node::common::model::device::DeviceId;
     use crate::node::common::model::{MetaPasswordId, SecretDistributionDocData, SecretDistributionType};
+    use crate::node::common::model::vault::VaultName;
     use crate::node::db::events::object_descriptor::{ObjectDescriptor, ObjectType};
 
     #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -170,6 +144,26 @@ pub mod shared_secret {
         Split(SharedSecretEventId),
         Recover(SharedSecretEventId),
         RecoveryRequest(SharedSecretEventId),
+
+        /// This Audit log allows to recreate a lifetime of the secret sharing workflow and allows to have a consistent view
+        ///across the cluster on what events of the secret sharing happened at what time.
+        /// All the nodes of the system can use this log to sync data (split, recover events) exactly once and keep track
+        /// of secret shares across the cluster and sync/replicate those shares efficiently between nodes and have more deterministic
+        /// flow of actions and events for the secret sharing mechanism.
+        ///
+        /// We will add new events into the audit log which will indicate that the event has been happened.
+        /// For instance:
+        /// we want to send a secret share from one device to another device.
+        ///  - the device_a creates a new SharedSecretAuditDescriptor::SplitEvent and puts it into the audit table (which contains the object_id of the split event).
+        ///  - the device_a creates a SharedSecretDescriptor::Split event (which contains an actual secret share (data))
+        ///  - sync gateway sends the audit event to the server, and sends the split event also to the server
+        ///  - when device_b syncs the data, the server looks into the audit table, analyses tail records, takes all split/recover events to be sent to the device.
+        ///
+        /// By looking into the audit log (since the audit contains the information about what secret shares were created and sent)
+        /// we know what split/recover events needs to be sent synchronized
+        SharedSecretAudit {
+            vault_name: VaultName,
+        },
     }
 
     impl ObjectType for SharedSecretDescriptor {
@@ -178,6 +172,7 @@ pub mod shared_secret {
                 SharedSecretDescriptor::Split(_) => String::from("SSSplit"),
                 SharedSecretDescriptor::Recover(_) => String::from("SSRecover"),
                 SharedSecretDescriptor::RecoveryRequest(_) => String::from("SSRecoveryRequest"),
+                SharedSecretDescriptor::SharedSecretAudit { .. } => String::from("SSAudit")
             }
         }
     }
@@ -188,6 +183,7 @@ pub mod shared_secret {
                 SharedSecretDescriptor::Split(event_id) => event_id.as_id_str(),
                 SharedSecretDescriptor::Recover(event_id) => event_id.as_id_str(),
                 SharedSecretDescriptor::RecoveryRequest(event_id) => event_id.as_id_str(),
+                SharedSecretDescriptor::SharedSecretAudit { vault_name } => vault_name.0.clone(),
             }
         }
     }

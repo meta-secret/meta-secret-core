@@ -5,7 +5,7 @@ use tracing::{debug, error, info, instrument, Instrument};
 
 use crate::node::common::model::device::DeviceCredentials;
 use crate::node::db::events::common::SharedSecretObject;
-use crate::node::db::events::db_tail::{DbTail, ObjectIdDbEvent};
+use crate::node::db::events::db_tail::{DbTail};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
@@ -35,7 +35,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         info!("Run sync gateway");
 
         loop {
-            self.sync().in_current_span().await?;
+            self.sync().await?;
             async_std::task::sleep(Duration::from_millis(300)).await;
         }
     }
@@ -44,7 +44,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
     ///  - global index, server PK - when user has no account
     ///  - vault, meta pass... - user has been registered
     ///
-
+    #[instrument(skip_all)]
     pub async fn sync(&self) -> anyhow::Result<()> {
 
         let vault_name = client_creds.user_sig.vault.name.as_str();

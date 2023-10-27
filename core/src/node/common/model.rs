@@ -117,7 +117,7 @@ pub mod vault {
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
-    pub struct VaultName(String);
+    pub struct VaultName(pub String);
 
     impl From<String> for VaultName {
         fn from(vault_name: String) -> Self {

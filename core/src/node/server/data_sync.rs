@@ -246,8 +246,8 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
                         info!("Empty vault store");
                         vec![]
                     }
-                    VaultStore::Unit { id: tail_id } => self.persistent_obj.get_unit_sig(tail_id.clone()).await,
-                    VaultStore::Genesis { id: tail_id, .. } => self.persistent_obj.get_unit_sig(tail_id.clone()).await,
+                    VaultStore::Unit { id: tail_id } => self.persistent_obj.get_vault_unit_sig(tail_id.clone()).await,
+                    VaultStore::Genesis { id: tail_id, .. } => self.persistent_obj.get_vault_unit_sig(tail_id.clone()).await,
                     VaultStore::Store { vault, .. } => vault.signatures.clone(),
                 };
 

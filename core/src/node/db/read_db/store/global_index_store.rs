@@ -103,7 +103,7 @@ impl TailId for GlobalIndexStore {
 mod test {
     use crate::models::Base64EncodedText;
     use crate::node::db::events::common::PublicKeyRecord;
-    use crate::node::db::events::generic_log_event::UnitEventEmptyValue;
+    use crate::node::db::events::generic_log_event::UnitEventWithEmptyValue;
     use crate::node::db::events::global_index::GlobalIndexObject;
     use crate::node::db::events::kv_log_event::KvLogEvent;
     use crate::node::db::events::object_id::{IdGen, IdStr, ObjectId};

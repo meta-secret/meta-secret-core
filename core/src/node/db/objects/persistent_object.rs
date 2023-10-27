@@ -134,8 +134,9 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
     }
 
     #[instrument(skip_all)]
-    pub async fn get_unit_sig(&self, unit_id: UnitId) -> Vec<UserDataCandidate> {
-        let vault_event_res = self.repo.find_one(ObjectId::from(unit_id)).await;
+    pub async fn get_vault_unit_sig(&self, vault_name: VaultName) -> Vec<UserDataCandidate> {
+        let vault_desc = ObjectDescriptor::Vault { vault_name };
+        let vault_event_res = self.repo.find_one(ObjectId::from(vault_desc)).await;
 
         if let Ok(Some(GenericKvLogEvent::Vault(VaultObject::Unit { event }))) = vault_event_res {
             vec![event.value]
@@ -148,17 +149,16 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
     pub async fn get_user(&self, vault_name: VaultName, device_name: DeviceName) -> anyhow::Result<UserDataCandidate> {
         let meta_vault =
         .await?;
-        let creds = self.generate_user(meta_vault).in_current_span().await?;
+        let creds = self.generate_user(meta_vault).await?;
         Ok(creds)
     }
 
     #[instrument(skip(self))]
-    async fn generate_user(&self, device_name: String, vault_name: VaultName) -> anyhow::Result<UserDataCandidate> {
-        info!("generate_user_credentials: generate a new security box");
+    async fn generate_user(&self, device_name: DeviceName, vault_name: VaultName) -> anyhow::Result<UserDataCandidate> {
+        info!("Create a new user locally");
 
-        GenericKvLogEvent::Credentials()
+        let maybe_creds = self.repo.find_device_creds().await?;
 
-        let maybe_creds = self.repo.find_device_creds().in_current_span().await?;
 
         match maybe_creds {
             None => {
@@ -230,7 +230,7 @@ mod test {
 
     use crate::crypto::keys::KeyManager;
     use crate::node::db::events::common::{LogEventKeyBasedRecord, ObjectCreator, PublicKeyRecord};
-    use crate::node::db::events::generic_log_event::{GenericKvLogEvent, UnitEventEmptyValue};
+    use crate::node::db::events::generic_log_event::{GenericKvLogEvent, UnitEventWithEmptyValue};
     use crate::node::db::events::global_index::{GlobalIndexObject, GlobalIndexRecord};
     use crate::node::db::events::kv_log_event::KvKey;
     use crate::node::db::events::kv_log_event::KvLogEvent;

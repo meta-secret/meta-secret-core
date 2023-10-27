@@ -1,5 +1,5 @@
 use crate::node::db::events::common::PublicKeyRecord;
-use crate::node::db::events::generic_log_event::{KeyExtractor, ObjIdExtractor, UnitEventEmptyValue};
+use crate::node::db::events::generic_log_event::{KeyExtractor, ObjIdExtractor, UnitEventWithEmptyValue};
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, GenesisId, ObjectId, UnitId};
 
@@ -35,7 +35,7 @@ impl KeyExtractor for GlobalIndexObject {
     }
 }
 
-impl UnitEventEmptyValue for GlobalIndexObject {
+impl UnitEventWithEmptyValue for GlobalIndexObject {
     fn unit() -> Self {
         GlobalIndexObject::Unit {
             event: KvLogEvent::global_index_unit(),

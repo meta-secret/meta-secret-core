@@ -32,8 +32,8 @@ impl<T: KvLogEventRepo> DeviceCredentialsManager for T {
 
     #[instrument(skip_all)]
     async fn find_device_creds(&self) -> anyhow::Result<Option<DeviceCredentials>> {
-        let obj_id = ObjectId::unit(&ObjectDescriptor::DeviceCredsIndex);
-        let maybe_creds = self.find_one(obj_id).in_current_span().await?;
+        let obj_id = ObjectId::unit(ObjectDescriptor::DeviceCredsIndex);
+        let maybe_creds = self.find_one(obj_id).await?;
 
         if let None = maybe_creds {
             return Ok(None);

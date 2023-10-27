@@ -21,7 +21,7 @@ pub struct VirtualDevice<Repo: KvLogEventRepo> {
     pub meta_client_proxy: Arc<MetaClientAccessProxy>,
     pub server_dt: Arc<ServerDataTransfer>,
     gateway: Arc<SyncGateway<Repo>>,
-    creds: DeviceCredentials,
+    device_creds: DeviceCredentials,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -53,15 +53,16 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
             meta_client_proxy: meta_client_access_proxy.clone(),
             server_dt,
             gateway,
-            creds: creds.clone()
+            device_creds: creds.clone()
         };
+
+        persistent_object.global_index.
 
         Ok(virtual_device)
     }
 
     pub async fn run(&self) {
         //let vault_name = self.creds.user_sig.vault.name.clone();
-
 
         loop {
             self.gateway.sync().in_current_span().await?;
@@ -95,7 +96,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
                     .unwrap();
 
                 self.gateway
-                    .sync_shared_secrets(&vault.vault_name, &self.creds, &db_tail)
+                    .sync_shared_secrets(&vault.vault_name, &self.device_creds, &db_tail)
                     .in_current_span()
                     .await;
             };

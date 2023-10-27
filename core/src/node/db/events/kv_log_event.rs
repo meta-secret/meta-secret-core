@@ -29,13 +29,13 @@ impl KvLogEvent<GenesisId, PublicKeyRecord> {
 
     pub fn global_index_unit() -> KvLogEvent<UnitId, ()> {
         KvLogEvent {
-            key: KvKey::unit(&ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index)),
+            key: KvKey::unit(ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index)),
             value: (),
         }
     }
 
     pub fn global_index_genesis(server_pk: &PublicKeyRecord) -> KvLogEvent<GenesisId, PublicKeyRecord> {
-        Self::genesis(&ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index), server_pk)
+        Self::genesis(ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index), server_pk)
     }
 }
 
