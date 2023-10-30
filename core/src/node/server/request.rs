@@ -16,7 +16,7 @@ pub enum SyncRequest {
 }
 
 pub struct BasicSyncRequest {
-    global_index: ObjectId,
+    pub global_index: ObjectId,
 }
 
 pub struct AuthSyncRequest {

@@ -20,7 +20,7 @@ impl KvLogEvent<GenesisId, PublicKeyRecord> {
     }
 
     pub fn vault_unit(user_sig: UserDataCandidate) -> KvLogEvent<UnitId, UserDataCandidate> {
-        let obj_desc = &ObjectDescriptor::vault(user_sig.data.vault_name);
+        let obj_desc = ObjectDescriptor::vault(user_sig.data.vault_name);
         KvLogEvent {
             key: KvKey::unit(obj_desc),
             value: user_sig.clone(),

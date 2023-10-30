@@ -127,22 +127,11 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
             self.repo.find_one(db_tail_unit_id).in_current_span().await?
         };
 
-        if let Some(db_tail) = maybe_db_tail {
-            if let GenericKvLogEvent::DbTail(DbTailObject { event }) = db_tail {
-                Ok(event.value)
-            } else {
-                Err(anyhow!("DbTail. Invalid event type: {:?}", db_tail))
-            }
+        if let Some(db_tail_event) = maybe_db_tail {
+            db_tail_event.to_db_tail()
         } else {
-            let db_tail = DbTail::default();
-
-            let tail_event = {
-                let event = KvLogEvent {
-                    key: KvKey::unit(ObjectDescriptor::DbTail),
-                    value: db_tail.clone(),
-                };
-                GenericKvLogEvent::DbTail(DbTailObject { event })
-            };
+            let db_tail = DbTail::Basic { global_index_id: None };
+            let tail_event = GenericKvLogEvent::db_tail(db_tail.clone());
 
             self.repo.save(tail_event).await?;
             Ok(db_tail)
@@ -160,13 +149,6 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
         }
     }
 
-    #[instrument(skip_all)]
-    pub async fn get_user(&self, vault_name: VaultName, device_name: DeviceName) -> anyhow::Result<UserDataCandidate> {
-        let meta_vault =  .await?;
-        let creds = self.generate_user(meta_vault).await?;
-        Ok(creds)
-    }
-
     #[instrument(skip(self))]
     async fn generate_user(&self, device_name: DeviceName, vault_name: VaultName) -> anyhow::Result<CredentialsObject> {
         info!("Create a new user locally");
@@ -179,9 +161,10 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
 
         let device_creds = match maybe_creds {
             None => {
-                let creds = DeviceCredentials::generate(device_name);
+                let device_creds = DeviceCredentials::generate(device_name);
+                let creds = CredentialsObject::unit(device_creds.clone());
                 device_repo.save(creds.clone()).await?;
-                creds
+                device_creds
             }
             Some(creds) => creds,
         };

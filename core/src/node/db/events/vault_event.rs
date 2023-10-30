@@ -1,7 +1,7 @@
 use crate::node::common::model::user::{UserDataCandidate, UserMembership};
 use crate::node::common::model::vault::VaultData;
 use crate::node::db::events::common::PublicKeyRecord;
-use crate::node::db::events::generic_log_event::ObjIdExtractor;
+use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::kv_log_event::KvLogEvent;
 use crate::node::db::events::object_id::{ArtifactId, GenesisId, ObjectId, UnitId};
 
@@ -25,6 +25,12 @@ pub enum VaultObject {
     Audit {
         event: KvLogEvent<ArtifactId, VaultObjectEvent>,
     },
+}
+
+impl ToGenericEvent for VaultObject {
+    fn to_generic(self) -> GenericKvLogEvent {
+        GenericKvLogEvent::Vault(self)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

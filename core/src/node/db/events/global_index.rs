@@ -1,6 +1,8 @@
 use crate::node::db::events::common::PublicKeyRecord;
-use crate::node::db::events::generic_log_event::{KeyExtractor, ObjIdExtractor, UnitEventWithEmptyValue};
+use crate::node::db::events::generic_log_event::{ToGenericEvent, GenericKvLogEvent, KeyExtractor, ObjIdExtractor, UnitEventWithEmptyValue};
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
+use crate::node::db::events::object_descriptor::global_index::GlobalIndexDescriptor;
+use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{ArtifactId, GenesisId, ObjectId, UnitId};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -11,6 +13,27 @@ pub enum GlobalIndexObject {
 
     Update { event: KvLogEvent<ArtifactId, UnitId> },
     VaultIndex { event: KvLogEvent<UnitId, UnitId> },
+}
+
+impl GlobalIndexObject {
+    pub fn index_from(vault_id: UnitId) -> GlobalIndexObject {
+        let idx_desc = ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::VaultIndex {
+            vault_id: vault_id.clone()
+        });
+
+        GlobalIndexObject::VaultIndex {
+            event: KvLogEvent {
+                key: KvKey::unit(idx_desc),
+                value: vault_id,
+            }
+        }
+    }
+}
+
+impl ToGenericEvent for GlobalIndexObject {
+    fn to_generic(self) -> GenericKvLogEvent {
+        GenericKvLogEvent::GlobalIndex(self)
+    }
 }
 
 impl ObjIdExtractor for GlobalIndexObject {

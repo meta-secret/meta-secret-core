@@ -1,26 +1,8 @@
 use crate::crypto::encoding::base64::Base64Text;
-use crate::node::common::model::{MetaPasswordData, PasswordRecoveryRequest, SecretDistributionDocData};
-use crate::node::db::events::generic_log_event::ObjIdExtractor;
+use crate::node::common::model::{PasswordRecoveryRequest, SecretDistributionDocData};
+use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::kv_log_event::KvLogEvent;
-use crate::node::db::events::object_id::{ArtifactId, GenesisId, ObjectId, UnitId};
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum MetaPassObject {
-    Unit { event: KvLogEvent<UnitId, ()> },
-    Genesis { event: KvLogEvent<GenesisId, PublicKeyRecord> },
-    Update { event: KvLogEvent<ArtifactId, MetaPasswordData> },
-}
-
-impl ObjIdExtractor for MetaPassObject {
-    fn obj_id(&self) -> ObjectId {
-        match self {
-            MetaPassObject::Unit { event } => ObjectId::from(event.key.obj_id.clone()),
-            MetaPassObject::Genesis { event } => ObjectId::from(event.key.obj_id.clone()),
-            MetaPassObject::Update { event } => ObjectId::from(event.key.obj_id.clone())
-        }
-    }
-}
+use crate::node::db::events::object_id::{ArtifactId, ObjectId, UnitId};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -47,6 +29,12 @@ impl ObjIdExtractor for SharedSecretObject {
             SharedSecretObject::RecoveryRequest { event } => ObjectId::from(event.key.obj_id.clone()),
             SharedSecretObject::Audit { event } => ObjectId::from(event.key.obj_id.clone())
         }
+    }
+}
+
+impl ToGenericEvent for SharedSecretObject {
+    fn to_generic(self) -> GenericKvLogEvent {
+        GenericKvLogEvent::SharedSecret(self)
     }
 }
 
