@@ -6,22 +6,38 @@ use crate::node::db::events::object_descriptor::shared_secret::SharedSecretDescr
 #[serde(rename_all = "camelCase")]
 #[serde(tag = "__obj_desc")]
 pub enum ObjectDescriptor {
-    GlobalIndex(GlobalIndexDescriptor),
-
     DbTail,
+    GlobalIndex(GlobalIndexDescriptor),
+    /// Describes device and user credentials
+    CredsIndex,
 
+    Vault(VaultDescriptor),
+    /// Secret distribution (split, recover, recovery request and so on)
+    SharedSecret(SharedSecretDescriptor),
+}
+
+pub enum VaultDescriptor {
     Vault {
         vault_name: VaultName,
     },
-
-    MetaPassword {
+    VaultAudit {
         vault_name: VaultName,
-    },
+    }
+}
 
-    /// Secret distribution (split, recover, recovery request and so on)
-    SharedSecret(SharedSecretDescriptor),
+impl VaultDescriptor {
+    pub fn vault(vault_name: VaultName) -> ObjectDescriptor {
+        ObjectDescriptor::Vault(VaultDescriptor::Vault { vault_name })
+    }
+}
 
-    DeviceCredsIndex,
+impl ObjectType for VaultDescriptor {
+    fn object_type(&self) -> String {
+        match self {
+            VaultDescriptor::Vault { .. } => String::from("Vault"),
+            VaultDescriptor::VaultAudit { .. } => String::from("VaultAudit"),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -42,10 +58,6 @@ impl ObjectDescriptor {
     pub fn to_fqdn(&self) -> ObjectDescriptorFqdn {
         self.fqdn()
     }
-
-    pub fn vault(vault_name: VaultName) -> ObjectDescriptor {
-        ObjectDescriptor::Vault { vault_name }
-    }
 }
 
 impl ObjectDescriptor {
@@ -60,13 +72,13 @@ impl ObjectDescriptor {
     pub fn object_name(&self) -> String {
         match self {
             ObjectDescriptor::DbTail => String::from("db_tail"),
-            ObjectDescriptor::Vault { vault_name } => vault_name.clone(),
-
             ObjectDescriptor::SharedSecret(s_s_descriptor) => s_s_descriptor.as_id_str(),
-
-            ObjectDescriptor::MetaPassword { vault_name } => vault_name.clone(),
-            ObjectDescriptor::DeviceCredsIndex => String::from("index"),
-            ObjectDescriptor::GlobalIndex(desc) => desc.as_id_str()
+            ObjectDescriptor::GlobalIndex(desc) => desc.as_id_str(),
+            ObjectDescriptor::CredsIndex => {}
+            ObjectDescriptor::Vault(vault_desc) => match vault_desc {
+                VaultDescriptor::Vault { vault_name } => vault_name.to_string(),
+                VaultDescriptor::VaultAudit { vault_name } => vault_name.to_string(),
+            }
         }
     }
 }
@@ -86,11 +98,9 @@ impl ObjectType for ObjectDescriptor {
         match self {
             ObjectDescriptor::GlobalIndex(gi_desc) => gi_desc.object_type(),
 
-            ObjectDescriptor::Vault { .. } => String::from("Vault"),
+            ObjectDescriptor::Vault(vault_desc) => vault_desc.object_type(),
             ObjectDescriptor::SharedSecret(ss_desc) => ss_desc.object_type(),
-
-            ObjectDescriptor::MetaPassword { .. } => String::from("MetaPass"),
-            ObjectDescriptor::DeviceCredsIndex { .. } => String::from("UserCreds"),
+            ObjectDescriptor::CredsIndex { .. } => String::from("DeviceCreds"),
             ObjectDescriptor::DbTail { .. } => String::from("DbTail"),
         }
     }
@@ -101,6 +111,10 @@ pub mod global_index {
     use crate::node::db::events::object_descriptor::ObjectType;
     use crate::node::db::events::object_id::UnitId;
 
+    /// Allows to have access to the global index of all vaults exists across the system.
+    /// Index + VaultIndex = LinkedHashMap, or linkedList + HaspMap, allows to navigate through the values in the index.
+    /// Index provides list interface and allows to navigate through elements by their index in the array
+    /// VaultIndex provides HashMap interface allows to get a vault by its ID
     #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub enum GlobalIndexDescriptor {
@@ -133,8 +147,8 @@ pub mod global_index {
 }
 
 pub mod shared_secret {
-    use crate::node::common::model::device::DeviceId;
     use crate::node::common::model::{MetaPasswordId, SecretDistributionDocData, SecretDistributionType};
+    use crate::node::common::model::device::DeviceId;
     use crate::node::common::model::vault::VaultName;
     use crate::node::db::events::object_descriptor::{ObjectDescriptor, ObjectType};
 
@@ -191,7 +205,7 @@ pub mod shared_secret {
     #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct SharedSecretEventId {
-        pub vault_name: String,
+        pub vault_name: VaultName,
         pub meta_pass_id: MetaPasswordId,
         pub receiver: DeviceId,
     }
@@ -227,7 +241,7 @@ pub mod shared_secret {
             match secret_distribution.distribution_type {
                 SecretDistributionType::Split => {
                     ObjectDescriptor::SharedSecret(SharedSecretDescriptor::Split(ss_event_id))
-                },
+                }
                 SecretDistributionType::Recover => {
                     ObjectDescriptor::SharedSecret(SharedSecretDescriptor::Recover(ss_event_id))
                 }

@@ -59,7 +59,15 @@ impl From<ArtifactId> for ObjectId {
 
 impl ObjectId {
     pub fn unit(obj_desc: ObjectDescriptor) -> Self {
-        ObjectId::Unit(UnitId::unit(obj_desc)) 
+        ObjectId::Unit(UnitId::unit(obj_desc))
+    }
+
+    pub fn get_unit_id(&self) -> UnitId {
+        match self {
+            ObjectId::Unit(unit_id) => unit_id.clone(),
+            ObjectId::Genesis(genesis_id) => genesis_id.unit_id.clone(),
+            ObjectId::Artifact(artifact_id) => artifact_id.unit_id.clone()
+        }
     }
 }
 
@@ -95,10 +103,6 @@ impl UnitId {
     pub fn meta_pass_unit(vault_name: VaultName) -> Self {
         let vault_desc = ObjectDescriptor::MetaPassword { vault_name };
         UnitId::unit(vault_desc)
-    }
-
-    pub fn mempool_unit() -> Self {
-        UnitId::unit(ObjectDescriptor::MemPool)
     }
 }
 

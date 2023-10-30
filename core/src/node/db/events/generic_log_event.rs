@@ -2,7 +2,7 @@ use crate::node::db::events::common::{MetaPassObject, SharedSecretObject};
 use crate::node::db::events::error::ErrorMessage;
 use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvLogEvent};
-use crate::node::db::events::local::{DbTailObject, DeviceCredentialsObject};
+use crate::node::db::events::local::{DbTailObject, CredentialsObject};
 use crate::node::db::events::object_id::{ArtifactId, ObjectId};
 use crate::node::db::events::vault_event::VaultObject;
 
@@ -14,11 +14,8 @@ pub enum GenericKvLogEvent {
     Vault(VaultObject),
     MetaPass(MetaPassObject),
     SharedSecret(SharedSecretObject),
-
-    /// Local events (persistent objects which lives only in the local environment) which must not be synchronized
-    Credentials(DeviceCredentialsObject),
+    Credentials(CredentialsObject),
     DbTail(DbTailObject),
-
     Error { event: KvLogEvent<ArtifactId, ErrorMessage> },
 }
 
@@ -40,6 +37,20 @@ impl ObjIdExtractor for GenericKvLogEvent {
             GenericKvLogEvent::Credentials(obj) => obj.obj_id(),
             GenericKvLogEvent::DbTail(obj) => obj.obj_id(),
             GenericKvLogEvent::Error { event } => event.key.obj_id.clone(),
+        }
+    }
+}
+
+impl KeyExtractor for GenericKvLogEvent {
+    fn key(&self) -> GenericKvKey {
+        match self {
+            GenericKvLogEvent::GlobalIndex(obj) => obj.key(),
+            GenericKvLogEvent::Vault(obj) => obj.key(),
+            GenericKvLogEvent::MetaPass(obj) => obj.key(),
+            GenericKvLogEvent::SharedSecret(obj) => obj.key(),
+            GenericKvLogEvent::Credentials(obj) => obj.key(),
+            GenericKvLogEvent::DbTail(obj) => obj.key(),
+            GenericKvLogEvent::Error { event } => event.key.obj_desc.clone(),
         }
     }
 }

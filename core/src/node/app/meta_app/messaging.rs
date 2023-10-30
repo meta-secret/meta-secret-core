@@ -1,4 +1,6 @@
 use crate::models::MetaPasswordId;
+use crate::node::common::model::device::DeviceData;
+use crate::node::common::model::vault::VaultName;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -11,8 +13,8 @@ pub enum GenericAppStateRequest {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SignUpRequest {
-    pub vault_name: String,
-    pub device_name: String,
+    pub vault_name: VaultName,
+    pub device_name: DeviceData,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

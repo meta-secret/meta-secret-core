@@ -12,6 +12,7 @@ pub mod meta_test_utils {
     use crate::node::db::events::vault_event::VaultObject;
     use std::collections::HashMap;
     use tracing::info;
+    use crate::node::common::model::vault::VaultName;
 
     pub fn build_meta_pass_1() -> MetaPasswordId {
         MetaPasswordId {
@@ -56,7 +57,7 @@ pub mod meta_test_utils {
     }
 
     pub struct MetaAppTestVerifier {
-        pub vault_name: String,
+        pub vault_name: VaultName,
         pub events: HashMap<ObjectId, GenericKvLogEvent>,
     }
 
@@ -137,7 +138,7 @@ pub mod meta_test_utils {
         }
 
         fn verify_user_creds(&self) {
-            let creds_unit_id = ObjectId::unit(&ObjectDescriptor::DeviceCredsIndex);
+            let creds_unit_id = ObjectId::unit(&ObjectDescriptor::CredsIndex);
             assert!(self.events.contains_key(&creds_unit_id));
         }
 

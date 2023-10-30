@@ -10,11 +10,15 @@ use meta_secret_core::node::app::client_meta_app::MetaClient;
 use meta_secret_core::node::app::meta_app::meta_client_service::{
     MetaClientAccessProxy, MetaClientDataTransfer, MetaClientService,
 };
-use meta_secret_core::node::app::device_creds_manager::DeviceCredentialsManager;
+use meta_secret_core::node::app::credentials_repo::{CredentialsRepo, DeviceCredentialsManager};
 use meta_secret_core::node::app::sync_gateway::SyncGateway;
 use meta_secret_core::node::app::virtual_device::VirtualDevice;
 use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::meta_tracing::{client_span, server_span, vd_span};
+use meta_secret_core::node::common::model::device::DeviceName;
+use meta_secret_core::node::common::model::vault::VaultName;
+use meta_secret_core::node::db::events::generic_log_event::UnitEvent;
+use meta_secret_core::node::db::events::local::CredentialsObject;
 use meta_secret_core::node::db::generic_db::KvLogEventRepo;
 use meta_secret_core::node::db::read_db::read_db_service::{
     ReadDbDataTransfer, ReadDbService, ReadDbServiceProxy,
@@ -163,10 +167,12 @@ impl<Repo, State> ApplicationStateManager<Repo, State>
 
         let persistent_object = Arc::new(PersistentObject::new(device_repo.clone()));
 
-        let creds = persistent_object
-            .repo
-            .get_or_generate_device_creds(String::from("virtual-device"))
-            .in_current_span()
+        let creds_repo = CredentialsRepo {
+            repo: persistent_object.repo.clone(),
+        };
+
+        let creds = creds_repo
+            .get_or_generate_user_creds(DeviceName::from("virtual-device"), VaultName::from("q"))
             .await?;
 
         let vd_read_db_data_transfer = Arc::new(ReadDbDataTransfer {
@@ -195,11 +201,13 @@ impl<Repo, State> ApplicationStateManager<Repo, State>
             dt: MpscDataTransfer::new(),
         });
 
+        let creds_obj = CredentialsObject::unit(creds);
         let gateway = Arc::new(SyncGateway {
             id: String::from("vd-gateway"),
             persistent_object: persistent_object.clone(),
             server_dt: dt.clone(),
             read_db_service_proxy: vd_read_db_service_proxy.clone(),
+            creds: creds_obj.clone(),
         });
 
         let meta_client_service = {
@@ -213,7 +221,7 @@ impl<Repo, State> ApplicationStateManager<Repo, State>
                 meta_client: meta_client.clone(),
                 state_manager: js_app_state.clone(),
                 sync_gateway: gateway.clone(),
-                device_creds: creds.clone()
+                device_creds: creds_obj.clone()
             }
         };
 

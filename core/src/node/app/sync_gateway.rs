@@ -3,13 +3,12 @@ use std::time::Duration;
 
 use tracing::{debug, error, info, instrument, Instrument};
 
-use crate::node::common::model::device::DeviceCredentials;
 use crate::node::db::events::common::SharedSecretObject;
 use crate::node::db::events::db_tail::{DbTail};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::local::DbTailObject;
+use crate::node::db::events::local::{CredentialsObject, DbTailObject};
 use crate::node::db::events::object_descriptor::{ObjectDescriptor};
 use crate::node::db::events::object_descriptor::global_index::GlobalIndexDescriptor;
 use crate::node::db::events::object_id::{Next, ObjectId, UnitId};
@@ -26,7 +25,7 @@ pub struct SyncGateway<Repo: KvLogEventRepo> {
     pub persistent_object: Arc<PersistentObject<Repo>>,
     pub server_dt: Arc<ServerDataTransfer>,
     pub read_db_service_proxy: Arc<ReadDbServiceProxy>,
-    pub device_creds: DeviceCredentials
+    pub creds: CredentialsObject
 }
 
 impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
@@ -46,25 +45,26 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
     ///
     #[instrument(skip_all)]
     pub async fn sync(&self) -> anyhow::Result<()> {
+        let db_tail = self.persistent_object.get_db_tail().await?;
 
-        let vault_name = client_creds.user_sig.vault.name.as_str();
-        let db_tail_result = self.persistent_object.get_db_tail(vault_name).in_current_span().await;
+        match &self.creds {
+            CredentialsObject::Device { event } => {
+                ???
+            }
+            CredentialsObject::User { event } => {
+                let user_creds = &event.value;
+                let new_vault_tail_id = self.get_new_tail_for_an_obj(user_creds.vault_name).await;
 
-        let Ok(db_tail) = db_tail_result else {
-            error!("Error! Db tail not exists");
-            return Ok(());
-        };
+                let new_meta_pass_tail_id = self
+                    .get_new_tail_for_an_obj(&db_tail.meta_pass_id)
+                    .await;
+            }
+        }
 
-        let new_gi_tail = self.get_new_tail_for_global_index(&db_tail).in_current_span().await;
+        //let user_data = self.persistent_object.get_vault_unit_sig().await;
 
-        let new_vault_tail_id = self.get_new_tail_for_an_obj(&db_tail.vault_id).in_current_span().await;
+        let new_gi_tail = self.get_free_tail_id_for_global_index(&db_tail).await?;
 
-        let new_meta_pass_tail_id = self
-            .get_new_tail_for_an_obj(&db_tail.meta_pass_id)
-            .in_current_span()
-            .await;
-
-        let new_mem_pool_tail_id = self.get_new_tail_for_mem_pool(&db_tail).in_current_span().await;
 
         let new_audit_tail = self.sync_shared_secrets(vault_name, &client_creds, &db_tail).await;
 
@@ -174,6 +174,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         self.save_updated_db_tail(new_db_tail.clone(), latest_db_tail).await
     }
 
+    #[instrument(skip_all)]
     pub async fn sync_shared_secrets(
         &self,
         vault_name: &str,
@@ -246,6 +247,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         audit_events.last().map(|evt| evt.key().obj_id.clone())
     }
 
+    #[instrument(skip_all)]
     async fn save_updated_db_tail(&self, db_tail: DbTail, new_db_tail: DbTail) -> anyhow::Result<()> {
         if new_db_tail == db_tail {
             return Ok(());
@@ -263,74 +265,40 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         Ok(())
     }
 
-    async fn get_new_tail_for_an_obj(&self, db_tail_obj: &ObjectIdDbEvent) -> ObjectIdDbEvent {
-        match db_tail_obj {
-            ObjectIdDbEvent::Empty { obj_desc } => self
-                .persistent_object
-                .find_tail_id(unit_id.clone())
-                .await
-                .map(|tail_id| ObjectIdDbEvent::Id { tail_id })
-                .unwrap_or(ObjectIdDbEvent::Empty {
-                    unit_id: unit_id.clone(),
-                }),
-            ObjectIdDbEvent::Id { tail_id } => {
-                let tail_id_sync = match tail_id {
-                    ObjectId::Unit { .. } => tail_id.clone(),
-                    _ => tail_id.next(),
-                };
+    #[instrument(skip_all)]
+    async fn get_new_tail_for_an_obj(&self, db_tail_obj: &DbTail) -> ObjectIdDbEvent {
+        let tail_id_sync = match tail_id {
+            ObjectId::Unit { .. } => tail_id.clone(),
+            _ => tail_id.next(),
+        };
 
-                let obj_events = self.persistent_object.find_object_events(&tail_id_sync).await;
-                let last_vault_event = obj_events.last().cloned();
+        let obj_events = self.persistent_object.find_object_events(&tail_id_sync).await;
+        let last_vault_event = obj_events.last().cloned();
 
-                for client_event in obj_events {
-                    debug!(
+        for client_event in obj_events {
+            debug!(
                         "Send event to server. May stuck if server won't response!!! : {:?}",
                         client_event
                     );
-                    self.server_dt
-                        .dt
-                        .send_to_service(DataSyncMessage::Event(client_event))
-                        .await;
-                }
-
-                let new_tail_id = last_vault_event
-                    .map(|event| event.key().obj_id.clone())
-                    .unwrap_or(tail_id.clone());
-
-                ObjectIdDbEvent::Id { tail_id: new_tail_id }
-            }
-        }
-    }
-
-    async fn get_new_tail_for_global_index(&self, db_tail: &DbTail) -> Option<ObjectId> {
-        let global_index = db_tail
-            .global_index_id
-            .clone()
-            .unwrap_or(ObjectId::from(UnitId::global_index()));
-
-        self.persistent_object.find_tail_id(global_index).await
-    }
-
-    async fn get_new_tail_for_mem_pool(&self, db_tail: &DbTail) -> Option<ObjectId> {
-        let mem_pool_id = match db_tail.mem_pool_id.clone() {
-            None => ObjectId::mempool_unit(),
-            Some(obj_id) => obj_id.next(),
-        };
-
-        let mem_pool_events = self.persistent_object.find_object_events(&mem_pool_id).await;
-        let last_pool_event = mem_pool_events.last().cloned();
-
-        for client_event in mem_pool_events {
-            debug!("send mem pool request to server: {:?}", client_event);
             self.server_dt
                 .dt
                 .send_to_service(DataSyncMessage::Event(client_event))
                 .await;
         }
 
-        match last_pool_event {
-            None => db_tail.mem_pool_id.clone(),
-            Some(event) => Some(event.key().obj_id.clone()),
-        }
+        let new_tail_id = last_vault_event
+            .map(|event| event.key().obj_id.clone())
+            .unwrap_or(tail_id.clone());
+
+        ObjectIdDbEvent::Id { tail_id: new_tail_id }
+    }
+
+    #[instrument(skip_all)]
+    async fn get_free_tail_id_for_global_index(&self, db_tail: &DbTail) -> anyhow::Result<ObjectId> {
+        let global_index = db_tail
+            .global_index_id
+            .unwrap_or(ObjectId::from(UnitId::global_index()));
+
+        self.persistent_object.find_free_id(global_index).await
     }
 }

@@ -204,7 +204,7 @@ impl MetaAppTestVerifier {
     }
 
     fn verify_user_creds(&self) {
-        let creds_unit_id = ObjectId::unit(&ObjectDescriptor::DeviceCredsIndex);
+        let creds_unit_id = ObjectId::unit(&ObjectDescriptor::CredsIndex);
         assert!(self.events.contains_key(&creds_unit_id));
     }
 

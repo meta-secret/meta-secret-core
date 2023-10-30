@@ -3,8 +3,8 @@ use std::sync::Arc;
 use crate::node::common::data_transfer::MpscDataTransfer;
 use anyhow::anyhow;
 use tracing::{debug, info, instrument, Instrument};
+use crate::node::common::model::vault::{VaultInfo, VaultName};
 
-use crate::node::db::events::common::VaultInfo;
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::read_db::read_db_view::{ReadDb, TailId};
@@ -24,9 +24,9 @@ pub struct ReadDbDataTransfer {
 }
 
 pub enum ReadDbRequestMessage {
-    GetVaultInfo { vault_name: String },
-    GetVaultStore { vault_name: String },
-    GetMetaPassStore { vault_name: String },
+    GetVaultInfo { vault_name: VaultName },
+    GetVaultStore { vault_name: VaultName },
+    GetMetaPassStore { vault_name: VaultName },
 }
 
 pub enum ReadDbResponseMessage {
@@ -134,7 +134,7 @@ pub struct ReadDbServiceProxy {
 }
 
 impl ReadDbServiceProxy {
-    pub async fn get_vault_info(&self, vault_name: String) -> anyhow::Result<VaultInfo> {
+    pub async fn get_vault_info(&self, vault_name: VaultName) -> anyhow::Result<VaultInfo> {
         let msg = self
             .dt
             .dt
@@ -148,7 +148,7 @@ impl ReadDbServiceProxy {
         }
     }
 
-    pub async fn get_vault_store(&self, vault_name: String) -> anyhow::Result<VaultStore> {
+    pub async fn get_vault_store(&self, vault_name: VaultName) -> anyhow::Result<VaultStore> {
         let msg = self
             .dt
             .dt
@@ -167,7 +167,7 @@ impl ReadDbServiceProxy {
         }
     }
 
-    pub async fn get_meta_pass_store(&self, vault_name: String) -> anyhow::Result<MetaPassStore> {
+    pub async fn get_meta_pass_store(&self, vault_name: VaultName) -> anyhow::Result<MetaPassStore> {
         let msg = self
             .dt
             .dt

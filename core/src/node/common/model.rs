@@ -7,7 +7,7 @@ pub mod device {
     use crypto::utils::generate_uuid_b64_url_enc;
 
     use crate::crypto;
-    use crate::crypto::keys::OpenBox;
+    use crate::crypto::keys::{KeyManager, OpenBox};
     use crate::crypto::keys::SecretBox;
 
     #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -17,6 +17,18 @@ pub mod device {
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct DeviceName(String);
+
+    impl From<String> for DeviceName {
+        fn from(device_name: String) -> Self {
+            DeviceName(device_name)
+        }
+    }
+
+    impl From<&str> for DeviceName {
+        fn from(device_name: &str) -> Self {
+            DeviceName(String::from(device_name))
+        }
+    }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -33,12 +45,22 @@ pub mod device {
         pub device: DeviceData,
     }
 
+    /// Contains full information about device (private keys and device id)
+    impl DeviceCredentials {
+        pub fn generate(device_name: DeviceName) -> DeviceCredentials {
+            let secret_box = KeyManager::generate_secret_box();
+            let device = DeviceData::from(device_name, OpenBox::from(&secret_box));
+            DeviceCredentials { secret_box, device }
+        }
+    }
+
     impl ToString for DeviceId {
         fn to_string(&self) -> String {
             self.0.clone()
         }
     }
 
+    /// Contains only public information about device
     impl DeviceData {
         pub fn from(device_name: DeviceName, open_box: OpenBox) -> Self {
             Self {
@@ -59,7 +81,7 @@ pub mod device {
 }
 
 pub mod user {
-    use crate::node::common::model::device::{DeviceData, DeviceId};
+    use crate::node::common::model::device::{DeviceCredentials, DeviceData, DeviceId, DeviceName};
     use crate::node::common::model::vault::VaultName;
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -74,6 +96,27 @@ pub mod user {
     pub struct UserData {
         pub vault_name: VaultName,
         pub device: DeviceData,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct UserCredentials {
+        pub vault_name: VaultName,
+        pub device_creds: DeviceCredentials,
+    }
+
+    impl UserCredentials {
+
+        pub fn from(device_creds: DeviceCredentials, vault_name: VaultName) -> UserCredentials {
+            UserCredentials { vault_name, device_creds }
+        }
+
+        pub fn generate(device_name: DeviceName, vault_name: VaultName) -> UserCredentials {
+            UserCredentials {
+                vault_name,
+                device_creds: DeviceCredentials::generate(device_name)
+            }
+        }
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -111,8 +154,9 @@ pub mod user {
 }
 
 pub mod vault {
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
     use crate::node::common::model::device::DeviceId;
+    use crate::node::common::model::MetaPasswordId;
     use crate::node::common::model::user::{UserData, UserMembership};
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -125,11 +169,24 @@ pub mod vault {
         }
     }
 
+    impl From<&str> for VaultName {
+        fn from(vault_name: &str) -> Self {
+            VaultName::from(String::from(vault_name))
+        }
+    }
+
+    impl ToString for VaultName {
+        fn to_string(&self) -> String {
+            self.0.clone()
+        }
+    }
+
     #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct VaultData {
         pub vault_name: VaultName,
         pub users: HashMap<DeviceId, UserMembership>,
+        pub secrets: HashSet<MetaPasswordId>
     }
 
     #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -253,12 +310,12 @@ pub struct MetaPasswordId {
     pub name: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+/*#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MetaPasswordData {
     pub id: MetaPasswordId,
     pub vault: VaultData,
-}
+}*/
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

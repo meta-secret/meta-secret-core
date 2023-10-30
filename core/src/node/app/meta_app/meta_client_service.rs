@@ -183,7 +183,7 @@ where
                 &request, &service_state.state
             );
 
-            self.sync_gateway.sync().in_current_span().await;
+            self.sync_gateway.sync().in_current_span().await?;
 
             match &mut service_state.state {
                 GenericAppState::Empty(_) => {
@@ -191,14 +191,14 @@ where
                 }
                 GenericAppState::Configured(configured_app_state) => {
                     let new_app_state = self
-                        .update_app_state(&configured_app_state.app_state, &configured_app_state.creds)
+                        .update_app_state(&configured_app_state.app_state, configured_app_state.creds)
                         .await;
 
                     configured_app_state.app_state = new_app_state;
                 }
                 GenericAppState::Joined(joined_app_state) => {
                     let new_app_state = self
-                        .update_app_state(&joined_app_state.app_state, &joined_app_state.creds)
+                        .update_app_state(&joined_app_state.app_state, joined_app_state.creds)
                         .await;
 
                     joined_app_state.app_state = new_app_state;

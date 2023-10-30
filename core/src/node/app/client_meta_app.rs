@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use tracing::{debug, error, info, instrument, Instrument};
 use crate::node::app::meta_app::app_state::{ConfiguredAppState, GenericAppState, JoinedAppState};
-use crate::node::app::device_creds_manager::DeviceCredentialsManager;
+use crate::node::app::credentials_repo::DeviceCredentialsManager;
 use crate::node::app_models::UserCredentials;
+use crate::node::common::model::vault::VaultName;
 use crate::node::db::actions::sign_up::SignUpRequest;
 use crate::node::db::events::common::{MemPoolObject, VaultInfo};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
@@ -134,7 +135,7 @@ impl<Repo: KvLogEventRepo> MetaClient<Repo> {
     }
 
     #[instrument(skip_all)]
-    pub async fn get_vault(&self, vault_name: String) -> VaultInfo {
+    pub async fn get_vault(&self, vault_name: VaultName) -> VaultInfo {
         debug!("Get vault");
 
         self.read_db_service_proxy

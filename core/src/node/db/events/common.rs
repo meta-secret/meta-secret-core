@@ -1,4 +1,5 @@
 use crate::crypto::encoding::base64::Base64Text;
+use crate::node::common::model::{MetaPasswordData, PasswordRecoveryRequest, SecretDistributionDocData};
 use crate::node::db::events::generic_log_event::ObjIdExtractor;
 use crate::node::db::events::kv_log_event::KvLogEvent;
 use crate::node::db::events::object_id::{ArtifactId, GenesisId, ObjectId, UnitId};

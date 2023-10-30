@@ -2,19 +2,20 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use async_trait::async_trait;
+use image::error::UnsupportedErrorKind::GenericFeature;
 use tracing::{debug, info, instrument, Instrument};
 
-use crate::crypto::keys::{KeyManager, OpenBox};
-use crate::node::app::device_creds_manager::DeviceCredentialsManager;
+use crate::crypto::keys::{OpenBox};
+use crate::node::app::credentials_repo::{CredentialsRepo};
 use crate::node::common::model::device::{DeviceCredentials, DeviceData, DeviceName};
-use crate::node::common::model::user::{UserData, UserDataCandidate};
+use crate::node::common::model::user::{UserCredentials, UserData, UserDataCandidate};
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::events::common::PublicKeyRecord;
-use crate::node::db::events::db_tail::{DbTail};
-use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor};
+use crate::node::db::events::db_tail::DbTail;
+use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, UnitEvent};
 use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::local::DbTailObject;
+use crate::node::db::events::local::{CredentialsObject, DbTailObject};
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{Next, ObjectId, UnitId};
 use crate::node::db::events::vault_event::VaultObject;
@@ -75,6 +76,19 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
     }
 
     #[instrument(skip_all)]
+    pub async fn find_free_id(&self, obj_id: ObjectId) -> anyhow::Result<ObjectId> {
+        let maybe_tail_id = self
+            .find_tail_id(obj_id)
+            .await?;
+
+        let free_id = maybe_tail_id
+            .map(|tail_id| tail_id.next())
+            .unwrap_or(ObjectId::from(obj_id.get_unit_id()));
+
+        Ok(free_id)
+    }
+
+    #[instrument(skip_all)]
     pub async fn find_tail_id_by_obj_desc(&self, obj_desc: ObjectDescriptor) -> anyhow::Result<Option<ObjectId>> {
         let unit_id = ObjectId::unit(obj_desc);
         self.find_tail_id(unit_id).await
@@ -108,8 +122,10 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
 
     #[instrument(skip_all)]
     pub async fn get_db_tail(&self) -> anyhow::Result<DbTail> {
-        let db_tail_unit_id = ObjectId::unit(ObjectDescriptor::DbTail);
-        let maybe_db_tail = self.repo.find_one(db_tail_unit_id).in_current_span().await?;
+        let maybe_db_tail = {
+            let db_tail_unit_id = ObjectId::unit(ObjectDescriptor::DbTail);
+            self.repo.find_one(db_tail_unit_id).in_current_span().await?
+        };
 
         if let Some(db_tail) = maybe_db_tail {
             if let GenericKvLogEvent::DbTail(DbTailObject { event }) = db_tail {
@@ -134,9 +150,8 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
     }
 
     #[instrument(skip_all)]
-    pub async fn get_vault_unit_sig(&self, vault_name: VaultName) -> Vec<UserDataCandidate> {
-        let vault_desc = ObjectDescriptor::Vault { vault_name };
-        let vault_event_res = self.repo.find_one(ObjectId::from(vault_desc)).await;
+    pub async fn get_vault_unit_sig(&self, unit_id: UnitId) -> Vec<UserDataCandidate> {
+        let vault_event_res = self.repo.find_one(ObjectId::from(unit_id)).await;
 
         if let Ok(Some(GenericKvLogEvent::Vault(VaultObject::Unit { event }))) = vault_event_res {
             vec![event.value]
@@ -147,38 +162,39 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
 
     #[instrument(skip_all)]
     pub async fn get_user(&self, vault_name: VaultName, device_name: DeviceName) -> anyhow::Result<UserDataCandidate> {
-        let meta_vault =
-        .await?;
+        let meta_vault =  .await?;
         let creds = self.generate_user(meta_vault).await?;
         Ok(creds)
     }
 
     #[instrument(skip(self))]
-    async fn generate_user(&self, device_name: DeviceName, vault_name: VaultName) -> anyhow::Result<UserDataCandidate> {
+    async fn generate_user(&self, device_name: DeviceName, vault_name: VaultName) -> anyhow::Result<CredentialsObject> {
         info!("Create a new user locally");
 
-        let maybe_creds = self.repo.find_device_creds().await?;
+        let device_repo = CredentialsRepo {
+            repo: self.repo.clone(),
+        };
 
+        let maybe_creds = device_repo.find().await?;
 
-        match maybe_creds {
+        let device_creds = match maybe_creds {
             None => {
-                let security_box = KeyManager::generate_secret_box();
-                let user_data = UserData {
-                    vault_name,
-                    device: DeviceData::from(device_name, OpenBox::from(&security_box)),
-                };
-
-                let creds = DeviceCredentials { security_box, user_data };
-                self.repo.save_device_creds(creds).await?;
-
-                info!(
-                    "User creds has been generated. Pk: {}",
-                    creds.user_sig.public_key.base64_text
-                );
-                Ok(creds)
+                let creds = DeviceCredentials::generate(device_name);
+                device_repo.save(creds.clone()).await?;
+                creds
             }
-            Some(creds) => Ok(creds),
-        }
+            Some(creds) => creds,
+        };
+
+        let user_creds = CredentialsObject::unit(UserCredentials {
+            vault_name,
+            device_creds,
+        });
+
+        let user_creds_event = GenericKvLogEvent::Credentials(user_creds.clone());
+        self.repo.save(user_creds_event).await?;
+
+        Ok(user_creds)
     }
 }
 

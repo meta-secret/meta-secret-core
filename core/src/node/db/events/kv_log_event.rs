@@ -65,6 +65,16 @@ impl From<KvKey<ArtifactId>> for GenericKvKey {
     }
 }
 
+impl GenericKvKey {
+    pub fn obj_desc(&self) -> ObjectDescriptor {
+        match self {
+            GenericKvKey::UnitKey { key } => key.obj_desc.clone(),
+            GenericKvKey::GenesisKey { key } => key.obj_desc.clone(),
+            GenericKvKey::ArtifactKey { key } => key.obj_desc.clone()
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KvKey<Id> {

@@ -14,14 +14,14 @@ use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::server::server_app::ServerDataTransfer;
 use serde::{Deserialize, Serialize};
 use tracing::{info, instrument, Instrument};
-use crate::node::common::model::device::DeviceCredentials;
+use crate::node::db::events::local::CredentialsObject;
 
 pub struct VirtualDevice<Repo: KvLogEventRepo> {
     pub meta_client: Arc<MetaClient<Repo>>,
     pub meta_client_proxy: Arc<MetaClientAccessProxy>,
     pub server_dt: Arc<ServerDataTransfer>,
     gateway: Arc<SyncGateway<Repo>>,
-    device_creds: DeviceCredentials,
+    creds: CredentialsObject,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -39,7 +39,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
         read_db_service_proxy: Arc<ReadDbServiceProxy>,
         server_dt: Arc<ServerDataTransfer>,
         gateway: Arc<SyncGateway<Repo>>,
-        creds: DeviceCredentials
+        creds: CredentialsObject
     ) -> anyhow::Result<VirtualDevice<Repo>> {
         info!("Run virtual device event handler");
 
@@ -53,26 +53,24 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
             meta_client_proxy: meta_client_access_proxy.clone(),
             server_dt,
             gateway,
-            device_creds: creds.clone()
+            creds: creds.clone()
         };
-
-        persistent_object.global_index.
 
         Ok(virtual_device)
     }
 
     pub async fn run(&self) {
-        //let vault_name = self.creds.user_sig.vault.name.clone();
+        let CredentialsObject::User { event } = &self.creds else {
+            panic!("Credentials not set");
+        };
+
+        let user_creds = &event.value;
 
         loop {
-            self.gateway.sync().in_current_span().await?;
+             self.gateway.sync().await?;
 
-            let read_db_service = self.meta_client.read_db_service_proxy.clone();
-            let vault_store = read_db_service
-                .get_vault_store(vault_name.clone())
-                .in_current_span()
-                .await
-                .unwrap();
+            // read audit messages and take actions accordingly
+
 
             if let VaultStore::Store { tail_id, vault, .. } = vault_store {
                 let vd_repo = self.meta_client.persistent_obj.repo.clone();

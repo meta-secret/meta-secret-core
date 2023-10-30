@@ -9,7 +9,7 @@ pub trait SaveCommand {
 }
 
 #[async_trait(? Send)]
-pub trait FindOneQuery: Send {
+pub trait FindOneQuery<T> {
     async fn find_one(&self, key: ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>>;
 }
 

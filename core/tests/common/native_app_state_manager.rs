@@ -8,7 +8,7 @@ use meta_secret_core::node::app::client_meta_app::MetaClient;
 use meta_secret_core::node::app::meta_app::meta_client_service::{
     MetaClientAccessProxy, MetaClientDataTransfer, MetaClientService,
 };
-use meta_secret_core::node::app::device_creds_manager::DeviceCredentialsManager;
+use meta_secret_core::node::app::credentials_repo::DeviceCredentialsManager;
 use meta_secret_core::node::app::sync_gateway::SyncGateway;
 use meta_secret_core::node::app::virtual_device::VirtualDevice;
 use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
