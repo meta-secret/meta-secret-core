@@ -1,3 +1,4 @@
+use std::any::Any;
 use anyhow::anyhow;
 
 use crate::node::db::events::common::SharedSecretObject;
@@ -7,7 +8,7 @@ use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
 use crate::node::db::events::local::{CredentialsObject, DbTailObject};
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
-use crate::node::db::events::object_id::{ArtifactId, ObjectId};
+use crate::node::db::events::object_id::{ArtifactId, ObjectId, UnitId};
 use crate::node::db::events::vault_event::VaultObject;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -19,7 +20,10 @@ pub enum GenericKvLogEvent {
     SharedSecret(SharedSecretObject),
     Credentials(CredentialsObject),
     DbTail(DbTailObject),
+
     Error { event: KvLogEvent<ArtifactId, ErrorMessage> },
+
+    GlobalIndexSet { event: KvLogEvent<ObjectId, UnitId> },
 }
 
 impl GenericKvLogEvent {

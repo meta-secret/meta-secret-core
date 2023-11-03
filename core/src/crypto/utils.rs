@@ -46,7 +46,7 @@ impl NextId for ObjectDescriptorFqdn {
     fn next_id(&self) -> ObjectDescriptorId {
         ObjectDescriptorId {
             fqdn: self.clone(),
-            counter: 0,
+            id: 0,
         }
     }
 }
@@ -54,7 +54,7 @@ impl NextId for ObjectDescriptorFqdn {
 impl NextId for ObjectDescriptorId {
     fn next_id(self) -> ObjectDescriptorId {
         ObjectDescriptorId {
-            counter: self.counter + 1,
+            id: self.id + 1,
             ..self
         }
     }

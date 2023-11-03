@@ -85,7 +85,7 @@ impl SaveCommand for WasmRepo {
     }
 }
 
-#[async_trait(? Send)]
+#[async_trait]
 impl FindOneQuery for WasmRepo {
 
     #[instrument(level = Level::DEBUG)]

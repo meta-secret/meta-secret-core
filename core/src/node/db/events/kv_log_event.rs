@@ -11,6 +11,13 @@ pub struct KvLogEvent<Id, T> {
     pub value: T,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KvEvent<T> {
+    pub obj_desc: ObjectDescriptor,
+    pub value: T,
+}
+
 impl KvLogEvent<GenesisId, PublicKeyRecord> {
     pub fn genesis(obj_desc: ObjectDescriptor, server_pk: &PublicKeyRecord) -> KvLogEvent<GenesisId, PublicKeyRecord> {
         KvLogEvent {

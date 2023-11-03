@@ -39,6 +39,12 @@ impl Next<GenesisId> for UnitId {
     }
 }
 
+impl From<ObjectDescriptorId> for UnitId {
+    fn from(id: ObjectDescriptorId) -> Self {
+        Self { id }
+    }
+}
+
 impl From<UnitId> for ObjectId {
     fn from(value: UnitId) -> Self {
         ObjectId::Unit(value)
