@@ -3,6 +3,7 @@ use std::time::Duration;
 use anyhow::anyhow;
 
 use tracing::{debug, error, info, instrument, Instrument};
+use crate::node::common::model::device::{DeviceCredentials, DeviceData};
 
 use crate::node::db::events::common::SharedSecretObject;
 use crate::node::db::events::db_tail::DbTail;
@@ -10,7 +11,7 @@ use crate::node::db::events::generic_log_event::{ToGenericEvent, GenericKvLogEve
 use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::local::{CredentialsObject, DbTailObject};
-use crate::node::db::events::object_descriptor::ObjectDescriptor;
+use crate::node::db::events::object_descriptor::{ObjectDescriptor, VaultDescriptor};
 use crate::node::db::events::object_descriptor::global_index::GlobalIndexDescriptor;
 use crate::node::db::events::object_id::{Next, ObjectId, UnitId};
 use crate::node::db::generic_db::KvLogEventRepo;
@@ -18,7 +19,7 @@ use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::read_db::read_db_service::ReadDbServiceProxy;
 use crate::node::db::read_db::store::vault_store::VaultStore;
 use crate::node::server::data_sync::DataSyncMessage;
-use crate::node::server::request::{BasicSyncRequest, SyncRequest};
+use crate::node::server::request::{VaultRequest, GlobalIndexRequest, SyncRequest};
 use crate::node::server::server_app::ServerDataTransfer;
 
 pub struct SyncGateway<Repo: KvLogEventRepo> {
@@ -52,60 +53,40 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
     pub async fn sync(&self) -> anyhow::Result<()> {
         let db_tail = self.persistent_object.get_db_tail().await?;
 
-        match &self.creds {
-            CredentialsObject::Device { event } => {
-                //update global index
-                //TODO optimization: read global index tail id from db_tail
+        {
+            let sender = match &self.creds {
+                CredentialsObject::Device { event } => event.value.device.clone(),
+                CredentialsObject::User { event } => event.value.device_creds.device.clone()
+            };
+            self.sync_global_index(sender).await?;
+        }
 
-                let gi_free_id = self.persistent_object
-                    .find_free_id_by_obj_desc(ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index))
-                    .await?;
+        if let CredentialsObject::User { event } = &self.creds {
+            let user_creds = &event.value;
+            let sender = event.value.device();
 
-                let sync_request = SyncRequest::Basic {
-                    sender: event.value.device.clone(),
-                    request: BasicSyncRequest {
-                        global_index: gi_free_id
-                    },
-                };
+            let obj_desc = ObjectDescriptor::Vault(VaultDescriptor::Vault {
+                vault_name: event.value.vault_name.clone() }
+            );
+            let vault_free_id = self.persistent_object.find_free_id_by_obj_desc(obj_desc).await?;
+            ObjectDescriptor::SharedSecret(SharedSec)
 
-                let new_gi_events = self
-                    .server_dt
-                    .dt
-                    .send_to_service_and_get(DataSyncMessage::SyncRequest(sync_request))
-                    .in_current_span()
-                    .await?;
+            let sync_request = SyncRequest::Vault {
+                sender,
+                request: VaultRequest {
+                    vault_tail_id: vault_free_id,
+                    meta_pass_tail_id: ,
+                    s_s_audit: (),
+                },
+            };
 
-                for gi_event in new_gi_events {
-                    if let GenericKvLogEvent::GlobalIndex(gi_obj) = gi_event {
-                        self.persistent_object.repo.save(gi_event.clone()).await?;
-
-                        // Update vault index according to global index
-                        if let GlobalIndexObject::Update { event } = gi_obj {
-                            let vault_id = event.value;
-                            let vault_idx_evt = GlobalIndexObject::index_from(vault_id)
-                                .to_generic();
-                            self.persistent_object.repo.save(vault_idx_evt).await?;
-                        }
-                    } else {
-                        Err(anyhow!("Invalid event: {:?}", gi_event.key().obj_desc()))
-                    }
-                }
-            }
-
-            CredentialsObject::User { event } => {
-                let user_creds = &event.value;
-                let new_vault_tail_id = self.get_new_tail_for_an_obj(user_creds.vault_name).await;
-
-                let new_meta_pass_tail_id = self
-                    .get_new_tail_for_an_obj(&db_tail.meta_pass_id)
-                    .await;
-            }
+            let new_meta_pass_tail_id = self
+                .get_new_tail_for_an_obj(&db_tail.meta_pass_id)
+                .await;
         }
 
         //let user_data = self.persistent_object.get_vault_unit_sig().await;
-
-        let new_gi_tail = self.get_free_tail_id_for_global_index(&db_tail).await?;
-
+        //let new_gi_tail = self.get_free_tail_id_for_global_index(&db_tail).await?;
 
         let new_audit_tail = self.sync_shared_secrets(vault_name, &client_creds, &db_tail).await;
 
@@ -212,6 +193,44 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         self.save_updated_db_tail(new_db_tail.clone(), latest_db_tail).await
     }
 
+    async fn sync_global_index(&self, sender: DeviceData) -> anyhow::Result<()> {
+        //TODO optimization: read global index tail id from db_tail
+
+        let gi_free_id = self.persistent_object
+            .find_free_id_by_obj_desc(ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index))
+            .await?;
+
+        let sync_request = SyncRequest::GlobalIndex {
+            sender,
+            request: GlobalIndexRequest {
+                global_index: gi_free_id
+            },
+        };
+
+        let new_gi_events = self
+            .server_dt
+            .dt
+            .send_to_service_and_get(DataSyncMessage::SyncRequest(sync_request))
+            .await?;
+
+        for gi_event in new_gi_events {
+            if let GenericKvLogEvent::GlobalIndex(gi_obj) = gi_event {
+                self.persistent_object.repo.save(gi_event.clone()).await?;
+
+                // Update vault index according to global index
+                if let GlobalIndexObject::Update { event } = gi_obj {
+                    let vault_id = event.value;
+                    let vault_idx_evt = GlobalIndexObject::index_from(vault_id)
+                        .to_generic();
+                    self.persistent_object.repo.save(vault_idx_evt).await?;
+                }
+            } else {
+                Err(anyhow!("Invalid event: {:?}", gi_event.key().obj_desc()))
+            }
+        }
+        Ok(())
+    }
+
     #[instrument(skip_all)]
     pub async fn sync_shared_secrets(
         &self,
@@ -301,14 +320,5 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
 
         self.persistent_object.repo.save(new_db_tail_event).await?;
         Ok(())
-    }
-
-    #[instrument(skip_all)]
-    async fn get_free_tail_id_for_global_index(&self, db_tail: &DbTail) -> anyhow::Result<ObjectId> {
-        let global_index = db_tail
-            .global_index_id
-            .unwrap_or(ObjectId::from(UnitId::global_index()));
-
-        self.persistent_object.find_free_id(global_index).await
     }
 }

@@ -1,7 +1,6 @@
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::events::object_descriptor::global_index::GlobalIndexDescriptor;
 use crate::node::db::events::object_descriptor::shared_secret::SharedSecretDescriptor;
-use crate::node::db::events::object_id::{ObjectId, UnitId};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -14,18 +13,13 @@ pub enum ObjectDescriptor {
 
     Vault(VaultDescriptor),
     /// Secret distribution (split, recover, recovery request and so on)
-    SharedSecret(SharedSecretDescriptor),
-    
-    Collection(ObjectDescriptorFqdn)
+    SharedSecret(SharedSecretDescriptor)
 }
 
 pub enum VaultDescriptor {
     Vault {
         vault_name: VaultName,
     },
-    VaultAudit {
-        vault_name: VaultName,
-    }
 }
 
 impl VaultDescriptor {
@@ -37,8 +31,7 @@ impl VaultDescriptor {
 impl ObjectType for VaultDescriptor {
     fn object_type(&self) -> String {
         match self {
-            VaultDescriptor::Vault { .. } => String::from("Vault"),
-            VaultDescriptor::VaultAudit { .. } => String::from("VaultAudit"),
+            VaultDescriptor::Vault { .. } => String::from("Vault")
         }
     }
 }
@@ -55,15 +48,8 @@ pub struct ObjectDescriptorFqdn {
 pub struct ObjectDescriptorId {
     pub fqdn: ObjectDescriptorFqdn,
     /// primary key of an object in the database in terms of keys in a table in relational databases.
-    /// In our case id is just a counter but could be anything
-    pub id: DbKeyId,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum DbKeyId {
-    Counter(usize),
-    String(String)
+    /// In our case id is just a counter
+    pub id: usize,
 }
 
 impl ObjectDescriptor {
@@ -86,12 +72,10 @@ impl ObjectDescriptor {
             ObjectDescriptor::DbTail => String::from("db_tail"),
             ObjectDescriptor::SharedSecret(s_s_descriptor) => s_s_descriptor.as_id_str(),
             ObjectDescriptor::GlobalIndex(desc) => desc.as_id_str(),
-            ObjectDescriptor::CredsIndex => ???
+            ObjectDescriptor::CredsIndex => "index",
             ObjectDescriptor::Vault(vault_desc) => match vault_desc {
                 VaultDescriptor::Vault { vault_name } => vault_name.to_string(),
-                VaultDescriptor::VaultAudit { vault_name } => vault_name.to_string(),
-            },
-            ObjectDescriptor::Data => String::from("data"),
+            }
         }
     }
 }
@@ -114,7 +98,7 @@ impl ObjectType for ObjectDescriptor {
             ObjectDescriptor::Vault(vault_desc) => vault_desc.object_type(),
             ObjectDescriptor::SharedSecret(ss_desc) => ss_desc.object_type(),
             ObjectDescriptor::CredsIndex { .. } => String::from("DeviceCreds"),
-            ObjectDescriptor::DbTail { .. } => String::from("DbTail")
+            ObjectDescriptor::DbTail { .. } => String::from("DbTail"),
         }
     }
 }
@@ -124,16 +108,24 @@ pub mod global_index {
     use crate::node::db::events::object_descriptor::ObjectType;
     use crate::node::db::events::object_id::UnitId;
 
+    /// Allows to have access to the global index of all vaults exists across the system.
+    /// Index + VaultIndex = LinkedHashMap, or linkedList + HaspMap, allows to navigate through the values in the index.
+    /// Index provides list interface and allows to navigate through elements by their index in the array
+    /// VaultIndex provides HashMap interface allows to get a vault by its ID
     #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub enum GlobalIndexDescriptor {
+        Index,
+        /// An id of a vault. We have global index to keep track and being able to iterate over all vaults,
+        /// and to be able to check if a particular vault exists we ned to have vault index
         VaultIndex { vault_id: UnitId },
     }
 
     impl ObjectType for GlobalIndexDescriptor {
         fn object_type(&self) -> String {
             match self {
-                GlobalIndexDescriptor::VaultIndex { .. } => String::from("GlobalIndex")
+                GlobalIndexDescriptor::Index => String::from("GlobalIndex"),
+                GlobalIndexDescriptor::VaultIndex { .. } => String::from("VaultIdx")
             }
         }
     }
@@ -141,6 +133,7 @@ pub mod global_index {
     impl GlobalIndexDescriptor {
         pub fn as_id_str(&self) -> String {
             match self {
+                GlobalIndexDescriptor::Index => String::from("index"),
                 GlobalIndexDescriptor::VaultIndex { vault_id } => {
                     let json_str = serde_json::to_string(&vault_id.id).unwrap();
                     utils::generate_uuid_b64_url_enc(json_str)
@@ -179,7 +172,7 @@ pub mod shared_secret {
         ///
         /// By looking into the audit log (since the audit contains the information about what secret shares were created and sent)
         /// we know what split/recover events needs to be sent synchronized
-        SharedSecretAudit {
+        Audit {
             vault_name: VaultName,
         },
     }
@@ -190,7 +183,7 @@ pub mod shared_secret {
                 SharedSecretDescriptor::Split(_) => String::from("SSSplit"),
                 SharedSecretDescriptor::Recover(_) => String::from("SSRecover"),
                 SharedSecretDescriptor::RecoveryRequest(_) => String::from("SSRecoveryRequest"),
-                SharedSecretDescriptor::SharedSecretAudit { .. } => String::from("SSAudit")
+                SharedSecretDescriptor::Audit { .. } => String::from("SSAudit")
             }
         }
     }
@@ -201,7 +194,7 @@ pub mod shared_secret {
                 SharedSecretDescriptor::Split(event_id) => event_id.as_id_str(),
                 SharedSecretDescriptor::Recover(event_id) => event_id.as_id_str(),
                 SharedSecretDescriptor::RecoveryRequest(event_id) => event_id.as_id_str(),
-                SharedSecretDescriptor::SharedSecretAudit { vault_name } => vault_name.0.clone(),
+                SharedSecretDescriptor::Audit { vault_name } => vault_name.0.clone(),
             }
         }
     }

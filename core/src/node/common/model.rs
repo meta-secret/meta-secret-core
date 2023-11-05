@@ -117,6 +117,10 @@ pub mod user {
                 device_creds: DeviceCredentials::generate(device_name)
             }
         }
+        
+        pub fn device(&self) -> DeviceData {
+            self.device_creds.device.clone()
+        }
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

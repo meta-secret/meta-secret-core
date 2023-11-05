@@ -5,23 +5,21 @@ use crate::node::db::events::object_id::ObjectId;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum SyncRequest {
-    Basic {
+    GlobalIndex {
         sender: DeviceData,
-        request: BasicSyncRequest
+        request: GlobalIndexRequest
     },
-    Auth {
+    Vault {
         sender: DeviceData,
-        request: AuthSyncRequest
+        request: VaultRequest
     }
 }
 
-pub struct BasicSyncRequest {
+pub struct GlobalIndexRequest {
     pub global_index: ObjectId,
 }
 
-pub struct AuthSyncRequest {
-    pub basic: BasicSyncRequest,
+pub struct VaultRequest {
     pub vault_tail_id: ObjectId,
-    pub meta_pass_tail_id: ObjectId,
     pub s_s_audit: ObjectId,
 }
