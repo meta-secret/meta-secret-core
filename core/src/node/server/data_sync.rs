@@ -4,18 +4,18 @@ use async_trait::async_trait;
 use tracing::{debug, error, info, instrument, Instrument};
 
 use crate::crypto::key_pair::KeyPair;
-use crate::crypto::keys::KeyManager;
-use crate::node::common::model::device::DeviceCredentials;
-use crate::node::common::model::user::UserDataCandidate;
+use crate::node::common::model::device::{DeviceCredentials, DeviceData};
+use crate::node::common::model::user::{UserData, UserDataCandidate};
 use crate::node::db::actions::join;
 use crate::node::db::actions::sign_up::SignUpAction;
 use crate::node::db::actions::ss_replication::SharedSecretReplicationAction;
-use crate::node::db::events::common::{MemPoolObject, MetaPassObject, PublicKeyRecord};
+use crate::node::db::events::common::PublicKeyRecord;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::KvLogEvent;
 use crate::node::db::events::object_descriptor::global_index::GlobalIndexDescriptor;
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
+use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::events::vault_event::VaultObject;
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object::PersistentObject;
@@ -37,10 +37,23 @@ pub struct ServerDataSync<Repo: KvLogEventRepo> {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[serde(tag = "__sync_msg_type")]
-pub enum DataSyncMessage {
+pub enum DataSyncRequest {
+    TailRequest {
+        sender: UserData,
+    },
     SyncRequest(SyncRequest),
     Event(GenericKvLogEvent),
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DataSyncResponse {
+    Tail {
+        vault_audit_id: ObjectId
+    },
+    Data {
+        events: Vec<GenericKvLogEvent>
+    }
 }
 
 #[async_trait(? Send)]
@@ -50,27 +63,31 @@ impl<Repo: KvLogEventRepo> DataSyncApi for ServerDataSync<Repo> {
     async fn replication(&self, request: SyncRequest) -> anyhow::Result<Vec<GenericKvLogEvent>> {
         let mut commit_log: Vec<GenericKvLogEvent> = vec![];
 
-        let gi_events = self.global_index_replication(&request)
-            .in_current_span()
-            .await?;
-        commit_log.extend(gi_events);
+        match request {
+            SyncRequest::GlobalIndex { global_index, .. } => {
+                let gi_events = self.global_index_replication(global_index)
+                    .await?;
+                commit_log.extend(gi_events);
+            }
+            SyncRequest::Vault { request, .. } => {
+                let vault_events = self.vault_replication(&request)
+                    .in_current_span()
+                    .await;
+                commit_log.extend(vault_events);
 
-        let vault_events = self.vault_replication(&request)
-            .in_current_span()
-            .await;
-        commit_log.extend(vault_events);
+                let meta_pass_events = self.meta_pass_replication(&request)
+                    .in_current_span()
+                    .await;
+                commit_log.extend(meta_pass_events);
 
-        let meta_pass_events = self.meta_pass_replication(&request)
-            .in_current_span()
-            .await;
-        commit_log.extend(meta_pass_events);
+                let s_s_replication_action = SharedSecretReplicationAction {
+                    persistent_obj: self.persistent_obj.clone(),
+                };
 
-        let s_s_replication_action = SharedSecretReplicationAction {
-            persistent_obj: self.persistent_obj.clone(),
-        };
-
-        let s_s_replication_events = s_s_replication_action.replicate(&request).in_current_span().await;
-        commit_log.extend(s_s_replication_events);
+                let s_s_replication_events = s_s_replication_action.replicate(&request).in_current_span().await;
+                commit_log.extend(s_s_replication_events);
+            }
+        }
 
         Ok(commit_log)
     }
@@ -211,20 +228,11 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
         }
     }
 
-    async fn global_index_replication(&self, request: &SyncRequest) -> anyhow::Result<Vec<GenericKvLogEvent>> {
-        let events = match &request.global_index {
-            None => {
-                let obj_desc = ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index);
-                self
-                    .persistent_obj
-                    .get_object_events_from_beginning(&obj_desc)
-                    .await?
-            }
-            Some(index_id) => {
-                self.persistent_obj.find_object_events(index_id).await
-            }
-        };
-
+    #[instrument(skip_all)]
+    async fn global_index_replication(&self, gi_id: ObjectId) -> anyhow::Result<Vec<GenericKvLogEvent>> {
+        let events = self.persistent_obj
+            .find_object_events(gi_id)
+            .await?;
         Ok(events)
     }
 

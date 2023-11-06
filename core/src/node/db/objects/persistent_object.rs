@@ -1,21 +1,18 @@
 use std::sync::Arc;
 
-use anyhow::anyhow;
 use async_trait::async_trait;
-use image::error::UnsupportedErrorKind::GenericFeature;
 use tracing::{debug, info, instrument, Instrument};
 
-use crate::crypto::keys::{OpenBox};
 use crate::node::app::credentials_repo::{CredentialsRepo};
-use crate::node::common::model::device::{DeviceCredentials, DeviceData, DeviceName};
-use crate::node::common::model::user::{UserCredentials, UserData, UserDataCandidate};
+use crate::node::common::model::device::{DeviceCredentials, DeviceName};
+use crate::node::common::model::user::{UserCredentials, UserDataCandidate};
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::events::common::PublicKeyRecord;
 use crate::node::db::events::db_tail::DbTail;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, UnitEvent};
 use crate::node::db::events::global_index::GlobalIndexObject;
-use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::local::{CredentialsObject, DbTailObject};
+use crate::node::db::events::kv_log_event::KvLogEvent;
+use crate::node::db::events::local::CredentialsObject;
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{Next, ObjectId, UnitId};
 use crate::node::db::events::vault_event::VaultObject;
@@ -34,13 +31,13 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
         debug!("get_object_events_from_beginning");
 
         let unit_id = ObjectId::unit(obj_desc);
-        let commit_log = self.find_object_events(&unit_id).await?;
+        let commit_log = self.find_object_events(unit_id).await?;
 
         Ok(commit_log)
     }
 
     #[instrument(skip_all)]
-    pub async fn find_object_events(&self, tail_id: &ObjectId) -> anyhow::Result<Vec<GenericKvLogEvent>> {
+    pub async fn find_object_events(&self, tail_id: ObjectId) -> anyhow::Result<Vec<GenericKvLogEvent>> {
         let mut commit_log: Vec<GenericKvLogEvent> = vec![];
 
         let mut curr_tail_id = tail_id.clone();

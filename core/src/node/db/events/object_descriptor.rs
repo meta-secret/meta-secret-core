@@ -20,18 +20,26 @@ pub enum VaultDescriptor {
     Vault {
         vault_name: VaultName,
     },
+    Audit {
+        vault_name: VaultName,
+    },
 }
 
 impl VaultDescriptor {
     pub fn vault(vault_name: VaultName) -> ObjectDescriptor {
         ObjectDescriptor::Vault(VaultDescriptor::Vault { vault_name })
     }
+
+    pub fn audit(vault_name: VaultName) -> ObjectDescriptor {
+        ObjectDescriptor::Vault(VaultDescriptor::Audit { vault_name })
+    }
 }
 
 impl ObjectType for VaultDescriptor {
     fn object_type(&self) -> String {
         match self {
-            VaultDescriptor::Vault { .. } => String::from("Vault")
+            VaultDescriptor::Vault { .. } => String::from("Vault"),
+            VaultDescriptor::Audit { .. } => String::from("VaultAudit")
         }
     }
 }
@@ -196,6 +204,10 @@ pub mod shared_secret {
                 SharedSecretDescriptor::RecoveryRequest(event_id) => event_id.as_id_str(),
                 SharedSecretDescriptor::Audit { vault_name } => vault_name.0.clone(),
             }
+        }
+
+        pub fn audit(vault_name: VaultName) -> ObjectDescriptor {
+            ObjectDescriptor::SharedSecret(SharedSecretDescriptor::Audit {vault_name})
         }
     }
 

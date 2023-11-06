@@ -121,6 +121,13 @@ pub mod user {
         pub fn device(&self) -> DeviceData {
             self.device_creds.device.clone()
         }
+
+        pub fn user(&self) -> UserData {
+            UserData {
+                vault_name: self.vault_name.clone(),
+                device: self.device(),
+            }
+        }
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

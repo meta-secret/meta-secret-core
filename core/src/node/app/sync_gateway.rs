@@ -13,13 +13,14 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::local::{CredentialsObject, DbTailObject};
 use crate::node::db::events::object_descriptor::{ObjectDescriptor, VaultDescriptor};
 use crate::node::db::events::object_descriptor::global_index::GlobalIndexDescriptor;
+use crate::node::db::events::object_descriptor::shared_secret::SharedSecretDescriptor;
 use crate::node::db::events::object_id::{Next, ObjectId, UnitId};
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::read_db::read_db_service::ReadDbServiceProxy;
 use crate::node::db::read_db::store::vault_store::VaultStore;
-use crate::node::server::data_sync::DataSyncMessage;
-use crate::node::server::request::{VaultRequest, GlobalIndexRequest, SyncRequest};
+use crate::node::server::data_sync::{DataSyncRequest, DataSyncResponse};
+use crate::node::server::request::{VaultRequest, SyncRequest};
 use crate::node::server::server_app::ServerDataTransfer;
 
 pub struct SyncGateway<Repo: KvLogEventRepo> {
@@ -65,62 +66,43 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             let user_creds = &event.value;
             let sender = event.value.device();
 
-            let obj_desc = ObjectDescriptor::Vault(VaultDescriptor::Vault {
-                vault_name: event.value.vault_name.clone() }
-            );
-            let vault_free_id = self.persistent_object.find_free_id_by_obj_desc(obj_desc).await?;
-            ObjectDescriptor::SharedSecret(SharedSec)
+            let sync_response = self
+                .server_dt
+                .dt
+                .send_to_service_and_get(DataSyncRequest::TailRequest {
+                    sender: user_creds.user()
+                })
+                .await?;
 
-            let sync_request = SyncRequest::Vault {
-                sender,
-                request: VaultRequest {
-                    vault_tail_id: vault_free_id,
-                    meta_pass_tail_id: ,
-                    s_s_audit: (),
-                },
-            };
+            if let DataSyncResponse::Tail { vault_audit_id } = sync_response {
+                // if my local db needs o catch up
 
-            let new_meta_pass_tail_id = self
-                .get_new_tail_for_an_obj(&db_tail.meta_pass_id)
-                .await;
+                let vault_free_id = {
+                    let obj_desc = VaultDescriptor::audit(event.value.vault_name.clone());
+                    self.persistent_object.find_free_id_by_obj_desc(obj_desc).await?
+                };
+
+                let s_s_audit_free_id =  {
+                    let obj_desc = SharedSecretDescriptor::audit(event.value.vault_name.clone());
+                    self.persistent_object.find_free_id_by_obj_desc(obj_desc).await?
+                };
+
+                let sync_request = SyncRequest::Vault {
+                    sender,
+                    request: VaultRequest {
+                        vault_audit: vault_free_id,
+                        s_s_audit: s_s_audit_free_id,
+                    },
+                };
+            } else {
+                error!("Invalid request");
+            }
         }
-
-        //let user_data = self.persistent_object.get_vault_unit_sig().await;
-        //let new_gi_tail = self.get_free_tail_id_for_global_index(&db_tail).await?;
 
         let new_audit_tail = self.sync_shared_secrets(vault_name, &client_creds, &db_tail).await;
 
-        let new_db_tail = DbTail {
-            vault_id: new_vault_tail_id,
-            meta_pass_id: new_meta_pass_tail_id,
-
-            global_index_id: new_gi_tail,
-            mem_pool_id: new_mem_pool_tail_id.clone(),
-            s_s_audit: new_audit_tail.clone(),
-        };
-
         self.save_updated_db_tail(db_tail, new_db_tail.clone())
             .await?;
-
-        let sync_request = {
-            let vault_id_request = match &new_db_tail.vault_id {
-                ObjectIdDbEvent::Empty { obj_desc } => ObjectId::unit(obj_desc),
-                ObjectIdDbEvent::Id { tail_id } => tail_id.next(),
-            };
-
-            let meta_pass_id_request = match &new_db_tail.meta_pass_id {
-                ObjectIdDbEvent::Empty { obj_desc } => ObjectId::unit(obj_desc),
-                ObjectIdDbEvent::Id { tail_id } => tail_id.next(),
-            };
-
-            SyncRequest {
-                sender: client_creds.user_sig.clone(),
-                global_index: new_db_tail.global_index_id.clone().map(|gi| gi.next()),
-                vault_tail_id: Some(vault_id_request),
-                meta_pass_tail_id: Some(meta_pass_id_request),
-                s_s_audit: new_audit_tail.clone(),
-            }
-        };
 
         let mut latest_gi = new_db_tail.global_index_id.clone();
         let mut latest_vault_id = new_db_tail.vault_id.clone();
@@ -130,8 +112,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         let new_server_events_res = self
             .server_dt
             .dt
-            .send_to_service_and_get(DataSyncMessage::SyncRequest(sync_request))
-            .in_current_span()
+            .send_to_service_and_get(DataSyncRequest::SyncRequest(sync_request))
             .await;
 
         let Ok(new_events) = new_server_events_res else {
@@ -210,7 +191,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         let new_gi_events = self
             .server_dt
             .dt
-            .send_to_service_and_get(DataSyncMessage::SyncRequest(sync_request))
+            .send_to_service_and_get(DataSyncRequest::SyncRequest(sync_request))
             .await?;
 
         for gi_event in new_gi_events {
@@ -294,7 +275,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
 
                     debug!("Send shared secret event to server: {:?}", event);
                     transfer
-                        .send_to_service(DataSyncMessage::Event(ss_event.clone()))
+                        .send_to_service(DataSyncRequest::Event(ss_event.clone()))
                         .in_current_span()
                         .await;
                 }

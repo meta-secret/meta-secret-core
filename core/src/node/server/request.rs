@@ -7,7 +7,7 @@ use crate::node::db::events::object_id::ObjectId;
 pub enum SyncRequest {
     GlobalIndex {
         sender: DeviceData,
-        request: GlobalIndexRequest
+        global_index: ObjectId,
     },
     Vault {
         sender: DeviceData,
@@ -15,11 +15,8 @@ pub enum SyncRequest {
     }
 }
 
-pub struct GlobalIndexRequest {
-    pub global_index: ObjectId,
-}
-
 pub struct VaultRequest {
-    pub vault_tail_id: ObjectId,
+    pub vault_audit: ObjectId,
     pub s_s_audit: ObjectId,
 }
+

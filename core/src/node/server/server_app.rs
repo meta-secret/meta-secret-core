@@ -3,14 +3,14 @@ use tracing::{error, info, instrument, Instrument};
 
 use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::common::model::device::DeviceCredentials;
-use crate::node::db::events::common::{ObjectCreator, PublicKeyRecord};
+use crate::node::db::events::common::PublicKeyRecord;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object::PersistentGlobalIndexApi;
 
-use crate::node::server::data_sync::{DataSyncApi, DataSyncMessage, ServerDataSync};
+use crate::node::server::data_sync::{DataSyncApi, DataSyncRequest, DataSyncResponse, ServerDataSync};
 
 pub struct ServerApp<Repo: KvLogEventRepo> {
     pub data_sync: ServerDataSync<Repo>,
@@ -19,22 +19,19 @@ pub struct ServerApp<Repo: KvLogEventRepo> {
 }
 
 pub struct ServerDataTransfer {
-    pub dt: MpscDataTransfer<DataSyncMessage, Vec<GenericKvLogEvent>>,
+    pub dt: MpscDataTransfer<DataSyncRequest, DataSyncResponse>,
 }
 
-impl<Repo> ServerApp<Repo>
-where
-    Repo: KvLogEventRepo,
-{
+impl<Repo: KvLogEventRepo> ServerApp<Repo> {
     #[instrument(skip(self))]
     pub async fn run(&self) {
         info!("Run server app");
 
         self.gi_initialization().in_current_span().await;
 
-        while let Ok(sync_message) = self.data_transfer.dt.service_receive().in_current_span().await {
+        while let Ok(sync_message) = self.data_transfer.dt.service_receive().await {
             match sync_message {
-                DataSyncMessage::SyncRequest(request) => {
+                DataSyncRequest::SyncRequest(request) => {
                     let new_events_result = self.data_sync
                         .replication(request)
                         .await;
@@ -50,9 +47,11 @@ where
                         }
                     };
 
-                    self.data_transfer.dt.send_to_client(new_events).in_current_span().await;
+                    self.data_transfer.dt
+                        .send_to_client(DataSyncResponse::Data { events: new_events})
+                        .await;
                 }
-                DataSyncMessage::Event(event) => {
+                DataSyncRequest::Event(event) => {
                     self.data_sync.send(event).in_current_span().await;
                 }
             }

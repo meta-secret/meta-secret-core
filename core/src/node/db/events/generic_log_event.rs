@@ -22,8 +22,6 @@ pub enum GenericKvLogEvent {
     DbTail(DbTailObject),
 
     Error { event: KvLogEvent<ArtifactId, ErrorMessage> },
-
-    GlobalIndexSet { event: KvLogEvent<ObjectId, UnitId> },
 }
 
 impl GenericKvLogEvent {
