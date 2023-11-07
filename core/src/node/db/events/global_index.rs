@@ -67,7 +67,7 @@ impl UnitEventWithEmptyValue for GlobalIndexObject {
 }
 
 impl GlobalIndexObject {
-    pub fn genesis(server_pk: &PublicKeyRecord) -> Self {
+    pub fn genesis(server_pk: PublicKeyRecord) -> Self {
         GlobalIndexObject::Genesis {
             event: KvLogEvent::global_index_genesis(server_pk),
         }

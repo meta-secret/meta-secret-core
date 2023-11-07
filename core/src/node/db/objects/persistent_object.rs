@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tracing::{debug, info, instrument, Instrument};
 
-use crate::node::app::credentials_repo::{CredentialsRepo};
+use crate::node::app::credentials_repo::CredentialsRepo;
 use crate::node::common::model::device::{DeviceCredentials, DeviceName};
 use crate::node::common::model::user::{UserCredentials, UserDataCandidate};
 use crate::node::common::model::vault::VaultName;
@@ -17,6 +17,7 @@ use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{Next, ObjectId, UnitId};
 use crate::node::db::events::vault_event::VaultObject;
 use crate::node::db::generic_db::KvLogEventRepo;
+use crate::node::db::objects::persistent_object_navigator::PersistentObjectNavigator;
 
 pub struct PersistentObject<Repo: KvLogEventRepo> {
     pub repo: Arc<Repo>,
@@ -89,6 +90,11 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
     pub async fn find_tail_id_by_obj_desc(&self, obj_desc: ObjectDescriptor) -> anyhow::Result<Option<ObjectId>> {
         let unit_id = ObjectId::unit(obj_desc);
         self.find_tail_id(unit_id).await
+    }
+
+    #[instrument(skip_all)]
+    pub async fn navigator(&self, obj_id: ObjectId) -> PersistentObjectNavigator<Repo> {
+        PersistentObjectNavigator::build(self.repo.clone(), obj_id).await
     }
 
     #[instrument(skip_all)]

@@ -19,18 +19,18 @@ pub struct KvEvent<T> {
 }
 
 impl KvLogEvent<GenesisId, PublicKeyRecord> {
-    pub fn genesis(obj_desc: ObjectDescriptor, server_pk: &PublicKeyRecord) -> KvLogEvent<GenesisId, PublicKeyRecord> {
+    pub fn genesis(obj_desc: ObjectDescriptor, server_pk: PublicKeyRecord) -> KvLogEvent<GenesisId, PublicKeyRecord> {
         KvLogEvent {
             key: KvKey::genesis(obj_desc),
-            value: server_pk.clone(),
+            value: server_pk,
         }
     }
 
     pub fn vault_unit(user_sig: UserDataCandidate) -> KvLogEvent<UnitId, UserDataCandidate> {
-        let obj_desc = ObjectDescriptor::vault(user_sig.data.vault_name);
+        let obj_desc = ObjectDescriptor::vault(user_sig.data.vault_name.clone());
         KvLogEvent {
             key: KvKey::unit(obj_desc),
-            value: user_sig.clone(),
+            value: user_sig,
         }
     }
 
@@ -41,7 +41,7 @@ impl KvLogEvent<GenesisId, PublicKeyRecord> {
         }
     }
 
-    pub fn global_index_genesis(server_pk: &PublicKeyRecord) -> KvLogEvent<GenesisId, PublicKeyRecord> {
+    pub fn global_index_genesis(server_pk: PublicKeyRecord) -> KvLogEvent<GenesisId, PublicKeyRecord> {
         Self::genesis(ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index), server_pk)
     }
 }
