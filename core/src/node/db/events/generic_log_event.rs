@@ -72,7 +72,6 @@ impl KeyExtractor for GenericKvLogEvent {
         match self {
             GenericKvLogEvent::GlobalIndex(obj) => obj.key(),
             GenericKvLogEvent::Vault(obj) => obj.key(),
-            GenericKvLogEvent::MetaPass(obj) => obj.key(),
             GenericKvLogEvent::SharedSecret(obj) => obj.key(),
             GenericKvLogEvent::Credentials(obj) => obj.key(),
             GenericKvLogEvent::DbTail(obj) => obj.key(),

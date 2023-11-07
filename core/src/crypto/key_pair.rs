@@ -9,7 +9,7 @@ use rand::rngs::OsRng as RandOsRng;
 use rand::RngCore;
 
 use crate::errors::CoreError;
-use crate::models::{AeadAuthData, AeadCipherText, AeadPlainText, Base64EncodedText, CommunicationChannel};
+use crate::node::common::model::crypto::{AeadAuthData, AeadCipherText, AeadPlainText, Base64Text, CommunicationChannel};
 use crate::CoreResult;
 
 pub type CryptoBoxPublicKey = crypto_box::PublicKey;

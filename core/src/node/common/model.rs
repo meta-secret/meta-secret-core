@@ -217,7 +217,7 @@ pub mod vault {
     }
 }
 
-mod crypto {
+pub mod crypto {
     use crate::crypto::encoding::base64::Base64Text;
     use crate::node::common::model::user::UserData;
 
