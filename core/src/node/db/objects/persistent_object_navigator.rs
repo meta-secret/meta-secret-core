@@ -36,7 +36,6 @@ mod test {
     use crate::node::db::events::common::PublicKeyRecord;
     use crate::node::db::events::generic_log_event::{ObjIdExtractor, ToGenericEvent, UnitEventWithEmptyValue};
     use crate::node::db::events::global_index::GlobalIndexObject;
-    use crate::node::db::events::object_id::{GenesisId, ObjectId};
     use crate::node::db::generic_db::SaveCommand;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_object_navigator::PersistentObjectNavigator;
@@ -58,13 +57,8 @@ mod test {
         repo.save(genesis_event).await?;
 
         let mut navigator = PersistentObjectNavigator::build(repo, unit_event.obj_id()).await;
-
-        while let Ok(Some(curr_id)) = navigator.next().await {
-            // since there is only one more event in the db (genesis), we expect to see only the genesis event here
-            let ObjectId::Genesis(GenesisId { .. }) = curr_id else {
-                panic!("Key has to be: GenesisId")
-            };
-        }
+        assert_eq!(Some(unit_event.obj_id()), navigator.next().await?);
+        assert_eq!(Some(genesis_event.obj_id()), navigator.next().await?);
 
         Ok(())
     }

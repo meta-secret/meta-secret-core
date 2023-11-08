@@ -52,7 +52,7 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                         .await;
                 }
                 DataSyncRequest::Event(event) => {
-                    self.data_sync.send(event).in_current_span().await;
+                    self.data_sync.send(event).await;
                 }
             }
         }

@@ -49,7 +49,7 @@ pub enum DataSyncRequest {
 #[serde(rename_all = "camelCase")]
 pub enum DataSyncResponse {
     Tail {
-        vault_audit_id: ObjectId
+        vault_audit_tail_id: ObjectId
     },
     Data {
         events: Vec<GenericKvLogEvent>
