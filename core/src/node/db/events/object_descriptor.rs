@@ -1,3 +1,4 @@
+use crate::node::common::model::device::DeviceId;
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::events::object_descriptor::global_index::GlobalIndexDescriptor;
 use crate::node::db::events::object_descriptor::shared_secret::SharedSecretDescriptor;
@@ -17,10 +18,14 @@ pub enum ObjectDescriptor {
 }
 
 pub enum VaultDescriptor {
-    Vault {
+   DeviceLog {
+        device_id: DeviceId,
         vault_name: VaultName,
     },
-    Audit {
+    VaultLog {
+        vault_name: VaultName,
+    },
+    Vault {
         vault_name: VaultName,
     },
 }

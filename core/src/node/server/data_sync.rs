@@ -71,12 +71,10 @@ impl<Repo: KvLogEventRepo> DataSyncApi for ServerDataSync<Repo> {
             }
             SyncRequest::Vault { request, .. } => {
                 let vault_events = self.vault_replication(&request)
-                    .in_current_span()
                     .await;
                 commit_log.extend(vault_events);
 
                 let meta_pass_events = self.meta_pass_replication(&request)
-                    .in_current_span()
                     .await;
                 commit_log.extend(meta_pass_events);
 
@@ -84,7 +82,7 @@ impl<Repo: KvLogEventRepo> DataSyncApi for ServerDataSync<Repo> {
                     persistent_obj: self.persistent_obj.clone(),
                 };
 
-                let s_s_replication_events = s_s_replication_action.replicate(&request).in_current_span().await;
+                let s_s_replication_events = s_s_replication_action.replicate(&request).await;
                 commit_log.extend(s_s_replication_events);
             }
         }
