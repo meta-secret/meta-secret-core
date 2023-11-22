@@ -167,6 +167,7 @@ pub mod user {
 
 pub mod vault {
     use std::collections::{HashMap, HashSet};
+    use std::fmt::Display;
     use crate::node::common::model::device::DeviceId;
     use crate::node::common::model::MetaPasswordId;
     use crate::node::common::model::user::{UserData, UserMembership};
@@ -187,9 +188,9 @@ pub mod vault {
         }
     }
 
-    impl ToString for VaultName {
-        fn to_string(&self) -> String {
-            self.0.clone()
+    impl Display for VaultName {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}", self.0.clone())
         }
     }
 
@@ -201,10 +202,15 @@ pub mod vault {
         pub secrets: HashSet<MetaPasswordId>
     }
 
+    impl VaultData {
+        pub fn update_membership(&mut self, membership: UserMembership) {
+            self.users.insert(membership., membership);
+        }
+    }
+
     #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
-    #[serde(tag = "__vault_ingo")]
-    pub enum VaultInfo {
+    pub enum VaultStatus {
         /// Device is a member of a vault
         Member { vault: VaultData },
         /// Device is waiting to be added to a vault.

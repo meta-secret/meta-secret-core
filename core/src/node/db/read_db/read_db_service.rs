@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::node::common::data_transfer::MpscDataTransfer;
 use anyhow::anyhow;
 use tracing::{debug, info, instrument, Instrument};
-use crate::node::common::model::vault::{VaultInfo, VaultName};
+use crate::node::common::model::vault::{VaultStatus, VaultName};
 
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::generic_db::KvLogEventRepo;
@@ -30,7 +30,7 @@ pub enum ReadDbRequestMessage {
 }
 
 pub enum ReadDbResponseMessage {
-    VaultInfo { vault: VaultInfo },
+    VaultInfo { vault: VaultStatus },
     VaultStore { vault_store: VaultStore },
     MetaPassStore { meta_pass_store: MetaPassStore },
 }
@@ -54,11 +54,11 @@ impl<Repo: KvLogEventRepo> ReadDbService<Repo> {
                     let vault_info = if read_db.global_index_store.contains(vault_unit_id.id_str()) {
                         //if the vault is already present:
                         match &read_db.vault_store {
-                            VaultStore::Store { vault, .. } => VaultInfo::Member { vault: vault.clone() },
-                            _ => VaultInfo::NotMember,
+                            VaultStore::Store { vault, .. } => VaultStatus::Member { vault: vault.clone() },
+                            _ => VaultStatus::NotMember,
                         }
                     } else {
-                        VaultInfo::NotFound
+                        VaultStatus::NotFound
                     };
 
                     let response = ReadDbResponseMessage::VaultInfo { vault: vault_info };
@@ -134,7 +134,7 @@ pub struct ReadDbServiceProxy {
 }
 
 impl ReadDbServiceProxy {
-    pub async fn get_vault_info(&self, vault_name: VaultName) -> anyhow::Result<VaultInfo> {
+    pub async fn get_vault_info(&self, vault_name: VaultName) -> anyhow::Result<VaultStatus> {
         let msg = self
             .dt
             .dt

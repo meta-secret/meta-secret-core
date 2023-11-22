@@ -1,6 +1,5 @@
-use std::fmt::Display;
-use crate::node::db::descriptors::global_index::global_index::GlobalIndexDescriptor;
-use crate::node::db::descriptors::shared_secret::shared_secret::SharedSecretDescriptor;
+use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
+use crate::node::db::descriptors::shared_secret::SharedSecretDescriptor;
 use crate::node::db::descriptors::vault::VaultDescriptor;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

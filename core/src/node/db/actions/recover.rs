@@ -4,7 +4,7 @@ use tracing::error;
 
 use crate::node::app::meta_app::app_state::JoinedAppState;
 use crate::node::common::model::{MetaPasswordId, PasswordRecoveryRequest};
-use crate::node::common::model::vault::VaultInfo;
+use crate::node::common::model::vault::VaultStatus;
 use crate::node::db::events::common::{SharedSecretObject};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
@@ -20,7 +20,7 @@ pub struct RecoveryAction<Repo: KvLogEventRepo> {
 
 impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
     pub async fn recovery_request(&self, meta_pass_id: MetaPasswordId, app_state: &JoinedAppState) {
-        let VaultInfo::Member { vault } = &app_state.vault_info else {
+        let VaultStatus::Member { vault } = &app_state.vault_info else {
             error!("You must be a member of the vault");
             return;
         };
@@ -95,7 +95,7 @@ mod test {
     use crate::models::{ApplicationState, VaultDoc};
     use crate::node::app::meta_app::app_state::JoinedAppState;
     use crate::node::common::model::ApplicationState;
-    use crate::node::common::model::vault::VaultInfo;
+    use crate::node::common::model::vault::VaultStatus;
     use crate::node::db::actions::recover::RecoveryAction;
     use crate::node::db::events::common::{LogEventKeyBasedRecord, ObjectCreator, SharedSecretObject, VaultInfo};
     use crate::node::db::events::generic_log_event::GenericKvLogEvent;
@@ -126,7 +126,7 @@ mod test {
                 join_component: false,
             },
             creds: creds_a.clone(),
-            vault_info: VaultInfo::Member {
+            vault_info: VaultStatus::Member {
                 vault: VaultDoc {
                     vault_name: vault_name.clone(),
                     signatures: vec![creds_a.user_sig, creds_b.user_sig.clone()],

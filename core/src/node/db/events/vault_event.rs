@@ -1,9 +1,33 @@
+use crate::crypto::keys::OpenBox;
+use crate::node::common::model::MetaPasswordId;
 use crate::node::common::model::user::{UserDataCandidate, UserMembership};
 use crate::node::common::model::vault::VaultData;
 use crate::node::db::events::common::PublicKeyRecord;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::kv_log_event::KvLogEvent;
 use crate::node::db::events::object_id::{ArtifactId, GenesisId, ObjectId, UnitId};
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DeviceObject {
+    /// Devices' public key, to ensure that the only this device can send events to this log
+    Unit {
+        event: KvLogEvent<UnitId, OpenBox>
+    },
+    /// The only possible action for a new device that want's to join the vault is to send a JoinRequest
+    JoinRequest {
+        event: KvLogEvent<GenesisId, UserDataCandidate>,
+    },
+    /// When the device becomes a member of the vault, it can change membership of other members
+    UpdateMembership {
+        event: KvLogEvent<ArtifactId, UserMembership>,
+    },
+    /// Adds a new meta password into the vault
+    AddMetaPassword {
+        event: KvLogEvent<ArtifactId, MetaPasswordId>,
+    }
+}
+
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -16,13 +40,11 @@ pub enum VaultObject {
         event: KvLogEvent<GenesisId, PublicKeyRecord>,
     },
 
-    Event(VaultObjectEvent),
-
     /// UserEvents or AuditEvents - the object contains user specific events, the reason is - when a device sends a join request, there is no way
     /// to say to the device what is the status of the user request, is pending or declined or anything else.
     /// Until the user joins the vault we need to maintain user specific table
     /// that contains the vault event for that particular user.
-    Audit {
+    VaultLog {
         event: KvLogEvent<ArtifactId, VaultObjectEvent>,
     },
 }
@@ -39,9 +61,11 @@ pub enum VaultObjectEvent {
     JoinRequest {
         event: KvLogEvent<ArtifactId, UserDataCandidate>,
     },
+
     UpdateMembership {
         event: KvLogEvent<ArtifactId, VaultData>,
     },
+
     UpdateMetaPassword {
         event: KvLogEvent<ArtifactId, VaultData>,
     },
@@ -63,7 +87,7 @@ impl ObjIdExtractor for VaultObject {
             VaultObject::Unit { event } => ObjectId::from(event.key.obj_id.clone()),
             VaultObject::Genesis { event } => ObjectId::from(event.key.obj_id.clone()),
             VaultObject::Event(obj_event) => obj_event.obj_id(),
-            VaultObject::Audit { event } => ObjectId::from(event.key.obj_id.clone())
+            VaultObject::Log { event } => ObjectId::from(event.key.obj_id.clone())
         }
     }
 }

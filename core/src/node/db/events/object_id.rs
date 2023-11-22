@@ -3,7 +3,6 @@ use serde_derive::{Deserialize, Serialize};
 use crate::crypto::utils::NextId;
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ObjectDescriptorId};
-use crate::node::db::descriptors::global_index::global_index::GlobalIndexDescriptor;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
