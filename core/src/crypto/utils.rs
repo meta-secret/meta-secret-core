@@ -3,7 +3,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::crypto::encoding::base64::Base64Text;
-use crate::node::db::events::object_descriptor::{ObjectDescriptorFqdn, ObjectDescriptorId};
+use crate::node::db::descriptors::object_descriptor::{ObjectDescriptorFqdn, ObjectDescriptorId};
 
 const SEED_LENGTH: usize = 64;
 

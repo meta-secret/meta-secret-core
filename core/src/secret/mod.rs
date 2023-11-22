@@ -18,6 +18,7 @@ use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::CoreResult;
 use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
+use crate::node::common::model::crypto::AeadCipherText;
 
 pub mod data_block;
 pub mod shared_secret;

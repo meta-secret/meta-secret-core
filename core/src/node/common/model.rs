@@ -4,6 +4,7 @@ use crate::node::common::model::user::UserId;
 use crate::node::common::model::vault::VaultData;
 
 pub mod device {
+    use std::fmt::Display;
     use crypto::utils::generate_uuid_b64_url_enc;
 
     use crate::crypto;
@@ -54,9 +55,9 @@ pub mod device {
         }
     }
 
-    impl ToString for DeviceId {
-        fn to_string(&self) -> String {
-            self.0.clone()
+    impl Display for DeviceId {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}", self.0.clone())
         }
     }
 

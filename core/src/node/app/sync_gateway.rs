@@ -93,7 +93,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             // Local device has less events than the server
             let sync_request = {
                 let vault_free_id = {
-                    let obj_desc = VaultDescriptor::audit(event.value.vault_name.clone());
+                    let obj_desc = VaultDescriptor::vault_log(event.value.vault_name.clone());
                     self.persistent_object.find_free_id_by_obj_desc(obj_desc).await?
                 };
 
