@@ -34,8 +34,8 @@ pub mod device {
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct DeviceData {
-        id: DeviceId,
-        name: DeviceName,
+        pub id: DeviceId,
+        pub name: DeviceName,
         pub keys: OpenBox,
     }
 
@@ -84,6 +84,7 @@ pub mod device {
 pub mod user {
     use crate::node::common::model::device::{DeviceCredentials, DeviceData, DeviceId, DeviceName};
     use crate::node::common::model::vault::VaultName;
+    use crate::node::db::descriptors::vault::VaultDescriptor;
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -312,13 +313,6 @@ pub struct PasswordRecoveryRequest {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct MetaPasswordRequest {
-    pub user_id: UserId,
-    pub meta_password: MetaPasswordData,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct MetaPasswordId {
     /// SHA256 hash of a salt
     pub id: String,
@@ -328,18 +322,10 @@ pub struct MetaPasswordId {
     pub name: String,
 }
 
-/*#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MetaPasswordData {
-    pub id: MetaPasswordId,
-    pub vault: VaultData,
-}*/
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApplicationState {
     pub device_creds: Option<DeviceCredentials>,
     pub vault: Option<VaultData>,
-    pub meta_passwords: Vec<MetaPasswordData>,
     pub join_component: bool,
 }

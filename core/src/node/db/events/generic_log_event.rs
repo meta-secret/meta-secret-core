@@ -1,5 +1,6 @@
-use anyhow::anyhow;
+use crate::node::common::model::vault::VaultStatus;
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
+use anyhow::anyhow;
 
 use crate::node::db::events::common::SharedSecretObject;
 use crate::node::db::events::db_tail::DbTail;
@@ -8,19 +9,26 @@ use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
 use crate::node::db::events::local::{CredentialsObject, DbTailObject};
 use crate::node::db::events::object_id::{ArtifactId, ObjectId};
-use crate::node::db::events::vault_event::VaultObject;
+use crate::node::db::events::vault_event::{DeviceLogObject, VaultLogObject, VaultObject, VaultStatusObject};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(tag = "__generic_event_type")]
 pub enum GenericKvLogEvent {
     GlobalIndex(GlobalIndexObject),
+
+    DeviceLog(DeviceLogObject),
+    VaultLog(VaultLogObject),
     Vault(VaultObject),
+    VaultStatus(VaultStatusObject),
+
     SharedSecret(SharedSecretObject),
     Credentials(CredentialsObject),
     DbTail(DbTailObject),
 
-    Error { event: KvLogEvent<ArtifactId, ErrorMessage> },
+    Error {
+        event: KvLogEvent<ArtifactId, ErrorMessage>,
+    },
 }
 
 impl GenericKvLogEvent {
@@ -80,7 +88,6 @@ impl KeyExtractor for GenericKvLogEvent {
 }
 
 impl GenericKvLogEvent {
-
     pub fn db_tail(db_tail: DbTail) -> GenericKvLogEvent {
         let event = KvLogEvent {
             key: KvKey::unit(ObjectDescriptor::DbTail),

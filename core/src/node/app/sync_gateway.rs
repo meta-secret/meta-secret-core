@@ -1,6 +1,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
+use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
+use crate::node::db::descriptors::shared_secret::SharedSecretDescriptor;
+use crate::node::db::descriptors::vault::VaultDescriptor;
 use anyhow::anyhow;
 use tracing::{debug, error, info, instrument, Instrument};
 
@@ -10,10 +14,8 @@ use crate::node::db::events::generic_log_event::{GenericKvLogEvent, KeyExtractor
 use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::local::{CredentialsObject, DbTailObject};
-use crate::node::db::events::object_descriptor::{ObjectDescriptor, VaultDescriptor};
-use crate::node::db::events::object_descriptor::global_index::GlobalIndexDescriptor;
-use crate::node::db::events::object_descriptor::shared_secret::SharedSecretDescriptor;
 use crate::node::db::events::object_id::{Next, ObjectId, UnitId};
+use crate::node::db::events::vault_event::VaultObject;
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::read_db::read_db_service::ReadDbServiceProxy;
@@ -62,11 +64,43 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         let user_creds = &event.value;
         let sender = event.value.device();
 
+        let vault_status_obj_desc = ObjectDescriptor::Vault(VaultDescriptor::VaultStatus {
+            device_id: user_creds.device_creds.device.id.clone(),
+            vault_name: user_creds.vault_name.clone(),
+        });
+
+        let maybe_vault_status_id = self
+            .persistent_object
+            .find_tail_id_by_obj_desc(vault_status_obj_desc)
+            .await?;
+
+        let Some(vault_status_id) = maybe_vault_status_id else {
+            // Device is not a member of the vault
+            return Ok(());
+        };
+
+        let maybe_vault_status = self.persistent_object.repo.find_one(vault_status_id).await?;
+
+        let Some(vault_status) = maybe_vault_status else {
+            // Device is not a member of the vault
+            return Ok(());
+        };
+
+        let GenericKvLogEvent::Vault(vault_object) = vault_status else {
+            return Err(anyhow!("Invalid event type: not a vault status"));
+        };
+
+        match vault_object {
+            VaultObject::Unit { .. } => {}
+            VaultObject::Genesis { .. } => {}
+            VaultObject::Vault { .. } => {}
+        }
+
         let server_tail = self
             .server_dt
             .dt
             .send_to_service_and_get(DataSyncRequest::TailRequest {
-                sender: user_creds.user()
+                sender: user_creds.user(),
             })
             .await?;
 
@@ -78,13 +112,13 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
 
         if let Some(local_audit_tail_id) = maybe_local_audit_tail_id {
             // Local device has more events than the server
-            let local_vault_audit_events = self.persistent_object
+            let local_vault_audit_events = self
+                .persistent_object
                 .find_object_events(local_audit_tail_id.next())
                 .await?;
 
             for local_vault_audit_event in local_vault_audit_events {
-                self
-                    .server_dt
+                self.server_dt
                     .dt
                     .send_to_service(DataSyncRequest::Event(local_vault_audit_event))
                     .await?
@@ -136,14 +170,18 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
 
         let sender = match &self.creds {
             CredentialsObject::Device { event } => event.value.device.clone(),
-            CredentialsObject::User { event } => event.value.device_creds.device.clone()
+            CredentialsObject::User { event } => event.value.device_creds.device.clone(),
         };
 
-        let gi_free_id = self.persistent_object
+        let gi_free_id = self
+            .persistent_object
             .find_free_id_by_obj_desc(ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index))
             .await?;
 
-        let sync_request = SyncRequest::GlobalIndex { sender, global_index: gi_free_id };
+        let sync_request = SyncRequest::GlobalIndex {
+            sender,
+            global_index: gi_free_id,
+        };
 
         let new_gi_events = self
             .server_dt
@@ -158,8 +196,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                 // Update vault index according to global index
                 if let GlobalIndexObject::Update { event } = gi_obj {
                     let vault_id = event.value;
-                    let vault_idx_evt = GlobalIndexObject::index_from(vault_id)
-                        .to_generic();
+                    let vault_idx_evt = GlobalIndexObject::index_from(vault_id).to_generic();
                     self.persistent_object.repo.save(vault_idx_evt).await?;
                 }
             } else {
@@ -231,9 +268,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                     }
 
                     debug!("Send shared secret event to server: {:?}", event);
-                    transfer
-                        .send_to_service(DataSyncRequest::Event(ss_event.clone()))
-                        .await;
+                    transfer.send_to_service(DataSyncRequest::Event(ss_event.clone())).await;
                 }
             }
         }
