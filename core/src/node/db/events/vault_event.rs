@@ -1,5 +1,6 @@
+use anyhow::anyhow;
 use crate::crypto::keys::OpenBox;
-use crate::node::common::model::user::{UserDataCandidate, UserMembership};
+use crate::node::common::model::user::{UserDataCandidate, UserDataMember, UserMembership};
 use crate::node::common::model::vault::{VaultData, VaultName};
 use crate::node::common::model::MetaPasswordId;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, ToGenericEvent};
@@ -68,6 +69,24 @@ pub enum VaultStatusObject {
     Status {
         event: KvLogEvent<ArtifactId, UserMembership>,
     },
+}
+
+impl VaultStatusObject {
+    pub fn is_member(&self) -> bool {
+        let VaultStatusObject::Status { event: membership_event } = self else {
+            false
+        };
+
+        if let UserMembership::Member(UserDataMember { .. }) = membership_event.value {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn is_not_member(&self) -> bool {
+        !self.is_member()
+    }
 }
 
 impl ToGenericEvent for VaultObject {

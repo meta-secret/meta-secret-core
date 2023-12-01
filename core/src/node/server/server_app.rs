@@ -3,9 +3,9 @@ use tracing::{error, info, instrument, Instrument};
 
 use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::common::model::device::DeviceCredentials;
+use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
+use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::common::PublicKeyRecord;
-use crate::node::db::events::generic_log_event::GenericKvLogEvent;
-use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object::PersistentGlobalIndexApi;
@@ -23,11 +23,12 @@ pub struct ServerDataTransfer {
 }
 
 impl<Repo: KvLogEventRepo> ServerApp<Repo> {
+
     #[instrument(skip(self))]
     pub async fn run(&self) {
         info!("Run server app");
 
-        self.gi_initialization().in_current_span().await;
+        self.gi_initialization().await;
 
         while let Ok(sync_message) = self.data_transfer.dt.service_receive().await {
             match sync_message {
@@ -58,21 +59,18 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
         }
     }
 
+    #[instrument(skip(self))]
     async fn gi_initialization(&self) {
         //Check if all required persistent objects has been created
-        let maybe_gi_unit_id = self
-            .data_sync
-            .persistent_obj
-            .repo
-            .find_one(ObjectId::unit(&ObjectDescriptor::GlobalIndex))
-            .in_current_span()
-            .await;
+        let gi_obj_desc = ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index);
 
-        let maybe_gi_genesis = self
-            .data_sync
-            .persistent_obj
-            .repo
-            .find_one(ObjectId::genesis(&ObjectDescriptor::GlobalIndex))
+        let maybe_gi_unit_id = {
+            let gi_unit = ObjectId::unit(gi_obj_desc.clone());
+            self.repo().find_one(gi_unit).await
+        };
+
+        let maybe_gi_genesis = self.repo()
+            .find_one(ObjectId::genesis(gi_obj_desc))
             .in_current_span()
             .await;
 
@@ -86,9 +84,11 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                 .data_sync
                 .persistent_obj
                 .global_index
-                .gi_init(&server_pk)
-                .in_current_span()
+                .gi_init(server_pk)
                 .await;
         }
+    }
+    fn repo(&self) -> Arc<Repo> {
+        self.data_sync.persistent_obj.repo.clone()
     }
 }

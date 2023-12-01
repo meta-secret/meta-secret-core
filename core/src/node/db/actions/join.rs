@@ -7,7 +7,7 @@ pub fn join_cluster_request(vault_tail_id: ArtifactId, user: UserDataCandidate) 
     let key = KvKey {
         obj_id: vault_tail_id.next(),
         obj_desc: ObjectDescriptor::Vault {
-            vault_name: user.data.vault_name,
+            vault_name: user.user_data.vault_name,
         },
     };
 

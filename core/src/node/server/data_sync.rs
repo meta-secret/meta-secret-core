@@ -5,23 +5,20 @@ use tracing::{debug, error, info, instrument, Instrument};
 
 use crate::crypto::key_pair::KeyPair;
 use crate::node::common::model::device::{DeviceCredentials, DeviceData};
-use crate::node::common::model::user::{UserData, UserDataCandidate};
+use crate::node::common::model::user::UserDataCandidate;
 use crate::node::db::actions::join;
 use crate::node::db::actions::sign_up::SignUpAction;
-use crate::node::db::actions::ss_replication::SharedSecretReplicationAction;
+use crate::node::db::actions::ss_replication::SSReplicationAction;
+use crate::node::db::descriptors::vault::VaultDescriptor;
 use crate::node::db::events::common::PublicKeyRecord;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::KvLogEvent;
-use crate::node::db::events::object_descriptor::global_index::GlobalIndexDescriptor;
-use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::events::vault_event::VaultObject;
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object::PersistentObject;
-use crate::node::db::read_db::read_db_service::ReadDbServiceProxy;
-use crate::node::db::read_db::store::vault_store::VaultStore;
-use crate::node::server::request::SyncRequest;
+use crate::node::server::request::{SyncRequest, VaultRequest};
 
 #[async_trait(? Send)]
 pub trait DataSyncApi {
@@ -32,33 +29,23 @@ pub trait DataSyncApi {
 pub struct ServerDataSync<Repo: KvLogEventRepo> {
     pub persistent_obj: Arc<PersistentObject<Repo>>,
     pub device_creds: DeviceCredentials,
-    read_db_service_proxy: Arc<ReadDbServiceProxy>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum DataSyncRequest {
-    TailRequest {
-        sender: UserData,
-    },
     SyncRequest(SyncRequest),
     Event(GenericKvLogEvent),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum DataSyncResponse {
-    Tail {
-        vault_audit_tail_id: ObjectId
-    },
-    Data {
-        events: Vec<GenericKvLogEvent>
-    }
+pub struct DataSyncResponse {
+    pub events: Vec<GenericKvLogEvent>,
 }
 
 #[async_trait(? Send)]
 impl<Repo: KvLogEventRepo> DataSyncApi for ServerDataSync<Repo> {
-
     #[instrument(skip(self))]
     async fn replication(&self, request: SyncRequest) -> anyhow::Result<Vec<GenericKvLogEvent>> {
         let mut commit_log: Vec<GenericKvLogEvent> = vec![];
@@ -69,21 +56,22 @@ impl<Repo: KvLogEventRepo> DataSyncApi for ServerDataSync<Repo> {
                     .await?;
                 commit_log.extend(gi_events);
             }
-            SyncRequest::Vault { request, .. } => {
-                let vault_events = self.vault_replication(&request)
+
+            SyncRequest::Vault { request, sender } => {
+                let vault_events = self.vault_replication(&sender, &request)
                     .await;
                 commit_log.extend(vault_events);
 
-                let meta_pass_events = self.meta_pass_replication(&request)
-                    .await;
-                commit_log.extend(meta_pass_events);
-
-                let s_s_replication_action = SharedSecretReplicationAction {
+                let s_s_replication_action = SSReplicationAction {
                     persistent_obj: self.persistent_obj.clone(),
                 };
 
                 let s_s_replication_events = s_s_replication_action.replicate(&request).await;
                 commit_log.extend(s_s_replication_events);
+            }
+
+            SyncRequest::SharedSecret { .. } => {
+
             }
         }
 
@@ -93,20 +81,6 @@ impl<Repo: KvLogEventRepo> DataSyncApi for ServerDataSync<Repo> {
     /// Handle request: all types of requests will be handled and the actions will be executed accordingly
     async fn send(&self, generic_event: GenericKvLogEvent) {
         self.server_processing(generic_event).in_current_span().await;
-    }
-}
-
-impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
-    pub async fn new(
-        creds: DeviceCredentials,
-        persistent_obj: Arc<PersistentObject<Repo>>,
-        read_db_service_proxy: Arc<ReadDbServiceProxy>,
-    ) -> Self {
-        ServerDataSync {
-            persistent_obj: persistent_obj.clone(),
-            device_creds: creds,
-            read_db_service_proxy,
-        }
     }
 }
 
@@ -234,59 +208,53 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
         Ok(events)
     }
 
-    pub async fn vault_replication(&self, request: &SyncRequest) -> Vec<GenericKvLogEvent> {
-        let events = match &request.vault_tail_id {
-            None => {
-                vec![]
-            }
-            Some(vault_tail_id) => {
-                //sync meta db!!! how? See MetaDbService::sync_db()
-                let vault_store = self
-                    .read_db_service_proxy
-                    .get_vault_store(request.sender.vault.name.clone())
-                    .await
-                    .unwrap();
+    pub async fn vault_replication(&self, sender: &DeviceData, request: &VaultRequest) -> Vec<GenericKvLogEvent> {
+        let mut commit_log = vec![];
 
-                let vault_signatures = match &vault_store {
-                    VaultStore::Empty => {
-                        info!("Empty vault store");
-                        vec![]
-                    }
-                    VaultStore::Unit { id: tail_id } => self.persistent_obj.get_vault_unit_sig(tail_id.clone()).await,
-                    VaultStore::Genesis { id: tail_id, .. } => self.persistent_obj.get_vault_unit_sig(tail_id.clone()).await,
-                    VaultStore::Store { vault, .. } => vault.signatures.clone(),
-                };
+        let maybe_vault_event = self.persistent_obj
+            .find_tail_event_by_obj_id(request.vault.clone())
+            .await?;
 
-                let vault_signatures: Vec<String> = vault_signatures
-                    .iter()
-                    .map(|sig| sig.public_key.base64_text.clone())
-                    .collect();
-
-                if vault_signatures.contains(&request.sender.public_key.base64_text) {
-                    let vault_events = self.persistent_obj.find_object_events(vault_tail_id).await;
-                    vault_events
-                } else {
-                    debug!(
-                        "The client is not a member of the vault.\nRequest: {:?},\nvault store: {:?}",
-                        &request, &vault_store
-                    );
-                    vec![]
-                }
-            }
+        let Some(vault_event) = maybe_vault_event else {
+            return commit_log;
         };
 
-        events
-    }
+        let GenericKvLogEvent::Vault(VaultObject::Vault { event }) = vault_event else {
+            return commit_log;
+        };
 
-    async fn meta_pass_replication(&self, request: &SyncRequest) -> Vec<GenericKvLogEvent> {
-        match &request.meta_pass_tail_id {
-            None => {
-                vec![]
-            }
-            Some(meta_pass_tail_id) => {
-                self.persistent_obj.find_object_events(meta_pass_tail_id).await
-            }
+        let vault = event.value;
+        if !vault.is_member(sender) {
+            return commit_log;
         }
+
+        //sync VaultLog
+        {
+            let vault_log_events = self.persistent_obj
+                .find_object_events(request.vault_log.clone())
+                .await;
+            commit_log.extend(vault_log_events);
+        }
+
+        //sync Vault
+        {
+            let vault_events = self.persistent_obj
+                .find_object_events(request.vault.clone())
+                .await;
+
+            commit_log.extend(vault_events);
+        }
+
+        //sync vault status
+        {
+            let vault_status_events = self.persistent_obj
+                .find_object_events(request.vault_status.clone())
+                .await;
+
+            commit_log.extend(vault_status_events);
+        }
+
+        commit_log
     }
 }
 

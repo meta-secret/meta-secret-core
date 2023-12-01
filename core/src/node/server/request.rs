@@ -10,13 +10,18 @@ pub enum SyncRequest {
         global_index: ObjectId,
     },
     Vault {
-        sender: DeviceData,
         request: VaultRequest
-    }
+    },
+    SharedSecret {
+        sender: DeviceData,
+        ss_log: ObjectId,
+    },
 }
 
 pub struct VaultRequest {
-    pub vault_audit: ObjectId,
-    pub s_s_audit: ObjectId,
+    pub sender: DeviceData,
+    pub vault_log: ObjectId,
+    pub vault: ObjectId,
+    pub vault_status: ObjectId,
 }
 

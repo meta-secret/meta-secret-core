@@ -1,8 +1,8 @@
+use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
+use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::common::PublicKeyRecord;
 use crate::node::db::events::generic_log_event::{ToGenericEvent, GenericKvLogEvent, KeyExtractor, ObjIdExtractor, UnitEventWithEmptyValue};
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
-use crate::node::db::events::object_descriptor::global_index::GlobalIndexDescriptor;
-use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{ArtifactId, GenesisId, ObjectId, UnitId};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -12,6 +12,7 @@ pub enum GlobalIndexObject {
     Genesis { event: KvLogEvent<GenesisId, PublicKeyRecord> },
 
     Update { event: KvLogEvent<ArtifactId, UnitId> },
+
     VaultIndex { event: KvLogEvent<UnitId, UnitId> },
 }
 

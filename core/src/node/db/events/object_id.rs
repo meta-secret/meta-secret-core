@@ -2,7 +2,9 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::crypto::utils::NextId;
 use crate::node::common::model::vault::VaultName;
+use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ObjectDescriptorId};
+use crate::node::db::descriptors::vault::VaultDescriptor;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -66,6 +68,10 @@ impl ObjectId {
     pub fn unit(obj_desc: ObjectDescriptor) -> Self {
         ObjectId::Unit(UnitId::unit(obj_desc))
     }
+    
+    pub fn genesis(obj_desc: ObjectDescriptor) -> Self {
+        ObjectId::Genesis(GenesisId::genesis(obj_desc))
+    }
 
     pub fn get_unit_id(&self) -> UnitId {
         match self {
@@ -101,7 +107,9 @@ impl UnitId {
     }
 
     pub fn vault_unit(vault_name: VaultName) -> UnitId {
-        let vault_desc = ObjectDescriptor::Vault { vault_name };
+        let vault_desc = ObjectDescriptor::Vault(VaultDescriptor::Vault {
+            vault_name
+        });
         UnitId::unit(vault_desc)
     }
 }

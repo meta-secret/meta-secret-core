@@ -2,28 +2,22 @@ use std::sync::Arc;
 
 use tracing::{debug, error, info, instrument, Instrument};
 use crate::node::app::meta_app::app_state::{ConfiguredAppState, GenericAppState, JoinedAppState};
-use crate::node::app::credentials_repo::DeviceCredentialsManager;
-use crate::node::app_models::UserCredentials;
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::actions::sign_up::SignUpRequest;
-use crate::node::db::events::common::{MemPoolObject, VaultInfo};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::generic_db::KvLogEventRepo;
-use crate::node::db::read_db::read_db_service::ReadDbServiceProxy;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::secret::MetaDistributor;
 
 pub struct MetaClient<Repo: KvLogEventRepo> {
-    pub persistent_obj: Arc<PersistentObject<Repo>>,
-    pub read_db_service_proxy: Arc<ReadDbServiceProxy>,
+    pub persistent_obj: Arc<PersistentObject<Repo>>
 }
 
 impl<Repo: KvLogEventRepo> MetaClient<Repo> {
     pub async fn find_user_creds(&self, curr_state: &GenericAppState) -> anyhow::Result<Option<ConfiguredAppState>> {
-        let maybe_creds = self.persistent_obj.repo.find_device_creds().in_current_span().await?;
+        let maybe_creds = self.persistent_obj.repo.find_device_creds().await?;
 
         match maybe_creds {
             None => Ok(None),

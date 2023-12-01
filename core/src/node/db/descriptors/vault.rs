@@ -22,16 +22,20 @@ pub enum VaultDescriptor {
 }
 
 impl VaultDescriptor {
-    pub fn vault(vault_name: VaultName) -> ObjectDescriptor {
-        ObjectDescriptor::Vault(VaultDescriptor::Vault { vault_name })
+    pub fn device_log(device_id: DeviceId, vault_name: VaultName) -> ObjectDescriptor {
+        ObjectDescriptor::Vault(VaultDescriptor::DeviceLog {device_id, vault_name })
     }
 
     pub fn vault_log(vault_name: VaultName) -> ObjectDescriptor {
         ObjectDescriptor::Vault(VaultDescriptor::VaultLog { vault_name })
     }
+    
+    pub fn vault(vault_name: VaultName) -> ObjectDescriptor {
+        ObjectDescriptor::Vault(VaultDescriptor::Vault { vault_name })
+    }
 
-    pub fn device_log(device_id: DeviceId, vault_name: VaultName) -> ObjectDescriptor {
-        ObjectDescriptor::Vault(VaultDescriptor::DeviceLog {device_id, vault_name })
+    pub fn vault_status(device_id: DeviceId, vault_name: VaultName) -> ObjectDescriptor {
+        ObjectDescriptor::Vault(VaultDescriptor::VaultStatus { device_id, vault_name })
     }
 }
 

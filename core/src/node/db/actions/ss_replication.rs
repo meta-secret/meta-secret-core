@@ -1,6 +1,4 @@
-use crate::node::db::events::common::{ObjectCreator, SharedSecretObject};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
-use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object::PersistentObject;
@@ -8,11 +6,12 @@ use crate::node::server::request::SyncRequest;
 use std::sync::Arc;
 use tracing::error;
 
-pub struct SharedSecretReplicationAction<Repo: KvLogEventRepo> {
+pub struct SSReplicationAction<Repo: KvLogEventRepo> {
     pub persistent_obj: Arc<PersistentObject<Repo>>,
 }
 
-impl<Repo: KvLogEventRepo> SharedSecretReplicationAction<Repo> {
+impl<Repo: KvLogEventRepo> SSReplicationAction<Repo> {
+
     pub async fn replicate(&self, request: &SyncRequest) -> Vec<GenericKvLogEvent> {
         let mut commit_log: Vec<GenericKvLogEvent> = vec![];
 
@@ -60,24 +59,6 @@ impl<Repo: KvLogEventRepo> SharedSecretReplicationAction<Repo> {
 
 #[cfg(test)]
 mod test {
-    use std::ops::Deref;
-    use std::sync::Arc;
-
-    use crate::crypto::keys::KeyManager;
-    use crate::models::{ApplicationState, DeviceInfo, MetaPasswordId, MetaVault, UserSignature, VaultDoc};
-    use crate::node::app::meta_app::app_state::JoinedAppState;
-    use crate::node::db::actions::recover::RecoveryAction;
-    use crate::node::db::actions::ss_replication::SharedSecretReplicationAction;
-    use crate::node::db::events::common::{ObjectCreator, SharedSecretObject, VaultInfo};
-    use crate::node::db::events::generic_log_event::GenericKvLogEvent;
-    use crate::node::db::events::object_descriptor::{ObjectDescriptor, SharedSecretDescriptor, SharedSecretEventId};
-    use crate::node::db::events::object_id::ObjectId;
-    use crate::node::db::in_mem_db::InMemKvLogEventRepo;
-    use crate::node::db::objects::persistent_object::PersistentObject;
-    use crate::node::server::request::SyncRequest;
-    use crate::secret::MetaDistributor;
-    use crate::test_utils::meta_test_utils;
-
     /*
     #[tokio::test]
     async fn test_s_s_replication() {

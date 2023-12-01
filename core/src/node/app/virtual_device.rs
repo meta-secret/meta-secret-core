@@ -1,15 +1,12 @@
 use std::sync::Arc;
 
 use crate::node::app::client_meta_app::MetaClient;
-use crate::node::app::meta_app::messaging::{GenericAppStateRequest, SignUpRequest};
 use crate::node::app::meta_app::meta_client_service::MetaClientAccessProxy;
 use crate::node::app::sync_gateway::SyncGateway;
 use crate::node::db::actions::join;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::vault_event::VaultObject;
 use crate::node::db::generic_db::KvLogEventRepo;
-use crate::node::db::read_db::read_db_service::ReadDbServiceProxy;
-use crate::node::db::read_db::store::vault_store::VaultStore;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::server::server_app::ServerDataTransfer;
 use serde::{Deserialize, Serialize};
@@ -36,7 +33,6 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
     pub async fn init(
         persistent_object: Arc<PersistentObject<Repo>>,
         meta_client_access_proxy: Arc<MetaClientAccessProxy>,
-        read_db_service_proxy: Arc<ReadDbServiceProxy>,
         server_dt: Arc<ServerDataTransfer>,
         gateway: Arc<SyncGateway<Repo>>,
         creds: CredentialsObject
@@ -45,7 +41,6 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
 
         let meta_client = Arc::new(MetaClient {
             persistent_obj: persistent_object.clone(),
-            read_db_service_proxy: read_db_service_proxy.clone(),
         });
 
         let virtual_device = Self {

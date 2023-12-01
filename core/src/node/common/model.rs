@@ -1,10 +1,13 @@
+use std::fmt::Display;
+
 use crate::node::common::model::crypto::EncryptedMessage;
 use crate::node::common::model::device::DeviceCredentials;
 use crate::node::common::model::user::UserId;
-use crate::node::common::model::vault::VaultData;
+use crate::node::common::model::vault::{VaultData, VaultName};
 
 pub mod device {
     use std::fmt::Display;
+
     use crypto::utils::generate_uuid_b64_url_enc;
 
     use crate::crypto;
@@ -84,13 +87,12 @@ pub mod device {
 pub mod user {
     use crate::node::common::model::device::{DeviceCredentials, DeviceData, DeviceId, DeviceName};
     use crate::node::common::model::vault::VaultName;
-    use crate::node::db::descriptors::vault::VaultDescriptor;
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct UserId {
         vault_name: VaultName,
-        device_id: DeviceId
+        device_id: DeviceId,
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -108,7 +110,6 @@ pub mod user {
     }
 
     impl UserCredentials {
-
         pub fn from(device_creds: DeviceCredentials, vault_name: VaultName) -> UserCredentials {
             UserCredentials { vault_name, device_creds }
         }
@@ -116,10 +117,10 @@ pub mod user {
         pub fn generate(device_name: DeviceName, vault_name: VaultName) -> UserCredentials {
             UserCredentials {
                 vault_name,
-                device_creds: DeviceCredentials::generate(device_name)
+                device_creds: DeviceCredentials::generate(device_name),
             }
         }
-        
+
         pub fn device(&self) -> DeviceData {
             self.device_creds.device.clone()
         }
@@ -135,25 +136,25 @@ pub mod user {
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct UserDataCandidate {
-        pub data: UserData
+        pub user_data: UserData,
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct UserDataMember {
-        pub data: UserData
+        pub user_data: UserData,
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct UserDataPending {
-        pub data: UserData
+        pub user_data: UserData,
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct UserDataDeclined {
-        pub data: UserData
+        pub user_data: UserData,
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -162,16 +163,32 @@ pub mod user {
         Candidate(UserDataCandidate),
         Member(UserDataMember),
         Pending(UserDataPending),
-        Declined(UserDataDeclined)
+        Declined(UserDataDeclined),
+    }
+
+    impl UserMembership {
+        pub fn user_data(&self) -> &UserData {
+            match self {
+                UserMembership::Candidate(UserDataCandidate { user_data }) => user_data,
+                UserMembership::Member(UserDataMember { user_data })  => user_data,
+                UserMembership::Pending(UserDataPending {user_data })  => user_data,
+                UserMembership::Declined(UserDataDeclined {user_data})  => user_data,
+            }
+        }
+
+        pub fn device_id(&self) -> DeviceId {
+           self.user_data().device.id.clone()
+        }
     }
 }
 
 pub mod vault {
     use std::collections::{HashMap, HashSet};
     use std::fmt::Display;
-    use crate::node::common::model::device::DeviceId;
+
+    use crate::node::common::model::device::{DeviceData, DeviceId};
     use crate::node::common::model::MetaPasswordId;
-    use crate::node::common::model::user::{UserData, UserMembership};
+    use crate::node::common::model::user::{UserData, UserDataMember, UserMembership};
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -200,12 +217,21 @@ pub mod vault {
     pub struct VaultData {
         pub vault_name: VaultName,
         pub users: HashMap<DeviceId, UserMembership>,
-        pub secrets: HashSet<MetaPasswordId>
+        pub secrets: HashSet<MetaPasswordId>,
     }
 
     impl VaultData {
         pub fn update_membership(&mut self, membership: UserMembership) {
-            self.users.insert(membership., membership);
+            self.users.insert(membership.device_id(), membership);
+        }
+
+        pub fn is_member(&self, device: &DeviceData) -> bool {
+            let maybe_user = self.users.get(&device.id);
+            if let Some(UserMembership::Member(UserDataMember { user_data })) = maybe_user {
+                user_data.device == device.clone()
+            } else {
+                false
+            }
         }
     }
 
@@ -227,6 +253,7 @@ pub mod vault {
 
 pub mod crypto {
     use crate::crypto::encoding::base64::Base64Text;
+    use crate::node::common::model::device::DeviceData;
     use crate::node::common::model::user::UserData;
 
     #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -261,8 +288,19 @@ pub mod crypto {
     #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct EncryptedMessage {
+        pub sender: UserData,
         pub receiver: UserData,
         pub encrypted_text: AeadCipherText,
+    }
+
+    impl EncryptedMessage {
+        pub fn receiver_device(&self) -> DeviceData {
+            self.receiver.device.clone()
+        }
+
+        pub fn sender_device(&self) -> DeviceData {
+            self.sender.device.clone()
+        }
     }
 }
 
@@ -275,9 +313,10 @@ pub enum SecretDistributionType {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SecretDistributionDocData {
+pub struct SecretDistributionData {
     pub distribution_type: SecretDistributionType,
-    pub meta_password: MetaPasswordRequest,
+    pub vault_name: VaultName,
+    pub meta_password_id: MetaPasswordId,
     pub secret_message: EncryptedMessage,
 }
 
@@ -288,12 +327,13 @@ pub enum RegistrationStatus {
     AlreadyExists,
 }
 
-impl ToString for RegistrationStatus {
-    fn to_string(&self) -> String {
-        match self {
+impl Display for RegistrationStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let str = match self {
             Self::Registered => String::from("Registered"),
             Self::AlreadyExists => String::from("AlreadyExists"),
-        }
+        };
+        write!(f, "{}", str)
     }
 }
 

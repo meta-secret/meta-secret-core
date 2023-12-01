@@ -1,5 +1,5 @@
 use crate::crypto::encoding::base64::Base64Text;
-use crate::node::common::model::{PasswordRecoveryRequest, SecretDistributionDocData};
+use crate::node::common::model::{PasswordRecoveryRequest, SecretDistributionData};
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::kv_log_event::KvLogEvent;
 use crate::node::db::events::object_id::{ArtifactId, ObjectId, UnitId};
@@ -7,16 +7,22 @@ use crate::node::db::events::object_id::{ArtifactId, ObjectId, UnitId};
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SharedSecretObject {
+    LocalShare {
+        event: KvLogEvent<UnitId, SecretDistributionData>,
+    },
+
     Split {
-        event: KvLogEvent<UnitId, SecretDistributionDocData>,
+        event: KvLogEvent<UnitId, SecretDistributionData>,
     },
     Recover {
-        event: KvLogEvent<UnitId, SecretDistributionDocData>,
+        event: KvLogEvent<UnitId, SecretDistributionData>,
     },
+    
     RecoveryRequest {
         event: KvLogEvent<UnitId, PasswordRecoveryRequest>,
     },
-    Audit {
+    
+    SSLog {
         event: KvLogEvent<ArtifactId, ArtifactId>,
     },
 }
@@ -27,7 +33,7 @@ impl ObjIdExtractor for SharedSecretObject {
             SharedSecretObject::Split { event } => ObjectId::from(event.key.obj_id.clone()),
             SharedSecretObject::Recover { event } => ObjectId::from(event.key.obj_id.clone()),
             SharedSecretObject::RecoveryRequest { event } => ObjectId::from(event.key.obj_id.clone()),
-            SharedSecretObject::Audit { event } => ObjectId::from(event.key.obj_id.clone())
+            SharedSecretObject::SSLog { event } => ObjectId::from(event.key.obj_id.clone())
         }
     }
 }

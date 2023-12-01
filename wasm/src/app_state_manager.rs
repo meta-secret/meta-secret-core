@@ -10,7 +10,7 @@ use meta_secret_core::node::app::client_meta_app::MetaClient;
 use meta_secret_core::node::app::meta_app::meta_client_service::{
     MetaClientAccessProxy, MetaClientDataTransfer, MetaClientService,
 };
-use meta_secret_core::node::app::credentials_repo::{CredentialsRepo, DeviceCredentialsManager};
+use meta_secret_core::node::app::credentials_repo::CredentialsRepo;
 use meta_secret_core::node::app::sync_gateway::SyncGateway;
 use meta_secret_core::node::app::virtual_device::VirtualDevice;
 use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
@@ -20,9 +20,6 @@ use meta_secret_core::node::common::model::vault::VaultName;
 use meta_secret_core::node::db::events::generic_log_event::UnitEvent;
 use meta_secret_core::node::db::events::local::CredentialsObject;
 use meta_secret_core::node::db::generic_db::KvLogEventRepo;
-use meta_secret_core::node::db::read_db::read_db_service::{
-    ReadDbDataTransfer, ReadDbService, ReadDbServiceProxy,
-};
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::server::data_sync::ServerDataSync;
 use meta_secret_core::node::server::server_app::{ServerApp, ServerDataTransfer};
@@ -35,7 +32,6 @@ pub struct ApplicationStateManager<Repo, StateManager>
     pub state_manager: Arc<StateManager>,
     pub meta_client_service: Arc<MetaClientService<Repo, StateManager>>,
     pub server_dt: Arc<ServerDataTransfer>,
-    pub read_db_service: Arc<ReadDbService<Repo>>,
     pub sync_gateway: Arc<SyncGateway<Repo>>,
 }
 
@@ -45,7 +41,6 @@ impl<Repo, State> ApplicationStateManager<Repo, State>
         State: JsAppStateManager + 'static,
 {
     pub fn new(
-        read_db_service: Arc<ReadDbService<Repo>>,
         server_dt: Arc<ServerDataTransfer>,
         state: Arc<State>,
         sync_gateway: Arc<SyncGateway<Repo>>,
@@ -54,7 +49,6 @@ impl<Repo, State> ApplicationStateManager<Repo, State>
         info!("New. Application State Manager");
 
         ApplicationStateManager {
-            read_db_service,
             server_dt,
             state_manager: state,
             sync_gateway,
@@ -91,31 +85,17 @@ impl<Repo, State> ApplicationStateManager<Repo, State>
             let obj = PersistentObject::new(client_repo.clone());
             Arc::new(obj)
         };
-
-        let dt_read_db = Arc::new(ReadDbDataTransfer {
-            dt: MpscDataTransfer::new(),
-        });
-
-        let read_db_service = Arc::new(ReadDbService {
-            persistent_obj: persistent_obj.clone(),
-            repo: client_repo.clone(),
-            read_db_id: String::from("Client"),
-            data_transfer: dt_read_db.clone(),
-        });
-
-        let read_db_service_proxy = Arc::new(ReadDbServiceProxy { dt: dt_read_db });
-
+        
         let sync_gateway = Arc::new(SyncGateway {
             id: String::from("client-gateway"),
             persistent_object: persistent_obj.clone(),
             server_dt: dt.clone(),
-            read_db_service_proxy: read_db_service_proxy.clone(),
+            creds: ,
         });
 
         let meta_client_service = {
             let meta_client = Arc::new(MetaClient {
-                persistent_obj: persistent_obj.clone(),
-                read_db_service_proxy: read_db_service_proxy.clone(),
+                persistent_obj: persistent_obj.clone() 
             });
 
             let creds = persistent_obj
@@ -262,33 +242,16 @@ impl<Repo, State> ApplicationStateManager<Repo, State>
             .get_or_generate_device_creds(String::from("server"))
             .in_current_span()
             .await?;
-
-        let read_db_dt = Arc::new(ReadDbDataTransfer {
-            dt: MpscDataTransfer::new(),
-        });
-
-        let read_db_service_proxy = Arc::new(ReadDbServiceProxy {
-            dt: read_db_dt.clone(),
-        });
-
-        let read_db_service = ReadDbService {
+        
+        let data_sync = ServerDataSync {
             persistent_obj: server_persistent_obj.clone(),
-            repo: server_repo.clone(),
-            read_db_id: String::from("Server"),
-            data_transfer: read_db_dt.clone(),
+            device_creds,
         };
-
-        spawn_local(async move {
-            read_db_service.run().instrument(server_span()).await;
-        });
-
-        let data_sync = ServerDataSync::new(device_creds, server_persistent_obj.clone(), read_db_service_proxy.clone())
-            .in_current_span()
-            .await;
 
         let server = ServerApp {
             data_sync,
             data_transfer: server_dt.clone(),
+            device_creds: DeviceCredentials {},
         };
 
         spawn_local(async move { server.run().instrument(server_span()).await });

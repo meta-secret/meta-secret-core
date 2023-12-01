@@ -1,21 +1,21 @@
 use std::sync::Arc;
+use anyhow::Error;
 
 use async_trait::async_trait;
 use tracing::{debug, info, instrument, Instrument};
 
 use crate::node::app::credentials_repo::CredentialsRepo;
 use crate::node::common::model::device::{DeviceCredentials, DeviceName};
-use crate::node::common::model::user::{UserCredentials, UserDataCandidate};
+use crate::node::common::model::user::UserCredentials;
 use crate::node::common::model::vault::VaultName;
+use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::common::PublicKeyRecord;
 use crate::node::db::events::db_tail::DbTail;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, UnitEvent};
 use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::KvLogEvent;
 use crate::node::db::events::local::CredentialsObject;
-use crate::node::db::events::object_descriptor::ObjectDescriptor;
-use crate::node::db::events::object_id::{Next, ObjectId, UnitId};
-use crate::node::db::events::vault_event::VaultObject;
+use crate::node::db::events::object_id::{Next, ObjectId};
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object_navigator::PersistentObjectNavigator;
 
@@ -58,6 +58,29 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
         }
 
         Ok(commit_log)
+    }
+
+    #[instrument(skip_all)]
+    pub async fn find_tail_event(&self, obj_desc: ObjectDescriptor) -> anyhow::Result<Option<GenericKvLogEvent>> {
+        let maybe_tail_id = self
+            .find_tail_id_by_obj_desc(obj_desc)
+            .await?;
+
+        self.find_event_by_id(maybe_tail_id).await
+    }
+
+    pub async fn find_tail_event_by_obj_id(&self, obj_id: ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>> {
+        let maybe_tail_id = self.find_tail_id(obj_id).await?;
+        self.find_event_by_id(maybe_tail_id).await
+    }
+
+    async fn find_event_by_id(&self, maybe_tail_id: Option<ObjectId>) -> anyhow::Result<Option<GenericKvLogEvent>> {
+        if let Some(tail_id) = maybe_tail_id {
+            let maybe_tail_event = self.repo.find_one(tail_id).await?;
+            Ok(maybe_tail_event)
+        } else {
+            Ok(None)
+        }
     }
 
     #[instrument(skip_all)]
@@ -141,17 +164,6 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
         }
     }
 
-    #[instrument(skip_all)]
-    pub async fn get_vault_unit_sig(&self, unit_id: UnitId) -> Vec<UserDataCandidate> {
-        let vault_event_res = self.repo.find_one(ObjectId::from(unit_id)).await;
-
-        if let Ok(Some(GenericKvLogEvent::Vault(VaultObject::Unit { event }))) = vault_event_res {
-            vec![event.value]
-        } else {
-            vec![]
-        }
-    }
-
     #[instrument(skip(self))]
     async fn generate_user(&self, device_name: DeviceName, vault_name: VaultName) -> anyhow::Result<CredentialsObject> {
         info!("Create a new user locally");
@@ -195,21 +207,23 @@ pub struct PersistentGlobalIndex<Repo: KvLogEventRepo> {
 
 #[async_trait(? Send)]
 impl<Repo: KvLogEventRepo> PersistentGlobalIndexApi for PersistentGlobalIndex<Repo> {
+
     ///create a genesis event and save into the database
-    async fn gi_init(&self, public_key: &PublicKeyRecord) -> anyhow::Result<Vec<GenericKvLogEvent>> {
+    #[instrument(skip(self))]
+    async fn gi_init(&self, public_key: PublicKeyRecord) -> anyhow::Result<Vec<GenericKvLogEvent>> {
         info!("Init global index");
 
         let unit_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Unit {
             event: KvLogEvent::global_index_unit(),
         });
 
-        self.repo.save(unit_event.clone()).in_current_span().await?;
+        self.repo.save(unit_event.clone()).await?;
 
         let genesis_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Genesis {
             event: KvLogEvent::global_index_genesis(public_key),
         });
 
-        self.repo.save(genesis_event.clone()).in_current_span().await?;
+        self.repo.save(genesis_event.clone()).await?;
 
         Ok(vec![unit_event, genesis_event])
     }
@@ -231,13 +245,10 @@ mod test {
     use tracing::Instrument;
 
     use crate::crypto::keys::KeyManager;
-    use crate::node::db::events::common::{LogEventKeyBasedRecord, ObjectCreator, PublicKeyRecord};
     use crate::node::db::events::generic_log_event::{GenericKvLogEvent, UnitEventWithEmptyValue};
-    use crate::node::db::events::global_index::{GlobalIndexObject, GlobalIndexRecord};
+    use crate::node::db::events::global_index::{GlobalIndexObject};
     use crate::node::db::events::kv_log_event::KvKey;
     use crate::node::db::events::kv_log_event::KvLogEvent;
-    use crate::node::db::events::object_descriptor::ObjectDescriptor;
-    use crate::node::db::events::object_id::{IdGen, ObjectId};
     use crate::node::db::generic_db::SaveCommand;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_object::PersistentObject;

@@ -16,7 +16,6 @@ use crate::node::common::model::ApplicationState;
 use crate::node::common::model::device::DeviceCredentials;
 use crate::node::db::actions::recover::RecoveryAction;
 use crate::node::db::generic_db::KvLogEventRepo;
-use crate::node::db::read_db::store::meta_pass_store::MetaPassStore;
 
 pub struct MetaClientService<Repo: KvLogEventRepo, StateManager: JsAppStateManager> {
     pub data_transfer: Arc<MetaClientDataTransfer>,

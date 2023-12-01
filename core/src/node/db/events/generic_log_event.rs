@@ -1,4 +1,3 @@
-use crate::node::common::model::vault::VaultStatus;
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use anyhow::anyhow;
 
@@ -17,14 +16,15 @@ use crate::node::db::events::vault_event::{DeviceLogObject, VaultLogObject, Vaul
 pub enum GenericKvLogEvent {
     GlobalIndex(GlobalIndexObject),
 
+    Credentials(CredentialsObject),
+    DbTail(DbTailObject),
+
     DeviceLog(DeviceLogObject),
     VaultLog(VaultLogObject),
     Vault(VaultObject),
     VaultStatus(VaultStatusObject),
 
     SharedSecret(SharedSecretObject),
-    Credentials(CredentialsObject),
-    DbTail(DbTailObject),
 
     Error {
         event: KvLogEvent<ArtifactId, ErrorMessage>,
