@@ -63,17 +63,15 @@ impl<Repo, State> ApplicationStateManager<Repo, State>
             dt: MpscDataTransfer::new(),
         });
 
-        Self::server_setup(cfg.server_repo, server_dt.clone()).await?;
-
-        ApplicationStateManager::virtual_device_setup(
-            cfg.device_repo,
-            server_dt.clone(),
-            cfg.vd_js_app_state,
-        )
+        Self::server_setup(cfg.server_repo, server_dt.clone())
             .await?;
 
-        let app_manager = ApplicationStateManager::client_setup(cfg.client_repo, server_dt.clone(), cfg.js_app_state)
+        Self::virtual_device_setup(cfg.device_repo, server_dt.clone(), cfg.vd_js_app_state)
             .await?;
+
+        let app_manager = Self::client_setup(cfg.client_repo, server_dt.clone(), cfg.js_app_state)
+            .await?;
+
         Ok(app_manager)
     }
 
@@ -101,7 +99,6 @@ impl<Repo, State> ApplicationStateManager<Repo, State>
             let creds = persistent_obj
                 .repo
                 .get_or_generate_device_creds(String::from("client"))
-                .in_current_span()
                 .await?;
 
             Arc::new(MetaClientService {
@@ -155,45 +152,21 @@ impl<Repo, State> ApplicationStateManager<Repo, State>
             .get_or_generate_user_creds(DeviceName::from("virtual-device"), VaultName::from("q"))
             .await?;
 
-        let vd_read_db_data_transfer = Arc::new(ReadDbDataTransfer {
-            dt: MpscDataTransfer::new(),
-        });
-        let vd_read_db_service_proxy = Arc::new(ReadDbServiceProxy {
-            dt: vd_read_db_data_transfer.clone(),
-        });
-
-        let read_db_service = ReadDbService {
-            persistent_obj: persistent_object.clone(),
-            repo: device_repo,
-            read_db_id: String::from("virtual_device"),
-            data_transfer: vd_read_db_data_transfer.clone(),
-        };
-
-        let read_db_service_proxy = Arc::new(ReadDbServiceProxy {
-            dt: vd_read_db_data_transfer,
-        });
-
-        let read_db_service = Arc::new(read_db_service);
-
-        let vd_read_db_service = read_db_service.clone();
-
         let dt_meta_client = Arc::new(MetaClientDataTransfer {
             dt: MpscDataTransfer::new(),
         });
 
         let creds_obj = CredentialsObject::unit(creds);
+
         let gateway = Arc::new(SyncGateway {
             id: String::from("vd-gateway"),
             persistent_object: persistent_object.clone(),
-            server_dt: dt.clone(),
-            read_db_service_proxy: vd_read_db_service_proxy.clone(),
-            creds: creds_obj.clone(),
+            server_dt: dt.clone()
         });
 
         let meta_client_service = {
             let meta_client = Arc::new(MetaClient {
-                persistent_obj: persistent_object.clone(),
-                read_db_service_proxy: read_db_service_proxy.clone(),
+                persistent_obj: persistent_object.clone()
             });
 
             MetaClientService {
@@ -238,20 +211,18 @@ impl<Repo, State> ApplicationStateManager<Repo, State>
         };
 
         let device_creds = server_persistent_obj
-            .repo
-            .get_or_generate_device_creds(String::from("server"))
-            .in_current_span()
+            .get_or_generate_device_creds(DeviceName::from("server"))
             .await?;
         
         let data_sync = ServerDataSync {
             persistent_obj: server_persistent_obj.clone(),
-            device_creds,
+            device_creds: device_creds.clone(),
         };
 
         let server = ServerApp {
             data_sync,
             data_transfer: server_dt.clone(),
-            device_creds: DeviceCredentials {},
+            device_creds
         };
 
         spawn_local(async move { server.run().instrument(server_span()).await });

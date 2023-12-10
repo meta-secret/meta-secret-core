@@ -2,9 +2,12 @@ use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object::PersistentObject;
-use crate::node::server::request::SyncRequest;
+use crate::node::server::request::{SharedSecretRequest, SyncRequest};
 use std::sync::Arc;
 use tracing::error;
+use crate::node::common::model::vault::VaultData;
+use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
+use crate::node::db::descriptors::shared_secret::{SharedSecretDescriptor, SharedSecretEventId};
 
 pub struct SSReplicationAction<Repo: KvLogEventRepo> {
     pub persistent_obj: Arc<PersistentObject<Repo>>,
@@ -12,45 +15,43 @@ pub struct SSReplicationAction<Repo: KvLogEventRepo> {
 
 impl<Repo: KvLogEventRepo> SSReplicationAction<Repo> {
 
-    pub async fn replicate(&self, request: &SyncRequest) -> Vec<GenericKvLogEvent> {
+    pub async fn replicate(&self, request: SharedSecretRequest, vault: &VaultData) -> Vec<GenericKvLogEvent> {
         let mut commit_log: Vec<GenericKvLogEvent> = vec![];
 
-        let Some(_) = &request.vault_tail_id else {
-            error!("Ignore empty vault request");
-            return vec![];
-        };
+        let ss_log_events = self.persistent_obj
+            .find_object_events(request.ss_log)
+            .await?;
 
-        let audit_desc = ObjectDescriptor::SharedSecretAudit {
-            vault_name: request.sender.vault.name.clone(),
-        };
+        commit_log.extend(ss_log_events);
 
-        let audit_tail_id = request.s_s_audit.clone().unwrap_or(ObjectId::unit(&audit_desc));
-
-        let events = self.persistent_obj.find_object_events(&audit_tail_id).await;
-
-        for audit_event in events {
-            commit_log.push(audit_event.clone());
-
-            if let GenericKvLogEvent::SharedSecret(SharedSecretObject::Audit { event }) = audit_event {
-                let ss_event_res = self.persistent_obj.repo.find_one(event.value.clone()).await;
-
-                let Ok(Some(ss_event)) = ss_event_res else {
-                    error!("Invalid event type: not an audit event");
-                    continue;
-                };
-
-                let GenericKvLogEvent::SharedSecret(ss_obj) = &ss_event else {
-                    error!("Invalid event type: not shared secret");
-                    continue;
-                };
-
-                if let SharedSecretObject::Audit { .. } = ss_obj {
-                    error!("Audit log events not allowed");
-                    continue;
-                }
-
-                commit_log.push(ss_event);
+        for member in vault.members() {
+            if request.sender == member.user_data  {
+                continue;
             }
+
+            let ss_event_id = SharedSecretEventId {
+                vault_name: request.sender.vault_name.clone(),
+                sender: member.user_data.device.id.clone(),
+                receiver: request.sender.device.id.clone(),
+            };
+
+            let ss_split_events = {
+                let split_desc = SharedSecretDescriptor::Split(ss_event_id.clone());
+                let ss_split_obj_desc = ObjectDescriptor::SharedSecret(split_desc);
+                self.persistent_obj
+                    .find_object_events(ObjectId::unit(ss_split_obj_desc))
+                    .await?
+            };
+            commit_log.extend(ss_split_events);
+
+            let ss_recover_events = {
+                let recover_desc = SharedSecretDescriptor::Recover(ss_event_id);
+                let ss_recover_obj_desc = ObjectDescriptor::SharedSecret(recover_desc);
+                self.persistent_obj
+                    .find_object_events(ObjectId::unit(ss_recover_obj_desc))
+                    .await?
+            };
+            commit_log.extend(ss_recover_events);
         }
 
         commit_log

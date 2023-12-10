@@ -2,7 +2,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::anyhow;
-use tracing::{debug, error, info, instrument, Instrument};
+use tracing::{debug, error, info, instrument};
+use crate::node::common::model::device::DeviceData;
 
 use crate::node::common::model::user::{UserCredentials, UserDataMember, UserMembership};
 use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
@@ -18,14 +19,13 @@ use crate::node::db::events::vault_event::VaultObject;
 use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::server::data_sync::DataSyncRequest;
-use crate::node::server::request::{SyncRequest, VaultRequest};
+use crate::node::server::request::{GlobalIndexRequest, SharedSecretRequest, SyncRequest, VaultRequest};
 use crate::node::server::server_app::ServerDataTransfer;
 
 pub struct SyncGateway<Repo: KvLogEventRepo> {
     pub id: String,
     pub persistent_object: Arc<PersistentObject<Repo>>,
-    pub server_dt: Arc<ServerDataTransfer>,
-    pub creds: CredentialsObject,
+    pub server_dt: Arc<ServerDataTransfer>
 }
 
 impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
@@ -48,20 +48,31 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
     ///  - vault, shared secret... - user has been registered, we can sync vault related events
     #[instrument(skip_all)]
     pub async fn sync(&self) -> anyhow::Result<()> {
-        let db_tail = self.persistent_object.get_db_tail().await?;
 
-        self.sync_global_index().await?;
+        let maybe_creds_event = self.persistent_object
+            .find_tail_event(ObjectDescriptor::CredsIndex)
+            .await?;
 
-        let CredentialsObject::User { event } = &self.creds else {
+        let Some(creds_event) = maybe_creds_event else {
+            return Ok(());
+        };
+
+        let GenericKvLogEvent::Credentials(creds_obj) = creds_event else {
+            return Ok(());
+        };
+
+        self.sync_global_index(creds_obj.device()).await?;
+
+        let CredentialsObject::DefaultUser { event: user_creds_event } = creds_obj else {
             return Ok(());
         };
 
         //Vault synchronization
-        let user_creds = &event.value;
-        let sender = event.value.device();
+        let user_creds = user_creds_event.value;
+        let sender = user_creds.user();
 
         let vault_status_obj_desc = ObjectDescriptor::Vault(VaultDescriptor::VaultStatus {
-            device_id: user_creds.device_creds.device.id.clone(),
+            device_id: user_creds.device().id,
             vault_name: user_creds.vault_name.clone(),
         });
 
@@ -75,7 +86,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         };
 
         if vault_status_object.is_not_member() {
-            Ok(())
+            return Ok(());
         };
 
         // Local device has less events than the server
@@ -93,19 +104,17 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             };
 
             let vault_status_free_id = {
-                let device_id = user_creds.device_creds.device.id.clone();
+                let device_id = user_creds.device().id;
                 let obj_desc = VaultDescriptor::vault_status(device_id, vault_name);
                 self.persistent_object.find_free_id_by_obj_desc(obj_desc).await?
             };
 
-            SyncRequest::Vault {
+            SyncRequest::Vault(VaultRequest {
                 sender,
-                request: VaultRequest {
-                    vault_log: vault_log_free_id,
-                    vault: vault_free_id,
-                    vault_status: vault_status_free_id,
-                },
-            }
+                vault_log: vault_log_free_id,
+                vault: vault_free_id,
+                vault_status: vault_status_free_id,
+            })
         };
 
         let data_sync_response = self
@@ -126,23 +135,20 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         Ok(())
     }
 
-    async fn sync_global_index(&self) -> anyhow::Result<()> {
+    async fn sync_global_index(&self, sender: DeviceData) -> anyhow::Result<()> {
         //TODO optimization: read global index tail id from db_tail
 
-        let sender = match &self.creds {
-            CredentialsObject::Device { event } => event.value.device.clone(),
-            CredentialsObject::User { event } => event.value.device_creds.device.clone(),
+        let gi_free_id = {
+            let gi_desc = ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index);
+            self.persistent_object
+                .find_free_id_by_obj_desc(gi_desc)
+                .await?
         };
 
-        let gi_free_id = self
-            .persistent_object
-            .find_free_id_by_obj_desc(ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index))
-            .await?;
-
-        let sync_request = SyncRequest::GlobalIndex {
+        let sync_request = SyncRequest::GlobalIndex(GlobalIndexRequest {
             sender,
             global_index: gi_free_id,
-        };
+        });
 
         let new_gi_events = self
             .server_dt
@@ -157,7 +163,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                 // Update vault index according to global index
                 if let GlobalIndexObject::Update { event } = gi_obj {
                     let vault_id = event.value;
-                    let vault_idx_evt = GlobalIndexObject::index_from(vault_id).to_generic();
+                    let vault_idx_evt = GlobalIndexObject::index_from_vault_id(vault_id).to_generic();
                     self.persistent_object.repo.save(vault_idx_evt).await?;
                 }
             } else {
@@ -227,10 +233,10 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                 .find_free_id_by_obj_desc(ss_log_obj_desc)
                 .await?;
 
-            SyncRequest::SharedSecret {
-                sender: creds.device_creds.device.clone(),
+            SyncRequest::SharedSecret(SharedSecretRequest {
+                sender: creds.user(),
                 ss_log: ss_log_id
-            }
+            })
         };
 
         let new_ss_log_events = self.server_dt.dt

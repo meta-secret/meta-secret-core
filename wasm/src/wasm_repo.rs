@@ -49,7 +49,7 @@ impl WasmRepo {
         }
     }
 
-    async fn get_store(&self) -> Result<IdbObjectStore, Error> {
+    async fn get_store(&self) -> anyhow::Result<IdbObjectStore> {
         let db = open_db(self.db_name.as_str()).in_current_span().await;
         let tx = db.transaction_on_one(self.store_name.as_str())?;
         let store = tx.object_store(self.store_name.as_str())?;

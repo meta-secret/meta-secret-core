@@ -1,12 +1,13 @@
-use crate::models::ApplicationState;
-use crate::node::app_models::UserCredentials;
-use crate::node::db::events::common::VaultInfo;
+use crate::node::common::actor::ServiceState;
+use crate::node::common::model::ApplicationState;
+use crate::node::common::model::user::UserCredentials;
+use crate::node::common::model::vault::VaultData;
 
 #[derive(Clone, Debug)]
 pub enum GenericAppState {
     Empty(EmptyAppState),
     Configured(ConfiguredAppState),
-    Joined(JoinedAppState),
+    Member(MemberAppState),
 }
 
 impl GenericAppState {
@@ -14,7 +15,7 @@ impl GenericAppState {
         match self {
             GenericAppState::Empty(EmptyAppState { app_state }) => app_state.clone(),
             GenericAppState::Configured(ConfiguredAppState { app_state, .. }) => app_state.clone(),
-            GenericAppState::Joined(JoinedAppState { app_state, .. }) => app_state.clone(),
+            GenericAppState::Member(MemberAppState { app_state, .. }) => app_state.clone(),
         }
     }
 }
@@ -34,9 +35,8 @@ impl Default for EmptyAppState {
     fn default() -> Self {
         EmptyAppState {
             app_state: ApplicationState {
-                meta_vault: None,
+                device_creds: None,
                 vault: None,
-                meta_passwords: vec![],
                 join_component: false,
             },
         }
@@ -50,8 +50,14 @@ pub struct ConfiguredAppState {
 }
 
 #[derive(Clone, Debug)]
-pub struct JoinedAppState {
+pub struct MemberAppState {
     pub app_state: ApplicationState,
     pub creds: UserCredentials,
-    pub vault_info: VaultInfo,
+    pub vault: VaultData,
+}
+
+impl From<GenericAppState> for ServiceState<GenericAppState> {
+    fn from(state: GenericAppState) -> Self {
+        ServiceState { state }
+    }
 }

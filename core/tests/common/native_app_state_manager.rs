@@ -187,7 +187,6 @@ impl NativeApplicationStateManager {
             id: String::from("vd-gateway"),
             persistent_object: persistent_object.clone(),
             server_dt: dt.clone(),
-            read_db_service_proxy: vd_read_db_service_proxy.clone(),
         });
 
         let creds = persistent_object
@@ -261,12 +260,6 @@ impl NativeApplicationStateManager {
                 .await?
         };
 
-        let read_db_data_transfer = Arc::new(ReadDbDataTransfer {
-            dt: MpscDataTransfer::new(),
-        });
-
-        //run read_db service
-        let dt_for_meta = read_db_data_transfer.clone();
         let server_repo_for_meta = server_repo.clone();
         thread::spawn(move || {
             let rt = Builder::new_current_thread().enable_all().build().unwrap();
@@ -295,10 +288,6 @@ impl NativeApplicationStateManager {
                     let obj = PersistentObject::new(server_repo.clone());
                     Arc::new(obj)
                 };
-
-                let read_db_service_proxy = Arc::new(ReadDbServiceProxy {
-                    dt: read_db_data_transfer,
-                });
 
                 let server_data_sync = ServerDataSync::new(creds,  server_persistent_obj, read_db_service_proxy)
                     .instrument(server_span())

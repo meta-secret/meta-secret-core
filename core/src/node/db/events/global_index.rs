@@ -1,3 +1,5 @@
+use crate::node::common::model::device::DeviceData;
+use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::common::PublicKeyRecord;
@@ -9,15 +11,20 @@ use crate::node::db::events::object_id::{ArtifactId, GenesisId, ObjectId, UnitId
 #[serde(rename_all = "camelCase")]
 pub enum GlobalIndexObject {
     Unit { event: KvLogEvent<UnitId, ()> },
-    Genesis { event: KvLogEvent<GenesisId, PublicKeyRecord> },
-
+    Genesis { event: KvLogEvent<GenesisId, DeviceData> },
     Update { event: KvLogEvent<ArtifactId, UnitId> },
 
-    VaultIndex { event: KvLogEvent<UnitId, UnitId> },
+    VaultIndex { event: KvLogEvent<UnitId, ()> },
 }
 
 impl GlobalIndexObject {
-    pub fn index_from(vault_id: UnitId) -> GlobalIndexObject {
+    pub fn index_from_vault_name(vault_name: VaultName) -> GlobalIndexObject {
+        let vault_id = UnitId::vault_unit(vault_name);
+
+        GlobalIndexObject::index_from_vault_id(vault_id)
+    }
+
+    pub fn index_from_vault_id(vault_id: UnitId) -> GlobalIndexObject {
         let idx_desc = ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::VaultIndex {
             vault_id: vault_id.clone()
         });
@@ -25,7 +32,7 @@ impl GlobalIndexObject {
         GlobalIndexObject::VaultIndex {
             event: KvLogEvent {
                 key: KvKey::unit(idx_desc),
-                value: vault_id,
+                value: (),
             }
         }
     }

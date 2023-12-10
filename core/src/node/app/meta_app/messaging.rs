@@ -1,5 +1,5 @@
-use crate::models::MetaPasswordId;
 use crate::node::common::model::device::DeviceData;
+use crate::node::common::model::MetaPasswordId;
 use crate::node::common::model::vault::VaultName;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

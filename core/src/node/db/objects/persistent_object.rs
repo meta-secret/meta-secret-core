@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use tracing::{debug, info, instrument, Instrument};
 
 use crate::node::app::credentials_repo::CredentialsRepo;
-use crate::node::common::model::device::{DeviceCredentials, DeviceName};
+use crate::node::common::model::device::{DeviceCredentials, DeviceData, DeviceName};
 use crate::node::common::model::user::UserCredentials;
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
@@ -165,9 +165,20 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
     }
 
     #[instrument(skip(self))]
-    async fn generate_user(&self, device_name: DeviceName, vault_name: VaultName) -> anyhow::Result<CredentialsObject> {
+    pub async fn generate_user(&self, device_name: DeviceName, vault_name: VaultName) -> anyhow::Result<CredentialsObject> {
         info!("Create a new user locally");
 
+        let device_creds = self.get_or_generate_device_creds(device_name).await?;
+
+        let user_creds = CredentialsObject::default_user(UserCredentials::from(device_creds, vault_name));
+        let user_creds_event = GenericKvLogEvent::Credentials(user_creds.clone());
+
+        self.repo.save(user_creds_event).await?;
+
+        Ok(user_creds)
+    }
+
+    pub async fn get_or_generate_device_creds(&self, device_name: DeviceName) -> Result<DeviceCredentials, Error> {
         let device_repo = CredentialsRepo {
             repo: self.repo.clone(),
         };
@@ -176,23 +187,11 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
 
         let device_creds = match maybe_creds {
             None => {
-                let device_creds = DeviceCredentials::generate(device_name);
-                let creds = CredentialsObject::unit(device_creds.clone());
-                device_repo.save(creds.clone()).await?;
-                device_creds
+                device_repo.generate_device_creds(device_name).await?
             }
             Some(creds) => creds,
         };
-
-        let user_creds = CredentialsObject::unit(UserCredentials {
-            vault_name,
-            device_creds,
-        });
-
-        let user_creds_event = GenericKvLogEvent::Credentials(user_creds.clone());
-        self.repo.save(user_creds_event).await?;
-
-        Ok(user_creds)
+        Ok(device_creds)
     }
 }
 
@@ -210,7 +209,7 @@ impl<Repo: KvLogEventRepo> PersistentGlobalIndexApi for PersistentGlobalIndex<Re
 
     ///create a genesis event and save into the database
     #[instrument(skip(self))]
-    async fn gi_init(&self, public_key: PublicKeyRecord) -> anyhow::Result<Vec<GenericKvLogEvent>> {
+    async fn gi_init(&self, public_key: DeviceData) -> anyhow::Result<Vec<GenericKvLogEvent>> {
         info!("Init global index");
 
         let unit_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Unit {

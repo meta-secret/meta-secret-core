@@ -33,7 +33,8 @@ impl ObjIdExtractor for SharedSecretObject {
             SharedSecretObject::Split { event } => ObjectId::from(event.key.obj_id.clone()),
             SharedSecretObject::Recover { event } => ObjectId::from(event.key.obj_id.clone()),
             SharedSecretObject::RecoveryRequest { event } => ObjectId::from(event.key.obj_id.clone()),
-            SharedSecretObject::SSLog { event } => ObjectId::from(event.key.obj_id.clone())
+            SharedSecretObject::SSLog { event } => ObjectId::from(event.key.obj_id.clone()),
+            SharedSecretObject::LocalShare { event } => ObjectId::from(event.key.obj_id.clone()),
         }
     }
 }

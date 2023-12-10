@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use tracing::error;
 
-use crate::node::app::meta_app::app_state::JoinedAppState;
+use crate::node::app::meta_app::app_state::MemberAppState;
 use crate::node::common::model::{MetaPasswordId, PasswordRecoveryRequest};
 use crate::node::common::model::vault::VaultStatus;
 use crate::node::db::events::common::{SharedSecretObject};
@@ -19,7 +19,7 @@ pub struct RecoveryAction<Repo: KvLogEventRepo> {
 }
 
 impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
-    pub async fn recovery_request(&self, meta_pass_id: MetaPasswordId, app_state: &JoinedAppState) {
+    pub async fn recovery_request(&self, meta_pass_id: MetaPasswordId, app_state: &MemberAppState) {
         let VaultStatus::Member { vault } = &app_state.vault_info else {
             error!("You must be a member of the vault");
             return;
@@ -93,7 +93,7 @@ mod test {
     use std::sync::Arc;
 
     use crate::models::{ApplicationState, VaultDoc};
-    use crate::node::app::meta_app::app_state::JoinedAppState;
+    use crate::node::app::meta_app::app_state::MemberAppState;
     use crate::node::common::model::ApplicationState;
     use crate::node::common::model::vault::VaultStatus;
     use crate::node::db::actions::recover::RecoveryAction;
@@ -118,7 +118,7 @@ mod test {
         let creds_a = meta_test_utils::build_user_creds_a(vault_name.as_str());
         let creds_b = meta_test_utils::build_user_creds_b(vault_name.as_str());
 
-        let app_state = JoinedAppState {
+        let app_state = MemberAppState {
             app_state: ApplicationState {
                 meta_vault: None,
                 vault: None,

@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
 use tracing::{debug, error, info, instrument, Instrument};
-use crate::node::app::meta_app::app_state::{ConfiguredAppState, GenericAppState, JoinedAppState};
-use crate::node::common::model::vault::VaultName;
-use crate::node::db::actions::sign_up::SignUpRequest;
+use crate::node::app::credentials_repo::CredentialsRepo;
+use crate::node::app::meta_app::app_state::{ConfiguredAppState, GenericAppState, MemberAppState};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::ObjectId;
@@ -17,6 +16,9 @@ pub struct MetaClient<Repo: KvLogEventRepo> {
 
 impl<Repo: KvLogEventRepo> MetaClient<Repo> {
     pub async fn find_user_creds(&self, curr_state: &GenericAppState) -> anyhow::Result<Option<ConfiguredAppState>> {
+        let creds_repo = CredentialsRepo {
+            repo: self.persistent_obj.repo.clone()
+        };
         let maybe_creds = self.persistent_obj.repo.find_device_creds().await?;
 
         match maybe_creds {
@@ -31,7 +33,7 @@ impl<Repo: KvLogEventRepo> MetaClient<Repo> {
 
 impl<Repo: KvLogEventRepo> MetaClient<Repo> {
     #[instrument(skip_all)]
-    pub async fn sign_up(&self, curr_state: &ConfiguredAppState) -> JoinedAppState {
+    pub async fn sign_up(&self, curr_state: &ConfiguredAppState) -> MemberAppState {
         let join = curr_state.app_state.join_component;
 
         if join {
@@ -51,7 +53,7 @@ impl<Repo: KvLogEventRepo> MetaClient<Repo> {
             updated_app_state.vault = Some(Box::new(vault.clone()))
         }
 
-        JoinedAppState {
+        MemberAppState {
             app_state: updated_app_state,
             creds: curr_state.creds.clone(),
             vault_info,
@@ -127,24 +129,13 @@ impl<Repo: KvLogEventRepo> MetaClient<Repo> {
 
         Ok(VaultInfo::Pending)
     }
-
-    #[instrument(skip_all)]
-    pub async fn get_vault(&self, vault_name: VaultName) -> VaultInfo {
-        debug!("Get vault");
-
-        self.read_db_service_proxy
-            .get_vault_info(vault_name)
-            .in_current_span()
-            .await
-            .unwrap()
-    }
 }
 
 impl<Repo> MetaClient<Repo>
 where
     Repo: KvLogEventRepo,
 {
-    pub async fn cluster_distribution(&self, pass_id: &str, pass: &str, app_state: &JoinedAppState) {
+    pub async fn cluster_distribution(&self, pass_id: &str, pass: &str, app_state: &MemberAppState) {
         info!("Cluster distribution. App state: {:?}", app_state);
 
         if let VaultInfo::Member { vault } = &app_state.vault_info {

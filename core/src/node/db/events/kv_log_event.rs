@@ -1,3 +1,4 @@
+use crate::node::common::model::device::DeviceData;
 use crate::node::common::model::user::UserDataCandidate;
 use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
@@ -18,19 +19,11 @@ pub struct KvEvent<T> {
     pub value: T,
 }
 
-impl KvLogEvent<GenesisId, PublicKeyRecord> {
-    pub fn genesis(obj_desc: ObjectDescriptor, server_pk: PublicKeyRecord) -> KvLogEvent<GenesisId, PublicKeyRecord> {
+impl KvLogEvent<GenesisId, DeviceData> {
+    pub fn genesis(obj_desc: ObjectDescriptor, server_pk: DeviceData) -> KvLogEvent<GenesisId, DeviceData> {
         KvLogEvent {
             key: KvKey::genesis(obj_desc),
             value: server_pk,
-        }
-    }
-
-    pub fn vault_unit(user_sig: UserDataCandidate) -> KvLogEvent<UnitId, UserDataCandidate> {
-        let obj_desc = ObjectDescriptor::vault(user_sig.user_data.vault_name.clone());
-        KvLogEvent {
-            key: KvKey::unit(obj_desc),
-            value: user_sig,
         }
     }
 
@@ -41,7 +34,7 @@ impl KvLogEvent<GenesisId, PublicKeyRecord> {
         }
     }
 
-    pub fn global_index_genesis(server_pk: PublicKeyRecord) -> KvLogEvent<GenesisId, PublicKeyRecord> {
+    pub fn global_index_genesis(server_pk: DeviceData) -> KvLogEvent<GenesisId, DeviceData> {
         Self::genesis(ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index), server_pk)
     }
 }
@@ -113,6 +106,15 @@ impl Next<KvKey<GenesisId>> for KvKey<UnitId> {
         KvKey {
             obj_id: self.obj_id.next(),
             obj_desc: self.obj_desc.clone(),
+        }
+    }
+}
+
+impl KvKey<ArtifactId> {
+    pub fn artifact(obj_desc: ObjectDescriptor, obj_id: ArtifactId) -> Self {
+        Self {
+            obj_id,
+            obj_desc,
         }
     }
 }

@@ -139,6 +139,12 @@ pub mod user {
         pub user_data: UserData,
     }
 
+    impl UserDataCandidate {
+        pub fn vault_name(&self) -> VaultName {
+            self.user_data.vault_name.clone()
+        }
+    }
+
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct UserDataMember {
@@ -220,7 +226,32 @@ pub mod vault {
         pub secrets: HashSet<MetaPasswordId>,
     }
 
+    impl From<VaultName> for VaultData {
+        fn from(vault_name: VaultName) -> Self {
+            VaultData {
+                vault_name,
+                users: HashMap::new(),
+                secrets: HashSet::new(),
+            }
+        }
+    }
+
     impl VaultData {
+        pub fn members(&self) -> Vec<UserDataMember> {
+            let mut members: Vec<UserDataMember> = vec![];
+            self.users.values().for_each(|membership| {
+                if let UserMembership::Member(user_data_member) = membership {
+                    members.push(user_data_member.clone());
+                }
+            });
+
+            members
+        }
+
+        pub fn add_secret(&mut self, meta_password_id: MetaPasswordId) {
+            self.secrets.insert(meta_password_id);
+        }
+
         pub fn update_membership(&mut self, membership: UserMembership) {
             self.users.insert(membership.device_id(), membership);
         }

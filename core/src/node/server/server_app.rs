@@ -53,7 +53,9 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                         .await;
                 }
                 DataSyncRequest::Event(event) => {
-                    self.data_sync.send(event).await;
+                    self.data_sync.send(event)
+                        .await
+                        .expect("Server. Send event error");
                 }
             }
         }
@@ -79,7 +81,7 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
 
         //If either of unit or genesis not exists then create initial records for the global index
         if !gi_unit_exists || !gi_genesis_exists {
-            let server_pk = PublicKeyRecord::from(self.device_creds.secret_box.dsa.public_key.clone());
+            let server_pk = self.device_creds.device.clone();
             let _meta_g = self
                 .data_sync
                 .persistent_obj

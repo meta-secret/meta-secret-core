@@ -1,4 +1,5 @@
 use crate::crypto::utils;
+use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::{ObjectName, ObjectType};
 use crate::node::db::events::object_id::UnitId;
 
@@ -30,8 +31,16 @@ impl ObjectName for GlobalIndexDescriptor {
             GlobalIndexDescriptor::Index => String::from("index"),
             GlobalIndexDescriptor::VaultIndex { vault_id } => {
                 let json_str = serde_json::to_string(&vault_id.id).unwrap();
-                utils::generate_uuid_b64_url_enc(json_str)
+                //utils::generate_uuid_b64_url_enc(json_str)
+                json_str
             }
         }
+    }
+}
+
+impl GlobalIndexDescriptor {
+    pub fn vault_index(vault_name: VaultName) -> GlobalIndexDescriptor {
+        let vault_id = UnitId::vault_unit(vault_name);
+        GlobalIndexDescriptor::VaultIndex { vault_id }
     }
 }

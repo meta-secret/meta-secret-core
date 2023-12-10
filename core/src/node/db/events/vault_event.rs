@@ -1,6 +1,6 @@
-use anyhow::anyhow;
 use crate::crypto::keys::OpenBox;
-use crate::node::common::model::user::{UserDataCandidate, UserDataMember, UserMembership};
+use crate::node::common::model::device::DeviceData;
+use crate::node::common::model::user::{UserData, UserDataCandidate, UserDataMember, UserMembership};
 use crate::node::common::model::vault::{VaultData, VaultName};
 use crate::node::common::model::MetaPasswordId;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, ToGenericEvent};
@@ -11,13 +11,12 @@ use crate::node::db::events::object_id::{ArtifactId, GenesisId, ObjectId, UnitId
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum DeviceLogObject {
-    /// Devices' public key, to ensure that the only this device can send events to this log
     Unit {
-        event: KvLogEvent<UnitId, OpenBox>,
+        event: KvLogEvent<UnitId, VaultName>,
     },
-    /// The only possible action for a new device that want's to join the vault is to send a JoinRequest
-    JoinRequest {
-        event: KvLogEvent<GenesisId, UserDataCandidate>,
+    /// Device sends its data to ensure that the only this device can send events to this log
+    Genesis {
+        event: KvLogEvent<GenesisId, UserData>,
     },
     Action {
         event: KvLogEvent<ArtifactId, VaultAction>,
@@ -30,10 +29,9 @@ pub enum DeviceLogObject {
 #[serde(rename_all = "camelCase")]
 pub enum VaultLogObject {
     Unit {
-        event: KvLogEvent<UnitId, OpenBox>,
+        event: KvLogEvent<UnitId, VaultName>,
     },
-    /// The only possible action for a new vault that want's to join the vault is to send a JoinRequest
-    JoinRequest {
+    Genesis {
         event: KvLogEvent<GenesisId, UserDataCandidate>,
     },
     Action {
@@ -49,7 +47,7 @@ pub enum VaultObject {
     },
     /// Meta Server public keys
     Genesis {
-        event: KvLogEvent<GenesisId, OpenBox>,
+        event: KvLogEvent<GenesisId, DeviceData>,
     },
     Vault {
         event: KvLogEvent<ArtifactId, VaultData>,
@@ -62,9 +60,9 @@ pub enum VaultStatusObject {
     Unit {
         event: KvLogEvent<UnitId, VaultName>,
     },
-    /// Meta Server public keys
+    /// Device public keys
     Genesis {
-        event: KvLogEvent<GenesisId, OpenBox>,
+        event: KvLogEvent<GenesisId, UserData>,
     },
     Status {
         event: KvLogEvent<ArtifactId, UserMembership>,
@@ -134,8 +132,25 @@ impl ObjIdExtractor for VaultObject {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum VaultAction {
+    JoinRequest { candidate: UserDataCandidate },
     /// When the device becomes a member of the vault, it can change membership of other members
-    UpdateMembership { membership: UserMembership },
-    /// Adds a new meta password into the vault
-    AddMetaPassword { meta_pass_id: MetaPasswordId },
+    UpdateMembership {
+        sender: UserDataMember,
+        update: UserMembership
+    },
+    /// A member can add a new meta password into the vault
+    AddMetaPassword {
+        sender: UserDataMember,
+        meta_pass_id: MetaPasswordId
+    },
+}
+
+impl VaultAction {
+    pub fn vault_name(&self) -> VaultName {
+        match self {
+            VaultAction::JoinRequest { candidate } => candidate.user_data.vault_name.clone(),
+            VaultAction::UpdateMembership { update, .. } => update.user_data().vault_name.clone(),
+            VaultAction::AddMetaPassword { sender, .. } => sender.user_data.vault_name.clone(),
+        }
+    }
 }

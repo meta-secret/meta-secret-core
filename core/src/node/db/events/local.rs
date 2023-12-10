@@ -1,10 +1,11 @@
-use crate::node::common::model::device::DeviceCredentials;
+use anyhow::{anyhow, Error};
+use crate::node::common::model::device::{DeviceCredentials, DeviceData};
 use crate::node::common::model::user::UserCredentials;
+use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::db_tail::DbTail;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, ToGenericEvent, UnitEvent};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::object_descriptor::ObjectDescriptor;
-use crate::node::db::events::object_id::{ObjectId, UnitId};
+use crate::node::db::events::object_id::{ArtifactId, GenesisId, ObjectId, UnitId};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -12,9 +13,10 @@ pub enum CredentialsObject {
     Device {
         event: KvLogEvent<UnitId, DeviceCredentials>
     },
-    User {
-        event: KvLogEvent<UnitId, UserCredentials>
-    },
+    /// Default vault
+    DefaultUser {
+        event: KvLogEvent<GenesisId, UserCredentials>
+    }
 }
 
 impl ObjIdExtractor for CredentialsObject {
@@ -40,20 +42,40 @@ impl UnitEvent<DeviceCredentials> for CredentialsObject {
     }
 }
 
-impl UnitEvent<UserCredentials> for CredentialsObject {
-    fn unit(value: UserCredentials) -> Self {
+impl CredentialsObject {
+    pub fn default_user(user: UserCredentials) -> Self {
         let event = KvLogEvent {
-            key: KvKey::unit(ObjectDescriptor::CredsIndex),
-            value,
+            key: KvKey::genesis(ObjectDescriptor::CredsIndex),
+            value: user,
         };
 
-        CredentialsObject::User { event }
+        CredentialsObject::DefaultUser { event }
+    }
+}
+
+impl TryFrom<GenericKvLogEvent> for CredentialsObject {
+    type Error = Error;
+
+    fn try_from(creds_event: GenericKvLogEvent) -> Result<Self, Self::Error> {
+        if let GenericKvLogEvent::Credentials(creds_obj) = creds_event {
+            return Ok(creds_obj);
+        } else {
+            let error: Error = anyhow!("Invalid credentials event type: {:?}", creds_event.key().obj_desc());
+            Err(error)
+        }
     }
 }
 
 impl CredentialsObject {
     pub fn unit_id() -> ObjectId {
         ObjectId::unit(ObjectDescriptor::CredsIndex)
+    }
+
+    pub fn device(&self) -> DeviceData {
+        match self {
+            CredentialsObject::Device { event } => event.value.device.clone(),
+            CredentialsObject::DefaultUser { event } => event.value.device_creds.device.clone()
+        }
     }
 }
 
