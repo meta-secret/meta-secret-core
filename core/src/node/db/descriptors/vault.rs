@@ -1,29 +1,24 @@
 use std::ops::Add;
 
-use crate::node::common::model::device::DeviceId;
+use crate::node::common::model::user::UserId;
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ObjectName, ObjectType};
 
 pub enum VaultDescriptor {
-    DeviceLog {
-        device_id: DeviceId,
-        vault_name: VaultName,
-    },
+    DeviceLog { user_id: UserId },
+
     VaultLog {
         vault_name: VaultName,
     },
     Vault {
         vault_name: VaultName,
     },
-    VaultStatus {
-        device_id: DeviceId,
-        vault_name: VaultName,
-    },
+    VaultStatus { user_id: UserId },
 }
 
 impl VaultDescriptor {
-    pub fn device_log(device_id: DeviceId, vault_name: VaultName) -> ObjectDescriptor {
-        ObjectDescriptor::Vault(VaultDescriptor::DeviceLog {device_id, vault_name })
+    pub fn device_log(user_id: UserId) -> ObjectDescriptor {
+        ObjectDescriptor::Vault(VaultDescriptor::DeviceLog { user_id })
     }
 
     pub fn vault_log(vault_name: VaultName) -> ObjectDescriptor {
@@ -34,19 +29,19 @@ impl VaultDescriptor {
         ObjectDescriptor::Vault(VaultDescriptor::Vault { vault_name })
     }
 
-    pub fn vault_status(device_id: DeviceId, vault_name: VaultName) -> ObjectDescriptor {
-        ObjectDescriptor::Vault(VaultDescriptor::VaultStatus { device_id, vault_name })
+    pub fn vault_status(user_id: UserId) -> ObjectDescriptor {
+        ObjectDescriptor::Vault(VaultDescriptor::VaultStatus { user_id })
     }
 }
 
 impl ObjectType for VaultDescriptor {
     fn object_type(&self) -> String {
         match self {
-            VaultDescriptor::DeviceLog { device_id, .. } => {
-                String::from("DeviceLog:").add(device_id.to_string().as_str())
+            VaultDescriptor::DeviceLog { user_id } => {
+                String::from("DeviceLog:").add(user_id.device_id.to_string().as_str())
             }
-            VaultDescriptor::VaultStatus { device_id, .. } => {
-                String::from("VaultStatus:").add(device_id.to_string().as_str())
+            VaultDescriptor::VaultStatus { user_id } => {
+                String::from("VaultStatus:").add(user_id.device_id.to_string().as_str())
             }
             VaultDescriptor::Vault { .. } => String::from("Vault"),
             VaultDescriptor::VaultLog { .. } => String::from("VaultLog"),
@@ -58,9 +53,9 @@ impl ObjectName for VaultDescriptor {
     fn object_name(&self) -> String {
         match self {
             VaultDescriptor::Vault { vault_name } => vault_name.to_string(),
-            VaultDescriptor::DeviceLog { vault_name, .. } => vault_name.to_string(),
+            VaultDescriptor::DeviceLog { user_id } => user_id.vault_name.to_string(),
             VaultDescriptor::VaultLog { vault_name } => vault_name.to_string(),
-            VaultDescriptor::VaultStatus { vault_name, .. } => vault_name.to_string()
+            VaultDescriptor::VaultStatus { user_id } => user_id.vault_name.to_string()
         }
     }
 }

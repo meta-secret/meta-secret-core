@@ -192,7 +192,6 @@ impl NativeApplicationStateManager {
         let creds = persistent_object
             .repo
             .get_or_generate_device_creds(String::from("q"), String::from("virtual-device"))
-            .in_current_span()
             .await?;
 
         //run meta client service
@@ -256,7 +255,6 @@ impl NativeApplicationStateManager {
             persistent_obj
                 .repo
                 .get_or_generate_device_creds(String::from("q"), String::from("server"))
-                .in_current_span()
                 .await?
         };
 

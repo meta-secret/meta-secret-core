@@ -93,24 +93,24 @@ impl Next<ObjectId> for ObjectId {
 }
 
 impl UnitId {
-    pub fn unit(obj_descriptor: ObjectDescriptor) -> UnitId {
+    pub fn unit(obj_descriptor: &ObjectDescriptor) -> UnitId {
         let fqdn = obj_descriptor.to_fqdn();
         UnitId { id: fqdn.next_id() }
     }
 
     pub fn db_tail() -> UnitId {
-        UnitId::unit(ObjectDescriptor::DbTail)
+        UnitId::unit(&ObjectDescriptor::DbTail)
     }
 
     pub fn global_index() -> UnitId {
-        UnitId::unit(ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index))
+        UnitId::unit(&ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index))
     }
 
     pub fn vault_unit(vault_name: VaultName) -> UnitId {
         let vault_desc = ObjectDescriptor::Vault(VaultDescriptor::Vault {
             vault_name
         });
-        UnitId::unit(vault_desc)
+        UnitId::unit(&vault_desc)
     }
 }
 

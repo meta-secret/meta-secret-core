@@ -6,19 +6,19 @@ use crate::node::app::sync_gateway::SyncGateway;
 use crate::node::db::actions::join;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::vault_event::VaultObject;
-use crate::node::db::generic_db::KvLogEventRepo;
+use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::server::server_app::ServerDataTransfer;
 use serde::{Deserialize, Serialize};
 use tracing::{info, instrument, Instrument};
-use crate::node::db::events::local::CredentialsObject;
+use crate::node::common::model::user::UserCredentials;
 
 pub struct VirtualDevice<Repo: KvLogEventRepo> {
     pub meta_client: Arc<MetaClient<Repo>>,
     pub meta_client_proxy: Arc<MetaClientAccessProxy>,
     pub server_dt: Arc<ServerDataTransfer>,
     gateway: Arc<SyncGateway<Repo>>,
-    creds: CredentialsObject,
+    creds: UserCredentials,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -35,7 +35,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
         meta_client_access_proxy: Arc<MetaClientAccessProxy>,
         server_dt: Arc<ServerDataTransfer>,
         gateway: Arc<SyncGateway<Repo>>,
-        creds: CredentialsObject
+        creds: UserCredentials
     ) -> anyhow::Result<VirtualDevice<Repo>> {
         info!("Run virtual device event handler");
 
@@ -48,24 +48,19 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
             meta_client_proxy: meta_client_access_proxy.clone(),
             server_dt,
             gateway,
-            creds: creds.clone()
+            creds
         };
 
         Ok(virtual_device)
     }
 
     pub async fn run(&self) {
-        let CredentialsObject::User { event } = &self.creds else {
-            panic!("Credentials not set");
-        };
-
-        let user_creds = &event.value;
+        let user_creds = &self.creds;
 
         loop {
              self.gateway.sync().await?;
 
-            // read audit messages and take actions accordingly
-
+            // read log messages and take actions accordingly
 
             if let VaultStore::Store { tail_id, vault, .. } = vault_store {
                 let vd_repo = self.meta_client.persistent_obj.repo.clone();
@@ -95,7 +90,6 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
             };
 
             async_std::task::sleep(std::time::Duration::from_millis(300))
-                .in_current_span()
                 .await;
         }
     }

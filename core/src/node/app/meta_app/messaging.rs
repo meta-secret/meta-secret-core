@@ -1,25 +1,12 @@
-use crate::node::common::model::device::DeviceData;
 use crate::node::common::model::MetaPasswordId;
-use crate::node::common::model::vault::VaultName;
+use crate::node::common::model::user::UserData;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[serde(tag = "__app_state_request")]
 pub enum GenericAppStateRequest {
-    SignUp(SignUpRequest),
-    Recover(RecoveryRequest),
+    SignUp { user: UserData},
+    Recover { meta_pass_id: MetaPasswordId},
     ClusterDistribution(ClusterDistributionRequest),
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct SignUpRequest {
-    pub vault_name: VaultName,
-    pub device_name: DeviceData,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct RecoveryRequest {
-    pub meta_pass_id: MetaPasswordId,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

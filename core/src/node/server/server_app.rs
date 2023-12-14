@@ -7,7 +7,7 @@ use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::common::PublicKeyRecord;
 use crate::node::db::events::object_id::ObjectId;
-use crate::node::db::generic_db::KvLogEventRepo;
+use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object::PersistentGlobalIndexApi;
 
 use crate::node::server::data_sync::{DataSyncApi, DataSyncRequest, DataSyncResponse, ServerDataSync};
@@ -73,7 +73,6 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
 
         let maybe_gi_genesis = self.repo()
             .find_one(ObjectId::genesis(gi_obj_desc))
-            .in_current_span()
             .await;
 
         let gi_genesis_exists = matches!(maybe_gi_genesis, Ok(Some(_)));

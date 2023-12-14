@@ -16,7 +16,7 @@ use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::KvLogEvent;
 use crate::node::db::events::local::CredentialsObject;
 use crate::node::db::events::object_id::{Next, ObjectId};
-use crate::node::db::generic_db::KvLogEventRepo;
+use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object_navigator::PersistentObjectNavigator;
 
 pub struct PersistentObject<Repo: KvLogEventRepo> {
@@ -248,7 +248,7 @@ mod test {
     use crate::node::db::events::global_index::{GlobalIndexObject};
     use crate::node::db::events::kv_log_event::KvKey;
     use crate::node::db::events::kv_log_event::KvLogEvent;
-    use crate::node::db::generic_db::SaveCommand;
+    use crate::node::db::repo::generic_db::SaveCommand;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_object::PersistentObject;
 
@@ -272,7 +272,6 @@ mod test {
         persistent_object
             .repo
             .save(unit_event)
-            .in_current_span()
             .await
             .unwrap();
 
@@ -293,7 +292,6 @@ mod test {
         persistent_object
             .repo
             .save(genesis_event)
-            .in_current_span()
             .await
             .unwrap();
 

@@ -14,7 +14,7 @@ use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{IdGen};
-use crate::node::db::generic_db::KvLogEventRepo;
+use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::CoreResult;
 use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
@@ -113,7 +113,6 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
         let pass_tail_id = self
             .persistent_obj
             .find_tail_id_by_obj_desc(&meta_pass_obj_desc)
-            .in_current_span()
             .await
             .map(|id| id.next())
             .unwrap();
@@ -131,7 +130,6 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
         self.persistent_obj
             .repo
             .save(meta_pass_event)
-            .in_current_span()
             .await
             .unwrap();
 
@@ -187,7 +185,6 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
                 .persistent_obj
                 .repo
                 .save(secret_share_event)
-                .in_current_span()
                 .await;
         }
     }
@@ -199,7 +196,7 @@ mod test {
     use crate::node::db::actions::join;
     use crate::node::db::events::common::{LogEventKeyBasedRecord, PublicKeyRecord};
     use crate::node::db::events::vault_event::VaultObject;
-    use crate::node::db::generic_db::{FindOneQuery, SaveCommand};
+    use crate::node::db::repo::generic_db::{FindOneQuery, SaveCommand};
     use crate::node::server::data_sync::test::DataSyncTestContext;
     use crate::node::server::data_sync::DataSyncApi;
     use crate::test_utils::meta_test_utils::MetaAppTestVerifier;

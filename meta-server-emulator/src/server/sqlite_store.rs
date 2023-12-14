@@ -5,7 +5,7 @@ use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnect
 
 use meta_secret_core::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor};
 use meta_secret_core::node::db::events::object_id::ObjectId;
-use meta_secret_core::node::db::generic_db::{
+use meta_secret_core::node::db::repo::generic_db::{
     DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand,
 };
 use meta_secret_core::node::server::data_sync::MetaServerContextState;

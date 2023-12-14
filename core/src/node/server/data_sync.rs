@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use tracing::{debug, error, info, instrument, Instrument};
 
 use crate::node::common::model::device::{DeviceCredentials, DeviceData, DeviceId};
-use crate::node::common::model::user::UserDataCandidate;
+use crate::node::common::model::user::{UserDataCandidate, UserId};
 use crate::node::common::model::vault::{VaultData, VaultName};
 use crate::node::db::actions::join;
 use crate::node::db::actions::sign_up::SignUpAction;
@@ -19,7 +19,7 @@ use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, GenesisId, ObjectId, UnitId};
 use crate::node::db::events::vault_event::{DeviceLogObject, VaultAction, VaultLogObject, VaultObject, VaultStatusObject};
-use crate::node::db::generic_db::KvLogEventRepo;
+use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::server::request::{SyncRequest, VaultRequest};
 
@@ -120,12 +120,21 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
                 info!("Credentials not allowed to be sent");
             }
             GenericKvLogEvent::DeviceLog(device_log_obj) => {
+
                 self.persistent_obj.repo
                     .save(generic_event.clone())
                     .await?;
 
-                let DeviceLogObject::Action { event: vault_action_event } = device_log_obj else {
-                    return Ok(());
+                let vault_action_event = match device_log_obj {
+                    DeviceLogObject::Unit { .. } => {
+                        return Ok(());
+                    }
+                    DeviceLogObject::Genesis { .. } => {
+                        return Ok(());
+                    }
+                    DeviceLogObject::Action { event } => {
+                        event
+                    }
                 };
 
                 let vault_action = vault_action_event.value;
@@ -198,8 +207,10 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
 
                         // Don't forget to update the vault status
                         let vault_status_desc = ObjectDescriptor::Vault(VaultDescriptor::VaultStatus {
-                            device_id: update.device_id(),
-                            vault_name,
+                            user_id: UserId {
+                                device_id: update.device_id(),
+                                vault_name,
+                            },
                         });
 
                         let vault_status_free_id = self.persistent_obj

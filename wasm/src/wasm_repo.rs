@@ -9,7 +9,7 @@ use web_sys::IdbTransactionMode;
 
 use meta_secret_core::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor};
 use meta_secret_core::node::db::events::object_id::ObjectId;
-use meta_secret_core::node::db::generic_db::{
+use meta_secret_core::node::db::repo::generic_db::{
     CommitLogDbConfig, DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand,
 };
 
@@ -50,7 +50,7 @@ impl WasmRepo {
     }
 
     async fn get_store(&self) -> anyhow::Result<IdbObjectStore> {
-        let db = open_db(self.db_name.as_str()).in_current_span().await;
+        let db = open_db(self.db_name.as_str()).await;
         let tx = db.transaction_on_one(self.store_name.as_str())?;
         let store = tx.object_store(self.store_name.as_str())?;
         Ok(store)
@@ -60,7 +60,7 @@ impl WasmRepo {
 impl WasmRepo {
     #[instrument(level = Level::DEBUG)]
     pub async fn delete_db(&self) {
-        let db = open_db(self.db_name.as_str()).in_current_span().await;
+        let db = open_db(self.db_name.as_str()).await;
         db.delete().unwrap();
     }
 }

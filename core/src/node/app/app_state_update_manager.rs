@@ -1,4 +1,4 @@
-use crate::node::db::generic_db::KvLogEventRepo;
+use crate::node::db::repo::generic_db::KvLogEventRepo;
 use async_trait::async_trait;
 use std::sync::Arc;
 use tracing::debug;

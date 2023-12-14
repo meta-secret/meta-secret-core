@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::node::db::events::object_id::{Next, ObjectId};
-use crate::node::db::generic_db::{FindOneQuery, KvLogEventRepo};
+use crate::node::db::repo::generic_db::{FindOneQuery, KvLogEventRepo};
 
 pub struct PersistentObjectNavigator<Repo: KvLogEventRepo> {
     repo: Arc<Repo>,
@@ -36,7 +36,7 @@ mod test {
     use crate::node::db::events::common::PublicKeyRecord;
     use crate::node::db::events::generic_log_event::{ObjIdExtractor, ToGenericEvent, UnitEventWithEmptyValue};
     use crate::node::db::events::global_index::GlobalIndexObject;
-    use crate::node::db::generic_db::SaveCommand;
+    use crate::node::db::repo::generic_db::SaveCommand;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_object_navigator::PersistentObjectNavigator;
 

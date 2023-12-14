@@ -85,24 +85,33 @@ pub struct KvKey<Id> {
 impl KvKey<UnitId> {
     pub fn unit(obj_desc: ObjectDescriptor) -> Self {
         Self {
-            obj_id: UnitId::unit(obj_desc),
-            obj_desc: obj_desc.clone(),
+            obj_id: UnitId::unit(&obj_desc),
+            obj_desc,
         }
     }
 }
 
 impl KvKey<GenesisId> {
     pub fn genesis(obj_desc: ObjectDescriptor) -> Self {
-        let unit_id = KvKey::unit(obj_desc.clone());
+        let unit_id = KvKey::unit(obj_desc);
         Self {
             obj_id: unit_id.next().obj_id,
-            obj_desc,
+            obj_desc: obj_desc.clone(),
         }
     }
 }
 
 impl Next<KvKey<GenesisId>> for KvKey<UnitId> {
     fn next(&self) -> KvKey<GenesisId> {
+        KvKey {
+            obj_id: self.obj_id.next(),
+            obj_desc: self.obj_desc.clone(),
+        }
+    }
+}
+
+impl Next<KvKey<ArtifactId>> for KvKey<GenesisId> {
+    fn next(self) -> KvKey<ArtifactId> {
         KvKey {
             obj_id: self.obj_id.next(),
             obj_desc: self.obj_desc.clone(),

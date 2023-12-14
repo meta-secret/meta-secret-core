@@ -11,7 +11,7 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_descriptor::{ObjectDescriptor};
 use crate::node::db::events::object_descriptor::shared_secret::{SharedSecretDescriptor, SharedSecretEventId};
 use crate::node::db::events::object_id::{Next, ObjectId};
-use crate::node::db::generic_db::KvLogEventRepo;
+use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object::PersistentObject;
 
 pub struct RecoveryAction<Repo: KvLogEventRepo> {

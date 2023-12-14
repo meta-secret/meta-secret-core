@@ -5,14 +5,15 @@ use tracing::info;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
 
-use meta_secret_core::models::application_state::ApplicationState;
-use meta_secret_core::models::MetaPasswordId;
 use meta_secret_core::node::app::app_state_update_manager::{
     ApplicationStateManagerConfigurator, JsAppStateManager, NoOpJsAppStateManager,
 };
 use meta_secret_core::node::app::meta_app::messaging::{
-    ClusterDistributionRequest, GenericAppStateRequest, RecoveryRequest, SignUpRequest,
+    ClusterDistributionRequest, GenericAppStateRequest
 };
+use meta_secret_core::node::common::model::ApplicationState;
+use meta_secret_core::node::common::model::device::DeviceName;
+use meta_secret_core::node::common::model::vault::VaultName;
 
 use crate::app_state_manager::ApplicationStateManager;
 use crate::{configure, updateJsState};
@@ -92,8 +93,11 @@ impl WasmApplicationStateManager {
     pub async fn sign_up(&self, vault_name: &str, device_name: &str) {
         info!("Send sign up request");
 
+        //get device or default user from credentials table
+        ???
+
         let request = GenericAppStateRequest::SignUp(SignUpRequest {
-            vault_name: vault_name.to_string(),
+            vault_name: vault_name,
             device_name: device_name.to_string(),
         });
 

@@ -1,6 +1,6 @@
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::object_id::ObjectId;
-use crate::node::db::generic_db::KvLogEventRepo;
+use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::server::request::{SharedSecretRequest, SyncRequest};
 use std::sync::Arc;

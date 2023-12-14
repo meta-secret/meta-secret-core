@@ -1,9 +1,9 @@
 use std::fmt::Display;
 
 use crate::node::common::model::crypto::EncryptedMessage;
-use crate::node::common::model::device::DeviceCredentials;
-use crate::node::common::model::user::UserId;
-use crate::node::common::model::vault::{VaultData, VaultName};
+use crate::node::common::model::device::{DeviceCredentials, DeviceData};
+use crate::node::common::model::user::{UserCredentials, UserData, UserId, UserMembership};
+use crate::node::common::model::vault::{VaultData, VaultName, VaultStatus};
 
 pub mod device {
     use std::fmt::Display;
@@ -91,8 +91,8 @@ pub mod user {
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct UserId {
-        vault_name: VaultName,
-        device_id: DeviceId,
+        pub vault_name: VaultName,
+        pub device_id: DeviceId,
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -100,6 +100,15 @@ pub mod user {
     pub struct UserData {
         pub vault_name: VaultName,
         pub device: DeviceData,
+    }
+
+    impl UserData {
+        pub fn user_id(&self) -> UserId {
+            UserId {
+                vault_name: self.vault_name.clone(),
+                device_id: self.device.id.clone(),
+            }
+        }
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -131,18 +140,20 @@ pub mod user {
                 device: self.device(),
             }
         }
+
+        pub fn user_id(&self) -> UserId {
+            UserId {
+                vault_name: self.vault_name.clone(),
+                device_id: self.device().id.clone(),
+            }
+        }
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
-    pub struct UserDataCandidate {
-        pub user_data: UserData,
-    }
-
-    impl UserDataCandidate {
-        pub fn vault_name(&self) -> VaultName {
-            self.user_data.vault_name.clone()
-        }
+    pub enum UserMembership {
+        Outsider(UserDataOutsider),
+        Member(UserDataMember),
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -153,37 +164,43 @@ pub mod user {
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
-    pub struct UserDataPending {
+    pub struct UserDataOutsider {
         pub user_data: UserData,
+        pub status: UserDataOutsiderStatus,
+    }
+
+    impl UserDataOutsider {
+        pub fn unknown(user_data: UserData) -> Self {
+            Self {
+                user_data,
+                status: UserDataOutsiderStatus::Unknown,
+            }
+        }
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
-    pub struct UserDataDeclined {
-        pub user_data: UserData,
-    }
-
-    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    pub enum UserMembership {
-        Candidate(UserDataCandidate),
-        Member(UserDataMember),
-        Pending(UserDataPending),
-        Declined(UserDataDeclined),
+    pub enum UserDataOutsiderStatus {
+        /// Unknown status (the user is not a member of the vault)
+        Unknown,
+        Pending,
+        Declined,
     }
 
     impl UserMembership {
-        pub fn user_data(&self) -> &UserData {
+        pub fn user_data(&self) -> UserData {
             match self {
-                UserMembership::Candidate(UserDataCandidate { user_data }) => user_data,
-                UserMembership::Member(UserDataMember { user_data })  => user_data,
-                UserMembership::Pending(UserDataPending {user_data })  => user_data,
-                UserMembership::Declined(UserDataDeclined {user_data})  => user_data,
+                UserMembership::Outsider(outsider) => {
+                    outsider.user_data().clone()
+                }
+                UserMembership::Member(member) => {
+                    member.user_data.clone()
+                }
             }
         }
 
         pub fn device_id(&self) -> DeviceId {
-           self.user_data().device.id.clone()
+            self.user_data().device.id.clone()
         }
     }
 }
@@ -194,7 +211,9 @@ pub mod vault {
 
     use crate::node::common::model::device::{DeviceData, DeviceId};
     use crate::node::common::model::MetaPasswordId;
-    use crate::node::common::model::user::{UserData, UserDataMember, UserMembership};
+    use crate::node::common::model::user::{UserData, UserDataMember, UserDataOutsider, UserMembership};
+    use crate::node::db::events::generic_log_event::GenericKvLogEvent;
+    use crate::node::db::events::vault_event::VaultObject;
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -269,16 +288,31 @@ pub mod vault {
     #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub enum VaultStatus {
-        /// Device is a member of a vault
-        Member { vault: VaultData },
-        /// Device is waiting to be added to a vault.
-        Pending { user: UserData },
-        /// Vault members declined to add a device into the vault.
-        Declined { user: UserData },
-        /// Vault not found
-        NotFound,
-        /// Device can't get any information about the vault, because its signature is not in members or pending list
-        NotMember,
+        Member(VaultData),
+        Outsider(UserDataOutsider),
+    }
+
+    impl VaultStatus {
+        pub fn try_from(vault_event: GenericKvLogEvent, user: UserData) -> anyhow::Result<Self> {
+            let vault_obj = VaultObject::try_from(vault_event)?;
+            match vault_obj {
+                VaultObject::Unit { .. } => {
+                    Ok(VaultStatus::Outsider(UserDataOutsider::unknown(user)))
+                }
+                VaultObject::Genesis { .. } => {
+                    Ok(VaultStatus::Outsider(UserDataOutsider::unknown(user)))
+                }
+                VaultObject::Vault { event } => {
+                    Ok(VaultStatus::Member(event.value))
+                }
+            }
+        }
+    }
+
+    impl VaultStatus {
+        pub fn unknown(user: UserData) -> Self {
+            VaultStatus::Outsider(UserDataOutsider::unknown(user))
+        }
     }
 }
 
@@ -396,7 +430,17 @@ pub struct MetaPasswordId {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApplicationState {
-    pub device_creds: Option<DeviceCredentials>,
-    pub vault: Option<VaultData>,
+    pub device: Option<DeviceData>,
+    pub vault: Option<VaultStatus>,
     pub join_component: bool,
+}
+
+impl Default for ApplicationState {
+    fn default() -> Self {
+        ApplicationState {
+            device: None,
+            vault: None,
+            join_component: false,
+        }
+    }
 }

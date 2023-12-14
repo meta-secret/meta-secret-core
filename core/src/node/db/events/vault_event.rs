@@ -1,7 +1,7 @@
-use crate::crypto::keys::OpenBox;
+use anyhow::anyhow;
 use crate::node::common::model::device::DeviceData;
-use crate::node::common::model::user::{UserData, UserDataCandidate, UserDataMember, UserMembership};
-use crate::node::common::model::vault::{VaultData, VaultName};
+use crate::node::common::model::user::{UserData, UserDataCandidate, UserDataMember, UserDataOutsider, UserMembership};
+use crate::node::common::model::vault::{VaultData, VaultName, VaultStatus};
 use crate::node::common::model::MetaPasswordId;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::kv_log_event::KvLogEvent;
@@ -23,6 +23,24 @@ pub enum DeviceLogObject {
     },
 }
 
+impl TryFrom<GenericKvLogEvent> for DeviceLogObject {
+    type Error = anyhow::Error;
+
+    fn try_from(event: GenericKvLogEvent) -> Result<Self, Self::Error> {
+        if let GenericKvLogEvent::DeviceLog(device_log) = event {
+            Ok(device_log)
+        } else {
+            Err(anyhow!("Not a device log event"))
+        }
+    }
+}
+
+impl ToGenericEvent for DeviceLogObject {
+    fn to_generic(self) -> GenericKvLogEvent {
+        GenericKvLogEvent::DeviceLog(self)
+    }
+}
+
 /// VaultLog keeps incoming events in order, the log is a queue for incoming messages and used to
 /// recreate the vault state from events (event sourcing)
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -39,6 +57,18 @@ pub enum VaultLogObject {
     },
 }
 
+impl TryFrom<GenericKvLogEvent> for VaultLogObject {
+    type Error = anyhow::Error;
+
+    fn try_from(event: GenericKvLogEvent) -> Result<Self, Self::Error> {
+        if let GenericKvLogEvent::VaultLog(vault_log) = event {
+            Ok(vault_log)
+        } else {
+            Err(anyhow!("Not a vault log event"))
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum VaultObject {
@@ -51,7 +81,19 @@ pub enum VaultObject {
     },
     Vault {
         event: KvLogEvent<ArtifactId, VaultData>,
-    },
+    }
+}
+
+impl TryFrom<GenericKvLogEvent> for VaultObject {
+    type Error = anyhow::Error;
+
+    fn try_from(event: GenericKvLogEvent) -> Result<Self, Self::Error> {
+        if let GenericKvLogEvent::Vault(vault) = event {
+            Ok(vault)
+        } else {
+            Err(anyhow!("Not a vault event"))
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -87,35 +129,21 @@ impl VaultStatusObject {
     }
 }
 
-impl ToGenericEvent for VaultObject {
-    fn to_generic(self) -> GenericKvLogEvent {
-        GenericKvLogEvent::Vault(self)
+impl TryFrom<GenericKvLogEvent> for VaultStatusObject {
+    type Error = anyhow::Error;
+
+    fn try_from(event: GenericKvLogEvent) -> Result<Self, Self::Error> {
+        if let GenericKvLogEvent::VaultStatus(vault_status) = event {
+            Ok(vault_status)
+        } else {
+            Err(anyhow!("Not a vault status event"))
+        }
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum VaultObjectEvent {
-    JoinRequest {
-        event: KvLogEvent<ArtifactId, UserDataCandidate>,
-    },
-
-    UpdateMembership {
-        event: KvLogEvent<ArtifactId, VaultData>,
-    },
-
-    UpdateMetaPassword {
-        event: KvLogEvent<ArtifactId, VaultData>,
-    },
-}
-
-impl ObjIdExtractor for VaultObjectEvent {
-    fn obj_id(&self) -> ObjectId {
-        match self {
-            VaultObjectEvent::JoinRequest { event } => ObjectId::from(event.key.obj_id.clone()),
-            VaultObjectEvent::UpdateMembership { event } => ObjectId::from(event.key.obj_id.clone()),
-            VaultObjectEvent::UpdateMetaPassword { event } => ObjectId::from(event.key.obj_id.clone()),
-        }
+impl ToGenericEvent for VaultObject {
+    fn to_generic(self) -> GenericKvLogEvent {
+        GenericKvLogEvent::Vault(self)
     }
 }
 

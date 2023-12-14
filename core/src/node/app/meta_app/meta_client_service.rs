@@ -5,11 +5,7 @@ use tracing::{error, info, instrument, Instrument};
 
 use crate::node::app::app_state_update_manager::JsAppStateManager;
 use crate::node::app::client_meta_app::MetaClient;
-use crate::node::app::credentials_repo::CredentialsRepo;
-use crate::node::app::meta_app::app_state::{ConfiguredAppState, EmptyAppState, GenericAppState, MemberAppState};
-use crate::node::app::meta_app::messaging::{
-    ClusterDistributionRequest, GenericAppStateRequest, GenericAppStateResponse, RecoveryRequest, SignUpRequest,
-};
+use crate::node::app::meta_app::messaging::{ClusterDistributionRequest, GenericAppStateRequest, GenericAppStateResponse};
 use crate::node::app::sync_gateway::SyncGateway;
 use crate::node::common::actor::{ActionHandler, ServiceState};
 use crate::node::common::data_transfer::MpscDataTransfer;
@@ -17,7 +13,9 @@ use crate::node::common::model::ApplicationState;
 use crate::node::common::model::device::DeviceCredentials;
 use crate::node::db::actions::recover::RecoveryAction;
 use crate::node::db::events::local::CredentialsObject;
-use crate::node::db::generic_db::KvLogEventRepo;
+use crate::node::db::objects::vault::PersistentVault;
+use crate::node::db::repo::credentials_repo::CredentialsRepo;
+use crate::node::db::repo::generic_db::KvLogEventRepo;
 
 pub struct MetaClientService<Repo: KvLogEventRepo, StateManager: JsAppStateManager> {
     pub data_transfer: Arc<MetaClientDataTransfer>,
@@ -39,7 +37,7 @@ impl<Repo, StateManager> MetaClientService<Repo, StateManager>
     pub async fn run(&self) {
         info!("Run meta_app service");
 
-        let mut service_state = self.build_service_state().await;
+        let mut service_state = self.build_service_state().await?;
 
         while let Ok(request) = self.data_transfer.dt.service_receive().await {
             info!(
@@ -47,7 +45,7 @@ impl<Repo, StateManager> MetaClientService<Repo, StateManager>
                 &request, &service_state.state
             );
 
-            self.sync_gateway.sync().in_current_span().await?;
+            self.sync_gateway.sync().await?;
 
             match &mut service_state.state {
                 GenericAppState::Empty(_) => {
@@ -91,8 +89,10 @@ impl<Repo, StateManager> MetaClientService<Repo, StateManager>
         }
     }
 
-    async fn build_service_state(&self) -> anyhow::Result<ServiceState<GenericAppState>> {
-        let mut service_state = ServiceState::from(GenericAppState::empty());
+    async fn build_service_state(&self) -> anyhow::Result<ServiceState<ApplicationState>> {
+        let mut service_state = ServiceState {
+            state: ApplicationState::default()
+        };
 
         let maybe_creds_event = {
             let creds_repo = CredentialsRepo {
@@ -101,52 +101,48 @@ impl<Repo, StateManager> MetaClientService<Repo, StateManager>
             creds_repo.find().await?
         };
 
-        match maybe_creds_event {
-            Ok(None) => {
-                return Ok(service_state);
+        let Some(creds_event) = maybe_creds_event else {
+            return Ok(service_state);
+        };
+
+        service_state.state.device = Some(creds_event.device());
+        match creds_event {
+            CredentialsObject::Device { event } => {
+                event.value.device
             }
-            Some(CredentialsObject::Device { event }) => {
-
-            },
-            Some(CredentialsObject::DefaultUser { event }) => {
-
+            CredentialsObject::DefaultUser { event } => {
+                event.value.device_creds.device
             }
         }
 
-        let maybe_configured_app_state = self.meta_client
-            .find_user_creds(&service_state.state)
+        let new_app_state = self
+            .update_app_state(service_state.state)
             .await;
 
-        let app_state = service_state.state.get_state();
+        let vault_info = self
+            .meta_client
+            .get_vault(configured_app_state.creds.user_sig.vault.name.clone())
+            .await;
 
-        if let Ok(Some(configured_app_state)) = maybe_configured_app_state {
-            let new_app_state = self.update_app_state(&app_state, &configured_app_state.creds).await;
+        if let VaultInfo::Member { vault } = &vault_info {
+            let vault_name = vault.vault_name.clone();
 
-            let vault_info = self
+            service_state.state = GenericAppState::Member(MemberAppState {
+                app_state: new_app_state,
+                creds: configured_app_state.creds,
+                vault_info,
+            });
+
+            let meta_pass_store = self
                 .meta_client
-                .get_vault(configured_app_state.creds.user_sig.vault.name.clone())
-                .await;
+                .read_db_service_proxy
+                .get_meta_pass_store(vault_name)
+                .await
+                .unwrap();
 
-            if let VaultInfo::Member { vault } = &vault_info {
-                let vault_name = vault.vault_name.clone();
-
-                service_state.state = GenericAppState::Member(MemberAppState {
-                    app_state: new_app_state,
-                    creds: configured_app_state.creds,
-                    vault_info,
-                });
-
-                let meta_pass_store = self
-                    .meta_client
-                    .read_db_service_proxy
-                    .get_meta_pass_store(vault_name)
-                    .await
-                    .unwrap();
-
-                service_state.state.get_state().meta_passwords = meta_pass_store.passwords();
-            } else {
-                service_state.state = GenericAppState::Configured(configured_app_state);
-            }
+            service_state.state.get_state().meta_passwords = meta_pass_store.passwords();
+        } else {
+            service_state.state = GenericAppState::Configured(configured_app_state);
         }
 
         self.on_update(&service_state.state.get_state()).await;
@@ -181,7 +177,7 @@ impl<Repo, StateManager> ActionHandler<SignUpRequest, GenericAppState> for MetaC
         StateManager: JsAppStateManager,
 {
     #[instrument(skip_all)]
-    async fn handle(&self, request: SignUpRequest, state: &mut ServiceState<GenericAppState>) -> anyhow::Result<()> {
+    async fn handle(&self, request: SignUpRequest, state: &mut ServiceState<ApplicationState>) -> anyhow::Result<()> {
         info!("Handle sign up request");
 
         match &state.state {
@@ -191,13 +187,13 @@ impl<Repo, StateManager> ActionHandler<SignUpRequest, GenericAppState> for MetaC
 
                 let new_generic_app_state = ConfiguredAppState {
                     app_state: new_app_state,
-                    creds: self.device_creds.clone(),
+                    creds: self.
                 };
 
                 state.state = GenericAppState::Configured(new_generic_app_state);
             }
             GenericAppState::Configured(configured) => {
-                let joined_app_state = self.meta_client.sign_up(configured).in_current_span().await;
+                let joined_app_state = self.meta_client.sign_up(configured).await;
                 state.state = GenericAppState::Member(joined_app_state);
             }
             GenericAppState::Member(_) => {
@@ -214,30 +210,22 @@ impl<Repo, StateManager> MetaClientService<Repo, StateManager>
         Repo: KvLogEventRepo,
         StateManager: JsAppStateManager,
 {
-    async fn update_app_state(&self, app_state: &ApplicationState, creds: DeviceCredentials) -> ApplicationState {
-        let mut new_app_state = app_state.clone();
-        new_app_state.device_creds = Some(creds);
+    async fn update_app_state(&self, app_state: ApplicationState) -> ApplicationState {
+        let mut new_app_state = app_state;
 
+        let persistent_vault = PersistentVault {
+            p_obj: self.meta_client.persistent_obj.clone(),
+        };
 
-        let vault_info = self
-            .meta_client
-            .get_vault(creds.user_sig.vault.name.clone())
-            .in_current_span()
-            .await;
+        ???
+        //we need to get vault status and figure out if we are a member or not and update the app state accordingly
+        persistent_vault.find();
 
         match vault_info {
             VaultInfo::Member { vault } => {
                 let vault_name = vault.vault_name.clone();
 
                 new_app_state.vault = Some(vault);
-
-                let meta_pass_store = self
-                    .meta_client
-                    .read_db_service_proxy
-                    .get_meta_pass_store(vault_name)
-                    .await
-                    .unwrap();
-                new_app_state.meta_passwords = meta_pass_store.passwords();
             }
             VaultInfo::Pending => {}
             VaultInfo::Declined => {}
@@ -265,7 +253,6 @@ impl<Repo, StateManager> ActionHandler<RecoveryRequest, GenericAppState> for Met
             };
             recovery_action
                 .recovery_request(request.meta_pass_id, app_state)
-                .in_current_span()
                 .await;
         } else {
             error!("Invalid request. Recovery request not allowed when the state is not 'Joined'");

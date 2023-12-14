@@ -5,7 +5,7 @@ use anyhow::anyhow;
 use tracing::{debug, error, info, instrument};
 use crate::node::common::model::device::DeviceData;
 
-use crate::node::common::model::user::{UserCredentials, UserDataMember, UserMembership};
+use crate::node::common::model::user::{UserCredentials, UserDataMember, UserId, UserMembership};
 use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::descriptors::shared_secret::{SharedSecretDescriptor, SharedSecretEventId};
@@ -15,9 +15,10 @@ use crate::node::db::events::generic_log_event::{GenericKvLogEvent, KeyExtractor
 use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::local::{CredentialsObject, DbTailObject};
-use crate::node::db::events::vault_event::VaultObject;
-use crate::node::db::generic_db::KvLogEventRepo;
+use crate::node::db::events::vault_event::{VaultObject, VaultStatusObject};
+use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object::PersistentObject;
+use crate::node::db::repo::credentials_repo::CredentialsRepo;
 use crate::node::server::data_sync::DataSyncRequest;
 use crate::node::server::request::{GlobalIndexRequest, SharedSecretRequest, SyncRequest, VaultRequest};
 use crate::node::server::server_app::ServerDataTransfer;
@@ -49,15 +50,13 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
     #[instrument(skip_all)]
     pub async fn sync(&self) -> anyhow::Result<()> {
 
-        let maybe_creds_event = self.persistent_object
-            .find_tail_event(ObjectDescriptor::CredsIndex)
-            .await?;
-
-        let Some(creds_event) = maybe_creds_event else {
-            return Ok(());
+        let creds_repo = CredentialsRepo {
+            repo: self.persistent_object.repo.clone()
         };
 
-        let GenericKvLogEvent::Credentials(creds_obj) = creds_event else {
+        let maybe_creds_event = creds_repo.find().await?;
+
+        let Some(creds_obj) = maybe_creds_event else {
             return Ok(());
         };
 
@@ -72,18 +71,19 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         let sender = user_creds.user();
 
         let vault_status_obj_desc = ObjectDescriptor::Vault(VaultDescriptor::VaultStatus {
-            device_id: user_creds.device().id,
-            vault_name: user_creds.vault_name.clone(),
+            user_id: user_creds.user_id(),
         });
-
+        
         let maybe_vault_status = self
             .persistent_object
             .find_tail_event(vault_status_obj_desc)
             .await?;
 
-        let Some(GenericKvLogEvent::VaultStatus(vault_status_object)) = maybe_vault_status else {
-            return Err(anyhow!("Invalid event type: not a vault status"));
+        let Some(vault_status_event) = maybe_vault_status else {
+            return Ok(());
         };
+
+        let vault_status_object = VaultStatusObject::try_from(vault_status_event)?;
 
         if vault_status_object.is_not_member() {
             return Ok(());
@@ -104,8 +104,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             };
 
             let vault_status_free_id = {
-                let device_id = user_creds.device().id;
-                let obj_desc = VaultDescriptor::vault_status(device_id, vault_name);
+                let obj_desc = VaultDescriptor::vault_status(user_creds.user_id());
                 self.persistent_object.find_free_id_by_obj_desc(obj_desc).await?
             };
 
@@ -127,8 +126,6 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             debug!("id: {:?}. Sync gateway. New event: {:?}", self.id, new_event);
             self.persistent_object.repo.save(new_event).await?;
         }
-
-        //TODO how a device should handle new events in the vault_log to update the vault and the vault_status tables?
 
         self.sync_shared_secrets(&user_creds).await;
 

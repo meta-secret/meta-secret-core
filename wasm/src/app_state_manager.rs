@@ -10,16 +10,14 @@ use meta_secret_core::node::app::client_meta_app::MetaClient;
 use meta_secret_core::node::app::meta_app::meta_client_service::{
     MetaClientAccessProxy, MetaClientDataTransfer, MetaClientService,
 };
-use meta_secret_core::node::app::credentials_repo::CredentialsRepo;
+
 use meta_secret_core::node::app::sync_gateway::SyncGateway;
 use meta_secret_core::node::app::virtual_device::VirtualDevice;
 use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::meta_tracing::{client_span, server_span, vd_span};
 use meta_secret_core::node::common::model::device::DeviceName;
 use meta_secret_core::node::common::model::vault::VaultName;
-use meta_secret_core::node::db::events::generic_log_event::UnitEvent;
-use meta_secret_core::node::db::events::local::CredentialsObject;
-use meta_secret_core::node::db::generic_db::KvLogEventRepo;
+use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::server::data_sync::ServerDataSync;
 use meta_secret_core::node::server::server_app::{ServerApp, ServerDataTransfer};
@@ -87,8 +85,7 @@ impl<Repo, State> ApplicationStateManager<Repo, State>
         let sync_gateway = Arc::new(SyncGateway {
             id: String::from("client-gateway"),
             persistent_object: persistent_obj.clone(),
-            server_dt: dt.clone(),
-            creds: ,
+            server_dt: dt.clone()
         });
 
         let meta_client_service = {
@@ -108,12 +105,10 @@ impl<Repo, State> ApplicationStateManager<Repo, State>
                 meta_client: meta_client.clone(),
                 state_manager: js_app_state.clone(),
                 sync_gateway: sync_gateway.clone(),
-                user_creds: creds,
             })
         };
 
         let app_manager = ApplicationStateManager::new(
-            read_db_service,
             dt,
             js_app_state.clone(),
             sync_gateway,
@@ -148,15 +143,13 @@ impl<Repo, State> ApplicationStateManager<Repo, State>
             repo: persistent_object.repo.clone(),
         };
 
-        let creds = creds_repo
+        let user_creds = creds_repo
             .get_or_generate_user_creds(DeviceName::from("virtual-device"), VaultName::from("q"))
             .await?;
 
         let dt_meta_client = Arc::new(MetaClientDataTransfer {
             dt: MpscDataTransfer::new(),
         });
-
-        let creds_obj = CredentialsObject::unit(creds);
 
         let gateway = Arc::new(SyncGateway {
             id: String::from("vd-gateway"),
@@ -173,29 +166,16 @@ impl<Repo, State> ApplicationStateManager<Repo, State>
                 data_transfer: dt_meta_client.clone(),
                 meta_client: meta_client.clone(),
                 state_manager: js_app_state.clone(),
-                sync_gateway: gateway.clone(),
-                device_creds: creds_obj.clone()
+                sync_gateway: gateway.clone()
             }
         };
 
-        let meta_client_access_proxy = Arc::new(MetaClientAccessProxy { dt: dt_meta_client });
-        let vd = VirtualDevice::init(
-            persistent_object,
-            meta_client_access_proxy,
-            read_db_service_proxy,
-            dt,
-            gateway,
-            creds
-        )
-            .await?;
-        let vd = Arc::new(vd);
-
-        spawn_local(async move {
-            vd_read_db_service.run().instrument(vd_span()).await;
-        });
-
         spawn_local(async move { meta_client_service.run().instrument(vd_span()).await });
 
+        let meta_client_access_proxy = Arc::new(MetaClientAccessProxy { dt: dt_meta_client });
+        let vd = VirtualDevice::init(persistent_object, meta_client_access_proxy, dt, gateway, user_creds)
+            .await?;
+        let vd = Arc::new(vd);
         spawn_local(async move { vd.run().instrument(vd_span()).await });
 
         Ok(())
