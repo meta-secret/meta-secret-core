@@ -4,9 +4,9 @@ use crate::node::common::model::user::UserData;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum GenericAppStateRequest {
-    SignUp { user: UserData},
-    Recover { meta_pass_id: MetaPasswordId},
+    SignUp,
     ClusterDistribution(ClusterDistributionRequest),
+    Recover { meta_pass_id: MetaPasswordId},
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

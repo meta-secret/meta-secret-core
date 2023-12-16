@@ -4,7 +4,7 @@ use tokio::runtime::Builder;
 use tracing::{info, instrument, Instrument};
 
 use meta_secret_core::node::app::app_state_update_manager::NoOpJsAppStateManager;
-use meta_secret_core::node::app::client_meta_app::MetaClient;
+use meta_secret_core::node::app::meta_client::MetaClient;
 use meta_secret_core::node::app::meta_app::meta_client_service::{
     MetaClientAccessProxy, MetaClientDataTransfer, MetaClientService,
 };

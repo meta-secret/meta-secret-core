@@ -14,6 +14,7 @@ use meta_secret_core::node::app::meta_app::messaging::{
 use meta_secret_core::node::common::model::ApplicationState;
 use meta_secret_core::node::common::model::device::DeviceName;
 use meta_secret_core::node::common::model::vault::VaultName;
+use meta_secret_core::node::db::objects::vault::PersistentVault;
 
 use crate::app_state_manager::ApplicationStateManager;
 use crate::{configure, updateJsState};
@@ -43,7 +44,7 @@ pub enum GenericApplicationStateManager {
     },
 }
 
-#[wasm_bindgen]
+//#[wasm_bindgen]
 impl WasmApplicationStateManager {
     pub async fn init_in_mem() -> WasmApplicationStateManager {
         configure();
@@ -90,28 +91,22 @@ impl WasmApplicationStateManager {
         }
     }
 
-    pub async fn sign_up(&self, vault_name: &str, device_name: &str) {
-        info!("Send sign up request");
+    pub async fn sign_up(&self) {
+        info!("Sign Up");
 
-        //get device or default user from credentials table
-        ???
-
-        let request = GenericAppStateRequest::SignUp(SignUpRequest {
-            vault_name: vault_name,
-            device_name: device_name.to_string(),
-        });
+        let sign_up = GenericAppStateRequest::SignUp;
 
         match &self.app_manager {
             GenericApplicationStateManager::Wasm { app_state_manager } => {
                 app_state_manager
                     .meta_client_service
-                    .send_request(request)
+                    .send_request(sign_up)
                     .await
             }
             GenericApplicationStateManager::InMem { app_state_manager } => {
                 app_state_manager
                     .meta_client_service
-                    .send_request(request)
+                    .send_request(sign_up)
                     .await
             }
         }

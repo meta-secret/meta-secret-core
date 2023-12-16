@@ -288,8 +288,8 @@ pub mod vault {
     #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub enum VaultStatus {
-        Member(VaultData),
         Outsider(UserDataOutsider),
+        Member(VaultData),
     }
 
     impl VaultStatus {

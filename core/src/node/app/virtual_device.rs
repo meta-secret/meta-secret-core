@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::node::app::client_meta_app::MetaClient;
+use crate::node::app::meta_client::MetaClient;
 use crate::node::app::meta_app::meta_client_service::MetaClientAccessProxy;
 use crate::node::app::sync_gateway::SyncGateway;
 use crate::node::db::actions::join;
@@ -41,6 +41,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
 
         let meta_client = Arc::new(MetaClient {
             persistent_obj: persistent_object.clone(),
+            sync_gateway: gateway.clone()
         });
 
         let virtual_device = Self {
@@ -65,7 +66,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
             if let VaultStore::Store { tail_id, vault, .. } = vault_store {
                 let vd_repo = self.meta_client.persistent_obj.repo.clone();
 
-                let latest_event = vd_repo.find_one(tail_id).in_current_span().await;
+                let latest_event = vd_repo.find_one(tail_id).await;
 
                 if let Ok(Some(GenericKvLogEvent::Vault(VaultObject::JoinRequest { event }))) = latest_event {
                     let accept_event = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {

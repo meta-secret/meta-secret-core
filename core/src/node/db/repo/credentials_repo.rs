@@ -22,6 +22,12 @@ impl<Repo: KvLogEventRepo> CredentialsRepo<Repo> {
     }
 
     #[instrument(skip_all)]
+    pub async fn get(&self) -> anyhow::Result<CredentialsObject> {
+        self.find().await?
+            .ok_or_else(|| anyhow!("No credentials found"))
+    }
+
+    #[instrument(skip_all)]
     pub async fn find(&self) -> anyhow::Result<Option<CredentialsObject>> {
         let maybe_creds = self.repo
             .find_one(CredentialsObject::unit_id())

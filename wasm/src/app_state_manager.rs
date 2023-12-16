@@ -6,7 +6,7 @@ use wasm_bindgen_futures::spawn_local;
 use meta_secret_core::node::app::app_state_update_manager::{
     ApplicationStateManagerConfigurator, JsAppStateManager,
 };
-use meta_secret_core::node::app::client_meta_app::MetaClient;
+use meta_secret_core::node::app::meta_client::MetaClient;
 use meta_secret_core::node::app::meta_app::meta_client_service::{
     MetaClientAccessProxy, MetaClientDataTransfer, MetaClientService,
 };
@@ -19,6 +19,7 @@ use meta_secret_core::node::common::model::device::DeviceName;
 use meta_secret_core::node::common::model::vault::VaultName;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
+use meta_secret_core::node::db::repo::credentials_repo::CredentialsRepo;
 use meta_secret_core::node::server::data_sync::ServerDataSync;
 use meta_secret_core::node::server::server_app::{ServerApp, ServerDataTransfer};
 

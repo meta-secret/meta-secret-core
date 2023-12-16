@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use tracing::Instrument;
 
-use crate::crypto::keys::KeyManager;
+use crate::crypto::keys::{KeyManager, OpenBox, SecretBox};
 use crate::models::{
     AeadCipherText, EncryptedMessage, MetaPasswordData, MetaPasswordId, MetaPasswordRequest, SecretDistributionDocData,
     SecretDistributionType, UserSignature, VaultDoc,
@@ -19,6 +19,9 @@ use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::CoreResult;
 use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
 use crate::node::common::model::crypto::AeadCipherText;
+use crate::node::common::model::MetaPasswordId;
+use crate::node::common::model::user::UserCredentials;
+use crate::node::common::model::vault::VaultData;
 
 pub mod data_block;
 pub mod shared_secret;
@@ -37,8 +40,8 @@ pub fn split(secret: String, config: SharedSecretConfig) -> CoreResult<Vec<UserS
 }
 
 pub struct MetaEncryptor {
-    security_box: SecurityBox,
-    vault: VaultDoc,
+    security_box: SecretBox,
+    vault: VaultData,
 }
 
 impl MetaEncryptor {
@@ -78,34 +81,28 @@ impl MetaEncryptor {
 }
 
 struct MetaCipherShare {
-    receiver: UserSignature,
+    receiver: OpenBox,
     cipher_share: AeadCipherText,
 }
 
 pub struct MetaDistributor<Repo: KvLogEventRepo> {
     pub persistent_obj: Arc<PersistentObject<Repo>>,
     pub user_creds: Arc<UserCredentials>,
-    pub vault: VaultDoc,
+    pub vault: VaultData,
 }
 
 impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
     pub async fn distribute(self, password_id: String, password: String) {
+
         let encryptor = MetaEncryptor {
-            security_box: self.user_creds.security_box.clone(),
+            security_box: self.user_creds.device_creds.secret_box.clone(),
             vault: self.vault.clone(),
         };
 
-        let pass = {
-            let pass_id = Box::new(MetaPasswordId::generate(password_id));
-
-            MetaPasswordData {
-                id: pass_id,
-                vault: Box::new(self.vault.clone()),
-            }
-        };
+        let pass_id = MetaPasswordId::generate(password_id);
 
         //save meta password!!!
-        let vault_name = self.user_creds.user_sig.vault.name.clone();
+        let vault_name = self.user_creds.vault_name.clone();
         let meta_pass_obj_desc = ObjectDescriptor::MetaPassword {
             vault_name: vault_name.clone(),
         };

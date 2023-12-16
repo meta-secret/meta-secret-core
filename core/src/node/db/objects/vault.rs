@@ -1,10 +1,15 @@
 use std::sync::Arc;
+
+use anyhow::anyhow;
 use tracing_attributes::instrument;
+
 use crate::node::common::model::user::{UserData, UserDataOutsider, UserMembership};
 use crate::node::common::model::vault::VaultStatus;
 use crate::node::db::descriptors::vault::VaultDescriptor;
+use crate::node::db::events::local::CredentialsObject;
 use crate::node::db::events::vault_event::VaultStatusObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
+use crate::node::db::repo::credentials_repo::CredentialsRepo;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 
 pub struct PersistentVault<Repo: KvLogEventRepo> {
@@ -12,6 +17,22 @@ pub struct PersistentVault<Repo: KvLogEventRepo> {
 }
 
 impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
+    pub async fn find_for_default_user(&self) -> anyhow::Result<VaultStatus> {
+        let creds_repo = CredentialsRepo {
+            repo: self.p_obj.repo.clone()
+        };
+
+        let creds = creds_repo.get().await?;
+
+        match creds {
+            CredentialsObject::Device { .. } => {
+                Err(anyhow!("User not found found"))
+            }
+            CredentialsObject::DefaultUser { event } => {
+                self.find(event.value.user()).await
+            }
+        }
+    }
 
     #[instrument(skip_all)]
     pub async fn find(&self, user: UserData) -> anyhow::Result<VaultStatus> {

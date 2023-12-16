@@ -160,7 +160,7 @@ impl ObjIdExtractor for VaultObject {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum VaultAction {
-    JoinRequest { candidate: UserDataCandidate },
+    JoinRequest { candidate: UserData },
     /// When the device becomes a member of the vault, it can change membership of other members
     UpdateMembership {
         sender: UserDataMember,

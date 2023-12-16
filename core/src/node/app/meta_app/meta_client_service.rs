@@ -1,25 +1,27 @@
 use std::sync::Arc;
+use anyhow::anyhow;
 
 use async_trait::async_trait;
 use tracing::{error, info, instrument, Instrument};
 
 use crate::node::app::app_state_update_manager::JsAppStateManager;
-use crate::node::app::client_meta_app::MetaClient;
 use crate::node::app::meta_app::messaging::{ClusterDistributionRequest, GenericAppStateRequest, GenericAppStateResponse};
 use crate::node::app::sync_gateway::SyncGateway;
 use crate::node::common::actor::{ActionHandler, ServiceState};
 use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::common::model::ApplicationState;
-use crate::node::common::model::device::DeviceCredentials;
+use crate::node::common::model::user::UserDataOutsiderStatus;
+use crate::node::common::model::vault::VaultStatus;
 use crate::node::db::actions::recover::RecoveryAction;
 use crate::node::db::events::local::CredentialsObject;
+use crate::node::db::objects::device_log::PersistentDeviceLog;
 use crate::node::db::objects::vault::PersistentVault;
 use crate::node::db::repo::credentials_repo::CredentialsRepo;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
+use crate::secret::MetaDistributor;
 
 pub struct MetaClientService<Repo: KvLogEventRepo, StateManager: JsAppStateManager> {
     pub data_transfer: Arc<MetaClientDataTransfer>,
-    pub meta_client: Arc<MetaClient<Repo>>,
     pub state_manager: Arc<StateManager>,
     pub sync_gateway: Arc<SyncGateway<Repo>>,
 }
@@ -47,45 +49,28 @@ impl<Repo, StateManager> MetaClientService<Repo, StateManager>
 
             self.sync_gateway.sync().await?;
 
-            match &mut service_state.state {
-                GenericAppState::Empty(_) => {
-                    error!("Empty app state");
-                }
-                GenericAppState::Configured(configured_app_state) => {
-                    let new_app_state = self
-                        .update_app_state(&configured_app_state.app_state, configured_app_state.creds)
-                        .await;
-
-                    configured_app_state.app_state = new_app_state;
-                }
-                GenericAppState::Member(joined_app_state) => {
-                    let new_app_state = self
-                        .update_app_state(&joined_app_state.app_state, joined_app_state.creds)
-                        .await;
-
-                    joined_app_state.app_state = new_app_state;
-                    joined_app_state.vault_info = self
-                        .meta_client
-                        .get_vault(joined_app_state.creds.user_sig.vault.name.clone())
-                        .await
-                }
-            }
-
             match request {
-                GenericAppStateRequest::SignUp(sign_up_request) => {
-                    self.handle(sign_up_request, &mut service_state).await;
+                GenericAppStateRequest::SignUp => {
+                    let vault_status = self.sign_up().await?;
+                    service_state.state.vault = Some(vault_status);
+                }
+
+                GenericAppStateRequest::ClusterDistribution(request) => {
+                    let distributor = MetaDistributor {
+                        persistent_obj: self.sync_gateway.persistent_object.clone(),
+                        vault: vault.clone(),
+                        user_creds: Arc::new(app_state.creds.clone()),
+                    };
+
+                    distributor.distribute(pass_id.to_string(), pass.to_string()).await;
                 }
 
                 GenericAppStateRequest::Recover(recovery_request) => {
                     self.handle(recovery_request, &mut service_state).await
                 }
-
-                GenericAppStateRequest::ClusterDistribution(request) => {
-                    self.handle(request, &mut service_state).await;
-                }
             }
 
-            self.on_update(&service_state.state.get_state()).await;
+            self.on_update(&service_state.state).await;
         }
     }
 
@@ -96,57 +81,15 @@ impl<Repo, StateManager> MetaClientService<Repo, StateManager>
 
         let maybe_creds_event = {
             let creds_repo = CredentialsRepo {
-                repo: self.meta_client.persistent_obj.repo.clone(),
+                repo: self.sync_gateway.persistent_object.repo.clone(),
             };
             creds_repo.find().await?
         };
 
-        let Some(creds_event) = maybe_creds_event else {
-            return Ok(service_state);
-        };
-
-        service_state.state.device = Some(creds_event.device());
-        match creds_event {
-            CredentialsObject::Device { event } => {
-                event.value.device
-            }
-            CredentialsObject::DefaultUser { event } => {
-                event.value.device_creds.device
-            }
-        }
-
-        let new_app_state = self
-            .update_app_state(service_state.state)
-            .await;
-
-        let vault_info = self
-            .meta_client
-            .get_vault(configured_app_state.creds.user_sig.vault.name.clone())
-            .await;
-
-        if let VaultInfo::Member { vault } = &vault_info {
-            let vault_name = vault.vault_name.clone();
-
-            service_state.state = GenericAppState::Member(MemberAppState {
-                app_state: new_app_state,
-                creds: configured_app_state.creds,
-                vault_info,
-            });
-
-            let meta_pass_store = self
-                .meta_client
-                .read_db_service_proxy
-                .get_meta_pass_store(vault_name)
-                .await
-                .unwrap();
-
-            service_state.state.get_state().meta_passwords = meta_pass_store.passwords();
-        } else {
-            service_state.state = GenericAppState::Configured(configured_app_state);
-        }
+        service_state.state.device = maybe_creds_event.map(|creds| creds.device());
 
         self.on_update(&service_state.state.get_state()).await;
-        service_state
+        Ok(service_state)
     }
 
     pub async fn on_update(&self, app_state: &ApplicationState) {
@@ -157,6 +100,51 @@ impl<Repo, StateManager> MetaClientService<Repo, StateManager>
     pub async fn send_request(&self, request: GenericAppStateRequest) {
         self.data_transfer.dt.send_to_service(request).await
     }
+
+    async fn sign_up(&self) -> anyhow::Result<VaultStatus> {
+        let creds = {
+            let creds_repo = CredentialsRepo {
+                repo: self.sync_gateway.persistent_object.repo.clone(),
+            };
+            creds_repo.get().await?
+        };
+
+        match creds {
+            CredentialsObject::Device { .. } => {
+                Err(anyhow!("User credentials not found"))
+            }
+            CredentialsObject::DefaultUser { event } => {
+                let user = event.value.user();
+
+                //get vault status, if not member, then create request to join
+                let p_vault = PersistentVault {
+                    p_obj: self.sync_gateway.persistent_object.clone(),
+                };
+
+                let vault_status = p_vault
+                    .find(user.clone())
+                    .await?;
+
+                if let VaultStatus::Outsider(outsider) = vault_status {
+                    if let UserDataOutsiderStatus::Unknown = outsider.status {
+                        let p_device_log = PersistentDeviceLog {
+                            p_obj: self.sync_gateway.persistent_object.clone(),
+                        };
+
+                        p_device_log
+                            .join_cluster_request(user.clone())
+                            .await?;
+
+                        self.sync_gateway.sync().await?;
+                    }
+                }
+
+                p_vault
+                    .find(user)
+                    .await?
+            }
+        }
+    }
 }
 
 pub struct MetaClientAccessProxy {
@@ -166,76 +154,6 @@ pub struct MetaClientAccessProxy {
 impl MetaClientAccessProxy {
     pub async fn send_request(&self, request: GenericAppStateRequest) {
         self.dt.dt.send_to_service(request).await
-    }
-}
-
-/// SignUp handler
-#[async_trait(? Send)]
-impl<Repo, StateManager> ActionHandler<SignUpRequest, GenericAppState> for MetaClientService<Repo, StateManager>
-    where
-        Repo: KvLogEventRepo,
-        StateManager: JsAppStateManager,
-{
-    #[instrument(skip_all)]
-    async fn handle(&self, request: SignUpRequest, state: &mut ServiceState<ApplicationState>) -> anyhow::Result<()> {
-        info!("Handle sign up request");
-
-        match &state.state {
-            GenericAppState::Empty(EmptyAppState { app_state }) => {
-                self.sync_gateway.sync().await?;
-                let new_app_state = self.update_app_state(app_state, self.device_creds.clone()).await;
-
-                let new_generic_app_state = ConfiguredAppState {
-                    app_state: new_app_state,
-                    creds: self.
-                };
-
-                state.state = GenericAppState::Configured(new_generic_app_state);
-            }
-            GenericAppState::Configured(configured) => {
-                let joined_app_state = self.meta_client.sign_up(configured).await;
-                state.state = GenericAppState::Member(joined_app_state);
-            }
-            GenericAppState::Member(_) => {
-                error!("ignore sign up requests (device has been already joined");
-            }
-        }
-
-        Ok(())
-    }
-}
-
-impl<Repo, StateManager> MetaClientService<Repo, StateManager>
-    where
-        Repo: KvLogEventRepo,
-        StateManager: JsAppStateManager,
-{
-    async fn update_app_state(&self, app_state: ApplicationState) -> ApplicationState {
-        let mut new_app_state = app_state;
-
-        let persistent_vault = PersistentVault {
-            p_obj: self.meta_client.persistent_obj.clone(),
-        };
-
-        ???
-        //we need to get vault status and figure out if we are a member or not and update the app state accordingly
-        persistent_vault.find();
-
-        match vault_info {
-            VaultInfo::Member { vault } => {
-                let vault_name = vault.vault_name.clone();
-
-                new_app_state.vault = Some(vault);
-            }
-            VaultInfo::Pending => {}
-            VaultInfo::Declined => {}
-            VaultInfo::NotFound => {}
-            VaultInfo::NotMember => {
-                new_app_state.join_component = true;
-            }
-        }
-
-        new_app_state
     }
 }
 
@@ -256,44 +174,6 @@ impl<Repo, StateManager> ActionHandler<RecoveryRequest, GenericAppState> for Met
                 .await;
         } else {
             error!("Invalid request. Recovery request not allowed when the state is not 'Joined'");
-        }
-    }
-}
-
-#[async_trait(? Send)]
-impl<Repo, StateManager> ActionHandler<ClusterDistributionRequest, GenericAppState>
-for MetaClientService<Repo, StateManager>
-    where
-        Repo: KvLogEventRepo,
-        StateManager: JsAppStateManager,
-{
-    #[instrument(skip_all)]
-    async fn handle(&self, request: ClusterDistributionRequest, state: &mut ServiceState<GenericAppState>) {
-        if let GenericAppState::Member(app_state) = &state.state {
-            self.meta_client
-                .cluster_distribution(request.pass_id.as_str(), request.pass.as_str(), app_state)
-                .await;
-
-            let passwords = {
-                let pass_store = self
-                    .meta_client
-                    .read_db_service_proxy
-                    .get_meta_pass_store(app_state.creds.user_sig.vault.name.clone())
-                    .await
-                    .unwrap();
-                match pass_store {
-                    MetaPassStore::Store { passwords, .. } => passwords.clone(),
-                    _ => {
-                        vec![]
-                    }
-                }
-            };
-
-            let mut app_state = state.state.get_state();
-            app_state.meta_passwords.clear();
-            app_state.meta_passwords = passwords;
-        } else {
-            error!("Invalid request. Distribution request not allowed if the state is not 'Joined'")
         }
     }
 }
