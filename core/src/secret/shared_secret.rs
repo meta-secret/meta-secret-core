@@ -5,12 +5,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::errors::RecoveryError::InvalidShare;
 use crate::errors::{CoreError, RecoveryError};
-use crate::models::Base64EncodedText;
 use crate::secret::data_block::common::{BlockMetaData, SharedSecretConfig};
 use crate::secret::data_block::encrypted_data_block::EncryptedDataBlock;
 use crate::secret::data_block::plain_data_block::{PlainDataBlock, PLAIN_DATA_BLOCK_SIZE};
 use crate::secret::data_block::shared_secret_data_block::SharedSecretBlock;
 use crate::CoreResult;
+use crate::crypto::encoding::base64::Base64Text;
 
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PlainText {
@@ -67,10 +67,10 @@ impl UserShareDto {
     }
 }
 
-impl TryFrom<&Base64EncodedText> for UserShareDto {
+impl TryFrom<&Base64Text> for UserShareDto {
     type Error = CoreError;
 
-    fn try_from(base64_content: &Base64EncodedText) -> Result<Self, Self::Error> {
+    fn try_from(base64_content: &Base64Text) -> Result<Self, Self::Error> {
         let data = Vec::try_from(base64_content)?;
         let json = serde_json::from_slice(data.as_slice())?;
         Ok(json)
@@ -82,7 +82,7 @@ pub struct SecretShareWithOrderingDto {
     pub block: usize,
     pub config: SharedSecretConfig,
     pub meta_data: BlockMetaData,
-    pub data: Base64EncodedText,
+    pub data: Base64Text,
 }
 
 impl TryFrom<&SecretShareWithOrderingDto> for EncryptedDataBlock {
@@ -149,7 +149,7 @@ impl SharedSecret {
                 block: index,
                 config: curr_secret_block.config,
                 meta_data: curr_secret_block.meta_data,
-                data: Base64EncodedText::from(curr_block_of_a_share.data.as_slice()),
+                data: Base64Text::from(curr_block_of_a_share.data.as_slice()),
             };
             share_blocks.push(share_data);
         }

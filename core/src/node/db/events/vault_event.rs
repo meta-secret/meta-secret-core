@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use crate::node::common::model::device::DeviceData;
-use crate::node::common::model::user::{UserData, UserDataCandidate, UserDataMember, UserDataOutsider, UserMembership};
-use crate::node::common::model::vault::{VaultData, VaultName, VaultStatus};
+use crate::node::common::model::user::{UserData, UserDataMember, UserMembership};
+use crate::node::common::model::vault::{VaultData, VaultName};
 use crate::node::common::model::MetaPasswordId;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::kv_log_event::KvLogEvent;
@@ -50,7 +50,7 @@ pub enum VaultLogObject {
         event: KvLogEvent<UnitId, VaultName>,
     },
     Genesis {
-        event: KvLogEvent<GenesisId, UserDataCandidate>,
+        event: KvLogEvent<GenesisId, UserData>,
     },
     Action {
         event: KvLogEvent<ArtifactId, VaultAction>,
@@ -175,10 +175,12 @@ pub enum VaultAction {
 
 impl VaultAction {
     pub fn vault_name(&self) -> VaultName {
-        match self {
-            VaultAction::JoinRequest { candidate } => candidate.user_data.vault_name.clone(),
-            VaultAction::UpdateMembership { update, .. } => update.user_data().vault_name.clone(),
-            VaultAction::AddMetaPassword { sender, .. } => sender.user_data.vault_name.clone(),
-        }
+        let user_data = match self {
+            VaultAction::JoinRequest { candidate } => candidate,
+            VaultAction::UpdateMembership { update, .. } => update.user_data(),
+            VaultAction::AddMetaPassword { sender, .. } => sender.user_data(),
+        };
+
+        user_data.vault_name.clone()
     }
 }

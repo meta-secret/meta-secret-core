@@ -11,6 +11,7 @@ use meta_secret_core::node::app::app_state_update_manager::{
 use meta_secret_core::node::app::meta_app::messaging::{
     ClusterDistributionRequest, GenericAppStateRequest
 };
+use meta_secret_core::node::app::meta_app::meta_client_service::MetaClientService;
 use meta_secret_core::node::common::model::ApplicationState;
 use meta_secret_core::node::common::model::device::DeviceName;
 use meta_secret_core::node::common::model::vault::VaultName;
@@ -96,20 +97,23 @@ impl WasmApplicationStateManager {
 
         let sign_up = GenericAppStateRequest::SignUp;
 
-        match &self.app_manager {
+        let meta_client_service = self.get_meta_client_service();
+
+        meta_client_service
+            .send_request(sign_up)
+            .await;
+    }
+
+    fn get_meta_client_service(&self) -> Arc<MetaClientService<WasmRepo, JsJsAppStateManager>> {
+        let meta_client_service = match &self.app_manager {
             GenericApplicationStateManager::Wasm { app_state_manager } => {
-                app_state_manager
-                    .meta_client_service
-                    .send_request(sign_up)
-                    .await
+                app_state_manager.meta_client_service.clone()
             }
             GenericApplicationStateManager::InMem { app_state_manager } => {
-                app_state_manager
-                    .meta_client_service
-                    .send_request(sign_up)
-                    .await
+                app_state_manager.meta_client_service.clone()
             }
-        }
+        };
+        meta_client_service
     }
 
     pub async fn cluster_distribution(&self, pass_id: &str, pass: &str) {
@@ -118,20 +122,10 @@ impl WasmApplicationStateManager {
             pass: pass.to_string(),
         });
 
-        match &self.app_manager {
-            GenericApplicationStateManager::Wasm { app_state_manager } => {
-                app_state_manager
-                    .meta_client_service
-                    .send_request(request)
-                    .await;
-            }
-            GenericApplicationStateManager::InMem { app_state_manager } => {
-                app_state_manager
-                    .meta_client_service
-                    .send_request(request)
-                    .await;
-            }
-        }
+        let meta_client_service = self.get_meta_client_service();
+        meta_client_service
+            .send_request(request)
+            .await;
     }
 
     pub async fn recover_js(&self, meta_pass_id_js: JsValue) {

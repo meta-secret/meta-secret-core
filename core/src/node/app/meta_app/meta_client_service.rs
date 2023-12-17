@@ -56,13 +56,24 @@ impl<Repo, StateManager> MetaClientService<Repo, StateManager>
                 }
 
                 GenericAppStateRequest::ClusterDistribution(request) => {
-                    let distributor = MetaDistributor {
-                        persistent_obj: self.sync_gateway.persistent_object.clone(),
-                        vault: vault.clone(),
-                        user_creds: Arc::new(app_state.creds.clone()),
+                    let creds_repo = CredentialsRepo {
+                        p_obj: self.sync_gateway.persistent_object.clone()
                     };
 
-                    distributor.distribute(pass_id.to_string(), pass.to_string()).await;
+                    let user_creds = creds_repo.get_user_creds().await?;
+
+                    let vault_repo = PersistentVault {
+                        p_obj: self.sync_gateway.persistent_object.clone()
+                    };
+                    let vault = vault_repo.get_vault().await?;
+
+                    let distributor = MetaDistributor {
+                        persistent_obj: self.sync_gateway.persistent_object.clone(),
+                        vault,
+                        user_creds: Arc::new(user_creds),
+                    };
+
+                    distributor.distribute(request.pass_id, request.pass).await?;
                 }
 
                 GenericAppStateRequest::Recover(recovery_request) => {
@@ -81,7 +92,7 @@ impl<Repo, StateManager> MetaClientService<Repo, StateManager>
 
         let maybe_creds_event = {
             let creds_repo = CredentialsRepo {
-                repo: self.sync_gateway.persistent_object.repo.clone(),
+                p_obj: self.sync_gateway.persistent_object.clone(),
             };
             creds_repo.find().await?
         };
@@ -104,7 +115,7 @@ impl<Repo, StateManager> MetaClientService<Repo, StateManager>
     async fn sign_up(&self) -> anyhow::Result<VaultStatus> {
         let creds = {
             let creds_repo = CredentialsRepo {
-                repo: self.sync_gateway.persistent_object.repo.clone(),
+                p_obj: self.sync_gateway.persistent_object.clone(),
             };
             creds_repo.get().await?
         };

@@ -1,7 +1,7 @@
 use anyhow::Context;
 use meta_secret_core::crypto::keys::KeyManager;
 use meta_secret_core::errors::CoreError;
-use meta_secret_core::models::{Base64EncodedText, SecretDistributionDocData, SerializedKeyManager};
+use meta_secret_core::models::{Base64Text, SecretDistributionDocData, SerializedKeyManager};
 use meta_secret_core::recover_from_shares;
 use meta_secret_core::secret::data_block::common::SharedSecretConfig;
 use meta_secret_core::secret::shared_secret::UserShareDto;
@@ -187,7 +187,7 @@ fn data_to_string(bytes: *const u8, len: SizeT) -> CoreResult<String> {
 #[serde(rename_all = "camelCase")]
 pub struct JsonMappedData {
     sender_key_manager: SerializedKeyManager,
-    receiver_pub_key: Base64EncodedText,
+    receiver_pub_key: Base64Text,
     secret: String,
 }
 

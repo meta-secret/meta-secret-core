@@ -1,12 +1,16 @@
 use std::fmt::Display;
 
 use crate::node::common::model::crypto::EncryptedMessage;
-use crate::node::common::model::device::{DeviceCredentials, DeviceData};
-use crate::node::common::model::user::{UserCredentials, UserData, UserId, UserMembership};
-use crate::node::common::model::vault::{VaultData, VaultName, VaultStatus};
+use crate::node::common::model::device::{DeviceData, DeviceLink};
+use crate::node::common::model::user::UserId;
+use crate::node::common::model::vault::{VaultName, VaultStatus};
+use rand::{distributions::Alphanumeric, Rng};
+use crate::crypto::utils;
+use crate::node::common::model::secret::MetaPasswordId;
 
 pub mod device {
     use std::fmt::Display;
+    use anyhow::anyhow;
 
     use crypto::utils::generate_uuid_b64_url_enc;
 
@@ -31,6 +35,69 @@ pub mod device {
     impl From<&str> for DeviceName {
         fn from(device_name: &str) -> Self {
             DeviceName(String::from(device_name))
+        }
+    }
+
+    #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub enum DeviceLink {
+        Loopback(LoopbackDeviceLink),
+        PeerToPeer(PeerToPeerDeviceLink),
+    }
+
+    #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct LoopbackDeviceLink {
+        device: DeviceId
+    }
+
+    #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct PeerToPeerDeviceLink {
+        sender: DeviceId,
+        receiver: DeviceId
+    }
+
+    pub struct DeviceLinkBuilder {
+        sender: Option<DeviceId>,
+        receiver: Option<DeviceId>
+    }
+
+    impl DeviceLinkBuilder {
+        pub fn new() -> Self {
+            Self { sender: None, receiver: None }
+        }
+
+        pub fn sender(mut self, sender: DeviceId) -> Self {
+            self.sender = Some(sender);
+            self
+        }
+
+        pub fn receiver(mut self, receiver: DeviceId) -> Self {
+            self.receiver = Some(receiver);
+            self
+        }
+
+        pub fn build(self) -> anyhow::Result<DeviceLink> {
+            let sender = self.sender.ok_or(anyhow!("Sender is not set"))?;
+
+            let device_link = if let Some(receiver) = self.receiver {
+                if sender == receiver {
+                    DeviceLink::Loopback(LoopbackDeviceLink { device: sender } )
+                } else {
+                    DeviceLink::PeerToPeer(PeerToPeerDeviceLink { sender, receiver })
+                }
+            } else {
+                DeviceLink::Loopback(LoopbackDeviceLink { device: sender } )
+            };
+
+            Ok(device_link)
+        }
+    }
+
+    impl DeviceLink {
+        pub fn is_loopback(&self) -> bool {
+            matches!(self, DeviceLink::Loopback(_))
         }
     }
 
@@ -318,7 +385,7 @@ pub mod vault {
 
 pub mod crypto {
     use crate::crypto::encoding::base64::Base64Text;
-    use crate::node::common::model::device::DeviceData;
+    use crate::node::common::model::device::{DeviceData, DeviceId, DeviceLink};
     use crate::node::common::model::user::UserData;
 
     #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -352,37 +419,91 @@ pub mod crypto {
 
     #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
-    pub struct EncryptedMessage {
-        pub sender: UserData,
-        pub receiver: UserData,
-        pub encrypted_text: AeadCipherText,
+    pub enum EncryptedMessage {
+        /// There is only one type of encrypted message for now, which is encrypted share of a secret,
+        /// and that particular type of message has a device link
+        /// and it used to figure out which vault the message belongs to
+        CipherShare {
+            device_link: DeviceLink,
+            share: AeadCipherText
+        }
     }
 
     impl EncryptedMessage {
-        pub fn receiver_device(&self) -> DeviceData {
-            self.receiver.device.clone()
-        }
-
-        pub fn sender_device(&self) -> DeviceData {
-            self.sender.device.clone()
+        pub fn device_link(&self) -> DeviceLink {
+            match self {
+                EncryptedMessage::CipherShare { device_link, .. } => device_link.clone()
+            }
         }
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum SecretDistributionType {
-    Split,
-    Recover,
-}
+pub mod secret {
+    use rand::distributions::Alphanumeric;
+    use rand::Rng;
+    use crate::crypto::utils;
+    use crate::node::common::model::crypto::EncryptedMessage;
+    use crate::node::common::model::device::DeviceLink;
+    use crate::node::common::model::vault::VaultName;
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SecretDistributionData {
-    pub distribution_type: SecretDistributionType,
-    pub vault_name: VaultName,
-    pub meta_password_id: MetaPasswordId,
-    pub secret_message: EncryptedMessage,
+    #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct MetaPasswordId {
+        /// SHA256 hash of a salt
+        pub id: String,
+        /// Random String up to 30 characters, must be unique
+        pub salt: String,
+        /// Human readable name given to the password
+        pub name: String,
+    }
+
+    const SALT_LENGTH: usize = 8;
+
+    impl MetaPasswordId {
+        pub fn generate(name: String) -> Self {
+            let salt: String = rand::thread_rng()
+                .sample_iter(&Alphanumeric)
+                .take(SALT_LENGTH)
+                .map(char::from)
+                .collect();
+            MetaPasswordId::build(name, salt)
+        }
+
+        pub fn build(name: String, salt: String) -> Self {
+            let mut id_str = name.clone();
+            id_str.push('-');
+            id_str.push_str(salt.as_str());
+
+            Self {
+                id: utils::generate_uuid_b64_url_enc(id_str),
+                salt,
+                name,
+            }
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub enum SecretDistributionType {
+        Split,
+        Recover,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct SecretDistributionData {
+        pub distribution_type: SecretDistributionType,
+        pub vault_name: VaultName,
+        pub meta_password_id: MetaPasswordId,
+        pub secret_message: EncryptedMessage,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct PasswordRecoveryRequest {
+        pub id: MetaPasswordId,
+        pub device_link: DeviceLink
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
@@ -408,25 +529,6 @@ impl Default for RegistrationStatus {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PasswordRecoveryRequest {
-    pub id: MetaPasswordId,
-    pub consumer: UserId,
-    pub provider: UserId,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MetaPasswordId {
-    /// SHA256 hash of a salt
-    pub id: String,
-    /// Random String up to 30 characters, must be unique
-    pub salt: String,
-    /// Human readable name given to the password
-    pub name: String,
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApplicationState {
@@ -442,5 +544,16 @@ impl Default for ApplicationState {
             vault: None,
             join_component: false,
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn meta_password_id() {
+        let pass_id = MetaPasswordId::build("test".to_string(), "salt".to_string());
+        assert_eq!(pass_id.id, "CHKANX39xaMXfhe3Qkx9-w".to_string())
     }
 }

@@ -1,5 +1,5 @@
 use crate::crypto::encoding::base64::Base64Text;
-use crate::node::common::model::{PasswordRecoveryRequest, SecretDistributionData};
+use crate::node::common::model::secret::{PasswordRecoveryRequest, SecretDistributionData};
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::kv_log_event::KvLogEvent;
 use crate::node::db::events::object_id::{ArtifactId, ObjectId, UnitId};
@@ -18,7 +18,7 @@ pub enum SharedSecretObject {
         event: KvLogEvent<UnitId, SecretDistributionData>,
     },
     
-    RecoveryRequest {
+    SSDeviceLog {
         event: KvLogEvent<UnitId, PasswordRecoveryRequest>,
     },
     
@@ -30,11 +30,13 @@ pub enum SharedSecretObject {
 impl ObjIdExtractor for SharedSecretObject {
     fn obj_id(&self) -> ObjectId {
         match self {
+            SharedSecretObject::LocalShare { event } => ObjectId::from(event.key.obj_id.clone()),
+
             SharedSecretObject::Split { event } => ObjectId::from(event.key.obj_id.clone()),
             SharedSecretObject::Recover { event } => ObjectId::from(event.key.obj_id.clone()),
-            SharedSecretObject::RecoveryRequest { event } => ObjectId::from(event.key.obj_id.clone()),
+
+            SharedSecretObject::SSDeviceLog { event } => ObjectId::from(event.key.obj_id.clone()),
             SharedSecretObject::SSLog { event } => ObjectId::from(event.key.obj_id.clone()),
-            SharedSecretObject::LocalShare { event } => ObjectId::from(event.key.obj_id.clone()),
         }
     }
 }

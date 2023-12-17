@@ -7,8 +7,8 @@ pub mod base64 {
     extern crate base64;
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
     pub struct Base64Text {
-        #[serde(rename = "base64Text")]
         pub base64_text: String,
     }
 

@@ -1,5 +1,6 @@
-use crate::node::common::model::{MetaPasswordId, SecretDistributionData, SecretDistributionType};
-use crate::node::common::model::device::DeviceId;
+use crate::node::common::model::crypto::EncryptedMessage;
+use crate::node::common::model::device::{DeviceId, DeviceLink};
+use crate::node::common::model::secret::{MetaPasswordId, SecretDistributionData, SecretDistributionType};
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ObjectType};
 
@@ -17,9 +18,7 @@ pub enum SharedSecretDescriptor {
 
     /// This log allows to recreate a lifetime of the secret sharing workflow and allows to have a consistent view
     ///across the cluster on what events of the secret sharing happened at what time.
-    SSLog {
-        vault_name: VaultName,
-    },
+    SSLog(VaultName)
 }
 
 impl ObjectType for SharedSecretDescriptor {
@@ -38,7 +37,7 @@ impl SharedSecretDescriptor {
         match self {
             SharedSecretDescriptor::Split(event_id) => event_id.as_id_str(),
             SharedSecretDescriptor::Recover(event_id) => event_id.as_id_str(),
-            SharedSecretDescriptor::SSLog { vault_name } => vault_name.to_string(),
+            SharedSecretDescriptor::SSLog(vault_name) => vault_name.to_string(),
             SharedSecretDescriptor::LocalShare { .. } => {
                 serde_json::to_string(self).unwrap()
             }
@@ -46,7 +45,7 @@ impl SharedSecretDescriptor {
     }
 
     pub fn audit(vault_name: VaultName) -> ObjectDescriptor {
-        ObjectDescriptor::SharedSecret(SharedSecretDescriptor::SSLog { vault_name })
+        ObjectDescriptor::SharedSecret(SharedSecretDescriptor::SSLog(vault_name))
     }
 }
 
@@ -54,8 +53,7 @@ impl SharedSecretDescriptor {
 #[serde(rename_all = "camelCase")]
 pub struct SharedSecretEventId {
     pub vault_name: VaultName,
-    pub sender: DeviceId,
-    pub receiver: DeviceId,
+    pub device_link: DeviceLink
 }
 
 impl SharedSecretEventId {
@@ -64,17 +62,21 @@ impl SharedSecretEventId {
     }
 }
 
+impl From<SecretDistributionData> for SharedSecretEventId {
+    fn from(secret: SecretDistributionData) -> Self {
+        let device_link = match secret.secret_message {
+            EncryptedMessage::CipherShare { device_link, .. } => device_link
+        };
+
+        Self { vault_name: secret.vault_name, device_link }
+    }
+}
+
 impl From<&SecretDistributionData> for ObjectDescriptor {
     fn from(secret_distribution: &SecretDistributionData) -> Self {
-        let vault_name = secret_distribution.vault_name.clone();
-        let receiver_device = secret_distribution.secret_message.receiver_device();
-        let sender_device = secret_distribution.secret_message.sender_device();
 
-        let ss_event_id = SharedSecretEventId {
-            vault_name,
-            sender: sender_device.id.clone(),
-            receiver: receiver_device.id,
-        };
+        let ss_event_id = SharedSecretEventId::from(secret_distribution.clone());
+
         match secret_distribution.distribution_type {
             SecretDistributionType::Split => {
                 ObjectDescriptor::SharedSecret(SharedSecretDescriptor::Split(ss_event_id))
@@ -89,8 +91,7 @@ impl From<&SecretDistributionData> for ObjectDescriptor {
 #[cfg(test)]
 mod test {
     use crate::crypto::keys::{KeyManager, OpenBox, SecretBox};
-    use crate::node::common::model::device::DeviceId;
-    use crate::node::common::model::MetaPasswordId;
+    use crate::node::common::model::device::{DeviceId, DeviceLink};
     use crate::node::common::model::vault::VaultName;
     use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
     use crate::node::db::descriptors::shared_secret::{SharedSecretDescriptor, SharedSecretEventId};
@@ -110,8 +111,10 @@ mod test {
         let obj_desc = {
             let event_id = SharedSecretEventId {
                 vault_name: VaultName(String::from("test_vault")),
-                sender: device_id.clone(),
-                receiver: device_id,
+                device_link: DeviceLink {
+                    sender: device_id.clone(),
+                    receiver: device_id,
+                }
             };
             ObjectDescriptor::SharedSecret(SharedSecretDescriptor::Split(event_id))
         };
