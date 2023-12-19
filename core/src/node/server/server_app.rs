@@ -5,7 +5,6 @@ use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::common::model::device::DeviceCredentials;
 use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
-use crate::node::db::events::common::PublicKeyRecord;
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object::PersistentGlobalIndexApi;
@@ -25,7 +24,7 @@ pub struct ServerDataTransfer {
 impl<Repo: KvLogEventRepo> ServerApp<Repo> {
 
     #[instrument(skip(self))]
-    pub async fn run(&self) {
+    pub async fn run(&self) -> anyhow::Result<()> {
         info!("Run server app");
 
         self.gi_initialization().await;
@@ -49,16 +48,16 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                     };
 
                     self.data_transfer.dt
-                        .send_to_client(DataSyncResponse::Data { events: new_events})
+                        .send_to_client(DataSyncResponse { events: new_events})
                         .await;
                 }
                 DataSyncRequest::Event(event) => {
-                    self.data_sync.send(event)
-                        .await
-                        .expect("Server. Send event error");
+                    self.data_sync.send(event).await?;
                 }
             }
         }
+
+        Ok(())
     }
 
     #[instrument(skip(self))]

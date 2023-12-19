@@ -1,23 +1,17 @@
 use std::sync::Arc;
-use anyhow::Error;
 
 use async_trait::async_trait;
 use tracing::{debug, info, instrument, Instrument};
 
-use crate::node::app::credentials_repo::CredentialsRepo;
-use crate::node::common::model::device::{DeviceCredentials, DeviceData, DeviceName};
-use crate::node::common::model::user::UserCredentials;
-use crate::node::common::model::vault::VaultName;
+use crate::node::common::model::device::DeviceData;
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
-use crate::node::db::events::common::PublicKeyRecord;
 use crate::node::db::events::db_tail::DbTail;
-use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, UnitEvent};
+use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::KvLogEvent;
-use crate::node::db::events::local::CredentialsObject;
 use crate::node::db::events::object_id::{Next, ObjectId};
-use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object_navigator::PersistentObjectNavigator;
+use crate::node::db::repo::generic_db::KvLogEventRepo;
 
 pub struct PersistentObject<Repo: KvLogEventRepo> {
     pub repo: Arc<Repo>,
@@ -25,6 +19,8 @@ pub struct PersistentObject<Repo: KvLogEventRepo> {
 }
 
 impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
+
+    #[instrument(skip_all)]
     pub async fn get_object_events_from_beginning(
         &self,
         obj_desc: ObjectDescriptor,
@@ -86,12 +82,12 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
     #[instrument(skip_all)]
     pub async fn find_free_id_by_obj_desc(&self, obj_desc: ObjectDescriptor) -> anyhow::Result<ObjectId> {
         let maybe_tail_id = self
-            .find_tail_id_by_obj_desc(obj_desc)
+            .find_tail_id_by_obj_desc(obj_desc.clone())
             .await?;
 
         let free_id = maybe_tail_id
             .map(|tail_id| tail_id.next())
-            .unwrap_or(ObjectId::unit(obj_desc.clone()));
+            .unwrap_or(ObjectId::unit(obj_desc));
 
         Ok(free_id)
     }
@@ -99,7 +95,7 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
     #[instrument(skip_all)]
     pub async fn find_free_id(&self, obj_id: ObjectId) -> anyhow::Result<ObjectId> {
         let maybe_tail_id = self
-            .find_tail_id(obj_id)
+            .find_tail_id(obj_id.clone())
             .await?;
 
         let free_id = maybe_tail_id
@@ -133,7 +129,7 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
 
                 if let Some(curr_tail) = found_event {
                     let curr_obj_id = curr_tail.obj_id();
-                    existing_id = curr_obj_id;
+                    existing_id = curr_obj_id.clone();
                     curr_tail_id = curr_obj_id.next();
                 } else {
                     break;
@@ -163,41 +159,11 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
             Ok(db_tail)
         }
     }
-
-    #[instrument(skip(self))]
-    pub async fn generate_user(&self, device_name: DeviceName, vault_name: VaultName) -> anyhow::Result<CredentialsObject> {
-        info!("Create a new user locally");
-
-        let device_creds = self.get_or_generate_device_creds(device_name).await?;
-
-        let user_creds = CredentialsObject::default_user(UserCredentials::from(device_creds, vault_name));
-        let user_creds_event = GenericKvLogEvent::Credentials(user_creds.clone());
-
-        self.repo.save(user_creds_event).await?;
-
-        Ok(user_creds)
-    }
-
-    pub async fn get_or_generate_device_creds(&self, device_name: DeviceName) -> Result<DeviceCredentials, Error> {
-        let device_repo = CredentialsRepo {
-            repo: self.repo.clone(),
-        };
-
-        let maybe_creds = device_repo.find().await?;
-
-        let device_creds = match maybe_creds {
-            None => {
-                device_repo.generate_device_creds(device_name).await?
-            }
-            Some(creds) => creds,
-        };
-        Ok(device_creds)
-    }
 }
 
 #[async_trait(? Send)]
 pub trait PersistentGlobalIndexApi {
-    async fn gi_init(&self, public_key: &PublicKeyRecord) -> anyhow::Result<Vec<GenericKvLogEvent>>;
+    async fn gi_init(&self, public_key: DeviceData) -> anyhow::Result<Vec<GenericKvLogEvent>>;
 }
 
 pub struct PersistentGlobalIndex<Repo: KvLogEventRepo> {
@@ -212,15 +178,12 @@ impl<Repo: KvLogEventRepo> PersistentGlobalIndexApi for PersistentGlobalIndex<Re
     async fn gi_init(&self, public_key: DeviceData) -> anyhow::Result<Vec<GenericKvLogEvent>> {
         info!("Init global index");
 
-        let unit_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Unit {
-            event: KvLogEvent::global_index_unit(),
-        });
+        let unit_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Unit(KvLogEvent::global_index_unit()));
 
         self.repo.save(unit_event.clone()).await?;
 
-        let genesis_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Genesis {
-            event: KvLogEvent::global_index_genesis(public_key),
-        });
+        let genesis_event = GlobalIndexObject::Genesis(KvLogEvent::global_index_genesis(public_key))
+            .to_generic();
 
         self.repo.save(genesis_event.clone()).await?;
 
@@ -234,112 +197,5 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
             repo: repo.clone(),
             global_index: Arc::new(PersistentGlobalIndex { repo }),
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use std::sync::Arc;
-
-    use tracing::Instrument;
-
-    use crate::crypto::keys::KeyManager;
-    use crate::node::db::events::generic_log_event::{GenericKvLogEvent, UnitEventWithEmptyValue};
-    use crate::node::db::events::global_index::{GlobalIndexObject};
-    use crate::node::db::events::kv_log_event::KvKey;
-    use crate::node::db::events::kv_log_event::KvLogEvent;
-    use crate::node::db::repo::generic_db::SaveCommand;
-    use crate::node::db::in_mem_db::InMemKvLogEventRepo;
-    use crate::node::db::objects::persistent_object::PersistentObject;
-
-    #[tokio::test]
-    async fn test_find_events() {
-        let persistent_object = {
-            let repo = Arc::new(InMemKvLogEventRepo::default());
-            PersistentObject::new(repo.clone())
-        };
-
-        let user_sig = {
-            let s_box = KeyManager::generate_secret_box("test_vault".to_string());
-            let device = DeviceInfo {
-                device_id: "a".to_string(),
-                device_name: "a".to_string(),
-            };
-            s_box.get_user_sig(&device)
-        };
-
-        let unit_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::unit());
-        persistent_object
-            .repo
-            .save(unit_event)
-            .await
-            .unwrap();
-
-        let genesis_event = {
-            let server_pk = PublicKeyRecord::from(user_sig.public_key.as_ref().clone());
-            GenericKvLogEvent::GlobalIndex(GlobalIndexObject::genesis(&server_pk))
-        };
-
-        let vault_1_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Update {
-            event: KvLogEvent {
-                key: KvKey::unit(&ObjectDescriptor::GlobalIndex),
-                value: GlobalIndexRecord {
-                    vault_id: String::from("vault_1"),
-                },
-            },
-        });
-
-        persistent_object
-            .repo
-            .save(genesis_event)
-            .await
-            .unwrap();
-
-        persistent_object
-            .repo
-            .save(ObjectId::global_index_genesis().next(), vault_1_event)
-            .await
-            .unwrap();
-
-        let tail_id = persistent_object
-            .find_tail_id_by_obj_desc(&ObjectDescriptor::GlobalIndex)
-            .await
-            .unwrap();
-
-        assert_eq!(String::from("GlobalIndex:index::2"), tail_id.id_str());
-    }
-
-    #[tokio::test]
-    async fn test_global_index() {
-        let persistent_object = {
-            let repo = Arc::new(InMemKvLogEventRepo::default());
-            PersistentObject::new(repo.clone())
-        };
-
-        let user_sig = {
-            let s_box = KeyManager::generate_secret_box("test_vault".to_string());
-            let device = DeviceInfo {
-                device_id: "a".to_string(),
-                device_name: "a".to_string(),
-            };
-            s_box.get_user_sig(&device)
-        };
-
-        let unit_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::unit());
-        persistent_object.repo.save(unit_event).await.unwrap();
-
-        let genesis_event = {
-            let server_pk = PublicKeyRecord::from(user_sig.public_key.as_ref().clone());
-            GenericKvLogEvent::GlobalIndex(GlobalIndexObject::genesis(&server_pk))
-        };
-
-        persistent_object.repo.save(genesis_event.clone()).await.unwrap();
-
-        let tail_id = persistent_object
-            .find_tail_id_by_obj_desc(&ObjectDescriptor::GlobalIndex)
-            .await
-            .unwrap();
-
-        assert_eq!(genesis_event.key().obj_id.id_str(), tail_id.id_str());
     }
 }

@@ -15,6 +15,11 @@ pub enum ObjectDescriptor {
     /// Secret distribution (split, recover, recovery request and so on)
     SharedSecret(SharedSecretDescriptor)
 }
+
+pub trait ToObjectDescriptor {
+    fn to_obj_desc(self) -> ObjectDescriptor;
+}
+
 pub trait ObjectType {
     fn object_type(&self) -> String;
 }

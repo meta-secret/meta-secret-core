@@ -24,7 +24,6 @@ use crate::secret::shared_secret::{PlainText, SharedSecret, SharedSecretEncrypti
 pub mod crypto;
 pub mod errors;
 pub mod node;
-pub mod sdk;
 pub mod secret;
 pub mod test_utils;
 

@@ -79,7 +79,7 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
                     VaultStatusObject::Genesis { .. } => {
                         UserMembership::Outsider(UserDataOutsider::unknown(user_data))
                     }
-                    VaultStatusObject::Status { event } => {
+                    VaultStatusObject::Status(event) => {
                         event.value
                     }
                 }

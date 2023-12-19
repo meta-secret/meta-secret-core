@@ -1,13 +1,12 @@
 use std::sync::Arc;
 use anyhow::anyhow;
 
-use async_trait::async_trait;
 use tracing::{error, info, instrument, Instrument};
 
 use crate::node::app::app_state_update_manager::JsAppStateManager;
-use crate::node::app::meta_app::messaging::{ClusterDistributionRequest, GenericAppStateRequest, GenericAppStateResponse};
+use crate::node::app::meta_app::messaging::{GenericAppStateRequest, GenericAppStateResponse};
 use crate::node::app::sync_gateway::SyncGateway;
-use crate::node::common::actor::{ActionHandler, ServiceState};
+use crate::node::common::actor::ServiceState;
 use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::common::model::ApplicationState;
 use crate::node::common::model::user::UserDataOutsiderStatus;
@@ -15,6 +14,7 @@ use crate::node::common::model::vault::VaultStatus;
 use crate::node::db::actions::recover::RecoveryAction;
 use crate::node::db::events::local::CredentialsObject;
 use crate::node::db::objects::device_log::PersistentDeviceLog;
+use crate::node::db::objects::shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::vault::PersistentVault;
 use crate::node::db::repo::credentials_repo::CredentialsRepo;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
@@ -36,7 +36,7 @@ impl<Repo, StateManager> MetaClientService<Repo, StateManager>
         StateManager: JsAppStateManager
 {
     #[instrument(skip_all)]
-    pub async fn run(&self) {
+    pub async fn run(&self) -> anyhow::Result<()> {
         info!("Run meta_app service");
 
         let mut service_state = self.build_service_state().await?;
@@ -76,13 +76,20 @@ impl<Repo, StateManager> MetaClientService<Repo, StateManager>
                     distributor.distribute(request.pass_id, request.pass).await?;
                 }
 
-                GenericAppStateRequest::Recover(recovery_request) => {
-                    self.handle(recovery_request, &mut service_state).await
+                GenericAppStateRequest::Recover(meta_pass_id) => {
+                    let recovery_action = RecoveryAction {
+                        persistent_obj: self.sync_gateway.persistent_object.clone(),
+                    };
+                    recovery_action
+                        .recovery_request(meta_pass_id, &service_state.state)
+                        .await?;
                 }
             }
 
             self.on_update(&service_state.state).await;
         }
+
+        Ok(())
     }
 
     async fn build_service_state(&self) -> anyhow::Result<ServiceState<ApplicationState>> {
@@ -99,7 +106,7 @@ impl<Repo, StateManager> MetaClientService<Repo, StateManager>
 
         service_state.state.device = maybe_creds_event.map(|creds| creds.device());
 
-        self.on_update(&service_state.state.get_state()).await;
+        self.on_update(&service_state.state).await;
         Ok(service_state)
     }
 
@@ -124,7 +131,7 @@ impl<Repo, StateManager> MetaClientService<Repo, StateManager>
             CredentialsObject::Device { .. } => {
                 Err(anyhow!("User credentials not found"))
             }
-            CredentialsObject::DefaultUser { event } => {
+            CredentialsObject::DefaultUser(event) => {
                 let user = event.value.user();
 
                 //get vault status, if not member, then create request to join
@@ -143,16 +150,22 @@ impl<Repo, StateManager> MetaClientService<Repo, StateManager>
                         };
 
                         p_device_log
-                            .join_cluster_request(user.clone())
+                            .accept_join_cluster_request(user.clone())
                             .await?;
+
+                        //Init SSDeviceLog
+                        let p_ss_device_log = PersistentSharedSecret {
+                            p_obj: self.sync_gateway.persistent_object.clone(),
+                        };
+
+                        p_ss_device_log.init(user.clone()).await?;
 
                         self.sync_gateway.sync().await?;
                     }
                 }
 
-                p_vault
-                    .find(user)
-                    .await?
+                let vault_status = p_vault.find(user).await?;
+                Ok(vault_status)
             }
         }
     }
@@ -165,26 +178,5 @@ pub struct MetaClientAccessProxy {
 impl MetaClientAccessProxy {
     pub async fn send_request(&self, request: GenericAppStateRequest) {
         self.dt.dt.send_to_service(request).await
-    }
-}
-
-#[async_trait(? Send)]
-impl<Repo, StateManager> ActionHandler<RecoveryRequest, GenericAppState> for MetaClientService<Repo, StateManager>
-    where
-        Repo: KvLogEventRepo,
-        StateManager: JsAppStateManager,
-{
-    #[instrument(skip_all)]
-    async fn handle(&self, request: RecoveryRequest, state: &mut ServiceState<GenericAppState>) {
-        if let GenericAppState::Member(app_state) = &state.state {
-            let recovery_action = RecoveryAction {
-                persistent_obj: self.meta_client.persistent_obj.clone(),
-            };
-            recovery_action
-                .recovery_request(request.meta_pass_id, app_state)
-                .await;
-        } else {
-            error!("Invalid request. Recovery request not allowed when the state is not 'Joined'");
-        }
     }
 }

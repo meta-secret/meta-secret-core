@@ -10,13 +10,9 @@ use crate::node::db::events::object_id::{GenesisId, ObjectId, UnitId};
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum CredentialsObject {
-    Device {
-        event: KvLogEvent<UnitId, DeviceCredentials>
-    },
+    Device(KvLogEvent<UnitId, DeviceCredentials>),
     /// Default vault
-    DefaultUser {
-        event: KvLogEvent<GenesisId, UserCredentials>
-    }
+    DefaultUser(KvLogEvent<GenesisId, UserCredentials>)
 }
 
 impl ObjIdExtractor for CredentialsObject {
@@ -38,7 +34,7 @@ impl UnitEvent<DeviceCredentials> for CredentialsObject {
             value,
         };
 
-        CredentialsObject::Device { event }
+        CredentialsObject::Device(event)
     }
 }
 
@@ -49,7 +45,7 @@ impl CredentialsObject {
             value: user,
         };
 
-        CredentialsObject::DefaultUser { event }
+        CredentialsObject::DefaultUser(event)
     }
 }
 
@@ -73,17 +69,15 @@ impl CredentialsObject {
 
     pub fn device(&self) -> DeviceData {
         match self {
-            CredentialsObject::Device { event } => event.value.device.clone(),
-            CredentialsObject::DefaultUser { event } => event.value.device_creds.device.clone()
+            CredentialsObject::Device(event) => event.value.device.clone(),
+            CredentialsObject::DefaultUser(event) => event.value.device_creds.device.clone()
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DbTailObject {
-    pub event: KvLogEvent<UnitId, DbTail>,
-}
+pub struct DbTailObject(pub KvLogEvent<UnitId, DbTail>);
 
 impl ToGenericEvent for DbTailObject {
     fn to_generic(self) -> GenericKvLogEvent {
@@ -93,7 +87,7 @@ impl ToGenericEvent for DbTailObject {
 
 impl ObjIdExtractor for DbTailObject {
     fn obj_id(&self) -> ObjectId {
-        ObjectId::from(self.event.key.clone())
+        ObjectId::from(self.0.key.clone())
     }
 }
 
@@ -101,6 +95,6 @@ impl UnitEvent<DbTail> for DbTailObject {
     fn unit(value: DbTail) -> Self {
         let key = KvKey::unit(ObjectDescriptor::DbTail);
         let event = KvLogEvent { key, value };
-        Self { event }
+        Self(event)
     }
 }

@@ -1,12 +1,11 @@
-use crate::node::common::model::MetaPasswordId;
-use crate::node::common::model::user::UserData;
+use crate::node::common::model::secret::MetaPasswordId;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum GenericAppStateRequest {
     SignUp,
     ClusterDistribution(ClusterDistributionRequest),
-    Recover { meta_pass_id: MetaPasswordId},
+    Recover(MetaPasswordId),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

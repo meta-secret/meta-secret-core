@@ -2,19 +2,20 @@ use crate::node::common::model::device::DeviceData;
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
-use crate::node::db::events::common::PublicKeyRecord;
-use crate::node::db::events::generic_log_event::{ToGenericEvent, GenericKvLogEvent, KeyExtractor, ObjIdExtractor, UnitEventWithEmptyValue};
+use crate::node::db::events::generic_log_event::{
+    GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent, UnitEventWithEmptyValue
+};
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, GenesisId, ObjectId, UnitId};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum GlobalIndexObject {
-    Unit { event: KvLogEvent<UnitId, ()> },
-    Genesis { event: KvLogEvent<GenesisId, DeviceData> },
-    Update { event: KvLogEvent<ArtifactId, UnitId> },
+    Unit(KvLogEvent<UnitId, ()>),
+    Genesis(KvLogEvent<GenesisId, DeviceData>),
+    Update(KvLogEvent<ArtifactId, UnitId>),
 
-    VaultIndex { event: KvLogEvent<UnitId, ()> },
+    VaultIndex(KvLogEvent<UnitId, ()>),
 }
 
 impl GlobalIndexObject {
@@ -29,12 +30,10 @@ impl GlobalIndexObject {
             vault_id: vault_id.clone()
         });
 
-        GlobalIndexObject::VaultIndex {
-            event: KvLogEvent {
-                key: KvKey::unit(idx_desc),
-                value: (),
-            }
-        }
+        GlobalIndexObject::VaultIndex(KvLogEvent {
+            key: KvKey::unit(idx_desc),
+            value: (),
+        })
     }
 }
 
@@ -47,10 +46,10 @@ impl ToGenericEvent for GlobalIndexObject {
 impl ObjIdExtractor for GlobalIndexObject {
     fn obj_id(&self) -> ObjectId {
         match self {
-            GlobalIndexObject::Unit { event } => ObjectId::from(event.key.obj_id.clone()),
-            GlobalIndexObject::Genesis { event } => ObjectId::from(event.key.obj_id.clone()),
-            GlobalIndexObject::Update { event } => ObjectId::from(event.key.obj_id.clone()),
-            GlobalIndexObject::VaultIndex { event } => ObjectId::from(event.key.obj_id.clone())
+            GlobalIndexObject::Unit(event) => ObjectId::from(event.key.obj_id.clone()),
+            GlobalIndexObject::Genesis(event) => ObjectId::from(event.key.obj_id.clone()),
+            GlobalIndexObject::Update(event) => ObjectId::from(event.key.obj_id.clone()),
+            GlobalIndexObject::VaultIndex(event) => ObjectId::from(event.key.obj_id.clone())
         }
     }
 }
@@ -58,26 +57,22 @@ impl ObjIdExtractor for GlobalIndexObject {
 impl KeyExtractor for GlobalIndexObject {
     fn key(&self) -> GenericKvKey {
         match self {
-            GlobalIndexObject::Unit { event } => GenericKvKey::from(event.key.clone()),
-            GlobalIndexObject::Genesis { event } => GenericKvKey::from(event.key.clone()),
-            GlobalIndexObject::Update { event } => GenericKvKey::from(event.key.clone()),
-            GlobalIndexObject::VaultIndex { event } => GenericKvKey::from(event.key.clone())
+            GlobalIndexObject::Unit(event) => GenericKvKey::from(event.key.clone()),
+            GlobalIndexObject::Genesis(event) => GenericKvKey::from(event.key.clone()),
+            GlobalIndexObject::Update(event) => GenericKvKey::from(event.key.clone()),
+            GlobalIndexObject::VaultIndex(event) => GenericKvKey::from(event.key.clone())
         }
     }
 }
 
 impl UnitEventWithEmptyValue for GlobalIndexObject {
     fn unit() -> Self {
-        GlobalIndexObject::Unit {
-            event: KvLogEvent::global_index_unit(),
-        }
+        GlobalIndexObject::Unit(KvLogEvent::global_index_unit())
     }
 }
 
 impl GlobalIndexObject {
-    pub fn genesis(server_pk: PublicKeyRecord) -> Self {
-        GlobalIndexObject::Genesis {
-            event: KvLogEvent::global_index_genesis(server_pk),
-        }
+    pub fn genesis(server_pk: DeviceData) -> Self {
+        GlobalIndexObject::Genesis(KvLogEvent::global_index_genesis(server_pk))
     }
 }

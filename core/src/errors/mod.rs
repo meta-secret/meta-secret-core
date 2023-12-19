@@ -2,8 +2,9 @@ use std::io;
 use std::string::FromUtf8Error;
 
 use shamirsecretsharing::SSSError;
+use crate::crypto::encoding::base64::Base64Text;
+use crate::node::common::model::crypto::CommunicationChannel;
 
-use crate::models::{Base64Text, CommunicationChannel};
 use crate::secret::data_block::common::DataBlockParserError;
 
 #[derive(thiserror::Error, Debug)]

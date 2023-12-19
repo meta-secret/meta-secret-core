@@ -1,8 +1,6 @@
 use crate::node::common::model::device::DeviceData;
-use crate::node::common::model::user::UserDataCandidate;
 use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
-use crate::node::db::events::common::PublicKeyRecord;
 use crate::node::db::events::object_id::{ArtifactId, GenesisId, Next, UnitId};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

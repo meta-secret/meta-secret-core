@@ -2,7 +2,7 @@ use crate::node::common::model::crypto::EncryptedMessage;
 use crate::node::common::model::device::{DeviceId, DeviceLink};
 use crate::node::common::model::secret::{MetaPasswordId, SecretDistributionData, SecretDistributionType};
 use crate::node::common::model::vault::VaultName;
-use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ObjectType};
+use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ObjectType, ToObjectDescriptor};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -16,6 +16,8 @@ pub enum SharedSecretDescriptor {
     Split(SharedSecretEventId),
     Recover(SharedSecretEventId),
 
+    SSDeviceLog(DeviceId),
+
     /// This log allows to recreate a lifetime of the secret sharing workflow and allows to have a consistent view
     ///across the cluster on what events of the secret sharing happened at what time.
     SSLog(VaultName)
@@ -27,7 +29,8 @@ impl ObjectType for SharedSecretDescriptor {
             SharedSecretDescriptor::Split(_) => String::from("SSSplit"),
             SharedSecretDescriptor::Recover(_) => String::from("SSRecover"),
             SharedSecretDescriptor::SSLog { .. } => String::from("SSLog"),
-            SharedSecretDescriptor::LocalShare => String::from("SSShare")
+            SharedSecretDescriptor::LocalShare { .. } => String::from("SSLocalShare"),
+            SharedSecretDescriptor::SSDeviceLog(_) => String::from("SSDeviceLog")
         }
     }
 }
@@ -41,11 +44,18 @@ impl SharedSecretDescriptor {
             SharedSecretDescriptor::LocalShare { .. } => {
                 serde_json::to_string(self).unwrap()
             }
+            SharedSecretDescriptor::SSDeviceLog(device_id) => device_id.to_string()
         }
     }
 
     pub fn audit(vault_name: VaultName) -> ObjectDescriptor {
         ObjectDescriptor::SharedSecret(SharedSecretDescriptor::SSLog(vault_name))
+    }
+}
+
+impl ToObjectDescriptor for SharedSecretDescriptor {
+    fn to_obj_desc(self) -> ObjectDescriptor {
+        ObjectDescriptor::SharedSecret(self)
     }
 }
 
@@ -91,7 +101,7 @@ impl From<&SecretDistributionData> for ObjectDescriptor {
 #[cfg(test)]
 mod test {
     use crate::crypto::keys::{KeyManager, OpenBox, SecretBox};
-    use crate::node::common::model::device::{DeviceId, DeviceLink};
+    use crate::node::common::model::device::{DeviceId, DeviceLink, DeviceLinkBuilder};
     use crate::node::common::model::vault::VaultName;
     use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
     use crate::node::db::descriptors::shared_secret::{SharedSecretDescriptor, SharedSecretEventId};
@@ -109,12 +119,15 @@ mod test {
         };
 
         let obj_desc = {
+            let device_link = DeviceLinkBuilder::new()
+                .sender(device_id.clone())
+                .receiver(device_id.clone())
+                .build()
+                .unwrap();
+
             let event_id = SharedSecretEventId {
                 vault_name: VaultName(String::from("test_vault")),
-                device_link: DeviceLink {
-                    sender: device_id.clone(),
-                    receiver: device_id,
-                }
+                device_link
             };
             ObjectDescriptor::SharedSecret(SharedSecretDescriptor::Split(event_id))
         };

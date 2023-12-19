@@ -1,20 +1,24 @@
 use std::sync::Arc;
 
-use crate::node::app::meta_client::MetaClient;
+use serde::{Deserialize, Serialize};
+use tracing::{error, info, instrument};
+
 use crate::node::app::meta_app::meta_client_service::MetaClientAccessProxy;
 use crate::node::app::sync_gateway::SyncGateway;
-use crate::node::db::actions::join;
-use crate::node::db::events::generic_log_event::GenericKvLogEvent;
-use crate::node::db::events::vault_event::VaultObject;
-use crate::node::db::repo::generic_db::KvLogEventRepo;
-use crate::node::db::objects::persistent_object::PersistentObject;
-use crate::node::server::server_app::ServerDataTransfer;
-use serde::{Deserialize, Serialize};
-use tracing::{info, instrument, Instrument};
 use crate::node::common::model::user::UserCredentials;
+use crate::node::common::model::vault::VaultStatus;
+use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
+use crate::node::db::descriptors::vault::VaultDescriptor;
+use crate::node::db::events::vault_event::{VaultAction, VaultLogObject};
+use crate::node::db::objects::device_log::PersistentDeviceLog;
+use crate::node::db::objects::persistent_object::PersistentObject;
+use crate::node::db::objects::shared_secret::PersistentSharedSecret;
+use crate::node::db::objects::vault::PersistentVault;
+use crate::node::db::repo::generic_db::KvLogEventRepo;
+use crate::node::server::server_app::ServerDataTransfer;
 
 pub struct VirtualDevice<Repo: KvLogEventRepo> {
-    pub meta_client: Arc<MetaClient<Repo>>,
+    persistent_object: Arc<PersistentObject<Repo>>,
     pub meta_client_proxy: Arc<MetaClientAccessProxy>,
     pub server_dt: Arc<ServerDataTransfer>,
     gateway: Arc<SyncGateway<Repo>>,
@@ -35,60 +39,78 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
         meta_client_access_proxy: Arc<MetaClientAccessProxy>,
         server_dt: Arc<ServerDataTransfer>,
         gateway: Arc<SyncGateway<Repo>>,
-        creds: UserCredentials
+        creds: UserCredentials,
     ) -> anyhow::Result<VirtualDevice<Repo>> {
         info!("Run virtual device event handler");
 
-        let meta_client = Arc::new(MetaClient {
-            persistent_obj: persistent_object.clone(),
-            sync_gateway: gateway.clone()
-        });
-
         let virtual_device = Self {
-            meta_client: meta_client.clone(),
+            persistent_object,
             meta_client_proxy: meta_client_access_proxy.clone(),
             server_dt,
             gateway,
-            creds
+            creds,
         };
 
         Ok(virtual_device)
     }
 
-    pub async fn run(&self) {
-        let user_creds = &self.creds;
+    pub async fn run(&self) -> anyhow::Result<()> {
 
         loop {
-             self.gateway.sync().await?;
+            self.gateway.sync().await?;
 
-            // read log messages and take actions accordingly
-
-            if let VaultStore::Store { tail_id, vault, .. } = vault_store {
-                let vd_repo = self.meta_client.persistent_obj.repo.clone();
-
-                let latest_event = vd_repo.find_one(tail_id).await;
-
-                if let Ok(Some(GenericKvLogEvent::Vault(VaultObject::JoinRequest { event }))) = latest_event {
-                    let accept_event = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
-                        event: join::accept_join_request(&event, &vault),
-                    });
-
-                    let _ = vd_repo.save(accept_event).in_current_span().await;
-                }
-
-                let db_tail = self
-                    .meta_client
-                    .persistent_obj
-                    .get_db_tail(vault_name.as_str())
-                    .in_current_span()
-                    .await
-                    .unwrap();
-
-                self.gateway
-                    .sync_shared_secrets(&vault.vault_name, &self.device_creds, &db_tail)
-                    .in_current_span()
-                    .await;
+            let p_vault = PersistentVault {
+                p_obj: self.persistent_object.clone(),
             };
+
+            let vault_status = p_vault.find_for_default_user().await?;
+            match vault_status {
+                VaultStatus::Outsider(_) => {
+                    //nothing to do
+                }
+                VaultStatus::Member(vault) => {
+                    //vault actions
+                    let vault_log_desc = VaultDescriptor::VaultLog(vault.vault_name.clone())
+                        .to_obj_desc();
+                    let maybe_vault_log_event = self.persistent_object.find_tail_event(vault_log_desc).await?;
+                    match maybe_vault_log_event {
+                        None => {
+                            //nothing to do
+                        }
+                        Some(vault_log_event) => {
+                            let vault_log = VaultLogObject::try_from(vault_log_event)?;
+                            if let VaultLogObject::Action(vault_action) = vault_log {
+                                match vault_action.value {
+                                    VaultAction::JoinRequest { candidate } => {
+                                        let p_device_log = PersistentDeviceLog {
+                                            p_obj: self.persistent_object.clone(),
+                                        };
+
+                                        p_device_log
+                                            .accept_join_cluster_request(candidate)
+                                            .await?;
+                                    }
+                                    VaultAction::UpdateMembership { .. } => {
+                                        //changes made by another device, no need for any actions
+                                    }
+                                    VaultAction::AddMetaPassword { .. } => {
+                                        //changes made by another device, no need for any actions
+                                    }
+                                }
+                            };
+                        }
+                    }
+
+                    // shared secret actions
+                    let p_ss_log = PersistentSharedSecret {
+                        p_obj: self.persistent_object.clone(),
+                    };
+
+                    todo!("Implement SS log actions - replication request. This code must read the log and handle the events. Same as above for vault");
+                }
+            }
+
+            self.gateway.sync().await?;
 
             async_std::task::sleep(std::time::Duration::from_millis(300))
                 .await;

@@ -2,22 +2,21 @@ use std::sync::Arc;
 
 use tracing::Instrument;
 
-use crate::crypto::keys::{KeyManager, OpenBox, SecretBox};
-use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ToGenericEvent};
-use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::repo::generic_db::KvLogEventRepo;
-use crate::node::db::objects::persistent_object::PersistentObject;
-use crate::CoreResult;
 use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
-use crate::crypto::encoding::base64::Base64Text;
-use crate::node::common::model::crypto::{AeadCipherText, EncryptedMessage};
+use crate::CoreResult;
+use crate::crypto::keys::KeyManager;
+use crate::node::common::model::crypto::EncryptedMessage;
 use crate::node::common::model::device::{DeviceLink, DeviceLinkBuilder};
 use crate::node::common::model::secret::{MetaPasswordId, SecretDistributionData, SecretDistributionType};
-use crate::node::common::model::user::{UserCredentials, UserData};
+use crate::node::common::model::user::UserCredentials;
 use crate::node::common::model::vault::VaultData;
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
-use crate::node::db::descriptors::shared_secret::{SharedSecretDescriptor, SharedSecretEventId};
+use crate::node::db::descriptors::shared_secret::SharedSecretDescriptor;
 use crate::node::db::events::common::SharedSecretObject;
+use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ToGenericEvent};
+use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
+use crate::node::db::objects::persistent_object::PersistentObject;
+use crate::node::db::repo::generic_db::KvLogEventRepo;
 
 pub mod data_block;
 pub mod shared_secret;
@@ -86,7 +85,6 @@ pub struct MetaDistributor<Repo: KvLogEventRepo> {
 
 impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
     pub async fn distribute(self, password_id: String, password: String) -> anyhow::Result<()> {
-
         let encryptor = MetaEncryptor {
             user: self.user_creds,
             vault: self.vault.clone(),
@@ -114,12 +112,10 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
                         meta_pass_id: pass_id.clone(),
                     };
 
-                    SharedSecretObject::LocalShare {
-                        event: KvLogEvent {
-                            key: KvKey::unit(ObjectDescriptor::SharedSecret(ss_local_desc)),
-                            value: distribution_share,
-                        },
-                    }
+                    SharedSecretObject::LocalShare(KvLogEvent {
+                        key: KvKey::unit(ObjectDescriptor::SharedSecret(ss_local_desc)),
+                        value: distribution_share,
+                    });
                 }
                 DeviceLink::PeerToPeer { .. } => {
                     let split_key = {
@@ -127,12 +123,10 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
                         KvKey::unit(split_obj_desc)
                     };
 
-                    SharedSecretObject::Split {
-                        event: KvLogEvent {
-                            key: split_key.clone(),
-                            value: distribution_share,
-                        },
-                    }
+                    SharedSecretObject::Split(KvLogEvent {
+                        key: split_key.clone(),
+                        value: distribution_share,
+                    });
                 }
             };
 
@@ -149,15 +143,16 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
 
 #[cfg(test)]
 mod test {
+    use std::ops::Deref;
+
     use crate::node::db::actions::join;
     use crate::node::db::events::common::PublicKeyRecord;
+    use crate::node::db::events::object_id::ObjectId;
     use crate::node::db::events::vault_event::VaultObject;
     use crate::node::db::repo::generic_db::{FindOneQuery, SaveCommand};
-    use crate::node::server::data_sync::test::DataSyncTestContext;
     use crate::node::server::data_sync::DataSyncApi;
+    use crate::node::server::data_sync::test::DataSyncTestContext;
     use crate::test_utils::meta_test_utils::MetaAppTestVerifier;
-    use std::ops::Deref;
-    use crate::node::db::events::object_id::ObjectId;
 
     use super::*;
 

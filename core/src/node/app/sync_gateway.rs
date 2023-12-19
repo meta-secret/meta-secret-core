@@ -3,11 +3,12 @@ use std::time::Duration;
 
 use anyhow::anyhow;
 use tracing::{debug, error, info, instrument};
-use crate::node::common::model::device::DeviceData;
 
-use crate::node::common::model::user::{UserCredentials, UserDataMember, UserId, UserMembership};
+use crate::node::common::model::device::{DeviceData, DeviceLinkBuilder};
+use crate::node::common::model::user::{UserCredentials, UserDataMember};
+use crate::node::common::model::vault::VaultStatus;
 use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
-use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
+use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ToObjectDescriptor};
 use crate::node::db::descriptors::shared_secret::{SharedSecretDescriptor, SharedSecretEventId};
 use crate::node::db::descriptors::vault::VaultDescriptor;
 use crate::node::db::events::db_tail::DbTail;
@@ -15,10 +16,11 @@ use crate::node::db::events::generic_log_event::{GenericKvLogEvent, KeyExtractor
 use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::local::{CredentialsObject, DbTailObject};
-use crate::node::db::events::vault_event::{VaultObject, VaultStatusObject};
-use crate::node::db::repo::generic_db::KvLogEventRepo;
+use crate::node::db::events::vault_event::VaultStatusObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
+use crate::node::db::objects::vault::PersistentVault;
 use crate::node::db::repo::credentials_repo::CredentialsRepo;
+use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::server::data_sync::DataSyncRequest;
 use crate::node::server::request::{GlobalIndexRequest, SharedSecretRequest, SyncRequest, VaultRequest};
 use crate::node::server::server_app::ServerDataTransfer;
@@ -26,7 +28,7 @@ use crate::node::server::server_app::ServerDataTransfer;
 pub struct SyncGateway<Repo: KvLogEventRepo> {
     pub id: String,
     pub persistent_object: Arc<PersistentObject<Repo>>,
-    pub server_dt: Arc<ServerDataTransfer>
+    pub server_dt: Arc<ServerDataTransfer>,
 }
 
 impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
@@ -49,9 +51,8 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
     ///  - vault, shared secret... - user has been registered, we can sync vault related events
     #[instrument(skip_all)]
     pub async fn sync(&self) -> anyhow::Result<()> {
-
         let creds_repo = CredentialsRepo {
-            repo: self.persistent_object.repo.clone()
+            p_obj: self.persistent_object.clone()
         };
 
         let maybe_creds_event = creds_repo.find().await?;
@@ -62,7 +63,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
 
         self.sync_global_index(creds_obj.device()).await?;
 
-        let CredentialsObject::DefaultUser { event: user_creds_event } = creds_obj else {
+        let CredentialsObject::DefaultUser(user_creds_event) = creds_obj else {
             return Ok(());
         };
 
@@ -70,10 +71,9 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         let user_creds = user_creds_event.value;
         let sender = user_creds.user();
 
-        let vault_status_obj_desc = ObjectDescriptor::Vault(VaultDescriptor::VaultStatus {
-            user_id: user_creds.user_id(),
-        });
-        
+        let vault_status_obj_desc = VaultDescriptor::VaultStatus(user_creds.user_id())
+            .to_obj_desc();
+
         let maybe_vault_status = self
             .persistent_object
             .find_tail_event(vault_status_obj_desc)
@@ -127,7 +127,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             self.persistent_object.repo.save(new_event).await?;
         }
 
-        self.sync_shared_secrets(&user_creds).await;
+        self.sync_shared_secrets(&user_creds).await?;
 
         Ok(())
     }
@@ -153,95 +153,102 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             .send_to_service_and_get(DataSyncRequest::SyncRequest(sync_request))
             .await?;
 
-        for gi_event in new_gi_events {
-            if let GenericKvLogEvent::GlobalIndex(gi_obj) = gi_event {
+        for gi_event in new_gi_events.events {
+            if let GenericKvLogEvent::GlobalIndex(gi_obj) = &gi_event {
                 self.persistent_object.repo.save(gi_event.clone()).await?;
 
                 // Update vault index according to global index
-                if let GlobalIndexObject::Update { event } = gi_obj {
-                    let vault_id = event.value;
+                if let GlobalIndexObject::Update(upd_event) = gi_obj {
+                    let vault_id = upd_event.value.clone();
                     let vault_idx_evt = GlobalIndexObject::index_from_vault_id(vault_id).to_generic();
                     self.persistent_object.repo.save(vault_idx_evt).await?;
                 }
             } else {
-                Err(anyhow!("Invalid event: {:?}", gi_event.key().obj_desc()))
+                return Err(anyhow!("Invalid event: {:?}", gi_event.key().obj_desc()));
             }
         }
         Ok(())
     }
 
     #[instrument(skip_all)]
-    pub async fn sync_shared_secrets(&self, creds: &UserCredentials) {
-        let maybe_vault_event = {
-            let obj_desc = VaultDescriptor::vault(creds.vault_name.clone());
-            self.persistent_object.find_tail_event(obj_desc).await?
+    async fn sync_shared_secrets(&self, creds: &UserCredentials) -> anyhow::Result<()> {
+        let p_vault = PersistentVault {
+            p_obj: self.persistent_object.clone(),
         };
 
-        let Some(GenericKvLogEvent::Vault(VaultObject::Vault { event: vault_event })) = maybe_vault_event else {
-            return;
-        };
+        let vault_status = p_vault.vault_status(creds.user()).await?;
 
-        let vault = vault_event.value;
-        for (device_id, user) in vault.users {
-            let UserMembership::Member(UserDataMember { user_data: member }) = user else {
-                continue;
-            };
-
-            let ss_event_id = SharedSecretEventId {
-                vault_name: creds.vault_name.clone(),
-                sender: creds.device_creds.device.id.clone(),
-                receiver: member.device.id.clone(),
-            };
-
-            let split_events = {
-                let split_obj_desc = ObjectDescriptor::SharedSecret(SharedSecretDescriptor::Split(ss_event_id.clone()));
-                self.persistent_object
-                    .get_object_events_from_beginning(split_obj_desc)
-                    .await?
-            };
-
-            for split_event in split_events {
-                self
-                    .server_dt
-                    .dt
-                    .send_to_service(DataSyncRequest::Event(split_event))
-                    .await?;
+        match vault_status {
+            VaultStatus::Outsider(_) => {
+                return Ok(());
             }
+            VaultStatus::Member(vault) => {
+                for UserDataMember(member) in vault.members() {
 
-            let recover_events = {
-                let recover_obj_desc = ObjectDescriptor::SharedSecret(SharedSecretDescriptor::Recover(ss_event_id));
-                self.persistent_object
-                    .get_object_events_from_beginning(recover_obj_desc)
-                    .await?
-            };
-            for recover_event in recover_events {
-                self.server_dt.dt
-                    .send_to_service(DataSyncRequest::Event(recover_event))
+                    let ss_event_id = {
+                        let device_link = DeviceLinkBuilder::new()
+                            .sender(creds.device_creds.device.id.clone())
+                            .receiver(member.device.id.clone())
+                            .build()?;
+
+                        SharedSecretEventId {
+                            vault_name: creds.vault_name.clone(),
+                            device_link,
+                        }
+                    };
+
+                    let split_events = {
+                        let split_obj_desc = SharedSecretDescriptor::Split(ss_event_id.clone()).to_obj_desc();
+                        self.persistent_object
+                            .get_object_events_from_beginning(split_obj_desc)
+                            .await?
+                    };
+
+                    for split_event in split_events {
+                        self
+                            .server_dt
+                            .dt
+                            .send_to_service(DataSyncRequest::Event(split_event))
+                            .await;
+                    }
+
+                    let recover_events = {
+                        let recover_obj_desc = ObjectDescriptor::SharedSecret(SharedSecretDescriptor::Recover(ss_event_id));
+                        self.persistent_object
+                            .get_object_events_from_beginning(recover_obj_desc)
+                            .await?
+                    };
+                    for recover_event in recover_events {
+                        self.server_dt.dt
+                            .send_to_service(DataSyncRequest::Event(recover_event))
+                            .await;
+                    }
+                }
+
+                let ss_sync_request = {
+                    let ss_log_obj_desc = SharedSecretDescriptor::SSLog(creds.vault_name.clone())
+                        .to_obj_desc();
+
+                    let ss_log_id = self.persistent_object
+                        .find_free_id_by_obj_desc(ss_log_obj_desc)
+                        .await?;
+
+                    SyncRequest::SharedSecret(SharedSecretRequest {
+                        sender: creds.user(),
+                        ss_log: ss_log_id,
+                    })
+                };
+
+                let new_ss_log_events = self.server_dt.dt
+                    .send_to_service_and_get(DataSyncRequest::SyncRequest(ss_sync_request))
                     .await?;
+
+                for new_ss_log_event in new_ss_log_events.events {
+                    self.persistent_object.repo.save(new_ss_log_event).await?;
+                }
+
+                Ok(())
             }
-        }
-
-        let ss_sync_request = {
-            let ss_log_obj_desc = ObjectDescriptor::SharedSecret(SharedSecretDescriptor::SSLog {
-                vault_name: creds.vault_name.clone()
-            });
-
-            let ss_log_id = self.persistent_object
-                .find_free_id_by_obj_desc(ss_log_obj_desc)
-                .await?;
-
-            SyncRequest::SharedSecret(SharedSecretRequest {
-                sender: creds.user(),
-                ss_log: ss_log_id
-            })
-        };
-
-        let new_ss_log_events = self.server_dt.dt
-            .send_to_service_and_get(DataSyncRequest::SyncRequest(ss_sync_request))
-            .await?;
-
-        for new_ss_log_event in new_ss_log_events.events {
-            self.persistent_object.repo.save(new_ss_log_event).await?;
         }
     }
 
@@ -252,12 +259,10 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         }
 
         //update db_tail
-        let new_db_tail_event = GenericKvLogEvent::DbTail(DbTailObject {
-            event: KvLogEvent {
-                key: KvKey::unit(ObjectDescriptor::DbTail),
-                value: new_db_tail.clone(),
-            },
-        });
+        let new_db_tail_event = DbTailObject(KvLogEvent {
+            key: KvKey::unit(ObjectDescriptor::DbTail),
+            value: new_db_tail.clone(),
+        }).to_generic();
 
         self.persistent_object.repo.save(new_db_tail_event).await?;
         Ok(())

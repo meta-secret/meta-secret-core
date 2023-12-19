@@ -1,7 +1,7 @@
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use anyhow::anyhow;
 
-use crate::node::db::events::common::SharedSecretObject;
+use crate::node::db::events::common::{SharedSecretObject, SSDeviceLogObject};
 use crate::node::db::events::db_tail::DbTail;
 use crate::node::db::events::error::ErrorMessage;
 use crate::node::db::events::global_index::GlobalIndexObject;
@@ -25,6 +25,7 @@ pub enum GenericKvLogEvent {
     VaultStatus(VaultStatusObject),
 
     SharedSecret(SharedSecretObject),
+    SSDeviceLog(SSDeviceLogObject),
 
     Error {
         event: KvLogEvent<ArtifactId, ErrorMessage>,
@@ -33,7 +34,7 @@ pub enum GenericKvLogEvent {
 
 impl GenericKvLogEvent {
     pub fn to_db_tail(self) -> anyhow::Result<DbTail> {
-        if let GenericKvLogEvent::DbTail(DbTailObject { event }) = self {
+        if let GenericKvLogEvent::DbTail(DbTailObject(event)) = self {
             Ok(event.value)
         } else {
             Err(anyhow!("DbTail. Invalid event type: {:?}", self))
@@ -70,6 +71,10 @@ impl ObjIdExtractor for GenericKvLogEvent {
             GenericKvLogEvent::Credentials(obj) => obj.obj_id(),
             GenericKvLogEvent::DbTail(obj) => obj.obj_id(),
             GenericKvLogEvent::Error { event } => event.key.obj_id.clone(),
+            GenericKvLogEvent::DeviceLog(obj) => obj.obj_id(),
+            GenericKvLogEvent::VaultLog(obj) => obj.obj_id(),
+            GenericKvLogEvent::VaultStatus(obj) => obj.obj_id(),
+            GenericKvLogEvent::SSDeviceLog(obj) => obj.obj_id(),
         }
     }
 }
@@ -83,6 +88,10 @@ impl KeyExtractor for GenericKvLogEvent {
             GenericKvLogEvent::Credentials(obj) => obj.key(),
             GenericKvLogEvent::DbTail(obj) => obj.key(),
             GenericKvLogEvent::Error { event } => event.key.obj_desc.clone(),
+            GenericKvLogEvent::DeviceLog(obj) => obj.key(),
+            GenericKvLogEvent::VaultLog(obj) => obj.key(),
+            GenericKvLogEvent::VaultStatus(obj) => obj.key(),
+            GenericKvLogEvent::SSDeviceLog(obj) => obj.key()
         }
     }
 }
@@ -93,6 +102,6 @@ impl GenericKvLogEvent {
             key: KvKey::unit(ObjectDescriptor::DbTail),
             value: db_tail,
         };
-        GenericKvLogEvent::DbTail(DbTailObject { event })
+        GenericKvLogEvent::DbTail(DbTailObject(event))
     }
 }

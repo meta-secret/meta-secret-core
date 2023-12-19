@@ -1,8 +1,8 @@
 use anyhow::anyhow;
 use crate::node::common::model::device::DeviceData;
+use crate::node::common::model::secret::MetaPasswordId;
 use crate::node::common::model::user::{UserData, UserDataMember, UserMembership};
 use crate::node::common::model::vault::{VaultData, VaultName};
-use crate::node::common::model::MetaPasswordId;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::kv_log_event::KvLogEvent;
 use crate::node::db::events::object_id::{ArtifactId, GenesisId, ObjectId, UnitId};
@@ -11,16 +11,10 @@ use crate::node::db::events::object_id::{ArtifactId, GenesisId, ObjectId, UnitId
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum DeviceLogObject {
-    Unit {
-        event: KvLogEvent<UnitId, VaultName>,
-    },
+    Unit(KvLogEvent<UnitId, VaultName>),
     /// Device sends its data to ensure that the only this device can send events to this log
-    Genesis {
-        event: KvLogEvent<GenesisId, UserData>,
-    },
-    Action {
-        event: KvLogEvent<ArtifactId, VaultAction>,
-    },
+    Genesis(KvLogEvent<GenesisId, UserData>),
+    Action(KvLogEvent<ArtifactId, VaultAction>),
 }
 
 impl TryFrom<GenericKvLogEvent> for DeviceLogObject {
@@ -46,15 +40,9 @@ impl ToGenericEvent for DeviceLogObject {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum VaultLogObject {
-    Unit {
-        event: KvLogEvent<UnitId, VaultName>,
-    },
-    Genesis {
-        event: KvLogEvent<GenesisId, UserData>,
-    },
-    Action {
-        event: KvLogEvent<ArtifactId, VaultAction>,
-    },
+    Unit(KvLogEvent<UnitId, VaultName>),
+    Genesis(KvLogEvent<GenesisId, UserData>),
+    Action(KvLogEvent<ArtifactId, VaultAction>)
 }
 
 impl TryFrom<GenericKvLogEvent> for VaultLogObject {
@@ -69,19 +57,19 @@ impl TryFrom<GenericKvLogEvent> for VaultLogObject {
     }
 }
 
+impl ToGenericEvent for VaultLogObject {
+    fn to_generic(self) -> GenericKvLogEvent {
+        GenericKvLogEvent::VaultLog(self)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum VaultObject {
-    Unit {
-        event: KvLogEvent<UnitId, VaultName>,
-    },
+    Unit(KvLogEvent<UnitId, VaultName>),
     /// Meta Server public keys
-    Genesis {
-        event: KvLogEvent<GenesisId, DeviceData>,
-    },
-    Vault {
-        event: KvLogEvent<ArtifactId, VaultData>,
-    }
+    Genesis(KvLogEvent<GenesisId, DeviceData>),
+    Vault(KvLogEvent<ArtifactId, VaultData>)
 }
 
 impl TryFrom<GenericKvLogEvent> for VaultObject {
@@ -96,25 +84,35 @@ impl TryFrom<GenericKvLogEvent> for VaultObject {
     }
 }
 
+impl ToGenericEvent for VaultObject {
+    fn to_generic(self) -> GenericKvLogEvent {
+        GenericKvLogEvent::Vault(self)
+    }
+}
+
+impl ObjIdExtractor for VaultObject {
+    fn obj_id(&self) -> ObjectId {
+        match self {
+            VaultObject::Unit(event) => ObjectId::from(event.key.obj_id.clone()),
+            VaultObject::Genesis(event) => ObjectId::from(event.key.obj_id.clone()),
+            VaultObject::Vault(event) => ObjectId::from(event.key.obj_id.clone()),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum VaultStatusObject {
-    Unit {
-        event: KvLogEvent<UnitId, VaultName>,
-    },
+    Unit(KvLogEvent<UnitId, VaultName>),
     /// Device public keys
-    Genesis {
-        event: KvLogEvent<GenesisId, UserData>,
-    },
-    Status {
-        event: KvLogEvent<ArtifactId, UserMembership>,
-    },
+    Genesis(KvLogEvent<GenesisId, UserData>),
+    Status(KvLogEvent<ArtifactId, UserMembership>)
 }
 
 impl VaultStatusObject {
     pub fn is_member(&self) -> bool {
-        let VaultStatusObject::Status { event: membership_event } = self else {
-            false
+        let VaultStatusObject::Status(membership_event) = self else {
+            return false;
         };
 
         if let UserMembership::Member(UserDataMember { .. }) = membership_event.value {
@@ -141,19 +139,9 @@ impl TryFrom<GenericKvLogEvent> for VaultStatusObject {
     }
 }
 
-impl ToGenericEvent for VaultObject {
+impl ToGenericEvent for VaultStatusObject {
     fn to_generic(self) -> GenericKvLogEvent {
-        GenericKvLogEvent::Vault(self)
-    }
-}
-
-impl ObjIdExtractor for VaultObject {
-    fn obj_id(&self) -> ObjectId {
-        match self {
-            VaultObject::Unit { event } => ObjectId::from(event.key.obj_id.clone()),
-            VaultObject::Genesis { event } => ObjectId::from(event.key.obj_id.clone()),
-            VaultObject::Vault { event } => ObjectId::from(event.key.obj_id.clone()),
-        }
+        GenericKvLogEvent::VaultStatus(self)
     }
 }
 
@@ -177,8 +165,8 @@ impl VaultAction {
     pub fn vault_name(&self) -> VaultName {
         let user_data = match self {
             VaultAction::JoinRequest { candidate } => candidate,
-            VaultAction::UpdateMembership { update, .. } => update.user_data(),
-            VaultAction::AddMetaPassword { sender, .. } => sender.user_data(),
+            VaultAction::UpdateMembership { update, .. } => &update.user_data(),
+            VaultAction::AddMetaPassword { sender: UserDataMember(user), .. } => user
         };
 
         user_data.vault_name.clone()

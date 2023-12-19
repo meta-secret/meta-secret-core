@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::{anyhow, Error};
-use tracing::instrument;
+use tracing::{info, instrument};
 
 use crate::node::common::model::device::{DeviceCredentials, DeviceName};
 use crate::node::common::model::user::UserCredentials;
@@ -18,6 +18,32 @@ pub struct CredentialsRepo<Repo: KvLogEventRepo> {
 }
 
 impl<Repo: KvLogEventRepo> CredentialsRepo<Repo> {
+
+    #[instrument(skip(self))]
+    pub async fn generate_user(&self, device_name: DeviceName, vault_name: VaultName) -> anyhow::Result<CredentialsObject> {
+        info!("Create a new user locally");
+
+        let device_creds = self.get_or_generate_device_creds(device_name).await?;
+
+        let user_creds = CredentialsObject::default_user(UserCredentials::from(device_creds, vault_name));
+
+        self.save(user_creds.clone()).await?;
+
+        Ok(user_creds)
+    }
+
+    pub async fn get_or_generate_device_creds(&self, device_name: DeviceName) -> Result<DeviceCredentials, Error> {
+        let maybe_creds = self.find().await?;
+
+        let device_creds = match maybe_creds {
+            None => {
+                self.generate_device_creds(device_name).await?
+            }
+            Some(creds) => creds,
+        };
+        Ok(device_creds)
+    }
+
     pub async fn save(&self, creds: CredentialsObject) -> anyhow::Result<ObjectId> {
         let generic_event = creds.to_generic();
         self.p_obj.repo.save(generic_event).await
@@ -32,7 +58,7 @@ impl<Repo: KvLogEventRepo> CredentialsRepo<Repo> {
             CredentialsObject::Device { .. } => {
                 Err(anyhow!("Device credentials found, User credentials expected"))
             }
-            CredentialsObject::DefaultUser { event } => {
+            CredentialsObject::DefaultUser(event) => {
                 Ok(event.value)
             }
         }
@@ -86,12 +112,12 @@ impl<Repo: KvLogEventRepo> CredentialsRepo<Repo> {
         };
 
         match creds {
-            CredentialsObject::Device { event } => {
+            CredentialsObject::Device(event) => {
                 let user_creds = UserCredentials::from(event.value, vault_name);
                 self.save(CredentialsObject::default_user(user_creds.clone())).await?;
                 Ok(user_creds)
             }
-            CredentialsObject::DefaultUser { event } => {
+            CredentialsObject::DefaultUser(event) => {
                 Ok(event.value)
             }
         }

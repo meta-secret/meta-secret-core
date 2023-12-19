@@ -1,42 +1,54 @@
-use crate::crypto::encoding::base64::Base64Text;
 use crate::node::common::model::secret::{PasswordRecoveryRequest, SecretDistributionData};
+use crate::node::common::model::user::UserData;
+use crate::node::common::model::vault::VaultName;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::kv_log_event::KvLogEvent;
-use crate::node::db::events::object_id::{ArtifactId, ObjectId, UnitId};
+use crate::node::db::events::object_id::{ArtifactId, GenesisId, ObjectId, UnitId};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SharedSecretObject {
-    LocalShare {
-        event: KvLogEvent<UnitId, SecretDistributionData>,
-    },
+    LocalShare(KvLogEvent<UnitId, SecretDistributionData>),
 
-    Split {
-        event: KvLogEvent<UnitId, SecretDistributionData>,
-    },
-    Recover {
-        event: KvLogEvent<UnitId, SecretDistributionData>,
-    },
+    Split(KvLogEvent<UnitId, SecretDistributionData>),
+    Recover(KvLogEvent<UnitId, SecretDistributionData>),
     
-    SSDeviceLog {
-        event: KvLogEvent<UnitId, PasswordRecoveryRequest>,
-    },
-    
-    SSLog {
-        event: KvLogEvent<ArtifactId, ArtifactId>,
-    },
+    SSLog(KvLogEvent<ArtifactId, ArtifactId>)
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SSDeviceLogObject {
+    Unit(KvLogEvent<UnitId, VaultName>),
+    Genesis(KvLogEvent<GenesisId, UserData>),
+    DeviceLog(KvLogEvent<ArtifactId, PasswordRecoveryRequest>),
+}
+
+impl ObjIdExtractor for SSDeviceLogObject {
+    fn obj_id(&self) -> ObjectId {
+        match self {
+            SSDeviceLogObject::Unit(event) => ObjectId::from(event.key.obj_id.clone()),
+            SSDeviceLogObject::Genesis(event) => ObjectId::from(event.key.obj_id.clone()),
+            SSDeviceLogObject::DeviceLog(event) => ObjectId::from(event.key.obj_id.clone()),
+        }
+    }
+}
+
+impl ToGenericEvent for SSDeviceLogObject {
+    fn to_generic(self) -> GenericKvLogEvent {
+        GenericKvLogEvent::SSDeviceLog(self)
+    }
 }
 
 impl ObjIdExtractor for SharedSecretObject {
     fn obj_id(&self) -> ObjectId {
         match self {
-            SharedSecretObject::LocalShare { event } => ObjectId::from(event.key.obj_id.clone()),
+            SharedSecretObject::LocalShare(event) => ObjectId::from(event.key.obj_id.clone()),
 
-            SharedSecretObject::Split { event } => ObjectId::from(event.key.obj_id.clone()),
-            SharedSecretObject::Recover { event } => ObjectId::from(event.key.obj_id.clone()),
-
-            SharedSecretObject::SSDeviceLog { event } => ObjectId::from(event.key.obj_id.clone()),
-            SharedSecretObject::SSLog { event } => ObjectId::from(event.key.obj_id.clone()),
+            SharedSecretObject::Split(event) => ObjectId::from(event.key.obj_id.clone()),
+            SharedSecretObject::Recover(event) => ObjectId::from(event.key.obj_id.clone()),
+            
+            SharedSecretObject::SSLog(event) => ObjectId::from(event.key.obj_id.clone()),
         }
     }
 }
@@ -44,18 +56,6 @@ impl ObjIdExtractor for SharedSecretObject {
 impl ToGenericEvent for SharedSecretObject {
     fn to_generic(self) -> GenericKvLogEvent {
         GenericKvLogEvent::SharedSecret(self)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PublicKeyRecord {
-    pub pk: Base64Text,
-}
-
-impl From<Base64Text> for PublicKeyRecord {
-    fn from(value: Base64Text) -> Self {
-        Self { pk: value }
     }
 }
 
