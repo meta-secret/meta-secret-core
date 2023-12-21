@@ -1,34 +1,107 @@
-use crate::node::db::events::common::{LogEventKeyBasedRecord, MemPoolObject, MetaPassObject, SharedSecretObject};
+use anyhow::anyhow;
+
+use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
+use crate::node::db::events::common::{SharedSecretObject, SSDeviceLogObject};
+use crate::node::db::events::db_tail::DbTail;
 use crate::node::db::events::error::ErrorMessage;
 use crate::node::db::events::global_index::GlobalIndexObject;
-use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::local::KvLogEventLocal;
-use crate::node::db::events::vault_event::VaultObject;
+use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
+use crate::node::db::events::local::{CredentialsObject, DbTailObject};
+use crate::node::db::events::object_id::{ArtifactId, ObjectId};
+use crate::node::db::events::vault_event::{DeviceLogObject, VaultLogObject, VaultMembershipObject, VaultObject};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[serde(tag = "event_type")]
+#[serde(tag = "__generic_event_type")]
 pub enum GenericKvLogEvent {
     GlobalIndex(GlobalIndexObject),
-    Vault(VaultObject),
-    MetaPass(MetaPassObject),
-    SharedSecret(SharedSecretObject),
-    MemPool(MemPoolObject),
-    LocalEvent(KvLogEventLocal),
 
-    Error { event: KvLogEvent<ErrorMessage> },
+    Credentials(CredentialsObject),
+    DbTail(DbTailObject),
+
+    DeviceLog(DeviceLogObject),
+    VaultLog(VaultLogObject),
+    Vault(VaultObject),
+    VaultMembership(VaultMembershipObject),
+
+    SharedSecret(SharedSecretObject),
+    SSDeviceLog(SSDeviceLogObject),
+
+    Error {
+        event: KvLogEvent<ArtifactId, ErrorMessage>,
+    },
 }
 
-impl LogEventKeyBasedRecord for GenericKvLogEvent {
-    fn key(&self) -> &KvKey {
-        match self {
-            GenericKvLogEvent::GlobalIndex(gi_obj) => gi_obj.key(),
-            GenericKvLogEvent::Vault(vault_obj) => vault_obj.key(),
-            GenericKvLogEvent::MetaPass(pass_obj) => pass_obj.key(),
-            GenericKvLogEvent::SharedSecret(obj) => obj.key(),
-            GenericKvLogEvent::MemPool(mem_pool_obj) => mem_pool_obj.key(),
-            GenericKvLogEvent::LocalEvent(op) => op.key(),
-            GenericKvLogEvent::Error { event } => &event.key,
+impl GenericKvLogEvent {
+    pub fn to_db_tail(self) -> anyhow::Result<DbTail> {
+        if let GenericKvLogEvent::DbTail(DbTailObject(event)) = self {
+            Ok(event.value)
+        } else {
+            Err(anyhow!("DbTail. Invalid event type: {:?}", self))
         }
+    }
+}
+
+pub trait ToGenericEvent {
+    fn to_generic(self) -> GenericKvLogEvent;
+}
+
+pub trait UnitEvent<T> {
+    fn unit(value: T) -> Self;
+}
+
+pub trait UnitEventWithEmptyValue {
+    fn unit() -> Self;
+}
+
+pub trait ObjIdExtractor {
+    fn obj_id(&self) -> ObjectId;
+}
+
+pub trait KeyExtractor {
+    fn key(&self) -> GenericKvKey;
+}
+
+impl ObjIdExtractor for GenericKvLogEvent {
+    fn obj_id(&self) -> ObjectId {
+        match self {
+            GenericKvLogEvent::GlobalIndex(obj) => obj.obj_id(),
+            GenericKvLogEvent::Vault(obj) => obj.obj_id(),
+            GenericKvLogEvent::SharedSecret(obj) => obj.obj_id(),
+            GenericKvLogEvent::Credentials(obj) => obj.obj_id(),
+            GenericKvLogEvent::DbTail(obj) => obj.obj_id(),
+            GenericKvLogEvent::Error { event } => ObjectId::from(event.key.obj_id.clone()),
+            GenericKvLogEvent::DeviceLog(obj) => obj.obj_id(),
+            GenericKvLogEvent::VaultLog(obj) => obj.obj_id(),
+            GenericKvLogEvent::VaultMembership(obj) => obj.obj_id(),
+            GenericKvLogEvent::SSDeviceLog(obj) => obj.obj_id(),
+        }
+    }
+}
+
+impl KeyExtractor for GenericKvLogEvent {
+    fn key(&self) -> GenericKvKey {
+        match self {
+            GenericKvLogEvent::GlobalIndex(obj) => obj.key(),
+            GenericKvLogEvent::Vault(obj) => obj.key(),
+            GenericKvLogEvent::SharedSecret(obj) => obj.key(),
+            GenericKvLogEvent::Credentials(obj) => obj.key(),
+            GenericKvLogEvent::DbTail(obj) => obj.key(),
+            GenericKvLogEvent::Error { event } => GenericKvKey::from(event.key.clone()),
+            GenericKvLogEvent::DeviceLog(obj) => obj.key(),
+            GenericKvLogEvent::VaultLog(obj) => obj.key(),
+            GenericKvLogEvent::VaultMembership(obj) => obj.key(),
+            GenericKvLogEvent::SSDeviceLog(obj) => obj.key()
+        }
+    }
+}
+
+impl GenericKvLogEvent {
+    pub fn db_tail(db_tail: DbTail) -> GenericKvLogEvent {
+        let event = KvLogEvent {
+            key: KvKey::unit(ObjectDescriptor::DbTail),
+            value: db_tail,
+        };
+        GenericKvLogEvent::DbTail(DbTailObject(event))
     }
 }

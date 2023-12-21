@@ -1,10 +1,10 @@
 #![cfg(target_arch = "wasm32")]
 use meta_secret_core::node::db::events::object_id::ObjectId;
-use meta_secret_core::node::db::generic_db::{FindOneQuery, SaveCommand};
+use meta_secret_core::node::db::repo::generic_db::{FindOneQuery, SaveCommand};
 use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
 use meta_secret_web_cli::wasm_app_state_manager::WasmApplicationStateManager;
 use meta_secret_web_cli::wasm_repo::WasmRepo;
-use meta_secret_web_cli::{alert, configure};
+use meta_secret_web_cli::{alert, configure, info};
 use std::rc::Rc;
 use wasm_bindgen::JsValue;
 ///
@@ -18,6 +18,7 @@ use meta_secret_core::node::db::events::global_index::{GlobalIndexObject, Global
 use meta_secret_core::node::db::events::kv_log_event::KvLogEvent;
 use meta_secret_core::node::db::events::vault_event::VaultObject;
 use std::time::Duration;
+use tracing::info;
 
 wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 
@@ -42,8 +43,20 @@ async fn pass_async() {
 async fn run_app() {
     let app_manager = WasmApplicationStateManager::init_in_mem().await;
     async_std::task::sleep(Duration::from_secs(5)).await;
-    app_manager.sign_up("q", "web").await;
+
+    info!("Initial sign up");
+    let _ = app_manager.sign_up("q", "web").await;
     async_std::task::sleep(Duration::from_secs(3)).await;
     //join
-    app_manager.sign_up("q", "web").await;
+    info!("Initiate Join!");
+    let _ = app_manager.sign_up("q", "web").await;
+
+    async_std::task::sleep(Duration::from_secs(3)).await;
+
+    info!("Cluster Distribution");
+    app_manager
+        .cluster_distribution("pass_id:123", "t0p$ecret")
+        .await;
+
+    async_std::task::sleep(Duration::from_secs(3)).await;
 }

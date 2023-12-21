@@ -1,156 +1,176 @@
 use serde_derive::{Deserialize, Serialize};
 
-use crate::crypto::utils;
-use crate::node::db::events::common::ObjectCreator;
-use crate::node::db::events::object_descriptor::ObjectDescriptor;
+use crate::crypto::utils::NextId;
+use crate::node::common::model::vault::VaultName;
+use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
+use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ObjectDescriptorId};
+use crate::node::db::descriptors::vault::VaultDescriptor;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(tag = "__obj_id")]
 pub enum ObjectId {
-    /// In category theory, a unit type is a fundamental concept that arises in the study of types and functions.
-    /// It is often denoted as the unit object, represented by the symbol "1" or "Unit."
-    /// The unit type serves as a foundational element within category theory,
-    /// providing a way to represent the absence of information or the presence of a single unique value.
-    ///
-    /// Same here, Unit is a inittial request to create/initialize an object, it's step zero.
-    Unit { id: String },
-    /// Next step after Unit is Genesis, it's a first step in object initialization,
-    /// it contains digital signature and public key of the actor (for instance it could be meta secret server) that
-    /// is responsible to create a persistent object
-    Genesis { id: String, unit_id: String },
-    /// Any regular request or update event in the objects' lifetime
-    Regular {
-        id: String,
-        prev_id: String,
-        unit_id: String,
-    },
+    Unit(UnitId),
+    Genesis(GenesisId),
+    Artifact(ArtifactId),
 }
 
-#[derive(Debug)]
-pub struct IdStr {
-    pub id: String,
+impl ObjectId {
+    pub fn id_str(&self) -> String {
+        let id = match self {
+            ObjectId::Unit(unit_id) => unit_id.id.clone(),
+            ObjectId::Genesis(genesis_id) => genesis_id.id.clone(),
+            ObjectId::Artifact(artifact_id) => artifact_id.id.clone(),
+        };
+
+        serde_json::to_string(&id).unwrap()
+    }
 }
 
-pub trait IdGen {
-    fn next(&self) -> Self;
+pub trait Next<To> {
+    fn next(self) -> To;
 }
 
-impl IdGen for ObjectId {
-    fn next(&self) -> ObjectId {
-        let next_id_str = utils::to_id(self.id_str().as_str());
+/// In category theory, a unit type is a fundamental concept that arises in the study of types and functions.
+/// It is often denoted as the unit object, represented by the symbol "1" or "Unit."
+/// The unit type serves as a foundational element within category theory,
+/// providing a way to represent the absence of information or the presence of a single unique value.
+///
+/// Same here, Unit is a initial request to create/initialize an object, it's step zero.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnitId {
+    pub id: ObjectDescriptorId,
+}
 
-        match self {
-            ObjectId::Unit { id } => ObjectId::Genesis {
-                id: next_id_str,
-                unit_id: id.clone(),
-            },
-            ObjectId::Genesis { id, unit_id } => ObjectId::Regular {
-                id: next_id_str,
-                prev_id: id.clone(),
-                unit_id: unit_id.clone(),
-            },
-            ObjectId::Regular { id, unit_id, .. } => ObjectId::Regular {
-                id: next_id_str,
-                prev_id: id.clone(),
-                unit_id: unit_id.clone(),
-            },
+impl Next<GenesisId> for UnitId {
+    fn next(self) -> GenesisId {
+        GenesisId {
+            id: self.id.clone().next_id(),
+            unit_id: self,
         }
     }
 }
 
-impl From<&ObjectId> for IdStr {
-    fn from(obj_id: &ObjectId) -> IdStr {
-        IdStr { id: obj_id.id_str() }
+impl From<ObjectDescriptorId> for UnitId {
+    fn from(id: ObjectDescriptorId) -> Self {
+        Self { id }
+    }
+}
+
+impl From<UnitId> for ObjectId {
+    fn from(value: UnitId) -> Self {
+        ObjectId::Unit(value)
+    }
+}
+
+impl From<GenesisId> for ObjectId {
+    fn from(value: GenesisId) -> Self {
+        ObjectId::Genesis(value)
+    }
+}
+
+impl From<ArtifactId> for ObjectId {
+    fn from(value: ArtifactId) -> Self {
+        ObjectId::Artifact(value)
     }
 }
 
 impl ObjectId {
-    pub fn unit_id(&self) -> ObjectId {
+    pub fn unit(obj_desc: ObjectDescriptor) -> Self {
+        ObjectId::Unit(UnitId::unit(&obj_desc))
+    }
+    
+    pub fn genesis(obj_desc: ObjectDescriptor) -> Self {
+        ObjectId::Genesis(GenesisId::genesis(obj_desc))
+    }
+
+    pub fn get_unit_id(&self) -> UnitId {
         match self {
-            ObjectId::Unit { .. } => self.clone(),
-            ObjectId::Genesis { unit_id, .. } => ObjectId::Unit { id: unit_id.clone() },
-            ObjectId::Regular { unit_id, .. } => Self::Unit { id: unit_id.clone() },
+            ObjectId::Unit(unit_id) => unit_id.clone(),
+            ObjectId::Genesis(genesis_id) => genesis_id.unit_id.clone(),
+            ObjectId::Artifact(artifact_id) => artifact_id.unit_id.clone()
         }
-    }
-
-    pub fn id_str(&self) -> String {
-        match self {
-            ObjectId::Genesis { id, .. } => id.clone(),
-            ObjectId::Regular { id, .. } => id.clone(),
-            ObjectId::Unit { id } => id.clone(),
-        }
-    }
-
-    pub fn is_unit(&self) -> bool {
-        match self {
-            ObjectId::Unit { .. } => true,
-            ObjectId::Genesis { .. } => false,
-            ObjectId::Regular { .. } => false,
-        }
-    }
-
-    pub fn is_genesis(&self) -> bool {
-        match self {
-            ObjectId::Unit { .. } => false,
-            ObjectId::Genesis { .. } => true,
-            ObjectId::Regular { .. } => false,
-        }
-    }
-
-    pub fn db_tail() -> ObjectId {
-        ObjectId::unit(&ObjectDescriptor::DbTail)
-    }
-
-    pub fn global_index_unit() -> ObjectId {
-        ObjectId::unit(&ObjectDescriptor::GlobalIndex)
-    }
-
-    pub fn global_index_genesis() -> ObjectId {
-        ObjectId::genesis(&ObjectDescriptor::GlobalIndex)
-    }
-
-    pub fn meta_vault_index() -> ObjectId {
-        ObjectId::unit(&ObjectDescriptor::MetaVault)
-    }
-
-    pub fn vault_unit(vault_name: &str) -> Self {
-        let vault_desc = ObjectDescriptor::Vault {
-            vault_name: vault_name.to_string(),
-        };
-        ObjectId::unit(&vault_desc)
-    }
-
-    pub fn meta_pass_unit(vault_name: &str) -> Self {
-        let vault_desc = ObjectDescriptor::MetaPassword {
-            vault_name: vault_name.to_string(),
-        };
-        ObjectId::unit(&vault_desc)
-    }
-
-    pub fn mempool_unit() -> Self {
-        ObjectId::unit(&ObjectDescriptor::Mempool)
     }
 }
 
-impl ObjectCreator<&ObjectDescriptor> for ObjectId {
-    fn unit(obj_descriptor: &ObjectDescriptor) -> Self {
-        let unit_id = obj_descriptor.to_id();
-        Self::Unit { id: unit_id }
-    }
-
-    fn genesis(obj_desc: &ObjectDescriptor) -> Self {
-        Self::unit(obj_desc).next()
+impl Next<ObjectId> for ObjectId {
+    fn next(self) -> ObjectId {
+        match self {
+            ObjectId::Unit(unit_id) => ObjectId::from(unit_id.next()),
+            ObjectId::Genesis(genesis_id) => ObjectId::from(genesis_id.next()),
+            ObjectId::Artifact(artifact_id) => ObjectId::from(artifact_id.next())
+        }
     }
 }
 
-#[cfg(test)]
-mod test {
-    use crate::node::db::events::object_id::ObjectId;
+impl UnitId {
+    pub fn unit(obj_descriptor: &ObjectDescriptor) -> UnitId {
+        let fqdn = obj_descriptor.to_fqdn();
+        UnitId { id: fqdn.next_id() }
+    }
 
-    #[test]
-    fn json_parsing_test() {
-        let obj_id = ObjectId::Unit { id: "test".to_string() };
-        let obj_id_json = serde_json::to_string(&obj_id).unwrap();
-        println!("{}", obj_id_json);
+    pub fn db_tail() -> UnitId {
+        UnitId::unit(&ObjectDescriptor::DbTail)
+    }
+
+    pub fn global_index() -> UnitId {
+        UnitId::unit(&ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index))
+    }
+
+    pub fn vault_unit(vault_name: VaultName) -> UnitId {
+        let vault_desc = ObjectDescriptor::Vault(VaultDescriptor::Vault(vault_name));
+        UnitId::unit(&vault_desc)
+    }
+}
+
+/// Next step after Unit is Genesis, it's a first step in object initialization,
+/// it contains digital signature and public key of the actor (for instance it could be meta secret server) that
+/// is responsible to create a persistent object
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenesisId {
+    id: ObjectDescriptorId,
+    unit_id: UnitId,
+}
+
+impl Next<ArtifactId> for GenesisId {
+    fn next(self) -> ArtifactId {
+        ArtifactId {
+            id: self.id.clone().next_id(),
+            prev_id: self.id,
+            unit_id: self.unit_id,
+        }
+    }
+}
+
+impl GenesisId {
+    pub fn genesis(obj_desc: ObjectDescriptor) -> GenesisId {
+        let unit_id = UnitId::unit(&obj_desc);
+        unit_id.next()
+    }
+
+    pub fn global_index_genesis() -> GenesisId {
+        GenesisId::genesis(ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index))
+    }
+}
+
+/// Any regular request or update event in the objects' lifetime
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtifactId {
+    id: ObjectDescriptorId,
+    prev_id: ObjectDescriptorId,
+    unit_id: UnitId,
+}
+
+/// Generate next artifact from the previous one
+impl Next<ArtifactId> for ArtifactId {
+    fn next(self) -> ArtifactId {
+        ArtifactId {
+            id: self.id.clone().next_id(),
+            prev_id: self.id,
+            unit_id: self.unit_id,
+        }
     }
 }

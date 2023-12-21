@@ -1,23 +1,20 @@
 use std::sync::Arc;
-use tracing::Instrument;
 
-use crate::crypto::keys::KeyManager;
-use crate::models::{
-    AeadCipherText, EncryptedMessage, MetaPasswordDoc, MetaPasswordId, MetaPasswordRequest, SecretDistributionDocData,
-    SecretDistributionType, UserCredentials, UserSecurityBox, UserSignature, VaultDoc,
-};
-use crate::node::db::events::common::ObjectCreator;
-use crate::node::db::events::common::{MetaPassObject, SharedSecretObject};
-use crate::node::db::events::generic_log_event::GenericKvLogEvent;
-use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::local::KvLogEventLocal;
-use crate::node::db::events::object_descriptor::ObjectDescriptor;
-use crate::node::db::events::object_id::{IdGen, ObjectId};
-use crate::node::db::generic_db::KvLogEventRepo;
-use crate::node::db::objects::persistent_object::PersistentObject;
-
-use crate::CoreResult;
 use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
+use crate::CoreResult;
+use crate::crypto::keys::KeyManager;
+use crate::node::common::model::crypto::EncryptedMessage;
+use crate::node::common::model::device::{DeviceLink, DeviceLinkBuilder};
+use crate::node::common::model::secret::{MetaPasswordId, SecretDistributionData, SecretDistributionType};
+use crate::node::common::model::user::UserCredentials;
+use crate::node::common::model::vault::VaultData;
+use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
+use crate::node::db::descriptors::shared_secret::SharedSecretDescriptor;
+use crate::node::db::events::common::SharedSecretObject;
+use crate::node::db::events::generic_log_event::ToGenericEvent;
+use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
+use crate::node::db::objects::persistent_object::PersistentObject;
+use crate::node::db::repo::generic_db::KvLogEventRepo;
 
 pub mod data_block;
 pub mod shared_secret;
@@ -36,8 +33,8 @@ pub fn split(secret: String, config: SharedSecretConfig) -> CoreResult<Vec<UserS
 }
 
 pub struct MetaEncryptor {
-    security_box: UserSecurityBox,
-    vault: VaultDoc,
+    user: Arc<UserCredentials>,
+    vault: VaultData,
 }
 
 impl MetaEncryptor {
@@ -45,252 +42,99 @@ impl MetaEncryptor {
     ///  - generate meta password id
     ///  - split
     ///  - encrypt each share with ECIES Encryption Scheme
-    fn encrypt(self, password: String) -> Vec<MetaCipherShare> {
+    fn encrypt(self, password: String) -> anyhow::Result<Vec<EncryptedMessage>> {
         let cfg = SharedSecretConfig::default();
 
-        let key_manager = KeyManager::try_from(self.security_box.key_manager.as_ref()).unwrap();
+        let key_manager = KeyManager::try_from(&self.user.device_creds.secret_box)?;
 
         let shares = split(password, cfg).unwrap();
 
         let mut encrypted_shares = vec![];
 
-        for index in 0..self.vault.signatures.len() {
-            let receiver_sig = &self.vault.signatures[index];
+        for (index, receiver) in self.vault.members().iter().enumerate() {
             let share: &UserShareDto = &shares[index];
 
             let share_str = serde_json::to_string(&share).unwrap();
-            let receiver_pk = receiver_sig.public_key.as_ref().clone();
 
-            let encrypted_share: AeadCipherText = key_manager
+            let receiver_pk = receiver.clone().user().device.keys.transport_pk.clone();
+
+            let encrypted_share = key_manager
                 .transport_key_pair
-                .encrypt_string(share_str, receiver_pk)
-                .unwrap();
+                .encrypt_string(share_str, receiver_pk)?;
 
-            encrypted_shares.push(MetaCipherShare {
-                receiver: receiver_sig.clone(),
-                cipher_share: encrypted_share,
-            });
+            let device_link = DeviceLinkBuilder::new()
+                .sender(self.user.device_creds.device.id.clone())
+                .receiver(receiver.clone().user().device.id.clone())
+                .build()?;
+
+            let cipher_share = EncryptedMessage::CipherShare { device_link, share: encrypted_share };
+            encrypted_shares.push(cipher_share);
         }
 
-        encrypted_shares
+        Ok(encrypted_shares)
     }
-}
-
-struct MetaCipherShare {
-    receiver: UserSignature,
-    cipher_share: AeadCipherText,
 }
 
 pub struct MetaDistributor<Repo: KvLogEventRepo> {
     pub persistent_obj: Arc<PersistentObject<Repo>>,
     pub user_creds: Arc<UserCredentials>,
-    pub vault: VaultDoc,
+    pub vault: VaultData,
 }
 
 impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
-    /// Encrypt and distribute password across the cluster
-    pub async fn distribute(self, password_id: String, password: String) {
+    pub async fn distribute(self, password_id: String, password: String) -> anyhow::Result<()> {
         let encryptor = MetaEncryptor {
-            security_box: self.user_creds.security_box.as_ref().clone(),
+            user: self.user_creds.clone(),
             vault: self.vault.clone(),
         };
 
-        let pass = {
-            let pass_id = Box::new(MetaPasswordId::generate(password_id));
-
-            MetaPasswordDoc {
-                id: pass_id,
-                vault: Box::new(self.vault.clone()),
-            }
-        };
+        let pass_id = MetaPasswordId::generate(password_id);
 
         //save meta password!!!
-        let vault_name = self.user_creds.user_sig.vault.name.clone();
-        let meta_pass_obj_desc = ObjectDescriptor::MetaPassword { vault_name };
+        let vault_name = self.user_creds.vault_name.clone();
 
-        let pass_tail_id = self
-            .persistent_obj
-            .find_tail_id_by_obj_desc(&meta_pass_obj_desc)
-            .in_current_span()
-            .await
-            .map(|id| id.next())
-            .unwrap();
+        let encrypted_shares = encryptor.encrypt(password)?;
 
-        let meta_pass_event = GenericKvLogEvent::MetaPass(MetaPassObject::Update {
-            event: KvLogEvent {
-                key: KvKey::Key {
-                    obj_id: pass_tail_id,
-                    obj_desc: meta_pass_obj_desc,
-                },
-                value: pass.clone(),
-            },
-        });
-
-        self.persistent_obj
-            .repo
-            .save_event(meta_pass_event)
-            .in_current_span()
-            .await
-            .unwrap();
-
-        let encrypted_shares = encryptor.encrypt(password);
-
-        for cipher_share in encrypted_shares.iter() {
-            let cipher_msg = EncryptedMessage {
-                receiver: Box::from(cipher_share.receiver.clone()),
-                encrypted_text: Box::new(cipher_share.cipher_share.clone()),
-            };
-
-            let distribution_share = SecretDistributionDocData {
+        for secret_share in encrypted_shares {
+            let distribution_share = SecretDistributionData {
                 distribution_type: SecretDistributionType::Split,
-                meta_password: Box::new(MetaPasswordRequest {
-                    user_sig: Box::new(self.user_creds.user_sig.as_ref().clone()),
-                    meta_password: Box::new(pass.clone()),
-                }),
-                secret_message: Box::new(cipher_msg),
+                vault_name: vault_name.clone(),
+                secret_message: secret_share.clone(),
+                meta_password_id: pass_id.clone(),
             };
 
-            let meta_pass_id = pass.id.id.clone();
+            let ss_obj = match secret_share.device_link() {
+                DeviceLink::Loopback(_) => {
+                    let ss_local_desc = SharedSecretDescriptor::LocalShare {
+                        vault_name: vault_name.clone(),
+                        meta_pass_id: pass_id.clone(),
+                    };
 
-            if cipher_share.receiver.vault.device.device_id == self.user_creds.user_sig.vault.device.device_id {
-                let secret_share_event = GenericKvLogEvent::LocalEvent(KvLogEventLocal::LocalSecretShare {
-                    event: KvLogEvent {
-                        key: KvKey::unit(&ObjectDescriptor::LocalSecretShare { meta_pass_id }),
+                    SharedSecretObject::LocalShare(KvLogEvent {
+                        key: KvKey::unit(ObjectDescriptor::SharedSecret(ss_local_desc)),
                         value: distribution_share,
-                    },
-                });
+                    })
+                }
+                DeviceLink::PeerToPeer { .. } => {
+                    let split_key = {
+                        let split_obj_desc = ObjectDescriptor::from(&distribution_share);
+                        KvKey::unit(split_obj_desc)
+                    };
 
-                let _ = self
-                    .persistent_obj
-                    .repo
-                    .save_event(secret_share_event)
-                    .in_current_span()
-                    .await;
-            } else {
-                let obj_desc = ObjectDescriptor::from(&distribution_share);
-                let secret_share_event = GenericKvLogEvent::SharedSecret(SharedSecretObject::Split {
-                    event: KvLogEvent {
-                        key: KvKey::Empty {
-                            obj_desc: obj_desc.clone(),
-                        },
+                    SharedSecretObject::Split(KvLogEvent {
+                        key: split_key.clone(),
                         value: distribution_share,
-                    },
-                });
-
-                let tail_id = self
-                    .persistent_obj
-                    .find_tail_id_by_obj_desc(&obj_desc)
-                    .await
-                    .map(|id| id.next())
-                    .unwrap_or(ObjectId::unit(&obj_desc));
-
-                let _ = self.persistent_obj.repo.save(tail_id, secret_share_event).await;
-            };
-        }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use crate::models::DeviceInfo;
-    use crate::node::db::actions::join;
-    use crate::node::db::events::common::{LogEventKeyBasedRecord, PublicKeyRecord};
-    use crate::node::db::events::vault_event::VaultObject;
-    use crate::node::db::generic_db::{FindOneQuery, SaveCommand};
-    use crate::node::server::data_sync::test::DataSyncTestContext;
-    use crate::node::server::data_sync::DataSyncApi;
-
-    use super::*;
-
-    #[tokio::test]
-    async fn test() {
-        let ctx = DataSyncTestContext::default();
-        let data_sync = ctx.data_sync;
-
-        let vault_unit = GenericKvLogEvent::Vault(VaultObject::unit(&ctx.user_sig));
-        data_sync.send(vault_unit).await;
-
-        let _user_pk = PublicKeyRecord::from(ctx.user_sig.public_key.as_ref().clone());
-
-        let vault_unit_id = ObjectId::vault_unit("test_vault");
-        let vault_tail_id = ctx.persistent_obj.find_tail_id(vault_unit_id.clone()).await.unwrap();
-        let vault_event = ctx.repo.find_one(vault_tail_id).await.unwrap().unwrap();
-
-        let s_box_b = KeyManager::generate_security_box("test_vault".to_string());
-        let device_b = DeviceInfo {
-            device_id: "b".to_string(),
-            device_name: "b".to_string(),
-        };
-        let user_sig_b = s_box_b.get_user_sig(&device_b);
-
-        let s_box_c = KeyManager::generate_security_box("test_vault".to_string());
-        let device_c = DeviceInfo {
-            device_id: "c".to_string(),
-            device_name: "c".to_string(),
-        };
-        let user_sig_c = s_box_c.get_user_sig(&device_c);
-
-        if let GenericKvLogEvent::Vault(VaultObject::SignUpUpdate { event }) = vault_event {
-            let vault = event.value;
-
-            let join_request = join::join_cluster_request(&vault_unit_id.next().next(), &user_sig_b);
-            let kv_join_event = join::accept_join_request(&join_request, &vault);
-            let accept_event = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
-                event: kv_join_event.clone(),
-            });
-            let _ = ctx.repo.save_event(accept_event).await;
-
-            let join_request_c = join::join_cluster_request(&vault_unit_id.next().next().next(), &user_sig_c);
-            let kv_join_event_c = join::accept_join_request(&join_request_c, &kv_join_event.value);
-            let accept_event_c = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
-                event: kv_join_event_c.clone(),
-            });
-            let _ = ctx.repo.save_event(accept_event_c).await;
-
-            let distributor = MetaDistributor {
-                persistent_obj: ctx.persistent_obj,
-                user_creds: ctx.user_creds,
-                vault: kv_join_event_c.value,
+                    })
+                }
             };
 
-            distributor
-                .distribute(String::from("test"), String::from("t0p$ecret"))
-                .await;
-
-            let mut db = ctx
+            let _ = self
+                .persistent_obj
                 .repo
-                .db
-                .lock()
-                .await
-                .values()
-                .cloned()
-                .collect::<Vec<GenericKvLogEvent>>();
-            db.sort_by(|a, b| {
-                let a_id = match a.key() {
-                    KvKey::Empty { obj_desc } => obj_desc.to_id(),
-                    KvKey::Key { obj_id, .. } => obj_id.id_str(),
-                };
-
-                let b_id = match b.key() {
-                    KvKey::Empty { obj_desc } => obj_desc.to_id(),
-                    KvKey::Key { obj_id, .. } => obj_id.id_str(),
-                };
-
-                a_id.as_str().partial_cmp(b_id.as_str()).unwrap()
-            });
-
-            println!("total events: {}", db.len());
-            for event in db {
-                println!("event:");
-                let id = match event.key() {
-                    KvKey::Empty { obj_desc } => obj_desc.to_id(),
-                    KvKey::Key { obj_id, .. } => obj_id.id_str(),
-                };
-                println!(" key: {}", serde_json::to_string(&id).unwrap());
-                println!(" event: {}", serde_json::to_string(&event).unwrap());
-            }
-        } else {
-            panic!("Invalid event")
+                .save(ss_obj.to_generic())
+                .await;
         }
+
+        Ok(())
     }
 }

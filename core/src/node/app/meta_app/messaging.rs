@@ -1,23 +1,11 @@
-use crate::models::MetaPasswordId;
+use crate::node::common::model::secret::MetaPasswordId;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[serde(tag = "app_state_request")]
 pub enum GenericAppStateRequest {
-    SignUp(SignUpRequest),
-    Recover(RecoveryRequest),
+    SignUp,
     ClusterDistribution(ClusterDistributionRequest),
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct SignUpRequest {
-    pub vault_name: String,
-    pub device_name: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct RecoveryRequest {
-    pub meta_pass_id: MetaPasswordId,
+    Recover(MetaPasswordId),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

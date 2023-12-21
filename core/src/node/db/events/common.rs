@@ -1,99 +1,84 @@
-use crate::models::password_recovery_request::PasswordRecoveryRequest;
-use crate::models::{Base64EncodedText, MetaPasswordDoc, SecretDistributionDocData, UserSignature, VaultDoc};
-use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::object_descriptor::ObjectDescriptor;
+use crate::node::common::model::secret::{PasswordRecoveryRequest, SecretDistributionData};
+use crate::node::common::model::user::UserData;
+use crate::node::common::model::vault::VaultName;
+use crate::node::db::events::generic_log_event::{GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent};
+use crate::node::db::events::kv_log_event::{GenericKvKey, KvLogEvent};
+use crate::node::db::events::object_id::{ArtifactId, GenesisId, ObjectId, UnitId};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[serde(tag = "mem_pool_obj")]
-pub enum MemPoolObject {
-    JoinRequest { event: KvLogEvent<UserSignature> },
-}
-
-impl MemPoolObject {
-    pub fn key(&self) -> &KvKey {
-        match self {
-            MemPoolObject::JoinRequest { event } => &event.key,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[serde(tag = "meta_pass_obj")]
-pub enum MetaPassObject {
-    Unit { event: KvLogEvent<()> },
-    Genesis { event: KvLogEvent<PublicKeyRecord> },
-    Update { event: KvLogEvent<MetaPasswordDoc> },
-}
-
-impl MetaPassObject {
-    pub fn key(&self) -> &KvKey {
-        match self {
-            MetaPassObject::Unit { event } => &event.key,
-            MetaPassObject::Genesis { event } => &event.key,
-            MetaPassObject::Update { event } => &event.key,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[serde(tag = "shared_secret_obj")]
 pub enum SharedSecretObject {
-    Split {
-        event: KvLogEvent<SecretDistributionDocData>,
-    },
-    Recover {
-        event: KvLogEvent<SecretDistributionDocData>,
-    },
-    RecoveryRequest {
-        event: KvLogEvent<PasswordRecoveryRequest>,
-    },
+    LocalShare(KvLogEvent<UnitId, SecretDistributionData>),
+
+    Split(KvLogEvent<UnitId, SecretDistributionData>),
+    Recover(KvLogEvent<UnitId, SecretDistributionData>),
+    
+    SSLog(KvLogEvent<ArtifactId, ArtifactId>)
 }
 
-impl SharedSecretObject {
-    pub fn key(&self) -> &KvKey {
+impl KeyExtractor for SharedSecretObject {
+    fn key(&self) -> GenericKvKey {
         match self {
-            SharedSecretObject::Split { event } => &event.key,
-            SharedSecretObject::Recover { event } => &event.key,
-            SharedSecretObject::RecoveryRequest { event } => &event.key,
+            SharedSecretObject::LocalShare(event) => GenericKvKey::from(event.key.clone()),
+
+            SharedSecretObject::Split(event) => GenericKvKey::from(event.key.clone()),
+            SharedSecretObject::Recover(event) => GenericKvKey::from(event.key.clone()),
+
+            SharedSecretObject::SSLog(event) => GenericKvKey::from(event.key.clone()),
         }
     }
 }
 
-pub trait LogEventKeyBasedRecord {
-    fn key(&self) -> &KvKey;
-}
-
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PublicKeyRecord {
-    pub pk: Base64EncodedText,
+pub enum SSDeviceLogObject {
+    Unit(KvLogEvent<UnitId, VaultName>),
+    Genesis(KvLogEvent<GenesisId, UserData>),
+    DeviceLog(KvLogEvent<ArtifactId, PasswordRecoveryRequest>),
 }
 
-impl From<Base64EncodedText> for PublicKeyRecord {
-    fn from(value: Base64EncodedText) -> Self {
-        Self { pk: value }
+impl ObjIdExtractor for SSDeviceLogObject {
+    fn obj_id(&self) -> ObjectId {
+        match self {
+            SSDeviceLogObject::Unit(event) => ObjectId::from(event.key.obj_id.clone()),
+            SSDeviceLogObject::Genesis(event) => ObjectId::from(event.key.obj_id.clone()),
+            SSDeviceLogObject::DeviceLog(event) => ObjectId::from(event.key.obj_id.clone()),
+        }
     }
 }
 
-pub trait ObjectCreator<T> {
-    fn unit(value: T) -> Self;
-    fn genesis(obj_desc: &ObjectDescriptor) -> Self;
+impl ToGenericEvent for SSDeviceLogObject {
+    fn to_generic(self) -> GenericKvLogEvent {
+        GenericKvLogEvent::SSDeviceLog(self)
+    }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum VaultInfo {
-    /// Device is a member of a vault
-    Member { vault: VaultDoc },
-    /// Device is waiting to be added to a vault.
-    Pending,
-    /// Vault members declined to add a device into the vault.
-    Declined,
-    /// Vault not found
-    NotFound,
-    /// Device can't get any information about the vault, because its signature is not in members or pending list
-    NotMember,
+impl KeyExtractor for SSDeviceLogObject {
+    fn key(&self) -> GenericKvKey {
+        match self {
+            SSDeviceLogObject::Unit(event) => GenericKvKey::from(event.key.clone()),
+            SSDeviceLogObject::Genesis(event) => GenericKvKey::from(event.key.clone()),
+            SSDeviceLogObject::DeviceLog(event) => GenericKvKey::from(event.key.clone()),
+        }
+    }
 }
+
+impl ObjIdExtractor for SharedSecretObject {
+    fn obj_id(&self) -> ObjectId {
+        match self {
+            SharedSecretObject::LocalShare(event) => ObjectId::from(event.key.obj_id.clone()),
+
+            SharedSecretObject::Split(event) => ObjectId::from(event.key.obj_id.clone()),
+            SharedSecretObject::Recover(event) => ObjectId::from(event.key.obj_id.clone()),
+            
+            SharedSecretObject::SSLog(event) => ObjectId::from(event.key.obj_id.clone()),
+        }
+    }
+}
+
+impl ToGenericEvent for SharedSecretObject {
+    fn to_generic(self) -> GenericKvLogEvent {
+        GenericKvLogEvent::SharedSecret(self)
+    }
+}
+

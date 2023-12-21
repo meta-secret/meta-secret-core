@@ -1,96 +1,110 @@
-use crate::models::{UserSignature, VaultDoc};
-use crate::node::db::events::common::{LogEventKeyBasedRecord, MetaPassObject, ObjectCreator, PublicKeyRecord};
-use crate::node::db::events::generic_log_event::GenericKvLogEvent;
+use tracing_attributes::instrument;
+
+use crate::node::common::model::device::DeviceData;
+use crate::node::common::model::user::{UserData, UserDataMember, UserId, UserMembership};
+use crate::node::common::model::vault::VaultData;
+use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
+use crate::node::db::descriptors::vault::VaultDescriptor;
+use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ToGenericEvent};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::object_descriptor::ObjectDescriptor;
-use crate::node::db::events::object_id::{IdGen, ObjectId};
-use crate::node::db::events::vault_event::VaultObject;
+use crate::node::db::events::object_id::{Next, UnitId};
+use crate::node::db::events::vault_event::{VaultLogObject, VaultMembershipObject, VaultObject};
 
 pub struct SignUpAction {}
 
 impl SignUpAction {
-    pub fn accept(
-        &self,
-        sign_up_request: &KvLogEvent<UserSignature>,
-        server_pk: &PublicKeyRecord,
-    ) -> Vec<GenericKvLogEvent> {
-        match &sign_up_request.key {
-            KvKey::Empty { .. } => {
-                panic!("SignUp error. Empty key");
-            }
-            KvKey::Key { obj_id, obj_desc } => match obj_id.clone() {
-                ObjectId::Unit { .. } => match obj_desc.clone() {
-                    ObjectDescriptor::Vault { vault_name } => {
-                        let user_sig: UserSignature = sign_up_request.value.clone();
+    #[instrument(skip_all)]
+    pub fn accept(&self, candidate: UserData, server: DeviceData) -> Vec<GenericKvLogEvent> {
+        let mut commit_log = vec![];
 
-                        let genesis_event = {
-                            let genesis_update = VaultObject::Genesis {
-                                event: KvLogEvent::genesis(obj_desc, server_pk),
-                            };
-                            GenericKvLogEvent::Vault(genesis_update)
-                        };
+        let vault_name = candidate.vault_name.clone();
 
-                        let sign_up_event = {
-                            let vault = VaultDoc {
-                                vault_name: vault_name.clone(),
-                                signatures: vec![user_sig],
-                                pending_joins: vec![],
-                                declined_joins: vec![],
-                            };
+        let vault_log_events = {
+            let vault_log_obj_desc = VaultDescriptor::vault_log(vault_name.clone());
+            let unit_event = VaultLogObject::Unit(KvLogEvent {
+                key: KvKey::unit(vault_log_obj_desc.clone()),
+                value: vault_name.clone(),
+            }).to_generic();
 
-                            let sign_up_event = KvLogEvent {
-                                key: genesis_event.key().next(),
-                                value: vault,
-                            };
-                            GenericKvLogEvent::Vault(VaultObject::SignUpUpdate { event: sign_up_event })
-                        };
+            let genesis_event = VaultLogObject::Genesis(KvLogEvent {
+                key: KvKey::genesis(vault_log_obj_desc),
+                value: candidate.clone(),
+            }).to_generic();
 
-                        let generic_sign_up_request = GenericKvLogEvent::Vault(VaultObject::Unit {
-                            event: sign_up_request.clone(),
-                        });
+            vec![unit_event, genesis_event]
+        };
+        commit_log.extend(vault_log_events);
 
-                        let meta_pass_unit_event = {
-                            let event = KvLogEvent {
-                                key: KvKey::unit(&ObjectDescriptor::MetaPassword {
-                                    vault_name: vault_name.clone(),
-                                }),
-                                value: (),
-                            };
-                            GenericKvLogEvent::MetaPass(MetaPassObject::Unit { event })
-                        };
+        let vault_events = {
+            let vault_obj_desc = VaultDescriptor::vault(vault_name.clone());
+            let unit_event = VaultObject::Unit(KvLogEvent {
+                key: KvKey::unit(vault_obj_desc.clone()),
+                value: vault_name.clone(),
+            }).to_generic();
 
-                        let meta_pass_genesis_event = {
-                            let event = KvLogEvent::genesis(&ObjectDescriptor::MetaPassword { vault_name }, server_pk);
-                            GenericKvLogEvent::MetaPass(MetaPassObject::Genesis { event })
-                        };
+            let genesis_event = VaultObject::Genesis(KvLogEvent {
+                key: KvKey::genesis(vault_obj_desc.clone()),
+                value: server,
+            }).to_generic();
 
-                        vec![
-                            generic_sign_up_request,
-                            genesis_event,
-                            sign_up_event,
-                            meta_pass_unit_event,
-                            meta_pass_genesis_event,
-                        ]
-                    }
-                    _ => {
-                        panic!("Wrong object type")
-                    }
-                },
-                ObjectId::Genesis { .. } => {
-                    panic!("Invalid object id");
-                }
-                ObjectId::Regular { .. } => {
-                    panic!("Invalid object id");
-                }
-            },
-        }
-    }
-}
+            let vault_event = {
+                let vault_data = {
+                    let mut vault = VaultData::from(vault_name.clone());
+                    let membership = UserMembership::Member(UserDataMember(candidate.clone()));
+                    vault.update_membership(membership);
+                    vault
+                };
 
-pub struct SignUpRequest {}
+                let vault_id = UnitId::vault_unit(vault_name.clone())
+                    .next()
+                    .next();
 
-impl SignUpRequest {
-    pub fn generic_request(&self, user_sig: &UserSignature) -> GenericKvLogEvent {
-        GenericKvLogEvent::Vault(VaultObject::unit(user_sig))
+                let sign_up_event = KvLogEvent {
+                    key: KvKey::artifact(vault_obj_desc.clone(), vault_id),
+                    value: vault_data,
+                };
+                VaultObject::Vault(sign_up_event).to_generic()
+            };
+
+            vec![unit_event, genesis_event, vault_event]
+        };
+        commit_log.extend(vault_events);
+
+        let vault_status_events = {
+            let user_id = UserId {
+                vault_name: vault_name.clone(),
+                device_id: candidate.device.id.clone(),
+            };
+            let vault_status_desc = VaultDescriptor::VaultStatus(user_id).to_obj_desc();
+
+            let unit_event = VaultMembershipObject::Unit(KvLogEvent {
+                key: KvKey::unit(vault_status_desc.clone()),
+                value: vault_name.clone(),
+            }).to_generic();
+
+            let genesis_event = VaultMembershipObject::Genesis(KvLogEvent {
+                key: KvKey::genesis(vault_status_desc.clone()),
+                value: candidate.clone(),
+            }).to_generic();
+
+            let status_event = {
+                let status_event_id = UnitId::unit(&vault_status_desc)
+                    .next()
+                    .next();
+
+                VaultMembershipObject::Membership(KvLogEvent {
+                    key: KvKey {
+                        obj_id: status_event_id,
+                        obj_desc: vault_status_desc,
+                    },
+                    value: UserMembership::Member(UserDataMember(candidate.clone())),
+                }).to_generic()
+            };
+
+            vec![unit_event, genesis_event, status_event]
+        };
+        commit_log.extend(vault_status_events);
+
+        commit_log
     }
 }

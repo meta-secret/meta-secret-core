@@ -1,72 +1,78 @@
-use crate::node::db::events::common::PublicKeyRecord;
-use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
+use crate::node::common::model::device::DeviceData;
+use crate::node::common::model::vault::VaultName;
+use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
+use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
+use crate::node::db::events::generic_log_event::{
+    GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent, UnitEventWithEmptyValue
+};
+use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
+use crate::node::db::events::object_id::{ArtifactId, GenesisId, ObjectId, UnitId};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[serde(tag = "gi_obj")]
 pub enum GlobalIndexObject {
-    Unit { event: KvLogEvent<()> },
-    Genesis { event: KvLogEvent<PublicKeyRecord> },
-    Update { event: KvLogEvent<GlobalIndexRecord> },
+    Unit(KvLogEvent<UnitId, ()>),
+    Genesis(KvLogEvent<GenesisId, DeviceData>),
+    Update(KvLogEvent<ArtifactId, UnitId>),
+
+    VaultIndex(KvLogEvent<UnitId, ()>),
 }
 
 impl GlobalIndexObject {
-    pub fn key(&self) -> &KvKey {
+    pub fn index_from_vault_name(vault_name: VaultName) -> GlobalIndexObject {
+        let vault_id = UnitId::vault_unit(vault_name);
+
+        GlobalIndexObject::index_from_vault_id(vault_id)
+    }
+
+    pub fn index_from_vault_id(vault_id: UnitId) -> GlobalIndexObject {
+        let idx_desc = ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::VaultIndex {
+            vault_id: vault_id.clone()
+        });
+
+        GlobalIndexObject::VaultIndex(KvLogEvent {
+            key: KvKey::unit(idx_desc),
+            value: (),
+        })
+    }
+}
+
+impl ToGenericEvent for GlobalIndexObject {
+    fn to_generic(self) -> GenericKvLogEvent {
+        GenericKvLogEvent::GlobalIndex(self)
+    }
+}
+
+impl ObjIdExtractor for GlobalIndexObject {
+    fn obj_id(&self) -> ObjectId {
         match self {
-            GlobalIndexObject::Unit { event } => &event.key,
-            GlobalIndexObject::Genesis { event } => &event.key,
-            GlobalIndexObject::Update { event } => &event.key,
+            GlobalIndexObject::Unit(event) => ObjectId::from(event.key.obj_id.clone()),
+            GlobalIndexObject::Genesis(event) => ObjectId::from(event.key.obj_id.clone()),
+            GlobalIndexObject::Update(event) => ObjectId::from(event.key.obj_id.clone()),
+            GlobalIndexObject::VaultIndex(event) => ObjectId::from(event.key.obj_id.clone())
         }
+    }
+}
+
+impl KeyExtractor for GlobalIndexObject {
+    fn key(&self) -> GenericKvKey {
+        match self {
+            GlobalIndexObject::Unit(event) => GenericKvKey::from(event.key.clone()),
+            GlobalIndexObject::Genesis(event) => GenericKvKey::from(event.key.clone()),
+            GlobalIndexObject::Update(event) => GenericKvKey::from(event.key.clone()),
+            GlobalIndexObject::VaultIndex(event) => GenericKvKey::from(event.key.clone())
+        }
+    }
+}
+
+impl UnitEventWithEmptyValue for GlobalIndexObject {
+    fn unit() -> Self {
+        GlobalIndexObject::Unit(KvLogEvent::global_index_unit())
     }
 }
 
 impl GlobalIndexObject {
-    pub fn unit() -> Self {
-        GlobalIndexObject::Unit {
-            event: KvLogEvent::global_index_unit(),
-        }
-    }
-
-    pub fn genesis(server_pk: &PublicKeyRecord) -> Self {
-        let genesis_log_event = KvLogEvent::global_index_genesis(server_pk);
-        GlobalIndexObject::Genesis {
-            event: genesis_log_event,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GlobalIndexRecord {
-    pub vault_id: String,
-}
-
-#[cfg(test)]
-mod test {
-    use crate::node::db::events::object_id::ObjectId;
-
-    use super::*;
-
-    #[test]
-    fn unit_test() {
-        let unit = GlobalIndexObject::unit();
-        match unit {
-            GlobalIndexObject::Unit { event } => match event.key {
-                KvKey::Empty { .. } => {
-                    panic!()
-                }
-                KvKey::Key { obj_id, .. } => match obj_id {
-                    ObjectId::Unit { id } => {
-                        assert_eq!("GlobalIndex:index::0", id);
-                    }
-                    _ => {
-                        panic!("Invalid event");
-                    }
-                },
-            },
-            _ => {
-                panic!("Invalid event");
-            }
-        }
+    pub fn genesis(server_pk: DeviceData) -> Self {
+        GlobalIndexObject::Genesis(KvLogEvent::global_index_genesis(server_pk))
     }
 }
