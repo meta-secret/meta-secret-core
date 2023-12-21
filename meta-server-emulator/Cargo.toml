@@ -6,14 +6,14 @@ edition = "2021"
 [dependencies]
 meta-secret-core = { path = "../core" }
 
-thiserror = "1.0.40"
+thiserror.workspace = true
+anyhow.workspace = true
 
-diesel = { version = "2.0.0", features = ["sqlite"] }
-diesel_migrations = "2.0.0"
+async-trait.workspace = true
 
-async-trait = "0.1"
+serde.workspace = true
+serde_json.workspace = true
+serde_derive.workspace = true
 
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-
-anyhow = "1.0.66"
+diesel = { workspace = true, features = ["sqlite"] }
+diesel_migrations = { workspace = true, features = ["sqlite"] }

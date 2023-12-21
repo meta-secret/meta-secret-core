@@ -1,26 +1,26 @@
 use std::sync::Arc;
 
-use crate::node::app::client_meta_app::MetaClient;
-use crate::node::app::meta_app::messaging::{GenericAppStateRequest, SignUpRequest};
-use crate::node::app::meta_app::meta_app_service::MetaClientAccessProxy;
-use crate::node::app::meta_vault_manager::UserCredentialsManager;
-use crate::node::app::sync_gateway::SyncGateway;
-use crate::node::db::actions::join;
-use crate::node::db::events::common::VaultInfo;
-use crate::node::db::events::generic_log_event::GenericKvLogEvent;
-use crate::node::db::events::vault_event::VaultObject;
-use crate::node::db::generic_db::KvLogEventRepo;
-use crate::node::db::meta_db::meta_db_service::MetaDbServiceProxy;
-use crate::node::db::meta_db::store::vault_store::VaultStore;
-use crate::node::db::objects::persistent_object::PersistentObject;
-use crate::node::server::server_app::ServerDataTransfer;
 use serde::{Deserialize, Serialize};
-use tracing::{info, instrument, Instrument};
+use tracing::{info, instrument};
+
+use crate::node::app::meta_app::meta_client_service::MetaClientAccessProxy;
+use crate::node::app::sync_gateway::SyncGateway;
+use crate::node::common::model::vault::VaultStatus;
+use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
+use crate::node::db::descriptors::vault::VaultDescriptor;
+use crate::node::db::events::vault_event::{VaultAction, VaultLogObject};
+use crate::node::db::objects::device_log::PersistentDeviceLog;
+use crate::node::db::objects::persistent_object::PersistentObject;
+use crate::node::db::objects::shared_secret::PersistentSharedSecret;
+use crate::node::db::objects::vault::PersistentVault;
+use crate::node::db::repo::generic_db::KvLogEventRepo;
+use crate::node::server::server_app::ServerDataTransfer;
 
 pub struct VirtualDevice<Repo: KvLogEventRepo> {
-    pub meta_client: Arc<MetaClient<Repo>>,
+    persistent_object: Arc<PersistentObject<Repo>>,
     pub meta_client_proxy: Arc<MetaClientAccessProxy>,
     pub server_dt: Arc<ServerDataTransfer>,
+    gateway: Arc<SyncGateway<Repo>>
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -31,120 +31,84 @@ pub enum VirtualDeviceEvent {
 }
 
 impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
-    pub fn new(
-        persistent_object: Arc<PersistentObject<Repo>>,
-        meta_client_access_proxy: Arc<MetaClientAccessProxy>,
-        meta_db_service_proxy: Arc<MetaDbServiceProxy>,
-        dt: Arc<ServerDataTransfer>,
-    ) -> VirtualDevice<Repo> {
-        Self {
-            meta_client: Arc::new(MetaClient {
-                persistent_obj: persistent_object,
-                meta_db_service_proxy: meta_db_service_proxy.clone(),
-            }),
-            meta_client_proxy: meta_client_access_proxy,
-            server_dt: dt,
-        }
-    }
-
     #[instrument(skip_all)]
-    pub async fn event_handler(
+    pub async fn init(
         persistent_object: Arc<PersistentObject<Repo>>,
         meta_client_access_proxy: Arc<MetaClientAccessProxy>,
-        meta_db_service_proxy: Arc<MetaDbServiceProxy>,
-        dt: Arc<ServerDataTransfer>,
-        gateway: Arc<SyncGateway<Repo>>,
-    ) {
+        server_dt: Arc<ServerDataTransfer>,
+        gateway: Arc<SyncGateway<Repo>>
+    ) -> anyhow::Result<VirtualDevice<Repo>> {
         info!("Run virtual device event handler");
 
-        let virtual_device = {
-            let vd = VirtualDevice::new(
-                persistent_object.clone(),
-                meta_client_access_proxy.clone(),
-                meta_db_service_proxy.clone(),
-                dt.clone(),
-            );
-            Arc::new(vd)
+        let virtual_device = Self {
+            persistent_object,
+            meta_client_proxy: meta_client_access_proxy.clone(),
+            server_dt,
+            gateway
         };
 
-        info!("Generate device creds");
-        let creds = persistent_object
-            .repo
-            .get_or_generate_user_creds(String::from("q"), String::from("virtual-device"))
-            .in_current_span()
-            .await;
+        Ok(virtual_device)
+    }
 
-        let vault_name = "q";
-        let device_name = "virtual-device";
+    pub async fn run(&self) -> anyhow::Result<()> {
 
-        let sign_up_request = GenericAppStateRequest::SignUp(SignUpRequest {
-            vault_name: String::from(vault_name),
-            device_name: String::from(device_name),
-        });
-
-        //prepare for sign_up
-        virtual_device
-            .meta_client_proxy
-            .send_request(sign_up_request.clone())
-            .in_current_span()
-            .await;
-
-        let vault_info = virtual_device
-            .meta_client
-            .get_vault(creds.user_sig.vault.name.clone())
-            .in_current_span()
-            .await;
-        if let VaultInfo::Member { .. } = vault_info {
-            //vd is already a member of a vault
-        } else {
-            //send a register request
-            virtual_device
-                .meta_client_proxy
-                .send_request(sign_up_request.clone())
-                .in_current_span()
-                .await;
-        }
-
-        let vault_name = creds.user_sig.vault.name.clone();
         loop {
-            gateway.sync().in_current_span().await;
+            self.gateway.sync().await?;
 
-            let meta_db_service = virtual_device.meta_client.meta_db_service_proxy.clone();
-            let vault_store = meta_db_service
-                .get_vault_store(vault_name.clone())
-                .in_current_span()
-                .await
-                .unwrap();
-
-            if let VaultStore::Store { tail_id, vault, .. } = vault_store {
-                let vd_repo = virtual_device.meta_client.persistent_obj.repo.clone();
-
-                let latest_event = vd_repo.find_one(tail_id).in_current_span().await;
-
-                if let Ok(Some(GenericKvLogEvent::Vault(VaultObject::JoinRequest { event }))) = latest_event {
-                    let accept_event = GenericKvLogEvent::Vault(VaultObject::JoinUpdate {
-                        event: join::accept_join_request(&event, &vault),
-                    });
-
-                    let _ = vd_repo.save_event(accept_event).in_current_span().await;
-                }
-
-                let db_tail = virtual_device
-                    .meta_client
-                    .persistent_obj
-                    .get_db_tail(vault_name.as_str())
-                    .in_current_span()
-                    .await
-                    .unwrap();
-
-                gateway
-                    .sync_shared_secrets(&vault.vault_name, &creds, &db_tail)
-                    .in_current_span()
-                    .await;
+            let p_vault = PersistentVault {
+                p_obj: self.persistent_object.clone(),
             };
 
+            let vault_status = p_vault.find_for_default_user().await?;
+            match vault_status {
+                VaultStatus::Outsider(_) => {
+                    //nothing to do
+                }
+                VaultStatus::Member(vault) => {
+                    //vault actions
+                    let vault_log_desc = VaultDescriptor::VaultLog(vault.vault_name.clone())
+                        .to_obj_desc();
+                    let maybe_vault_log_event = self.persistent_object.find_tail_event(vault_log_desc).await?;
+                    match maybe_vault_log_event {
+                        None => {
+                            //nothing to do
+                        }
+                        Some(vault_log_event) => {
+                            let vault_log = VaultLogObject::try_from(vault_log_event)?;
+                            if let VaultLogObject::Action(vault_action) = vault_log {
+                                match vault_action.value {
+                                    VaultAction::JoinRequest { candidate } => {
+                                        let p_device_log = PersistentDeviceLog {
+                                            p_obj: self.persistent_object.clone(),
+                                        };
+
+                                        p_device_log
+                                            .accept_join_cluster_request(candidate)
+                                            .await?;
+                                    }
+                                    VaultAction::UpdateMembership { .. } => {
+                                        //changes made by another device, no need for any actions
+                                    }
+                                    VaultAction::AddMetaPassword { .. } => {
+                                        //changes made by another device, no need for any actions
+                                    }
+                                }
+                            };
+                        }
+                    }
+
+                    // shared secret actions
+                    let _p_ss_log = PersistentSharedSecret {
+                        p_obj: self.persistent_object.clone(),
+                    };
+
+                    todo!("Implement SS log actions - replication request. This code must read the log and handle the events. Same as above for vault");
+                }
+            }
+
+            self.gateway.sync().await?;
+
             async_std::task::sleep(std::time::Duration::from_millis(300))
-                .in_current_span()
                 .await;
         }
     }

@@ -1,16 +1,36 @@
 use serde::{Deserialize, Serialize};
 
-use crate::models::UserSignature;
+use crate::node::common::model::device::DeviceData;
+use crate::node::common::model::user::UserData;
 use crate::node::db::events::object_id::ObjectId;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct SyncRequest {
-    pub sender: UserSignature,
+#[serde(rename_all = "camelCase")]
+pub enum SyncRequest {
+    GlobalIndex(GlobalIndexRequest),
+    Vault(VaultRequest),
+    SharedSecret(SharedSecretRequest),
+}
 
-    pub vault_tail_id: Option<ObjectId>,
-    pub meta_pass_tail_id: Option<ObjectId>,
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VaultRequest {
+    pub sender: UserData,
+    pub vault_log: ObjectId,
+    pub vault: ObjectId,
+    pub vault_status: ObjectId,
+}
 
-    pub global_index: Option<ObjectId>,
-    
-    pub s_s_audit: Option<ObjectId>
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SharedSecretRequest {
+    pub sender: UserData,
+    pub ss_log: ObjectId,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GlobalIndexRequest {
+    pub sender: DeviceData,
+    pub global_index: ObjectId,
 }

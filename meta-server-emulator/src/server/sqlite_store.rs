@@ -1,14 +1,11 @@
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection};
 
-use meta_secret_core::node::db::events::generic_log_event::GenericKvLogEvent;
+use meta_secret_core::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor};
 use meta_secret_core::node::db::events::object_id::ObjectId;
-use meta_secret_core::node::db::generic_db::{
+use meta_secret_core::node::db::repo::generic_db::{
     DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand,
 };
-use meta_secret_core::node::server::data_sync::MetaServerContextState;
 
 use crate::models::DbLogEvent;
 use crate::models::NewDbLogEvent;
@@ -18,7 +15,6 @@ use crate::schema::db_commit_log::dsl;
 pub struct SqlIteRepo {
     /// conn_url="file:///tmp/test.db"
     pub conn_url: String,
-    pub context: Arc<MetaServerContextState>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -32,26 +28,38 @@ pub enum SqliteDbError {
 
 #[async_trait(? Send)]
 impl SaveCommand for SqlIteRepo {
-    async fn save(&self, _key: ObjectId, value: GenericKvLogEvent) -> anyhow::Result<ObjectId> {
+    async fn save(&self, value: GenericKvLogEvent) -> anyhow::Result<ObjectId> {
         let mut conn = SqliteConnection::establish(self.conn_url.as_str()).unwrap();
 
         diesel::insert_into(schema_log::table)
             .values(&NewDbLogEvent::from(&value))
             .execute(&mut conn)?;
-        Ok(_key.clone())
+        Ok(value.obj_id())
     }
 }
 
 #[async_trait(? Send)]
 impl FindOneQuery for SqlIteRepo {
     async fn find_one(&self, key: ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>> {
-        let mut conn = SqliteConnection::establish(self.conn_url.as_str()).unwrap();
+        let mut conn = SqliteConnection::establish(self.conn_url.as_str())?;
 
         let db_event: DbLogEvent = dsl::db_commit_log
             .filter(dsl::key_id.eq(key.id_str()))
             .first::<DbLogEvent>(&mut conn)?;
 
         Ok(Some(GenericKvLogEvent::from(&db_event)))
+    }
+
+    async fn get_key(&self, key: ObjectId) -> anyhow::Result<Option<ObjectId>> {
+        let maybe_event = self.find_one(key).await?;
+        match maybe_event {
+            None => {
+                Ok(None)
+            }
+            Some(event) => {
+                Ok(Some(event.obj_id()))
+            }
+        }
     }
 }
 

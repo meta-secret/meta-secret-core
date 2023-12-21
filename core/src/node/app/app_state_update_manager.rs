@@ -1,8 +1,10 @@
-use crate::models::ApplicationState;
-use crate::node::db::generic_db::KvLogEventRepo;
-use async_trait::async_trait;
-use log::debug;
 use std::sync::Arc;
+
+use async_trait::async_trait;
+use tracing::debug;
+
+use crate::node::common::model::ApplicationState;
+use crate::node::db::repo::generic_db::KvLogEventRepo;
 
 #[async_trait(? Send)]
 pub trait JsAppStateManager {

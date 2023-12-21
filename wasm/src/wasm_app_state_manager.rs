@@ -5,18 +5,16 @@ use tracing::info;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
 
-use meta_secret_core::models::application_state::ApplicationState;
-use meta_secret_core::models::MetaPasswordId;
 use meta_secret_core::node::app::app_state_update_manager::{
     ApplicationStateManagerConfigurator, JsAppStateManager, NoOpJsAppStateManager,
 };
 use meta_secret_core::node::app::meta_app::messaging::{
-    ClusterDistributionRequest, GenericAppStateRequest, RecoveryRequest, SignUpRequest,
+    ClusterDistributionRequest, GenericAppStateRequest
 };
-
+use meta_secret_core::node::common::model::ApplicationState;
 use crate::app_state_manager::ApplicationStateManager;
-use crate::wasm_repo::WasmRepo;
 use crate::{configure, updateJsState};
+use crate::wasm_repo::WasmRepo;
 
 pub struct JsJsAppStateManager {}
 
@@ -58,7 +56,10 @@ impl WasmApplicationStateManager {
             vd_js_app_state: Arc::new(NoOpJsAppStateManager {}),
         };
 
-        let app_state_manager = ApplicationStateManager::init(cfg).await;
+        let app_state_manager = ApplicationStateManager::init(cfg)
+            .await
+            .expect("Application state manager must be initialized");
+
         WasmApplicationStateManager {
             app_manager: GenericApplicationStateManager::InMem { app_state_manager },
         }
@@ -77,32 +78,34 @@ impl WasmApplicationStateManager {
             vd_js_app_state: Arc::new(JsJsAppStateManager {}),
         };
 
-        let app_state_manager = ApplicationStateManager::init(cfg).await;
+        let app_state_manager = ApplicationStateManager::init(cfg)
+            .await
+            .expect("Application state manager must be initialized");
+
         WasmApplicationStateManager {
             app_manager: GenericApplicationStateManager::Wasm { app_state_manager },
         }
     }
 
-    pub async fn sign_up(&self, vault_name: &str, device_name: &str) {
-        let request = GenericAppStateRequest::SignUp(SignUpRequest {
-            vault_name: vault_name.to_string(),
-            device_name: device_name.to_string(),
-        });
+    pub async fn sign_up(&self) {
+        info!("Sign Up");
+
+        let sign_up = GenericAppStateRequest::SignUp;
 
         match &self.app_manager {
             GenericApplicationStateManager::Wasm { app_state_manager } => {
                 app_state_manager
                     .meta_client_service
-                    .send_request(request)
-                    .await
+                    .send_request(sign_up)
+                    .await;
             }
             GenericApplicationStateManager::InMem { app_state_manager } => {
                 app_state_manager
                     .meta_client_service
-                    .send_request(request)
-                    .await
+                    .send_request(sign_up)
+                    .await;
             }
-        }
+        };
     }
 
     pub async fn cluster_distribution(&self, pass_id: &str, pass: &str) {
@@ -124,13 +127,13 @@ impl WasmApplicationStateManager {
                     .send_request(request)
                     .await;
             }
-        }
+        };
     }
 
     pub async fn recover_js(&self, meta_pass_id_js: JsValue) {
-        let meta_pass_id: MetaPasswordId = serde_wasm_bindgen::from_value(meta_pass_id_js).unwrap();
+        let meta_pass_id = serde_wasm_bindgen::from_value(meta_pass_id_js).unwrap();
 
-        let request = GenericAppStateRequest::Recover(RecoveryRequest { meta_pass_id });
+        let request = GenericAppStateRequest::Recover(meta_pass_id);
 
         match &self.app_manager {
             GenericApplicationStateManager::Wasm { app_state_manager } => {

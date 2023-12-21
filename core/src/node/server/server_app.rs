@@ -1,39 +1,41 @@
 use std::sync::Arc;
-use tracing::{error, info, instrument, Instrument};
+
+use tracing::{error, info, instrument};
 
 use crate::node::common::data_transfer::MpscDataTransfer;
-use crate::node::db::events::common::ObjectCreator;
-use crate::node::db::events::generic_log_event::GenericKvLogEvent;
-use crate::node::db::events::object_descriptor::ObjectDescriptor;
+use crate::node::common::model::device::DeviceCredentials;
+use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
+use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::ObjectId;
-use crate::node::db::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object::PersistentGlobalIndexApi;
-
-use crate::node::server::data_sync::{DataSyncApi, DataSyncMessage, MetaServerContext, ServerDataSync};
+use crate::node::db::repo::generic_db::KvLogEventRepo;
+use crate::node::server::data_sync::{DataSyncApi, DataSyncRequest, DataSyncResponse, ServerDataSync};
 
 pub struct ServerApp<Repo: KvLogEventRepo> {
-    pub data_sync: Arc<ServerDataSync<Repo>>,
+    pub data_sync: ServerDataSync<Repo>,
     pub data_transfer: Arc<ServerDataTransfer>,
+    pub device_creds: DeviceCredentials
 }
 
 pub struct ServerDataTransfer {
-    pub dt: MpscDataTransfer<DataSyncMessage, Vec<GenericKvLogEvent>>,
+    pub dt: MpscDataTransfer<DataSyncRequest, DataSyncResponse>,
 }
 
-impl<Repo> ServerApp<Repo>
-where
-    Repo: KvLogEventRepo,
-{
+impl<Repo: KvLogEventRepo> ServerApp<Repo> {
+
     #[instrument(skip(self))]
-    pub async fn run(&self) {
+    pub async fn run(&self) -> anyhow::Result<()> {
         info!("Run server app");
 
-        self.gi_initialization().in_current_span().await;
+        self.gi_initialization().await;
 
-        while let Ok(sync_message) = self.data_transfer.dt.service_receive().in_current_span().await {
+        while let Ok(sync_message) = self.data_transfer.dt.service_receive().await {
             match sync_message {
-                DataSyncMessage::SyncRequest(request) => {
-                    let new_events_result = self.data_sync.replication(request).in_current_span().await;
+                DataSyncRequest::SyncRequest(request) => {
+                    let new_events_result = self.data_sync
+                        .replication(request)
+                        .await;
+
                     let new_events = match new_events_result {
                         Ok(data) => {
                             //debug!(format!("New events for a client: {:?}", data).as_str());
@@ -45,31 +47,31 @@ where
                         }
                     };
 
-                    self.data_transfer.dt.send_to_client(new_events).in_current_span().await;
+                    self.data_transfer.dt
+                        .send_to_client(DataSyncResponse { events: new_events})
+                        .await;
                 }
-                DataSyncMessage::Event(event) => {
-                    self.data_sync.send(event).in_current_span().await;
+                DataSyncRequest::Event(event) => {
+                    self.data_sync.send(event).await?;
                 }
             }
         }
+
+        Ok(())
     }
 
+    #[instrument(skip(self))]
     async fn gi_initialization(&self) {
         //Check if all required persistent objects has been created
-        let maybe_gi_unit_id = self
-            .data_sync
-            .persistent_obj
-            .repo
-            .find_one(ObjectId::unit(&ObjectDescriptor::GlobalIndex))
-            .in_current_span()
-            .await;
+        let gi_obj_desc = ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index);
 
-        let maybe_gi_genesis = self
-            .data_sync
-            .persistent_obj
-            .repo
-            .find_one(ObjectId::genesis(&ObjectDescriptor::GlobalIndex))
-            .in_current_span()
+        let maybe_gi_unit_id = {
+            let gi_unit = ObjectId::unit(gi_obj_desc.clone());
+            self.repo().find_one(gi_unit).await
+        };
+
+        let maybe_gi_genesis = self.repo()
+            .find_one(ObjectId::genesis(gi_obj_desc))
             .await;
 
         let gi_genesis_exists = matches!(maybe_gi_genesis, Ok(Some(_)));
@@ -77,14 +79,16 @@ where
 
         //If either of unit or genesis not exists then create initial records for the global index
         if !gi_unit_exists || !gi_genesis_exists {
-            let server_pk = self.data_sync.context.server_pk();
+            let server_pk = self.device_creds.device.clone();
             let _meta_g = self
                 .data_sync
                 .persistent_obj
                 .global_index
-                .gi_init(&server_pk)
-                .in_current_span()
+                .gi_init(server_pk)
                 .await;
         }
+    }
+    fn repo(&self) -> Arc<Repo> {
+        self.data_sync.persistent_obj.repo.clone()
     }
 }

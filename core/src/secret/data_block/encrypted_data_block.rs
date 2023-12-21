@@ -34,8 +34,8 @@ impl EncryptedDataBlock {
 
 #[cfg(test)]
 mod test {
+    use crate::crypto::encoding::base64::Base64Text;
     use crate::errors::CoreError;
-    use crate::models::Base64EncodedText;
     use crate::secret::data_block::common::BlockMetaData;
     use crate::secret::data_block::common::SharedSecretConfig;
     use crate::secret::data_block::encrypted_data_block::{EncryptedDataBlock, SECRET_DATA_BLOCK_SIZE};
@@ -45,7 +45,7 @@ mod test {
     fn test_encrypted_data_block() -> Result<(), CoreError> {
         let meta_data = BlockMetaData { size: 11 };
         let raw_data = vec![1; SECRET_DATA_BLOCK_SIZE];
-        let text = Base64EncodedText::from(raw_data.clone());
+        let text = Base64Text::from(raw_data.clone());
 
         let secret_share_dto = SecretShareWithOrderingDto {
             block: 0,

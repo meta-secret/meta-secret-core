@@ -12,7 +12,7 @@ sequenceDiagram
 
     box DeviceA 
         participant app_a
-        participant meta_db_a
+        participant read_db_a
         participant db_sync_a
     end
 
@@ -48,9 +48,9 @@ db_a -->> Vault_a: get vault
 db_a -->> GlobalIndex_a: get global index
 db_a -->>- app_a: provide vault and global index
 
-app_a ->> meta_db_a: apply db events to meta_db
+app_a ->> read_db_a: apply db events to read_db
 
-app_a ->> meta_db_a: find vault in global index
+app_a ->> read_db_a: find vault in global index
 Note right of app_a: We can join cluster <br/> if vault exists
 
 app_a ->> db_a: mempool(join_event)
@@ -81,8 +81,8 @@ app_server -->>- db_sync_a: provide new events
 
 db_sync_a ->> db_a: save new events
 app_a ->> db_a: get new events
-app_a ->> meta_db_a: apply new events to meta_db
+app_a ->> read_db_a: apply new events to read_db
 
-app_a ->> meta_db_a: get vault
+app_a ->> read_db_a: get vault
 app_a ->> app_a: show vault to the user
 ```
