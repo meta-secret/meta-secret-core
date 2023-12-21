@@ -1,7 +1,7 @@
 use std::sync::Arc;
-use anyhow::anyhow;
 
-use tracing::{error, info, instrument, Instrument};
+use anyhow::anyhow;
+use tracing::{info, instrument};
 
 use crate::node::app::app_state_update_manager::JsAppStateManager;
 use crate::node::app::meta_app::messaging::{GenericAppStateRequest, GenericAppStateResponse};

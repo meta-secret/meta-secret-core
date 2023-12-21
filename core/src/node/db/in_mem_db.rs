@@ -1,14 +1,13 @@
-use async_mutex::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use async_mutex::Mutex;
 use async_trait::async_trait;
-use tracing::{instrument};
-use tracing::Level;
 
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor};
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::repo::generic_db::{DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand};
+use tracing::instrument;
 
 pub struct InMemKvLogEventRepo {
     pub db: Arc<Mutex<HashMap<ObjectId, GenericKvLogEvent>>>,
@@ -28,17 +27,22 @@ pub enum InMemDbError {}
 #[async_trait(? Send)]
 impl FindOneQuery for InMemKvLogEventRepo {
 
-    #[instrument(level = Level::DEBUG)]
+    #[instrument(skip_all)]
     async fn find_one(&self, key: ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>> {
         let maybe_value = self.db.lock().await.get(&key).cloned();
         Ok(maybe_value)
+    }
+
+    async fn get_key(&self, key: ObjectId) -> anyhow::Result<Option<ObjectId>> {
+        let maybe_value = self.db.lock().await.get(&key).cloned();
+        Ok(maybe_value.map(|value| value.obj_id()))
     }
 }
 
 #[async_trait(? Send)]
 impl SaveCommand for InMemKvLogEventRepo {
-    
-    #[instrument]
+
+    #[instrument(skip_all)]
     async fn save(&self, value: GenericKvLogEvent) -> anyhow::Result<ObjectId> {
         let mut db = self.db.lock().await;
 
@@ -50,8 +54,8 @@ impl SaveCommand for InMemKvLogEventRepo {
 
 #[async_trait(? Send)]
 impl DeleteCommand for InMemKvLogEventRepo {
-    
-    #[instrument]
+
+    #[instrument(skip_all)]
     async fn delete(&self, key: ObjectId) {
         let mut db = self.db.lock().await;
         let _ = db.remove(&key);

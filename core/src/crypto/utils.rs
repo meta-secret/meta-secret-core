@@ -39,11 +39,11 @@ pub fn generate_uuid_b64_url_enc(value: String) -> String {
 }
 
 pub trait NextId {
-    fn next_id(&self) -> ObjectDescriptorId;
+    fn next_id(self) -> ObjectDescriptorId;
 }
 
 impl NextId for ObjectDescriptorFqdn {
-    fn next_id(&self) -> ObjectDescriptorId {
+    fn next_id(self) -> ObjectDescriptorId {
         ObjectDescriptorId {
             fqdn: self.clone(),
             id: 0,

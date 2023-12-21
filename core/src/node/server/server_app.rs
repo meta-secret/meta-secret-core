@@ -1,14 +1,14 @@
 use std::sync::Arc;
-use tracing::{error, info, instrument, Instrument};
+
+use tracing::{error, info, instrument};
 
 use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::common::model::device::DeviceCredentials;
 use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::ObjectId;
-use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::objects::persistent_object::PersistentGlobalIndexApi;
-
+use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::server::data_sync::{DataSyncApi, DataSyncRequest, DataSyncResponse, ServerDataSync};
 
 pub struct ServerApp<Repo: KvLogEventRepo> {

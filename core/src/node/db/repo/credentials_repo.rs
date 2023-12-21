@@ -39,7 +39,16 @@ impl<Repo: KvLogEventRepo> CredentialsRepo<Repo> {
             None => {
                 self.generate_device_creds(device_name).await?
             }
-            Some(creds) => creds,
+            Some(creds) => {
+                match creds {
+                    CredentialsObject::Device(event) => {
+                        event.value
+                    }
+                    CredentialsObject::DefaultUser(_) => {
+                        Err(anyhow!("User credentials found, Device credentials expected"))?
+                    }
+                }
+            }
         };
         Ok(device_creds)
     }

@@ -1,4 +1,3 @@
-use crate::crypto::utils;
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::{ObjectName, ObjectType};
 use crate::node::db::events::object_id::UnitId;

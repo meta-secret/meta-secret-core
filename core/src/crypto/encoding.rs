@@ -117,8 +117,8 @@ pub mod serialized_key_manager {
 
     pub mod encoder {
         use ed25519_dalek::ed25519::signature::Signature;
-        use crate::crypto::encoding::base64::Base64Text;
 
+        use crate::crypto::encoding::base64::Base64Text;
         use crate::crypto::key_pair::{DalekPublicKey, DalekSignature, DsaKeyPair, KeyPair, TransportDsaKeyPair};
         use crate::crypto::keys::{KeyManager, SecretBox, SerializedDsaKeyPair, SerializedTransportKeyPair};
 
@@ -235,10 +235,10 @@ pub mod serialized_key_manager {
 
         #[cfg(test)]
         pub mod test {
-            use crate::crypto::key_pair::{DalekPublicKey, DalekSignature, KeyPair};
-            use crate::crypto::keys::KeyManager;
             use crate::CoreResult;
             use crate::crypto::encoding::base64::Base64Text;
+            use crate::crypto::key_pair::{DalekPublicKey, DalekSignature, KeyPair};
+            use crate::crypto::keys::KeyManager;
 
             #[test]
             fn from_base64_to_dalek_public_key() -> CoreResult<()> {

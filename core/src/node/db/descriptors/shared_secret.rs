@@ -101,7 +101,7 @@ impl From<&SecretDistributionData> for ObjectDescriptor {
 #[cfg(test)]
 mod test {
     use crate::crypto::keys::{KeyManager, OpenBox, SecretBox};
-    use crate::node::common::model::device::{DeviceId, DeviceLink, DeviceLinkBuilder};
+    use crate::node::common::model::device::{DeviceId, DeviceLinkBuilder};
     use crate::node::common::model::vault::VaultName;
     use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
     use crate::node::db::descriptors::shared_secret::{SharedSecretDescriptor, SharedSecretEventId};

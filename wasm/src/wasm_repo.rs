@@ -1,4 +1,4 @@
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use async_trait::async_trait;
 use indexed_db_futures::IdbDatabase;
 use indexed_db_futures::prelude::*;
@@ -48,17 +48,10 @@ impl WasmRepo {
             store_name: String::from("commit_log"),
         }
     }
-
-    async fn get_store(&self) -> anyhow::Result<IdbObjectStore> {
-        let db = open_db(self.db_name.as_str()).await;
-        let tx = db.transaction_on_one(self.store_name.as_str())?;
-        let store = tx.object_store(self.store_name.as_str())?;
-        Ok(store)
-    }
 }
 
 impl WasmRepo {
-    #[instrument(level = Level::DEBUG)]
+    #[instrument(skip_all)]
     pub async fn delete_db(&self) {
         let db = open_db(self.db_name.as_str()).await;
         db.delete().unwrap();
@@ -67,9 +60,9 @@ impl WasmRepo {
 
 #[async_trait(? Send)]
 impl SaveCommand for WasmRepo {
-    #[instrument(level = Level::DEBUG)]
+    #[instrument(skip_all)]
     async fn save(&self, event: GenericKvLogEvent) -> anyhow::Result<ObjectId> {
-        let event_js: JsValue = serde_wasm_bindgen::to_value(&event)?;
+        let event_js: JsValue = serde_wasm_bindgen::to_value(&event).unwrap();
 
         let db = open_db(self.db_name.as_str()).in_current_span().await;
         let tx = db
@@ -78,7 +71,7 @@ impl SaveCommand for WasmRepo {
 
         let store = tx.object_store(self.store_name.as_str()).unwrap();
 
-        let obj_id_js = serde_wasm_bindgen::to_value(&event.obj_id())?;
+        let obj_id_js = serde_wasm_bindgen::to_value(&event.obj_id()).unwrap();
         store.put_key_val_owned(obj_id_js, &event_js).unwrap();
 
         tx.in_current_span().await.into_result().unwrap();
@@ -90,59 +83,54 @@ impl SaveCommand for WasmRepo {
     }
 }
 
-#[async_trait]
+#[async_trait(? Send)]
 impl FindOneQuery for WasmRepo {
-    #[instrument(level = Level::DEBUG)]
+
+    #[instrument(skip_all)]
     async fn find_one(&self, key: ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>> {
-        let store = self.get_store().await?;
+        let db = open_db(self.db_name.as_str()).await;
+        let tx = db.transaction_on_one(self.store_name.as_str()).unwrap();
+        let store = tx.object_store(self.store_name.as_str()).unwrap();
 
         let maybe_event_js: Option<JsValue> = {
-            let maybe_value: OptionalJsValueFuture = store.get_owned(key.id_str().as_str())?;
-            maybe_value.in_current_span().await?
+            let maybe_value: OptionalJsValueFuture = store.get_owned(key.id_str().as_str()).unwrap();
+            maybe_value.await.unwrap()
         };
 
-        let Some(event_js) = maybe_event_js else {
-            Ok(None)
-        };
+        match maybe_event_js {
+            None => {
+                Ok(None)
+            }
+            Some(event_js) => {
+                if event_js.is_undefined() {
+                    return Ok(None);
+                }
 
-        if event_js.is_undefined() {
-            return Ok(None);
+                let js_object = Object::from_entries(&event_js).unwrap();
+                let obj_js: JsValue = JsValue::from(js_object);
+
+                let obj = serde_wasm_bindgen::from_value(obj_js).unwrap();
+                Ok(Some(obj))
+            }
         }
-
-        let js_object = Object::from_entries(&event_js)?;
-        let obj_js: JsValue = JsValue::from(js_object);
-
-        let obj = serde_wasm_bindgen::from_value(obj_js)?;
-        Ok(Some(obj))
     }
 
     async fn get_key(&self, key: ObjectId) -> anyhow::Result<Option<ObjectId>> {
-        let store = self.get_store().await?;
-        let maybe_key_js: Option<JsValue> = {
-            let maybe_key = store.get_key_owned(key.id_str().as_str())?;
-            maybe_key.in_current_span().await?
-        };
-
-        let Some(key_js) = maybe_key_js else {
-            Ok(None)
-        };
-
-        if key_js.is_undefined() {
-            return Ok(None);
+        let maybe_event = self.find_one(key).await?;
+        match maybe_event {
+            None => {
+                Ok(None)
+            }
+            Some(event) => {
+                Ok(Some(event.obj_id()))
+            }
         }
-
-        let js_object = Object::from_entries(&key_js)?;
-        let key_js: JsValue = JsValue::from(js_object);
-
-        let key = serde_wasm_bindgen::from_value(key_js)?;
-        Ok(Some(key))
-
     }
 }
 
 #[async_trait(? Send)]
 impl DeleteCommand for WasmRepo {
-    #[instrument(level = Level::DEBUG)]
+    #[instrument(skip_all)]
     async fn delete(&self, key: ObjectId) {
         let db = open_db(self.db_name.as_str()).in_current_span().await;
         let tx: IdbTransaction = db
@@ -154,9 +142,9 @@ impl DeleteCommand for WasmRepo {
     }
 }
 
-#[instrument(level = Level::DEBUG)]
+#[instrument(skip_all)]
 pub async fn open_db(db_name: &str) -> IdbDatabase {
-    let mut db_req: OpenDbRequest = IdbDatabase::open_u32(db_name, 1).unwrap();
+    let mut db_req = IdbDatabase::open_u32(db_name, 1).unwrap();
 
     let on_upgrade_task = move |evt: &IdbVersionChangeEvent| -> Result<(), JsValue> {
         // Check if the object store exists; create it if it doesn't
@@ -168,7 +156,8 @@ pub async fn open_db(db_name: &str) -> IdbDatabase {
 
     db_req.set_on_upgrade_needed(Some(on_upgrade_task));
 
-    db_req.into_future().in_current_span().await.unwrap()
+    let idb = db_req.into_future().in_current_span().await.unwrap();
+    idb
 }
 
 impl KvLogEventRepo for WasmRepo {}

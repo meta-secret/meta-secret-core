@@ -6,7 +6,7 @@ use wasm_bindgen_futures::spawn_local;
 use meta_secret_core::node::app::app_state_update_manager::{
     ApplicationStateManagerConfigurator, JsAppStateManager,
 };
-use meta_secret_core::node::app::meta_client::MetaClient;
+
 use meta_secret_core::node::app::meta_app::meta_client_service::{
     MetaClientAccessProxy, MetaClientDataTransfer, MetaClientService,
 };
@@ -90,20 +90,10 @@ impl<Repo, State> ApplicationStateManager<Repo, State>
         });
 
         let meta_client_service = {
-            let meta_client = Arc::new(MetaClient {
-                persistent_obj: persistent_obj.clone() 
-            });
-
-            let creds = persistent_obj
-                .repo
-                .get_or_generate_device_creds(String::from("client"))
-                .await?;
-
             Arc::new(MetaClientService {
                 data_transfer: Arc::new(MetaClientDataTransfer {
                     dt: MpscDataTransfer::new(),
                 }),
-                meta_client: meta_client.clone(),
                 state_manager: js_app_state.clone(),
                 sync_gateway: sync_gateway.clone(),
             })
@@ -121,7 +111,8 @@ impl<Repo, State> ApplicationStateManager<Repo, State>
             meta_client_service_runner
                 .run()
                 .instrument(client_span())
-                .await
+                .await.
+                unwrap();
         });
 
         let sync_gateway_rc = app_manager.sync_gateway.clone();
@@ -141,7 +132,7 @@ impl<Repo, State> ApplicationStateManager<Repo, State>
         let persistent_object = Arc::new(PersistentObject::new(device_repo.clone()));
 
         let creds_repo = CredentialsRepo {
-            repo: persistent_object.repo.clone(),
+            p_obj: persistent_object.clone(),
         };
 
         let user_creds = creds_repo
@@ -159,25 +150,26 @@ impl<Repo, State> ApplicationStateManager<Repo, State>
         });
 
         let meta_client_service = {
-            let meta_client = Arc::new(MetaClient {
-                persistent_obj: persistent_object.clone()
-            });
-
             MetaClientService {
                 data_transfer: dt_meta_client.clone(),
-                meta_client: meta_client.clone(),
                 state_manager: js_app_state.clone(),
                 sync_gateway: gateway.clone()
             }
         };
 
-        spawn_local(async move { meta_client_service.run().instrument(vd_span()).await });
+        spawn_local(async move {
+            meta_client_service
+                .run()
+                .instrument(vd_span())
+                .await
+                .unwrap();
+        });
 
         let meta_client_access_proxy = Arc::new(MetaClientAccessProxy { dt: dt_meta_client });
         let vd = VirtualDevice::init(persistent_object, meta_client_access_proxy, dt, gateway, user_creds)
             .await?;
         let vd = Arc::new(vd);
-        spawn_local(async move { vd.run().instrument(vd_span()).await });
+        spawn_local(async move { vd.run().instrument(vd_span()).await.unwrap() });
 
         Ok(())
     }
@@ -191,7 +183,11 @@ impl<Repo, State> ApplicationStateManager<Repo, State>
             Arc::new(obj)
         };
 
-        let device_creds = server_persistent_obj
+        let creds_repo = CredentialsRepo {
+            p_obj: server_persistent_obj.clone(),
+        };
+
+        let device_creds = creds_repo
             .get_or_generate_device_creds(DeviceName::from("server"))
             .await?;
         
@@ -206,7 +202,7 @@ impl<Repo, State> ApplicationStateManager<Repo, State>
             device_creds
         };
 
-        spawn_local(async move { server.run().instrument(server_span()).await });
+        spawn_local(async move { server.run().instrument(server_span()).await.unwrap() });
 
         Ok(())
     }

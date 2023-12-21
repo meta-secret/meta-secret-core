@@ -1,16 +1,17 @@
-use crate::node::db::events::generic_log_event::GenericKvLogEvent;
-use crate::node::db::events::object_id::ObjectId;
-use crate::node::db::repo::generic_db::KvLogEventRepo;
-use crate::node::db::objects::persistent_object::PersistentObject;
-use crate::node::server::request::SharedSecretRequest;
 use std::sync::Arc;
-use tracing::error;
+
 use tracing_attributes::instrument;
+
 use crate::node::common::model::device::DeviceLinkBuilder;
 use crate::node::common::model::user::UserDataMember;
 use crate::node::common::model::vault::VaultData;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::shared_secret::{SharedSecretDescriptor, SharedSecretEventId};
+use crate::node::db::events::generic_log_event::GenericKvLogEvent;
+use crate::node::db::events::object_id::ObjectId;
+use crate::node::db::objects::persistent_object::PersistentObject;
+use crate::node::db::repo::generic_db::KvLogEventRepo;
+use crate::node::server::request::SharedSecretRequest;
 
 pub struct SSReplicationAction<Repo: KvLogEventRepo> {
     pub persistent_obj: Arc<PersistentObject<Repo>>,

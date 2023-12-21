@@ -4,6 +4,8 @@ use crate::node::common::model::user::UserId;
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ObjectName, ObjectType, ToObjectDescriptor};
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum VaultDescriptor {
     DeviceLog(UserId),
 
@@ -66,14 +68,16 @@ impl ObjectName for VaultDescriptor {
 #[cfg(test)]
 pub mod test {
     use std::ops::Add;
+
+    use serde_json::json;
+
     use crate::crypto::keys::{KeyManager, OpenBox};
     use crate::node::common::model::device::DeviceId;
+    use crate::node::common::model::user::UserId;
     use crate::node::common::model::vault::VaultName;
     use crate::node::db::descriptors::object_descriptor::{ObjectName, ObjectType};
     use crate::node::db::descriptors::vault::VaultDescriptor;
     use crate::node::db::events::object_id::UnitId;
-    use serde_json::json;
-    use crate::node::common::model::user::UserId;
 
     #[test]
     fn test_vault_naming() {

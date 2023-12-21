@@ -45,7 +45,7 @@ pub enum GenericApplicationStateManager {
     },
 }
 
-//#[wasm_bindgen]
+#[wasm_bindgen]
 impl WasmApplicationStateManager {
     pub async fn init_in_mem() -> WasmApplicationStateManager {
         configure();
@@ -97,23 +97,20 @@ impl WasmApplicationStateManager {
 
         let sign_up = GenericAppStateRequest::SignUp;
 
-        let meta_client_service = self.get_meta_client_service();
-
-        meta_client_service
-            .send_request(sign_up)
-            .await;
-    }
-
-    fn get_meta_client_service(&self) -> Arc<MetaClientService<WasmRepo, JsJsAppStateManager>> {
-        let meta_client_service = match &self.app_manager {
+        match &self.app_manager {
             GenericApplicationStateManager::Wasm { app_state_manager } => {
-                app_state_manager.meta_client_service.clone()
+                app_state_manager
+                    .meta_client_service
+                    .send_request(sign_up)
+                    .await;
             }
             GenericApplicationStateManager::InMem { app_state_manager } => {
-                app_state_manager.meta_client_service.clone()
+                app_state_manager
+                    .meta_client_service
+                    .send_request(sign_up)
+                    .await;
             }
         };
-        meta_client_service
     }
 
     pub async fn cluster_distribution(&self, pass_id: &str, pass: &str) {
@@ -122,16 +119,26 @@ impl WasmApplicationStateManager {
             pass: pass.to_string(),
         });
 
-        let meta_client_service = self.get_meta_client_service();
-        meta_client_service
-            .send_request(request)
-            .await;
+        match &self.app_manager {
+            GenericApplicationStateManager::Wasm { app_state_manager } => {
+                app_state_manager
+                    .meta_client_service
+                    .send_request(request)
+                    .await;
+            }
+            GenericApplicationStateManager::InMem { app_state_manager } => {
+                app_state_manager
+                    .meta_client_service
+                    .send_request(request)
+                    .await;
+            }
+        };
     }
 
     pub async fn recover_js(&self, meta_pass_id_js: JsValue) {
-        let meta_pass_id: MetaPasswordId = serde_wasm_bindgen::from_value(meta_pass_id_js).unwrap();
+        let meta_pass_id = serde_wasm_bindgen::from_value(meta_pass_id_js).unwrap();
 
-        let request = GenericAppStateRequest::Recover(RecoveryRequest { meta_pass_id });
+        let request = GenericAppStateRequest::Recover(meta_pass_id);
 
         match &self.app_manager {
             GenericApplicationStateManager::Wasm { app_state_manager } => {

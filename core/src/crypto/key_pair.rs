@@ -1,17 +1,18 @@
-use crypto_box::aead::AeadCore;
+
 use crypto_box::{
     aead::{Aead, OsRng as CryptoBoxOsRng, Payload},
     ChaChaBox, Nonce,
 };
+use crypto_box::aead::AeadCore;
 use ed25519_dalek::{Keypair, Signer};
 use image::EncodableLayout;
-use rand::rngs::OsRng as RandOsRng;
 use rand::RngCore;
+use rand::rngs::OsRng as RandOsRng;
 
-use crate::errors::CoreError;
-use crate::node::common::model::crypto::{AeadAuthData, AeadCipherText, AeadPlainText, CommunicationChannel};
 use crate::CoreResult;
 use crate::crypto::encoding::base64::Base64Text;
+use crate::errors::CoreError;
+use crate::node::common::model::crypto::{AeadAuthData, AeadCipherText, AeadPlainText, CommunicationChannel};
 
 pub type CryptoBoxPublicKey = crypto_box::PublicKey;
 pub type CryptoBoxSecretKey = crypto_box::SecretKey;
@@ -113,15 +114,18 @@ impl TransportDsaKeyPair {
 
     pub fn encrypt(&self, plain_text: &AeadPlainText) -> CoreResult<AeadCipherText> {
         let auth_data = &plain_text.auth_data;
-        let their_pk = CryptoBoxPublicKey::try_from(auth_data.channel.receiver.as_ref())?;
+
+        let their_pk = CryptoBoxPublicKey::try_from(&auth_data.channel.receiver)?;
+
         let crypto_box = self.build_cha_cha_box(&their_pk);
-        let nonce = &Nonce::try_from(auth_data.nonce.as_ref())?;
-        let msg = Vec::try_from(plain_text.msg.base64_text.as_ref())?;
+
+        let nonce = Nonce::try_from(&auth_data.nonce)?;
+        let msg = Vec::try_from(&plain_text.msg)?;
         let payload = Payload {
             msg: msg.as_bytes(),                       // your message to encrypt
             aad: auth_data.associated_data.as_bytes(), // not encrypted, but authenticated in tag
         };
-        let cipher_text = crypto_box.encrypt(nonce, payload)?;
+        let cipher_text = crypto_box.encrypt(&nonce, payload)?;
 
         let cipher_text = AeadCipherText {
             msg: Base64Text::from(cipher_text),
@@ -139,26 +143,26 @@ impl TransportDsaKeyPair {
 
         let their_pk = match owner_pk {
             pk if pk.base64_text == channel.sender.base64_text => {
-                CryptoBoxPublicKey::try_from(channel.receiver.as_ref())
+                CryptoBoxPublicKey::try_from(&channel.receiver)
             }
             pk if pk.base64_text == channel.receiver.base64_text => {
-                CryptoBoxPublicKey::try_from(channel.sender.as_ref())
+                CryptoBoxPublicKey::try_from(&channel.sender)
             }
             _ => Err(CoreError::ThirdPartyEncryptionError {
                 key_manager_pk: owner_pk,
-                channel: channel.as_ref().clone(),
+                channel: channel.clone(),
             }),
         }?;
 
         let crypto_box = self.build_cha_cha_box(&their_pk);
 
-        let msg_vec: Vec<u8> = Vec::try_from(cipher_text.msg.as_ref())?;
-        let nonce = &Nonce::try_from(auth_data.nonce.as_ref())?;
+        let msg_vec: Vec<u8> = Vec::try_from(&cipher_text.msg)?;
+        let nonce = Nonce::try_from(&auth_data.nonce)?;
         let payload = Payload {
             msg: msg_vec.as_bytes(),
             aad: auth_data.associated_data.as_bytes(),
         };
-        let decrypted_plaintext = crypto_box.decrypt(nonce, payload)?;
+        let decrypted_plaintext = crypto_box.decrypt(&nonce, payload)?;
 
         let plain_text = AeadPlainText {
             msg: Base64Text::from(decrypted_plaintext),
@@ -176,11 +180,11 @@ impl TransportDsaKeyPair {
 
 #[cfg(test)]
 pub mod test {
+    use crate::CoreResult;
+    use crate::crypto::encoding::base64::Base64Text;
     use crate::crypto::key_pair::KeyPair;
     use crate::crypto::keys::KeyManager;
     use crate::errors::CoreError;
-    use crate::CoreResult;
-    use crate::crypto::encoding::base64::Base64Text;
     use crate::node::common::model::crypto::{AeadAuthData, AeadCipherText, AeadPlainText, CommunicationChannel};
 
     #[test]
@@ -268,7 +272,7 @@ pub mod test {
                 channel,
             } => {
                 assert_eq!(key_manager_pk, bob_km.transport_key_pair.public_key());
-                assert_eq!(channel, *cipher_text.auth_data.channel)
+                assert_eq!(channel, cipher_text.auth_data.channel)
             }
             _ => panic!("Critical error"),
         }

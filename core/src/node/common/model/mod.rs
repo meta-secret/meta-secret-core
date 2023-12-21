@@ -1,7 +1,5 @@
 use std::fmt::Display;
 
-use rand::Rng;
-
 use crate::node::common::model::device::DeviceData;
 use crate::node::common::model::secret::MetaPasswordId;
 use crate::node::common::model::vault::VaultStatus;
@@ -43,6 +41,15 @@ pub mod crypto {
         pub receiver: Base64Text,
     }
 
+    impl CommunicationChannel {
+        pub fn inverse(self) -> Self {
+            Self {
+                sender: self.receiver,
+                receiver: self.sender,
+            }
+        }
+    }
+
     #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub enum EncryptedMessage {
@@ -73,7 +80,7 @@ pub mod secret {
     use crate::node::common::model::device::DeviceLink;
     use crate::node::common::model::vault::VaultName;
 
-    #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+    #[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct MetaPasswordId {
         /// SHA256 hash of a salt

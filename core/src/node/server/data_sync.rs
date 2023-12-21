@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use async_trait::async_trait;
-use tracing::{debug, info, instrument, Instrument};
+use tracing::{debug, info, instrument};
 
 use crate::node::common::model::device::{DeviceCredentials, DeviceData};
 use crate::node::common::model::user::{UserData, UserDataMember, UserId};
@@ -16,7 +16,7 @@ use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ToGenericEve
 use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, ObjectId, UnitId};
-use crate::node::db::events::vault_event::{DeviceLogObject, VaultAction, VaultLogObject, VaultObject, VaultStatusObject};
+use crate::node::db::events::vault_event::{DeviceLogObject, VaultAction, VaultLogObject, VaultMembershipObject, VaultObject};
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::server::request::{SyncRequest, VaultRequest};
@@ -112,7 +112,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
     async fn server_processing(&self, generic_event: GenericKvLogEvent) -> anyhow::Result<()> {
         debug!("DataSync::event_processing: {:?}", &generic_event);
 
-        match generic_event {
+        match &generic_event {
             GenericKvLogEvent::GlobalIndex(_) => {
                 info!("Global index not allowed to be sent");
             }
@@ -139,7 +139,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
                     }
                 };
 
-                let vault_action = vault_action_event.value;
+                let vault_action = vault_action_event.value.clone();
 
                 let vault_log_desc = VaultDescriptor::VaultLog(vault_action.vault_name())
                     .to_obj_desc();
@@ -231,7 +231,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
                                 key: KvKey::artifact(vault_status_desc, vault_status_artifact_id),
                                 value: update.clone(),
                             };
-                            VaultStatusObject::Status(event).to_generic()
+                            VaultMembershipObject::Membership(event).to_generic()
                         };
 
                         self.persistent_obj
@@ -277,7 +277,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
             GenericKvLogEvent::Vault(_) => {
                 info!("Vault can be updated only by the server");
             }
-            GenericKvLogEvent::VaultStatus(_) => {
+            GenericKvLogEvent::VaultMembership(_) => {
                 info!("VaultStatus can be updated only by the server");
             }
             GenericKvLogEvent::Error { .. } => {

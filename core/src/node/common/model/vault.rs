@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 
-use crate::node::common::model::device::{DeviceData, DeviceId};
+use crate::node::common::model::device::DeviceId;
 use crate::node::common::model::MetaPasswordId;
 use crate::node::common::model::user::{UserData, UserDataMember, UserDataOutsider, UserMembership};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
@@ -69,7 +69,7 @@ impl VaultData {
 
     pub fn is_member(&self, device_id: &DeviceId) -> bool {
         let maybe_user = self.users.get(device_id);
-        if let Some(UserMembership::Member(UserDataMember { user_data })) = maybe_user {
+        if let Some(UserMembership::Member(UserDataMember(user_data))) = maybe_user {
             user_data.device.id == device_id.clone()
         } else {
             false
@@ -94,7 +94,7 @@ impl VaultStatus {
             VaultObject::Genesis { .. } => {
                 Ok(VaultStatus::Outsider(UserDataOutsider::unknown(user)))
             }
-            VaultObject::Vault { event } => {
+            VaultObject::Vault(event) => {
                 Ok(VaultStatus::Member(event.value))
             }
         }

@@ -20,7 +20,7 @@ impl<Repo: KvLogEventRepo> PersistentObjectNavigator<Repo> {
         let maybe_key = self.repo.get_key(self.obj_id.clone()).await?;
 
         if let Some(obj_id) = maybe_key {
-            self.obj_id = obj_id.next();
+            self.obj_id = obj_id.clone().next();
             Ok(Some(obj_id.clone()))
         } else {
             Ok(None)
@@ -33,25 +33,25 @@ mod test {
     use std::sync::Arc;
 
     use crate::crypto::keys::{KeyManager, OpenBox};
-    use crate::node::db::events::common::PublicKeyRecord;
+    use crate::node::common::model::device::{DeviceData, DeviceName};
     use crate::node::db::events::generic_log_event::{ObjIdExtractor, ToGenericEvent, UnitEventWithEmptyValue};
     use crate::node::db::events::global_index::GlobalIndexObject;
-    use crate::node::db::repo::generic_db::SaveCommand;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_object_navigator::PersistentObjectNavigator;
+    use crate::node::db::repo::generic_db::SaveCommand;
 
     #[tokio::test]
     async fn test_iterator() -> anyhow::Result<()> {
         let repo = Arc::new(InMemKvLogEventRepo::default());
 
-        let server_pk = {
+        let server_device = {
             let secret_box = KeyManager::generate_secret_box();
             let open_box = OpenBox::from(&secret_box);
-            PublicKeyRecord::from(open_box.dsa_pk)
+            DeviceData::from(DeviceName::from("qwe"), open_box)
         };
 
         let unit_event = GlobalIndexObject::unit().to_generic();
-        let genesis_event = GlobalIndexObject::genesis(server_pk).to_generic();
+        let genesis_event = GlobalIndexObject::genesis(server_device).to_generic();
 
         repo.save(unit_event).await?;
         repo.save(genesis_event).await?;

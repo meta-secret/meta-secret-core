@@ -1,21 +1,22 @@
 use std::sync::Arc;
 use std::thread;
+
 use tokio::runtime::Builder;
 use tracing::{info, instrument, Instrument};
 
 use meta_secret_core::node::app::app_state_update_manager::NoOpJsAppStateManager;
-use meta_secret_core::node::app::meta_client::MetaClient;
+use meta_secret_core::node::app::credentials_repo::DeviceCredentialsManager;
 use meta_secret_core::node::app::meta_app::meta_client_service::{
     MetaClientAccessProxy, MetaClientDataTransfer, MetaClientService,
 };
-use meta_secret_core::node::app::credentials_repo::DeviceCredentialsManager;
+use meta_secret_core::node::app::meta_client::MetaClient;
 use meta_secret_core::node::app::sync_gateway::SyncGateway;
 use meta_secret_core::node::app::virtual_device::VirtualDevice;
 use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::meta_tracing::{client_span, server_span, vd_span};
 use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
-use meta_secret_core::node::db::read_db::read_db_service::{ReadDbDataTransfer, ReadDbService, ReadDbServiceProxy};
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
+use meta_secret_core::node::db::read_db::read_db_service::{ReadDbDataTransfer, ReadDbService, ReadDbServiceProxy};
 use meta_secret_core::node::server::data_sync::ServerDataSync;
 use meta_secret_core::node::server::server_app::{ServerApp, ServerDataTransfer};
 

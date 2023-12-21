@@ -1,8 +1,13 @@
 #[cfg(test)]
 pub mod meta_test_utils {
+    use std::collections::HashMap;
+
+    use tracing::info;
+
     use crate::crypto::keys::KeyManager;
     use crate::models::{DeviceInfo, MetaPasswordId};
     use crate::node::app_models::UserCredentials;
+    use crate::node::common::model::vault::VaultName;
     use crate::node::db::events::common::{MemPoolObject, MetaPassObject, ObjectCreator};
     use crate::node::db::events::db_tail::ObjectIdDbEvent;
     use crate::node::db::events::generic_log_event::GenericKvLogEvent;
@@ -10,9 +15,6 @@ pub mod meta_test_utils {
     use crate::node::db::events::object_descriptor::ObjectDescriptor;
     use crate::node::db::events::object_id::{IdGen, ObjectId};
     use crate::node::db::events::vault_event::VaultObject;
-    use std::collections::HashMap;
-    use tracing::info;
-    use crate::node::common::model::vault::VaultName;
 
     pub fn build_meta_pass_1() -> MetaPasswordId {
         MetaPasswordId {

@@ -1,10 +1,11 @@
 use anyhow::anyhow;
+
 use crate::node::common::model::device::DeviceData;
 use crate::node::common::model::secret::MetaPasswordId;
 use crate::node::common::model::user::{UserData, UserDataMember, UserMembership};
 use crate::node::common::model::vault::{VaultData, VaultName};
-use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, ToGenericEvent};
-use crate::node::db::events::kv_log_event::KvLogEvent;
+use crate::node::db::events::generic_log_event::{GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent};
+use crate::node::db::events::kv_log_event::{GenericKvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, GenesisId, ObjectId, UnitId};
 
 /// Each device has its own unique device_log table, to prevent conflicts in updates vault state
@@ -35,6 +36,26 @@ impl ToGenericEvent for DeviceLogObject {
     }
 }
 
+impl ObjIdExtractor for DeviceLogObject {
+    fn obj_id(&self) -> ObjectId {
+        match self {
+            DeviceLogObject::Unit(event) => ObjectId::from(event.key.obj_id.clone()),
+            DeviceLogObject::Genesis(event) => ObjectId::from(event.key.obj_id.clone()),
+            DeviceLogObject::Action(event) => ObjectId::from(event.key.obj_id.clone()),
+        }
+    }
+}
+
+impl KeyExtractor for DeviceLogObject {
+    fn key(&self) -> GenericKvKey {
+        match self {
+            DeviceLogObject::Unit(event) => GenericKvKey::from(event.key.clone()),
+            DeviceLogObject::Genesis(event) => GenericKvKey::from(event.key.clone()),
+            DeviceLogObject::Action(event) => GenericKvKey::from(event.key.clone()),
+        }
+    }
+}
+
 /// VaultLog keeps incoming events in order, the log is a queue for incoming messages and used to
 /// recreate the vault state from events (event sourcing)
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -60,6 +81,26 @@ impl TryFrom<GenericKvLogEvent> for VaultLogObject {
 impl ToGenericEvent for VaultLogObject {
     fn to_generic(self) -> GenericKvLogEvent {
         GenericKvLogEvent::VaultLog(self)
+    }
+}
+
+impl KeyExtractor for VaultLogObject {
+    fn key(&self) -> GenericKvKey {
+        match self {
+            VaultLogObject::Unit(event) => GenericKvKey::from(event.key.clone()),
+            VaultLogObject::Genesis(event) => GenericKvKey::from(event.key.clone()),
+            VaultLogObject::Action(event) => GenericKvKey::from(event.key.clone()),
+        }
+    }
+}
+
+impl ObjIdExtractor for VaultLogObject {
+    fn obj_id(&self) -> ObjectId {
+        match self {
+            VaultLogObject::Unit(event) => ObjectId::from(event.key.obj_id.clone()),
+            VaultLogObject::Genesis(event) => ObjectId::from(event.key.obj_id.clone()),
+            VaultLogObject::Action(event) => ObjectId::from(event.key.obj_id.clone()),
+        }
     }
 }
 
@@ -100,18 +141,28 @@ impl ObjIdExtractor for VaultObject {
     }
 }
 
+impl KeyExtractor for VaultObject {
+    fn key(&self) -> GenericKvKey {
+        match self {
+            VaultObject::Unit(event) => GenericKvKey::from(event.key.clone()),
+            VaultObject::Genesis(event) => GenericKvKey::from(event.key.clone()),
+            VaultObject::Vault(event) => GenericKvKey::from(event.key.clone()),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum VaultStatusObject {
+pub enum VaultMembershipObject {
     Unit(KvLogEvent<UnitId, VaultName>),
     /// Device public keys
     Genesis(KvLogEvent<GenesisId, UserData>),
-    Status(KvLogEvent<ArtifactId, UserMembership>)
+    Membership(KvLogEvent<ArtifactId, UserMembership>)
 }
 
-impl VaultStatusObject {
+impl VaultMembershipObject {
     pub fn is_member(&self) -> bool {
-        let VaultStatusObject::Status(membership_event) = self else {
+        let VaultMembershipObject::Membership(membership_event) = self else {
             return false;
         };
 
@@ -127,11 +178,11 @@ impl VaultStatusObject {
     }
 }
 
-impl TryFrom<GenericKvLogEvent> for VaultStatusObject {
+impl TryFrom<GenericKvLogEvent> for VaultMembershipObject {
     type Error = anyhow::Error;
 
     fn try_from(event: GenericKvLogEvent) -> Result<Self, Self::Error> {
-        if let GenericKvLogEvent::VaultStatus(vault_status) = event {
+        if let GenericKvLogEvent::VaultMembership(vault_status) = event {
             Ok(vault_status)
         } else {
             Err(anyhow!("Not a vault status event"))
@@ -139,9 +190,29 @@ impl TryFrom<GenericKvLogEvent> for VaultStatusObject {
     }
 }
 
-impl ToGenericEvent for VaultStatusObject {
+impl KeyExtractor for VaultMembershipObject {
+    fn key(&self) -> GenericKvKey {
+        match self {
+            VaultMembershipObject::Unit(event) => GenericKvKey::from(event.key.clone()),
+            VaultMembershipObject::Genesis(event) => GenericKvKey::from(event.key.clone()),
+            VaultMembershipObject::Membership(event) => GenericKvKey::from(event.key.clone()),
+        }
+    }
+}
+
+impl ToGenericEvent for VaultMembershipObject {
     fn to_generic(self) -> GenericKvLogEvent {
-        GenericKvLogEvent::VaultStatus(self)
+        GenericKvLogEvent::VaultMembership(self)
+    }
+}
+
+impl ObjIdExtractor for VaultMembershipObject {
+    fn obj_id(&self) -> ObjectId {
+        match self {
+            VaultMembershipObject::Unit(event) => ObjectId::from(event.key.obj_id.clone()),
+            VaultMembershipObject::Genesis(event) => ObjectId::from(event.key.obj_id.clone()),
+            VaultMembershipObject::Membership(event) => ObjectId::from(event.key.obj_id.clone()),
+        }
     }
 }
 
@@ -163,12 +234,10 @@ pub enum VaultAction {
 
 impl VaultAction {
     pub fn vault_name(&self) -> VaultName {
-        let user_data = match self {
-            VaultAction::JoinRequest { candidate } => candidate,
-            VaultAction::UpdateMembership { update, .. } => &update.user_data(),
-            VaultAction::AddMetaPassword { sender: UserDataMember(user), .. } => user
-        };
-
-        user_data.vault_name.clone()
+        match self {
+            VaultAction::JoinRequest { candidate } => candidate.vault_name.clone(),
+            VaultAction::UpdateMembership { update, .. } => update.user_data().vault_name,
+            VaultAction::AddMetaPassword { sender: UserDataMember(user), .. } => user.vault_name.clone()
+        }
     }
 }

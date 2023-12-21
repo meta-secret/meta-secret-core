@@ -91,16 +91,16 @@ impl KvKey<UnitId> {
 
 impl KvKey<GenesisId> {
     pub fn genesis(obj_desc: ObjectDescriptor) -> Self {
-        let unit_id = KvKey::unit(obj_desc);
+        let unit_id = KvKey::unit(obj_desc.clone());
         Self {
             obj_id: unit_id.next().obj_id,
-            obj_desc: obj_desc.clone(),
+            obj_desc,
         }
     }
 }
 
 impl Next<KvKey<GenesisId>> for KvKey<UnitId> {
-    fn next(&self) -> KvKey<GenesisId> {
+    fn next(self) -> KvKey<GenesisId> {
         KvKey {
             obj_id: self.obj_id.next(),
             obj_desc: self.obj_desc.clone(),

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use tracing::{error, info, instrument};
+use tracing::{info, instrument};
 
 use crate::node::app::meta_app::meta_client_service::MetaClientAccessProxy;
 use crate::node::app::sync_gateway::SyncGateway;
@@ -102,7 +102,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
                     }
 
                     // shared secret actions
-                    let p_ss_log = PersistentSharedSecret {
+                    let _p_ss_log = PersistentSharedSecret {
                         p_obj: self.persistent_object.clone(),
                     };
 

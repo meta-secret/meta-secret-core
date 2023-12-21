@@ -28,14 +28,14 @@ pub trait ObjectName {
     fn object_name(&self) -> String;
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ObjectDescriptorFqdn {
     pub obj_type: String,
     pub obj_instance: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ObjectDescriptorId {
     pub fqdn: ObjectDescriptorFqdn,
@@ -66,7 +66,7 @@ impl ObjectName for ObjectDescriptor {
             ObjectDescriptor::DbTail => String::from("db_tail"),
             ObjectDescriptor::SharedSecret(s_s_descriptor) => s_s_descriptor.as_id_str(),
             ObjectDescriptor::GlobalIndex(desc) => desc.object_name(),
-            ObjectDescriptor::CredsIndex => "index",
+            ObjectDescriptor::CredsIndex => String::from("index"),
             ObjectDescriptor::Vault(vault_desc) => vault_desc.object_name(),
         }
     }

@@ -1,6 +1,6 @@
-use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use anyhow::anyhow;
 
+use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::common::{SharedSecretObject, SSDeviceLogObject};
 use crate::node::db::events::db_tail::DbTail;
 use crate::node::db::events::error::ErrorMessage;
@@ -8,7 +8,7 @@ use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
 use crate::node::db::events::local::{CredentialsObject, DbTailObject};
 use crate::node::db::events::object_id::{ArtifactId, ObjectId};
-use crate::node::db::events::vault_event::{DeviceLogObject, VaultLogObject, VaultObject, VaultStatusObject};
+use crate::node::db::events::vault_event::{DeviceLogObject, VaultLogObject, VaultMembershipObject, VaultObject};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -22,7 +22,7 @@ pub enum GenericKvLogEvent {
     DeviceLog(DeviceLogObject),
     VaultLog(VaultLogObject),
     Vault(VaultObject),
-    VaultStatus(VaultStatusObject),
+    VaultMembership(VaultMembershipObject),
 
     SharedSecret(SharedSecretObject),
     SSDeviceLog(SSDeviceLogObject),
@@ -70,10 +70,10 @@ impl ObjIdExtractor for GenericKvLogEvent {
             GenericKvLogEvent::SharedSecret(obj) => obj.obj_id(),
             GenericKvLogEvent::Credentials(obj) => obj.obj_id(),
             GenericKvLogEvent::DbTail(obj) => obj.obj_id(),
-            GenericKvLogEvent::Error { event } => event.key.obj_id.clone(),
+            GenericKvLogEvent::Error { event } => ObjectId::from(event.key.obj_id.clone()),
             GenericKvLogEvent::DeviceLog(obj) => obj.obj_id(),
             GenericKvLogEvent::VaultLog(obj) => obj.obj_id(),
-            GenericKvLogEvent::VaultStatus(obj) => obj.obj_id(),
+            GenericKvLogEvent::VaultMembership(obj) => obj.obj_id(),
             GenericKvLogEvent::SSDeviceLog(obj) => obj.obj_id(),
         }
     }
@@ -87,10 +87,10 @@ impl KeyExtractor for GenericKvLogEvent {
             GenericKvLogEvent::SharedSecret(obj) => obj.key(),
             GenericKvLogEvent::Credentials(obj) => obj.key(),
             GenericKvLogEvent::DbTail(obj) => obj.key(),
-            GenericKvLogEvent::Error { event } => event.key.obj_desc.clone(),
+            GenericKvLogEvent::Error { event } => GenericKvKey::from(event.key.clone()),
             GenericKvLogEvent::DeviceLog(obj) => obj.key(),
             GenericKvLogEvent::VaultLog(obj) => obj.key(),
-            GenericKvLogEvent::VaultStatus(obj) => obj.key(),
+            GenericKvLogEvent::VaultMembership(obj) => obj.key(),
             GenericKvLogEvent::SSDeviceLog(obj) => obj.key()
         }
     }

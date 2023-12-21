@@ -15,6 +15,18 @@ pub enum ObjectId {
     Artifact(ArtifactId),
 }
 
+impl ObjectId {
+    pub fn id_str(&self) -> String {
+        let id = match self {
+            ObjectId::Unit(unit_id) => unit_id.id.clone(),
+            ObjectId::Genesis(genesis_id) => genesis_id.id.clone(),
+            ObjectId::Artifact(artifact_id) => artifact_id.id.clone(),
+        };
+
+        serde_json::to_string(&id).unwrap()
+    }
+}
+
 pub trait Next<To> {
     fn next(self) -> To;
 }
@@ -34,7 +46,7 @@ pub struct UnitId {
 impl Next<GenesisId> for UnitId {
     fn next(self) -> GenesisId {
         GenesisId {
-            id: self.id.next_id(),
+            id: self.id.clone().next_id(),
             unit_id: self,
         }
     }
@@ -66,7 +78,7 @@ impl From<ArtifactId> for ObjectId {
 
 impl ObjectId {
     pub fn unit(obj_desc: ObjectDescriptor) -> Self {
-        ObjectId::Unit(UnitId::unit(obj_desc))
+        ObjectId::Unit(UnitId::unit(&obj_desc))
     }
     
     pub fn genesis(obj_desc: ObjectDescriptor) -> Self {
@@ -107,9 +119,7 @@ impl UnitId {
     }
 
     pub fn vault_unit(vault_name: VaultName) -> UnitId {
-        let vault_desc = ObjectDescriptor::Vault(VaultDescriptor::Vault {
-            vault_name
-        });
+        let vault_desc = ObjectDescriptor::Vault(VaultDescriptor::Vault(vault_name));
         UnitId::unit(&vault_desc)
     }
 }
@@ -127,7 +137,7 @@ pub struct GenesisId {
 impl Next<ArtifactId> for GenesisId {
     fn next(self) -> ArtifactId {
         ArtifactId {
-            id: self.id.next_id(),
+            id: self.id.clone().next_id(),
             prev_id: self.id,
             unit_id: self.unit_id,
         }
@@ -136,7 +146,7 @@ impl Next<ArtifactId> for GenesisId {
 
 impl GenesisId {
     pub fn genesis(obj_desc: ObjectDescriptor) -> GenesisId {
-        let unit_id = UnitId::unit(obj_desc);
+        let unit_id = UnitId::unit(&obj_desc);
         unit_id.next()
     }
 
@@ -158,7 +168,7 @@ pub struct ArtifactId {
 impl Next<ArtifactId> for ArtifactId {
     fn next(self) -> ArtifactId {
         ArtifactId {
-            id: self.id.next_id(),
+            id: self.id.clone().next_id(),
             prev_id: self.id,
             unit_id: self.unit_id,
         }

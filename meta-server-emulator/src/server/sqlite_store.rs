@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection};
 
@@ -8,7 +6,6 @@ use meta_secret_core::node::db::events::object_id::ObjectId;
 use meta_secret_core::node::db::repo::generic_db::{
     DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand,
 };
-use meta_secret_core::node::server::data_sync::MetaServerContextState;
 
 use crate::models::DbLogEvent;
 use crate::models::NewDbLogEvent;
@@ -18,7 +15,6 @@ use crate::schema::db_commit_log::dsl;
 pub struct SqlIteRepo {
     /// conn_url="file:///tmp/test.db"
     pub conn_url: String,
-    pub context: Arc<MetaServerContextState>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -52,6 +48,18 @@ impl FindOneQuery for SqlIteRepo {
             .first::<DbLogEvent>(&mut conn)?;
 
         Ok(Some(GenericKvLogEvent::from(&db_event)))
+    }
+
+    async fn get_key(&self, key: ObjectId) -> anyhow::Result<Option<ObjectId>> {
+        let maybe_event = self.find_one(key).await?;
+        match maybe_event {
+            None => {
+                Ok(None)
+            }
+            Some(event) => {
+                Ok(Some(event.obj_id()))
+            }
+        }
     }
 }
 

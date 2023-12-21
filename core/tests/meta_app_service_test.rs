@@ -6,7 +6,6 @@ use std::time::Duration;
 use async_mutex::Mutex;
 use tracing::{info, Level};
 
-use crate::common::native_app_state_manager::NativeApplicationStateManager;
 use meta_secret_core::node::app::meta_app::messaging::{
     ClusterDistributionRequest, GenericAppStateRequest, SignUpRequest,
 };
@@ -18,6 +17,8 @@ use meta_secret_core::node::db::events::object_descriptor::ObjectDescriptor;
 use meta_secret_core::node::db::events::object_id::{IdGen, ObjectId};
 use meta_secret_core::node::db::events::vault_event::VaultObject;
 use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
+
+use crate::common::native_app_state_manager::NativeApplicationStateManager;
 
 mod common;
 

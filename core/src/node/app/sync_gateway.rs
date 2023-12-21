@@ -16,7 +16,7 @@ use crate::node::db::events::generic_log_event::{GenericKvLogEvent, KeyExtractor
 use crate::node::db::events::global_index::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::local::{CredentialsObject, DbTailObject};
-use crate::node::db::events::vault_event::VaultStatusObject;
+use crate::node::db::events::vault_event::VaultMembershipObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::vault::PersistentVault;
 use crate::node::db::repo::credentials_repo::CredentialsRepo;
@@ -83,7 +83,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             return Ok(());
         };
 
-        let vault_status_object = VaultStatusObject::try_from(vault_status_event)?;
+        let vault_status_object = VaultMembershipObject::try_from(vault_status_event)?;
 
         if vault_status_object.is_not_member() {
             return Ok(());
@@ -176,7 +176,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             p_obj: self.persistent_object.clone(),
         };
 
-        let vault_status = p_vault.vault_status(creds.user()).await?;
+        let vault_status = p_vault.find(creds.user()).await?;
 
         match vault_status {
             VaultStatus::Outsider(_) => {

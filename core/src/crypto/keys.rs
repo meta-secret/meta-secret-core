@@ -59,18 +59,3 @@ impl KeyManager {
         SecretBox::from(key_manager)
     }
 }
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct CommunicationChannel {
-    pub sender: Base64Text,
-    pub receiver: Base64Text,
-}
-
-impl CommunicationChannel {
-    pub fn inverse(self) -> Self {
-        Self {
-            sender: self.receiver,
-            receiver: self.sender,
-        }
-    }
-}

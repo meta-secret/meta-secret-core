@@ -28,7 +28,7 @@ impl UserData {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UserCredentials {
     pub vault_name: VaultName,
@@ -111,8 +111,8 @@ pub enum UserDataOutsiderStatus {
 impl UserMembership {
     pub fn user_data(&self) -> UserData {
         match self {
-            UserMembership::Outsider(outsider) => {
-                outsider.user_data().clone()
+            UserMembership::Outsider(UserDataOutsider { user_data, .. }) => {
+                user_data.clone()
             }
             UserMembership::Member(UserDataMember(member)) => {
                 member.clone()
