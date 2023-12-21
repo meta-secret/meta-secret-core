@@ -83,3 +83,30 @@ impl ObjectType for ObjectDescriptor {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use serde_json::json;
+
+    #[test]
+    fn test_db_tail() -> anyhow::Result<()> {
+        use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
+
+        let db_tail_json = {
+            let db_tail = ObjectDescriptor::DbTail;
+            serde_json::to_value(db_tail)?
+        };
+
+        let expected_id = json!({
+            "fqdn": {
+                "objType": "DbTail",
+                "objInstance": "db_tail"
+            },
+            "id": 0
+        });
+
+        assert_eq!(expected_id, db_tail_json);
+
+        Ok(())
+    }
+}
