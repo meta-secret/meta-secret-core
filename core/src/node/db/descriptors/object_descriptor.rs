@@ -13,7 +13,7 @@ pub enum ObjectDescriptor {
 
     Vault(VaultDescriptor),
     /// Secret distribution (split, recover, recovery request and so on)
-    SharedSecret(SharedSecretDescriptor)
+    SharedSecret(SharedSecretDescriptor),
 }
 
 pub trait ToObjectDescriptor {
@@ -42,12 +42,6 @@ pub struct ObjectDescriptorId {
     /// primary key of an object in the database in terms of keys in a table in relational databases.
     /// In our case id is just a counter
     pub id: usize,
-}
-
-impl ObjectDescriptor {
-    pub fn to_fqdn(&self) -> ObjectDescriptorFqdn {
-        self.fqdn()
-    }
 }
 
 impl ObjectDescriptor {
@@ -94,17 +88,15 @@ mod test {
 
         let db_tail_json = {
             let db_tail = ObjectDescriptor::DbTail;
-            serde_json::to_value(db_tail)?
+            serde_json::to_value(db_tail.fqdn())?
         };
 
         let expected_id = json!({
-            "fqdn": {
-                "objType": "DbTail",
-                "objInstance": "db_tail"
-            },
-            "id": 0
+            "objType": "DbTail",
+            "objInstance": "db_tail"
         });
 
+        println!("db_tail_json: {}", db_tail_json);
         assert_eq!(expected_id, db_tail_json);
 
         Ok(())

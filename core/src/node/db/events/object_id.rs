@@ -3,7 +3,7 @@ use serde_derive::{Deserialize, Serialize};
 use crate::crypto::utils::NextId;
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
-use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ObjectDescriptorId};
+use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ObjectDescriptorId, ToObjectDescriptor};
 use crate::node::db::descriptors::vault::VaultDescriptor;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -106,7 +106,7 @@ impl Next<ObjectId> for ObjectId {
 
 impl UnitId {
     pub fn unit(obj_descriptor: &ObjectDescriptor) -> UnitId {
-        let fqdn = obj_descriptor.to_fqdn();
+        let fqdn = obj_descriptor.fqdn();
         UnitId { id: fqdn.next_id() }
     }
 
@@ -119,7 +119,7 @@ impl UnitId {
     }
 
     pub fn vault_unit(vault_name: VaultName) -> UnitId {
-        let vault_desc = ObjectDescriptor::Vault(VaultDescriptor::Vault(vault_name));
+        let vault_desc = VaultDescriptor::Vault(vault_name).to_obj_desc();
         UnitId::unit(&vault_desc)
     }
 }

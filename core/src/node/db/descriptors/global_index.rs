@@ -1,5 +1,5 @@
 use crate::node::common::model::vault::VaultName;
-use crate::node::db::descriptors::object_descriptor::{ObjectName, ObjectType};
+use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ObjectName, ObjectType, ToObjectDescriptor};
 use crate::node::db::events::object_id::UnitId;
 
 /// Allows to have access to the global index of all vaults exists across the system.
@@ -41,5 +41,39 @@ impl GlobalIndexDescriptor {
     pub fn vault_index(vault_name: VaultName) -> GlobalIndexDescriptor {
         let vault_id = UnitId::vault_unit(vault_name);
         GlobalIndexDescriptor::VaultIndex { vault_id }
+    }
+}
+
+impl ToObjectDescriptor for GlobalIndexDescriptor {
+    fn to_obj_desc(self) -> ObjectDescriptor {
+        ObjectDescriptor::GlobalIndex(self)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use serde_json::json;
+
+    use crate::node::common::model::vault::VaultName;
+    use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
+    use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
+
+    #[test]
+    fn test_global_index() -> anyhow::Result<()> {
+        let vault_name = VaultName::from("test_vault");
+
+        let vault_index_json = {
+            let vault_index = GlobalIndexDescriptor::vault_index(vault_name.clone()).to_obj_desc().fqdn();
+            serde_json::to_value(vault_index)?
+        };
+
+        let expected = json!({
+            "objType":"VaultIdx",
+            "objInstance": "{\"fqdn\":{\"objType\":\"Vault\",\"objInstance\":\"test_vault\"},\"id\":0}"
+        });
+        assert_eq!(expected, vault_index_json);
+
+
+        Ok(())
     }
 }
