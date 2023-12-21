@@ -35,7 +35,7 @@ impl<Repo: KvLogEventRepo> SSReplicationAction<Repo> {
             }
 
             let ss_event_id = {
-                let device_link = DeviceLinkBuilder::new()
+                let device_link = DeviceLinkBuilder::builder()
                     .sender(member.device.id.clone())
                     .receiver(request.sender.device.id.clone())
                     .build()?;

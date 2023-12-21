@@ -4,7 +4,6 @@ use crate::node::db::descriptors::vault::VaultDescriptor;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[serde(tag = "__obj_desc")]
 pub enum ObjectDescriptor {
     DbTail,
     GlobalIndex(GlobalIndexDescriptor),

@@ -186,7 +186,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                 for UserDataMember(member) in vault.members() {
 
                     let ss_event_id = {
-                        let device_link = DeviceLinkBuilder::new()
+                        let device_link = DeviceLinkBuilder::builder()
                             .sender(creds.device_creds.device.id.clone())
                             .receiver(member.device.id.clone())
                             .build()?;

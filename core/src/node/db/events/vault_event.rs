@@ -166,11 +166,7 @@ impl VaultMembershipObject {
             return false;
         };
 
-        if let UserMembership::Member(UserDataMember { .. }) = membership_event.value {
-            true
-        } else {
-            false
-        }
+        matches!(membership_event.value, UserMembership::Member(UserDataMember { .. }))
     }
 
     pub fn is_not_member(&self) -> bool {

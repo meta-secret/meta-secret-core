@@ -44,7 +44,7 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
                         continue;
                     }
 
-                    let device_link = DeviceLinkBuilder::new()
+                    let device_link = DeviceLinkBuilder::builder()
                         .sender(sender_device.id.clone())
                         .receiver(curr_device.id.clone())
                         .build()?;

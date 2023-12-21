@@ -62,7 +62,7 @@ impl MetaEncryptor {
                 .transport_key_pair
                 .encrypt_string(share_str, receiver_pk)?;
 
-            let device_link = DeviceLinkBuilder::new()
+            let device_link = DeviceLinkBuilder::builder()
                 .sender(self.user.device_creds.device.id.clone())
                 .receiver(receiver.clone().user().device.id.clone())
                 .build()?;

@@ -54,7 +54,7 @@ pub struct DeviceLinkBuilder {
 }
 
 impl DeviceLinkBuilder {
-    pub fn new() -> Self {
+    pub fn builder() -> Self {
         Self { sender: None, receiver: None }
     }
 
@@ -140,5 +140,35 @@ impl From<&OpenBox> for DeviceId {
         let dsa_pk = open_box.dsa_pk.base64_text.clone();
         let id = generate_uuid_b64_url_enc(dsa_pk);
         Self(id)
+    }
+}
+
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_device_link_builder() -> anyhow::Result<()> {
+        let sender = DeviceId(String::from("sender"));
+        let receiver = DeviceId(String::from("receiver"));
+
+        let device_link = DeviceLinkBuilder::builder()
+            .sender(sender.clone())
+            .receiver(receiver.clone())
+            .build()?;
+
+        assert_eq!(
+            device_link,
+            DeviceLink::PeerToPeer(PeerToPeerDeviceLink { sender: sender.clone(), receiver })
+        );
+
+        let device_link = DeviceLinkBuilder::builder()
+            .sender(sender.clone())
+            .build()?;
+
+        assert_eq!(device_link, DeviceLink::Loopback(LoopbackDeviceLink { device: sender }));
+
+        Ok(())
     }
 }
