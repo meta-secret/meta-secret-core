@@ -104,7 +104,7 @@ pub mod test {
         };
 
         let user_id = UserId {
-            device_id,
+            device_id: device_id.clone(),
             vault_name: vault_name.clone()
         };
         let descriptor = VaultDescriptor::device_log(user_id);
@@ -115,13 +115,13 @@ pub mod test {
 
         let unit_id = UnitId::unit(&descriptor);
 
-        let id_json = serde_json::to_string(&unit_id.id).unwrap();
+        let id_json = serde_json::to_value(&unit_id.id).unwrap();
         let expected = json!({
             "fqdn": {
-                "obj_type": device_log_type,
-                "obj_instance": vault_name.to_string()
+                "objType": device_log_type,
+                "objInstance": vault_name.to_string()
             },
-            "id": 1
+            "id": 0
         });
 
         assert_eq!(expected, id_json);

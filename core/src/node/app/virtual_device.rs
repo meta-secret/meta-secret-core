@@ -5,7 +5,6 @@ use tracing::{info, instrument};
 
 use crate::node::app::meta_app::meta_client_service::MetaClientAccessProxy;
 use crate::node::app::sync_gateway::SyncGateway;
-use crate::node::common::model::user::UserCredentials;
 use crate::node::common::model::vault::VaultStatus;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault::VaultDescriptor;
@@ -21,8 +20,7 @@ pub struct VirtualDevice<Repo: KvLogEventRepo> {
     persistent_object: Arc<PersistentObject<Repo>>,
     pub meta_client_proxy: Arc<MetaClientAccessProxy>,
     pub server_dt: Arc<ServerDataTransfer>,
-    gateway: Arc<SyncGateway<Repo>>,
-    creds: UserCredentials,
+    gateway: Arc<SyncGateway<Repo>>
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -38,8 +36,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
         persistent_object: Arc<PersistentObject<Repo>>,
         meta_client_access_proxy: Arc<MetaClientAccessProxy>,
         server_dt: Arc<ServerDataTransfer>,
-        gateway: Arc<SyncGateway<Repo>>,
-        creds: UserCredentials,
+        gateway: Arc<SyncGateway<Repo>>
     ) -> anyhow::Result<VirtualDevice<Repo>> {
         info!("Run virtual device event handler");
 
@@ -47,8 +44,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
             persistent_object,
             meta_client_proxy: meta_client_access_proxy.clone(),
             server_dt,
-            gateway,
-            creds,
+            gateway
         };
 
         Ok(virtual_device)

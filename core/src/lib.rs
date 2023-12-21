@@ -25,7 +25,6 @@ pub mod crypto;
 pub mod errors;
 pub mod node;
 pub mod secret;
-pub mod test_utils;
 
 pub type CoreResult<T> = std::result::Result<T, CoreError>;
 

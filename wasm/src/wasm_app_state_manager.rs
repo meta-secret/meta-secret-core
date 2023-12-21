@@ -11,12 +11,7 @@ use meta_secret_core::node::app::app_state_update_manager::{
 use meta_secret_core::node::app::meta_app::messaging::{
     ClusterDistributionRequest, GenericAppStateRequest
 };
-use meta_secret_core::node::app::meta_app::meta_client_service::MetaClientService;
 use meta_secret_core::node::common::model::ApplicationState;
-use meta_secret_core::node::common::model::device::DeviceName;
-use meta_secret_core::node::common::model::vault::VaultName;
-use meta_secret_core::node::db::objects::vault::PersistentVault;
-
 use crate::app_state_manager::ApplicationStateManager;
 use crate::{configure, updateJsState};
 use crate::wasm_repo::WasmRepo;

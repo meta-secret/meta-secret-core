@@ -166,7 +166,7 @@ impl<Repo, State> ApplicationStateManager<Repo, State>
         });
 
         let meta_client_access_proxy = Arc::new(MetaClientAccessProxy { dt: dt_meta_client });
-        let vd = VirtualDevice::init(persistent_object, meta_client_access_proxy, dt, gateway, user_creds)
+        let vd = VirtualDevice::init(persistent_object, meta_client_access_proxy, dt, gateway)
             .await?;
         let vd = Arc::new(vd);
         spawn_local(async move { vd.run().instrument(vd_span()).await.unwrap() });

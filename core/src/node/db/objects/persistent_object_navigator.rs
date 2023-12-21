@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::node::db::events::object_id::{Next, ObjectId};
-use crate::node::db::repo::generic_db::{FindOneQuery, KvLogEventRepo};
+use crate::node::db::repo::generic_db::KvLogEventRepo;
 
 pub struct PersistentObjectNavigator<Repo: KvLogEventRepo> {
     repo: Arc<Repo>,
@@ -53,8 +53,8 @@ mod test {
         let unit_event = GlobalIndexObject::unit().to_generic();
         let genesis_event = GlobalIndexObject::genesis(server_device).to_generic();
 
-        repo.save(unit_event).await?;
-        repo.save(genesis_event).await?;
+        repo.save(unit_event.clone()).await?;
+        repo.save(genesis_event.clone()).await?;
 
         let mut navigator = PersistentObjectNavigator::build(repo, unit_event.obj_id()).await;
         assert_eq!(Some(unit_event.obj_id()), navigator.next().await?);

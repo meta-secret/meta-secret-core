@@ -34,8 +34,8 @@ impl EncryptedDataBlock {
 
 #[cfg(test)]
 mod test {
+    use crate::crypto::encoding::base64::Base64Text;
     use crate::errors::CoreError;
-    use crate::models::Base64Text;
     use crate::secret::data_block::common::BlockMetaData;
     use crate::secret::data_block::common::SharedSecretConfig;
     use crate::secret::data_block::encrypted_data_block::{EncryptedDataBlock, SECRET_DATA_BLOCK_SIZE};
