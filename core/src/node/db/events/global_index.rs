@@ -76,3 +76,16 @@ impl GlobalIndexObject {
         GlobalIndexObject::Genesis(KvLogEvent::global_index_genesis(server_pk))
     }
 }
+
+
+impl TryFrom<GenericKvLogEvent> for GlobalIndexObject {
+    type Error = anyhow::Error;
+
+    fn try_from(event: GenericKvLogEvent) -> Result<Self, Self::Error> {
+        if let GenericKvLogEvent::GlobalIndex(gi_obj) = event {
+            Ok(gi_obj)
+        } else {
+            Err(anyhow::anyhow!("Not a GlobalIndexObject"))
+        }
+    }
+}

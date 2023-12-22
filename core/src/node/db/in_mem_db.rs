@@ -63,3 +63,12 @@ impl DeleteCommand for InMemKvLogEventRepo {
 }
 
 impl KvLogEventRepo for InMemKvLogEventRepo {}
+
+impl InMemKvLogEventRepo {
+    pub async fn get_db(&self) -> HashMap<ObjectId, GenericKvLogEvent> {
+        let db = self.db.lock().await;
+        let cloned_map: HashMap<ObjectId, GenericKvLogEvent> = db.clone();
+
+        cloned_map
+    }
+}
