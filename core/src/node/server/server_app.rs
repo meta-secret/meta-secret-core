@@ -7,7 +7,7 @@ use crate::node::common::model::device::DeviceCredentials;
 use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::ObjectId;
-use crate::node::db::objects::persistent_object::PersistentGlobalIndexApi;
+use crate::node::db::objects::global_index::PersistentGlobalIndexApi;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::server::data_sync::{DataSyncApi, DataSyncRequest, DataSyncResponse, ServerDataSync};
 
@@ -30,33 +30,39 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
         self.gi_initialization().await;
 
         while let Ok(sync_message) = self.data_transfer.dt.service_receive().await {
-            match sync_message {
-                DataSyncRequest::SyncRequest(request) => {
-                    let new_events_result = self.data_sync
-                        .replication(request)
-                        .await;
-
-                    let new_events = match new_events_result {
-                        Ok(data) => {
-                            //debug!(format!("New events for a client: {:?}", data).as_str());
-                            data
-                        }
-                        Err(_) => {
-                            error!("Server. Sync Error");
-                            vec![]
-                        }
-                    };
-
-                    self.data_transfer.dt
-                        .send_to_client(DataSyncResponse { events: new_events})
-                        .await;
-                }
-                DataSyncRequest::Event(event) => {
-                    self.data_sync.send(event).await?;
-                }
-            }
+            self.handle_sync_request(sync_message).await?;
         }
 
+        Ok(())
+    }
+
+    #[instrument(skip(self))]
+    async fn handle_sync_request(&self, sync_message: DataSyncRequest) -> anyhow::Result<()> {
+        match sync_message {
+            DataSyncRequest::SyncRequest(request) => {
+                let new_events_result = self.data_sync
+                    .replication(request)
+                    .await;
+
+                let new_events = match new_events_result {
+                    Ok(data) => {
+                        //debug!(format!("New events for a client: {:?}", data).as_str());
+                        data
+                    }
+                    Err(_) => {
+                        error!("Server. Sync Error");
+                        vec![]
+                    }
+                };
+
+                self.data_transfer.dt
+                    .send_to_client(DataSyncResponse { events: new_events })
+                    .await;
+            }
+            DataSyncRequest::Event(event) => {
+                self.data_sync.send(event).await?;
+            }
+        }
         Ok(())
     }
 
@@ -84,11 +90,21 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                 .data_sync
                 .persistent_obj
                 .global_index
-                .gi_init(server_pk)
+                .init(server_pk)
                 .await;
         }
     }
+
     fn repo(&self) -> Arc<Repo> {
         self.data_sync.persistent_obj.repo.clone()
+    }
+}
+
+#[cfg(test)]
+mod test {
+
+    #[tokio::test]
+    async fn test_global_index_initialization() {
+
     }
 }

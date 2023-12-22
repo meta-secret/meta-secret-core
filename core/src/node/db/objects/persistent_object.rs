@@ -1,15 +1,12 @@
 use std::sync::Arc;
 
-use async_trait::async_trait;
-use tracing::{debug, info, instrument, Instrument};
+use tracing::{debug, instrument, Instrument};
 
-use crate::node::common::model::device::DeviceData;
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::db_tail::DbTail;
-use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, ToGenericEvent};
-use crate::node::db::events::global_index::GlobalIndexObject;
-use crate::node::db::events::kv_log_event::KvLogEvent;
+use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor};
 use crate::node::db::events::object_id::{Next, ObjectId};
+use crate::node::db::objects::global_index::PersistentGlobalIndex;
 use crate::node::db::objects::persistent_object_navigator::PersistentObjectNavigator;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 
@@ -158,36 +155,6 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
             self.repo.save(tail_event).await?;
             Ok(db_tail)
         }
-    }
-}
-
-#[async_trait(? Send)]
-pub trait PersistentGlobalIndexApi {
-    async fn gi_init(&self, public_key: DeviceData) -> anyhow::Result<Vec<GenericKvLogEvent>>;
-}
-
-pub struct PersistentGlobalIndex<Repo: KvLogEventRepo> {
-    pub repo: Arc<Repo>,
-}
-
-#[async_trait(? Send)]
-impl<Repo: KvLogEventRepo> PersistentGlobalIndexApi for PersistentGlobalIndex<Repo> {
-
-    ///create a genesis event and save into the database
-    #[instrument(skip(self))]
-    async fn gi_init(&self, public_key: DeviceData) -> anyhow::Result<Vec<GenericKvLogEvent>> {
-        info!("Init global index");
-
-        let unit_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Unit(KvLogEvent::global_index_unit()));
-
-        self.repo.save(unit_event.clone()).await?;
-
-        let genesis_event = GlobalIndexObject::Genesis(KvLogEvent::global_index_genesis(public_key))
-            .to_generic();
-
-        self.repo.save(genesis_event.clone()).await?;
-
-        Ok(vec![unit_event, genesis_event])
     }
 }
 
