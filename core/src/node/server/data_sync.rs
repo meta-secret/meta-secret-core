@@ -411,14 +411,13 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
             GlobalIndexObject::Update(KvLogEvent {
                 key: KvKey {
                     obj_id: gi_artifact_id,
-                    obj_desc: ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index),
+                    obj_desc: GlobalIndexDescriptor::Index.to_obj_desc()
                 },
                 value: vault_id.clone(),
             }).to_generic()
         };
 
-        let mut gi_events = vec![];
-        gi_events.push(gi_update_event);
+        let gi_events = vec![gi_update_event];
 
         for gi_event in gi_events {
             self.persistent_obj
@@ -433,4 +432,9 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
 
         Ok(())
     }
+}
+
+#[cfg(test)]
+mod test {
+
 }

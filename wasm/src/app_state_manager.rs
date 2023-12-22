@@ -178,31 +178,15 @@ impl<Repo, State> ApplicationStateManager<Repo, State>
     pub async fn server_setup(server_repo: Arc<Repo>, server_dt: Arc<ServerDataTransfer>) -> anyhow::Result<()> {
         info!("Server initialization");
 
-        let server_persistent_obj = {
-            let obj = PersistentObject::new(server_repo.clone());
-            Arc::new(obj)
-        };
-
-        let creds_repo = CredentialsRepo {
-            p_obj: server_persistent_obj.clone(),
-        };
-
-        let device_creds = creds_repo
-            .get_or_generate_device_creds(DeviceName::from("server"))
-            .await?;
-        
-        let data_sync = ServerDataSync {
-            persistent_obj: server_persistent_obj.clone(),
-            device_creds: device_creds.clone(),
-        };
-
-        let server = ServerApp {
-            data_sync,
-            data_transfer: server_dt.clone(),
-            device_creds
-        };
-
-        spawn_local(async move { server.run().instrument(server_span()).await.unwrap() });
+        spawn_local(async move {
+            ServerApp::init(server_repo.clone())
+                .await
+                .unwrap()
+                .run(server_dt)
+                .instrument(server_span())
+                .await
+                .unwrap()
+        });
 
         Ok(())
     }
