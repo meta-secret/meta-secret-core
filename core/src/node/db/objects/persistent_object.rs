@@ -6,13 +6,11 @@ use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::db_tail::DbTail;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor};
 use crate::node::db::events::object_id::{Next, ObjectId};
-use crate::node::db::objects::global_index::PersistentGlobalIndex;
 use crate::node::db::objects::persistent_object_navigator::PersistentObjectNavigator;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 
 pub struct PersistentObject<Repo: KvLogEventRepo> {
-    pub repo: Arc<Repo>,
-    pub global_index: Arc<PersistentGlobalIndex<Repo>>,
+    pub repo: Arc<Repo>
 }
 
 impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
@@ -160,9 +158,6 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
 
 impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
     pub fn new(repo: Arc<Repo>) -> Self {
-        PersistentObject {
-            repo: repo.clone(),
-            global_index: Arc::new(PersistentGlobalIndex { repo }),
-        }
+        PersistentObject { repo }
     }
 }
