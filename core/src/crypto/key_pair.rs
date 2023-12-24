@@ -142,10 +142,10 @@ impl TransportDsaKeyPair {
         let owner_pk = self.public_key();
 
         let their_pk = match owner_pk {
-            pk if pk.base64_text == channel.sender.base64_text => {
+            pk if pk == channel.sender => {
                 CryptoBoxPublicKey::try_from(&channel.receiver)
             }
-            pk if pk.base64_text == channel.receiver.base64_text => {
+            pk if pk == channel.receiver => {
                 CryptoBoxPublicKey::try_from(&channel.sender)
             }
             _ => Err(CoreError::ThirdPartyEncryptionError {
@@ -198,8 +198,8 @@ pub mod test {
 
         let plain_text = alice_km.transport_key_pair.decrypt(&cipher_text)?;
         assert_eq!(
-            Base64Text::from(password.as_bytes()).base64_text,
-            plain_text.msg.base64_text
+            Base64Text::from(password.as_bytes()),
+            plain_text.msg
         );
 
         Ok(())

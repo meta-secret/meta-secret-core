@@ -82,7 +82,7 @@ mod test {
 
         let p_global_index = {
             let p_obj = Arc::new(PersistentObject::new(repo.clone()));
-            PersistentGlobalIndex { p_obj, server_device }
+            PersistentGlobalIndex { p_obj, server_device: server_device.clone() }
         };
 
         p_global_index.init().await?;

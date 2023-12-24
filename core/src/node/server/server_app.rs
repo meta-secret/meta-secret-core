@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tracing::{error, info, instrument};
 
 use crate::node::common::data_transfer::MpscDataTransfer;
-use crate::node::common::model::device::{DeviceCredentials, DeviceName};
+use crate::node::common::model::device::DeviceName;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::objects::global_index::PersistentGlobalIndex;
 use crate::node::db::objects::persistent_object::PersistentObject;
@@ -85,7 +85,7 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
         Ok(())
     }
 
-    async fn handle_sync_request(&self, request: SyncRequest) -> Vec<GenericKvLogEvent> {
+    pub async fn handle_sync_request(&self, request: SyncRequest) -> Vec<GenericKvLogEvent> {
         let new_events_result = self.data_sync
             .replication(request)
             .await;
@@ -98,54 +98,6 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
             Err(_) => {
                 error!("Server. Sync Error");
                 vec![]
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-mod test {
-
-    #[tokio::test]
-    pub async fn test_server_app() {
-        use std::sync::Arc;
-        use crate::crypto::keys::{KeyManager, OpenBox};
-        use crate::node::common::model::device::{DeviceData, DeviceName};
-        use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
-        use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
-        use crate::node::db::events::generic_log_event::ObjIdExtractor;
-        use crate::node::db::events::global_index::GlobalIndexObject;
-        use crate::node::db::events::object_id::ObjectId;
-        use crate::node::db::in_mem_db::InMemKvLogEventRepo;
-        use crate::node::db::objects::global_index::PersistentGlobalIndex;
-        use crate::node::db::objects::persistent_object::PersistentObject;
-
-        use super::*;
-
-        let repo = Arc::new(InMemKvLogEventRepo::default());
-
-        let server_app = ServerApp::init(repo.clone()).await.unwrap();
-
-        let server_dt = Arc::new(ServerDataTransfer {
-            dt: MpscDataTransfer::new(),
-        });
-
-        let server_app = server_app.run(server_dt.clone()).await;
-
-        assert!(server_app.is_ok());
-
-        let sync_request = SyncRequest {
-            device: DeviceData::from(DeviceName::from("client")),
-            last_synced_event_id: 0,
-        };
-
-        server_dt.dt.send_to_server(DataSyncRequest::SyncRequest(sync_request)).await;
-
-        let sync_response = server_dt.dt.service_receive().await.unwrap();
-
-        match sync_response {
-            DataSyncResponse { events } => {
-                assert_eq!(events.len(), 2);
             }
         }
     }

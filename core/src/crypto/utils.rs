@@ -35,7 +35,8 @@ pub fn rand_64bit_b64_url_enc() -> Base64Text {
 pub fn generate_uuid_b64_url_enc(value: String) -> String {
     let hash = Sha256::digest(value.as_bytes());
     let uuid = Uuid::from_slice(&hash.as_slice()[..16]).unwrap();
-    Base64Text::from(uuid.as_bytes().as_slice()).base64_text
+    let Base64Text(base64_text) = Base64Text::from(uuid.as_bytes().as_slice());
+    base64_text
 }
 
 pub trait NextId {

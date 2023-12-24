@@ -137,7 +137,7 @@ impl DeviceData {
 
 impl From<&OpenBox> for DeviceId {
     fn from(open_box: &OpenBox) -> Self {
-        let dsa_pk = open_box.dsa_pk.base64_text.clone();
+        let dsa_pk = String::from(&open_box.dsa_pk);
         let id = generate_uuid_b64_url_enc(dsa_pk);
         Self(id)
     }

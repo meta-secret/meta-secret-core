@@ -8,8 +8,13 @@ pub mod base64 {
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
-    pub struct Base64Text {
-        pub base64_text: String,
+    pub struct Base64Text(pub String);
+
+    impl From<&Base64Text> for String {
+        fn from(base64: &Base64Text) -> Self {
+            let Base64Text(base64_text) = base64;
+            base64_text.clone()
+        }
     }
 
     pub mod encoder {
@@ -29,9 +34,7 @@ pub mod base64 {
 
         impl From<&[u8]> for Base64Text {
             fn from(data: &[u8]) -> Self {
-                Self {
-                    base64_text: base64::encode_engine(data, &URL_SAFE_ENGINE),
-                }
+                Self(base64::encode_engine(data, &URL_SAFE_ENGINE))
             }
         }
 
@@ -68,7 +71,8 @@ pub mod base64 {
             type Error = CoreError;
 
             fn try_from(base64: &Base64Text) -> Result<Self, Self::Error> {
-                let data = base64::decode_engine(&base64.base64_text, &URL_SAFE_ENGINE)?;
+                let Base64Text(base64_text) = base64;
+                let data = base64::decode_engine(base64_text, &URL_SAFE_ENGINE)?;
                 Ok(data)
             }
         }
@@ -96,18 +100,14 @@ pub mod base64 {
         #[test]
         fn from_vec() {
             let encoded = Base64Text::from(vec![65, 65, 65]);
-            let expected = Base64Text {
-                base64_text: "QUFB".to_string(),
-            };
+            let expected = Base64Text("QUFB".to_string());
             assert_eq!(encoded, expected);
         }
 
         #[test]
         fn from_bytes() {
             let encoded = Base64Text::from(TEST_STR.as_bytes());
-            let expected = Base64Text {
-                base64_text: ENCODED_URL_SAFE_TEST_STR.to_string(),
-            };
+            let expected = Base64Text(ENCODED_URL_SAFE_TEST_STR.to_string());
             assert_eq!(encoded, expected);
         }
     }
