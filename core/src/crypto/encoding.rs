@@ -21,8 +21,8 @@ pub mod base64 {
         use base64::alphabet::URL_SAFE;
         use base64::engine::fast_portable::{FastPortable, NO_PAD};
 
-        use crate::crypto::encoding::Array256Bit;
         use crate::crypto::encoding::base64::Base64Text;
+        use crate::crypto::encoding::Array256Bit;
 
         const URL_SAFE_ENGINE: FastPortable = FastPortable::from(&URL_SAFE, NO_PAD);
 
@@ -61,8 +61,8 @@ pub mod base64 {
         use base64::alphabet::URL_SAFE;
         use base64::engine::fast_portable::{FastPortable, NO_PAD};
 
-        use crate::crypto::encoding::Array256Bit;
         use crate::crypto::encoding::base64::Base64Text;
+        use crate::crypto::encoding::Array256Bit;
         use crate::errors::CoreError;
 
         const URL_SAFE_ENGINE: FastPortable = FastPortable::from(&URL_SAFE, NO_PAD);
@@ -126,7 +126,7 @@ pub mod serialized_key_manager {
         impl From<KeyManager> for SecretBox {
             fn from(key_manager: KeyManager) -> Self {
                 Self {
-                    dsa:SerializedDsaKeyPair::from(&key_manager.dsa),
+                    dsa: SerializedDsaKeyPair::from(&key_manager.dsa),
                     transport: SerializedTransportKeyPair::from(&key_manager.transport_key_pair),
                 }
             }
@@ -164,8 +164,8 @@ pub mod serialized_key_manager {
     }
 
     pub mod decoder {
-        use crate::crypto::encoding::Array256Bit;
         use crate::crypto::encoding::base64::Base64Text;
+        use crate::crypto::encoding::Array256Bit;
         use crate::crypto::key_pair::{
             CryptoBoxPublicKey, CryptoBoxSecretKey, DalekKeyPair, DalekPublicKey, DalekSignature, DsaKeyPair,
             TransportDsaKeyPair,
@@ -235,10 +235,10 @@ pub mod serialized_key_manager {
 
         #[cfg(test)]
         pub mod test {
-            use crate::CoreResult;
             use crate::crypto::encoding::base64::Base64Text;
             use crate::crypto::key_pair::{DalekPublicKey, DalekSignature, KeyPair};
             use crate::crypto::keys::KeyManager;
+            use crate::CoreResult;
 
             #[test]
             fn from_base64_to_dalek_public_key() -> CoreResult<()> {
@@ -267,8 +267,8 @@ pub mod cryptobox {
     pub mod decoder {
         use crypto_box::Nonce;
 
-        use crate::crypto::encoding::Array256Bit;
         use crate::crypto::encoding::base64::Base64Text;
+        use crate::crypto::encoding::Array256Bit;
         use crate::crypto::key_pair::{CryptoBoxPublicKey, CryptoBoxSecretKey};
         use crate::errors::CoreError;
 

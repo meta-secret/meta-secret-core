@@ -1,7 +1,7 @@
 #![cfg(target_arch = "wasm32")]
 use meta_secret_core::node::db::events::object_id::ObjectId;
-use meta_secret_core::node::db::repo::generic_db::{FindOneQuery, SaveCommand};
 use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
+use meta_secret_core::node::db::repo::generic_db::{FindOneQuery, SaveCommand};
 use meta_secret_web_cli::wasm_app_state_manager::WasmApplicationStateManager;
 use meta_secret_web_cli::wasm_repo::WasmRepo;
 use meta_secret_web_cli::{alert, configure, info};

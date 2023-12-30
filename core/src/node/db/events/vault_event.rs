@@ -63,7 +63,7 @@ impl KeyExtractor for DeviceLogObject {
 pub enum VaultLogObject {
     Unit(KvLogEvent<UnitId, VaultName>),
     Genesis(KvLogEvent<GenesisId, UserData>),
-    Action(KvLogEvent<ArtifactId, VaultAction>)
+    Action(KvLogEvent<ArtifactId, VaultAction>),
 }
 
 impl TryFrom<GenericKvLogEvent> for VaultLogObject {
@@ -110,7 +110,7 @@ pub enum VaultObject {
     Unit(KvLogEvent<UnitId, VaultName>),
     /// Meta Server public keys
     Genesis(KvLogEvent<GenesisId, DeviceData>),
-    Vault(KvLogEvent<ArtifactId, VaultData>)
+    Vault(KvLogEvent<ArtifactId, VaultData>),
 }
 
 impl TryFrom<GenericKvLogEvent> for VaultObject {
@@ -157,7 +157,7 @@ pub enum VaultMembershipObject {
     Unit(KvLogEvent<UnitId, VaultName>),
     /// Device public keys
     Genesis(KvLogEvent<GenesisId, UserData>),
-    Membership(KvLogEvent<ArtifactId, UserMembership>)
+    Membership(KvLogEvent<ArtifactId, UserMembership>),
 }
 
 impl VaultMembershipObject {
@@ -215,16 +215,18 @@ impl ObjIdExtractor for VaultMembershipObject {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum VaultAction {
-    JoinRequest { candidate: UserData },
+    JoinRequest {
+        candidate: UserData,
+    },
     /// When the device becomes a member of the vault, it can change membership of other members
     UpdateMembership {
         sender: UserDataMember,
-        update: UserMembership
+        update: UserMembership,
     },
     /// A member can add a new meta password into the vault
     AddMetaPassword {
         sender: UserDataMember,
-        meta_pass_id: MetaPasswordId
+        meta_pass_id: MetaPasswordId,
     },
 }
 
@@ -233,7 +235,10 @@ impl VaultAction {
         match self {
             VaultAction::JoinRequest { candidate } => candidate.vault_name.clone(),
             VaultAction::UpdateMembership { update, .. } => update.user_data().vault_name,
-            VaultAction::AddMetaPassword { sender: UserDataMember(user), .. } => user.vault_name.clone()
+            VaultAction::AddMetaPassword {
+                sender: UserDataMember(user),
+                ..
+            } => user.vault_name.clone(),
         }
     }
 }

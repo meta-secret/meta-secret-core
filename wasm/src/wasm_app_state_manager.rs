@@ -5,16 +5,16 @@ use tracing::info;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
 
+use crate::app_state_manager::ApplicationStateManager;
+use crate::wasm_repo::WasmRepo;
+use crate::{configure, updateJsState};
 use meta_secret_core::node::app::app_state_update_manager::{
     ApplicationStateManagerConfigurator, JsAppStateManager, NoOpJsAppStateManager,
 };
 use meta_secret_core::node::app::meta_app::messaging::{
-    ClusterDistributionRequest, GenericAppStateRequest
+    ClusterDistributionRequest, GenericAppStateRequest,
 };
 use meta_secret_core::node::common::model::ApplicationState;
-use crate::app_state_manager::ApplicationStateManager;
-use crate::{configure, updateJsState};
-use crate::wasm_repo::WasmRepo;
 
 pub struct JsJsAppStateManager {}
 

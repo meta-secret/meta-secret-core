@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
-use crate::node::db::events::common::{SharedSecretObject, SSDeviceLogObject};
+use crate::node::db::events::common::{SSDeviceLogObject, SharedSecretObject};
 use crate::node::db::events::db_tail::DbTail;
 use crate::node::db::events::error::ErrorMessage;
 use crate::node::db::events::global_index::GlobalIndexObject;
@@ -91,7 +91,7 @@ impl KeyExtractor for GenericKvLogEvent {
             GenericKvLogEvent::DeviceLog(obj) => obj.key(),
             GenericKvLogEvent::VaultLog(obj) => obj.key(),
             GenericKvLogEvent::VaultMembership(obj) => obj.key(),
-            GenericKvLogEvent::SSDeviceLog(obj) => obj.key()
+            GenericKvLogEvent::SSDeviceLog(obj) => obj.key(),
         }
     }
 }

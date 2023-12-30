@@ -21,7 +21,6 @@ impl ToObjectDescriptor for VaultDescriptor {
 }
 
 impl VaultDescriptor {
-    
     pub fn device_log(user_id: UserId) -> ObjectDescriptor {
         ObjectDescriptor::Vault(VaultDescriptor::DeviceLog(user_id))
     }
@@ -29,7 +28,7 @@ impl VaultDescriptor {
     pub fn vault_log(vault_name: VaultName) -> ObjectDescriptor {
         ObjectDescriptor::Vault(VaultDescriptor::VaultLog(vault_name))
     }
-    
+
     pub fn vault(vault_name: VaultName) -> ObjectDescriptor {
         ObjectDescriptor::Vault(VaultDescriptor::Vault(vault_name))
     }
@@ -60,7 +59,7 @@ impl ObjectName for VaultDescriptor {
             VaultDescriptor::Vault(vault_name) => vault_name.to_string(),
             VaultDescriptor::DeviceLog(user_id) => user_id.vault_name.to_string(),
             VaultDescriptor::VaultLog(vault_name) => vault_name.to_string(),
-            VaultDescriptor::VaultStatus(user_id) => user_id.vault_name.to_string()
+            VaultDescriptor::VaultStatus(user_id) => user_id.vault_name.to_string(),
         }
     }
 }
@@ -105,7 +104,7 @@ pub mod test {
 
         let user_id = UserId {
             device_id: device_id.clone(),
-            vault_name: vault_name.clone()
+            vault_name: vault_name.clone(),
         };
         let descriptor = VaultDescriptor::device_log(user_id);
         let device_log_type = String::from("DeviceLog:").add(device_id.to_string().as_str());

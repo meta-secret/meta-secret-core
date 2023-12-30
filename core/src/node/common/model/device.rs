@@ -5,8 +5,8 @@ use anyhow::anyhow;
 use crypto::utils::generate_uuid_b64_url_enc;
 
 use crate::crypto;
-use crate::crypto::keys::{KeyManager, OpenBox};
 use crate::crypto::keys::SecretBox;
+use crate::crypto::keys::{KeyManager, OpenBox};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -55,7 +55,10 @@ pub struct DeviceLinkBuilder {
 
 impl DeviceLinkBuilder {
     pub fn builder() -> Self {
-        Self { sender: None, receiver: None }
+        Self {
+            sender: None,
+            receiver: None,
+        }
     }
 
     pub fn sender(mut self, sender: DeviceId) -> Self {
@@ -79,9 +82,7 @@ impl DeviceLinkBuilder {
                     DeviceLink::PeerToPeer(PeerToPeerDeviceLink { sender, receiver })
                 }
             }
-            None => {
-                DeviceLink::Loopback(LoopbackDeviceLink { device: sender })
-            }
+            None => DeviceLink::Loopback(LoopbackDeviceLink { device: sender }),
         };
 
         Ok(device_link)
@@ -143,7 +144,6 @@ impl From<&OpenBox> for DeviceId {
     }
 }
 
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -160,12 +160,13 @@ mod test {
 
         assert_eq!(
             device_link,
-            DeviceLink::PeerToPeer(PeerToPeerDeviceLink { sender: sender.clone(), receiver })
+            DeviceLink::PeerToPeer(PeerToPeerDeviceLink {
+                sender: sender.clone(),
+                receiver
+            })
         );
 
-        let device_link = DeviceLinkBuilder::builder()
-            .sender(sender.clone())
-            .build()?;
+        let device_link = DeviceLinkBuilder::builder().sender(sender.clone()).build()?;
 
         assert_eq!(device_link, DeviceLink::Loopback(LoopbackDeviceLink { device: sender }));
 

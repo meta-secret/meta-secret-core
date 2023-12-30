@@ -20,7 +20,7 @@ pub struct VirtualDevice<Repo: KvLogEventRepo> {
     persistent_object: Arc<PersistentObject<Repo>>,
     pub meta_client_proxy: Arc<MetaClientAccessProxy>,
     pub server_dt: Arc<ServerDataTransfer>,
-    gateway: Arc<SyncGateway<Repo>>
+    gateway: Arc<SyncGateway<Repo>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -36,7 +36,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
         persistent_object: Arc<PersistentObject<Repo>>,
         meta_client_access_proxy: Arc<MetaClientAccessProxy>,
         server_dt: Arc<ServerDataTransfer>,
-        gateway: Arc<SyncGateway<Repo>>
+        gateway: Arc<SyncGateway<Repo>>,
     ) -> anyhow::Result<VirtualDevice<Repo>> {
         info!("Run virtual device event handler");
 
@@ -44,14 +44,13 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
             persistent_object,
             meta_client_proxy: meta_client_access_proxy.clone(),
             server_dt,
-            gateway
+            gateway,
         };
 
         Ok(virtual_device)
     }
 
     pub async fn run(&self) -> anyhow::Result<()> {
-
         loop {
             self.gateway.sync().await?;
 
@@ -66,8 +65,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
                 }
                 VaultStatus::Member(vault) => {
                     //vault actions
-                    let vault_log_desc = VaultDescriptor::VaultLog(vault.vault_name.clone())
-                        .to_obj_desc();
+                    let vault_log_desc = VaultDescriptor::VaultLog(vault.vault_name.clone()).to_obj_desc();
                     let maybe_vault_log_event = self.persistent_object.find_tail_event(vault_log_desc).await?;
                     match maybe_vault_log_event {
                         None => {
@@ -82,9 +80,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
                                             p_obj: self.persistent_object.clone(),
                                         };
 
-                                        p_device_log
-                                            .accept_join_cluster_request(candidate)
-                                            .await?;
+                                        p_device_log.accept_join_cluster_request(candidate).await?;
                                     }
                                     VaultAction::UpdateMembership { .. } => {
                                         //changes made by another device, no need for any actions
@@ -108,8 +104,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
 
             self.gateway.sync().await?;
 
-            async_std::task::sleep(std::time::Duration::from_millis(300))
-                .await;
+            async_std::task::sleep(std::time::Duration::from_millis(300)).await;
         }
     }
 }

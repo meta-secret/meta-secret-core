@@ -16,16 +16,13 @@ pub struct PersistentSharedSecret<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
 }
 
-impl <Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
-
+impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
     pub async fn init(&self, user: UserData) -> anyhow::Result<()> {
         let user_id = user.user_id();
         let obj_desc = SharedSecretDescriptor::SSDeviceLog(user_id.device_id).to_obj_desc();
         let unit_id = UnitId::unit(&obj_desc);
 
-        let maybe_unit_event = self.p_obj.repo
-            .find_one(ObjectId::Unit(unit_id))
-            .await?;
+        let maybe_unit_event = self.p_obj.repo.find_one(ObjectId::Unit(unit_id)).await?;
 
         if let Some(unit_event) = maybe_unit_event {
             debug!("SSDeviceLog already initialized: {:?}", unit_event);

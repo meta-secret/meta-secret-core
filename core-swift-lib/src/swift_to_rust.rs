@@ -1,6 +1,8 @@
 use anyhow::Context;
+use meta_secret_core::crypto::encoding::base64::Base64Text;
 use meta_secret_core::crypto::keys::{KeyManager, SecretBox};
 use meta_secret_core::errors::CoreError;
+use meta_secret_core::node::common::model::secret::SecretDistributionData;
 use meta_secret_core::recover_from_shares;
 use meta_secret_core::secret::data_block::common::SharedSecretConfig;
 use meta_secret_core::secret::shared_secret::UserShareDto;
@@ -10,8 +12,6 @@ use std::ffi::CString;
 use std::os::raw::c_char;
 use std::slice;
 use std::str;
-use meta_secret_core::crypto::encoding::base64::Base64Text;
-use meta_secret_core::node::common::model::secret::SecretDistributionData;
 
 type SizeT = usize;
 
@@ -74,9 +74,9 @@ fn to_c_str(str: String) -> *mut c_char {
 }
 
 mod internal {
+    use super::*;
     use meta_secret_core::node::common::model::crypto::{AeadCipherText, AeadPlainText, EncryptedMessage};
     use meta_secret_core::node::common::model::secret::MetaPasswordId;
-    use super::*;
     use meta_secret_core::secret;
 
     pub fn generate_security_box(vault_name_bytes: *const u8, len: SizeT) -> CoreResult<String> {
@@ -133,10 +133,8 @@ mod internal {
 
         println!("restore_task {:?}", restore_task.doc);
         // Decrypt shares
-        let EncryptedMessage::CipherShare { share, ..} = restore_task.doc.secret_message;
-        let share_json: AeadPlainText = key_manager
-            .transport_key_pair
-            .decrypt(&share)?;
+        let EncryptedMessage::CipherShare { share, .. } = restore_task.doc.secret_message;
+        let share_json: AeadPlainText = key_manager.transport_key_pair.decrypt(&share)?;
         let share_json = UserShareDto::try_from(&share_json.msg)?;
 
         // Decrypted Share to JSon
@@ -149,16 +147,14 @@ mod internal {
         let restore_task = RestoreTask::try_from(&data_string)?;
 
         let key_manager = KeyManager::try_from(&restore_task.key_manager)?;
-        let EncryptedMessage::CipherShare { share: second_share, ..} = restore_task.doc_two.secret_message;
-        let share_from_device_2_json: AeadPlainText = key_manager
-            .transport_key_pair
-            .decrypt(&second_share)?;
+        let EncryptedMessage::CipherShare {
+            share: second_share, ..
+        } = restore_task.doc_two.secret_message;
+        let share_from_device_2_json: AeadPlainText = key_manager.transport_key_pair.decrypt(&second_share)?;
         let share_from_device_2_json = UserShareDto::try_from(&share_from_device_2_json.msg)?;
 
-        let EncryptedMessage::CipherShare { share: first_share, ..} = restore_task.doc_one.secret_message;
-        let share_from_device_1_json: AeadPlainText = key_manager
-            .transport_key_pair
-            .decrypt(&first_share)?;
+        let EncryptedMessage::CipherShare { share: first_share, .. } = restore_task.doc_one.secret_message;
+        let share_from_device_1_json: AeadPlainText = key_manager.transport_key_pair.decrypt(&first_share)?;
 
         let share_from_device_1_json = UserShareDto::try_from(&share_from_device_1_json.msg)?;
 
@@ -240,12 +236,13 @@ impl TryFrom<&String> for DecryptTask {
 //TESTS
 #[cfg(test)]
 pub mod test {
+    use meta_secret_core::crypto::encoding::base64::Base64Text;
     use meta_secret_core::crypto::key_pair::KeyPair;
     use meta_secret_core::crypto::keys::KeyManager;
+    use meta_secret_core::node::common::model::crypto::AeadCipherText;
     use meta_secret_core::secret::data_block::common::SharedSecretConfig;
     use meta_secret_core::secret::shared_secret::UserShareDto;
     use meta_secret_core::{secret, CoreResult};
-    use meta_secret_core::node::common::model::crypto::AeadCipherText;
 
     #[test]
     fn split_and_encrypt() -> CoreResult<()> {
@@ -266,11 +263,11 @@ pub mod test {
 
         // Encrypt shares
         let secret = shares[0].clone();
-        let password_share: String = secret.share_blocks[0].data.base64_text.clone();
+        let Base64Text(password_share_text) = secret.share_blocks[0].data.clone();
         let receiver_pk = key_manager_2.transport_key_pair.public_key();
         let encrypted_share: AeadCipherText = key_manager_1
             .transport_key_pair
-            .encrypt_string(password_share, receiver_pk)?;
+            .encrypt_string(password_share_text, receiver_pk)?;
 
         println!("result {:?}", encrypted_share);
 

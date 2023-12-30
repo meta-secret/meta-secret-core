@@ -18,19 +18,20 @@ pub struct SSReplicationAction<Repo: KvLogEventRepo> {
 }
 
 impl<Repo: KvLogEventRepo> SSReplicationAction<Repo> {
-
     #[instrument(skip_all)]
-    pub async fn replicate(&self, request: SharedSecretRequest, vault: &VaultData) -> anyhow::Result<Vec<GenericKvLogEvent>> {
+    pub async fn replicate(
+        &self,
+        request: SharedSecretRequest,
+        vault: &VaultData,
+    ) -> anyhow::Result<Vec<GenericKvLogEvent>> {
         let mut commit_log: Vec<GenericKvLogEvent> = vec![];
 
-        let ss_log_events = self.persistent_obj
-            .find_object_events(request.ss_log)
-            .await?;
+        let ss_log_events = self.persistent_obj.find_object_events(request.ss_log).await?;
 
         commit_log.extend(ss_log_events);
 
         for UserDataMember(member) in vault.members() {
-            if request.sender == member  {
+            if request.sender == member {
                 continue;
             }
 
@@ -42,13 +43,12 @@ impl<Repo: KvLogEventRepo> SSReplicationAction<Repo> {
 
                 SharedSecretEventId {
                     vault_name: request.sender.vault_name.clone(),
-                    device_link
+                    device_link,
                 }
             };
 
             let ss_split_events = {
-                let ss_split_obj_desc = SharedSecretDescriptor::Split(ss_event_id.clone())
-                    .to_obj_desc();
+                let ss_split_obj_desc = SharedSecretDescriptor::Split(ss_event_id.clone()).to_obj_desc();
 
                 self.persistent_obj
                     .find_object_events(ObjectId::unit(ss_split_obj_desc))
@@ -57,8 +57,7 @@ impl<Repo: KvLogEventRepo> SSReplicationAction<Repo> {
             commit_log.extend(ss_split_events);
 
             let ss_recover_events = {
-                let ss_recover_obj_desc = SharedSecretDescriptor::Recover(ss_event_id)
-                    .to_obj_desc();
+                let ss_recover_obj_desc = SharedSecretDescriptor::Recover(ss_event_id).to_obj_desc();
 
                 self.persistent_obj
                     .find_object_events(ObjectId::unit(ss_recover_obj_desc))

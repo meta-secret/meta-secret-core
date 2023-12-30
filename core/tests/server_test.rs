@@ -1,48 +1,34 @@
-mod common;
 
 #[cfg(test)]
 mod test {
-    use meta_secret_core::node::{
-        server::{
-            request::{GlobalIndexRequest, SyncRequest},
-            server_app::ServerApp
-        },
-        db::{
-            descriptors::global_index::GlobalIndexDescriptor,
-            descriptors::object_descriptor::ToObjectDescriptor,
-            events::object_id::ObjectId,
-            in_mem_db::InMemKvLogEventRepo
-        }
-    };
     use std::sync::Arc;
-    use meta_secret_core::crypto::keys::{KeyManager, OpenBox};
-    use meta_secret_core::node::common::model::device::{DeviceData, DeviceName};
+
+    use meta_secret_core::{
+        node::{db::{in_mem_db::InMemKvLogEventRepo, objects::persistent_object::PersistentObject}, common::model::vault::VaultStatus}, 
+        meta_tests::{action::sign_up_claim_action::SignUpClaimTestAction, spec::{sign_up_claim_spec::SignUpClaimSpec, test_spec::TestSpec}}
+    };
 
 
     #[tokio::test]
-    pub async fn test_server_app() -> anyhow::Result<()> {
-        let repo = Arc::new(InMemKvLogEventRepo::default());
-
-        let server_app = ServerApp::init(repo.clone()).await?;
-
-        let client_device = {
-            let secret_box = KeyManager::generate_secret_box();
-            let open_box = OpenBox::from(&secret_box);
-            DeviceData::from(DeviceName::from("test_device"), open_box)
+    pub async fn test_server_app_initial_state() -> anyhow::Result<()> {
+        let client_p_obj = {
+            let client_repo = Arc::new(InMemKvLogEventRepo::default());
+            Arc::new(PersistentObject::new(client_repo.clone()))
         };
 
-        let sync_request = SyncRequest::GlobalIndex(GlobalIndexRequest {
-            sender: client_device,
-            global_index: ObjectId::unit(GlobalIndexDescriptor::Index.to_obj_desc())
-        });
+        let claim_action = SignUpClaimTestAction::new(client_p_obj.clone());
+        let vault_status = claim_action.sign_up().await?;
 
-        let events = server_app
-            .handle_sync_request(sync_request)
-            .await;
+        let VaultStatus::Outsider(outsider) = vault_status else {
+            panic!("Invalid state");
+        };
 
-        for event in events {
-            println!("Event: {}", serde_json::to_string(&event).unwrap());
-        }
+        let claim_spec = SignUpClaimSpec { 
+            p_obj: client_p_obj, 
+            user: outsider.user_data
+        };
+
+        claim_spec.check().await?;
 
         Ok(())
     }

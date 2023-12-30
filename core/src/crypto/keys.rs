@@ -44,7 +44,6 @@ pub struct SerializedTransportKeyPair {
     pub public_key: Base64Text,
 }
 
-
 /// Key manager can be used only with a single vault name (in the future they will be independent entities)
 impl KeyManager {
     pub fn generate() -> KeyManager {

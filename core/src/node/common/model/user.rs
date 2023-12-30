@@ -37,7 +37,10 @@ pub struct UserCredentials {
 
 impl UserCredentials {
     pub fn from(device_creds: DeviceCredentials, vault_name: VaultName) -> UserCredentials {
-        UserCredentials { vault_name, device_creds }
+        UserCredentials {
+            vault_name,
+            device_creds,
+        }
     }
 
     pub fn generate(device_name: DeviceName, vault_name: VaultName) -> UserCredentials {
@@ -111,12 +114,8 @@ pub enum UserDataOutsiderStatus {
 impl UserMembership {
     pub fn user_data(&self) -> UserData {
         match self {
-            UserMembership::Outsider(UserDataOutsider { user_data, .. }) => {
-                user_data.clone()
-            }
-            UserMembership::Member(UserDataMember(member)) => {
-                member.clone()
-            }
+            UserMembership::Outsider(UserDataOutsider { user_data, .. }) => user_data.clone(),
+            UserMembership::Member(UserDataMember(member)) => member.clone(),
         }
     }
 

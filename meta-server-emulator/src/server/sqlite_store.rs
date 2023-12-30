@@ -53,12 +53,8 @@ impl FindOneQuery for SqlIteRepo {
     async fn get_key(&self, key: ObjectId) -> anyhow::Result<Option<ObjectId>> {
         let maybe_event = self.find_one(key).await?;
         match maybe_event {
-            None => {
-                Ok(None)
-            }
-            Some(event) => {
-                Ok(Some(event.obj_id()))
-            }
+            None => Ok(None),
+            Some(event) => Ok(Some(event.obj_id())),
         }
     }
 }

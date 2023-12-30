@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
-use crate::CoreResult;
 use crate::crypto::keys::KeyManager;
 use crate::node::common::model::crypto::EncryptedMessage;
 use crate::node::common::model::device::{DeviceLink, DeviceLinkBuilder};
@@ -15,6 +13,8 @@ use crate::node::db::events::generic_log_event::ToGenericEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
+use crate::CoreResult;
+use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
 
 pub mod data_block;
 pub mod shared_secret;
@@ -58,16 +58,17 @@ impl MetaEncryptor {
 
             let receiver_pk = receiver.clone().user().device.keys.transport_pk.clone();
 
-            let encrypted_share = key_manager
-                .transport_key_pair
-                .encrypt_string(share_str, receiver_pk)?;
+            let encrypted_share = key_manager.transport_key_pair.encrypt_string(share_str, receiver_pk)?;
 
             let device_link = DeviceLinkBuilder::builder()
                 .sender(self.user.device_creds.device.id.clone())
                 .receiver(receiver.clone().user().device.id.clone())
                 .build()?;
 
-            let cipher_share = EncryptedMessage::CipherShare { device_link, share: encrypted_share };
+            let cipher_share = EncryptedMessage::CipherShare {
+                device_link,
+                share: encrypted_share,
+            };
             encrypted_shares.push(cipher_share);
         }
 
@@ -128,11 +129,7 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
                 }
             };
 
-            let _ = self
-                .persistent_obj
-                .repo
-                .save(ss_obj.to_generic())
-                .await;
+            let _ = self.persistent_obj.repo.save(ss_obj.to_generic()).await;
         }
 
         Ok(())

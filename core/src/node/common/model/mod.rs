@@ -58,14 +58,14 @@ pub mod crypto {
         /// and it used to figure out which vault the message belongs to
         CipherShare {
             device_link: DeviceLink,
-            share: AeadCipherText
-        }
+            share: AeadCipherText,
+        },
     }
 
     impl EncryptedMessage {
         pub fn device_link(&self) -> DeviceLink {
             match self {
-                EncryptedMessage::CipherShare { device_link, .. } => device_link.clone()
+                EncryptedMessage::CipherShare { device_link, .. } => device_link.clone(),
             }
         }
     }
@@ -136,7 +136,7 @@ pub mod secret {
     #[serde(rename_all = "camelCase")]
     pub struct PasswordRecoveryRequest {
         pub id: MetaPasswordId,
-        pub device_link: DeviceLink
+        pub device_link: DeviceLink,
     }
 }
 

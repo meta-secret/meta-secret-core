@@ -12,8 +12,8 @@ pub enum SharedSecretObject {
 
     Split(KvLogEvent<UnitId, SecretDistributionData>),
     Recover(KvLogEvent<UnitId, SecretDistributionData>),
-    
-    SSLog(KvLogEvent<ArtifactId, ArtifactId>)
+
+    SSLog(KvLogEvent<ArtifactId, ArtifactId>),
 }
 
 impl KeyExtractor for SharedSecretObject {
@@ -70,7 +70,7 @@ impl ObjIdExtractor for SharedSecretObject {
 
             SharedSecretObject::Split(event) => ObjectId::from(event.key.obj_id.clone()),
             SharedSecretObject::Recover(event) => ObjectId::from(event.key.obj_id.clone()),
-            
+
             SharedSecretObject::SSLog(event) => ObjectId::from(event.key.obj_id.clone()),
         }
     }
@@ -81,4 +81,3 @@ impl ToGenericEvent for SharedSecretObject {
         GenericKvLogEvent::SharedSecret(self)
     }
 }
-

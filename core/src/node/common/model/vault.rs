@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 
 use crate::node::common::model::device::DeviceId;
-use crate::node::common::model::MetaPasswordId;
 use crate::node::common::model::user::{UserData, UserDataMember, UserDataOutsider, UserMembership};
+use crate::node::common::model::MetaPasswordId;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::vault_event::VaultObject;
 
@@ -88,15 +88,9 @@ impl VaultStatus {
     pub fn try_from(vault_event: GenericKvLogEvent, user: UserData) -> anyhow::Result<Self> {
         let vault_obj = VaultObject::try_from(vault_event)?;
         match vault_obj {
-            VaultObject::Unit { .. } => {
-                Ok(VaultStatus::Outsider(UserDataOutsider::unknown(user)))
-            }
-            VaultObject::Genesis { .. } => {
-                Ok(VaultStatus::Outsider(UserDataOutsider::unknown(user)))
-            }
-            VaultObject::Vault(event) => {
-                Ok(VaultStatus::Member(event.value))
-            }
+            VaultObject::Unit { .. } => Ok(VaultStatus::Outsider(UserDataOutsider::unknown(user))),
+            VaultObject::Genesis { .. } => Ok(VaultStatus::Outsider(UserDataOutsider::unknown(user))),
+            VaultObject::Vault(event) => Ok(VaultStatus::Member(event.value)),
         }
     }
 }

@@ -80,7 +80,7 @@ impl ObjectId {
     pub fn unit(obj_desc: ObjectDescriptor) -> Self {
         ObjectId::Unit(UnitId::unit(&obj_desc))
     }
-    
+
     pub fn genesis(obj_desc: ObjectDescriptor) -> Self {
         ObjectId::Genesis(GenesisId::genesis(obj_desc))
     }
@@ -89,7 +89,7 @@ impl ObjectId {
         match self {
             ObjectId::Unit(unit_id) => unit_id.clone(),
             ObjectId::Genesis(genesis_id) => genesis_id.unit_id.clone(),
-            ObjectId::Artifact(artifact_id) => artifact_id.unit_id.clone()
+            ObjectId::Artifact(artifact_id) => artifact_id.unit_id.clone(),
         }
     }
 }
@@ -99,7 +99,7 @@ impl Next<ObjectId> for ObjectId {
         match self {
             ObjectId::Unit(unit_id) => ObjectId::from(unit_id.next()),
             ObjectId::Genesis(genesis_id) => ObjectId::from(genesis_id.next()),
-            ObjectId::Artifact(artifact_id) => ObjectId::from(artifact_id.next())
+            ObjectId::Artifact(artifact_id) => ObjectId::from(artifact_id.next()),
         }
     }
 }

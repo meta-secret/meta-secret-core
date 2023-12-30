@@ -1,9 +1,9 @@
 use anyhow::{anyhow, Context};
 use async_trait::async_trait;
-use indexed_db_futures::IdbDatabase;
 use indexed_db_futures::prelude::*;
+use indexed_db_futures::IdbDatabase;
 use js_sys::Object;
-use tracing::{Instrument, instrument};
+use tracing::{instrument, Instrument};
 use wasm_bindgen::JsValue;
 use web_sys::IdbTransactionMode;
 
@@ -85,7 +85,6 @@ impl SaveCommand for WasmRepo {
 
 #[async_trait(? Send)]
 impl FindOneQuery for WasmRepo {
-
     #[instrument(skip_all)]
     async fn find_one(&self, key: ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>> {
         let db = open_db(self.db_name.as_str()).await;
@@ -93,14 +92,13 @@ impl FindOneQuery for WasmRepo {
         let store = tx.object_store(self.store_name.as_str()).unwrap();
 
         let maybe_event_js: Option<JsValue> = {
-            let maybe_value: OptionalJsValueFuture = store.get_owned(key.id_str().as_str()).unwrap();
+            let maybe_value: OptionalJsValueFuture =
+                store.get_owned(key.id_str().as_str()).unwrap();
             maybe_value.await.unwrap()
         };
 
         match maybe_event_js {
-            None => {
-                Ok(None)
-            }
+            None => Ok(None),
             Some(event_js) => {
                 if event_js.is_undefined() {
                     return Ok(None);
@@ -118,12 +116,8 @@ impl FindOneQuery for WasmRepo {
     async fn get_key(&self, key: ObjectId) -> anyhow::Result<Option<ObjectId>> {
         let maybe_event = self.find_one(key).await?;
         match maybe_event {
-            None => {
-                Ok(None)
-            }
-            Some(event) => {
-                Ok(Some(event.obj_id()))
-            }
+            None => Ok(None),
+            Some(event) => Ok(Some(event.obj_id())),
         }
     }
 }

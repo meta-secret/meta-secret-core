@@ -4,17 +4,17 @@ extern crate serde;
 extern crate serde_derive;
 extern crate serde_json;
 
-use std::{fs, io};
 use std::ffi::OsStr;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
+use std::{fs, io};
 
 use image::ImageError;
 use rqrr::DeQRError;
 
-use errors::{RecoveryError, SharesLoaderError, SplitError};
 use errors::RecoveryError::EmptyInput;
+use errors::{RecoveryError, SharesLoaderError, SplitError};
 
 use crate::errors::CoreError;
 use crate::secret::data_block::common::SharedSecretConfig;
@@ -25,6 +25,7 @@ pub mod crypto;
 pub mod errors;
 pub mod node;
 pub mod secret;
+pub mod meta_tests;
 
 pub type CoreResult<T> = std::result::Result<T, CoreError>;
 

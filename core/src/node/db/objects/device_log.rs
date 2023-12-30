@@ -17,7 +17,6 @@ pub struct PersistentDeviceLog<Repo: KvLogEventRepo> {
 }
 
 impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
-
     #[instrument(skip_all)]
     pub async fn accept_join_cluster_request(&self, user: UserData) -> anyhow::Result<()> {
         self.init(&user).await?;
@@ -27,9 +26,7 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
             VaultDescriptor::device_log(user_id)
         };
 
-        let free_id = self.p_obj
-            .find_free_id_by_obj_desc(obj_desc.clone())
-            .await?;
+        let free_id = self.p_obj.find_free_id_by_obj_desc(obj_desc.clone()).await?;
 
         let ObjectId::Artifact(free_artifact_id) = free_id else {
             return Ok(());
@@ -44,9 +41,7 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
                 update: UserMembership::Member(UserDataMember(user)),
             },
         });
-        self.p_obj.repo
-            .save(join_request.to_generic())
-            .await?;
+        self.p_obj.repo.save(join_request.to_generic()).await?;
 
         Ok(())
     }
@@ -56,9 +51,7 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
         let obj_desc = VaultDescriptor::device_log(user_id.clone());
         let unit_id = UnitId::unit(&obj_desc);
 
-        let maybe_unit_event = self.p_obj.repo
-            .find_one(ObjectId::Unit(unit_id))
-            .await?;
+        let maybe_unit_event = self.p_obj.repo.find_one(ObjectId::Unit(unit_id)).await?;
 
         if let Some(unit_event) = maybe_unit_event {
             debug!("Device log already initialized: {:?}", unit_event);

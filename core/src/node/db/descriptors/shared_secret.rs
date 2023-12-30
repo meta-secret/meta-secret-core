@@ -20,7 +20,7 @@ pub enum SharedSecretDescriptor {
 
     /// This log allows to recreate a lifetime of the secret sharing workflow and allows to have a consistent view
     ///across the cluster on what events of the secret sharing happened at what time.
-    SSLog(VaultName)
+    SSLog(VaultName),
 }
 
 impl ObjectType for SharedSecretDescriptor {
@@ -30,7 +30,7 @@ impl ObjectType for SharedSecretDescriptor {
             SharedSecretDescriptor::Recover(_) => String::from("SSRecover"),
             SharedSecretDescriptor::SSLog { .. } => String::from("SSLog"),
             SharedSecretDescriptor::LocalShare { .. } => String::from("SSLocalShare"),
-            SharedSecretDescriptor::SSDeviceLog(_) => String::from("SSDeviceLog")
+            SharedSecretDescriptor::SSDeviceLog(_) => String::from("SSDeviceLog"),
         }
     }
 }
@@ -41,10 +41,8 @@ impl SharedSecretDescriptor {
             SharedSecretDescriptor::Split(event_id) => event_id.as_id_str(),
             SharedSecretDescriptor::Recover(event_id) => event_id.as_id_str(),
             SharedSecretDescriptor::SSLog(vault_name) => vault_name.to_string(),
-            SharedSecretDescriptor::LocalShare { .. } => {
-                serde_json::to_string(self).unwrap()
-            }
-            SharedSecretDescriptor::SSDeviceLog(device_id) => device_id.to_string()
+            SharedSecretDescriptor::LocalShare { .. } => serde_json::to_string(self).unwrap(),
+            SharedSecretDescriptor::SSDeviceLog(device_id) => device_id.to_string(),
         }
     }
 
@@ -63,7 +61,7 @@ impl ToObjectDescriptor for SharedSecretDescriptor {
 #[serde(rename_all = "camelCase")]
 pub struct SharedSecretEventId {
     pub vault_name: VaultName,
-    pub device_link: DeviceLink
+    pub device_link: DeviceLink,
 }
 
 impl SharedSecretEventId {
@@ -75,22 +73,22 @@ impl SharedSecretEventId {
 impl From<SecretDistributionData> for SharedSecretEventId {
     fn from(secret: SecretDistributionData) -> Self {
         let device_link = match secret.secret_message {
-            EncryptedMessage::CipherShare { device_link, .. } => device_link
+            EncryptedMessage::CipherShare { device_link, .. } => device_link,
         };
 
-        Self { vault_name: secret.vault_name, device_link }
+        Self {
+            vault_name: secret.vault_name,
+            device_link,
+        }
     }
 }
 
 impl From<&SecretDistributionData> for ObjectDescriptor {
     fn from(secret_distribution: &SecretDistributionData) -> Self {
-
         let ss_event_id = SharedSecretEventId::from(secret_distribution.clone());
 
         match secret_distribution.distribution_type {
-            SecretDistributionType::Split => {
-                ObjectDescriptor::SharedSecret(SharedSecretDescriptor::Split(ss_event_id))
-            }
+            SecretDistributionType::Split => ObjectDescriptor::SharedSecret(SharedSecretDescriptor::Split(ss_event_id)),
             SecretDistributionType::Recover => {
                 ObjectDescriptor::SharedSecret(SharedSecretDescriptor::Recover(ss_event_id))
             }

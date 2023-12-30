@@ -10,11 +10,10 @@ use crate::node::db::objects::persistent_object_navigator::PersistentObjectNavig
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 
 pub struct PersistentObject<Repo: KvLogEventRepo> {
-    pub repo: Arc<Repo>
+    pub repo: Arc<Repo>,
 }
 
 impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
-
     #[instrument(skip_all)]
     pub async fn get_object_events_from_beginning(
         &self,
@@ -53,9 +52,7 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
 
     #[instrument(skip_all)]
     pub async fn find_tail_event(&self, obj_desc: ObjectDescriptor) -> anyhow::Result<Option<GenericKvLogEvent>> {
-        let maybe_tail_id = self
-            .find_tail_id_by_obj_desc(obj_desc)
-            .await?;
+        let maybe_tail_id = self.find_tail_id_by_obj_desc(obj_desc).await?;
 
         self.find_event_by_id(maybe_tail_id).await
     }
@@ -76,9 +73,7 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
 
     #[instrument(skip_all)]
     pub async fn find_free_id_by_obj_desc(&self, obj_desc: ObjectDescriptor) -> anyhow::Result<ObjectId> {
-        let maybe_tail_id = self
-            .find_tail_id_by_obj_desc(obj_desc.clone())
-            .await?;
+        let maybe_tail_id = self.find_tail_id_by_obj_desc(obj_desc.clone()).await?;
 
         let free_id = maybe_tail_id
             .map(|tail_id| tail_id.next())
@@ -89,9 +84,7 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
 
     #[instrument(skip_all)]
     pub async fn find_free_id(&self, obj_id: ObjectId) -> anyhow::Result<ObjectId> {
-        let maybe_tail_id = self
-            .find_tail_id(obj_id.clone())
-            .await?;
+        let maybe_tail_id = self.find_tail_id(obj_id.clone()).await?;
 
         let free_id = maybe_tail_id
             .map(|tail_id| tail_id.next())

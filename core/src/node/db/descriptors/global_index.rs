@@ -12,14 +12,16 @@ pub enum GlobalIndexDescriptor {
     Index,
     /// An id of a vault. We have global index to keep track and being able to iterate over all vaults,
     /// and to be able to check if a particular vault exists we ned to have vault index
-    VaultIndex { vault_id: UnitId },
+    VaultIndex {
+        vault_id: UnitId,
+    },
 }
 
 impl ObjectType for GlobalIndexDescriptor {
     fn object_type(&self) -> String {
         match self {
             GlobalIndexDescriptor::Index => String::from("GlobalIndex"),
-            GlobalIndexDescriptor::VaultIndex { .. } => String::from("VaultIdx")
+            GlobalIndexDescriptor::VaultIndex { .. } => String::from("VaultIdx"),
         }
     }
 }
@@ -63,7 +65,9 @@ mod test {
         let vault_name = VaultName::from("test_vault");
 
         let vault_index_json = {
-            let vault_index = GlobalIndexDescriptor::vault_index(vault_name.clone()).to_obj_desc().fqdn();
+            let vault_index = GlobalIndexDescriptor::vault_index(vault_name.clone())
+                .to_obj_desc()
+                .fqdn();
             serde_json::to_value(vault_index)?
         };
 
@@ -72,7 +76,6 @@ mod test {
             "objInstance": "{\"fqdn\":{\"objType\":\"Vault\",\"objInstance\":\"test_vault\"},\"id\":0}"
         });
         assert_eq!(expected, vault_index_json);
-
 
         Ok(())
     }

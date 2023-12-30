@@ -1,6 +1,6 @@
 use diesel::{Connection, SqliteConnection};
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
-use meta_secret_core::crypto::utils;
+use meta_secret_core::crypto::{encoding::base64::Base64Text, utils};
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("../meta-server-emulator/migrations");
 
@@ -18,11 +18,10 @@ impl EmbeddedMigrationsTool {
 
 impl Default for EmbeddedMigrationsTool {
     fn default() -> Self {
+        let Base64Text(db_name) = utils::rand_uuid_b64_url_enc();
+
         Self {
-            db_url: format!(
-                "file:///tmp/{}.db",
-                utils::rand_uuid_b64_url_enc().base64_text
-            ),
+            db_url: format!("file:///tmp/{}.db", db_name),
         }
     }
 }

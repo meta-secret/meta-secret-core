@@ -68,7 +68,7 @@ impl GenericKvKey {
         match self {
             GenericKvKey::UnitKey { key } => key.obj_desc.clone(),
             GenericKvKey::GenesisKey { key } => key.obj_desc.clone(),
-            GenericKvKey::ArtifactKey { key } => key.obj_desc.clone()
+            GenericKvKey::ArtifactKey { key } => key.obj_desc.clone(),
         }
     }
 }
@@ -119,9 +119,6 @@ impl Next<KvKey<ArtifactId>> for KvKey<GenesisId> {
 
 impl KvKey<ArtifactId> {
     pub fn artifact(obj_desc: ObjectDescriptor, obj_id: ArtifactId) -> Self {
-        Self {
-            obj_id,
-            obj_desc,
-        }
+        Self { obj_id, obj_desc }
     }
 }

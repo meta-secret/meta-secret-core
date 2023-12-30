@@ -4,7 +4,9 @@ use crate::node::common::model::device::{DeviceCredentials, DeviceData};
 use crate::node::common::model::user::UserCredentials;
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::db_tail::DbTail;
-use crate::node::db::events::generic_log_event::{GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent, UnitEvent};
+use crate::node::db::events::generic_log_event::{
+    GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent, UnitEvent,
+};
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{GenesisId, ObjectId, UnitId};
 
@@ -13,7 +15,7 @@ use crate::node::db::events::object_id::{GenesisId, ObjectId, UnitId};
 pub enum CredentialsObject {
     Device(KvLogEvent<UnitId, DeviceCredentials>),
     /// Default vault
-    DefaultUser(KvLogEvent<GenesisId, UserCredentials>)
+    DefaultUser(KvLogEvent<GenesisId, UserCredentials>),
 }
 
 impl ObjIdExtractor for CredentialsObject {
@@ -67,7 +69,7 @@ impl KeyExtractor for CredentialsObject {
     fn key(&self) -> GenericKvKey {
         match self {
             CredentialsObject::Device(event) => GenericKvKey::from(event.key.clone()),
-            CredentialsObject::DefaultUser(event) => GenericKvKey::from(event.key.clone())
+            CredentialsObject::DefaultUser(event) => GenericKvKey::from(event.key.clone()),
         }
     }
 }
@@ -80,12 +82,10 @@ impl CredentialsObject {
     pub fn device(&self) -> DeviceData {
         match self {
             CredentialsObject::Device(event) => event.value.device.clone(),
-            CredentialsObject::DefaultUser(event) => event.value.device_creds.device.clone()
+            CredentialsObject::DefaultUser(event) => event.value.device_creds.device.clone(),
         }
     }
 }
-
-
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

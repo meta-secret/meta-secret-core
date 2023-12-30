@@ -1,18 +1,17 @@
-
+use crypto_box::aead::AeadCore;
 use crypto_box::{
     aead::{Aead, OsRng as CryptoBoxOsRng, Payload},
     ChaChaBox, Nonce,
 };
-use crypto_box::aead::AeadCore;
 use ed25519_dalek::{Keypair, Signer};
 use image::EncodableLayout;
-use rand::RngCore;
 use rand::rngs::OsRng as RandOsRng;
+use rand::RngCore;
 
-use crate::CoreResult;
 use crate::crypto::encoding::base64::Base64Text;
 use crate::errors::CoreError;
 use crate::node::common::model::crypto::{AeadAuthData, AeadCipherText, AeadPlainText, CommunicationChannel};
+use crate::CoreResult;
 
 pub type CryptoBoxPublicKey = crypto_box::PublicKey;
 pub type CryptoBoxSecretKey = crypto_box::SecretKey;
@@ -142,12 +141,8 @@ impl TransportDsaKeyPair {
         let owner_pk = self.public_key();
 
         let their_pk = match owner_pk {
-            pk if pk == channel.sender => {
-                CryptoBoxPublicKey::try_from(&channel.receiver)
-            }
-            pk if pk == channel.receiver => {
-                CryptoBoxPublicKey::try_from(&channel.sender)
-            }
+            pk if pk == channel.sender => CryptoBoxPublicKey::try_from(&channel.receiver),
+            pk if pk == channel.receiver => CryptoBoxPublicKey::try_from(&channel.sender),
             _ => Err(CoreError::ThirdPartyEncryptionError {
                 key_manager_pk: owner_pk,
                 channel: channel.clone(),
@@ -180,12 +175,12 @@ impl TransportDsaKeyPair {
 
 #[cfg(test)]
 pub mod test {
-    use crate::CoreResult;
     use crate::crypto::encoding::base64::Base64Text;
     use crate::crypto::key_pair::KeyPair;
     use crate::crypto::keys::KeyManager;
     use crate::errors::CoreError;
     use crate::node::common::model::crypto::{AeadAuthData, AeadCipherText, AeadPlainText, CommunicationChannel};
+    use crate::CoreResult;
 
     #[test]
     fn single_person_encryption() -> CoreResult<()> {
@@ -197,10 +192,7 @@ pub mod test {
             .encrypt_string(password.clone(), alice_km.transport_key_pair.public_key())?;
 
         let plain_text = alice_km.transport_key_pair.decrypt(&cipher_text)?;
-        assert_eq!(
-            Base64Text::from(password.as_bytes()),
-            plain_text.msg
-        );
+        assert_eq!(Base64Text::from(password.as_bytes()), plain_text.msg);
 
         Ok(())
     }
@@ -244,7 +236,7 @@ pub mod test {
                 associated_data: cipher_text.auth_data.associated_data,
                 channel: cipher_text.auth_data.channel.inverse(),
                 nonce: cipher_text.auth_data.nonce,
-            }
+            },
         };
 
         let decrypted_text = bob_km.transport_key_pair.decrypt(&cipher_text)?;

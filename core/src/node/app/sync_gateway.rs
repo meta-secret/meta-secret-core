@@ -52,7 +52,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
     #[instrument(skip_all)]
     pub async fn sync(&self) -> anyhow::Result<()> {
         let creds_repo = CredentialsRepo {
-            p_obj: self.persistent_object.clone()
+            p_obj: self.persistent_object.clone(),
         };
 
         let maybe_creds_event = creds_repo.find().await?;
@@ -71,13 +71,9 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         let user_creds = user_creds_event.value;
         let sender = user_creds.user();
 
-        let vault_status_obj_desc = VaultDescriptor::VaultStatus(user_creds.user_id())
-            .to_obj_desc();
+        let vault_status_obj_desc = VaultDescriptor::VaultStatus(user_creds.user_id()).to_obj_desc();
 
-        let maybe_vault_status = self
-            .persistent_object
-            .find_tail_event(vault_status_obj_desc)
-            .await?;
+        let maybe_vault_status = self.persistent_object.find_tail_event(vault_status_obj_desc).await?;
 
         let Some(vault_status_event) = maybe_vault_status else {
             return Ok(());
@@ -137,9 +133,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
 
         let gi_free_id = {
             let gi_desc = ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index);
-            self.persistent_object
-                .find_free_id_by_obj_desc(gi_desc)
-                .await?
+            self.persistent_object.find_free_id_by_obj_desc(gi_desc).await?
         };
 
         let sync_request = SyncRequest::GlobalIndex(GlobalIndexRequest {
@@ -184,7 +178,6 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             }
             VaultStatus::Member(vault) => {
                 for UserDataMember(member) in vault.members() {
-
                     let ss_event_id = {
                         let device_link = DeviceLinkBuilder::builder()
                             .sender(creds.device_creds.device.id.clone())
@@ -205,33 +198,31 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                     };
 
                     for split_event in split_events {
-                        self
-                            .server_dt
+                        self.server_dt
                             .dt
                             .send_to_service(DataSyncRequest::Event(split_event))
                             .await;
                     }
 
                     let recover_events = {
-                        let recover_obj_desc = ObjectDescriptor::SharedSecret(SharedSecretDescriptor::Recover(ss_event_id));
+                        let recover_obj_desc =
+                            ObjectDescriptor::SharedSecret(SharedSecretDescriptor::Recover(ss_event_id));
                         self.persistent_object
                             .get_object_events_from_beginning(recover_obj_desc)
                             .await?
                     };
                     for recover_event in recover_events {
-                        self.server_dt.dt
+                        self.server_dt
+                            .dt
                             .send_to_service(DataSyncRequest::Event(recover_event))
                             .await;
                     }
                 }
 
                 let ss_sync_request = {
-                    let ss_log_obj_desc = SharedSecretDescriptor::SSLog(creds.vault_name.clone())
-                        .to_obj_desc();
+                    let ss_log_obj_desc = SharedSecretDescriptor::SSLog(creds.vault_name.clone()).to_obj_desc();
 
-                    let ss_log_id = self.persistent_object
-                        .find_free_id_by_obj_desc(ss_log_obj_desc)
-                        .await?;
+                    let ss_log_id = self.persistent_object.find_free_id_by_obj_desc(ss_log_obj_desc).await?;
 
                     SyncRequest::SharedSecret(SharedSecretRequest {
                         sender: creds.user(),
@@ -239,7 +230,9 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                     })
                 };
 
-                let new_ss_log_events = self.server_dt.dt
+                let new_ss_log_events = self
+                    .server_dt
+                    .dt
                     .send_to_service_and_get(DataSyncRequest::SyncRequest(ss_sync_request))
                     .await?;
 
@@ -262,7 +255,8 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         let new_db_tail_event = DbTailObject(KvLogEvent {
             key: KvKey::unit(ObjectDescriptor::DbTail),
             value: new_db_tail.clone(),
-        }).to_generic();
+        })
+        .to_generic();
 
         self.persistent_object.repo.save(new_db_tail_event).await?;
         Ok(())

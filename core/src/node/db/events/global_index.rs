@@ -3,7 +3,7 @@ use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::generic_log_event::{
-    GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent, UnitEventWithEmptyValue
+    GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent, UnitEventWithEmptyValue,
 };
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, GenesisId, ObjectId, UnitId};
@@ -27,7 +27,7 @@ impl GlobalIndexObject {
 
     pub fn index_from_vault_id(vault_id: UnitId) -> GlobalIndexObject {
         let idx_desc = ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::VaultIndex {
-            vault_id: vault_id.clone()
+            vault_id: vault_id.clone(),
         });
 
         GlobalIndexObject::VaultIndex(KvLogEvent {
@@ -49,7 +49,7 @@ impl ObjIdExtractor for GlobalIndexObject {
             GlobalIndexObject::Unit(event) => ObjectId::from(event.key.obj_id.clone()),
             GlobalIndexObject::Genesis(event) => ObjectId::from(event.key.obj_id.clone()),
             GlobalIndexObject::Update(event) => ObjectId::from(event.key.obj_id.clone()),
-            GlobalIndexObject::VaultIndex(event) => ObjectId::from(event.key.obj_id.clone())
+            GlobalIndexObject::VaultIndex(event) => ObjectId::from(event.key.obj_id.clone()),
         }
     }
 }
@@ -60,7 +60,7 @@ impl KeyExtractor for GlobalIndexObject {
             GlobalIndexObject::Unit(event) => GenericKvKey::from(event.key.clone()),
             GlobalIndexObject::Genesis(event) => GenericKvKey::from(event.key.clone()),
             GlobalIndexObject::Update(event) => GenericKvKey::from(event.key.clone()),
-            GlobalIndexObject::VaultIndex(event) => GenericKvKey::from(event.key.clone())
+            GlobalIndexObject::VaultIndex(event) => GenericKvKey::from(event.key.clone()),
         }
     }
 }
@@ -76,7 +76,6 @@ impl GlobalIndexObject {
         GlobalIndexObject::Genesis(KvLogEvent::global_index_genesis(server_pk))
     }
 }
-
 
 impl TryFrom<GenericKvLogEvent> for GlobalIndexObject {
     type Error = anyhow::Error;
