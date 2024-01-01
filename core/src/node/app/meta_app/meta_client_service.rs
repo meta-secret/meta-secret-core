@@ -10,7 +10,7 @@ use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::common::model::ApplicationState;
 use crate::node::db::actions::recover::RecoveryAction;
 use crate::node::db::actions::sign_up_claim::SignUpClaim;
-use crate::node::db::objects::vault::PersistentVault;
+use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::credentials_repo::CredentialsRepo;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::secret::MetaDistributor;
@@ -46,8 +46,8 @@ where
 
             match request {
                 GenericAppStateRequest::SignUp => {
-                    let sign_up_claim = SignUpClaim { 
-                        p_obj: self.sync_gateway.persistent_object.clone() 
+                    let sign_up_claim = SignUpClaim {
+                        p_obj: self.sync_gateway.persistent_object.clone(),
                     };
 
                     sign_up_claim.sign_up().await?;

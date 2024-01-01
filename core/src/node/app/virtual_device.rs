@@ -9,10 +9,10 @@ use crate::node::common::model::vault::VaultStatus;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault::VaultDescriptor;
 use crate::node::db::events::vault_event::{VaultAction, VaultLogObject};
-use crate::node::db::objects::device_log::PersistentDeviceLog;
+use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use crate::node::db::objects::persistent_object::PersistentObject;
-use crate::node::db::objects::shared_secret::PersistentSharedSecret;
-use crate::node::db::objects::vault::PersistentVault;
+use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
+use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::server::server_app::ServerDataTransfer;
 
@@ -80,13 +80,16 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
                                             p_obj: self.persistent_object.clone(),
                                         };
 
-                                        p_device_log.accept_join_cluster_request(candidate).await?;
+                                        p_device_log.save_join_cluster_request(candidate).await?;
                                     }
                                     VaultAction::UpdateMembership { .. } => {
                                         //changes made by another device, no need for any actions
                                     }
                                     VaultAction::AddMetaPassword { .. } => {
                                         //changes made by another device, no need for any actions
+                                    }
+                                    VaultAction::Create(_) => {
+                                        // server's responsibities
                                     }
                                 }
                             };

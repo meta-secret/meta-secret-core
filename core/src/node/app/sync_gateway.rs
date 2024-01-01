@@ -18,12 +18,12 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::local::{CredentialsObject, DbTailObject};
 use crate::node::db::events::vault_event::VaultMembershipObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
-use crate::node::db::objects::vault::PersistentVault;
+use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::credentials_repo::CredentialsRepo;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
-use crate::node::server::data_sync::DataSyncRequest;
 use crate::node::server::request::{GlobalIndexRequest, SharedSecretRequest, SyncRequest, VaultRequest};
 use crate::node::server::server_app::ServerDataTransfer;
+use crate::node::server::server_data_sync::DataSyncRequest;
 
 pub struct SyncGateway<Repo: KvLogEventRepo> {
     pub id: String,

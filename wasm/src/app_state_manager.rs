@@ -20,7 +20,6 @@ use meta_secret_core::node::common::model::vault::VaultName;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::repo::credentials_repo::CredentialsRepo;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
-use meta_secret_core::node::server::data_sync::ServerDataSync;
 use meta_secret_core::node::server::server_app::{ServerApp, ServerDataTransfer};
 
 pub struct ApplicationStateManager<Repo, StateManager>
@@ -137,7 +136,7 @@ where
             p_obj: persistent_object.clone(),
         };
 
-        let user_creds = creds_repo
+        let _user_creds = creds_repo
             .get_or_generate_user_creds(DeviceName::from("virtual-device"), VaultName::from("q"))
             .await?;
 

@@ -1,21 +1,21 @@
 use std::sync::Arc;
 
-use tracing::{error, info, instrument};
 use anyhow::Result;
+use tracing::{error, info, instrument};
 
 use crate::node::common::data_transfer::MpscDataTransfer;
-use crate::node::common::model::device::{DeviceName, DeviceCredentials};
+use crate::node::common::model::device::{DeviceCredentials, DeviceName};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::objects::global_index::PersistentGlobalIndex;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::credentials_repo::CredentialsRepo;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
-use crate::node::server::data_sync::{DataSyncApi, DataSyncRequest, DataSyncResponse, ServerDataSync};
 use crate::node::server::request::SyncRequest;
+use crate::node::server::server_data_sync::{DataSyncApi, DataSyncRequest, DataSyncResponse, ServerDataSync};
 
 pub struct ServerApp<Repo: KvLogEventRepo> {
-    data_sync: ServerDataSync<Repo>,
-    p_obj: Arc<PersistentObject<Repo>>
+    pub data_sync: ServerDataSync<Repo>,
+    p_obj: Arc<PersistentObject<Repo>>,
 }
 
 pub struct ServerDataTransfer {
@@ -104,7 +104,9 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
     }
 
     pub async fn get_creds(&self) -> Result<DeviceCredentials> {
-        let creds_repo = CredentialsRepo { p_obj: self.p_obj.clone() };
+        let creds_repo = CredentialsRepo {
+            p_obj: self.p_obj.clone(),
+        };
 
         creds_repo
             .get_or_generate_device_creds(DeviceName::from("server"))

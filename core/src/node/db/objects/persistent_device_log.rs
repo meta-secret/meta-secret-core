@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tracing::debug;
 use tracing_attributes::instrument;
 
-use crate::node::common::model::user::{UserData, UserDataMember, UserMembership};
+use crate::node::common::model::user::UserData;
 use crate::node::db::descriptors::vault::VaultDescriptor;
 use crate::node::db::events::generic_log_event::ToGenericEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
@@ -18,7 +18,7 @@ pub struct PersistentDeviceLog<Repo: KvLogEventRepo> {
 
 impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
     #[instrument(skip_all)]
-    pub async fn accept_join_cluster_request(&self, user: UserData) -> anyhow::Result<()> {
+    pub async fn save_join_cluster_request(&self, user: UserData) -> anyhow::Result<()> {
         self.init(&user).await?;
 
         let obj_desc = {
@@ -36,10 +36,7 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
         let artifact_key = KvKey::artifact(obj_desc.clone(), free_artifact_id);
         let join_request = DeviceLogObject::Action(KvLogEvent {
             key: artifact_key,
-            value: VaultAction::UpdateMembership {
-                sender: UserDataMember(user.clone()),
-                update: UserMembership::Member(UserDataMember(user)),
-            },
+            value: VaultAction::Create(user),
         });
         self.p_obj.repo.save(join_request.to_generic()).await?;
 

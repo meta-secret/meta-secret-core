@@ -1,13 +1,17 @@
-
 #[cfg(test)]
 mod test {
     use std::sync::Arc;
 
     use meta_secret_core::{
-        node::{db::{in_mem_db::InMemKvLogEventRepo, objects::persistent_object::PersistentObject}, common::model::vault::VaultStatus}, 
-        meta_tests::{action::sign_up_claim_action::SignUpClaimTestAction, spec::{sign_up_claim_spec::SignUpClaimSpec, test_spec::TestSpec}}
+        meta_tests::{
+            action::sign_up_claim_action::SignUpClaimTestAction,
+            spec::{sign_up_claim_spec::SignUpClaimSpec, test_spec::TestSpec},
+        },
+        node::{
+            common::model::vault::VaultStatus,
+            db::{in_mem_db::InMemKvLogEventRepo, objects::persistent_object::PersistentObject},
+        },
     };
-
 
     #[tokio::test]
     pub async fn test_server_app_initial_state() -> anyhow::Result<()> {
@@ -23,9 +27,9 @@ mod test {
             panic!("Invalid state");
         };
 
-        let claim_spec = SignUpClaimSpec { 
-            p_obj: client_p_obj, 
-            user: outsider.user_data
+        let claim_spec = SignUpClaimSpec {
+            p_obj: client_p_obj,
+            user: outsider.user_data,
         };
 
         claim_spec.check().await?;

@@ -111,3 +111,29 @@ impl SignUpAction {
         commit_log
     }
 }
+
+#[cfg(test)]
+mod test {
+    use anyhow::Result;
+
+    use crate::{
+        meta_tests::fixture::ClientDeviceFixture,
+        node::{
+            common::model::device::{DeviceCredentials, DeviceName},
+            db::actions::sign_up::SignUpAction,
+        },
+    };
+
+    #[tokio::test]
+    async fn test() -> Result<()> {
+        let client_fixture = ClientDeviceFixture::default();
+        let server_creds = DeviceCredentials::generate(DeviceName::from("server_device"));
+
+        let sign_up_action = SignUpAction {};
+        let events = sign_up_action.accept(client_fixture.user_creds.user(), server_creds.device);
+
+        assert_eq!(events.len(), 8);
+
+        Ok(())
+    }
+}

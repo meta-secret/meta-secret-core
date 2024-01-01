@@ -1,4 +1,3 @@
-use anyhow::{anyhow, Context};
 use async_trait::async_trait;
 use indexed_db_futures::prelude::*;
 use indexed_db_futures::IdbDatabase;

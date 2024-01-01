@@ -23,9 +23,9 @@ use crate::secret::shared_secret::{PlainText, SharedSecret, SharedSecretEncrypti
 
 pub mod crypto;
 pub mod errors;
+pub mod meta_tests;
 pub mod node;
 pub mod secret;
-pub mod meta_tests;
 
 pub type CoreResult<T> = std::result::Result<T, CoreError>;
 

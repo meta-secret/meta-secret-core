@@ -215,6 +215,8 @@ impl ObjIdExtractor for VaultMembershipObject {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum VaultAction {
+    Create(UserData),
+
     JoinRequest {
         candidate: UserData,
     },
@@ -239,6 +241,7 @@ impl VaultAction {
                 sender: UserDataMember(user),
                 ..
             } => user.vault_name.clone(),
+            VaultAction::Create(user) => user.vault_name.clone(),
         }
     }
 }

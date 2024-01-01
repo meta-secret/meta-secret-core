@@ -1,18 +1,19 @@
-use std::sync::Arc;
 use anyhow::Result;
+use std::sync::Arc;
 
-use crate::node::{db::{
-    repo::{generic_db::KvLogEventRepo, credentials_repo::CredentialsRepo}, 
-    objects::persistent_object::PersistentObject
-}, common::model::{user::UserCredentials, device::DeviceName, vault::VaultName}};
-
+use crate::node::{
+    common::model::{device::DeviceName, user::UserCredentials, vault::VaultName},
+    db::{
+        objects::persistent_object::PersistentObject,
+        repo::{credentials_repo::CredentialsRepo, generic_db::KvLogEventRepo},
+    },
+};
 
 pub struct GenerateUserTestAction<Repo: KvLogEventRepo> {
-    creds_repo: Arc<CredentialsRepo<Repo>>
+    creds_repo: Arc<CredentialsRepo<Repo>>,
 }
 
 impl<Repo: KvLogEventRepo> GenerateUserTestAction<Repo> {
-
     pub fn new(p_obj: Arc<PersistentObject<Repo>>) -> Self {
         let creds_repo = Arc::new(CredentialsRepo { p_obj });
         Self { creds_repo }

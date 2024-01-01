@@ -57,17 +57,16 @@ mod test {
     use crate::meta_tests::fixture::ClientDeviceFixture;
     use crate::meta_tests::spec::global_index_specs::GlobalIndexSpec;
 
-
     #[tokio::test]
     async fn test_init() -> anyhow::Result<()> {
         let gi_request_action = GlobalIndexSyncRequestTestAction::init().await?;
         let device_fixture = ClientDeviceFixture::default();
 
-        let _ = gi_request_action.send_request(device_fixture.device.device).await;
+        let _ = gi_request_action.send_request(device_fixture.device_creds.device).await;
 
         let gi_spec = GlobalIndexSpec {
             repo: gi_request_action.server_node.p_obj.repo.clone(),
-            server_device: gi_request_action.server_node.device.device.clone()
+            server_device: gi_request_action.server_node.device.device.clone(),
         };
 
         gi_spec.check().await?;
