@@ -59,50 +59,42 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
             };
 
             let vault_status = p_vault.find_for_default_user().await?;
-            match vault_status {
-                VaultStatus::Outsider(_) => {
-                    //nothing to do
-                }
-                VaultStatus::Member(vault) => {
-                    //vault actions
-                    let vault_log_desc = VaultDescriptor::VaultLog(vault.vault_name.clone()).to_obj_desc();
-                    let maybe_vault_log_event = self.persistent_object.find_tail_event(vault_log_desc).await?;
-                    match maybe_vault_log_event {
-                        None => {
-                            //nothing to do
-                        }
-                        Some(vault_log_event) => {
-                            let vault_log = VaultLogObject::try_from(vault_log_event)?;
-                            if let VaultLogObject::Action(vault_action) = vault_log {
-                                match vault_action.value {
-                                    VaultAction::JoinRequest { candidate } => {
-                                        let p_device_log = PersistentDeviceLog {
-                                            p_obj: self.persistent_object.clone(),
-                                        };
+            if let VaultStatus::Member(vault) = vault_status {
+                //vault actions
+                let vault_log_desc = VaultDescriptor::VaultLog(vault.vault_name.clone()).to_obj_desc();
+                let maybe_vault_log_event = self.persistent_object.find_tail_event(vault_log_desc).await?;
 
-                                        p_device_log.save_join_cluster_request(candidate).await?;
-                                    }
-                                    VaultAction::UpdateMembership { .. } => {
-                                        //changes made by another device, no need for any actions
-                                    }
-                                    VaultAction::AddMetaPassword { .. } => {
-                                        //changes made by another device, no need for any actions
-                                    }
-                                    VaultAction::Create(_) => {
-                                        // server's responsibities
-                                    }
-                                }
-                            };
-                        }
-                    }
+                if let Some(vault_log_event) = maybe_vault_log_event {
+                    let vault_log = VaultLogObject::try_from(vault_log_event)?;
 
-                    // shared secret actions
-                    let _p_ss_log = PersistentSharedSecret {
-                        p_obj: self.persistent_object.clone(),
+                    if let VaultLogObject::Action(vault_action) = vault_log {
+                        match vault_action.value {
+                            VaultAction::JoinRequest { candidate } => {
+                                let p_device_log = PersistentDeviceLog {
+                                    p_obj: self.persistent_object.clone(),
+                                };
+
+                                p_device_log.save_join_cluster_request(candidate).await?;
+                            }
+                            VaultAction::UpdateMembership { .. } => {
+                                //changes made by another device, no need for any actions
+                            }
+                            VaultAction::AddMetaPassword { .. } => {
+                                //changes made by another device, no need for any actions
+                            }
+                            VaultAction::Create(_) => {
+                                // server's responsibities
+                            }
+                        }
                     };
-
-                    todo!("Implement SS log actions - replication request. This code must read the log and handle the events. Same as above for vault");
                 }
+
+                // shared secret actions
+                let _p_ss_log = PersistentSharedSecret {
+                    p_obj: self.persistent_object.clone(),
+                };
+
+                todo!("Implement SS log actions - replication request. This code must read the log and handle the events. Same as above for vault");
             }
 
             self.gateway.sync().await?;

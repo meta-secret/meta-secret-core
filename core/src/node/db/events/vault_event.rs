@@ -8,13 +8,15 @@ use crate::node::db::events::generic_log_event::{GenericKvLogEvent, KeyExtractor
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, GenesisId, ObjectId, UnitId};
 
+use super::common::{VaultUnitEvent, VaultGenesisEvent};
+
 /// Each device has its own unique device_log table, to prevent conflicts in updates vault state
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum DeviceLogObject {
-    Unit(KvLogEvent<UnitId, VaultName>),
+    Unit(VaultUnitEvent),
     /// Device sends its data to ensure that the only this device can send events to this log
-    Genesis(KvLogEvent<GenesisId, UserData>),
+    Genesis(VaultGenesisEvent),
     Action(KvLogEvent<ArtifactId, VaultAction>),
 }
 
@@ -39,8 +41,8 @@ impl ToGenericEvent for DeviceLogObject {
 impl ObjIdExtractor for DeviceLogObject {
     fn obj_id(&self) -> ObjectId {
         match self {
-            DeviceLogObject::Unit(event) => ObjectId::from(event.key.obj_id.clone()),
-            DeviceLogObject::Genesis(event) => ObjectId::from(event.key.obj_id.clone()),
+            DeviceLogObject::Unit(event) => ObjectId::from(event.key().obj_id.clone()),
+            DeviceLogObject::Genesis(event) => ObjectId::from(event.key().obj_id.clone()),
             DeviceLogObject::Action(event) => ObjectId::from(event.key.obj_id.clone()),
         }
     }
@@ -49,8 +51,8 @@ impl ObjIdExtractor for DeviceLogObject {
 impl KeyExtractor for DeviceLogObject {
     fn key(&self) -> GenericKvKey {
         match self {
-            DeviceLogObject::Unit(event) => GenericKvKey::from(event.key.clone()),
-            DeviceLogObject::Genesis(event) => GenericKvKey::from(event.key.clone()),
+            DeviceLogObject::Unit(event) => GenericKvKey::from(event.key().clone()),
+            DeviceLogObject::Genesis(event) => GenericKvKey::from(event.key().clone()),
             DeviceLogObject::Action(event) => GenericKvKey::from(event.key.clone()),
         }
     }
@@ -61,8 +63,8 @@ impl KeyExtractor for DeviceLogObject {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum VaultLogObject {
-    Unit(KvLogEvent<UnitId, VaultName>),
-    Genesis(KvLogEvent<GenesisId, UserData>),
+    Unit(VaultUnitEvent),
+    Genesis(VaultGenesisEvent),
     Action(KvLogEvent<ArtifactId, VaultAction>),
 }
 
@@ -87,8 +89,8 @@ impl ToGenericEvent for VaultLogObject {
 impl KeyExtractor for VaultLogObject {
     fn key(&self) -> GenericKvKey {
         match self {
-            VaultLogObject::Unit(event) => GenericKvKey::from(event.key.clone()),
-            VaultLogObject::Genesis(event) => GenericKvKey::from(event.key.clone()),
+            VaultLogObject::Unit(event) => GenericKvKey::from(event.key().clone()),
+            VaultLogObject::Genesis(event) => GenericKvKey::from(event.key().clone()),
             VaultLogObject::Action(event) => GenericKvKey::from(event.key.clone()),
         }
     }
@@ -97,8 +99,8 @@ impl KeyExtractor for VaultLogObject {
 impl ObjIdExtractor for VaultLogObject {
     fn obj_id(&self) -> ObjectId {
         match self {
-            VaultLogObject::Unit(event) => ObjectId::from(event.key.obj_id.clone()),
-            VaultLogObject::Genesis(event) => ObjectId::from(event.key.obj_id.clone()),
+            VaultLogObject::Unit(event) => ObjectId::from(event.key().obj_id.clone()),
+            VaultLogObject::Genesis(event) => ObjectId::from(event.key().obj_id.clone()),
             VaultLogObject::Action(event) => ObjectId::from(event.key.obj_id.clone()),
         }
     }
@@ -107,7 +109,7 @@ impl ObjIdExtractor for VaultLogObject {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum VaultObject {
-    Unit(KvLogEvent<UnitId, VaultName>),
+    Unit(VaultUnitEvent),
     /// Meta Server public keys
     Genesis(KvLogEvent<GenesisId, DeviceData>),
     Vault(KvLogEvent<ArtifactId, VaultData>),
@@ -134,7 +136,7 @@ impl ToGenericEvent for VaultObject {
 impl ObjIdExtractor for VaultObject {
     fn obj_id(&self) -> ObjectId {
         match self {
-            VaultObject::Unit(event) => ObjectId::from(event.key.obj_id.clone()),
+            VaultObject::Unit(event) => ObjectId::from(event.key().obj_id.clone()),
             VaultObject::Genesis(event) => ObjectId::from(event.key.obj_id.clone()),
             VaultObject::Vault(event) => ObjectId::from(event.key.obj_id.clone()),
         }
@@ -144,7 +146,7 @@ impl ObjIdExtractor for VaultObject {
 impl KeyExtractor for VaultObject {
     fn key(&self) -> GenericKvKey {
         match self {
-            VaultObject::Unit(event) => GenericKvKey::from(event.key.clone()),
+            VaultObject::Unit(event) => GenericKvKey::from(event.key()),
             VaultObject::Genesis(event) => GenericKvKey::from(event.key.clone()),
             VaultObject::Vault(event) => GenericKvKey::from(event.key.clone()),
         }
@@ -154,9 +156,9 @@ impl KeyExtractor for VaultObject {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum VaultMembershipObject {
-    Unit(KvLogEvent<UnitId, VaultName>),
+    Unit(VaultUnitEvent),
     /// Device public keys
-    Genesis(KvLogEvent<GenesisId, UserData>),
+    Genesis(VaultGenesisEvent),
     Membership(KvLogEvent<ArtifactId, UserMembership>),
 }
 
@@ -189,8 +191,8 @@ impl TryFrom<GenericKvLogEvent> for VaultMembershipObject {
 impl KeyExtractor for VaultMembershipObject {
     fn key(&self) -> GenericKvKey {
         match self {
-            VaultMembershipObject::Unit(event) => GenericKvKey::from(event.key.clone()),
-            VaultMembershipObject::Genesis(event) => GenericKvKey::from(event.key.clone()),
+            VaultMembershipObject::Unit(event) => GenericKvKey::from(event.key()),
+            VaultMembershipObject::Genesis(event) => GenericKvKey::from(event.key()),
             VaultMembershipObject::Membership(event) => GenericKvKey::from(event.key.clone()),
         }
     }
@@ -205,8 +207,8 @@ impl ToGenericEvent for VaultMembershipObject {
 impl ObjIdExtractor for VaultMembershipObject {
     fn obj_id(&self) -> ObjectId {
         match self {
-            VaultMembershipObject::Unit(event) => ObjectId::from(event.key.obj_id.clone()),
-            VaultMembershipObject::Genesis(event) => ObjectId::from(event.key.obj_id.clone()),
+            VaultMembershipObject::Unit(event) => ObjectId::from(event.key().obj_id.clone()),
+            VaultMembershipObject::Genesis(event) => ObjectId::from(event.key().obj_id.clone()),
             VaultMembershipObject::Membership(event) => ObjectId::from(event.key.obj_id.clone()),
         }
     }

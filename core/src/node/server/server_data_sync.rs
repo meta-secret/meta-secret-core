@@ -443,7 +443,7 @@ mod test {
                     generic_log_event::ToGenericEvent,
                     kv_log_event::{KvKey, KvLogEvent},
                     object_id::Next,
-                    vault_event::{DeviceLogObject, VaultAction},
+                    vault_event::{DeviceLogObject, VaultAction}, common::{VaultUnitEvent, VaultGenesisEvent},
                 },
                 in_mem_db::InMemKvLogEventRepo,
                 objects::{persistent_device_log::PersistentDeviceLog, persistent_object::PersistentObject},
@@ -453,7 +453,7 @@ mod test {
     };
 
     #[tokio::test]
-    async fn test_registration() -> Result<()> {
+    async fn test_sign_up() -> Result<()> {
         let client_fixture = ClientDeviceFixture::default();
 
         let gi_action = GlobalIndexSyncRequestTestAction::init().await?;
@@ -465,17 +465,17 @@ mod test {
         let obj_desc = VaultDescriptor::device_log(user_id.clone());
 
         let unit_key = KvKey::unit(obj_desc.clone());
-        let unit_event = DeviceLogObject::Unit(KvLogEvent {
+        let unit_event = DeviceLogObject::Unit(VaultUnitEvent(KvLogEvent {
             key: unit_key.clone(),
             value: user_id.vault_name.clone(),
-        });
+        }));
         data_sync.server_processing(unit_event.to_generic()).await?;
 
         let genesis_key = unit_key.next();
-        let genesis_event = DeviceLogObject::Genesis(KvLogEvent {
+        let genesis_event = DeviceLogObject::Genesis(VaultGenesisEvent(KvLogEvent {
             key: genesis_key.clone(),
             value: user.clone(),
-        });
+        }));
         data_sync.server_processing(genesis_event.to_generic()).await?;
 
         let join_request_key = genesis_key.next();
@@ -489,7 +489,7 @@ mod test {
         assert_eq!(db.len(), 16);
 
         db.values().for_each(|event| {
-            println!("Event: {:?}\n", event);
+            println!("Event: {}\n", serde_json::to_string_pretty(event).unwrap());
         });
 
         Ok(())

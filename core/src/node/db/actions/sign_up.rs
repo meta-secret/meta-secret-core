@@ -5,6 +5,7 @@ use crate::node::common::model::user::{UserData, UserDataMember, UserId, UserMem
 use crate::node::common::model::vault::VaultData;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault::VaultDescriptor;
+use crate::node::db::events::common::{VaultUnitEvent, VaultGenesisEvent};
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ToGenericEvent};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{Next, UnitId};
@@ -21,16 +22,16 @@ impl SignUpAction {
 
         let vault_log_events = {
             let vault_log_obj_desc = VaultDescriptor::vault_log(vault_name.clone());
-            let unit_event = VaultLogObject::Unit(KvLogEvent {
+            let unit_event = VaultLogObject::Unit(VaultUnitEvent(KvLogEvent {
                 key: KvKey::unit(vault_log_obj_desc.clone()),
                 value: vault_name.clone(),
-            })
+            }))
             .to_generic();
 
-            let genesis_event = VaultLogObject::Genesis(KvLogEvent {
+            let genesis_event = VaultLogObject::Genesis(VaultGenesisEvent(KvLogEvent {
                 key: KvKey::genesis(vault_log_obj_desc),
                 value: candidate.clone(),
-            })
+            }))
             .to_generic();
 
             vec![unit_event, genesis_event]
@@ -39,10 +40,10 @@ impl SignUpAction {
 
         let vault_events = {
             let vault_obj_desc = VaultDescriptor::vault(vault_name.clone());
-            let unit_event = VaultObject::Unit(KvLogEvent {
+            let unit_event = VaultObject::Unit(VaultUnitEvent(KvLogEvent {
                 key: KvKey::unit(vault_obj_desc.clone()),
                 value: vault_name.clone(),
-            })
+            }))
             .to_generic();
 
             let genesis_event = VaultObject::Genesis(KvLogEvent {
@@ -79,16 +80,16 @@ impl SignUpAction {
             };
             let vault_status_desc = VaultDescriptor::VaultStatus(user_id).to_obj_desc();
 
-            let unit_event = VaultMembershipObject::Unit(KvLogEvent {
+            let unit_event = VaultMembershipObject::Unit(VaultUnitEvent(KvLogEvent {
                 key: KvKey::unit(vault_status_desc.clone()),
                 value: vault_name.clone(),
-            })
+            }))
             .to_generic();
 
-            let genesis_event = VaultMembershipObject::Genesis(KvLogEvent {
+            let genesis_event = VaultMembershipObject::Genesis(VaultGenesisEvent(KvLogEvent {
                 key: KvKey::genesis(vault_status_desc.clone()),
                 value: candidate.clone(),
-            })
+            }))
             .to_generic();
 
             let status_event = {
