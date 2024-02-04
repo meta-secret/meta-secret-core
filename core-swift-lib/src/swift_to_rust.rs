@@ -34,6 +34,7 @@ pub extern "C" fn split_secret(strings_bytes: *const u8, string_len: SizeT) -> *
     to_c_str(result_json)
 }
 
+// Generate password
 #[no_mangle]
 pub extern "C" fn generate_meta_password_id(password_id: *const u8, json_len: SizeT) -> *mut c_char {
     let result_json = internal::generate_meta_password_id(password_id, json_len)
@@ -42,6 +43,7 @@ pub extern "C" fn generate_meta_password_id(password_id: *const u8, json_len: Si
     to_c_str(result_json)
 }
 
+// Encrypt secret
 #[no_mangle]
 pub extern "C" fn encrypt_secret(json_bytes: *const u8, json_len: SizeT) -> *mut c_char {
     let encrypted_shares_json = internal::encrypt_secret(json_bytes, json_len)
@@ -50,12 +52,14 @@ pub extern "C" fn encrypt_secret(json_bytes: *const u8, json_len: SizeT) -> *mut
     to_c_str(encrypted_shares_json)
 }
 
+// Decript secret
 #[no_mangle]
 pub extern "C" fn decrypt_secret(json_bytes: *const u8, json_len: SizeT) -> *mut c_char {
     let decrypted_shares_json = internal::decrypt_secret(json_bytes, json_len).unwrap();
     to_c_str(decrypted_shares_json)
 }
 
+// Restore secret
 #[no_mangle]
 pub extern "C" fn restore_secret(bytes: *const u8, len: SizeT) -> *mut c_char {
     let recovered_secret = internal::recover_secret(bytes, len)
@@ -64,6 +68,18 @@ pub extern "C" fn restore_secret(bytes: *const u8, len: SizeT) -> *mut c_char {
 
     to_c_str(recovered_secret)
 }
+
+// Clear the memory
+#[no_mangle]
+pub extern "C" fn rust_string_free(s: *mut c_char) {
+    unsafe {
+        if s.is_null() {
+            return;
+        }
+        CString::from_raw(s)
+    };
+}
+
 
 fn to_c_str(str: String) -> *mut c_char {
     CString::new(str)
@@ -162,16 +178,6 @@ mod internal {
         let result_json = serde_json::to_string_pretty(&password)?;
         Ok(result_json)
     }
-}
-
-#[no_mangle]
-pub extern "C" fn rust_string_free(s: *mut c_char) {
-    unsafe {
-        if s.is_null() {
-            return;
-        }
-        CString::from_raw(s)
-    };
 }
 
 fn data_to_string(bytes: *const u8, len: SizeT) -> CoreResult<String> {

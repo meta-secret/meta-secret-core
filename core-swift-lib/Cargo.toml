@@ -4,13 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [lib]
-crate-type = ["cdylib", "lib", "staticlib"]
+crate-type = ["dylib"]
 name = "meta_secret_core_swift"
 
 [dependencies]
+serde = { version = "1.0", features = ["derive"] }
 meta-secret-core = { path = "../core"}
 serde_json = "1.0.87"
-serde = { version = "1.0", features = ["derive"] }
 ed25519-dalek = "1.0"
 crypto_box = "0.8.1"
 base64 = "0.20.0-alpha.1"
