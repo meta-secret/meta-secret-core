@@ -14,6 +14,11 @@ name = "meta_secret_core_jni"
 serde = { version = '1.0.118', features = ['derive'] }
 toml = "0.7.2"
 meta-secret-core = { path = "../core"}
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["json", "env-filter"] }
+tracing-attributes = "0.1.27"
+thiserror.workspace = true
+anyhow.workspace = true
 
 
 [build-dependencies]
