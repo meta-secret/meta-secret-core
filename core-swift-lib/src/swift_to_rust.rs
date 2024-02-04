@@ -74,6 +74,7 @@ fn to_c_str(str: String) -> *mut c_char {
 }
 
 mod internal {
+    use meta_secret_core::crypto::key_pair::KeyPair;
     use super::*;
     use meta_secret_core::node::common::model::crypto::{AeadCipherText, AeadPlainText, EncryptedMessage};
     use meta_secret_core::node::common::model::secret::MetaPasswordId;
@@ -134,7 +135,7 @@ mod internal {
         println!("restore_task {:?}", restore_task.doc);
         // Decrypt shares
         let EncryptedMessage::CipherShare { share, .. } = restore_task.doc.secret_message;
-        let share_json: AeadPlainText = key_manager.transport.decrypt(&share)?;
+        let share_json: AeadPlainText = share.decrypt(&key_manager.transport.secret_key)?;
         let share_json = UserShareDto::try_from(&share_json.msg)?;
 
         // Decrypted Share to JSon
@@ -150,11 +151,11 @@ mod internal {
         let EncryptedMessage::CipherShare {
             share: second_share, ..
         } = restore_task.doc_two.secret_message;
-        let share_from_device_2_json: AeadPlainText = key_manager.transport.decrypt(&second_share)?;
+        let share_from_device_2_json: AeadPlainText = second_share.decrypt(&key_manager.transport.secret_key)?;
         let share_from_device_2_json = UserShareDto::try_from(&share_from_device_2_json.msg)?;
 
         let EncryptedMessage::CipherShare { share: first_share, .. } = restore_task.doc_one.secret_message;
-        let share_from_device_1_json: AeadPlainText = key_manager.transport.decrypt(&first_share)?;
+        let share_from_device_1_json: AeadPlainText = first_share.decrypt(&key_manager.transport.secret_key)?;
 
         let share_from_device_1_json = UserShareDto::try_from(&share_from_device_1_json.msg)?;
 
