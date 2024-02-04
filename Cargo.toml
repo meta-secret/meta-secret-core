@@ -6,6 +6,7 @@ members = [
     "core",
     "meta-server-emulator",
     "core-swift-lib",
+    "core-jni-lib",
     "wasm"
 ]
 
