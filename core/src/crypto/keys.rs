@@ -3,7 +3,7 @@ use crate::crypto::key_pair::{DsaKeyPair, KeyPair, TransportDsaKeyPair};
 
 pub struct KeyManager {
     pub dsa: DsaKeyPair,
-    pub transport_key_pair: TransportDsaKeyPair,
+    pub transport: TransportDsaKeyPair,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -44,13 +44,12 @@ pub struct SerializedTransportKeyPair {
     pub public_key: Base64Text,
 }
 
-
 /// Key manager can be used only with a single vault name (in the future they will be independent entities)
 impl KeyManager {
     pub fn generate() -> KeyManager {
         KeyManager {
             dsa: DsaKeyPair::generate(),
-            transport_key_pair: TransportDsaKeyPair::generate(),
+            transport: TransportDsaKeyPair::generate(),
         }
     }
 

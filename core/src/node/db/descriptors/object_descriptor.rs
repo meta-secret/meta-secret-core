@@ -1,10 +1,9 @@
-use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
-use crate::node::db::descriptors::shared_secret::SharedSecretDescriptor;
-use crate::node::db::descriptors::vault::VaultDescriptor;
+use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
+use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
+use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[serde(tag = "__obj_desc")]
 pub enum ObjectDescriptor {
     DbTail,
     GlobalIndex(GlobalIndexDescriptor),
@@ -13,7 +12,7 @@ pub enum ObjectDescriptor {
 
     Vault(VaultDescriptor),
     /// Secret distribution (split, recover, recovery request and so on)
-    SharedSecret(SharedSecretDescriptor)
+    SharedSecret(SharedSecretDescriptor),
 }
 
 pub trait ToObjectDescriptor {
@@ -42,12 +41,6 @@ pub struct ObjectDescriptorId {
     /// primary key of an object in the database in terms of keys in a table in relational databases.
     /// In our case id is just a counter
     pub id: usize,
-}
-
-impl ObjectDescriptor {
-    pub fn to_fqdn(&self) -> ObjectDescriptorFqdn {
-        self.fqdn()
-    }
 }
 
 impl ObjectDescriptor {
@@ -81,5 +74,30 @@ impl ObjectType for ObjectDescriptor {
             ObjectDescriptor::CredsIndex { .. } => String::from("DeviceCreds"),
             ObjectDescriptor::DbTail { .. } => String::from("DbTail"),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use serde_json::json;
+
+    #[test]
+    fn test_db_tail() -> anyhow::Result<()> {
+        use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
+
+        let db_tail_json = {
+            let db_tail = ObjectDescriptor::DbTail;
+            serde_json::to_value(db_tail.fqdn())?
+        };
+
+        let expected_id = json!({
+            "objType": "DbTail",
+            "objInstance": "db_tail"
+        });
+
+        println!("db_tail_json: {}", db_tail_json);
+        assert_eq!(expected_id, db_tail_json);
+
+        Ok(())
     }
 }

@@ -1,7 +1,15 @@
+use thiserror::Error;
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ErrorMessage {
     stacktrace: Vec<String>,
+}
+
+#[derive(Error, Debug)]
+pub enum LogEventCastError {
+    #[error("Invalid event")]
+    InvalidEventType,
 }
 
 impl From<&anyhow::Error> for ErrorMessage {

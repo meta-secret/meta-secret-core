@@ -1,25 +1,19 @@
 use std::sync::Arc;
 
-use async_trait::async_trait;
-use tracing::{debug, info, instrument, Instrument};
+use tracing::{debug, instrument, Instrument};
 
-use crate::node::common::model::device::DeviceData;
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::db_tail::DbTail;
-use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, ToGenericEvent};
-use crate::node::db::events::global_index::GlobalIndexObject;
-use crate::node::db::events::kv_log_event::KvLogEvent;
+use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor};
 use crate::node::db::events::object_id::{Next, ObjectId};
 use crate::node::db::objects::persistent_object_navigator::PersistentObjectNavigator;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 
 pub struct PersistentObject<Repo: KvLogEventRepo> {
     pub repo: Arc<Repo>,
-    pub global_index: Arc<PersistentGlobalIndex<Repo>>,
 }
 
 impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
-
     #[instrument(skip_all)]
     pub async fn get_object_events_from_beginning(
         &self,
@@ -58,9 +52,7 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
 
     #[instrument(skip_all)]
     pub async fn find_tail_event(&self, obj_desc: ObjectDescriptor) -> anyhow::Result<Option<GenericKvLogEvent>> {
-        let maybe_tail_id = self
-            .find_tail_id_by_obj_desc(obj_desc)
-            .await?;
+        let maybe_tail_id = self.find_tail_id_by_obj_desc(obj_desc).await?;
 
         self.find_event_by_id(maybe_tail_id).await
     }
@@ -81,9 +73,7 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
 
     #[instrument(skip_all)]
     pub async fn find_free_id_by_obj_desc(&self, obj_desc: ObjectDescriptor) -> anyhow::Result<ObjectId> {
-        let maybe_tail_id = self
-            .find_tail_id_by_obj_desc(obj_desc.clone())
-            .await?;
+        let maybe_tail_id = self.find_tail_id_by_obj_desc(obj_desc.clone()).await?;
 
         let free_id = maybe_tail_id
             .map(|tail_id| tail_id.next())
@@ -94,9 +84,7 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
 
     #[instrument(skip_all)]
     pub async fn find_free_id(&self, obj_id: ObjectId) -> anyhow::Result<ObjectId> {
-        let maybe_tail_id = self
-            .find_tail_id(obj_id.clone())
-            .await?;
+        let maybe_tail_id = self.find_tail_id(obj_id.clone()).await?;
 
         let free_id = maybe_tail_id
             .map(|tail_id| tail_id.next())
@@ -161,41 +149,8 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
     }
 }
 
-#[async_trait(? Send)]
-pub trait PersistentGlobalIndexApi {
-    async fn gi_init(&self, public_key: DeviceData) -> anyhow::Result<Vec<GenericKvLogEvent>>;
-}
-
-pub struct PersistentGlobalIndex<Repo: KvLogEventRepo> {
-    pub repo: Arc<Repo>,
-}
-
-#[async_trait(? Send)]
-impl<Repo: KvLogEventRepo> PersistentGlobalIndexApi for PersistentGlobalIndex<Repo> {
-
-    ///create a genesis event and save into the database
-    #[instrument(skip(self))]
-    async fn gi_init(&self, public_key: DeviceData) -> anyhow::Result<Vec<GenericKvLogEvent>> {
-        info!("Init global index");
-
-        let unit_event = GenericKvLogEvent::GlobalIndex(GlobalIndexObject::Unit(KvLogEvent::global_index_unit()));
-
-        self.repo.save(unit_event.clone()).await?;
-
-        let genesis_event = GlobalIndexObject::Genesis(KvLogEvent::global_index_genesis(public_key))
-            .to_generic();
-
-        self.repo.save(genesis_event.clone()).await?;
-
-        Ok(vec![unit_event, genesis_event])
-    }
-}
-
 impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
     pub fn new(repo: Arc<Repo>) -> Self {
-        PersistentObject {
-            repo: repo.clone(),
-            global_index: Arc::new(PersistentGlobalIndex { repo }),
-        }
+        PersistentObject { repo }
     }
 }

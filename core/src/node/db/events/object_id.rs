@@ -1,10 +1,13 @@
 use serde_derive::{Deserialize, Serialize};
 
 use crate::crypto::utils::NextId;
+use crate::node::common::model::user::UserData;
 use crate::node::common::model::vault::VaultName;
-use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
-use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ObjectDescriptorId};
-use crate::node::db::descriptors::vault::VaultDescriptor;
+use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
+use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ObjectDescriptorId, ToObjectDescriptor};
+use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
+
+use super::kv_log_event::{KvKey, KvLogEvent};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -80,7 +83,7 @@ impl ObjectId {
     pub fn unit(obj_desc: ObjectDescriptor) -> Self {
         ObjectId::Unit(UnitId::unit(&obj_desc))
     }
-    
+
     pub fn genesis(obj_desc: ObjectDescriptor) -> Self {
         ObjectId::Genesis(GenesisId::genesis(obj_desc))
     }
@@ -89,7 +92,7 @@ impl ObjectId {
         match self {
             ObjectId::Unit(unit_id) => unit_id.clone(),
             ObjectId::Genesis(genesis_id) => genesis_id.unit_id.clone(),
-            ObjectId::Artifact(artifact_id) => artifact_id.unit_id.clone()
+            ObjectId::Artifact(artifact_id) => artifact_id.unit_id.clone(),
         }
     }
 }
@@ -99,14 +102,14 @@ impl Next<ObjectId> for ObjectId {
         match self {
             ObjectId::Unit(unit_id) => ObjectId::from(unit_id.next()),
             ObjectId::Genesis(genesis_id) => ObjectId::from(genesis_id.next()),
-            ObjectId::Artifact(artifact_id) => ObjectId::from(artifact_id.next())
+            ObjectId::Artifact(artifact_id) => ObjectId::from(artifact_id.next()),
         }
     }
 }
 
 impl UnitId {
     pub fn unit(obj_descriptor: &ObjectDescriptor) -> UnitId {
-        let fqdn = obj_descriptor.to_fqdn();
+        let fqdn = obj_descriptor.fqdn();
         UnitId { id: fqdn.next_id() }
     }
 
@@ -119,7 +122,7 @@ impl UnitId {
     }
 
     pub fn vault_unit(vault_name: VaultName) -> UnitId {
-        let vault_desc = ObjectDescriptor::Vault(VaultDescriptor::Vault(vault_name));
+        let vault_desc = VaultDescriptor::Vault(vault_name).to_obj_desc();
         UnitId::unit(&vault_desc)
     }
 }
@@ -172,5 +175,33 @@ impl Next<ArtifactId> for ArtifactId {
             prev_id: self.id,
             unit_id: self.unit_id,
         }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VaultUnitEvent(pub KvLogEvent<UnitId, VaultName>);
+
+impl VaultUnitEvent {
+    pub fn key(&self) -> KvKey<UnitId> {
+        self.0.key.clone()
+    }
+
+    pub fn vault_name(&self) -> VaultName {
+        self.0.value.clone()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VaultGenesisEvent(pub KvLogEvent<GenesisId, UserData>);
+
+impl VaultGenesisEvent {
+    pub fn key(&self) -> KvKey<GenesisId> {
+        self.0.key.clone()
+    }
+
+    pub fn user(&self) -> UserData {
+        self.0.value.clone()
     }
 }

@@ -23,3 +23,5 @@ schema/target
 /wasm/Cargo.lock
 /wasm/bin/
 /wasm/wasm-pack.log
+
+.vscode

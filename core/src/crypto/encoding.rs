@@ -8,16 +8,21 @@ pub mod base64 {
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
-    pub struct Base64Text {
-        pub base64_text: String,
+    pub struct Base64Text(pub String);
+
+    impl From<&Base64Text> for String {
+        fn from(base64: &Base64Text) -> Self {
+            let Base64Text(base64_text) = base64;
+            base64_text.clone()
+        }
     }
 
     pub mod encoder {
         use base64::alphabet::URL_SAFE;
         use base64::engine::fast_portable::{FastPortable, NO_PAD};
 
-        use crate::crypto::encoding::Array256Bit;
         use crate::crypto::encoding::base64::Base64Text;
+        use crate::crypto::encoding::Array256Bit;
 
         const URL_SAFE_ENGINE: FastPortable = FastPortable::from(&URL_SAFE, NO_PAD);
 
@@ -29,9 +34,7 @@ pub mod base64 {
 
         impl From<&[u8]> for Base64Text {
             fn from(data: &[u8]) -> Self {
-                Self {
-                    base64_text: base64::encode_engine(data, &URL_SAFE_ENGINE),
-                }
+                Self(base64::encode_engine(data, &URL_SAFE_ENGINE))
             }
         }
 
@@ -58,8 +61,8 @@ pub mod base64 {
         use base64::alphabet::URL_SAFE;
         use base64::engine::fast_portable::{FastPortable, NO_PAD};
 
-        use crate::crypto::encoding::Array256Bit;
         use crate::crypto::encoding::base64::Base64Text;
+        use crate::crypto::encoding::Array256Bit;
         use crate::errors::CoreError;
 
         const URL_SAFE_ENGINE: FastPortable = FastPortable::from(&URL_SAFE, NO_PAD);
@@ -68,7 +71,8 @@ pub mod base64 {
             type Error = CoreError;
 
             fn try_from(base64: &Base64Text) -> Result<Self, Self::Error> {
-                let data = base64::decode_engine(&base64.base64_text, &URL_SAFE_ENGINE)?;
+                let Base64Text(base64_text) = base64;
+                let data = base64::decode_engine(base64_text, &URL_SAFE_ENGINE)?;
                 Ok(data)
             }
         }
@@ -96,18 +100,14 @@ pub mod base64 {
         #[test]
         fn from_vec() {
             let encoded = Base64Text::from(vec![65, 65, 65]);
-            let expected = Base64Text {
-                base64_text: "QUFB".to_string(),
-            };
+            let expected = Base64Text("QUFB".to_string());
             assert_eq!(encoded, expected);
         }
 
         #[test]
         fn from_bytes() {
             let encoded = Base64Text::from(TEST_STR.as_bytes());
-            let expected = Base64Text {
-                base64_text: ENCODED_URL_SAFE_TEST_STR.to_string(),
-            };
+            let expected = Base64Text(ENCODED_URL_SAFE_TEST_STR.to_string());
             assert_eq!(encoded, expected);
         }
     }
@@ -126,8 +126,8 @@ pub mod serialized_key_manager {
         impl From<KeyManager> for SecretBox {
             fn from(key_manager: KeyManager) -> Self {
                 Self {
-                    dsa:SerializedDsaKeyPair::from(&key_manager.dsa),
-                    transport: SerializedTransportKeyPair::from(&key_manager.transport_key_pair),
+                    dsa: SerializedDsaKeyPair::from(&key_manager.dsa),
+                    transport: SerializedTransportKeyPair::from(&key_manager.transport),
                 }
             }
         }
@@ -164,11 +164,10 @@ pub mod serialized_key_manager {
     }
 
     pub mod decoder {
-        use crate::crypto::encoding::Array256Bit;
         use crate::crypto::encoding::base64::Base64Text;
+        use crate::crypto::encoding::Array256Bit;
         use crate::crypto::key_pair::{
-            CryptoBoxPublicKey, CryptoBoxSecretKey, DalekKeyPair, DalekPublicKey, DalekSignature, DsaKeyPair,
-            TransportDsaKeyPair,
+            CryptoBoxSecretKey, DalekKeyPair, DalekPublicKey, DalekSignature, DsaKeyPair, TransportDsaKeyPair,
         };
         use crate::crypto::keys::{KeyManager, SecretBox, SerializedDsaKeyPair, SerializedTransportKeyPair};
         use crate::errors::CoreError;
@@ -209,10 +208,7 @@ pub mod serialized_key_manager {
             fn try_from(serialized_transport: &SerializedTransportKeyPair) -> Result<Self, Self::Error> {
                 let sk_bytes = Array256Bit::try_from(&serialized_transport.secret_key)?;
                 let secret_key = CryptoBoxSecretKey::from(sk_bytes);
-                let pk_bytes = Array256Bit::try_from(&serialized_transport.public_key)?;
-                let public_key = CryptoBoxPublicKey::from(pk_bytes);
-
-                let key_pair = Self { secret_key, public_key };
+                let key_pair = Self { secret_key };
 
                 Ok(key_pair)
             }
@@ -226,7 +222,7 @@ pub mod serialized_key_manager {
                 let transport_key_pair = TransportDsaKeyPair::try_from(&serialized_km.transport)?;
                 let key_manager = Self {
                     dsa,
-                    transport_key_pair,
+                    transport: transport_key_pair,
                 };
 
                 Ok(key_manager)
@@ -235,10 +231,10 @@ pub mod serialized_key_manager {
 
         #[cfg(test)]
         pub mod test {
-            use crate::CoreResult;
             use crate::crypto::encoding::base64::Base64Text;
             use crate::crypto::key_pair::{DalekPublicKey, DalekSignature, KeyPair};
             use crate::crypto::keys::KeyManager;
+            use crate::CoreResult;
 
             #[test]
             fn from_base64_to_dalek_public_key() -> CoreResult<()> {
@@ -267,8 +263,8 @@ pub mod cryptobox {
     pub mod decoder {
         use crypto_box::Nonce;
 
-        use crate::crypto::encoding::Array256Bit;
         use crate::crypto::encoding::base64::Base64Text;
+        use crate::crypto::encoding::Array256Bit;
         use crate::crypto::key_pair::{CryptoBoxPublicKey, CryptoBoxSecretKey};
         use crate::errors::CoreError;
 

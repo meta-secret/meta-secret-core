@@ -1,18 +1,19 @@
 use anyhow::anyhow;
 
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
-use crate::node::db::events::common::{SharedSecretObject, SSDeviceLogObject};
 use crate::node::db::events::db_tail::DbTail;
 use crate::node::db::events::error::ErrorMessage;
-use crate::node::db::events::global_index::GlobalIndexObject;
+use crate::node::db::events::global_index_event::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
-use crate::node::db::events::local::{CredentialsObject, DbTailObject};
+use crate::node::db::events::local_event::{CredentialsObject, DbTailObject};
 use crate::node::db::events::object_id::{ArtifactId, ObjectId};
+use crate::node::db::events::shared_secret_event::{SSDeviceLogObject, SharedSecretObject};
 use crate::node::db::events::vault_event::{DeviceLogObject, VaultLogObject, VaultMembershipObject, VaultObject};
+
+use super::shared_secret_event::SSLedgerObject;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[serde(tag = "__generic_event_type")]
 pub enum GenericKvLogEvent {
     GlobalIndex(GlobalIndexObject),
 
@@ -26,6 +27,7 @@ pub enum GenericKvLogEvent {
 
     SharedSecret(SharedSecretObject),
     SSDeviceLog(SSDeviceLogObject),
+    SSLedger(SSLedgerObject),
 
     Error {
         event: KvLogEvent<ArtifactId, ErrorMessage>,
@@ -33,6 +35,38 @@ pub enum GenericKvLogEvent {
 }
 
 impl GenericKvLogEvent {
+    pub fn global_index(self) -> anyhow::Result<GlobalIndexObject> {
+        GlobalIndexObject::try_from(self)
+    }
+
+    pub fn credentials(self) -> anyhow::Result<CredentialsObject> {
+        CredentialsObject::try_from(self)
+    }
+
+    pub fn device_log(self) -> anyhow::Result<DeviceLogObject> {
+        DeviceLogObject::try_from(self)
+    }
+
+    pub fn vault_log(self) -> anyhow::Result<VaultLogObject> {
+        VaultLogObject::try_from(self)
+    }
+
+    pub fn vault(self) -> anyhow::Result<VaultObject> {
+        VaultObject::try_from(self)
+    }
+
+    pub fn vault_membership(self) -> anyhow::Result<VaultMembershipObject> {
+        VaultMembershipObject::try_from(self)
+    }
+
+    pub fn shared_secret(self) -> anyhow::Result<SharedSecretObject> {
+        SharedSecretObject::try_from(self)
+    }
+
+    pub fn ss_device_log(self) -> anyhow::Result<SSDeviceLogObject> {
+        SSDeviceLogObject::try_from(self)
+    }
+
     pub fn to_db_tail(self) -> anyhow::Result<DbTail> {
         if let GenericKvLogEvent::DbTail(DbTailObject(event)) = self {
             Ok(event.value)
@@ -75,6 +109,7 @@ impl ObjIdExtractor for GenericKvLogEvent {
             GenericKvLogEvent::VaultLog(obj) => obj.obj_id(),
             GenericKvLogEvent::VaultMembership(obj) => obj.obj_id(),
             GenericKvLogEvent::SSDeviceLog(obj) => obj.obj_id(),
+            GenericKvLogEvent::SSLedger(obj) => obj.obj_id(),
         }
     }
 }
@@ -91,7 +126,8 @@ impl KeyExtractor for GenericKvLogEvent {
             GenericKvLogEvent::DeviceLog(obj) => obj.key(),
             GenericKvLogEvent::VaultLog(obj) => obj.key(),
             GenericKvLogEvent::VaultMembership(obj) => obj.key(),
-            GenericKvLogEvent::SSDeviceLog(obj) => obj.key()
+            GenericKvLogEvent::SSDeviceLog(obj) => obj.key(),
+            GenericKvLogEvent::SSLedger(obj) => obj.key(),
         }
     }
 }

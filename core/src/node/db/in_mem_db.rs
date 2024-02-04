@@ -26,7 +26,6 @@ pub enum InMemDbError {}
 
 #[async_trait(? Send)]
 impl FindOneQuery for InMemKvLogEventRepo {
-
     #[instrument(skip_all)]
     async fn find_one(&self, key: ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>> {
         let maybe_value = self.db.lock().await.get(&key).cloned();
@@ -41,7 +40,6 @@ impl FindOneQuery for InMemKvLogEventRepo {
 
 #[async_trait(? Send)]
 impl SaveCommand for InMemKvLogEventRepo {
-
     #[instrument(skip_all)]
     async fn save(&self, value: GenericKvLogEvent) -> anyhow::Result<ObjectId> {
         let mut db = self.db.lock().await;
@@ -54,7 +52,6 @@ impl SaveCommand for InMemKvLogEventRepo {
 
 #[async_trait(? Send)]
 impl DeleteCommand for InMemKvLogEventRepo {
-
     #[instrument(skip_all)]
     async fn delete(&self, key: ObjectId) {
         let mut db = self.db.lock().await;
@@ -63,3 +60,12 @@ impl DeleteCommand for InMemKvLogEventRepo {
 }
 
 impl KvLogEventRepo for InMemKvLogEventRepo {}
+
+impl InMemKvLogEventRepo {
+    pub async fn get_db(&self) -> HashMap<ObjectId, GenericKvLogEvent> {
+        let db = self.db.lock().await;
+        let cloned_map: HashMap<ObjectId, GenericKvLogEvent> = db.clone();
+
+        cloned_map
+    }
+}
