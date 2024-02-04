@@ -57,7 +57,7 @@ mod test {
     use serde_json::json;
 
     use crate::node::common::model::vault::VaultName;
-    use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
+    use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
     use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 
     #[test]

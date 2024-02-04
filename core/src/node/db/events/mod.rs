@@ -1,9 +1,9 @@
-pub mod common;
 pub mod db_tail;
 pub mod error;
 pub mod generic_log_event;
-pub mod global_index;
+pub mod global_index_event;
 pub mod kv_log_event;
-pub mod local;
+pub mod local_event;
 pub mod object_id;
+pub mod shared_secret_event;
 pub mod vault_event;

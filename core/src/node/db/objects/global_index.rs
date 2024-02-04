@@ -1,8 +1,8 @@
 use crate::node::common::model::device::DeviceData;
-use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
+use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::events::generic_log_event::ToGenericEvent;
-use crate::node::db::events::global_index::GlobalIndexObject;
+use crate::node::db::events::global_index_event::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::KvLogEvent;
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::objects::persistent_object::PersistentObject;
@@ -53,7 +53,7 @@ impl<Repo: KvLogEventRepo> PersistentGlobalIndex<Repo> {
 
 #[cfg(test)]
 mod test {
-    use crate::meta_tests::action::global_index::GlobalIndexSyncRequestTestAction;
+    use crate::meta_tests::action::global_index_action::GlobalIndexSyncRequestTestAction;
     use crate::meta_tests::fixture::ClientDeviceFixture;
     use crate::meta_tests::spec::global_index_specs::GlobalIndexSpec;
 

@@ -3,8 +3,8 @@ use std::sync::Arc;
 use crate::node::{
     common::model::device::DeviceData,
     db::{
-        descriptors::{global_index::GlobalIndexDescriptor, object_descriptor::ToObjectDescriptor},
-        events::{generic_log_event::ObjIdExtractor, global_index::GlobalIndexObject, object_id::ObjectId},
+        descriptors::{global_index_descriptor::GlobalIndexDescriptor, object_descriptor::ToObjectDescriptor},
+        events::{generic_log_event::ObjIdExtractor, global_index_event::GlobalIndexObject, object_id::ObjectId},
         repo::generic_db::KvLogEventRepo,
     },
 };
@@ -21,15 +21,13 @@ impl<Repo: KvLogEventRepo> GlobalIndexSpec<Repo> {
 
         let unit_event = {
             let unit_id = ObjectId::unit(gi_obj_desc.clone());
-            let event = self.repo.find_one(unit_id).await?.unwrap();
-            GlobalIndexObject::try_from(event)?
+            self.repo.find_one(unit_id).await?.unwrap().global_index()?
         };
         assert_eq!(unit_event.obj_id().get_unit_id().id.id, 0);
 
         let genesis_event = {
             let genesis_id = ObjectId::genesis(gi_obj_desc.clone());
-            let event = self.repo.find_one(genesis_id).await?.unwrap();
-            GlobalIndexObject::try_from(event.clone())?
+            self.repo.find_one(genesis_id).await?.unwrap().global_index()?
         };
 
         if let GlobalIndexObject::Genesis(log_event) = genesis_event {

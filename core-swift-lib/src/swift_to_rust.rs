@@ -118,7 +118,7 @@ mod internal {
 
         // Encrypt shares
         let encrypted_share: AeadCipherText = key_manager
-            .transport_key_pair
+            .transport
             .encrypt_string(json_struct.secret, json_struct.receiver_pub_key)?;
 
         // Shares to JSon
@@ -134,7 +134,7 @@ mod internal {
         println!("restore_task {:?}", restore_task.doc);
         // Decrypt shares
         let EncryptedMessage::CipherShare { share, .. } = restore_task.doc.secret_message;
-        let share_json: AeadPlainText = key_manager.transport_key_pair.decrypt(&share)?;
+        let share_json: AeadPlainText = key_manager.transport.decrypt(&share)?;
         let share_json = UserShareDto::try_from(&share_json.msg)?;
 
         // Decrypted Share to JSon
@@ -150,11 +150,11 @@ mod internal {
         let EncryptedMessage::CipherShare {
             share: second_share, ..
         } = restore_task.doc_two.secret_message;
-        let share_from_device_2_json: AeadPlainText = key_manager.transport_key_pair.decrypt(&second_share)?;
+        let share_from_device_2_json: AeadPlainText = key_manager.transport.decrypt(&second_share)?;
         let share_from_device_2_json = UserShareDto::try_from(&share_from_device_2_json.msg)?;
 
         let EncryptedMessage::CipherShare { share: first_share, .. } = restore_task.doc_one.secret_message;
-        let share_from_device_1_json: AeadPlainText = key_manager.transport_key_pair.decrypt(&first_share)?;
+        let share_from_device_1_json: AeadPlainText = key_manager.transport.decrypt(&first_share)?;
 
         let share_from_device_1_json = UserShareDto::try_from(&share_from_device_1_json.msg)?;
 
@@ -264,9 +264,9 @@ pub mod test {
         // Encrypt shares
         let secret = shares[0].clone();
         let Base64Text(password_share_text) = secret.share_blocks[0].data.clone();
-        let receiver_pk = key_manager_2.transport_key_pair.public_key();
+        let receiver_pk = key_manager_2.transport.public_key();
         let encrypted_share: AeadCipherText = key_manager_1
-            .transport_key_pair
+            .transport
             .encrypt_string(password_share_text, receiver_pk)?;
 
         println!("result {:?}", encrypted_share);

@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use anyhow::anyhow;
+use anyhow::{anyhow, bail};
 use tracing_attributes::instrument;
 
 use crate::node::common::model::user::{UserData, UserDataMember, UserDataOutsider, UserMembership};
 use crate::node::common::model::vault::{VaultData, VaultStatus};
-use crate::node::db::descriptors::vault::VaultDescriptor;
+use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::vault_event::VaultMembershipObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::credentials_repo::CredentialsRepo;
@@ -20,7 +20,7 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
         let vault_status = self.find_for_default_user().await?;
         match vault_status {
             VaultStatus::Outsider(_) => Err(anyhow!("Vault not found")),
-            VaultStatus::Member(member) => Ok(member),
+            VaultStatus::Member { vault, .. } => Ok(vault),
         }
     }
 
@@ -35,7 +35,7 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
 
     #[instrument(skip_all)]
     pub async fn find(&self, user: UserData) -> anyhow::Result<VaultStatus> {
-        let membership = self.vault_status(user).await?;
+        let membership = self.vault_membership(user).await?;
 
         match membership {
             UserMembership::Outsider(outsider) => Ok(VaultStatus::Outsider(outsider)),
@@ -46,17 +46,17 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
                 };
 
                 if let Some(vault_event) = maybe_vault {
-                    let vault_status = VaultStatus::try_from(vault_event, member)?;
+                    let vault_status = vault_event.vault()?.status(member);
                     Ok(vault_status)
                 } else {
-                    Ok(VaultStatus::Outsider(UserDataOutsider::unknown(member)))
+                    bail!("Invalid db structure. Vault not found");
                 }
             }
         }
     }
 
-    pub async fn vault_status(&self, user_data: UserData) -> anyhow::Result<UserMembership> {
-        let desc = VaultDescriptor::vault_status(user_data.user_id());
+    pub async fn vault_membership(&self, user_data: UserData) -> anyhow::Result<UserMembership> {
+        let desc = VaultDescriptor::vault_membership(user_data.user_id());
         let maybe_tail_event = self.p_obj.find_tail_event(desc).await?;
 
         match maybe_tail_event {

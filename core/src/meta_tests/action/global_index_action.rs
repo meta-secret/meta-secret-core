@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::node::{
     common::model::device::{DeviceCredentials, DeviceData},
     db::{
-        descriptors::{global_index::GlobalIndexDescriptor, object_descriptor::ToObjectDescriptor},
+        descriptors::{global_index_descriptor::GlobalIndexDescriptor, object_descriptor::ToObjectDescriptor},
         events::{generic_log_event::GenericKvLogEvent, object_id::ObjectId},
         in_mem_db::InMemKvLogEventRepo,
         objects::persistent_object::PersistentObject,

@@ -4,17 +4,7 @@ use crate::{
     meta_tests::spec::device_log_spec::DeviceLogSpec,
     node::{
         common::model::user::UserData,
-        db::{
-            descriptors::{
-                object_descriptor::ToObjectDescriptor, shared_secret::SharedSecretDescriptor, vault::VaultDescriptor,
-            },
-            events::{
-                object_id::{Next, ObjectId, UnitId},
-                vault_event::{DeviceLogObject, VaultAction},
-            },
-            objects::persistent_object::PersistentObject,
-            repo::generic_db::KvLogEventRepo,
-        },
+        db::{objects::persistent_object::PersistentObject, repo::generic_db::KvLogEventRepo},
     },
 };
 use anyhow::Result;
@@ -40,7 +30,7 @@ impl<Repo: KvLogEventRepo> TestSpec for SignUpClaimSpec<Repo> {
 
         let ss_device_log_spec = SSDeviceLogSpec {
             p_obj: self.p_obj.clone(),
-            user: self.user.clone(),
+            client_user: self.user.clone(),
         };
 
         ss_device_log_spec.check_initialization().await?;

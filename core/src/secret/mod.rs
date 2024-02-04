@@ -3,14 +3,16 @@ use std::sync::Arc;
 use crate::crypto::keys::KeyManager;
 use crate::node::common::model::crypto::EncryptedMessage;
 use crate::node::common::model::device::{DeviceLink, DeviceLinkBuilder};
-use crate::node::common::model::secret::{MetaPasswordId, SecretDistributionData, SecretDistributionType};
+use crate::node::common::model::secret::{
+    MetaPasswordId, SSDistributionClaimId, SSDistributionId, SecretDistributionData, SecretDistributionType,
+};
 use crate::node::common::model::user::UserCredentials;
 use crate::node::common::model::vault::VaultData;
-use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
-use crate::node::db::descriptors::shared_secret::SharedSecretDescriptor;
-use crate::node::db::events::common::SharedSecretObject;
+use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ToObjectDescriptor};
+use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
 use crate::node::db::events::generic_log_event::ToGenericEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
+use crate::node::db::events::shared_secret_event::SharedSecretObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::CoreResult;
@@ -58,7 +60,7 @@ impl MetaEncryptor {
 
             let receiver_pk = receiver.clone().user().device.keys.transport_pk.clone();
 
-            let encrypted_share = key_manager.transport_key_pair.encrypt_string(share_str, receiver_pk)?;
+            let encrypted_share = key_manager.transport.encrypt_string(share_str, receiver_pk)?;
 
             let device_link = DeviceLinkBuilder::builder()
                 .sender(self.user.device_creds.device.id.clone())
@@ -98,31 +100,33 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
 
         for secret_share in encrypted_shares {
             let distribution_share = SecretDistributionData {
-                distribution_type: SecretDistributionType::Split,
                 vault_name: vault_name.clone(),
                 secret_message: secret_share.clone(),
-                meta_password_id: pass_id.clone(),
+                pass_id: pass_id.clone(),
             };
 
             let ss_obj = match secret_share.device_link() {
                 DeviceLink::Loopback(_) => {
-                    let ss_local_desc = SharedSecretDescriptor::LocalShare {
-                        vault_name: vault_name.clone(),
-                        meta_pass_id: pass_id.clone(),
-                    };
+                    let ss_local_desc = SharedSecretDescriptor::LocalShare(pass_id.clone());
 
                     SharedSecretObject::LocalShare(KvLogEvent {
                         key: KvKey::unit(ObjectDescriptor::SharedSecret(ss_local_desc)),
                         value: distribution_share,
                     })
                 }
-                DeviceLink::PeerToPeer { .. } => {
+                DeviceLink::PeerToPeer(p2p_device_link) => {
+                    let dist_id = SSDistributionId {
+                        claim_id: SSDistributionClaimId::generate(),
+                        distribution_type: SecretDistributionType::Split,
+                        device_link: p2p_device_link,
+                    };
+
                     let split_key = {
-                        let split_obj_desc = ObjectDescriptor::from(&distribution_share);
+                        let split_obj_desc = SharedSecretDescriptor::SSDistribution(dist_id).to_obj_desc();
                         KvKey::unit(split_obj_desc)
                     };
 
-                    SharedSecretObject::Split(KvLogEvent {
+                    SharedSecretObject::SSDistribution(KvLogEvent {
                         key: split_key.clone(),
                         value: distribution_share,
                     })

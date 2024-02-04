@@ -35,7 +35,7 @@ mod test {
     use crate::crypto::keys::{KeyManager, OpenBox};
     use crate::node::common::model::device::{DeviceData, DeviceName};
     use crate::node::db::events::generic_log_event::{ObjIdExtractor, ToGenericEvent, UnitEventWithEmptyValue};
-    use crate::node::db::events::global_index::GlobalIndexObject;
+    use crate::node::db::events::global_index_event::GlobalIndexObject;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_object_navigator::PersistentObjectNavigator;
     use crate::node::db::repo::generic_db::SaveCommand;

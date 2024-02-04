@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use anyhow::anyhow;
+use anyhow::{anyhow, Ok};
 
 use crypto::utils::generate_uuid_b64_url_enc;
 
@@ -41,11 +41,68 @@ pub struct LoopbackDeviceLink {
     device: DeviceId,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+impl LoopbackDeviceLink {
+    pub fn device(&self) -> &DeviceId {
+        &self.device
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PeerToPeerDeviceLink {
     sender: DeviceId,
     receiver: DeviceId,
+}
+
+impl PeerToPeerDeviceLink {
+    pub fn sender(&self) -> &DeviceId {
+        &self.sender
+    }
+    pub fn receiver(&self) -> &DeviceId {
+        &self.receiver
+    }
+
+    pub fn inverse(&self) -> PeerToPeerDeviceLink {
+        PeerToPeerDeviceLink {
+            sender: self.receiver.clone(),
+            receiver: self.sender.clone(),
+        }
+    }
+}
+
+pub struct PeerToPeerDeviceLinkBuilder {
+    sender: Option<DeviceId>,
+    receiver: Option<DeviceId>,
+}
+
+impl PeerToPeerDeviceLinkBuilder {
+    pub fn builder() -> Self {
+        Self {
+            sender: None,
+            receiver: None,
+        }
+    }
+
+    pub fn sender(mut self, sender: DeviceId) -> Self {
+        self.sender = Some(sender);
+        self
+    }
+
+    pub fn receiver(mut self, receiver: DeviceId) -> Self {
+        self.receiver = Some(receiver);
+        self
+    }
+
+    pub fn build(self) -> anyhow::Result<PeerToPeerDeviceLink> {
+        let sender = self.sender.ok_or(anyhow!("Sender is not set"))?;
+        let receiver = self.receiver.ok_or(anyhow!("Receiver is not set"))?;
+
+        if sender == receiver {
+            return Err(anyhow!("Sender and receiver are the same"));
+        }
+
+        Ok(PeerToPeerDeviceLink { sender, receiver })
+    }
 }
 
 pub struct DeviceLinkBuilder {
@@ -79,7 +136,12 @@ impl DeviceLinkBuilder {
                 if sender == receiver {
                     DeviceLink::Loopback(LoopbackDeviceLink { device: sender })
                 } else {
-                    DeviceLink::PeerToPeer(PeerToPeerDeviceLink { sender, receiver })
+                    let peer_to_peer = PeerToPeerDeviceLinkBuilder::builder()
+                        .sender(sender)
+                        .receiver(receiver)
+                        .build()?;
+
+                    DeviceLink::PeerToPeer(peer_to_peer)
                 }
             }
             None => DeviceLink::Loopback(LoopbackDeviceLink { device: sender }),
@@ -116,6 +178,11 @@ impl DeviceCredentials {
         let secret_box = KeyManager::generate_secret_box();
         let device = DeviceData::from(device_name, OpenBox::from(&secret_box));
         DeviceCredentials { secret_box, device }
+    }
+
+    pub fn key_manager(&self) -> anyhow::Result<KeyManager> {
+        let key_manager = KeyManager::try_from(&self.secret_box)?;
+        Ok(key_manager)
     }
 }
 

@@ -4,8 +4,9 @@ use std::fmt::Display;
 use crate::node::common::model::device::DeviceId;
 use crate::node::common::model::user::{UserData, UserDataMember, UserDataOutsider, UserMembership};
 use crate::node::common::model::MetaPasswordId;
-use crate::node::db::events::generic_log_event::GenericKvLogEvent;
-use crate::node::db::events::vault_event::VaultObject;
+
+use super::crypto::CommunicationChannel;
+use super::device::DeviceLink;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -75,24 +76,77 @@ impl VaultData {
             false
         }
     }
+
+    pub fn status(&self, for_user: UserData) -> VaultStatus {
+        let maybe_vault_user = self.users.get(&for_user.device.id);
+
+        match maybe_vault_user {
+            Some(vault_user) => match vault_user {
+                UserMembership::Outsider(outsider) => VaultStatus::Outsider(outsider.clone()),
+                UserMembership::Member(member) => VaultStatus::Member {
+                    member: member.clone(),
+                    vault: self.clone(),
+                },
+            },
+            None => VaultStatus::Outsider(UserDataOutsider::unknown(for_user)),
+        }
+    }
+
+    pub fn find_user(&self, device_id: &DeviceId) -> Option<UserMembership> {
+        self.users.get(device_id).map(|user| user.clone())
+    }
+
+    pub fn build_communication_channel(&self, device_link: DeviceLink) -> Option<CommunicationChannel> {
+        match device_link {
+            DeviceLink::Loopback(loopback_link) => {
+                let sender = loopback_link.device();
+                let maybe_user = self.find_user(sender);
+
+                match maybe_user {
+                    Some(UserMembership::Member(UserDataMember(user))) => {
+                        let pk = user.device.keys.transport_pk;
+                        let channel = CommunicationChannel {
+                            sender: pk.clone(),
+                            receiver: pk.clone(),
+                        };
+                        Some(channel)
+                    }
+                    _ => None,
+                }
+            }
+            DeviceLink::PeerToPeer(p2p_link) => {
+                let sender_device = p2p_link.sender();
+                let receiver_device = p2p_link.receiver();
+
+                let maybe_sender = self.find_user(sender_device);
+                let maybe_receiver = self.find_user(receiver_device);
+
+                let Some(UserMembership::Member(UserDataMember(sender))) = maybe_sender else {
+                    return None;
+                };
+
+                let Some(UserMembership::Member(UserDataMember(receiver))) = maybe_receiver else {
+                    return None;
+                };
+
+                let sender_pk = sender.device.keys.transport_pk.clone();
+                let receiver_pk = receiver.device.keys.transport_pk.clone();
+
+                let channel = CommunicationChannel {
+                    sender: sender_pk,
+                    receiver: receiver_pk,
+                };
+                Some(channel)
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum VaultStatus {
     Outsider(UserDataOutsider),
-    Member(VaultData),
-}
-
-impl VaultStatus {
-    pub fn try_from(vault_event: GenericKvLogEvent, user: UserData) -> anyhow::Result<Self> {
-        let vault_obj = VaultObject::try_from(vault_event)?;
-        match vault_obj {
-            VaultObject::Unit { .. } => Ok(VaultStatus::Outsider(UserDataOutsider::unknown(user))),
-            VaultObject::Genesis { .. } => Ok(VaultStatus::Outsider(UserDataOutsider::unknown(user))),
-            VaultObject::Vault(event) => Ok(VaultStatus::Member(event.value)),
-        }
-    }
+    Member { member: UserDataMember, vault: VaultData },
 }
 
 impl VaultStatus {

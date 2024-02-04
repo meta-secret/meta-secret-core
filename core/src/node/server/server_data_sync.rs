@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::{anyhow, bail};
+use anyhow::{anyhow, bail, Ok};
 use async_trait::async_trait;
 use tracing::{debug, info, instrument};
 
@@ -8,14 +8,15 @@ use crate::node::common::model::device::{DeviceCredentials, DeviceData};
 use crate::node::common::model::user::{UserData, UserDataMember, UserId};
 use crate::node::common::model::vault::{VaultData, VaultName};
 use crate::node::db::actions::sign_up::SignUpAction;
-use crate::node::db::actions::ss_replication::SSReplicationAction;
-use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
+use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ToObjectDescriptor};
-use crate::node::db::descriptors::vault::VaultDescriptor;
+use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
+use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ToGenericEvent};
-use crate::node::db::events::global_index::GlobalIndexObject;
+use crate::node::db::events::global_index_event::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::object_id::{ArtifactId, ObjectId, UnitId};
+use crate::node::db::events::object_id::{ArtifactId, Next, ObjectId, UnitId};
+use crate::node::db::events::shared_secret_event::SSLedgerObject;
 use crate::node::db::events::vault_event::{
     DeviceLogObject, VaultAction, VaultLogObject, VaultMembershipObject, VaultObject,
 };
@@ -38,13 +39,42 @@ pub struct ServerDataSync<Repo: KvLogEventRepo> {
 #[serde(rename_all = "camelCase")]
 pub enum DataSyncRequest {
     SyncRequest(SyncRequest),
+    ServerTailRequest(UserId),
     Event(GenericKvLogEvent),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DataSyncResponse {
-    pub events: Vec<GenericKvLogEvent>,
+pub enum DataSyncResponse {
+    Data(DataEventsResponse),
+    ServerTailResponse(ServerTailResponse),
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DataEventsResponse(pub Vec<GenericKvLogEvent>);
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerTailResponse {
+    pub device_log_tail: Option<ObjectId>,
+    pub ss_device_log_tail: Option<ObjectId>,
+}
+
+impl DataSyncResponse {
+    pub fn to_data(&self) -> anyhow::Result<DataEventsResponse> {
+        match self {
+            DataSyncResponse::Data(data) => Ok(data.clone()),
+            _ => Err(anyhow!("Invalid response type")),
+        }
+    }
+
+    pub fn to_server_tail(&self) -> anyhow::Result<ServerTailResponse> {
+        match self {
+            DataSyncResponse::ServerTailResponse(server_tail) => Ok(server_tail.clone()),
+            _ => Err(anyhow!("Invalid response type")),
+        }
+    }
 }
 
 #[async_trait(? Send)]
@@ -73,24 +103,6 @@ impl<Repo: KvLogEventRepo> DataSyncApi for ServerDataSync<Repo> {
 
                 commit_log.extend(vault_events);
             }
-
-            SyncRequest::SharedSecret(ss_request) => {
-                let maybe_vault = self.find_vault(ss_request.ss_log.clone()).await?;
-                let Some(vault) = maybe_vault else {
-                    return Ok(commit_log);
-                };
-
-                if !vault.is_member(&ss_request.sender.device.id) {
-                    return Ok(commit_log);
-                }
-
-                let s_s_replication_action = SSReplicationAction {
-                    persistent_obj: self.persistent_obj.clone(),
-                };
-                let s_s_replication_events = s_s_replication_action.replicate(ss_request, &vault).await?;
-
-                commit_log.extend(s_s_replication_events);
-            }
         }
 
         Ok(commit_log)
@@ -108,184 +120,209 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
         debug!("DataSync::event_processing: {:?}", &generic_event);
 
         match &generic_event {
-            GenericKvLogEvent::GlobalIndex(_) => {
-                info!("Global index not allowed to be sent");
-            }
-            GenericKvLogEvent::DbTail(_) => {
-                info!("DbTail not allowed to be sent");
-            }
-            GenericKvLogEvent::Credentials(_) => {
-                info!("Credentials not allowed to be sent");
-            }
             GenericKvLogEvent::DeviceLog(device_log_obj) => {
-                self.persistent_obj.repo.save(generic_event.clone()).await?;
+                self.handle_device_log_request(device_log_obj).await?;
+            }
+            GenericKvLogEvent::SSDeviceLog(ss_device_log_obj) => {
+                self.persistent_obj
+                    .repo
+                    .save(ss_device_log_obj.clone().to_generic())
+                    .await?;
+                let ss_claim = ss_device_log_obj.get_distribution_request()?;
 
-                let vault_action_event = match device_log_obj {
-                    DeviceLogObject::Unit { .. } => {
-                        return Ok(());
-                    }
-                    DeviceLogObject::Genesis(_) => {
-                        return Ok(());
-                    }
-                    DeviceLogObject::Action(event) => event,
-                };
+                let ss_ledger_desc = SharedSecretDescriptor::SSLedger(ss_claim.vault_name.clone()).to_obj_desc();
 
-                let vault_action = vault_action_event.value.clone();
-                let vault_name = vault_action.vault_name();
+                let maybe_generic_ss_ledger = self.persistent_obj.find_tail_event(ss_ledger_desc.clone()).await?;
 
-                match vault_action {
-                    VaultAction::Create(user) => {
-                        // create vault if not exists
-                        let vault_desc = VaultDescriptor::vault(vault_name.clone());
-                        let maybe_vault = self.find_vault(ObjectId::unit(vault_desc.clone())).await?;
+                match maybe_generic_ss_ledger {
+                    Some(generic_ss_ledger) => {
+                        let ss_ledger_obj = SSLedgerObject::try_from(generic_ss_ledger)?;
 
-                        if let Some(_vault) = maybe_vault {
-                            // vault already exists, and the event have been saved into vault_log alredy,
-                            // no action needed
+                        let mut ss_ledger = ss_ledger_obj.to_ledger_data()?;
+                        if ss_ledger.claims.contains_key(&ss_claim.id) {
+                            //the claim is already in the ledger, no action needed
                             return Ok(());
-                        };
-
-                        //create vault_log, vault and vault status
-                        self.create_vault(user.clone()).await?
-                    }
-
-                    VaultAction::JoinRequest { .. } => {
-                        let vault_log_desc = VaultDescriptor::VaultLog(vault_name).to_obj_desc();
-
-                        let vault_log_free_id = self
-                            .persistent_obj
-                            .find_free_id_by_obj_desc(vault_log_desc.clone())
-                            .await?;
-
-                        if let ObjectId::Artifact(vault_log_artifact_id) = vault_log_free_id {
-                            let vault_log_action_event =
-                                GenericKvLogEvent::VaultLog(VaultLogObject::Action(KvLogEvent {
-                                    key: KvKey::artifact(vault_log_desc, vault_log_artifact_id),
-                                    value: vault_action.clone(),
-                                }));
-
-                            self.persistent_obj.repo.save(vault_log_action_event).await?;
                         } else {
-                            bail!(
-                                "Invalid vault log id, must be ArtifactId, but it's: {:?}",
-                                vault_log_free_id
-                            );
+                            //add the claim to the ledger
+                            ss_ledger.claims.insert(ss_claim.id.clone(), ss_claim.clone());
+
+                            //update ss_ledger
+                            let updated_ss_ledger = SSLedgerObject::Ledger(KvLogEvent {
+                                key: KvKey {
+                                    obj_id: ss_ledger_obj.get_ledger_id()?.next(),
+                                    obj_desc: ss_ledger_desc,
+                                },
+                                value: ss_ledger,
+                            });
+
+                            self.persistent_obj.repo.save(updated_ss_ledger.to_generic()).await?;
                         }
                     }
-
-                    VaultAction::UpdateMembership {
-                        sender: UserDataMember(sender_user),
-                        update,
-                    } => {
-                        //check if a sender is a member of the vault and update the vault then
-                        let vault_log_desc = VaultDescriptor::VaultLog(vault_name).to_obj_desc();
-
-                        let vault_log_free_id = self
-                            .persistent_obj
-                            .find_free_id_by_obj_desc(vault_log_desc.clone())
-                            .await?;
-
-                        let ObjectId::Artifact(_) = vault_log_free_id else {
-                            bail!(
-                                "Invalid vault log id, must be ArtifactId, but it's: {:?}",
-                                vault_log_free_id
-                            );
-                        };
-
-                        let vault_name = sender_user.vault_name.clone();
-                        let (vault_artifact_id, vault) =
-                            self.get_vault(vault_name.clone(), &sender_user.device).await?;
-
-                        let vault_event = {
-                            let mut new_vault = vault.clone();
-                            new_vault.update_membership(update.clone());
-
-                            VaultObject::Vault(KvLogEvent {
-                                key: KvKey {
-                                    obj_id: vault_artifact_id,
-                                    obj_desc: VaultDescriptor::vault(vault_name.clone()),
-                                },
-                                value: new_vault,
-                            })
-                            .to_generic()
-                        };
-
-                        self.persistent_obj.repo.save(vault_event).await?;
-
-                        // Don't forget to update the vault status
-
-                        let vault_status_desc = {
-                            let user_id = UserId {
-                                device_id: update.device_id(),
-                                vault_name,
-                            };
-                            VaultDescriptor::VaultStatus(user_id).to_obj_desc()
-                        };
-
-                        let vault_status_free_id = self
-                            .persistent_obj
-                            .find_free_id_by_obj_desc(vault_status_desc.clone())
-                            .await?;
-
-                        let ObjectId::Artifact(vault_status_artifact_id) = vault_status_free_id else {
-                            return Ok(());
-                        };
-
-                        let vault_status_event = {
-                            let event = KvLogEvent {
-                                key: KvKey::artifact(vault_status_desc, vault_status_artifact_id),
-                                value: update.clone(),
-                            };
-                            VaultMembershipObject::Membership(event).to_generic()
-                        };
-
-                        self.persistent_obj.repo.save(vault_status_event).await?;
-                    }
-                    VaultAction::AddMetaPassword { sender, meta_pass_id } => {
-                        let user = sender.user();
-                        let vault_name = user.vault_name.clone();
-                        let (vault_artifact_id, vault) = self.get_vault(vault_name.clone(), &user.device).await?;
-
-                        let vault_event = {
-                            let mut new_vault = vault.clone();
-                            new_vault.add_secret(meta_pass_id.clone());
-
-                            let event = KvLogEvent {
-                                key: KvKey {
-                                    obj_id: vault_artifact_id,
-                                    obj_desc: VaultDescriptor::vault(vault_name.clone()),
-                                },
-                                value: new_vault,
-                            };
-
-                            VaultObject::Vault(event).to_generic()
-                        };
-
-                        self.persistent_obj.repo.save(vault_event).await?;
+                    None => {
+                        unimplemented!("Not implemented yet")
                     }
                 }
             }
-            GenericKvLogEvent::SharedSecret(_) => {
-                todo!("Implement shared secret distribution");
-            }
-            GenericKvLogEvent::VaultLog(_) => {
-                info!("VaultLog can be updated only by the server");
-            }
-            GenericKvLogEvent::Vault(_) => {
-                info!("Vault can be updated only by the server");
-            }
-            GenericKvLogEvent::VaultMembership(_) => {
-                info!("VaultStatus can be updated only by the server");
-            }
-            GenericKvLogEvent::Error { .. } => {
-                info!("Errors not yet implemented");
-            }
-            GenericKvLogEvent::SSDeviceLog(_) => {
-                info!("SSLog can be updated only by the server itself");
+            _ => {
+                bail!("Invalid event type: {:?}", generic_event);
             }
         }
 
         Ok(())
+    }
+
+    async fn handle_device_log_request(&self, device_log_obj: &DeviceLogObject) -> anyhow::Result<()> {
+        self.persistent_obj
+            .repo
+            .save(device_log_obj.clone().to_generic())
+            .await?;
+
+        let vault_action_event = match device_log_obj {
+            DeviceLogObject::Unit { .. } => {
+                return Ok(());
+            }
+            DeviceLogObject::Genesis(_) => {
+                return Ok(());
+            }
+            DeviceLogObject::Action(event) => event,
+        };
+
+        let vault_action = vault_action_event.value.clone();
+        let vault_name = vault_action.vault_name();
+
+        match vault_action {
+            VaultAction::CreateVault(user) => {
+                // create vault if not exists
+                let vault_desc = VaultDescriptor::vault(vault_name.clone());
+                let maybe_vault = self.find_vault(ObjectId::unit(vault_desc.clone())).await?;
+
+                if let Some(_vault) = maybe_vault {
+                    // vault already exists, and the event have been saved into vault_log alredy,
+                    // no action needed
+                    return Ok(());
+                };
+
+                //create vault_log, vault and vault status
+                self.create_vault(user.clone()).await
+            }
+
+            VaultAction::JoinClusterRequest { .. } => {
+                let vault_log_desc = VaultDescriptor::VaultLog(vault_name).to_obj_desc();
+
+                let vault_log_free_id = self
+                    .persistent_obj
+                    .find_free_id_by_obj_desc(vault_log_desc.clone())
+                    .await?;
+
+                if let ObjectId::Artifact(vault_log_artifact_id) = vault_log_free_id {
+                    let vault_log_action_event = GenericKvLogEvent::VaultLog(VaultLogObject::Action(KvLogEvent {
+                        key: KvKey::artifact(vault_log_desc, vault_log_artifact_id),
+                        value: vault_action.clone(),
+                    }));
+
+                    self.persistent_obj.repo.save(vault_log_action_event).await?;
+                    Ok(())
+                } else {
+                    bail!(
+                        "Invalid vault log id, must be ArtifactId, but it's: {:?}",
+                        vault_log_free_id
+                    );
+                }
+            }
+
+            VaultAction::UpdateMembership {
+                sender: UserDataMember(sender_user),
+                update,
+            } => {
+                //check if a sender is a member of the vault and update the vault then
+                let vault_log_desc = VaultDescriptor::VaultLog(vault_name).to_obj_desc();
+
+                let vault_log_free_id = self
+                    .persistent_obj
+                    .find_free_id_by_obj_desc(vault_log_desc.clone())
+                    .await?;
+
+                let ObjectId::Artifact(_) = vault_log_free_id else {
+                    bail!(
+                        "Invalid vault log id, must be ArtifactId, but it's: {:?}",
+                        vault_log_free_id
+                    );
+                };
+
+                let vault_name = sender_user.vault_name.clone();
+                let (vault_artifact_id, vault) = self.get_vault(vault_name.clone(), &sender_user.device).await?;
+
+                let vault_event = {
+                    let mut new_vault = vault.clone();
+                    new_vault.update_membership(update.clone());
+
+                    VaultObject::Vault(KvLogEvent {
+                        key: KvKey {
+                            obj_id: vault_artifact_id,
+                            obj_desc: VaultDescriptor::vault(vault_name.clone()),
+                        },
+                        value: new_vault,
+                    })
+                    .to_generic()
+                };
+
+                self.persistent_obj.repo.save(vault_event).await?;
+
+                // Don't forget to update the vault status
+
+                let vault_status_desc = {
+                    let user_id = UserId {
+                        device_id: update.device_id(),
+                        vault_name,
+                    };
+                    VaultDescriptor::VaultMembership(user_id).to_obj_desc()
+                };
+
+                let vault_status_free_id = self
+                    .persistent_obj
+                    .find_free_id_by_obj_desc(vault_status_desc.clone())
+                    .await?;
+
+                let ObjectId::Artifact(vault_status_artifact_id) = vault_status_free_id else {
+                    return Ok(());
+                };
+
+                let vault_status_event = {
+                    let event = KvLogEvent {
+                        key: KvKey::artifact(vault_status_desc, vault_status_artifact_id),
+                        value: update.clone(),
+                    };
+                    VaultMembershipObject::Membership(event).to_generic()
+                };
+
+                self.persistent_obj.repo.save(vault_status_event).await?;
+                Ok(())
+            }
+            VaultAction::AddMetaPassword { sender, meta_pass_id } => {
+                let user = sender.user();
+                let vault_name = user.vault_name.clone();
+                let (vault_artifact_id, vault) = self.get_vault(vault_name.clone(), &user.device).await?;
+
+                let vault_event = {
+                    let mut new_vault = vault.clone();
+                    new_vault.add_secret(meta_pass_id.clone());
+
+                    let event = KvLogEvent {
+                        key: KvKey {
+                            obj_id: vault_artifact_id,
+                            obj_desc: VaultDescriptor::vault(vault_name.clone()),
+                        },
+                        value: new_vault,
+                    };
+
+                    VaultObject::Vault(event).to_generic()
+                };
+
+                self.persistent_obj.repo.save(vault_event).await?;
+
+                Ok(())
+            }
+        }
     }
 
     async fn get_vault(
@@ -429,61 +466,78 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
 
 #[cfg(test)]
 mod test {
+
     use std::sync::Arc;
 
     use anyhow::Result;
+    use tracing::Level;
 
     use crate::{
-        meta_tests::{action::global_index::GlobalIndexSyncRequestTestAction, fixture::ClientDeviceFixture},
+        meta_tests::{
+            action::{
+                global_index_action::GlobalIndexSyncRequestTestAction, sign_up_claim_action::SignUpClaimTestAction,
+            },
+            spec::{sign_up_claim_spec::SignUpClaimSpec, test_spec::TestSpec},
+        },
         node::{
-            common::model::device::{DeviceCredentials, DeviceName},
+            common::model::vault::VaultStatus,
             db::{
-                descriptors::vault::VaultDescriptor,
-                events::{
-                    generic_log_event::ToGenericEvent,
-                    kv_log_event::{KvKey, KvLogEvent},
-                    object_id::Next,
-                    vault_event::{DeviceLogObject, VaultAction}, common::{VaultUnitEvent, VaultGenesisEvent},
+                descriptors::{
+                    object_descriptor::ToObjectDescriptor, shared_secret_descriptor::SharedSecretDescriptor,
+                    vault_descriptor::VaultDescriptor,
                 },
                 in_mem_db::InMemKvLogEventRepo,
-                objects::{persistent_device_log::PersistentDeviceLog, persistent_object::PersistentObject},
+                objects::persistent_object::PersistentObject,
             },
-            server::server_data_sync::{DataSyncApi, ServerDataSync},
         },
     };
 
     #[tokio::test]
     async fn test_sign_up() -> Result<()> {
-        let client_fixture = ClientDeviceFixture::default();
+        let subscriber = tracing_subscriber::fmt().with_max_level(Level::DEBUG).finish();
+        tracing::subscriber::set_global_default(subscriber)?;
 
         let gi_action = GlobalIndexSyncRequestTestAction::init().await?;
-        let server_device = gi_action.server_node.device;
-        let data_sync = gi_action.server_node.app.data_sync;
 
-        let user = client_fixture.user_creds.user();
-        let user_id = client_fixture.user_creds.user_id();
-        let obj_desc = VaultDescriptor::device_log(user_id.clone());
+        let client_p_obj = {
+            let client_repo = Arc::new(InMemKvLogEventRepo::default());
+            Arc::new(PersistentObject::new(client_repo.clone()))
+        };
 
-        let unit_key = KvKey::unit(obj_desc.clone());
-        let unit_event = DeviceLogObject::Unit(VaultUnitEvent(KvLogEvent {
-            key: unit_key.clone(),
-            value: user_id.vault_name.clone(),
-        }));
-        data_sync.server_processing(unit_event.to_generic()).await?;
+        let claim_action = SignUpClaimTestAction::new(client_p_obj.clone());
+        let vault_status = claim_action.sign_up().await?;
+        let VaultStatus::Outsider(outsider) = vault_status else {
+            panic!("Invalid state, the user can't be already registerred");
+        };
 
-        let genesis_key = unit_key.next();
-        let genesis_event = DeviceLogObject::Genesis(VaultGenesisEvent(KvLogEvent {
-            key: genesis_key.clone(),
-            value: user.clone(),
-        }));
-        data_sync.server_processing(genesis_event.to_generic()).await?;
+        let server_data_sync = gi_action.server_node.app.data_sync;
 
-        let join_request_key = genesis_key.next();
-        let join_event = DeviceLogObject::Action(KvLogEvent {
-            key: join_request_key,
-            value: VaultAction::Create(user.clone()),
-        });
-        data_sync.server_processing(join_event.to_generic()).await?;
+        let client_device_log_events = client_p_obj
+            .get_object_events_from_beginning(VaultDescriptor::device_log(outsider.user_data.user_id()))
+            .await?;
+
+        for cd_log_event in client_device_log_events {
+            server_data_sync.server_processing(cd_log_event).await?;
+        }
+
+        let client_ss_device_log_events = {
+            let ss_desc = SharedSecretDescriptor::SSDeviceLog(outsider.user_data.device.id.clone()).to_obj_desc();
+            client_p_obj.get_object_events_from_beginning(ss_desc).await?
+        };
+        println!("CLIENT SS device log EVENTS: {:?}", client_ss_device_log_events.len());
+        for cd_ss_log_event in client_ss_device_log_events {
+            server_data_sync.server_processing(cd_ss_log_event).await?;
+        }
+
+        let server_ss_device_log_events = {
+            let ss_desc = SharedSecretDescriptor::SSDeviceLog(outsider.user_data.device.id.clone()).to_obj_desc();
+            gi_action
+                .server_node
+                .p_obj
+                .get_object_events_from_beginning(ss_desc)
+                .await?
+        };
+        println!("SERVER SS device log EVENTS: {:?}", server_ss_device_log_events.len());
 
         let db = gi_action.server_node.p_obj.repo.get_db().await;
         assert_eq!(db.len(), 16);
@@ -491,6 +545,13 @@ mod test {
         db.values().for_each(|event| {
             println!("Event: {}\n", serde_json::to_string_pretty(event).unwrap());
         });
+
+        let server_claim_spec = SignUpClaimSpec {
+            p_obj: gi_action.server_node.p_obj,
+            user: outsider.user_data,
+        };
+
+        server_claim_spec.check().await?;
 
         Ok(())
     }

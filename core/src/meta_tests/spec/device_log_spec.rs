@@ -5,11 +5,8 @@ use anyhow::Result;
 use crate::node::{
     common::model::user::UserData,
     db::{
-        descriptors::vault::VaultDescriptor,
-        events::{
-            object_id::{Next, ObjectId, UnitId},
-            vault_event::{DeviceLogObject, VaultAction},
-        },
+        descriptors::vault_descriptor::VaultDescriptor,
+        events::object_id::{Next, ObjectId, UnitId},
         objects::persistent_object::PersistentObject,
         repo::generic_db::KvLogEventRepo,
     },
@@ -26,27 +23,30 @@ impl<Repo: KvLogEventRepo> DeviceLogSpec<Repo> {
 
         let unit_id = UnitId::unit(&device_log_desc);
 
-        let generic_unit_event = self
+        let unit_event_vault_name = self
             .p_obj
             .repo
             .find_one(ObjectId::from(unit_id.clone()))
             .await?
-            .unwrap();
+            .unwrap()
+            .device_log()?
+            .get_unit()?
+            .vault_name();
 
-        if let DeviceLogObject::Unit(unit_event) = DeviceLogObject::try_from(generic_unit_event)? {
-            assert_eq!(unit_event.value, self.user.vault_name());
-        } else {
-            panic!("Invalid unit event");
-        }
+        assert_eq!(unit_event_vault_name, self.user.vault_name());
 
         let genesis_id = unit_id.clone().next();
-        let generic_genesis_event = self.p_obj.repo.find_one(ObjectId::from(genesis_id)).await?.unwrap();
+        let genesis_user = self
+            .p_obj
+            .repo
+            .find_one(ObjectId::from(genesis_id))
+            .await?
+            .unwrap()
+            .device_log()?
+            .get_genesis()?
+            .user();
 
-        if let DeviceLogObject::Genesis(genesis_event) = DeviceLogObject::try_from(generic_genesis_event)? {
-            assert_eq!(genesis_event.value, self.user);
-        } else {
-            panic!("Invalid genesis event");
-        }
+        assert_eq!(genesis_user, self.user);
 
         Ok(())
     }
@@ -56,25 +56,16 @@ impl<Repo: KvLogEventRepo> DeviceLogSpec<Repo> {
 
         let sign_up_request_id = UnitId::unit(&device_log_desc).next().next();
 
-        let generic_sign_up_request = self
+        let candidate = self
             .p_obj
             .repo
             .find_one(ObjectId::from(sign_up_request_id))
             .await?
-            .unwrap();
-
-        let sign_up_request = DeviceLogObject::try_from(generic_sign_up_request)?;
-
-        let DeviceLogObject::Action(vault_action_event) = sign_up_request else {
-            panic!("Invalid action event");
-        };
-
-        let vault_action = vault_action_event.value;
-        if let VaultAction::Create(candidate) = vault_action {
-            assert_eq!(candidate.device, self.user.device);
-        } else {
-            panic!("Invalid action: {:?}", vault_action);
-        }
+            .unwrap()
+            .device_log()?
+            .get_action()?
+            .get_create()?;
+        assert_eq!(candidate.device, self.user.device);
 
         Ok(())
     }

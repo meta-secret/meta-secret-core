@@ -4,15 +4,12 @@ use anyhow::anyhow;
 use tracing_attributes::instrument;
 
 use crate::node::common::model::device::DeviceLinkBuilder;
-use crate::node::common::model::secret::{MetaPasswordId, PasswordRecoveryRequest};
+use crate::node::common::model::secret::MetaPasswordId;
 use crate::node::common::model::user::UserDataMember;
 use crate::node::common::model::vault::VaultStatus;
 use crate::node::common::model::ApplicationState;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
-use crate::node::db::descriptors::shared_secret::SharedSecretDescriptor;
-use crate::node::db::events::common::SSDeviceLogObject;
-use crate::node::db::events::generic_log_event::ToGenericEvent;
-use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
+use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
@@ -41,7 +38,7 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
             VaultStatus::Outsider(_) => {
                 return Err(anyhow!("Vault not found"));
             }
-            VaultStatus::Member(vault) => {
+            VaultStatus::Member { vault, .. } => {
                 for UserDataMember(curr_member) in &vault.members() {
                     let curr_device = curr_member.device.clone();
                     if sender_device.id == curr_device.id {
@@ -52,11 +49,6 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
                         .sender(sender_device.id.clone())
                         .receiver(curr_device.id.clone())
                         .build()?;
-
-                    let recovery_request = PasswordRecoveryRequest {
-                        id: meta_pass_id.clone(),
-                        device_link,
-                    };
 
                     let ss_device_log_desc =
                         SharedSecretDescriptor::SSDeviceLog(sender_device.id.clone()).to_obj_desc();
@@ -71,16 +63,9 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
                             return Err(anyhow!("SSDeviceLog is not initialized"));
                         };
 
-                        SSDeviceLogObject::DeviceLog(KvLogEvent {
-                            key: KvKey {
-                                obj_id: ss_artifact_id,
-                                obj_desc: ss_device_log_desc.clone(),
-                            },
-                            value: recovery_request,
-                        })
-                        .to_generic()
+                        unimplemented!("Distribution algorithm has been changed")
                     };
-                    self.persistent_obj.repo.save(log_event).await?;
+                    //self.persistent_obj.repo.save(log_event).await?;
                 }
             }
         }

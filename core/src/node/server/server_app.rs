@@ -7,11 +7,15 @@ use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::common::model::device::{DeviceCredentials, DeviceName};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::objects::global_index::PersistentGlobalIndex;
+use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use crate::node::db::objects::persistent_object::PersistentObject;
+use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::repo::credentials_repo::CredentialsRepo;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::server::request::SyncRequest;
-use crate::node::server::server_data_sync::{DataSyncApi, DataSyncRequest, DataSyncResponse, ServerDataSync};
+use crate::node::server::server_data_sync::{
+    DataEventsResponse, DataSyncApi, DataSyncRequest, DataSyncResponse, ServerDataSync, ServerTailResponse,
+};
 
 pub struct ServerApp<Repo: KvLogEventRepo> {
     pub data_sync: ServerDataSync<Repo>,
@@ -66,24 +70,43 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
         &self,
         sync_message: DataSyncRequest,
         data_transfer: Arc<ServerDataTransfer>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         match sync_message {
             DataSyncRequest::SyncRequest(request) => {
                 let new_events = self.handle_sync_request(request).await;
 
                 data_transfer
                     .dt
-                    .send_to_client(DataSyncResponse { events: new_events })
+                    .send_to_client(DataSyncResponse::Data(DataEventsResponse(new_events)))
                     .await;
             }
             DataSyncRequest::Event(event) => {
                 self.handle_new_event(event).await?;
             }
+            DataSyncRequest::ServerTailRequest(user_id) => {
+                let p_device_log = PersistentDeviceLog {
+                    p_obj: self.p_obj.clone(),
+                };
+                let device_log_tail = p_device_log.find_tail_id(&user_id).await?;
+
+                let p_ss = PersistentSharedSecret {
+                    p_obj: self.p_obj.clone(),
+                };
+                let ss_device_log_tail = p_ss.find_device_tail_id(&user_id.device_id).await?;
+
+                let response = ServerTailResponse {
+                    device_log_tail,
+                    ss_device_log_tail,
+                };
+                let response = DataSyncResponse::ServerTailResponse(response);
+
+                data_transfer.dt.send_to_client(response).await;
+            }
         }
         Ok(())
     }
 
-    async fn handle_new_event(&self, event: GenericKvLogEvent) -> anyhow::Result<()> {
+    async fn handle_new_event(&self, event: GenericKvLogEvent) -> Result<()> {
         self.data_sync.send(event).await?;
         Ok(())
     }

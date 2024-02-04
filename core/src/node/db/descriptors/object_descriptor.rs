@@ -1,6 +1,6 @@
-use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
-use crate::node::db::descriptors::shared_secret::SharedSecretDescriptor;
-use crate::node::db::descriptors::vault::VaultDescriptor;
+use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
+use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
+use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

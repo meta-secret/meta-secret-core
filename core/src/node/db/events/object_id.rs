@@ -1,10 +1,13 @@
 use serde_derive::{Deserialize, Serialize};
 
 use crate::crypto::utils::NextId;
+use crate::node::common::model::user::UserData;
 use crate::node::common::model::vault::VaultName;
-use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
+use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ObjectDescriptorId, ToObjectDescriptor};
-use crate::node::db::descriptors::vault::VaultDescriptor;
+use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
+
+use super::kv_log_event::{KvKey, KvLogEvent};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -172,5 +175,33 @@ impl Next<ArtifactId> for ArtifactId {
             prev_id: self.id,
             unit_id: self.unit_id,
         }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VaultUnitEvent(pub KvLogEvent<UnitId, VaultName>);
+
+impl VaultUnitEvent {
+    pub fn key(&self) -> KvKey<UnitId> {
+        self.0.key.clone()
+    }
+
+    pub fn vault_name(&self) -> VaultName {
+        self.0.value.clone()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VaultGenesisEvent(pub KvLogEvent<GenesisId, UserData>);
+
+impl VaultGenesisEvent {
+    pub fn key(&self) -> KvKey<GenesisId> {
+        self.0.key.clone()
+    }
+
+    pub fn user(&self) -> UserData {
+        self.0.value.clone()
     }
 }

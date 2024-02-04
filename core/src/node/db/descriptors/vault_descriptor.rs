@@ -11,7 +11,7 @@ pub enum VaultDescriptor {
 
     VaultLog(VaultName),
     Vault(VaultName),
-    VaultStatus(UserId),
+    VaultMembership(UserId),
 }
 
 impl ToObjectDescriptor for VaultDescriptor {
@@ -33,8 +33,8 @@ impl VaultDescriptor {
         ObjectDescriptor::Vault(VaultDescriptor::Vault(vault_name))
     }
 
-    pub fn vault_status(user_id: UserId) -> ObjectDescriptor {
-        ObjectDescriptor::Vault(VaultDescriptor::VaultStatus(user_id))
+    pub fn vault_membership(user_id: UserId) -> ObjectDescriptor {
+        ObjectDescriptor::Vault(VaultDescriptor::VaultMembership(user_id))
     }
 }
 
@@ -44,7 +44,7 @@ impl ObjectType for VaultDescriptor {
             VaultDescriptor::DeviceLog(user_id) => {
                 String::from("DeviceLog:").add(user_id.device_id.to_string().as_str())
             }
-            VaultDescriptor::VaultStatus(user_id) => {
+            VaultDescriptor::VaultMembership(user_id) => {
                 String::from("VaultStatus:").add(user_id.device_id.to_string().as_str())
             }
             VaultDescriptor::Vault(_) => String::from("Vault"),
@@ -59,7 +59,7 @@ impl ObjectName for VaultDescriptor {
             VaultDescriptor::Vault(vault_name) => vault_name.to_string(),
             VaultDescriptor::DeviceLog(user_id) => user_id.vault_name.to_string(),
             VaultDescriptor::VaultLog(vault_name) => vault_name.to_string(),
-            VaultDescriptor::VaultStatus(user_id) => user_id.vault_name.to_string(),
+            VaultDescriptor::VaultMembership(user_id) => user_id.vault_name.to_string(),
         }
     }
 }
@@ -75,7 +75,7 @@ pub mod test {
     use crate::node::common::model::user::UserId;
     use crate::node::common::model::vault::VaultName;
     use crate::node::db::descriptors::object_descriptor::{ObjectName, ObjectType};
-    use crate::node::db::descriptors::vault::VaultDescriptor;
+    use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
     use crate::node::db::events::object_id::UnitId;
 
     #[test]

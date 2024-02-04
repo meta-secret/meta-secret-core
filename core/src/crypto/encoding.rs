@@ -127,7 +127,7 @@ pub mod serialized_key_manager {
             fn from(key_manager: KeyManager) -> Self {
                 Self {
                     dsa: SerializedDsaKeyPair::from(&key_manager.dsa),
-                    transport: SerializedTransportKeyPair::from(&key_manager.transport_key_pair),
+                    transport: SerializedTransportKeyPair::from(&key_manager.transport),
                 }
             }
         }
@@ -167,8 +167,7 @@ pub mod serialized_key_manager {
         use crate::crypto::encoding::base64::Base64Text;
         use crate::crypto::encoding::Array256Bit;
         use crate::crypto::key_pair::{
-            CryptoBoxPublicKey, CryptoBoxSecretKey, DalekKeyPair, DalekPublicKey, DalekSignature, DsaKeyPair,
-            TransportDsaKeyPair,
+            CryptoBoxSecretKey, DalekKeyPair, DalekPublicKey, DalekSignature, DsaKeyPair, TransportDsaKeyPair,
         };
         use crate::crypto::keys::{KeyManager, SecretBox, SerializedDsaKeyPair, SerializedTransportKeyPair};
         use crate::errors::CoreError;
@@ -209,10 +208,7 @@ pub mod serialized_key_manager {
             fn try_from(serialized_transport: &SerializedTransportKeyPair) -> Result<Self, Self::Error> {
                 let sk_bytes = Array256Bit::try_from(&serialized_transport.secret_key)?;
                 let secret_key = CryptoBoxSecretKey::from(sk_bytes);
-                let pk_bytes = Array256Bit::try_from(&serialized_transport.public_key)?;
-                let public_key = CryptoBoxPublicKey::from(pk_bytes);
-
-                let key_pair = Self { secret_key, public_key };
+                let key_pair = Self { secret_key };
 
                 Ok(key_pair)
             }
@@ -226,7 +222,7 @@ pub mod serialized_key_manager {
                 let transport_key_pair = TransportDsaKeyPair::try_from(&serialized_km.transport)?;
                 let key_manager = Self {
                     dsa,
-                    transport_key_pair,
+                    transport: transport_key_pair,
                 };
 
                 Ok(key_manager)

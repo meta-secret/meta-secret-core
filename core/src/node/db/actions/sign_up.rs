@@ -4,11 +4,10 @@ use crate::node::common::model::device::DeviceData;
 use crate::node::common::model::user::{UserData, UserDataMember, UserId, UserMembership};
 use crate::node::common::model::vault::VaultData;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
-use crate::node::db::descriptors::vault::VaultDescriptor;
-use crate::node::db::events::common::{VaultUnitEvent, VaultGenesisEvent};
+use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ToGenericEvent};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::object_id::{Next, UnitId};
+use crate::node::db::events::object_id::{Next, UnitId, VaultGenesisEvent, VaultUnitEvent};
 use crate::node::db::events::vault_event::{VaultLogObject, VaultMembershipObject, VaultObject};
 
 pub struct SignUpAction {}
@@ -78,7 +77,7 @@ impl SignUpAction {
                 vault_name: vault_name.clone(),
                 device_id: candidate.device.id.clone(),
             };
-            let vault_status_desc = VaultDescriptor::VaultStatus(user_id).to_obj_desc();
+            let vault_status_desc = VaultDescriptor::VaultMembership(user_id).to_obj_desc();
 
             let unit_event = VaultMembershipObject::Unit(VaultUnitEvent(KvLogEvent {
                 key: KvKey::unit(vault_status_desc.clone()),

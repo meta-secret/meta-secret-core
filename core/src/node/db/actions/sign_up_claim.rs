@@ -8,7 +8,7 @@ use crate::node::{
         vault::VaultStatus,
     },
     db::{
-        events::local::CredentialsObject,
+        events::local_event::CredentialsObject,
         objects::{
             persistent_device_log::PersistentDeviceLog, persistent_object::PersistentObject,
             persistent_shared_secret::PersistentSharedSecret, persistent_vault::PersistentVault,
@@ -37,14 +37,13 @@ impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
             p_obj: self.p_obj.clone(),
         };
 
+        p_device_log.save_create_vault_request(&user).await?;
+
         //Init SSDeviceLog
-        let p_ss_device_log = PersistentSharedSecret {
+        let p_ss = PersistentSharedSecret {
             p_obj: self.p_obj.clone(),
         };
-
-        p_device_log.save_join_cluster_request(user.clone()).await?;
-
-        p_ss_device_log.init(user.clone()).await?;
+        p_ss.init(user.clone()).await?;
 
         Ok(vault_status)
     }
@@ -92,7 +91,7 @@ mod test {
     };
 
     #[tokio::test]
-    async fn test() -> Result<()> {
+    async fn test_sign_up() -> Result<()> {
         let repo = Arc::new(InMemKvLogEventRepo::default());
         let p_obj = Arc::new(PersistentObject::new(repo.clone()));
 
@@ -103,7 +102,7 @@ mod test {
         };
 
         let db = repo.get_db().await;
-        assert_eq!(db.len(), 6);
+        assert_eq!(db.len(), 8);
 
         let claim_spec = SignUpClaimSpec {
             p_obj,

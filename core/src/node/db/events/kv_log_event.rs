@@ -1,5 +1,5 @@
 use crate::node::common::model::device::DeviceData;
-use crate::node::db::descriptors::global_index::GlobalIndexDescriptor;
+use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::object_id::{ArtifactId, GenesisId, Next, UnitId};
 

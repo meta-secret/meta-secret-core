@@ -8,7 +8,7 @@ use crate::node::common::model::user::UserCredentials;
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ToGenericEvent, UnitEvent};
-use crate::node::db::events::local::CredentialsObject;
+use crate::node::db::events::local_event::CredentialsObject;
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;

@@ -3,7 +3,7 @@ use crate::crypto::key_pair::{DsaKeyPair, KeyPair, TransportDsaKeyPair};
 
 pub struct KeyManager {
     pub dsa: DsaKeyPair,
-    pub transport_key_pair: TransportDsaKeyPair,
+    pub transport: TransportDsaKeyPair,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -49,7 +49,7 @@ impl KeyManager {
     pub fn generate() -> KeyManager {
         KeyManager {
             dsa: DsaKeyPair::generate(),
-            transport_key_pair: TransportDsaKeyPair::generate(),
+            transport: TransportDsaKeyPair::generate(),
         }
     }
 

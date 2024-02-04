@@ -81,8 +81,8 @@ pub enum UserMembership {
 pub struct UserDataMember(pub UserData);
 
 impl UserDataMember {
-    pub fn user(self) -> UserData {
-        self.0
+    pub fn user(&self) -> &UserData {
+        &self.0
     }
 }
 
