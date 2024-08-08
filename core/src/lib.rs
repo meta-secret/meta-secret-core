@@ -1,4 +1,8 @@
 extern crate core;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
+extern crate serde_json;
 
 use std::ffi::OsStr;
 use std::fs::File;
@@ -6,28 +10,22 @@ use std::io::BufReader;
 use std::path::Path;
 use std::{fs, io};
 
-use crate::errors::CoreError;
-use errors::{RecoveryError, SharesLoaderError, SplitError};
 use image::ImageError;
 use rqrr::DeQRError;
 
-use crate::shared_secret::data_block::common::SharedSecretConfig;
-use crate::shared_secret::data_block::shared_secret_data_block::SharedSecretBlock;
-use crate::shared_secret::shared_secret::{PlainText, SharedSecret, SharedSecretEncryption, UserShareDto};
 use errors::RecoveryError::EmptyInput;
+use errors::{RecoveryError, SharesLoaderError, SplitError};
+
+use crate::errors::CoreError;
+use crate::secret::data_block::common::SharedSecretConfig;
+use crate::secret::data_block::shared_secret_data_block::SharedSecretBlock;
+use crate::secret::shared_secret::{PlainText, SharedSecret, SharedSecretEncryption, UserShareDto};
 
 pub mod crypto;
 pub mod errors;
+pub mod meta_tests;
 pub mod node;
-pub mod sdk;
-pub mod shared_secret;
-pub mod models;
-
-#[macro_use]
-extern crate serde_derive;
-
-extern crate serde;
-extern crate serde_json;
+pub mod secret;
 
 pub type CoreResult<T> = std::result::Result<T, CoreError>;
 

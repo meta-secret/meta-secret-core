@@ -1,0 +1,31 @@
+name: "Core Testing"
+
+on:
+  pull_request:
+
+jobs:
+  core-test:
+    runs-on: ubuntu-latest
+
+    concurrency:
+      group: ${{ github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Generate rust models
+        working-directory: schema
+        run: |
+          make clean generate_schema
+
+      - name: Run tests
+        run: |
+          cargo test

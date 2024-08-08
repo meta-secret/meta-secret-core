@@ -1,0 +1,19 @@
+[package]
+name = "meta-server-emulator"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+meta-secret-core = { path = "../core" }
+
+thiserror.workspace = true
+anyhow.workspace = true
+
+async-trait.workspace = true
+
+serde.workspace = true
+serde_json.workspace = true
+serde_derive.workspace = true
+
+diesel = { workspace = true, features = ["sqlite"] }
+diesel_migrations = { workspace = true, features = ["sqlite"] }

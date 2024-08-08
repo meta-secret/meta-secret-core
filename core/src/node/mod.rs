@@ -1,2 +1,4 @@
-pub mod server_api;
+pub mod app;
+pub mod common;
 pub mod db;
+pub mod server;

@@ -1,0 +1,42 @@
+name: "Core Deployment"
+
+on:
+  workflow_dispatch:
+
+  # Temporary disable automatic build
+  #push:
+    #branches:
+    #  - main
+    #paths:
+    #  - '.github/workflows/core.yml'
+    #  - 'core/**'
+
+jobs:
+  core-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Generate rust models
+        working-directory: schema
+        run: |
+          make clean generate_schema
+
+      - name: Run tests
+        run: |
+          cargo test
+
+      - name: Publish core
+        working-directory: core
+        run: |
+          cargo publish --token ${CRATES_TOKEN}
+        env:
+          CRATES_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
