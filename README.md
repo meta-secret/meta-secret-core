@@ -1,6 +1,6 @@
 
 <p align="center">
-  <img alt="Meta Secret" src="https://github.com/meta-secret/meta-secret-core/blob/main/docs/img/meta-secret-logo.jpg" width="250" />
+  <img alt="Meta Secret" src="https://github.com/meta-secret/meta-secret-core/blob/main/docs/img/meta-secret-logo.png" width="250" />
   
   <h4 align="center"> <a href="https://apps.apple.com/app/metasecret/id1644286751">Meta Secret Mobile Application</a></h4>
   
