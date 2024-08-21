@@ -8,6 +8,7 @@ use crate::node::common::model::user::UserCredentials;
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ToGenericEvent, UnitEvent};
+use crate::node::db::events::kv_log_event::KvLogEvent;
 use crate::node::db::events::local_event::CredentialsObject;
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::objects::persistent_object::PersistentObject;
@@ -114,17 +115,18 @@ impl<Repo: KvLogEventRepo> CredentialsRepo<Repo> {
     ) -> anyhow::Result<UserCredentials> {
         let maybe_creds = self.find().await?;
 
-        let Some(creds) = maybe_creds else {
-            return self.generate_user_creds(device_name, vault_name).await;
-        };
-
-        match creds {
-            CredentialsObject::Device(event) => {
-                let user_creds = UserCredentials::from(event.value, vault_name);
+        match maybe_creds {
+            None => {
+                self.generate_user_creds(device_name, vault_name).await
+            }
+            Some(CredentialsObject::Device(KvLogEvent { value: creds, .. })) => {
+                let user_creds = UserCredentials::from(creds, vault_name);
                 self.save(CredentialsObject::default_user(user_creds.clone())).await?;
                 Ok(user_creds)
             }
-            CredentialsObject::DefaultUser(event) => Ok(event.value),
+            Some(CredentialsObject::DefaultUser(event)) => {
+                Ok(event.value)
+            }
         }
     }
 }

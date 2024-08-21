@@ -19,7 +19,7 @@ pub struct SignUpClaimSpec<Repo: KvLogEventRepo> {
 
 #[async_trait(? Send)]
 impl<Repo: KvLogEventRepo> TestSpec for SignUpClaimSpec<Repo> {
-    async fn check(&self) -> Result<()> {
+    async fn verify(&self) -> Result<()> {
         let device_log_spec = DeviceLogSpec {
             p_obj: self.p_obj.clone(),
             user: self.user.clone(),

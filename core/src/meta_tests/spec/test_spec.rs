@@ -3,5 +3,5 @@ use async_trait::async_trait;
 
 #[async_trait(? Send)]
 pub trait TestSpec {
-    async fn check(&self) -> Result<()>;
+    async fn verify(&self) -> Result<()>;
 }

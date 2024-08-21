@@ -20,8 +20,8 @@ mod test {
             Arc::new(PersistentObject::new(client_repo.clone()))
         };
 
-        let claim_action = SignUpClaimTestAction::new(client_p_obj.clone());
-        let vault_status = claim_action.sign_up().await?;
+        let sign_up_claim_action = SignUpClaimTestAction::new(client_p_obj.clone());
+        let vault_status = sign_up_claim_action.sign_up().await?;
 
         let VaultStatus::Outsider(outsider) = vault_status else {
             panic!("Invalid state");
@@ -32,7 +32,7 @@ mod test {
             user: outsider.user_data,
         };
 
-        claim_spec.check().await?;
+        claim_spec.verify().await?;
 
         Ok(())
     }
