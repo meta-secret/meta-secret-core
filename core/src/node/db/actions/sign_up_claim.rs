@@ -76,7 +76,7 @@ impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
 
 #[cfg(test)]
 mod test {
-    use anyhow::Result;
+    use anyhow::{bail, Result};
     use std::sync::Arc;
 
     use crate::{
@@ -98,7 +98,7 @@ mod test {
         let claim_action = SignUpClaimTestAction::new(p_obj.clone());
         let vault_status = claim_action.sign_up().await?;
         let VaultStatus::Outsider(outsider) = vault_status else {
-            panic!("Invalid state");
+            bail!("Invalid state");
         };
 
         let db = repo.get_db().await;
@@ -108,7 +108,7 @@ mod test {
             p_obj,
             user: outsider.user_data,
         };
-        claim_spec.check().await?;
+        claim_spec.verify().await?;
 
         Ok(())
     }

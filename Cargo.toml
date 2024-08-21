@@ -6,7 +6,8 @@ members = [
     "core",
     "meta-server-emulator",
     "core-swift-lib",
-    "wasm"
+    "wasm",
+    "cli"
 ]
 
 exclude = [

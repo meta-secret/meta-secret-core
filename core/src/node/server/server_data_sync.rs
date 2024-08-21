@@ -551,7 +551,7 @@ mod test {
             user: outsider.user_data,
         };
 
-        server_claim_spec.check().await?;
+        server_claim_spec.verify().await?;
 
         Ok(())
     }

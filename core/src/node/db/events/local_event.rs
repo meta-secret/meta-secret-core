@@ -2,6 +2,7 @@ use anyhow::{anyhow, Error};
 
 use crate::node::common::model::device::{DeviceCredentials, DeviceData};
 use crate::node::common::model::user::UserCredentials;
+use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::db_tail::DbTail;
 use crate::node::db::events::generic_log_event::{
@@ -50,6 +51,15 @@ impl CredentialsObject {
 
         CredentialsObject::DefaultUser(event)
     }
+
+    pub fn user_creds(&self, vault_name: VaultName) -> UserCredentials {
+        match self {
+            CredentialsObject::Device(event) => {
+                UserCredentials::from(event.value.clone(), vault_name)
+            },
+            CredentialsObject::DefaultUser(event) => event.value.clone(),
+        }
+    }
 }
 
 impl TryFrom<GenericKvLogEvent> for CredentialsObject {
@@ -57,7 +67,7 @@ impl TryFrom<GenericKvLogEvent> for CredentialsObject {
 
     fn try_from(creds_event: GenericKvLogEvent) -> Result<Self, Self::Error> {
         if let GenericKvLogEvent::Credentials(creds_obj) = creds_event {
-            return Ok(creds_obj);
+            Ok(creds_obj)
         } else {
             let error: Error = anyhow!("Invalid credentials event type: {:?}", creds_event.key().obj_desc());
             Err(error)
