@@ -7,7 +7,7 @@ generate-cargo-chef-recipe:
     RUN cargo chef prepare --recipe-path recipe.json
     SAVE ARTIFACT recipe.json AS LOCAL recipe.json
 
-wasm-build:
+base-build:
     FROM rust:1.80
 
     # Install sccache (cargo is too slow)
@@ -30,6 +30,9 @@ wasm-build:
     RUN cargo chef cook --release --recipe-path recipe.json
     RUN cd wasm && wasm-pack build
 
+wasm-build:
+    BUILD +base-build
+    FROM +base-build
     COPY . .
 
     WORKDIR /wasm
@@ -57,4 +60,9 @@ web-build:
     RUN npm run build
     SAVE IMAGE meta-secret-web:latest
 
+app-test:
+    BUILD +base-build
+    FROM +base-build
+    COPY . .
 
+    RUN cargo test --release
