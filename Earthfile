@@ -65,4 +65,4 @@ app-test:
     FROM +base-build
     COPY . .
 
-    RUN cargo test --release
+    RUN --no-cache cargo test --release
