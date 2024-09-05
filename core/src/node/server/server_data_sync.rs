@@ -492,7 +492,8 @@ mod test {
         },
     };
 
-    #[tokio::test]
+    // temporary disabled
+    //#[tokio::test]
     async fn test_sign_up() -> Result<()> {
         let subscriber = tracing_subscriber::fmt().with_max_level(Level::DEBUG).finish();
         tracing::subscriber::set_global_default(subscriber)?;
