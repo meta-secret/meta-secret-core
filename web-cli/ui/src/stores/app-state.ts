@@ -36,9 +36,9 @@ export const AppState = defineStore("app_state", {
       console.log("Js: App state init");
       await init();
       
-      let jsAppStateManager = new JsAppStateManager(this);
+      new JsAppStateManager(this);
       
-      let stateManager = await WasmApplicationStateManager.new(jsAppStateManager);
+      let stateManager = await WasmApplicationStateManager.init_wasm();
       this.stateManager = await stateManager.init();
       
       this.stateManager;
