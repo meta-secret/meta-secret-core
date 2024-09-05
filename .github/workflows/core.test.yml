@@ -21,11 +21,6 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Generate rust models
-        working-directory: schema
-        run: |
-          make clean generate_schema
-
       - name: Run tests
         run: |
           cargo test
