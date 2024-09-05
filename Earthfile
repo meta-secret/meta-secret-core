@@ -28,7 +28,7 @@ base-build:
     # Cache dependencies with cargo chef
     COPY recipe.json .
     RUN cargo chef cook --release --recipe-path recipe.json
-    RUN cd wasm && wasm-pack build
+    RUN cd wasm && wasm-pack build --target web
 
 wasm-build:
     BUILD +base-build
