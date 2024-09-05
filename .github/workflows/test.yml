@@ -28,4 +28,4 @@ jobs:
 
       - name: run tests
         run: |
-          earthly +app-test
+          earthly +app-test --ci

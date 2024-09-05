@@ -8,7 +8,7 @@ generate-cargo-chef-recipe:
     SAVE ARTIFACT recipe.json AS LOCAL recipe.json
 
 base-build:
-    FROM rust:1.80
+    FROM rust:1.80.1
 
     # Install sccache (cargo is too slow)
     #RUN cargo install sccache@0.8.1
