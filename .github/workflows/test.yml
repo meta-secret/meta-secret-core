@@ -28,4 +28,4 @@ jobs:
 
       - name: run tests
         run: |
-          earthly --ci +app-test
+          earthly --allow-privileged --ci --remote-cache=ghcr.io/meta-secret/core-cache:latest --push +app-test
