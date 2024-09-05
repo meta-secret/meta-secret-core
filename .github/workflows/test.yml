@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-32vcpu-ubuntu-2204
 
     env:
       FORCE_COLOR: 1
