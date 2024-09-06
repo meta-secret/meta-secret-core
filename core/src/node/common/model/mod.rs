@@ -122,7 +122,7 @@ pub mod crypto {
             let cipher_text = {
                 let msg_data = Vec::try_from(&self.msg)?;
                 let payload = Payload {
-                    msg: msg_data.as_bytes(), // your message to encrypt
+                    msg: msg_data.as_bytes(),                  // your message to encrypt
                     aad: auth_data.associated_data.as_bytes(), // not encrypted, but authenticated in tag
                 };
                 let nonce = auth_data.nonce()?;

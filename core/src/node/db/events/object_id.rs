@@ -11,7 +11,6 @@ use super::kv_log_event::{KvKey, KvLogEvent};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[serde(tag = "__obj_id")]
 pub enum ObjectId {
     Unit(UnitId),
     Genesis(GenesisId),
@@ -26,7 +25,8 @@ impl ObjectId {
             ObjectId::Artifact(artifact_id) => artifact_id.id.clone(),
         };
 
-        serde_json::to_string(&id).unwrap()
+        let id_str = format!("{}:{}::{}", id.fqdn.obj_type, id.fqdn.obj_instance, id.id);
+        id_str
     }
 }
 

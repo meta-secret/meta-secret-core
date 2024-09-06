@@ -33,7 +33,7 @@ getrandom.workspace = true
 tracing-web = "0.1.2"
 
 wasm-bindgen = { version = "0.2.87", features = ["serde-serialize"] }
-indexed_db_futures = "0.3.0"
+rexie = "0.6.2"
 
 serde-wasm-bindgen = "0.6.0"
 wasm-bindgen-futures = "0.4.37"
@@ -63,5 +63,4 @@ wee_alloc = { version = "0.4.5", optional = true }
 [dev-dependencies]
 wasm-bindgen-test = "0.3.37"
 
-[target.'cfg(target_arch = "wasm32")'.dependencies]
 meta-secret-core = { path = "../core" }

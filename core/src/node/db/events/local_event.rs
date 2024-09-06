@@ -54,9 +54,7 @@ impl CredentialsObject {
 
     pub fn user_creds(&self, vault_name: VaultName) -> UserCredentials {
         match self {
-            CredentialsObject::Device(event) => {
-                UserCredentials::from(event.value.clone(), vault_name)
-            },
+            CredentialsObject::Device(event) => UserCredentials::from(event.value.clone(), vault_name),
             CredentialsObject::DefaultUser(event) => event.value.clone(),
         }
     }

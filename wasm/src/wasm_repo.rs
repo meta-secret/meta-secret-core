@@ -1,10 +1,7 @@
 use async_trait::async_trait;
-use indexed_db_futures::prelude::*;
-use indexed_db_futures::IdbDatabase;
 use js_sys::Object;
 use tracing::{instrument, Instrument};
 use wasm_bindgen::JsValue;
-use web_sys::IdbTransactionMode;
 
 use meta_secret_core::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor};
 use meta_secret_core::node::db::events::object_id::ObjectId;
@@ -12,48 +9,108 @@ use meta_secret_core::node::db::repo::generic_db::{
     CommitLogDbConfig, DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand,
 };
 
+use rexie::*;
+
 pub struct WasmRepo {
     pub db_name: String,
     pub store_name: String,
+
+    rexie: Rexie,
 }
 
-impl Default for WasmRepo {
-    fn default() -> Self {
+impl WasmRepo {
+    pub async fn default() -> Self {
+        let db_name = "meta-secret".to_string();
+        let store_name = "commit_log".to_string();
+
+        let rexie = Rexie::builder(db_name.as_str())
+            .version(1)
+            .add_object_store(
+                ObjectStore::new(store_name.as_str()), // Set the key path to `id`
+                                                       //.key_path("id")
+                                                       // Enable auto increment
+                                                       //.auto_increment(true)
+            )
+            .build()
+            .await
+            .expect("Failed to create REXie");
+
         Self {
-            db_name: "meta-secret".to_string(),
-            store_name: "commit_log".to_string(),
+            db_name,
+            store_name,
+            rexie,
         }
     }
 }
 
 impl WasmRepo {
-    pub fn server() -> WasmRepo {
+    pub async fn server() -> WasmRepo {
+        let db_name = String::from("meta-secret-server");
+        let store_name = "commit_log".to_string();
+
+        let rexie = Rexie::builder(db_name.as_str())
+            .version(1)
+            .add_object_store(
+                ObjectStore::new(store_name.as_str())
+                    // Set the key path to `id`
+                    .key_path("id"), // Enable auto increment
+                                     //.auto_increment(true)
+            )
+            .build()
+            .await
+            .expect("Failed to create REXie");
+
         WasmRepo {
-            db_name: String::from("meta-secret-server"),
-            store_name: "commit_log".to_string(),
+            db_name,
+            store_name,
+            rexie,
         }
     }
 
-    pub fn virtual_device() -> WasmRepo {
+    pub async fn virtual_device() -> WasmRepo {
+        let db_name = String::from("meta-secret-v-device");
+        let store_name = String::from("commit_log");
+
+        let rexie = Rexie::builder(db_name.as_str())
+            .version(1)
+            .add_object_store(
+                ObjectStore::new(store_name.as_str())
+                    // Set the key path to `id`
+                    .key_path("id"), // Enable auto increment
+                                     //.auto_increment(true)
+            )
+            .build()
+            .await
+            .expect("Failed to create REXie");
+
         WasmRepo {
-            db_name: String::from("meta-secret-v-device"),
-            store_name: String::from("commit_log"),
+            db_name,
+            store_name,
+            rexie,
         }
     }
 
-    pub fn virtual_device_2() -> WasmRepo {
-        WasmRepo {
-            db_name: String::from("meta-secret-v-device-2"),
-            store_name: String::from("commit_log"),
-        }
-    }
-}
+    pub async fn virtual_device_2() -> WasmRepo {
+        let db_name = String::from("meta-secret-v-device-2");
+        let store_name = String::from("commit_log");
 
-impl WasmRepo {
-    #[instrument(skip_all)]
-    pub async fn delete_db(&self) {
-        let db = open_db(self.db_name.as_str()).await;
-        db.delete().unwrap();
+        let rexie = Rexie::builder(db_name.as_str())
+            .version(1)
+            .add_object_store(
+                ObjectStore::new(store_name.as_str())
+                    // Set the key path to `id`
+                    .key_path("id"), // Enable auto increment
+                                     //.auto_increment(true)
+            )
+            .build()
+            .await
+            .expect("Failed to create REXie");
+
+        WasmRepo {
+            db_name,
+            store_name,
+            rexie,
+        }
     }
 }
 
@@ -61,22 +118,23 @@ impl WasmRepo {
 impl SaveCommand for WasmRepo {
     #[instrument(skip_all)]
     async fn save(&self, event: GenericKvLogEvent) -> anyhow::Result<ObjectId> {
-        let event_js: JsValue = serde_wasm_bindgen::to_value(&event).unwrap();
+        let store_name = self.store_name.as_str();
 
-        let db = open_db(self.db_name.as_str()).in_current_span().await;
-        let tx = db
-            .transaction_on_one_with_mode(self.store_name.as_str(), IdbTransactionMode::Readwrite)
+        let tx = self
+            .rexie
+            .transaction(&[store_name], TransactionMode::ReadWrite)
             .unwrap();
 
-        let store = tx.object_store(self.store_name.as_str()).unwrap();
+        let store = tx.store(store_name).unwrap();
 
-        let obj_id_js = serde_wasm_bindgen::to_value(&event.obj_id()).unwrap();
-        store.put_key_val_owned(obj_id_js, &event_js).unwrap();
+        let js_value = serde_wasm_bindgen::to_value(&event).unwrap();
+        let id_str = event.obj_id().id_str();
+        let obj_id_js = serde_wasm_bindgen::to_value(id_str.as_str()).unwrap();
+        
+        store.add(&js_value, Some(&obj_id_js)).await.unwrap();
 
-        tx.in_current_span().await.into_result().unwrap();
-        // All of the requests in the transaction have already finished so we can just drop it to
-        // avoid the unused future warning, or assign it to _.
-        //let _ = tx;
+        // Waits for the transaction to complete
+        tx.done().await.unwrap();
 
         Ok(event.obj_id().clone())
     }
@@ -86,15 +144,20 @@ impl SaveCommand for WasmRepo {
 impl FindOneQuery for WasmRepo {
     #[instrument(skip_all)]
     async fn find_one(&self, key: ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>> {
-        let db = open_db(self.db_name.as_str()).await;
-        let tx = db.transaction_on_one(self.store_name.as_str()).unwrap();
-        let store = tx.object_store(self.store_name.as_str()).unwrap();
+        let store_name = self.store_name.as_str();
 
-        let maybe_event_js: Option<JsValue> = {
-            let maybe_value: OptionalJsValueFuture =
-                store.get_owned(key.id_str().as_str()).unwrap();
-            maybe_value.await.unwrap()
-        };
+        let tx = self
+            .rexie
+            .transaction(&[store_name], TransactionMode::ReadWrite)
+            .unwrap();
+
+        let store = tx.store(store_name).unwrap();
+
+        // Convert it to `JsValue`
+        let js_key = serde_wasm_bindgen::to_value(key.id_str().as_str()).unwrap();
+
+        // Add the employee to the store
+        let maybe_event_js = store.get(js_key).await.unwrap();
 
         match maybe_event_js {
             None => Ok(None),
@@ -125,32 +188,18 @@ impl FindOneQuery for WasmRepo {
 impl DeleteCommand for WasmRepo {
     #[instrument(skip_all)]
     async fn delete(&self, key: ObjectId) {
-        let db = open_db(self.db_name.as_str()).in_current_span().await;
-        let tx: IdbTransaction = db
-            .transaction_on_one_with_mode(self.store_name.as_str(), IdbTransactionMode::Readwrite)
+        let store_name = self.store_name.as_str();
+
+        let tx = self
+            .rexie
+            .transaction(&[store_name], TransactionMode::ReadWrite)
             .unwrap();
-        let store = tx.object_store(self.store_name.as_str()).unwrap();
-        store.delete_owned(key.id_str().as_str()).unwrap();
-        tx.in_current_span().await.into_result().unwrap();
+
+        let store = tx.store(store_name).unwrap();
+
+        let js_key = serde_wasm_bindgen::to_value(key.id_str().as_str()).unwrap();
+        store.delete(js_key).await.unwrap();
     }
-}
-
-#[instrument(skip_all)]
-pub async fn open_db(db_name: &str) -> IdbDatabase {
-    let mut db_req = IdbDatabase::open_u32(db_name, 1).unwrap();
-
-    let on_upgrade_task = move |evt: &IdbVersionChangeEvent| -> Result<(), JsValue> {
-        // Check if the object store exists; create it if it doesn't
-        if !evt.db().object_store_names().any(|n| &n == "commit_log") {
-            evt.db().create_object_store("commit_log").unwrap();
-        }
-        Ok(())
-    };
-
-    db_req.set_on_upgrade_needed(Some(on_upgrade_task));
-
-    let idb = db_req.into_future().in_current_span().await.unwrap();
-    idb
 }
 
 impl KvLogEventRepo for WasmRepo {}

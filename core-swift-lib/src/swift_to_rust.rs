@@ -74,8 +74,8 @@ fn to_c_str(str: String) -> *mut c_char {
 }
 
 mod internal {
-    use meta_secret_core::crypto::key_pair::KeyPair;
     use super::*;
+    use meta_secret_core::crypto::key_pair::KeyPair;
     use meta_secret_core::node::common::model::crypto::{AeadCipherText, AeadPlainText, EncryptedMessage};
     use meta_secret_core::node::common::model::secret::MetaPasswordId;
     use meta_secret_core::secret;

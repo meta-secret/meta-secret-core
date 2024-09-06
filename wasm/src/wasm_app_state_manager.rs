@@ -48,9 +48,9 @@ impl WasmApplicationStateManager {
         info!("Init Wasm state manager");
 
         let cfg = ApplicationStateManagerConfigurator {
-            client_repo: Arc::new(WasmRepo::default()),
-            server_repo: Arc::new(WasmRepo::server()),
-            device_repo: Arc::new(WasmRepo::virtual_device()),
+            client_repo: Arc::new(WasmRepo::default().await),
+            server_repo: Arc::new(WasmRepo::server().await),
+            device_repo: Arc::new(WasmRepo::virtual_device().await),
 
             js_app_state: Arc::new(NoOpJsAppStateManager {}),
             vd_js_app_state: Arc::new(NoOpJsAppStateManager {}),
@@ -71,9 +71,9 @@ impl WasmApplicationStateManager {
         info!("Init Wasm state manager");
 
         let cfg = ApplicationStateManagerConfigurator {
-            client_repo: Arc::new(WasmRepo::default()),
-            server_repo: Arc::new(WasmRepo::server()),
-            device_repo: Arc::new(WasmRepo::virtual_device()),
+            client_repo: Arc::new(WasmRepo::default().await),
+            server_repo: Arc::new(WasmRepo::server().await),
+            device_repo: Arc::new(WasmRepo::virtual_device().await),
             js_app_state: Arc::new(JsJsAppStateManager {}),
             vd_js_app_state: Arc::new(JsJsAppStateManager {}),
         };

@@ -116,17 +116,13 @@ impl<Repo: KvLogEventRepo> CredentialsRepo<Repo> {
         let maybe_creds = self.find().await?;
 
         match maybe_creds {
-            None => {
-                self.generate_user_creds(device_name, vault_name).await
-            }
+            None => self.generate_user_creds(device_name, vault_name).await,
             Some(CredentialsObject::Device(KvLogEvent { value: creds, .. })) => {
                 let user_creds = UserCredentials::from(creds, vault_name);
                 self.save(CredentialsObject::default_user(user_creds.clone())).await?;
                 Ok(user_creds)
             }
-            Some(CredentialsObject::DefaultUser(event)) => {
-                Ok(event.value)
-            }
+            Some(CredentialsObject::DefaultUser(event)) => Ok(event.value),
         }
     }
 }

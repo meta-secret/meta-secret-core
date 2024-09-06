@@ -3,7 +3,10 @@
 
 .DS_Store
 
+target
+
 web-cli/ui/node_modules
-ui/dist
+web-cli/ui/dist
+web-cli/ui/pkg
 
 wasm/pkg

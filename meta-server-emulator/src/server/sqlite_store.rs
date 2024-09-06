@@ -29,7 +29,7 @@ pub enum SqliteDbError {
 #[async_trait(? Send)]
 impl SaveCommand for SqlIteRepo {
     async fn save(&self, value: GenericKvLogEvent) -> anyhow::Result<ObjectId> {
-        let mut conn = SqliteConnection::establish(self.conn_url.as_str()).unwrap();
+        let mut conn = SqliteConnection::establish(self.conn_url.as_str())?;
 
         diesel::insert_into(schema_log::table)
             .values(&NewDbLogEvent::from(&value))

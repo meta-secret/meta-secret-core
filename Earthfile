@@ -57,8 +57,6 @@ web-build:
     WORKDIR /
     COPY . .
 
-    RUN ls -la .
-
     WORKDIR ${PROJECT_UI_DIR}
     RUN npm install && npm run build
     SAVE IMAGE meta-secret-web:latest
