@@ -10,6 +10,8 @@ generate-cargo-chef-recipe:
 base-build:
     FROM rust:1.80.1
 
+    RUN rustup component add rustfmt
+
     # Install sccache (cargo is too slow)
     #RUN cargo install sccache@0.8.1
     ENV RUSTC_WRAPPER=sccache
@@ -21,18 +23,19 @@ base-build:
     # Install cargo-chef
     RUN cargo install cargo-chef --locked
 
-    #RUN cargo install wasm-pack slooooow
-    RUN curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-    RUN rustup component add rustfmt
-
     # Cache dependencies with cargo chef
     COPY recipe.json .
     RUN cargo chef cook --release --recipe-path recipe.json
-    RUN cd wasm && wasm-pack build --target web
 
 wasm-build:
     BUILD +base-build
     FROM +base-build
+
+    #RUN cargo install wasm-pack slooooow
+    RUN curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+    RUN cd wasm && wasm-pack build --target web
+
     COPY . .
 
     WORKDIR /wasm
@@ -57,7 +60,7 @@ web-build:
     RUN ls -la .
 
     WORKDIR ${PROJECT_UI_DIR}
-    RUN npm run build
+    RUN npm install && npm run build
     SAVE IMAGE meta-secret-web:latest
 
 app-test:

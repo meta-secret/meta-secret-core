@@ -2,7 +2,6 @@
 import {defineComponent} from "vue";
 import RegistrationComponent from "@/components/vault/Registration.vue";
 
-import "@/common/DbUtils";
 import {AppState} from "@/stores/app-state";
 import init from "meta-secret-web-cli";
 
