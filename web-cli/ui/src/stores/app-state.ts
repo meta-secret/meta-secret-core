@@ -1,47 +1,35 @@
-import {defineStore} from "pinia";
-import init, {WasmApplicationStateManager} from "meta-secret-web-cli";
-import {ApplicationState} from "@/model/ApplicationState";
+import { defineStore } from 'pinia';
+import { WasmApplicationManager, WasmApplicationState } from 'meta-secret-web-cli';
 
-class JsAppStateManager {
-  appState: any
-  
-  constructor(appState) {
-    this.appState = appState;
-  }
-  
-  async updateJsState(newState) {
-    this.appState.internalState = newState;
-  }
-}
-
-export const AppState = defineStore("app_state", {
+export const AppState = defineStore('app_state', {
   state: () => {
-    console.log("App state. Init");
-    
-    let internalState: ApplicationState = {
-      joinComponent: false,
-      metaVault: undefined,
-      vault: undefined,
-      metaPasswords: []
-    };
+    console.log('App state. Init');
 
     return {
-      internalState: internalState,
-      stateManager: undefined as WasmApplicationStateManager | undefined,
+      appManager: undefined as WasmApplicationManager | undefined,
+      appState: undefined as WasmApplicationState,
     };
   },
 
   actions: {
     async appStateInit() {
-      console.log("Js: App state init");
-      await init();
-      
-      new JsAppStateManager(this);
-      
-      let stateManager = await WasmApplicationStateManager.init_wasm();
-      this.stateManager = await stateManager.init();
-      
-      this.stateManager;
-    }
+      console.log('Js: App state, start initialization');
+
+      const appManager = await WasmApplicationManager.init_wasm();
+      this.appState = await appManager.get_state();
+      console.log('Js: Initial App State!!!!');
+
+      this.appManager = appManager;
+
+      const subscribe = async (appManager: WasmApplicationManager) => {
+        const state = await appManager.get_state();
+        console.log('Js: Updated State: ', state);
+        this.appState = state;
+
+        await subscribe(appManager);
+      };
+
+      subscribe(appManager).then(() => console.log('Finished subscribing'));
+    },
   },
 });

@@ -42,6 +42,10 @@ wasm-build:
     RUN wasm-pack build --target web
     SAVE ARTIFACT pkg
 
+wasm-build-local:
+    FROM +wasm-build
+    SAVE ARTIFACT pkg AS LOCAL web-cli/ui/pkg
+
 web-build:
     FROM node:22.7-bookworm
 

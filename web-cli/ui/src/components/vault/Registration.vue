@@ -1,35 +1,37 @@
 <script lang="ts">
-import {defineComponent} from 'vue'
-import {AppState} from "@/stores/app-state"
+import { defineComponent } from 'vue';
+import { AppState } from '@/stores/app-state';
 
 export default defineComponent({
-
   async setup() {
-    console.log("JS: Registration component. Init")
+    console.log('JS: Registration component. Init');
 
     const appState = AppState();
     return {
       appState: appState,
       vaultName: '',
-      deviceName: ''
-    }
+      deviceName: '',
+    };
   },
 
-  watch: {},
-
   methods: {
-
     async registration() {
-      console.log("Generate vault");
-      await this.appState.stateManager.sign_up(this.vaultName, this.deviceName);
+      console.log('Generate vault');
+      await this.appState.appManager.sign_up(this.vaultName, this.deviceName);
     },
 
     isEmptyEnv() {
-      return this.appState.internalState.metaVault === undefined;
-    },
-  }
-})
+      const appState = this.appState.appState;
+      if (!appState) {
+        console.log('isEmptyEnv: appState is not initialized');
+        throw new Error('Invalid environment');
+      }
 
+      console.log('isEmptyEnv: ', appState.is_empty_env());
+      return appState.is_empty_env();
+    },
+  },
+});
 </script>
 
 <template>
@@ -40,30 +42,21 @@ export default defineComponent({
 
     <div class="container flex items-center justify-center max-w-md border-b border-t border-l border-r py-2 px-2">
       <label>@</label>
-      <input
-          :class="$style.nicknameUserInput"
-          type="text"
-          placeholder="vault name"
-          v-model="vaultName"
-      >
-      <input
-          :class="$style.nicknameUserInput"
-          type="text"
-          placeholder="device name"
-          v-model="deviceName"
-      >
+      <input :class="$style.nicknameUserInput" type="text" placeholder="vault name" v-model="vaultName" />
+      <input :class="$style.nicknameUserInput" type="text" placeholder="device name" v-model="deviceName" />
 
       <button
           :class="$style.registrationButton"
           @click="registration"
-          v-if="!this.appState.internalState.joinComponent"
+          v-if="!this.appState.appState.is_new_user()"
       >
         Register
       </button>
     </div>
   </div>
 
-  <div v-if="this.appState.internalState.joinComponent">
+  <!--<div v-if="this.appState.internalState.joinComponent">-->
+  <div>
     <div class="container flex items-center max-w-md py-2">
       <label :class="$style.joinLabel">
         Vault already exists, would you like to join?

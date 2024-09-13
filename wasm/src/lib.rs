@@ -7,10 +7,10 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use wasm_bindgen::prelude::*;
 
-pub mod app_state_manager;
+pub mod app_manager;
 pub mod objects;
 pub mod utils;
-pub mod wasm_app_state_manager;
+pub mod wasm_app_manager;
 pub mod wasm_repo;
 
 use tracing_subscriber::fmt::format::Pretty;
@@ -19,24 +19,13 @@ use tracing_web::{performance_layer, MakeConsoleWriter};
 
 /// Json utilities https://github.com/rustwasm/wasm-bindgen/blob/main/crates/js-sys/tests/wasm/JSON.rs
 
-// When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
-// allocator.
-#[cfg(feature = "wee_alloc")]
-#[global_allocator]
-static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
-
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen]
-    pub async fn updateJsState(app_state: JsValue);
-}
-
 #[wasm_bindgen]
 extern "C" {
     pub fn alert(s: &str);
 
     #[wasm_bindgen(js_namespace = console)]
     pub fn debug(s: &str);
+    
     #[wasm_bindgen(js_namespace = console)]
     pub fn info(s: &str);
 

@@ -3,6 +3,8 @@ use async_trait::async_trait;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::object_id::ObjectId;
 
+// https://blog.rust-lang.org/2023/12/21/async-fn-rpit-in-traits.html
+
 #[async_trait(? Send)]
 pub trait SaveCommand {
     async fn save(&self, value: GenericKvLogEvent) -> anyhow::Result<ObjectId>;

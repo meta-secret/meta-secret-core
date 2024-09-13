@@ -1,7 +1,5 @@
 use async_trait::async_trait;
-use js_sys::Object;
 use tracing::{instrument, Instrument};
-use wasm_bindgen::JsValue;
 
 use meta_secret_core::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor};
 use meta_secret_core::node::db::events::object_id::ObjectId;
@@ -23,23 +21,22 @@ impl WasmRepo {
         let db_name = "meta-secret".to_string();
         let store_name = "commit_log".to_string();
 
-        let rexie = Rexie::builder(db_name.as_str())
-            .version(1)
-            .add_object_store(
-                ObjectStore::new(store_name.as_str()), // Set the key path to `id`
-                                                       //.key_path("id")
-                                                       // Enable auto increment
-                                                       //.auto_increment(true)
-            )
-            .build()
-            .await
-            .expect("Failed to create REXie");
+        let rexie = Self::build_rexie(db_name.as_str(), store_name.as_str()).await;
 
         Self {
             db_name,
             store_name,
             rexie,
         }
+    }
+
+    async fn build_rexie(db_name: &str, store_name: &str) -> Rexie {
+        Rexie::builder(db_name)
+            .version(1)
+            .add_object_store(ObjectStore::new(store_name).key_path("id"))
+            .build()
+            .await
+            .expect("Failed to create REXie")
     }
 }
 
@@ -48,17 +45,7 @@ impl WasmRepo {
         let db_name = String::from("meta-secret-server");
         let store_name = "commit_log".to_string();
 
-        let rexie = Rexie::builder(db_name.as_str())
-            .version(1)
-            .add_object_store(
-                ObjectStore::new(store_name.as_str())
-                    // Set the key path to `id`
-                    .key_path("id"), // Enable auto increment
-                                     //.auto_increment(true)
-            )
-            .build()
-            .await
-            .expect("Failed to create REXie");
+        let rexie = Self::build_rexie(db_name.as_str(), store_name.as_str()).await;
 
         WasmRepo {
             db_name,
@@ -71,17 +58,7 @@ impl WasmRepo {
         let db_name = String::from("meta-secret-v-device");
         let store_name = String::from("commit_log");
 
-        let rexie = Rexie::builder(db_name.as_str())
-            .version(1)
-            .add_object_store(
-                ObjectStore::new(store_name.as_str())
-                    // Set the key path to `id`
-                    .key_path("id"), // Enable auto increment
-                                     //.auto_increment(true)
-            )
-            .build()
-            .await
-            .expect("Failed to create REXie");
+        let rexie = Self::build_rexie(db_name.as_str(), store_name.as_str()).await;
 
         WasmRepo {
             db_name,
@@ -94,17 +71,7 @@ impl WasmRepo {
         let db_name = String::from("meta-secret-v-device-2");
         let store_name = String::from("commit_log");
 
-        let rexie = Rexie::builder(db_name.as_str())
-            .version(1)
-            .add_object_store(
-                ObjectStore::new(store_name.as_str())
-                    // Set the key path to `id`
-                    .key_path("id"), // Enable auto increment
-                                     //.auto_increment(true)
-            )
-            .build()
-            .await
-            .expect("Failed to create REXie");
+        let rexie = Self::build_rexie(db_name.as_str(), store_name.as_str()).await;
 
         WasmRepo {
             db_name,
@@ -166,10 +133,7 @@ impl FindOneQuery for WasmRepo {
                     return Ok(None);
                 }
 
-                let js_object = Object::from_entries(&event_js).unwrap();
-                let obj_js: JsValue = JsValue::from(js_object);
-
-                let obj = serde_wasm_bindgen::from_value(obj_js).unwrap();
+                let obj = serde_wasm_bindgen::from_value(event_js).unwrap();
                 Ok(Some(obj))
             }
         }

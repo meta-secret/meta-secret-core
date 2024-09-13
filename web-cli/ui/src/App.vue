@@ -1,15 +1,10 @@
 <script lang="ts">
 import NavBar from "@/components/NavBar.vue";
-import {defineComponent} from "vue";
+import { defineComponent } from "vue";
 
 export default defineComponent({
-  components: {NavBar},
-
-  async setup() {
-
-  }
+  components: { NavBar },
 });
-
 </script>
 
 <template>
@@ -17,20 +12,18 @@ export default defineComponent({
     <NavBar/>
   </header>
 
-  <div class="py-4"/>
+  <div class="py-4" />
 
-    <div>
-      <RouterView/>
-    </div>
+  <div>
+    <RouterView />
+  </div>
 </template>
 
 <style>
-
 .container {
   display: flex;
   justify-content: flex-start;
   max-width: 1376px;
   margin: 0 auto;
 }
-
 </style>

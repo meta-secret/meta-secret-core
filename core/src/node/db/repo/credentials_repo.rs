@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::{anyhow, Error};
+use anyhow::anyhow;
 use tracing::{info, instrument};
 
 use crate::node::common::model::device::{DeviceCredentials, DeviceName};
@@ -29,23 +29,22 @@ impl<Repo: KvLogEventRepo> CredentialsRepo<Repo> {
 
         let device_creds = self.get_or_generate_device_creds(device_name).await?;
 
-        let user_creds = CredentialsObject::default_user(UserCredentials::from(device_creds, vault_name));
+        let creds = UserCredentials::from(device_creds, vault_name);
+        let user_creds = CredentialsObject::default_user(creds);
 
         self.save(user_creds.clone()).await?;
 
         Ok(user_creds)
     }
 
-    pub async fn get_or_generate_device_creds(&self, device_name: DeviceName) -> Result<DeviceCredentials, Error> {
+    pub async fn get_or_generate_device_creds(&self, device_name: DeviceName) -> anyhow::Result<DeviceCredentials> {
         let maybe_creds = self.find().await?;
 
         let device_creds = match maybe_creds {
             None => self.generate_device_creds(device_name).await?,
             Some(creds) => match creds {
                 CredentialsObject::Device(event) => event.value,
-                CredentialsObject::DefaultUser(_) => {
-                    Err(anyhow!("User credentials found, Device credentials expected"))?
-                }
+                CredentialsObject::DefaultUser(event) => event.value.device_creds
             },
         };
         Ok(device_creds)
@@ -73,7 +72,9 @@ impl<Repo: KvLogEventRepo> CredentialsRepo<Repo> {
 
     #[instrument(skip_all)]
     pub async fn find(&self) -> anyhow::Result<Option<CredentialsObject>> {
-        let maybe_creds = self.p_obj.find_tail_event(ObjectDescriptor::CredsIndex).await?;
+        let maybe_creds = self.p_obj
+            .find_tail_event(ObjectDescriptor::CredsIndex)
+            .await?;
 
         let Some(creds) = maybe_creds else {
             return Ok(None);

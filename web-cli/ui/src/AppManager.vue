@@ -4,10 +4,8 @@ import App from "@/App.vue";
 
 <template>
   <Suspense>
-    <App/>
+    <App />
   </Suspense>
 </template>
 
-<style>
-
-</style>
+<style></style>

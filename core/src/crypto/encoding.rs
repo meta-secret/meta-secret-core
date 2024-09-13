@@ -6,9 +6,17 @@ pub type Array256Bit = [u8; KEY_SIZE_32_BYTES];
 pub mod base64 {
     extern crate base64;
 
+    use std::fmt::Display;
+    
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct Base64Text(pub String);
+    
+    impl Display for Base64Text {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}", self.0.clone())
+        }
+    }
 
     impl From<&Base64Text> for String {
         fn from(base64: &Base64Text) -> Self {
