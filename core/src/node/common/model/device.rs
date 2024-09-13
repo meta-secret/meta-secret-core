@@ -1,12 +1,14 @@
 use std::fmt::Display;
 
 use anyhow::{anyhow, Ok};
-
+use wasm_bindgen::prelude::wasm_bindgen;
 use crypto::utils::generate_uuid_b64_url_enc;
 
 use crate::crypto;
+use crate::crypto::encoding::base64::Base64Text;
 use crate::crypto::keys::SecretBox;
 use crate::crypto::keys::{KeyManager, OpenBox};
+use crate::crypto::utils::rand_uuid_b64_url_enc;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,6 +27,13 @@ impl From<String> for DeviceName {
 impl From<&str> for DeviceName {
     fn from(device_name: &str) -> Self {
         DeviceName(String::from(device_name))
+    }
+}
+
+impl DeviceName {
+    pub fn generate() -> DeviceName {
+        let Base64Text(device_name) = rand_uuid_b64_url_enc();
+        DeviceName(device_name)
     }
 }
 

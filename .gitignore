@@ -2,12 +2,7 @@
 *.iml
 
 target
-core/target
-/schema/openapitools.json
-/Cargo.lock
-/schema/node_modules/
-/schema/package.json
-/schema/package-lock.json
+Cargo.lock
 
 /meta-server-serverless/.idea/
 /meta-server-serverless/node_modules/
@@ -22,5 +17,9 @@ core/target
 /wasm/Cargo.lock
 /wasm/bin/
 /wasm/wasm-pack.log
+
+web-cli/ui/node_modules
+web-cli/ui/dist
+web-cli/ui/pkg
 
 .vscode

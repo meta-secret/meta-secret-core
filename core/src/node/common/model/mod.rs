@@ -1,7 +1,8 @@
 use std::fmt::Display;
-
+use wasm_bindgen::prelude::wasm_bindgen;
 use crate::node::common::model::device::DeviceData;
 use crate::node::common::model::secret::MetaPasswordId;
+use crate::node::common::model::user::UserCredentials;
 use crate::node::common::model::vault::VaultStatus;
 
 pub mod device;
@@ -344,19 +345,16 @@ impl Default for RegistrationStatus {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ApplicationState {
-    pub device: Option<DeviceData>,
-    pub vault: Option<VaultStatus>,
-    pub join_component: bool,
-}
-
-impl Default for ApplicationState {
-    fn default() -> Self {
-        ApplicationState {
-            device: None,
-            vault: None,
-            join_component: false,
-        }
+pub enum ApplicationState {
+    Empty,
+    Local{
+        device: DeviceData
+    },
+    User {
+        user: UserCredentials
+    },
+    Vault {
+        vault: VaultStatus
     }
 }
 

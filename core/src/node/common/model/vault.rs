@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
-
+use wasm_bindgen::prelude::wasm_bindgen;
 use crate::node::common::model::device::DeviceId;
-use crate::node::common::model::user::{UserData, UserDataMember, UserDataOutsider, UserMembership};
+use crate::node::common::model::user::{UserData, UserDataMember, UserDataOutsider, UserDataOutsiderStatus, UserMembership};
 use crate::node::common::model::MetaPasswordId;
 
 use super::crypto::CommunicationChannel;
@@ -152,5 +152,25 @@ pub enum VaultStatus {
 impl VaultStatus {
     pub fn unknown(user: UserData) -> Self {
         VaultStatus::Outsider(UserDataOutsider::unknown(user))
+    }
+    
+    pub fn is_new_user(&self) -> bool {
+        match self {
+            VaultStatus::Outsider(UserDataOutsider {status, ..}) => {
+                match status {
+                    UserDataOutsiderStatus::Unknown => true,
+                    UserDataOutsiderStatus::Pending => false,
+                    UserDataOutsiderStatus::Declined => false
+                }
+            }
+            VaultStatus::Member { .. } => false
+        }
+    }
+    
+    pub fn user(&self) -> UserData {
+        match self {
+            VaultStatus::Outsider(UserDataOutsider {user_data, ..}) => user_data.clone(),
+            VaultStatus::Member {member, ..} => member.user().clone()
+        }
     }
 }

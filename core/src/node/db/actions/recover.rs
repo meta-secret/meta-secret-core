@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::anyhow;
 use tracing_attributes::instrument;
 
-use crate::node::common::model::device::DeviceLinkBuilder;
+use crate::node::common::model::device::{DeviceData, DeviceLinkBuilder};
 use crate::node::common::model::secret::MetaPasswordId;
 use crate::node::common::model::user::UserDataMember;
 use crate::node::common::model::vault::VaultStatus;
@@ -26,6 +26,7 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
         meta_pass_id: MetaPasswordId,
         app_state: &ApplicationState,
     ) -> anyhow::Result<()> {
+        /*
         let Some(sender_device) = app_state.device.clone() else {
             return Err(anyhow!("Device not found"));
         };
@@ -69,6 +70,7 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
                 }
             }
         }
+         */
 
         Ok(())
     }

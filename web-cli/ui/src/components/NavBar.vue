@@ -1,12 +1,12 @@
 <script setup>
-import {Disclosure, DisclosureButton, DisclosurePanel} from '@headlessui/vue'
-import {MenuIcon, XIcon} from '@heroicons/vue/outline'
+import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/vue';
+import { MenuIcon, XIcon } from '@heroicons/vue/outline';
 
 const navigation = [
-  {name: 'Home', href: '/', current: false},
-  {name: 'GitHub', href: 'https://github.com/meta-secret', current: false},
-  {name: 'Contact', href: '/contact', current: false},
-]
+  { name: 'Home', href: '/', current: false },
+  { name: 'GitHub', href: 'https://github.com/meta-secret', current: false },
+  { name: 'Contact', href: '/contact', current: false },
+];
 </script>
 
 <template>
@@ -16,7 +16,7 @@ const navigation = [
         <div class="flex items-center justify-between h-16">
           <div class="flex items-center">
             <div class="flex items-center flex-shrink-0">
-              <img class="h-8 w-8" src="/logo.jpeg" alt="Workflow"/>
+              <img class="h-8 w-8" src="/logo.png" alt="Workflow"/>
               <div class="px-6">
                 <RouterLink class="dark:text-black" to="/">Meta Secret</RouterLink>
               </div>

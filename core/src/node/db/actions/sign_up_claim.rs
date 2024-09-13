@@ -49,28 +49,12 @@ impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
     }
 
     pub async fn get_vault_status(&self) -> anyhow::Result<(UserData, VaultStatus)> {
-        let creds = {
-            let creds_repo = CredentialsRepo {
-                p_obj: self.p_obj.clone(),
-            };
-            creds_repo.get().await?
+        let p_vault = PersistentVault {
+            p_obj: self.p_obj.clone(),
         };
-
-        match creds {
-            CredentialsObject::Device { .. } => {
-                bail!("User credentials not found")
-            }
-            CredentialsObject::DefaultUser(event) => {
-                let user = event.value.user();
-                //get vault status, if not member, then create request to join
-                let p_vault = PersistentVault {
-                    p_obj: self.p_obj.clone(),
-                };
-
-                let vault_status = p_vault.find(user.clone()).await?;
-                Ok((user, vault_status))
-            }
-        }
+        
+        let vault_status = p_vault.find_for_default_user().await?;
+        Ok((vault_status.user(), vault_status))
     }
 }
 

@@ -1,9 +1,9 @@
 <script lang="ts">
-import {defineComponent} from "vue";
-import RegistrationComponent from "@/components/vault/Registration.vue";
+import { defineComponent } from 'vue';
+import RegistrationComponent from '@/components/vault/Registration.vue';
 
-import {AppState} from "@/stores/app-state";
-import init from "meta-secret-web-cli";
+import { AppState } from '@/stores/app-state';
+import init from 'meta-secret-web-cli';
 
 export default defineComponent({
   components: {
@@ -11,7 +11,7 @@ export default defineComponent({
   },
 
   async setup() {
-    console.log("VaultView. Init");
+    console.log('VaultView. Init');
 
     await init();
 
@@ -25,19 +25,19 @@ export default defineComponent({
 
   methods: {
     isEmptyEnv() {
-      return this.appState.internalState.metaVault === undefined;
+      return true;
     },
 
     getVaultName() {
-      return this.appState.internalState.metaVault.vaultName;
-    }
-  }
+      return 'fake';
+    },
+  },
 });
 </script>
 
 <template>
   <div class="flex justify-center py-6">
-    <p class="text-2xl">Distributed Password Manager</p>
+    <p class="text-2xl">Personal Secret Manager</p>
   </div>
 
   <div v-if="this.isEmptyEnv()">

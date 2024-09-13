@@ -1,3 +1,4 @@
+use wasm_bindgen::prelude::wasm_bindgen;
 use crate::crypto::encoding::base64::Base64Text;
 use crate::crypto::key_pair::{DsaKeyPair, KeyPair, TransportDsaKeyPair};
 

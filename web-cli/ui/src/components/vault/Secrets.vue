@@ -1,33 +1,31 @@
 <script lang="ts">
-import {defineComponent} from "vue";
-import init from "meta-secret-web-cli";
-import {AppState} from "@/stores/app-state";
+import { defineComponent } from 'vue';
+import init from 'meta-secret-web-cli';
+import { AppState } from '@/stores/app-state';
 
 export default defineComponent({
   async setup() {
-    console.log("Secrets Component. Init");
+    console.log('Secrets Component. Init');
 
     await init();
     const appState = AppState();
 
     return {
-      newPassword: "",
-      newPassDescription: "",
-      appState: appState
+      newPassword: '',
+      newPassDescription: '',
+      appState: appState,
     };
   },
 
   methods: {
     async addPassword() {
       await init();
-      await this.appState
-          .stateManager
-          .cluster_distribution(this.newPassDescription, this.newPassword);
+      await this.appState.stateManager.cluster_distribution(this.newPassDescription, this.newPassword);
     },
 
     async recover(metaPassId) {
       await init();
-      alert("Recover password: " + JSON.stringify(metaPassId));
+      alert('Recover password: ' + JSON.stringify(metaPassId));
       await this.appState.stateManager.recover_js(metaPassId);
     },
   },
@@ -40,21 +38,11 @@ export default defineComponent({
   <div :class="$style.newPasswordDiv">
     <div class="flex items-center">
       <label>description: </label>
-      <input
-        type="text"
-        :class="$style.passwordInput"
-        placeholder="my meta secret"
-        v-model="newPassDescription"
-      />
+      <input type="text" :class="$style.passwordInput" placeholder="my meta secret" v-model="newPassDescription" />
     </div>
     <div class="flex items-center">
       <label>secret: </label>
-      <input
-        type="text"
-        :class="$style.passwordInput"
-        placeholder="top$ecret"
-        v-model="newPassword"
-      />
+      <input type="text" :class="$style.passwordInput" placeholder="top$ecret" v-model="newPassword" />
     </div>
     <div class="flex justify-end">
       <button :class="$style.addButton" @click="addPassword">Add</button>
@@ -66,11 +54,7 @@ export default defineComponent({
   <!-- https://www.tailwind-kit.com/components/list -->
   <div :class="$style.secrets">
     <ul class="w-full flex flex-col divide-y divide p-2">
-      <li
-        v-for="secret in this.appState.internalState.metaPasswords"
-        :key="secret.id.id"
-        class="flex flex-row"
-      >
+      <li v-for="secret in this.appState.internalState.metaPasswords" :key="secret.id.id" class="flex flex-row">
         <div class="flex items-center flex-1 p-4 cursor-pointer select-none">
           <div class="flex-1 pl-1 mr-16">
             <div class="font-medium dark:text-white">
@@ -80,9 +64,7 @@ export default defineComponent({
               {{ secret.id.id.slice(0, 18) }}
             </div>
           </div>
-          <button :class="$style.actionButtonText" @click="recover(secret.id)">
-            Recover
-          </button>
+          <button :class="$style.actionButtonText" @click="recover(secret.id)">Recover</button>
         </div>
       </li>
     </ul>
@@ -96,7 +78,7 @@ export default defineComponent({
 }
 
 .newPasswordDiv {
-  @apply block max-w-md mx-auto items-center justify-center max-w-md border-b border-t border-l border-r py-2 px-4;
+  @apply block max-w-md mx-auto items-center justify-center border-b border-t border-l border-r py-2 px-4;
 }
 
 .passwordInput {

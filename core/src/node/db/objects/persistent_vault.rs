@@ -62,9 +62,9 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
         match maybe_tail_event {
             None => Ok(UserMembership::Outsider(UserDataOutsider::unknown(user_data))),
             Some(tail_event) => {
-                let vault_status_obj = VaultMembershipObject::try_from(tail_event)?;
+                let vault_membership_obj = VaultMembershipObject::try_from(tail_event)?;
 
-                match vault_status_obj {
+                match vault_membership_obj {
                     VaultMembershipObject::Unit { .. } => {
                         Ok(UserMembership::Outsider(UserDataOutsider::unknown(user_data)))
                     }
