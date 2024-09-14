@@ -6,8 +6,8 @@
     "context": ".."
   },
 
-  workspaceFolder: "/meta-secret",
-  workspaceMount: "source=${localWorkspaceFolder},target=/meta-secret,type=bind,consistency=cached",
+  "workspaceFolder": "/meta-secret",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/meta-secret,type=bind,consistency=cached",
 
   "features": {
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
