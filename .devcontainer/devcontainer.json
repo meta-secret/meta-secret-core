@@ -1,9 +1,15 @@
 {
+  "name": "MetaSecret",
+
   "build": {
-    "dockerfile": "Dockerfile"
+    "dockerfile": "Dockerfile",
+    "context": ".."
   },
+
+  workspaceFolder: "/meta-secret",
+  workspaceMount: "source=${localWorkspaceFolder},target=/meta-secret,type=bind,consistency=cached",
+
   "features": {
-    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
-    "ghcr.io/earthly/devcontainer-features/earthly:1": {}
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
   }
 }

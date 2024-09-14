@@ -1,28 +1,22 @@
-FROM ubuntu:24.04
+FROM debian:bookworm
 
-RUN apt update && apt install -y curl wget git build-essential
+RUN apt update && apt install -y curl wget git build-essential pkg-config libssl-dev
 
 #################### Installation ####################
-# Install Rust
+#Earthly
+ENV EARTHLY_VERSION="v0.8.15"
+ENV EARTHLY_RELEASE="https://github.com/earthly/earthly/releases/download/${EARTHLY_VERSION}/earthly-linux-amd64"
+RUN wget ${EARTHLY_RELEASE} -O /usr/local/bin/earthly \
+      && chmod +x /usr/local/bin/earthly \
+      && /usr/local/bin/earthly bootstrap --with-autocomplete
+
+#Rust
+ENV PATH="/root/.cargo/bin:${PATH}"
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-#RUN rustup component add rustfmt
+RUN curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+RUN rustup target add x86_64-unknown-linux-gnu
 
-# Install Node.js and npm
-# installs nvm (Node Version Manager)
-RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.0/install.sh | bash
-ENV NVM_DIR="~/.nvm"
-ENV NODE_VERSION 22.8.0
-
-RUN ls -la /root/.nvm && ls -la /root/.nvm/nvm.sh
-
-RUN . $NVM_DIR/nvm.sh \
-    && nvm install $NODE_VERSION \
-    && nvm alias default $NODE_VERSION \
-    && nvm use default
-ENV PATH $NVM_DIR/versions/node/v$NODE_VERSION/bin:$PATH
-
-################ Setup ################
-# Install sccache (cargo is too slow)
+# Sccache (cargo is too slow)
 #RUN cargo install sccache@0.8.1
 ENV RUSTC_WRAPPER=sccache
 RUN wget https://github.com/mozilla/sccache/releases/download/v0.8.1/sccache-v0.8.1-x86_64-unknown-linux-musl.tar.gz \
@@ -30,14 +24,23 @@ RUN wget https://github.com/mozilla/sccache/releases/download/v0.8.1/sccache-v0.
     && mv sccache-v0.8.1-x86_64-unknown-linux-musl/sccache /usr/local/bin/sccache \
     && chmod +x /usr/local/bin/sccache
 
+# Node.js and npm (with nvm)
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.0/install.sh | bash
+ENV NVM_DIR="/root/.nvm"
+ENV NODE_VERSION="22.8.0"
+RUN . $NVM_DIR/nvm.sh \
+    && nvm install $NODE_VERSION \
+    && nvm alias default $NODE_VERSION \
+    && nvm use default
+
 # Install cargo-chef
 RUN cargo install cargo-chef --locked
 
+################ Setup ################
+#ENV META_PROJECT_DIR=/meta-secret
+#WORKDIR ${META_PROJECT_DIR}
 # Cache dependencies with cargo chef
-RUN cargo chef cook --release --recipe-path recipe.json
+#COPY recipe.json ${META_PROJECT_DIR}
+#RUN cargo chef cook --release --target x86_64-unknown-linux-gnu --recipe-path recipe.json
 
-RUN curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-
-RUN cd wasm && wasm-pack build --target web
-
-RUN cd web-cli/ui npm install
+#RUN cd wasm && wasm-pack build --target web

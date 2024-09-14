@@ -16,6 +16,9 @@ test_utils = []
 crate-type = ["cdylib", "lib", "staticlib"]
 name = "meta_secret_core"
 
+[build]
+target = "x86_64-unknown-linux-gnu"
+
 [dependencies]
 thiserror.workspace = true
 anyhow.workspace = true

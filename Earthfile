@@ -8,7 +8,7 @@ generate-cargo-chef-recipe:
     SAVE ARTIFACT recipe.json AS LOCAL recipe.json
 
 base-build:
-    FROM rust:1.80.1
+    FROM rust:1.81.0-bookworm
 
     RUN rustup component add rustfmt
 
