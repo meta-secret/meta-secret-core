@@ -78,6 +78,9 @@ impl<Repo: KvLogEventRepo> MetaClientService<Repo> {
                             let vault_status = vault_repo.find(user_creds.user()).await?;
 
                             match vault_status {
+                                VaultStatus::NotExists(_) => {
+                                    bail!("Vault doesn't exists")
+                                }
                                 VaultStatus::Outsider(_) => {
                                     bail!("Outsider user can't manage a vault")
                                 }

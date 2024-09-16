@@ -225,8 +225,11 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         let vault_status = p_vault.find(creds.user()).await?;
 
         match vault_status {
+            VaultStatus::NotExists(_) => {
+                bail!("Vault doesn't exists")
+            }
             VaultStatus::Outsider(_) => {
-                Ok(())
+                bail!("You are not a member of the vault")
             }
             VaultStatus::Member {
                 vault,
