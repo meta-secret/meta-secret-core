@@ -88,7 +88,7 @@ impl VaultData {
                     vault: self.clone(),
                 },
             },
-            None => VaultStatus::Outsider(UserDataOutsider::unknown(for_user)),
+            None => VaultStatus::Outsider(UserDataOutsider::non_member(for_user)),
         }
     }
 
@@ -145,32 +145,21 @@ impl VaultData {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum VaultStatus {
+    NotExists(UserData),
     Outsider(UserDataOutsider),
     Member { member: UserDataMember, vault: VaultData },
 }
 
 impl VaultStatus {
     pub fn unknown(user: UserData) -> Self {
-        VaultStatus::Outsider(UserDataOutsider::unknown(user))
-    }
-    
-    pub fn is_non_member(&self) -> bool {
-        match self {
-            VaultStatus::Outsider(UserDataOutsider {status, ..}) => {
-                match status {
-                    UserDataOutsiderStatus::NonMember => true,
-                    UserDataOutsiderStatus::Pending => false,
-                    UserDataOutsiderStatus::Declined => false
-                }
-            }
-            VaultStatus::Member { .. } => false
-        }
+        VaultStatus::Outsider(UserDataOutsider::non_member(user))
     }
     
     pub fn user(&self) -> UserData {
         match self {
+            VaultStatus::NotExists(user) => user.clone(),
             VaultStatus::Outsider(UserDataOutsider {user_data, ..}) => user_data.clone(),
-            VaultStatus::Member {member, ..} => member.user().clone()
+            VaultStatus::Member {member, ..} => member.user().clone(),
         }
     }
 }

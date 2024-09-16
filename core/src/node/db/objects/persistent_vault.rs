@@ -7,6 +7,7 @@ use crate::node::common::model::user::{UserData, UserDataMember, UserDataOutside
 use crate::node::common::model::vault::VaultStatus;
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::vault_event::VaultMembershipObject;
+use crate::node::db::objects::global_index::ClientPersistentGlobalIndex;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::credentials_repo::CredentialsRepo;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
@@ -35,7 +36,13 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
 
     #[instrument(skip_all)]
     pub async fn find(&self, user: UserData) -> anyhow::Result<VaultStatus> {
-        let membership = self.vault_membership(user).await?;
+        let membership = self.vault_membership(user.clone()).await?;
+        
+        let p_gi = ClientPersistentGlobalIndex { p_obj: self.p_obj.clone() };
+        let vault_not_exists = p_gi.exists(user.vault_name()).await?;
+        if vault_not_exists {
+            return Ok(VaultStatus::NotExists(user));
+        }
 
         match membership {
             UserMembership::Outsider(outsider) => Ok(VaultStatus::Outsider(outsider)),
@@ -60,16 +67,16 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
         let maybe_tail_event = self.p_obj.find_tail_event(desc).await?;
 
         match maybe_tail_event {
-            None => Ok(UserMembership::Outsider(UserDataOutsider::unknown(user_data))),
+            None => Ok(UserMembership::Outsider(UserDataOutsider::non_member(user_data.clone()))),
             Some(tail_event) => {
                 let vault_membership_obj = VaultMembershipObject::try_from(tail_event)?;
 
                 match vault_membership_obj {
                     VaultMembershipObject::Unit { .. } => {
-                        Ok(UserMembership::Outsider(UserDataOutsider::unknown(user_data)))
+                        Ok(UserMembership::Outsider(UserDataOutsider::non_member(user_data.clone())))
                     }
                     VaultMembershipObject::Genesis { .. } => {
-                        Ok(UserMembership::Outsider(UserDataOutsider::unknown(user_data)))
+                        Ok(UserMembership::Outsider(UserDataOutsider::non_member(user_data.clone())))
                     }
                     VaultMembershipObject::Membership(event) => Ok(event.value),
                 }

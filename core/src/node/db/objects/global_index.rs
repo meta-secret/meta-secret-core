@@ -1,7 +1,7 @@
 use crate::node::common::model::device::DeviceData;
 use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
-use crate::node::db::events::generic_log_event::ToGenericEvent;
+use crate::node::db::events::generic_log_event::{ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::global_index_event::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::KvLogEvent;
 use crate::node::db::events::object_id::ObjectId;
@@ -10,13 +10,14 @@ use crate::node::db::repo::generic_db::KvLogEventRepo;
 use std::sync::Arc;
 use tracing::info;
 use tracing_attributes::instrument;
+use crate::node::common::model::vault::VaultName;
 
-pub struct PersistentGlobalIndex<Repo: KvLogEventRepo> {
+pub struct ServerPersistentGlobalIndex<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
     pub server_device: DeviceData,
 }
 
-impl<Repo: KvLogEventRepo> PersistentGlobalIndex<Repo> {
+impl<Repo: KvLogEventRepo> ServerPersistentGlobalIndex<Repo> {
     ///create a genesis event and save into the database
     #[instrument(skip(self))]
     pub async fn init(&self) -> anyhow::Result<()> {
@@ -48,6 +49,37 @@ impl<Repo: KvLogEventRepo> PersistentGlobalIndex<Repo> {
         self.p_obj.repo.save(genesis_event.clone()).await?;
 
         Ok(())
+    }
+}
+
+pub struct ClientPersistentGlobalIndex<Repo: KvLogEventRepo> {
+    pub p_obj: Arc<PersistentObject<Repo>>
+}
+
+impl<Repo: KvLogEventRepo> ClientPersistentGlobalIndex<Repo> {
+    /// Save global index event and also save a "vault index" record 
+    pub async fn save(&self, gi_obj: &GlobalIndexObject) -> anyhow::Result<()> {
+        self.p_obj.repo.save(gi_obj.clone().to_generic()).await?;
+
+        // Update vault index according to global index
+        if let GlobalIndexObject::Update(upd_event) = gi_obj {
+            let vault_id = upd_event.value.clone();
+            let vault_idx_evt = GlobalIndexObject::index_from_vault_id(vault_id).to_generic();
+            self.p_obj.repo.save(vault_idx_evt).await?;
+        }
+        
+        Ok(())
+    }
+
+    pub async fn not_exists(&self, vault_name: VaultName) -> anyhow::Result<bool> {
+        let exists = self.exists(vault_name).await?;
+        Ok(!exists)
+    }
+    
+    pub async fn exists(&self, vault_name: VaultName) -> anyhow::Result<bool> {
+        let vault_idx_obj = GlobalIndexObject::index_from_vault_name(vault_name).to_generic();
+        let db_idx_event = self.p_obj.repo.find_one(vault_idx_obj.obj_id()).await?;
+        Ok(db_idx_event.is_some())
     }
 }
 

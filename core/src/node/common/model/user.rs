@@ -1,5 +1,5 @@
 use crate::node::common::model::device::{DeviceCredentials, DeviceData, DeviceId, DeviceName};
-use crate::node::common::model::vault::VaultName;
+use crate::node::common::model::vault::{VaultName, VaultStatus};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -94,11 +94,15 @@ pub struct UserDataOutsider {
 }
 
 impl UserDataOutsider {
-    pub fn unknown(user_data: UserData) -> Self {
+    pub fn non_member(user_data: UserData) -> Self {
         Self {
             user_data,
             status: UserDataOutsiderStatus::NonMember,
         }
+    }
+
+    pub fn is_non_member(&self) -> bool {
+        self.status == UserDataOutsiderStatus::NonMember
     }
 }
 

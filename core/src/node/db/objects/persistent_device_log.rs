@@ -51,9 +51,22 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
     pub async fn save_create_vault_request(&self, user: &UserData) -> anyhow::Result<()> {
         self.init(user).await?;
 
-        let join_request = DeviceLogObject::Action(KvLogEvent {
+        let create_request = DeviceLogObject::Action(KvLogEvent {
             key: self.get_device_log_artifact_key(&user).await?,
             value: VaultAction::CreateVault(user.clone()),
+        });
+        self.p_obj.repo.save(create_request.to_generic()).await?;
+
+        Ok(())
+    }
+
+    #[instrument(skip_all)]
+    pub async fn save_join_request(&self, user: &UserData) -> anyhow::Result<()> {
+        self.init(user).await?;
+
+        let join_request = DeviceLogObject::Action(KvLogEvent {
+            key: self.get_device_log_artifact_key(&user).await?,
+            value: VaultAction::JoinClusterRequest{ candidate: user.clone()},
         });
         self.p_obj.repo.save(join_request.to_generic()).await?;
 

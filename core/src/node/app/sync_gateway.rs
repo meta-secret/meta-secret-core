@@ -22,6 +22,7 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::local_event::{CredentialsObject, DbTailObject};
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::events::shared_secret_event::SharedSecretObject;
+use crate::node::db::objects::global_index::ClientPersistentGlobalIndex;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;
@@ -196,16 +197,10 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             .await?
             .to_data()?;
 
+        let p_gi_obj = ClientPersistentGlobalIndex { p_obj: self.persistent_object.clone()};
         for gi_event in new_gi_events {
             if let GenericKvLogEvent::GlobalIndex(gi_obj) = &gi_event {
-                self.persistent_object.repo.save(gi_event.clone()).await?;
-
-                // Update vault index according to global index
-                if let GlobalIndexObject::Update(upd_event) = gi_obj {
-                    let vault_id = upd_event.value.clone();
-                    let vault_idx_evt = GlobalIndexObject::index_from_vault_id(vault_id).to_generic();
-                    self.persistent_object.repo.save(vault_idx_evt).await?;
-                }
+                p_gi_obj.save(gi_obj).await?;
             } else {
                 return Err(anyhow!("Invalid event: {:?}", gi_event.key().obj_desc()));
             }
@@ -231,7 +226,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
 
         match vault_status {
             VaultStatus::Outsider(_) => {
-                return Ok(());
+                Ok(())
             }
             VaultStatus::Member {
                 vault,

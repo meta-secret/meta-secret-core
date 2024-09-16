@@ -122,7 +122,7 @@ impl UnitId {
     }
 
     pub fn vault_unit(vault_name: VaultName) -> UnitId {
-        let vault_desc = VaultDescriptor::Vault(vault_name).to_obj_desc();
+        let vault_desc = VaultDescriptor::Vault(vault_name.clone()).to_obj_desc();
         UnitId::unit(&vault_desc)
     }
 }

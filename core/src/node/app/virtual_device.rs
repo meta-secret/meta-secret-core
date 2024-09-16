@@ -14,6 +14,7 @@ use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::kv_log_event::KvLogEvent;
 use crate::node::db::events::local_event::CredentialsObject;
 use crate::node::db::events::vault_event::{VaultAction, VaultLogObject};
+use crate::node::db::objects::global_index::ClientPersistentGlobalIndex;
 use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -71,6 +72,11 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
             .get_or_generate_user_creds(device_name, VaultName::from("q"))
             .await?;
 
+        //No matter what current vault status is, sign_up claim will handle the case properly
+        let sign_up_claim = SignUpClaim {p_obj: self.p_obj()};
+        sign_up_claim.sign_up().await?;
+
+        // Handle state changes 
         loop {
             self.do_work().await?;
             async_std::task::sleep(std::time::Duration::from_millis(300)).await;
@@ -85,63 +91,53 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
         let Some(vault_status) = maybe_vault_status else {
             bail!("User credentials not found")
         };
+        
+        let VaultStatus::Member { member, vault } = vault_status else {
+            return Ok(());
+        };
 
-        match vault_status {
-            VaultStatus::Outsider(UserDataOutsider { user_data, status }) => {
-                match status {
-                    UserDataOutsiderStatus::NonMember => {
-                        //check if join request has been sent, if not then send it, if yes, skip
-                        let sign_up = SignUpClaim {p_obj: self.p_obj()};
+        let vault_name = vault.vault_name;
+        //vault actions
+        let vault_log_desc = VaultDescriptor::VaultLog(vault_name)
+            .to_obj_desc();
+
+        let maybe_vault_log_event = self.persistent_object
+            .find_tail_event(vault_log_desc)
+            .await?;
+
+        if let Some(vault_log_event) = maybe_vault_log_event {
+            let vault_log = vault_log_event.vault_log()?;
+
+            if let VaultLogObject::Action(vault_action) = vault_log {
+                match vault_action.value {
+                    VaultAction::JoinClusterRequest { candidate } => {
+                        let p_device_log = PersistentDeviceLog {
+                            p_obj: self.persistent_object.clone(),
+                        };
+
+                        p_device_log
+                            .save_accept_join_request_event(member, candidate)
+                            .await?;
                     }
-                    UserDataOutsiderStatus::Pending => {}
-                    UserDataOutsiderStatus::Declined => {}
+                    VaultAction::UpdateMembership { .. } => {
+                        //changes made by another device, no need for any actions
+                    }
+                    VaultAction::AddMetaPassword { .. } => {
+                        //changes made by another device, no need for any actions
+                    }
+                    VaultAction::CreateVault(_) => {
+                        // server's responsibities
+                    }
                 }
-            }
-            VaultStatus::Member { member, vault } => {
-                let vault_name = vault.vault_name;
-                //vault actions
-                let vault_log_desc = VaultDescriptor::VaultLog(vault_name)
-                    .to_obj_desc();
-
-                let maybe_vault_log_event = self.persistent_object
-                    .find_tail_event(vault_log_desc)
-                    .await?;
-
-                if let Some(vault_log_event) = maybe_vault_log_event {
-                    let vault_log = vault_log_event.vault_log()?;
-
-                    if let VaultLogObject::Action(vault_action) = vault_log {
-                        match vault_action.value {
-                            VaultAction::JoinClusterRequest { candidate } => {
-                                let p_device_log = PersistentDeviceLog {
-                                    p_obj: self.persistent_object.clone(),
-                                };
-
-                                p_device_log
-                                    .save_accept_join_request_event(member, candidate)
-                                    .await?;
-                            }
-                            VaultAction::UpdateMembership { .. } => {
-                                //changes made by another device, no need for any actions
-                            }
-                            VaultAction::AddMetaPassword { .. } => {
-                                //changes made by another device, no need for any actions
-                            }
-                            VaultAction::CreateVault(_) => {
-                                // server's responsibities
-                            }
-                        }
-                    };
-                }
-
-                // shared secret actions
-                let _p_ss_log = PersistentSharedSecret {
-                    p_obj: self.persistent_object.clone(),
-                };
-
-                todo!("Implement SS log actions - replication request. This code must read the log and handle the events. Same as above for vault");
-            }
+            };
         }
+
+        // shared secret actions
+        let _p_ss_log = PersistentSharedSecret {
+            p_obj: self.persistent_object.clone(),
+        };
+
+        //todo!("Implement SS log actions - replication request. This code must read the log and handle the events. Same as above for vault");
 
         self.gateway.sync().await?;
         Ok(())

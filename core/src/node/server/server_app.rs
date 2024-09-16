@@ -6,7 +6,7 @@ use tracing::{error, info, instrument};
 use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::common::model::device::{DeviceCredentials, DeviceName};
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
-use crate::node::db::objects::global_index::PersistentGlobalIndex;
+use crate::node::db::objects::global_index::ServerPersistentGlobalIndex;
 use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -44,7 +44,7 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
             device_creds: device_creds.clone(),
         };
 
-        let gi_obj = PersistentGlobalIndex {
+        let gi_obj = ServerPersistentGlobalIndex {
             p_obj: data_sync.persistent_obj.clone(),
             server_device: device_creds.device.clone(),
         };

@@ -142,8 +142,8 @@ pub enum VaultObject {
 impl VaultObject {
     pub fn status(&self, user: UserData) -> VaultStatus {
         match self {
-            VaultObject::Unit(_) => VaultStatus::Outsider(UserDataOutsider::unknown(user)),
-            VaultObject::Genesis(_) => VaultStatus::Outsider(UserDataOutsider::unknown(user)),
+            VaultObject::Unit(_) => VaultStatus::Outsider(UserDataOutsider::non_member(user)),
+            VaultObject::Genesis(_) => VaultStatus::Outsider(UserDataOutsider::non_member(user)),
             VaultObject::Vault(event) => {
                 let vault = event.value.clone();
                 vault.status(user)
