@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use anyhow::{anyhow, bail};
+use anyhow::bail;
 use tracing_attributes::instrument;
 
 use crate::node::common::model::user::{UserData, UserDataMember, UserDataOutsider, UserMembership};
-use crate::node::common::model::vault::{VaultData, VaultStatus};
+use crate::node::common::model::vault::VaultStatus;
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::vault_event::VaultMembershipObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
@@ -16,21 +16,21 @@ pub struct PersistentVault<Repo: KvLogEventRepo> {
 }
 
 impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
-    pub async fn get_vault(&self) -> anyhow::Result<VaultData> {
-        let vault_status = self.find_for_default_user().await?;
-        match vault_status {
-            VaultStatus::Outsider(_) => Err(anyhow!("Vault not found")),
-            VaultStatus::Member { vault, .. } => Ok(vault),
-        }
-    }
 
-    pub async fn find_for_default_user(&self) -> anyhow::Result<VaultStatus> {
+    #[instrument(skip_all)]
+    pub async fn find_for_default_user(&self) -> anyhow::Result<Option<VaultStatus>> {
         let creds_repo = CredentialsRepo {
             p_obj: self.p_obj.clone(),
         };
 
-        let creds = creds_repo.get_user_creds().await?;
-        self.find(creds.user()).await
+        let maybe_creds = creds_repo.get_user_creds().await?;
+        
+        let Some(user_creds) = maybe_creds else {
+            return Ok(None);
+        };
+
+        let vault_status = self.find(user_creds.user()).await?;
+        Ok(Some(vault_status))
     }
 
     #[instrument(skip_all)]

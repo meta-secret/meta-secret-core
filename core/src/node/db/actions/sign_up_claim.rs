@@ -16,6 +16,7 @@ use crate::node::{
         repo::{credentials_repo::CredentialsRepo, generic_db::KvLogEventRepo},
     },
 };
+use crate::node::common::model::user::UserDataOutsider;
 
 pub struct SignUpClaim<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
@@ -23,38 +24,40 @@ pub struct SignUpClaim<Repo: KvLogEventRepo> {
 
 impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
     pub async fn sign_up(&self) -> anyhow::Result<VaultStatus> {
-        let (user, vault_status) = self.get_vault_status().await?;
-
-        let VaultStatus::Outsider(outsider) = &vault_status else {
-            return Ok(vault_status);
+        
+        
+        let maybe_vault_status = self.get_vault_status().await?;
+        
+        let Some(vault_status) = maybe_vault_status else {
+            bail!("Invalid state");
         };
+        
+        if vault_status.is_non_member() {
+            let p_device_log = PersistentDeviceLog { p_obj: self.p_obj.clone() };
 
-        let UserDataOutsiderStatus::Unknown = &outsider.status else {
-            return Ok(vault_status);
-        };
+            p_device_log
+                .save_create_vault_request(&vault_status.user())
+                .await?;
 
-        let p_device_log = PersistentDeviceLog {
-            p_obj: self.p_obj.clone(),
-        };
+            //Init SSDeviceLog
+            let p_ss = PersistentSharedSecret {
+                p_obj: self.p_obj.clone(),
+            };
+            p_ss.init(vault_status.user()).await?;
 
-        p_device_log.save_create_vault_request(&user).await?;
-
-        //Init SSDeviceLog
-        let p_ss = PersistentSharedSecret {
-            p_obj: self.p_obj.clone(),
-        };
-        p_ss.init(user.clone()).await?;
-
-        Ok(vault_status)
+            Ok(vault_status)
+        } else {
+            Ok(vault_status)
+        }
     }
 
-    pub async fn get_vault_status(&self) -> anyhow::Result<(UserData, VaultStatus)> {
+    pub async fn get_vault_status(&self) -> anyhow::Result<Option<VaultStatus>> {
         let p_vault = PersistentVault {
             p_obj: self.p_obj.clone(),
         };
         
         let vault_status = p_vault.find_for_default_user().await?;
-        Ok((vault_status.user(), vault_status))
+        Ok(vault_status)
     }
 }
 

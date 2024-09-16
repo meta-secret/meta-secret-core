@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use anyhow::bail;
 use flume::{Receiver, Sender};
 use tracing::{info, instrument};
 
@@ -8,6 +9,8 @@ use crate::node::common::actor::ServiceState;
 use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::common::model::ApplicationState;
 use crate::node::common::model::device::DeviceName;
+use crate::node::common::model::user::UserCredentials;
+use crate::node::common::model::vault::VaultStatus;
 use crate::node::db::actions::recover::RecoveryAction;
 use crate::node::db::actions::sign_up_claim::SignUpClaim;
 use crate::node::db::events::local_event::CredentialsObject;
@@ -20,7 +23,7 @@ use crate::secret::MetaDistributor;
 pub struct MetaClientService<Repo: KvLogEventRepo> {
     pub data_transfer: Arc<MetaClientDataTransfer>,
     pub sync_gateway: Arc<SyncGateway<Repo>>,
-    pub state_provider: Arc<MetaClientStateProvider>
+    pub state_provider: Arc<MetaClientStateProvider>,
 }
 
 pub struct MetaClientDataTransfer {
@@ -32,15 +35,14 @@ impl<Repo: KvLogEventRepo> MetaClientService<Repo> {
     pub async fn run(&self) -> anyhow::Result<()> {
         info!("Run meta_app service");
         
-        //todo!("get or generate device credentials");
         let p_obj = self.sync_gateway.persistent_object.clone();
-        
-        let mut service_state = self.build_service_state().await?;
+
+        let service_state = self.build_service_state().await?;
 
         while let Ok(request) = self.data_transfer.dt.service_receive().await {
             info!(
                 "Action execution. Request {:?}, state: {:?}",
-                &request, &service_state.state
+                &request, &service_state.app_state
             );
 
             self.sync_gateway.sync().await?;
@@ -52,7 +54,7 @@ impl<Repo: KvLogEventRepo> MetaClientService<Repo> {
                     sign_up_claim.sign_up().await?;
                     self.sync_gateway.sync().await?;
 
-                    let (_, vault_status) = sign_up_claim.get_vault_status().await?;
+                    let maybe_vault_status = sign_up_claim.get_vault_status().await?;
 
                     todo!("update vault status");
                     //service_state.state.vault = Some(vault_status);
@@ -61,20 +63,36 @@ impl<Repo: KvLogEventRepo> MetaClientService<Repo> {
                 GenericAppStateRequest::ClusterDistribution(request) => {
                     let creds_repo = CredentialsRepo { p_obj: p_obj.clone() };
 
-                    let user_creds = creds_repo.get_user_creds().await?;
+                    let maybe_user_creds = creds_repo
+                        .get_user_creds()
+                        .await?;
+                    
+                    match maybe_user_creds {
+                        None => {
+                            bail!("Invalid state. UserCredentials must be present")
+                        }
+                        Some(user_creds) => {
+                            let vault_repo = PersistentVault {
+                                p_obj: p_obj.clone(),
+                            };
+                            let vault_status = vault_repo.find(user_creds.user()).await?;
 
-                    let vault_repo = PersistentVault {
-                        p_obj: p_obj.clone(),
-                    };
-                    let vault = vault_repo.get_vault().await?;
+                            match vault_status {
+                                VaultStatus::Outsider(_) => {
+                                    bail!("Outsider user can't manage a vault")
+                                }
+                                VaultStatus::Member { vault, .. } => {
+                                    let distributor = MetaDistributor {
+                                        persistent_obj: p_obj.clone(),
+                                        vault,
+                                        user_creds: Arc::new(user_creds),
+                                    };
 
-                    let distributor = MetaDistributor {
-                        persistent_obj: p_obj.clone(),
-                        vault,
-                        user_creds: Arc::new(user_creds),
-                    };
-
-                    distributor.distribute(request.pass_id, request.pass).await?;
+                                    distributor.distribute(request.pass_id, request.pass).await?;
+                                }
+                            }
+                        }
+                    }
                 }
 
                 GenericAppStateRequest::Recover(meta_pass_id) => {
@@ -82,40 +100,52 @@ impl<Repo: KvLogEventRepo> MetaClientService<Repo> {
                         persistent_obj: p_obj.clone(),
                     };
                     recovery_action
-                        .recovery_request(meta_pass_id, &service_state.state)
+                        .recovery_request(meta_pass_id, &service_state.app_state)
                         .await?;
                 }
             }
-            
-            self.state_provider.push(&service_state.state).await
+
+            self.state_provider.push(&service_state.app_state).await
         }
 
         Ok(())
     }
 
     async fn build_service_state(&self) -> anyhow::Result<ServiceState<ApplicationState>> {
-        let maybe_creds_event = {
-            let creds_repo = CredentialsRepo { p_obj: self.p_obj() };
-            creds_repo.find().await?
-        };
+        let creds_repo = CredentialsRepo { p_obj: self.p_obj() };
+        let maybe_creds = creds_repo.find().await?;
 
-        let app_state = match maybe_creds_event {
-            None => ApplicationState::Empty,
-            Some(creds) => match creds {
-                CredentialsObject::Device(device_creds_event) => ApplicationState::Local {
-                    device: device_creds_event.value.device
-                },
-                CredentialsObject::DefaultUser(user_creds_event) => ApplicationState::User {
-                    user: user_creds_event.value
+        let app_state = match maybe_creds {
+            None => {
+                let device_creds = creds_repo.generate_device_creds(DeviceName::generate()).await?;
+                ApplicationState::Local { device: device_creds.device }
+            }
+            Some(creds) => {
+                match creds {
+                    CredentialsObject::Device(device_creds_event) => {
+                        ApplicationState::Local { device: device_creds_event.value.device }
+                    }
+                    CredentialsObject::DefaultUser(user_creds) => {
+                        ApplicationState::User { user: user_creds.value }
+                    }
                 }
             }
         };
 
-        let service_state = ServiceState {
-            state: app_state,
+        let p_vault = PersistentVault { p_obj: self.p_obj() };
+        let maybe_vault_status = p_vault.find_for_default_user().await?;
+
+        let service_state = match maybe_vault_status {
+            None => {
+                ServiceState { app_state }
+            }
+            Some(vault_status) => {
+                let app_state = ApplicationState::Vault { vault: vault_status };
+                ServiceState { app_state }
+            }
         };
-        
-        self.state_provider.push(&service_state.state).await;
+
+        self.state_provider.push(&service_state.app_state).await;
         Ok(service_state)
     }
 
@@ -140,7 +170,7 @@ impl MetaClientAccessProxy {
 
 pub struct MetaClientStateProvider {
     sender: Sender<ApplicationState>,
-    receiver: Receiver<ApplicationState>
+    receiver: Receiver<ApplicationState>,
 }
 
 impl MetaClientStateProvider {
@@ -148,7 +178,7 @@ impl MetaClientStateProvider {
         let (sender, receiver) = flume::bounded(100);
         Self {
             sender,
-            receiver
+            receiver,
         }
     }
 

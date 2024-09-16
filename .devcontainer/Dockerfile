@@ -1,6 +1,8 @@
 FROM debian:bookworm
 
-RUN apt update && apt install -y curl wget git build-essential pkg-config libssl-dev
+RUN apt update && apt install -y \
+    build-essential pkg-config libssl-dev \
+    curl wget git bash-completion
 
 #################### Installation ####################
 #Earthly

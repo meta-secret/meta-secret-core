@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use tracing::{info, instrument};
-
 use crate::node::common::model::device::{DeviceCredentials, DeviceName};
 use crate::node::common::model::user::UserCredentials;
 use crate::node::common::model::vault::VaultName;
@@ -56,18 +55,13 @@ impl<Repo: KvLogEventRepo> CredentialsRepo<Repo> {
     }
 
     #[instrument(skip_all)]
-    pub async fn get_user_creds(&self) -> anyhow::Result<UserCredentials> {
+    pub async fn get_user_creds(&self) -> anyhow::Result<Option<UserCredentials>> {
         let creds_obj = self.find().await?.ok_or_else(|| anyhow!("No credentials found"))?;
 
         match creds_obj {
-            CredentialsObject::Device { .. } => Err(anyhow!("Device credentials found, User credentials expected")),
-            CredentialsObject::DefaultUser(event) => Ok(event.value),
+            CredentialsObject::Device { .. } => Ok(None),
+            CredentialsObject::DefaultUser(event) => Ok(Some(event.value)),
         }
-    }
-
-    #[instrument(skip_all)]
-    pub async fn get(&self) -> anyhow::Result<CredentialsObject> {
-        self.find().await?.ok_or_else(|| anyhow!("No credentials found"))
     }
 
     #[instrument(skip_all)]
@@ -85,6 +79,7 @@ impl<Repo: KvLogEventRepo> CredentialsRepo<Repo> {
     }
 
     pub async fn generate_device_creds(&self, device_name: DeviceName) -> anyhow::Result<DeviceCredentials> {
+        info!("Generate device credentials, for: {:?}", device_name);
         let device_creds = DeviceCredentials::generate(device_name);
         let creds_obj = CredentialsObject::unit(device_creds.clone());
         self.p_obj

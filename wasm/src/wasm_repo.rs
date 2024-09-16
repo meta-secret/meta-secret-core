@@ -33,7 +33,7 @@ impl WasmRepo {
     async fn build_rexie(db_name: &str, store_name: &str) -> Rexie {
         Rexie::builder(db_name)
             .version(1)
-            .add_object_store(ObjectStore::new(store_name).key_path("id"))
+            .add_object_store(ObjectStore::new(store_name))
             .build()
             .await
             .expect("Failed to create REXie")

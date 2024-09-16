@@ -97,7 +97,7 @@ impl UserDataOutsider {
     pub fn unknown(user_data: UserData) -> Self {
         Self {
             user_data,
-            status: UserDataOutsiderStatus::Unknown,
+            status: UserDataOutsiderStatus::NonMember,
         }
     }
 }
@@ -105,8 +105,8 @@ impl UserDataOutsider {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum UserDataOutsiderStatus {
-    /// Unknown status (the user is not a member of the vault)
-    Unknown,
+    /// Unknown status (the user is not a member of the vault), but the vault exists
+    NonMember,
     Pending,
     Declined,
 }

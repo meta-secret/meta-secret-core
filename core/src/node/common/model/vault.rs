@@ -154,11 +154,11 @@ impl VaultStatus {
         VaultStatus::Outsider(UserDataOutsider::unknown(user))
     }
     
-    pub fn is_new_user(&self) -> bool {
+    pub fn is_non_member(&self) -> bool {
         match self {
             VaultStatus::Outsider(UserDataOutsider {status, ..}) => {
                 match status {
-                    UserDataOutsiderStatus::Unknown => true,
+                    UserDataOutsiderStatus::NonMember => true,
                     UserDataOutsiderStatus::Pending => false,
                     UserDataOutsiderStatus::Declined => false
                 }

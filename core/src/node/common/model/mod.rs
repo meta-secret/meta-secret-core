@@ -346,7 +346,6 @@ impl Default for RegistrationStatus {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ApplicationState {
-    Empty,
     Local{
         device: DeviceData
     },

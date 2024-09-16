@@ -1,5 +1,5 @@
 use std::sync::Arc;
-
+use anyhow::Context;
 use tracing::{info, instrument, Instrument};
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen_futures::spawn_local;
@@ -40,7 +40,6 @@ impl From<ApplicationState> for WasmApplicationState {
 impl WasmApplicationState {
     pub fn is_new_user(&self) -> bool {
         let stt = match self.inner {
-            ApplicationState::Empty => "empty",
             ApplicationState::Local { .. } => "local",
             ApplicationState::User { .. } => "user",
             ApplicationState::Vault { .. } => "vault",
@@ -134,6 +133,7 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
                 .run()
                 .instrument(client_span())
                 .await
+                .with_context(|| "Meta client error")
                 .unwrap();
         });
 

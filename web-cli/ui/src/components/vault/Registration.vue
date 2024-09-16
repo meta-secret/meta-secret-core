@@ -10,7 +10,6 @@ export default defineComponent({
     return {
       appState: appState,
       vaultName: '',
-      deviceName: '',
     };
   },
 
@@ -43,7 +42,6 @@ export default defineComponent({
     <div class="container flex items-center justify-center max-w-md border-b border-t border-l border-r py-2 px-2">
       <label>@</label>
       <input :class="$style.nicknameUserInput" type="text" placeholder="vault name" v-model="vaultName" />
-      <input :class="$style.nicknameUserInput" type="text" placeholder="device name" v-model="deviceName" />
 
       <button
           :class="$style.registrationButton"

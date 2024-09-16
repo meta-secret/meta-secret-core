@@ -82,7 +82,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         };
         let vault_status = p_vault.find_for_default_user().await?;
 
-        let VaultStatus::Member { member, .. } = vault_status else {
+        let Some(VaultStatus::Member { member, .. }) = vault_status else {
             return Ok(());
         };
 
