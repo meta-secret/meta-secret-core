@@ -7,11 +7,11 @@ pub mod base64 {
     extern crate base64;
 
     use std::fmt::Display;
-    
+
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct Base64Text(pub String);
-    
+
     impl Display for Base64Text {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             write!(f, "{}", self.0.clone())

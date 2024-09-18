@@ -1,9 +1,10 @@
 use crate::node::common::model::secret::MetaPasswordId;
+use crate::node::common::model::vault::VaultName;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum GenericAppStateRequest {
-    SignUp,
+    SignUp(VaultName),
     ClusterDistribution(ClusterDistributionRequest),
     Recover(MetaPasswordId),
 }

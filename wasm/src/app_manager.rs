@@ -1,23 +1,22 @@
-use std::sync::Arc;
 use anyhow::Context;
+use std::sync::Arc;
 use tracing::{info, instrument, Instrument};
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen_futures::spawn_local;
 
-use meta_secret_core::node::app::app_state_update_manager::{
-    ApplicationManagerConfigurator
-};
+use meta_secret_core::node::app::app_state_update_manager::ApplicationManagerConfigurator;
 
-use meta_secret_core::node::app::meta_app::meta_client_service::{MetaClientAccessProxy, MetaClientDataTransfer, MetaClientService, MetaClientStateProvider};
+use meta_secret_core::node::app::meta_app::meta_client_service::{
+    MetaClientAccessProxy, MetaClientDataTransfer, MetaClientService, MetaClientStateProvider,
+};
 
 use meta_secret_core::node::app::sync_gateway::SyncGateway;
 use meta_secret_core::node::app::virtual_device::VirtualDevice;
 use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::meta_tracing::{client_span, server_span, vd_span};
-use meta_secret_core::node::common::model::ApplicationState;
 use meta_secret_core::node::common::model::device::DeviceName;
-use meta_secret_core::node::common::model::user::{UserDataOutsider, UserDataOutsiderStatus};
-use meta_secret_core::node::common::model::vault::{VaultName, VaultStatus};
+use meta_secret_core::node::common::model::vault::VaultName;
+use meta_secret_core::node::common::model::ApplicationState;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::repo::credentials_repo::CredentialsRepo;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
@@ -25,14 +24,12 @@ use meta_secret_core::node::server::server_app::{ServerApp, ServerDataTransfer};
 
 #[wasm_bindgen]
 pub struct WasmApplicationState {
-    inner: ApplicationState
+    inner: ApplicationState,
 }
 
 impl From<ApplicationState> for WasmApplicationState {
     fn from(state: ApplicationState) -> Self {
-        WasmApplicationState {
-            inner: state
-        }
+        WasmApplicationState { inner: state }
     }
 }
 
@@ -47,7 +44,7 @@ impl WasmApplicationState {
         info!("Is new user: {:?}", stt);
         return true;
     }
-    
+
     pub fn is_empty_env(&self) -> bool {
         return true;
     }
@@ -84,10 +81,11 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
         });
 
         Self::server_setup(cfg.server_repo, server_dt.clone()).await?;
-        
+
         let state_provider = Arc::new(MetaClientStateProvider::new());
 
-        Self::virtual_device_setup(cfg.device_repo, server_dt.clone(), state_provider.clone()).await?;
+        Self::virtual_device_setup(cfg.device_repo, server_dt.clone(), state_provider.clone())
+            .await?;
 
         let app_manager =
             Self::client_setup(cfg.client_repo, server_dt.clone(), state_provider).await?;
@@ -99,7 +97,7 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
     pub async fn client_setup(
         client_repo: Arc<Repo>,
         dt: Arc<ServerDataTransfer>,
-        app_state_provider: Arc<MetaClientStateProvider>
+        app_state_provider: Arc<MetaClientStateProvider>,
     ) -> anyhow::Result<ApplicationManager<Repo>> {
         let persistent_obj = {
             let obj = PersistentObject::new(client_repo.clone());
@@ -118,15 +116,11 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
                     dt: MpscDataTransfer::new(),
                 }),
                 sync_gateway: sync_gateway.clone(),
-                state_provider: app_state_provider
+                state_provider: app_state_provider,
             })
         };
 
-        let app_manager = ApplicationManager::new(
-            dt,
-            sync_gateway,
-            meta_client_service.clone(),
-        );
+        let app_manager = ApplicationManager::new(dt, sync_gateway, meta_client_service.clone());
 
         spawn_local(async move {
             meta_client_service
@@ -147,7 +141,7 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
     pub async fn virtual_device_setup(
         device_repo: Arc<Repo>,
         dt: Arc<ServerDataTransfer>,
-        app_state_provider: Arc<MetaClientStateProvider>
+        app_state_provider: Arc<MetaClientStateProvider>,
     ) -> anyhow::Result<()> {
         info!("Device initialization");
 
@@ -175,7 +169,7 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
             MetaClientService {
                 data_transfer: dt_meta_client.clone(),
                 sync_gateway: gateway.clone(),
-                state_provider: app_state_provider
+                state_provider: app_state_provider,
             }
         };
 

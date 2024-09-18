@@ -1,5 +1,6 @@
 use std::sync::Arc;
-
+use log::info;
+use tracing_attributes::instrument;
 use crate::node::{
     common::model::device::{DeviceCredentials, DeviceData},
     db::{
@@ -21,7 +22,10 @@ pub struct ServerTestNode {
 }
 
 impl ServerTestNode {
+    #[instrument]
     pub async fn new() -> anyhow::Result<Self> {
+        info!("Init server test node");
+        
         let repo = Arc::new(InMemKvLogEventRepo::default());
         let p_obj = Arc::new(PersistentObject::new(repo.clone()));
 
@@ -37,7 +41,10 @@ pub struct GlobalIndexSyncRequestTestAction {
 }
 
 impl GlobalIndexSyncRequestTestAction {
+    #[instrument]
     pub async fn init() -> anyhow::Result<Self> {
+        info!("Init global index on server");
+        
         let server_node = ServerTestNode::new().await?;
         Ok(Self { server_node })
     }

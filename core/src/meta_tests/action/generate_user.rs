@@ -1,6 +1,6 @@
 use anyhow::Result;
 use std::sync::Arc;
-
+use tracing_attributes::instrument;
 use crate::node::{
     common::model::{device::DeviceName, user::UserCredentials, vault::VaultName},
     db::{
@@ -19,9 +19,12 @@ impl<Repo: KvLogEventRepo> GenerateUserTestAction<Repo> {
         Self { creds_repo }
     }
 
+    #[instrument(skip_all)]
     pub async fn generate_user(&self) -> Result<UserCredentials> {
+        let device_name = DeviceName::from("client");
+        let vault_name = VaultName::from("test_vault");
         self.creds_repo
-            .get_or_generate_user_creds(DeviceName::from("client"), VaultName::from("test_vault"))
+            .get_or_generate_user_creds(device_name, vault_name)
             .await
     }
 }

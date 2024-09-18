@@ -1,6 +1,6 @@
 use anyhow::Result;
 use std::sync::Arc;
-
+use tracing_attributes::instrument;
 use crate::node::{
     common::model::vault::VaultStatus,
     db::{
@@ -26,13 +26,15 @@ impl<Repo: KvLogEventRepo> SignUpClaimTestAction<Repo> {
 }
 
 impl<Repo: KvLogEventRepo> SignUpClaimTestAction<Repo> {
+    
+    #[instrument(skip_all)]
     pub async fn sign_up(&self) -> Result<VaultStatus> {
-        let _user = self.generate_user_action.generate_user().await?;
+        let user_creds = self.generate_user_action.generate_user().await?;
 
         let sign_up_claim = SignUpClaim {
             p_obj: self.p_obj.clone(),
         };
 
-        sign_up_claim.sign_up().await
+        sign_up_claim.sign_up(user_creds.user()).await
     }
 }

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use tracing::{debug, instrument, Instrument};
+use tracing::{instrument, Instrument};
 
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::db_tail::DbTail;
@@ -19,8 +19,6 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
         &self,
         obj_desc: ObjectDescriptor,
     ) -> anyhow::Result<Vec<GenericKvLogEvent>> {
-        debug!("get_object_events_from_beginning");
-
         let unit_id = ObjectId::unit(obj_desc);
         let commit_log = self.find_object_events(unit_id).await?;
 

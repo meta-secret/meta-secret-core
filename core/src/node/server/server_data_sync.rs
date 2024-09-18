@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Ok};
 use async_trait::async_trait;
-use tracing::{debug, info, instrument};
+use tracing::{info, instrument};
 
 use crate::node::common::model::device::{DeviceCredentials, DeviceData};
 use crate::node::common::model::user::{UserData, UserDataMember, UserId};
@@ -115,9 +115,8 @@ impl<Repo: KvLogEventRepo> DataSyncApi for ServerDataSync<Repo> {
 }
 
 impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
-    #[instrument(skip_all)]
+    #[instrument(skip(self))]
     async fn server_processing(&self, generic_event: GenericKvLogEvent) -> anyhow::Result<()> {
-        debug!("DataSync::event_processing: {:?}", &generic_event);
 
         match &generic_event {
             GenericKvLogEvent::DeviceLog(device_log_obj) => {
@@ -171,6 +170,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
         Ok(())
     }
 
+    #[instrument(skip(self))]
     async fn handle_device_log_request(&self, device_log_obj: &DeviceLogObject) -> anyhow::Result<()> {
         self.persistent_obj
             .repo
@@ -190,14 +190,14 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
         let vault_action = vault_action_event.value.clone();
         let vault_name = vault_action.vault_name();
 
-        match vault_action {
+        match &vault_action {
             VaultAction::CreateVault(user) => {
                 // create vault if not exists
-                let vault_desc = VaultDescriptor::vault(vault_name.clone());
+                let vault_desc = VaultDescriptor::vault(vault_name);
                 let maybe_vault = self.find_vault(ObjectId::unit(vault_desc.clone())).await?;
 
                 if let Some(_vault) = maybe_vault {
-                    // vault already exists, and the event have been saved into vault_log alredy,
+                    // vault already exists, and the event have been saved into vault_log already,
                     // no action needed
                     return Ok(());
                 };
@@ -206,8 +206,9 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
                 self.create_vault(user.clone()).await
             }
 
-            VaultAction::JoinClusterRequest { .. } => {
-                let vault_log_desc = VaultDescriptor::VaultLog(vault_name).to_obj_desc();
+            VaultAction::JoinClusterRequest { candidate } => {
+                let vault_log_desc = VaultDescriptor::VaultLog(candidate.vault_name.clone())
+                    .to_obj_desc();
 
                 let vault_log_free_id = self
                     .persistent_obj
@@ -215,16 +216,17 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
                     .await?;
 
                 if let ObjectId::Artifact(vault_log_artifact_id) = vault_log_free_id {
-                    let vault_log_action_event = GenericKvLogEvent::VaultLog(VaultLogObject::Action(KvLogEvent {
+                    let action = VaultLogObject::Action(KvLogEvent {
                         key: KvKey::artifact(vault_log_desc, vault_log_artifact_id),
                         value: vault_action.clone(),
-                    }));
+                    });
+                    let vault_log_action_event = GenericKvLogEvent::VaultLog(action);
 
                     self.persistent_obj.repo.save(vault_log_action_event).await?;
                     Ok(())
                 } else {
                     bail!(
-                        "Invalid vault log id, must be ArtifactId, but it's: {:?}",
+                        "JoinClusterRequest: Invalid vault log id, must be ArtifactId, but it's: {:?}",
                         vault_log_free_id
                     );
                 }
@@ -244,7 +246,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
 
                 let ObjectId::Artifact(_) = vault_log_free_id else {
                     bail!(
-                        "Invalid vault log id, must be ArtifactId, but it's: {:?}",
+                        "UpdateMembership: Invalid vault log id, must be ArtifactId, but it's: {:?}",
                         vault_log_free_id
                     );
                 };
@@ -391,6 +393,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
         Ok(commit_log)
     }
 
+    #[instrument(skip(self))]
     async fn find_vault(&self, vault_id: ObjectId) -> anyhow::Result<Option<VaultData>> {
         let maybe_vault_event = self.persistent_obj.find_tail_event_by_obj_id(vault_id).await?;
 
@@ -466,12 +469,12 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
 
 #[cfg(test)]
 mod test {
-
     use std::sync::Arc;
 
     use anyhow::Result;
-    use tracing::Level;
-
+    use tracing::{info, Level};
+    use tracing_futures::Instrument;
+    
     use crate::{
         meta_tests::{
             action::{
@@ -491,43 +494,59 @@ mod test {
             },
         },
     };
+    use crate::node::common::meta_tracing::{client_span, server_span};
+    use tracing::instrument;
 
-    // temporary disabled
-    //#[tokio::test]
+    #[tokio::test]
+    #[instrument]
     async fn test_sign_up() -> Result<()> {
-        let subscriber = tracing_subscriber::fmt().with_max_level(Level::DEBUG).finish();
-        tracing::subscriber::set_global_default(subscriber)?;
+        setup_tracing()?;
 
-        let gi_action = GlobalIndexSyncRequestTestAction::init().await?;
+        let gi_action = GlobalIndexSyncRequestTestAction::init()
+            .instrument(server_span())
+            .await?;
 
         let client_p_obj = {
             let client_repo = Arc::new(InMemKvLogEventRepo::default());
             Arc::new(PersistentObject::new(client_repo.clone()))
         };
 
+        info!("Executing 'sign up' claim");
         let claim_action = SignUpClaimTestAction::new(client_p_obj.clone());
-        let vault_status = claim_action.sign_up().await?;
+        let vault_status = claim_action.sign_up()
+            .instrument(client_span())
+            .await?;
         let VaultStatus::Outsider(outsider) = vault_status else {
-            panic!("Invalid state, the user can't be already registerred");
+            panic!("Invalid state, the user can't be already registered");
         };
-
-        let server_data_sync = gi_action.server_node.app.data_sync;
 
         let client_device_log_events = client_p_obj
             .get_object_events_from_beginning(VaultDescriptor::device_log(outsider.user_data.user_id()))
+            .instrument(client_span())
             .await?;
 
+        let server_data_sync = gi_action.server_node.app.data_sync;
         for cd_log_event in client_device_log_events {
-            server_data_sync.server_processing(cd_log_event).await?;
+            info!("Sending device log event to the server: {:?}", cd_log_event);
+            server_data_sync
+                .server_processing(cd_log_event)
+                .instrument(server_span())
+                .await?;
         }
 
         let client_ss_device_log_events = {
             let ss_desc = SharedSecretDescriptor::SSDeviceLog(outsider.user_data.device.id.clone()).to_obj_desc();
-            client_p_obj.get_object_events_from_beginning(ss_desc).await?
+            client_p_obj
+                .get_object_events_from_beginning(ss_desc)
+                .instrument(client_span())
+                .await?
         };
-        println!("CLIENT SS device log EVENTS: {:?}", client_ss_device_log_events.len());
+        info!("CLIENT SS device log EVENTS: {:?}", client_ss_device_log_events.len());
         for cd_ss_log_event in client_ss_device_log_events {
-            server_data_sync.server_processing(cd_ss_log_event).await?;
+            server_data_sync
+                .server_processing(cd_ss_log_event)
+                .instrument(server_span())
+                .await?;
         }
 
         let server_ss_device_log_events = {
@@ -536,6 +555,7 @@ mod test {
                 .server_node
                 .p_obj
                 .get_object_events_from_beginning(ss_desc)
+                .instrument(server_span())
                 .await?
         };
         println!("SERVER SS device log EVENTS: {:?}", server_ss_device_log_events.len());
@@ -554,6 +574,16 @@ mod test {
 
         server_claim_spec.verify().await?;
 
+        Ok(())
+    }
+
+    fn setup_tracing() -> anyhow::Result<()> {
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(Level::TRACE)
+            .without_time()
+            .compact()
+            .pretty()
+            .init();
         Ok(())
     }
 }

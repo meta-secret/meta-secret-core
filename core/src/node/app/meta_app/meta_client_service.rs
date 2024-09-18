@@ -1,16 +1,16 @@
-use std::sync::Arc;
 use anyhow::bail;
 use flume::{Receiver, Sender};
-use tracing::{info, instrument};
+use std::sync::Arc;
+use tracing::{error, info, instrument};
 
 use crate::node::app::meta_app::messaging::{GenericAppStateRequest, GenericAppStateResponse};
 use crate::node::app::sync_gateway::SyncGateway;
 use crate::node::common::actor::ServiceState;
 use crate::node::common::data_transfer::MpscDataTransfer;
-use crate::node::common::model::ApplicationState;
 use crate::node::common::model::device::DeviceName;
-use crate::node::common::model::user::UserCredentials;
+use crate::node::common::model::user::UserData;
 use crate::node::common::model::vault::VaultStatus;
+use crate::node::common::model::ApplicationState;
 use crate::node::db::actions::recover::RecoveryAction;
 use crate::node::db::actions::sign_up_claim::SignUpClaim;
 use crate::node::db::events::local_event::CredentialsObject;
@@ -34,10 +34,10 @@ impl<Repo: KvLogEventRepo> MetaClientService<Repo> {
     #[instrument(skip_all)]
     pub async fn run(&self) -> anyhow::Result<()> {
         info!("Run meta_app service");
-        
+
         let p_obj = self.sync_gateway.persistent_object.clone();
 
-        let service_state = self.build_service_state().await?;
+        let mut service_state = self.build_service_state().await?;
 
         while let Ok(request) = self.data_transfer.dt.service_receive().await {
             info!(
@@ -48,33 +48,37 @@ impl<Repo: KvLogEventRepo> MetaClientService<Repo> {
             self.sync_gateway.sync().await?;
 
             match request {
-                GenericAppStateRequest::SignUp => {
-                    let sign_up_claim = SignUpClaim { p_obj: p_obj.clone() };
+                GenericAppStateRequest::SignUp(vault_name) => match &service_state.app_state {
+                    ApplicationState::Local { device } => {
+                        let user_data = UserData {
+                            vault_name,
+                            device: device.clone(),
+                        };
 
-                    sign_up_claim.sign_up().await?;
-                    self.sync_gateway.sync().await?;
+                        let sign_up_claim = SignUpClaim { p_obj: p_obj.clone() };
+                        sign_up_claim.sign_up(user_data.clone()).await?;
+                        self.sync_gateway.sync().await?;
 
-                    let maybe_vault_status = sign_up_claim.get_vault_status().await?;
-
-                    todo!("update vault status");
-                    //service_state.state.vault = Some(vault_status);
-                }
+                        let p_vault = PersistentVault { p_obj: self.p_obj() };
+                        let new_status = p_vault.find(user_data.clone()).await?;
+                        service_state.app_state = ApplicationState::Vault { vault: new_status };
+                    }
+                    ApplicationState::Vault { vault } => {
+                        error!("You are already a vault member: {:?}", vault);
+                    }
+                },
 
                 GenericAppStateRequest::ClusterDistribution(request) => {
                     let creds_repo = CredentialsRepo { p_obj: p_obj.clone() };
 
-                    let maybe_user_creds = creds_repo
-                        .get_user_creds()
-                        .await?;
-                    
+                    let maybe_user_creds = creds_repo.get_user_creds().await?;
+
                     match maybe_user_creds {
                         None => {
                             bail!("Invalid state. UserCredentials must be present")
                         }
                         Some(user_creds) => {
-                            let vault_repo = PersistentVault {
-                                p_obj: p_obj.clone(),
-                            };
+                            let vault_repo = PersistentVault { p_obj: p_obj.clone() };
                             let vault_status = vault_repo.find(user_creds.user()).await?;
 
                             match vault_status {
@@ -121,32 +125,24 @@ impl<Repo: KvLogEventRepo> MetaClientService<Repo> {
         let app_state = match maybe_creds {
             None => {
                 let device_creds = creds_repo.generate_device_creds(DeviceName::generate()).await?;
-                ApplicationState::Local { device: device_creds.device }
-            }
-            Some(creds) => {
-                match creds {
-                    CredentialsObject::Device(device_creds_event) => {
-                        ApplicationState::Local { device: device_creds_event.value.device }
-                    }
-                    CredentialsObject::DefaultUser(user_creds) => {
-                        ApplicationState::User { user: user_creds.value }
-                    }
+                ApplicationState::Local {
+                    device: device_creds.device,
                 }
             }
+            Some(creds) => match creds {
+                CredentialsObject::Device(device_creds_event) => ApplicationState::Local {
+                    device: device_creds_event.value.device,
+                },
+                CredentialsObject::DefaultUser(user_creds) => {
+                    let p_vault = PersistentVault { p_obj: self.p_obj() };
+                    let vault_status = p_vault.find(user_creds.value.user()).await?;
+
+                    ApplicationState::Vault { vault: vault_status }
+                }
+            },
         };
 
-        let p_vault = PersistentVault { p_obj: self.p_obj() };
-        let maybe_vault_status = p_vault.find_for_default_user().await?;
-
-        let service_state = match maybe_vault_status {
-            None => {
-                ServiceState { app_state }
-            }
-            Some(vault_status) => {
-                let app_state = ApplicationState::Vault { vault: vault_status };
-                ServiceState { app_state }
-            }
-        };
+        let service_state = ServiceState { app_state };
 
         self.state_provider.push(&service_state.app_state).await;
         Ok(service_state)
@@ -179,10 +175,7 @@ pub struct MetaClientStateProvider {
 impl MetaClientStateProvider {
     pub fn new() -> Self {
         let (sender, receiver) = flume::bounded(100);
-        Self {
-            sender,
-            receiver,
-        }
+        Self { sender, receiver }
     }
 
     pub async fn get(&self) -> ApplicationState {

@@ -9,7 +9,6 @@ use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::vault_event::VaultMembershipObject;
 use crate::node::db::objects::global_index::ClientPersistentGlobalIndex;
 use crate::node::db::objects::persistent_object::PersistentObject;
-use crate::node::db::repo::credentials_repo::CredentialsRepo;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 
 pub struct PersistentVault<Repo: KvLogEventRepo> {
@@ -17,28 +16,13 @@ pub struct PersistentVault<Repo: KvLogEventRepo> {
 }
 
 impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
-
-    #[instrument(skip_all)]
-    pub async fn find_for_default_user(&self) -> anyhow::Result<Option<VaultStatus>> {
-        let creds_repo = CredentialsRepo {
-            p_obj: self.p_obj.clone(),
-        };
-
-        let maybe_creds = creds_repo.get_user_creds().await?;
-        
-        let Some(user_creds) = maybe_creds else {
-            return Ok(None);
-        };
-
-        let vault_status = self.find(user_creds.user()).await?;
-        Ok(Some(vault_status))
-    }
-
     #[instrument(skip_all)]
     pub async fn find(&self, user: UserData) -> anyhow::Result<VaultStatus> {
         let membership = self.vault_membership(user.clone()).await?;
-        
-        let p_gi = ClientPersistentGlobalIndex { p_obj: self.p_obj.clone() };
+
+        let p_gi = ClientPersistentGlobalIndex {
+            p_obj: self.p_obj.clone(),
+        };
         let vault_not_exists = p_gi.exists(user.vault_name()).await?;
         if vault_not_exists {
             return Ok(VaultStatus::NotExists(user));
@@ -67,17 +51,19 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
         let maybe_tail_event = self.p_obj.find_tail_event(desc).await?;
 
         match maybe_tail_event {
-            None => Ok(UserMembership::Outsider(UserDataOutsider::non_member(user_data.clone()))),
+            None => Ok(UserMembership::Outsider(UserDataOutsider::non_member(
+                user_data.clone(),
+            ))),
             Some(tail_event) => {
                 let vault_membership_obj = VaultMembershipObject::try_from(tail_event)?;
 
                 match vault_membership_obj {
-                    VaultMembershipObject::Unit { .. } => {
-                        Ok(UserMembership::Outsider(UserDataOutsider::non_member(user_data.clone())))
-                    }
-                    VaultMembershipObject::Genesis { .. } => {
-                        Ok(UserMembership::Outsider(UserDataOutsider::non_member(user_data.clone())))
-                    }
+                    VaultMembershipObject::Unit { .. } => Ok(UserMembership::Outsider(UserDataOutsider::non_member(
+                        user_data.clone(),
+                    ))),
+                    VaultMembershipObject::Genesis { .. } => Ok(UserMembership::Outsider(
+                        UserDataOutsider::non_member(user_data.clone()),
+                    )),
                     VaultMembershipObject::Membership(event) => Ok(event.value),
                 }
             }

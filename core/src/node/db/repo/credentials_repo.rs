@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use anyhow::anyhow;
-use tracing::{info, instrument};
 use crate::node::common::model::device::{DeviceCredentials, DeviceName};
 use crate::node::common::model::user::UserCredentials;
 use crate::node::common::model::vault::VaultName;
@@ -12,30 +10,13 @@ use crate::node::db::events::local_event::CredentialsObject;
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
+use tracing::instrument;
 
 pub struct CredentialsRepo<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
 }
 
 impl<Repo: KvLogEventRepo> CredentialsRepo<Repo> {
-    #[instrument(skip(self))]
-    pub async fn generate_user(
-        &self,
-        device_name: DeviceName,
-        vault_name: VaultName,
-    ) -> anyhow::Result<CredentialsObject> {
-        info!("Create a new user locally");
-
-        let device_creds = self.get_or_generate_device_creds(device_name).await?;
-
-        let creds = UserCredentials::from(device_creds, vault_name);
-        let user_creds = CredentialsObject::default_user(creds);
-
-        self.save(user_creds.clone()).await?;
-
-        Ok(user_creds)
-    }
-
     pub async fn get_or_generate_device_creds(&self, device_name: DeviceName) -> anyhow::Result<DeviceCredentials> {
         let maybe_creds = self.find().await?;
 
@@ -43,12 +24,13 @@ impl<Repo: KvLogEventRepo> CredentialsRepo<Repo> {
             None => self.generate_device_creds(device_name).await?,
             Some(creds) => match creds {
                 CredentialsObject::Device(event) => event.value,
-                CredentialsObject::DefaultUser(event) => event.value.device_creds
+                CredentialsObject::DefaultUser(event) => event.value.device_creds,
             },
         };
         Ok(device_creds)
     }
 
+    #[instrument(skip_all)]
     pub async fn save(&self, creds: CredentialsObject) -> anyhow::Result<ObjectId> {
         let generic_event = creds.to_generic();
         self.p_obj.repo.save(generic_event).await
@@ -56,7 +38,11 @@ impl<Repo: KvLogEventRepo> CredentialsRepo<Repo> {
 
     #[instrument(skip_all)]
     pub async fn get_user_creds(&self) -> anyhow::Result<Option<UserCredentials>> {
-        let creds_obj = self.find().await?.ok_or_else(|| anyhow!("No credentials found"))?;
+        let maybe_creds_obj = self.find().await?;
+
+        let Some(creds_obj) = maybe_creds_obj else {
+            return Ok(None);
+        };
 
         match creds_obj {
             CredentialsObject::Device { .. } => Ok(None),
@@ -66,9 +52,7 @@ impl<Repo: KvLogEventRepo> CredentialsRepo<Repo> {
 
     #[instrument(skip_all)]
     pub async fn find(&self) -> anyhow::Result<Option<CredentialsObject>> {
-        let maybe_creds = self.p_obj
-            .find_tail_event(ObjectDescriptor::CredsIndex)
-            .await?;
+        let maybe_creds = self.p_obj.find_tail_event(ObjectDescriptor::CredsIndex).await?;
 
         let Some(creds) = maybe_creds else {
             return Ok(None);
@@ -78,8 +62,8 @@ impl<Repo: KvLogEventRepo> CredentialsRepo<Repo> {
         Ok(Some(creds_obj))
     }
 
+    #[instrument(skip(self))]
     pub async fn generate_device_creds(&self, device_name: DeviceName) -> anyhow::Result<DeviceCredentials> {
-        info!("Generate device credentials, for: {:?}", device_name);
         let device_creds = DeviceCredentials::generate(device_name);
         let creds_obj = CredentialsObject::unit(device_creds.clone());
         self.p_obj
@@ -89,7 +73,7 @@ impl<Repo: KvLogEventRepo> CredentialsRepo<Repo> {
         Ok(device_creds)
     }
 
-    #[instrument(skip_all)]
+    #[instrument(skip(self))]
     pub async fn generate_user_creds(
         &self,
         device_name: DeviceName,

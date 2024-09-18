@@ -1,5 +1,5 @@
 use crate::node::common::model::device::{DeviceCredentials, DeviceData, DeviceId, DeviceName};
-use crate::node::common::model::vault::{VaultName, VaultStatus};
+use crate::node::common::model::vault::VaultName;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

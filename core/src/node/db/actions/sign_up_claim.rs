@@ -1,59 +1,49 @@
 use std::sync::Arc;
 
-use anyhow::{bail, Ok};
-use log::warn;
+use crate::node::common::model::user::UserData;
 use crate::node::{
     common::model::vault::VaultStatus,
     db::{
         objects::{
             persistent_device_log::PersistentDeviceLog, persistent_object::PersistentObject,
-            persistent_shared_secret::PersistentSharedSecret, persistent_vault::PersistentVault,
+            persistent_vault::PersistentVault,
         },
         repo::generic_db::KvLogEventRepo,
     },
 };
+use anyhow::Ok;
+use tracing::warn;
 
 pub struct SignUpClaim<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
 }
 
 impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
-    pub async fn sign_up(&self) -> anyhow::Result<VaultStatus> {
-        let maybe_vault_status = self.get_vault_status().await?;
-        
-        let Some(vault_status) = maybe_vault_status else {
-            bail!("Invalid vault state: user credentials not found");
+    pub async fn sign_up(&self, user_data: UserData) -> anyhow::Result<VaultStatus> {
+        let p_vault = PersistentVault {
+            p_obj: self.p_obj.clone(),
         };
 
-        let p_device_log = PersistentDeviceLog { p_obj: self.p_obj.clone() };
+        let vault_status = p_vault.find(user_data).await?;
+
+        let p_device_log = PersistentDeviceLog {
+            p_obj: self.p_obj.clone(),
+        };
         match &vault_status {
             VaultStatus::NotExists(user_data) => {
-                p_device_log
-                    .save_create_vault_request(user_data)
-                    .await?;
+                p_device_log.save_create_vault_request(user_data).await?;
             }
             VaultStatus::Outsider(outsider) => {
                 if outsider.is_non_member() {
-                    p_device_log
-                        .save_join_request(&outsider.user_data)
-                        .await?;
+                    p_device_log.save_join_request(&outsider.user_data).await?;
                 }
             }
             VaultStatus::Member { member, .. } => {
-               warn!("User: {:?} is already vault member", member);
+                warn!("User: {:?} is already vault member", member);
             }
         }
 
         Ok(vault_status.clone())
-    }
-
-    pub async fn get_vault_status(&self) -> anyhow::Result<Option<VaultStatus>> {
-        let p_vault = PersistentVault {
-            p_obj: self.p_obj.clone(),
-        };
-        
-        let vault_status = p_vault.find_for_default_user().await?;
-        Ok(vault_status)
     }
 }
 

@@ -128,3 +128,9 @@ pub enum SharesLoaderError {
     #[error(transparent)]
     DeserializationError(#[from] serde_json::error::Error),
 }
+
+#[derive(Debug, thiserror::Error)]
+pub enum CredentialsError {
+    #[error("Credentials not found")]
+    NotFoundError(String),
+}

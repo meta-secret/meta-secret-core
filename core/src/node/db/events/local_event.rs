@@ -20,7 +20,10 @@ pub enum CredentialsObject {
 
 impl ObjIdExtractor for CredentialsObject {
     fn obj_id(&self) -> ObjectId {
-        CredentialsObject::unit_id()
+        match self {
+            CredentialsObject::Device(event) => ObjectId::from(event.key.obj_id.clone()),
+            CredentialsObject::DefaultUser(event) => ObjectId::from(event.key.obj_id.clone()),
+        }
     }
 }
 

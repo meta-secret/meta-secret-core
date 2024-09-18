@@ -17,7 +17,6 @@ use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescript
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::db_tail::DbTail;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, KeyExtractor, ToGenericEvent};
-use crate::node::db::events::global_index_event::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::local_event::{CredentialsObject, DbTailObject};
 use crate::node::db::events::object_id::ObjectId;
@@ -81,9 +80,9 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         let p_vault = PersistentVault {
             p_obj: self.persistent_object.clone(),
         };
-        let vault_status = p_vault.find_for_default_user().await?;
+        let vault_status = p_vault.find(user_creds.user()).await?;
 
-        let Some(VaultStatus::Member { member, .. }) = vault_status else {
+        let VaultStatus::Member { member, .. } = vault_status else {
             return Ok(());
         };
 
@@ -197,7 +196,9 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             .await?
             .to_data()?;
 
-        let p_gi_obj = ClientPersistentGlobalIndex { p_obj: self.persistent_object.clone()};
+        let p_gi_obj = ClientPersistentGlobalIndex {
+            p_obj: self.persistent_object.clone(),
+        };
         for gi_event in new_gi_events {
             if let GenericKvLogEvent::GlobalIndex(gi_obj) = &gi_event {
                 p_gi_obj.save(gi_obj).await?;

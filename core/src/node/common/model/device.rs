@@ -1,7 +1,6 @@
 use std::fmt::Display;
 
 use anyhow::{anyhow, Ok};
-use wasm_bindgen::prelude::wasm_bindgen;
 use crypto::utils::generate_uuid_b64_url_enc;
 
 use crate::crypto;

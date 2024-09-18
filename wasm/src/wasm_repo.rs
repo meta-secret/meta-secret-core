@@ -97,7 +97,7 @@ impl SaveCommand for WasmRepo {
         let js_value = serde_wasm_bindgen::to_value(&event).unwrap();
         let id_str = event.obj_id().id_str();
         let obj_id_js = serde_wasm_bindgen::to_value(id_str.as_str()).unwrap();
-        
+
         store.add(&js_value, Some(&obj_id_js)).await.unwrap();
 
         // Waits for the transaction to complete

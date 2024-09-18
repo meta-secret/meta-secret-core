@@ -1,4 +1,5 @@
 use crate::node::common::model::device::DeviceData;
+use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::events::generic_log_event::{ObjIdExtractor, ToGenericEvent};
@@ -8,9 +9,7 @@ use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use std::sync::Arc;
-use tracing::info;
-use tracing_attributes::instrument;
-use crate::node::common::model::vault::VaultName;
+use tracing::{info, instrument};
 
 pub struct ServerPersistentGlobalIndex<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
@@ -53,11 +52,11 @@ impl<Repo: KvLogEventRepo> ServerPersistentGlobalIndex<Repo> {
 }
 
 pub struct ClientPersistentGlobalIndex<Repo: KvLogEventRepo> {
-    pub p_obj: Arc<PersistentObject<Repo>>
+    pub p_obj: Arc<PersistentObject<Repo>>,
 }
 
 impl<Repo: KvLogEventRepo> ClientPersistentGlobalIndex<Repo> {
-    /// Save global index event and also save a "vault index" record 
+    /// Save global index event and also save a "vault index" record
     pub async fn save(&self, gi_obj: &GlobalIndexObject) -> anyhow::Result<()> {
         self.p_obj.repo.save(gi_obj.clone().to_generic()).await?;
 
@@ -67,7 +66,7 @@ impl<Repo: KvLogEventRepo> ClientPersistentGlobalIndex<Repo> {
             let vault_idx_evt = GlobalIndexObject::index_from_vault_id(vault_id).to_generic();
             self.p_obj.repo.save(vault_idx_evt).await?;
         }
-        
+
         Ok(())
     }
 
@@ -75,7 +74,7 @@ impl<Repo: KvLogEventRepo> ClientPersistentGlobalIndex<Repo> {
         let exists = self.exists(vault_name).await?;
         Ok(!exists)
     }
-    
+
     pub async fn exists(&self, vault_name: VaultName) -> anyhow::Result<bool> {
         let vault_idx_obj = GlobalIndexObject::index_from_vault_name(vault_name).to_generic();
         let db_idx_event = self.p_obj.repo.find_one(vault_idx_obj.obj_id()).await?;
