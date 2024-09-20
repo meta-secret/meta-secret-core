@@ -1,11 +1,11 @@
-use crate::node::common::model::device::DeviceData;
 use crate::node::common::model::secret::MetaPasswordId;
 use crate::node::common::model::vault::VaultStatus;
 use std::fmt::Display;
+use crate::node::common::model::device::common::DeviceData;
 
 pub mod device;
-pub mod user;
 pub mod vault;
+pub mod user;
 
 pub mod crypto {
     use crate::CoreResult;
@@ -19,7 +19,7 @@ pub mod crypto {
     use crate::crypto::encoding::base64::Base64Text;
     use crate::crypto::key_pair::{CryptoBoxPublicKey, CryptoBoxSecretKey};
     use crate::errors::CoreError;
-    use crate::node::common::model::device::DeviceLink;
+    use crate::node::common::model::device::device_link::DeviceLink;
 
     #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -213,9 +213,8 @@ pub mod secret {
 
     use crate::crypto::utils;
     use crate::node::common::model::crypto::EncryptedMessage;
+    use crate::node::common::model::device::device_link::PeerToPeerDeviceLink;
     use crate::node::common::model::vault::VaultName;
-
-    use super::device::PeerToPeerDeviceLink;
 
     #[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]

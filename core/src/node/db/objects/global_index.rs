@@ -1,4 +1,3 @@
-use crate::node::common::model::device::DeviceData;
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
@@ -10,6 +9,7 @@ use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use std::sync::Arc;
 use tracing::{info, instrument};
+use crate::node::common::model::device::common::DeviceData;
 
 pub struct ServerPersistentGlobalIndex<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
@@ -83,24 +83,100 @@ impl<Repo: KvLogEventRepo> ClientPersistentGlobalIndex<Repo> {
 }
 
 #[cfg(test)]
+pub mod spec {
+    use std::sync::Arc;
+    use crate::node::common::model::device::common::DeviceData;
+    use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
+    use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
+    use crate::node::db::events::generic_log_event::ObjIdExtractor;
+    use crate::node::db::events::global_index_event::GlobalIndexObject;
+    use crate::node::db::events::object_id::ObjectId;
+    use crate::node::db::in_mem_db::InMemKvLogEventRepo;
+    use crate::node::db::objects::global_index::fixture::ServerPersistentGlobalIndexFixture;
+    use crate::node::db::repo::generic_db::KvLogEventRepo;
+
+    pub struct GlobalIndexSpec<Repo: KvLogEventRepo> {
+        pub repo: Arc<Repo>,
+        pub server_device: DeviceData,
+    }
+
+    impl<Repo: KvLogEventRepo> GlobalIndexSpec<Repo> {
+        pub async fn verify(&self) -> anyhow::Result<()> {
+            let gi_obj_desc = GlobalIndexDescriptor::Index.to_obj_desc();
+
+            let unit_event = {
+                let unit_id = ObjectId::unit(gi_obj_desc.clone());
+                self.repo.find_one(unit_id).await?.unwrap().global_index()?
+            };
+            assert_eq!(unit_event.obj_id().get_unit_id().id.id, 0);
+
+            let genesis_event = {
+                let genesis_id = ObjectId::genesis(gi_obj_desc.clone());
+                self.repo.find_one(genesis_id).await?.unwrap().global_index()?
+            };
+
+            if let GlobalIndexObject::Genesis(log_event) = genesis_event {
+                assert_eq!(log_event.value, self.server_device);
+            } else {
+                panic!("Invalid Genesis event");
+            }
+
+            Ok(())
+        }
+    }
+
+    impl From<ServerPersistentGlobalIndexFixture> for GlobalIndexSpec<InMemKvLogEventRepo> {
+        fn from(gi_fixture: ServerPersistentGlobalIndexFixture) -> Self {
+            Self {
+                repo: gi_fixture.gi.p_obj.repo.clone(),
+                server_device: gi_fixture.gi.server_device.clone(),
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod fixture {
+    use std::sync::Arc;
+    use crate::node::common::model::device::device_creds::fixture::DeviceCredentialsFixture;
+    use crate::node::db::in_mem_db::InMemKvLogEventRepo;
+    use crate::node::db::objects::global_index::ServerPersistentGlobalIndex;
+    use crate::node::db::objects::persistent_object::PersistentObject;
+
+    pub struct ServerPersistentGlobalIndexFixture {
+        pub gi: ServerPersistentGlobalIndex<InMemKvLogEventRepo>
+    }
+
+    impl From<&DeviceCredentialsFixture> for ServerPersistentGlobalIndexFixture {
+        fn from(creds_fixture: &DeviceCredentialsFixture) -> Self {
+            Self {
+                gi: ServerPersistentGlobalIndex {
+                    p_obj: Arc::new(PersistentObject::in_mem()),
+                    server_device: creds_fixture.server.device.clone(),
+                }
+            }
+        }
+    }
+    
+    impl ServerPersistentGlobalIndexFixture {
+        pub fn generate() -> Self {
+            ServerPersistentGlobalIndexFixture::from(&DeviceCredentialsFixture::generate())
+        }
+    }
+}
+
+#[cfg(test)]
 mod test {
-    use crate::meta_tests::action::global_index_action::GlobalIndexSyncRequestTestAction;
-    use crate::meta_tests::fixture::ClientDeviceFixture;
-    use crate::meta_tests::spec::global_index_specs::GlobalIndexSpec;
+    use crate::node::db::objects::global_index::fixture::ServerPersistentGlobalIndexFixture;
+    use crate::node::db::objects::global_index::spec::GlobalIndexSpec;
 
     #[tokio::test]
     async fn test_init() -> anyhow::Result<()> {
-        let gi_request_action = GlobalIndexSyncRequestTestAction::init().await?;
-        let device_fixture = ClientDeviceFixture::default();
+        let gi_fixture = ServerPersistentGlobalIndexFixture::generate();
+        gi_fixture.gi.init().await?;
 
-        let _ = gi_request_action.send_request(device_fixture.device_creds.device).await;
-
-        let gi_spec = GlobalIndexSpec {
-            repo: gi_request_action.server_node.p_obj.repo.clone(),
-            server_device: gi_request_action.server_node.device.device.clone(),
-        };
-
-        gi_spec.check().await?;
+        let gi_spec = GlobalIndexSpec::from(gi_fixture);
+        gi_spec.verify().await?;
 
         Ok(())
     }

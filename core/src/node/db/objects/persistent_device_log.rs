@@ -3,8 +3,7 @@ use std::sync::Arc;
 use anyhow::bail;
 use tracing::{debug, info};
 use tracing_attributes::instrument;
-
-use crate::node::common::model::user::{UserData, UserDataMember, UserId, UserMembership};
+use crate::node::common::model::user::common::{UserData, UserDataMember, UserId, UserMembership};
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ToGenericEvent};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};

@@ -1,6 +1,5 @@
 use std::ops::Add;
-
-use crate::node::common::model::user::UserId;
+use crate::node::common::model::user::common::UserId;
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ObjectName, ObjectType, ToObjectDescriptor};
 
@@ -71,8 +70,8 @@ pub mod test {
     use serde_json::json;
 
     use crate::crypto::keys::{KeyManager, OpenBox};
-    use crate::node::common::model::device::DeviceId;
-    use crate::node::common::model::user::UserId;
+    use crate::node::common::model::device::common::DeviceId;
+    use crate::node::common::model::user::common::UserId;
     use crate::node::common::model::vault::VaultName;
     use crate::node::db::descriptors::object_descriptor::{ObjectName, ObjectType};
     use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;

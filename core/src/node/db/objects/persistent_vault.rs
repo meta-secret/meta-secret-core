@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use anyhow::bail;
 use tracing_attributes::instrument;
-
-use crate::node::common::model::user::{UserData, UserDataMember, UserDataOutsider, UserMembership};
+use crate::node::common::model::user::common::{UserData, UserDataMember, UserDataOutsider, UserMembership};
 use crate::node::common::model::vault::VaultStatus;
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::vault_event::VaultMembershipObject;

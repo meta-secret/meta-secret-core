@@ -1,40 +1,5 @@
-use std::fmt::Display;
-
-use anyhow::{anyhow, Ok};
-use crypto::utils::generate_uuid_b64_url_enc;
-
-use crate::crypto;
-use crate::crypto::encoding::base64::Base64Text;
-use crate::crypto::keys::SecretBox;
-use crate::crypto::keys::{KeyManager, OpenBox};
-use crate::crypto::utils::rand_uuid_b64_url_enc;
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DeviceId(String);
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DeviceName(String);
-
-impl From<String> for DeviceName {
-    fn from(device_name: String) -> Self {
-        DeviceName(device_name)
-    }
-}
-
-impl From<&str> for DeviceName {
-    fn from(device_name: &str) -> Self {
-        DeviceName(String::from(device_name))
-    }
-}
-
-impl DeviceName {
-    pub fn generate() -> DeviceName {
-        let Base64Text(device_name) = rand_uuid_b64_url_enc();
-        DeviceName(device_name)
-    }
-}
+use anyhow::anyhow;
+use crate::node::common::model::device::common::DeviceId;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -165,68 +130,14 @@ impl DeviceLink {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DeviceData {
-    pub id: DeviceId,
-    pub name: DeviceName,
-    pub keys: OpenBox,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DeviceCredentials {
-    pub secret_box: SecretBox,
-    pub device: DeviceData,
-}
-
-/// Contains full information about device (private keys and device id)
-impl DeviceCredentials {
-    pub fn generate(device_name: DeviceName) -> DeviceCredentials {
-        let secret_box = KeyManager::generate_secret_box();
-        let device = DeviceData::from(device_name, OpenBox::from(&secret_box));
-        DeviceCredentials { secret_box, device }
-    }
-
-    pub fn key_manager(&self) -> anyhow::Result<KeyManager> {
-        let key_manager = KeyManager::try_from(&self.secret_box)?;
-        Ok(key_manager)
-    }
-}
-
-impl Display for DeviceId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.clone())
-    }
-}
-
-/// Contains only public information about device
-impl DeviceData {
-    pub fn from(device_name: DeviceName, open_box: OpenBox) -> Self {
-        Self {
-            name: device_name,
-            id: DeviceId::from(&open_box),
-            keys: open_box,
-        }
-    }
-}
-
-impl From<&OpenBox> for DeviceId {
-    fn from(open_box: &OpenBox) -> Self {
-        let dsa_pk = String::from(&open_box.dsa_pk);
-        let id = generate_uuid_b64_url_enc(dsa_pk);
-        Self(id)
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
 
     #[test]
     fn test_device_link_builder() -> anyhow::Result<()> {
-        let sender = DeviceId(String::from("sender"));
-        let receiver = DeviceId(String::from("receiver"));
+        let sender = DeviceId::from("sender");
+        let receiver = DeviceId::from("receiver");
 
         let device_link = DeviceLinkBuilder::builder()
             .sender(sender.clone())

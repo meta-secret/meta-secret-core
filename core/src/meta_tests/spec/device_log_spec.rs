@@ -3,7 +3,6 @@ use std::sync::Arc;
 use anyhow::Result;
 
 use crate::node::{
-    common::model::user::UserData,
     db::{
         descriptors::vault_descriptor::VaultDescriptor,
         events::object_id::{Next, ObjectId, UnitId},
@@ -11,6 +10,7 @@ use crate::node::{
         repo::generic_db::KvLogEventRepo,
     },
 };
+use crate::node::common::model::user::common::UserData;
 
 pub struct DeviceLogSpec<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,

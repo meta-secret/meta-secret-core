@@ -3,8 +3,8 @@ use tracing::{info, instrument};
 
 use crate::node::app::meta_app::meta_client_service::MetaClientAccessProxy;
 use crate::node::app::sync_gateway::SyncGateway;
-use crate::node::common::model::device::DeviceName;
-use crate::node::common::model::user::UserCredentials;
+use crate::node::common::model::device::common::DeviceName;
+use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::{VaultName, VaultStatus};
 use crate::node::db::actions::sign_up_claim::SignUpClaim;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;

@@ -7,10 +7,10 @@ use crate::node::app::meta_app::messaging::{GenericAppStateRequest, GenericAppSt
 use crate::node::app::sync_gateway::SyncGateway;
 use crate::node::common::actor::ServiceState;
 use crate::node::common::data_transfer::MpscDataTransfer;
-use crate::node::common::model::device::DeviceName;
-use crate::node::common::model::user::UserData;
 use crate::node::common::model::vault::VaultStatus;
 use crate::node::common::model::ApplicationState;
+use crate::node::common::model::device::common::DeviceName;
+use crate::node::common::model::user::common::UserData;
 use crate::node::db::actions::recover::RecoveryAction;
 use crate::node::db::actions::sign_up_claim::SignUpClaim;
 use crate::node::db::events::local_event::CredentialsObject;

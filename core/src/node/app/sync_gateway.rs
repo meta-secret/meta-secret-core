@@ -5,11 +5,13 @@ use anyhow::{anyhow, bail};
 use tracing::{debug, error, info, instrument};
 
 use crate::node::common::model::crypto::{AeadAuthData, AeadPlainText, EncryptedMessage};
-use crate::node::common::model::device::{DeviceData, DeviceId, DeviceLink};
+use crate::node::common::model::device::common::{DeviceData, DeviceId};
+use crate::node::common::model::device::device_link::DeviceLink;
 use crate::node::common::model::secret::{
     SSDistributionId, SSDistributionStatus, SecretDistributionData, SecretDistributionType,
 };
-use crate::node::common::model::user::{UserCredentials, UserDataMember, UserId};
+use crate::node::common::model::user::common::{UserDataMember, UserId};
+use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::VaultStatus;
 use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ToObjectDescriptor};

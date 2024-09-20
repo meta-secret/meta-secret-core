@@ -6,6 +6,7 @@ use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::db_tail::DbTail;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor};
 use crate::node::db::events::object_id::{Next, ObjectId};
+use crate::node::db::in_mem_db::InMemKvLogEventRepo;
 use crate::node::db::objects::persistent_object_navigator::PersistentObjectNavigator;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 
@@ -150,5 +151,12 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
 impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
     pub fn new(repo: Arc<Repo>) -> Self {
         PersistentObject { repo }
+    }
+}
+
+impl PersistentObject<InMemKvLogEventRepo> {
+    pub fn in_mem() -> PersistentObject<InMemKvLogEventRepo> {
+        let repo = Arc::new(InMemKvLogEventRepo::default());
+        PersistentObject::new(repo)
     }
 }

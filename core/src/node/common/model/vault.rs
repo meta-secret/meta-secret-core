@@ -1,11 +1,10 @@
-use crate::node::common::model::device::DeviceId;
-use crate::node::common::model::user::{UserData, UserDataMember, UserDataOutsider, UserMembership};
 use crate::node::common::model::MetaPasswordId;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
-
+use crate::node::common::model::device::common::DeviceId;
+use crate::node::common::model::device::device_link::DeviceLink;
+use crate::node::common::model::user::common::{UserData, UserDataMember, UserDataOutsider, UserMembership};
 use super::crypto::CommunicationChannel;
-use super::device::DeviceLink;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -29,6 +28,7 @@ impl Display for VaultName {
     }
 }
 
+/////////////////// VaultData ///////////////////
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VaultData {
@@ -141,6 +141,7 @@ impl VaultData {
     }
 }
 
+/////////////////// VaultStatus ///////////////////
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum VaultStatus {
@@ -159,6 +160,27 @@ impl VaultStatus {
             VaultStatus::NotExists(user) => user.clone(),
             VaultStatus::Outsider(UserDataOutsider { user_data, .. }) => user_data.clone(),
             VaultStatus::Member { member, .. } => member.user().clone(),
+        }
+    }
+}
+
+#[cfg(test)]
+pub mod fixture {
+    use crate::node::common::model::vault::VaultName;
+
+    pub struct VaultNameFixture {
+        pub client: VaultName,
+        pub vd: VaultName,
+        pub server: VaultName,
+    }
+
+    impl VaultNameFixture {
+        pub fn generate() -> Self {
+            Self {
+                client: VaultName::from("client"),
+                vd: VaultName::from("vd"),
+                server: VaultName::from("server"),
+            }
         }
     }
 }

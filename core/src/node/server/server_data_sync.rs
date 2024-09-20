@@ -3,9 +3,9 @@ use std::sync::Arc;
 use anyhow::{anyhow, bail, Ok};
 use async_trait::async_trait;
 use tracing::{info, instrument};
-
-use crate::node::common::model::device::{DeviceCredentials, DeviceData};
-use crate::node::common::model::user::{UserData, UserDataMember, UserId};
+use crate::node::common::model::device::common::DeviceData;
+use crate::node::common::model::device::device_creds::DeviceCredentials;
+use crate::node::common::model::user::common::{UserData, UserDataMember, UserId};
 use crate::node::common::model::vault::{VaultData, VaultName};
 use crate::node::db::actions::sign_up::SignUpAction;
 use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
@@ -117,7 +117,6 @@ impl<Repo: KvLogEventRepo> DataSyncApi for ServerDataSync<Repo> {
 impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
     #[instrument(skip(self))]
     async fn server_processing(&self, generic_event: GenericKvLogEvent) -> anyhow::Result<()> {
-
         match &generic_event {
             GenericKvLogEvent::DeviceLog(device_log_obj) => {
                 self.handle_device_log_request(device_log_obj).await?;
@@ -265,7 +264,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
                         },
                         value: new_vault,
                     })
-                    .to_generic()
+                        .to_generic()
                 };
 
                 self.persistent_obj.repo.save(vault_event).await?;
@@ -450,7 +449,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
                 },
                 value: vault_id.clone(),
             })
-            .to_generic()
+                .to_generic()
         };
 
         let gi_events = vec![gi_update_event];
@@ -472,14 +471,11 @@ mod test {
     use std::sync::Arc;
 
     use anyhow::Result;
-    use tracing::{info, Level};
+    use tracing::{info};
     use tracing_futures::Instrument;
-    
+
     use crate::{
         meta_tests::{
-            action::{
-                global_index_action::GlobalIndexSyncRequestTestAction, sign_up_claim_action::SignUpClaimTestAction,
-            },
             spec::{sign_up_claim_spec::SignUpClaimSpec, test_spec::TestSpec},
         },
         node::{
@@ -489,32 +485,29 @@ mod test {
                     object_descriptor::ToObjectDescriptor, shared_secret_descriptor::SharedSecretDescriptor,
                     vault_descriptor::VaultDescriptor,
                 },
-                in_mem_db::InMemKvLogEventRepo,
                 objects::persistent_object::PersistentObject,
             },
         },
     };
     use crate::node::common::meta_tracing::{client_span, server_span};
     use tracing::instrument;
+    use crate::meta_tests::setup_tracing;
+    use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
+    use crate::node::db::actions::sign_up_claim::test_action::SignUpClaimTestAction;
+    use crate::node::server::server_app::fixture::ServerAppFixture;
 
     #[tokio::test]
     #[instrument]
     async fn test_sign_up() -> Result<()> {
         setup_tracing()?;
 
-        let gi_action = GlobalIndexSyncRequestTestAction::init()
-            .instrument(server_span())
+        let server_app_fixture = ServerAppFixture::try_from(Arc::new(PersistentObject::in_mem()))
             .await?;
 
-        let client_p_obj = {
-            let client_repo = Arc::new(InMemKvLogEventRepo::default());
-            Arc::new(PersistentObject::new(client_repo.clone()))
-        };
+        let client_p_obj = Arc::new(PersistentObject::in_mem());
 
         info!("Executing 'sign up' claim");
-        let claim_action = SignUpClaimTestAction::new(client_p_obj.clone());
-        let vault_status = claim_action.sign_up()
-            .instrument(client_span())
+        let vault_status = SignUpClaimTestAction::sign_up(client_p_obj.clone(), UserCredentialsFixture::generate())
             .await?;
         let VaultStatus::Outsider(outsider) = vault_status else {
             panic!("Invalid state, the user can't be already registered");
@@ -525,7 +518,7 @@ mod test {
             .instrument(client_span())
             .await?;
 
-        let server_data_sync = gi_action.server_node.app.data_sync;
+        let server_data_sync = server_app_fixture.server_app.data_sync;
         for cd_log_event in client_device_log_events {
             info!("Sending device log event to the server: {:?}", cd_log_event);
             server_data_sync
@@ -551,8 +544,8 @@ mod test {
 
         let server_ss_device_log_events = {
             let ss_desc = SharedSecretDescriptor::SSDeviceLog(outsider.user_data.device.id.clone()).to_obj_desc();
-            gi_action
-                .server_node
+            server_app_fixture
+                .server_app
                 .p_obj
                 .get_object_events_from_beginning(ss_desc)
                 .instrument(server_span())
@@ -560,7 +553,7 @@ mod test {
         };
         println!("SERVER SS device log EVENTS: {:?}", server_ss_device_log_events.len());
 
-        let db = gi_action.server_node.p_obj.repo.get_db().await;
+        let db = server_app_fixture.server_app.p_obj.repo.get_db().await;
         assert_eq!(db.len(), 16);
 
         db.values().for_each(|event| {
@@ -568,22 +561,12 @@ mod test {
         });
 
         let server_claim_spec = SignUpClaimSpec {
-            p_obj: gi_action.server_node.p_obj,
+            p_obj: server_app_fixture.server_app.p_obj,
             user: outsider.user_data,
         };
 
         server_claim_spec.verify().await?;
 
-        Ok(())
-    }
-
-    fn setup_tracing() -> anyhow::Result<()> {
-        let subscriber = tracing_subscriber::fmt()
-            .with_max_level(Level::TRACE)
-            .without_time()
-            .compact()
-            .pretty()
-            .init();
         Ok(())
     }
 }

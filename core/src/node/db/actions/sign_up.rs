@@ -1,7 +1,6 @@
 use tracing_attributes::instrument;
-
-use crate::node::common::model::device::DeviceData;
-use crate::node::common::model::user::{UserData, UserDataMember, UserId, UserMembership};
+use crate::node::common::model::device::common::DeviceData;
+use crate::node::common::model::user::common::{UserData, UserDataMember, UserId, UserMembership};
 use crate::node::common::model::vault::VaultData;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
@@ -117,20 +116,19 @@ mod test {
     use anyhow::Result;
 
     use crate::{
-        meta_tests::fixture::ClientDeviceFixture,
         node::{
-            common::model::device::{DeviceCredentials, DeviceName},
             db::actions::sign_up::SignUpAction,
         },
+        node::common::model::user::user_creds::fixture::UserCredentialsFixture
     };
 
     #[tokio::test]
     async fn test() -> Result<()> {
-        let client_fixture = ClientDeviceFixture::default();
-        let server_creds = DeviceCredentials::generate(DeviceName::from("server_device"));
+        let user_creds_fixture = UserCredentialsFixture::generate();
 
         let sign_up_action = SignUpAction {};
-        let events = sign_up_action.accept(client_fixture.user_creds.user(), server_creds.device);
+        let events = sign_up_action
+            .accept(user_creds_fixture.client.user(), user_creds_fixture.server.device());
 
         assert_eq!(events.len(), 8);
 

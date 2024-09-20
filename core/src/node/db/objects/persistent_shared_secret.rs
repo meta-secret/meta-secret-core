@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use crate::node::common::model::device::DeviceId;
+
 use anyhow::{bail, Ok};
 use tracing::debug;
-
+use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::secret::{MetaPasswordId, SecretDistributionData};
-use crate::node::common::model::user::UserData;
+use crate::node::common::model::user::common::UserData;
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;

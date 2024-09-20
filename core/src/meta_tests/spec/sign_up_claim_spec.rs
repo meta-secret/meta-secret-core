@@ -3,7 +3,6 @@ use std::sync::Arc;
 use crate::{
     meta_tests::spec::device_log_spec::DeviceLogSpec,
     node::{
-        common::model::user::UserData,
         db::{objects::persistent_object::PersistentObject, repo::generic_db::KvLogEventRepo},
     },
 };
@@ -11,6 +10,7 @@ use anyhow::Result;
 
 use super::{ss_device_log_spec::SSDeviceLogSpec, test_spec::TestSpec};
 use async_trait::async_trait;
+use crate::node::common::model::user::common::UserData;
 
 pub struct SignUpClaimSpec<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,

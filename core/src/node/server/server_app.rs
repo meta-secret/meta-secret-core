@@ -4,7 +4,8 @@ use anyhow::Result;
 use tracing::{error, info, instrument};
 
 use crate::node::common::data_transfer::MpscDataTransfer;
-use crate::node::common::model::device::{DeviceCredentials, DeviceName};
+use crate::node::common::model::device::common::DeviceName;
+use crate::node::common::model::device::device_creds::DeviceCredentials;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::objects::global_index::ServerPersistentGlobalIndex;
 use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
@@ -19,7 +20,7 @@ use crate::node::server::server_data_sync::{
 
 pub struct ServerApp<Repo: KvLogEventRepo> {
     pub data_sync: ServerDataSync<Repo>,
-    p_obj: Arc<PersistentObject<Repo>>,
+    pub(crate) p_obj: Arc<PersistentObject<Repo>>,
 }
 
 pub struct ServerDataTransfer {
@@ -27,7 +28,7 @@ pub struct ServerDataTransfer {
 }
 
 impl<Repo: KvLogEventRepo> ServerApp<Repo> {
-    pub async fn init(repo: Arc<Repo>) -> anyhow::Result<Self> {
+    pub async fn init(repo: Arc<Repo>) -> Result<Self> {
         let p_obj = {
             let obj = PersistentObject::new(repo);
             Arc::new(obj)
@@ -36,7 +37,7 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
         let creds_repo = CredentialsRepo { p_obj: p_obj.clone() };
 
         let device_creds = creds_repo
-            .get_or_generate_device_creds(DeviceName::from("server"))
+            .get_or_generate_device_creds(DeviceName::server())
             .await?;
 
         let data_sync = ServerDataSync {
@@ -132,7 +133,26 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
         };
 
         creds_repo
-            .get_or_generate_device_creds(DeviceName::from("server"))
+            .get_or_generate_device_creds(DeviceName::server())
             .await
+    }
+}
+
+#[cfg(test)]
+pub mod fixture {
+    use std::sync::Arc;
+    use crate::node::db::in_mem_db::InMemKvLogEventRepo;
+    use crate::node::db::objects::persistent_object::PersistentObject;
+    use crate::node::server::server_app::ServerApp;
+
+    pub struct ServerAppFixture {
+        pub server_app: ServerApp<InMemKvLogEventRepo>
+    }
+    
+    impl ServerAppFixture {
+        pub async fn try_from(p_obj: Arc<PersistentObject<InMemKvLogEventRepo>>) -> anyhow::Result<Self> {
+            let server_app = ServerApp::init(p_obj.repo.clone()).await?;
+            Ok(Self { server_app })
+        }
     }
 }

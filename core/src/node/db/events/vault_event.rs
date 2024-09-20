@@ -1,8 +1,7 @@
 use anyhow::{anyhow, bail};
-
-use crate::node::common::model::device::DeviceData;
+use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::secret::MetaPasswordId;
-use crate::node::common::model::user::{UserData, UserDataMember, UserDataOutsider, UserMembership};
+use crate::node::common::model::user::common::{UserData, UserDataMember, UserDataOutsider, UserMembership};
 use crate::node::common::model::vault::{VaultData, VaultName, VaultStatus};
 use crate::node::db::events::error::LogEventCastError;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent};
