@@ -35,7 +35,7 @@ use crate::node::server::server_data_sync::{DataEventsResponse, DataSyncRequest,
 
 pub struct SyncGateway<Repo: KvLogEventRepo> {
     pub id: String,
-    pub persistent_object: Arc<PersistentObject<Repo>>,
+    pub p_obj: Arc<PersistentObject<Repo>>,
     pub server_dt: Arc<ServerDataTransfer>,
 }
 
@@ -60,7 +60,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
     #[instrument(skip_all)]
     pub async fn sync(&self) -> anyhow::Result<()> {
         let creds_repo = CredentialsRepo {
-            p_obj: self.persistent_object.clone(),
+            p_obj: self.p_obj.clone(),
         };
 
         let maybe_creds_event = creds_repo.find().await?;
@@ -80,7 +80,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         let sender = user_creds.user();
 
         let p_vault = PersistentVault {
-            p_obj: self.persistent_object.clone(),
+            p_obj: self.p_obj.clone(),
         };
         let vault_status = p_vault.find(user_creds.user()).await?;
 
@@ -93,17 +93,17 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
 
             let vault_log_free_id = {
                 let obj_desc = VaultDescriptor::vault_log(vault_name.clone());
-                self.persistent_object.find_free_id_by_obj_desc(obj_desc).await?
+                self.p_obj.find_free_id_by_obj_desc(obj_desc).await?
             };
 
             let vault_free_id = {
                 let obj_desc = VaultDescriptor::vault(vault_name.clone());
-                self.persistent_object.find_free_id_by_obj_desc(obj_desc).await?
+                self.p_obj.find_free_id_by_obj_desc(obj_desc).await?
             };
 
             let vault_status_free_id = {
                 let obj_desc = VaultDescriptor::vault_membership(user_creds.user_id());
-                self.persistent_object.find_free_id_by_obj_desc(obj_desc).await?
+                self.p_obj.find_free_id_by_obj_desc(obj_desc).await?
             };
 
             SyncRequest::Vault(VaultRequest {
@@ -123,7 +123,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
 
         for new_event in data_sync_events {
             debug!("id: {:?}. Sync gateway. New event: {:?}", self.id, new_event);
-            self.persistent_object.repo.save(new_event).await?;
+            self.p_obj.repo.save(new_event).await?;
         }
 
         // TODO Get latest device log messages and send to the server
@@ -149,7 +149,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             .unwrap_or_else(|| ObjectId::unit(SharedSecretDescriptor::SSDeviceLog(device_id).to_obj_desc()));
 
         let ss_device_log_events_to_sync = self
-            .persistent_object
+            .p_obj
             .find_object_events(server_ss_device_log_tail_id)
             .await?;
 
@@ -167,7 +167,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             .unwrap_or_else(|| ObjectId::unit(VaultDescriptor::device_log(user_id)));
 
         let device_log_events_to_sync = self
-            .persistent_object
+            .p_obj
             .find_object_events(server_device_log_tail_id)
             .await?;
 
@@ -183,7 +183,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
 
         let gi_free_id = {
             let gi_desc = ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index);
-            self.persistent_object.find_free_id_by_obj_desc(gi_desc).await?
+            self.p_obj.find_free_id_by_obj_desc(gi_desc).await?
         };
 
         let sync_request = SyncRequest::GlobalIndex(GlobalIndexRequest {
@@ -199,7 +199,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             .to_data()?;
 
         let p_gi_obj = ClientPersistentGlobalIndex {
-            p_obj: self.persistent_object.clone(),
+            p_obj: self.p_obj.clone(),
         };
         for gi_event in new_gi_events {
             if let GenericKvLogEvent::GlobalIndex(gi_obj) = &gi_event {
@@ -222,7 +222,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         let key_manager = creds.device_creds.key_manager()?;
 
         let p_vault = PersistentVault {
-            p_obj: self.persistent_object.clone(),
+            p_obj: self.p_obj.clone(),
         };
 
         let vault_status = p_vault.find(creds.user()).await?;
@@ -241,7 +241,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                 //get ss_ledger
                 // distribute shares if needed
                 let persistent_ss = PersistentSharedSecret {
-                    p_obj: self.persistent_object.clone(),
+                    p_obj: self.p_obj.clone(),
                 };
 
                 let ledger_obj = persistent_ss.get_ledger(member_data.vault_name).await?;
@@ -356,7 +356,33 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         })
         .to_generic();
 
-        self.persistent_object.repo.save(new_db_tail_event).await?;
+        self.p_obj.repo.save(new_db_tail_event).await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+pub mod fixture {
+    use crate::node::app::sync_gateway::SyncGateway;
+    use crate::node::db::in_mem_db::InMemKvLogEventRepo;
+    use crate::node::db::objects::persistent_object::fixture::PersistentObjectFixture;
+    use crate::node::server::server_app::fixture::ServerDataTransferFixture;
+
+    pub struct SyncGatewayFixture {
+        pub gw: SyncGateway<InMemKvLogEventRepo>,
+        pub p_obj_fxr: PersistentObjectFixture,
+        pub server_dt_fxr: ServerDataTransferFixture
+    }
+
+    impl SyncGatewayFixture {
+        pub fn from(id: &str, p_obj_fixture: PersistentObjectFixture, server_dt_fxr: ServerDataTransferFixture) -> Self {
+            
+            let gw = SyncGateway {
+                id: id.to_string(),
+                p_obj: p_obj_fixture.client,
+                server_dt: server_dt_fxr.server_dt,
+            };
+            Self { gw }
+        }
     }
 }

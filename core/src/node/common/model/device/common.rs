@@ -17,7 +17,15 @@ pub struct DeviceName(String);
 
 impl DeviceName {
     pub fn server() -> Self {
-        DeviceName::from("server")
+        DeviceName::from("d_server")
+    }
+    
+    pub fn virtual_device() -> Self {
+        DeviceName::from("d_vd")
+    }
+
+    pub fn client() -> Self {
+        DeviceName::from("d_client")
     }
 }
 
@@ -76,26 +84,5 @@ impl From<&OpenBox> for DeviceId {
         let dsa_pk = String::from(&open_box.dsa_pk);
         let id = generate_uuid_b64_url_enc(dsa_pk);
         Self(id)
-    }
-}
-
-#[cfg(test)]
-pub mod fixture {
-    use crate::node::common::model::device::common::DeviceName;
-
-    pub struct DeviceNameFixture {
-        pub client: DeviceName,
-        pub vd: DeviceName,
-        pub server: DeviceName
-    }
-    
-    impl DeviceNameFixture {
-        pub fn generate() -> Self {
-            Self {
-                client: DeviceName::from("d_client"),
-                vd: DeviceName::from("d_vd"),
-                server: DeviceName::server(),
-            }
-        }
     }
 }

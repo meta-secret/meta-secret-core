@@ -49,7 +49,7 @@ pub mod fixture {
     use crate::node::common::model::device::common::DeviceName;
     use crate::node::common::model::device::device_creds::fixture::DeviceCredentialsFixture;
     use crate::node::common::model::user::user_creds::UserCredentials;
-    use crate::node::common::model::vault::fixture::VaultNameFixture;
+    use crate::node::common::model::vault::VaultName;
 
     pub struct UserCredentialsFixture {
         pub client: UserCredentials,
@@ -64,18 +64,11 @@ pub mod fixture {
     }
 
     impl UserCredentialsFixture {
-        pub fn generate() -> Self {
-            UserCredentialsFixture::from(
-                &DeviceCredentialsFixture::generate(),
-                &VaultNameFixture::generate()
-            )
-        }
-
-        pub fn from(device_creds: &DeviceCredentialsFixture, vault_name: &VaultNameFixture) -> Self {
+        pub fn from(device_creds: &DeviceCredentialsFixture) -> Self {
             Self {
-                client: UserCredentials::from(device_creds.client.clone(), vault_name.client.clone()),
-                vd: UserCredentials::from(device_creds.vd.clone(), vault_name.vd.clone()),
-                server: UserCredentials::from(device_creds.server.clone(), vault_name.server.clone()),
+                client: UserCredentials::from(device_creds.client.clone(), VaultName::client()),
+                vd: UserCredentials::from(device_creds.vd.clone(), VaultName::vd()),
+                server: UserCredentials::from(device_creds.server.clone(), VaultName::server()),
             }
         }
     }

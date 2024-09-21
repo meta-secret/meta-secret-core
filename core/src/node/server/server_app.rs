@@ -20,7 +20,9 @@ use crate::node::server::server_data_sync::{
 
 pub struct ServerApp<Repo: KvLogEventRepo> {
     pub data_sync: ServerDataSync<Repo>,
-    pub(crate) p_obj: Arc<PersistentObject<Repo>>,
+    pub p_obj: Arc<PersistentObject<Repo>>,
+    creds_repo: CredentialsRepo<Repo>,
+    server_dt: Arc<ServerDataTransfer>,
 }
 
 pub struct ServerDataTransfer {
@@ -28,55 +30,54 @@ pub struct ServerDataTransfer {
 }
 
 impl<Repo: KvLogEventRepo> ServerApp<Repo> {
-    pub async fn init(repo: Arc<Repo>) -> Result<Self> {
+    pub fn new(repo: Arc<Repo>, server_dt: Arc<ServerDataTransfer>) -> Result<Self> {
         let p_obj = {
             let obj = PersistentObject::new(repo);
             Arc::new(obj)
         };
 
-        let creds_repo = CredentialsRepo { p_obj: p_obj.clone() };
-
-        let device_creds = creds_repo
-            .get_or_generate_device_creds(DeviceName::server())
-            .await?;
-
         let data_sync = ServerDataSync {
             persistent_obj: p_obj.clone(),
-            device_creds: device_creds.clone(),
         };
 
+        let creds_repo = CredentialsRepo { p_obj: p_obj.clone() };
+
+        Ok(Self { data_sync, p_obj, creds_repo, server_dt })
+    }
+
+    async fn init(&self) -> Result<DeviceCredentials> {
+        let device_creds = self.get_creds().await?;
+
         let gi_obj = ServerPersistentGlobalIndex {
-            p_obj: data_sync.persistent_obj.clone(),
+            p_obj: self.data_sync.persistent_obj.clone(),
             server_device: device_creds.device.clone(),
         };
 
         gi_obj.init().await?;
 
-        Ok(ServerApp { data_sync, p_obj })
+        Ok(device_creds)
     }
 
     #[instrument(skip_all)]
-    pub async fn run(&self, data_transfer: Arc<ServerDataTransfer>) -> anyhow::Result<()> {
+    pub async fn run(&self) -> Result<()> {
         info!("Run server app");
 
-        while let Ok(sync_message) = data_transfer.dt.service_receive().await {
-            self.handle_client_request(sync_message, data_transfer.clone()).await?;
+        let _ = self.init().await?;
+
+        while let Ok(sync_message) = self.server_dt.dt.service_receive().await {
+            self.handle_client_request(sync_message).await?;
         }
 
         Ok(())
     }
 
     #[instrument(skip_all)]
-    async fn handle_client_request(
-        &self,
-        sync_message: DataSyncRequest,
-        data_transfer: Arc<ServerDataTransfer>,
-    ) -> Result<()> {
+    async fn handle_client_request(&self, sync_message: DataSyncRequest) -> Result<()> {
         match sync_message {
             DataSyncRequest::SyncRequest(request) => {
                 let new_events = self.handle_sync_request(request).await;
 
-                data_transfer
+                self.server_dt
                     .dt
                     .send_to_client(DataSyncResponse::Data(DataEventsResponse(new_events)))
                     .await;
@@ -101,7 +102,7 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                 };
                 let response = DataSyncResponse::ServerTailResponse(response);
 
-                data_transfer.dt.send_to_client(response).await;
+                self.server_dt.dt.send_to_client(response).await;
             }
         }
         Ok(())
@@ -128,11 +129,7 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
     }
 
     pub async fn get_creds(&self) -> Result<DeviceCredentials> {
-        let creds_repo = CredentialsRepo {
-            p_obj: self.p_obj.clone(),
-        };
-
-        creds_repo
+        self.creds_repo
             .get_or_generate_device_creds(DeviceName::server())
             .await
     }
@@ -141,18 +138,33 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
 #[cfg(test)]
 pub mod fixture {
     use std::sync::Arc;
+    use crate::node::common::data_transfer::MpscDataTransfer;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
-    use crate::node::db::objects::persistent_object::PersistentObject;
-    use crate::node::server::server_app::ServerApp;
+    use crate::node::db::objects::persistent_object::fixture::PersistentObjectFixture;
+    use crate::node::server::server_app::{ServerApp, ServerDataTransfer};
 
     pub struct ServerAppFixture {
-        pub server_app: ServerApp<InMemKvLogEventRepo>
+        pub server_app: ServerApp<InMemKvLogEventRepo>,
     }
-    
+
     impl ServerAppFixture {
-        pub async fn try_from(p_obj: Arc<PersistentObject<InMemKvLogEventRepo>>) -> anyhow::Result<Self> {
-            let server_app = ServerApp::init(p_obj.repo.clone()).await?;
+        pub async fn try_from(
+            p_obj: &PersistentObjectFixture, server_dt_fxr: ServerDataTransferFixture,
+        ) -> anyhow::Result<Self> {
+            let server_app = ServerApp::new(p_obj.server.repo.clone(), server_dt_fxr.server_dt)?;
             Ok(Self { server_app })
+        }
+    }
+
+    pub struct ServerDataTransferFixture {
+        pub server_dt: Arc<ServerDataTransfer>,
+    }
+
+    impl ServerDataTransferFixture {
+        pub fn generate() -> Self {
+            let server_dt = Arc::new(ServerDataTransfer { dt: MpscDataTransfer::new() });
+
+            Self { server_dt }
         }
     }
 }

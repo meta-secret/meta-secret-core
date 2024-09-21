@@ -35,7 +35,7 @@ impl<Repo: KvLogEventRepo> MetaClientService<Repo> {
     pub async fn run(&self) -> anyhow::Result<()> {
         info!("Run meta_app service");
 
-        let p_obj = self.sync_gateway.persistent_object.clone();
+        let p_obj = self.sync_gateway.p_obj.clone();
 
         let mut service_state = self.build_service_state().await?;
 
@@ -153,7 +153,7 @@ impl<Repo: KvLogEventRepo> MetaClientService<Repo> {
     }
 
     fn p_obj(&self) -> Arc<PersistentObject<Repo>> {
-        self.sync_gateway.persistent_object.clone()
+        self.sync_gateway.p_obj.clone()
     }
 }
 
@@ -184,5 +184,27 @@ impl MetaClientStateProvider {
 
     pub async fn push(&self, state: &ApplicationState) {
         self.sender.send_async(state.clone()).await.unwrap()
+    }
+}
+
+#[cfg(test)]
+pub mod fixture {
+    use crate::node::app::meta_app::meta_client_service::{MetaClientDataTransfer, MetaClientService};
+    use crate::node::app::sync_gateway::SyncGateway;
+    use crate::node::db::in_mem_db::InMemKvLogEventRepo;
+
+    pub struct MetaClientServiceFixture {
+        client: MetaClientService<InMemKvLogEventRepo>
+    }
+
+    impl MetaClientServiceFixture {
+        fn generate() -> Self {
+            let client = MetaClientService {
+                data_transfer: Arc::new(MetaClientDataTransfer {}),
+                sync_gateway: Arc::new(SyncGateway {}),
+                state_provider: Arc::new(MetaClientStateProvider {}),
+            };
+            Self { client }
+        }
     }
 }

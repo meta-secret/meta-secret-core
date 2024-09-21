@@ -28,6 +28,20 @@ impl Display for VaultName {
     }
 }
 
+impl VaultName {
+    pub fn client() -> Self {
+        VaultName::from("client")
+    }
+
+    pub fn vd() -> Self {
+        VaultName::from("vd")
+    }
+
+    pub fn server() -> Self {
+        VaultName::from("server")
+    }
+}
+
 /////////////////// VaultData ///////////////////
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -160,27 +174,6 @@ impl VaultStatus {
             VaultStatus::NotExists(user) => user.clone(),
             VaultStatus::Outsider(UserDataOutsider { user_data, .. }) => user_data.clone(),
             VaultStatus::Member { member, .. } => member.user().clone(),
-        }
-    }
-}
-
-#[cfg(test)]
-pub mod fixture {
-    use crate::node::common::model::vault::VaultName;
-
-    pub struct VaultNameFixture {
-        pub client: VaultName,
-        pub vd: VaultName,
-        pub server: VaultName,
-    }
-
-    impl VaultNameFixture {
-        pub fn generate() -> Self {
-            Self {
-                client: VaultName::from("client"),
-                vd: VaultName::from("vd"),
-                server: VaultName::from("server"),
-            }
         }
     }
 }

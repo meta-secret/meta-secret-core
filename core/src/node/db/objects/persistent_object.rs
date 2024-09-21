@@ -160,3 +160,26 @@ impl PersistentObject<InMemKvLogEventRepo> {
         PersistentObject::new(repo)
     }
 }
+
+#[cfg(test)]
+pub mod fixture {
+    use std::sync::Arc;
+    use crate::node::db::in_mem_db::InMemKvLogEventRepo;
+    use crate::node::db::objects::persistent_object::PersistentObject;
+
+    pub struct PersistentObjectFixture {
+        pub client: Arc<PersistentObject<InMemKvLogEventRepo>>,
+        pub vd: Arc<PersistentObject<InMemKvLogEventRepo>>,
+        pub server: Arc<PersistentObject<InMemKvLogEventRepo>>,
+    }
+    
+    impl PersistentObjectFixture {
+        pub fn generate() ->  Self {
+            Self {
+                client: Arc::new(PersistentObject::in_mem()),
+                vd: Arc::new(PersistentObject::in_mem()),
+                server: Arc::new(PersistentObject::in_mem()),
+            }
+        }
+    }
+}

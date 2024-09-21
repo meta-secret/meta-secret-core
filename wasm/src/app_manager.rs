@@ -14,9 +14,9 @@ use meta_secret_core::node::app::sync_gateway::SyncGateway;
 use meta_secret_core::node::app::virtual_device::VirtualDevice;
 use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::meta_tracing::{client_span, server_span, vd_span};
-use meta_secret_core::node::common::model::device::DeviceName;
 use meta_secret_core::node::common::model::vault::VaultName;
 use meta_secret_core::node::common::model::ApplicationState;
+use meta_secret_core::node::common::model::device::common::DeviceName;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::repo::credentials_repo::CredentialsRepo;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
@@ -38,7 +38,6 @@ impl WasmApplicationState {
     pub fn is_new_user(&self) -> bool {
         let stt = match self.inner {
             ApplicationState::Local { .. } => "local",
-            ApplicationState::User { .. } => "user",
             ApplicationState::Vault { .. } => "vault",
         };
         info!("Is new user: {:?}", stt);
@@ -106,7 +105,7 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
 
         let sync_gateway = Arc::new(SyncGateway {
             id: String::from("client-gateway"),
-            persistent_object: persistent_obj.clone(),
+            p_obj: persistent_obj.clone(),
             server_dt: dt.clone(),
         });
 
@@ -152,7 +151,7 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
         };
 
         let _user_creds = creds_repo
-            .get_or_generate_user_creds(DeviceName::from("virtual-device"), VaultName::from("q"))
+            .get_or_generate_user_creds(DeviceName::virtual_device(), VaultName::from("q"))
             .await?;
 
         let dt_meta_client = Arc::new(MetaClientDataTransfer {
@@ -161,7 +160,7 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
 
         let gateway = Arc::new(SyncGateway {
             id: String::from("vd-gateway"),
-            persistent_object: persistent_object.clone(),
+            p_obj: persistent_object.clone(),
             server_dt: dt.clone(),
         });
 
@@ -198,10 +197,9 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
         info!("Server initialization");
 
         spawn_local(async move {
-            ServerApp::init(server_repo.clone())
-                .await
+            ServerApp::new(server_repo.clone(), server_dt)
                 .unwrap()
-                .run(server_dt)
+                .run()
                 .instrument(server_span())
                 .await
                 .unwrap()

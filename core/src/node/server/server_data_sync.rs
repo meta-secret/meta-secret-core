@@ -3,8 +3,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, bail, Ok};
 use async_trait::async_trait;
 use tracing::{info, instrument};
-use crate::node::common::model::device::common::DeviceData;
-use crate::node::common::model::device::device_creds::DeviceCredentials;
+use crate::node::common::model::device::common::{DeviceData, DeviceName};
 use crate::node::common::model::user::common::{UserData, UserDataMember, UserId};
 use crate::node::common::model::vault::{VaultData, VaultName};
 use crate::node::db::actions::sign_up::SignUpAction;
@@ -21,6 +20,7 @@ use crate::node::db::events::vault_event::{
     DeviceLogObject, VaultAction, VaultLogObject, VaultMembershipObject, VaultObject,
 };
 use crate::node::db::objects::persistent_object::PersistentObject;
+use crate::node::db::repo::credentials_repo::CredentialsRepo;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::server::request::{SyncRequest, VaultRequest};
 
@@ -31,8 +31,7 @@ pub trait DataSyncApi {
 }
 
 pub struct ServerDataSync<Repo: KvLogEventRepo> {
-    pub persistent_obj: Arc<PersistentObject<Repo>>,
-    pub device_creds: DeviceCredentials,
+    pub persistent_obj: Arc<PersistentObject<Repo>>
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -413,8 +412,11 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
     async fn create_vault(&self, candidate: UserData) -> anyhow::Result<()> {
         //vault not found, we can create our new vault
         info!("Accept SignUp request, for the vault: {:?}", candidate.vault_name());
+        
+        let creds_repo = CredentialsRepo {p_obj: self.persistent_obj.clone()};
+        let device_creds = creds_repo.get_or_generate_device_creds(DeviceName::server()).await?;
 
-        let server = self.device_creds.device.clone();
+        let server = device_creds.device.clone();
 
         let sign_up_action = SignUpAction {};
         let sign_up_events = sign_up_action.accept(candidate.clone(), server.clone());
@@ -468,8 +470,6 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
 
 #[cfg(test)]
 mod test {
-    use std::sync::Arc;
-
     use anyhow::Result;
     use tracing::{info};
     use tracing_futures::Instrument;
@@ -492,19 +492,24 @@ mod test {
     use crate::node::common::meta_tracing::{client_span, server_span};
     use tracing::instrument;
     use crate::meta_tests::setup_tracing;
+    use crate::node::app::meta_app::meta_client_service::MetaClientService;
     use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
     use crate::node::db::actions::sign_up_claim::test_action::SignUpClaimTestAction;
+    
+    use crate::node::db::objects::persistent_object::fixture::PersistentObjectFixture;
     use crate::node::server::server_app::fixture::ServerAppFixture;
 
     #[tokio::test]
     #[instrument]
     async fn test_sign_up() -> Result<()> {
         setup_tracing()?;
+        
+        let p_obj_fixture = PersistentObjectFixture::generate();
 
-        let server_app_fixture = ServerAppFixture::try_from(Arc::new(PersistentObject::in_mem()))
+        let server_app_fixture = ServerAppFixture::try_from(&p_obj_fixture)
             .await?;
 
-        let client_p_obj = Arc::new(PersistentObject::in_mem());
+        let client_p_obj = p_obj_fixture.client.clone();
 
         info!("Executing 'sign up' claim");
         let vault_status = SignUpClaimTestAction::sign_up(client_p_obj.clone(), UserCredentialsFixture::generate())
@@ -512,6 +517,10 @@ mod test {
         let VaultStatus::Outsider(outsider) = vault_status else {
             panic!("Invalid state, the user can't be already registered");
         };
+        
+        let client = MetaClientService {
+            data_transfer
+        }
 
         let client_device_log_events = client_p_obj
             .get_object_events_from_beginning(VaultDescriptor::device_log(outsider.user_data.user_id()))
