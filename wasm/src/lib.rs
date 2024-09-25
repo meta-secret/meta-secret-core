@@ -43,7 +43,6 @@ pub fn configure() {
     utils::set_panic_hook();
 
     let fmt_layer = tracing_subscriber::fmt::layer()
-        .with_max_level(Level::DEBUG)
         .without_time()
         .with_ansi(false)
         .pretty() // Only partially supported across browsers

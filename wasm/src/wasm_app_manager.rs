@@ -11,6 +11,7 @@ use meta_secret_core::node::app::app_state_update_manager::ApplicationManagerCon
 use meta_secret_core::node::app::meta_app::messaging::{
     ClusterDistributionRequest, GenericAppStateRequest,
 };
+use meta_secret_core::node::common::model::vault::VaultName;
 
 #[wasm_bindgen]
 pub struct WasmApplicationManager {
@@ -88,10 +89,10 @@ impl WasmApplicationManager {
         WasmApplicationState::from(app_state)
     }
 
-    pub async fn sign_up(&self) {
+    pub async fn sign_up(&self, vault_name: String) {
         info!("Sign Up");
 
-        let sign_up = GenericAppStateRequest::SignUp;
+        let sign_up = GenericAppStateRequest::SignUp(VaultName::from(vault_name.as_str()));
 
         match &self.app_manager {
             GenericApplicationManager::Wasm { app_manager } => {

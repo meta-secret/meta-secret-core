@@ -204,9 +204,8 @@ mod test {
         client_claim_spec.verify().await?;
 
         info!("Starting meta client and server");
-        tokio::spawn(async {
-            registry.state.meta_client_service.client.run()
-        });
+        registry.state.meta_client_service.client.run();
+        
         let _ = registry.state.server_app.server_app.run();
         info!("meta client and server has started");
         async_std::task::sleep(Duration::from_secs(1)).await;
