@@ -1,8 +1,5 @@
 use std::sync::Arc;
 
-use anyhow::{anyhow, bail, Ok};
-use async_trait::async_trait;
-use tracing::{info, instrument};
 use crate::node::common::model::device::common::{DeviceData, DeviceName};
 use crate::node::common::model::user::common::{UserData, UserDataMember, UserId};
 use crate::node::common::model::vault::{VaultData, VaultName};
@@ -23,6 +20,9 @@ use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::credentials_repo::CredentialsRepo;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::server::request::{SyncRequest, VaultRequest};
+use anyhow::{anyhow, bail, Ok};
+use async_trait::async_trait;
+use tracing::{info, instrument};
 
 #[async_trait(? Send)]
 pub trait DataSyncApi {
@@ -463,118 +463,6 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
         let vault_idx_evt = GlobalIndexObject::index_from_vault_id(vault_id).to_generic();
 
         self.persistent_obj.repo.save(vault_idx_evt).await?;
-
-        Ok(())
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use anyhow::Result;
-    use tracing::{info};
-    use tracing_futures::Instrument;
-
-    use crate::{
-        meta_tests::{
-            spec::{sign_up_claim_spec::SignUpClaimSpec, test_spec::TestSpec},
-        },
-        node::{
-            common::model::vault::VaultStatus,
-            db::{
-                descriptors::{
-                    object_descriptor::ToObjectDescriptor, shared_secret_descriptor::SharedSecretDescriptor,
-                    vault_descriptor::VaultDescriptor,
-                },
-                objects::persistent_object::PersistentObject,
-            },
-        },
-    };
-    use crate::node::common::meta_tracing::{client_span, server_span};
-    use tracing::instrument;
-    use crate::meta_tests::setup_tracing;
-    use crate::node::app::meta_app::meta_client_service::MetaClientService;
-    use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
-    use crate::node::db::actions::sign_up_claim::test_action::SignUpClaimTestAction;
-    
-    use crate::node::db::objects::persistent_object::fixture::PersistentObjectFixture;
-    use crate::node::server::server_app::fixture::ServerAppFixture;
-
-    #[tokio::test]
-    #[instrument]
-    async fn test_sign_up() -> Result<()> {
-        setup_tracing()?;
-        
-        let p_obj_fixture = PersistentObjectFixture::generate();
-
-        let server_app_fixture = ServerAppFixture::try_from(&p_obj_fixture)
-            .await?;
-
-        let client_p_obj = p_obj_fixture.client.clone();
-
-        info!("Executing 'sign up' claim");
-        let vault_status = SignUpClaimTestAction::sign_up(client_p_obj.clone(), UserCredentialsFixture::generate())
-            .await?;
-        let VaultStatus::Outsider(outsider) = vault_status else {
-            panic!("Invalid state, the user can't be already registered");
-        };
-        
-        let client = MetaClientService {
-            data_transfer
-        }
-
-        let client_device_log_events = client_p_obj
-            .get_object_events_from_beginning(VaultDescriptor::device_log(outsider.user_data.user_id()))
-            .instrument(client_span())
-            .await?;
-
-        let server_data_sync = server_app_fixture.server_app.data_sync;
-        for cd_log_event in client_device_log_events {
-            info!("Sending device log event to the server: {:?}", cd_log_event);
-            server_data_sync
-                .server_processing(cd_log_event)
-                .instrument(server_span())
-                .await?;
-        }
-
-        let client_ss_device_log_events = {
-            let ss_desc = SharedSecretDescriptor::SSDeviceLog(outsider.user_data.device.id.clone()).to_obj_desc();
-            client_p_obj
-                .get_object_events_from_beginning(ss_desc)
-                .instrument(client_span())
-                .await?
-        };
-        info!("CLIENT SS device log EVENTS: {:?}", client_ss_device_log_events.len());
-        for cd_ss_log_event in client_ss_device_log_events {
-            server_data_sync
-                .server_processing(cd_ss_log_event)
-                .instrument(server_span())
-                .await?;
-        }
-
-        let server_ss_device_log_events = {
-            let ss_desc = SharedSecretDescriptor::SSDeviceLog(outsider.user_data.device.id.clone()).to_obj_desc();
-            server_app_fixture
-                .server_app
-                .p_obj
-                .get_object_events_from_beginning(ss_desc)
-                .instrument(server_span())
-                .await?
-        };
-        println!("SERVER SS device log EVENTS: {:?}", server_ss_device_log_events.len());
-
-        let db = server_app_fixture.server_app.p_obj.repo.get_db().await;
-        assert_eq!(db.len(), 16);
-
-        db.values().for_each(|event| {
-            println!("Event: {}\n", serde_json::to_string_pretty(event).unwrap());
-        });
-
-        let server_claim_spec = SignUpClaimSpec {
-            p_obj: server_app_fixture.server_app.p_obj,
-            user: outsider.user_data,
-        };
-
-        server_claim_spec.verify().await?;
 
         Ok(())
     }

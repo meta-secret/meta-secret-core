@@ -205,7 +205,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             if let GenericKvLogEvent::GlobalIndex(gi_obj) = &gi_event {
                 p_gi_obj.save(gi_obj).await?;
             } else {
-                return Err(anyhow!("Invalid event: {:?}", gi_event.key().obj_desc()));
+                return Err(anyhow!("Global index event. Invalid event: {:?}", gi_event.key().obj_desc()));
             }
         }
         Ok(())
@@ -363,26 +363,33 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
 
 #[cfg(test)]
 pub mod fixture {
+    use std::sync::Arc;
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::meta_tests::fixture_util::fixture::states::BaseState;
     use crate::node::app::sync_gateway::SyncGateway;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
-    use crate::node::db::objects::persistent_object::fixture::PersistentObjectFixture;
-    use crate::node::server::server_app::fixture::ServerDataTransferFixture;
 
     pub struct SyncGatewayFixture {
-        pub gw: SyncGateway<InMemKvLogEventRepo>,
-        pub p_obj_fxr: PersistentObjectFixture,
-        pub server_dt_fxr: ServerDataTransferFixture
+        pub client_gw: Arc<SyncGateway<InMemKvLogEventRepo>>,
+        pub vd_gw: Arc<SyncGateway<InMemKvLogEventRepo>>
     }
 
     impl SyncGatewayFixture {
-        pub fn from(id: &str, p_obj_fixture: PersistentObjectFixture, server_dt_fxr: ServerDataTransferFixture) -> Self {
+        pub fn from(registry: &FixtureRegistry<BaseState>) -> Self {
             
-            let gw = SyncGateway {
-                id: id.to_string(),
-                p_obj: p_obj_fixture.client,
-                server_dt: server_dt_fxr.server_dt,
-            };
-            Self { gw }
+            let client_gw = Arc::new(SyncGateway {
+                id: "client_gw".to_string(),
+                p_obj: registry.state.p_obj.client.clone(),
+                server_dt: registry.state.server_dt.server_dt.clone(),
+            });
+
+            let vd_gw = Arc::new(SyncGateway {
+                id: "vd_gw".to_string(),
+                p_obj: registry.state.p_obj.vd.clone(),
+                server_dt: registry.state.server_dt.server_dt.clone(),
+            });
+            
+            Self { client_gw, vd_gw }
         }
     }
 }

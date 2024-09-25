@@ -22,8 +22,8 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
         let p_gi = ClientPersistentGlobalIndex {
             p_obj: self.p_obj.clone(),
         };
-        let vault_not_exists = p_gi.exists(user.vault_name()).await?;
-        if vault_not_exists {
+        let vault_exists = p_gi.exists(user.vault_name()).await?;
+        if !vault_exists {
             return Ok(VaultStatus::NotExists(user));
         }
 

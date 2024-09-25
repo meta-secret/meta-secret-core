@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::node::common::model::user::common::UserData;
 use crate::node::{
     common::model::vault::VaultStatus,
     db::{
@@ -12,7 +13,7 @@ use crate::node::{
 };
 use anyhow::Ok;
 use tracing::warn;
-use crate::node::common::model::user::common::UserData;
+use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 
 pub struct SignUpClaim<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
@@ -24,7 +25,7 @@ impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
             p_obj: self.p_obj.clone(),
         };
 
-        let vault_status = p_vault.find(user_data).await?;
+        let vault_status = p_vault.find(user_data.clone()).await?;
 
         let p_device_log = PersistentDeviceLog {
             p_obj: self.p_obj.clone(),
@@ -42,6 +43,12 @@ impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
                 warn!("User: {:?} is already vault member", member);
             }
         }
+        
+        let p_ss_device_log = PersistentSharedSecret {
+            p_obj: self.p_obj.clone(),
+        };
+
+        p_ss_device_log.init(user_data).await?;
 
         Ok(vault_status.clone())
     }
@@ -49,20 +56,20 @@ impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
 
 #[cfg(test)]
 pub mod test_action {
-    use std::sync::Arc;
     use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
     use crate::node::common::model::vault::VaultStatus;
     use crate::node::db::actions::sign_up_claim::SignUpClaim;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_object::PersistentObject;
     use crate::node::db::repo::credentials_repo::CredentialsRepo;
+    use std::sync::Arc;
 
     pub struct SignUpClaimTestAction {
         sign_up: SignUpClaim<InMemKvLogEventRepo>,
     }
 
     impl SignUpClaimTestAction {
-        pub async fn sign_up(p_obj: Arc<PersistentObject<InMemKvLogEventRepo>>, creds_fixture: UserCredentialsFixture) -> anyhow::Result<VaultStatus> {
+        pub async fn sign_up(p_obj: Arc<PersistentObject<InMemKvLogEventRepo>>, creds_fixture: &UserCredentialsFixture) -> anyhow::Result<VaultStatus> {
             let creds_repo = CredentialsRepo { p_obj: p_obj.clone() };
 
             let device_name = creds_fixture.client_device_name();
@@ -83,34 +90,74 @@ pub mod test_action {
 }
 
 #[cfg(test)]
+pub mod spec {
+    use std::sync::Arc;
+    use async_trait::async_trait;
+    use crate::meta_tests::spec::test_spec::TestSpec;
+    use crate::node::common::model::user::common::UserData;
+    use crate::node::db::objects::persistent_device_log::spec::DeviceLogSpec;
+    use crate::node::db::objects::persistent_object::PersistentObject;
+    use crate::node::db::objects::persistent_shared_secret::spec::SSDeviceLogSpec;
+    use crate::node::db::repo::generic_db::KvLogEventRepo;
+    use anyhow::Result;
+    use log::info;
+    use tracing_attributes::instrument;
+
+    pub struct SignUpClaimSpec<Repo: KvLogEventRepo> {
+        pub p_obj: Arc<PersistentObject<Repo>>,
+        pub user: UserData,
+    }
+
+    #[async_trait(? Send)]
+    impl<Repo: KvLogEventRepo> TestSpec for SignUpClaimSpec<Repo> {
+        #[instrument(skip(self))]
+        async fn verify(&self) -> Result<()> {
+            info!("SignUp claim spec");
+            
+            let device_log_spec = DeviceLogSpec {
+                p_obj: self.p_obj.clone(),
+                user: self.user.clone(),
+            };
+
+            device_log_spec.check_initialization().await?;
+            device_log_spec.check_sign_up_request().await?;
+
+            let ss_device_log_spec = SSDeviceLogSpec {
+                p_obj: self.p_obj.clone(),
+                client_user: self.user.clone(),
+            };
+
+            ss_device_log_spec.check_initialization().await?;
+
+            Ok(())
+        }
+    }
+
+}
+
+#[cfg(test)]
 mod test {
     use anyhow::{bail, Result};
-    use std::sync::Arc;
 
-    use crate::{
-        meta_tests::{
-            spec::{sign_up_claim_spec::SignUpClaimSpec, test_spec::TestSpec},
-        },
-        node::{
-            common::model::vault::VaultStatus,
-            db::{in_mem_db::InMemKvLogEventRepo, objects::persistent_object::PersistentObject},
-        },
-    };
-    use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::db::actions::sign_up_claim::test_action::SignUpClaimTestAction;
+    use crate::{node::common::model::vault::VaultStatus};
+    use crate::meta_tests::spec::test_spec::TestSpec;
+    use crate::node::db::actions::sign_up_claim::spec::SignUpClaimSpec;
 
     #[tokio::test]
     async fn test_sign_up() -> Result<()> {
-        let repo = Arc::new(InMemKvLogEventRepo::default());
-        let p_obj = Arc::new(PersistentObject::new(repo.clone()));
-
-        let vault_status = SignUpClaimTestAction::sign_up(p_obj.clone(), UserCredentialsFixture::generate())
+        let registry = FixtureRegistry::base();
+        let p_obj = registry.state.p_obj.client;
+        let creds = registry.state.user_creds;
+        let vault_status = SignUpClaimTestAction::sign_up(p_obj.clone(), &creds)
             .await?;
+        
         let VaultStatus::Outsider(outsider) = vault_status else {
             bail!("Invalid state");
         };
 
-        let db = repo.get_db().await;
+        let db = p_obj.repo.get_db().await;
         assert_eq!(db.len(), 8);
 
         let claim_spec = SignUpClaimSpec {

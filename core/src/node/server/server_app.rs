@@ -138,20 +138,21 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
 #[cfg(test)]
 pub mod fixture {
     use std::sync::Arc;
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::meta_tests::fixture_util::fixture::states::BaseState;
     use crate::node::common::data_transfer::MpscDataTransfer;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
-    use crate::node::db::objects::persistent_object::fixture::PersistentObjectFixture;
     use crate::node::server::server_app::{ServerApp, ServerDataTransfer};
 
     pub struct ServerAppFixture {
-        pub server_app: ServerApp<InMemKvLogEventRepo>,
+        pub server_app: Arc<ServerApp<InMemKvLogEventRepo>>,
     }
 
     impl ServerAppFixture {
-        pub async fn try_from(
-            p_obj: &PersistentObjectFixture, server_dt_fxr: ServerDataTransferFixture,
-        ) -> anyhow::Result<Self> {
-            let server_app = ServerApp::new(p_obj.server.repo.clone(), server_dt_fxr.server_dt)?;
+        pub fn try_from(registry: &FixtureRegistry<BaseState>) -> anyhow::Result<Self> {
+            let repo = registry.state.p_obj.server.repo.clone();
+            let server_dt = registry.state.server_dt.server_dt.clone();
+            let server_app = Arc::new(ServerApp::new(repo, server_dt)?);
             Ok(Self { server_app })
         }
     }
@@ -166,5 +167,76 @@ pub mod fixture {
 
             Self { server_dt }
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::time::Duration;
+    use tracing::{info, Instrument};
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::meta_tests::setup_tracing;
+    use crate::meta_tests::spec::test_spec::TestSpec;
+    use crate::node::common::meta_tracing::server_span;
+    use crate::node::db::actions::sign_up_claim::spec::SignUpClaimSpec;
+    use crate::node::db::actions::sign_up_claim::test_action::SignUpClaimTestAction;
+    use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
+    use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
+
+    #[tokio::test]
+    async fn test_sign_up() -> anyhow::Result<()> {
+        setup_tracing()?;
+
+        let registry = FixtureRegistry::extended()?;
+
+        info!("Executing 'sign up' claim");
+        let client_p_obj = registry.state.base.p_obj.client.clone();
+        let client_user_creds = &registry.state.base.user_creds;
+        let vault_status = SignUpClaimTestAction::sign_up(client_p_obj.clone(), client_user_creds)
+            .await?;
+        
+        info!("Verify SignUpClaim");
+        let user = vault_status.user();
+        let client_claim_spec = SignUpClaimSpec {
+            p_obj: registry.state.base.p_obj.client.clone(),
+            user: user.clone(),
+        };
+        client_claim_spec.verify().await?;
+
+        info!("Starting meta client and server");
+        tokio::spawn(async {
+            registry.state.meta_client_service.client.run()
+        });
+        let _ = registry.state.server_app.server_app.run();
+        info!("meta client and server has started");
+        async_std::task::sleep(Duration::from_secs(1)).await;
+        
+        let _ = registry.state.meta_client_service.sync_gateway.client_gw.sync();
+        async_std::task::sleep(Duration::from_secs(1)).await;
+        
+        let server_app = registry.state.server_app.server_app.clone();
+        let server_ss_device_log_events = {
+            let ss_desc = SharedSecretDescriptor::SSDeviceLog(user.device.id.clone())
+                .to_obj_desc();
+            
+            server_app
+                .p_obj
+                .get_object_events_from_beginning(ss_desc)
+                .instrument(server_span())
+                .await?
+        };
+        info!("SERVER SS device log EVENTS: {:?}", server_ss_device_log_events.len());
+
+        let db = server_app.p_obj.repo.get_db().await;
+        assert_eq!(db.len(), 16);
+
+        let server_claim_spec = SignUpClaimSpec {
+            p_obj: server_app.p_obj.clone(),
+            user,
+        };
+
+        server_claim_spec.verify().await?;
+
+        Ok(())
     }
 }

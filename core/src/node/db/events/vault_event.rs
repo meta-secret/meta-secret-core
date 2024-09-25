@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use anyhow::{anyhow, bail};
 use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::secret::MetaPasswordId;
@@ -24,21 +25,21 @@ impl DeviceLogObject {
     pub fn get_unit(&self) -> anyhow::Result<VaultUnitEvent> {
         match self {
             DeviceLogObject::Unit(event) => Ok(event.clone()),
-            _ => bail!(LogEventCastError::InvalidEventType),
+            _ => bail!(LogEventCastError::WrongDeviceLog(self.clone())),
         }
     }
 
     pub fn get_genesis(&self) -> anyhow::Result<VaultGenesisEvent> {
         match self {
             DeviceLogObject::Genesis(event) => Ok(event.clone()),
-            _ => bail!(LogEventCastError::InvalidEventType),
+            _ => bail!(LogEventCastError::WrongDeviceLog(self.clone())),
         }
     }
 
     pub fn get_action(&self) -> anyhow::Result<VaultAction> {
         match self {
             DeviceLogObject::Action(event) => Ok(event.value.clone()),
-            _ => bail!(LogEventCastError::InvalidEventType),
+            _ => bail!(LogEventCastError::WrongDeviceLog(self.clone())),
         }
     }
 }
@@ -270,18 +271,30 @@ pub enum VaultAction {
     },
 }
 
+impl Display for VaultAction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let str = match self {
+            VaultAction::CreateVault(_) => String::from("CreateVault"),
+            VaultAction::JoinClusterRequest { .. } => String::from("JoinClusterRequest"),
+            VaultAction::UpdateMembership { .. } => String::from("UpdateMembership"),
+            VaultAction::AddMetaPassword { .. } => String::from("AddMetaPassword"),
+        };
+        write!(f, "{}", str)
+    }
+}
+
 impl VaultAction {
     pub fn get_create(self) -> anyhow::Result<UserData> {
         match self {
             VaultAction::CreateVault(user) => Ok(user),
-            _ => bail!(LogEventCastError::InvalidEventType),
+            _ => bail!(LogEventCastError::WrongVaultAction(String::from("CreateVault"), self.clone())),
         }
     }
 
     pub fn get_join_request(self) -> anyhow::Result<UserData> {
         match self {
             VaultAction::JoinClusterRequest { candidate } => Ok(candidate),
-            _ => bail!(LogEventCastError::InvalidEventType),
+            _ => bail!(LogEventCastError::WrongVaultAction(String::from("JoinClusterRequest"), self.clone())),
         }
     }
 

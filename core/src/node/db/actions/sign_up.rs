@@ -121,10 +121,11 @@ mod test {
         },
         node::common::model::user::user_creds::fixture::UserCredentialsFixture
     };
+    use crate::node::common::model::device::device_creds::fixture::DeviceCredentialsFixture;
 
     #[tokio::test]
     async fn test() -> Result<()> {
-        let user_creds_fixture = UserCredentialsFixture::generate();
+        let user_creds_fixture = UserCredentialsFixture::from(&DeviceCredentialsFixture::generate());
 
         let sign_up_action = SignUpAction {};
         let events = sign_up_action

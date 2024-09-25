@@ -189,22 +189,74 @@ impl MetaClientStateProvider {
 
 #[cfg(test)]
 pub mod fixture {
-    use crate::node::app::meta_app::meta_client_service::{MetaClientDataTransfer, MetaClientService};
-    use crate::node::app::sync_gateway::SyncGateway;
+    use std::sync::Arc;
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::meta_tests::fixture_util::fixture::states::BaseState;
+    use crate::node::app::meta_app::meta_client_service::{MetaClientDataTransfer, MetaClientService, MetaClientStateProvider};
+    use crate::node::app::sync_gateway::fixture::SyncGatewayFixture;
+    use crate::node::common::data_transfer::MpscDataTransfer;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
 
     pub struct MetaClientServiceFixture {
-        client: MetaClientService<InMemKvLogEventRepo>
+        pub client: Arc<MetaClientService<InMemKvLogEventRepo>>,
+        pub vd: Arc<MetaClientService<InMemKvLogEventRepo>>,
+
+        pub state_provider: MetaClientStateProviderFixture,
+        pub data_transfer: MetaClientDataTransferFixture,
+
+        pub sync_gateway: SyncGatewayFixture,
     }
 
     impl MetaClientServiceFixture {
-        fn generate() -> Self {
-            let client = MetaClientService {
-                data_transfer: Arc::new(MetaClientDataTransfer {}),
-                sync_gateway: Arc::new(SyncGateway {}),
-                state_provider: Arc::new(MetaClientStateProvider {}),
-            };
-            Self { client }
+        pub fn from(base: &FixtureRegistry<BaseState>) -> Self {
+            let state_provider = MetaClientStateProviderFixture::generate();
+            let dt_fxr = MetaClientDataTransferFixture::generate();
+
+            let sync_gateway = SyncGatewayFixture::from(&base);
+
+            let client = Arc::new(MetaClientService {
+                data_transfer: dt_fxr.client.clone(),
+                sync_gateway: sync_gateway.client_gw.clone(),
+                state_provider: state_provider.client.clone(),
+            });
+
+            let vd = Arc::new(MetaClientService {
+                data_transfer: dt_fxr.vd.clone(),
+                sync_gateway: sync_gateway.vd_gw.clone(),
+                state_provider: state_provider.vd.clone(),
+            });
+
+            Self { client, vd, state_provider, data_transfer: dt_fxr, sync_gateway }
+        }
+    }
+
+    pub struct MetaClientStateProviderFixture {
+        pub client: Arc<MetaClientStateProvider>,
+        pub vd: Arc<MetaClientStateProvider>,
+    }
+
+    impl MetaClientStateProviderFixture {
+        pub fn generate() -> Self {
+            Self {
+                client: Arc::new(MetaClientStateProvider::new()),
+                vd: Arc::new(MetaClientStateProvider::new()),
+            }
+        }
+    }
+
+    pub struct MetaClientDataTransferFixture {
+        client: Arc<MetaClientDataTransfer>,
+        vd: Arc<MetaClientDataTransfer>,
+    }
+
+    impl MetaClientDataTransferFixture {
+        pub fn generate() -> Self {
+            Self {
+                client: Arc::new(MetaClientDataTransfer {
+                    dt: MpscDataTransfer::new(),
+                }),
+                vd: Arc::new(MetaClientDataTransfer { dt: MpscDataTransfer::new() }),
+            }
         }
     }
 }
