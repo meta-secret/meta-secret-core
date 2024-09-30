@@ -74,7 +74,7 @@ impl SignUpAction {
         let vault_status_events = {
             let user_id = UserId {
                 vault_name: vault_name.clone(),
-                device_id: candidate.device.id.clone(),
+                device_id: candidate.device.device_id.clone(),
             };
             let vault_status_desc = VaultDescriptor::VaultMembership(user_id).to_obj_desc();
 

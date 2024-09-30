@@ -39,7 +39,7 @@ impl UserCredentials {
     pub fn user_id(&self) -> UserId {
         UserId {
             vault_name: self.vault_name.clone(),
-            device_id: self.device().id.clone(),
+            device_id: self.device().device_id.clone(),
         }
     }
 }
@@ -59,7 +59,7 @@ pub mod fixture {
 
     impl UserCredentialsFixture {
         pub fn client_device_name(&self) -> DeviceName {
-            self.client.device_creds.device.name.clone()
+            self.client.device_creds.device.device_name.clone()
         }
     }
 

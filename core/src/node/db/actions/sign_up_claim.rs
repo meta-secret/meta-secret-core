@@ -39,8 +39,8 @@ impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
                     p_device_log.save_join_request(&outsider.user_data).await?;
                 }
             }
-            VaultStatus::Member { member, .. } => {
-                warn!("User: {:?} is already vault member", member);
+            VaultStatus::Member { .. } => {
+                //trace!("User is already a vault member: {:?}", member);
             }
         }
         
@@ -61,16 +61,22 @@ pub mod test_action {
     use crate::node::db::actions::sign_up_claim::SignUpClaim;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_object::PersistentObject;
-    use crate::node::db::repo::credentials_repo::CredentialsRepo;
+    use crate::node::db::repo::persistent_credentials::PersistentCredentials;
     use std::sync::Arc;
+    use tracing::info;
+    use tracing_attributes::instrument;
 
     pub struct SignUpClaimTestAction {
         sign_up: SignUpClaim<InMemKvLogEventRepo>,
     }
 
     impl SignUpClaimTestAction {
+        
+        #[instrument(skip_all)]
         pub async fn sign_up(p_obj: Arc<PersistentObject<InMemKvLogEventRepo>>, creds_fixture: &UserCredentialsFixture) -> anyhow::Result<VaultStatus> {
-            let creds_repo = CredentialsRepo { p_obj: p_obj.clone() };
+            info!("SignUp action");
+            
+            let creds_repo = PersistentCredentials { p_obj: p_obj.clone() };
 
             let device_name = creds_fixture.client_device_name();
             let vault_name = creds_fixture.client.vault_name.clone();
@@ -147,9 +153,9 @@ mod test {
 
     #[tokio::test]
     async fn test_sign_up() -> Result<()> {
-        let registry = FixtureRegistry::base();
-        let p_obj = registry.state.p_obj.client;
-        let creds = registry.state.user_creds;
+        let registry = FixtureRegistry::base().await?;
+        let p_obj = registry.state.empty.p_obj.client;
+        let creds = registry.state.empty.user_creds;
         let vault_status = SignUpClaimTestAction::sign_up(p_obj.clone(), &creds)
             .await?;
         

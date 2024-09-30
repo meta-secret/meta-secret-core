@@ -12,12 +12,12 @@ use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ToGenericEve
 use crate::node::db::events::global_index_event::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, Next, ObjectId, UnitId};
-use crate::node::db::events::shared_secret_event::SSLedgerObject;
+use crate::node::db::events::shared_secret_event::{SSDeviceLogObject, SSLedgerObject};
 use crate::node::db::events::vault_event::{
     DeviceLogObject, VaultAction, VaultLogObject, VaultMembershipObject, VaultObject,
 };
 use crate::node::db::objects::persistent_object::PersistentObject;
-use crate::node::db::repo::credentials_repo::CredentialsRepo;
+use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::server::request::{SyncRequest, VaultRequest};
 use anyhow::{anyhow, bail, Ok};
@@ -27,18 +27,18 @@ use tracing::{info, instrument};
 #[async_trait(? Send)]
 pub trait DataSyncApi {
     async fn replication(&self, request: SyncRequest) -> anyhow::Result<Vec<GenericKvLogEvent>>;
-    async fn send(&self, event: GenericKvLogEvent) -> anyhow::Result<()>;
+    async fn handle(&self, event: GenericKvLogEvent) -> anyhow::Result<()>;
 }
 
 pub struct ServerDataSync<Repo: KvLogEventRepo> {
-    pub persistent_obj: Arc<PersistentObject<Repo>>
+    pub persistent_obj: Arc<PersistentObject<Repo>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum DataSyncRequest {
     SyncRequest(SyncRequest),
-    ServerTailRequest(UserId),
+    ServerTailRequest(UserData),
     Event(GenericKvLogEvent),
 }
 
@@ -94,7 +94,7 @@ impl<Repo: KvLogEventRepo> DataSyncApi for ServerDataSync<Repo> {
                     return Ok(commit_log);
                 };
 
-                if !vault.is_member(&vault_request.sender.device.id) {
+                if !vault.is_member(&vault_request.sender.device.device_id) {
                     return Ok(commit_log);
                 }
 
@@ -108,7 +108,7 @@ impl<Repo: KvLogEventRepo> DataSyncApi for ServerDataSync<Repo> {
     }
 
     /// Handle request: all types of requests will be handled and the actions will be executed accordingly
-    async fn send(&self, generic_event: GenericKvLogEvent) -> anyhow::Result<()> {
+    async fn handle(&self, generic_event: GenericKvLogEvent) -> anyhow::Result<()> {
         self.server_processing(generic_event).await
     }
 }
@@ -121,42 +121,50 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
                 self.handle_device_log_request(device_log_obj).await?;
             }
             GenericKvLogEvent::SSDeviceLog(ss_device_log_obj) => {
+                info!("Shared Secret Device Log message processing: {:?}", &ss_device_log_obj);
+
                 self.persistent_obj
                     .repo
                     .save(ss_device_log_obj.clone().to_generic())
                     .await?;
-                let ss_claim = ss_device_log_obj.get_distribution_request()?;
 
-                let ss_ledger_desc = SharedSecretDescriptor::SSLedger(ss_claim.vault_name.clone()).to_obj_desc();
+                if let SSDeviceLogObject::SSDeviceLog(event) = ss_device_log_obj {
+                    let ss_claim = event.value.clone();
 
-                let maybe_generic_ss_ledger = self.persistent_obj.find_tail_event(ss_ledger_desc.clone()).await?;
+                    let ss_ledger_desc = SharedSecretDescriptor::SSLedger(ss_claim.vault_name.clone())
+                        .to_obj_desc();
 
-                match maybe_generic_ss_ledger {
-                    Some(generic_ss_ledger) => {
-                        let ss_ledger_obj = SSLedgerObject::try_from(generic_ss_ledger)?;
+                    let maybe_generic_ss_ledger = self.persistent_obj
+                        .find_tail_event(ss_ledger_desc.clone())
+                        .await?;
 
-                        let mut ss_ledger = ss_ledger_obj.to_ledger_data()?;
-                        if ss_ledger.claims.contains_key(&ss_claim.id) {
-                            //the claim is already in the ledger, no action needed
-                            return Ok(());
-                        } else {
-                            //add the claim to the ledger
-                            ss_ledger.claims.insert(ss_claim.id.clone(), ss_claim.clone());
+                    match maybe_generic_ss_ledger {
+                        Some(generic_ss_ledger) => {
+                            let ss_ledger_obj = SSLedgerObject::try_from(generic_ss_ledger)?;
 
-                            //update ss_ledger
-                            let updated_ss_ledger = SSLedgerObject::Ledger(KvLogEvent {
-                                key: KvKey {
-                                    obj_id: ss_ledger_obj.get_ledger_id()?.next(),
-                                    obj_desc: ss_ledger_desc,
-                                },
-                                value: ss_ledger,
-                            });
+                            let mut ss_ledger = ss_ledger_obj.to_ledger_data()?;
+                            if ss_ledger.claims.contains_key(&ss_claim.id) {
+                                //the claim is already in the ledger, no action needed
+                                return Ok(());
+                            } else {
+                                //add the claim to the ledger
+                                ss_ledger.claims.insert(ss_claim.id.clone(), ss_claim.clone());
 
-                            self.persistent_obj.repo.save(updated_ss_ledger.to_generic()).await?;
+                                //update ss_ledger
+                                let updated_ss_ledger = SSLedgerObject::Ledger(KvLogEvent {
+                                    key: KvKey {
+                                        obj_id: ss_ledger_obj.get_ledger_id()?.next(),
+                                        obj_desc: ss_ledger_desc,
+                                    },
+                                    value: ss_ledger,
+                                });
+
+                                self.persistent_obj.repo.save(updated_ss_ledger.to_generic()).await?;
+                            }
                         }
-                    }
-                    None => {
-                        unimplemented!("Not implemented yet")
+                        None => {
+                            unimplemented!("Not implemented yet")
+                        }
                     }
                 }
             }
@@ -336,7 +344,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
             return Err(anyhow!("Vault not found"));
         };
 
-        if !vault.is_member(&sender_device.id) {
+        if !vault.is_member(&sender_device.device_id) {
             return Err(anyhow!("Sender is not a member of the vault"));
         }
 
@@ -412,8 +420,8 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
     async fn create_vault(&self, candidate: UserData) -> anyhow::Result<()> {
         //vault not found, we can create our new vault
         info!("Accept SignUp request, for the vault: {:?}", candidate.vault_name());
-        
-        let creds_repo = CredentialsRepo {p_obj: self.persistent_obj.clone()};
+
+        let creds_repo = PersistentCredentials { p_obj: self.persistent_obj.clone() };
         let device_creds = creds_repo.get_or_generate_device_creds(DeviceName::server()).await?;
 
         let server = device_creds.device.clone();

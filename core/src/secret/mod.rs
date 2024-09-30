@@ -63,8 +63,8 @@ impl MetaEncryptor {
             let encrypted_share = key_manager.transport.encrypt_string(share_str, receiver_pk)?;
 
             let device_link = DeviceLinkBuilder::builder()
-                .sender(self.user.device_creds.device.id.clone())
-                .receiver(receiver.clone().user().device.id.clone())
+                .sender(self.user.device_creds.device.device_id.clone())
+                .receiver(receiver.clone().user().device.device_id.clone())
                 .build()?;
 
             let cipher_share = EncryptedMessage::CipherShare {

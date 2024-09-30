@@ -16,7 +16,7 @@ use crate::node::db::actions::sign_up_claim::SignUpClaim;
 use crate::node::db::events::local_event::CredentialsObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_vault::PersistentVault;
-use crate::node::db::repo::credentials_repo::CredentialsRepo;
+use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::secret::MetaDistributor;
 
@@ -69,7 +69,7 @@ impl<Repo: KvLogEventRepo> MetaClientService<Repo> {
                 },
 
                 GenericAppStateRequest::ClusterDistribution(request) => {
-                    let creds_repo = CredentialsRepo { p_obj: p_obj.clone() };
+                    let creds_repo = PersistentCredentials { p_obj: p_obj.clone() };
 
                     let maybe_user_creds = creds_repo.get_user_creds().await?;
 
@@ -119,12 +119,13 @@ impl<Repo: KvLogEventRepo> MetaClientService<Repo> {
     }
 
     async fn build_service_state(&self) -> anyhow::Result<ServiceState<ApplicationState>> {
-        let creds_repo = CredentialsRepo { p_obj: self.p_obj() };
+        let creds_repo = PersistentCredentials { p_obj: self.p_obj() };
         let maybe_creds = creds_repo.find().await?;
 
         let app_state = match maybe_creds {
             None => {
-                let device_creds = creds_repo.generate_device_creds(DeviceName::generate()).await?;
+                let device_creds = creds_repo.get_or_generate_device_creds(DeviceName::generate())
+                    .await?;
                 ApplicationState::Local {
                     device: device_creds.device,
                 }

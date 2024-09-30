@@ -1,5 +1,6 @@
+use anyhow::{anyhow, bail};
 use async_trait::async_trait;
-use tracing::{instrument, Instrument};
+use tracing::{error, instrument, Instrument};
 
 use meta_secret_core::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor};
 use meta_secret_core::node::db::events::object_id::ObjectId;
@@ -98,7 +99,12 @@ impl SaveCommand for WasmRepo {
         let id_str = event.obj_id().id_str();
         let obj_id_js = serde_wasm_bindgen::to_value(id_str.as_str()).unwrap();
 
-        store.add(&js_value, Some(&obj_id_js)).await.unwrap();
+        let op_result = store.add(&js_value, Some(&obj_id_js)).await;
+        if let Err(_) = &op_result {
+            error!("Failed to save event: {:?}", &event);
+        }
+        
+        op_result.unwrap();
 
         // Waits for the transaction to complete
         tx.done().await.unwrap();

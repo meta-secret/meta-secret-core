@@ -18,7 +18,7 @@ use meta_secret_core::node::common::model::vault::VaultName;
 use meta_secret_core::node::common::model::ApplicationState;
 use meta_secret_core::node::common::model::device::common::DeviceName;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
-use meta_secret_core::node::db::repo::credentials_repo::CredentialsRepo;
+use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use meta_secret_core::node::server::server_app::{ServerApp, ServerDataTransfer};
 
@@ -41,11 +41,11 @@ impl WasmApplicationState {
             ApplicationState::Vault { .. } => "vault",
         };
         info!("Is new user: {:?}", stt);
-        return true;
+        matches!(self.inner, ApplicationState::Local {..})
     }
 
-    pub fn is_empty_env(&self) -> bool {
-        return true;
+    pub fn is_local_env(&self) -> bool {
+        matches!(self.inner, ApplicationState::Local {..})
     }
 }
 
@@ -146,7 +146,7 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
 
         let persistent_object = Arc::new(PersistentObject::new(device_repo.clone()));
 
-        let creds_repo = CredentialsRepo {
+        let creds_repo = PersistentCredentials {
             p_obj: persistent_object.clone(),
         };
 

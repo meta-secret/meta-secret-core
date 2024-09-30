@@ -17,10 +17,9 @@ pub struct PersistentDeviceLog<Repo: KvLogEventRepo> {
 }
 
 impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
-    pub async fn find_tail_id(&self, _user_id: &UserId) -> anyhow::Result<Option<ObjectId>> {
-        todo!("Add validation steps that the user is a member of the vault");
-        //let obj_desc = VaultDescriptor::device_log(_user_id.clone());
-        //self.p_obj.find_tail_id_by_obj_desc(obj_desc.clone()).await
+    pub async fn find_tail_id(&self, user_id: &UserId) -> anyhow::Result<Option<ObjectId>> {
+        let obj_desc = VaultDescriptor::device_log(user_id.clone());
+        self.p_obj.find_tail_id_by_obj_desc(obj_desc.clone()).await
     }
 }
 

@@ -16,10 +16,10 @@ export default defineComponent({
   methods: {
     async registration() {
       console.log('Generate vault');
-      await this.appState.appManager.sign_up(this.vaultName, this.deviceName);
+      await this.appState.appManager.sign_up(this.vaultName);
     },
 
-    isEmptyEnv() {
+    isLocalEnv() {
       const appState = this.appState.appState;
       if (!appState) {
         console.log('isEmptyEnv: appState is not initialized');
@@ -27,14 +27,16 @@ export default defineComponent({
       }
 
       console.log('isEmptyEnv: ', appState.is_empty_env());
-      return appState.is_empty_env();
+      return appState.is_local_env();
     },
+    
+    
   },
 });
 </script>
 
 <template>
-  <div v-if="this.isEmptyEnv()">
+  <div v-if="this.isLocalEnv()">
     <div class="container flex items-center max-w-md py-2">
       <label>User:</label>
     </div>

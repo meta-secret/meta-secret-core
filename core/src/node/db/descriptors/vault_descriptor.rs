@@ -1,4 +1,3 @@
-use std::ops::Add;
 use crate::node::common::model::user::common::UserId;
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ObjectName, ObjectType, ToObjectDescriptor};
@@ -40,12 +39,8 @@ impl VaultDescriptor {
 impl ObjectType for VaultDescriptor {
     fn object_type(&self) -> String {
         match self {
-            VaultDescriptor::DeviceLog(user_id) => {
-                String::from("DeviceLog:").add(user_id.device_id.to_string().as_str())
-            }
-            VaultDescriptor::VaultMembership(user_id) => {
-                String::from("VaultStatus:").add(user_id.device_id.to_string().as_str())
-            }
+            VaultDescriptor::DeviceLog(_) => String::from("DeviceLog:"),
+            VaultDescriptor::VaultMembership(_) => String::from("VaultStatus:"),
             VaultDescriptor::Vault(_) => String::from("Vault"),
             VaultDescriptor::VaultLog(_) => String::from("VaultLog"),
         }
@@ -56,9 +51,9 @@ impl ObjectName for VaultDescriptor {
     fn object_name(&self) -> String {
         match self {
             VaultDescriptor::Vault(vault_name) => vault_name.to_string(),
-            VaultDescriptor::DeviceLog(user_id) => user_id.vault_name.to_string(),
+            VaultDescriptor::DeviceLog(user_id) => user_id.device_id.to_string(),
             VaultDescriptor::VaultLog(vault_name) => vault_name.to_string(),
-            VaultDescriptor::VaultMembership(user_id) => user_id.vault_name.to_string(),
+            VaultDescriptor::VaultMembership(user_id) => user_id.device_id.to_string(),
         }
     }
 }

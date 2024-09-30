@@ -17,15 +17,15 @@ pub struct DeviceName(String);
 
 impl DeviceName {
     pub fn server() -> Self {
-        DeviceName::from("d_server")
+        DeviceName::from("server_device")
     }
     
     pub fn virtual_device() -> Self {
-        DeviceName::from("d_vd")
+        DeviceName::from("vd_device")
     }
 
     pub fn client() -> Self {
-        DeviceName::from("d_client")
+        DeviceName::from("client_device")
     }
 }
 
@@ -51,8 +51,8 @@ impl DeviceName {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceData {
-    pub id: DeviceId,
-    pub name: DeviceName,
+    pub device_id: DeviceId,
+    pub device_name: DeviceName,
     pub keys: OpenBox,
 }
 
@@ -66,8 +66,8 @@ impl Display for DeviceId {
 impl DeviceData {
     pub fn from(device_name: DeviceName, open_box: OpenBox) -> Self {
         Self {
-            name: device_name,
-            id: DeviceId::from(&open_box),
+            device_name: device_name,
+            device_id: DeviceId::from(&open_box),
             keys: open_box,
         }
     }

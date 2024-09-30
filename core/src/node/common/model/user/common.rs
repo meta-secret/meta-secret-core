@@ -23,7 +23,7 @@ impl UserData {
     pub fn user_id(&self) -> UserId {
         UserId {
             vault_name: self.vault_name.clone(),
-            device_id: self.device.id.clone(),
+            device_id: self.device.device_id.clone(),
         }
     }
 }
@@ -83,6 +83,6 @@ impl UserMembership {
     }
 
     pub fn device_id(&self) -> DeviceId {
-        self.user_data().device.id.clone()
+        self.user_data().device.device_id.clone()
     }
 }

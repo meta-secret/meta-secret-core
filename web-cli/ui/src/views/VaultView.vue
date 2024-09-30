@@ -1,6 +1,7 @@
 <script lang="ts">
 import { defineComponent } from 'vue';
-import RegistrationComponent from '@/components/vault/Registration.vue';
+import RegistrationComponent from '@/components/vault/auth/Registration.vue';
+import VaultComponent from '@/components/vault/Vault.vue';
 
 import { AppState } from '@/stores/app-state';
 import init from 'meta-secret-web-cli';
@@ -8,6 +9,7 @@ import init from 'meta-secret-web-cli';
 export default defineComponent({
   components: {
     RegistrationComponent,
+    VaultComponent,
   },
 
   async setup() {
@@ -24,8 +26,8 @@ export default defineComponent({
   },
 
   methods: {
-    isEmptyEnv() {
-      return true;
+    isLocalEnv() {
+      return this.appState.is_local_env();
     },
 
     getVaultName() {
@@ -40,31 +42,10 @@ export default defineComponent({
     <p class="text-2xl">Personal Secret Manager</p>
   </div>
 
-  <div v-if="this.isEmptyEnv()">
+  <div v-if="this.isLocalEnv()">
     <RegistrationComponent />
   </div>
-
   <div v-else>
-    <div class="container flex justify-center max-w-md py-2 items-stretch">
-      <p class="flex">{{ this.getVaultName() }}</p>
-    </div>
-
-    <div class="container flex max-w-md py-2 items-stretch">
-      <RouterLink
-        class="w-1/2 text-center rounded-l-lg px-6 py-3 text-white bg-orange-600 active:bg-orange-800"
-        to="/vault/secrets"
-        >Secrets
-      </RouterLink>
-
-      <RouterLink
-        class="w-1/2 text-center rounded-r-lg px-6 py-3 text-dark bg-gray-100 active:bg-gray-300"
-        to="/vault/devices"
-        >Devices
-      </RouterLink>
-    </div>
-
-    <div>
-      <RouterView />
-    </div>
+    <VaultComponent />
   </div>
 </template>

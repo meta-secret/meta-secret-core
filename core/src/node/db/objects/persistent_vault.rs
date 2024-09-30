@@ -45,7 +45,7 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
         }
     }
 
-    pub async fn vault_membership(&self, user_data: UserData) -> anyhow::Result<UserMembership> {
+    async fn vault_membership(&self, user_data: UserData) -> anyhow::Result<UserMembership> {
         let desc = VaultDescriptor::vault_membership(user_data.user_id());
         let maybe_tail_event = self.p_obj.find_tail_event(desc).await?;
 

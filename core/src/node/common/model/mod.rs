@@ -317,29 +317,6 @@ pub mod secret {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum RegistrationStatus {
-    Registered,
-    AlreadyExists,
-}
-
-impl Display for RegistrationStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let str = match self {
-            Self::Registered => String::from("Registered"),
-            Self::AlreadyExists => String::from("AlreadyExists"),
-        };
-        write!(f, "{}", str)
-    }
-}
-
-impl Default for RegistrationStatus {
-    fn default() -> RegistrationStatus {
-        Self::Registered
-    }
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ApplicationState {

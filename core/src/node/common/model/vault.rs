@@ -84,14 +84,14 @@ impl VaultData {
     pub fn is_member(&self, device_id: &DeviceId) -> bool {
         let maybe_user = self.users.get(device_id);
         if let Some(UserMembership::Member(UserDataMember(user_data))) = maybe_user {
-            user_data.device.id == device_id.clone()
+            user_data.device.device_id == device_id.clone()
         } else {
             false
         }
     }
 
     pub fn status(&self, for_user: UserData) -> VaultStatus {
-        let maybe_vault_user = self.users.get(&for_user.device.id);
+        let maybe_vault_user = self.users.get(&for_user.device.device_id);
 
         match maybe_vault_user {
             Some(vault_user) => match vault_user {

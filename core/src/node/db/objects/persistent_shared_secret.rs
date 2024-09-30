@@ -149,13 +149,13 @@ pub mod spec {
         pub async fn check_initialization(&self) -> Result<()> {
             info!("check_initialization");
             
-            let ss_obj_desc = SharedSecretDescriptor::SSDeviceLog(self.client_user.device.id.clone())
+            let ss_obj_desc = SharedSecretDescriptor::SSDeviceLog(self.client_user.device.device_id.clone())
                 .to_obj_desc();
 
-            let ss_unit_id = UnitId::unit(&ss_obj_desc);
-            let ss_genesis_id = ss_unit_id.clone().next();
+            let ss_unit_id = ObjectId::unit(ss_obj_desc.clone());
+            let ss_genesis_id = ObjectId::genesis(ss_obj_desc);
 
-            let maybe_unit_event = self.p_obj.repo.find_one(ObjectId::from(ss_unit_id)).await?;
+            let maybe_unit_event = self.p_obj.repo.find_one(ss_unit_id).await?;
 
             if let Some(unit_event) = maybe_unit_event {
                 let vault_name = unit_event.ss_device_log()?.get_unit()?.vault_name();
@@ -164,7 +164,7 @@ pub mod spec {
                 bail!("SSDevice, unit event not found");
             }
 
-            let maybe_genesis_event = self.p_obj.repo.find_one(ObjectId::from(ss_genesis_id)).await?;
+            let maybe_genesis_event = self.p_obj.repo.find_one(ss_genesis_id).await?;
 
             if let Some(genesis_event) = maybe_genesis_event {
                 let user = genesis_event.ss_device_log()?.get_genesis()?.user();

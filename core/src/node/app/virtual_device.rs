@@ -14,7 +14,7 @@ use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;
-use crate::node::db::repo::credentials_repo::CredentialsRepo;
+use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::server::server_app::ServerDataTransfer;
 
@@ -48,14 +48,15 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
     #[instrument(skip_all)]
     pub async fn run(&self) -> anyhow::Result<()> {
         info!("Run virtual device event handler");
-        self.gateway.sync().await?;
 
-        let creds_repo = CredentialsRepo { p_obj: self.p_obj() };
+        let creds_repo = PersistentCredentials { p_obj: self.p_obj() };
 
         let device_name = DeviceName::generate();
         let user_creds = creds_repo
             .get_or_generate_user_creds(device_name, VaultName::from("q"))
             .await?;
+
+        self.gateway.sync().await?;
 
         //No matter what current vault status is, sign_up claim will handle the case properly
         info!("SignUp virtual device if needed");
@@ -70,13 +71,13 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
     }
 
     async fn do_work(&self, user_creds: &UserCredentials) -> anyhow::Result<()> {
-        let p_vault = PersistentVault { p_obj: self.p_obj() };
         self.gateway.sync().await?;
 
+        let p_vault = PersistentVault { p_obj: self.p_obj() };
         let vault_status = p_vault.find(user_creds.user()).await?;
 
         let VaultStatus::Member { member, vault } = vault_status else {
-            todo!("handle changes in state");
+            return Ok(());
         };
 
         let vault_name = vault.vault_name;
