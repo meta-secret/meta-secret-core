@@ -1,6 +1,7 @@
 <script lang="ts">
 import { defineComponent } from 'vue';
 import { AppState } from '@/stores/app-state';
+import { WasmWebAppStatus } from '../../../../pkg';
 
 export default defineComponent({
   async setup() {
@@ -19,6 +20,11 @@ export default defineComponent({
       await this.appState.appManager.sign_up(this.vaultName);
     },
 
+    isNonMember() {
+      const appState = this.appState.appState;
+      return appState.status() === WasmWebAppStatus.NonMember;
+    },
+
     isLocalEnv() {
       const appState = this.appState.appState;
       if (!appState) {
@@ -26,11 +32,13 @@ export default defineComponent({
         throw new Error('Invalid environment');
       }
 
-      console.log('isEmptyEnv: ', appState.is_empty_env());
-      return appState.is_local_env();
+      console.log('status: ', appState.status());
+      return appState.status() === WasmWebAppStatus.LocalEnv;
     },
-    
-    
+
+    isNewUser() {
+      return this.appState.appState.is_new_user();
+    },
   },
 });
 </script>
@@ -45,22 +53,13 @@ export default defineComponent({
       <label>@</label>
       <input :class="$style.nicknameUserInput" type="text" placeholder="vault name" v-model="vaultName" />
 
-      <button
-          :class="$style.registrationButton"
-          @click="registration"
-          v-if="!this.appState.appState.is_new_user()"
-      >
-        Register
-      </button>
+      <button v-if="this.isNewUser()" :class="$style.registrationButton" @click="registration">Register</button>
     </div>
   </div>
 
-  <!--<div v-if="this.appState.internalState.joinComponent">-->
-  <div>
+  <div v-if="this.isNonMember()">
     <div class="container flex items-center max-w-md py-2">
-      <label :class="$style.joinLabel">
-        Vault already exists, would you like to join?
-      </label>
+      <label :class="$style.joinLabel">Vault already exists, would you like to join?</label>
       <button :class="$style.joinButton" @click="registration">Join</button>
     </div>
   </div>

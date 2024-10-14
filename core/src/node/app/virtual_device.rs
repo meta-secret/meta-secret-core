@@ -1,9 +1,11 @@
 use std::sync::Arc;
+use log::warn;
 use tracing::{info, instrument};
 
 use crate::node::app::meta_app::meta_client_service::MetaClientAccessProxy;
 use crate::node::app::sync_gateway::SyncGateway;
-use crate::node::common::model::device::common::DeviceName;
+use crate::node::common::model::device::common::{DeviceData, DeviceName};
+use crate::node::common::model::user::common::UserData;
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::{VaultName, VaultStatus};
 use crate::node::db::actions::sign_up_claim::SignUpClaim;
@@ -53,7 +55,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
 
         let device_name = DeviceName::generate();
         let user_creds = creds_repo
-            .get_or_generate_user_creds(device_name, VaultName::from("q"))
+            .get_or_generate_user_creds(device_name, VaultName::test())
             .await?;
 
         self.gateway.sync().await?;
@@ -66,7 +68,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
         // Handle state changes
         loop {
             self.do_work(&user_creds).await?;
-            async_std::task::sleep(std::time::Duration::from_millis(300)).await;
+            async_std::task::sleep(std::time::Duration::from_secs(1)).await;
         }
     }
 
@@ -77,6 +79,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
         let vault_status = p_vault.find(user_creds.user()).await?;
 
         let VaultStatus::Member { member, vault } = vault_status else {
+            warn!("Not a vault member");
             return Ok(());
         };
 

@@ -4,7 +4,7 @@ import RegistrationComponent from '@/components/vault/auth/Registration.vue';
 import VaultComponent from '@/components/vault/Vault.vue';
 
 import { AppState } from '@/stores/app-state';
-import init from 'meta-secret-web-cli';
+import init, { WasmWebAppStatus } from 'meta-secret-web-cli';
 
 export default defineComponent({
   components: {
@@ -26,12 +26,16 @@ export default defineComponent({
   },
 
   methods: {
-    isLocalEnv() {
-      return this.appState.is_local_env();
+    isNewUser() {
+      return this.appState.appState.is_new_user();
     },
 
-    getVaultName() {
-      return 'fake';
+    isLocalEnv() {
+      return this.appState.appState.status() === WasmWebAppStatus.LocalEnv;
+    },
+
+    isMember() {
+      return this.appState.appState.status() === WasmWebAppStatus.Member;
     },
   },
 });
@@ -42,10 +46,13 @@ export default defineComponent({
     <p class="text-2xl">Personal Secret Manager</p>
   </div>
 
-  <div v-if="this.isLocalEnv()">
+  <div v-if="this.isNewUser()">
     <RegistrationComponent />
   </div>
-  <div v-else>
+  <div v-else-if="this.isMember()">
     <VaultComponent />
+  </div>
+  <div v-else>
+    <h1>Another status: {{ this.appState.appState.status() }}</h1>
   </div>
 </template>

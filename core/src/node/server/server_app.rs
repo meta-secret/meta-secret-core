@@ -86,6 +86,7 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
     async fn handle_client_request(&self, sync_message: DataSyncRequest) -> Result<()> {
         match sync_message {
             DataSyncRequest::SyncRequest(request) => {
+                //info!("Handle sync request: {}", serde_json::to_string_pretty(&request)?);
                 let new_events = self.handle_sync_request(request).await?;
 
                 self
@@ -98,8 +99,6 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                 self.handle_new_event(event).await?;
             }
             DataSyncRequest::ServerTailRequest(user) => {
-                debug!("Handle ServerTailRequest and provide response");
-
                 let p_device_log = PersistentDeviceLog {
                     p_obj: self.p_obj.clone(),
                 };

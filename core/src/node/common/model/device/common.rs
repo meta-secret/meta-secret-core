@@ -56,20 +56,20 @@ pub struct DeviceData {
     pub keys: OpenBox,
 }
 
-impl Display for DeviceId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.clone())
-    }
-}
-
 /// Contains only public information about device
 impl DeviceData {
     pub fn from(device_name: DeviceName, open_box: OpenBox) -> Self {
         Self {
-            device_name: device_name,
+            device_name,
             device_id: DeviceId::from(&open_box),
             keys: open_box,
         }
+    }
+}
+
+impl Display for DeviceId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.clone())
     }
 }
 

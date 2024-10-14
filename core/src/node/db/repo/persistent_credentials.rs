@@ -82,22 +82,6 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
         Ok(device_creds)
     }
 
-    #[instrument(skip(self))]
-    pub async fn generate_user_creds(
-        &self,
-        device_name: DeviceName,
-        vault_name: VaultName,
-    ) -> anyhow::Result<UserCredentials> {
-        info!("Generate user creds");
-        
-        let user_creds = UserCredentials::generate(device_name, vault_name);
-        let creds_obj = CredentialsObject::default_user(user_creds.clone());
-
-        self.save(creds_obj).await?;
-
-        Ok(user_creds)
-    }
-
     #[instrument(skip_all)]
     pub async fn get_or_generate_user_creds(
         &self,
@@ -108,8 +92,10 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
 
         match maybe_creds {
             None => {
-                self.get_or_generate_device_creds(device_name.clone()).await?;
-                self.generate_user_creds(device_name, vault_name).await
+                let device_creds = self.get_or_generate_device_creds(device_name.clone()).await?;
+                let user_creds = UserCredentials::from(device_creds, vault_name);
+                self.save(CredentialsObject::default_user(user_creds.clone())).await?;
+                Ok(user_creds)
             },
             Some(CredentialsObject::Device(KvLogEvent { value: creds, .. })) => {
                 let user_creds = UserCredentials::from(creds, vault_name);
@@ -161,10 +147,6 @@ pub mod fixture {
             ).await?;
 
             let _ = server_p_creds.save_device_creds(&state.device_creds.server).await?;
-            let _ = server_p_creds.get_or_generate_user_creds(
-                state.device_creds.server.device.device_name.clone(),
-                state.user_creds.server.user().vault_name()
-            ).await?;
 
             Ok(Self { client_p_creds, vd_p_creds, server_p_creds })
         }

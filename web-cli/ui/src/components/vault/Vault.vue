@@ -7,7 +7,7 @@ import { AppState } from '@/stores/app-state';
 
 <template>
   <div class="container flex justify-center max-w-md py-2 items-stretch">
-    <p class="flex">{{ this.getVaultName() }}</p>
+    <!--    <p class="flex">{{ this.getVaultName() }}</p>-->
   </div>
 
   <div class="container flex max-w-md py-2 items-stretch">

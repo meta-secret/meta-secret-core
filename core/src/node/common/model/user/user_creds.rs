@@ -53,8 +53,7 @@ pub mod fixture {
 
     pub struct UserCredentialsFixture {
         pub client: UserCredentials,
-        pub vd: UserCredentials,
-        pub server: UserCredentials
+        pub vd: UserCredentials
     }
 
     impl UserCredentialsFixture {
@@ -67,8 +66,7 @@ pub mod fixture {
         pub fn from(device_creds: &DeviceCredentialsFixture) -> Self {
             Self {
                 client: UserCredentials::from(device_creds.client.clone(), VaultName::client()),
-                vd: UserCredentials::from(device_creds.vd.clone(), VaultName::vd()),
-                server: UserCredentials::from(device_creds.server.clone(), VaultName::server()),
+                vd: UserCredentials::from(device_creds.vd.clone(), VaultName::vd())
             }
         }
     }

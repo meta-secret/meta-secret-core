@@ -27,7 +27,7 @@ pub mod meta_tests;
 pub mod node;
 pub mod secret;
 
-pub type CoreResult<T> = std::result::Result<T, CoreError>;
+pub type CoreResult<T> = Result<T, CoreError>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum RecoveryOperationError {

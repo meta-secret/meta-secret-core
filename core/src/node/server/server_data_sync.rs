@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::node::common::model::device::common::{DeviceData, DeviceName};
 use crate::node::common::model::user::common::{UserData, UserDataMember, UserId};
-use crate::node::common::model::vault::{VaultData, VaultName};
+use crate::node::common::model::vault::{VaultData, VaultName, VaultStatus};
 use crate::node::db::actions::sign_up::SignUpAction;
 use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ToObjectDescriptor};
@@ -22,7 +22,8 @@ use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::server::request::{SyncRequest, VaultRequest};
 use anyhow::{anyhow, bail, Ok};
 use async_trait::async_trait;
-use tracing::{info, instrument};
+use tracing::{info, instrument, warn};
+use crate::node::db::objects::persistent_vault::PersistentVault;
 
 #[async_trait(? Send)]
 pub trait DataSyncApi {
@@ -82,25 +83,34 @@ impl<Repo: KvLogEventRepo> DataSyncApi for ServerDataSync<Repo> {
     async fn replication(&self, request: SyncRequest) -> anyhow::Result<Vec<GenericKvLogEvent>> {
         let mut commit_log: Vec<GenericKvLogEvent> = vec![];
 
-        match request {
+        match &request {
             SyncRequest::GlobalIndex(gi_request) => {
-                let gi_events = self.global_index_replication(gi_request.global_index.clone()).await?;
+                let gi_events = self
+                    .global_index_replication(gi_request.global_index.clone())
+                    .await?;
                 commit_log.extend(gi_events);
             }
 
             SyncRequest::Vault(vault_request) => {
-                let maybe_vault = self.find_vault(vault_request.vault.clone()).await?;
-                let Some(vault) = maybe_vault else {
-                    return Ok(commit_log);
+                let p_vault = PersistentVault {
+                    p_obj: self.persistent_obj.clone(),
                 };
 
-                if !vault.is_member(&vault_request.sender.device.device_id) {
-                    return Ok(commit_log);
+                let vault_status = p_vault.find(vault_request.sender.clone()).await?;
+                match vault_status {
+                    VaultStatus::NotExists(_) => {
+                        return Ok(commit_log);
+                    }
+                    VaultStatus::Outsider(_) => {
+                        return Ok(commit_log);
+                    }
+                    VaultStatus::Member { .. } => {
+                        let vault_events = self
+                            .vault_replication(vault_request.clone())
+                            .await?;
+                        commit_log.extend(vault_events);
+                    }
                 }
-
-                let vault_events = self.vault_replication(vault_request).await?;
-
-                commit_log.extend(vault_events);
             }
         }
 
@@ -194,22 +204,31 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
         };
 
         let vault_action = vault_action_event.value.clone();
-        let vault_name = vault_action.vault_name();
-
+        
         match &vault_action {
             VaultAction::CreateVault(user) => {
                 // create vault if not exists
-                let vault_desc = VaultDescriptor::vault(vault_name);
-                let maybe_vault = self.find_vault(ObjectId::unit(vault_desc.clone())).await?;
-
-                if let Some(_vault) = maybe_vault {
-                    // vault already exists, and the event have been saved into vault_log already,
-                    // no action needed
-                    return Ok(());
+                let p_vault = PersistentVault {
+                    p_obj: self.persistent_obj.clone(),
                 };
-
-                //create vault_log, vault and vault status
-                self.create_vault(user.clone()).await
+                
+                let vault_status = p_vault.find(user.clone()).await?;
+                match vault_status {
+                    VaultStatus::NotExists(_) => {
+                        //create vault_log, vault and vault status
+                        self.create_vault(user.clone()).await
+                    }
+                    VaultStatus::Outsider(_) => {
+                        // vault already exists, and the event have been saved into vault_log already,
+                        // no action needed
+                        Ok(())
+                    }
+                    VaultStatus::Member { .. } => {
+                        // vault already exists, and the event have been saved into vault_log already,
+                        // no action needed
+                        Ok(())
+                    }
+                }
             }
 
             VaultAction::JoinClusterRequest { candidate } => {
@@ -242,6 +261,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
                 sender: UserDataMember(sender_user),
                 update,
             } => {
+                let vault_name = vault_action.vault_name();
                 //check if a sender is a member of the vault and update the vault then
                 let vault_log_desc = VaultDescriptor::VaultLog(vault_name).to_obj_desc();
 
@@ -258,20 +278,17 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
                 };
 
                 let vault_name = sender_user.vault_name.clone();
-                let (vault_artifact_id, vault) = self.get_vault(vault_name.clone(), &sender_user.device).await?;
+                let (vault_artifact_id, vault) = self.get_vault(&sender_user).await?;
 
                 let vault_event = {
                     let mut new_vault = vault.clone();
                     new_vault.update_membership(update.clone());
 
-                    VaultObject::Vault(KvLogEvent {
-                        key: KvKey {
-                            obj_id: vault_artifact_id,
-                            obj_desc: VaultDescriptor::vault(vault_name.clone()),
-                        },
-                        value: new_vault,
-                    })
-                        .to_generic()
+                    let key = KvKey {
+                        obj_id: vault_artifact_id,
+                        obj_desc: VaultDescriptor::vault(vault_name.clone()),
+                    };
+                    VaultObject::Vault(KvLogEvent { key, value: new_vault }).to_generic()
                 };
 
                 self.persistent_obj.repo.save(vault_event).await?;
@@ -308,8 +325,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
             }
             VaultAction::AddMetaPassword { sender, meta_pass_id } => {
                 let user = sender.user();
-                let vault_name = user.vault_name.clone();
-                let (vault_artifact_id, vault) = self.get_vault(vault_name.clone(), &user.device).await?;
+                let (vault_artifact_id, vault) = self.get_vault(&user).await?;
 
                 let vault_event = {
                     let mut new_vault = vault.clone();
@@ -318,7 +334,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
                     let event = KvLogEvent {
                         key: KvKey {
                             obj_id: vault_artifact_id,
-                            obj_desc: VaultDescriptor::vault(vault_name.clone()),
+                            obj_desc: VaultDescriptor::vault(user.vault_name.clone()),
                         },
                         value: new_vault,
                     };
@@ -333,32 +349,34 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
         }
     }
 
-    async fn get_vault(
-        &self,
-        vault_name: VaultName,
-        sender_device: &DeviceData,
-    ) -> anyhow::Result<(ArtifactId, VaultData)> {
-        let vault_desc = VaultDescriptor::vault(vault_name.clone());
-        let maybe_vault = self.find_vault(ObjectId::unit(vault_desc.clone())).await?;
-        let Some(vault) = maybe_vault else {
-            return Err(anyhow!("Vault not found"));
+    async fn get_vault(&self, user_data: &UserData) -> anyhow::Result<(ArtifactId, VaultData)> {
+        let p_vault = PersistentVault {
+            p_obj: self.persistent_obj.clone(),
         };
+        
+        let vault_status = p_vault.find(user_data.clone()).await?;
+        match vault_status {
+            VaultStatus::NotExists(_) => {
+                Err(anyhow!("Vault not found"))
+            }
+            VaultStatus::Outsider(_) => {
+                Err(anyhow!("Sender is not a member of the vault"))
+            }
+            VaultStatus::Member { vault, .. } => {
+                //save new vault state
+                let vault_desc = VaultDescriptor::vault(vault.vault_name.clone());
 
-        if !vault.is_member(&sender_device.device_id) {
-            return Err(anyhow!("Sender is not a member of the vault"));
+                let vault_free_id = self.persistent_obj
+                    .find_free_id_by_obj_desc(vault_desc.clone())
+                    .await?;
+
+                let ObjectId::Artifact(vault_artifact_id) = vault_free_id else {
+                    return Err(anyhow!("Invalid vault id, must be ArtifactId, but it's: {:?}",vault_free_id));
+                };
+
+                Ok((vault_artifact_id, vault))
+            }
         }
-
-        //save new vault state
-        let vault_free_id = self.persistent_obj.find_free_id_by_obj_desc(vault_desc.clone()).await?;
-
-        let ObjectId::Artifact(vault_artifact_id) = vault_free_id else {
-            return Err(anyhow!(
-                "Invalid vault id, must be ArtifactId, but it's: {:?}",
-                vault_free_id
-            ));
-        };
-
-        Ok((vault_artifact_id, vault))
     }
 
     #[instrument(skip_all)]
@@ -368,6 +386,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
     }
 
     pub async fn vault_replication(&self, request: VaultRequest) -> anyhow::Result<Vec<GenericKvLogEvent>> {
+        info!("Vault replication, by: {:?}", request.sender);
         let mut commit_log = vec![];
 
         //sync VaultLog
@@ -376,13 +395,13 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
                 .persistent_obj
                 .find_object_events(request.vault_log.clone())
                 .await?;
+            info!("Server. Sync vault_log. Request: {:?}, events: {:?}", &request.vault_log, &vault_log_events);
             commit_log.extend(vault_log_events);
         }
 
         //sync Vault
         {
             let vault_events = self.persistent_obj.find_object_events(request.vault.clone()).await?;
-
             commit_log.extend(vault_events);
         }
 
@@ -397,22 +416,6 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
         }
 
         Ok(commit_log)
-    }
-
-    #[instrument(skip(self))]
-    async fn find_vault(&self, vault_id: ObjectId) -> anyhow::Result<Option<VaultData>> {
-        let maybe_vault_event = self.persistent_obj.find_tail_event_by_obj_id(vault_id).await?;
-
-        let Some(vault_event) = maybe_vault_event else {
-            return Ok(None);
-        };
-
-        let GenericKvLogEvent::Vault(VaultObject::Vault(event)) = vault_event else {
-            return Ok(None);
-        };
-
-        let vault = event.value;
-        Ok(Some(vault))
     }
 }
 

@@ -50,7 +50,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                 error!("Sync error: {:?}", err);
             }
 
-            async_std::task::sleep(Duration::from_millis(300)).await;
+            async_std::task::sleep(Duration::from_secs(1)).await;
         }
     }
 
@@ -73,14 +73,44 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         self.download_global_index(creds_obj.device()).await?;
 
         let CredentialsObject::DefaultUser(user_creds_event) = creds_obj else {
+            info!("No user defined");
             return Ok(());
         };
 
-        //Vault synchronization
         let user_creds = user_creds_event.value;
-        let sender = user_creds.user();
 
+        self.vault_synchronization(&user_creds).await?;
+
+        let server_tail_response = self.get_tail(&user_creds).await?;
+
+        self.sync_device_log(&server_tail_response, user_creds.user_id())
+            .await?;
+
+        //self.sync_shared_secrets(&server_tail_response, &user_creds).await?;
+
+        Ok(())
+    }
+
+    async fn get_tail(&self, user_creds: &UserCredentials) -> anyhow::Result<ServerTailResponse> {
+        let p_vault = PersistentVault {
+            p_obj: self.p_obj.clone(),
+        };
+        let vault_status = p_vault.find(user_creds.user()).await?;
+
+        let server_tail_response = self
+            .server_dt
+            .dt
+            .send_to_service_and_get(DataSyncRequest::ServerTailRequest(vault_status.user()))
+            .await?
+            .to_server_tail()?;
+        Ok(server_tail_response)
+    }
+
+    #[instrument(skip_all)]
+    async fn vault_synchronization(&self, user_creds: &UserCredentials) -> anyhow::Result<()> {
         let vault_sync_request = {
+            let sender = user_creds.user();
+
             let vault_name = user_creds.vault_name.clone();
 
             let vault_log_free_id = {
@@ -114,27 +144,9 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             .to_data()?;
 
         for new_event in data_sync_events {
-            debug!("id: {:?}. Sync gateway. New event: {:?}", self.id, new_event);
+            debug!("id: {:?}. Sync gateway. New event from server: {:?}", self.id, new_event);
             self.p_obj.repo.save(new_event).await?;
         }
-
-        let p_vault = PersistentVault {
-            p_obj: self.p_obj.clone(),
-        };
-        let vault_status = p_vault.find(user_creds.user()).await?;
-
-        let server_tail_response = self
-            .server_dt
-            .dt
-            .send_to_service_and_get(DataSyncRequest::ServerTailRequest(vault_status.user()))
-            .await?
-            .to_server_tail()?;
-
-        self.sync_device_log(&server_tail_response, user_creds.user_id())
-            .await?;
-
-        //self.sync_shared_secrets(&server_tail_response, &user_creds).await?;
-
         Ok(())
     }
 
@@ -150,7 +162,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             .await?;
 
         if ss_device_log_events_to_sync.is_empty() {
-            debug!("No events to send");
+            //debug!("No events to send");
         }
 
         for ss_device_log_event in ss_device_log_events_to_sync {
@@ -162,8 +174,6 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
 
     #[instrument(skip(self))]
     async fn sync_device_log(&self, server_tail: &ServerTailResponse, user_id: UserId) -> anyhow::Result<()> {
-        debug!("Sync device log events");
-
         let tail_to_sync = match &server_tail.device_log_tail {
             None => {
                 ObjectId::unit(VaultDescriptor::device_log(user_id))
@@ -179,7 +189,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             .await?;
 
         if device_log_events_to_sync.is_empty() {
-            debug!("No events to send");
+            //debug!("No events to send");
         }
 
         for device_log_event in device_log_events_to_sync {

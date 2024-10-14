@@ -35,10 +35,6 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
             let maybe_curr_db_event = self.repo.find_one(curr_tail_id.clone()).await?;
 
             if let Some(curr_db_event) = maybe_curr_db_event {
-                if let GenericKvLogEvent::SharedSecret(_) = &curr_db_event {
-                    self.repo.delete(curr_tail_id.clone()).in_current_span().await;
-                }
-
                 curr_tail_id = curr_tail_id.next();
                 commit_log.push(curr_db_event);
             } else {

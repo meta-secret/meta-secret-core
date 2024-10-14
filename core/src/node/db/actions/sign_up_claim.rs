@@ -12,8 +12,8 @@ use crate::node::{
     },
 };
 use anyhow::Ok;
-use tracing::warn;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
+use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 
 pub struct SignUpClaim<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
@@ -21,6 +21,14 @@ pub struct SignUpClaim<Repo: KvLogEventRepo> {
 
 impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
     pub async fn sign_up(&self, user_data: UserData) -> anyhow::Result<VaultStatus> {
+        let creds_repo = PersistentCredentials { p_obj: self.p_obj.clone() };
+
+        let device_name = user_data.device.device_name.clone();
+        let vault_name = user_data.vault_name.clone();
+        creds_repo
+            .get_or_generate_user_creds(device_name, vault_name)
+            .await?;
+        
         let p_vault = PersistentVault {
             p_obj: self.p_obj.clone(),
         };
@@ -75,14 +83,6 @@ pub mod test_action {
         #[instrument(skip_all)]
         pub async fn sign_up(p_obj: Arc<PersistentObject<InMemKvLogEventRepo>>, creds_fixture: &UserCredentialsFixture) -> anyhow::Result<VaultStatus> {
             info!("SignUp action");
-            
-            let creds_repo = PersistentCredentials { p_obj: p_obj.clone() };
-
-            let device_name = creds_fixture.client_device_name();
-            let vault_name = creds_fixture.client.vault_name.clone();
-            creds_repo
-                .get_or_generate_user_creds(device_name, vault_name)
-                .await?;
 
             let sign_up_claim = SignUpClaim {
                 p_obj: p_obj.clone(),

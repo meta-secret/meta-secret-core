@@ -29,16 +29,16 @@ impl Display for VaultName {
 }
 
 impl VaultName {
+    pub fn test() -> VaultName {
+        VaultName::from("q")
+    }
+    
     pub fn client() -> Self {
         VaultName::from("client")
     }
 
     pub fn vd() -> Self {
         VaultName::from("vd")
-    }
-
-    pub fn server() -> Self {
-        VaultName::from("server")
     }
 }
 
@@ -81,10 +81,14 @@ impl VaultData {
         self.users.insert(membership.device_id(), membership);
     }
 
+    pub fn is_not_member(&self, device_id: &DeviceId) -> bool {
+        !self.is_member(device_id)
+    }
+
     pub fn is_member(&self, device_id: &DeviceId) -> bool {
         let maybe_user = self.users.get(device_id);
         if let Some(UserMembership::Member(UserDataMember(user_data))) = maybe_user {
-            user_data.device.device_id == device_id.clone()
+            user_data.device.device_id.eq(&device_id)
         } else {
             false
         }
