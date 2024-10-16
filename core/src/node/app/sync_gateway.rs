@@ -86,7 +86,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         self.sync_device_log(&server_tail_response, user_creds.user_id())
             .await?;
 
-        //self.sync_shared_secrets(&server_tail_response, &user_creds).await?;
+        self.sync_shared_secrets(&server_tail_response, &user_creds).await?;
 
         Ok(())
     }

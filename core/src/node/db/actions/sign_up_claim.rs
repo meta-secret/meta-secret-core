@@ -81,7 +81,10 @@ pub mod test_action {
     impl SignUpClaimTestAction {
         
         #[instrument(skip_all)]
-        pub async fn sign_up(p_obj: Arc<PersistentObject<InMemKvLogEventRepo>>, creds_fixture: &UserCredentialsFixture) -> anyhow::Result<VaultStatus> {
+        pub async fn sign_up(
+            p_obj: Arc<PersistentObject<InMemKvLogEventRepo>>, 
+            creds_fixture: &UserCredentialsFixture
+        ) -> anyhow::Result<VaultStatus> {
             info!("SignUp action");
 
             let sign_up_claim = SignUpClaim {
@@ -108,10 +111,15 @@ pub mod spec {
     use anyhow::Result;
     use log::info;
     use tracing_attributes::instrument;
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::meta_tests::fixture_util::fixture::states::ExtendedState;
+    use crate::node::common::model::device::common::DeviceData;
+    use crate::node::db::objects::global_index::spec::GlobalIndexSpec;
 
     pub struct SignUpClaimSpec<Repo: KvLogEventRepo> {
         pub p_obj: Arc<PersistentObject<Repo>>,
         pub user: UserData,
+        pub server_device: DeviceData
     }
 
     #[async_trait(? Send)]
@@ -119,6 +127,12 @@ pub mod spec {
         #[instrument(skip(self))]
         async fn verify(&self) -> Result<()> {
             info!("SignUp claim spec");
+
+            let gi_spec = GlobalIndexSpec { 
+                repo: self.p_obj.repo.clone(), 
+                server_device: self.server_device.clone() 
+            };
+            gi_spec.verify().await?;
             
             let device_log_spec = DeviceLogSpec {
                 p_obj: self.p_obj.clone(),
@@ -153,9 +167,9 @@ mod test {
 
     #[tokio::test]
     async fn test_sign_up() -> Result<()> {
-        let registry = FixtureRegistry::base().await?;
-        let p_obj = registry.state.empty.p_obj.client;
-        let creds = registry.state.empty.user_creds;
+        let registry = FixtureRegistry::extended().await?;
+        let p_obj = registry.state.base.empty.p_obj.client.clone();
+        let creds = registry.state.base.empty.user_creds;
         let vault_status = SignUpClaimTestAction::sign_up(p_obj.clone(), &creds)
             .await?;
         
@@ -169,6 +183,7 @@ mod test {
         let claim_spec = SignUpClaimSpec {
             p_obj,
             user: outsider.user_data,
+            server_device: registry.state.base.empty.device_creds.server.device,
         };
         claim_spec.verify().await?;
 

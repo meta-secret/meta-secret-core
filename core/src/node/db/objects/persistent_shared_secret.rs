@@ -147,9 +147,10 @@ pub mod spec {
 
         #[instrument(skip(self))]
         pub async fn check_initialization(&self) -> Result<()> {
-            info!("check_initialization");
-            
-            let ss_obj_desc = SharedSecretDescriptor::SSDeviceLog(self.client_user.device.device_id.clone())
+            info!("SSDeviceLogSpec check_initialization");
+
+            let device_id = self.client_user.device.device_id.clone();
+            let ss_obj_desc = SharedSecretDescriptor::SSDeviceLog(device_id)
                 .to_obj_desc();
 
             let ss_unit_id = ObjectId::unit(ss_obj_desc.clone());

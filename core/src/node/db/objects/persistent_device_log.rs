@@ -8,7 +8,8 @@ use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ToGenericEvent};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, Next, ObjectId, UnitId, VaultGenesisEvent, VaultUnitEvent};
-use crate::node::db::events::vault_event::{DeviceLogObject, VaultAction};
+use crate::node::db::events::vault::device_log_event::DeviceLogObject;
+use crate::node::db::events::vault_event::VaultAction;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 

@@ -7,7 +7,8 @@ use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ToGenericEvent};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{Next, UnitId, VaultGenesisEvent, VaultUnitEvent};
-use crate::node::db::events::vault_event::{VaultLogObject, VaultMembershipObject, VaultObject};
+use crate::node::db::events::vault::vault_log_event::VaultLogObject;
+use crate::node::db::events::vault_event::{VaultMembershipObject, VaultObject};
 
 pub struct SignUpAction {}
 
@@ -116,20 +117,19 @@ mod test {
     use anyhow::Result;
 
     use crate::{
-        node::{
-            db::actions::sign_up::SignUpAction,
-        },
-        node::common::model::user::user_creds::fixture::UserCredentialsFixture
+        node::common::model::user::user_creds::fixture::UserCredentialsFixture,
+        node::db::actions::sign_up::SignUpAction
     };
     use crate::node::common::model::device::device_creds::fixture::DeviceCredentialsFixture;
 
     #[tokio::test]
     async fn test() -> Result<()> {
-        let user_creds_fixture = UserCredentialsFixture::from(&DeviceCredentialsFixture::generate());
+        let device_creds = &DeviceCredentialsFixture::generate();
+        let user_creds_fixture = UserCredentialsFixture::from(device_creds);
 
         let sign_up_action = SignUpAction {};
         let events = sign_up_action
-            .accept(user_creds_fixture.client.user(), user_creds_fixture.server.device());
+            .accept(user_creds_fixture.client.user(), device_creds.server.device.clone());
 
         assert_eq!(events.len(), 8);
 

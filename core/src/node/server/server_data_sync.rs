@@ -14,7 +14,7 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, Next, ObjectId, UnitId};
 use crate::node::db::events::shared_secret_event::{SSDeviceLogObject, SSLedgerObject};
 use crate::node::db::events::vault_event::{
-    DeviceLogObject, VaultAction, VaultLogObject, VaultMembershipObject, VaultObject,
+    VaultAction, VaultMembershipObject, VaultObject,
 };
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
@@ -23,6 +23,8 @@ use crate::node::server::request::{SyncRequest, VaultRequest};
 use anyhow::{anyhow, bail, Ok};
 use async_trait::async_trait;
 use tracing::{info, instrument, warn};
+use crate::node::db::events::vault::device_log_event::DeviceLogObject;
+use crate::node::db::events::vault::vault_log_event::VaultLogObject;
 use crate::node::db::objects::persistent_vault::PersistentVault;
 
 #[async_trait(? Send)]
@@ -204,14 +206,14 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
         };
 
         let vault_action = vault_action_event.value.clone();
-        
+
         match &vault_action {
             VaultAction::CreateVault(user) => {
                 // create vault if not exists
                 let p_vault = PersistentVault {
                     p_obj: self.persistent_obj.clone(),
                 };
-                
+
                 let vault_status = p_vault.find(user.clone()).await?;
                 match vault_status {
                     VaultStatus::NotExists(_) => {
@@ -353,7 +355,7 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
         let p_vault = PersistentVault {
             p_obj: self.persistent_obj.clone(),
         };
-        
+
         let vault_status = p_vault.find(user_data.clone()).await?;
         match vault_status {
             VaultStatus::NotExists(_) => {
@@ -474,6 +476,22 @@ impl<Repo: KvLogEventRepo> ServerDataSync<Repo> {
         let vault_idx_evt = GlobalIndexObject::index_from_vault_id(vault_id).to_generic();
 
         self.persistent_obj.repo.save(vault_idx_evt).await?;
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::meta_tests::setup_tracing;
+
+    #[tokio::test]
+    async fn test() -> anyhow::Result<()> {
+        setup_tracing()?;
+
+        let registry = FixtureRegistry::extended().await?;
+
 
         Ok(())
     }

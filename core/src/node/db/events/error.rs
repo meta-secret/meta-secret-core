@@ -1,7 +1,8 @@
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::shared_secret_event::{SSDeviceLogObject, SSLedgerObject, SharedSecretObject};
-use crate::node::db::events::vault_event::{DeviceLogObject, VaultAction};
+use crate::node::db::events::vault_event::VaultAction;
 use thiserror::Error;
+use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

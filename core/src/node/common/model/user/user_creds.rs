@@ -53,7 +53,7 @@ pub mod fixture {
 
     pub struct UserCredentialsFixture {
         pub client: UserCredentials,
-        pub vd: UserCredentials
+        pub vd: UserCredentials,
     }
 
     impl UserCredentialsFixture {

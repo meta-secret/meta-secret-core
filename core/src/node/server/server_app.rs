@@ -86,7 +86,6 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
     async fn handle_client_request(&self, sync_message: DataSyncRequest) -> Result<()> {
         match sync_message {
             DataSyncRequest::SyncRequest(request) => {
-                //info!("Handle sync request: {}", serde_json::to_string_pretty(&request)?);
                 let new_events = self.handle_sync_request(request).await?;
 
                 self
@@ -211,6 +210,7 @@ mod test {
         let client_claim_spec = SignUpClaimSpec {
             p_obj: registry.state.base.empty.p_obj.client.clone(),
             user: client_user.clone(),
+            server_device: registry.state.base.empty.device_creds.server.device.clone(),
         };
         client_claim_spec
             .verify()
@@ -265,6 +265,7 @@ mod test {
         let server_claim_spec = SignUpClaimSpec {
             p_obj: server_app.p_obj.clone(),
             user: client_user.clone(),
+            server_device: registry.state.base.empty.device_creds.server.device,
         };
 
         server_claim_spec.verify().await?;
