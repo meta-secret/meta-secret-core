@@ -1,6 +1,5 @@
 use crate::node::common::model::secret::MetaPasswordId;
 use crate::node::common::model::vault::VaultStatus;
-use std::fmt::Display;
 use crate::node::common::model::device::common::DeviceData;
 
 pub mod device;

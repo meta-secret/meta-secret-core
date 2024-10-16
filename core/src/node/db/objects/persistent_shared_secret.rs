@@ -131,7 +131,7 @@ pub mod spec {
     use crate::node::common::model::user::common::UserData;
     use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
     use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
-    use crate::node::db::events::object_id::{Next, ObjectId, UnitId};
+    use crate::node::db::events::object_id::{ObjectId};
     use crate::node::db::objects::persistent_object::PersistentObject;
     use crate::node::db::repo::generic_db::KvLogEventRepo;
     use anyhow::{bail, Result};

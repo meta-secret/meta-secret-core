@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::node::common::model::device::common::{DeviceData, DeviceName};
+use crate::node::common::model::device::common::DeviceName;
 use crate::node::common::model::user::common::{UserData, UserDataMember, UserId};
 use crate::node::common::model::vault::{VaultData, VaultName, VaultStatus};
 use crate::node::db::actions::sign_up::SignUpAction;
@@ -22,7 +22,7 @@ use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::server::request::{SyncRequest, VaultRequest};
 use anyhow::{anyhow, bail, Ok};
 use async_trait::async_trait;
-use tracing::{info, instrument, warn};
+use tracing::{info, instrument};
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::events::vault::vault_log_event::VaultLogObject;
 use crate::node::db::objects::persistent_vault::PersistentVault;

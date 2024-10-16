@@ -69,7 +69,6 @@ pub mod test_action {
     use crate::node::db::actions::sign_up_claim::SignUpClaim;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_object::PersistentObject;
-    use crate::node::db::repo::persistent_credentials::PersistentCredentials;
     use std::sync::Arc;
     use tracing::info;
     use tracing_attributes::instrument;
@@ -111,8 +110,6 @@ pub mod spec {
     use anyhow::Result;
     use log::info;
     use tracing_attributes::instrument;
-    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
-    use crate::meta_tests::fixture_util::fixture::states::ExtendedState;
     use crate::node::common::model::device::common::DeviceData;
     use crate::node::db::objects::global_index::spec::GlobalIndexSpec;
 

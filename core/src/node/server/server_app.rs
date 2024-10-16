@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use tracing::{debug, error, info, instrument, trace};
+use tracing::{error, info, instrument};
 use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::common::model::device::common::DeviceName;
 use crate::node::common::model::device::device_creds::DeviceCredentials;
@@ -191,12 +191,43 @@ mod test {
     use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
     use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
     use tokio::runtime::{Builder};
+    use crate::meta_tests::fixture_util::fixture::states::ExtendedState;
+
+    #[tokio::test]
+    async fn test_initial_state() -> anyhow::Result<()> {
+        setup_tracing()?;
+
+        let registry = FixtureRegistry::extended().await?;
+
+        run_server(&registry).await?;
+
+        registry.state.meta_client_service.sync_gateway.client_gw.sync().await?;
+    }
+
+    async fn run_server(registry: &FixtureRegistry<ExtendedState>) -> Result<(), Error> {
+        let server_app = registry.state.server_app.server_app.clone();
+        server_app.init().await?;
+
+        thread::spawn(move || {
+            let rt = Builder::new_multi_thread().enable_all().build().unwrap();
+            rt.block_on(async {
+                server_app.run().instrument(server_span()).await
+            })
+        });
+        async_std::task::sleep(Duration::from_secs(1)).await;
+
+        Ok(())
+    }
 
     #[tokio::test]
     async fn test_sign_up() -> anyhow::Result<()> {
         setup_tracing()?;
 
         let registry = FixtureRegistry::extended().await?;
+
+        run_server(&registry).await?;
+
+        registry.state.meta_client_service.sync_gateway.client_gw.sync().await?;
 
         info!("Executing 'sign up' claim");
         let client_p_obj = registry.state.base.empty.p_obj.client.clone();
@@ -219,14 +250,6 @@ mod test {
 
         let client_db = registry.state.base.empty.p_obj.client.repo.get_db().await;
         assert_eq!(9, client_db.len());
-
-        let server_app = registry.state.server_app.server_app.clone();
-        thread::spawn(move || {
-            let rt = Builder::new_multi_thread().enable_all().build().unwrap();
-            rt.block_on(async { 
-                server_app.run().instrument(server_span()).await 
-            })
-        });
 
         //let client_service = registry.state.meta_client_service.client;
         //thread::spawn(move || {
