@@ -5,13 +5,14 @@ use tracing::{info, instrument};
 use crate::node::app::meta_app::meta_client_service::MetaClientAccessProxy;
 use crate::node::app::sync_gateway::SyncGateway;
 use crate::node::common::model::device::common::DeviceName;
+use crate::node::common::model::user::common::{UserDataOutsiderStatus, UserMembership};
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::{VaultName, VaultStatus};
-use crate::node::db::actions::sign_up_claim::SignUpClaim;
+use crate::node::db::actions::sign_up::claim::SignUpClaim;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::vault::vault_log_event::VaultLogObject;
-use crate::node::db::events::vault_event::VaultAction;
+use crate::node::db::events::vault_event::VaultActionEvent;
 use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -21,7 +22,7 @@ use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::server::server_app::ServerDataTransfer;
 
 pub struct VirtualDevice<Repo: KvLogEventRepo> {
-    persistent_object: Arc<PersistentObject<Repo>>,
+    p_obj: Arc<PersistentObject<Repo>>,
     pub meta_client_proxy: Arc<MetaClientAccessProxy>,
     pub server_dt: Arc<ServerDataTransfer>,
     gateway: Arc<SyncGateway<Repo>>,
@@ -38,7 +39,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
         info!("Initialize virtual device event handler");
 
         let virtual_device = Self {
-            persistent_object,
+            p_obj: persistent_object,
             meta_client_proxy: meta_client_access_proxy.clone(),
             server_dt,
             gateway,
@@ -53,7 +54,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
 
         let creds_repo = PersistentCredentials { p_obj: self.p_obj() };
 
-        let device_name = DeviceName::generate();
+        let device_name = DeviceName::virtual_device();
         let user_creds = creds_repo
             .get_or_generate_user_creds(device_name, VaultName::test())
             .await?;
@@ -78,36 +79,44 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
         let p_vault = PersistentVault { p_obj: self.p_obj() };
         let vault_status = p_vault.find(user_creds.user()).await?;
 
-        let VaultStatus::Member { member, vault } = vault_status else {
+        let VaultStatus::Member { member: me, vault } = vault_status else {
             warn!("Not a vault member");
             return Ok(());
         };
 
-        let vault_name = vault.vault_name;
+        let vault_name = vault.vault_name.clone();
         //vault actions
         let vault_log_desc = VaultDescriptor::VaultLog(vault_name).to_obj_desc();
 
-        let maybe_vault_log_event = self.persistent_object.find_tail_event(vault_log_desc).await?;
+        let maybe_vault_log_event = self.p_obj
+            .find_tail_event(vault_log_desc)
+            .await?;
 
         if let Some(vault_log_event) = maybe_vault_log_event {
             let vault_log = vault_log_event.vault_log()?;
 
             if let VaultLogObject::Action(vault_action) = vault_log {
                 match vault_action.value {
-                    VaultAction::JoinClusterRequest { candidate } => {
-                        let p_device_log = PersistentDeviceLog {
-                            p_obj: self.persistent_object.clone(),
-                        };
+                    VaultActionEvent::JoinClusterRequest { candidate } => {
+                        if let UserMembership::Outsider(outsider) = vault.membership(candidate.clone()) {
+                            if let UserDataOutsiderStatus::NonMember = outsider.status {
+                                let p_device_log = PersistentDeviceLog {
+                                    p_obj: self.p_obj.clone(),
+                                };
 
-                        p_device_log.save_accept_join_request_event(member, candidate).await?;
+                                p_device_log
+                                    .save_accept_join_request_event(me, candidate)
+                                    .await?;
+                            }
+                        }
                     }
-                    VaultAction::UpdateMembership { .. } => {
+                    VaultActionEvent::UpdateMembership { .. } => {
                         //changes made by another device, no need for any actions
                     }
-                    VaultAction::AddMetaPassword { .. } => {
+                    VaultActionEvent::AddMetaPassword { .. } => {
                         //changes made by another device, no need for any actions
                     }
-                    VaultAction::CreateVault(_) => {
+                    VaultActionEvent::CreateVault(_) => {
                         // server's responsibities
                     }
                 }
@@ -116,7 +125,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
 
         // shared secret actions
         let _p_ss_log = PersistentSharedSecret {
-            p_obj: self.persistent_object.clone(),
+            p_obj: self.p_obj.clone(),
         };
 
         //todo!("Implement SS log actions - replication request. This code must read the log and handle the events. Same as above for vault");
@@ -126,6 +135,6 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
     }
 
     fn p_obj(&self) -> Arc<PersistentObject<Repo>> {
-        self.persistent_object.clone()
+        self.p_obj.clone()
     }
 }

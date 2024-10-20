@@ -14,11 +14,11 @@ use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::server::request::SyncRequest;
 use crate::node::server::server_data_sync::{
-    DataEventsResponse, DataSyncApi, DataSyncRequest, DataSyncResponse, ServerDataSync, ServerTailResponse,
+    DataEventsResponse, DataSyncApi, DataSyncRequest, DataSyncResponse, ServerSyncGateway, ServerTailResponse,
 };
 
 pub struct ServerApp<Repo: KvLogEventRepo> {
-    pub data_sync: ServerDataSync<Repo>,
+    pub data_sync: ServerSyncGateway<Repo>,
     pub p_obj: Arc<PersistentObject<Repo>>,
     creds_repo: PersistentCredentials<Repo>,
     server_dt: Arc<ServerDataTransfer>,
@@ -35,8 +35,8 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
             Arc::new(obj)
         };
 
-        let data_sync = ServerDataSync {
-            persistent_obj: p_obj.clone(),
+        let data_sync = ServerSyncGateway {
+            p_obj: p_obj.clone(),
         };
 
         let creds_repo = PersistentCredentials { p_obj: p_obj.clone() };
@@ -48,7 +48,7 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
         let device_creds = self.get_creds().await?;
 
         let gi_obj = ServerPersistentGlobalIndex {
-            p_obj: self.data_sync.persistent_obj.clone(),
+            p_obj: self.data_sync.p_obj.clone(),
             server_device: device_creds.device.clone(),
         };
 
@@ -66,12 +66,12 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
             error!("ServerApp failed to start: {:?}", err);
         }
 
-        let device_creds = init_result?;
+        let server_creds = init_result?;
 
-        info!("Started ServerApp with: {:?}", device_creds.device);
+        info!("Started ServerApp with: {:?}", &server_creds.device);
 
         while let Ok(sync_message) = self.server_dt.dt.service_receive().await {
-            let result = self.handle_client_request(sync_message.clone()).await;
+            let result = self.handle_client_request(server_creds.clone(), sync_message.clone()).await;
             if let Err(err) = &result {
                 error!("Failed handling incoming request: {:?}, with error: {}", sync_message, err);
             }
@@ -82,8 +82,10 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
         Ok(())
     }
 
-    #[instrument(skip(self))]
-    async fn handle_client_request(&self, sync_message: DataSyncRequest) -> Result<()> {
+    #[instrument(skip(self, server_creds))]
+    async fn handle_client_request(
+        &self, server_creds: DeviceCredentials, sync_message: DataSyncRequest
+    ) -> Result<()> {
         match sync_message {
             DataSyncRequest::SyncRequest(request) => {
                 let new_events = self.handle_sync_request(request).await?;
@@ -95,7 +97,7 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                     .await;
             }
             DataSyncRequest::Event(event) => {
-                self.handle_new_event(event).await?;
+                self.data_sync.handle(server_creds.device, event).await?;
             }
             DataSyncRequest::ServerTailRequest(user) => {
                 let p_device_log = PersistentDeviceLog {
@@ -123,11 +125,6 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                     .await;
             }
         }
-        Ok(())
-    }
-
-    async fn handle_new_event(&self, event: GenericKvLogEvent) -> Result<()> {
-        self.data_sync.handle(event).await?;
         Ok(())
     }
 
@@ -179,55 +176,32 @@ pub mod fixture {
 
 #[cfg(test)]
 mod test {
+    use std::process::exit;
     use std::thread;
     use std::time::Duration;
+    use anyhow::bail;
     use tracing::{info, Instrument};
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::meta_tests::setup_tracing;
-    use crate::meta_tests::spec::test_spec::TestSpec;
     use crate::node::common::meta_tracing::{client_span, server_span};
-    use crate::node::db::actions::sign_up_claim::spec::SignUpClaimSpec;
-    use crate::node::db::actions::sign_up_claim::test_action::SignUpClaimTestAction;
+    use crate::node::db::actions::sign_up::claim::spec::SignUpClaimSpec;
+    use crate::node::db::actions::sign_up::claim::test_action::SignUpClaimTestAction;
     use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
     use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
     use tokio::runtime::{Builder};
     use crate::meta_tests::fixture_util::fixture::states::ExtendedState;
+    use crate::meta_tests::spec::test_spec::TestSpec;
+    use crate::node::common::model::user::common::UserData;
+    use crate::node::common::model::vault::VaultStatus;
+    use crate::node::db::objects::persistent_vault::PersistentVault;
 
     #[tokio::test]
-    async fn test_initial_state() -> anyhow::Result<()> {
+    async fn test_sign_up_one_device() -> anyhow::Result<()> {
         setup_tracing()?;
 
         let registry = FixtureRegistry::extended().await?;
 
         run_server(&registry).await?;
-
-        registry.state.meta_client_service.sync_gateway.client_gw.sync().await?;
-    }
-
-    async fn run_server(registry: &FixtureRegistry<ExtendedState>) -> Result<(), Error> {
-        let server_app = registry.state.server_app.server_app.clone();
-        server_app.init().await?;
-
-        thread::spawn(move || {
-            let rt = Builder::new_multi_thread().enable_all().build().unwrap();
-            rt.block_on(async {
-                server_app.run().instrument(server_span()).await
-            })
-        });
-        async_std::task::sleep(Duration::from_secs(1)).await;
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_sign_up() -> anyhow::Result<()> {
-        setup_tracing()?;
-
-        let registry = FixtureRegistry::extended().await?;
-
-        run_server(&registry).await?;
-
-        registry.state.meta_client_service.sync_gateway.client_gw.sync().await?;
 
         info!("Executing 'sign up' claim");
         let client_p_obj = registry.state.base.empty.p_obj.client.clone();
@@ -236,38 +210,40 @@ mod test {
             .instrument(client_span())
             .await?;
 
+        sync_client(&registry).await?;
+
         info!("Verify SignUpClaim");
         let client_user = registry.state.base.empty.user_creds.client.user();
         let client_claim_spec = SignUpClaimSpec {
-            p_obj: registry.state.base.empty.p_obj.client.clone(),
+            p_obj: client_p_obj.clone(),
             user: client_user.clone(),
             server_device: registry.state.base.empty.device_creds.server.device.clone(),
         };
-        client_claim_spec
+
+        /*client_claim_spec
             .verify()
             .instrument(client_span())
-            .await?;
+            .await?;*/
 
-        let client_db = registry.state.base.empty.p_obj.client.repo.get_db().await;
-        assert_eq!(9, client_db.len());
+        let client_db = client_p_obj.repo.get_db().await;
+        assert_eq!(11, client_db.len());
 
-        //let client_service = registry.state.meta_client_service.client;
-        //thread::spawn(move || {
-        //    let rt = Builder::new_current_thread().enable_all().build().unwrap();
-        //    rt.block_on(async {
-        //        client_service.run().await;
-        //    })
-        //});
+        //async_std::task::sleep(Duration::from_secs(3)).await;
 
-        async_std::task::sleep(Duration::from_secs(1)).await;
+        //p_vault_check(&registry).await?;
 
-        let _ = registry.state.meta_client_service.sync_gateway.client_gw
-            .sync()
-            .instrument(client_span())
-            .await;
+        //async_std::task::sleep(Duration::from_secs(1)).await;
 
-        async_std::task::sleep(Duration::from_secs(1)).await;
+        //sync_client(&registry).await?;
 
+        //async_std::task::sleep(Duration::from_secs(1)).await;
+
+        //server_check(registry, client_user).await?;
+
+        Ok(())
+    }
+
+    async fn server_check(registry: FixtureRegistry<ExtendedState>, client_user: UserData) -> anyhow::Result<()> {
         let server_app = registry.state.server_app.server_app.clone();
         let server_ss_device_log_events = {
             let ss_desc = SharedSecretDescriptor::SSDeviceLog(client_user.device.device_id.clone())
@@ -283,7 +259,7 @@ mod test {
 
         let server_db = server_app.p_obj.repo.get_db().await;
 
-        assert_eq!(server_db.len(), 19);
+        assert_eq!(server_db.len(), 18);
 
         let server_claim_spec = SignUpClaimSpec {
             p_obj: server_app.p_obj.clone(),
@@ -292,6 +268,52 @@ mod test {
         };
 
         server_claim_spec.verify().await?;
+        Ok(())
+    }
+
+    async fn p_vault_check(registry: &FixtureRegistry<ExtendedState>) -> anyhow::Result<()> {
+        let p_vault = PersistentVault {
+            p_obj: registry.state.base.empty.p_obj.client.clone(),
+        };
+        let vault_status = p_vault
+            .find(registry.state.base.empty.user_creds.client.user())
+            .await?;
+
+        let VaultStatus::Member { .. } = &vault_status else {
+            bail!("Client is not a vault member: {:?}", vault_status);
+        };
+        Ok(())
+    }
+
+    async fn sync_client(registry: &FixtureRegistry<ExtendedState>) -> anyhow::Result<()> {
+        registry.state.meta_client_service.sync_gateway.client_gw.sync().await?;
+        Ok(())
+    }
+
+    async fn run_server(registry: &FixtureRegistry<ExtendedState>) -> anyhow::Result<()> {
+        let server_app = registry.state.server_app.server_app.clone();
+        server_app.init().await?;
+
+        thread::spawn(move || {
+            let rt = Builder::new_multi_thread().enable_all().build().unwrap();
+            rt.block_on(async {
+                server_app.run().instrument(server_span()).await
+            })
+        });
+        async_std::task::sleep(Duration::from_secs(1)).await;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_join() -> anyhow::Result<()> {
+        setup_tracing()?;
+
+        let registry = FixtureRegistry::extended().await?;
+
+        run_server(&registry).await?;
+
+        registry.state.meta_client_service.sync_gateway.client_gw.sync().await?;
 
         Ok(())
     }

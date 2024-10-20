@@ -1,13 +1,14 @@
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
-use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
-use crate::node::db::events::generic_log_event::{ObjIdExtractor, ToGenericEvent};
+use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ToObjectDescriptor};
+use crate::node::db::events::generic_log_event::{ObjIdExtractor, ToGenericEvent, UnitEventWithEmptyValue};
 use crate::node::db::events::global_index_event::GlobalIndexObject;
-use crate::node::db::events::kv_log_event::KvLogEvent;
-use crate::node::db::events::object_id::ObjectId;
+use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
+use crate::node::db::events::object_id::{ObjectId, UnitId};
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use std::sync::Arc;
+use anyhow::anyhow;
 use tracing::{info, instrument};
 use crate::node::common::model::device::common::DeviceData;
 
@@ -40,14 +41,50 @@ impl<Repo: KvLogEventRepo> ServerPersistentGlobalIndex<Repo> {
 
         info!("Init global index");
 
-        let unit_event = GlobalIndexObject::Unit(KvLogEvent::global_index_unit()).to_generic();
-        let genesis_event =
-            GlobalIndexObject::Genesis(KvLogEvent::global_index_genesis(self.server_device.clone())).to_generic();
-
+        let unit_event = GlobalIndexObject::unit().to_generic();
+        let genesis_event = GlobalIndexObject::genesis(self.server_device.clone()).to_generic();
+        
         self.p_obj.repo.save(unit_event.clone()).await?;
         self.p_obj.repo.save(genesis_event.clone()).await?;
 
         Ok(())
+    }
+
+    pub async fn update(&self, vault_name: VaultName) -> anyhow::Result<()> {
+        //find the latest global_index_id???
+        let gi_free_id = self
+            .p_obj
+            .find_free_id_by_obj_desc(ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index))
+            .await?;
+
+        let ObjectId::Artifact(gi_artifact_id) = gi_free_id else {
+            return Err(anyhow!("Invalid global index state"));
+        };
+
+        let vault_id = UnitId::vault_unit(vault_name.clone());
+
+        let gi_update_event = {
+            GlobalIndexObject::Update(KvLogEvent {
+                key: KvKey {
+                    obj_id: gi_artifact_id,
+                    obj_desc: GlobalIndexDescriptor::Index.to_obj_desc(),
+                },
+                value: vault_id.clone(),
+            })
+                .to_generic()
+        };
+
+        let gi_events = vec![gi_update_event];
+
+        for gi_event in gi_events {
+            self.p_obj.repo.save(gi_event).await?;
+        }
+
+        let vault_idx_evt = GlobalIndexObject::index_from_vault_id(vault_id).to_generic();
+
+        self.p_obj.repo.save(vault_idx_evt).await?;
+
+        anyhow::Ok(())
     }
 }
 
@@ -77,7 +114,7 @@ impl<Repo: KvLogEventRepo> ClientPersistentGlobalIndex<Repo> {
 
     pub async fn exists(&self, vault_name: VaultName) -> anyhow::Result<bool> {
         let vault_idx_obj = GlobalIndexObject::index_from_vault_name(vault_name).to_generic();
-        let db_idx_event = self.p_obj.repo.find_one(vault_idx_obj.obj_id()).await?;
+        let db_idx_event = self.p_obj.repo.get_key(vault_idx_obj.obj_id()).await?;
         Ok(db_idx_event.is_some())
     }
 }

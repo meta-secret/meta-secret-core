@@ -86,6 +86,11 @@ impl WasmRepo {
 impl SaveCommand for WasmRepo {
     #[instrument(skip_all)]
     async fn save(&self, event: GenericKvLogEvent) -> anyhow::Result<ObjectId> {
+        let maybe_key = self.get_key(event.obj_id()).await?;
+        if let Some(_) = maybe_key { 
+            bail!("Wrong behaviour. Event already exists: {:?}", event);
+        };
+        
         let store_name = self.store_name.as_str();
 
         let tx = self

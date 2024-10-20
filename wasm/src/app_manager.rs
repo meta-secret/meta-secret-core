@@ -47,7 +47,7 @@ impl WasmApplicationState {
         let status = self.status();
         let is_local = matches!(status, WasmWebAppStatus::LocalEnv);
         let vault_not_exists = matches!(status, WasmWebAppStatus::VaultNotExists);
-        
+
         is_local || vault_not_exists
     }
 }
@@ -115,7 +115,7 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
         });
 
         Self::server_setup(cfg.server_repo, server_dt.clone()).await?;
-        
+
         Self::virtual_device_setup(cfg.device_repo, server_dt.clone())
             .await?;
 

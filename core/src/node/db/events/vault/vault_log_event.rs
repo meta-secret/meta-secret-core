@@ -1,8 +1,11 @@
 use anyhow::anyhow;
+use crate::node::common::model::user::common::UserData;
+use crate::node::common::model::vault::VaultName;
+use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent};
-use crate::node::db::events::kv_log_event::{GenericKvKey, KvLogEvent};
+use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, ObjectId, VaultGenesisEvent, VaultUnitEvent};
-use crate::node::db::events::vault_event::VaultAction;
+use crate::node::db::events::vault_event::VaultActionEvent;
 
 /// VaultLog keeps incoming events in order, the log is a queue for incoming messages and used to
 /// recreate the vault state from events (event sourcing)
@@ -11,7 +14,26 @@ use crate::node::db::events::vault_event::VaultAction;
 pub enum VaultLogObject {
     Unit(VaultUnitEvent),
     Genesis(VaultGenesisEvent),
-    Action(KvLogEvent<ArtifactId, VaultAction>),
+    Action(KvLogEvent<ArtifactId, VaultActionEvent>),
+}
+
+impl VaultLogObject {
+    pub fn unit(vault_name: VaultName) -> Self {
+        let desc = VaultDescriptor::vault_log(vault_name.clone());
+        
+        VaultLogObject::Unit(VaultUnitEvent(KvLogEvent {
+            key: KvKey::unit(desc),
+            value: vault_name,
+        }))
+    }
+
+    pub fn genesis(vault_name: VaultName, candidate: UserData) -> Self {
+        let desc = VaultDescriptor::vault_log(vault_name.clone());
+        VaultLogObject::Genesis(VaultGenesisEvent(KvLogEvent {
+            key: KvKey::genesis(desc),
+            value: candidate.clone(),
+        }))
+    }
 }
 
 impl TryFrom<GenericKvLogEvent> for VaultLogObject {

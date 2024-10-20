@@ -1,6 +1,6 @@
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::shared_secret_event::{SSDeviceLogObject, SSLedgerObject, SharedSecretObject};
-use crate::node::db::events::vault_event::VaultAction;
+use crate::node::db::events::vault_event::VaultActionEvent;
 use thiserror::Error;
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 
@@ -41,7 +41,7 @@ pub enum LogEventCastError {
     #[error("WrongDeviceLog: wrong event")]
     WrongDeviceLog(DeviceLogObject),
     #[error("WrongVaultAction. Expected: {0}, actual: {1}")]
-    WrongVaultAction(String, VaultAction),
+    WrongVaultAction(String, VaultActionEvent),
     
 }
 

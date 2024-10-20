@@ -37,6 +37,10 @@ export default defineComponent({
     isMember() {
       return this.appState.appState.status() === WasmWebAppStatus.Member;
     },
+
+    getStatus() {
+      return WasmWebAppStatus[this.appState.appState.status()];
+    },
   },
 });
 </script>
@@ -53,6 +57,6 @@ export default defineComponent({
     <VaultComponent />
   </div>
   <div v-else>
-    <h1>Another status: {{ this.appState.appState.status() }}</h1>
+    <h1>Another status: {{ this.getStatus() }}</h1>
   </div>
 </template>

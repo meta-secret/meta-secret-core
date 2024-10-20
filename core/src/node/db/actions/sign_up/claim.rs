@@ -66,7 +66,7 @@ impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
 pub mod test_action {
     use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
     use crate::node::common::model::vault::VaultStatus;
-    use crate::node::db::actions::sign_up_claim::SignUpClaim;
+    use crate::node::db::actions::sign_up::claim::SignUpClaim;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_object::PersistentObject;
     use std::sync::Arc;
@@ -112,6 +112,7 @@ pub mod spec {
     use tracing_attributes::instrument;
     use crate::node::common::model::device::common::DeviceData;
     use crate::node::db::objects::global_index::spec::GlobalIndexSpec;
+    use crate::node::db::objects::persistent_vault::spec::VaultLogSpec;
 
     pub struct SignUpClaimSpec<Repo: KvLogEventRepo> {
         pub p_obj: Arc<PersistentObject<Repo>>,
@@ -138,6 +139,13 @@ pub mod spec {
 
             device_log_spec.check_initialization().await?;
             device_log_spec.check_sign_up_request().await?;
+            
+            let vault_log_spec = VaultLogSpec {
+                p_obj: self.p_obj.clone(),
+                user: self.user.clone(),
+            };
+
+            vault_log_spec.verify_initial_state().await?;
 
             let ss_device_log_spec = SSDeviceLogSpec {
                 p_obj: self.p_obj.clone(),
@@ -157,10 +165,10 @@ mod test {
     use anyhow::{bail, Result};
 
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
-    use crate::node::db::actions::sign_up_claim::test_action::SignUpClaimTestAction;
+    use crate::node::db::actions::sign_up::claim::test_action::SignUpClaimTestAction;
     use crate::{node::common::model::vault::VaultStatus};
     use crate::meta_tests::spec::test_spec::TestSpec;
-    use crate::node::db::actions::sign_up_claim::spec::SignUpClaimSpec;
+    use crate::node::db::actions::sign_up::claim::spec::SignUpClaimSpec;
 
     #[tokio::test]
     async fn test_sign_up() -> Result<()> {

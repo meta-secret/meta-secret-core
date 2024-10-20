@@ -39,8 +39,8 @@ impl VaultDescriptor {
 impl ObjectType for VaultDescriptor {
     fn object_type(&self) -> String {
         match self {
-            VaultDescriptor::DeviceLog(_) => String::from("DeviceLog:"),
-            VaultDescriptor::VaultMembership(_) => String::from("VaultStatus:"),
+            VaultDescriptor::DeviceLog(_) => String::from("DeviceLog"),
+            VaultDescriptor::VaultMembership(_) => String::from("VaultStatus"),
             VaultDescriptor::Vault(_) => String::from("Vault"),
             VaultDescriptor::VaultLog(_) => String::from("VaultLog"),
         }
@@ -60,21 +60,18 @@ impl ObjectName for VaultDescriptor {
 
 #[cfg(test)]
 pub mod test {
-    use std::ops::Add;
-
     use serde_json::json;
 
-    use crate::crypto::keys::{KeyManager, OpenBox};
-    use crate::node::common::model::device::common::DeviceId;
-    use crate::node::common::model::user::common::UserId;
+    use crate::node::common::model::device::common::DeviceName;
+    use crate::node::common::model::user::user_creds::UserCredentials;
     use crate::node::common::model::vault::VaultName;
     use crate::node::db::descriptors::object_descriptor::{ObjectName, ObjectType};
     use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
-    use crate::node::db::events::object_id::UnitId;
+    use crate::node::db::events::object_id::{ObjectId, UnitId};
 
     #[test]
     fn test_vault_naming() {
-        let vault_name = VaultName::from("test");
+        let vault_name = VaultName::test();
         let descriptor = VaultDescriptor::vault(vault_name.clone());
         assert_eq!(descriptor.object_type(), "Vault");
         assert_eq!(descriptor.object_name(), vault_name.to_string());
@@ -90,21 +87,17 @@ pub mod test {
 
     #[test]
     fn test_device_log_naming() {
-        let vault_name = VaultName::from("test_vault");
-        let device_id = {
-            let secret_box = KeyManager::generate_secret_box();
-            DeviceId::from(&OpenBox::from(&secret_box))
-        };
+        let vault_name = VaultName::test();
+        let user_creds = UserCredentials::generate(DeviceName::client(), vault_name.clone());
+        let user_id = user_creds.user_id();
+        
+        let descriptor = VaultDescriptor::device_log(user_id.clone());
+        let device_log_type = String::from("DeviceLog");
 
-        let user_id = UserId {
-            device_id: device_id.clone(),
-            vault_name: vault_name.clone(),
-        };
-        let descriptor = VaultDescriptor::device_log(user_id);
-        let device_log_type = String::from("DeviceLog:").add(device_id.to_string().as_str());
+        println!("{:?}", ObjectId::unit(descriptor.clone()).id_str());
 
         assert_eq!(descriptor.object_type(), device_log_type);
-        assert_eq!(descriptor.object_name(), vault_name.to_string());
+        assert_eq!(descriptor.object_name(), user_id.device_id.to_string());
 
         let unit_id = UnitId::unit(&descriptor);
 
@@ -112,7 +105,7 @@ pub mod test {
         let expected = json!({
             "fqdn": {
                 "objType": device_log_type,
-                "objInstance": vault_name.to_string()
+                "objInstance": user_id.device_id.to_string()
             },
             "id": 0
         });

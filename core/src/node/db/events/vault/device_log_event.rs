@@ -3,7 +3,7 @@ use crate::node::db::events::error::LogEventCastError;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, ObjectId, VaultGenesisEvent, VaultUnitEvent};
-use crate::node::db::events::vault_event::VaultAction;
+use crate::node::db::events::vault_event::VaultActionEvent;
 
 /// Each device has its own unique device_log table, to prevent conflicts in updates vault state
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -12,7 +12,7 @@ pub enum DeviceLogObject {
     Unit(VaultUnitEvent),
     /// Device sends its data to ensure that the only this device can send events to this log
     Genesis(VaultGenesisEvent),
-    Action(KvLogEvent<ArtifactId, VaultAction>),
+    Action(KvLogEvent<ArtifactId, VaultActionEvent>),
 }
 
 impl DeviceLogObject {
@@ -30,7 +30,7 @@ impl DeviceLogObject {
         }
     }
 
-    pub fn get_action(&self) -> anyhow::Result<VaultAction> {
+    pub fn get_action(&self) -> anyhow::Result<VaultActionEvent> {
         match self {
             DeviceLogObject::Action(event) => Ok(event.value.clone()),
             _ => bail!(LogEventCastError::WrongDeviceLog(self.clone())),

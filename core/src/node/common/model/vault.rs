@@ -32,14 +32,6 @@ impl VaultName {
     pub fn test() -> VaultName {
         VaultName::from("q")
     }
-    
-    pub fn client() -> Self {
-        VaultName::from("client")
-    }
-
-    pub fn vd() -> Self {
-        VaultName::from("vd")
-    }
 }
 
 /////////////////// VaultData ///////////////////
@@ -94,18 +86,14 @@ impl VaultData {
         }
     }
 
-    pub fn status(&self, for_user: UserData) -> VaultStatus {
-        let maybe_vault_user = self.users.get(&for_user.device.device_id);
+    pub fn membership(&self, for_user: UserData) -> UserMembership {
+        let maybe_vault_user = self.users
+            .get(&for_user.device.device_id);
 
-        match maybe_vault_user {
-            Some(vault_user) => match vault_user {
-                UserMembership::Outsider(outsider) => VaultStatus::Outsider(outsider.clone()),
-                UserMembership::Member(member) => VaultStatus::Member {
-                    member: member.clone(),
-                    vault: self.clone(),
-                },
-            },
-            None => VaultStatus::Outsider(UserDataOutsider::non_member(for_user)),
+        if let Some(membership) = maybe_vault_user {
+            membership.clone()
+        } else {
+            UserMembership::Outsider(UserDataOutsider::non_member(for_user))
         }
     }
 
@@ -181,3 +169,4 @@ impl VaultStatus {
         }
     }
 }
+

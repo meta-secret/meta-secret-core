@@ -12,7 +12,7 @@ use crate::node::common::model::ApplicationState;
 use crate::node::common::model::device::common::DeviceName;
 use crate::node::common::model::user::common::UserData;
 use crate::node::db::actions::recover::RecoveryAction;
-use crate::node::db::actions::sign_up_claim::SignUpClaim;
+use crate::node::db::actions::sign_up::claim::SignUpClaim;
 use crate::node::db::events::local_event::CredentialsObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_vault::PersistentVault;
@@ -124,7 +124,7 @@ impl<Repo: KvLogEventRepo> MetaClientService<Repo> {
 
         let app_state = match maybe_creds {
             None => {
-                let device_creds = creds_repo.get_or_generate_device_creds(DeviceName::generate())
+                let device_creds = creds_repo.get_or_generate_device_creds(DeviceName::client())
                     .await?;
                 ApplicationState::Local {
                     device: device_creds.device,

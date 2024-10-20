@@ -73,20 +73,20 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         self.download_global_index(creds_obj.device()).await?;
 
         let CredentialsObject::DefaultUser(user_creds_event) = creds_obj else {
-            info!("No user defined");
+            //info!("No user defined");
             return Ok(());
         };
 
         let user_creds = user_creds_event.value;
 
-        self.vault_synchronization(&user_creds).await?;
+        self.sync_vault(&user_creds).await?;
 
         let server_tail_response = self.get_tail(&user_creds).await?;
 
         self.sync_device_log(&server_tail_response, user_creds.user_id())
             .await?;
 
-        self.sync_shared_secrets(&server_tail_response, &user_creds).await?;
+        //self.sync_shared_secrets(&server_tail_response, &user_creds).await?;
 
         Ok(())
     }
@@ -107,7 +107,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
     }
 
     #[instrument(skip_all)]
-    async fn vault_synchronization(&self, user_creds: &UserCredentials) -> anyhow::Result<()> {
+    async fn sync_vault(&self, user_creds: &UserCredentials) -> anyhow::Result<()> {
         let vault_sync_request = {
             let sender = user_creds.user();
 
@@ -161,10 +161,6 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             .find_object_events(server_ss_device_log_tail_id)
             .await?;
 
-        if ss_device_log_events_to_sync.is_empty() {
-            //debug!("No events to send");
-        }
-
         for ss_device_log_event in ss_device_log_events_to_sync {
             self.server_dt.dt.send_to_service(DataSyncRequest::Event(ss_device_log_event)).await;
         }
@@ -187,10 +183,6 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             .p_obj
             .find_object_events(tail_to_sync)
             .await?;
-
-        if device_log_events_to_sync.is_empty() {
-            //debug!("No events to send");
-        }
 
         for device_log_event in device_log_events_to_sync {
             self.server_dt.dt.send_to_service(DataSyncRequest::Event(device_log_event)).await;
@@ -241,129 +233,122 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         debug!("Sync shared secrets");
 
         self.sync_ss_device_log(&server_tail, creds.device().device_id).await?;
+        
+        let vault_status = {
+            let p_vault = PersistentVault {
+                p_obj: self.p_obj.clone(),
+            };
 
-        let key_manager = creds.device_creds.key_manager()?;
+            p_vault.find(creds.user()).await?
+        };
 
-        let p_vault = PersistentVault {
+        let VaultStatus::Member { vault, member: UserDataMember(member_data) } = vault_status else {
+            return Ok(());
+        };
+        
+        //get ss_ledger
+        // distribute shares if needed
+        let persistent_ss = PersistentSharedSecret {
             p_obj: self.p_obj.clone(),
         };
 
-        let vault_status = p_vault.find(creds.user()).await?;
+        let ledger_obj = persistent_ss.get_ledger(member_data.vault_name).await?;
+        let ledger_data = ledger_obj.to_ledger_data()?;
 
-        match vault_status {
-            VaultStatus::NotExists(_) => {
-                bail!("Vault doesn't exists")
-            }
-            VaultStatus::Outsider(_) => {
-                bail!("You are not a member of the vault")
-            }
-            VaultStatus::Member {
-                vault,
-                member: UserDataMember(member_data),
-            } => {
-                //get ss_ledger
-                // distribute shares if needed
-                let persistent_ss = PersistentSharedSecret {
-                    p_obj: self.p_obj.clone(),
-                };
-
-                let ledger_obj = persistent_ss.get_ledger(member_data.vault_name).await?;
-                let ledger_data = ledger_obj.to_ledger_data()?;
-
-                for (claim_id, claim) in ledger_data.claims {
-                    for (p2p_device_link, status) in claim.distribution {
-                        if !p2p_device_link.receiver().eq(&member_data.device.device_id) {
-                            continue;
-                        }
-
-                        match claim.distribution_type {
-                            SecretDistributionType::Recover => {
-                                //send share
-                                if let SSDistributionStatus::Pending = status {
-                                    let local_share = persistent_ss
-                                        .get_local_share_distribution_data(claim.pass_id.clone())
-                                        .await?;
-
-                                    // TODO decrypt local share message
-
-                                    let plain_share = {
-                                        let encrypted_local_share = local_share.secret_message.cipher_text();
-                                        encrypted_local_share.decrypt(&key_manager.transport.secret_key)?
-                                    };
-
-                                    let device_link = DeviceLink::PeerToPeer(p2p_device_link.clone());
-                                    let maybe_channel = vault.build_communication_channel(device_link);
-
-                                    let Some(channel) = maybe_channel else {
-                                        bail!("Failed to build communication channel")
-                                    };
-
-                                    // Since we got a device link from a claim it means the sender of a claim
-                                    // going to be the receiver of the share.
-                                    // We need to swap the sender and the receiver
-                                    let inverse_channel = channel.inverse();
-
-                                    //get user from a vault
-                                    let plain_text_response = {
-                                        AeadPlainText {
-                                            msg: plain_share.msg,
-                                            auth_data: AeadAuthData::from(inverse_channel),
-                                        }
-                                    };
-
-                                    let inverse_p2p_link = p2p_device_link.inverse();
-                                    let inverse_device_link = DeviceLink::PeerToPeer(inverse_p2p_link.clone());
-
-                                    let ss_dist = {
-                                        let sk = &key_manager.transport.secret_key;
-                                        let encrypted_share = plain_text_response.encrypt(sk)?;
-                                        let encrypted_message = EncryptedMessage::CipherShare {
-                                            device_link: inverse_device_link.clone(),
-                                            share: encrypted_share,
-                                        };
-
-                                        SecretDistributionData {
-                                            vault_name: vault.vault_name.clone(),
-                                            pass_id: claim.pass_id.clone(),
-                                            secret_message: encrypted_message,
-                                        }
-                                    };
-
-                                    let ss_recover_obj = {
-                                        let ss_dist_obj_desc = {
-                                            let ss_event_id = SSDistributionId {
-                                                claim_id: claim_id.clone(),
-                                                distribution_type: SecretDistributionType::Recover,
-                                                device_link: inverse_p2p_link,
-                                            };
-
-                                            SharedSecretDescriptor::SSDistribution(ss_event_id).to_obj_desc()
-                                        };
-
-                                        let key = KvLogEvent {
-                                            key: KvKey::unit(ss_dist_obj_desc),
-                                            value: ss_dist,
-                                        };
-
-                                        SharedSecretObject::SSDistribution(key).to_generic()
-                                    };
-
-                                    self.server_dt
-                                        .dt
-                                        .send_to_service(DataSyncRequest::Event(ss_recover_obj))
-                                        .await;
-                                }
-                            }
-                            SecretDistributionType::Split => {
-                                // NOOP
-                            }
-                        }
-                    }
+        for (claim_id, claim) in ledger_data.claims {
+            for (p2p_device_link, status) in claim.distribution {
+                if !p2p_device_link.receiver().eq(&member_data.device.device_id) {
+                    continue;
                 }
 
-                Ok(())
+                match claim.distribution_type {
+                    SecretDistributionType::Recover => {
+                        //send share
+                        if let SSDistributionStatus::Pending = status {
+                            let key_manager = creds.device_creds.key_manager()?;
+
+                            let local_share = persistent_ss
+                                .get_local_share_distribution_data(claim.pass_id.clone())
+                                .await?;
+
+                            // TODO decrypt local share message
+
+                            let plain_share = {
+                                let encrypted_local_share = local_share.secret_message.cipher_text();
+                                encrypted_local_share.decrypt(&key_manager.transport.secret_key)?
+                            };
+
+                            let device_link = DeviceLink::PeerToPeer(p2p_device_link.clone());
+                            let maybe_channel = vault.build_communication_channel(device_link);
+
+                            let Some(channel) = maybe_channel else {
+                                bail!("Failed to build communication channel")
+                            };
+
+                            // Since we got a device link from a claim it means the sender of a claim
+                            // going to be the receiver of the share.
+                            // We need to swap the sender and the receiver
+                            let inverse_channel = channel.inverse();
+
+                            //get user from a vault
+                            let plain_text_response = {
+                                AeadPlainText {
+                                    msg: plain_share.msg,
+                                    auth_data: AeadAuthData::from(inverse_channel),
+                                }
+                            };
+
+                            let inverse_p2p_link = p2p_device_link.inverse();
+                            let inverse_device_link = DeviceLink::PeerToPeer(inverse_p2p_link.clone());
+
+                            let ss_dist = {
+                                let sk = &key_manager.transport.secret_key;
+                                let encrypted_share = plain_text_response.encrypt(sk)?;
+                                let encrypted_message = EncryptedMessage::CipherShare {
+                                    device_link: inverse_device_link.clone(),
+                                    share: encrypted_share,
+                                };
+
+                                SecretDistributionData {
+                                    vault_name: vault.vault_name.clone(),
+                                    pass_id: claim.pass_id.clone(),
+                                    secret_message: encrypted_message,
+                                }
+                            };
+
+                            let ss_recover_obj = {
+                                let ss_dist_obj_desc = {
+                                    let ss_event_id = SSDistributionId {
+                                        claim_id: claim_id.clone(),
+                                        distribution_type: SecretDistributionType::Recover,
+                                        device_link: inverse_p2p_link,
+                                    };
+
+                                    SharedSecretDescriptor::SSDistribution(ss_event_id).to_obj_desc()
+                                };
+
+                                let key = KvLogEvent {
+                                    key: KvKey::unit(ss_dist_obj_desc),
+                                    value: ss_dist,
+                                };
+
+                                SharedSecretObject::SSDistribution(key).to_generic()
+                            };
+
+                            self.server_dt
+                                .dt
+                                .send_to_service(DataSyncRequest::Event(ss_recover_obj))
+                                .await;
+                        }
+                    }
+                    SecretDistributionType::Split => {
+                        // NOOP
+                    }
+                }
             }
         }
+        
+        Ok(())
     }
 
     #[instrument(skip_all)]

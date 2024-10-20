@@ -12,7 +12,8 @@ pub enum SharedSecretDescriptor {
     SSDeviceLog(DeviceId),
 
     /// Ledgers traditionally track financial transactions
-    /// but can be applied metaphorically to any situation where maintaining a detailed history of exchanges is crucial.
+    /// but can be applied metaphorically to any situation 
+    /// where maintaining a detailed history of exchanges is crucial.
     /// In this case, the ledger logs password shards transferred between devices.
     SSLedger(VaultName),
 
