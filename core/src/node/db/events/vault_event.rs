@@ -1,10 +1,9 @@
 use std::fmt::Display;
 use anyhow::{anyhow, bail};
-use log::info;
 use tracing::error;
 use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::secret::MetaPasswordId;
-use crate::node::common::model::user::common::{UserData, UserDataMember, UserDataOutsider, UserId, UserMembership};
+use crate::node::common::model::user::common::{UserData, UserDataMember, UserMembership};
 use crate::node::common::model::vault::{VaultData, VaultName, VaultStatus};
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;

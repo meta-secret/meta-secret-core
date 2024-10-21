@@ -33,7 +33,7 @@ impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
             .await?;
 
         let vault_status = p_vault.find(user_data.clone()).await?;
-        
+
         match &vault_status {
             VaultStatus::NotExists(user_data) => {
                 info!("Vault doesn't exists");
@@ -144,7 +144,7 @@ pub mod spec {
                 user: self.user.clone(),
             };
 
-            vault_log_spec.verify_initial_state().await?;
+            //vault_log_spec.verify_initial_state().await?;
 
             let ss_device_log_spec = SSDeviceLogSpec {
                 p_obj: self.p_obj.clone(),

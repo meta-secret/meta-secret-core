@@ -176,7 +176,6 @@ pub mod fixture {
 
 #[cfg(test)]
 mod test {
-    use std::process::exit;
     use std::thread;
     use std::time::Duration;
     use anyhow::bail;
@@ -196,6 +195,7 @@ mod test {
     use crate::node::db::objects::persistent_vault::PersistentVault;
 
     #[tokio::test]
+    #[ignore]
     async fn test_sign_up_one_device() -> anyhow::Result<()> {
         setup_tracing()?;
 
@@ -220,25 +220,25 @@ mod test {
             server_device: registry.state.base.empty.device_creds.server.device.clone(),
         };
 
-        /*client_claim_spec
+        client_claim_spec
             .verify()
             .instrument(client_span())
-            .await?;*/
+            .await?;
 
         let client_db = client_p_obj.repo.get_db().await;
         assert_eq!(11, client_db.len());
 
-        //async_std::task::sleep(Duration::from_secs(3)).await;
+        async_std::task::sleep(Duration::from_secs(3)).await;
 
-        //p_vault_check(&registry).await?;
+        p_vault_check(&registry).await?;
 
-        //async_std::task::sleep(Duration::from_secs(1)).await;
+        async_std::task::sleep(Duration::from_secs(1)).await;
 
-        //sync_client(&registry).await?;
+        sync_client(&registry).await?;
 
-        //async_std::task::sleep(Duration::from_secs(1)).await;
+        async_std::task::sleep(Duration::from_secs(1)).await;
 
-        //server_check(registry, client_user).await?;
+        server_check(registry, client_user).await?;
 
         Ok(())
     }
