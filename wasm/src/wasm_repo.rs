@@ -1,6 +1,6 @@
-use anyhow::{anyhow, bail};
+use anyhow::{bail};
 use async_trait::async_trait;
-use tracing::{error, instrument, Instrument};
+use tracing::{error, instrument};
 
 use meta_secret_core::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor};
 use meta_secret_core::node::db::events::object_id::ObjectId;

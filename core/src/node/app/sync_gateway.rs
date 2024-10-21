@@ -214,12 +214,10 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         let p_gi_obj = ClientPersistentGlobalIndex {
             p_obj: self.p_obj.clone(),
         };
+        
         for gi_event in new_gi_events {
-            if let GenericKvLogEvent::GlobalIndex(gi_obj) = &gi_event {
-                p_gi_obj.save(gi_obj).await?;
-            } else {
-                return Err(anyhow!("Global index event. Invalid event: {:?}", gi_event.key().obj_desc()));
-            }
+            let gi_obj = gi_event.global_index()?;
+            p_gi_obj.save(&gi_obj).await?;
         }
         Ok(())
     }

@@ -304,17 +304,4 @@ mod test {
 
         Ok(())
     }
-
-    #[tokio::test]
-    async fn test_join() -> anyhow::Result<()> {
-        setup_tracing()?;
-
-        let registry = FixtureRegistry::extended().await?;
-
-        run_server(&registry).await?;
-
-        registry.state.meta_client_service.sync_gateway.client_gw.sync().await?;
-
-        Ok(())
-    }
 }

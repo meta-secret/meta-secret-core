@@ -1,3 +1,4 @@
+use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ToObjectDescriptor};
@@ -7,10 +8,9 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ObjectId, UnitId};
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
-use std::sync::Arc;
 use anyhow::anyhow;
+use std::sync::Arc;
 use tracing::{info, instrument};
-use crate::node::common::model::device::common::DeviceData;
 
 pub struct ServerPersistentGlobalIndex<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
@@ -121,7 +121,6 @@ impl<Repo: KvLogEventRepo> ClientPersistentGlobalIndex<Repo> {
 
 #[cfg(test)]
 pub mod spec {
-    use std::sync::Arc;
     use crate::node::common::model::device::common::DeviceData;
     use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
     use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
@@ -131,6 +130,7 @@ pub mod spec {
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::global_index::fixture::ServerPersistentGlobalIndexFixture;
     use crate::node::db::repo::generic_db::KvLogEventRepo;
+    use std::sync::Arc;
 
     pub struct GlobalIndexSpec<Repo: KvLogEventRepo> {
         pub repo: Arc<Repo>,
@@ -165,39 +165,43 @@ pub mod spec {
     impl From<ServerPersistentGlobalIndexFixture> for GlobalIndexSpec<InMemKvLogEventRepo> {
         fn from(gi_fixture: ServerPersistentGlobalIndexFixture) -> Self {
             Self {
-                repo: gi_fixture.gi.p_obj.repo.clone(),
-                server_device: gi_fixture.gi.server_device.clone(),
+                repo: gi_fixture.server_gi.p_obj.repo.clone(),
+                server_device: gi_fixture.server_gi.server_device.clone(),
             }
         }
     }
 }
 
 #[cfg(test)]
-mod fixture {
-    use std::sync::Arc;
-    use crate::node::common::model::device::device_creds::fixture::DeviceCredentialsFixture;
+pub mod fixture {
+    use crate::meta_tests::fixture_util::fixture::states::EmptyState;
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
-    use crate::node::db::objects::global_index::ServerPersistentGlobalIndex;
-    use crate::node::db::objects::persistent_object::PersistentObject;
+    use crate::node::db::objects::global_index::{ClientPersistentGlobalIndex, ServerPersistentGlobalIndex};
 
     pub struct ServerPersistentGlobalIndexFixture {
-        pub gi: ServerPersistentGlobalIndex<InMemKvLogEventRepo>
+        pub server_gi: ServerPersistentGlobalIndex<InMemKvLogEventRepo>,
+        pub client_gi: ClientPersistentGlobalIndex<InMemKvLogEventRepo>
     }
 
-    impl From<&DeviceCredentialsFixture> for ServerPersistentGlobalIndexFixture {
-        fn from(creds_fixture: &DeviceCredentialsFixture) -> Self {
+    impl From<&FixtureRegistry<EmptyState>> for ServerPersistentGlobalIndexFixture {
+        fn from(registry: &FixtureRegistry<EmptyState>) -> Self {
+            
             Self {
-                gi: ServerPersistentGlobalIndex {
-                    p_obj: Arc::new(PersistentObject::in_mem()),
-                    server_device: creds_fixture.server.device.clone(),
-                }
+                server_gi: ServerPersistentGlobalIndex {
+                    p_obj: registry.state.p_obj.server.clone(),
+                    server_device: registry.state.device_creds.server.device.clone(),
+                },
+                client_gi: ClientPersistentGlobalIndex {
+                    p_obj: registry.state.p_obj.client.clone(),
+                },
             }
         }
     }
     
     impl ServerPersistentGlobalIndexFixture {
         pub fn generate() -> Self {
-            ServerPersistentGlobalIndexFixture::from(&DeviceCredentialsFixture::generate())
+            ServerPersistentGlobalIndexFixture::from(&FixtureRegistry::empty())
         }
     }
 }
@@ -210,7 +214,7 @@ mod test {
     #[tokio::test]
     async fn test_init() -> anyhow::Result<()> {
         let gi_fixture = ServerPersistentGlobalIndexFixture::generate();
-        gi_fixture.gi.init().await?;
+        gi_fixture.server_gi.init().await?;
 
         let gi_spec = GlobalIndexSpec::from(gi_fixture);
         gi_spec.verify().await?;

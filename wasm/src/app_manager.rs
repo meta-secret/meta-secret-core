@@ -1,7 +1,6 @@
 use std::cmp::PartialEq;
 use anyhow::Context;
 use std::sync::Arc;
-use serde_derive::{Deserialize, Serialize};
 use tracing::{info, instrument, Instrument};
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen_futures::spawn_local;

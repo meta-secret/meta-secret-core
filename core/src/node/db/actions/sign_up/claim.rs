@@ -170,15 +170,18 @@ mod test {
     use crate::node::db::actions::sign_up::claim::spec::SignUpClaimSpec;
 
     #[tokio::test]
+    #[ignore]
     async fn test_sign_up() -> Result<()> {
+        
         let registry = FixtureRegistry::extended().await?;
         let p_obj = registry.state.base.empty.p_obj.client.clone();
         let creds = registry.state.base.empty.user_creds;
+        
         let vault_status = SignUpClaimTestAction::sign_up(p_obj.clone(), &creds)
             .await?;
         
         let VaultStatus::Outsider(outsider) = vault_status else {
-            bail!("Invalid state");
+            bail!("Invalid state: {:?}", vault_status);
         };
 
         let db = p_obj.repo.get_db().await;

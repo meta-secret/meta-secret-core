@@ -4,6 +4,7 @@ pub mod fixture {
     use crate::node::app::meta_app::meta_client_service::fixture::MetaClientServiceFixture;
     use crate::node::common::model::device::device_creds::fixture::DeviceCredentialsFixture;
     use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
+    use crate::node::db::objects::global_index::fixture::ServerPersistentGlobalIndexFixture;
     use crate::node::db::objects::persistent_object::fixture::PersistentObjectFixture;
     use crate::node::db::repo::persistent_credentials::fixture::PersistentCredentialsFixture;
     use crate::node::server::server_app::fixture::{ServerAppFixture, ServerDataTransferFixture};
@@ -24,9 +25,12 @@ pub mod fixture {
         pub async fn base() -> anyhow::Result<FixtureRegistry<BaseState>> {
             let empty = FixtureRegistry::empty();
             let p_creds = PersistentCredentialsFixture::init(&empty.state).await?;
+            let server_p_gi = ServerPersistentGlobalIndexFixture::from(&empty);
+            
             let base = BaseState {
                 empty: empty.state,
                 p_creds,
+                server_p_gi,
                 server_dt: ServerDataTransferFixture::generate()
             };
 
@@ -49,16 +53,10 @@ pub mod fixture {
         use crate::node::app::meta_app::meta_client_service::fixture::MetaClientServiceFixture;
         use crate::node::common::model::device::device_creds::fixture::DeviceCredentialsFixture;
         use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
+        use crate::node::db::objects::global_index::fixture::ServerPersistentGlobalIndexFixture;
         use crate::node::db::objects::persistent_object::fixture::PersistentObjectFixture;
         use crate::node::db::repo::persistent_credentials::fixture::PersistentCredentialsFixture;
         use crate::node::server::server_app::fixture::{ServerAppFixture, ServerDataTransferFixture};
-
-        #[derive(Eq, Hash, PartialEq)]
-        pub enum StateDescriptor {
-            Empty,
-            Base,
-            Extended,
-        }
 
         pub enum Fixture {
             Empty(EmptyState),
@@ -77,6 +75,8 @@ pub mod fixture {
             pub empty: EmptyState,
             
             pub p_creds: PersistentCredentialsFixture,
+            pub server_p_gi: ServerPersistentGlobalIndexFixture,
+            
             pub server_dt: ServerDataTransferFixture,
         }
 

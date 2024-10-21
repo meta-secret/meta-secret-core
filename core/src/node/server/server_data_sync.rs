@@ -256,19 +256,3 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         Ok(commit_log)
     }
 }
-
-#[cfg(test)]
-mod test {
-    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
-    use crate::meta_tests::setup_tracing;
-
-    #[tokio::test]
-    async fn test() -> anyhow::Result<()> {
-        setup_tracing()?;
-
-        let registry = FixtureRegistry::extended().await?;
-
-
-        Ok(())
-    }
-}

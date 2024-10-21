@@ -3,7 +3,6 @@ extern crate core;
 use meta_secret_core::recover_from_shares;
 use meta_secret_core::secret::data_block::common::SharedSecretConfig;
 use meta_secret_core::secret::shared_secret::{PlainText, SharedSecretEncryption, UserShareDto};
-use tracing::Level;
 use tracing_subscriber::layer::SubscriberExt;
 use wasm_bindgen::prelude::*;
 
@@ -15,7 +14,6 @@ pub mod wasm_repo;
 
 use tracing_subscriber::fmt::format::Pretty;
 use tracing_subscriber::fmt::time::UtcTime;
-use tracing_subscriber::fmt::writer::MakeWriterExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_web::{performance_layer, MakeConsoleWriter};
 

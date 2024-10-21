@@ -80,7 +80,7 @@ mod test {
 
         let expected = json!({
             "objType":"VaultIdx",
-            "objInstance": "{\"fqdn\":{\"objType\":\"Vault\",\"objInstance\":\"test_vault\"},\"id\":0}"
+            "objInstance": "Vault-test_vault-0"
         });
         assert_eq!(expected, vault_index_json);
 
