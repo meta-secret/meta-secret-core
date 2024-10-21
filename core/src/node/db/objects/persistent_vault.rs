@@ -1,17 +1,15 @@
 use std::sync::Arc;
 
-use anyhow::{anyhow, bail};
-use tracing_attributes::instrument;
-use crate::node::common::model::user::common::{UserData, UserDataMember, UserDataOutsider, UserMembership};
+use crate::node::common::model::user::common::{UserData, UserDataOutsider};
 use crate::node::common::model::vault::{VaultData, VaultName, VaultStatus};
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
-use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::object_id::{ArtifactId, ObjectId};
 use crate::node::db::events::vault::vault_log_event::VaultLogObject;
-use crate::node::db::events::vault_event::VaultMembershipObject;
 use crate::node::db::objects::global_index::ClientPersistentGlobalIndex;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
+use anyhow::{anyhow, bail};
+use tracing_attributes::instrument;
 
 pub struct PersistentVault<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
@@ -61,11 +59,22 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
         let maybe_vault_event = self.p_obj
             .find_tail_event(vault_desc)
             .await?;
-        match maybe_vault_event {
-            None => {
-                Ok(VaultStatus::NotExists(user))
+        
+        let gi_and_status = (vault_exists, maybe_vault_event);
+        match gi_and_status {
+            (false, Some(_)) => {
+                bail!("Invalid state. Vault not in global index")
             }
-            Some(vault_event) => {
+            //Vault is not in global index, hence vault not exists
+            (false, None) => {
+                Ok(VaultStatus::NotExists(user))
+            },
+            //There is no vault table on local machine, but it is present in global index,
+            //which means, current user is outsider
+            (true, None) => {
+                Ok(VaultStatus::Outsider(UserDataOutsider::non_member(user)))
+            },
+            (true, Some(vault_event)) => {
                 let vault_obj = vault_event.vault()?;
                 Ok(vault_obj.status(user.clone()))
             }
@@ -91,12 +100,12 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
 
 #[cfg(test)]
 pub mod spec {
-    use std::sync::Arc;
     use crate::node::common::model::user::common::UserData;
     use crate::node::db::events::vault::vault_log_event::VaultLogObject;
     use crate::node::db::objects::persistent_object::PersistentObject;
     use crate::node::db::objects::persistent_vault::PersistentVault;
     use crate::node::db::repo::generic_db::KvLogEventRepo;
+    use std::sync::Arc;
 
     pub struct VaultLogSpec<Repo: KvLogEventRepo> {
         pub p_obj: Arc<PersistentObject<Repo>>,

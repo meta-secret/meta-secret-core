@@ -5,11 +5,11 @@ use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::user::common::{UserData, UserDataMember, UserId};
 use crate::node::common::model::vault::{VaultName, VaultStatus};
 use crate::node::db::actions::sign_up::action::SignUpAction;
-use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ToObjectDescriptor};
+use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ToGenericEvent};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::object_id::ObjectId;
+use crate::node::db::events::object_id::{Next, ObjectId};
 use crate::node::db::events::vault::vault_log_event::VaultLogObject;
 use crate::node::db::events::vault_event::{VaultActionEvent, VaultMembershipObject, VaultObject};
 use crate::node::db::objects::global_index::ServerPersistentGlobalIndex;
@@ -98,22 +98,26 @@ impl<Repo: KvLogEventRepo> VaultAction<Repo> {
 
                 self.p_obj.repo.save(vault_event).await?;
 
-                let vault_status_desc = {
-                    VaultDescriptor::VaultMembership(update.user_data().user_id()).to_obj_desc()
+                let vault_status_free_id = {
+                    let vault_membership_desc = {
+                        VaultDescriptor::VaultMembership(update.user_data().user_id()).to_obj_desc()
+                    };
+                    
+                    self
+                        .p_obj
+                        .find_free_id_by_obj_desc(vault_membership_desc.clone())
+                        .await?
                 };
-
-                let vault_status_free_id = self
-                    .p_obj
-                    .find_free_id_by_obj_desc(vault_status_desc.clone())
-                    .await?;
 
                 let vault_status_events = match vault_status_free_id {
                     ObjectId::Unit(_) => {
                         VaultMembershipObject::init(update.user_data())
                     }
-                    ObjectId::Genesis(_) => {
-                        let event = VaultMembershipObject::genesis(update.user_data()).to_generic();
-                        vec![event]
+                    ObjectId::Genesis(artifact_id) => {
+                        let genesis = VaultMembershipObject::genesis(update.user_data()).to_generic();
+                        let member = VaultMembershipObject::member(update.user_data(), artifact_id.next())
+                            .to_generic();
+                        vec![genesis, member]
                     }
                     ObjectId::Artifact(artifact_id) => {
                         let event = VaultMembershipObject::membership(update.clone(), artifact_id)

@@ -4,7 +4,6 @@ use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::user::common::UserData;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ToGenericEvent};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::object_id::{UnitId, VaultGenesisEvent, VaultUnitEvent};
 use crate::node::db::events::vault::vault_log_event::VaultLogObject;
 use crate::node::db::events::vault_event::{VaultMembershipObject, VaultObject};
 

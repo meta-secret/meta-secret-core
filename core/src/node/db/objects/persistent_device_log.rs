@@ -48,8 +48,10 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
         Ok(())
     }
 
-    #[instrument(skip_all)]
+    #[instrument(skip(self))]
     pub async fn save_create_vault_request(&self, user: &UserData) -> anyhow::Result<()> {
+        info!("Save event: CreateVault request");
+        
         self.init(user).await?;
 
         let maybe_generic_event = self

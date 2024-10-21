@@ -1,5 +1,7 @@
 use std::fmt::Display;
 use anyhow::{anyhow, bail};
+use log::info;
+use tracing::error;
 use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::secret::MetaPasswordId;
 use crate::node::common::model::user::common::{UserData, UserDataMember, UserDataOutsider, UserId, UserMembership};
@@ -66,11 +68,13 @@ impl VaultObject {
     pub fn status(&self, user: UserData) -> VaultStatus {
         match self {
             VaultObject::Unit(_) => {
+                error!("Invalid state (only unit event is present)");
                 VaultStatus::NotExists(user.clone())
             },
             VaultObject::Genesis(_) => {
                 // We believe that if there are only unit and genesis events in the database, then 
                 // the table is broken, so vault not exists
+                error!("Invalid state (only genesis event is present)");
                 VaultStatus::NotExists(user.clone())
             },
             VaultObject::Vault(event) => {

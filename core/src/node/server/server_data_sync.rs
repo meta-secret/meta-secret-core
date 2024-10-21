@@ -86,10 +86,6 @@ impl<Repo: KvLogEventRepo> DataSyncApi for ServerSyncGateway<Repo> {
             }
 
             SyncRequest::Vault(vault_request) => {
-                if vault_request.sender.device.device_name.eq(&DeviceName::client()) { 
-                    info!("Client vault request!!!")
-                }
-                
                 let p_vault = PersistentVault {
                     p_obj: self.p_obj.clone(),
                 };
@@ -103,7 +99,7 @@ impl<Repo: KvLogEventRepo> DataSyncApi for ServerSyncGateway<Repo> {
                         return Ok(commit_log);
                     }
                     VaultStatus::Outsider(outsider) => {
-                        if vault_request.sender.device.device_name.eq(&DeviceName::client()) {
+                        if vault_request.sender.device.device_name == DeviceName::client() {
                             info!("VaultStatus::Outsider: {:?}", outsider)
                         }
                         return Ok(commit_log);

@@ -12,6 +12,7 @@ use crate::node::{
     },
 };
 use anyhow::Ok;
+use log::info;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 
@@ -22,29 +23,27 @@ pub struct SignUpClaim<Repo: KvLogEventRepo> {
 impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
     pub async fn sign_up(&self, user_data: UserData) -> anyhow::Result<VaultStatus> {
         let creds_repo = PersistentCredentials { p_obj: self.p_obj.clone() };
+        let p_device_log = PersistentDeviceLog { p_obj: self.p_obj.clone() };
+        let p_vault = PersistentVault { p_obj: self.p_obj.clone(), };
 
         let device_name = user_data.device.device_name.clone();
         let vault_name = user_data.vault_name.clone();
         creds_repo
             .get_or_generate_user_creds(device_name, vault_name)
             .await?;
-        
-        let p_vault = PersistentVault {
-            p_obj: self.p_obj.clone(),
-        };
 
         let vault_status = p_vault.find(user_data.clone()).await?;
-
-        let p_device_log = PersistentDeviceLog {
-            p_obj: self.p_obj.clone(),
-        };
+        
         match &vault_status {
             VaultStatus::NotExists(user_data) => {
+                info!("Vault doesn't exists");
                 p_device_log.save_create_vault_request(user_data).await?;
             }
             VaultStatus::Outsider(outsider) => {
                 if outsider.is_non_member() {
                     p_device_log.save_join_request(&outsider.user_data).await?;
+                } else {
+                    info!("Device is pending or declined")
                 }
             }
             VaultStatus::Member { .. } => {
