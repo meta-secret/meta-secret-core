@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 
 pub struct ServiceState<T> {
-    pub state: T,
+    pub app_state: T,
 }
 
 #[async_trait(? Send)]

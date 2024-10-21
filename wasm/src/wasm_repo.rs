@@ -1,5 +1,6 @@
+use anyhow::{bail};
 use async_trait::async_trait;
-use tracing::{instrument, Instrument};
+use tracing::{error, instrument};
 
 use meta_secret_core::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor};
 use meta_secret_core::node::db::events::object_id::ObjectId;
@@ -33,7 +34,7 @@ impl WasmRepo {
     async fn build_rexie(db_name: &str, store_name: &str) -> Rexie {
         Rexie::builder(db_name)
             .version(1)
-            .add_object_store(ObjectStore::new(store_name).key_path("id"))
+            .add_object_store(ObjectStore::new(store_name))
             .build()
             .await
             .expect("Failed to create REXie")
@@ -85,6 +86,11 @@ impl WasmRepo {
 impl SaveCommand for WasmRepo {
     #[instrument(skip_all)]
     async fn save(&self, event: GenericKvLogEvent) -> anyhow::Result<ObjectId> {
+        let maybe_key = self.get_key(event.obj_id()).await?;
+        if let Some(_) = maybe_key { 
+            bail!("Wrong behaviour. Event already exists: {:?}", event);
+        };
+        
         let store_name = self.store_name.as_str();
 
         let tx = self
@@ -97,8 +103,13 @@ impl SaveCommand for WasmRepo {
         let js_value = serde_wasm_bindgen::to_value(&event).unwrap();
         let id_str = event.obj_id().id_str();
         let obj_id_js = serde_wasm_bindgen::to_value(id_str.as_str()).unwrap();
+
+        let op_result = store.add(&js_value, Some(&obj_id_js)).await;
+        if let Err(_) = &op_result {
+            error!("Failed to save event: {:?}", &event);
+        }
         
-        store.add(&js_value, Some(&obj_id_js)).await.unwrap();
+        op_result.unwrap();
 
         // Waits for the transaction to complete
         tx.done().await.unwrap();

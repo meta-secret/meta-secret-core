@@ -1,13 +1,10 @@
-use std::fmt::Display;
-use wasm_bindgen::prelude::wasm_bindgen;
-use crate::node::common::model::device::DeviceData;
 use crate::node::common::model::secret::MetaPasswordId;
-use crate::node::common::model::user::UserCredentials;
 use crate::node::common::model::vault::VaultStatus;
+use crate::node::common::model::device::common::DeviceData;
 
 pub mod device;
-pub mod user;
 pub mod vault;
+pub mod user;
 
 pub mod crypto {
     use crate::CoreResult;
@@ -21,7 +18,7 @@ pub mod crypto {
     use crate::crypto::encoding::base64::Base64Text;
     use crate::crypto::key_pair::{CryptoBoxPublicKey, CryptoBoxSecretKey};
     use crate::errors::CoreError;
-    use crate::node::common::model::device::DeviceLink;
+    use crate::node::common::model::device::device_link::DeviceLink;
 
     #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -215,9 +212,8 @@ pub mod secret {
 
     use crate::crypto::utils;
     use crate::node::common::model::crypto::EncryptedMessage;
+    use crate::node::common::model::device::device_link::PeerToPeerDeviceLink;
     use crate::node::common::model::vault::VaultName;
-
-    use super::device::PeerToPeerDeviceLink;
 
     #[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -320,42 +316,11 @@ pub mod secret {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum RegistrationStatus {
-    Registered,
-    AlreadyExists,
-}
-
-impl Display for RegistrationStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let str = match self {
-            Self::Registered => String::from("Registered"),
-            Self::AlreadyExists => String::from("AlreadyExists"),
-        };
-        write!(f, "{}", str)
-    }
-}
-
-impl Default for RegistrationStatus {
-    fn default() -> RegistrationStatus {
-        Self::Registered
-    }
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ApplicationState {
-    Empty,
-    Local{
-        device: DeviceData
-    },
-    User {
-        user: UserCredentials
-    },
-    Vault {
-        vault: VaultStatus
-    }
+    Local { device: DeviceData },
+    Vault { vault: VaultStatus },
 }
 
 #[cfg(test)]

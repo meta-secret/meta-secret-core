@@ -1,7 +1,7 @@
 use serde_derive::{Deserialize, Serialize};
 
 use crate::crypto::utils::NextId;
-use crate::node::common::model::user::UserData;
+use crate::node::common::model::user::common::UserData;
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ObjectDescriptorId, ToObjectDescriptor};
@@ -122,7 +122,7 @@ impl UnitId {
     }
 
     pub fn vault_unit(vault_name: VaultName) -> UnitId {
-        let vault_desc = VaultDescriptor::Vault(vault_name).to_obj_desc();
+        let vault_desc = VaultDescriptor::Vault(vault_name.clone()).to_obj_desc();
         UnitId::unit(&vault_desc)
     }
 }

@@ -1,6 +1,7 @@
 <script lang="ts">
 import { defineComponent } from 'vue';
 import { AppState } from '@/stores/app-state';
+import { WasmWebAppStatus } from '../../../../pkg';
 
 export default defineComponent({
   async setup() {
@@ -10,32 +11,40 @@ export default defineComponent({
     return {
       appState: appState,
       vaultName: '',
-      deviceName: '',
     };
   },
 
   methods: {
     async registration() {
       console.log('Generate vault');
-      await this.appState.appManager.sign_up(this.vaultName, this.deviceName);
+      await this.appState.appManager.sign_up(this.vaultName);
     },
 
-    isEmptyEnv() {
+    isNonMember() {
+      const appState = this.appState.appState;
+      return appState.status() === WasmWebAppStatus.NonMember;
+    },
+
+    isLocalEnv() {
       const appState = this.appState.appState;
       if (!appState) {
         console.log('isEmptyEnv: appState is not initialized');
         throw new Error('Invalid environment');
       }
 
-      console.log('isEmptyEnv: ', appState.is_empty_env());
-      return appState.is_empty_env();
+      console.log('status: ', appState.status());
+      return appState.status() === WasmWebAppStatus.LocalEnv;
+    },
+
+    isNewUser() {
+      return this.appState.appState.is_new_user();
     },
   },
 });
 </script>
 
 <template>
-  <div v-if="this.isEmptyEnv()">
+  <div v-if="this.isLocalEnv()">
     <div class="container flex items-center max-w-md py-2">
       <label>User:</label>
     </div>
@@ -43,24 +52,14 @@ export default defineComponent({
     <div class="container flex items-center justify-center max-w-md border-b border-t border-l border-r py-2 px-2">
       <label>@</label>
       <input :class="$style.nicknameUserInput" type="text" placeholder="vault name" v-model="vaultName" />
-      <input :class="$style.nicknameUserInput" type="text" placeholder="device name" v-model="deviceName" />
 
-      <button
-          :class="$style.registrationButton"
-          @click="registration"
-          v-if="!this.appState.appState.is_new_user()"
-      >
-        Register
-      </button>
+      <button v-if="this.isNewUser()" :class="$style.registrationButton" @click="registration">Register</button>
     </div>
   </div>
 
-  <!--<div v-if="this.appState.internalState.joinComponent">-->
-  <div>
+  <div v-if="this.isNonMember()">
     <div class="container flex items-center max-w-md py-2">
-      <label :class="$style.joinLabel">
-        Vault already exists, would you like to join?
-      </label>
+      <label :class="$style.joinLabel">Vault already exists, would you like to join?</label>
       <button :class="$style.joinButton" @click="registration">Join</button>
     </div>
   </div>

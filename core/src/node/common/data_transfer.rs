@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use flume::{Receiver, RecvError, Sender};
 use tracing::{instrument, Instrument};
 
@@ -45,25 +46,27 @@ impl<Request, Response> MpscDataTransfer<Request, Response> {
     }
 }
 
-impl<Request, Response> MpscDataTransfer<Request, Response> {
-    #[instrument(skip_all)]
+impl<Request: Debug, Response: Debug> MpscDataTransfer<Request, Response> {
+    #[instrument(skip(self))]
     pub async fn send_to_service(&self, message: Request) {
         let _ = self.service_channel.sender.send_async(message).in_current_span().await;
     }
 
-    #[instrument(skip_all)]
+    #[instrument(skip(self))]
     pub async fn service_receive(&self) -> Result<Request, RecvError> {
-        self.service_channel.receiver.recv_async().in_current_span().await
+        let request = self.service_channel.receiver.recv_async().in_current_span().await;
+        request
     }
 
-    #[instrument(skip_all)]
+    #[instrument(skip(self))]
     pub async fn send_to_service_and_get(&self, message: Request) -> Result<Response, RecvError> {
         let _ = self.service_channel.sender.send_async(message).in_current_span().await;
         //receive a message from the service via client channel
-        self.client_channel.receiver.recv_async().in_current_span().await
+        let result = self.client_channel.receiver.recv_async().in_current_span().await;
+        result
     }
 
-    #[instrument(skip_all)]
+    #[instrument(skip(self))]
     pub async fn send_to_client(&self, events: Response) {
         let _ = self.client_channel.sender.send_async(events).in_current_span().await;
     }

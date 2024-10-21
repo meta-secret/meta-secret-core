@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
-
-use crate::node::common::model::device::DeviceData;
-use crate::node::common::model::user::UserData;
+use crate::node::common::model::device::common::DeviceData;
+use crate::node::common::model::user::common::UserData;
 use crate::node::db::events::object_id::ObjectId;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

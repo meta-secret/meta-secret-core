@@ -4,7 +4,6 @@ use crate::node::db::events::generic_log_event::{GenericKvLogEvent, KeyExtractor
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, ObjectId, UnitId};
 use anyhow::{anyhow, bail, Ok};
-
 use super::object_id::{VaultGenesisEvent, VaultUnitEvent};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -19,7 +18,7 @@ impl SharedSecretObject {
         if let SharedSecretObject::LocalShare(event) = self {
             Ok(event.value.clone())
         } else {
-            bail!(LogEventCastError::InvalidEventType)
+            bail!(LogEventCastError::WrongSharedSecret(self.clone()))
         }
     }
 }
@@ -40,7 +39,7 @@ impl TryFrom<GenericKvLogEvent> for SharedSecretObject {
         if let GenericKvLogEvent::SharedSecret(ss_obj) = event {
             Ok(ss_obj)
         } else {
-            bail!(LogEventCastError::InvalidEventType)
+            bail!(LogEventCastError::InvalidSharedSecret(event))
         }
     }
 }
@@ -57,21 +56,21 @@ impl SSDeviceLogObject {
     pub fn get_unit(&self) -> anyhow::Result<VaultUnitEvent> {
         match self {
             SSDeviceLogObject::Unit(event) => Ok(event.clone()),
-            _ => bail!(LogEventCastError::InvalidEventType),
+            _ => bail!(LogEventCastError::WrongSSDeviceLog(self.clone())),
         }
     }
 
     pub fn get_genesis(&self) -> anyhow::Result<VaultGenesisEvent> {
         match self {
             SSDeviceLogObject::Genesis(event) => Ok(event.clone()),
-            _ => bail!(LogEventCastError::InvalidEventType),
+            _ => bail!(LogEventCastError::WrongSSDeviceLog(self.clone())),
         }
     }
 
     pub fn get_distribution_request(&self) -> anyhow::Result<SSDistributionClaim> {
         match self {
             SSDeviceLogObject::SSDeviceLog(event) => Ok(event.value.clone()),
-            _ => bail!(LogEventCastError::InvalidEventType),
+            _ => bail!(LogEventCastError::WrongSSDeviceLog(self.clone())),
         }
     }
 }
@@ -141,10 +140,10 @@ impl TryFrom<GenericKvLogEvent> for SSLedgerObject {
     type Error = anyhow::Error;
 
     fn try_from(event: GenericKvLogEvent) -> Result<Self, Self::Error> {
-        if let GenericKvLogEvent::SSLedger(ss_obj) = event {
-            Ok(ss_obj)
+        if let GenericKvLogEvent::SSLedger(ss_obj) = &event {
+            Ok(ss_obj.clone())
         } else {
-            bail!(LogEventCastError::InvalidEventType)
+            bail!(LogEventCastError::InvalidSSLedger(event))
         }
     }
 }
@@ -154,7 +153,7 @@ impl SSLedgerObject {
         if let SSLedgerObject::Ledger(ledger_event) = self {
             Ok(ledger_event.value.clone())
         } else {
-            bail!(LogEventCastError::InvalidEventType)
+            bail!(LogEventCastError::WrongSSLedger(self.clone()))
         }
     }
 
@@ -162,7 +161,7 @@ impl SSLedgerObject {
         if let SSLedgerObject::Ledger(ledger_event) = self {
             Ok(ledger_event.key.obj_id.clone())
         } else {
-            bail!(LogEventCastError::InvalidEventType)
+            bail!(LogEventCastError::WrongSSLedger(self.clone()))
         }
     }
 }

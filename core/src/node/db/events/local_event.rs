@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Error};
-
-use crate::node::common::model::device::{DeviceCredentials, DeviceData};
-use crate::node::common::model::user::UserCredentials;
+use crate::node::common::model::device::common::DeviceData;
+use crate::node::common::model::device::device_creds::DeviceCredentials;
+use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::db_tail::DbTail;
 use crate::node::db::events::generic_log_event::{
@@ -20,7 +20,10 @@ pub enum CredentialsObject {
 
 impl ObjIdExtractor for CredentialsObject {
     fn obj_id(&self) -> ObjectId {
-        CredentialsObject::unit_id()
+        match self {
+            CredentialsObject::Device(event) => ObjectId::from(event.key.obj_id.clone()),
+            CredentialsObject::DefaultUser(event) => ObjectId::from(event.key.obj_id.clone()),
+        }
     }
 }
 

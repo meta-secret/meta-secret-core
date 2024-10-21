@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
-use tracing::{debug, instrument, Instrument};
+use tracing::{instrument, Instrument};
 
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::db_tail::DbTail;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor};
 use crate::node::db::events::object_id::{Next, ObjectId};
+use crate::node::db::in_mem_db::InMemKvLogEventRepo;
 use crate::node::db::objects::persistent_object_navigator::PersistentObjectNavigator;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 
@@ -19,8 +20,6 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
         &self,
         obj_desc: ObjectDescriptor,
     ) -> anyhow::Result<Vec<GenericKvLogEvent>> {
-        debug!("get_object_events_from_beginning");
-
         let unit_id = ObjectId::unit(obj_desc);
         let commit_log = self.find_object_events(unit_id).await?;
 
@@ -36,10 +35,6 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
             let maybe_curr_db_event = self.repo.find_one(curr_tail_id.clone()).await?;
 
             if let Some(curr_db_event) = maybe_curr_db_event {
-                if let GenericKvLogEvent::SharedSecret(_) = &curr_db_event {
-                    self.repo.delete(curr_tail_id.clone()).in_current_span().await;
-                }
-
                 curr_tail_id = curr_tail_id.next();
                 commit_log.push(curr_db_event);
             } else {
@@ -152,5 +147,35 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
 impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
     pub fn new(repo: Arc<Repo>) -> Self {
         PersistentObject { repo }
+    }
+}
+
+impl PersistentObject<InMemKvLogEventRepo> {
+    pub fn in_mem() -> PersistentObject<InMemKvLogEventRepo> {
+        let repo = Arc::new(InMemKvLogEventRepo::default());
+        PersistentObject::new(repo)
+    }
+}
+
+#[cfg(test)]
+pub mod fixture {
+    use std::sync::Arc;
+    use crate::node::db::in_mem_db::InMemKvLogEventRepo;
+    use crate::node::db::objects::persistent_object::PersistentObject;
+
+    pub struct PersistentObjectFixture {
+        pub client: Arc<PersistentObject<InMemKvLogEventRepo>>,
+        pub vd: Arc<PersistentObject<InMemKvLogEventRepo>>,
+        pub server: Arc<PersistentObject<InMemKvLogEventRepo>>,
+    }
+    
+    impl PersistentObjectFixture {
+        pub fn generate() ->  Self {
+            Self {
+                client: Arc::new(PersistentObject::in_mem()),
+                vd: Arc::new(PersistentObject::in_mem()),
+                server: Arc::new(PersistentObject::in_mem()),
+            }
+        }
     }
 }

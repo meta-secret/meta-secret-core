@@ -2,11 +2,10 @@ use std::sync::Arc;
 
 use crate::crypto::keys::KeyManager;
 use crate::node::common::model::crypto::EncryptedMessage;
-use crate::node::common::model::device::{DeviceLink, DeviceLinkBuilder};
 use crate::node::common::model::secret::{
     MetaPasswordId, SSDistributionClaimId, SSDistributionId, SecretDistributionData, SecretDistributionType,
 };
-use crate::node::common::model::user::UserCredentials;
+use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::VaultData;
 use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ToObjectDescriptor};
 use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
@@ -17,6 +16,7 @@ use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::CoreResult;
 use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
+use crate::node::common::model::device::device_link::{DeviceLink, DeviceLinkBuilder};
 
 pub mod data_block;
 pub mod shared_secret;
@@ -63,8 +63,8 @@ impl MetaEncryptor {
             let encrypted_share = key_manager.transport.encrypt_string(share_str, receiver_pk)?;
 
             let device_link = DeviceLinkBuilder::builder()
-                .sender(self.user.device_creds.device.id.clone())
-                .receiver(receiver.clone().user().device.id.clone())
+                .sender(self.user.device_creds.device.device_id.clone())
+                .receiver(receiver.clone().user().device.device_id.clone())
                 .build()?;
 
             let cipher_share = EncryptedMessage::CipherShare {

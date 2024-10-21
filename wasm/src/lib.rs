@@ -4,7 +4,6 @@ use meta_secret_core::recover_from_shares;
 use meta_secret_core::secret::data_block::common::SharedSecretConfig;
 use meta_secret_core::secret::shared_secret::{PlainText, SharedSecretEncryption, UserShareDto};
 use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
 use wasm_bindgen::prelude::*;
 
 pub mod app_manager;
@@ -15,6 +14,7 @@ pub mod wasm_repo;
 
 use tracing_subscriber::fmt::format::Pretty;
 use tracing_subscriber::fmt::time::UtcTime;
+use tracing_subscriber::util::SubscriberInitExt;
 use tracing_web::{performance_layer, MakeConsoleWriter};
 
 /// Json utilities https://github.com/rustwasm/wasm-bindgen/blob/main/crates/js-sys/tests/wasm/JSON.rs
@@ -25,7 +25,7 @@ extern "C" {
 
     #[wasm_bindgen(js_namespace = console)]
     pub fn debug(s: &str);
-    
+
     #[wasm_bindgen(js_namespace = console)]
     pub fn info(s: &str);
 
@@ -41,9 +41,9 @@ pub fn configure() {
     utils::set_panic_hook();
 
     let fmt_layer = tracing_subscriber::fmt::layer()
+        .json()
         .without_time()
         .with_ansi(false)
-        //.with_max_level(Level::INFO)
         .pretty() // Only partially supported across browsers
         .with_timer(UtcTime::rfc_3339()) // std::time is not available in browsers
         .with_writer(MakeConsoleWriter); // write events to the console

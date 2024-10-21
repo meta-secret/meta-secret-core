@@ -1,19 +1,17 @@
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use tracing::info;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
 
 use crate::app_manager::{ApplicationManager, WasmApplicationState};
-use crate::wasm_repo::WasmRepo;
 use crate::configure;
-use meta_secret_core::node::app::app_state_update_manager::{
-    ApplicationManagerConfigurator,
-};
+use crate::wasm_repo::WasmRepo;
+use meta_secret_core::node::app::app_state_update_manager::ApplicationManagerConfigurator;
 use meta_secret_core::node::app::meta_app::messaging::{
     ClusterDistributionRequest, GenericAppStateRequest,
 };
+use meta_secret_core::node::common::model::vault::VaultName;
 
 #[wasm_bindgen]
 pub struct WasmApplicationManager {
@@ -48,7 +46,7 @@ impl WasmApplicationManager {
         let cfg = ApplicationManagerConfigurator {
             client_repo: Arc::new(WasmRepo::default().await),
             server_repo: Arc::new(WasmRepo::server().await),
-            device_repo: Arc::new(WasmRepo::virtual_device().await)
+            device_repo: Arc::new(WasmRepo::virtual_device().await),
         };
 
         let app_manager = ApplicationManager::init(cfg)
@@ -68,7 +66,7 @@ impl WasmApplicationManager {
         let cfg = ApplicationManagerConfigurator {
             client_repo: Arc::new(WasmRepo::default().await),
             server_repo: Arc::new(WasmRepo::server().await),
-            device_repo: Arc::new(WasmRepo::virtual_device().await)
+            device_repo: Arc::new(WasmRepo::virtual_device().await),
         };
 
         let app_manager = ApplicationManager::init(cfg)
@@ -79,9 +77,10 @@ impl WasmApplicationManager {
             app_manager: GenericApplicationManager::Wasm { app_manager },
         }
     }
-    
+
     pub async fn get_state(&self) -> WasmApplicationState {
-        let app_state = self.app_manager
+        let app_state = self
+            .app_manager
             .get_app_manager()
             .meta_client_service
             .state_provider
@@ -90,23 +89,17 @@ impl WasmApplicationManager {
         WasmApplicationState::from(app_state)
     }
 
-    pub async fn sign_up(&self) {
+    pub async fn sign_up(&self, vault_name: String) {
         info!("Sign Up");
 
-        let sign_up = GenericAppStateRequest::SignUp;
+        let sign_up = GenericAppStateRequest::SignUp(VaultName::from(vault_name.as_str()));
 
         match &self.app_manager {
             GenericApplicationManager::Wasm { app_manager } => {
-                app_manager
-                    .meta_client_service
-                    .send_request(sign_up)
-                    .await;
+                app_manager.meta_client_service.send_request(sign_up).await;
             }
             GenericApplicationManager::InMem { app_manager } => {
-                app_manager
-                    .meta_client_service
-                    .send_request(sign_up)
-                    .await;
+                app_manager.meta_client_service.send_request(sign_up).await;
             }
         };
     }
@@ -119,16 +112,10 @@ impl WasmApplicationManager {
 
         match &self.app_manager {
             GenericApplicationManager::Wasm { app_manager } => {
-                app_manager
-                    .meta_client_service
-                    .send_request(request)
-                    .await;
+                app_manager.meta_client_service.send_request(request).await;
             }
             GenericApplicationManager::InMem { app_manager } => {
-                app_manager
-                    .meta_client_service
-                    .send_request(request)
-                    .await;
+                app_manager.meta_client_service.send_request(request).await;
             }
         };
     }
@@ -140,16 +127,10 @@ impl WasmApplicationManager {
 
         match &self.app_manager {
             GenericApplicationManager::Wasm { app_manager } => {
-                app_manager
-                    .meta_client_service
-                    .send_request(request)
-                    .await;
+                app_manager.meta_client_service.send_request(request).await;
             }
             GenericApplicationManager::InMem { app_manager } => {
-                app_manager
-                    .meta_client_service
-                    .send_request(request)
-                    .await;
+                app_manager.meta_client_service.send_request(request).await;
             }
         }
     }

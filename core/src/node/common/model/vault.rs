@@ -1,12 +1,10 @@
+use crate::node::common::model::MetaPasswordId;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
-use wasm_bindgen::prelude::wasm_bindgen;
-use crate::node::common::model::device::DeviceId;
-use crate::node::common::model::user::{UserData, UserDataMember, UserDataOutsider, UserDataOutsiderStatus, UserMembership};
-use crate::node::common::model::MetaPasswordId;
-
+use crate::node::common::model::device::common::DeviceId;
+use crate::node::common::model::device::device_link::DeviceLink;
+use crate::node::common::model::user::common::{UserData, UserDataMember, UserDataOutsider, UserMembership};
 use super::crypto::CommunicationChannel;
-use super::device::DeviceLink;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -30,6 +28,13 @@ impl Display for VaultName {
     }
 }
 
+impl VaultName {
+    pub fn test() -> VaultName {
+        VaultName::from("q")
+    }
+}
+
+/////////////////// VaultData ///////////////////
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VaultData {
@@ -68,27 +73,27 @@ impl VaultData {
         self.users.insert(membership.device_id(), membership);
     }
 
+    pub fn is_not_member(&self, device_id: &DeviceId) -> bool {
+        !self.is_member(device_id)
+    }
+
     pub fn is_member(&self, device_id: &DeviceId) -> bool {
         let maybe_user = self.users.get(device_id);
         if let Some(UserMembership::Member(UserDataMember(user_data))) = maybe_user {
-            user_data.device.id == device_id.clone()
+            user_data.device.device_id.eq(&device_id)
         } else {
             false
         }
     }
 
-    pub fn status(&self, for_user: UserData) -> VaultStatus {
-        let maybe_vault_user = self.users.get(&for_user.device.id);
+    pub fn membership(&self, for_user: UserData) -> UserMembership {
+        let maybe_vault_user = self.users
+            .get(&for_user.device.device_id);
 
-        match maybe_vault_user {
-            Some(vault_user) => match vault_user {
-                UserMembership::Outsider(outsider) => VaultStatus::Outsider(outsider.clone()),
-                UserMembership::Member(member) => VaultStatus::Member {
-                    member: member.clone(),
-                    vault: self.clone(),
-                },
-            },
-            None => VaultStatus::Outsider(UserDataOutsider::unknown(for_user)),
+        if let Some(membership) = maybe_vault_user {
+            membership.clone()
+        } else {
+            UserMembership::Outsider(UserDataOutsider::non_member(for_user))
         }
     }
 
@@ -142,35 +147,26 @@ impl VaultData {
     }
 }
 
+/////////////////// VaultStatus ///////////////////
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum VaultStatus {
+    NotExists(UserData),
     Outsider(UserDataOutsider),
     Member { member: UserDataMember, vault: VaultData },
 }
 
 impl VaultStatus {
     pub fn unknown(user: UserData) -> Self {
-        VaultStatus::Outsider(UserDataOutsider::unknown(user))
+        VaultStatus::Outsider(UserDataOutsider::non_member(user))
     }
-    
-    pub fn is_new_user(&self) -> bool {
-        match self {
-            VaultStatus::Outsider(UserDataOutsider {status, ..}) => {
-                match status {
-                    UserDataOutsiderStatus::Unknown => true,
-                    UserDataOutsiderStatus::Pending => false,
-                    UserDataOutsiderStatus::Declined => false
-                }
-            }
-            VaultStatus::Member { .. } => false
-        }
-    }
-    
+
     pub fn user(&self) -> UserData {
         match self {
-            VaultStatus::Outsider(UserDataOutsider {user_data, ..}) => user_data.clone(),
-            VaultStatus::Member {member, ..} => member.user().clone()
+            VaultStatus::NotExists(user) => user.clone(),
+            VaultStatus::Outsider(UserDataOutsider { user_data, .. }) => user_data.clone(),
+            VaultStatus::Member { member, .. } => member.user().clone(),
         }
     }
 }
+

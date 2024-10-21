@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use crate::node::common::model::device::DeviceId;
+
 use anyhow::{bail, Ok};
 use tracing::debug;
-
+use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::secret::{MetaPasswordId, SecretDistributionData};
-use crate::node::common::model::user::UserData;
+use crate::node::common::model::user::common::UserData;
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
@@ -58,13 +58,13 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
     }
 
     pub async fn init(&self, user: UserData) -> anyhow::Result<()> {
-        self.init_device_log(user.clone()).await?;
+        self.init_ss_device_log(user.clone()).await?;
         self.init_ss_ledger(user).await?;
 
         Ok(())
     }
 
-    pub async fn init_device_log(&self, user: UserData) -> anyhow::Result<()> {
+    async fn init_ss_device_log(&self, user: UserData) -> anyhow::Result<()> {
         let user_id = user.user_id();
         let obj_desc = SharedSecretDescriptor::SSDeviceLog(user_id.device_id).to_obj_desc();
         let unit_id = UnitId::unit(&obj_desc);
@@ -122,5 +122,59 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
         self.p_obj.repo.save(genesis_event.to_generic()).await?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+pub mod spec {
+    use std::sync::Arc;
+    use crate::node::common::model::user::common::UserData;
+    use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
+    use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
+    use crate::node::db::events::object_id::{ObjectId};
+    use crate::node::db::objects::persistent_object::PersistentObject;
+    use crate::node::db::repo::generic_db::KvLogEventRepo;
+    use anyhow::{bail, Result};
+    use log::info;
+    use tracing_attributes::instrument;
+
+    pub struct SSDeviceLogSpec<Repo: KvLogEventRepo> {
+        pub p_obj: Arc<PersistentObject<Repo>>,
+        pub client_user: UserData,
+    }
+
+    impl<Repo: KvLogEventRepo> SSDeviceLogSpec<Repo> {
+
+        #[instrument(skip(self))]
+        pub async fn check_initialization(&self) -> Result<()> {
+            info!("SSDeviceLogSpec check_initialization");
+
+            let device_id = self.client_user.device.device_id.clone();
+            let ss_obj_desc = SharedSecretDescriptor::SSDeviceLog(device_id)
+                .to_obj_desc();
+
+            let ss_unit_id = ObjectId::unit(ss_obj_desc.clone());
+            let ss_genesis_id = ObjectId::genesis(ss_obj_desc);
+
+            let maybe_unit_event = self.p_obj.repo.find_one(ss_unit_id).await?;
+
+            if let Some(unit_event) = maybe_unit_event {
+                let vault_name = unit_event.ss_device_log()?.get_unit()?.vault_name();
+                assert_eq!(vault_name, self.client_user.vault_name());
+            } else {
+                bail!("SSDevice, unit event not found");
+            }
+
+            let maybe_genesis_event = self.p_obj.repo.find_one(ss_genesis_id).await?;
+
+            if let Some(genesis_event) = maybe_genesis_event {
+                let user = genesis_event.ss_device_log()?.get_genesis()?.user();
+                assert_eq!(user, self.client_user);
+            } else {
+                bail!("SSDevice, genesis event not found");
+            }
+
+            Ok(())
+        }
     }
 }

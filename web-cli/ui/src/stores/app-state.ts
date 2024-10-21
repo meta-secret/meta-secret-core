@@ -6,7 +6,7 @@ export const AppState = defineStore('app_state', {
     console.log('App state. Init');
 
     return {
-      appManager: undefined as WasmApplicationManager | undefined,
+      appManager: undefined as WasmApplicationManager,
       appState: undefined as WasmApplicationState,
     };
   },

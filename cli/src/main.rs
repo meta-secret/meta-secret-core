@@ -45,6 +45,7 @@ struct MetaSecretConfig {
 
 ///https://kerkour.com/rust-cross-compilation
 fn main() -> Result<()> {
+    
     let args: CmdLine = CmdLine::parse();
 
     let config_file = File::open("config.yaml")

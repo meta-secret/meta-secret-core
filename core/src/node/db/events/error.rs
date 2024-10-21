@@ -1,4 +1,8 @@
+use crate::node::db::events::generic_log_event::GenericKvLogEvent;
+use crate::node::db::events::shared_secret_event::{SSDeviceLogObject, SSLedgerObject, SharedSecretObject};
+use crate::node::db::events::vault_event::VaultActionEvent;
 use thiserror::Error;
+use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -8,8 +12,37 @@ pub struct ErrorMessage {
 
 #[derive(Error, Debug)]
 pub enum LogEventCastError {
-    #[error("Invalid event")]
-    InvalidEventType,
+    #[error("InvalidGlobalIndex: Invalid event")]
+    InvalidGlobalIndex(GenericKvLogEvent),
+    #[error("InvalidCredentials: Invalid event")]
+    InvalidCredentials(GenericKvLogEvent),
+    #[error("InvalidDbTail: Invalid event")]
+    InvalidDbTail(GenericKvLogEvent),
+    #[error("InvalidDeviceLog: Invalid event")]
+    InvalidDeviceLog(GenericKvLogEvent),
+    #[error("InvalidVaultLog: Invalid event")]
+    InvalidVaultLog(GenericKvLogEvent),
+    #[error("InvalidVault: Invalid event")]
+    InvalidVault(GenericKvLogEvent),
+    #[error("InvalidVaultMembership: Invalid event")]
+    InvalidVaultMembership(GenericKvLogEvent),
+    #[error("InvalidSharedSecret: Invalid event")]
+    InvalidSharedSecret(GenericKvLogEvent),
+    #[error("InvalidSSDeviceLog: Invalid event")]
+    InvalidSSDeviceLog(GenericKvLogEvent),
+    #[error("InvalidSSLedger: Invalid event")]
+    InvalidSSLedger(GenericKvLogEvent),
+    #[error("WrongSSLedger: wrong event")]
+    WrongSSLedger(SSLedgerObject),
+    #[error("WrongSSDeviceLog: wrong event")]
+    WrongSSDeviceLog(SSDeviceLogObject),
+    #[error("WrongSharedSecret: wrong event")]
+    WrongSharedSecret(SharedSecretObject),
+    #[error("WrongDeviceLog: wrong event")]
+    WrongDeviceLog(DeviceLogObject),
+    #[error("WrongVaultAction. Expected: {0}, actual: {1}")]
+    WrongVaultAction(String, VaultActionEvent),
+    
 }
 
 impl From<&anyhow::Error> for ErrorMessage {
