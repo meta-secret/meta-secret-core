@@ -4,7 +4,7 @@ import RegistrationComponent from '@/components/vault/auth/Registration.vue';
 import VaultComponent from '@/components/vault/Vault.vue';
 
 import { AppState } from '@/stores/app-state';
-import init, { WasmWebAppStatus } from 'meta-secret-web-cli';
+import init from 'meta-secret-web-cli';
 
 export default defineComponent({
   components: {
@@ -27,19 +27,20 @@ export default defineComponent({
 
   methods: {
     isNewUser() {
-      return this.appState.appState.is_new_user();
+      return this.appState.metaSecretAppState.is_new_user();
     },
 
     isLocalEnv() {
-      return this.appState.appState.status() === WasmWebAppStatus.LocalEnv;
+      return this.appState.metaSecretAppState.is_local();
     },
 
     isMember() {
-      return this.appState.appState.status() === WasmWebAppStatus.Member;
-    },
+      const isVault = this.appState.metaSecretAppState.is_vault();
+      if (!isVault) {
+        return false;
+      }
 
-    getStatus() {
-      return WasmWebAppStatus[this.appState.appState.status()];
+      return this.appState.metaSecretAppState.as_vault().is_member();
     },
   },
 });
@@ -57,6 +58,6 @@ export default defineComponent({
     <VaultComponent />
   </div>
   <div v-else>
-    <h1>Another status: {{ this.getStatus() }}</h1>
+    <h1>Another status: isNotNewUser, isNotMember. So it's outsider</h1>
   </div>
 </template>

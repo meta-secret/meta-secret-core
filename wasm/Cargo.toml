@@ -32,7 +32,7 @@ getrandom.workspace = true
 # Wasm dependencies
 tracing-web = "0.1.3"
 
-wasm-bindgen = { version = "0.2.93", features = ["serde-serialize"] }
+wasm-bindgen = { version = "0.2.95", features = ["serde-serialize"] }
 rexie = "0.6.2"
 
 serde-wasm-bindgen = "0.6.5"

@@ -1,5 +1,5 @@
 use std::fmt::Display;
-
+use wasm_bindgen::prelude::wasm_bindgen;
 use crypto::utils::generate_uuid_b64_url_enc;
 
 use crate::crypto;
@@ -9,12 +9,21 @@ use crate::crypto::utils::rand_uuid_b64_url_enc;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[wasm_bindgen(getter_with_clone)]
 pub struct DeviceId(String);
+#[wasm_bindgen]
+impl DeviceId {
+    pub fn as_str(&self) -> String {
+        self.0.clone()
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[wasm_bindgen(getter_with_clone)]
 pub struct DeviceName(String);
 
+#[wasm_bindgen]
 impl DeviceName {
     pub fn server() -> Self {
         DeviceName::from("server_device")
@@ -26,6 +35,10 @@ impl DeviceName {
 
     pub fn client() -> Self {
         DeviceName::from("client_device")
+    }
+    
+    pub fn as_str(&self) -> String {
+        self.0.clone()
     }
 }
 
@@ -50,6 +63,7 @@ impl DeviceName {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[wasm_bindgen(getter_with_clone)]
 pub struct DeviceData {
     pub device_id: DeviceId,
     pub device_name: DeviceName,

@@ -1,10 +1,3 @@
-<script setup lang="ts">
-import { defineComponent } from 'vue';
-import { AppState } from '@/stores/app-state';
-
-
-</script>
-
 <template>
   <div class="container flex justify-center max-w-md py-2 items-stretch">
     <!--    <p class="flex">{{ this.getVaultName() }}</p>-->

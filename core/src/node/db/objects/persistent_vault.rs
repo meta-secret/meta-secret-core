@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::node::common::model::user::common::{UserData, UserDataOutsider};
-use crate::node::common::model::vault::{VaultData, VaultName, VaultStatus};
+use crate::node::common::model::vault::{VaultData, VaultMember, VaultName, VaultStatus};
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::object_id::{ArtifactId, ObjectId};
 use crate::node::db::events::vault::vault_log_event::VaultLogObject;
@@ -10,6 +10,9 @@ use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use anyhow::{anyhow, bail};
 use tracing_attributes::instrument;
+use crate::node::db::events::generic_log_event::GenericKvLogEvent;
+use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
+use crate::node::db::events::vault_event::VaultActionEvent;
 
 pub struct PersistentVault<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
@@ -30,7 +33,7 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
             VaultStatus::Outsider(_) => {
                 Err(anyhow!("Sender is not a member of the vault"))
             }
-            VaultStatus::Member { vault, .. } => {
+            VaultStatus::Member(VaultMember{ vault, .. }) => {
                 //save new vault state
                 let vault_desc = VaultDescriptor::vault(vault.vault_name.clone());
 
@@ -80,6 +83,28 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
             }
         }
     }
+    
+    pub async fn save_vault_log_event(&self, action_event: VaultActionEvent) -> anyhow::Result<()> {
+        let desc = VaultDescriptor::vault_log(action_event.vault_name());
+        let free_id = self.p_obj
+            .find_free_id_by_obj_desc(desc.clone())
+            .await?;
+
+        let ObjectId::Artifact(artifact_id) = free_id else {
+            bail!("Invalid vault log state, expected artifact id");
+        };
+
+        let event = VaultLogObject::Action(KvLogEvent {
+            key: KvKey::artifact(desc, artifact_id),
+            value: action_event.clone(),
+        });
+
+        let vault_log_event = GenericKvLogEvent::VaultLog(event);
+
+        self.p_obj.repo.save(vault_log_event).await?;
+        
+        Ok(())
+    }
 
     async fn vault_log_events(&self, vault_name: VaultName) -> anyhow::Result<Vec<VaultLogObject>> {
         let desc = VaultDescriptor::vault_log(vault_name);
@@ -95,6 +120,7 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
 
         Ok(vault_log_events)
     }
+    
 }
 
 

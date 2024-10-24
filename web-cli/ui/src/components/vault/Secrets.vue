@@ -1,6 +1,6 @@
 <script lang="ts">
 import { defineComponent } from 'vue';
-import init from 'meta-secret-web-cli';
+import init, {MetaPasswordId, WasmApplicationState} from 'meta-secret-web-cli';
 import { AppState } from '@/stores/app-state';
 
 export default defineComponent({
@@ -20,13 +20,17 @@ export default defineComponent({
   methods: {
     async addPassword() {
       await init();
-      await this.appState.stateManager.cluster_distribution(this.newPassDescription, this.newPassword);
+      await this.appState.appManager.cluster_distribution(this.newPassDescription, this.newPassword);
     },
 
-    async recover(metaPassId) {
-      await init();
+    async recover(metaPassId: MetaPasswordId) {
       alert('Recover password: ' + JSON.stringify(metaPassId));
-      await this.appState.stateManager.recover_js(metaPassId);
+      await this.appState.appManager.recover_js(metaPassId);
+    },
+
+    metaPasswords(): MetaPasswordId[] {
+      const msAppState: WasmApplicationState = this.appState.metaSecretAppState;
+      return msAppState.as_vault().as_member().vault_data().secrets();
     },
   },
 });
@@ -54,17 +58,17 @@ export default defineComponent({
   <!-- https://www.tailwind-kit.com/components/list -->
   <div :class="$style.secrets">
     <ul class="w-full flex flex-col divide-y divide p-2">
-      <li v-for="secret in this.appState.internalState.metaPasswords" :key="secret.id.id" class="flex flex-row">
+      <li v-for="secret in this.metaPasswords()" :key="secret.id" class="flex flex-row">
         <div class="flex items-center flex-1 p-4 cursor-pointer select-none">
           <div class="flex-1 pl-1 mr-16">
             <div class="font-medium dark:text-white">
-              {{ secret.id.name }}
+              {{ secret.name }}
             </div>
             <div class="text-sm text-gray-600 dark:text-gray-200">
-              {{ secret.id.id.slice(0, 18) }}
+              {{ secret.id.slice(0, 18) }}
             </div>
           </div>
-          <button :class="$style.actionButtonText" @click="recover(secret.id)">Recover</button>
+          <button :class="$style.actionButtonText" @click="recover(secret)">Recover</button>
         </div>
       </li>
     </ul>

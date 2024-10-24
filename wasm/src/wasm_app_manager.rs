@@ -4,7 +4,7 @@ use tracing::info;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
 
-use crate::app_manager::{ApplicationManager, WasmApplicationState};
+use crate::app_manager::ApplicationManager;
 use crate::configure;
 use crate::wasm_repo::WasmRepo;
 use meta_secret_core::node::app::app_state_update_manager::ApplicationManagerConfigurator;
@@ -12,6 +12,7 @@ use meta_secret_core::node::app::meta_app::messaging::{
     ClusterDistributionRequest, GenericAppStateRequest,
 };
 use meta_secret_core::node::common::model::vault::VaultName;
+use meta_secret_core::node::common::model::WasmApplicationState;
 
 #[wasm_bindgen]
 pub struct WasmApplicationManager {

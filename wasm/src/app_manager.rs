@@ -1,8 +1,6 @@
-use std::cmp::PartialEq;
 use anyhow::Context;
 use std::sync::Arc;
 use tracing::{info, instrument, Instrument};
-use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen_futures::spawn_local;
 
 use meta_secret_core::node::app::app_state_update_manager::ApplicationManagerConfigurator;
@@ -15,73 +13,12 @@ use meta_secret_core::node::app::sync_gateway::SyncGateway;
 use meta_secret_core::node::app::virtual_device::VirtualDevice;
 use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::meta_tracing::{client_span, server_span, vd_span};
-use meta_secret_core::node::common::model::vault::{VaultName, VaultStatus};
-use meta_secret_core::node::common::model::ApplicationState;
+use meta_secret_core::node::common::model::vault::{VaultName};
 use meta_secret_core::node::common::model::device::common::DeviceName;
-use meta_secret_core::node::common::model::user::common::UserDataOutsiderStatus;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use meta_secret_core::node::server::server_app::{ServerApp, ServerDataTransfer};
-
-#[wasm_bindgen]
-pub struct WasmApplicationState {
-    inner: ApplicationState,
-}
-
-impl From<ApplicationState> for WasmApplicationState {
-    fn from(state: ApplicationState) -> Self {
-        WasmApplicationState { inner: state }
-    }
-}
-
-#[wasm_bindgen]
-impl WasmApplicationState {
-    
-    pub fn status(&self) -> WasmWebAppStatus {
-        WasmWebAppStatus::from(&self.inner)
-    }
-    
-    pub fn is_new_user(&self) -> bool {
-        let status = self.status();
-        let is_local = matches!(status, WasmWebAppStatus::LocalEnv);
-        let vault_not_exists = matches!(status, WasmWebAppStatus::VaultNotExists);
-
-        is_local || vault_not_exists
-    }
-}
-
-#[wasm_bindgen]
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum WasmWebAppStatus {
-    LocalEnv,
-    VaultNotExists,
-    NonMember,
-    Pending,
-    Declined,
-    Member
-}
-
-impl WasmWebAppStatus {
-    fn from(app_state: &ApplicationState) -> WasmWebAppStatus {
-        match app_state {
-            ApplicationState::Local { .. } => WasmWebAppStatus::LocalEnv,
-            ApplicationState::Vault { vault } => {
-                match vault {
-                    VaultStatus::NotExists(_) => WasmWebAppStatus::VaultNotExists,
-                    VaultStatus::Outsider(outsider) => {
-                        match outsider.status {
-                            UserDataOutsiderStatus::NonMember => WasmWebAppStatus::NonMember,
-                            UserDataOutsiderStatus::Pending => WasmWebAppStatus::Pending,
-                            UserDataOutsiderStatus::Declined => WasmWebAppStatus::Declined
-                        }
-                    }
-                    VaultStatus::Member { .. } => WasmWebAppStatus::Member
-                }
-            }
-        }
-    }
-}
 
 pub struct ApplicationManager<Repo: KvLogEventRepo> {
     pub meta_client_service: Arc<MetaClientService<Repo>>,
@@ -127,7 +64,7 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
     #[instrument(name = "MetaClient", skip_all)]
     pub async fn client_setup(
         client_repo: Arc<Repo>,
-        dt: Arc<ServerDataTransfer>
+        dt: Arc<ServerDataTransfer>,
     ) -> anyhow::Result<ApplicationManager<Repo>> {
         let persistent_obj = {
             let obj = PersistentObject::new(client_repo.clone());
@@ -148,7 +85,7 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
                     dt: MpscDataTransfer::new(),
                 }),
                 sync_gateway: sync_gateway.clone(),
-                state_provider
+                state_provider,
             })
         };
 
@@ -200,7 +137,7 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
         let meta_client_service = MetaClientService {
             data_transfer: dt_meta_client.clone(),
             sync_gateway: gateway.clone(),
-            state_provider
+            state_provider,
         };
 
         spawn_local(async move {

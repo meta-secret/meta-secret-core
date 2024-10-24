@@ -1,5 +1,6 @@
+use wasm_bindgen::prelude::wasm_bindgen;
 use crate::node::common::model::secret::MetaPasswordId;
-use crate::node::common::model::vault::VaultStatus;
+use crate::node::common::model::vault::{VaultStatus, WasmVaultStatus};
 use crate::node::common::model::device::common::DeviceData;
 
 pub mod device;
@@ -209,7 +210,7 @@ pub mod secret {
 
     use rand::distributions::Alphanumeric;
     use rand::Rng;
-
+    use wasm_bindgen::prelude::wasm_bindgen;
     use crate::crypto::utils;
     use crate::node::common::model::crypto::EncryptedMessage;
     use crate::node::common::model::device::device_link::PeerToPeerDeviceLink;
@@ -217,6 +218,7 @@ pub mod secret {
 
     #[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
+    #[wasm_bindgen(getter_with_clone)]
     pub struct MetaPasswordId {
         /// SHA256 hash of a salt
         pub id: String,
@@ -321,6 +323,53 @@ pub mod secret {
 pub enum ApplicationState {
     Local { device: DeviceData },
     Vault { vault: VaultStatus },
+}
+
+#[wasm_bindgen]
+pub struct WasmApplicationState(ApplicationState);
+
+#[wasm_bindgen]
+impl WasmApplicationState {
+    pub fn is_new_user(&self) -> bool {
+        let is_local = self.is_local();
+        let vault_not_exists = matches!(
+            &self.0, 
+            ApplicationState::Vault { vault: VaultStatus::NotExists(_) }
+        );
+
+        is_local || vault_not_exists
+    }
+    
+    pub fn is_local(&self) -> bool {
+        matches!(self.0, ApplicationState::Local{..})
+    }
+
+    pub fn is_vault(&self) -> bool {
+        matches!(self.0, ApplicationState::Vault{..})
+    }
+
+    pub fn as_local(&self) -> DeviceData {
+        if let ApplicationState::Local { device } = &self.0 {
+            device.clone()
+        } else { 
+            panic!("not a local app state")
+        }
+    }
+    
+    pub fn as_vault(&self) -> WasmVaultStatus {
+        match &self.0 {
+            ApplicationState::Vault { vault } => {
+                WasmVaultStatus::from(vault.clone())
+            }
+            _ => panic!("not a vault state"),
+        }
+    }
+}
+
+impl From<ApplicationState> for WasmApplicationState {
+    fn from(state: ApplicationState) -> Self {
+        WasmApplicationState(state)
+    }
 }
 
 #[cfg(test)]

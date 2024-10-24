@@ -1,7 +1,7 @@
 <script lang="ts">
 import { defineComponent } from 'vue';
 import { AppState } from '@/stores/app-state';
-import { WasmWebAppStatus } from '../../../../pkg';
+import { WasmApplicationState } from '../../../../pkg';
 
 export default defineComponent({
   async setup() {
@@ -20,24 +20,32 @@ export default defineComponent({
       await this.appState.appManager.sign_up(this.vaultName);
     },
 
+    isMember() {
+      const isVault = this.appState.metaSecretAppState.is_vault();
+      if (!isVault) {
+        return false;
+      }
+
+      return this.metaSecretAppState.appState.as_vault().is_member();
+    },
+
     isNonMember() {
-      const appState = this.appState.appState;
-      return appState.status() === WasmWebAppStatus.NonMember;
+      return !this.isMember();
     },
 
     isLocalEnv() {
-      const appState = this.appState.appState;
+      const appState: WasmApplicationState = this.appState.metaSecretAppState;
       if (!appState) {
         console.log('isEmptyEnv: appState is not initialized');
         throw new Error('Invalid environment');
       }
 
-      console.log('status: ', appState.status());
-      return appState.status() === WasmWebAppStatus.LocalEnv;
+      return appState.is_local();
     },
 
     isNewUser() {
-      return this.appState.appState.is_new_user();
+      const appState: WasmApplicationState = this.appState.metaSecretAppState;
+      return appState.is_new_user();
     },
   },
 });

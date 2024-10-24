@@ -7,9 +7,11 @@ pub mod base64 {
     extern crate base64;
 
     use std::fmt::Display;
+    use wasm_bindgen::prelude::wasm_bindgen;
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
+    #[wasm_bindgen(getter_with_clone)]
     pub struct Base64Text(pub String);
 
     impl Display for Base64Text {

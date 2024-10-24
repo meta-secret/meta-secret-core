@@ -1,76 +1,56 @@
 <script lang="ts">
-
-import type {PropType} from 'vue'
-import {defineComponent} from 'vue'
-import init from "meta-secret-web-cli";
-import type {UserSignature} from "@/model/UserSignature";
+import type { PropType } from 'vue';
+import { defineComponent } from 'vue';
+import { DeviceData, UserDataOutsider, UserDataOutsiderStatus, WasmUserMembership } from '../../../pkg';
 
 export default defineComponent({
   props: {
-    userSig: Object as PropType<UserSignature>,
-    sigStatus: String
+    membership: Object as PropType<WasmUserMembership>,
   },
 
   methods: {
     async accept() {
-      await init();
       //await this.membership(deviceInfo, MembershipRequestType.Accept);
     },
 
     async decline() {
-      await init();
       //await this.membership(deviceInfo, MembershipRequestType.Decline);
     },
 
-    /*
-    async membership(
-        deviceInfo: DeviceUiElement,
-        requestType: MembershipRequestType
-    ) {
-      let membershipResult = membership(deviceInfo.userSig, requestType);
-      console.log("membership operation: ", membershipResult);
-      //TODO check the operation status
-
-      await router.push({path: "/vault/devices"});
+    getDevice(): DeviceData {
+      return this.membership.user_data().device;
     },
-     */
+
+    isPending() {
+      const isOutsider = this.membership.is_outsider();
+      if (isOutsider) {
+        const outsider: UserDataOutsider = this.membership.as_outsider();
+        return outsider.status === UserDataOutsiderStatus.Pending;
+      } else {
+        return false;
+      }
+    },
   },
 });
-
 </script>
 
 <template>
   <div class="flex items-center flex-1 p-4 cursor-pointer select-none">
     <div class="flex-1 pl-1 mr-16">
       <div class="font-medium dark:text-white">
-        {{ userSig.vault.device.deviceName }}
+        {{ this.getDevice().device_name.as_str() }}
       </div>
       <div class="text-sm text-gray-600 dark:text-gray-200 truncate">
         <p class="truncate w-24">
-          {{ userSig.vault.device.deviceId }}
+          {{ this.getDevice().device_id.as_str() }}
         </p>
       </div>
     </div>
-    <div class="text-xs text-gray-600 dark:text-gray-200">
-      Active
-    </div>
-    <button
-        v-if="sigStatus === 'pending'"
-        :class="$style.actionButtonText"
-        @click="accept()"
-    >
-      Accept
-    </button>
-    <button
-        v-if="sigStatus === 'pending'"
-        :class="$style.actionButtonText"
-        @click="decline()"
-    >
-      Decline
-    </button>
+    <div class="text-xs text-gray-600 dark:text-gray-200">Active</div>
+    <button v-if="this.isPending()" :class="$style.actionButtonText" @click="accept()">Accept</button>
+    <button v-if="this.isPending()" :class="$style.actionButtonText" @click="decline()">Decline</button>
   </div>
 </template>
-
 
 <style module>
 .actionButtonText {

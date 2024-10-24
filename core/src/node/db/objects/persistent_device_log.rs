@@ -32,14 +32,14 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
         candidate: UserData,
     ) -> anyhow::Result<()> {
         info!("Accept join request");
-        
+
         let member_user = member.user();
         self.init(member_user).await?;
 
         let key = self.get_device_log_key(&member_user).await?;
         let update = VaultActionEvent::UpdateMembership {
             sender: member,
-            update: UserMembership::Member(UserDataMember(candidate)),
+            update: UserMembership::Member(UserDataMember { user_data: candidate }),
         };
         let join_request = DeviceLogObject::Action(KvLogEvent { key, value: update });
 
@@ -51,14 +51,14 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
     #[instrument(skip(self))]
     pub async fn save_create_vault_request(&self, user: &UserData) -> anyhow::Result<()> {
         info!("Save event: CreateVault request");
-        
+
         self.init(user).await?;
 
         let maybe_generic_event = self
             .p_obj
             .find_tail_event(VaultDescriptor::device_log(user.user_id()))
             .await?;
-        
+
         if let Some(GenericKvLogEvent::DeviceLog(DeviceLogObject::Action(event))) = maybe_generic_event {
             if let VaultActionEvent::CreateVault(_) = event.value {
                 info!("SignUp request already exists");
@@ -116,7 +116,7 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
 
         //create new unit and genesis events
         let unit_key = KvKey::unit(obj_desc.clone());
-        
+
         let unit_event = DeviceLogObject::Unit(VaultUnitEvent(KvLogEvent {
             key: unit_key.clone(),
             value: user_id.vault_name.clone(),
@@ -153,11 +153,10 @@ pub mod spec {
     }
 
     impl<Repo: KvLogEventRepo> DeviceLogSpec<Repo> {
-
         #[instrument(skip(self))]
         pub async fn check_initialization(&self) -> Result<()> {
             info!("Check initialization");
-            
+
             let device_log_desc = VaultDescriptor::device_log(self.user.user_id());
 
             let unit_id = UnitId::unit(&device_log_desc);
@@ -193,7 +192,7 @@ pub mod spec {
         #[instrument(skip(self))]
         pub async fn check_sign_up_request(&self) -> Result<()> {
             info!("check_sign_up_request");
-            
+
             let device_log_desc = VaultDescriptor::device_log(self.user.user_id());
 
             let sign_up_request_id = UnitId::unit(&device_log_desc).next().next();

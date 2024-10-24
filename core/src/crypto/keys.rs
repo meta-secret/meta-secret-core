@@ -1,3 +1,4 @@
+use wasm_bindgen::prelude::wasm_bindgen;
 use crate::crypto::encoding::base64::Base64Text;
 use crate::crypto::key_pair::{DsaKeyPair, KeyPair, TransportDsaKeyPair};
 
@@ -8,6 +9,7 @@ pub struct KeyManager {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[wasm_bindgen(getter_with_clone)]
 pub struct OpenBox {
     pub dsa_pk: Base64Text,
     pub transport_pk: Base64Text,

@@ -1,14 +1,12 @@
 <script lang="ts">
-import init from "meta-secret-web-cli";
-import {AppState} from "@/stores/app-state";
-import Device from "@/components/vault/Device.vue";
+import { AppState } from '@/stores/app-state';
+import Device from '@/components/vault/Device.vue';
+import { WasmUserMembership } from "../../../pkg";
 
 export default {
-  components: {Device},
+  components: { Device },
   async setup() {
-    console.log("Device component. Init")
-
-    await init();
+    console.log('Device component. Init');
 
     const appState = AppState();
 
@@ -16,36 +14,40 @@ export default {
       appState: appState,
     };
   },
+
+  methods: {
+    users(): WasmUserMembership[] {
+      return this.appState.metaSecretAppState.as_vault().as_member().vault_data().users();
+    },
+  },
 };
 </script>
 
 <template>
-  <div class="py-4"/>
+  <div class="py-4" />
 
   <!-- https://www.tailwind-kit.com/components/list -->
   <div :class="$style.devices">
     <div :class="$style.listHeader">
       <h3 :class="$style.listTitle">Devices</h3>
-      <p :class="$style.listDescription">
-        Detailed information about user devices
-      </p>
+      <p :class="$style.listDescription">Detailed information about user devices</p>
     </div>
     <ul class="w-full flex flex-col divide-y divide p-2">
       <li
-          v-for="userSig in appState.internalState.vault?.signatures"
-          :key="userSig.vault.device.deviceId"
-          class="flex flex-row"
+        v-for="membership in this.users()"
+        :key="membership.user_data().device.device_id.as_str()"
+        class="flex flex-row"
       >
-        <Device :user-sig="userSig" sig-status="active"/>
+        <Device :membership="membership" sig-status="active" />
       </li>
 
-      <li
+      <!--<li
           v-for="userSig in appState.internalState.vault?.pending"
           :key="userSig.vault.device.deviceId"
           class="flex flex-row"
       >
         <Device :user-sig="userSig" sig-status="pending"/>
-      </li>
+      </li>-->
     </ul>
   </div>
 </template>

@@ -104,7 +104,7 @@ impl<Repo: KvLogEventRepo> DataSyncApi for ServerSyncGateway<Repo> {
                         }
                         return Ok(commit_log);
                     }
-                    VaultStatus::Member { .. } => {
+                    VaultStatus::Member(_) => {
                         let vault_events = self
                             .vault_replication(vault_request.clone())
                             .await?;

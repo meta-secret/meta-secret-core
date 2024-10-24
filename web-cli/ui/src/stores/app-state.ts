@@ -6,8 +6,8 @@ export const AppState = defineStore('app_state', {
     console.log('App state. Init');
 
     return {
-      appManager: undefined as WasmApplicationManager,
-      appState: undefined as WasmApplicationState,
+      appManager: WasmApplicationManager,
+      metaSecretAppState: WasmApplicationState,
     };
   },
 
@@ -16,7 +16,7 @@ export const AppState = defineStore('app_state', {
       console.log('Js: App state, start initialization');
 
       const appManager = await WasmApplicationManager.init_wasm();
-      this.appState = await appManager.get_state();
+      this.metaSecretAppState = await appManager.get_state();
       console.log('Js: Initial App State!!!!');
 
       this.appManager = appManager;
@@ -24,7 +24,7 @@ export const AppState = defineStore('app_state', {
       const subscribe = async (appManager: WasmApplicationManager) => {
         const state = await appManager.get_state();
         console.log('Js: Updated State: ', state);
-        this.appState = state;
+        this.metaSecretAppState = state;
 
         await subscribe(appManager);
       };

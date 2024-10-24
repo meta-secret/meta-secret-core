@@ -46,7 +46,7 @@ impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
                     info!("Device is pending or declined")
                 }
             }
-            VaultStatus::Member { .. } => {
+            VaultStatus::Member(_) => {
                 //trace!("User is already a vault member: {:?}", member);
             }
         }
@@ -111,7 +111,6 @@ pub mod spec {
     use tracing_attributes::instrument;
     use crate::node::common::model::device::common::DeviceData;
     use crate::node::db::objects::global_index::spec::GlobalIndexSpec;
-    use crate::node::db::objects::persistent_vault::spec::VaultLogSpec;
 
     pub struct SignUpClaimSpec<Repo: KvLogEventRepo> {
         pub p_obj: Arc<PersistentObject<Repo>>,
@@ -139,10 +138,10 @@ pub mod spec {
             device_log_spec.check_initialization().await?;
             device_log_spec.check_sign_up_request().await?;
             
-            let vault_log_spec = VaultLogSpec {
+            /*let vault_log_spec = VaultLogSpec {
                 p_obj: self.p_obj.clone(),
                 user: self.user.clone(),
-            };
+            };*/
 
             //vault_log_spec.verify_initial_state().await?;
 

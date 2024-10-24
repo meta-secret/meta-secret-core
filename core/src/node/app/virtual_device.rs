@@ -7,7 +7,7 @@ use crate::node::app::sync_gateway::SyncGateway;
 use crate::node::common::model::device::common::DeviceName;
 use crate::node::common::model::user::common::{UserDataOutsiderStatus, UserMembership};
 use crate::node::common::model::user::user_creds::UserCredentials;
-use crate::node::common::model::vault::{VaultName, VaultStatus};
+use crate::node::common::model::vault::{VaultMember, VaultName, VaultStatus};
 use crate::node::db::actions::sign_up::claim::SignUpClaim;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
@@ -79,7 +79,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
         let p_vault = PersistentVault { p_obj: self.p_obj() };
         let vault_status = p_vault.find(user_creds.user()).await?;
 
-        let VaultStatus::Member { member: me, vault } = vault_status else {
+        let VaultStatus::Member(VaultMember{ member: me, vault }) = vault_status else {
             warn!("Not a vault member");
             return Ok(());
         };
@@ -118,6 +118,9 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
                     }
                     VaultActionEvent::CreateVault(_) => {
                         // server's responsibities
+                    },
+                    VaultActionEvent::ActionCompleted { .. } => {
+                        //no op, action completion event
                     }
                 }
             };

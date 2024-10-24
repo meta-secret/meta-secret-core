@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use anyhow::bail;
 use tracing::info;
 use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::user::common::{UserData, UserDataMember};
@@ -7,10 +6,9 @@ use crate::node::common::model::vault::{VaultStatus};
 use crate::node::db::actions::sign_up::action::SignUpAction;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
-use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ToGenericEvent};
+use crate::node::db::events::generic_log_event::{ToGenericEvent};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{Next, ObjectId};
-use crate::node::db::events::vault::vault_log_event::VaultLogObject;
 use crate::node::db::events::vault_event::{VaultActionEvent, VaultMembershipObject, VaultObject};
 use crate::node::db::objects::global_index::ServerPersistentGlobalIndex;
 use crate::node::db::objects::persistent_object::PersistentObject;
@@ -19,16 +17,15 @@ use crate::node::db::repo::generic_db::KvLogEventRepo;
 
 pub struct VaultAction<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
-    pub server_device: DeviceData
+    pub server_device: DeviceData,
 }
 
 impl<Repo: KvLogEventRepo> VaultAction<Repo> {
-    
     pub async fn do_processing(&self, action_event: VaultActionEvent) -> anyhow::Result<()> {
         let p_vault = PersistentVault {
             p_obj: self.p_obj.clone(),
         };
-        
+
         match &action_event {
             VaultActionEvent::CreateVault(user) => {
                 let action = CreateVaultAction {
@@ -38,51 +35,21 @@ impl<Repo: KvLogEventRepo> VaultAction<Repo> {
                 action.create(user).await
             }
 
-            VaultActionEvent::JoinClusterRequest { candidate } => {
-                let vault_log_desc = VaultDescriptor::vault_log(candidate.vault_name.clone());
-
-                let vault_log_free_id = self
-                    .p_obj
-                    .find_free_id_by_obj_desc(vault_log_desc.clone())
+            VaultActionEvent::JoinClusterRequest { .. } => {
+                //saving messages from device_log to vault_log guarantees ordering between events
+                //sent from different devices simultaneously 
+                p_vault
+                    .save_vault_log_event(action_event)
                     .await?;
-
-                if let ObjectId::Artifact(vault_log_artifact_id) = vault_log_free_id {
-                    let action = VaultLogObject::Action(KvLogEvent {
-                        key: KvKey::artifact(vault_log_desc, vault_log_artifact_id),
-                        value: action_event.clone(),
-                    });
-                    let vault_log_event = GenericKvLogEvent::VaultLog(action);
-
-                    self.p_obj.repo.save(vault_log_event).await?;
-                    anyhow::Ok(())
-                } else {
-                    bail!(
-                        "JoinClusterRequest: Invalid vault log id, must be ArtifactId, but it's: {:?}",
-                        vault_log_free_id
-                    );
-                }
+                anyhow::Ok(())
             }
 
             VaultActionEvent::UpdateMembership {
-                sender: UserDataMember(sender_user),
+                sender: UserDataMember { user_data: sender_user },
                 update,
             } => {
                 let vault_name = action_event.vault_name();
                 //check if a sender is a member of the vault and update the vault then
-                let vault_log_desc = VaultDescriptor::VaultLog(vault_name.clone()).to_obj_desc();
-
-                let vault_log_free_id = self
-                    .p_obj
-                    .find_free_id_by_obj_desc(vault_log_desc.clone())
-                    .await?;
-
-                let ObjectId::Artifact(_) = vault_log_free_id else {
-                    bail!(
-                        "UpdateMembership: Invalid vault log id, must be ArtifactId, but it's: {:?}",
-                        vault_log_free_id
-                    );
-                };
-                
                 let (vault_artifact_id, vault) = p_vault.get_vault(&sender_user).await?;
 
                 let vault_event = {
@@ -98,11 +65,20 @@ impl<Repo: KvLogEventRepo> VaultAction<Repo> {
 
                 self.p_obj.repo.save(vault_event).await?;
 
+                //add completion event to the vault log
+                let completed = VaultActionEvent::ActionCompleted {
+                    vault_name: vault_name.clone(),
+                };
+                p_vault
+                    .save_vault_log_event(completed)
+                    .await?;
+
+                //update vault status accordingly
                 let vault_status_free_id = {
                     let vault_membership_desc = {
                         VaultDescriptor::VaultMembership(update.user_data().user_id()).to_obj_desc()
                     };
-                    
+
                     self
                         .p_obj
                         .find_free_id_by_obj_desc(vault_membership_desc.clone())
@@ -131,9 +107,8 @@ impl<Repo: KvLogEventRepo> VaultAction<Repo> {
                 }
                 anyhow::Ok(())
             }
-            
+
             VaultActionEvent::AddMetaPassword { sender, meta_pass_id } => {
-                
                 let user = sender.user();
                 let (vault_artifact_id, vault) = p_vault.get_vault(&user).await?;
 
@@ -156,6 +131,10 @@ impl<Repo: KvLogEventRepo> VaultAction<Repo> {
 
                 anyhow::Ok(())
             }
+            VaultActionEvent::ActionCompleted { .. } => {
+                //ignore
+                anyhow::Ok(())
+            }
         }
     }
 }
@@ -163,7 +142,7 @@ impl<Repo: KvLogEventRepo> VaultAction<Repo> {
 
 pub struct CreateVaultAction<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
-    pub server_device: DeviceData
+    pub server_device: DeviceData,
 }
 
 impl<Repo: KvLogEventRepo> CreateVaultAction<Repo> {
@@ -197,7 +176,7 @@ impl<Repo: KvLogEventRepo> CreateVaultAction<Repo> {
 
         let p_gi = ServerPersistentGlobalIndex {
             p_obj: self.p_obj.clone(),
-            server_device: self.server_device.clone() ,
+            server_device: self.server_device.clone(),
         };
         p_gi.update(candidate.vault_name()).await?;
 

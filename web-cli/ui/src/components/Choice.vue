@@ -1,7 +1,5 @@
 <script setup lang="ts">
-
 //go to local store and see if user exists
-
 </script>
 
 <style>
@@ -14,7 +12,8 @@
   font-size: 16px;
 }
 
-.btn-group-lg > .btn, .btn-lg {
+.btn-group-lg > .btn,
+.btn-lg {
   padding: 10px 16px;
   font-size: 18px;
   line-height: 1.3333333;
@@ -23,7 +22,7 @@
 </style>
 
 <template>
-    <div class="flex justify-evenly mx-auto max-w-7xl">
+  <div class="flex justify-evenly mx-auto max-w-7xl">
     <RouterLink class="btn-lg btn-trans" to="/split">Split</RouterLink>
     <RouterLink class="btn-lg btn-trans" to="/recover">Recover</RouterLink>
     <RouterLink class="btn-lg btn-trans" to="/vault">Vault</RouterLink>

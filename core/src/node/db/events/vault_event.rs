@@ -4,7 +4,7 @@ use tracing::error;
 use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::secret::MetaPasswordId;
 use crate::node::common::model::user::common::{UserData, UserDataMember, UserMembership};
-use crate::node::common::model::vault::{VaultData, VaultName, VaultStatus};
+use crate::node::common::model::vault::{VaultData, VaultMember, VaultName, VaultStatus};
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::error::LogEventCastError;
@@ -28,7 +28,7 @@ impl VaultObject {
         let desc = VaultDescriptor::vault(vault_name.clone());
         let vault_data = {
             let mut vault = VaultData::from(vault_name.clone());
-            let membership = UserMembership::Member(UserDataMember(candidate.clone()));
+            let membership = UserMembership::Member(UserDataMember { user_data: candidate.clone() });
             vault.update_membership(membership);
             vault
         };
@@ -69,13 +69,13 @@ impl VaultObject {
             VaultObject::Unit(_) => {
                 error!("Invalid state (only unit event is present)");
                 VaultStatus::NotExists(user.clone())
-            },
+            }
             VaultObject::Genesis(_) => {
                 // We believe that if there are only unit and genesis events in the database, then 
                 // the table is broken, so vault not exists
                 error!("Invalid state (only genesis event is present)");
                 VaultStatus::NotExists(user.clone())
-            },
+            }
             VaultObject::Vault(event) => {
                 let vault = event.value.clone();
                 match vault.membership(user) {
@@ -83,7 +83,7 @@ impl VaultObject {
                         VaultStatus::Outsider(outsider)
                     }
                     UserMembership::Member(member) => {
-                        VaultStatus::Member { member, vault }
+                        VaultStatus::Member(VaultMember { member, vault })
                     }
                 }
             }
@@ -139,7 +139,6 @@ pub enum VaultMembershipObject {
 }
 
 impl VaultMembershipObject {
-    
     pub fn init(candidate: UserData) -> Vec<GenericKvLogEvent> {
         let unit_event = VaultMembershipObject::unit(candidate.clone()).to_generic();
         let genesis_event = VaultMembershipObject::genesis(candidate.clone()).to_generic();
@@ -149,10 +148,10 @@ impl VaultMembershipObject {
             let member_event_id = UnitId::unit(&desc).next().next();
             VaultMembershipObject::member(candidate, member_event_id).to_generic()
         };
-        
+
         vec![unit_event, genesis_event, member_event]
     }
-    
+
     fn unit(candidate: UserData) -> Self {
         let user_id = candidate.user_id();
         let desc = VaultDescriptor::VaultMembership(user_id).to_obj_desc();
@@ -173,14 +172,14 @@ impl VaultMembershipObject {
     }
 
     pub fn member(candidate: UserData, event_id: ArtifactId) -> Self {
-        let member = UserMembership::Member(UserDataMember(candidate.clone()));
+        let member = UserMembership::Member(UserDataMember { user_data: candidate.clone() });
         Self::membership(member, event_id)
     }
 
     pub fn membership(membership: UserMembership, event_id: ArtifactId) -> Self {
         let user_id = membership.user_data().user_id();
         let desc = VaultDescriptor::VaultMembership(user_id).to_obj_desc();
-        
+
         VaultMembershipObject::Membership(KvLogEvent {
             key: KvKey { obj_id: event_id, obj_desc: desc },
             value: membership,
@@ -189,7 +188,6 @@ impl VaultMembershipObject {
 }
 
 impl VaultMembershipObject {
-    
     pub fn is_member(&self) -> bool {
         let VaultMembershipObject::Membership(membership_event) = self else {
             return false;
@@ -259,6 +257,9 @@ pub enum VaultActionEvent {
         sender: UserDataMember,
         meta_pass_id: MetaPasswordId,
     },
+    ActionCompleted {
+        vault_name: VaultName
+    },
 }
 
 impl Display for VaultActionEvent {
@@ -268,6 +269,7 @@ impl Display for VaultActionEvent {
             VaultActionEvent::JoinClusterRequest { .. } => String::from("JoinClusterRequest"),
             VaultActionEvent::UpdateMembership { .. } => String::from("UpdateMembership"),
             VaultActionEvent::AddMetaPassword { .. } => String::from("AddMetaPassword"),
+            VaultActionEvent::ActionCompleted { .. } => String::from("ActionCompleted"),
         };
         write!(f, "{}", str)
     }
@@ -293,10 +295,11 @@ impl VaultActionEvent {
             VaultActionEvent::JoinClusterRequest { candidate } => candidate.vault_name.clone(),
             VaultActionEvent::UpdateMembership { update, .. } => update.user_data().vault_name,
             VaultActionEvent::AddMetaPassword {
-                sender: UserDataMember(user),
+                sender: UserDataMember { user_data },
                 ..
-            } => user.vault_name.clone(),
+            } => user_data.vault_name.clone(),
             VaultActionEvent::CreateVault(user) => user.vault_name.clone(),
+            VaultActionEvent::ActionCompleted { vault_name } => vault_name.clone(),
         }
     }
 }

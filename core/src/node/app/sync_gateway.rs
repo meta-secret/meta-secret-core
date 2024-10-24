@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{anyhow, bail};
+use anyhow::{bail};
 use tracing::{debug, error, info, instrument};
 
 use crate::node::common::model::crypto::{AeadAuthData, AeadPlainText, EncryptedMessage};
@@ -12,13 +12,13 @@ use crate::node::common::model::secret::{
 };
 use crate::node::common::model::user::common::{UserDataMember, UserId};
 use crate::node::common::model::user::user_creds::UserCredentials;
-use crate::node::common::model::vault::VaultStatus;
+use crate::node::common::model::vault::{VaultMember, VaultStatus};
 use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ToObjectDescriptor};
 use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::db_tail::DbTail;
-use crate::node::db::events::generic_log_event::{GenericKvLogEvent, KeyExtractor, ToGenericEvent};
+use crate::node::db::events::generic_log_event::ToGenericEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::local_event::{CredentialsObject, DbTailObject};
 use crate::node::db::events::object_id::{Next, ObjectId};
@@ -214,7 +214,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         let p_gi_obj = ClientPersistentGlobalIndex {
             p_obj: self.p_obj.clone(),
         };
-        
+
         for gi_event in new_gi_events {
             let gi_obj = gi_event.global_index()?;
             p_gi_obj.save(&gi_obj).await?;
@@ -231,7 +231,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         debug!("Sync shared secrets");
 
         self.sync_ss_device_log(&server_tail, creds.device().device_id).await?;
-        
+
         let vault_status = {
             let p_vault = PersistentVault {
                 p_obj: self.p_obj.clone(),
@@ -240,10 +240,10 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             p_vault.find(creds.user()).await?
         };
 
-        let VaultStatus::Member { vault, member: UserDataMember(member_data) } = vault_status else {
+        let VaultStatus::Member(VaultMember { vault, member: UserDataMember { user_data: member_data } }) = vault_status else {
             return Ok(());
         };
-        
+
         //get ss_ledger
         // distribute shares if needed
         let persistent_ss = PersistentSharedSecret {
@@ -345,7 +345,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                 }
             }
         }
-        
+
         Ok(())
     }
 
@@ -360,7 +360,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             key: KvKey::unit(ObjectDescriptor::DbTail),
             value: new_db_tail.clone(),
         })
-        .to_generic();
+            .to_generic();
 
         self.p_obj.repo.save(new_db_tail_event).await?;
         Ok(())
@@ -377,12 +377,11 @@ pub mod fixture {
 
     pub struct SyncGatewayFixture {
         pub client_gw: Arc<SyncGateway<InMemKvLogEventRepo>>,
-        pub vd_gw: Arc<SyncGateway<InMemKvLogEventRepo>>
+        pub vd_gw: Arc<SyncGateway<InMemKvLogEventRepo>>,
     }
 
     impl SyncGatewayFixture {
         pub fn from(registry: &FixtureRegistry<BaseState>) -> Self {
-            
             let client_gw = Arc::new(SyncGateway {
                 id: "client_gw".to_string(),
                 p_obj: registry.state.empty.p_obj.client.clone(),
@@ -394,7 +393,7 @@ pub mod fixture {
                 p_obj: registry.state.empty.p_obj.vd.clone(),
                 server_dt: registry.state.server_dt.server_dt.clone(),
             });
-            
+
             Self { client_gw, vd_gw }
         }
     }
