@@ -1,6 +1,6 @@
 
 <p align="center">
-  <img alt="Meta Secret" src="https://github.com/meta-secret/meta-secret-core/blob/main/docs/img/meta-secret-logo.png" width="250" />
+  <img alt="Meta Secret" src="https://github.com/meta-secret/meta-secret-core/blob/main/docs/img/meta-secret-logo.png" width="100" />
   
   <h4 align="center"> <a href="https://apps.apple.com/app/metasecret/id1644286751">Meta Secret Mobile Application</a></h4>
   
@@ -20,7 +20,16 @@ Meta Secret is designed to operate on your device(s), the data is encrypted to e
 Meta Secret also features a decentralised and open-source infrastructure, providing increased security and privacy for users.
 
 ### Application Design
+
+#### Application Structure
 ![meta secret app picture](docs/img/app/meta-secret-app.png)
+
+#### Password Split
+![password split picture](docs/img/app/secret-split.png)
+
+#### Password Recovery
+![password recovery picture](docs/img/app/secret-recovery.png)
+
 
 <br>
 <br>
