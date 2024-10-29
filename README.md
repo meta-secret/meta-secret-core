@@ -8,7 +8,22 @@
   <h5 align="center"> <a href="https://meta-secret.github.io">Shamir Secret Sharing web app</a> </h5>
 </p>
 
-## Application Design
+### MetaSecret Application 
+Meta Secret is a decentralised password manager that uses advanced encryption and decentralised storage to securely store and manage user data.
+
+Meta Secret does not rely on a master password to grant access to passwords.
+
+Instead, it uses a combination of biometric authentication and secret sharing techniques to provide secure access to user's confidential information.
+
+Meta Secret is designed to operate on your device(s), the data is encrypted to ensure your information remains private and protected, enabling users to access their passwords from any device without compromising security.
+
+Meta Secret also features a decentralised and open-source infrastructure, providing increased security and privacy for users.
+
+### Application Design
+![meta secret app picture](docs/img/app/meta-secret-app.png)
+
+<br>
+<br>
 
 #### Activity Diagram
 ```mermaid
