@@ -32,10 +32,11 @@ impl ObjectName for GlobalIndexDescriptor {
             GlobalIndexDescriptor::Index => String::from("index"),
             GlobalIndexDescriptor::VaultIndex { vault_id } => {
                 let id = [
-                    vault_id.id.fqdn.obj_type.clone(), 
+                    vault_id.id.fqdn.obj_type.clone(),
                     vault_id.id.fqdn.obj_instance.clone(),
-                    vault_id.id.id.to_string()
-                ].join("-");
+                    vault_id.id.id.to_string(),
+                ]
+                .join("-");
 
                 //utils::generate_uuid_b64_url_enc(json_str)
                 //let json_str = serde_json::to_string(&vault_id.id).unwrap();

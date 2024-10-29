@@ -90,7 +90,7 @@ pub mod test {
         let vault_name = VaultName::test();
         let user_creds = UserCredentials::generate(DeviceName::client(), vault_name.clone());
         let user_id = user_creds.user_id();
-        
+
         let descriptor = VaultDescriptor::device_log(user_id.clone());
         let device_log_type = String::from("DeviceLog");
 

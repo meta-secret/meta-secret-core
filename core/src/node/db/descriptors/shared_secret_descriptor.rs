@@ -1,5 +1,5 @@
 use crate::node::common::model::device::common::DeviceId;
-use crate::node::common::model::secret::{MetaPasswordId, SSDistributionId};
+use crate::node::common::model::secret::{MetaPasswordId, SsDistributionId};
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ObjectType, ToObjectDescriptor};
 
@@ -9,25 +9,23 @@ pub enum SharedSecretDescriptor {
     /// Local share of a secret
     LocalShare(MetaPasswordId),
 
-    SSDeviceLog(DeviceId),
+    SsDeviceLog(DeviceId),
 
-    /// Ledgers traditionally track financial transactions
-    /// but can be applied metaphorically to any situation 
-    /// where maintaining a detailed history of exchanges is crucial.
-    /// In this case, the ledger logs password shards transferred between devices.
-    SSLedger(VaultName),
+    /// SsLog is an event queue created on server and used by devices 
+    /// to handle request from other devices. It is the same as VaultLog
+    SsLog(VaultName),
 
-    /// Allows devices distributing their shares (split/recover opeations)
-    SSDistribution(SSDistributionId),
+    /// Allows devices distributing their shares (split/recover operations)
+    SsDistribution(SsDistributionId),
 }
 
 impl ObjectType for SharedSecretDescriptor {
     fn object_type(&self) -> String {
         match self {
-            SharedSecretDescriptor::LocalShare { .. } => String::from("SSLocalShare"),
-            SharedSecretDescriptor::SSDeviceLog(_) => String::from("SSDeviceLog"),
-            SharedSecretDescriptor::SSLedger(_) => String::from("SSLedger"),
-            SharedSecretDescriptor::SSDistribution(_) => String::from("SSDistribution"),
+            SharedSecretDescriptor::LocalShare { .. } => String::from("SsLocalShare"),
+            SharedSecretDescriptor::SsDeviceLog(_) => String::from("SsDeviceLog"),
+            SharedSecretDescriptor::SsLog(_) => String::from("SsLog"),
+            SharedSecretDescriptor::SsDistribution(_) => String::from("SsDistribution"),
         }
     }
 }
@@ -35,10 +33,10 @@ impl ObjectType for SharedSecretDescriptor {
 impl SharedSecretDescriptor {
     pub fn as_id_str(&self) -> String {
         match self {
-            SharedSecretDescriptor::SSDistribution(event_id) => serde_json::to_string(event_id).unwrap(),
-            SharedSecretDescriptor::SSLedger(vault_name) => vault_name.to_string(),
+            SharedSecretDescriptor::SsDistribution(event_id) => serde_json::to_string(event_id).unwrap(),
+            SharedSecretDescriptor::SsLog(vault_name) => vault_name.to_string(),
             SharedSecretDescriptor::LocalShare { .. } => serde_json::to_string(self).unwrap(),
-            SharedSecretDescriptor::SSDeviceLog(device_id) => device_id.to_string(),
+            SharedSecretDescriptor::SsDeviceLog(device_id) => device_id.to_string(),
         }
     }
 }

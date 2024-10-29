@@ -1,7 +1,7 @@
 use tracing::Level;
 
-pub mod spec;
 pub mod fixture_util;
+pub mod spec;
 
 pub fn setup_tracing() -> anyhow::Result<()> {
     tracing_subscriber::fmt()

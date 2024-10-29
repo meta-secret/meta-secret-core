@@ -13,11 +13,11 @@ use meta_secret_core::node::app::sync_gateway::SyncGateway;
 use meta_secret_core::node::app::virtual_device::VirtualDevice;
 use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::meta_tracing::{client_span, server_span, vd_span};
-use meta_secret_core::node::common::model::vault::{VaultName};
 use meta_secret_core::node::common::model::device::common::DeviceName;
+use meta_secret_core::node::common::model::vault::VaultName;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
-use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
+use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
 use meta_secret_core::node::server::server_app::{ServerApp, ServerDataTransfer};
 
 pub struct ApplicationManager<Repo: KvLogEventRepo> {
@@ -52,11 +52,9 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
 
         Self::server_setup(cfg.server_repo, server_dt.clone()).await?;
 
-        Self::virtual_device_setup(cfg.device_repo, server_dt.clone())
-            .await?;
+        Self::virtual_device_setup(cfg.device_repo, server_dt.clone()).await?;
 
-        let app_manager =
-            Self::client_setup(cfg.client_repo, server_dt.clone()).await?;
+        let app_manager = Self::client_setup(cfg.client_repo, server_dt.clone()).await?;
 
         Ok(app_manager)
     }
@@ -149,8 +147,8 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
         });
 
         let meta_client_access_proxy = Arc::new(MetaClientAccessProxy { dt: dt_meta_client });
-        let vd = VirtualDevice::init(persistent_object, meta_client_access_proxy, dt, gateway)
-            .await?;
+        let vd =
+            VirtualDevice::init(persistent_object, meta_client_access_proxy, dt, gateway).await?;
         let vd = Arc::new(vd);
         spawn_local(async move { vd.run().instrument(vd_span()).await.unwrap() });
 

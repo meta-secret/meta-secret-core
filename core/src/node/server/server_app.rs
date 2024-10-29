@@ -1,21 +1,22 @@
 use std::sync::Arc;
 
-use anyhow::Result;
-use tracing::{error, info, instrument};
 use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::common::model::device::common::DeviceName;
 use crate::node::common::model::device::device_creds::DeviceCredentials;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
+use crate::node::db::events::object_id::Next;
 use crate::node::db::objects::global_index::ServerPersistentGlobalIndex;
 use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
-use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
+use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::node::server::request::SyncRequest;
 use crate::node::server::server_data_sync::{
     DataEventsResponse, DataSyncApi, DataSyncRequest, DataSyncResponse, ServerSyncGateway, ServerTailResponse,
 };
+use anyhow::Result;
+use tracing::{error, info, instrument};
 
 pub struct ServerApp<Repo: KvLogEventRepo> {
     pub data_sync: ServerSyncGateway<Repo>,
@@ -35,13 +36,16 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
             Arc::new(obj)
         };
 
-        let data_sync = ServerSyncGateway {
-            p_obj: p_obj.clone(),
-        };
+        let data_sync = ServerSyncGateway { p_obj: p_obj.clone() };
 
         let creds_repo = PersistentCredentials { p_obj: p_obj.clone() };
 
-        Ok(Self { data_sync, p_obj, creds_repo, server_dt })
+        Ok(Self {
+            data_sync,
+            p_obj,
+            creds_repo,
+            server_dt,
+        })
     }
 
     async fn init(&self) -> Result<DeviceCredentials> {
@@ -71,9 +75,14 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
         info!("Started ServerApp with: {:?}", &server_creds.device);
 
         while let Ok(sync_message) = self.server_dt.dt.service_receive().await {
-            let result = self.handle_client_request(server_creds.clone(), sync_message.clone()).await;
+            let result = self
+                .handle_client_request(server_creds.clone(), sync_message.clone())
+                .await;
             if let Err(err) = &result {
-                error!("Failed handling incoming request: {:?}, with error: {}", sync_message, err);
+                error!(
+                    "Failed handling incoming request: {:?}, with error: {}",
+                    sync_message, err
+                );
             }
 
             result?
@@ -84,14 +93,15 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
 
     #[instrument(skip(self, server_creds))]
     async fn handle_client_request(
-        &self, server_creds: DeviceCredentials, sync_message: DataSyncRequest
+        &self,
+        server_creds: DeviceCredentials,
+        sync_message: DataSyncRequest,
     ) -> Result<()> {
         match sync_message {
             DataSyncRequest::SyncRequest(request) => {
                 let new_events = self.handle_sync_request(request).await?;
 
-                self
-                    .server_dt
+                self.server_dt
                     .dt
                     .send_to_client(DataSyncResponse::Data(DataEventsResponse(new_events)))
                     .await;
@@ -105,24 +115,25 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                 };
                 let device_log_tail = p_device_log
                     .find_tail_id(&user.user_id())
-                    .await?;
+                    .await?
+                    .map(|tail_id| tail_id.next());
 
                 let p_ss = PersistentSharedSecret {
                     p_obj: self.p_obj.clone(),
                 };
                 let ss_device_log_tail = p_ss
                     .find_device_tail_id(&user.device.device_id)
-                    .await?;
+                    .await?
+                    .map(|tail_id| tail_id.next());
 
-                let response = ServerTailResponse { device_log_tail, ss_device_log_tail };
+                let response = ServerTailResponse {
+                    device_log_tail,
+                    ss_device_log_tail,
+                };
 
                 let data_sync_response = DataSyncResponse::ServerTailResponse(response);
 
-                self
-                    .server_dt
-                    .dt
-                    .send_to_client(data_sync_response)
-                    .await;
+                self.server_dt.dt.send_to_client(data_sync_response).await;
             }
         }
         Ok(())
@@ -133,20 +144,18 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
     }
 
     pub async fn get_creds(&self) -> Result<DeviceCredentials> {
-        self.creds_repo
-            .get_or_generate_device_creds(DeviceName::server())
-            .await
+        self.creds_repo.get_or_generate_device_creds(DeviceName::server()).await
     }
 }
 
 #[cfg(test)]
 pub mod fixture {
-    use std::sync::Arc;
-    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::meta_tests::fixture_util::fixture::states::BaseState;
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::common::data_transfer::MpscDataTransfer;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::server::server_app::{ServerApp, ServerDataTransfer};
+    use std::sync::Arc;
 
     pub struct ServerAppFixture {
         pub server_app: Arc<ServerApp<InMemKvLogEventRepo>>,
@@ -167,7 +176,9 @@ pub mod fixture {
 
     impl ServerDataTransferFixture {
         pub fn generate() -> Self {
-            let server_dt = Arc::new(ServerDataTransfer { dt: MpscDataTransfer::new() });
+            let server_dt = Arc::new(ServerDataTransfer {
+                dt: MpscDataTransfer::new(),
+            });
 
             Self { server_dt }
         }
@@ -176,23 +187,23 @@ pub mod fixture {
 
 #[cfg(test)]
 mod test {
-    use std::thread;
-    use std::time::Duration;
-    use anyhow::bail;
-    use tracing::{info, Instrument};
+    use crate::meta_tests::fixture_util::fixture::states::ExtendedState;
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::meta_tests::setup_tracing;
+    use crate::meta_tests::spec::test_spec::TestSpec;
     use crate::node::common::meta_tracing::{client_span, server_span};
+    use crate::node::common::model::user::common::UserData;
+    use crate::node::common::model::vault::VaultStatus;
     use crate::node::db::actions::sign_up::claim::spec::SignUpClaimSpec;
     use crate::node::db::actions::sign_up::claim::test_action::SignUpClaimTestAction;
     use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
     use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
-    use tokio::runtime::{Builder};
-    use crate::meta_tests::fixture_util::fixture::states::ExtendedState;
-    use crate::meta_tests::spec::test_spec::TestSpec;
-    use crate::node::common::model::user::common::UserData;
-    use crate::node::common::model::vault::VaultStatus;
     use crate::node::db::objects::persistent_vault::PersistentVault;
+    use anyhow::bail;
+    use std::thread;
+    use std::time::Duration;
+    use tokio::runtime::Builder;
+    use tracing::{info, Instrument};
 
     #[tokio::test]
     #[ignore]
@@ -220,10 +231,7 @@ mod test {
             server_device: registry.state.base.empty.device_creds.server.device.clone(),
         };
 
-        client_claim_spec
-            .verify()
-            .instrument(client_span())
-            .await?;
+        client_claim_spec.verify().instrument(client_span()).await?;
 
         let client_db = client_p_obj.repo.get_db().await;
         assert_eq!(11, client_db.len());
@@ -246,8 +254,7 @@ mod test {
     async fn server_check(registry: FixtureRegistry<ExtendedState>, client_user: UserData) -> anyhow::Result<()> {
         let server_app = registry.state.server_app.server_app.clone();
         let server_ss_device_log_events = {
-            let ss_desc = SharedSecretDescriptor::SSDeviceLog(client_user.device.device_id.clone())
-                .to_obj_desc();
+            let ss_desc = SharedSecretDescriptor::SsDeviceLog(client_user.device.device_id.clone()).to_obj_desc();
 
             server_app
                 .p_obj
@@ -275,9 +282,7 @@ mod test {
         let p_vault = PersistentVault {
             p_obj: registry.state.base.empty.p_obj.client.clone(),
         };
-        let vault_status = p_vault
-            .find(registry.state.base.empty.user_creds.client.user())
-            .await?;
+        let vault_status = p_vault.find(registry.state.base.empty.user_creds.client.user()).await?;
 
         let VaultStatus::Member(_) = &vault_status else {
             bail!("Client is not a vault member: {:?}", vault_status);
@@ -296,9 +301,7 @@ mod test {
 
         thread::spawn(move || {
             let rt = Builder::new_multi_thread().enable_all().build().unwrap();
-            rt.block_on(async {
-                server_app.run().instrument(server_span()).await
-            })
+            rt.block_on(async { server_app.run().instrument(server_span()).await })
         });
         async_std::task::sleep(Duration::from_secs(1)).await;
 

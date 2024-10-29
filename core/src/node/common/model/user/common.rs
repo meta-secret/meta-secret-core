@@ -1,6 +1,6 @@
-use wasm_bindgen::prelude::wasm_bindgen;
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
 use crate::node::common::model::vault::VaultName;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -64,7 +64,7 @@ impl WasmUserMembership {
             _ => panic!("user membership has to be member"),
         }
     }
-    
+
     pub fn user_data(&self) -> UserData {
         self.0.user_data()
     }

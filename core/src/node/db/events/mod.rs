@@ -6,5 +6,5 @@ pub mod kv_log_event;
 pub mod local_event;
 pub mod object_id;
 pub mod shared_secret_event;
-pub mod vault_event;
 pub mod vault;
+pub mod vault_event;

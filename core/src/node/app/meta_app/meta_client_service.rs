@@ -7,17 +7,18 @@ use crate::node::app::meta_app::messaging::{GenericAppStateRequest, GenericAppSt
 use crate::node::app::sync_gateway::SyncGateway;
 use crate::node::common::actor::ServiceState;
 use crate::node::common::data_transfer::MpscDataTransfer;
-use crate::node::common::model::vault::{VaultMember, VaultStatus};
-use crate::node::common::model::ApplicationState;
 use crate::node::common::model::device::common::DeviceName;
 use crate::node::common::model::user::common::UserData;
+use crate::node::common::model::vault::{VaultMember, VaultStatus};
+use crate::node::common::model::ApplicationState;
 use crate::node::db::actions::recover::RecoveryAction;
 use crate::node::db::actions::sign_up::claim::SignUpClaim;
 use crate::node::db::events::local_event::CredentialsObject;
+use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_vault::PersistentVault;
-use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
+use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::secret::MetaDistributor;
 
 pub struct MetaClientService<Repo: KvLogEventRepo> {
@@ -73,31 +74,30 @@ impl<Repo: KvLogEventRepo> MetaClientService<Repo> {
 
                     let maybe_user_creds = creds_repo.get_user_creds().await?;
 
-                    match maybe_user_creds {
-                        None => {
-                            bail!("Invalid state. UserCredentials must be present")
+                    let Some(user_creds) = maybe_user_creds else {
+                        bail!("Invalid state. UserCredentials must be present")
+                    };
+                    
+                    let vault_status = {
+                        let vault_repo = PersistentVault { p_obj: p_obj.clone() };
+                        vault_repo.find(user_creds.user()).await?
+                    };
+
+                    match vault_status {
+                        VaultStatus::NotExists(_) => {
+                            bail!("Vault doesn't exists")
                         }
-                        Some(user_creds) => {
-                            let vault_repo = PersistentVault { p_obj: p_obj.clone() };
-                            let vault_status = vault_repo.find(user_creds.user()).await?;
+                        VaultStatus::Outsider(_) => {
+                            bail!("Outsider user can't manage a vault")
+                        }
+                        VaultStatus::Member(vault_member) => {
+                            let distributor = MetaDistributor {
+                                p_obj: p_obj.clone(),
+                                vault_member,
+                                user_creds: Arc::new(user_creds),
+                            };
 
-                            match vault_status {
-                                VaultStatus::NotExists(_) => {
-                                    bail!("Vault doesn't exists")
-                                }
-                                VaultStatus::Outsider(_) => {
-                                    bail!("Outsider user can't manage a vault")
-                                }
-                                VaultStatus::Member(VaultMember{ vault, .. }) => {
-                                    let distributor = MetaDistributor {
-                                        persistent_obj: p_obj.clone(),
-                                        vault,
-                                        user_creds: Arc::new(user_creds),
-                                    };
-
-                                    distributor.distribute(request.pass_id, request.pass).await?;
-                                }
-                            }
+                            distributor.distribute(request.pass_id, request.pass).await?;
                         }
                     }
                 }
@@ -124,8 +124,7 @@ impl<Repo: KvLogEventRepo> MetaClientService<Repo> {
 
         let app_state = match maybe_creds {
             None => {
-                let device_creds = creds_repo.get_or_generate_device_creds(DeviceName::client())
-                    .await?;
+                let device_creds = creds_repo.get_or_generate_device_creds(DeviceName::client()).await?;
                 ApplicationState::Local {
                     device: device_creds.device,
                 }
@@ -190,13 +189,15 @@ impl MetaClientStateProvider {
 
 #[cfg(test)]
 pub mod fixture {
-    use std::sync::Arc;
-    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::meta_tests::fixture_util::fixture::states::BaseState;
-    use crate::node::app::meta_app::meta_client_service::{MetaClientDataTransfer, MetaClientService, MetaClientStateProvider};
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::node::app::meta_app::meta_client_service::{
+        MetaClientDataTransfer, MetaClientService, MetaClientStateProvider,
+    };
     use crate::node::app::sync_gateway::fixture::SyncGatewayFixture;
     use crate::node::common::data_transfer::MpscDataTransfer;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
+    use std::sync::Arc;
 
     pub struct MetaClientServiceFixture {
         pub client: Arc<MetaClientService<InMemKvLogEventRepo>>,
@@ -227,7 +228,13 @@ pub mod fixture {
                 state_provider: state_provider.vd.clone(),
             });
 
-            Self { client, vd, state_provider, data_transfer: dt_fxr, sync_gateway }
+            Self {
+                client,
+                vd,
+                state_provider,
+                data_transfer: dt_fxr,
+                sync_gateway,
+            }
         }
     }
 
@@ -256,7 +263,9 @@ pub mod fixture {
                 client: Arc::new(MetaClientDataTransfer {
                     dt: MpscDataTransfer::new(),
                 }),
-                vd: Arc::new(MetaClientDataTransfer { dt: MpscDataTransfer::new() }),
+                vd: Arc::new(MetaClientDataTransfer {
+                    dt: MpscDataTransfer::new(),
+                }),
             }
         }
     }

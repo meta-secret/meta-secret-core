@@ -1,8 +1,8 @@
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
-use crate::node::db::events::shared_secret_event::{SSDeviceLogObject, SSLedgerObject, SharedSecretObject};
+use crate::node::db::events::shared_secret_event::{SsDeviceLogObject, SsLogObject, SharedSecretObject};
+use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::events::vault_event::VaultActionEvent;
 use thiserror::Error;
-use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -29,20 +29,21 @@ pub enum LogEventCastError {
     #[error("InvalidSharedSecret: Invalid event")]
     InvalidSharedSecret(GenericKvLogEvent),
     #[error("InvalidSSDeviceLog: Invalid event")]
-    InvalidSSDeviceLog(GenericKvLogEvent),
-    #[error("InvalidSSLedger: Invalid event")]
-    InvalidSSLedger(GenericKvLogEvent),
-    #[error("WrongSSLedger: wrong event")]
-    WrongSSLedger(SSLedgerObject),
-    #[error("WrongSSDeviceLog: wrong event")]
-    WrongSSDeviceLog(SSDeviceLogObject),
+    InvalidSsDeviceLog(GenericKvLogEvent),
+    #[error("InvalidSsLog: Invalid event")]
+    InvalidSsLog(GenericKvLogEvent),
+    #[error("WrongSsLog: wrong event")]
+    WrongSsLog(SsLogObject),
+    #[error("WrongSsLogId: wrong event")]
+    WrongSsLogId(SsLogObject),
+    #[error("WrongSsDeviceLog: wrong event")]
+    WrongSsDeviceLog(SsDeviceLogObject),
     #[error("WrongSharedSecret: wrong event")]
     WrongSharedSecret(SharedSecretObject),
     #[error("WrongDeviceLog: wrong event")]
     WrongDeviceLog(DeviceLogObject),
     #[error("WrongVaultAction. Expected: {0}, actual: {1}")]
     WrongVaultAction(String, VaultActionEvent),
-    
 }
 
 impl From<&anyhow::Error> for ErrorMessage {

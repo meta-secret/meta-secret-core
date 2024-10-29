@@ -1,8 +1,10 @@
-use super::crypto::CommunicationChannel;
+use crate::node::common::model::crypto::CommunicationChannel;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::device::device_link::DeviceLink;
-use crate::node::common::model::user::common::{UserData, UserDataMember, UserDataOutsider, UserMembership, WasmUserMembership};
-use crate::node::common::model::MetaPasswordId;
+use crate::node::common::model::secret::MetaPasswordId;
+use crate::node::common::model::user::common::{
+    UserData, UserDataMember, UserDataOutsider, UserMembership, WasmUserMembership,
+};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -54,7 +56,11 @@ impl WasmVaultData {
     }
 
     pub fn users(&self) -> Vec<WasmUserMembership> {
-        self.0.users.values().map(|m| WasmUserMembership::from(m.clone())).collect()
+        self.0
+            .users
+            .values()
+            .map(|m| WasmUserMembership::from(m.clone()))
+            .collect()
     }
 
     pub fn members(&self) -> Vec<UserDataMember> {
@@ -64,7 +70,7 @@ impl WasmVaultData {
     pub fn outsiders(&self) -> Vec<UserDataOutsider> {
         self.0.outsiders()
     }
-    
+
     pub fn secrets(&self) -> Vec<MetaPasswordId> {
         self.0.secrets.iter().map(|pass| pass.clone()).collect()
     }
@@ -131,8 +137,7 @@ impl VaultData {
     }
 
     pub fn membership(&self, for_user: UserData) -> UserMembership {
-        let maybe_vault_user = self.users
-            .get(&for_user.device.device_id);
+        let maybe_vault_user = self.users.get(&for_user.device.device_id);
 
         if let Some(membership) = maybe_vault_user {
             membership.clone()
@@ -234,10 +239,8 @@ impl WasmVaultStatus {
 
     pub fn as_member(&self) -> WasmVaultMember {
         match &self.0 {
-            VaultStatus::Member(member) => {
-                WasmVaultMember(member.clone())
-            }
-            _ => panic!("Vault status is not 'member'")
+            VaultStatus::Member(member) => WasmVaultMember(member.clone()),
+            _ => panic!("Vault status is not 'member'"),
         }
     }
 }
@@ -285,4 +288,3 @@ impl VaultStatus {
         }
     }
 }
-

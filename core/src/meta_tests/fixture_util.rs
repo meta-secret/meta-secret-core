@@ -18,20 +18,26 @@ pub mod fixture {
             let p_obj = PersistentObjectFixture::generate();
             let device_creds = DeviceCredentialsFixture::generate();
             let user_creds = UserCredentialsFixture::from(&device_creds);
-            
-            FixtureRegistry { state: EmptyState { p_obj, device_creds, user_creds } }
+
+            FixtureRegistry {
+                state: EmptyState {
+                    p_obj,
+                    device_creds,
+                    user_creds,
+                },
+            }
         }
 
         pub async fn base() -> anyhow::Result<FixtureRegistry<BaseState>> {
             let empty = FixtureRegistry::empty();
             let p_creds = PersistentCredentialsFixture::init(&empty.state).await?;
             let server_p_gi = ServerPersistentGlobalIndexFixture::from(&empty);
-            
+
             let base = BaseState {
                 empty: empty.state,
                 p_creds,
                 server_p_gi,
-                server_dt: ServerDataTransferFixture::generate()
+                server_dt: ServerDataTransferFixture::generate(),
             };
 
             Ok(FixtureRegistry { state: base })
@@ -44,7 +50,11 @@ pub mod fixture {
             let server_app = ServerAppFixture::try_from(&base)?;
             let meta_client_service = MetaClientServiceFixture::from(&base);
 
-            let state = ExtendedState { base: base.state, server_app, meta_client_service };
+            let state = ExtendedState {
+                base: base.state,
+                server_app,
+                meta_client_service,
+            };
             Ok(FixtureRegistry { state })
         }
     }
@@ -73,10 +83,10 @@ pub mod fixture {
 
         pub struct BaseState {
             pub empty: EmptyState,
-            
+
             pub p_creds: PersistentCredentialsFixture,
             pub server_p_gi: ServerPersistentGlobalIndexFixture,
-            
+
             pub server_dt: ServerDataTransferFixture,
         }
 

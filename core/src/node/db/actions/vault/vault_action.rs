@@ -1,12 +1,10 @@
-use std::sync::Arc;
-use tracing::info;
 use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::user::common::{UserData, UserDataMember};
-use crate::node::common::model::vault::{VaultStatus};
+use crate::node::common::model::vault::VaultStatus;
 use crate::node::db::actions::sign_up::action::SignUpAction;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
-use crate::node::db::events::generic_log_event::{ToGenericEvent};
+use crate::node::db::events::generic_log_event::ToGenericEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{Next, ObjectId};
 use crate::node::db::events::vault_event::{VaultActionEvent, VaultMembershipObject, VaultObject};
@@ -14,6 +12,8 @@ use crate::node::db::objects::global_index::ServerPersistentGlobalIndex;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
+use std::sync::Arc;
+use tracing::info;
 
 pub struct VaultAction<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
@@ -37,10 +37,8 @@ impl<Repo: KvLogEventRepo> VaultAction<Repo> {
 
             VaultActionEvent::JoinClusterRequest { .. } => {
                 //saving messages from device_log to vault_log guarantees ordering between events
-                //sent from different devices simultaneously 
-                p_vault
-                    .save_vault_log_event(action_event)
-                    .await?;
+                //sent from different devices simultaneously
+                p_vault.save_vault_log_event(action_event).await?;
                 anyhow::Ok(())
             }
 
@@ -69,35 +67,27 @@ impl<Repo: KvLogEventRepo> VaultAction<Repo> {
                 let completed = VaultActionEvent::ActionCompleted {
                     vault_name: vault_name.clone(),
                 };
-                p_vault
-                    .save_vault_log_event(completed)
-                    .await?;
+                p_vault.save_vault_log_event(completed).await?;
 
                 //update vault status accordingly
                 let vault_status_free_id = {
-                    let vault_membership_desc = {
-                        VaultDescriptor::VaultMembership(update.user_data().user_id()).to_obj_desc()
-                    };
+                    let vault_membership_desc =
+                        { VaultDescriptor::VaultMembership(update.user_data().user_id()).to_obj_desc() };
 
-                    self
-                        .p_obj
+                    self.p_obj
                         .find_free_id_by_obj_desc(vault_membership_desc.clone())
                         .await?
                 };
 
                 let vault_status_events = match vault_status_free_id {
-                    ObjectId::Unit(_) => {
-                        VaultMembershipObject::init(update.user_data())
-                    }
+                    ObjectId::Unit(_) => VaultMembershipObject::init(update.user_data()),
                     ObjectId::Genesis(artifact_id) => {
                         let genesis = VaultMembershipObject::genesis(update.user_data()).to_generic();
-                        let member = VaultMembershipObject::member(update.user_data(), artifact_id.next())
-                            .to_generic();
+                        let member = VaultMembershipObject::member(update.user_data(), artifact_id.next()).to_generic();
                         vec![genesis, member]
                     }
                     ObjectId::Artifact(artifact_id) => {
-                        let event = VaultMembershipObject::membership(update.clone(), artifact_id)
-                            .to_generic();
+                        let event = VaultMembershipObject::membership(update.clone(), artifact_id).to_generic();
                         vec![event]
                     }
                 };
@@ -138,7 +128,6 @@ impl<Repo: KvLogEventRepo> VaultAction<Repo> {
         }
     }
 }
-
 
 pub struct CreateVaultAction<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,

@@ -1,8 +1,5 @@
 use std::sync::Arc;
 
-use anyhow::bail;
-use tracing::{debug, info};
-use tracing_attributes::instrument;
 use crate::node::common::model::user::common::{UserData, UserDataMember, UserId, UserMembership};
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ToGenericEvent};
@@ -12,6 +9,10 @@ use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::events::vault_event::VaultActionEvent;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
+use anyhow::bail;
+use tracing::{debug, info};
+use tracing_attributes::instrument;
+use crate::node::common::model::secret::MetaPasswordId;
 
 pub struct PersistentDeviceLog<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
@@ -71,6 +72,20 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
             value: VaultActionEvent::CreateVault(user.clone()),
         });
         self.p_obj.repo.save(create_request.to_generic()).await?;
+
+        Ok(())
+    }
+
+    #[instrument(skip_all)]
+    pub async fn save_add_meta_pass_request(
+        &self, sender: UserDataMember, meta_pass_id: MetaPasswordId
+    ) -> anyhow::Result<()> {
+        
+        let meta_pass_request = DeviceLogObject::Action(KvLogEvent {
+            key: self.get_device_log_key(&sender.user()).await?,
+            value: VaultActionEvent::AddMetaPassword { sender, meta_pass_id },
+        });
+        self.p_obj.repo.save(meta_pass_request.to_generic()).await?;
 
         Ok(())
     }
@@ -137,7 +152,6 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
 
 #[cfg(test)]
 pub mod spec {
-    use std::sync::Arc;
     use crate::node::common::model::user::common::UserData;
     use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
     use crate::node::db::events::object_id::{Next, ObjectId, UnitId};
@@ -145,6 +159,7 @@ pub mod spec {
     use crate::node::db::repo::generic_db::KvLogEventRepo;
     use anyhow::Result;
     use log::info;
+    use std::sync::Arc;
     use tracing_attributes::instrument;
 
     pub struct DeviceLogSpec<Repo: KvLogEventRepo> {

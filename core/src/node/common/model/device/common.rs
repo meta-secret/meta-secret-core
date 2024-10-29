@@ -1,6 +1,6 @@
+use crypto::utils::generate_uuid_b64_url_enc;
 use std::fmt::Display;
 use wasm_bindgen::prelude::wasm_bindgen;
-use crypto::utils::generate_uuid_b64_url_enc;
 
 use crate::crypto;
 use crate::crypto::encoding::base64::Base64Text;
@@ -28,7 +28,7 @@ impl DeviceName {
     pub fn server() -> Self {
         DeviceName::from("server_device")
     }
-    
+
     pub fn virtual_device() -> Self {
         DeviceName::from("vd_device")
     }
@@ -36,7 +36,7 @@ impl DeviceName {
     pub fn client() -> Self {
         DeviceName::from("client_device")
     }
-    
+
     pub fn as_str(&self) -> String {
         self.0.clone()
     }

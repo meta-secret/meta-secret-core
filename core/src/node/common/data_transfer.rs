@@ -1,5 +1,5 @@
-use std::fmt::Debug;
 use flume::{Receiver, RecvError, Sender};
+use std::fmt::Debug;
 use tracing::{instrument, Instrument};
 
 pub struct MpscDataTransfer<Request, Response> {

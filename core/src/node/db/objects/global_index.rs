@@ -43,7 +43,7 @@ impl<Repo: KvLogEventRepo> ServerPersistentGlobalIndex<Repo> {
 
         let unit_event = GlobalIndexObject::unit().to_generic();
         let genesis_event = GlobalIndexObject::genesis(self.server_device.clone()).to_generic();
-        
+
         self.p_obj.repo.save(unit_event.clone()).await?;
         self.p_obj.repo.save(genesis_event.clone()).await?;
 
@@ -71,7 +71,7 @@ impl<Repo: KvLogEventRepo> ServerPersistentGlobalIndex<Repo> {
                 },
                 value: vault_id.clone(),
             })
-                .to_generic()
+            .to_generic()
         };
 
         let gi_events = vec![gi_update_event];
@@ -181,12 +181,11 @@ pub mod fixture {
 
     pub struct ServerPersistentGlobalIndexFixture {
         pub server_gi: ServerPersistentGlobalIndex<InMemKvLogEventRepo>,
-        pub client_gi: ClientPersistentGlobalIndex<InMemKvLogEventRepo>
+        pub client_gi: ClientPersistentGlobalIndex<InMemKvLogEventRepo>,
     }
 
     impl From<&FixtureRegistry<EmptyState>> for ServerPersistentGlobalIndexFixture {
         fn from(registry: &FixtureRegistry<EmptyState>) -> Self {
-            
             Self {
                 server_gi: ServerPersistentGlobalIndex {
                     p_obj: registry.state.p_obj.server.clone(),
@@ -198,7 +197,7 @@ pub mod fixture {
             }
         }
     }
-    
+
     impl ServerPersistentGlobalIndexFixture {
         pub fn generate() -> Self {
             ServerPersistentGlobalIndexFixture::from(&FixtureRegistry::empty())

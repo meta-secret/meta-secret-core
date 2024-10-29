@@ -66,7 +66,7 @@ pub mod fixture {
         pub fn from(device_creds: &DeviceCredentialsFixture) -> Self {
             Self {
                 client: UserCredentials::from(device_creds.client.clone(), VaultName::test()),
-                vd: UserCredentials::from(device_creds.vd.clone(), VaultName::test())
+                vd: UserCredentials::from(device_creds.vd.clone(), VaultName::test()),
             }
         }
     }

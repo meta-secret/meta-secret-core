@@ -1,5 +1,5 @@
-use anyhow::anyhow;
 use crate::node::common::model::device::common::DeviceId;
+use anyhow::anyhow;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

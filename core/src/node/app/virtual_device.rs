@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use log::warn;
+use std::sync::Arc;
 use tracing::{info, instrument};
 
 use crate::node::app::meta_app::meta_client_service::MetaClientAccessProxy;
@@ -17,8 +17,8 @@ use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;
-use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
+use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::node::server::server_app::ServerDataTransfer;
 
 pub struct VirtualDevice<Repo: KvLogEventRepo> {
@@ -79,7 +79,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
         let p_vault = PersistentVault { p_obj: self.p_obj() };
         let vault_status = p_vault.find(user_creds.user()).await?;
 
-        let VaultStatus::Member(VaultMember{ member: me, vault }) = vault_status else {
+        let VaultStatus::Member(VaultMember { member: me, vault }) = vault_status else {
             warn!("Not a vault member");
             return Ok(());
         };
@@ -88,9 +88,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
         //vault actions
         let vault_log_desc = VaultDescriptor::VaultLog(vault_name).to_obj_desc();
 
-        let maybe_vault_log_event = self.p_obj
-            .find_tail_event(vault_log_desc)
-            .await?;
+        let maybe_vault_log_event = self.p_obj.find_tail_event(vault_log_desc).await?;
 
         if let Some(vault_log_event) = maybe_vault_log_event {
             let vault_log = vault_log_event.vault_log()?;
@@ -104,9 +102,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
                                     p_obj: self.p_obj.clone(),
                                 };
 
-                                p_device_log
-                                    .save_accept_join_request_event(me, candidate)
-                                    .await?;
+                                p_device_log.save_accept_join_request_event(me, candidate).await?;
                             }
                         }
                     }
@@ -118,7 +114,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
                     }
                     VaultActionEvent::CreateVault(_) => {
                         // server's responsibities
-                    },
+                    }
                     VaultActionEvent::ActionCompleted { .. } => {
                         //no op, action completion event
                     }

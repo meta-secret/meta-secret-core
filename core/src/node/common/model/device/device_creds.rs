@@ -32,7 +32,7 @@ pub mod fixture {
     pub struct DeviceCredentialsFixture {
         pub client: DeviceCredentials,
         pub vd: DeviceCredentials,
-        pub server: DeviceCredentials
+        pub server: DeviceCredentials,
     }
 
     impl DeviceCredentialsFixture {

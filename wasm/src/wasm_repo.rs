@@ -1,4 +1,4 @@
-use anyhow::{bail};
+use anyhow::bail;
 use async_trait::async_trait;
 use tracing::{error, instrument};
 
@@ -87,10 +87,10 @@ impl SaveCommand for WasmRepo {
     #[instrument(skip_all)]
     async fn save(&self, event: GenericKvLogEvent) -> anyhow::Result<ObjectId> {
         let maybe_key = self.get_key(event.obj_id()).await?;
-        if let Some(_) = maybe_key { 
+        if let Some(_) = maybe_key {
             bail!("Wrong behaviour. Event already exists: {:?}", event);
         };
-        
+
         let store_name = self.store_name.as_str();
 
         let tx = self
@@ -108,7 +108,7 @@ impl SaveCommand for WasmRepo {
         if let Err(_) = &op_result {
             error!("Failed to save event: {:?}", &event);
         }
-        
+
         op_result.unwrap();
 
         // Waits for the transaction to complete

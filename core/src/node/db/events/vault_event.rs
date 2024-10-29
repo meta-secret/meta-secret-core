@@ -1,6 +1,3 @@
-use std::fmt::Display;
-use anyhow::{anyhow, bail};
-use tracing::error;
 use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::secret::MetaPasswordId;
 use crate::node::common::model::user::common::{UserData, UserDataMember, UserMembership};
@@ -11,6 +8,9 @@ use crate::node::db::events::error::LogEventCastError;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, GenesisId, Next, ObjectId, UnitId};
+use anyhow::{anyhow, bail};
+use std::fmt::Display;
+use tracing::error;
 
 use super::object_id::{VaultGenesisEvent, VaultUnitEvent};
 
@@ -28,7 +28,9 @@ impl VaultObject {
         let desc = VaultDescriptor::vault(vault_name.clone());
         let vault_data = {
             let mut vault = VaultData::from(vault_name.clone());
-            let membership = UserMembership::Member(UserDataMember { user_data: candidate.clone() });
+            let membership = UserMembership::Member(UserDataMember {
+                user_data: candidate.clone(),
+            });
             vault.update_membership(membership);
             vault
         };
@@ -71,7 +73,7 @@ impl VaultObject {
                 VaultStatus::NotExists(user.clone())
             }
             VaultObject::Genesis(_) => {
-                // We believe that if there are only unit and genesis events in the database, then 
+                // We believe that if there are only unit and genesis events in the database, then
                 // the table is broken, so vault not exists
                 error!("Invalid state (only genesis event is present)");
                 VaultStatus::NotExists(user.clone())
@@ -79,12 +81,8 @@ impl VaultObject {
             VaultObject::Vault(event) => {
                 let vault = event.value.clone();
                 match vault.membership(user) {
-                    UserMembership::Outsider(outsider) => {
-                        VaultStatus::Outsider(outsider)
-                    }
-                    UserMembership::Member(member) => {
-                        VaultStatus::Member(VaultMember { member, vault })
-                    }
+                    UserMembership::Outsider(outsider) => VaultStatus::Outsider(outsider),
+                    UserMembership::Member(member) => VaultStatus::Member(VaultMember { member, vault }),
                 }
             }
         }
@@ -172,7 +170,9 @@ impl VaultMembershipObject {
     }
 
     pub fn member(candidate: UserData, event_id: ArtifactId) -> Self {
-        let member = UserMembership::Member(UserDataMember { user_data: candidate.clone() });
+        let member = UserMembership::Member(UserDataMember {
+            user_data: candidate.clone(),
+        });
         Self::membership(member, event_id)
     }
 
@@ -181,7 +181,10 @@ impl VaultMembershipObject {
         let desc = VaultDescriptor::VaultMembership(user_id).to_obj_desc();
 
         VaultMembershipObject::Membership(KvLogEvent {
-            key: KvKey { obj_id: event_id, obj_desc: desc },
+            key: KvKey {
+                obj_id: event_id,
+                obj_desc: desc,
+            },
             value: membership,
         })
     }
@@ -258,7 +261,7 @@ pub enum VaultActionEvent {
         meta_pass_id: MetaPasswordId,
     },
     ActionCompleted {
-        vault_name: VaultName
+        vault_name: VaultName,
     },
 }
 
@@ -279,14 +282,20 @@ impl VaultActionEvent {
     pub fn get_create(self) -> anyhow::Result<UserData> {
         match self {
             VaultActionEvent::CreateVault(user) => Ok(user),
-            _ => bail!(LogEventCastError::WrongVaultAction(String::from("CreateVault"), self.clone())),
+            _ => bail!(LogEventCastError::WrongVaultAction(
+                String::from("CreateVault"),
+                self.clone()
+            )),
         }
     }
 
     pub fn get_join_request(self) -> anyhow::Result<UserData> {
         match self {
             VaultActionEvent::JoinClusterRequest { candidate } => Ok(candidate),
-            _ => bail!(LogEventCastError::WrongVaultAction(String::from("JoinClusterRequest"), self.clone())),
+            _ => bail!(LogEventCastError::WrongVaultAction(
+                String::from("JoinClusterRequest"),
+                self.clone()
+            )),
         }
     }
 

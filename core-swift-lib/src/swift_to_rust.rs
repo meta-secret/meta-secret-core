@@ -2,7 +2,7 @@ use anyhow::Context;
 use meta_secret_core::crypto::encoding::base64::Base64Text;
 use meta_secret_core::crypto::keys::{KeyManager, SecretBox};
 use meta_secret_core::errors::CoreError;
-use meta_secret_core::node::common::model::secret::SecretDistributionData;
+use meta_secret_core::node::common::model::secret::secret::SecretDistributionData;
 use meta_secret_core::recover_from_shares;
 use meta_secret_core::secret::data_block::common::SharedSecretConfig;
 use meta_secret_core::secret::shared_secret::UserShareDto;
@@ -76,8 +76,8 @@ fn to_c_str(str: String) -> *mut c_char {
 mod internal {
     use super::*;
     use meta_secret_core::crypto::key_pair::KeyPair;
-    use meta_secret_core::node::common::model::crypto::{AeadCipherText, AeadPlainText, EncryptedMessage};
-    use meta_secret_core::node::common::model::secret::MetaPasswordId;
+    use meta_secret_core::node::common::model::crypto::crypto::{AeadCipherText, AeadPlainText, EncryptedMessage};
+    use meta_secret_core::node::common::model::secret::secret::MetaPasswordId;
     use meta_secret_core::secret;
 
     pub fn generate_security_box(vault_name_bytes: *const u8, len: SizeT) -> CoreResult<String> {
@@ -240,7 +240,7 @@ pub mod test {
     use meta_secret_core::crypto::encoding::base64::Base64Text;
     use meta_secret_core::crypto::key_pair::KeyPair;
     use meta_secret_core::crypto::keys::KeyManager;
-    use meta_secret_core::node::common::model::crypto::AeadCipherText;
+    use meta_secret_core::node::common::model::crypto::crypto::AeadCipherText;
     use meta_secret_core::secret::data_block::common::SharedSecretConfig;
     use meta_secret_core::secret::shared_secret::UserShareDto;
     use meta_secret_core::{secret, CoreResult};
