@@ -21,6 +21,25 @@ pub struct PersistentSharedSecret<Repo: KvLogEventRepo> {
 }
 
 impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
+    pub async fn get_ss_distribution_events(
+        &self, distribution_claim: SsDistributionClaim
+    ) -> Result<Vec<GenericKvLogEvent>> {
+        let mut events = vec![];
+        for distribution_id in distribution_claim.distribution_ids() {
+            let desc = SharedSecretDescriptor::SsDistribution(distribution_id)
+                .to_obj_desc();
+
+            let maybe_event = self.p_obj.find_tail_event(desc).await?;
+            if let Some(event) = maybe_event {
+                events.push(event);
+            }
+        }
+
+        Ok(events)
+    }
+}
+
+impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
     pub async fn save_ss_log_event(&self, claim: SsDistributionClaim) -> Result<()> {
         let obj_desc = SharedSecretDescriptor::SsLog(claim.vault_name.clone()).to_obj_desc();
         let maybe_ss_log_event = self.p_obj.find_tail_event(obj_desc.clone()).await?;
@@ -77,7 +96,9 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
 }
 
 impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
-    pub async fn save_claim(&self, device_id: DeviceId, claim: SsDistributionClaim) -> anyhow::Result<()> {
+    pub async fn save_claim_in_ss_device_log(
+        &self, device_id: DeviceId, claim: SsDistributionClaim
+    ) -> Result<()> {
         let obj_desc = SharedSecretDescriptor::SsDeviceLog(device_id).to_obj_desc();
         let free_id = self.p_obj.find_free_id_by_obj_desc(obj_desc.clone()).await?;
         let ObjectId::Artifact(free_artifact_id) = free_id else {
@@ -96,24 +117,24 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
 }
 
 impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
-    pub async fn find_device_tail_id(&self, device_id: &DeviceId) -> anyhow::Result<Option<ObjectId>> {
+    pub async fn find_ss_device_log_tail_id(&self, device_id: &DeviceId) -> Result<Option<ObjectId>> {
         let obj_desc = SharedSecretDescriptor::SsDeviceLog(device_id.clone()).to_obj_desc();
         self.p_obj.find_tail_id_by_obj_desc(obj_desc).await
     }
 
-    pub async fn get_ss_log_obj(&self, vault_name: VaultName) -> anyhow::Result<SsLogObject> {
+    pub async fn get_ss_log_obj(&self, vault_name: VaultName) -> Result<SsLogObject> {
         let obj_desc = SharedSecretDescriptor::SsLog(vault_name).to_obj_desc();
-        let maybe_ledger_event = self.p_obj.find_tail_event(obj_desc).await?;
+        let maybe_log_event = self.p_obj.find_tail_event(obj_desc).await?;
 
-        let Some(ledger_event) = maybe_ledger_event else {
+        let Some(ss_log_event) = maybe_log_event else {
             bail!("Invalid SSLedger object event");
         };
 
-        let ledger_obj = SsLogObject::try_from(ledger_event)?;
-        Ok(ledger_obj)
+        let ss_log_obj = SsLogObject::try_from(ss_log_event)?;
+        Ok(ss_log_obj)
     }
 
-    pub async fn get_local_share(&self, pass_id: MetaPasswordId) -> anyhow::Result<GenericKvLogEvent> {
+    pub async fn get_local_share(&self, pass_id: MetaPasswordId) -> Result<GenericKvLogEvent> {
         let obj_desc = SharedSecretDescriptor::LocalShare(pass_id).to_obj_desc();
         let unit_id = UnitId::unit(&obj_desc);
         let Some(local_share_generic_event) = self.p_obj.repo.find_one(ObjectId::Unit(unit_id)).await? else {
@@ -126,18 +147,18 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
     pub async fn get_local_share_distribution_data(
         &self,
         pass_id: MetaPasswordId,
-    ) -> anyhow::Result<SecretDistributionData> {
+    ) -> Result<SecretDistributionData> {
         let ss_obj = self.get_local_share(pass_id).await?.shared_secret()?;
 
         ss_obj.to_local_share()
     }
 
-    pub async fn init(&self, user: UserData) -> anyhow::Result<()> {
+    pub async fn init(&self, user: UserData) -> Result<()> {
         self.init_ss_device_log(user.clone()).await?;
         Ok(())
     }
 
-    async fn init_ss_device_log(&self, user: UserData) -> anyhow::Result<()> {
+    async fn init_ss_device_log(&self, user: UserData) -> Result<()> {
         let user_id = user.user_id();
         let obj_desc = SharedSecretDescriptor::SsDeviceLog(user_id.device_id).to_obj_desc();
         let unit_id = UnitId::unit(&obj_desc);

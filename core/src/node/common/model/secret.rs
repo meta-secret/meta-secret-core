@@ -63,10 +63,27 @@ pub struct SsLogData {
 #[serde(rename_all = "camelCase")]
 pub struct SsDistributionClaim {
     pub vault_name: VaultName,
-    pub id: SsDistributionClaimId,
     pub pass_id: MetaPasswordId,
+    
+    pub id: SsDistributionClaimId,
     pub distribution_type: SecretDistributionType,
+    
     pub distributions: Vec<PeerToPeerDeviceLink>,
+}
+
+impl SsDistributionClaim {
+    pub fn distribution_ids(&self) -> Vec<SsDistributionId> {
+        let mut ids = Vec::with_capacity(self.distributions.len());
+        for device_link in self.distributions.iter() {
+            ids.push(SsDistributionId {
+                claim_id: self.id.clone(),
+                distribution_type: self.distribution_type,
+                device_link: device_link.clone(),
+            });
+        }
+        
+        ids
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]

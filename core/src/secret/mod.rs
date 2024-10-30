@@ -5,7 +5,7 @@ use crate::node::common::model::crypto::EncryptedMessage;
 use crate::node::common::model::device::device_link::{DeviceLink, DeviceLinkBuilder, PeerToPeerDeviceLink};
 use crate::node::common::model::secret::{MetaPasswordId, SsDistributionClaimId, SsDistributionId, SecretDistributionData, SecretDistributionType, SsDistributionClaim};
 use crate::node::common::model::user::user_creds::UserCredentials;
-use crate::node::common::model::vault::{VaultData, VaultMember};
+use crate::node::common::model::vault::{VaultData, VaultMember, VaultStatus};
 use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ToObjectDescriptor};
 use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
 use crate::node::db::events::generic_log_event::ToGenericEvent;
@@ -44,9 +44,9 @@ impl MetaEncryptor {
     ///  - generate meta password id
     ///  - split
     ///  - encrypt each share with ECIES Encryption Scheme
-    fn encrypt(self, password: String) -> anyhow::Result<Vec<EncryptedMessage>> {
-        let cfg = SharedSecretConfig::default();
-
+    fn encrypt(
+        self, password: String, cfg: SharedSecretConfig
+    ) -> anyhow::Result<Vec<EncryptedMessage>> {
         let key_manager = KeyManager::try_from(&self.user.device_creds.secret_box)?;
 
         let shares = split(password, cfg)?;
@@ -88,13 +88,18 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
     pub async fn distribute(self, password_id: String, password: String) -> anyhow::Result<()> {
         //save meta password!!!
         let vault_name = self.user_creds.vault_name.clone();
+        
+        let cfg = {
+            let members_num = self.vault_member.vault.members().len();
+            SharedSecretConfig::calculate(members_num)
+        };
 
         let encrypted_shares = {
             let encryptor = MetaEncryptor {
                 user: self.user_creds.clone(),
                 vault: self.vault_member.vault.clone(),
             };
-            encryptor.encrypt(password)?
+            encryptor.encrypt(password, cfg)?
         };
 
         let claim_id = SsDistributionClaimId::generate();
@@ -123,7 +128,7 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
         
         let p_ss = PersistentSharedSecret { p_obj: self.p_obj.clone() };
         let device_id = self.user_creds.device_creds.device.device_id.clone();
-        p_ss.save_claim(device_id, claim).await?;
+        p_ss.save_claim_in_ss_device_log(device_id, claim).await?;
 
         for secret_share in encrypted_shares {
             let distribution_share = SecretDistributionData {

@@ -16,6 +16,33 @@ pub struct SharedSecretConfig {
     pub threshold: usize,
 }
 
+impl SharedSecretConfig {
+    pub fn calculate(num_shares: usize) -> Self {
+        match num_shares {
+            1 | 2 => {
+                SharedSecretConfig {
+                    number_of_shares: num_shares,
+                    threshold: 1,
+                }
+            }
+            n if n % 2 == 0 => {
+                let half = num_shares / 2;
+                SharedSecretConfig {
+                    number_of_shares: num_shares,
+                    threshold: half,
+                }
+            }
+            _ => {
+                let quorum = (num_shares / 2) + 1;
+                SharedSecretConfig {
+                    number_of_shares: num_shares,
+                    threshold: quorum,
+                }
+            }
+        }
+    }
+}
+
 impl Default for SharedSecretConfig {
     fn default() -> Self {
         Self {
@@ -37,4 +64,31 @@ pub fn parse_data<const BLOCK_SIZE: usize>(block_array: &[u8]) -> [u8; BLOCK_SIZ
         format!("Byte array must be the same length as a data block. Expected size: {BLOCK_SIZE}, actual {array_size}")
             .as_str(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_calculation() {
+        let cfg = SharedSecretConfig::calculate(1);
+        assert_eq!(cfg.number_of_shares, 1);
+        assert_eq!(cfg.threshold, 1);
+
+        let cfg = SharedSecretConfig::calculate(2);
+        assert_eq!(cfg.number_of_shares, 2);
+        assert_eq!(cfg.threshold, 1);
+
+        let cfg = SharedSecretConfig::calculate(3);
+        assert_eq!(cfg.number_of_shares, 3);
+        assert_eq!(cfg.threshold, 2);
+
+        let cfg = SharedSecretConfig::calculate(4);
+        assert_eq!(cfg.number_of_shares, 4);
+        assert_eq!(cfg.threshold, 2);
+
+        let cfg = SharedSecretConfig::calculate(5);
+        assert_eq!(cfg.number_of_shares, 5);
+        assert_eq!(cfg.threshold, 3);
+    }
 }

@@ -122,7 +122,7 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                     p_obj: self.p_obj.clone(),
                 };
                 let ss_device_log_tail = p_ss
-                    .find_device_tail_id(&user.device.device_id)
+                    .find_ss_device_log_tail_id(&user.device.device_id)
                     .await?
                     .map(|tail_id| tail_id.next());
 

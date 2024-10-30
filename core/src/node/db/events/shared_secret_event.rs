@@ -182,7 +182,7 @@ impl SsLogObject {
 }
 
 impl SsLogObject {
-    pub fn to_ledger_data(&self) -> anyhow::Result<SsLogData> {
+    pub fn to_data(&self) -> anyhow::Result<SsLogData> {
         if let SsLogObject::Claims(ledger_event) = self {
             Ok(ledger_event.value.clone())
         } else {
@@ -190,7 +190,7 @@ impl SsLogObject {
         }
     }
 
-    pub fn get_ledger_id(&self) -> anyhow::Result<ArtifactId> {
+    pub fn get_id(&self) -> anyhow::Result<ArtifactId> {
         if let SsLogObject::Claims(ledger_event) = self {
             Ok(ledger_event.key.obj_id.clone())
         } else {

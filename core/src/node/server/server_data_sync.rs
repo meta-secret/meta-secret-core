@@ -1,3 +1,4 @@
+use std::cmp::PartialEq;
 use std::sync::Arc;
 
 use crate::node::common::model::device::common::{DeviceData, DeviceName};
@@ -9,7 +10,7 @@ use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescript
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ToGenericEvent};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{Next, ObjectId};
-use crate::node::db::events::shared_secret_event::{SsDeviceLogObject, SsLogObject};
+use crate::node::db::events::shared_secret_event::{SharedSecretObject, SsDeviceLogObject, SsLogObject};
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_vault::PersistentVault;
@@ -58,7 +59,7 @@ pub struct ServerTailResponse {
 }
 
 impl DataSyncResponse {
-    pub fn to_data(&self) -> anyhow::Result<DataEventsResponse> {
+    pub fn to_data(&self) -> Result<DataEventsResponse> {
         match self {
             DataSyncResponse::Data(data) => Ok(data.clone()),
             _ => Err(anyhow!("Invalid response type")),
@@ -103,8 +104,8 @@ impl<Repo: KvLogEventRepo> DataSyncApi for ServerSyncGateway<Repo> {
                         commit_log.extend(vault_events);
                     }
                 }
-            },
-            
+            }
+
             SyncRequest::Ss(ss_request) => {
                 let p_vault = PersistentVault {
                     p_obj: self.p_obj.clone(),
@@ -157,6 +158,9 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                     let p_ss_log = PersistentSharedSecret { p_obj: self.p_obj.clone() };
                     p_ss_log.save_ss_log_event(ss_claim).await?;
                 }
+            }
+            GenericKvLogEvent::SharedSecret(_) => {
+                self.p_obj.repo.save(generic_event.clone()).await?;
             }
             _ => {
                 bail!("Invalid event type: {:?}", generic_event);
@@ -217,7 +221,9 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
         //sync vault status
         {
-            let vault_status_events = self.p_obj.find_object_events(request.vault_status.clone()).await?;
+            let vault_status_events = self.p_obj
+                .find_object_events(request.vault_status.clone())
+                .await?;
 
             commit_log.extend(vault_status_events);
         }
@@ -227,13 +233,30 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
     pub async fn ss_replication(&self, request: SsRequest) -> Result<Vec<GenericKvLogEvent>> {
         let mut commit_log = vec![];
-
         //sync SsLog
-        {
-            let ss_log_events = self.p_obj.find_object_events(request.ss_log.clone()).await?;
-            commit_log.extend(ss_log_events);
-        }
+        let ss_log = self.p_obj
+            .find_object_events(request.ss_log.clone())
+            .await?;
+        commit_log.extend(ss_log);
+        
+        let p_ss = PersistentSharedSecret { p_obj: self.p_obj.clone() };
+        let ss_log_obj = p_ss.get_ss_log_obj(request.sender.vault_name.clone()).await?;
+        if let SsLogObject::Claims(claim_kv_event) = ss_log_obj {
+            let ss_log_data = claim_kv_event.value;
+            for (_, claim) in ss_log_data.claims {
+                for dist_id in claim.distribution_ids() {
+                    let desc = SharedSecretDescriptor::SsDistribution(dist_id.clone())
+                        .to_obj_desc();
 
+                    if request.sender.device.device_id.eq(dist_id.device_link.receiver()) {
+                        if let Some(dist_event) = self.p_obj.find_tail_event(desc).await? {
+                            commit_log.push(dist_event);
+                        }
+                    }
+                }
+            }
+        }
+        
         Ok(commit_log)
     }
 }

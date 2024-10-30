@@ -1,18 +1,13 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::bail;
 use tracing::{debug, error, info, instrument};
 
-use crate::node::common::model::crypto::{AeadAuthData, AeadPlainText, EncryptedMessage};
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
-use crate::node::common::model::device::device_link::DeviceLink;
-use crate::node::common::model::secret::{
-    SsDistributionId, SsDistributionStatus, SecretDistributionData, SecretDistributionType,
-};
+use crate::node::common::model::secret::SsDistributionClaim;
 use crate::node::common::model::user::common::{UserDataMember, UserId};
 use crate::node::common::model::user::user_creds::UserCredentials;
-use crate::node::common::model::vault::{VaultMember, VaultName, VaultStatus};
+use crate::node::common::model::vault::{VaultMember, VaultStatus};
 use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ToObjectDescriptor};
 use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
@@ -22,7 +17,7 @@ use crate::node::db::events::generic_log_event::ToGenericEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::local_event::{CredentialsObject, DbTailObject};
 use crate::node::db::events::object_id::ObjectId;
-use crate::node::db::events::shared_secret_event::{SsLogObject, SharedSecretObject};
+use crate::node::db::events::shared_secret_event::SsDeviceLogObject;
 use crate::node::db::objects::global_index::ClientPersistentGlobalIndex;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -170,6 +165,20 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             .await?;
 
         for ss_device_log_event in ss_device_log_events_to_sync {
+            //get SsDistribution events
+            let ss_device_log = ss_device_log_event.clone().ss_device_log()?;
+            if let SsDeviceLogObject::Claim(claim_event) = ss_device_log {
+                let distribution_claim = claim_event.value;
+                let p_ss = PersistentSharedSecret { p_obj: self.p_obj.clone() };
+                let dist_events = p_ss.get_ss_distribution_events(distribution_claim).await?;
+                for dist_event in dist_events {
+                    self.server_dt
+                        .dt
+                        .send_to_service(DataSyncRequest::Event(dist_event))
+                        .await;
+                }
+            }
+            
             self.server_dt
                 .dt
                 .send_to_service(DataSyncRequest::Event(ss_device_log_event))
