@@ -7,7 +7,7 @@ use crate::node::common::model::vault::VaultStatus;
 use crate::node::db::actions::vault::vault_action::VaultAction;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
-use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ToGenericEvent};
+use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{Next, ObjectId};
 use crate::node::db::events::shared_secret_event::{SharedSecretObject, SsDeviceLogObject, SsLogObject};
@@ -250,7 +250,9 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
                     if request.sender.device.device_id.eq(dist_id.device_link.receiver()) {
                         if let Some(dist_event) = self.p_obj.find_tail_event(desc).await? {
-                            commit_log.push(dist_event);
+                            commit_log.push(dist_event.clone());
+                            
+                            self.p_obj.repo.delete(dist_event.obj_id()).await;
                         }
                     }
                 }
