@@ -167,11 +167,11 @@ impl SsLogObject {
 }
 
 impl SsLogObject {
-    pub fn to_data(&self) -> anyhow::Result<SsLogData> {
+    pub fn to_data(&self) -> SsLogData {
         if let SsLogObject::Claims(ledger_event) = self {
-            Ok(ledger_event.value.clone())
+            ledger_event.value.clone()
         } else {
-            bail!(LogEventCastError::WrongSsLog(self.clone()))
+            SsLogData::empty()
         }
     }
 

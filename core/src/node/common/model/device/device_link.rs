@@ -10,9 +10,7 @@ pub enum DeviceLink {
 }
 
 pub struct WasmDeviceLink(DeviceLink);
-impl WasmDeviceLink {
-    
-}
+impl WasmDeviceLink {}
 
 impl From<DeviceLink> for WasmDeviceLink {
     fn from(device_link: DeviceLink) -> Self {

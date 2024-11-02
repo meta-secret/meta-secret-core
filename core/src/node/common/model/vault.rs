@@ -1,7 +1,9 @@
 use crate::node::common::model::crypto::CommunicationChannel;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::device::device_link::DeviceLink;
-use crate::node::common::model::secret::{MetaPasswordId, SecretDistributionType, SsDistributionClaim, SsDistributionClaimId, SsLogData, WasmSsLogData};
+use crate::node::common::model::secret::{
+    MetaPasswordId, SecretDistributionType, SsDistributionClaim, SsDistributionClaimId, SsLogData, WasmSsLogData,
+};
 use crate::node::common::model::user::common::{
     UserData, UserDataMember, UserDataOutsider, UserMembership, WasmUserMembership,
 };
@@ -250,7 +252,7 @@ impl WasmVaultStatus {
         match &self.0 {
             VaultStatus::Member { member, ss_claims } => {
                 WasmVaultMember(member.clone(), WasmSsLogData::from(ss_claims.clone()))
-            },
+            }
             _ => panic!("Vault status is not 'member'"),
         }
     }

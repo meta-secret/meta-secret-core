@@ -14,9 +14,7 @@ use wasm_bindgen_test::*;
 
 use indexed_db_futures::prelude::*;
 use meta_secret_core::node::db::events::generic_log_event::GenericKvLogEvent;
-use meta_secret_core::node::db::events::global_index_event::{
-    GlobalIndexObject, GlobalIndexRecord,
-};
+use meta_secret_core::node::db::events::global_index_event::{GlobalIndexObject, GlobalIndexRecord};
 use meta_secret_core::node::db::events::kv_log_event::KvLogEvent;
 use meta_secret_core::node::db::events::vault_event::VaultObject;
 use std::time::Duration;
@@ -56,9 +54,7 @@ async fn run_app() {
     async_std::task::sleep(Duration::from_secs(3)).await;
 
     info!("Cluster Distribution");
-    app_manager
-        .cluster_distribution("pass_id:123", "t0p$ecret")
-        .await;
+    app_manager.cluster_distribution("pass_id:123", "t0p$ecret").await;
 
     async_std::task::sleep(Duration::from_secs(3)).await;
 }

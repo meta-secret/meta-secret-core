@@ -93,9 +93,7 @@ pub struct SsDistributionClaim {
 
 #[wasm_bindgen]
 pub struct WasmSsDistributionClaim(SsDistributionClaim);
-impl WasmSsDistributionClaim {
-    
-}
+impl WasmSsDistributionClaim {}
 
 impl From<SsDistributionClaim> for WasmSsDistributionClaim {
     fn from(claim: SsDistributionClaim) -> Self {

@@ -41,9 +41,7 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
         }
     }
 
-    pub async fn init(
-        cfg: ApplicationManagerConfigurator<Repo>,
-    ) -> anyhow::Result<ApplicationManager<Repo>> {
+    pub async fn init(cfg: ApplicationManagerConfigurator<Repo>) -> anyhow::Result<ApplicationManager<Repo>> {
         info!("Initialize application state manager");
 
         let server_dt = Arc::new(ServerDataTransfer {
@@ -105,10 +103,7 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
     }
 
     #[instrument(name = "Vd", skip_all)]
-    pub async fn virtual_device_setup(
-        device_repo: Arc<Repo>,
-        dt: Arc<ServerDataTransfer>,
-    ) -> anyhow::Result<()> {
+    pub async fn virtual_device_setup(device_repo: Arc<Repo>, dt: Arc<ServerDataTransfer>) -> anyhow::Result<()> {
         info!("virtual device initialization");
 
         let persistent_object = Arc::new(PersistentObject::new(device_repo.clone()));
@@ -139,16 +134,11 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
         };
 
         spawn_local(async move {
-            meta_client_service
-                .run()
-                .instrument(vd_span())
-                .await
-                .unwrap();
+            meta_client_service.run().instrument(vd_span()).await.unwrap();
         });
 
         let meta_client_access_proxy = Arc::new(MetaClientAccessProxy { dt: dt_meta_client });
-        let vd =
-            VirtualDevice::init(persistent_object, meta_client_access_proxy, dt, gateway).await?;
+        let vd = VirtualDevice::init(persistent_object, meta_client_access_proxy, dt, gateway).await?;
         let vd = Arc::new(vd);
         spawn_local(async move { vd.run().instrument(vd_span()).await.unwrap() });
 
@@ -156,10 +146,7 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
     }
 
     #[instrument(name = "MetaServer", skip_all)]
-    pub async fn server_setup(
-        server_repo: Arc<Repo>,
-        server_dt: Arc<ServerDataTransfer>,
-    ) -> anyhow::Result<()> {
+    pub async fn server_setup(server_repo: Arc<Repo>, server_dt: Arc<ServerDataTransfer>) -> anyhow::Result<()> {
         info!("Server initialization");
 
         spawn_local(async move {

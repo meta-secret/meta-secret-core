@@ -24,7 +24,6 @@ export default defineComponent({
     },
 
     async recover(metaPassId: MetaPasswordId) {
-      alert('Recover password: ' + JSON.stringify(metaPassId));
       await this.appState.appManager.recover_js(metaPassId);
     },
 

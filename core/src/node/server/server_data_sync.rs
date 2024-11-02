@@ -10,7 +10,7 @@ use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::object_id::ObjectId;
-use crate::node::db::events::shared_secret_event::{SsDeviceLogObject, SsLogObject};
+use crate::node::db::events::shared_secret_event::SsDeviceLogObject;
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -236,24 +236,22 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         let p_ss = PersistentSharedSecret {
             p_obj: self.p_obj.clone(),
         };
-        let ss_log_obj = p_ss.get_ss_log_obj(request.sender.vault_name.clone()).await?;
-        if let SsLogObject::Claims(claim_kv_event) = ss_log_obj {
-            let ss_log_data = claim_kv_event.value;
-            for (_, claim) in ss_log_data.claims {
-                for dist_id in claim.distribution_ids() {
-                    let desc = SharedSecretDescriptor::SsDistribution(dist_id.clone()).to_obj_desc();
+        let ss_log_data = p_ss.get_ss_log_obj(request.sender.vault_name.clone()).await?;
 
-                    match dist_id.device_link {
-                        DeviceLink::Loopback(_) => {
-                            bail!("Local shares must not be sent to server");
-                        }
-                        DeviceLink::PeerToPeer(p2p_device_link) => {
-                            if request.sender.device.device_id.eq(p2p_device_link.receiver()) {
-                                if let Some(dist_event) = self.p_obj.find_tail_event(desc).await? {
-                                    commit_log.push(dist_event.clone());
+        for (_, claim) in ss_log_data.claims {
+            for dist_id in claim.distribution_ids() {
+                let desc = SharedSecretDescriptor::SsDistribution(dist_id.clone()).to_obj_desc();
 
-                                    self.p_obj.repo.delete(dist_event.obj_id()).await;
-                                }
+                match dist_id.device_link {
+                    DeviceLink::Loopback(_) => {
+                        bail!("Local shares must not be sent to server");
+                    }
+                    DeviceLink::PeerToPeer(p2p_device_link) => {
+                        if request.sender.device.device_id.eq(p2p_device_link.receiver()) {
+                            if let Some(dist_event) = self.p_obj.find_tail_event(desc).await? {
+                                commit_log.push(dist_event.clone());
+
+                                self.p_obj.repo.delete(dist_event.obj_id()).await;
                             }
                         }
                     }

@@ -8,9 +8,7 @@ use crate::app_manager::ApplicationManager;
 use crate::configure;
 use crate::wasm_repo::WasmRepo;
 use meta_secret_core::node::app::app_state_update_manager::ApplicationManagerConfigurator;
-use meta_secret_core::node::app::meta_app::messaging::{
-    ClusterDistributionRequest, GenericAppStateRequest,
-};
+use meta_secret_core::node::app::meta_app::messaging::{ClusterDistributionRequest, GenericAppStateRequest};
 use meta_secret_core::node::common::model::secret::MetaPasswordId;
 use meta_secret_core::node::common::model::vault::VaultName;
 use meta_secret_core::node::common::model::WasmApplicationState;
@@ -21,12 +19,8 @@ pub struct WasmApplicationManager {
 }
 
 pub enum GenericApplicationManager {
-    Wasm {
-        app_manager: ApplicationManager<WasmRepo>,
-    },
-    InMem {
-        app_manager: ApplicationManager<WasmRepo>,
-    },
+    Wasm { app_manager: ApplicationManager<WasmRepo> },
+    InMem { app_manager: ApplicationManager<WasmRepo> },
 }
 
 impl GenericApplicationManager {
@@ -122,9 +116,7 @@ impl WasmApplicationManager {
         };
     }
 
-    pub async fn recover_js(&self, meta_pass_id_js: JsValue) {
-        let meta_pass_id = serde_wasm_bindgen::from_value(meta_pass_id_js).unwrap();
-
+    pub async fn recover_js(&self, meta_pass_id: MetaPasswordId) {
         let request = GenericAppStateRequest::Recover(meta_pass_id);
 
         match &self.app_manager {

@@ -116,16 +116,17 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
         self.p_obj.find_tail_id_by_obj_desc(obj_desc).await
     }
 
-    pub async fn get_ss_log_obj(&self, vault_name: VaultName) -> Result<SsLogObject> {
+    pub async fn get_ss_log_obj(&self, vault_name: VaultName) -> Result<SsLogData> {
         let obj_desc = SharedSecretDescriptor::SsLog(vault_name).to_obj_desc();
         let maybe_log_event = self.p_obj.find_tail_event(obj_desc).await?;
 
-        let Some(ss_log_event) = maybe_log_event else {
-            bail!("Invalid SSLedger object event");
-        };
-
-        let ss_log_obj = SsLogObject::try_from(ss_log_event)?;
-        Ok(ss_log_obj)
+        match maybe_log_event {
+            None => Ok(SsLogData::empty()),
+            Some(ss_log_event) => {
+                let ss_log_obj = SsLogObject::try_from(ss_log_event)?;
+                Ok(ss_log_obj.to_data())
+            }
+        }
     }
 
     pub async fn init(&self, user: UserData) -> Result<()> {

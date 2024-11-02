@@ -89,8 +89,7 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
                             let p_ss = PersistentSharedSecret {
                                 p_obj: self.p_obj.clone(),
                             };
-                            let ss_log_obj = p_ss.get_ss_log_obj(user.vault_name()).await?;
-                            let ss_claims = ss_log_obj.to_data()?;
+                            let ss_claims = p_ss.get_ss_log_obj(user.vault_name()).await?;
 
                             Ok(VaultStatus::Member {
                                 member: VaultMember {
