@@ -1,26 +1,26 @@
 use std::cmp::PartialEq;
 use std::sync::Arc;
 
-use crate::node::common::model::device::common::{DeviceData};
+use crate::node::common::model::device::common::DeviceData;
+use crate::node::common::model::device::device_link::DeviceLink;
 use crate::node::common::model::user::common::UserData;
 use crate::node::common::model::vault::VaultStatus;
 use crate::node::db::actions::vault::vault_action::VaultAction;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, ToGenericEvent};
-use crate::node::db::events::object_id::{ObjectId};
+use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::events::shared_secret_event::{SsDeviceLogObject, SsLogObject};
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
+use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::server::request::{SsRequest, SyncRequest, VaultRequest};
+use anyhow::Result;
 use anyhow::{anyhow, bail, Ok};
 use async_trait::async_trait;
 use tracing::{info, instrument};
-use anyhow::Result;
-use crate::node::common::model::device::device_link::DeviceLink;
-use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 
 #[async_trait(? Send)]
 pub trait DataSyncApi {
@@ -138,11 +138,7 @@ impl<Repo: KvLogEventRepo> DataSyncApi for ServerSyncGateway<Repo> {
 
 impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
     #[instrument(skip(self))]
-    async fn server_processing(
-        &self,
-        server_device: DeviceData,
-        generic_event: GenericKvLogEvent,
-    ) -> Result<()> {
+    async fn server_processing(&self, server_device: DeviceData, generic_event: GenericKvLogEvent) -> Result<()> {
         match &generic_event {
             GenericKvLogEvent::DeviceLog(device_log_obj) => {
                 self.handle_device_log_request(server_device, device_log_obj).await?;
@@ -155,7 +151,9 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                 if let SsDeviceLogObject::Claim(event) = ss_device_log_obj {
                     let ss_claim = event.value.clone();
 
-                    let p_ss_log = PersistentSharedSecret { p_obj: self.p_obj.clone() };
+                    let p_ss_log = PersistentSharedSecret {
+                        p_obj: self.p_obj.clone(),
+                    };
                     p_ss_log.save_ss_log_event(ss_claim).await?;
                 }
             }
@@ -221,9 +219,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
         //sync vault status
         {
-            let vault_status_events = self.p_obj
-                .find_object_events(request.vault_status.clone())
-                .await?;
+            let vault_status_events = self.p_obj.find_object_events(request.vault_status.clone()).await?;
 
             commit_log.extend(vault_status_events);
         }
@@ -234,19 +230,18 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
     pub async fn ss_replication(&self, request: SsRequest) -> Result<Vec<GenericKvLogEvent>> {
         let mut commit_log = vec![];
         //sync SsLog
-        let ss_log = self.p_obj
-            .find_object_events(request.ss_log.clone())
-            .await?;
+        let ss_log = self.p_obj.find_object_events(request.ss_log.clone()).await?;
         commit_log.extend(ss_log);
-        
-        let p_ss = PersistentSharedSecret { p_obj: self.p_obj.clone() };
+
+        let p_ss = PersistentSharedSecret {
+            p_obj: self.p_obj.clone(),
+        };
         let ss_log_obj = p_ss.get_ss_log_obj(request.sender.vault_name.clone()).await?;
         if let SsLogObject::Claims(claim_kv_event) = ss_log_obj {
             let ss_log_data = claim_kv_event.value;
             for (_, claim) in ss_log_data.claims {
                 for dist_id in claim.distribution_ids() {
-                    let desc = SharedSecretDescriptor::SsDistribution(dist_id.clone())
-                        .to_obj_desc();
+                    let desc = SharedSecretDescriptor::SsDistribution(dist_id.clone()).to_obj_desc();
 
                     match dist_id.device_link {
                         DeviceLink::Loopback(_) => {
@@ -265,7 +260,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                 }
             }
         }
-        
+
         Ok(commit_log)
     }
 }

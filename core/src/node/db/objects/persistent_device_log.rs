@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::node::common::model::secret::MetaPasswordId;
 use crate::node::common::model::user::common::{UserData, UserDataMember, UserId, UserMembership};
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ToGenericEvent};
@@ -12,7 +13,6 @@ use crate::node::db::repo::generic_db::KvLogEventRepo;
 use anyhow::bail;
 use tracing::{debug, info};
 use tracing_attributes::instrument;
-use crate::node::common::model::secret::MetaPasswordId;
 
 pub struct PersistentDeviceLog<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
@@ -78,9 +78,10 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
 
     #[instrument(skip_all)]
     pub async fn save_add_meta_pass_request(
-        &self, sender: UserDataMember, meta_pass_id: MetaPasswordId
+        &self,
+        sender: UserDataMember,
+        meta_pass_id: MetaPasswordId,
     ) -> anyhow::Result<()> {
-        
         let meta_pass_request = DeviceLogObject::Action(KvLogEvent {
             key: self.get_device_log_key(&sender.user()).await?,
             value: VaultActionEvent::AddMetaPassword { sender, meta_pass_id },

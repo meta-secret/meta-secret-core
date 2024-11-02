@@ -65,12 +65,12 @@ pub struct SsLogData {
 pub struct SsDistributionClaim {
     pub vault_name: VaultName,
     pub owner: DeviceId,
-    
+
     pub pass_id: MetaPasswordId,
-    
+
     pub id: SsDistributionClaimId,
     pub distribution_type: SecretDistributionType,
-    
+
     pub distributions: Vec<DeviceLink>,
 }
 
@@ -84,7 +84,7 @@ impl SsDistributionClaim {
                 device_link: device_link.clone(),
             });
         }
-        
+
         ids
     }
 }

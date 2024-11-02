@@ -8,7 +8,7 @@ use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ObjectTy
 pub enum SharedSecretDescriptor {
     SsDeviceLog(DeviceId),
 
-    /// SsLog is an event queue created on server and used by devices 
+    /// SsLog is an event queue created on server and used by devices
     /// to handle request from other devices. It is the same as VaultLog
     SsLog(VaultName),
 

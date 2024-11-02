@@ -19,7 +19,9 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
     #[instrument(skip_all)]
     pub async fn recovery_request(&self, pass_id: MetaPasswordId) -> anyhow::Result<()> {
         let user_creds = {
-            let creds_repo = PersistentCredentials { p_obj: self.p_obj.clone() };
+            let creds_repo = PersistentCredentials {
+                p_obj: self.p_obj.clone(),
+            };
             let maybe_user_creds = creds_repo.get_user_creds().await?;
 
             let Some(user_creds) = maybe_user_creds else {
@@ -30,7 +32,9 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
         };
 
         let vault_status = {
-            let vault_repo = PersistentVault { p_obj: self.p_obj.clone() };
+            let vault_repo = PersistentVault {
+                p_obj: self.p_obj.clone(),
+            };
             vault_repo.find(user_creds.user()).await?
         };
 
@@ -44,7 +48,9 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
             VaultStatus::Member(vault_member) => {
                 let claim = vault_member.create_recover_claim(pass_id)?;
 
-                let p_ss = PersistentSharedSecret { p_obj: self.p_obj.clone() };
+                let p_ss = PersistentSharedSecret {
+                    p_obj: self.p_obj.clone(),
+                };
                 p_ss.save_claim_in_ss_device_log(claim.clone()).await?;
             }
         }

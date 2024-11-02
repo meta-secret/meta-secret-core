@@ -81,7 +81,6 @@ pub struct DeviceData {
 
 /// Contains only public information about device
 impl DeviceData {
-    
     pub fn from(device_name: DeviceName, open_box: OpenBox) -> Self {
         Self {
             device_name,

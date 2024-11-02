@@ -54,7 +54,7 @@ pub struct SharedSecret {
 }
 
 pub struct UserSecretDto {
-    pub shares: Vec<UserShareDto>
+    pub shares: Vec<UserShareDto>,
 }
 
 // A share of the secret that user holds

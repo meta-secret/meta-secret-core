@@ -1,13 +1,13 @@
 use super::object_id::{Next, VaultGenesisEvent, VaultUnitEvent};
-use crate::node::common::model::secret::{SsDistributionClaim, SsLogData, SecretDistributionData};
+use crate::node::common::model::secret::{SecretDistributionData, SsDistributionClaim, SsLogData};
+use crate::node::common::model::user::common::UserData;
+use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
+use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
 use crate::node::db::events::error::LogEventCastError;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, ObjectId, UnitId};
 use anyhow::{anyhow, bail, Ok};
-use crate::node::common::model::user::common::UserData;
-use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
-use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -162,9 +162,7 @@ impl SsLogObject {
         };
 
         let obj_events = vec![unit_event, genesis_event];
-        obj_events.iter()
-            .map(|obj| obj.clone().to_generic())
-            .collect()
+        obj_events.iter().map(|obj| obj.clone().to_generic()).collect()
     }
 }
 

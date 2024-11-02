@@ -9,7 +9,7 @@ use crate::node::common::actor::ServiceState;
 use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::common::model::device::common::DeviceName;
 use crate::node::common::model::user::common::UserData;
-use crate::node::common::model::vault::{VaultStatus};
+use crate::node::common::model::vault::VaultStatus;
 use crate::node::common::model::ApplicationState;
 use crate::node::db::actions::recover::RecoveryAction;
 use crate::node::db::actions::sign_up::claim::SignUpClaim;
@@ -108,9 +108,7 @@ impl<Repo: KvLogEventRepo> MetaClientService<Repo> {
 
                 GenericAppStateRequest::Recover(meta_pass_id) => {
                     let recovery_action = RecoveryAction { p_obj: p_obj.clone() };
-                    recovery_action
-                        .recovery_request(meta_pass_id)
-                        .await?;
+                    recovery_action.recovery_request(meta_pass_id).await?;
                 }
             }
 

@@ -7,7 +7,7 @@ use crate::node::db::events::global_index_event::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
 use crate::node::db::events::local_event::{CredentialsObject, DbTailObject};
 use crate::node::db::events::object_id::{ArtifactId, ObjectId};
-use crate::node::db::events::shared_secret_event::{SsDeviceLogObject, SharedSecretObject};
+use crate::node::db::events::shared_secret_event::{SharedSecretObject, SsDeviceLogObject};
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::events::vault::vault_log_event::VaultLogObject;
 use crate::node::db::events::vault_event::{VaultMembershipObject, VaultObject};

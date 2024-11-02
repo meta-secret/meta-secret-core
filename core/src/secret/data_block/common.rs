@@ -19,12 +19,10 @@ pub struct SharedSecretConfig {
 impl SharedSecretConfig {
     pub fn calculate(num_shares: usize) -> Self {
         match num_shares {
-            1 | 2 => {
-                SharedSecretConfig {
-                    number_of_shares: num_shares,
-                    threshold: 1,
-                }
-            }
+            1 | 2 => SharedSecretConfig {
+                number_of_shares: num_shares,
+                threshold: 1,
+            },
             n if n % 2 == 0 => {
                 let half = num_shares / 2;
                 SharedSecretConfig {

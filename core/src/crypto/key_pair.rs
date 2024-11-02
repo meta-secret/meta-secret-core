@@ -85,9 +85,7 @@ pub trait Cipher {
 }
 
 impl TransportDsaKeyPair {
-    pub fn encrypt_string(
-        &self, plain_text: String, receiver_pk: Base64Text
-    ) -> CoreResult<AeadCipherText> {
+    pub fn encrypt_string(&self, plain_text: String, receiver_pk: Base64Text) -> CoreResult<AeadCipherText> {
         let channel = CommunicationChannel {
             sender: self.public_key(),
             receiver: receiver_pk,

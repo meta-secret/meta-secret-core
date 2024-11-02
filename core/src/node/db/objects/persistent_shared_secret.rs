@@ -22,12 +22,12 @@ pub struct PersistentSharedSecret<Repo: KvLogEventRepo> {
 
 impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
     pub async fn get_ss_distribution_events(
-        &self, distribution_claim: SsDistributionClaim
+        &self,
+        distribution_claim: SsDistributionClaim,
     ) -> Result<Vec<GenericKvLogEvent>> {
         let mut events = vec![];
         for distribution_id in distribution_claim.distribution_ids() {
-            let desc = SharedSecretDescriptor::SsDistribution(distribution_id)
-                .to_obj_desc();
+            let desc = SharedSecretDescriptor::SsDistribution(distribution_id).to_obj_desc();
 
             let maybe_event = self.p_obj.find_tail_event(desc).await?;
             if let Some(event) = maybe_event {
@@ -43,46 +43,42 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
     pub async fn save_ss_log_event(&self, claim: SsDistributionClaim) -> Result<()> {
         let obj_desc = SharedSecretDescriptor::SsLog(claim.vault_name.clone()).to_obj_desc();
         let maybe_ss_log_event = self.p_obj.find_tail_event(obj_desc.clone()).await?;
-        
+
         let new_ss_log_event = match maybe_ss_log_event {
             None => {
                 bail!("SsLog not initialized")
             }
-            Some(ss_log_event) => {
-                match ss_log_event.key() {
-                    GenericKvKey::UnitKey { .. } => {
-                        bail!("Invalid state, expected unit key, it has to be at least genesis")
-                    }
-                    GenericKvKey::GenesisKey { .. } => {
-                        let ss_log_data = {
-                            let mut claims = HashMap::new();
-                            claims.insert(claim.id.clone(), claim);
-                            SsLogData { claims }
-                        };
-                        self.create_new_ss_log_claim(ss_log_data, obj_desc).await?
-                    }
-                    GenericKvKey::ArtifactKey { .. } => {
-                        if let GenericKvLogEvent::SsLog(SsLogObject::Claims(ss_log_event)) = ss_log_event {
-                            let mut new_log_data = ss_log_event.value.clone();
-                            new_log_data.claims.insert(claim.id.clone(), claim);
+            Some(ss_log_event) => match ss_log_event.key() {
+                GenericKvKey::UnitKey { .. } => {
+                    bail!("Invalid state, expected unit key, it has to be at least genesis")
+                }
+                GenericKvKey::GenesisKey { .. } => {
+                    let ss_log_data = {
+                        let mut claims = HashMap::new();
+                        claims.insert(claim.id.clone(), claim);
+                        SsLogData { claims }
+                    };
+                    self.create_new_ss_log_claim(ss_log_data, obj_desc).await?
+                }
+                GenericKvKey::ArtifactKey { .. } => {
+                    if let GenericKvLogEvent::SsLog(SsLogObject::Claims(ss_log_event)) = ss_log_event {
+                        let mut new_log_data = ss_log_event.value.clone();
+                        new_log_data.claims.insert(claim.id.clone(), claim);
 
-                            self.create_new_ss_log_claim(new_log_data, obj_desc).await?
-                        } else {
-                            bail!("Invalid SsLog event, the event has to be a claim")
-                        }
+                        self.create_new_ss_log_claim(new_log_data, obj_desc).await?
+                    } else {
+                        bail!("Invalid SsLog event, the event has to be a claim")
                     }
                 }
-            }
+            },
         };
 
         self.p_obj.repo.save(new_ss_log_event.to_generic()).await?;
-        
+
         Ok(())
     }
 
-    async fn create_new_ss_log_claim(
-        &self, ss_log_data: SsLogData, obj_desc: ObjectDescriptor
-    ) -> Result<SsLogObject> {
+    async fn create_new_ss_log_claim(&self, ss_log_data: SsLogData, obj_desc: ObjectDescriptor) -> Result<SsLogObject> {
         let free_id = self.p_obj.find_free_id_by_obj_desc(obj_desc.clone()).await?;
         let ObjectId::Artifact(free_artifact_id) = free_id else {
             bail!("Invalid ss_log free id: {:?}", free_id);
@@ -90,28 +86,26 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
 
         Ok(SsLogObject::Claims(KvLogEvent {
             key: KvKey::artifact(obj_desc, free_artifact_id),
-            value: ss_log_data
+            value: ss_log_data,
         }))
     }
 }
 
 impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
-    pub async fn save_claim_in_ss_device_log(
-        &self, claim: SsDistributionClaim
-    ) -> Result<()> {
+    pub async fn save_claim_in_ss_device_log(&self, claim: SsDistributionClaim) -> Result<()> {
         let obj_desc = SharedSecretDescriptor::SsDeviceLog(claim.owner.clone()).to_obj_desc();
         let free_id = self.p_obj.find_free_id_by_obj_desc(obj_desc.clone()).await?;
         let ObjectId::Artifact(free_artifact_id) = free_id else {
             bail!("Invalid ss_device_log free id: {:?}", free_id);
         };
-        
-        let obj = SsDeviceLogObject::Claim(KvLogEvent{
+
+        let obj = SsDeviceLogObject::Claim(KvLogEvent {
             key: KvKey::artifact(obj_desc, free_artifact_id),
             value: claim,
         });
 
         self.p_obj.repo.save(obj.to_generic()).await?;
-        
+
         Ok(())
     }
 }
@@ -133,7 +127,7 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
         let ss_log_obj = SsLogObject::try_from(ss_log_event)?;
         Ok(ss_log_obj)
     }
-    
+
     pub async fn init(&self, user: UserData) -> Result<()> {
         self.init_ss_device_log(user.clone()).await?;
         Ok(())

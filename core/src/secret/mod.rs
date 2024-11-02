@@ -70,7 +70,11 @@ impl MetaEncryptor {
 
             let device_link = {
                 let receiver_device = receiver.user().device.device_id.clone();
-                self.creds.device_creds.device.device_id.make_device_link(receiver_device)?
+                self.creds
+                    .device_creds
+                    .device
+                    .device_id
+                    .make_device_link(receiver_device)?
             };
 
             let cipher_share = EncryptedMessage::CipherShare {
@@ -91,10 +95,12 @@ pub struct MetaDistributor<Repo: KvLogEventRepo> {
 }
 
 impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
-    
     #[instrument(skip(self, password))]
     pub async fn distribute(
-        self, vault_member: VaultMember, password_id: MetaPasswordId, password: String,
+        self,
+        vault_member: VaultMember,
+        password_id: MetaPasswordId,
+        password: String,
     ) -> Result<()> {
         //save meta password!!!
         let vault_name = self.user_creds.vault_name.clone();
@@ -109,12 +115,16 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
 
         let claim = vault_member.create_split_claim(password_id)?;
 
-        let p_device_log = PersistentDeviceLog { p_obj: self.p_obj.clone() };
+        let p_device_log = PersistentDeviceLog {
+            p_obj: self.p_obj.clone(),
+        };
         p_device_log
             .save_add_meta_pass_request(self.vault_member.member, claim.pass_id.clone())
             .await?;
 
-        let p_ss = PersistentSharedSecret { p_obj: self.p_obj.clone() };
+        let p_ss = PersistentSharedSecret {
+            p_obj: self.p_obj.clone(),
+        };
         p_ss.save_claim_in_ss_device_log(claim.clone()).await?;
 
         for secret_share in encrypted_shares {
@@ -131,8 +141,7 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
             };
 
             let split_key = {
-                let split_obj_desc = SharedSecretDescriptor::SsDistribution(dist_id)
-                    .to_obj_desc();
+                let split_obj_desc = SharedSecretDescriptor::SsDistribution(dist_id).to_obj_desc();
                 KvKey::unit(split_obj_desc)
             };
 
@@ -140,7 +149,7 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
                 key: split_key.clone(),
                 value: distribution_share,
             });
-            
+
             self.p_obj.repo.save(ss_obj.to_generic()).await?;
         }
 

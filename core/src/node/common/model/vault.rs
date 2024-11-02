@@ -1,15 +1,17 @@
 use crate::node::common::model::crypto::CommunicationChannel;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::device::device_link::DeviceLink;
-use crate::node::common::model::secret::{MetaPasswordId, SecretDistributionType, SsDistributionClaim, SsDistributionClaimId};
+use crate::node::common::model::secret::{
+    MetaPasswordId, SecretDistributionType, SsDistributionClaim, SsDistributionClaimId,
+};
 use crate::node::common::model::user::common::{
     UserData, UserDataMember, UserDataOutsider, UserMembership, WasmUserMembership,
 };
+use crate::secret::data_block::common::SharedSecretConfig;
+use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use wasm_bindgen::prelude::wasm_bindgen;
-use crate::secret::data_block::common::SharedSecretConfig;
-use anyhow::Result;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -187,7 +189,7 @@ impl VaultData {
                 match (maybe_sender, maybe_receiver) {
                     (
                         Some(UserMembership::Member(UserDataMember { user_data: sender })),
-                        Some(UserMembership::Member(UserDataMember { user_data: receiver }))
+                        Some(UserMembership::Member(UserDataMember { user_data: receiver })),
                     ) => {
                         let sender_pk = sender.device.keys.transport_pk.clone();
                         let receiver_pk = receiver.device.keys.transport_pk.clone();
@@ -198,9 +200,7 @@ impl VaultData {
                         };
                         Some(channel)
                     }
-                    (_, _) => {
-                        None
-                    }
+                    (_, _) => None,
                 }
             }
         }
@@ -277,9 +277,11 @@ impl VaultMember {
     pub fn create_recover_claim(&self, pass_id: MetaPasswordId) -> Result<SsDistributionClaim> {
         self.create_distribution_claim(pass_id, SecretDistributionType::Recover)
     }
-    
+
     fn create_distribution_claim(
-        &self, pass_id: MetaPasswordId, distribution_type: SecretDistributionType
+        &self,
+        pass_id: MetaPasswordId,
+        distribution_type: SecretDistributionType,
     ) -> Result<SsDistributionClaim> {
         let mut distributions = vec![];
         for vault_member in self.vault.members() {
@@ -343,20 +345,24 @@ impl VaultStatus {
 
 #[cfg(test)]
 mod test {
-    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use super::*;
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     #[test]
     fn test_vault_status() -> Result<()> {
         let fixture = FixtureRegistry::empty();
-        
+
         let client_creds = fixture.state.user_creds.client;
-        let client_user_data = UserDataMember { user_data: client_creds.user() };
+        let client_user_data = UserDataMember {
+            user_data: client_creds.user(),
+        };
         let client_membership = UserMembership::Member(client_user_data.clone());
 
         let vd_creds = fixture.state.user_creds.vd;
-        let vd_user_data = UserDataMember { user_data: vd_creds.user() };
+        let vd_user_data = UserDataMember {
+            user_data: vd_creds.user(),
+        };
         let vd_membership = UserMembership::Member(vd_user_data.clone());
-        
+
         let mut vault_data = VaultData::from(client_creds.vault_name.clone());
         vault_data = vault_data
             .update_membership(client_membership)
@@ -370,7 +376,7 @@ mod test {
         let pass_id = MetaPasswordId::generate(String::from("test_password"));
         let claim = vault_member.create_split_claim(pass_id)?;
         assert_eq!(1, claim.distributions.len());
-        
+
         Ok(())
     }
 }

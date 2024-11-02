@@ -4,7 +4,7 @@ use std::time::Duration;
 use tracing::{debug, error, info, instrument};
 
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
-use crate::node::common::model::user::common::{UserId};
+use crate::node::common::model::user::common::UserId;
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::{VaultMember, VaultStatus};
 use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
@@ -153,22 +153,19 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                 let desc = SharedSecretDescriptor::SsDeviceLog(device_id).to_obj_desc();
                 ObjectId::unit(desc)
             };
-            server_tail
-                .ss_device_log_tail
-                .clone()
-                .unwrap_or_else(unit_id)
+            server_tail.ss_device_log_tail.clone().unwrap_or_else(unit_id)
         };
 
-        let ss_device_log_events_to_sync = self.p_obj
-            .find_object_events(server_ss_device_log_tail_id)
-            .await?;
+        let ss_device_log_events_to_sync = self.p_obj.find_object_events(server_ss_device_log_tail_id).await?;
 
         for ss_device_log_event in ss_device_log_events_to_sync {
             //get SsDistribution events
             let ss_device_log = ss_device_log_event.clone().ss_device_log()?;
             if let SsDeviceLogObject::Claim(claim_event) = ss_device_log {
                 let distribution_claim = claim_event.value;
-                let p_ss = PersistentSharedSecret { p_obj: self.p_obj.clone() };
+                let p_ss = PersistentSharedSecret {
+                    p_obj: self.p_obj.clone(),
+                };
                 let dist_events = p_ss.get_ss_distribution_events(distribution_claim).await?;
                 for dist_event in dist_events {
                     self.server_dt
@@ -177,7 +174,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                         .await;
                 }
             }
-            
+
             self.server_dt
                 .dt
                 .send_to_service(DataSyncRequest::Event(ss_device_log_event))
@@ -194,7 +191,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                 let obj_desc = SharedSecretDescriptor::SsLog(vault_name.clone()).to_obj_desc();
                 self.p_obj.find_free_id_by_obj_desc(obj_desc).await?
             };
-            
+
             SyncRequest::Ss(SsRequest {
                 sender: user_creds.user(),
                 ss_log: ss_log_free_id,
@@ -285,7 +282,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         let VaultStatus::Member(VaultMember { .. }) = vault_status else {
             return Ok(());
         };
-        
+
         //sync ss_device_log and ss_log
         self.sync_ss_device_log(&server_tail, creds.device().device_id).await?;
         self.sync_ss_log(creds).await?;
@@ -304,7 +301,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             key: KvKey::unit(ObjectDescriptor::DbTail),
             value: new_db_tail.clone(),
         })
-            .to_generic();
+        .to_generic();
 
         self.p_obj.repo.save(new_db_tail_event).await?;
         Ok(())
