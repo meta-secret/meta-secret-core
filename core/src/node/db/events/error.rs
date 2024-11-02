@@ -1,5 +1,5 @@
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
-use crate::node::db::events::shared_secret_event::{SsDeviceLogObject, SsLogObject, SharedSecretObject};
+use crate::node::db::events::shared_secret_event::{SsDeviceLogObject, SsLogObject};
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::events::vault_event::VaultActionEvent;
 use thiserror::Error;
@@ -38,8 +38,6 @@ pub enum LogEventCastError {
     WrongSsLogId(SsLogObject),
     #[error("WrongSsDeviceLog: wrong event")]
     WrongSsDeviceLog(SsDeviceLogObject),
-    #[error("WrongSharedSecret: wrong event")]
-    WrongSharedSecret(SharedSecretObject),
     #[error("WrongDeviceLog: wrong event")]
     WrongDeviceLog(DeviceLogObject),
     #[error("WrongVaultAction. Expected: {0}, actual: {1}")]

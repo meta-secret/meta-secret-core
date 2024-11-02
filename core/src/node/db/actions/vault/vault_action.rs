@@ -51,8 +51,8 @@ impl<Repo: KvLogEventRepo> VaultAction<Repo> {
                 let (vault_artifact_id, vault) = p_vault.get_vault(&sender_user).await?;
 
                 let vault_event = {
-                    let mut new_vault = vault.clone();
-                    new_vault.update_membership(update.clone());
+                    let new_vault = vault
+                        .update_membership(update.clone());
 
                     let key = KvKey {
                         obj_id: vault_artifact_id,

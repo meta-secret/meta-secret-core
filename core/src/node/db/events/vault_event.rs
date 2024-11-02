@@ -27,12 +27,11 @@ impl VaultObject {
     pub fn sign_up(vault_name: VaultName, candidate: UserData) -> Self {
         let desc = VaultDescriptor::vault(vault_name.clone());
         let vault_data = {
-            let mut vault = VaultData::from(vault_name.clone());
+            let vault = VaultData::from(vault_name.clone());
             let membership = UserMembership::Member(UserDataMember {
                 user_data: candidate.clone(),
             });
-            vault.update_membership(membership);
-            vault
+            vault.update_membership(membership)
         };
 
         let vault_id = UnitId::vault_unit(vault_name).next().next();

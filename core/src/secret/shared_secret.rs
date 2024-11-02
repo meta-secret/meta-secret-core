@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::fmt::Display;
 use std::str;
 
 use serde::{Deserialize, Serialize};
@@ -40,9 +41,9 @@ impl From<&str> for PlainText {
     }
 }
 
-impl ToString for PlainText {
-    fn to_string(&self) -> String {
-        self.text.clone()
+impl Display for PlainText {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.text.clone())
     }
 }
 
@@ -52,11 +53,21 @@ pub struct SharedSecret {
     pub secret_blocks: Vec<SharedSecretBlock>,
 }
 
+pub struct UserSecretDto {
+    pub shares: Vec<UserShareDto>
+}
+
 // A share of the secret that user holds
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserShareDto {
     pub share_id: usize,
     pub share_blocks: Vec<SecretShareWithOrderingDto>,
+}
+
+impl UserShareDto {
+    pub fn as_json(&self) -> serde_json::Result<String> {
+        serde_json::to_string(self)
+    }
 }
 
 impl UserShareDto {

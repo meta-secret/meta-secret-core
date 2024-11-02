@@ -1,69 +1,53 @@
+use anyhow::bail;
 use std::sync::Arc;
-
 use tracing_attributes::instrument;
 
 use crate::node::common::model::secret::MetaPasswordId;
-use crate::node::common::model::ApplicationState;
+use crate::node::common::model::vault::VaultStatus;
 use crate::node::db::objects::persistent_object::PersistentObject;
+use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
+use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
+use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 
 pub struct RecoveryAction<Repo: KvLogEventRepo> {
-    pub persistent_obj: Arc<PersistentObject<Repo>>,
+    pub p_obj: Arc<PersistentObject<Repo>>,
 }
 
 impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
     /// Send recover request to all vault members except current user
     #[instrument(skip_all)]
-    pub async fn recovery_request(
-        &self,
-        _meta_pass_id: MetaPasswordId,
-        _app_state: &ApplicationState,
-    ) -> anyhow::Result<()> {
-        /*
-        let Some(sender_device) = app_state.device.clone() else {
-            return Err(anyhow!("Device not found"));
+    pub async fn recovery_request(&self, pass_id: MetaPasswordId) -> anyhow::Result<()> {
+        let user_creds = {
+            let creds_repo = PersistentCredentials { p_obj: self.p_obj.clone() };
+            let maybe_user_creds = creds_repo.get_user_creds().await?;
+
+            let Some(user_creds) = maybe_user_creds else {
+                bail!("Invalid state. UserCredentials not exists")
+            };
+
+            user_creds
         };
 
-        let Some(vault_status) = app_state.vault.clone() else {
-            return Err(anyhow!("Vault not found"));
+        let vault_status = {
+            let vault_repo = PersistentVault { p_obj: self.p_obj.clone() };
+            vault_repo.find(user_creds.user()).await?
         };
 
         match vault_status {
-            VaultStatus::Outsider(_) => {
-                return Err(anyhow!("Vault not found"));
+            VaultStatus::NotExists(_) => {
+                bail!("Vault not exists")
             }
-            VaultStatus::Member { vault, .. } => {
-                for UserDataMember(curr_member) in &vault.members() {
-                    let curr_device = curr_member.device.clone();
-                    if sender_device.id == curr_device.id {
-                        continue;
-                    }
+            VaultStatus::Outsider(_) => {
+                bail!("Outsider status")
+            }
+            VaultStatus::Member(vault_member) => {
+                let claim = vault_member.create_recover_claim(pass_id)?;
 
-                    let device_link = DeviceLinkBuilder::builder()
-                        .sender(sender_device.id.clone())
-                        .receiver(curr_device.id.clone())
-                        .build()?;
-
-                    let ss_device_log_desc =
-                        SharedSecretDescriptor::SSDeviceLog(sender_device.id.clone()).to_obj_desc();
-
-                    let log_event = {
-                        let device_log_slot_id = self
-                            .persistent_obj
-                            .find_free_id_by_obj_desc(ss_device_log_desc.clone())
-                            .await?;
-
-                        let ObjectId::Artifact(ss_artifact_id) = device_log_slot_id else {
-                            return Err(anyhow!("SSDeviceLog is not initialized"));
-                        };
-
-                        unimplemented!("Distribution algorithm has been changed")
-                    };
-                    //self.persistent_obj.repo.save(log_event).await?;
-                }
+                let p_ss = PersistentSharedSecret { p_obj: self.p_obj.clone() };
+                p_ss.save_claim_in_ss_device_log(claim.clone()).await?;
             }
         }
-         */
 
         Ok(())
     }

@@ -12,24 +12,12 @@ use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescript
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SharedSecretObject {
-    LocalShare(KvLogEvent<UnitId, SecretDistributionData>),
     SsDistribution(KvLogEvent<UnitId, SecretDistributionData>),
-}
-
-impl SharedSecretObject {
-    pub fn to_local_share(&self) -> anyhow::Result<SecretDistributionData> {
-        if let SharedSecretObject::LocalShare(event) = self {
-            Ok(event.value.clone())
-        } else {
-            bail!(LogEventCastError::WrongSharedSecret(self.clone()))
-        }
-    }
 }
 
 impl KeyExtractor for SharedSecretObject {
     fn key(&self) -> GenericKvKey {
         match self {
-            SharedSecretObject::LocalShare(event) => GenericKvKey::from(event.key.clone()),
             SharedSecretObject::SsDistribution(event) => GenericKvKey::from(event.key.clone()),
         }
     }
@@ -119,7 +107,6 @@ impl KeyExtractor for SsDeviceLogObject {
 impl ObjIdExtractor for SharedSecretObject {
     fn obj_id(&self) -> ObjectId {
         match self {
-            SharedSecretObject::LocalShare(event) => ObjectId::from(event.key.obj_id.clone()),
             SharedSecretObject::SsDistribution(event) => ObjectId::from(event.key.obj_id.clone()),
         }
     }

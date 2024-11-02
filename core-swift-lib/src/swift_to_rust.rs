@@ -2,7 +2,7 @@ use anyhow::Context;
 use meta_secret_core::crypto::encoding::base64::Base64Text;
 use meta_secret_core::crypto::keys::{KeyManager, SecretBox};
 use meta_secret_core::errors::CoreError;
-use meta_secret_core::node::common::model::secret::secret::SecretDistributionData;
+use meta_secret_core::node::common::model::secret::SecretDistributionData;
 use meta_secret_core::recover_from_shares;
 use meta_secret_core::secret::data_block::common::SharedSecretConfig;
 use meta_secret_core::secret::shared_secret::UserShareDto;

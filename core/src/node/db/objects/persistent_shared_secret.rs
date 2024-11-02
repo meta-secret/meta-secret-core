@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::node::common::model::device::common::DeviceId;
-use crate::node::common::model::secret::{MetaPasswordId, SecretDistributionData, SsDistributionClaim, SsLogData};
+use crate::node::common::model::secret::{SsDistributionClaim, SsLogData};
 use crate::node::common::model::user::common::UserData;
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ToObjectDescriptor};
@@ -97,9 +97,9 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
 
 impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
     pub async fn save_claim_in_ss_device_log(
-        &self, device_id: DeviceId, claim: SsDistributionClaim
+        &self, claim: SsDistributionClaim
     ) -> Result<()> {
-        let obj_desc = SharedSecretDescriptor::SsDeviceLog(device_id).to_obj_desc();
+        let obj_desc = SharedSecretDescriptor::SsDeviceLog(claim.owner.clone()).to_obj_desc();
         let free_id = self.p_obj.find_free_id_by_obj_desc(obj_desc.clone()).await?;
         let ObjectId::Artifact(free_artifact_id) = free_id else {
             bail!("Invalid ss_device_log free id: {:?}", free_id);
@@ -133,26 +133,7 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
         let ss_log_obj = SsLogObject::try_from(ss_log_event)?;
         Ok(ss_log_obj)
     }
-
-    pub async fn get_local_share(&self, pass_id: MetaPasswordId) -> Result<GenericKvLogEvent> {
-        let obj_desc = SharedSecretDescriptor::LocalShare(pass_id).to_obj_desc();
-        let unit_id = UnitId::unit(&obj_desc);
-        let Some(local_share_generic_event) = self.p_obj.repo.find_one(ObjectId::Unit(unit_id)).await? else {
-            bail!("Invalid Local share object event");
-        };
-
-        Ok(local_share_generic_event)
-    }
-
-    pub async fn get_local_share_distribution_data(
-        &self,
-        pass_id: MetaPasswordId,
-    ) -> Result<SecretDistributionData> {
-        let ss_obj = self.get_local_share(pass_id).await?.shared_secret()?;
-
-        ss_obj.to_local_share()
-    }
-
+    
     pub async fn init(&self, user: UserData) -> Result<()> {
         self.init_ss_device_log(user.clone()).await?;
         Ok(())

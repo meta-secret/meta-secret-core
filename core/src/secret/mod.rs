@@ -1,25 +1,31 @@
 use std::sync::Arc;
 
-use crate::crypto::keys::KeyManager;
 use crate::node::common::model::crypto::EncryptedMessage;
-use crate::node::common::model::device::device_link::{DeviceLink, DeviceLinkBuilder, PeerToPeerDeviceLink};
-use crate::node::common::model::secret::{MetaPasswordId, SsDistributionClaimId, SsDistributionId, SecretDistributionData, SecretDistributionType, SsDistributionClaim};
+use crate::node::common::model::secret::{MetaPasswordId, SecretDistributionData, SsDistributionId};
 use crate::node::common::model::user::user_creds::UserCredentials;
-use crate::node::common::model::vault::{VaultData, VaultMember, VaultStatus};
-use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ToObjectDescriptor};
+use crate::node::common::model::vault::VaultMember;
+use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
 use crate::node::db::events::generic_log_event::ToGenericEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::shared_secret_event::SharedSecretObject;
+use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use crate::node::db::objects::persistent_object::PersistentObject;
+use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
+use crate::secret::shared_secret::UserSecretDto;
 use crate::CoreResult;
 use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
-use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
-use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
+use anyhow::Result;
+use tracing_attributes::instrument;
 
 pub mod data_block;
 pub mod shared_secret;
+
+pub fn split2(secret: String, config: SharedSecretConfig) -> CoreResult<UserSecretDto> {
+    let shares = split(secret, config)?;
+    Ok(UserSecretDto { shares })
+}
 
 pub fn split(secret: String, config: SharedSecretConfig) -> CoreResult<Vec<UserShareDto>> {
     let plain_text = PlainText::from(secret);
@@ -35,8 +41,8 @@ pub fn split(secret: String, config: SharedSecretConfig) -> CoreResult<Vec<UserS
 }
 
 pub struct MetaEncryptor {
-    user: Arc<UserCredentials>,
-    vault: VaultData,
+    creds: Arc<UserCredentials>,
+    owner: VaultMember,
 }
 
 impl MetaEncryptor {
@@ -44,28 +50,28 @@ impl MetaEncryptor {
     ///  - generate meta password id
     ///  - split
     ///  - encrypt each share with ECIES Encryption Scheme
-    fn encrypt(
-        self, password: String, cfg: SharedSecretConfig
-    ) -> anyhow::Result<Vec<EncryptedMessage>> {
-        let key_manager = KeyManager::try_from(&self.user.device_creds.secret_box)?;
-
-        let shares = split(password, cfg)?;
+    fn split_and_encrypt(self, password: String) -> Result<Vec<EncryptedMessage>> {
+        let secret = split2(password, self.owner.vault.sss_cfg())?;
 
         let mut encrypted_shares = vec![];
 
-        for (index, receiver) in self.vault.members().iter().enumerate() {
-            let share: &UserShareDto = &shares[index];
+        for (index, receiver) in self.owner.vault.members().iter().enumerate() {
+            let share = &secret.shares[index];
 
-            let share_str = serde_json::to_string(&share)?;
+            let encrypted_share = {
+                let share_str = share.as_json()?;
+                let receiver_pk = receiver.user().device.keys.transport_pk.clone();
+                self.creds
+                    .device_creds
+                    .key_manager()?
+                    .transport
+                    .encrypt_string(share_str, receiver_pk)?
+            };
 
-            let receiver_pk = receiver.user().device.keys.transport_pk.clone();
-
-            let encrypted_share = key_manager.transport.encrypt_string(share_str, receiver_pk)?;
-
-            let device_link = DeviceLinkBuilder::builder()
-                .sender(self.user.device_creds.device.device_id.clone())
-                .receiver(receiver.clone().user().device.device_id.clone())
-                .build()?;
+            let device_link = {
+                let receiver_device = receiver.user().device.device_id.clone();
+                self.creds.device_creds.device.device_id.make_device_link(receiver_device)?
+            };
 
             let cipher_share = EncryptedMessage::CipherShare {
                 device_link,
@@ -85,89 +91,56 @@ pub struct MetaDistributor<Repo: KvLogEventRepo> {
 }
 
 impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
-    pub async fn distribute(self, password_id: String, password: String) -> anyhow::Result<()> {
+    
+    #[instrument(skip(self, password))]
+    pub async fn distribute(
+        self, vault_member: VaultMember, password_id: MetaPasswordId, password: String,
+    ) -> Result<()> {
         //save meta password!!!
         let vault_name = self.user_creds.vault_name.clone();
-        
-        let cfg = {
-            let members_num = self.vault_member.vault.members().len();
-            SharedSecretConfig::calculate(members_num)
-        };
 
         let encrypted_shares = {
             let encryptor = MetaEncryptor {
-                user: self.user_creds.clone(),
-                vault: self.vault_member.vault.clone(),
+                creds: self.user_creds.clone(),
+                owner: self.vault_member.clone(),
             };
-            encryptor.encrypt(password, cfg)?
+            encryptor.split_and_encrypt(password)?
         };
 
-        let claim_id = SsDistributionClaimId::generate();
-        let distribution_type = SecretDistributionType::Split;
-        let pass_id = MetaPasswordId::generate(password_id);
-        
+        let claim = vault_member.create_split_claim(password_id)?;
+
         let p_device_log = PersistentDeviceLog { p_obj: self.p_obj.clone() };
-        p_device_log.save_add_meta_pass_request(self.vault_member.member, pass_id.clone()).await?;
+        p_device_log
+            .save_add_meta_pass_request(self.vault_member.member, claim.pass_id.clone())
+            .await?;
 
-        let distributions = encrypted_shares.iter()
-            .filter_map(|share| {
-                match share.device_link() {
-                    DeviceLink::Loopback(_) => None,
-                    DeviceLink::PeerToPeer(p2p_device_link) => Some(p2p_device_link.clone())
-                }
-            })
-            .collect();
-
-        let claim = SsDistributionClaim {
-            vault_name: vault_name.clone(),
-            id: claim_id.clone(),
-            pass_id: pass_id.clone(),
-            distribution_type: distribution_type.clone(),
-            distributions,
-        };
-        
         let p_ss = PersistentSharedSecret { p_obj: self.p_obj.clone() };
-        let device_id = self.user_creds.device_creds.device.device_id.clone();
-        p_ss.save_claim_in_ss_device_log(device_id, claim).await?;
+        p_ss.save_claim_in_ss_device_log(claim.clone()).await?;
 
         for secret_share in encrypted_shares {
             let distribution_share = SecretDistributionData {
                 vault_name: vault_name.clone(),
                 secret_message: secret_share.clone(),
-                pass_id: pass_id.clone(),
+                pass_id: claim.pass_id.clone(),
             };
 
-            let ss_obj = match secret_share.device_link() {
-                DeviceLink::Loopback(_) => {
-                    let ss_local_desc = SharedSecretDescriptor::LocalShare(pass_id.clone());
-
-                    SharedSecretObject::LocalShare(KvLogEvent {
-                        key: KvKey::unit(ObjectDescriptor::SharedSecret(ss_local_desc)),
-                        value: distribution_share,
-                    })
-                }
-                DeviceLink::PeerToPeer(p2p_device_link) => {
-                    //save device log event?
-
-                    let dist_id = SsDistributionId {
-                        claim_id: claim_id.clone(),
-                        distribution_type,
-                        device_link: p2p_device_link,
-                    };
-
-                    let split_key = {
-                        let split_obj_desc = SharedSecretDescriptor::SsDistribution(dist_id)
-                            .to_obj_desc();
-                        KvKey::unit(split_obj_desc)
-                    };
-
-                    SharedSecretObject::SsDistribution(KvLogEvent {
-                        key: split_key.clone(),
-                        value: distribution_share,
-                    })
-                }
+            let dist_id = SsDistributionId {
+                claim_id: claim.id.clone(),
+                distribution_type: claim.distribution_type.clone(),
+                device_link: secret_share.device_link(),
             };
 
+            let split_key = {
+                let split_obj_desc = SharedSecretDescriptor::SsDistribution(dist_id)
+                    .to_obj_desc();
+                KvKey::unit(split_obj_desc)
+            };
+
+            let ss_obj = SharedSecretObject::SsDistribution(KvLogEvent {
+                key: split_key.clone(),
+                value: distribution_share,
+            });
+            
             self.p_obj.repo.save(ss_obj.to_generic()).await?;
         }
 

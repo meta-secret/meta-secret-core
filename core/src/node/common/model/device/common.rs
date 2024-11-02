@@ -6,6 +6,7 @@ use crate::crypto;
 use crate::crypto::encoding::base64::Base64Text;
 use crate::crypto::keys::OpenBox;
 use crate::crypto::utils::rand_uuid_b64_url_enc;
+use crate::node::common::model::device::device_link::{DeviceLink, DeviceLinkBuilder};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -15,6 +16,14 @@ pub struct DeviceId(String);
 impl DeviceId {
     pub fn as_str(&self) -> String {
         self.0.clone()
+    }
+}
+impl DeviceId {
+    pub fn make_device_link(&self, receiver: DeviceId) -> anyhow::Result<DeviceLink> {
+        DeviceLinkBuilder::builder()
+            .sender(self.clone())
+            .receiver(receiver)
+            .build()
     }
 }
 
@@ -72,6 +81,7 @@ pub struct DeviceData {
 
 /// Contains only public information about device
 impl DeviceData {
+    
     pub fn from(device_name: DeviceName, open_box: OpenBox) -> Self {
         Self {
             device_name,

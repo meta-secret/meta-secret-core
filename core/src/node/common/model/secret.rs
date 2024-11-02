@@ -1,8 +1,9 @@
-use std::collections::{HashMap};
+use std::collections::HashMap;
 
 use crate::crypto::utils;
 use crate::node::common::model::crypto::EncryptedMessage;
-use crate::node::common::model::device::device_link::PeerToPeerDeviceLink;
+use crate::node::common::model::device::common::DeviceId;
+use crate::node::common::model::device::device_link::DeviceLink;
 use crate::node::common::model::vault::VaultName;
 use rand::distributions::Alphanumeric;
 use rand::Rng;
@@ -50,7 +51,7 @@ impl MetaPasswordId {
 pub struct SsDistributionId {
     pub claim_id: SsDistributionClaimId,
     pub distribution_type: SecretDistributionType,
-    pub device_link: PeerToPeerDeviceLink,
+    pub device_link: DeviceLink,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -63,12 +64,14 @@ pub struct SsLogData {
 #[serde(rename_all = "camelCase")]
 pub struct SsDistributionClaim {
     pub vault_name: VaultName,
+    pub owner: DeviceId,
+    
     pub pass_id: MetaPasswordId,
     
     pub id: SsDistributionClaimId,
     pub distribution_type: SecretDistributionType,
     
-    pub distributions: Vec<PeerToPeerDeviceLink>,
+    pub distributions: Vec<DeviceLink>,
 }
 
 impl SsDistributionClaim {

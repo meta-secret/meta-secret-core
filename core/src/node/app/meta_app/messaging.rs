@@ -11,7 +11,7 @@ pub enum GenericAppStateRequest {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ClusterDistributionRequest {
-    pub pass_id: String,
+    pub pass_id: MetaPasswordId,
     pub pass: String,
 }
 

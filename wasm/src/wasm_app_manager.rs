@@ -11,6 +11,7 @@ use meta_secret_core::node::app::app_state_update_manager::ApplicationManagerCon
 use meta_secret_core::node::app::meta_app::messaging::{
     ClusterDistributionRequest, GenericAppStateRequest,
 };
+use meta_secret_core::node::common::model::secret::MetaPasswordId;
 use meta_secret_core::node::common::model::vault::VaultName;
 use meta_secret_core::node::common::model::WasmApplicationState;
 
@@ -107,7 +108,7 @@ impl WasmApplicationManager {
 
     pub async fn cluster_distribution(&self, pass_id: &str, pass: &str) {
         let request = GenericAppStateRequest::ClusterDistribution(ClusterDistributionRequest {
-            pass_id: pass_id.to_string(),
+            pass_id: MetaPasswordId::generate(pass_id.to_string()),
             pass: pass.to_string(),
         });
 

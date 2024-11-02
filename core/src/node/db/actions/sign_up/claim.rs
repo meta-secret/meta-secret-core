@@ -77,7 +77,7 @@ pub mod test_action {
     use tracing_attributes::instrument;
 
     pub struct SignUpClaimTestAction {
-        sign_up: SignUpClaim<InMemKvLogEventRepo>,
+        _sign_up: SignUpClaim<InMemKvLogEventRepo>,
     }
 
     impl SignUpClaimTestAction {

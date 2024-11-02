@@ -1,16 +1,15 @@
 use std::cmp::PartialEq;
 use std::sync::Arc;
 
-use crate::node::common::model::device::common::{DeviceData, DeviceName};
+use crate::node::common::model::device::common::{DeviceData};
 use crate::node::common::model::user::common::UserData;
 use crate::node::common::model::vault::VaultStatus;
 use crate::node::db::actions::vault::vault_action::VaultAction;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, ToGenericEvent};
-use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::object_id::{Next, ObjectId};
-use crate::node::db::events::shared_secret_event::{SharedSecretObject, SsDeviceLogObject, SsLogObject};
+use crate::node::db::events::object_id::{ObjectId};
+use crate::node::db::events::shared_secret_event::{SsDeviceLogObject, SsLogObject};
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_vault::PersistentVault;
@@ -20,6 +19,7 @@ use anyhow::{anyhow, bail, Ok};
 use async_trait::async_trait;
 use tracing::{info, instrument};
 use anyhow::Result;
+use crate::node::common::model::device::device_link::DeviceLink;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 
 #[async_trait(? Send)]
@@ -248,11 +248,18 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                     let desc = SharedSecretDescriptor::SsDistribution(dist_id.clone())
                         .to_obj_desc();
 
-                    if request.sender.device.device_id.eq(dist_id.device_link.receiver()) {
-                        if let Some(dist_event) = self.p_obj.find_tail_event(desc).await? {
-                            commit_log.push(dist_event.clone());
-                            
-                            self.p_obj.repo.delete(dist_event.obj_id()).await;
+                    match dist_id.device_link {
+                        DeviceLink::Loopback(_) => {
+                            bail!("Local shares must not be sent to server");
+                        }
+                        DeviceLink::PeerToPeer(p2p_device_link) => {
+                            if request.sender.device.device_id.eq(p2p_device_link.receiver()) {
+                                if let Some(dist_event) = self.p_obj.find_tail_event(desc).await? {
+                                    commit_log.push(dist_event.clone());
+
+                                    self.p_obj.repo.delete(dist_event.obj_id()).await;
+                                }
+                            }
                         }
                     }
                 }

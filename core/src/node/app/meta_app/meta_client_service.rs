@@ -9,12 +9,11 @@ use crate::node::common::actor::ServiceState;
 use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::common::model::device::common::DeviceName;
 use crate::node::common::model::user::common::UserData;
-use crate::node::common::model::vault::{VaultMember, VaultStatus};
+use crate::node::common::model::vault::{VaultStatus};
 use crate::node::common::model::ApplicationState;
 use crate::node::db::actions::recover::RecoveryAction;
 use crate::node::db::actions::sign_up::claim::SignUpClaim;
 use crate::node::db::events::local_event::CredentialsObject;
-use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
@@ -70,14 +69,17 @@ impl<Repo: KvLogEventRepo> MetaClientService<Repo> {
                 },
 
                 GenericAppStateRequest::ClusterDistribution(request) => {
-                    let creds_repo = PersistentCredentials { p_obj: p_obj.clone() };
+                    let user_creds = {
+                        let creds_repo = PersistentCredentials { p_obj: p_obj.clone() };
+                        let maybe_user_creds = creds_repo.get_user_creds().await?;
 
-                    let maybe_user_creds = creds_repo.get_user_creds().await?;
+                        let Some(user_creds) = maybe_user_creds else {
+                            bail!("Invalid state. UserCredentials must be present")
+                        };
 
-                    let Some(user_creds) = maybe_user_creds else {
-                        bail!("Invalid state. UserCredentials must be present")
+                        user_creds
                     };
-                    
+
                     let vault_status = {
                         let vault_repo = PersistentVault { p_obj: p_obj.clone() };
                         vault_repo.find(user_creds.user()).await?
@@ -93,21 +95,21 @@ impl<Repo: KvLogEventRepo> MetaClientService<Repo> {
                         VaultStatus::Member(vault_member) => {
                             let distributor = MetaDistributor {
                                 p_obj: p_obj.clone(),
-                                vault_member,
+                                vault_member: vault_member.clone(),
                                 user_creds: Arc::new(user_creds),
                             };
 
-                            distributor.distribute(request.pass_id, request.pass).await?;
+                            distributor
+                                .distribute(vault_member, request.pass_id, request.pass)
+                                .await?;
                         }
                     }
                 }
 
                 GenericAppStateRequest::Recover(meta_pass_id) => {
-                    let recovery_action = RecoveryAction {
-                        persistent_obj: p_obj.clone(),
-                    };
+                    let recovery_action = RecoveryAction { p_obj: p_obj.clone() };
                     recovery_action
-                        .recovery_request(meta_pass_id, &service_state.app_state)
+                        .recovery_request(meta_pass_id)
                         .await?;
                 }
             }

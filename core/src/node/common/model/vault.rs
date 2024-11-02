@@ -1,13 +1,15 @@
 use crate::node::common::model::crypto::CommunicationChannel;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::device::device_link::DeviceLink;
-use crate::node::common::model::secret::MetaPasswordId;
+use crate::node::common::model::secret::{MetaPasswordId, SecretDistributionType, SsDistributionClaim, SsDistributionClaimId};
 use crate::node::common::model::user::common::{
     UserData, UserDataMember, UserDataOutsider, UserMembership, WasmUserMembership,
 };
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use wasm_bindgen::prelude::wasm_bindgen;
+use crate::secret::data_block::common::SharedSecretConfig;
+use anyhow::Result;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -93,6 +95,11 @@ impl From<VaultName> for VaultData {
 }
 
 impl VaultData {
+    pub fn sss_cfg(&self) -> SharedSecretConfig {
+        let members_num = self.members().len();
+        SharedSecretConfig::calculate(members_num)
+    }
+
     pub fn members(&self) -> Vec<UserDataMember> {
         let mut members: Vec<UserDataMember> = vec![];
         self.users.values().for_each(|membership| {
@@ -119,8 +126,10 @@ impl VaultData {
         self.secrets.insert(meta_password_id);
     }
 
-    pub fn update_membership(&mut self, membership: UserMembership) {
-        self.users.insert(membership.device_id(), membership);
+    pub fn update_membership(&self, membership: UserMembership) -> Self {
+        let mut new_vault = self.clone();
+        new_vault.users.insert(membership.device_id(), membership);
+        new_vault
     }
 
     pub fn is_not_member(&self, device_id: &DeviceId) -> bool {
@@ -154,9 +163,9 @@ impl VaultData {
         match device_link {
             DeviceLink::Loopback(loopback_link) => {
                 let sender = loopback_link.device();
-                let maybe_user = self.find_user(sender);
+                let maybe_sender = self.find_user(sender);
 
-                match maybe_user {
+                match maybe_sender {
                     Some(UserMembership::Member(UserDataMember { user_data })) => {
                         let pk = user_data.device.keys.transport_pk;
                         let channel = CommunicationChannel {
@@ -175,22 +184,24 @@ impl VaultData {
                 let maybe_sender = self.find_user(sender_device);
                 let maybe_receiver = self.find_user(receiver_device);
 
-                let Some(UserMembership::Member(UserDataMember { user_data: sender })) = maybe_sender else {
-                    return None;
-                };
+                match (maybe_sender, maybe_receiver) {
+                    (
+                        Some(UserMembership::Member(UserDataMember { user_data: sender })),
+                        Some(UserMembership::Member(UserDataMember { user_data: receiver }))
+                    ) => {
+                        let sender_pk = sender.device.keys.transport_pk.clone();
+                        let receiver_pk = receiver.device.keys.transport_pk.clone();
 
-                let Some(UserMembership::Member(UserDataMember { user_data: receiver })) = maybe_receiver else {
-                    return None;
-                };
-
-                let sender_pk = sender.device.keys.transport_pk.clone();
-                let receiver_pk = receiver.device.keys.transport_pk.clone();
-
-                let channel = CommunicationChannel {
-                    sender: sender_pk,
-                    receiver: receiver_pk,
-                };
-                Some(channel)
+                        let channel = CommunicationChannel {
+                            sender: sender_pk,
+                            receiver: receiver_pk,
+                        };
+                        Some(channel)
+                    }
+                    (_, _) => {
+                        None
+                    }
+                }
             }
         }
     }
@@ -258,6 +269,47 @@ pub struct VaultMember {
     pub vault: VaultData,
 }
 
+impl VaultMember {
+    pub fn create_split_claim(&self, pass_id: MetaPasswordId) -> Result<SsDistributionClaim> {
+        self.create_distribution_claim(pass_id, SecretDistributionType::Split)
+    }
+
+    pub fn create_recover_claim(&self, pass_id: MetaPasswordId) -> Result<SsDistributionClaim> {
+        self.create_distribution_claim(pass_id, SecretDistributionType::Recover)
+    }
+    
+    fn create_distribution_claim(
+        &self, pass_id: MetaPasswordId, distribution_type: SecretDistributionType
+    ) -> Result<SsDistributionClaim> {
+        let mut distributions = vec![];
+        for vault_member in self.vault.members() {
+            if vault_member == self.member {
+                continue;
+            }
+
+            let link = {
+                let receiver_device = vault_member.user_data.device.device_id.clone();
+                self.user_device().make_device_link(receiver_device)?
+            };
+
+            distributions.push(link);
+        }
+
+        Ok(SsDistributionClaim {
+            vault_name: self.vault.vault_name.clone(),
+            owner: self.user_device(),
+            id: SsDistributionClaimId::generate(),
+            pass_id,
+            distribution_type,
+            distributions,
+        })
+    }
+
+    fn user_device(&self) -> DeviceId {
+        self.member.user().device.device_id.clone()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen]
@@ -286,5 +338,39 @@ impl VaultStatus {
             VaultStatus::Outsider(UserDataOutsider { user_data, .. }) => user_data.clone(),
             VaultStatus::Member(VaultMember { member, .. }) => member.user().clone(),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use super::*;
+    #[test]
+    fn test_vault_status() -> Result<()> {
+        let fixture = FixtureRegistry::empty();
+        
+        let client_creds = fixture.state.user_creds.client;
+        let client_user_data = UserDataMember { user_data: client_creds.user() };
+        let client_membership = UserMembership::Member(client_user_data.clone());
+
+        let vd_creds = fixture.state.user_creds.vd;
+        let vd_user_data = UserDataMember { user_data: vd_creds.user() };
+        let vd_membership = UserMembership::Member(vd_user_data.clone());
+        
+        let mut vault_data = VaultData::from(client_creds.vault_name.clone());
+        vault_data = vault_data
+            .update_membership(client_membership)
+            .update_membership(vd_membership);
+
+        let vault_member = VaultMember {
+            member: client_user_data.clone(),
+            vault: vault_data,
+        };
+
+        let pass_id = MetaPasswordId::generate(String::from("test_password"));
+        let claim = vault_member.create_split_claim(pass_id)?;
+        assert_eq!(1, claim.distributions.len());
+        
+        Ok(())
     }
 }

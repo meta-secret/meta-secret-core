@@ -217,7 +217,7 @@ mod test {
         info!("Executing 'sign up' claim");
         let client_p_obj = registry.state.base.empty.p_obj.client.clone();
         let client_user_creds = &registry.state.base.empty.user_creds;
-        let _ = SignUpClaimTestAction::sign_up(client_p_obj.clone(), client_user_creds)
+        SignUpClaimTestAction::sign_up(client_p_obj.clone(), client_user_creds)
             .instrument(client_span())
             .await?;
 
