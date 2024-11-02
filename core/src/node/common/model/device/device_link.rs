@@ -1,15 +1,28 @@
 use crate::node::common::model::device::common::DeviceId;
 use anyhow::anyhow;
+use wasm_bindgen::prelude::wasm_bindgen;
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum DeviceLink {
     Loopback(LoopbackDeviceLink),
     PeerToPeer(PeerToPeerDeviceLink),
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WasmDeviceLink(DeviceLink);
+impl WasmDeviceLink {
+    
+}
+
+impl From<DeviceLink> for WasmDeviceLink {
+    fn from(device_link: DeviceLink) -> Self {
+        Self(device_link)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[wasm_bindgen]
 pub struct LoopbackDeviceLink {
     device: DeviceId,
 }
@@ -22,6 +35,7 @@ impl LoopbackDeviceLink {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[wasm_bindgen]
 pub struct PeerToPeerDeviceLink {
     sender: DeviceId,
     receiver: DeviceId,

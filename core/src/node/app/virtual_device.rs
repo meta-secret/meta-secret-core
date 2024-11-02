@@ -7,7 +7,7 @@ use crate::node::app::sync_gateway::SyncGateway;
 use crate::node::common::model::device::common::DeviceName;
 use crate::node::common::model::user::common::{UserDataOutsiderStatus, UserMembership};
 use crate::node::common::model::user::user_creds::UserCredentials;
-use crate::node::common::model::vault::{VaultMember, VaultName, VaultStatus};
+use crate::node::common::model::vault::{VaultName, VaultStatus};
 use crate::node::db::actions::sign_up::claim::SignUpClaim;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
@@ -79,12 +79,12 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
         let p_vault = PersistentVault { p_obj: self.p_obj() };
         let vault_status = p_vault.find(user_creds.user()).await?;
 
-        let VaultStatus::Member(VaultMember { member: me, vault }) = vault_status else {
+        let VaultStatus::Member { member, .. } = vault_status else {
             warn!("Not a vault member");
             return Ok(());
         };
 
-        let vault_name = vault.vault_name.clone();
+        let vault_name = member.vault.vault_name.clone();
         //vault actions
         let vault_log_desc = VaultDescriptor::VaultLog(vault_name).to_obj_desc();
 
@@ -96,13 +96,15 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
             if let VaultLogObject::Action(vault_action) = vault_log {
                 match vault_action.value {
                     VaultActionEvent::JoinClusterRequest { candidate } => {
-                        if let UserMembership::Outsider(outsider) = vault.membership(candidate.clone()) {
+                        if let UserMembership::Outsider(outsider) = member.vault.membership(candidate.clone()) {
                             if let UserDataOutsiderStatus::NonMember = outsider.status {
                                 let p_device_log = PersistentDeviceLog {
                                     p_obj: self.p_obj.clone(),
                                 };
 
-                                p_device_log.save_accept_join_request_event(me, candidate).await?;
+                                p_device_log
+                                    .save_accept_join_request_event(member.member, candidate)
+                                    .await?;
                             }
                         }
                     }
@@ -126,8 +128,6 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
         let _p_ss_log = PersistentSharedSecret {
             p_obj: self.p_obj.clone(),
         };
-
-        //todo!("Implement SS log actions - replication request. This code must read the log and handle the events. Same as above for vault");
 
         self.gateway.sync().await?;
         Ok(())

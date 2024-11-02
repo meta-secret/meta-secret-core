@@ -1,9 +1,7 @@
 use crate::node::common::model::crypto::CommunicationChannel;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::device::device_link::DeviceLink;
-use crate::node::common::model::secret::{
-    MetaPasswordId, SecretDistributionType, SsDistributionClaim, SsDistributionClaimId,
-};
+use crate::node::common::model::secret::{MetaPasswordId, SecretDistributionType, SsDistributionClaim, SsDistributionClaimId, SsLogData, WasmSsLogData};
 use crate::node::common::model::user::common::{
     UserData, UserDataMember, UserDataOutsider, UserMembership, WasmUserMembership,
 };
@@ -213,7 +211,7 @@ impl VaultData {
 pub enum VaultStatus {
     NotExists(UserData),
     Outsider(UserDataOutsider),
-    Member(VaultMember),
+    Member { member: VaultMember, ss_claims: SsLogData },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -231,7 +229,7 @@ impl WasmVaultStatus {
     }
 
     pub fn is_member(&self) -> bool {
-        matches!(&self.0, VaultStatus::Member(_))
+        matches!(&self.0, VaultStatus::Member { .. })
     }
 
     pub fn as_no_exists(&self) -> UserData {
@@ -250,7 +248,9 @@ impl WasmVaultStatus {
 
     pub fn as_member(&self) -> WasmVaultMember {
         match &self.0 {
-            VaultStatus::Member(member) => WasmVaultMember(member.clone()),
+            VaultStatus::Member { member, ss_claims } => {
+                WasmVaultMember(member.clone(), WasmSsLogData::from(ss_claims.clone()))
+            },
             _ => panic!("Vault status is not 'member'"),
         }
     }
@@ -258,7 +258,7 @@ impl WasmVaultStatus {
 
 impl From<VaultStatus> for WasmVaultStatus {
     fn from(status: VaultStatus) -> Self {
-        WasmVaultStatus(status)
+        Self(status)
     }
 }
 
@@ -315,7 +315,7 @@ impl VaultMember {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen]
-pub struct WasmVaultMember(VaultMember);
+pub struct WasmVaultMember(VaultMember, WasmSsLogData);
 #[wasm_bindgen]
 impl WasmVaultMember {
     pub fn vault_data(&self) -> WasmVaultData {
@@ -323,9 +323,9 @@ impl WasmVaultMember {
     }
 }
 
-impl From<VaultMember> for WasmVaultMember {
-    fn from(vault_member: VaultMember) -> Self {
-        Self(vault_member)
+impl From<(VaultMember, WasmSsLogData)> for WasmVaultMember {
+    fn from(member_and_ss: (VaultMember, WasmSsLogData)) -> Self {
+        Self(member_and_ss.0, member_and_ss.1)
     }
 }
 
@@ -338,7 +338,7 @@ impl VaultStatus {
         match self {
             VaultStatus::NotExists(user) => user.clone(),
             VaultStatus::Outsider(UserDataOutsider { user_data, .. }) => user_data.clone(),
-            VaultStatus::Member(VaultMember { member, .. }) => member.user().clone(),
+            VaultStatus::Member { member, .. } => member.member.user().clone(),
         }
     }
 }

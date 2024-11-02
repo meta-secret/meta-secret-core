@@ -99,7 +99,7 @@ impl<Repo: KvLogEventRepo> DataSyncApi for ServerSyncGateway<Repo> {
                     VaultStatus::Outsider(_) => {
                         return Ok(commit_log);
                     }
-                    VaultStatus::Member(_) => {
+                    VaultStatus::Member { .. } => {
                         let vault_events = self.vault_replication(vault_request.clone()).await?;
                         commit_log.extend(vault_events);
                     }
@@ -119,7 +119,7 @@ impl<Repo: KvLogEventRepo> DataSyncApi for ServerSyncGateway<Repo> {
                     VaultStatus::Outsider(_) => {
                         return Ok(commit_log);
                     }
-                    VaultStatus::Member(_) => {
+                    VaultStatus::Member { .. } => {
                         let vault_events = self.ss_replication(ss_request.clone()).await?;
                         commit_log.extend(vault_events);
                     }

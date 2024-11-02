@@ -1,15 +1,16 @@
 use std::sync::Arc;
 
-use crate::node::common::model::user::common::{UserData, UserDataOutsider};
+use crate::node::common::model::user::common::{UserData, UserDataMember, UserDataOutsider};
 use crate::node::common::model::vault::{VaultData, VaultMember, VaultName, VaultStatus};
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, ObjectId};
 use crate::node::db::events::vault::vault_log_event::VaultLogObject;
-use crate::node::db::events::vault_event::VaultActionEvent;
+use crate::node::db::events::vault_event::{VaultActionEvent, VaultObject};
 use crate::node::db::objects::global_index::ClientPersistentGlobalIndex;
 use crate::node::db::objects::persistent_object::PersistentObject;
+use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use anyhow::{anyhow, bail};
 use tracing_attributes::instrument;
@@ -28,9 +29,9 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
         match vault_status {
             VaultStatus::NotExists(_) => Err(anyhow!("Vault not found")),
             VaultStatus::Outsider(_) => Err(anyhow!("Sender is not a member of the vault")),
-            VaultStatus::Member(VaultMember { vault, .. }) => {
+            VaultStatus::Member { member, .. } => {
                 //save new vault state
-                let vault_desc = VaultDescriptor::vault(vault.vault_name.clone());
+                let vault_desc = VaultDescriptor::vault(member.vault.vault_name.clone());
 
                 let vault_free_id = self.p_obj.find_free_id_by_obj_desc(vault_desc.clone()).await?;
 
@@ -41,7 +42,7 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
                     ));
                 };
 
-                anyhow::Ok((vault_artifact_id, vault))
+                anyhow::Ok((vault_artifact_id, member.vault))
             }
         }
     }
@@ -56,11 +57,13 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
             return Ok(VaultStatus::NotExists(user));
         }
 
-        let vault_desc = VaultDescriptor::vault(user.vault_name());
-        let maybe_vault_event = self.p_obj.find_tail_event(vault_desc).await?;
+        let maybe_vault_event = {
+            let vault_desc = VaultDescriptor::vault(user.vault_name());
+            self.p_obj.find_tail_event(vault_desc).await?
+        };
 
-        let gi_and_status = (vault_exists, maybe_vault_event);
-        match gi_and_status {
+        let gi_and_vault = (vault_exists, maybe_vault_event);
+        match gi_and_vault {
             (false, Some(_)) => {
                 bail!("Invalid state. Vault not in global index")
             }
@@ -71,7 +74,34 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
             (true, None) => Ok(VaultStatus::Outsider(UserDataOutsider::non_member(user))),
             (true, Some(vault_event)) => {
                 let vault_obj = vault_event.vault()?;
-                Ok(vault_obj.status(user.clone()))
+
+                match vault_obj {
+                    VaultObject::Unit(_) => {
+                        bail!("Invalid state. Vault has only unit event")
+                    }
+                    VaultObject::Genesis(_) => {
+                        bail!("Invalid state. Genesis event is not enough")
+                    }
+                    VaultObject::Vault(KvLogEvent { value: vault_data, .. }) => {
+                        if vault_data.is_not_member(&user.device.device_id) {
+                            Ok(VaultStatus::Outsider(UserDataOutsider::non_member(user)))
+                        } else {
+                            let p_ss = PersistentSharedSecret {
+                                p_obj: self.p_obj.clone(),
+                            };
+                            let ss_log_obj = p_ss.get_ss_log_obj(user.vault_name()).await?;
+                            let ss_claims = ss_log_obj.to_data()?;
+
+                            Ok(VaultStatus::Member {
+                                member: VaultMember {
+                                    member: UserDataMember { user_data: user },
+                                    vault: vault_data,
+                                },
+                                ss_claims,
+                            })
+                        }
+                    }
+                }
             }
         }
     }

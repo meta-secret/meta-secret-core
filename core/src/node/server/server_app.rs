@@ -284,7 +284,7 @@ mod test {
         };
         let vault_status = p_vault.find(registry.state.base.empty.user_creds.client.user()).await?;
 
-        let VaultStatus::Member(_) = &vault_status else {
+        let VaultStatus::Member { .. } = &vault_status else {
             bail!("Client is not a vault member: {:?}", vault_status);
         };
         Ok(())

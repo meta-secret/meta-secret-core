@@ -50,7 +50,7 @@ impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
                     info!("Device is pending or declined")
                 }
             }
-            VaultStatus::Member(_) => {
+            VaultStatus::Member { .. } => {
                 //trace!("User is already a vault member: {:?}", member);
             }
         }

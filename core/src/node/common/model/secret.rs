@@ -54,13 +54,30 @@ pub struct SsDistributionId {
     pub device_link: DeviceLink,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SsLogData {
     pub claims: HashMap<SsDistributionClaimId, SsDistributionClaim>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[wasm_bindgen]
+pub struct WasmSsLogData(SsLogData);
+
+impl From<SsLogData> for WasmSsLogData {
+    fn from(log: SsLogData) -> Self {
+        WasmSsLogData(log)
+    }
+}
+
+impl SsLogData {
+    pub fn empty() -> Self {
+        Self { claims: HashMap::new() }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SsDistributionClaim {
     pub vault_name: VaultName,
@@ -72,6 +89,18 @@ pub struct SsDistributionClaim {
     pub distribution_type: SecretDistributionType,
 
     pub distributions: Vec<DeviceLink>,
+}
+
+#[wasm_bindgen]
+pub struct WasmSsDistributionClaim(SsDistributionClaim);
+impl WasmSsDistributionClaim {
+    
+}
+
+impl From<SsDistributionClaim> for WasmSsDistributionClaim {
+    fn from(claim: SsDistributionClaim) -> Self {
+        WasmSsDistributionClaim(claim)
+    }
 }
 
 impl SsDistributionClaim {
@@ -91,6 +120,7 @@ impl SsDistributionClaim {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[wasm_bindgen(getter_with_clone)]
 pub struct SsDistributionClaimId(pub String);
 
 impl SsDistributionClaimId {
@@ -116,6 +146,7 @@ pub enum SsDistributionStatus {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[wasm_bindgen]
 pub enum SecretDistributionType {
     Split,
     Recover,

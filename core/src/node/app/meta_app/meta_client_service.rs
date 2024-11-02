@@ -92,7 +92,9 @@ impl<Repo: KvLogEventRepo> MetaClientService<Repo> {
                         VaultStatus::Outsider(_) => {
                             bail!("Outsider user can't manage a vault")
                         }
-                        VaultStatus::Member(vault_member) => {
+                        VaultStatus::Member {
+                            member: vault_member, ..
+                        } => {
                             let distributor = MetaDistributor {
                                 p_obj: p_obj.clone(),
                                 vault_member: vault_member.clone(),

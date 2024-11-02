@@ -6,7 +6,7 @@ use tracing::{debug, error, info, instrument};
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
 use crate::node::common::model::user::common::UserId;
 use crate::node::common::model::user::user_creds::UserCredentials;
-use crate::node::common::model::vault::{VaultMember, VaultStatus};
+use crate::node::common::model::vault::VaultStatus;
 use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ToObjectDescriptor};
 use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
@@ -279,7 +279,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             p_vault.find(creds.user()).await?
         };
 
-        let VaultStatus::Member(VaultMember { .. }) = vault_status else {
+        let VaultStatus::Member { .. } = vault_status else {
             return Ok(());
         };
 

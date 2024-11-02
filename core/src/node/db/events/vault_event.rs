@@ -1,7 +1,7 @@
 use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::secret::MetaPasswordId;
 use crate::node::common::model::user::common::{UserData, UserDataMember, UserMembership};
-use crate::node::common::model::vault::{VaultData, VaultMember, VaultName, VaultStatus};
+use crate::node::common::model::vault::{VaultData, VaultName};
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::error::LogEventCastError;
@@ -10,7 +10,6 @@ use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, GenesisId, Next, ObjectId, UnitId};
 use anyhow::{anyhow, bail};
 use std::fmt::Display;
-use tracing::error;
 
 use super::object_id::{VaultGenesisEvent, VaultUnitEvent};
 
@@ -61,30 +60,6 @@ impl VaultObject {
             key: KvKey::unit(desc),
             value: vault_name,
         }))
-    }
-}
-
-impl VaultObject {
-    pub fn status(&self, user: UserData) -> VaultStatus {
-        match self {
-            VaultObject::Unit(_) => {
-                error!("Invalid state (only unit event is present)");
-                VaultStatus::NotExists(user.clone())
-            }
-            VaultObject::Genesis(_) => {
-                // We believe that if there are only unit and genesis events in the database, then
-                // the table is broken, so vault not exists
-                error!("Invalid state (only genesis event is present)");
-                VaultStatus::NotExists(user.clone())
-            }
-            VaultObject::Vault(event) => {
-                let vault = event.value.clone();
-                match vault.membership(user) {
-                    UserMembership::Outsider(outsider) => VaultStatus::Outsider(outsider),
-                    UserMembership::Member(member) => VaultStatus::Member(VaultMember { member, vault }),
-                }
-            }
-        }
     }
 }
 
