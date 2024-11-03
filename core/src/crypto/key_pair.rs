@@ -4,7 +4,9 @@ use rand::rngs::OsRng as RandOsRng;
 use rand::RngCore;
 
 use crate::crypto::encoding::base64::Base64Text;
-use crate::node::common::model::crypto::{AeadAuthData, AeadCipherText, AeadPlainText, CommunicationChannel};
+use crate::node::common::model::crypto::{
+    AeadAuthData, AeadCipherText, AeadPlainText, CommunicationChannel,
+};
 use crate::CoreResult;
 
 pub type CryptoBoxPublicKey = crypto_box::PublicKey;
@@ -47,7 +49,10 @@ impl KeyPair for DsaKeyPair {
         let pk = DalekPublicKey::from(&sk);
 
         DsaKeyPair {
-            key_pair: Keypair { public: pk, secret: sk },
+            key_pair: Keypair {
+                public: pk,
+                secret: sk,
+            },
         }
     }
 
@@ -85,7 +90,11 @@ pub trait Cipher {
 }
 
 impl TransportDsaKeyPair {
-    pub fn encrypt_string(&self, plain_text: String, receiver_pk: Base64Text) -> CoreResult<AeadCipherText> {
+    pub fn encrypt_string(
+        &self,
+        plain_text: String,
+        receiver_pk: Base64Text,
+    ) -> CoreResult<AeadCipherText> {
         let channel = CommunicationChannel {
             sender: self.public_key(),
             receiver: receiver_pk,
@@ -106,7 +115,9 @@ pub mod test {
     use crate::crypto::key_pair::KeyPair;
     use crate::crypto::keys::KeyManager;
     use crate::errors::CoreError;
-    use crate::node::common::model::crypto::{AeadAuthData, AeadCipherText, AeadPlainText, CommunicationChannel};
+    use crate::node::common::model::crypto::{
+        AeadAuthData, AeadCipherText, AeadPlainText, CommunicationChannel,
+    };
     use crate::CoreResult;
 
     #[test]

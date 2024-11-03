@@ -73,7 +73,9 @@ impl From<SsLogData> for WasmSsLogData {
 
 impl SsLogData {
     pub fn empty() -> Self {
-        Self { claims: HashMap::new() }
+        Self {
+            claims: HashMap::new(),
+        }
     }
 }
 
@@ -135,9 +137,8 @@ impl SsDistributionClaimId {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SsDistributionStatus {
+    /// Server is waiting for distributions to arrive, to send them to target devices
     Pending,
-    /// The sender device has sent the secret share
-    Sent,
     /// The receiver device has received the secret
     Delivered,
 }

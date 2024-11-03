@@ -18,7 +18,10 @@ pub struct KvEvent<T> {
 }
 
 impl KvLogEvent<GenesisId, DeviceData> {
-    pub fn genesis(obj_desc: ObjectDescriptor, server_pk: DeviceData) -> KvLogEvent<GenesisId, DeviceData> {
+    pub fn genesis(
+        obj_desc: ObjectDescriptor,
+        server_pk: DeviceData,
+    ) -> KvLogEvent<GenesisId, DeviceData> {
         KvLogEvent {
             key: KvKey::genesis(obj_desc),
             value: server_pk,
@@ -33,7 +36,10 @@ impl KvLogEvent<GenesisId, DeviceData> {
     }
 
     pub fn global_index_genesis(server_pk: DeviceData) -> KvLogEvent<GenesisId, DeviceData> {
-        Self::genesis(ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index), server_pk)
+        Self::genesis(
+            ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index),
+            server_pk,
+        )
     }
 }
 

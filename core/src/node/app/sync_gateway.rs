@@ -4,6 +4,7 @@ use std::time::Duration;
 use tracing::{debug, error, info, instrument};
 
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
+use crate::node::common::model::secret::SecretDistributionType;
 use crate::node::common::model::user::common::UserId;
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::VaultStatus;
@@ -12,7 +13,7 @@ use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ToObject
 use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::db_tail::DbTail;
-use crate::node::db::events::generic_log_event::ToGenericEvent;
+use crate::node::db::events::generic_log_event::{ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::local_event::{CredentialsObject, DbTailObject};
 use crate::node::db::events::object_id::ObjectId;
@@ -25,7 +26,10 @@ use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::node::server::request::{GlobalIndexRequest, SsRequest, SyncRequest, VaultRequest};
 use crate::node::server::server_app::ServerDataTransfer;
-use crate::node::server::server_data_sync::{DataEventsResponse, DataSyncRequest, ServerTailResponse};
+use crate::node::server::server_data_sync::{
+    DataEventsResponse, DataSyncRequest, ServerTailResponse,
+};
+use anyhow::Result;
 
 pub struct SyncGateway<Repo: KvLogEventRepo> {
     pub id: String,
@@ -52,7 +56,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
     ///  - global index, server PK - when user has no account
     ///  - vault, shared secret... - user has been registered, we can sync vault related events
     #[instrument(skip_all)]
-    pub async fn sync(&self) -> anyhow::Result<()> {
+    pub async fn sync(&self) -> Result<()> {
         let creds_repo = PersistentCredentials {
             p_obj: self.p_obj.clone(),
         };
@@ -80,12 +84,13 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         self.sync_device_log(&server_tail_response, user_creds.user_id())
             .await?;
 
-        self.sync_shared_secrets(&server_tail_response, &user_creds).await?;
+        self.sync_shared_secrets(&server_tail_response, &user_creds)
+            .await?;
 
         Ok(())
     }
 
-    async fn get_tail(&self, user_creds: &UserCredentials) -> anyhow::Result<ServerTailResponse> {
+    async fn get_tail(&self, user_creds: &UserCredentials) -> Result<ServerTailResponse> {
         let p_vault = PersistentVault {
             p_obj: self.p_obj.clone(),
         };
@@ -101,7 +106,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
     }
 
     #[instrument(skip_all)]
-    async fn sync_vault(&self, user_creds: &UserCredentials) -> anyhow::Result<()> {
+    async fn sync_vault(&self, user_creds: &UserCredentials) -> Result<()> {
         let vault_sync_request = {
             let sender = user_creds.user();
 
@@ -147,16 +152,26 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         Ok(())
     }
 
-    async fn sync_ss_device_log(&self, server_tail: &ServerTailResponse, device_id: DeviceId) -> anyhow::Result<()> {
+    async fn sync_ss_device_log(
+        &self,
+        server_tail: &ServerTailResponse,
+        device_id: DeviceId,
+    ) -> Result<()> {
         let server_ss_device_log_tail_id = {
             let unit_id = || {
                 let desc = SharedSecretDescriptor::SsDeviceLog(device_id).to_obj_desc();
                 ObjectId::unit(desc)
             };
-            server_tail.ss_device_log_tail.clone().unwrap_or_else(unit_id)
+            server_tail
+                .ss_device_log_tail
+                .clone()
+                .unwrap_or_else(unit_id)
         };
 
-        let ss_device_log_events_to_sync = self.p_obj.find_object_events(server_ss_device_log_tail_id).await?;
+        let ss_device_log_events_to_sync = self
+            .p_obj
+            .find_object_events(server_ss_device_log_tail_id)
+            .await?;
 
         for ss_device_log_event in ss_device_log_events_to_sync {
             //get SsDistribution events
@@ -170,8 +185,10 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                 for dist_event in dist_events {
                     self.server_dt
                         .dt
-                        .send_to_service(DataSyncRequest::Event(dist_event))
+                        .send_to_service(DataSyncRequest::Event(dist_event.clone()))
                         .await;
+
+                    self.p_obj.repo.delete(dist_event.obj_id()).await;
                 }
             }
 
@@ -184,7 +201,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         Ok(())
     }
 
-    async fn sync_ss_log(&self, user_creds: &UserCredentials) -> anyhow::Result<()> {
+    async fn sync_ss_log(&self, user_creds: &UserCredentials) -> Result<()> {
         let vault_name = user_creds.vault_name.clone();
         let ss_sync_request = {
             let ss_log_free_id = {
@@ -216,7 +233,11 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
     }
 
     #[instrument(skip(self))]
-    async fn sync_device_log(&self, server_tail: &ServerTailResponse, user_id: UserId) -> anyhow::Result<()> {
+    async fn sync_device_log(
+        &self,
+        server_tail: &ServerTailResponse,
+        user_id: UserId,
+    ) -> Result<()> {
         let tail_to_sync = match &server_tail.device_log_tail {
             None => ObjectId::unit(VaultDescriptor::device_log(user_id)),
             Some(server_tail_id) => server_tail_id.clone(),
@@ -235,7 +256,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
     }
 
     #[instrument(skip(self))]
-    async fn download_global_index(&self, sender: DeviceData) -> anyhow::Result<()> {
+    async fn download_global_index(&self, sender: DeviceData) -> Result<()> {
         //TODO optimization: read global index tail id from db_tail
         let gi_free_id = {
             let gi_desc = ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index);
@@ -270,7 +291,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         &self,
         server_tail: &ServerTailResponse,
         creds: &UserCredentials,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         let vault_status = {
             let p_vault = PersistentVault {
                 p_obj: self.p_obj.clone(),
@@ -284,14 +305,15 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         };
 
         //sync ss_device_log and ss_log
-        self.sync_ss_device_log(&server_tail, creds.device().device_id).await?;
+        self.sync_ss_device_log(&server_tail, creds.device().device_id)
+            .await?;
         self.sync_ss_log(creds).await?;
 
         Ok(())
     }
 
     #[instrument(skip_all)]
-    async fn save_updated_db_tail(&self, db_tail: DbTail, new_db_tail: DbTail) -> anyhow::Result<()> {
+    async fn save_updated_db_tail(&self, db_tail: DbTail, new_db_tail: DbTail) -> Result<()> {
         if new_db_tail == db_tail {
             return Ok(());
         }

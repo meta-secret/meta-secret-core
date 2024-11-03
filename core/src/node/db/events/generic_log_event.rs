@@ -69,6 +69,10 @@ impl GenericKvLogEvent {
         SsDeviceLogObject::try_from(self)
     }
 
+    pub fn ss_log(self) -> anyhow::Result<SsLogObject> {
+        SsLogObject::try_from(self)
+    }
+
     pub fn to_db_tail(self) -> anyhow::Result<DbTail> {
         if let GenericKvLogEvent::DbTail(DbTailObject(event)) = self {
             Ok(event.value)

@@ -62,7 +62,10 @@ impl TryFrom<GenericKvLogEvent> for CredentialsObject {
         if let GenericKvLogEvent::Credentials(creds_obj) = creds_event {
             Ok(creds_obj)
         } else {
-            let error: Error = anyhow!("Invalid credentials event type: {:?}", creds_event.key().obj_desc());
+            let error: Error = anyhow!(
+                "Invalid credentials event type: {:?}",
+                creds_event.key().obj_desc()
+            );
             Err(error)
         }
     }

@@ -55,11 +55,15 @@ impl<Repo: KvLogEventRepo> MetaClientService<Repo> {
                             device: device.clone(),
                         };
 
-                        let sign_up_claim = SignUpClaim { p_obj: p_obj.clone() };
+                        let sign_up_claim = SignUpClaim {
+                            p_obj: p_obj.clone(),
+                        };
                         sign_up_claim.sign_up(user_data.clone()).await?;
                         self.sync_gateway.sync().await?;
 
-                        let p_vault = PersistentVault { p_obj: self.p_obj() };
+                        let p_vault = PersistentVault {
+                            p_obj: self.p_obj(),
+                        };
                         let new_status = p_vault.find(user_data.clone()).await?;
                         service_state.app_state = ApplicationState::Vault { vault: new_status };
                     }
@@ -70,7 +74,9 @@ impl<Repo: KvLogEventRepo> MetaClientService<Repo> {
 
                 GenericAppStateRequest::ClusterDistribution(request) => {
                     let user_creds = {
-                        let creds_repo = PersistentCredentials { p_obj: p_obj.clone() };
+                        let creds_repo = PersistentCredentials {
+                            p_obj: p_obj.clone(),
+                        };
                         let maybe_user_creds = creds_repo.get_user_creds().await?;
 
                         let Some(user_creds) = maybe_user_creds else {
@@ -81,7 +87,9 @@ impl<Repo: KvLogEventRepo> MetaClientService<Repo> {
                     };
 
                     let vault_status = {
-                        let vault_repo = PersistentVault { p_obj: p_obj.clone() };
+                        let vault_repo = PersistentVault {
+                            p_obj: p_obj.clone(),
+                        };
                         vault_repo.find(user_creds.user()).await?
                     };
 
@@ -93,7 +101,8 @@ impl<Repo: KvLogEventRepo> MetaClientService<Repo> {
                             bail!("Outsider user can't manage a vault")
                         }
                         VaultStatus::Member {
-                            member: vault_member, ..
+                            member: vault_member,
+                            ..
                         } => {
                             let distributor = MetaDistributor {
                                 p_obj: p_obj.clone(),
@@ -109,7 +118,9 @@ impl<Repo: KvLogEventRepo> MetaClientService<Repo> {
                 }
 
                 GenericAppStateRequest::Recover(meta_pass_id) => {
-                    let recovery_action = RecoveryAction { p_obj: p_obj.clone() };
+                    let recovery_action = RecoveryAction {
+                        p_obj: p_obj.clone(),
+                    };
                     recovery_action.recovery_request(meta_pass_id).await?;
                 }
             }
@@ -121,12 +132,16 @@ impl<Repo: KvLogEventRepo> MetaClientService<Repo> {
     }
 
     async fn build_service_state(&self) -> anyhow::Result<ServiceState<ApplicationState>> {
-        let creds_repo = PersistentCredentials { p_obj: self.p_obj() };
+        let creds_repo = PersistentCredentials {
+            p_obj: self.p_obj(),
+        };
         let maybe_creds = creds_repo.find().await?;
 
         let app_state = match maybe_creds {
             None => {
-                let device_creds = creds_repo.get_or_generate_device_creds(DeviceName::client()).await?;
+                let device_creds = creds_repo
+                    .get_or_generate_device_creds(DeviceName::client())
+                    .await?;
                 ApplicationState::Local {
                     device: device_creds.device,
                 }
@@ -136,10 +151,14 @@ impl<Repo: KvLogEventRepo> MetaClientService<Repo> {
                     device: device_creds_event.value.device,
                 },
                 CredentialsObject::DefaultUser(user_creds) => {
-                    let p_vault = PersistentVault { p_obj: self.p_obj() };
+                    let p_vault = PersistentVault {
+                        p_obj: self.p_obj(),
+                    };
                     let vault_status = p_vault.find(user_creds.value.user()).await?;
 
-                    ApplicationState::Vault { vault: vault_status }
+                    ApplicationState::Vault {
+                        vault: vault_status,
+                    }
                 }
             },
         };

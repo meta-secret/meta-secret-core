@@ -1,6 +1,8 @@
 use crate::node::common::model::user::common::UserId;
 use crate::node::common::model::vault::VaultName;
-use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ObjectName, ObjectType, ToObjectDescriptor};
+use crate::node::db::descriptors::object_descriptor::{
+    ObjectDescriptor, ObjectName, ObjectType, ToObjectDescriptor,
+};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

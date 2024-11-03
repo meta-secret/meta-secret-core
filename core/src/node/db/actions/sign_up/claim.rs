@@ -34,7 +34,9 @@ impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
 
         let device_name = user_data.device.device_name.clone();
         let vault_name = user_data.vault_name.clone();
-        creds_repo.get_or_generate_user_creds(device_name, vault_name).await?;
+        creds_repo
+            .get_or_generate_user_creds(device_name, vault_name)
+            .await?;
 
         let vault_status = p_vault.find(user_data.clone()).await?;
 
@@ -88,7 +90,9 @@ pub mod test_action {
         ) -> anyhow::Result<VaultStatus> {
             info!("SignUp action");
 
-            let sign_up_claim = SignUpClaim { p_obj: p_obj.clone() };
+            let sign_up_claim = SignUpClaim {
+                p_obj: p_obj.clone(),
+            };
 
             let status = sign_up_claim.sign_up(creds_fixture.client.user()).await?;
 

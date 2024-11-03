@@ -14,12 +14,20 @@ pub struct SharedSecretBlock {
 }
 
 impl SharedSecretBlock {
-    pub fn create(config: SharedSecretConfig, data_block: PlainDataBlock) -> Result<SharedSecretBlock, CoreError> {
-        let raw_shares = sss::create_shares(&data_block.data, config.number_of_shares as u8, config.threshold as u8)?;
+    pub fn create(
+        config: SharedSecretConfig,
+        data_block: PlainDataBlock,
+    ) -> Result<SharedSecretBlock, CoreError> {
+        let raw_shares = sss::create_shares(
+            &data_block.data,
+            config.number_of_shares as u8,
+            config.threshold as u8,
+        )?;
 
         let mut shares: Vec<EncryptedDataBlock> = vec![];
         for raw_share in raw_shares {
-            let share = EncryptedDataBlock::from_bytes(&data_block.meta_data, raw_share.as_slice())?;
+            let share =
+                EncryptedDataBlock::from_bytes(&data_block.meta_data, raw_share.as_slice())?;
             shares.push(share);
         }
 

@@ -43,7 +43,10 @@ impl<Repo: KvLogEventRepo> VaultAction<Repo> {
             }
 
             VaultActionEvent::UpdateMembership {
-                sender: UserDataMember { user_data: sender_user },
+                sender:
+                    UserDataMember {
+                        user_data: sender_user,
+                    },
                 update,
             } => {
                 let vault_name = action_event.vault_name();
@@ -57,7 +60,11 @@ impl<Repo: KvLogEventRepo> VaultAction<Repo> {
                         obj_id: vault_artifact_id,
                         obj_desc: VaultDescriptor::vault(vault_name.clone()),
                     };
-                    VaultObject::Vault(KvLogEvent { key, value: new_vault }).to_generic()
+                    VaultObject::Vault(KvLogEvent {
+                        key,
+                        value: new_vault,
+                    })
+                    .to_generic()
                 };
 
                 self.p_obj.repo.save(vault_event).await?;
@@ -70,8 +77,9 @@ impl<Repo: KvLogEventRepo> VaultAction<Repo> {
 
                 //update vault status accordingly
                 let vault_status_free_id = {
-                    let vault_membership_desc =
-                        { VaultDescriptor::VaultMembership(update.user_data().user_id()).to_obj_desc() };
+                    let vault_membership_desc = {
+                        VaultDescriptor::VaultMembership(update.user_data().user_id()).to_obj_desc()
+                    };
 
                     self.p_obj
                         .find_free_id_by_obj_desc(vault_membership_desc.clone())
@@ -81,12 +89,16 @@ impl<Repo: KvLogEventRepo> VaultAction<Repo> {
                 let vault_status_events = match vault_status_free_id {
                     ObjectId::Unit(_) => VaultMembershipObject::init(update.user_data()),
                     ObjectId::Genesis(artifact_id) => {
-                        let genesis = VaultMembershipObject::genesis(update.user_data()).to_generic();
-                        let member = VaultMembershipObject::member(update.user_data(), artifact_id.next()).to_generic();
+                        let genesis =
+                            VaultMembershipObject::genesis(update.user_data()).to_generic();
+                        let member =
+                            VaultMembershipObject::member(update.user_data(), artifact_id.next())
+                                .to_generic();
                         vec![genesis, member]
                     }
                     ObjectId::Artifact(artifact_id) => {
-                        let event = VaultMembershipObject::membership(update.clone(), artifact_id).to_generic();
+                        let event = VaultMembershipObject::membership(update.clone(), artifact_id)
+                            .to_generic();
                         vec![event]
                     }
                 };
@@ -97,7 +109,10 @@ impl<Repo: KvLogEventRepo> VaultAction<Repo> {
                 anyhow::Ok(())
             }
 
-            VaultActionEvent::AddMetaPassword { sender, meta_pass_id } => {
+            VaultActionEvent::AddMetaPassword {
+                sender,
+                meta_pass_id,
+            } => {
                 let user = sender.user();
                 let (vault_artifact_id, vault) = p_vault.get_vault(&user).await?;
 
@@ -153,7 +168,10 @@ impl<Repo: KvLogEventRepo> CreateVaultAction<Repo> {
 
     async fn create_vault(&self, candidate: UserData) -> anyhow::Result<()> {
         //vault not found, we can create our new vault
-        info!("Accept SignUp request, for the vault: {:?}", candidate.vault_name());
+        info!(
+            "Accept SignUp request, for the vault: {:?}",
+            candidate.vault_name()
+        );
 
         let sign_up_action = SignUpAction {};
         let sign_up_events = sign_up_action.accept(candidate.clone(), self.server_device.clone());

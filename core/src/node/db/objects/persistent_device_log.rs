@@ -5,7 +5,9 @@ use crate::node::common::model::user::common::{UserData, UserDataMember, UserId,
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ToGenericEvent};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::object_id::{ArtifactId, Next, ObjectId, UnitId, VaultGenesisEvent, VaultUnitEvent};
+use crate::node::db::events::object_id::{
+    ArtifactId, Next, ObjectId, UnitId, VaultGenesisEvent, VaultUnitEvent,
+};
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::events::vault_event::VaultActionEvent;
 use crate::node::db::objects::persistent_object::PersistentObject;
@@ -40,7 +42,9 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
         let key = self.get_device_log_key(&member_user).await?;
         let update = VaultActionEvent::UpdateMembership {
             sender: member,
-            update: UserMembership::Member(UserDataMember { user_data: candidate }),
+            update: UserMembership::Member(UserDataMember {
+                user_data: candidate,
+            }),
         };
         let join_request = DeviceLogObject::Action(KvLogEvent { key, value: update });
 
@@ -60,7 +64,9 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
             .find_tail_event(VaultDescriptor::device_log(user.user_id()))
             .await?;
 
-        if let Some(GenericKvLogEvent::DeviceLog(DeviceLogObject::Action(event))) = maybe_generic_event {
+        if let Some(GenericKvLogEvent::DeviceLog(DeviceLogObject::Action(event))) =
+            maybe_generic_event
+        {
             if let VaultActionEvent::CreateVault(_) = event.value {
                 info!("SignUp request already exists");
                 return Ok(());
@@ -84,7 +90,10 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
     ) -> anyhow::Result<()> {
         let meta_pass_request = DeviceLogObject::Action(KvLogEvent {
             key: self.get_device_log_key(&sender.user()).await?,
-            value: VaultActionEvent::AddMetaPassword { sender, meta_pass_id },
+            value: VaultActionEvent::AddMetaPassword {
+                sender,
+                meta_pass_id,
+            },
         });
         self.p_obj.repo.save(meta_pass_request.to_generic()).await?;
 
@@ -109,7 +118,10 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
     async fn get_device_log_key(&self, user: &UserData) -> anyhow::Result<KvKey<ArtifactId>> {
         let obj_desc = VaultDescriptor::device_log(user.user_id());
 
-        let free_id = self.p_obj.find_free_id_by_obj_desc(obj_desc.clone()).await?;
+        let free_id = self
+            .p_obj
+            .find_free_id_by_obj_desc(obj_desc.clone())
+            .await?;
 
         let ObjectId::Artifact(free_artifact_id) = free_id else {
             bail!("Invalid free id: {:?}", free_id);

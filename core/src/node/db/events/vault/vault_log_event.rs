@@ -1,7 +1,9 @@
 use crate::node::common::model::user::common::UserData;
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
-use crate::node::db::events::generic_log_event::{GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent};
+use crate::node::db::events::generic_log_event::{
+    GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
+};
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, ObjectId, VaultGenesisEvent, VaultUnitEvent};
 use crate::node::db::events::vault_event::VaultActionEvent;

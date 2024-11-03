@@ -66,7 +66,9 @@ pub mod fixture {
         use crate::node::db::objects::global_index::fixture::ServerPersistentGlobalIndexFixture;
         use crate::node::db::objects::persistent_object::fixture::PersistentObjectFixture;
         use crate::node::db::repo::persistent_credentials::fixture::PersistentCredentialsFixture;
-        use crate::node::server::server_app::fixture::{ServerAppFixture, ServerDataTransferFixture};
+        use crate::node::server::server_app::fixture::{
+            ServerAppFixture, ServerDataTransferFixture,
+        };
 
         pub enum Fixture {
             Empty(EmptyState),

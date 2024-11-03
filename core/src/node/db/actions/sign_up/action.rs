@@ -20,7 +20,8 @@ impl SignUpAction {
 
         let vault_log_events = {
             let unit_event = VaultLogObject::unit(vault_name.clone()).to_generic();
-            let genesis_event = VaultLogObject::genesis(vault_name.clone(), candidate.clone()).to_generic();
+            let genesis_event =
+                VaultLogObject::genesis(vault_name.clone(), candidate.clone()).to_generic();
 
             vec![unit_event, genesis_event]
         };
@@ -29,7 +30,8 @@ impl SignUpAction {
         let vault_events = {
             let unit_event = VaultObject::unit(vault_name.clone()).to_generic();
             let genesis_event = VaultObject::genesis(vault_name.clone(), server).to_generic();
-            let vault_event = VaultObject::sign_up(vault_name.clone(), candidate.clone()).to_generic();
+            let vault_event =
+                VaultObject::sign_up(vault_name.clone(), candidate.clone()).to_generic();
 
             vec![unit_event, genesis_event, vault_event]
         };
@@ -63,7 +65,10 @@ mod test {
         let user_creds_fixture = UserCredentialsFixture::from(device_creds);
 
         let sign_up_action = SignUpAction {};
-        let events = sign_up_action.accept(user_creds_fixture.client.user(), device_creds.server.device.clone());
+        let events = sign_up_action.accept(
+            user_creds_fixture.client.user(),
+            device_creds.server.device.clone(),
+        );
 
         assert_eq!(events.len(), 10);
 

@@ -33,7 +33,10 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
                 //save new vault state
                 let vault_desc = VaultDescriptor::vault(member.vault.vault_name.clone());
 
-                let vault_free_id = self.p_obj.find_free_id_by_obj_desc(vault_desc.clone()).await?;
+                let vault_free_id = self
+                    .p_obj
+                    .find_free_id_by_obj_desc(vault_desc.clone())
+                    .await?;
 
                 let ObjectId::Artifact(vault_artifact_id) = vault_free_id else {
                     return Err(anyhow!(
@@ -82,7 +85,9 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
                     VaultObject::Genesis(_) => {
                         bail!("Invalid state. Genesis event is not enough")
                     }
-                    VaultObject::Vault(KvLogEvent { value: vault_data, .. }) => {
+                    VaultObject::Vault(KvLogEvent {
+                        value: vault_data, ..
+                    }) => {
                         if vault_data.is_not_member(&user.device.device_id) {
                             Ok(VaultStatus::Outsider(UserDataOutsider::non_member(user)))
                         } else {

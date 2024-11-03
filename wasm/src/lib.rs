@@ -50,7 +50,10 @@ pub fn configure() {
 
     let perf_layer = performance_layer().with_details_from_fields(Pretty::default());
 
-    tracing_subscriber::registry().with(fmt_layer).with(perf_layer).init();
+    tracing_subscriber::registry()
+        .with(fmt_layer)
+        .with(perf_layer)
+        .init();
 }
 
 /// https://rustwasm.github.io/docs/wasm-bindgen/reference/arbitrary-data-with-serde.html

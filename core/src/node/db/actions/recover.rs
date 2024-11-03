@@ -46,9 +46,10 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
                 bail!("Outsider status")
             }
             VaultStatus::Member {
-                member: vault_member, ..
+                member: vault_member,
+                ..
             } => {
-                let claim = vault_member.create_recover_claim(pass_id)?;
+                let claim = vault_member.create_recovery_claim(pass_id)?;
 
                 let p_ss = PersistentSharedSecret {
                     p_obj: self.p_obj.clone(),

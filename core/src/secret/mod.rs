@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use crate::node::common::model::crypto::EncryptedMessage;
-use crate::node::common::model::secret::{MetaPasswordId, SecretDistributionData, SsDistributionId};
+use crate::node::common::model::secret::{
+    MetaPasswordId, SecretDistributionData, SsDistributionId,
+};
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::VaultMember;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;

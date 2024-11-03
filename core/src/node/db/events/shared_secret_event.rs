@@ -1,10 +1,14 @@
 use super::object_id::{Next, VaultGenesisEvent, VaultUnitEvent};
-use crate::node::common::model::secret::{SecretDistributionData, SsDistributionClaim, SsLogData};
+use crate::node::common::model::secret::{
+    SecretDistributionData, SsDistributionClaim, SsDistributionStatus, SsLogData,
+};
 use crate::node::common::model::user::common::UserData;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
 use crate::node::db::events::error::LogEventCastError;
-use crate::node::db::events::generic_log_event::{GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent};
+use crate::node::db::events::generic_log_event::{
+    GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
+};
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, ObjectId, UnitId};
 use anyhow::{anyhow, bail, Ok};
@@ -13,12 +17,16 @@ use anyhow::{anyhow, bail, Ok};
 #[serde(rename_all = "camelCase")]
 pub enum SharedSecretObject {
     SsDistribution(KvLogEvent<UnitId, SecretDistributionData>),
+    SsDistributionStatus(KvLogEvent<UnitId, SsDistributionStatus>),
 }
 
 impl KeyExtractor for SharedSecretObject {
     fn key(&self) -> GenericKvKey {
         match self {
             SharedSecretObject::SsDistribution(event) => GenericKvKey::from(event.key.clone()),
+            SharedSecretObject::SsDistributionStatus(event) => {
+                GenericKvKey::from(event.key.clone())
+            }
         }
     }
 }
@@ -108,6 +116,9 @@ impl ObjIdExtractor for SharedSecretObject {
     fn obj_id(&self) -> ObjectId {
         match self {
             SharedSecretObject::SsDistribution(event) => ObjectId::from(event.key.obj_id.clone()),
+            SharedSecretObject::SsDistributionStatus(event) => {
+                ObjectId::from(event.key.obj_id.clone())
+            }
         }
     }
 }
@@ -162,7 +173,10 @@ impl SsLogObject {
         };
 
         let obj_events = vec![unit_event, genesis_event];
-        obj_events.iter().map(|obj| obj.clone().to_generic()).collect()
+        obj_events
+            .iter()
+            .map(|obj| obj.clone().to_generic())
+            .collect()
     }
 }
 

@@ -13,7 +13,8 @@ use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::node::server::request::SyncRequest;
 use crate::node::server::server_data_sync::{
-    DataEventsResponse, DataSyncApi, DataSyncRequest, DataSyncResponse, ServerSyncGateway, ServerTailResponse,
+    DataEventsResponse, DataSyncApi, DataSyncRequest, DataSyncResponse, ServerSyncGateway,
+    ServerTailResponse,
 };
 use anyhow::Result;
 use tracing::{error, info, instrument};
@@ -36,9 +37,13 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
             Arc::new(obj)
         };
 
-        let data_sync = ServerSyncGateway { p_obj: p_obj.clone() };
+        let data_sync = ServerSyncGateway {
+            p_obj: p_obj.clone(),
+        };
 
-        let creds_repo = PersistentCredentials { p_obj: p_obj.clone() };
+        let creds_repo = PersistentCredentials {
+            p_obj: p_obj.clone(),
+        };
 
         Ok(Self {
             data_sync,
@@ -107,6 +112,7 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                     .await;
             }
             DataSyncRequest::Event(event) => {
+                info!("Received new event: {:?}", event);
                 self.data_sync.handle(server_creds.device, event).await?;
             }
             DataSyncRequest::ServerTailRequest(user) => {
@@ -121,14 +127,15 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                 let p_ss = PersistentSharedSecret {
                     p_obj: self.p_obj.clone(),
                 };
-                let ss_device_log_tail = p_ss
+
+                let ss_device_log_free_id = p_ss
                     .find_ss_device_log_tail_id(&user.device.device_id)
                     .await?
                     .map(|tail_id| tail_id.next());
 
                 let response = ServerTailResponse {
                     device_log_tail,
-                    ss_device_log_tail,
+                    ss_device_log_tail: ss_device_log_free_id,
                 };
 
                 let data_sync_response = DataSyncResponse::ServerTailResponse(response);
@@ -139,12 +146,17 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
         Ok(())
     }
 
-    pub async fn handle_sync_request(&self, request: SyncRequest) -> Result<Vec<GenericKvLogEvent>> {
+    pub async fn handle_sync_request(
+        &self,
+        request: SyncRequest,
+    ) -> Result<Vec<GenericKvLogEvent>> {
         self.data_sync.replication(request).await
     }
 
     pub async fn get_creds(&self) -> Result<DeviceCredentials> {
-        self.creds_repo.get_or_generate_device_creds(DeviceName::server()).await
+        self.creds_repo
+            .get_or_generate_device_creds(DeviceName::server())
+            .await
     }
 }
 
@@ -251,10 +263,14 @@ mod test {
         Ok(())
     }
 
-    async fn server_check(registry: FixtureRegistry<ExtendedState>, client_user: UserData) -> anyhow::Result<()> {
+    async fn server_check(
+        registry: FixtureRegistry<ExtendedState>,
+        client_user: UserData,
+    ) -> anyhow::Result<()> {
         let server_app = registry.state.server_app.server_app.clone();
         let server_ss_device_log_events = {
-            let ss_desc = SharedSecretDescriptor::SsDeviceLog(client_user.device.device_id.clone()).to_obj_desc();
+            let ss_desc = SharedSecretDescriptor::SsDeviceLog(client_user.device.device_id.clone())
+                .to_obj_desc();
 
             server_app
                 .p_obj
@@ -262,7 +278,10 @@ mod test {
                 .instrument(server_span())
                 .await?
         };
-        info!("SERVER SS device log EVENTS: {:?}", server_ss_device_log_events.len());
+        info!(
+            "SERVER SS device log EVENTS: {:?}",
+            server_ss_device_log_events.len()
+        );
 
         let server_db = server_app.p_obj.repo.get_db().await;
 
@@ -282,7 +301,9 @@ mod test {
         let p_vault = PersistentVault {
             p_obj: registry.state.base.empty.p_obj.client.clone(),
         };
-        let vault_status = p_vault.find(registry.state.base.empty.user_creds.client.user()).await?;
+        let vault_status = p_vault
+            .find(registry.state.base.empty.user_creds.client.user())
+            .await?;
 
         let VaultStatus::Member { .. } = &vault_status else {
             bail!("Client is not a vault member: {:?}", vault_status);
@@ -291,7 +312,13 @@ mod test {
     }
 
     async fn sync_client(registry: &FixtureRegistry<ExtendedState>) -> anyhow::Result<()> {
-        registry.state.meta_client_service.sync_gateway.client_gw.sync().await?;
+        registry
+            .state
+            .meta_client_service
+            .sync_gateway
+            .client_gw
+            .sync()
+            .await?;
         Ok(())
     }
 

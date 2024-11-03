@@ -164,9 +164,14 @@ mod test {
             })
         );
 
-        let device_link = DeviceLinkBuilder::builder().sender(sender.clone()).build()?;
+        let device_link = DeviceLinkBuilder::builder()
+            .sender(sender.clone())
+            .build()?;
 
-        assert_eq!(device_link, DeviceLink::Loopback(LoopbackDeviceLink { device: sender }));
+        assert_eq!(
+            device_link,
+            DeviceLink::Loopback(LoopbackDeviceLink { device: sender })
+        );
 
         Ok(())
     }

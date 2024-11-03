@@ -6,7 +6,9 @@ use std::string::FromUtf8Error;
 use anyhow::{Context, Result};
 use clap::{ArgEnum, Parser, Subcommand};
 use meta_secret_core::shared_secret::data_block::common::SharedSecretConfig;
-use meta_secret_core::{convert_qr_images_to_json_files, recover, split, CoreResult, RecoveryOperationError};
+use meta_secret_core::{
+    convert_qr_images_to_json_files, recover, split, CoreResult, RecoveryOperationError,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Parser)]
@@ -45,19 +47,22 @@ struct MetaSecretConfig {
 fn main() -> Result<()> {
     let args: CmdLine = CmdLine::parse();
 
-    let config_file =
-        File::open("config.yaml").with_context(|| "Error reading config.yaml. Please check that file exists.")?;
+    let config_file = File::open("config.yaml")
+        .with_context(|| "Error reading config.yaml. Please check that file exists.")?;
 
-    let app_config: MetaSecretConfig =
-        serde_yaml::from_reader(config_file).with_context(|| "Error parsing config file. Invalid yaml format")?;
+    let app_config: MetaSecretConfig = serde_yaml::from_reader(config_file)
+        .with_context(|| "Error parsing config file. Invalid yaml format")?;
 
     let shared_secret_config = app_config.shared_secret;
 
     match args.command {
-        Command::Split { secret } => split(secret, shared_secret_config).with_context(|| "Error splitting password")?,
+        Command::Split { secret } => {
+            split(secret, shared_secret_config).with_context(|| "Error splitting password")?
+        }
         Command::Restore { from } => match from {
             RestoreType::Qr => {
-                convert_qr_images_to_json_files().with_context(|| "Error converting qr codes into json files")?;
+                convert_qr_images_to_json_files()
+                    .with_context(|| "Error converting qr codes into json files")?;
 
                 let password = restore_from_json().with_context(|| "Can't restore password")?;
 

@@ -2,7 +2,9 @@ use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ToObjectDescriptor};
-use crate::node::db::events::generic_log_event::{ObjIdExtractor, ToGenericEvent, UnitEventWithEmptyValue};
+use crate::node::db::events::generic_log_event::{
+    ObjIdExtractor, ToGenericEvent, UnitEventWithEmptyValue,
+};
 use crate::node::db::events::global_index_event::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ObjectId, UnitId};
@@ -29,7 +31,11 @@ impl<Repo: KvLogEventRepo> ServerPersistentGlobalIndex<Repo> {
             self.p_obj.repo.find_one(gi_unit).await
         };
 
-        let maybe_genesis_event = self.p_obj.repo.find_one(ObjectId::genesis(gi_obj_desc)).await;
+        let maybe_genesis_event = self
+            .p_obj
+            .repo
+            .find_one(ObjectId::genesis(gi_obj_desc))
+            .await;
 
         let gi_genesis_exists = matches!(maybe_unit_event, Ok(Some(_)));
         let gi_unit_exists = matches!(maybe_genesis_event, Ok(Some(_)));
@@ -149,7 +155,11 @@ pub mod spec {
 
             let genesis_event = {
                 let genesis_id = ObjectId::genesis(gi_obj_desc.clone());
-                self.repo.find_one(genesis_id).await?.unwrap().global_index()?
+                self.repo
+                    .find_one(genesis_id)
+                    .await?
+                    .unwrap()
+                    .global_index()?
             };
 
             if let GlobalIndexObject::Genesis(log_event) = genesis_event {
@@ -177,7 +187,9 @@ pub mod fixture {
     use crate::meta_tests::fixture_util::fixture::states::EmptyState;
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
-    use crate::node::db::objects::global_index::{ClientPersistentGlobalIndex, ServerPersistentGlobalIndex};
+    use crate::node::db::objects::global_index::{
+        ClientPersistentGlobalIndex, ServerPersistentGlobalIndex,
+    };
 
     pub struct ServerPersistentGlobalIndexFixture {
         pub server_gi: ServerPersistentGlobalIndex<InMemKvLogEventRepo>,

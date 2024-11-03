@@ -14,7 +14,10 @@ pub struct EncryptedDataBlock {
 }
 
 impl EncryptedDataBlock {
-    pub fn from_bytes(meta_data: &BlockMetaData, data: &[u8]) -> Result<Self, DataBlockParserError> {
+    pub fn from_bytes(
+        meta_data: &BlockMetaData,
+        data: &[u8],
+    ) -> Result<Self, DataBlockParserError> {
         // An array can't be empty
         if data == [0; SECRET_DATA_BLOCK_SIZE] {
             return Err(DataBlockParserError::Invalid);
@@ -38,7 +41,9 @@ mod test {
     use crate::errors::CoreError;
     use crate::secret::data_block::common::BlockMetaData;
     use crate::secret::data_block::common::SharedSecretConfig;
-    use crate::secret::data_block::encrypted_data_block::{EncryptedDataBlock, SECRET_DATA_BLOCK_SIZE};
+    use crate::secret::data_block::encrypted_data_block::{
+        EncryptedDataBlock, SECRET_DATA_BLOCK_SIZE,
+    };
     use crate::secret::shared_secret::SecretShareWithOrderingDto;
 
     #[test]

@@ -5,7 +5,9 @@ use crate::node::common::model::vault::{VaultData, VaultName};
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::error::LogEventCastError;
-use crate::node::db::events::generic_log_event::{GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent};
+use crate::node::db::events::generic_log_event::{
+    GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
+};
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, GenesisId, Next, ObjectId, UnitId};
 use anyhow::{anyhow, bail};
@@ -170,7 +172,10 @@ impl VaultMembershipObject {
             return false;
         };
 
-        matches!(membership_event.value, UserMembership::Member(UserDataMember { .. }))
+        matches!(
+            membership_event.value,
+            UserMembership::Member(UserDataMember { .. })
+        )
     }
 
     pub fn is_not_member(&self) -> bool {

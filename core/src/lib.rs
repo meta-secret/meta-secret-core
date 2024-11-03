@@ -118,7 +118,10 @@ pub fn split(secret: String, config: SharedSecretConfig) -> CoreResult<()> {
         let share_json = serde_json::to_string_pretty(&share)?;
 
         // Save the JSON structure into the output file
-        let write_op = fs::write(format!("secrets/shared-secret-{share_index}.json"), share_json.clone());
+        let write_op = fs::write(
+            format!("secrets/shared-secret-{share_index}.json"),
+            share_json.clone(),
+        );
 
         if let Err(op_err) = write_op {
             return Err(CoreError::from(SplitError::from(op_err)));
@@ -174,7 +177,10 @@ pub fn convert_qr_images_to_json_files() -> Result<Vec<String>, QrToJsonParserEr
         }
 
         let json_str = read_qr_code(file_path.as_path())?;
-        fs::write(format!("secrets/shared-secret-{share_index}.json"), json_str.clone())?;
+        fs::write(
+            format!("secrets/shared-secret-{share_index}.json"),
+            json_str.clone(),
+        )?;
 
         shares_json.push(json_str.clone());
 

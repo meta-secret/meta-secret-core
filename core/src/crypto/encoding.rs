@@ -105,7 +105,8 @@ pub mod base64 {
         use crate::crypto::encoding::base64::Base64Text;
 
         const TEST_STR: &str = "kjsfdbkjsfhdkjhsfdkjhsfdkjhksfdjhksjfdhksfd";
-        const ENCODED_URL_SAFE_TEST_STR: &str = "a2pzZmRia2pzZmhka2poc2Zka2poc2Zka2poa3NmZGpoa3NqZmRoa3NmZA";
+        const ENCODED_URL_SAFE_TEST_STR: &str =
+            "a2pzZmRia2pzZmhka2poc2Zka2poc2Zka2poa3NmZGpoa3NqZmRoa3NmZA";
 
         #[test]
         fn from_vec() {
@@ -129,8 +130,12 @@ pub mod serialized_key_manager {
         use ed25519_dalek::ed25519::signature::Signature;
 
         use crate::crypto::encoding::base64::Base64Text;
-        use crate::crypto::key_pair::{DalekPublicKey, DalekSignature, DsaKeyPair, KeyPair, TransportDsaKeyPair};
-        use crate::crypto::keys::{KeyManager, SecretBox, SerializedDsaKeyPair, SerializedTransportKeyPair};
+        use crate::crypto::key_pair::{
+            DalekPublicKey, DalekSignature, DsaKeyPair, KeyPair, TransportDsaKeyPair,
+        };
+        use crate::crypto::keys::{
+            KeyManager, SecretBox, SerializedDsaKeyPair, SerializedTransportKeyPair,
+        };
 
         // KeyManager -> SecretBox
         impl From<KeyManager> for SecretBox {
@@ -177,9 +182,12 @@ pub mod serialized_key_manager {
         use crate::crypto::encoding::base64::Base64Text;
         use crate::crypto::encoding::Array256Bit;
         use crate::crypto::key_pair::{
-            CryptoBoxSecretKey, DalekKeyPair, DalekPublicKey, DalekSignature, DsaKeyPair, TransportDsaKeyPair,
+            CryptoBoxSecretKey, DalekKeyPair, DalekPublicKey, DalekSignature, DsaKeyPair,
+            TransportDsaKeyPair,
         };
-        use crate::crypto::keys::{KeyManager, SecretBox, SerializedDsaKeyPair, SerializedTransportKeyPair};
+        use crate::crypto::keys::{
+            KeyManager, SecretBox, SerializedDsaKeyPair, SerializedTransportKeyPair,
+        };
         use crate::errors::CoreError;
 
         impl TryFrom<&SerializedDsaKeyPair> for DsaKeyPair {
@@ -215,7 +223,9 @@ pub mod serialized_key_manager {
         impl TryFrom<&SerializedTransportKeyPair> for TransportDsaKeyPair {
             type Error = CoreError;
 
-            fn try_from(serialized_transport: &SerializedTransportKeyPair) -> Result<Self, Self::Error> {
+            fn try_from(
+                serialized_transport: &SerializedTransportKeyPair,
+            ) -> Result<Self, Self::Error> {
                 let sk_bytes = Array256Bit::try_from(&serialized_transport.secret_key)?;
                 let secret_key = CryptoBoxSecretKey::from(sk_bytes);
                 let key_pair = Self { secret_key };

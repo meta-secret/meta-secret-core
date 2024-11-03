@@ -1,5 +1,7 @@
 use crate::node::common::model::vault::VaultName;
-use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ObjectName, ObjectType, ToObjectDescriptor};
+use crate::node::db::descriptors::object_descriptor::{
+    ObjectDescriptor, ObjectName, ObjectType, ToObjectDescriptor,
+};
 use crate::node::db::events::object_id::UnitId;
 
 /// Allows to have access to the global index of all vaults exists across the system.

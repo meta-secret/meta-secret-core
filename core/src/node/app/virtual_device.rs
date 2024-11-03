@@ -52,7 +52,9 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
     pub async fn run(&self) -> anyhow::Result<()> {
         info!("Run virtual device event handler");
 
-        let creds_repo = PersistentCredentials { p_obj: self.p_obj() };
+        let creds_repo = PersistentCredentials {
+            p_obj: self.p_obj(),
+        };
 
         let device_name = DeviceName::virtual_device();
         let user_creds = creds_repo
@@ -63,7 +65,9 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
 
         //No matter what current vault status is, sign_up claim will handle the case properly
         info!("SignUp virtual device if needed");
-        let sign_up_claim = SignUpClaim { p_obj: self.p_obj() };
+        let sign_up_claim = SignUpClaim {
+            p_obj: self.p_obj(),
+        };
         sign_up_claim.sign_up(user_creds.user()).await?;
 
         // Handle state changes
@@ -76,7 +80,9 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
     async fn do_work(&self, user_creds: &UserCredentials) -> anyhow::Result<()> {
         self.gateway.sync().await?;
 
-        let p_vault = PersistentVault { p_obj: self.p_obj() };
+        let p_vault = PersistentVault {
+            p_obj: self.p_obj(),
+        };
         let vault_status = p_vault.find(user_creds.user()).await?;
 
         let VaultStatus::Member { member, .. } = vault_status else {
@@ -96,7 +102,9 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
             if let VaultLogObject::Action(vault_action) = vault_log {
                 match vault_action.value {
                     VaultActionEvent::JoinClusterRequest { candidate } => {
-                        if let UserMembership::Outsider(outsider) = member.vault.membership(candidate.clone()) {
+                        if let UserMembership::Outsider(outsider) =
+                            member.vault.membership(candidate.clone())
+                        {
                             if let UserDataOutsiderStatus::NonMember = outsider.status {
                                 let p_device_log = PersistentDeviceLog {
                                     p_obj: self.p_obj.clone(),

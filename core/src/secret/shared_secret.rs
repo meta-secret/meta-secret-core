@@ -130,13 +130,20 @@ impl SharedSecret {
 
         for i in 0..size {
             let secret_block: &SharedSecretBlock = secret_blocks[i].borrow();
-            let shares: Vec<Vec<u8>> = secret_block.shares.iter().map(|share| share.data.to_vec()).collect();
+            let shares: Vec<Vec<u8>> = secret_block
+                .shares
+                .iter()
+                .map(|share| share.data.to_vec())
+                .collect();
 
             let maybe_restored = shamirsecretsharing::combine_shares(&shares)?;
 
             match maybe_restored {
                 None => {
-                    let err_mgs = format!("Invalid share. Secret block with index: {} has been corrupted", i);
+                    let err_mgs = format!(
+                        "Invalid share. Secret block with index: {} has been corrupted",
+                        i
+                    );
                     return Err(InvalidShare(err_mgs));
                 }
                 Some(restored) => {
@@ -212,9 +219,10 @@ mod test {
     #[test]
     fn shamir_test() -> Result<(), SSSError> {
         let data: Vec<u8> = vec![
-            63, 104, 101, 121, 95, 104, 101, 121, 95, 104, 101, 121, 95, 104, 101, 121, 95, 104, 101, 121, 95, 104,
-            101, 121, 95, 104, 101, 121, 95, 104, 101, 121, 95, 104, 101, 121, 95, 104, 101, 121, 95, 104, 101, 121,
-            95, 104, 101, 121, 95, 121, 97, 121, 95, 104, 101, 121, 95, 104, 101, 121, 95, 104, 101, 121,
+            63, 104, 101, 121, 95, 104, 101, 121, 95, 104, 101, 121, 95, 104, 101, 121, 95, 104,
+            101, 121, 95, 104, 101, 121, 95, 104, 101, 121, 95, 104, 101, 121, 95, 104, 101, 121,
+            95, 104, 101, 121, 95, 104, 101, 121, 95, 104, 101, 121, 95, 121, 97, 121, 95, 104,
+            101, 121, 95, 104, 101, 121, 95, 104, 101, 121,
         ];
 
         let count = 5;

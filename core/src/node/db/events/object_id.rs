@@ -4,7 +4,9 @@ use crate::crypto::utils::NextId;
 use crate::node::common::model::user::common::UserData;
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
-use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ObjectDescriptorId, ToObjectDescriptor};
+use crate::node::db::descriptors::object_descriptor::{
+    ObjectDescriptor, ObjectDescriptorId, ToObjectDescriptor,
+};
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 
 use super::kv_log_event::{KvKey, KvLogEvent};

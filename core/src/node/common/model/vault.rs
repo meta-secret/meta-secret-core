@@ -2,7 +2,8 @@ use crate::node::common::model::crypto::CommunicationChannel;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::device::device_link::DeviceLink;
 use crate::node::common::model::secret::{
-    MetaPasswordId, SecretDistributionType, SsDistributionClaim, SsDistributionClaimId, SsLogData, WasmSsLogData,
+    MetaPasswordId, SecretDistributionType, SsDistributionClaim, SsDistributionClaimId, SsLogData,
+    WasmSsLogData,
 };
 use crate::node::common::model::user::common::{
     UserData, UserDataMember, UserDataOutsider, UserMembership, WasmUserMembership,
@@ -161,7 +162,10 @@ impl VaultData {
         self.users.get(device_id).map(|user| user.clone())
     }
 
-    pub fn build_communication_channel(&self, device_link: DeviceLink) -> Option<CommunicationChannel> {
+    pub fn build_communication_channel(
+        &self,
+        device_link: DeviceLink,
+    ) -> Option<CommunicationChannel> {
         match device_link {
             DeviceLink::Loopback(loopback_link) => {
                 let sender = loopback_link.device();
@@ -189,7 +193,9 @@ impl VaultData {
                 match (maybe_sender, maybe_receiver) {
                     (
                         Some(UserMembership::Member(UserDataMember { user_data: sender })),
-                        Some(UserMembership::Member(UserDataMember { user_data: receiver })),
+                        Some(UserMembership::Member(UserDataMember {
+                            user_data: receiver,
+                        })),
                     ) => {
                         let sender_pk = sender.device.keys.transport_pk.clone();
                         let receiver_pk = receiver.device.keys.transport_pk.clone();
@@ -213,7 +219,10 @@ impl VaultData {
 pub enum VaultStatus {
     NotExists(UserData),
     Outsider(UserDataOutsider),
-    Member { member: VaultMember, ss_claims: SsLogData },
+    Member {
+        member: VaultMember,
+        ss_claims: SsLogData,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -276,7 +285,7 @@ impl VaultMember {
         self.create_distribution_claim(pass_id, SecretDistributionType::Split)
     }
 
-    pub fn create_recover_claim(&self, pass_id: MetaPasswordId) -> Result<SsDistributionClaim> {
+    pub fn create_recovery_claim(&self, pass_id: MetaPasswordId) -> Result<SsDistributionClaim> {
         self.create_distribution_claim(pass_id, SecretDistributionType::Recover)
     }
 
@@ -285,7 +294,7 @@ impl VaultMember {
         pass_id: MetaPasswordId,
         distribution_type: SecretDistributionType,
     ) -> Result<SsDistributionClaim> {
-        let mut distributions = vec![];
+        let mut links = vec![];
         for vault_member in self.vault.members() {
             if vault_member == self.member {
                 continue;
@@ -296,7 +305,7 @@ impl VaultMember {
                 self.user_device().make_device_link(receiver_device)?
             };
 
-            distributions.push(link);
+            links.push(link);
         }
 
         Ok(SsDistributionClaim {
@@ -305,7 +314,7 @@ impl VaultMember {
             id: SsDistributionClaimId::generate(),
             pass_id,
             distribution_type,
-            distributions,
+            distributions: links,
         })
     }
 
