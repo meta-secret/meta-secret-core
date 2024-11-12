@@ -1,57 +1,135 @@
 use std::collections::HashMap;
 
-use crate::crypto::utils;
 use crate::node::common::model::crypto::EncryptedMessage;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::device::device_link::DeviceLink;
+use crate::node::common::model::meta_pass::{MetaPasswordId, SALT_LENGTH};
 use crate::node::common::model::vault::VaultName;
+use crate::node::common::model::IdString;
 use rand::distributions::Alphanumeric;
 use rand::Rng;
 use wasm_bindgen::prelude::wasm_bindgen;
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(getter_with_clone)]
-pub struct MetaPasswordId {
-    /// SHA256 hash of a salt
-    pub id: String,
-    /// Random String up to 30 characters, must be unique
-    pub salt: String,
-    /// Human-readable name given to the password
-    pub name: String,
+pub struct ClaimId(pub String);
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SsDistributionId {
+    pub pass_id: MetaPasswordId,
+    pub owner: DeviceId,
 }
 
-const SALT_LENGTH: usize = 8;
+impl IdString for SsDistributionId {
+    fn id_str(&self) -> String {
+        [self.owner.as_str(), self.pass_id.id.clone()].join("|")
+    }
+}
 
-impl MetaPasswordId {
-    pub fn generate(name: String) -> Self {
-        let salt: String = rand::thread_rng()
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[wasm_bindgen(getter_with_clone)]
+pub struct SsDistributionClaimId {
+    pub id: ClaimId,
+    pub pass_id: MetaPasswordId,
+}
+
+impl IdString for SsDistributionClaimId {
+    fn id_str(&self) -> String {
+        [self.id.0.clone(), self.pass_id.id.clone()].join("|")
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SsDistributionClaimDbId {
+    pub claim_id: SsDistributionClaimId,
+    pub distribution_id: SsDistributionId,
+}
+
+impl IdString for SsDistributionClaimDbId {
+    fn id_str(&self) -> String {
+        [self.distribution_id.id_str(), self.claim_id.id_str()].join("|")
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SsDistributionClaim {
+    pub id: SsDistributionClaimId,
+
+    pub vault_name: VaultName,
+    pub owner: DeviceId,
+
+    pub distribution_type: SecretDistributionType,
+    pub devices: Vec<DeviceId>,
+}
+
+impl SsDistributionClaim {
+    pub fn distribution_ids(&self) -> Vec<SsDistributionId> {
+        let mut ids = Vec::with_capacity(self.devices.len());
+        for device in self.devices.iter() {
+            ids.push(SsDistributionId {
+                pass_id: self.id.pass_id.clone(),
+                owner: device.clone(),
+            });
+        }
+
+        ids
+    }
+
+    pub fn claim_db_ids(&self) -> Vec<SsDistributionClaimDbId> {
+        let mut ids = Vec::with_capacity(self.devices.len());
+        for device in self.devices.iter() {
+            ids.push(SsDistributionClaimDbId {
+                claim_id: self.id.clone(),
+                distribution_id: SsDistributionId {
+                    pass_id: self.id.pass_id.clone(),
+                    owner: device.clone(),
+                },
+            });
+        }
+
+        ids
+    }
+}
+
+impl SsDistributionClaimId {
+    pub fn generate(pass_id: MetaPasswordId) -> Self {
+        let id: String = rand::thread_rng()
             .sample_iter(&Alphanumeric)
             .take(SALT_LENGTH)
             .map(char::from)
             .collect();
-        MetaPasswordId::build(name, salt)
-    }
-
-    pub fn build(name: String, salt: String) -> Self {
-        let mut id_str = name.clone();
-        id_str.push('-');
-        id_str.push_str(salt.as_str());
-
-        Self {
-            id: utils::generate_uuid_b64_url_enc(id_str),
-            salt,
-            name,
-        }
+        Self { id: ClaimId(id), pass_id }
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SsDistributionId {
+pub enum SsDistributionStatus {
+    /// Server is waiting for distributions to arrive, to send them to target devices
+    Pending,
+    /// The receiver device has received the secret
+    Delivered,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[wasm_bindgen]
+pub enum SecretDistributionType {
+    Split,
+    Recover,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretDistributionData {
+    pub vault_name: VaultName,
     pub claim_id: SsDistributionClaimId,
-    pub distribution_type: SecretDistributionType,
-    pub device_link: DeviceLink,
+    pub secret_message: EncryptedMessage,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -79,19 +157,6 @@ impl SsLogData {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SsDistributionClaim {
-    pub vault_name: VaultName,
-    pub owner: DeviceId,
-
-    pub pass_id: MetaPasswordId,
-
-    pub id: SsDistributionClaimId,
-    pub distribution_type: SecretDistributionType,
-
-    pub distributions: Vec<DeviceLink>,
-}
 
 #[wasm_bindgen]
 pub struct WasmSsDistributionClaim(SsDistributionClaim);
@@ -101,60 +166,4 @@ impl From<SsDistributionClaim> for WasmSsDistributionClaim {
     fn from(claim: SsDistributionClaim) -> Self {
         WasmSsDistributionClaim(claim)
     }
-}
-
-impl SsDistributionClaim {
-    pub fn distribution_ids(&self) -> Vec<SsDistributionId> {
-        let mut ids = Vec::with_capacity(self.distributions.len());
-        for device_link in self.distributions.iter() {
-            ids.push(SsDistributionId {
-                claim_id: self.id.clone(),
-                distribution_type: self.distribution_type,
-                device_link: device_link.clone(),
-            });
-        }
-
-        ids
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[wasm_bindgen(getter_with_clone)]
-pub struct SsDistributionClaimId(pub String);
-
-impl SsDistributionClaimId {
-    pub fn generate() -> Self {
-        let id: String = rand::thread_rng()
-            .sample_iter(&Alphanumeric)
-            .take(SALT_LENGTH)
-            .map(char::from)
-            .collect();
-        Self(id)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum SsDistributionStatus {
-    /// Server is waiting for distributions to arrive, to send them to target devices
-    Pending,
-    /// The receiver device has received the secret
-    Delivered,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[wasm_bindgen]
-pub enum SecretDistributionType {
-    Split,
-    Recover,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SecretDistributionData {
-    pub vault_name: VaultName,
-    pub pass_id: MetaPasswordId,
-    pub secret_message: EncryptedMessage,
 }

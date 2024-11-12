@@ -1,5 +1,6 @@
 use crate::node::common::model::device::common::DeviceId;
-use crate::node::common::model::secret::SsDistributionId;
+use crate::node::common::model::IdString;
+use crate::node::common::model::secret::{SsDistributionClaimDbId, SsDistributionClaimId, SsDistributionId};
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::{
     ObjectDescriptor, ObjectType, ToObjectDescriptor,
@@ -14,9 +15,11 @@ pub enum SharedSecretDescriptor {
     /// to handle request from other devices. It is the same as VaultLog
     SsLog(VaultName),
 
-    /// Allows devices distributing their shares (split/recover operations)
+    /// Allows devices distributing their shares (split operation)
     SsDistribution(SsDistributionId),
-    SsDistributionStatus(SsDistributionId),
+    
+    SsClaim(SsDistributionClaimDbId),
+    SsDistributionStatus(SsDistributionClaimDbId),
 }
 
 impl ObjectType for SharedSecretDescriptor {
@@ -26,6 +29,7 @@ impl ObjectType for SharedSecretDescriptor {
             SharedSecretDescriptor::SsLog(_) => String::from("SsLog"),
             SharedSecretDescriptor::SsDistribution(_) => String::from("SsDistribution"),
             SharedSecretDescriptor::SsDistributionStatus(_) => String::from("SsDistributionStatus"),
+            SharedSecretDescriptor::SsClaim(_) => String::from("SsClaim")
         }
     }
 }
@@ -33,12 +37,11 @@ impl ObjectType for SharedSecretDescriptor {
 impl SharedSecretDescriptor {
     pub fn as_id_str(&self) -> String {
         match self {
-            SharedSecretDescriptor::SsDistribution(event_id) => {
-                serde_json::to_string(event_id).unwrap()
-            }
+            SharedSecretDescriptor::SsDistribution(event_id) => event_id.id_str(),
             SharedSecretDescriptor::SsLog(vault_name) => vault_name.to_string(),
             SharedSecretDescriptor::SsDeviceLog(device_id) => device_id.to_string(),
-            SharedSecretDescriptor::SsDistributionStatus(id) => serde_json::to_string(id).unwrap(),
+            SharedSecretDescriptor::SsDistributionStatus(id) => id.id_str(),
+            SharedSecretDescriptor::SsClaim(db_id) => db_id.id_str()
         }
     }
 }

@@ -314,7 +314,7 @@ impl VaultMember {
             id: SsDistributionClaimId::generate(),
             pass_id,
             distribution_type,
-            distributions: links,
+            links: links,
         })
     }
 
@@ -386,7 +386,7 @@ mod test {
 
         let pass_id = MetaPasswordId::generate(String::from("test_password"));
         let claim = vault_member.create_split_claim(pass_id)?;
-        assert_eq!(1, claim.distributions.len());
+        assert_eq!(1, claim.links.len());
 
         Ok(())
     }

@@ -7,9 +7,11 @@ use crypto_box::{
 use image::EncodableLayout;
 
 use crate::crypto::encoding::base64::Base64Text;
-use crate::crypto::key_pair::{CryptoBoxPublicKey, CryptoBoxSecretKey};
+use crate::crypto::key_pair::{CryptoBoxPublicKey, CryptoBoxSecretKey, MetaPublicKey};
 use crate::errors::CoreError;
-use crate::node::common::model::device::device_link::DeviceLink;
+use crate::node::common::model::device::common::DeviceId;
+use crate::node::common::model::device::device_link::{DeviceLink, DeviceLinkBuilder};
+use anyhow::{bail, Result};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -38,7 +40,7 @@ impl AeadAuthData {
     }
 
     pub fn receiver(&self) -> Result<CryptoBoxPublicKey, CoreError> {
-        CryptoBoxPublicKey::try_from(&self.channel.receiver)
+        CryptoBoxPublicKey::try_from(&self.channel.receiver.0)
     }
 
     pub fn nonce(&self) -> Result<Nonce, CoreError> {
@@ -130,8 +132,8 @@ impl AeadPlainText {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommunicationChannel {
-    pub sender: Base64Text,
-    pub receiver: Base64Text,
+    pub sender: MetaPublicKey,
+    pub receiver: MetaPublicKey,
 }
 
 impl CommunicationChannel {
@@ -143,11 +145,11 @@ impl CommunicationChannel {
     }
 
     pub fn sender(&self) -> CoreResult<CryptoBoxPublicKey> {
-        CryptoBoxPublicKey::try_from(&self.sender)
+        CryptoBoxPublicKey::try_from(&self.sender.0)
     }
 
     pub fn receiver(&self) -> CoreResult<CryptoBoxPublicKey> {
-        CryptoBoxPublicKey::try_from(&self.receiver)
+        CryptoBoxPublicKey::try_from(&self.receiver.0)
     }
 
     /// Get a peer/opponent to a given entity
@@ -156,10 +158,10 @@ impl CommunicationChannel {
         let receiver = self.receiver()?;
 
         let peer_pk = match initiator_pk {
-            pk if pk.eq(&sender) => CryptoBoxPublicKey::try_from(&self.receiver),
-            pk if pk.eq(&receiver) => CryptoBoxPublicKey::try_from(&self.sender),
+            pk if pk.eq(&sender) => CryptoBoxPublicKey::try_from(&self.receiver.0),
+            pk if pk.eq(&receiver) => CryptoBoxPublicKey::try_from(&self.sender.0),
             _ => Err(CoreError::ThirdPartyEncryptionError {
-                key_manager_pk: Base64Text::from(initiator_pk.as_bytes()),
+                key_manager_pk: MetaPublicKey(Base64Text::from(initiator_pk.as_bytes())),
                 channel: self.clone(),
             }),
         }?;
@@ -175,15 +177,15 @@ pub enum EncryptedMessage {
     /// and that particular type of message has a device link,
     /// and it used to figure out which vault the message belongs to
     CipherShare {
-        device_link: DeviceLink,
+        cipher_link: CipherLink,
         share: AeadCipherText,
     },
 }
 
 impl EncryptedMessage {
-    pub fn device_link(&self) -> DeviceLink {
+    pub fn device_link(&self) -> Result<DeviceLink> {
         match self {
-            EncryptedMessage::CipherShare { device_link, .. } => device_link.clone(),
+            EncryptedMessage::CipherShare { cipher_link, .. } => cipher_link.device_link()
         }
     }
 
@@ -191,5 +193,69 @@ impl EncryptedMessage {
         match self {
             EncryptedMessage::CipherShare { share, .. } => share,
         }
+    }
+
+    pub fn cipher_link(&self) -> &CipherLink {
+        match self {
+            EncryptedMessage::CipherShare { cipher_link, .. } => {
+                cipher_link
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CipherEndpoint {
+    pub device: DeviceId,
+    pub pk: MetaPublicKey,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CipherLink {
+    pub sender: CipherEndpoint,
+    pub receiver: CipherEndpoint,
+}
+
+impl CipherLink {
+    pub fn build(device_link: DeviceLink, channel: &CommunicationChannel) -> Self {
+        let sender = CipherEndpoint {
+            device: device_link.sender(),
+            pk: channel.sender.clone(),
+        };
+
+        let receiver = CipherEndpoint {
+            device: device_link.receiver(),
+            pk: channel.receiver.clone(),
+        };
+        
+        Self { sender, receiver }
+    }
+}
+
+impl CipherLink {
+    pub fn find_endpoint(&self, pk: MetaPublicKey) -> Result<CipherEndpoint> {
+        if self.sender.pk.eq(&pk) {
+            Ok(self.sender.clone())
+        } else if self.receiver.pk.eq(&pk) {
+            Ok(self.receiver.clone())
+        } else {
+            bail!("Endpoint not found")
+        }
+    }
+
+    pub fn with_new_receiver(&self, receiver: CipherEndpoint) -> Self {
+        Self {
+            sender: self.sender.clone(),
+            receiver,
+        }
+    }
+
+    pub fn device_link(&self) -> Result<DeviceLink> {
+        DeviceLinkBuilder::builder()
+            .sender(self.sender.device.clone())
+            .receiver(self.receiver.device.clone())
+            .build()
     }
 }

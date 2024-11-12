@@ -9,7 +9,7 @@ pub mod base64 {
     use std::fmt::Display;
     use wasm_bindgen::prelude::wasm_bindgen;
 
-    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     #[wasm_bindgen(getter_with_clone)]
     pub struct Base64Text(pub String);
@@ -240,10 +240,7 @@ pub mod serialized_key_manager {
             fn try_from(serialized_km: &SecretBox) -> Result<Self, Self::Error> {
                 let dsa = DsaKeyPair::try_from(&serialized_km.dsa)?;
                 let transport_key_pair = TransportDsaKeyPair::try_from(&serialized_km.transport)?;
-                let key_manager = Self {
-                    dsa,
-                    transport: transport_key_pair,
-                };
+                let key_manager = Self { dsa, transport: transport_key_pair };
 
                 Ok(key_manager)
             }

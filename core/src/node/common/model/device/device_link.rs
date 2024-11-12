@@ -1,12 +1,71 @@
 use crate::node::common::model::device::common::DeviceId;
 use anyhow::anyhow;
 use wasm_bindgen::prelude::wasm_bindgen;
+use crate::crypto;
+use crate::crypto::encoding::base64::Base64Text;
+use crate::node::common::model::IdString;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum DeviceLink {
     Loopback(LoopbackDeviceLink),
     PeerToPeer(PeerToPeerDeviceLink),
+}
+
+pub struct DeviceLinkId(Base64Text);
+
+impl From<DeviceLink> for DeviceLinkId {
+    fn from(link: DeviceLink) -> Self {
+        let mut ids = vec![link.sender().as_str(), link.receiver().as_str()];
+        ids.sort();
+
+        let ids_str = ids.join("");
+        let Base64Text(uuid_str) = crypto::utils::generate_uuid_b64_url_enc(ids_str);
+
+        let first_prefix: String = ids[0].chars().take(2).collect();
+        let second_prefix: String = ids[1].chars().take(2).collect();
+        
+        let id = Base64Text([first_prefix, second_prefix, uuid_str].join("|"));
+
+        Self(id)
+    }
+}
+
+impl IdString for DeviceLinkId {
+    fn id_str(&self) -> String {
+        self.0.0.clone()
+    }
+}
+
+impl DeviceLink {
+    pub fn id(&self) -> DeviceLinkId {
+        DeviceLinkId::from(self.clone())
+    }
+
+    pub fn sender(&self) -> DeviceId {
+        match self {
+            DeviceLink::Loopback(link) => link.sender().clone(),
+            DeviceLink::PeerToPeer(link) => link.sender.clone()
+        }
+    }
+
+    pub fn receiver(&self) -> DeviceId {
+        match self {
+            DeviceLink::Loopback(link) => link.receiver().clone(),
+            DeviceLink::PeerToPeer(link) => link.receiver().clone()
+        }
+    }
+
+    pub fn contains(&self, device_id: &DeviceId) -> bool {
+        match self {
+            DeviceLink::Loopback(link) => {
+                link.device.eq(device_id)
+            },
+            DeviceLink::PeerToPeer(link) => {
+                link.receiver.eq(device_id) || link.sender.eq(device_id)
+            }
+        }
+    }
 }
 
 pub struct WasmDeviceLink(DeviceLink);
@@ -26,7 +85,11 @@ pub struct LoopbackDeviceLink {
 }
 
 impl LoopbackDeviceLink {
-    pub fn device(&self) -> &DeviceId {
+    pub fn sender(&self) -> &DeviceId {
+        &self.device
+    }
+
+    pub fn receiver(&self) -> &DeviceId {
         &self.device
     }
 }

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::node::common::model::crypto::EncryptedMessage;
+use crate::node::common::model::crypto::{CipherLink, EncryptedMessage};
 use crate::node::common::model::secret::{
     MetaPasswordId, SecretDistributionData, SsDistributionId,
 };
@@ -62,7 +62,7 @@ impl MetaEncryptor {
 
             let encrypted_share = {
                 let share_str = share.as_json()?;
-                let receiver_pk = receiver.user().device.keys.transport_pk.clone();
+                let receiver_pk = receiver.user().device.keys.transport_pk();
                 self.creds
                     .device_creds
                     .key_manager()?
@@ -78,9 +78,11 @@ impl MetaEncryptor {
                     .device_id
                     .make_device_link(receiver_device)?
             };
+            
+            let cipher_link = CipherLink::build(device_link, encrypted_share.auth_data.channel());
 
             let cipher_share = EncryptedMessage::CipherShare {
-                device_link,
+                cipher_link,
                 share: encrypted_share,
             };
             encrypted_shares.push(cipher_share);
@@ -137,9 +139,8 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
             };
 
             let dist_id = SsDistributionId {
-                claim_id: claim.id.clone(),
                 distribution_type: claim.distribution_type.clone(),
-                device_link: secret_share.device_link(),
+                device_link: secret_share.device_link()?,
             };
 
             let split_key = {

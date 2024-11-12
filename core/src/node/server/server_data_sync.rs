@@ -318,7 +318,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                 //complete distribution process by deleting the claim from ss_log
                 updated_ss_log_data.claims.remove(&completed_claim.id);
             }
-            
+
             if !completed_split_claims.is_empty() {
                 let p_ss = PersistentSharedSecret {
                     p_obj: self.p_obj.clone(),

@@ -7,6 +7,7 @@ pub mod device;
 pub mod secret;
 pub mod user;
 pub mod vault;
+pub mod meta_pass;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -62,9 +63,13 @@ impl From<ApplicationState> for WasmApplicationState {
     }
 }
 
+pub trait IdString {
+    fn id_str(&self) -> String;
+}
+
 #[cfg(test)]
 mod test {
-    use crate::node::common::model::secret::MetaPasswordId;
+    use crate::node::common::model::meta_pass::MetaPasswordId;
 
     #[test]
     fn meta_password_id() {

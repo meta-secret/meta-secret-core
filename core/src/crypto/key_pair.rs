@@ -12,14 +12,14 @@ use crate::CoreResult;
 pub type CryptoBoxPublicKey = crypto_box::PublicKey;
 pub type CryptoBoxSecretKey = crypto_box::SecretKey;
 
-pub type DalekKeyPair = ed25519_dalek::Keypair;
+pub type DalekKeyPair = Keypair;
 pub type DalekPublicKey = ed25519_dalek::PublicKey;
 pub type DalekSecretKey = ed25519_dalek::SecretKey;
 pub type DalekSignature = ed25519_dalek::Signature;
 
 pub trait KeyPair {
     fn generate() -> Self;
-    fn public_key(&self) -> Base64Text;
+    fn public_key(&self) -> MetaPublicKey;
     fn secret_key(&self) -> Base64Text;
 }
 
@@ -56,14 +56,19 @@ impl KeyPair for DsaKeyPair {
         }
     }
 
-    fn public_key(&self) -> Base64Text {
-        Base64Text::from(&self.key_pair.public)
+    fn public_key(&self) -> MetaPublicKey {
+        let pk = Base64Text::from(&self.key_pair.public);
+        MetaPublicKey(pk)
     }
 
     fn secret_key(&self) -> Base64Text {
         Base64Text::from(&self.key_pair.secret.to_bytes())
     }
 }
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MetaPublicKey(pub Base64Text);
 
 pub struct TransportDsaKeyPair {
     pub secret_key: CryptoBoxSecretKey,
@@ -75,8 +80,9 @@ impl KeyPair for TransportDsaKeyPair {
         Self { secret_key }
     }
 
-    fn public_key(&self) -> Base64Text {
-        Base64Text::from(self.secret_key.public_key().as_bytes())
+    fn public_key(&self) -> MetaPublicKey {
+        let pk = Base64Text::from(self.secret_key.public_key().as_bytes());
+        MetaPublicKey(pk)
     }
 
     fn secret_key(&self) -> Base64Text {
@@ -93,7 +99,7 @@ impl TransportDsaKeyPair {
     pub fn encrypt_string(
         &self,
         plain_text: String,
-        receiver_pk: Base64Text,
+        receiver_pk: MetaPublicKey,
     ) -> CoreResult<AeadCipherText> {
         let channel = CommunicationChannel {
             sender: self.public_key(),
