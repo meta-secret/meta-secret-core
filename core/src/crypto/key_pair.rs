@@ -1,5 +1,5 @@
 use crypto_box::aead::OsRng as CryptoBoxOsRng;
-use ed25519_dalek::{Keypair, Signer};
+use ed25519_dalek::{SecretKey, Signer, SigningKey};
 use rand::rngs::OsRng as RandOsRng;
 use rand::RngCore;
 
@@ -8,19 +8,20 @@ use crate::node::common::model::crypto::{
     AeadAuthData, AeadCipherText, AeadPlainText, CommunicationChannel,
 };
 use crate::CoreResult;
+use crate::crypto::keys::{DsaPk, DsaSk, TransportPk, TransportSk};
 
 pub type CryptoBoxPublicKey = crypto_box::PublicKey;
 pub type CryptoBoxSecretKey = crypto_box::SecretKey;
 
-pub type DalekKeyPair = ed25519_dalek::Keypair;
-pub type DalekPublicKey = ed25519_dalek::PublicKey;
-pub type DalekSecretKey = ed25519_dalek::SecretKey;
+pub type DalekKeyPair = SigningKey;
+pub type DalekPublicKey = ed25519_dalek::VerifyingKey;
+pub type DalekSecretKey = SecretKey;
 pub type DalekSignature = ed25519_dalek::Signature;
 
-pub trait KeyPair {
+pub trait KeyPair<Pk, Sk> {
     fn generate() -> Self;
-    fn public_key(&self) -> Base64Text;
-    fn secret_key(&self) -> Base64Text;
+    fn pk(&self) -> Pk;
+    fn sk(&self) -> Sk;
 }
 
 pub struct DsaKeyPair {
@@ -38,30 +39,32 @@ impl DsaKeyPair {
     }
 }
 
-impl KeyPair for DsaKeyPair {
+impl KeyPair<DsaPk, DsaSk> for DsaKeyPair {
     fn generate() -> Self {
-        let mut sk_arr: [u8; 32] = [0; 32];
+        let sk_arr = {
+            let mut sk_bytes: [u8; 32] = [0; 32];
 
-        let mut cs_prng = RandOsRng {};
-        cs_prng.fill_bytes(&mut sk_arr);
+            let mut cs_prng = RandOsRng {};
+            cs_prng.fill_bytes(&mut sk_bytes);
+            sk_bytes
+        };
 
-        let sk = DalekSecretKey::from_bytes(&sk_arr).unwrap();
-        let pk = DalekPublicKey::from(&sk);
+        let signing_key = {
+            let sk = SecretKey::from(sk_arr);
+            SigningKey::from_bytes(&sk)
+        };
 
-        DsaKeyPair {
-            key_pair: Keypair {
-                public: pk,
-                secret: sk,
-            },
-        }
+        DsaKeyPair { key_pair: signing_key }
     }
 
-    fn public_key(&self) -> Base64Text {
-        Base64Text::from(&self.key_pair.public)
+    fn pk(&self) -> DsaPk {
+        let pk = Base64Text::from(&self.key_pair.verifying_key());
+        DsaPk(pk)
     }
 
-    fn secret_key(&self) -> Base64Text {
-        Base64Text::from(&self.key_pair.secret.to_bytes())
+    fn sk(&self) -> DsaSk {
+        let raw_sk = Base64Text::from(&self.key_pair.to_bytes());
+        DsaSk(raw_sk)
     }
 }
 
@@ -69,18 +72,19 @@ pub struct TransportDsaKeyPair {
     pub secret_key: CryptoBoxSecretKey,
 }
 
-impl KeyPair for TransportDsaKeyPair {
+impl KeyPair<TransportPk, TransportSk> for TransportDsaKeyPair {
     fn generate() -> Self {
         let secret_key = CryptoBoxSecretKey::generate(&mut CryptoBoxOsRng);
         Self { secret_key }
     }
 
-    fn public_key(&self) -> Base64Text {
-        Base64Text::from(self.secret_key.public_key().as_bytes())
+    fn pk(&self) -> TransportPk {
+        TransportPk::from(&self.secret_key.public_key())
     }
 
-    fn secret_key(&self) -> Base64Text {
-        Base64Text::from(self.secret_key.as_bytes())
+    fn sk(&self) -> TransportSk {
+        let raw_sk = Base64Text::from(self.secret_key.to_bytes());
+        TransportSk(raw_sk)
     }
 }
 
@@ -93,16 +97,15 @@ impl TransportDsaKeyPair {
     pub fn encrypt_string(
         &self,
         plain_text: String,
-        receiver_pk: Base64Text,
-    ) -> CoreResult<AeadCipherText> {
+        receiver_pk: TransportPk,
+    ) -> anyhow::Result<AeadCipherText> {
         let channel = CommunicationChannel {
-            sender: self.public_key(),
+            sender: self.pk(),
             receiver: receiver_pk,
         };
-        let auth_data = AeadAuthData::from(channel);
         let plain_text = AeadPlainText {
             msg: Base64Text::from(plain_text.as_bytes()),
-            auth_data,
+            auth_data: AeadAuthData::from(channel),
         };
 
         plain_text.encrypt(&self.secret_key)
@@ -111,6 +114,7 @@ impl TransportDsaKeyPair {
 
 #[cfg(test)]
 pub mod test {
+    use anyhow::Error;
     use crate::crypto::encoding::base64::Base64Text;
     use crate::crypto::key_pair::KeyPair;
     use crate::crypto::keys::KeyManager;
@@ -121,13 +125,13 @@ pub mod test {
     use crate::CoreResult;
 
     #[test]
-    fn single_person_encryption() -> CoreResult<()> {
+    fn single_person_encryption() -> anyhow::Result<()> {
         let password = "topSecret".to_string();
 
         let alice_km = KeyManager::generate();
         let cipher_text: AeadCipherText = alice_km
             .transport
-            .encrypt_string(password.clone(), alice_km.transport.public_key())?;
+            .encrypt_string(password.clone(), alice_km.transport.pk())?;
 
         let plain_text = cipher_text.decrypt(&alice_km.transport.secret_key)?;
         assert_eq!(Base64Text::from(password.as_bytes()), plain_text.msg);
@@ -136,13 +140,13 @@ pub mod test {
     }
 
     #[test]
-    fn straight_and_backward_decryption() -> CoreResult<()> {
+    fn straight_and_backward_decryption() -> anyhow::Result<()> {
         let alice_km = KeyManager::generate();
         let bob_km = KeyManager::generate();
 
         let channel = CommunicationChannel {
-            sender: alice_km.transport.public_key(),
-            receiver: bob_km.transport.public_key(),
+            sender: alice_km.transport.pk(),
+            receiver: bob_km.transport.pk(),
         };
 
         let plain_text = {
@@ -174,27 +178,18 @@ pub mod test {
     }
 
     #[test]
-    fn third_party_decryption() -> CoreResult<()> {
+    fn third_party_decryption() -> anyhow::Result<()> {
         let alice_km = KeyManager::generate();
         let bob_km = KeyManager::generate();
 
         let cipher_text: AeadCipherText = alice_km
             .transport
-            .encrypt_string("secret".to_string(), alice_km.transport.public_key())?;
+            .encrypt_string("secret".to_string(), alice_km.transport.pk())?;
 
         let error_result = cipher_text.decrypt(&bob_km.transport.secret_key);
-        let error = error_result.unwrap_err();
+        let error = error_result.is_err();
 
-        match error {
-            CoreError::ThirdPartyEncryptionError {
-                key_manager_pk,
-                channel,
-            } => {
-                assert_eq!(key_manager_pk, bob_km.transport.public_key());
-                assert_eq!(channel, cipher_text.auth_data.channel().clone())
-            }
-            _ => panic!("Critical error"),
-        }
+        assert!(error);
 
         Ok(())
     }

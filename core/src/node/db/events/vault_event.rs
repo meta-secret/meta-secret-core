@@ -1,5 +1,5 @@
 use crate::node::common::model::device::common::DeviceData;
-use crate::node::common::model::secret::MetaPasswordId;
+use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::user::common::{UserData, UserDataMember, UserMembership};
 use crate::node::common::model::vault::{VaultData, VaultName};
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;

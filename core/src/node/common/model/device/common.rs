@@ -1,29 +1,40 @@
-use crypto::utils::generate_uuid_b64_url_enc;
 use std::fmt::Display;
 use wasm_bindgen::prelude::wasm_bindgen;
 
-use crate::crypto;
 use crate::crypto::encoding::base64::Base64Text;
-use crate::crypto::keys::OpenBox;
-use crate::crypto::utils::rand_uuid_b64_url_enc;
-use crate::node::common::model::device::device_link::{DeviceLink, DeviceLinkBuilder};
+use crate::crypto::keys::{OpenBox, TransportPk};
+use crate::crypto::utils::{rand_uuid_b64_url_enc, U64IdUrlEnc};
+use crate::node::common::model::device::device_link::{DeviceLink, LoopbackDeviceLink};
+use crate::node::common::model::IdString;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(getter_with_clone)]
-pub struct DeviceId(String);
+pub struct DeviceId(pub U64IdUrlEnc);
+
 #[wasm_bindgen]
 impl DeviceId {
     pub fn as_str(&self) -> String {
-        self.0.clone()
+        self.0.id_str()
     }
 }
 impl DeviceId {
-    pub fn make_device_link(&self, receiver: DeviceId) -> anyhow::Result<DeviceLink> {
-        DeviceLinkBuilder::builder()
-            .sender(self.clone())
-            .receiver(receiver)
-            .build()
+    pub fn make_device_link(&self, receiver: DeviceId) -> DeviceLink {
+        DeviceLink::Loopback(LoopbackDeviceLink::from(receiver))
+    }
+}
+
+impl Display for DeviceId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+impl From<&OpenBox> for DeviceId {
+    fn from(open_box: &OpenBox) -> Self {
+        let dsa_pk = String::from(&open_box.dsa_pk.0);
+        let id = U64IdUrlEnc::from(dsa_pk);
+        Self(id)
     }
 }
 
@@ -87,25 +98,5 @@ impl DeviceData {
             device_id: DeviceId::from(&open_box),
             keys: open_box,
         }
-    }
-}
-
-impl Display for DeviceId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.clone())
-    }
-}
-
-impl From<&str> for DeviceId {
-    fn from(id: &str) -> Self {
-        Self(id.to_string())
-    }
-}
-
-impl From<&OpenBox> for DeviceId {
-    fn from(open_box: &OpenBox) -> Self {
-        let dsa_pk = String::from(&open_box.dsa_pk);
-        let id = generate_uuid_b64_url_enc(dsa_pk);
-        Self(id)
     }
 }

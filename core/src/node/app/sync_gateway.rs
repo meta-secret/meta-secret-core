@@ -4,7 +4,6 @@ use std::time::Duration;
 use tracing::{debug, error, info, instrument};
 
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
-use crate::node::common::model::secret::SecretDistributionType;
 use crate::node::common::model::user::common::UserId;
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::VaultStatus;

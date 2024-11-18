@@ -2,17 +2,16 @@ use crate::node::common::model::crypto::CommunicationChannel;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::device::device_link::DeviceLink;
 use crate::node::common::model::secret::{
-    MetaPasswordId, SecretDistributionType, SsDistributionClaim, SsDistributionClaimId, SsLogData,
-    WasmSsLogData,
+    SecretDistributionType, SsDistributionClaim, SsDistributionClaimId, SsLogData, WasmSsLogData,
 };
 use crate::node::common::model::user::common::{
     UserData, UserDataMember, UserDataOutsider, UserMembership, WasmUserMembership,
 };
 use crate::secret::data_block::common::SharedSecretConfig;
-use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use wasm_bindgen::prelude::wasm_bindgen;
+use crate::node::common::model::meta_pass::MetaPasswordId;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -168,7 +167,7 @@ impl VaultData {
     ) -> Option<CommunicationChannel> {
         match device_link {
             DeviceLink::Loopback(loopback_link) => {
-                let sender = loopback_link.device();
+                let sender = loopback_link.sender();
                 let maybe_sender = self.find_user(sender);
 
                 match maybe_sender {
@@ -281,11 +280,11 @@ pub struct VaultMember {
 }
 
 impl VaultMember {
-    pub fn create_split_claim(&self, pass_id: MetaPasswordId) -> Result<SsDistributionClaim> {
+    pub fn create_split_claim(&self, pass_id: MetaPasswordId) -> SsDistributionClaim {
         self.create_distribution_claim(pass_id, SecretDistributionType::Split)
     }
 
-    pub fn create_recovery_claim(&self, pass_id: MetaPasswordId) -> Result<SsDistributionClaim> {
+    pub fn create_recovery_claim(&self, pass_id: MetaPasswordId) -> SsDistributionClaim {
         self.create_distribution_claim(pass_id, SecretDistributionType::Recover)
     }
 
@@ -293,29 +292,24 @@ impl VaultMember {
         &self,
         pass_id: MetaPasswordId,
         distribution_type: SecretDistributionType,
-    ) -> Result<SsDistributionClaim> {
+    ) -> SsDistributionClaim {
         let mut links = vec![];
         for vault_member in self.vault.members() {
             if vault_member == self.member {
                 continue;
             }
+            let receiver_device = vault_member.user_data.device.device_id.clone();
 
-            let link = {
-                let receiver_device = vault_member.user_data.device.device_id.clone();
-                self.user_device().make_device_link(receiver_device)?
-            };
-
-            links.push(link);
+            links.push(receiver_device);
         }
 
-        Ok(SsDistributionClaim {
+        SsDistributionClaim {
+            id: SsDistributionClaimId::from(pass_id),
             vault_name: self.vault.vault_name.clone(),
             owner: self.user_device(),
-            id: SsDistributionClaimId::generate(),
-            pass_id,
             distribution_type,
-            distributions: links,
-        })
+            devices: links,
+        }
     }
 
     fn user_device(&self) -> DeviceId {
@@ -358,6 +352,8 @@ impl VaultStatus {
 mod test {
     use super::*;
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use anyhow::Result;
+    
     #[test]
     fn test_vault_status() -> Result<()> {
         let fixture = FixtureRegistry::empty();
@@ -385,8 +381,8 @@ mod test {
         };
 
         let pass_id = MetaPasswordId::generate(String::from("test_password"));
-        let claim = vault_member.create_split_claim(pass_id)?;
-        assert_eq!(1, claim.distributions.len());
+        let claim = vault_member.create_split_claim(pass_id);
+        assert_eq!(1, claim.devices.len());
 
         Ok(())
     }

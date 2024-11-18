@@ -1,12 +1,84 @@
 use crate::node::common::model::device::common::DeviceId;
 use anyhow::anyhow;
 use wasm_bindgen::prelude::wasm_bindgen;
+use crate::crypto;
+use crate::crypto::encoding::base64::Base64Text;
+use crate::crypto::utils::UuidUrlEnc;
+use crate::node::common::model::crypto::CommunicationChannel;
+use crate::node::common::model::IdString;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum DeviceLink {
     Loopback(LoopbackDeviceLink),
     PeerToPeer(PeerToPeerDeviceLink),
+}
+
+pub struct DeviceLinkId(Base64Text);
+
+impl From<DeviceLink> for DeviceLinkId {
+    fn from(link: DeviceLink) -> Self {
+        let mut ids = vec![link.sender().as_str(), link.receiver().as_str()];
+        ids.sort();
+
+        let ids_str = ids.join("");
+        let uuid_str = UuidUrlEnc::from(ids_str).id_str();
+
+        let first_prefix: String = ids[0].chars().take(2).collect();
+        let second_prefix: String = ids[1].chars().take(2).collect();
+        
+        let id = Base64Text([first_prefix, second_prefix, uuid_str].join("|"));
+
+        Self(id)
+    }
+}
+
+impl IdString for DeviceLinkId {
+    fn id_str(&self) -> String {
+        self.0.0.clone()
+    }
+}
+
+impl DeviceLink {
+    pub fn id(&self) -> DeviceLinkId {
+        DeviceLinkId::from(self.clone())
+    }
+
+    pub fn sender(&self) -> DeviceId {
+        match self {
+            DeviceLink::Loopback(link) => link.sender().clone(),
+            DeviceLink::PeerToPeer(link) => link.sender.clone()
+        }
+    }
+
+    pub fn receiver(&self) -> DeviceId {
+        match self {
+            DeviceLink::Loopback(link) => link.receiver().clone(),
+            DeviceLink::PeerToPeer(link) => link.receiver().clone()
+        }
+    }
+
+    pub fn contains(&self, device_id: &DeviceId) -> bool {
+        match self {
+            DeviceLink::Loopback(link) => {
+                link.device.eq(device_id)
+            },
+            DeviceLink::PeerToPeer(link) => {
+                link.receiver.eq(device_id) || link.sender.eq(device_id)
+            }
+        }
+    }
+}
+
+impl TryFrom<&CommunicationChannel> for DeviceLink {
+    type Error = anyhow::Error;
+
+    fn try_from(channel: &CommunicationChannel) -> Result<Self, Self::Error> {
+        DeviceLinkBuilder::builder()
+            .sender(channel.sender.to_device_id())
+            .receiver(channel.receiver.to_device_id())
+            .build()
+    }
 }
 
 pub struct WasmDeviceLink(DeviceLink);
@@ -25,8 +97,18 @@ pub struct LoopbackDeviceLink {
     device: DeviceId,
 }
 
+impl From<DeviceId> for LoopbackDeviceLink {
+    fn from(device: DeviceId) -> Self {
+        Self { device }
+    }
+}
+
 impl LoopbackDeviceLink {
-    pub fn device(&self) -> &DeviceId {
+    pub fn sender(&self) -> &DeviceId {
+        &self.device
+    }
+
+    pub fn receiver(&self) -> &DeviceId {
         &self.device
     }
 }
@@ -144,12 +226,17 @@ impl DeviceLink {
 
 #[cfg(test)]
 mod test {
+    use crate::crypto::key_pair::KeyPair;
+    use crate::crypto::keys::{KeyManager, TransportPk};
     use super::*;
 
     #[test]
     fn test_device_link_builder() -> anyhow::Result<()> {
-        let sender = DeviceId::from("sender");
-        let receiver = DeviceId::from("receiver");
+        let sender_km = KeyManager::generate();
+        let receiver_km = KeyManager::generate();
+        
+        let sender = sender_km.transport.pk().to_device_id();
+        let receiver = receiver_km.transport.pk().to_device_id();
 
         let device_link = DeviceLinkBuilder::builder()
             .sender(sender.clone())
