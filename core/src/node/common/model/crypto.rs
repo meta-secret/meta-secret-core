@@ -1,16 +1,11 @@
-use crate::CoreResult;
 use crypto_box::aead::{Aead, AeadCore};
-use crypto_box::{
-    aead::{OsRng as CryptoBoxOsRng, Payload},
-    ChaChaBox, Nonce,
-};
+use crypto_box::{aead::{OsRng as CryptoBoxOsRng, Payload}, ChaChaBox, Nonce};
 use image::EncodableLayout;
 
 use crate::crypto::encoding::base64::Base64Text;
-use crate::crypto::key_pair::{CryptoBoxPublicKey, CryptoBoxSecretKey, MetaPublicKey};
+use crate::crypto::key_pair::{CryptoBoxPublicKey, CryptoBoxSecretKey};
+use crate::crypto::keys::TransportPk;
 use crate::errors::CoreError;
-use crate::node::common::model::device::common::DeviceId;
-use crate::node::common::model::device::device_link::{DeviceLink, DeviceLinkBuilder};
 use anyhow::{bail, Result};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -39,8 +34,8 @@ impl AeadAuthData {
         Base64Text::from(nonce.as_slice())
     }
 
-    pub fn receiver(&self) -> Result<CryptoBoxPublicKey, CoreError> {
-        CryptoBoxPublicKey::try_from(&self.channel.receiver.0)
+    pub fn receiver(&self) -> Result<CryptoBoxPublicKey> {
+        self.channel.receiver.as_crypto_box_pk()
     }
 
     pub fn nonce(&self) -> Result<Nonce, CoreError> {
@@ -67,7 +62,7 @@ pub struct AeadCipherText {
 
 impl AeadCipherText {
     /// Decrypt this secret message using the secret key
-    pub fn decrypt(&self, secret_key: &CryptoBoxSecretKey) -> CoreResult<AeadPlainText> {
+    pub fn decrypt(&self, secret_key: &CryptoBoxSecretKey) -> Result<AeadPlainText> {
         let auth_data = &self.auth_data;
 
         let their_pk = &auth_data.channel().peer(&secret_key.public_key())?;
@@ -102,13 +97,8 @@ pub struct AeadPlainText {
 }
 
 impl AeadPlainText {
-    pub fn encrypt(&self, secret_key: &CryptoBoxSecretKey) -> CoreResult<AeadCipherText> {
+    pub fn encrypt(&self, sk: &CryptoBoxSecretKey) -> Result<AeadCipherText> {
         let auth_data = &self.auth_data;
-
-        let crypto_box = {
-            let their_pk = auth_data.receiver()?;
-            ChaChaBox::new(&their_pk, secret_key)
-        };
 
         let cipher_text = {
             let msg_data = Vec::try_from(&self.msg)?;
@@ -117,6 +107,11 @@ impl AeadPlainText {
                 aad: auth_data.associated_data.as_bytes(), // not encrypted, but authenticated in tag
             };
             let nonce = auth_data.nonce()?;
+
+            let crypto_box = {
+                let their_pk = auth_data.receiver()?;
+                ChaChaBox::new(&their_pk, sk)
+            };
             crypto_box.encrypt(&nonce, payload)?
         };
 
@@ -129,11 +124,11 @@ impl AeadPlainText {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommunicationChannel {
-    pub sender: MetaPublicKey,
-    pub receiver: MetaPublicKey,
+    pub sender: TransportPk,
+    pub receiver: TransportPk,
 }
 
 impl CommunicationChannel {
@@ -144,24 +139,24 @@ impl CommunicationChannel {
         }
     }
 
-    pub fn sender(&self) -> CoreResult<CryptoBoxPublicKey> {
-        CryptoBoxPublicKey::try_from(&self.sender.0)
+    pub fn sender(&self) -> Result<CryptoBoxPublicKey> {
+        self.sender.as_crypto_box_pk()
     }
 
-    pub fn receiver(&self) -> CoreResult<CryptoBoxPublicKey> {
-        CryptoBoxPublicKey::try_from(&self.receiver.0)
+    pub fn receiver(&self) -> Result<CryptoBoxPublicKey> {
+        self.receiver.as_crypto_box_pk()
     }
 
     /// Get a peer/opponent to a given entity
-    pub fn peer(&self, initiator_pk: &CryptoBoxPublicKey) -> CoreResult<CryptoBoxPublicKey> {
+    pub fn peer(&self, initiator_pk: &CryptoBoxPublicKey) -> Result<CryptoBoxPublicKey> {
         let sender = self.sender()?;
         let receiver = self.receiver()?;
 
         let peer_pk = match initiator_pk {
-            pk if pk.eq(&sender) => CryptoBoxPublicKey::try_from(&self.receiver.0),
-            pk if pk.eq(&receiver) => CryptoBoxPublicKey::try_from(&self.sender.0),
-            _ => Err(CoreError::ThirdPartyEncryptionError {
-                key_manager_pk: MetaPublicKey(Base64Text::from(initiator_pk.as_bytes())),
+            pk if pk.eq(&sender) => self.receiver.as_crypto_box_pk(),
+            pk if pk.eq(&receiver) => self.sender.as_crypto_box_pk(),
+            _ => bail!(CoreError::ThirdPartyEncryptionError {
+                key_manager_pk: TransportPk::from(initiator_pk),
                 channel: self.clone(),
             }),
         }?;
@@ -176,86 +171,71 @@ pub enum EncryptedMessage {
     /// There is only one type of encrypted message for now, which is encrypted share of a secret,
     /// and that particular type of message has a device link,
     /// and it used to figure out which vault the message belongs to
-    CipherShare {
-        cipher_link: CipherLink,
-        share: AeadCipherText,
-    },
+    CipherShare { share: AeadCipherText },
 }
 
 impl EncryptedMessage {
-    pub fn device_link(&self) -> Result<DeviceLink> {
-        match self {
-            EncryptedMessage::CipherShare { cipher_link, .. } => cipher_link.device_link()
-        }
-    }
-
+    
     pub fn cipher_text(&self) -> &AeadCipherText {
         match self {
             EncryptedMessage::CipherShare { share, .. } => share,
         }
     }
-
-    pub fn cipher_link(&self) -> &CipherLink {
-        match self {
-            EncryptedMessage::CipherShare { cipher_link, .. } => {
-                cipher_link
-            }
-        }
-    }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CipherEndpoint {
-    pub device: DeviceId,
-    pub pk: MetaPublicKey,
-}
+#[cfg(test)]
+mod test {
+    use crate::crypto::key_pair::KeyPair;
+    use crate::crypto::keys::{KeyManager, SecretBox};
+    use crate::node::common::model::crypto::{AeadAuthData, AeadCipherText, CommunicationChannel};
+    use crypto_box::aead::{Aead, AeadCore, OsRng, Payload};
+    use crypto_box::ChaChaBox;
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CipherLink {
-    pub sender: CipherEndpoint,
-    pub receiver: CipherEndpoint,
-}
+    #[test]
+    fn crypto_box_encryption_test() -> anyhow::Result<()> {
+        let password = "topSecret".to_string();
+        
+        let alice_km = KeyManager::generate();
+        let bob_km = KeyManager::generate();
 
-impl CipherLink {
-    pub fn build(device_link: DeviceLink, channel: &CommunicationChannel) -> Self {
-        let sender = CipherEndpoint {
-            device: device_link.sender(),
-            pk: channel.sender.clone(),
+        let channel = CommunicationChannel {
+            sender: alice_km.transport.pk(),
+            receiver: bob_km.transport.pk(),
         };
 
-        let receiver = CipherEndpoint {
-            device: device_link.receiver(),
-            pk: channel.receiver.clone(),
+        let auth_data = AeadAuthData::from(channel);
+        let nonce = {
+            auth_data.nonce()?
+        };
+
+        let alice_sk = {
+            let alice_secret_box = SecretBox::from(alice_km);
+            KeyManager::try_from(&alice_secret_box)?.transport.secret_key.clone()
         };
         
-        Self { sender, receiver }
-    }
-}
+        let alice_box = ChaChaBox::new(&alice_sk.public_key(), &alice_sk);
 
-impl CipherLink {
-    pub fn find_endpoint(&self, pk: MetaPublicKey) -> Result<CipherEndpoint> {
-        if self.sender.pk.eq(&pk) {
-            Ok(self.sender.clone())
-        } else if self.receiver.pk.eq(&pk) {
-            Ok(self.receiver.clone())
-        } else {
-            bail!("Endpoint not found")
-        }
+        let checksum = String::from("tag");
+        let payload = Payload {
+            msg: b"Top secret message we're encrypting".as_ref(),
+            aad: checksum.as_bytes(),
+        };
+        
+        let _ = alice_box.encrypt(&nonce, payload)?;
+        
+        Ok(())
     }
-
-    pub fn with_new_receiver(&self, receiver: CipherEndpoint) -> Self {
-        Self {
-            sender: self.sender.clone(),
-            receiver,
-        }
-    }
-
-    pub fn device_link(&self) -> Result<DeviceLink> {
-        DeviceLinkBuilder::builder()
-            .sender(self.sender.device.clone())
-            .receiver(self.receiver.device.clone())
-            .build()
+    
+    #[test]
+    fn encryption_test() -> anyhow::Result<()> {
+        let password =  "topSecret".to_string();
+        let alice_km = KeyManager::generate();
+        let bob_km = KeyManager::generate();
+        
+        let _: AeadCipherText = alice_km
+            .transport
+            .encrypt_string(password.clone(), bob_km.transport.pk())?;
+        
+        Ok(())
     }
 }

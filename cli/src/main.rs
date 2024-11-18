@@ -5,11 +5,11 @@ use std::string::FromUtf8Error;
 
 use anyhow::{Context, Result};
 use clap::{ArgEnum, Parser, Subcommand};
-use meta_secret_core::shared_secret::data_block::common::SharedSecretConfig;
 use meta_secret_core::{
     convert_qr_images_to_json_files, recover, split, CoreResult, RecoveryOperationError,
 };
 use serde::{Deserialize, Serialize};
+use meta_secret_core::secret::data_block::common::SharedSecretConfig;
 
 #[derive(Debug, Parser)]
 #[clap(about = "Meta Secret Command Line Application", long_about = None)]

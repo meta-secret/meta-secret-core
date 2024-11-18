@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use crate::node::common::model::crypto::{CipherLink, EncryptedMessage};
+use crate::node::common::model::crypto::{EncryptedMessage};
 use crate::node::common::model::secret::{
-    MetaPasswordId, SecretDistributionData, SsDistributionId,
+    SecretDistributionData, SsDistributionClaimId, SsDistributionId
 };
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::VaultMember;
@@ -20,6 +20,8 @@ use crate::CoreResult;
 use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
 use anyhow::Result;
 use tracing_attributes::instrument;
+use crate::node::common::model::device::common::DeviceId;
+use crate::node::common::model::meta_pass::MetaPasswordId;
 
 pub mod data_block;
 pub mod shared_secret;
@@ -70,21 +72,7 @@ impl MetaEncryptor {
                     .encrypt_string(share_str, receiver_pk)?
             };
 
-            let device_link = {
-                let receiver_device = receiver.user().device.device_id.clone();
-                self.creds
-                    .device_creds
-                    .device
-                    .device_id
-                    .make_device_link(receiver_device)?
-            };
-            
-            let cipher_link = CipherLink::build(device_link, encrypted_share.auth_data.channel());
-
-            let cipher_share = EncryptedMessage::CipherShare {
-                cipher_link,
-                share: encrypted_share,
-            };
+            let cipher_share = EncryptedMessage::CipherShare { share: encrypted_share };
             encrypted_shares.push(cipher_share);
         }
 
@@ -117,13 +105,13 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
             encryptor.split_and_encrypt(password)?
         };
 
-        let claim = vault_member.create_split_claim(password_id)?;
+        let claim = vault_member.create_split_claim(password_id);
 
         let p_device_log = PersistentDeviceLog {
             p_obj: self.p_obj.clone(),
         };
         p_device_log
-            .save_add_meta_pass_request(self.vault_member.member, claim.pass_id.clone())
+            .save_add_meta_pass_request(self.vault_member.member, claim.id.pass_id.clone())
             .await?;
 
         let p_ss = PersistentSharedSecret {
@@ -134,13 +122,13 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
         for secret_share in encrypted_shares {
             let distribution_share = SecretDistributionData {
                 vault_name: vault_name.clone(),
-                secret_message: secret_share.clone(),
-                pass_id: claim.pass_id.clone(),
+                claim_id: SsDistributionClaimId::from(claim.id.pass_id.clone()),
+                secret_message: secret_share.clone()
             };
 
             let dist_id = SsDistributionId {
-                distribution_type: claim.distribution_type.clone(),
-                device_link: secret_share.device_link()?,
+                pass_id: claim.id.pass_id.clone(),
+                owner: secret_share.cipher_text().auth_data.channel().receiver.to_device_id()
             };
 
             let split_key = {

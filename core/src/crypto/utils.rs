@@ -1,8 +1,9 @@
 use rand::{distributions::Alphanumeric, Rng};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
-
+use wasm_bindgen::prelude::wasm_bindgen;
 use crate::crypto::encoding::base64::Base64Text;
+use crate::node::common::model::IdString;
 use crate::node::db::descriptors::object_descriptor::{ObjectDescriptorFqdn, ObjectDescriptorId};
 
 const SEED_LENGTH: usize = 64;
@@ -32,10 +33,48 @@ pub fn rand_64bit_b64_url_enc() -> Base64Text {
     Base64Text::from(uuid)
 }
 
-pub fn generate_uuid_b64_url_enc(value: String) -> Base64Text {
-    let hash = Sha256::digest(value.as_bytes());
-    let uuid = Uuid::from_slice(&hash.as_slice()[..16]).unwrap();
-    Base64Text::from(uuid.as_bytes().as_slice())
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[wasm_bindgen]
+pub struct U64IdUrlEnc {
+    text: Base64Text
+}
+
+impl From<String> for U64IdUrlEnc {
+    fn from(value: String) -> Self {
+        let hash = Sha256::digest(value.as_bytes());
+        let val = &hash.as_slice()[..8];
+        let text = Base64Text::from(val);
+        Self { text }
+    }
+}
+
+impl IdString for U64IdUrlEnc {
+    fn id_str(&self) -> String {
+        self.text.0.clone()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[wasm_bindgen]
+pub struct UuidUrlEnc {
+    text: Base64Text
+}
+
+impl From<String> for UuidUrlEnc {
+    fn from(value: String) -> Self {
+        let hash = Sha256::digest(value.as_bytes());
+        let uuid = Uuid::from_slice(&hash.as_slice()[..16]).unwrap();
+        let text = Base64Text::from(uuid.as_bytes().as_slice());
+        Self { text }
+    }
+}
+
+impl IdString for UuidUrlEnc {
+    fn id_str(&self) -> String {
+        self.text.0.clone()
+    }
 }
 
 pub trait NextId {

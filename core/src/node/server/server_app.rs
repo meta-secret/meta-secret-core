@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::node::common::data_transfer::MpscDataTransfer;
-use crate::node::common::model::device::common::DeviceName;
+use crate::node::common::model::device::common::{DeviceId, DeviceName};
 use crate::node::common::model::device::device_creds::DeviceCredentials;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::object_id::Next;
@@ -104,7 +104,9 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
     ) -> Result<()> {
         match sync_message {
             DataSyncRequest::SyncRequest(request) => {
-                let new_events = self.handle_sync_request(request).await?;
+                let new_events = self
+                    .handle_sync_request(request, server_creds.device.device_id.clone())
+                    .await?;
 
                 self.server_dt
                     .dt
@@ -149,8 +151,9 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
     pub async fn handle_sync_request(
         &self,
         request: SyncRequest,
+        server_device: DeviceId
     ) -> Result<Vec<GenericKvLogEvent>> {
-        self.data_sync.replication(request).await
+        self.data_sync.replication(request, server_device).await
     }
 
     pub async fn get_creds(&self) -> Result<DeviceCredentials> {

@@ -1,31 +1,26 @@
-use crypto::utils::generate_uuid_b64_url_enc;
 use std::fmt::Display;
 use wasm_bindgen::prelude::wasm_bindgen;
 
-use crate::crypto;
 use crate::crypto::encoding::base64::Base64Text;
-use crate::crypto::key_pair::MetaPublicKey;
-use crate::crypto::keys::OpenBox;
-use crate::crypto::utils::rand_uuid_b64_url_enc;
-use crate::node::common::model::device::device_link::{DeviceLink, DeviceLinkBuilder};
+use crate::crypto::keys::{OpenBox, TransportPk};
+use crate::crypto::utils::{rand_uuid_b64_url_enc, U64IdUrlEnc};
+use crate::node::common::model::device::device_link::{DeviceLink, LoopbackDeviceLink};
+use crate::node::common::model::IdString;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(getter_with_clone)]
-pub struct DeviceId(Base64Text);
+pub struct DeviceId(pub U64IdUrlEnc);
+
 #[wasm_bindgen]
 impl DeviceId {
     pub fn as_str(&self) -> String {
-        let Base64Text(id) = self.0.clone();
-        id
+        self.0.id_str()
     }
 }
 impl DeviceId {
-    pub fn make_device_link(&self, receiver: DeviceId) -> anyhow::Result<DeviceLink> {
-        DeviceLinkBuilder::builder()
-            .sender(self.clone())
-            .receiver(receiver)
-            .build()
+    pub fn make_device_link(&self, receiver: DeviceId) -> DeviceLink {
+        DeviceLink::Loopback(LoopbackDeviceLink::from(receiver))
     }
 }
 
@@ -35,16 +30,10 @@ impl Display for DeviceId {
     }
 }
 
-impl From<&MetaPublicKey> for DeviceId {
-    fn from(pk: &MetaPublicKey) -> Self {
-        Self(id.to_string())
-    }
-}
-
 impl From<&OpenBox> for DeviceId {
     fn from(open_box: &OpenBox) -> Self {
-        let dsa_pk = String::from(&open_box.dsa_pk);
-        let id = generate_uuid_b64_url_enc(dsa_pk);
+        let dsa_pk = String::from(&open_box.dsa_pk.0);
+        let id = U64IdUrlEnc::from(dsa_pk);
         Self(id)
     }
 }

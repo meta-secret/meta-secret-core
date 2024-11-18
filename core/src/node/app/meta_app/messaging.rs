@@ -1,4 +1,4 @@
-use crate::node::common::model::secret::MetaPasswordId;
+use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::vault::VaultName;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

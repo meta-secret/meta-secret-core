@@ -1,8 +1,7 @@
 use anyhow::bail;
 use std::sync::Arc;
 use tracing_attributes::instrument;
-
-use crate::node::common::model::secret::MetaPasswordId;
+use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::vault::VaultStatus;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -49,7 +48,7 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
                 member: vault_member,
                 ..
             } => {
-                let claim = vault_member.create_recovery_claim(pass_id)?;
+                let claim = vault_member.create_recovery_claim(pass_id);
 
                 let p_ss = PersistentSharedSecret {
                     p_obj: self.p_obj.clone(),

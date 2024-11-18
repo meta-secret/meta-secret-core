@@ -70,10 +70,11 @@ pub trait IdString {
 #[cfg(test)]
 mod test {
     use crate::node::common::model::meta_pass::MetaPasswordId;
+    use crate::node::common::model::IdString;
 
     #[test]
     fn meta_password_id() {
         let pass_id = MetaPasswordId::build("test".to_string(), "salt".to_string());
-        assert_eq!(pass_id.id, "CHKANX39xaMXfhe3Qkx9-w".to_string())
+        assert_eq!(pass_id.id.id_str(), "CHKANX39xaM".to_string())
     }
 }

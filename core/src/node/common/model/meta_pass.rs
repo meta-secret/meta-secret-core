@@ -2,6 +2,7 @@ use rand::distributions::Alphanumeric;
 use wasm_bindgen::prelude::wasm_bindgen;
 use rand::Rng;
 use crate::crypto::utils;
+use crate::crypto::utils::U64IdUrlEnc;
 
 pub const SALT_LENGTH: usize = 8;
 
@@ -10,7 +11,7 @@ pub const SALT_LENGTH: usize = 8;
 #[wasm_bindgen(getter_with_clone)]
 pub struct MetaPasswordId {
     /// SHA256 hash of a salt
-    pub id: String,
+    pub id: U64IdUrlEnc,
     /// Random String up to 30 characters, must be unique
     pub salt: String,
     /// Human-readable name given to the password
@@ -33,7 +34,7 @@ impl MetaPasswordId {
         id_str.push_str(salt.as_str());
 
         Self {
-            id: utils::generate_uuid_b64_url_enc(id_str),
+            id: U64IdUrlEnc::from(id_str),
             salt,
             name,
         }

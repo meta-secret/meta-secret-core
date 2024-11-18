@@ -2,9 +2,7 @@ use std::io;
 use std::string::FromUtf8Error;
 
 use shamirsecretsharing::SSSError;
-
-use crate::crypto::encoding::base64::Base64Text;
-use crate::crypto::key_pair::MetaPublicKey;
+use crate::crypto::keys::TransportPk;
 use crate::node::common::model::crypto::CommunicationChannel;
 use crate::secret::data_block::common::DataBlockParserError;
 
@@ -48,7 +46,7 @@ pub enum CoreError {
 
     #[error("The key manager: {key_manager_pk:?} is not a component of the secure communication channel: {channel:?}")]
     ThirdPartyEncryptionError {
-        key_manager_pk: MetaPublicKey,
+        key_manager_pk: TransportPk,
         channel: CommunicationChannel,
     },
 

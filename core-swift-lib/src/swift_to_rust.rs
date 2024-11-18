@@ -1,6 +1,6 @@
 use anyhow::Context;
-use meta_secret_core::crypto::encoding::base64::Base64Text;
-use meta_secret_core::crypto::keys::{KeyManager, SecretBox};
+use anyhow::Result;
+use meta_secret_core::crypto::keys::{KeyManager, SecretBox, TransportPk};
 use meta_secret_core::errors::CoreError;
 use meta_secret_core::node::common::model::secret::SecretDistributionData;
 use meta_secret_core::recover_from_shares;
@@ -75,9 +75,8 @@ fn to_c_str(str: String) -> *mut c_char {
 
 mod internal {
     use super::*;
-    use meta_secret_core::crypto::key_pair::KeyPair;
-    use meta_secret_core::node::common::model::crypto::crypto::{AeadCipherText, AeadPlainText, EncryptedMessage};
-    use meta_secret_core::node::common::model::secret::secret::MetaPasswordId;
+    use meta_secret_core::node::common::model::crypto::{AeadCipherText, AeadPlainText, EncryptedMessage};
+    use meta_secret_core::node::common::model::meta_pass::MetaPasswordId;
     use meta_secret_core::secret;
 
     pub fn generate_security_box(vault_name_bytes: *const u8, len: SizeT) -> CoreResult<String> {
@@ -111,7 +110,7 @@ mod internal {
         Ok(result_json)
     }
 
-    pub fn encrypt_secret(bytes: *const u8, len: SizeT) -> CoreResult<String> {
+    pub fn encrypt_secret(bytes: *const u8, len: SizeT) -> Result<String> {
         let data_string: String = data_to_string(bytes, len)?;
 
         let json_struct = JsonMappedData::try_from(&data_string)?;
@@ -127,7 +126,7 @@ mod internal {
         Ok(encrypted_shares_json)
     }
 
-    pub fn decrypt_secret(bytes: *const u8, len: SizeT) -> CoreResult<String> {
+    pub fn decrypt_secret(bytes: *const u8, len: SizeT) -> Result<String> {
         let data_string: String = data_to_string(bytes, len)?;
         let restore_task = DecryptTask::try_from(&data_string)?;
         let key_manager = KeyManager::try_from(&restore_task.key_manager)?;
@@ -143,7 +142,7 @@ mod internal {
         Ok(result_json)
     }
 
-    pub fn recover_secret(bytes: *const u8, len: SizeT) -> CoreResult<String> {
+    pub fn recover_secret(bytes: *const u8, len: SizeT) -> Result<String> {
         let data_string: String = data_to_string(bytes, len)?;
         let restore_task = RestoreTask::try_from(&data_string)?;
 
@@ -188,7 +187,7 @@ fn data_to_string(bytes: *const u8, len: SizeT) -> CoreResult<String> {
 #[serde(rename_all = "camelCase")]
 pub struct JsonMappedData {
     sender_key_manager: SecretBox,
-    receiver_pub_key: Base64Text,
+    receiver_pub_key: TransportPk,
     secret: String,
 }
 
@@ -240,13 +239,13 @@ pub mod test {
     use meta_secret_core::crypto::encoding::base64::Base64Text;
     use meta_secret_core::crypto::key_pair::KeyPair;
     use meta_secret_core::crypto::keys::KeyManager;
-    use meta_secret_core::node::common::model::crypto::crypto::AeadCipherText;
+    use meta_secret_core::node::common::model::crypto::AeadCipherText;
     use meta_secret_core::secret::data_block::common::SharedSecretConfig;
     use meta_secret_core::secret::shared_secret::UserShareDto;
-    use meta_secret_core::{secret, CoreResult};
+    use meta_secret_core::secret;
 
     #[test]
-    fn split_and_encrypt() -> CoreResult<()> {
+    fn split_and_encrypt() -> anyhow::Result<()> {
         // Constants & Properties
         let cfg = SharedSecretConfig {
             number_of_shares: 3,
@@ -265,7 +264,7 @@ pub mod test {
         // Encrypt shares
         let secret = shares[0].clone();
         let Base64Text(password_share_text) = secret.share_blocks[0].data.clone();
-        let receiver_pk = key_manager_2.transport.public_key();
+        let receiver_pk = key_manager_2.transport.pk();
         let encrypted_share: AeadCipherText = key_manager_1
             .transport
             .encrypt_string(password_share_text, receiver_pk)?;

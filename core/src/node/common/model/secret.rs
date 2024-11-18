@@ -2,13 +2,14 @@ use std::collections::HashMap;
 
 use crate::node::common::model::crypto::EncryptedMessage;
 use crate::node::common::model::device::common::DeviceId;
-use crate::node::common::model::device::device_link::DeviceLink;
 use crate::node::common::model::meta_pass::{MetaPasswordId, SALT_LENGTH};
 use crate::node::common::model::vault::VaultName;
 use crate::node::common::model::IdString;
 use rand::distributions::Alphanumeric;
 use rand::Rng;
 use wasm_bindgen::prelude::wasm_bindgen;
+use crate::crypto::encoding::base64::Base64Text;
+use crate::crypto::utils::U64IdUrlEnc;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,7 +25,7 @@ pub struct SsDistributionId {
 
 impl IdString for SsDistributionId {
     fn id_str(&self) -> String {
-        [self.owner.as_str(), self.pass_id.id.clone()].join("|")
+        [self.owner.as_str(), self.pass_id.id.id_str()].join("|")
     }
 }
 
@@ -38,7 +39,7 @@ pub struct SsDistributionClaimId {
 
 impl IdString for SsDistributionClaimId {
     fn id_str(&self) -> String {
-        [self.id.0.clone(), self.pass_id.id.clone()].join("|")
+        [self.id.0.clone(), self.pass_id.id.id_str()].join("|")
     }
 }
 
@@ -96,8 +97,8 @@ impl SsDistributionClaim {
     }
 }
 
-impl SsDistributionClaimId {
-    pub fn generate(pass_id: MetaPasswordId) -> Self {
+impl From<MetaPasswordId> for SsDistributionClaimId {
+    fn from(pass_id: MetaPasswordId) -> Self {
         let id: String = rand::thread_rng()
             .sample_iter(&Alphanumeric)
             .take(SALT_LENGTH)

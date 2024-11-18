@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::node::common::model::secret::MetaPasswordId;
+use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::user::common::{UserData, UserDataMember, UserId, UserMembership};
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ToGenericEvent};

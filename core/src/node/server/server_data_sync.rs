@@ -1,8 +1,7 @@
 use std::cmp::PartialEq;
 use std::sync::Arc;
 
-use crate::node::common::model::device::common::DeviceData;
-use crate::node::common::model::device::device_link::DeviceLink;
+use crate::node::common::model::device::common::{DeviceData, DeviceId};
 use crate::node::common::model::secret::{SecretDistributionType, SsDistributionStatus};
 use crate::node::common::model::user::common::UserData;
 use crate::node::common::model::vault::VaultStatus;
@@ -27,7 +26,7 @@ use tracing::{info, instrument};
 
 #[async_trait(? Send)]
 pub trait DataSyncApi {
-    async fn replication(&self, request: SyncRequest) -> Result<Vec<GenericKvLogEvent>>;
+    async fn replication(&self, request: SyncRequest, server_device: DeviceId) -> Result<Vec<GenericKvLogEvent>>;
     async fn handle(&self, server_device: DeviceData, event: GenericKvLogEvent) -> Result<()>;
 }
 
@@ -80,7 +79,9 @@ impl DataSyncResponse {
 #[async_trait(? Send)]
 impl<Repo: KvLogEventRepo> DataSyncApi for ServerSyncGateway<Repo> {
     #[instrument(skip(self))]
-    async fn replication(&self, request: SyncRequest) -> Result<Vec<GenericKvLogEvent>> {
+    async fn replication(
+        &self, request: SyncRequest, server_device: DeviceId
+    ) -> Result<Vec<GenericKvLogEvent>> {
         let mut commit_log: Vec<GenericKvLogEvent> = vec![];
 
         match &request {
@@ -110,7 +111,9 @@ impl<Repo: KvLogEventRepo> DataSyncApi for ServerSyncGateway<Repo> {
 
                 let vault_status = p_vault.find(ss_request.sender.clone()).await?;
                 if let VaultStatus::Member { .. } = vault_status {
-                    let vault_events = self.ss_replication(ss_request.clone()).await?;
+                    let vault_events = self
+                        .ss_replication(ss_request.clone(), server_device)
+                        .await?;
                     commit_log.extend(vault_events);
                 }
             }
@@ -241,7 +244,9 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         Ok(commit_log)
     }
 
-    pub async fn ss_replication(&self, request: SsRequest) -> Result<Vec<GenericKvLogEvent>> {
+    pub async fn ss_replication(
+        &self, request: SsRequest, server_device: DeviceId
+    ) -> Result<Vec<GenericKvLogEvent>> {
         let mut commit_log = vec![];
         //sync SsLog
         let ss_log = self
@@ -258,16 +263,17 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         let ss_log_data = latest_ss_log_state.clone().ss_log()?.to_data();
 
         for (_, claim) in &ss_log_data.claims {
-            for dist_id in claim.distribution_ids() {
-                let desc = SharedSecretDescriptor::SsDistribution(dist_id.clone()).to_obj_desc();
-
-                let DeviceLink::PeerToPeer(p2p_device_link) = &dist_id.device_link else {
+            for dist_id in claim.claim_db_ids() {
+                let desc = SharedSecretDescriptor::SsDistribution(dist_id.distribution_id.clone())
+                    .to_obj_desc();
+                
+                if claim.owner.eq(&server_device) {
                     bail!("Local shares must not be sent to server");
                 };
 
                 let sender_device = request.sender.device.device_id.clone();
 
-                if sender_device.eq(p2p_device_link.receiver()) {
+                if sender_device.eq(&claim.owner) {
                     if let Some(dist_event) = self.p_obj.find_tail_event(desc).await? {
                         let p_ss = PersistentSharedSecret {
                             p_obj: self.p_obj.clone(),
@@ -287,7 +293,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                 }
 
                 let mut completed = true;
-                for dist_id in claim.distribution_ids() {
+                for dist_id in claim.claim_db_ids() {
                     let desc =
                         SharedSecretDescriptor::SsDistributionStatus(dist_id.clone()).to_obj_desc();
                     let maybe_status_event = self.p_obj.find_tail_event(desc).await?;
