@@ -188,7 +188,7 @@ mod test {
     use crate::crypto::key_pair::KeyPair;
     use crate::crypto::keys::{KeyManager, SecretBox};
     use crate::node::common::model::crypto::{AeadAuthData, AeadCipherText, CommunicationChannel};
-    use crypto_box::aead::{Aead, AeadCore, OsRng, Payload};
+    use crypto_box::aead::{Aead, Payload};
     use crypto_box::ChaChaBox;
 
     #[test]

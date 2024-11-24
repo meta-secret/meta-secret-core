@@ -64,7 +64,7 @@ export default defineComponent({
               {{ secret.name }}
             </div>
             <div class="text-sm text-gray-600 dark:text-gray-200">
-              {{ secret.id.slice(0, 18) }}
+              {{ secret.id() }}
             </div>
           </div>
           <button :class="$style.actionButtonText" @click="recover(secret)">Recover</button>

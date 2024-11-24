@@ -1,23 +1,26 @@
 VERSION 0.8
 FROM scratch
+ENV RUST_VERSION="1.82.0"
 
 generate-cargo-chef-recipe:
-    FROM lukemathwalker/cargo-chef:latest-rust-1.80-bookworm
+    FROM lukemathwalker/cargo-chef:latest-rust-${RUST_VERSION}-bookworm
     COPY . .
     RUN cargo chef prepare --recipe-path recipe.json
     SAVE ARTIFACT recipe.json AS LOCAL recipe.json
 
 base-build:
-    FROM rust:1.81.0-bookworm
+    FROM rust:${RUST_VERSION}-bookworm
 
     RUN rustup component add rustfmt
 
     # Install sccache (cargo is too slow)
-    #RUN cargo install sccache@0.8.1
+    ENV SCCACHE_VERSION="v0.8.1"
+    #RUN cargo install sccache@${SCCACHE_VERSION}
     ENV RUSTC_WRAPPER=sccache
-    RUN wget https://github.com/mozilla/sccache/releases/download/v0.8.1/sccache-v0.8.1-x86_64-unknown-linux-musl.tar.gz \
-        && tar xzf sccache-v0.8.1-x86_64-unknown-linux-musl.tar.gz \
-        && mv sccache-v0.8.1-x86_64-unknown-linux-musl/sccache /usr/local/bin/sccache \
+
+    RUN wget https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz \
+        && tar xzf sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz \
+        && mv sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache /usr/local/bin/sccache \
         && chmod +x /usr/local/bin/sccache
 
     # Install cargo-chef

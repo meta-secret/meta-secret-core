@@ -1,7 +1,6 @@
 use rand::distributions::Alphanumeric;
 use wasm_bindgen::prelude::wasm_bindgen;
 use rand::Rng;
-use crate::crypto::utils;
 use crate::crypto::utils::U64IdUrlEnc;
 
 pub const SALT_LENGTH: usize = 8;
@@ -18,7 +17,12 @@ pub struct MetaPasswordId {
     pub name: String,
 }
 
+#[wasm_bindgen]
 impl MetaPasswordId {
+    pub fn id(&self) -> String {
+        self.id.text.0.clone()
+    }
+    
     pub fn generate(name: String) -> Self {
         let salt: String = rand::thread_rng()
             .sample_iter(&Alphanumeric)

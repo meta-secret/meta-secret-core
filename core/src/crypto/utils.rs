@@ -35,9 +35,17 @@ pub fn rand_64bit_b64_url_enc() -> Base64Text {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[wasm_bindgen]
+#[wasm_bindgen(getter_with_clone)]
 pub struct U64IdUrlEnc {
-    text: Base64Text
+    pub text: Base64Text
+}
+
+impl U64IdUrlEnc {
+    pub fn take(&self, n: usize) -> String {
+        self.text.0.chars()
+            .take(n)
+            .collect::<String>()
+    }
 }
 
 impl From<String> for U64IdUrlEnc {
