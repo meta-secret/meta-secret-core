@@ -38,11 +38,8 @@ impl ObjectName for GlobalIndexDescriptor {
                     vault_id.id.fqdn.obj_instance.clone(),
                     vault_id.id.id.to_string(),
                 ]
-                .join("-");
+                .join("|");
 
-                //utils::generate_uuid_b64_url_enc(json_str)
-                //let json_str = serde_json::to_string(&vault_id.id).unwrap();
-                //json_str
                 id
             }
         }
@@ -83,7 +80,7 @@ mod test {
 
         let expected = json!({
             "objType":"VaultIdx",
-            "objInstance": "Vault-test_vault-0"
+            "objInstance": "Vault|test_vault|0"
         });
         assert_eq!(expected, vault_index_json);
 

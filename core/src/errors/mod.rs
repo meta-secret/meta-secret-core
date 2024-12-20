@@ -3,7 +3,7 @@ use std::string::FromUtf8Error;
 
 use shamirsecretsharing::SSSError;
 use crate::crypto::keys::TransportPk;
-use crate::node::common::model::crypto::CommunicationChannel;
+use crate::node::common::model::crypto::channel::CommunicationChannel;
 use crate::secret::data_block::common::DataBlockParserError;
 
 #[derive(thiserror::Error, Debug)]
@@ -85,6 +85,8 @@ pub enum CoreError {
         #[from]
         source: SharesLoaderError,
     },
+    #[error("Communication channel error, device id not approved: {device:?}")]
+    CommunicationChannelError { device: TransportPk },
 }
 
 #[derive(Debug, thiserror::Error)]

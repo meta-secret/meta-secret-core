@@ -20,7 +20,7 @@ pub struct MetaPasswordId {
 #[wasm_bindgen]
 impl MetaPasswordId {
     pub fn id(&self) -> String {
-        self.id.text.0.clone()
+        self.id.text.base64_str()
     }
     
     pub fn generate(name: String) -> Self {

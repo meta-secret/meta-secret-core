@@ -68,7 +68,7 @@ impl DataSyncResponse {
         }
     }
 
-    pub fn to_server_tail(&self) -> anyhow::Result<ServerTailResponse> {
+    pub fn to_server_tail(&self) -> Result<ServerTailResponse> {
         match self {
             DataSyncResponse::ServerTailResponse(server_tail) => Ok(server_tail.clone()),
             _ => Err(anyhow!("Invalid response type")),
@@ -220,14 +220,14 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         {
             let vault_log_events = self
                 .p_obj
-                .find_object_events(request.vault_log.clone())
+                .find_object_events(request.tail.vault_log.clone())
                 .await?;
             commit_log.extend(vault_log_events);
         }
 
         //sync Vault
         {
-            let vault_events = self.p_obj.find_object_events(request.vault.clone()).await?;
+            let vault_events = self.p_obj.find_object_events(request.tail.vault.clone()).await?;
             commit_log.extend(vault_events);
         }
 
@@ -235,7 +235,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         {
             let vault_status_events = self
                 .p_obj
-                .find_object_events(request.vault_status.clone())
+                .find_object_events(request.tail.vault_status.clone())
                 .await?;
 
             commit_log.extend(vault_status_events);
@@ -267,13 +267,13 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                 let desc = SharedSecretDescriptor::SsDistribution(dist_id.distribution_id.clone())
                     .to_obj_desc();
                 
-                if claim.owner.eq(&server_device) {
+                if claim.sender.eq(&server_device) {
                     bail!("Local shares must not be sent to server");
                 };
 
                 let sender_device = request.sender.device.device_id.clone();
 
-                if sender_device.eq(&claim.owner) {
+                if sender_device.eq(&claim.sender) {
                     if let Some(dist_event) = self.p_obj.find_tail_event(desc).await? {
                         let p_ss = PersistentSharedSecret {
                             p_obj: self.p_obj.clone(),

@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use tracing::{debug, error, info, instrument};
 
+use crate::node::app::sync::global_index::GlobalIndexDbSync;
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
 use crate::node::common::model::user::common::UserId;
 use crate::node::common::model::user::user_creds::UserCredentials;
@@ -29,6 +30,7 @@ use crate::node::server::server_data_sync::{
     DataEventsResponse, DataSyncRequest, ServerTailResponse,
 };
 use anyhow::Result;
+
 
 pub struct SyncGateway<Repo: KvLogEventRepo> {
     pub id: String,
@@ -109,29 +111,13 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         let vault_sync_request = {
             let sender = user_creds.user();
 
-            let vault_name = user_creds.vault_name.clone();
-
-            let vault_log_free_id = {
-                let obj_desc = VaultDescriptor::vault_log(vault_name.clone());
-                self.p_obj.find_free_id_by_obj_desc(obj_desc).await?
+            let p_vault = PersistentVault {
+                p_obj: self.p_obj.clone(),
             };
 
-            let vault_free_id = {
-                let obj_desc = VaultDescriptor::vault(vault_name.clone());
-                self.p_obj.find_free_id_by_obj_desc(obj_desc).await?
-            };
+            let tail = p_vault.vault_tail(user_creds.user()).await?;
 
-            let vault_status_free_id = {
-                let obj_desc = VaultDescriptor::vault_membership(user_creds.user_id());
-                self.p_obj.find_free_id_by_obj_desc(obj_desc).await?
-            };
-
-            SyncRequest::Vault(VaultRequest {
-                sender,
-                vault_log: vault_log_free_id,
-                vault: vault_free_id,
-                vault_status: vault_status_free_id,
-            })
+            SyncRequest::Vault(VaultRequest { sender, tail })
         };
 
         let DataEventsResponse(data_sync_events) = self
@@ -256,16 +242,9 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
 
     #[instrument(skip(self))]
     async fn download_global_index(&self, sender: DeviceData) -> Result<()> {
-        //TODO optimization: read global index tail id from db_tail
-        let gi_free_id = {
-            let gi_desc = ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index);
-            self.p_obj.find_free_id_by_obj_desc(gi_desc).await?
-        };
+        let gi_sync = GlobalIndexDbSync::new(self.p_obj.clone(), sender.clone());
 
-        let sync_request = SyncRequest::GlobalIndex(GlobalIndexRequest {
-            sender,
-            global_index: gi_free_id,
-        });
+        let sync_request = gi_sync.get_gi_request().await?.to_sync_request();
 
         let DataEventsResponse(new_gi_events) = self
             .server_dt
@@ -274,15 +253,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             .await?
             .to_data()?;
 
-        let p_gi_obj = ClientPersistentGlobalIndex {
-            p_obj: self.p_obj.clone(),
-        };
-
-        for gi_event in new_gi_events {
-            let gi_obj = gi_event.global_index()?;
-            p_gi_obj.save(&gi_obj).await?;
-        }
-        Ok(())
+        gi_sync.save(new_gi_events).await
     }
 
     #[instrument(skip(self))]
@@ -333,7 +304,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
 pub mod fixture {
     use crate::meta_tests::fixture_util::fixture::states::BaseState;
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
-    use crate::node::app::sync_gateway::SyncGateway;
+    use crate::node::app::sync::sync_gateway::SyncGateway;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use std::sync::Arc;
 

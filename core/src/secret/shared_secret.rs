@@ -13,9 +13,15 @@ use crate::secret::data_block::plain_data_block::{PlainDataBlock, PLAIN_DATA_BLO
 use crate::secret::data_block::shared_secret_data_block::SharedSecretBlock;
 use crate::CoreResult;
 
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
 pub struct PlainText {
     pub text: String,
+}
+
+impl PlainText {
+    pub fn as_bytes(&self) -> &[u8] {
+        self.text.as_bytes()
+    }
 }
 
 impl PlainText {
@@ -32,6 +38,13 @@ impl PlainText {
 impl From<String> for PlainText {
     fn from(data: String) -> Self {
         Self { text: data }
+    }
+}
+
+impl From<&Base64Text> for PlainText {
+    fn from(data: &Base64Text) -> Self {
+        let text = String::try_from(data).unwrap(); 
+        Self { text }
     }
 }
 

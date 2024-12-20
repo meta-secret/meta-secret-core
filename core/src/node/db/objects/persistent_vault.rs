@@ -12,11 +12,45 @@ use crate::node::db::objects::global_index::ClientPersistentGlobalIndex;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
-use anyhow::{anyhow, bail};
+use anyhow::{anyhow, bail, Result};
 use tracing_attributes::instrument;
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VaultTail {
+    pub vault_log: ObjectId,
+    pub vault: ObjectId,
+    pub vault_status: ObjectId,
+}
 
 pub struct PersistentVault<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
+}
+
+impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
+
+    pub async fn vault_tail(&self, user: UserData) -> Result<VaultTail> {
+        let vault_log_free_id = {
+            let obj_desc = VaultDescriptor::vault_log(user.vault_name());
+            self.p_obj.find_free_id_by_obj_desc(obj_desc).await?
+        };
+
+        let vault_free_id = {
+            let obj_desc = VaultDescriptor::vault(user.vault_name());
+            self.p_obj.find_free_id_by_obj_desc(obj_desc).await?
+        };
+
+        let vault_status_free_id = {
+            let obj_desc = VaultDescriptor::vault_membership(user.user_id());
+            self.p_obj.find_free_id_by_obj_desc(obj_desc).await?
+        };
+
+        Ok(VaultTail {
+            vault_log: vault_log_free_id,
+            vault: vault_free_id,
+            vault_status: vault_status_free_id,
+        })
+    }
 }
 
 impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
@@ -51,10 +85,11 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
     }
 
     #[instrument(skip_all)]
-    pub async fn find(&self, user: UserData) -> anyhow::Result<VaultStatus> {
+    pub async fn find(&self, user: UserData) -> Result<VaultStatus> {
         let p_gi = ClientPersistentGlobalIndex {
             p_obj: self.p_obj.clone(),
         };
+
         let vault_exists = p_gi.exists(user.vault_name()).await?;
         if !vault_exists {
             return Ok(VaultStatus::NotExists(user));

@@ -119,10 +119,6 @@ impl UnitId {
         UnitId::unit(&ObjectDescriptor::DbTail)
     }
 
-    pub fn global_index() -> UnitId {
-        UnitId::unit(&ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index))
-    }
-
     pub fn vault_unit(vault_name: VaultName) -> UnitId {
         let vault_desc = VaultDescriptor::Vault(vault_name.clone()).to_obj_desc();
         UnitId::unit(&vault_desc)
@@ -153,10 +149,6 @@ impl GenesisId {
     pub fn genesis(obj_desc: ObjectDescriptor) -> GenesisId {
         let unit_id = UnitId::unit(&obj_desc);
         unit_id.next()
-    }
-
-    pub fn global_index_genesis() -> GenesisId {
-        GenesisId::genesis(ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index))
     }
 }
 

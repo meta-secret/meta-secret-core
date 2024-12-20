@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tracing::{error, info, instrument};
 
 use crate::node::app::meta_app::messaging::{GenericAppStateRequest, GenericAppStateResponse};
-use crate::node::app::sync_gateway::SyncGateway;
+use crate::node::app::sync::sync_gateway::SyncGateway;
 use crate::node::common::actor::ServiceState;
 use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::common::model::device::common::DeviceName;
@@ -23,7 +23,7 @@ use crate::secret::MetaDistributor;
 pub struct MetaClientService<Repo: KvLogEventRepo> {
     pub data_transfer: Arc<MetaClientDataTransfer>,
     pub sync_gateway: Arc<SyncGateway<Repo>>,
-    pub state_provider: Arc<MetaClientStateProvider>,
+    pub state_provider: Arc<MetaClientStateProvider>
 }
 
 pub struct MetaClientDataTransfer {
@@ -215,7 +215,7 @@ pub mod fixture {
     use crate::node::app::meta_app::meta_client_service::{
         MetaClientDataTransfer, MetaClientService, MetaClientStateProvider,
     };
-    use crate::node::app::sync_gateway::fixture::SyncGatewayFixture;
+    use crate::node::app::sync::sync_gateway::fixture::SyncGatewayFixture;
     use crate::node::common::data_transfer::MpscDataTransfer;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use std::sync::Arc;

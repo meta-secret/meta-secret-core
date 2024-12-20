@@ -3,10 +3,12 @@ use crypto_box::{aead::{OsRng as CryptoBoxOsRng, Payload}, ChaChaBox, Nonce};
 use image::EncodableLayout;
 
 use crate::crypto::encoding::base64::Base64Text;
-use crate::crypto::key_pair::{CryptoBoxPublicKey, CryptoBoxSecretKey};
-use crate::crypto::keys::TransportPk;
+use crate::crypto::key_pair::CryptoBoxSecretKey;
+use crate::crypto::keys::{KeyManager, TransportPk, TransportSk};
 use crate::errors::CoreError;
-use anyhow::{bail, Result};
+use anyhow::{Result};
+use crate::node::common::model::crypto::channel::CommunicationChannel;
+use crate::secret::shared_secret::PlainText;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -20,7 +22,7 @@ impl AeadAuthData {
     pub fn with_inverse_channel(&self) -> Self {
         Self {
             associated_data: self.associated_data.clone(),
-            channel: self.channel.inverse(),
+            channel: self.channel.clone().inverse(),
             nonce: self.nonce.clone(),
         }
     }
@@ -34,8 +36,8 @@ impl AeadAuthData {
         Base64Text::from(nonce.as_slice())
     }
 
-    pub fn receiver(&self) -> Result<CryptoBoxPublicKey> {
-        self.channel.receiver.as_crypto_box_pk()
+    pub fn receiver(&self) -> &TransportPk {
+        self.channel.receiver()
     }
 
     pub fn nonce(&self) -> Result<Nonce, CoreError> {
@@ -62,13 +64,16 @@ pub struct AeadCipherText {
 
 impl AeadCipherText {
     /// Decrypt this secret message using the secret key
-    pub fn decrypt(&self, secret_key: &CryptoBoxSecretKey) -> Result<AeadPlainText> {
+    pub fn decrypt(&self, secret_key: &TransportSk) -> Result<AeadPlainText> {
         let auth_data = &self.auth_data;
 
-        let their_pk = &auth_data.channel().peer(&secret_key.public_key())?;
+        let their_pk = &auth_data
+            .channel()
+            .peer(&secret_key.pk()?)?;
 
         let plain_bytes = {
-            let crypto_box = ChaChaBox::new(their_pk, &secret_key);
+            let crypto_box_sk = &secret_key.as_crypto_box_sk()?;
+            let crypto_box = ChaChaBox::new(&their_pk.as_crypto_box_pk()?, crypto_box_sk);
 
             let msg_data = Vec::try_from(&self.msg)?;
             let payload = Payload {
@@ -109,8 +114,8 @@ impl AeadPlainText {
             let nonce = auth_data.nonce()?;
 
             let crypto_box = {
-                let their_pk = auth_data.receiver()?;
-                ChaChaBox::new(&their_pk, sk)
+                let their_pk = auth_data.receiver();
+                ChaChaBox::new(&their_pk.as_crypto_box_pk()?, sk)
             };
             crypto_box.encrypt(&nonce, payload)?
         };
@@ -121,47 +126,6 @@ impl AeadPlainText {
         };
 
         Ok(cipher_text)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CommunicationChannel {
-    pub sender: TransportPk,
-    pub receiver: TransportPk,
-}
-
-impl CommunicationChannel {
-    pub fn inverse(&self) -> Self {
-        Self {
-            sender: self.receiver.clone(),
-            receiver: self.sender.clone(),
-        }
-    }
-
-    pub fn sender(&self) -> Result<CryptoBoxPublicKey> {
-        self.sender.as_crypto_box_pk()
-    }
-
-    pub fn receiver(&self) -> Result<CryptoBoxPublicKey> {
-        self.receiver.as_crypto_box_pk()
-    }
-
-    /// Get a peer/opponent to a given entity
-    pub fn peer(&self, initiator_pk: &CryptoBoxPublicKey) -> Result<CryptoBoxPublicKey> {
-        let sender = self.sender()?;
-        let receiver = self.receiver()?;
-
-        let peer_pk = match initiator_pk {
-            pk if pk.eq(&sender) => self.receiver.as_crypto_box_pk(),
-            pk if pk.eq(&receiver) => self.sender.as_crypto_box_pk(),
-            _ => bail!(CoreError::ThirdPartyEncryptionError {
-                key_manager_pk: TransportPk::from(initiator_pk),
-                channel: self.clone(),
-            }),
-        }?;
-
-        Ok(peer_pk)
     }
 }
 
@@ -187,9 +151,10 @@ impl EncryptedMessage {
 mod test {
     use crate::crypto::key_pair::KeyPair;
     use crate::crypto::keys::{KeyManager, SecretBox};
-    use crate::node::common::model::crypto::{AeadAuthData, AeadCipherText, CommunicationChannel};
+    use crate::node::common::model::crypto::aead::{AeadAuthData, AeadCipherText, CommunicationChannel};
     use crypto_box::aead::{Aead, Payload};
     use crypto_box::ChaChaBox;
+    use crate::secret::shared_secret::PlainText;
 
     #[test]
     fn crypto_box_encryption_test() -> anyhow::Result<()> {
@@ -198,18 +163,13 @@ mod test {
         let alice_km = KeyManager::generate();
         let bob_km = KeyManager::generate();
 
-        let channel = CommunicationChannel {
-            sender: alice_km.transport.pk(),
-            receiver: bob_km.transport.pk(),
-        };
+        let channel = CommunicationChannel::build(alice_km.transport.pk(), bob_km.transport.pk());
 
         let auth_data = AeadAuthData::from(channel);
-        let nonce = {
-            auth_data.nonce()?
-        };
+        let nonce = auth_data.nonce()?;
 
         let alice_sk = {
-            let alice_secret_box = SecretBox::from(alice_km);
+            let alice_secret_box = SecretBox::from(&alice_km);
             KeyManager::try_from(&alice_secret_box)?.transport.secret_key.clone()
         };
         
@@ -228,13 +188,13 @@ mod test {
     
     #[test]
     fn encryption_test() -> anyhow::Result<()> {
-        let password =  "topSecret".to_string();
+        let password = PlainText::from("2bee~");
         let alice_km = KeyManager::generate();
         let bob_km = KeyManager::generate();
         
         let _: AeadCipherText = alice_km
             .transport
-            .encrypt_string(password.clone(), bob_km.transport.pk())?;
+            .encrypt_string(password.clone(), &bob_km.transport.pk())?;
         
         Ok(())
     }

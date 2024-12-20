@@ -1,6 +1,7 @@
 use crypto_box::KEY_SIZE as KEY_SIZE_32_BYTES;
 
 pub type Array256Bit = [u8; KEY_SIZE_32_BYTES];
+pub type Base64String = String;
 
 /// Base64 encoding/decoding
 pub mod base64 {
@@ -8,22 +9,22 @@ pub mod base64 {
 
     use std::fmt::Display;
     use wasm_bindgen::prelude::wasm_bindgen;
+    use crate::crypto::encoding::Base64String;
 
     #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     #[wasm_bindgen(getter_with_clone)]
-    pub struct Base64Text(pub String);
+    pub struct Base64Text(Base64String);
 
     impl Display for Base64Text {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             write!(f, "{}", self.0.clone())
         }
     }
-
-    impl From<&Base64Text> for String {
-        fn from(base64: &Base64Text) -> Self {
-            let Base64Text(base64_text) = base64;
-            base64_text.clone()
+    
+    impl Base64Text {
+        pub fn base64_str(&self) -> Base64String {
+            self.0.clone()
         }
     }
 
@@ -33,6 +34,7 @@ pub mod base64 {
         use base64::alphabet::URL_SAFE;
         use base64::engine::fast_portable::{FastPortable, NO_PAD};
         use image::EncodableLayout;
+        use crate::secret::shared_secret::PlainText;
 
         const URL_SAFE_ENGINE: FastPortable = FastPortable::from(&URL_SAFE, NO_PAD);
 
@@ -54,6 +56,12 @@ pub mod base64 {
             }
         }
 
+        impl From<PlainText> for Base64Text {
+            fn from(data: PlainText) -> Self {
+                Base64Text::from(data.as_bytes())
+            }
+        }
+
         impl From<&str> for Base64Text {
             fn from(data: &str) -> Self {
                 Base64Text::from(data.as_bytes())
@@ -71,6 +79,19 @@ pub mod base64 {
                 Base64Text::from(data.as_slice())
             }
         }
+
+        #[cfg(test)]
+        mod test {
+            use crate::crypto::encoding::base64::Base64Text;
+            use crate::secret::shared_secret::PlainText;
+
+            #[test]
+            fn plain_text_test() {
+                let plain_text = PlainText::from("2bee~");
+                let base64 = Base64Text::from(plain_text);
+                assert_eq!(base64, Base64Text::from("2bee~"))
+            }
+        }
     }
 
     pub mod decoder {
@@ -82,6 +103,16 @@ pub mod base64 {
         use crate::errors::CoreError;
 
         const URL_SAFE_ENGINE: FastPortable = FastPortable::from(&URL_SAFE, NO_PAD);
+
+        impl TryFrom<&Base64Text> for String {
+            type Error = CoreError;
+
+            fn try_from(base64: &Base64Text) -> Result<Self, Self::Error> {
+                //decode base64 string
+                let bytes_vec = Vec::try_from(base64)?;
+                Ok(String::from_utf8(bytes_vec)?)
+            }
+        }
 
         impl TryFrom<&Base64Text> for Vec<u8> {
             type Error = CoreError;
@@ -142,8 +173,8 @@ pub mod serialized_key_manager {
         };
 
         // KeyManager -> SecretBox
-        impl From<KeyManager> for SecretBox {
-            fn from(key_manager: KeyManager) -> Self {
+        impl From<&KeyManager> for SecretBox {
+            fn from(key_manager: &KeyManager) -> Self {
                 Self {
                     dsa: SerializedDsaKeyPair::from(&key_manager.dsa),
                     transport: SerializedTransportKeyPair::from(&key_manager.transport),
@@ -253,7 +284,6 @@ pub mod serialized_key_manager {
             use crate::crypto::key_pair::{DalekPublicKey, DalekSignature, KeyPair};
             use crate::crypto::keys::KeyManager;
             use crate::CoreResult;
-            use ed25519_dalek::ed25519::signature::Keypair;
 
             #[test]
             fn from_base64_to_dalek_public_key() -> CoreResult<()> {

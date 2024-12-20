@@ -5,6 +5,7 @@ resolver = "2"
 members = [
     "core",
     "meta-server-emulator",
+    "meta-server",
     "core-swift-lib",
     "wasm",
     "cli"
@@ -16,7 +17,7 @@ exclude = [
 
 [workspace.dependencies]
 # Error handling
-thiserror = "2.0.3"
+thiserror = "2.0.6"
 anyhow = "1.0.93"
 
 # Logging and tracing
@@ -45,6 +46,13 @@ base64 = "0.20.0"
 hex = "0.4.3"
 #https://github.com/dsprenkels/sss-rs
 shamirsecretsharing = "0.1.5"
+
+# Networking
+axum = "0.7.9"
+reqwest = "0.12.9"
+tokio = { version = "1.42.0", features = ["full"] }
+tower-http = { version = "0.6.2", features = ["cors", "trace"] }
+http = "1.2.0"
 
 # Sql
 diesel = { version = "2.2.4" }

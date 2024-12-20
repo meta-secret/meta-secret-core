@@ -2,6 +2,15 @@ use flume::{Receiver, RecvError, Sender};
 use std::fmt::Debug;
 use tracing::{instrument, Instrument};
 
+trait DataTransfer<Request, Response> {
+    fn send(&self, message: Request) -> Response;
+    //fn receive(&self) -> anyhow::Result<Request>;
+}
+
+trait DataReceiver<Request> {
+    fn receive(&self) -> Request;
+}
+
 pub struct MpscDataTransfer<Request, Response> {
     pub service_channel: MpscServiceChannel<Request>,
     pub client_channel: MpscClientChannel<Response>,

@@ -1,11 +1,10 @@
-use crate::node::common::model::device::common::DeviceId;
-use anyhow::anyhow;
-use wasm_bindgen::prelude::wasm_bindgen;
-use crate::crypto;
 use crate::crypto::encoding::base64::Base64Text;
 use crate::crypto::utils::UuidUrlEnc;
-use crate::node::common::model::crypto::CommunicationChannel;
+use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::IdString;
+use anyhow::{bail, Result};
+use wasm_bindgen::prelude::wasm_bindgen;
+use crate::node::common::model::crypto::channel::CommunicationChannel;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -27,7 +26,7 @@ impl From<DeviceLink> for DeviceLinkId {
         let first_prefix: String = ids[0].chars().take(2).collect();
         let second_prefix: String = ids[1].chars().take(2).collect();
         
-        let id = Base64Text([first_prefix, second_prefix, uuid_str].join("|"));
+        let id = Base64Text::from([first_prefix, second_prefix, uuid_str].join("|"));
 
         Self(id)
     }
@@ -35,7 +34,7 @@ impl From<DeviceLink> for DeviceLinkId {
 
 impl IdString for DeviceLinkId {
     fn id_str(&self) -> String {
-        self.0.0.clone()
+        String::try_from(&self.0).unwrap()
     }
 }
 
@@ -74,10 +73,11 @@ impl TryFrom<&CommunicationChannel> for DeviceLink {
     type Error = anyhow::Error;
 
     fn try_from(channel: &CommunicationChannel) -> Result<Self, Self::Error> {
-        DeviceLinkBuilder::builder()
-            .sender(channel.sender.to_device_id())
-            .receiver(channel.receiver.to_device_id())
-            .build()
+        let link = channel.sender().to_device_id()
+            .loopback()
+            .peer_to_peer(channel.receiver().to_device_id())?
+            .to_device_link();
+        Ok(link)
     }
 }
 
@@ -90,6 +90,7 @@ impl From<DeviceLink> for WasmDeviceLink {
     }
 }
 
+/// a <-> a
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen]
@@ -104,6 +105,19 @@ impl From<DeviceId> for LoopbackDeviceLink {
 }
 
 impl LoopbackDeviceLink {
+
+    pub fn peer_to_peer(self, receiver: DeviceId) -> Result<PeerToPeerDeviceLink> {
+        if self.device == receiver {
+            bail!("Sender and receiver are the same");
+        }
+
+        Ok(PeerToPeerDeviceLink { sender: self.device, receiver })
+    }
+
+    pub fn to_device_link(self) -> DeviceLink {
+        DeviceLink::Loopback(self)
+    }
+
     pub fn sender(&self) -> &DeviceId {
         &self.device
     }
@@ -113,6 +127,7 @@ impl LoopbackDeviceLink {
     }
 }
 
+/// a <-> b
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen]
@@ -122,6 +137,10 @@ pub struct PeerToPeerDeviceLink {
 }
 
 impl PeerToPeerDeviceLink {
+    pub fn to_device_link(self) -> DeviceLink {
+        DeviceLink::PeerToPeer(self)
+    }
+
     pub fn sender(&self) -> &DeviceId {
         &self.sender
     }
@@ -137,87 +156,6 @@ impl PeerToPeerDeviceLink {
     }
 }
 
-pub struct PeerToPeerDeviceLinkBuilder {
-    sender: Option<DeviceId>,
-    receiver: Option<DeviceId>,
-}
-
-impl PeerToPeerDeviceLinkBuilder {
-    pub fn builder() -> Self {
-        Self {
-            sender: None,
-            receiver: None,
-        }
-    }
-
-    pub fn sender(mut self, sender: DeviceId) -> Self {
-        self.sender = Some(sender);
-        self
-    }
-
-    pub fn receiver(mut self, receiver: DeviceId) -> Self {
-        self.receiver = Some(receiver);
-        self
-    }
-
-    pub fn build(self) -> anyhow::Result<PeerToPeerDeviceLink> {
-        let sender = self.sender.ok_or(anyhow!("Sender is not set"))?;
-        let receiver = self.receiver.ok_or(anyhow!("Receiver is not set"))?;
-
-        if sender == receiver {
-            return Err(anyhow!("Sender and receiver are the same"));
-        }
-
-        Ok(PeerToPeerDeviceLink { sender, receiver })
-    }
-}
-
-pub struct DeviceLinkBuilder {
-    sender: Option<DeviceId>,
-    receiver: Option<DeviceId>,
-}
-
-impl DeviceLinkBuilder {
-    pub fn builder() -> Self {
-        Self {
-            sender: None,
-            receiver: None,
-        }
-    }
-
-    pub fn sender(mut self, sender: DeviceId) -> Self {
-        self.sender = Some(sender);
-        self
-    }
-
-    pub fn receiver(mut self, receiver: DeviceId) -> Self {
-        self.receiver = Some(receiver);
-        self
-    }
-
-    pub fn build(self) -> anyhow::Result<DeviceLink> {
-        let sender = self.sender.ok_or(anyhow!("Sender is not set"))?;
-
-        let device_link = match self.receiver {
-            Some(receiver) => {
-                if sender == receiver {
-                    DeviceLink::Loopback(LoopbackDeviceLink { device: sender })
-                } else {
-                    let peer_to_peer = PeerToPeerDeviceLinkBuilder::builder()
-                        .sender(sender)
-                        .receiver(receiver)
-                        .build()?;
-
-                    DeviceLink::PeerToPeer(peer_to_peer)
-                }
-            }
-            None => DeviceLink::Loopback(LoopbackDeviceLink { device: sender }),
-        };
-
-        Ok(device_link)
-    }
-}
-
 impl DeviceLink {
     pub fn is_loopback(&self) -> bool {
         matches!(self, DeviceLink::Loopback(_))
@@ -226,9 +164,9 @@ impl DeviceLink {
 
 #[cfg(test)]
 mod test {
-    use crate::crypto::key_pair::KeyPair;
-    use crate::crypto::keys::{KeyManager, TransportPk};
     use super::*;
+    use crate::crypto::key_pair::KeyPair;
+    use crate::crypto::keys::KeyManager;
 
     #[test]
     fn test_device_link_builder() -> anyhow::Result<()> {
@@ -238,10 +176,9 @@ mod test {
         let sender = sender_km.transport.pk().to_device_id();
         let receiver = receiver_km.transport.pk().to_device_id();
 
-        let device_link = DeviceLinkBuilder::builder()
-            .sender(sender.clone())
-            .receiver(receiver.clone())
-            .build()?;
+        let device_link = sender.clone().loopback()
+            .peer_to_peer(receiver.clone())?
+            .to_device_link();
 
         assert_eq!(
             device_link,
@@ -251,14 +188,9 @@ mod test {
             })
         );
 
-        let device_link = DeviceLinkBuilder::builder()
-            .sender(sender.clone())
-            .build()?;
+        let device_link = sender.clone().loopback();
 
-        assert_eq!(
-            device_link,
-            DeviceLink::Loopback(LoopbackDeviceLink { device: sender })
-        );
+        assert_eq!(device_link, LoopbackDeviceLink { device: sender });
 
         Ok(())
     }

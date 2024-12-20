@@ -21,18 +21,6 @@ pub fn generate_hash() -> String {
     hex::encode(hasher.finalize())
 }
 
-/// Generate random uuid encoded with base64 url encoding
-pub fn rand_uuid_b64_url_enc() -> Base64Text {
-    let uuid = Uuid::new_v4();
-    let uuid_bytes = uuid.as_bytes().as_slice();
-    Base64Text::from(uuid_bytes)
-}
-
-pub fn rand_64bit_b64_url_enc() -> Base64Text {
-    let uuid = Uuid::new_v4().as_u64_pair().0.to_le_bytes().to_vec();
-    Base64Text::from(uuid)
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(getter_with_clone)]
@@ -42,7 +30,8 @@ pub struct U64IdUrlEnc {
 
 impl U64IdUrlEnc {
     pub fn take(&self, n: usize) -> String {
-        self.text.0.chars()
+        self.text.base64_str()
+            .chars()
             .take(n)
             .collect::<String>()
     }
@@ -59,7 +48,7 @@ impl From<String> for U64IdUrlEnc {
 
 impl IdString for U64IdUrlEnc {
     fn id_str(&self) -> String {
-        self.text.0.clone()
+        self.text.base64_str()
     }
 }
 
@@ -68,6 +57,16 @@ impl IdString for U64IdUrlEnc {
 #[wasm_bindgen]
 pub struct UuidUrlEnc {
     text: Base64Text
+}
+
+impl UuidUrlEnc {
+    pub fn generate() -> UuidUrlEnc {
+        let uuid = Uuid::new_v4();
+        let uuid_bytes = uuid.as_bytes().as_slice();
+        let text = Base64Text::from(uuid_bytes);
+
+        UuidUrlEnc { text }
+    }
 }
 
 impl From<String> for UuidUrlEnc {
@@ -81,7 +80,7 @@ impl From<String> for UuidUrlEnc {
 
 impl IdString for UuidUrlEnc {
     fn id_str(&self) -> String {
-        self.text.0.clone()
+        self.text.base64_str()
     }
 }
 

@@ -4,7 +4,7 @@ use anyhow::bail;
 use tracing::{info, instrument};
 
 use crate::node::app::meta_app::meta_client_service::MetaClientAccessProxy;
-use crate::node::app::sync_gateway::SyncGateway;
+use crate::node::app::sync::sync_gateway::SyncGateway;
 use crate::node::common::model::device::common::{DeviceId, DeviceName};
 use crate::node::common::model::secret::{SecretDistributionData, SecretDistributionType};
 use crate::node::common::model::user::common::{UserDataOutsiderStatus, UserMembership};
@@ -152,7 +152,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
                 for claim_db_id in claim.claim_db_ids() {
                     //get distribution id
                     let local_device = &user_creds.device_creds.device.device_id;
-                    if claim_db_id.distribution_id.owner.eq(local_device) {
+                    if claim_db_id.distribution_id.receiver.eq(local_device) {
                         let ss_obj = p_ss
                             .get_ss_distribution_event_by_id(claim_db_id.distribution_id.clone())
                             .await?;
@@ -166,11 +166,11 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
                         // re encrypt message?
                         let msg_receiver = share.secret_message.cipher_text()
                             .auth_data
-                            .channel().receiver
-                            .clone();
+                            .channel()
+                            .receiver();
                         let msg_receiver_device = msg_receiver.to_device_id();
                         
-                        let msg = if msg_receiver_device.eq(&claim.owner) { 
+                        let msg = if msg_receiver_device.eq(&claim.sender) {
                             //just send already encrypted message back
                             share.secret_message
                         } else {

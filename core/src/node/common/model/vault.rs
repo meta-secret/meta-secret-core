@@ -1,6 +1,7 @@
-use crate::node::common::model::crypto::CommunicationChannel;
+use crate::node::common::model::crypto::channel::CommunicationChannel;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::device::device_link::DeviceLink;
+use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::secret::{
     SecretDistributionType, SsDistributionClaim, SsDistributionClaimId, SsLogData, WasmSsLogData,
 };
@@ -11,7 +12,6 @@ use crate::secret::data_block::common::SharedSecretConfig;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use wasm_bindgen::prelude::wasm_bindgen;
-use crate::node::common::model::meta_pass::MetaPasswordId;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -160,56 +160,6 @@ impl VaultData {
     pub fn find_user(&self, device_id: &DeviceId) -> Option<UserMembership> {
         self.users.get(device_id).map(|user| user.clone())
     }
-
-    pub fn build_communication_channel(
-        &self,
-        device_link: DeviceLink,
-    ) -> Option<CommunicationChannel> {
-        match device_link {
-            DeviceLink::Loopback(loopback_link) => {
-                let sender = loopback_link.sender();
-                let maybe_sender = self.find_user(sender);
-
-                match maybe_sender {
-                    Some(UserMembership::Member(UserDataMember { user_data })) => {
-                        let pk = user_data.device.keys.transport_pk;
-                        let channel = CommunicationChannel {
-                            sender: pk.clone(),
-                            receiver: pk.clone(),
-                        };
-                        Some(channel)
-                    }
-                    _ => None,
-                }
-            }
-            DeviceLink::PeerToPeer(p2p_link) => {
-                let sender_device = p2p_link.sender();
-                let receiver_device = p2p_link.receiver();
-
-                let maybe_sender = self.find_user(sender_device);
-                let maybe_receiver = self.find_user(receiver_device);
-
-                match (maybe_sender, maybe_receiver) {
-                    (
-                        Some(UserMembership::Member(UserDataMember { user_data: sender })),
-                        Some(UserMembership::Member(UserDataMember {
-                            user_data: receiver,
-                        })),
-                    ) => {
-                        let sender_pk = sender.device.keys.transport_pk.clone();
-                        let receiver_pk = receiver.device.keys.transport_pk.clone();
-
-                        let channel = CommunicationChannel {
-                            sender: sender_pk,
-                            receiver: receiver_pk,
-                        };
-                        Some(channel)
-                    }
-                    (_, _) => None,
-                }
-            }
-        }
-    }
 }
 
 /////////////////// VaultStatus ///////////////////
@@ -293,22 +243,25 @@ impl VaultMember {
         pass_id: MetaPasswordId,
         distribution_type: SecretDistributionType,
     ) -> SsDistributionClaim {
-        let mut links = vec![];
-        for vault_member in self.vault.members() {
-            if vault_member == self.member {
-                continue;
-            }
-            let receiver_device = vault_member.user_data.device.device_id.clone();
-
-            links.push(receiver_device);
-        }
+        let links = self
+            .vault
+            .members()
+            .iter()
+            .filter_map(|vault_member| {
+                if vault_member.eq(&self.member) {
+                    None
+                } else {
+                    Some(vault_member.user_data.device.device_id.clone())
+                }
+            })
+            .collect();
 
         SsDistributionClaim {
             id: SsDistributionClaimId::from(pass_id),
             vault_name: self.vault.vault_name.clone(),
-            owner: self.user_device(),
+            sender: self.user_device(),
             distribution_type,
-            devices: links,
+            receivers: links,
         }
     }
 
@@ -353,7 +306,7 @@ mod test {
     use super::*;
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use anyhow::Result;
-    
+
     #[test]
     fn test_vault_status() -> Result<()> {
         let fixture = FixtureRegistry::empty();
@@ -382,7 +335,7 @@ mod test {
 
         let pass_id = MetaPasswordId::generate(String::from("test_password"));
         let claim = vault_member.create_split_claim(pass_id);
-        assert_eq!(1, claim.devices.len());
+        assert_eq!(1, claim.receivers.len());
 
         Ok(())
     }

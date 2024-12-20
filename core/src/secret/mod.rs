@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::node::common::model::crypto::{EncryptedMessage};
+use crate::node::common::model::crypto::aead::{EncryptedMessage};
 use crate::node::common::model::secret::{
     SecretDistributionData, SsDistributionClaimId, SsDistributionId
 };
@@ -20,7 +20,6 @@ use crate::CoreResult;
 use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
 use anyhow::Result;
 use tracing_attributes::instrument;
-use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::meta_pass::MetaPasswordId;
 
 pub mod data_block;
@@ -63,8 +62,8 @@ impl MetaEncryptor {
             let share = &secret.shares[index];
 
             let encrypted_share = {
-                let share_str = share.as_json()?;
-                let receiver_pk = receiver.user().device.keys.transport_pk();
+                let share_str = PlainText::from(share.as_json()?);
+                let receiver_pk = &receiver.user().device.keys.transport_pk();
                 self.creds
                     .device_creds
                     .key_manager()?
@@ -126,9 +125,12 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
                 secret_message: secret_share.clone()
             };
 
-            let dist_id = SsDistributionId {
-                pass_id: claim.id.pass_id.clone(),
-                owner: secret_share.cipher_text().auth_data.channel().receiver.to_device_id()
+            let dist_id = {
+                let receiver = secret_share.cipher_text().auth_data
+                    .channel()
+                    .receiver()
+                    .to_device_id();
+                SsDistributionId { pass_id: claim.id.pass_id.clone(), receiver }
             };
 
             let split_key = {

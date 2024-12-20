@@ -1,10 +1,9 @@
 use std::fmt::Display;
 use wasm_bindgen::prelude::wasm_bindgen;
 
-use crate::crypto::encoding::base64::Base64Text;
-use crate::crypto::keys::{OpenBox, TransportPk};
-use crate::crypto::utils::{rand_uuid_b64_url_enc, U64IdUrlEnc};
-use crate::node::common::model::device::device_link::{DeviceLink, LoopbackDeviceLink};
+use crate::crypto::keys::OpenBox;
+use crate::crypto::utils::{U64IdUrlEnc, UuidUrlEnc};
+use crate::node::common::model::device::device_link::{DeviceLink, LoopbackDeviceLink, PeerToPeerDeviceLink};
 use crate::node::common::model::IdString;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -19,8 +18,8 @@ impl DeviceId {
     }
 }
 impl DeviceId {
-    pub fn make_device_link(&self, receiver: DeviceId) -> DeviceLink {
-        DeviceLink::Loopback(LoopbackDeviceLink::from(receiver))
+    pub fn loopback(self) -> LoopbackDeviceLink {
+        LoopbackDeviceLink::from(self)
     }
 }
 
@@ -32,9 +31,7 @@ impl Display for DeviceId {
 
 impl From<&OpenBox> for DeviceId {
     fn from(open_box: &OpenBox) -> Self {
-        let dsa_pk = String::from(&open_box.dsa_pk.0);
-        let id = U64IdUrlEnc::from(dsa_pk);
-        Self(id)
+        open_box.transport_pk.to_device_id()
     }
 }
 
@@ -76,8 +73,8 @@ impl From<&str> for DeviceName {
 
 impl DeviceName {
     pub fn generate() -> DeviceName {
-        let Base64Text(device_name) = rand_uuid_b64_url_enc();
-        DeviceName(device_name)
+        let uuid = UuidUrlEnc::generate();
+        DeviceName(uuid.id_str())
     }
 }
 

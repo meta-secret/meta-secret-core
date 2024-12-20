@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use crate::node::common::model::crypto::EncryptedMessage;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::meta_pass::{MetaPasswordId, SALT_LENGTH};
 use crate::node::common::model::vault::VaultName;
@@ -8,8 +7,7 @@ use crate::node::common::model::IdString;
 use rand::distributions::Alphanumeric;
 use rand::Rng;
 use wasm_bindgen::prelude::wasm_bindgen;
-use crate::crypto::encoding::base64::Base64Text;
-use crate::crypto::utils::U64IdUrlEnc;
+use crate::node::common::model::crypto::aead::EncryptedMessage;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -20,12 +18,12 @@ pub struct ClaimId(pub String);
 #[serde(rename_all = "camelCase")]
 pub struct SsDistributionId {
     pub pass_id: MetaPasswordId,
-    pub owner: DeviceId,
+    pub receiver: DeviceId,
 }
 
 impl IdString for SsDistributionId {
     fn id_str(&self) -> String {
-        [self.owner.as_str(), self.pass_id.id.id_str()].join("|")
+        [self.receiver.as_str(), self.pass_id.id.id_str()].join("|")
     }
 }
 
@@ -62,19 +60,19 @@ pub struct SsDistributionClaim {
     pub id: SsDistributionClaimId,
 
     pub vault_name: VaultName,
-    pub owner: DeviceId,
+    pub sender: DeviceId,
 
     pub distribution_type: SecretDistributionType,
-    pub devices: Vec<DeviceId>,
+    pub receivers: Vec<DeviceId>,
 }
 
 impl SsDistributionClaim {
     pub fn distribution_ids(&self) -> Vec<SsDistributionId> {
-        let mut ids = Vec::with_capacity(self.devices.len());
-        for device in self.devices.iter() {
+        let mut ids = Vec::with_capacity(self.receivers.len());
+        for receiver in self.receivers.iter() {
             ids.push(SsDistributionId {
                 pass_id: self.id.pass_id.clone(),
-                owner: device.clone(),
+                receiver: receiver.clone(),
             });
         }
 
@@ -82,13 +80,13 @@ impl SsDistributionClaim {
     }
 
     pub fn claim_db_ids(&self) -> Vec<SsDistributionClaimDbId> {
-        let mut ids = Vec::with_capacity(self.devices.len());
-        for device in self.devices.iter() {
+        let mut ids = Vec::with_capacity(self.receivers.len());
+        for receiver in self.receivers.iter() {
             ids.push(SsDistributionClaimDbId {
                 claim_id: self.id.clone(),
                 distribution_id: SsDistributionId {
                     pass_id: self.id.pass_id.clone(),
-                    owner: device.clone(),
+                    receiver: receiver.clone(),
                 },
             });
         }

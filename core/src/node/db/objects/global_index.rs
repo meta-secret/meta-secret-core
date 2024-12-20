@@ -99,6 +99,11 @@ pub struct ClientPersistentGlobalIndex<Repo: KvLogEventRepo> {
 }
 
 impl<Repo: KvLogEventRepo> ClientPersistentGlobalIndex<Repo> {
+    pub async fn free_id(&self) -> anyhow::Result<ObjectId> {
+        let gi_desc = ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index);
+        self.p_obj.find_free_id_by_obj_desc(gi_desc).await
+    }
+
     /// Save global index event and also save a "vault index" record
     pub async fn save(&self, gi_obj: &GlobalIndexObject) -> anyhow::Result<()> {
         self.p_obj.repo.save(gi_obj.clone().to_generic()).await?;

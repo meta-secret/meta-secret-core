@@ -158,7 +158,7 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
     pub async fn save_claim_in_ss_device_log(&self, claim: SsDistributionClaim) -> Result<()> {
         info!("Saving claim in_ss_device_log");
 
-        let obj_desc = SharedSecretDescriptor::SsDeviceLog(claim.owner.clone()).to_obj_desc();
+        let obj_desc = SharedSecretDescriptor::SsDeviceLog(claim.sender.clone()).to_obj_desc();
         let free_id = self
             .p_obj
             .find_free_id_by_obj_desc(obj_desc.clone())
