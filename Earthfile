@@ -14,7 +14,7 @@ base-build:
     RUN rustup component add rustfmt
 
     # Install sccache (cargo is too slow)
-    ENV SCCACHE_VERSION="v0.8.1"
+    ENV SCCACHE_VERSION="v0.9.0"
     #RUN cargo install sccache@${SCCACHE_VERSION}
     ENV RUSTC_WRAPPER=sccache
 
