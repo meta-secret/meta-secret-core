@@ -8,8 +8,7 @@ use meta_secret_core::node::app::app_state_update_manager::ApplicationManagerCon
 use meta_secret_core::node::app::meta_app::meta_client_service::{
     MetaClientAccessProxy, MetaClientDataTransfer, MetaClientService, MetaClientStateProvider,
 };
-
-use meta_secret_core::node::app::sync_gateway::SyncGateway;
+use meta_secret_core::node::app::sync::sync_gateway::SyncGateway;
 use meta_secret_core::node::app::virtual_device::VirtualDevice;
 use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::meta_tracing::{client_span, server_span, vd_span};

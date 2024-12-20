@@ -157,8 +157,6 @@ mod test {
 
     #[test]
     fn crypto_box_encryption_test() -> anyhow::Result<()> {
-        let password = "topSecret".to_string();
-        
         let alice_km = KeyManager::generate();
         let bob_km = KeyManager::generate();
 
