@@ -1,6 +1,4 @@
-use crate::node::common::model::crypto::channel::CommunicationChannel;
 use crate::node::common::model::device::common::DeviceId;
-use crate::node::common::model::device::device_link::DeviceLink;
 use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::secret::{
     SecretDistributionType, SsDistributionClaim, SsDistributionClaimId, SsLogData, WasmSsLogData,

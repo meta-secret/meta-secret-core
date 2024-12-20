@@ -1,13 +1,13 @@
 use crate::crypto::encoding::base64::Base64Text;
-use crate::crypto::key_pair::{CryptoBoxPublicKey, CryptoBoxSecretKey, DsaKeyPair, KeyPair, TransportDsaKeyPair};
-use crate::node::common::model::crypto::aead::{AeadPlainText, EncryptedMessage};
-use anyhow::Result;
-use wasm_bindgen::prelude::wasm_bindgen;
 use crate::crypto::encoding::Array256Bit;
+use crate::crypto::key_pair::{CryptoBoxPublicKey, CryptoBoxSecretKey, DsaKeyPair, KeyPair, TransportDsaKeyPair};
 use crate::crypto::utils::U64IdUrlEnc;
+use crate::node::common::model::crypto::aead::{AeadPlainText, EncryptedMessage};
 use crate::node::common::model::crypto::channel::{CommunicationChannel, LoopbackChannel};
 use crate::node::common::model::device::common::DeviceId;
 use crate::secret::shared_secret::PlainText;
+use anyhow::Result;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 pub struct KeyManager {
     pub dsa: DsaKeyPair,
@@ -149,12 +149,12 @@ impl SecretBox {
 
 #[cfg(test)]
 mod test {
-    use anyhow::Result;
     use crate::crypto::encoding::base64::Base64Text;
     use crate::crypto::key_pair::KeyPair;
     use crate::crypto::keys::{KeyManager, SecretBox};
     use crate::node::common::model::crypto::aead::EncryptedMessage;
     use crate::secret::shared_secret::PlainText;
+    use anyhow::Result;
 
     #[test]
     fn re_encrypt_test() -> Result<()> {

@@ -1,10 +1,10 @@
 use crate::crypto::encoding::base64::Base64Text;
 use crate::crypto::utils::UuidUrlEnc;
+use crate::node::common::model::crypto::channel::CommunicationChannel;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::IdString;
 use anyhow::{bail, Result};
 use wasm_bindgen::prelude::wasm_bindgen;
-use crate::node::common::model::crypto::channel::CommunicationChannel;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

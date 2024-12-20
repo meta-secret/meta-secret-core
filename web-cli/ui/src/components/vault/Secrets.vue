@@ -1,6 +1,6 @@
 <script lang="ts">
 import { defineComponent } from 'vue';
-import init, {MetaPasswordId, WasmApplicationState} from 'meta-secret-web-cli';
+import init, { MetaPasswordId, WasmApplicationState } from 'meta-secret-web-cli';
 import { AppState } from '@/stores/app-state';
 
 export default defineComponent({

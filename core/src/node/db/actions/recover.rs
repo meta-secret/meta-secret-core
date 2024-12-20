@@ -1,6 +1,3 @@
-use anyhow::bail;
-use std::sync::Arc;
-use tracing_attributes::instrument;
 use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::vault::VaultStatus;
 use crate::node::db::objects::persistent_object::PersistentObject;
@@ -8,6 +5,9 @@ use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
+use anyhow::bail;
+use std::sync::Arc;
+use tracing_attributes::instrument;
 
 pub struct RecoveryAction<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,

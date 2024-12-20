@@ -8,9 +8,9 @@ use crate::crypto::keys::{DsaPk, DsaSk, TransportPk, TransportSk};
 use crate::node::common::model::crypto::aead::{
     AeadAuthData, AeadCipherText, AeadPlainText
 };
-use crate::CoreResult;
 use crate::node::common::model::crypto::channel::CommunicationChannel;
 use crate::secret::shared_secret::PlainText;
+use crate::CoreResult;
 
 pub type CryptoBoxPublicKey = crypto_box::PublicKey;
 pub type CryptoBoxSecretKey = crypto_box::SecretKey;

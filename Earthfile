@@ -31,7 +31,6 @@ base-build:
     RUN cargo chef cook --release --recipe-path recipe.json
 
 wasm-build:
-    BUILD +base-build
     FROM +base-build
 
     #RUN cargo install wasm-pack slooooow

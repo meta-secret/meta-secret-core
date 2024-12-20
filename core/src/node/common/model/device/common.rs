@@ -3,7 +3,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::crypto::keys::OpenBox;
 use crate::crypto::utils::{U64IdUrlEnc, UuidUrlEnc};
-use crate::node::common::model::device::device_link::{DeviceLink, LoopbackDeviceLink, PeerToPeerDeviceLink};
+use crate::node::common::model::device::device_link::LoopbackDeviceLink;
 use crate::node::common::model::IdString;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]

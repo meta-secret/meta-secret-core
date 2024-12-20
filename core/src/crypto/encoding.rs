@@ -7,9 +7,9 @@ pub type Base64String = String;
 pub mod base64 {
     extern crate base64;
 
+    use crate::crypto::encoding::Base64String;
     use std::fmt::Display;
     use wasm_bindgen::prelude::wasm_bindgen;
-    use crate::crypto::encoding::Base64String;
 
     #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -31,10 +31,10 @@ pub mod base64 {
     pub mod encoder {
         use crate::crypto::encoding::base64::Base64Text;
         use crate::crypto::encoding::Array256Bit;
+        use crate::secret::shared_secret::PlainText;
         use base64::alphabet::URL_SAFE;
         use base64::engine::fast_portable::{FastPortable, NO_PAD};
         use image::EncodableLayout;
-        use crate::secret::shared_secret::PlainText;
 
         const URL_SAFE_ENGINE: FastPortable = FastPortable::from(&URL_SAFE, NO_PAD);
 

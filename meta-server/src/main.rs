@@ -1,17 +1,17 @@
+use axum::extract::State;
 use axum::{
     routing::{get, post},
     Json, Router,
 };
-use axum::extract::State;
 use http::{StatusCode, Uri};
 use serde_derive::{Deserialize, Serialize};
 
+use meta_secret_core::node::server::server_data_sync::{DataSyncRequest, DataSyncResponse, ServerTailResponse};
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::{info, Level};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
-use meta_secret_core::node::server::server_data_sync::{DataSyncRequest, DataSyncResponse, ServerTailResponse};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct MetaServerAppState {

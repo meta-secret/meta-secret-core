@@ -1,11 +1,11 @@
-use std::sync::Arc;
+use crate::node::common::model::device::common::DeviceData;
+use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::objects::global_index::ClientPersistentGlobalIndex;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
-use crate::node::server::request::{GlobalIndexRequest};
+use crate::node::server::request::GlobalIndexRequest;
 use anyhow::Result;
-use crate::node::common::model::device::common::DeviceData;
-use crate::node::db::events::generic_log_event::GenericKvLogEvent;
+use std::sync::Arc;
 
 pub struct GlobalIndexDbSync<Repo: KvLogEventRepo> {
     p_obj: Arc<PersistentObject<Repo>>,

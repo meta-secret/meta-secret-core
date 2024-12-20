@@ -4,11 +4,10 @@ use image::EncodableLayout;
 
 use crate::crypto::encoding::base64::Base64Text;
 use crate::crypto::key_pair::CryptoBoxSecretKey;
-use crate::crypto::keys::{KeyManager, TransportPk, TransportSk};
+use crate::crypto::keys::{TransportPk, TransportSk};
 use crate::errors::CoreError;
-use anyhow::{Result};
 use crate::node::common::model::crypto::channel::CommunicationChannel;
-use crate::secret::shared_secret::PlainText;
+use anyhow::Result;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -152,9 +151,9 @@ mod test {
     use crate::crypto::key_pair::KeyPair;
     use crate::crypto::keys::{KeyManager, SecretBox};
     use crate::node::common::model::crypto::aead::{AeadAuthData, AeadCipherText, CommunicationChannel};
+    use crate::secret::shared_secret::PlainText;
     use crypto_box::aead::{Aead, Payload};
     use crypto_box::ChaChaBox;
-    use crate::secret::shared_secret::PlainText;
 
     #[test]
     fn crypto_box_encryption_test() -> anyhow::Result<()> {

@@ -1,10 +1,10 @@
+use crate::crypto::encoding::base64::Base64Text;
+use crate::node::common::model::IdString;
+use crate::node::db::descriptors::object_descriptor::{ObjectDescriptorFqdn, ObjectDescriptorId};
 use rand::{distributions::Alphanumeric, Rng};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 use wasm_bindgen::prelude::wasm_bindgen;
-use crate::crypto::encoding::base64::Base64Text;
-use crate::node::common::model::IdString;
-use crate::node::db::descriptors::object_descriptor::{ObjectDescriptorFqdn, ObjectDescriptorId};
 
 const SEED_LENGTH: usize = 64;
 

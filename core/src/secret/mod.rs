@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use crate::node::common::model::crypto::aead::{EncryptedMessage};
+use crate::node::common::model::crypto::aead::EncryptedMessage;
+use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::secret::{
     SecretDistributionData, SsDistributionClaimId, SsDistributionId
 };
@@ -20,7 +21,6 @@ use crate::CoreResult;
 use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
 use anyhow::Result;
 use tracing_attributes::instrument;
-use crate::node::common::model::meta_pass::MetaPasswordId;
 
 pub mod data_block;
 pub mod shared_secret;

@@ -1,7 +1,7 @@
 <script lang="ts">
 import { AppState } from '@/stores/app-state';
 import Device from '@/components/vault/Device.vue';
-import { WasmUserMembership } from "../../../pkg";
+import { WasmUserMembership } from '../../../pkg';
 
 export default {
   components: { Device },

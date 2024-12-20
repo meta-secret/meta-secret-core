@@ -5,7 +5,7 @@ use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::secret::{SsDistributionClaim, SsDistributionClaimDbId, SsDistributionId, SsDistributionStatus, SsLogData};
 use crate::node::common::model::user::common::UserData;
 use crate::node::common::model::vault::VaultName;
-use crate::node::db::descriptors::object_descriptor::{ToObjectDescriptor};
+use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, KeyExtractor, ToGenericEvent};
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};

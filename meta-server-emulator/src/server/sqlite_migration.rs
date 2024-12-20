@@ -1,7 +1,6 @@
 use diesel::{Connection, SqliteConnection};
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
-use meta_secret_core::crypto::{encoding::base64::Base64Text, utils};
-use meta_secret_core::crypto::utils::{U64IdUrlEnc, UuidUrlEnc};
+use meta_secret_core::crypto::utils::UuidUrlEnc;
 use meta_secret_core::node::common::model::IdString;
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("../meta-server-emulator/migrations");

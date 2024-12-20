@@ -8,7 +8,6 @@ use crate::node::common::model::device::common::{DeviceData, DeviceId};
 use crate::node::common::model::user::common::UserId;
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::VaultStatus;
-use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ToObjectDescriptor};
 use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
@@ -18,13 +17,12 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::local_event::{CredentialsObject, DbTailObject};
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::events::shared_secret_event::SsDeviceLogObject;
-use crate::node::db::objects::global_index::ClientPersistentGlobalIndex;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
-use crate::node::server::request::{GlobalIndexRequest, SsRequest, SyncRequest, VaultRequest};
+use crate::node::server::request::{SsRequest, SyncRequest, VaultRequest};
 use crate::node::server::server_app::ServerDataTransfer;
 use crate::node::server::server_data_sync::{
     DataEventsResponse, DataSyncRequest, ServerTailResponse,

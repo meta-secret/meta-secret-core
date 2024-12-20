@@ -240,9 +240,9 @@ pub mod test {
     use meta_secret_core::crypto::key_pair::KeyPair;
     use meta_secret_core::crypto::keys::KeyManager;
     use meta_secret_core::node::common::model::crypto::AeadCipherText;
+    use meta_secret_core::secret;
     use meta_secret_core::secret::data_block::common::SharedSecretConfig;
     use meta_secret_core::secret::shared_secret::UserShareDto;
-    use meta_secret_core::secret;
 
     #[test]
     fn split_and_encrypt() -> anyhow::Result<()> {

@@ -1,7 +1,7 @@
-use rand::distributions::Alphanumeric;
-use wasm_bindgen::prelude::wasm_bindgen;
-use rand::Rng;
 use crate::crypto::utils::U64IdUrlEnc;
+use rand::distributions::Alphanumeric;
+use rand::Rng;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 pub const SALT_LENGTH: usize = 8;
 

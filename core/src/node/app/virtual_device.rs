@@ -1,11 +1,11 @@
+use anyhow::bail;
 use log::warn;
 use std::sync::Arc;
-use anyhow::bail;
 use tracing::{info, instrument};
 
 use crate::node::app::meta_app::meta_client_service::MetaClientAccessProxy;
 use crate::node::app::sync::sync_gateway::SyncGateway;
-use crate::node::common::model::device::common::{DeviceId, DeviceName};
+use crate::node::common::model::device::common::DeviceName;
 use crate::node::common::model::secret::{SecretDistributionData, SecretDistributionType};
 use crate::node::common::model::user::common::{UserDataOutsiderStatus, UserMembership};
 use crate::node::common::model::user::user_creds::UserCredentials;

@@ -1,10 +1,10 @@
 use std::io;
 use std::string::FromUtf8Error;
 
-use shamirsecretsharing::SSSError;
 use crate::crypto::keys::TransportPk;
 use crate::node::common::model::crypto::channel::CommunicationChannel;
 use crate::secret::data_block::common::DataBlockParserError;
+use shamirsecretsharing::SSSError;
 
 #[derive(thiserror::Error, Debug)]
 pub enum CoreError {
