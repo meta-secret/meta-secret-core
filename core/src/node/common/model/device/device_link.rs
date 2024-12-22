@@ -25,7 +25,7 @@ impl From<DeviceLink> for DeviceLinkId {
 
         let first_prefix: String = ids[0].chars().take(2).collect();
         let second_prefix: String = ids[1].chars().take(2).collect();
-        
+
         let id = Base64Text::from([first_prefix, second_prefix, uuid_str].join("|"));
 
         Self(id)
@@ -46,22 +46,20 @@ impl DeviceLink {
     pub fn sender(&self) -> DeviceId {
         match self {
             DeviceLink::Loopback(link) => link.sender().clone(),
-            DeviceLink::PeerToPeer(link) => link.sender.clone()
+            DeviceLink::PeerToPeer(link) => link.sender.clone(),
         }
     }
 
     pub fn receiver(&self) -> DeviceId {
         match self {
             DeviceLink::Loopback(link) => link.receiver().clone(),
-            DeviceLink::PeerToPeer(link) => link.receiver().clone()
+            DeviceLink::PeerToPeer(link) => link.receiver().clone(),
         }
     }
 
     pub fn contains(&self, device_id: &DeviceId) -> bool {
         match self {
-            DeviceLink::Loopback(link) => {
-                link.device.eq(device_id)
-            },
+            DeviceLink::Loopback(link) => link.device.eq(device_id),
             DeviceLink::PeerToPeer(link) => {
                 link.receiver.eq(device_id) || link.sender.eq(device_id)
             }
@@ -73,7 +71,9 @@ impl TryFrom<&CommunicationChannel> for DeviceLink {
     type Error = anyhow::Error;
 
     fn try_from(channel: &CommunicationChannel) -> Result<Self, Self::Error> {
-        let link = channel.sender().to_device_id()
+        let link = channel
+            .sender()
+            .to_device_id()
             .loopback()
             .peer_to_peer(channel.receiver().to_device_id())?
             .to_device_link();
@@ -105,13 +105,15 @@ impl From<DeviceId> for LoopbackDeviceLink {
 }
 
 impl LoopbackDeviceLink {
-
     pub fn peer_to_peer(self, receiver: DeviceId) -> Result<PeerToPeerDeviceLink> {
         if self.device == receiver {
             bail!("Sender and receiver are the same");
         }
 
-        Ok(PeerToPeerDeviceLink { sender: self.device, receiver })
+        Ok(PeerToPeerDeviceLink {
+            sender: self.device,
+            receiver,
+        })
     }
 
     pub fn to_device_link(self) -> DeviceLink {
@@ -172,11 +174,13 @@ mod test {
     fn test_device_link_builder() -> anyhow::Result<()> {
         let sender_km = KeyManager::generate();
         let receiver_km = KeyManager::generate();
-        
+
         let sender = sender_km.transport.pk().to_device_id();
         let receiver = receiver_km.transport.pk().to_device_id();
 
-        let device_link = sender.clone().loopback()
+        let device_link = sender
+            .clone()
+            .loopback()
             .peer_to_peer(receiver.clone())?
             .to_device_link();
 

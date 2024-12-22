@@ -17,7 +17,7 @@ pub enum SharedSecretDescriptor {
 
     /// Allows devices distributing their shares (split operation)
     SsDistribution(SsDistributionId),
-    
+
     SsClaim(SsDistributionClaimDbId),
     SsDistributionStatus(SsDistributionClaimDbId),
 }
@@ -29,7 +29,7 @@ impl ObjectType for SharedSecretDescriptor {
             SharedSecretDescriptor::SsLog(_) => String::from("SsLog"),
             SharedSecretDescriptor::SsDistribution(_) => String::from("SsDistribution"),
             SharedSecretDescriptor::SsDistributionStatus(_) => String::from("SsDistributionStatus"),
-            SharedSecretDescriptor::SsClaim(_) => String::from("SsClaim")
+            SharedSecretDescriptor::SsClaim(_) => String::from("SsClaim"),
         }
     }
 }
@@ -41,7 +41,7 @@ impl SharedSecretDescriptor {
             SharedSecretDescriptor::SsLog(vault_name) => vault_name.to_string(),
             SharedSecretDescriptor::SsDeviceLog(device_id) => device_id.to_string(),
             SharedSecretDescriptor::SsDistributionStatus(id) => id.id_str(),
-            SharedSecretDescriptor::SsClaim(db_id) => db_id.id_str()
+            SharedSecretDescriptor::SsClaim(db_id) => db_id.id_str(),
         }
     }
 }

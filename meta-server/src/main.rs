@@ -6,7 +6,9 @@ use axum::{
 use http::{StatusCode, Uri};
 use serde_derive::{Deserialize, Serialize};
 
-use meta_secret_core::node::server::server_data_sync::{DataSyncRequest, DataSyncResponse, ServerTailResponse};
+use meta_secret_core::node::server::server_data_sync::{
+    DataSyncRequest, DataSyncResponse, ServerTailResponse,
+};
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
@@ -14,9 +16,7 @@ use tracing::{info, Level};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct MetaServerAppState {
-    
-}
+pub struct MetaServerAppState {}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -43,10 +43,8 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Creating router...");
     let cors = CorsLayer::permissive();
-    
-    let app_state = MetaServerAppState {
-        
-    };
+
+    let app_state = MetaServerAppState {};
 
     info!("Creating router...");
     let app = Router::new()
@@ -60,7 +58,6 @@ async fn main() -> anyhow::Result<()> {
     info!("Run axum server, on port: {}", port);
     let listener = TcpListener::bind(format!("0.0.0.0:{:?}", port)).await?;
     axum::serve(listener, app).await?;
-
 
     Ok(())
 }
@@ -80,10 +77,10 @@ async fn not_found_handler(uri: Uri) -> (StatusCode, Json<ErrorResponse>) {
 
 pub async fn event_processing(
     State(state): State<MetaServerAppState>,
-    Json(msg_request): Json<DataSyncRequest>
+    Json(msg_request): Json<DataSyncRequest>,
 ) -> Result<Json<DataSyncResponse>, StatusCode> {
     info!("Event processing");
-    
+
     let resp = ServerTailResponse {
         device_log_tail: None,
         ss_device_log_tail: None,

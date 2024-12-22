@@ -23,7 +23,7 @@ use crate::secret::MetaDistributor;
 pub struct MetaClientService<Repo: KvLogEventRepo> {
     pub data_transfer: Arc<MetaClientDataTransfer>,
     pub sync_gateway: Arc<SyncGateway<Repo>>,
-    pub state_provider: Arc<MetaClientStateProvider>
+    pub state_provider: Arc<MetaClientStateProvider>,
 }
 
 pub struct MetaClientDataTransfer {

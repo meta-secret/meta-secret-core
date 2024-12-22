@@ -28,7 +28,7 @@ impl KeyExtractor for SharedSecretObject {
             SharedSecretObject::SsDistributionStatus(event) => {
                 GenericKvKey::from(event.key.clone())
             }
-            SharedSecretObject::SsClaim(event) => GenericKvKey::from(event.key.clone())
+            SharedSecretObject::SsClaim(event) => GenericKvKey::from(event.key.clone()),
         }
     }
 }
@@ -121,7 +121,7 @@ impl ObjIdExtractor for SharedSecretObject {
             SharedSecretObject::SsDistributionStatus(event) => {
                 ObjectId::from(event.key.obj_id.clone())
             }
-            SharedSecretObject::SsClaim(event) => ObjectId::from(event.key.obj_id.clone())
+            SharedSecretObject::SsClaim(event) => ObjectId::from(event.key.obj_id.clone()),
         }
     }
 }

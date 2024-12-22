@@ -21,7 +21,7 @@ pub mod base64 {
             write!(f, "{}", self.0.clone())
         }
     }
-    
+
     impl Base64Text {
         pub fn base64_str(&self) -> Base64String {
             self.0.clone()
@@ -216,7 +216,10 @@ pub mod serialized_key_manager {
     pub mod decoder {
         use crate::crypto::encoding::base64::Base64Text;
         use crate::crypto::encoding::Array256Bit;
-        use crate::crypto::key_pair::{CryptoBoxSecretKey, DalekKeyPair, DalekPublicKey, DalekSignature, DsaKeyPair, TransportDsaKeyPair};
+        use crate::crypto::key_pair::{
+            CryptoBoxSecretKey, DalekKeyPair, DalekPublicKey, DalekSignature, DsaKeyPair,
+            TransportDsaKeyPair,
+        };
         use crate::crypto::keys::{
             KeyManager, SecretBox, SerializedDsaKeyPair, SerializedTransportKeyPair,
         };
@@ -272,7 +275,10 @@ pub mod serialized_key_manager {
             fn try_from(serialized_km: &SecretBox) -> Result<Self, Self::Error> {
                 let dsa = DsaKeyPair::try_from(&serialized_km.dsa)?;
                 let transport_key_pair = TransportDsaKeyPair::try_from(&serialized_km.transport)?;
-                let key_manager = Self { dsa, transport: transport_key_pair };
+                let key_manager = Self {
+                    dsa,
+                    transport: transport_key_pair,
+                };
 
                 Ok(key_manager)
             }

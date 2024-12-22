@@ -2,12 +2,12 @@ use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::vault::{VaultStatus, WasmVaultStatus};
 use wasm_bindgen::prelude::wasm_bindgen;
 
+pub mod crypto;
 pub mod device;
+pub mod meta_pass;
 pub mod secret;
 pub mod user;
 pub mod vault;
-pub mod meta_pass;
-pub mod crypto;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

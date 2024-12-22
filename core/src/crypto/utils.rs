@@ -25,15 +25,12 @@ pub fn generate_hash() -> String {
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(getter_with_clone)]
 pub struct U64IdUrlEnc {
-    pub text: Base64Text
+    pub text: Base64Text,
 }
 
 impl U64IdUrlEnc {
     pub fn take(&self, n: usize) -> String {
-        self.text.base64_str()
-            .chars()
-            .take(n)
-            .collect::<String>()
+        self.text.base64_str().chars().take(n).collect::<String>()
     }
 }
 
@@ -56,7 +53,7 @@ impl IdString for U64IdUrlEnc {
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen]
 pub struct UuidUrlEnc {
-    text: Base64Text
+    text: Base64Text,
 }
 
 impl UuidUrlEnc {

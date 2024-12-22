@@ -1,5 +1,8 @@
 use crypto_box::aead::{Aead, AeadCore};
-use crypto_box::{aead::{OsRng as CryptoBoxOsRng, Payload}, ChaChaBox, Nonce};
+use crypto_box::{
+    aead::{OsRng as CryptoBoxOsRng, Payload},
+    ChaChaBox, Nonce,
+};
 use image::EncodableLayout;
 
 use crate::crypto::encoding::base64::Base64Text;
@@ -66,9 +69,7 @@ impl AeadCipherText {
     pub fn decrypt(&self, secret_key: &TransportSk) -> Result<AeadPlainText> {
         let auth_data = &self.auth_data;
 
-        let their_pk = &auth_data
-            .channel()
-            .peer(&secret_key.pk()?)?;
+        let their_pk = &auth_data.channel().peer(&secret_key.pk()?)?;
 
         let plain_bytes = {
             let crypto_box_sk = &secret_key.as_crypto_box_sk()?;
@@ -138,7 +139,6 @@ pub enum EncryptedMessage {
 }
 
 impl EncryptedMessage {
-    
     pub fn cipher_text(&self) -> &AeadCipherText {
         match self {
             EncryptedMessage::CipherShare { share, .. } => share,
@@ -150,7 +150,9 @@ impl EncryptedMessage {
 mod test {
     use crate::crypto::key_pair::KeyPair;
     use crate::crypto::keys::{KeyManager, SecretBox};
-    use crate::node::common::model::crypto::aead::{AeadAuthData, AeadCipherText, CommunicationChannel};
+    use crate::node::common::model::crypto::aead::{
+        AeadAuthData, AeadCipherText, CommunicationChannel,
+    };
     use crate::secret::shared_secret::PlainText;
     use crypto_box::aead::{Aead, Payload};
     use crypto_box::ChaChaBox;
@@ -167,9 +169,12 @@ mod test {
 
         let alice_sk = {
             let alice_secret_box = SecretBox::from(&alice_km);
-            KeyManager::try_from(&alice_secret_box)?.transport.secret_key.clone()
+            KeyManager::try_from(&alice_secret_box)?
+                .transport
+                .secret_key
+                .clone()
         };
-        
+
         let alice_box = ChaChaBox::new(&alice_sk.public_key(), &alice_sk);
 
         let checksum = String::from("tag");
@@ -177,22 +182,22 @@ mod test {
             msg: b"Top secret message we're encrypting".as_ref(),
             aad: checksum.as_bytes(),
         };
-        
+
         let _ = alice_box.encrypt(&nonce, payload)?;
-        
+
         Ok(())
     }
-    
+
     #[test]
     fn encryption_test() -> anyhow::Result<()> {
         let password = PlainText::from("2bee~");
         let alice_km = KeyManager::generate();
         let bob_km = KeyManager::generate();
-        
+
         let _: AeadCipherText = alice_km
             .transport
             .encrypt_string(password.clone(), &bob_km.transport.pk())?;
-        
+
         Ok(())
     }
 }

@@ -5,9 +5,7 @@ use rand::RngCore;
 
 use crate::crypto::encoding::base64::Base64Text;
 use crate::crypto::keys::{DsaPk, DsaSk, TransportPk, TransportSk};
-use crate::node::common::model::crypto::aead::{
-    AeadAuthData, AeadCipherText, AeadPlainText
-};
+use crate::node::common::model::crypto::aead::{AeadAuthData, AeadCipherText, AeadPlainText};
 use crate::node::common::model::crypto::channel::CommunicationChannel;
 use crate::secret::shared_secret::PlainText;
 use crate::CoreResult;
@@ -56,7 +54,9 @@ impl KeyPair<DsaPk, DsaSk> for DsaKeyPair {
             SigningKey::from_bytes(&sk)
         };
 
-        DsaKeyPair { key_pair: signing_key }
+        DsaKeyPair {
+            key_pair: signing_key,
+        }
     }
 
     fn pk(&self) -> DsaPk {
@@ -108,7 +108,6 @@ impl TransportDsaKeyPair {
         plain_text: PlainText,
         receiver_pk: &TransportPk,
     ) -> anyhow::Result<AeadCipherText> {
-
         let channel = CommunicationChannel::build(self.pk(), receiver_pk.clone());
 
         let plain_text = AeadPlainText {
@@ -149,10 +148,7 @@ pub mod test {
         let alice_km = KeyManager::generate();
         let bob_km = KeyManager::generate();
 
-        let channel = CommunicationChannel::build(
-            alice_km.transport.pk(), 
-            bob_km.transport.pk()
-        );
+        let channel = CommunicationChannel::build(alice_km.transport.pk(), bob_km.transport.pk());
 
         let plain_text = {
             let auth_data = AeadAuthData::from(channel);

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::node::common::model::crypto::aead::EncryptedMessage;
 use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::secret::{
-    SecretDistributionData, SsDistributionClaimId, SsDistributionId
+    SecretDistributionData, SsDistributionClaimId, SsDistributionId,
 };
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::VaultMember;
@@ -71,7 +71,9 @@ impl MetaEncryptor {
                     .encrypt_string(share_str, receiver_pk)?
             };
 
-            let cipher_share = EncryptedMessage::CipherShare { share: encrypted_share };
+            let cipher_share = EncryptedMessage::CipherShare {
+                share: encrypted_share,
+            };
             encrypted_shares.push(cipher_share);
         }
 
@@ -122,15 +124,20 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
             let distribution_share = SecretDistributionData {
                 vault_name: vault_name.clone(),
                 claim_id: SsDistributionClaimId::from(claim.id.pass_id.clone()),
-                secret_message: secret_share.clone()
+                secret_message: secret_share.clone(),
             };
 
             let dist_id = {
-                let receiver = secret_share.cipher_text().auth_data
+                let receiver = secret_share
+                    .cipher_text()
+                    .auth_data
                     .channel()
                     .receiver()
                     .to_device_id();
-                SsDistributionId { pass_id: claim.id.pass_id.clone(), receiver }
+                SsDistributionId {
+                    pass_id: claim.id.pass_id.clone(),
+                    receiver,
+                }
             };
 
             let split_key = {

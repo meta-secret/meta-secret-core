@@ -2,7 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::node::common::model::device::common::DeviceId;
-use crate::node::common::model::secret::{SsDistributionClaim, SsDistributionClaimDbId, SsDistributionId, SsDistributionStatus, SsLogData};
+use crate::node::common::model::secret::{
+    SsDistributionClaim, SsDistributionClaimDbId, SsDistributionId, SsDistributionStatus, SsLogData,
+};
 use crate::node::common::model::user::common::UserData;
 use crate::node::common::model::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
@@ -27,10 +29,10 @@ pub struct PersistentSharedSecret<Repo: KvLogEventRepo> {
 }
 
 impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
-
     #[instrument(skip(self))]
     pub async fn create_distribution_completion_status(
-        &self, id: SsDistributionClaimDbId
+        &self,
+        id: SsDistributionClaimDbId,
     ) -> Result<()> {
         info!("create_distribution_completion_status");
 
@@ -68,7 +70,7 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
         id: SsDistributionId,
     ) -> Result<SharedSecretObject> {
         let desc = SharedSecretDescriptor::SsDistribution(id).to_obj_desc();
-        
+
         if let Some(event) = self.p_obj.find_tail_event(desc).await? {
             event.shared_secret()
         } else {
@@ -78,7 +80,6 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
 }
 
 impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
-
     #[instrument(skip(self))]
     pub async fn save_ss_log_event(&self, claim: SsDistributionClaim) -> Result<()> {
         info!("Saving ss_log event");
@@ -108,7 +109,8 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
                         .await?
                 }
                 GenericKvKey::ArtifactKey { .. } => {
-                    if let GenericKvLogEvent::SsLog(SsLogObject::Claims(ss_log_event)) = ss_log_event
+                    if let GenericKvLogEvent::SsLog(SsLogObject::Claims(ss_log_event)) =
+                        ss_log_event
                     {
                         let mut new_log_data = ss_log_event.value.clone();
                         new_log_data.claims.insert(claim.id.clone(), claim);
@@ -153,7 +155,6 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
 }
 
 impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
-
     #[instrument(skip(self))]
     pub async fn save_claim_in_ss_device_log(&self, claim: SsDistributionClaim) -> Result<()> {
         info!("Saving claim in_ss_device_log");
@@ -192,9 +193,7 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
         let maybe_log_event = self.p_obj.find_tail_event(obj_desc).await?;
 
         match maybe_log_event {
-            None => {
-                Ok(SsLogData::empty())
-            },
+            None => Ok(SsLogData::empty()),
             Some(ss_log_event) => {
                 let ss_log_obj = SsLogObject::try_from(ss_log_event)?;
                 Ok(ss_log_obj.to_data())

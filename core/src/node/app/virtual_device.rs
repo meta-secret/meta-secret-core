@@ -161,28 +161,33 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
                             bail!("Ss distribution object not found");
                         };
 
-                        let KvLogEvent {value: share, ..} = dist_event;
-                        
+                        let KvLogEvent { value: share, .. } = dist_event;
+
                         // re encrypt message?
-                        let msg_receiver = share.secret_message.cipher_text()
+                        let msg_receiver = share
+                            .secret_message
+                            .cipher_text()
                             .auth_data
                             .channel()
                             .receiver();
                         let msg_receiver_device = msg_receiver.to_device_id();
-                        
+
                         let msg = if msg_receiver_device.eq(&claim.sender) {
                             //just send already encrypted message back
                             share.secret_message
                         } else {
                             // re-encrypt!
-                            user_creds.device_creds.secret_box
+                            user_creds
+                                .device_creds
+                                .secret_box
                                 .re_encrypt(share.secret_message.clone(), msg_receiver)?
                         };
 
                         //compare with claim dist id, if match then create a claim
-                        let key = KvKey::unit(SharedSecretDescriptor::SsClaim(claim_db_id.clone())
-                            .to_obj_desc());
-                        
+                        let key = KvKey::unit(
+                            SharedSecretDescriptor::SsClaim(claim_db_id.clone()).to_obj_desc(),
+                        );
+
                         let new_claim = SharedSecretObject::SsClaim(KvLogEvent {
                             key,
                             value: SecretDistributionData {
@@ -197,7 +202,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
                 }
             }
         }
-        
+
         self.gateway.sync().await?;
         Ok(())
     }

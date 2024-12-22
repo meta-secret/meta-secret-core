@@ -22,7 +22,7 @@ impl MetaPasswordId {
     pub fn id(&self) -> String {
         self.id.text.base64_str()
     }
-    
+
     pub fn generate(name: String) -> Self {
         let salt: String = rand::thread_rng()
             .sample_iter(&Alphanumeric)

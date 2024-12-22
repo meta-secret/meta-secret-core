@@ -1,6 +1,8 @@
 use crate::crypto::encoding::base64::Base64Text;
 use crate::crypto::encoding::Array256Bit;
-use crate::crypto::key_pair::{CryptoBoxPublicKey, CryptoBoxSecretKey, DsaKeyPair, KeyPair, TransportDsaKeyPair};
+use crate::crypto::key_pair::{
+    CryptoBoxPublicKey, CryptoBoxSecretKey, DsaKeyPair, KeyPair, TransportDsaKeyPair,
+};
 use crate::crypto::utils::U64IdUrlEnc;
 use crate::node::common::model::crypto::aead::{AeadPlainText, EncryptedMessage};
 use crate::node::common::model::crypto::channel::{CommunicationChannel, LoopbackChannel};
@@ -42,7 +44,7 @@ impl TransportPk {
         let byte_array = Array256Bit::try_from(&self.0)?;
         Ok(CryptoBoxPublicKey::from(byte_array))
     }
-    
+
     pub fn to_device_id(&self) -> DeviceId {
         let pk_id = U64IdUrlEnc::from(self.0.base64_str());
         DeviceId(pk_id)
@@ -131,7 +133,11 @@ impl KeyManager {
 }
 
 impl SecretBox {
-    pub fn re_encrypt(&self, message: EncryptedMessage, receiver: &TransportPk) -> Result<EncryptedMessage> {
+    pub fn re_encrypt(
+        &self,
+        message: EncryptedMessage,
+        receiver: &TransportPk,
+    ) -> Result<EncryptedMessage> {
         let key_manager = KeyManager::try_from(self)?;
 
         let AeadPlainText { msg, .. } = {
@@ -139,13 +145,15 @@ impl SecretBox {
             message.cipher_text().decrypt(sk)?
         };
 
-        let new_cypher_text = key_manager.transport
+        let new_cypher_text = key_manager
+            .transport
             .encrypt_string(PlainText::from(&msg), receiver)?;
 
-        Ok(EncryptedMessage::CipherShare { share: new_cypher_text })
+        Ok(EncryptedMessage::CipherShare {
+            share: new_cypher_text,
+        })
     }
 }
-
 
 #[cfg(test)]
 mod test {
@@ -160,30 +168,31 @@ mod test {
     fn re_encrypt_test() -> Result<()> {
         let plain_text = PlainText::from("2bee~");
         let base64_plaint_text = &Base64Text::from(plain_text.clone());
-        
+
         let alice_km = KeyManager::generate();
         let alice_sk = &alice_km.transport.sk();
         let alice_secret_box = SecretBox::from(&alice_km);
-        
+
         let bob_km = KeyManager::generate();
         let bob_sk = &bob_km.transport.sk();
-        
+
         let msg_1 = {
-            let cypher_text = alice_km.transport
+            let cypher_text = alice_km
+                .transport
                 .encrypt_string(plain_text, &alice_km.transport.pk())?;
-            EncryptedMessage::CipherShare {share: cypher_text}
+            EncryptedMessage::CipherShare { share: cypher_text }
         };
 
         let msg_1_alice_aead_plain_text = msg_1.cipher_text().decrypt(alice_sk)?;
         assert_eq!(base64_plaint_text, &msg_1_alice_aead_plain_text.msg);
-        
+
         let msg_2 = alice_secret_box.re_encrypt(msg_1, &bob_km.transport.pk())?;
         let msg_2_alice_aead_plain_text = msg_2.cipher_text().decrypt(alice_sk)?;
         let msg_2_bob_aead_plain_text = msg_2.cipher_text().decrypt(bob_sk)?;
-        
+
         assert_eq!(base64_plaint_text, &msg_2_alice_aead_plain_text.msg);
         assert_eq!(base64_plaint_text, &msg_2_bob_aead_plain_text.msg);
-        
+
         Ok(())
     }
 }

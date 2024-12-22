@@ -151,7 +151,7 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
     pub async fn handle_sync_request(
         &self,
         request: SyncRequest,
-        server_device: DeviceId
+        server_device: DeviceId,
     ) -> Result<Vec<GenericKvLogEvent>> {
         self.data_sync.replication(request, server_device).await
     }

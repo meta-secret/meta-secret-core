@@ -102,7 +102,10 @@ impl From<MetaPasswordId> for SsDistributionClaimId {
             .take(SALT_LENGTH)
             .map(char::from)
             .collect();
-        Self { id: ClaimId(id), pass_id }
+        Self {
+            id: ClaimId(id),
+            pass_id,
+        }
     }
 }
 
@@ -155,7 +158,6 @@ impl SsLogData {
         }
     }
 }
-
 
 #[wasm_bindgen]
 pub struct WasmSsDistributionClaim(SsDistributionClaim);

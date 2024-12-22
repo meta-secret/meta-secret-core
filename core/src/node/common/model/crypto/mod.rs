@@ -1,2 +1,2 @@
-pub mod channel;
 pub mod aead;
+pub mod channel;

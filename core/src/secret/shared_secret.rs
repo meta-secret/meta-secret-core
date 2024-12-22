@@ -43,7 +43,7 @@ impl From<String> for PlainText {
 
 impl From<&Base64Text> for PlainText {
     fn from(data: &Base64Text) -> Self {
-        let text = String::try_from(data).unwrap(); 
+        let text = String::try_from(data).unwrap();
         Self { text }
     }
 }

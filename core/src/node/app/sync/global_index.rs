@@ -10,14 +10,20 @@ use std::sync::Arc;
 pub struct GlobalIndexDbSync<Repo: KvLogEventRepo> {
     p_obj: Arc<PersistentObject<Repo>>,
     sender: DeviceData,
-    p_gi: ClientPersistentGlobalIndex<Repo>
+    p_gi: ClientPersistentGlobalIndex<Repo>,
 }
 
-impl <Repo: KvLogEventRepo> GlobalIndexDbSync<Repo> {
+impl<Repo: KvLogEventRepo> GlobalIndexDbSync<Repo> {
     pub fn new(p_obj: Arc<PersistentObject<Repo>>, sender: DeviceData) -> Self {
-        let p_gi = ClientPersistentGlobalIndex { p_obj: p_obj.clone() };
+        let p_gi = ClientPersistentGlobalIndex {
+            p_obj: p_obj.clone(),
+        };
 
-        Self { p_obj, sender, p_gi }
+        Self {
+            p_obj,
+            sender,
+            p_gi,
+        }
     }
 }
 
@@ -33,7 +39,6 @@ impl<Repo: KvLogEventRepo> GlobalIndexDbSync<Repo> {
 }
 
 impl<Repo: KvLogEventRepo> GlobalIndexDbSync<Repo> {
-
     pub async fn get_gi_request(&self) -> Result<GlobalIndexRequest> {
         let gi_free_id = self.p_gi.free_id().await?;
 

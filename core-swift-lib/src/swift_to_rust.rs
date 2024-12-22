@@ -75,9 +75,7 @@ fn to_c_str(str: String) -> *mut c_char {
 
 mod internal {
     use super::*;
-    use meta_secret_core::node::common::model::crypto::aead::{
-        AeadCipherText, AeadPlainText, EncryptedMessage
-    };
+    use meta_secret_core::node::common::model::crypto::aead::{AeadCipherText, AeadPlainText, EncryptedMessage};
     use meta_secret_core::node::common::model::meta_pass::MetaPasswordId;
     use meta_secret_core::secret;
     use meta_secret_core::secret::shared_secret::PlainText;

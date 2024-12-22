@@ -28,7 +28,6 @@ pub struct PersistentVault<Repo: KvLogEventRepo> {
 }
 
 impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
-
     pub async fn vault_tail(&self, user: UserData) -> Result<VaultTail> {
         let vault_log_free_id = {
             let obj_desc = VaultDescriptor::vault_log(user.vault_name());

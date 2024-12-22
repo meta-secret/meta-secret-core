@@ -26,7 +26,11 @@ use tracing::{info, instrument};
 
 #[async_trait(? Send)]
 pub trait DataSyncApi {
-    async fn replication(&self, request: SyncRequest, server_device: DeviceId) -> Result<Vec<GenericKvLogEvent>>;
+    async fn replication(
+        &self,
+        request: SyncRequest,
+        server_device: DeviceId,
+    ) -> Result<Vec<GenericKvLogEvent>>;
     async fn handle(&self, server_device: DeviceData, event: GenericKvLogEvent) -> Result<()>;
 }
 
@@ -80,7 +84,9 @@ impl DataSyncResponse {
 impl<Repo: KvLogEventRepo> DataSyncApi for ServerSyncGateway<Repo> {
     #[instrument(skip(self))]
     async fn replication(
-        &self, request: SyncRequest, server_device: DeviceId
+        &self,
+        request: SyncRequest,
+        server_device: DeviceId,
     ) -> Result<Vec<GenericKvLogEvent>> {
         let mut commit_log: Vec<GenericKvLogEvent> = vec![];
 
@@ -227,7 +233,10 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
         //sync Vault
         {
-            let vault_events = self.p_obj.find_object_events(request.tail.vault.clone()).await?;
+            let vault_events = self
+                .p_obj
+                .find_object_events(request.tail.vault.clone())
+                .await?;
             commit_log.extend(vault_events);
         }
 
@@ -245,7 +254,9 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
     }
 
     pub async fn ss_replication(
-        &self, request: SsRequest, server_device: DeviceId
+        &self,
+        request: SsRequest,
+        server_device: DeviceId,
     ) -> Result<Vec<GenericKvLogEvent>> {
         let mut commit_log = vec![];
         //sync SsLog
@@ -266,7 +277,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             for dist_id in claim.claim_db_ids() {
                 let desc = SharedSecretDescriptor::SsDistribution(dist_id.distribution_id.clone())
                     .to_obj_desc();
-                
+
                 if claim.sender.eq(&server_device) {
                     bail!("Local shares must not be sent to server");
                 };

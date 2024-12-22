@@ -26,9 +26,14 @@ pub struct LoopbackChannel {
 impl LoopbackChannel {
     pub fn build_end_2_end(self, receiver: TransportPk) -> CoreResult<End2EndChannel> {
         if self.device == receiver {
-            Err(CoreError::CommunicationChannelError { device: self.device })
+            Err(CoreError::CommunicationChannelError {
+                device: self.device,
+            })
         } else {
-            Ok(End2EndChannel { sender: self.device, receiver })
+            Ok(End2EndChannel {
+                sender: self.device,
+                receiver,
+            })
         }
     }
 
@@ -45,13 +50,13 @@ impl End2EndChannel {
 
 impl CommunicationChannel {
     pub fn build(sender: TransportPk, receiver: TransportPk) -> CommunicationChannel {
-        if sender == receiver { 
+        if sender == receiver {
             CommunicationChannel::SingleDevice(LoopbackChannel { device: sender })
         } else {
             CommunicationChannel::End2End(End2EndChannel { sender, receiver })
         }
     }
-    
+
     pub fn single_device(device: TransportPk) -> LoopbackChannel {
         LoopbackChannel { device }
     }
@@ -59,26 +64,26 @@ impl CommunicationChannel {
     pub fn inverse(self) -> Self {
         match self {
             CommunicationChannel::End2End(End2EndChannel { sender, receiver }) => {
-                CommunicationChannel::End2End(End2EndChannel  {
+                CommunicationChannel::End2End(End2EndChannel {
                     sender: receiver,
                     receiver: sender,
                 })
             }
-            CommunicationChannel::SingleDevice { .. } => self
+            CommunicationChannel::SingleDevice { .. } => self,
         }
     }
 
     pub fn sender(&self) -> &TransportPk {
         match self {
-            CommunicationChannel::End2End(End2EndChannel{ sender, .. }) => &sender,
-            CommunicationChannel::SingleDevice(LoopbackChannel{ device }) => &device,
+            CommunicationChannel::End2End(End2EndChannel { sender, .. }) => &sender,
+            CommunicationChannel::SingleDevice(LoopbackChannel { device }) => &device,
         }
     }
 
     pub fn receiver(&self) -> &TransportPk {
         match self {
-            CommunicationChannel::End2End(End2EndChannel{ receiver, .. }) => &receiver,
-            CommunicationChannel::SingleDevice(LoopbackChannel{ device }) => &device,
+            CommunicationChannel::End2End(End2EndChannel { receiver, .. }) => &receiver,
+            CommunicationChannel::SingleDevice(LoopbackChannel { device }) => &device,
         }
     }
 

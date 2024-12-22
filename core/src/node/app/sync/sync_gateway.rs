@@ -29,7 +29,6 @@ use crate::node::server::server_data_sync::{
 };
 use anyhow::Result;
 
-
 pub struct SyncGateway<Repo: KvLogEventRepo> {
     pub id: String,
     pub p_obj: Arc<PersistentObject<Repo>>,
