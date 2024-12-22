@@ -8,7 +8,7 @@ generate-cargo-chef-recipe:
     RUN cargo chef prepare --recipe-path recipe.json
     SAVE ARTIFACT recipe.json AS LOCAL recipe.json
 
-base-build:
+builder:
     FROM rust:${RUST_VERSION}-bookworm
 
     RUN rustup component add rustfmt
@@ -30,8 +30,22 @@ base-build:
     COPY recipe.json .
     RUN cargo chef cook --release --recipe-path recipe.json
 
+meta-server-builder:
+    FROM +builder
+    COPY . .
+    WORKDIR meta-server
+    RUN cargo build --release
+    SAVE ARTIFACT /target
+
+build-meta-server-image:
+    FROM debian:bookworm
+    WORKDIR /app
+    COPY +meta-server-builder/target/release/meta-server .
+    CMD ./meta-server
+    SAVE IMAGE meta-secret-server:latest
+
 wasm-build:
-    FROM +base-build
+    FROM +builder
 
     #RUN cargo install wasm-pack slooooow
     RUN curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
@@ -68,8 +82,7 @@ web-build:
     SAVE IMAGE meta-secret-web:latest
 
 app-test:
-    BUILD +base-build
-    FROM +base-build
+    FROM +builder
     COPY . .
 
     RUN --no-cache cargo test --release
