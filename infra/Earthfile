@@ -1,0 +1,5 @@
+VERSION 0.8
+FROM scratch
+
+sub-sub:
+    FROM ubuntu:latest

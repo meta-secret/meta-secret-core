@@ -21,10 +21,11 @@ RUN rustup target add x86_64-unknown-linux-gnu
 # Sccache (cargo is too slow)
 #RUN cargo install sccache@0.8.1
 ENV RUSTC_WRAPPER=sccache
-RUN wget https://github.com/mozilla/sccache/releases/download/v0.8.1/sccache-v0.8.1-x86_64-unknown-linux-musl.tar.gz \
-    && tar xzf sccache-v0.8.1-x86_64-unknown-linux-musl.tar.gz \
-    && mv sccache-v0.8.1-x86_64-unknown-linux-musl/sccache /usr/local/bin/sccache \
-    && chmod +x /usr/local/bin/sccache
+SCCACHE_VERSION="v0.9.0"
+RUN wget https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz \
+        && tar xzf sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz \
+        && mv sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache /usr/local/bin/sccache \
+        && chmod +x /usr/local/bin/sccache
 
 # Node.js and npm (with nvm)
 RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.0/install.sh | bash

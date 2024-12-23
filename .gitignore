@@ -1,25 +1,25 @@
 .idea
 *.iml
 
-target
-Cargo.lock
+meta-secret/target
+meta-secret/Cargo.lock
 
-/meta-server-serverless/.idea/
-/meta-server-serverless/node_modules/
-/meta-server-serverless/build/
-/meta-server-serverless/Cargo.lock
-/meta-server-serverless/package-lock.json
-/meta-server-serverless/target
+meta-secret/meta-server-serverless/.idea/
+meta-secret/meta-server-serverless/node_modules/
+meta-secret/meta-server-serverless/build/
+meta-secret/meta-server-serverless/Cargo.lock
+meta-secret/meta-server-serverless/package-lock.json
+meta-secret/meta-server-serverless/target
 
-/wasm/target
-/wasm/pkg
-/wasm/**/*.rs.bk
-/wasm/Cargo.lock
-/wasm/bin/
-/wasm/wasm-pack.log
+meta-secret/wasm/target
+meta-secret/wasm/pkg
+meta-secret/wasm/**/*.rs.bk
+meta-secret/wasm/Cargo.lock
+meta-secret/wasm/bin/
+meta-secret/wasm/wasm-pack.log
 
-web-cli/ui/node_modules
-web-cli/ui/dist
-web-cli/ui/pkg
+meta-secret/web-cli/ui/node_modules
+meta-secret/web-cli/ui/dist
+meta-secret/web-cli/ui/pkg
 
 .vscode
