@@ -42,7 +42,7 @@ build-meta-server-image:
     WORKDIR /app
     COPY +meta-server-builder/target/release/meta-server .
     CMD ./meta-server
-    SAVE IMAGE meta-secret-server:latest
+    SAVE IMAGE --push meta-secret-server:latest
 
 wasm-build:
     FROM +builder

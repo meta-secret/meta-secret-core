@@ -1,5 +1,8 @@
 VERSION 0.8
 FROM scratch
 
-sub-sub:
-    FROM ubuntu:latest
+kcl-config-gen:
+    FROM --platform=linux/amd64 kcllang/kcl:v0.11.0
+    RUN --no-cache kcl
+
+
