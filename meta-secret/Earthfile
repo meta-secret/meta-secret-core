@@ -63,7 +63,7 @@ wasm-build-local:
     SAVE ARTIFACT pkg AS LOCAL web-cli/ui/pkg
 
 web-build:
-    FROM node:22.7-bookworm
+    FROM node:23.5.0-bookworm
 
     ENV PROJECT_UI_DIR=web-cli/ui
 
@@ -78,7 +78,7 @@ web-build:
     COPY . .
 
     WORKDIR ${PROJECT_UI_DIR}
-    RUN npm install && npm run build
+    RUN --no-cache npm install && npm run build
     SAVE IMAGE meta-secret-web:latest
 
 app-test:

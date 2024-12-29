@@ -32,11 +32,8 @@ pub mod base64 {
         use crate::crypto::encoding::base64::Base64Text;
         use crate::crypto::encoding::Array256Bit;
         use crate::secret::shared_secret::PlainText;
-        use base64::alphabet::URL_SAFE;
-        use base64::engine::fast_portable::{FastPortable, NO_PAD};
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
         use image::EncodableLayout;
-
-        const URL_SAFE_ENGINE: FastPortable = FastPortable::from(&URL_SAFE, NO_PAD);
 
         impl From<Vec<u8>> for Base64Text {
             fn from(data: Vec<u8>) -> Self {
@@ -46,7 +43,7 @@ pub mod base64 {
 
         impl From<&[u8]> for Base64Text {
             fn from(data: &[u8]) -> Self {
-                Self(base64::encode_engine(data, &URL_SAFE_ENGINE))
+                Self(URL_SAFE_NO_PAD.encode(data))
             }
         }
 
@@ -95,14 +92,10 @@ pub mod base64 {
     }
 
     pub mod decoder {
-        use base64::alphabet::URL_SAFE;
-        use base64::engine::fast_portable::{FastPortable, NO_PAD};
-
         use crate::crypto::encoding::base64::Base64Text;
         use crate::crypto::encoding::Array256Bit;
         use crate::errors::CoreError;
-
-        const URL_SAFE_ENGINE: FastPortable = FastPortable::from(&URL_SAFE, NO_PAD);
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 
         impl TryFrom<&Base64Text> for String {
             type Error = CoreError;
@@ -119,7 +112,7 @@ pub mod base64 {
 
             fn try_from(base64: &Base64Text) -> Result<Self, Self::Error> {
                 let Base64Text(base64_text) = base64;
-                let data = base64::decode_engine(base64_text, &URL_SAFE_ENGINE)?;
+                let data = URL_SAFE_NO_PAD.decode(base64_text)?;
                 Ok(data)
             }
         }
