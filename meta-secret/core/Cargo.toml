@@ -48,9 +48,9 @@ age.workspace = true
 
 serde-big-array = "0.5.1"
 
-qrcode-generator = "4.1.9"
-rqrr = "0.6.0"
-image = "0.24.9"
+qrcode-generator = "5.0.0"
+rqrr = "0.8.0"
+image = "0.25.5"
 
 wasm-bindgen = "0.2.99"
 log = "0.4.22"
