@@ -1,14 +1,13 @@
 use crate::crypto::encoding::base64::Base64Text;
-use crate::crypto::encoding::Array256Bit;
-use crate::crypto::key_pair::{
-    CryptoBoxPublicKey, CryptoBoxSecretKey, DsaKeyPair, KeyPair, TransportDsaKeyPair,
-};
+use crate::crypto::key_pair::{DsaKeyPair, KeyPair, TransportDsaKeyPair};
 use crate::crypto::utils::U64IdUrlEnc;
 use crate::node::common::model::crypto::aead::{AeadPlainText, EncryptedMessage};
 use crate::node::common::model::crypto::channel::{CommunicationChannel, LoopbackChannel};
 use crate::node::common::model::device::common::DeviceId;
 use crate::secret::shared_secret::PlainText;
-use anyhow::Result;
+use age::x25519::{Identity, Recipient};
+use anyhow::{anyhow, bail, Result};
+use std::str::FromStr;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 pub struct KeyManager {
@@ -34,17 +33,12 @@ pub struct DsaPk(pub Base64Text);
 #[wasm_bindgen(getter_with_clone)]
 pub struct DsaSk(pub Base64Text);
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(getter_with_clone)]
 pub struct TransportPk(Base64Text);
 
 impl TransportPk {
-    pub fn as_crypto_box_pk(&self) -> Result<CryptoBoxPublicKey> {
-        let byte_array = Array256Bit::try_from(&self.0)?;
-        Ok(CryptoBoxPublicKey::from(byte_array))
-    }
-
     pub fn to_device_id(&self) -> DeviceId {
         let pk_id = U64IdUrlEnc::from(self.0.base64_str());
         DeviceId(pk_id)
@@ -53,12 +47,17 @@ impl TransportPk {
     pub fn to_loopback_channel(self) -> LoopbackChannel {
         CommunicationChannel::single_device(self)
     }
+
+    pub fn as_recipient(&self) -> Result<Recipient> {
+        let pk_base64 = &self.0;
+        let pk_str = String::try_from(pk_base64)?;
+        Recipient::from_str(pk_str.as_str()).map_err(|err_str| anyhow!(err_str))
+    }
 }
 
-impl From<&CryptoBoxPublicKey> for TransportPk {
-    fn from(pk: &CryptoBoxPublicKey) -> Self {
-        let pk_url_enc = Base64Text::from(pk.as_bytes());
-        Self(pk_url_enc)
+impl From<Base64Text> for TransportPk {
+    fn from(pk_b64: Base64Text) -> Self {
+        Self(pk_b64)
     }
 }
 
@@ -69,13 +68,20 @@ pub struct TransportSk(pub Base64Text);
 
 impl TransportSk {
     pub fn pk(&self) -> Result<TransportPk> {
-        let sk = self.as_crypto_box_sk()?;
-        Ok(TransportPk::from(&sk.public_key()))
+        let sk = self.as_age()?;
+        let pk = Base64Text::from(sk.to_public().to_string());
+        Ok(TransportPk::from(pk))
     }
 
-    pub fn as_crypto_box_sk(&self) -> Result<CryptoBoxSecretKey> {
-        let sk = CryptoBoxSecretKey::try_from(&self.0)?;
-        Ok(sk)
+    pub fn as_age(&self) -> Result<Identity> {
+        let decoded_sk = String::try_from(&self.0)?;
+        let sk_result = Identity::from_str(decoded_sk.as_str());
+        match sk_result {
+            Ok(sk) => Ok(sk),
+            Err(err_str) => {
+                bail!(err_str)
+            }
+        }
     }
 }
 

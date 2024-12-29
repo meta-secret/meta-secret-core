@@ -1,4 +1,4 @@
-use crypto_box::KEY_SIZE as KEY_SIZE_32_BYTES;
+const KEY_SIZE_32_BYTES: usize = 32;
 
 pub type Array256Bit = [u8; KEY_SIZE_32_BYTES];
 pub type Base64String = String;
@@ -217,13 +217,14 @@ pub mod serialized_key_manager {
         use crate::crypto::encoding::base64::Base64Text;
         use crate::crypto::encoding::Array256Bit;
         use crate::crypto::key_pair::{
-            CryptoBoxSecretKey, DalekKeyPair, DalekPublicKey, DalekSignature, DsaKeyPair,
-            TransportDsaKeyPair,
+            DalekKeyPair, DalekPublicKey, DalekSignature, DsaKeyPair, TransportDsaKeyPair,
         };
         use crate::crypto::keys::{
             KeyManager, SecretBox, SerializedDsaKeyPair, SerializedTransportKeyPair,
         };
         use crate::errors::CoreError;
+        use age::x25519::Identity;
+        use std::str::FromStr;
 
         impl TryFrom<&SerializedDsaKeyPair> for DsaKeyPair {
             type Error = CoreError;
@@ -261,11 +262,15 @@ pub mod serialized_key_manager {
             fn try_from(
                 serialized_transport: &SerializedTransportKeyPair,
             ) -> Result<Self, Self::Error> {
-                let sk_bytes = Array256Bit::try_from(&serialized_transport.sk.0)?;
-                let secret_key = CryptoBoxSecretKey::from(sk_bytes);
-                let key_pair = Self { secret_key };
+                let sk_bytes = String::try_from(&serialized_transport.sk.0)?;
+                let sk_res = Identity::from_str(sk_bytes.as_str());
 
-                Ok(key_pair)
+                match sk_res {
+                    Ok(secret_key) => Ok(Self { secret_key }),
+                    Err(err_str) => Err(CoreError::InvalidSizeEncryptionError {
+                        err_msg: err_str.to_string(),
+                    }),
+                }
             }
         }
 
@@ -309,36 +314,6 @@ pub mod serialized_key_manager {
 
                 assert_eq!(serialized_sign, serialized_sign_2nd_time);
                 Ok(())
-            }
-        }
-    }
-}
-
-pub mod cryptobox {
-    pub mod decoder {
-        use crypto_box::Nonce;
-
-        use crate::crypto::encoding::base64::Base64Text;
-        use crate::crypto::encoding::Array256Bit;
-        use crate::crypto::key_pair::CryptoBoxSecretKey;
-        use crate::errors::CoreError;
-
-        impl TryFrom<&Base64Text> for CryptoBoxSecretKey {
-            type Error = CoreError;
-
-            fn try_from(encoded: &Base64Text) -> Result<Self, Self::Error> {
-                let byte_array = Array256Bit::try_from(encoded)?;
-                Ok(CryptoBoxSecretKey::from(byte_array))
-            }
-        }
-
-        impl TryFrom<&Base64Text> for Nonce {
-            type Error = CoreError;
-
-            fn try_from(encoded: &Base64Text) -> Result<Self, Self::Error> {
-                let vec = Vec::try_from(encoded)?;
-                let byte_array: [u8; 24] = vec.as_slice().try_into()?;
-                Ok(Nonce::from(byte_array))
             }
         }
     }

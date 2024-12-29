@@ -38,11 +38,8 @@ pub enum CoreError {
         source: std::str::Utf8Error,
     },
 
-    #[error(transparent)]
-    EncryptionError {
-        #[from]
-        source: crypto_box::aead::Error,
-    },
+    #[error("Invalid key size")]
+    InvalidSizeEncryptionError { err_msg: String },
 
     #[error("The key manager: {key_manager_pk:?} is not a component of the secure communication channel: {channel:?}")]
     ThirdPartyEncryptionError {

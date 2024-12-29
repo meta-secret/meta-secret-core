@@ -128,12 +128,7 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
             };
 
             let dist_id = {
-                let receiver = secret_share
-                    .cipher_text()
-                    .auth_data
-                    .channel()
-                    .receiver()
-                    .to_device_id();
+                let receiver = secret_share.cipher_text().channel.receiver().to_device_id();
                 SsDistributionId {
                     pass_id: claim.id.pass_id.clone(),
                     receiver,

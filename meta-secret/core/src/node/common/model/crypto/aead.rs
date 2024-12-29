@@ -1,93 +1,33 @@
-use crypto_box::aead::{Aead, AeadCore};
-use crypto_box::{
-    aead::{OsRng as CryptoBoxOsRng, Payload},
-    ChaChaBox, Nonce,
-};
-use image::EncodableLayout;
+use age::armor::{ArmoredWriter, Format};
+use std::io::Write;
 
 use crate::crypto::encoding::base64::Base64Text;
-use crate::crypto::key_pair::CryptoBoxSecretKey;
-use crate::crypto::keys::{TransportPk, TransportSk};
-use crate::errors::CoreError;
+use crate::crypto::keys::TransportSk;
 use crate::node::common::model::crypto::channel::CommunicationChannel;
-use anyhow::Result;
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AeadAuthData {
-    associated_data: String,
-    channel: CommunicationChannel,
-    nonce: Base64Text,
-}
-
-impl AeadAuthData {
-    pub fn with_inverse_channel(&self) -> Self {
-        Self {
-            associated_data: self.associated_data.clone(),
-            channel: self.channel.clone().inverse(),
-            nonce: self.nonce.clone(),
-        }
-    }
-
-    pub fn channel(&self) -> &CommunicationChannel {
-        &self.channel
-    }
-
-    pub fn generate_nonce() -> Base64Text {
-        let nonce: Nonce = ChaChaBox::generate_nonce(&mut CryptoBoxOsRng);
-        Base64Text::from(nonce.as_slice())
-    }
-
-    pub fn receiver(&self) -> &TransportPk {
-        self.channel.receiver()
-    }
-
-    pub fn nonce(&self) -> Result<Nonce, CoreError> {
-        Nonce::try_from(&self.nonce)
-    }
-}
-
-impl From<CommunicationChannel> for AeadAuthData {
-    fn from(channel: CommunicationChannel) -> Self {
-        Self {
-            associated_data: String::from("checksum"),
-            channel,
-            nonce: AeadAuthData::generate_nonce(),
-        }
-    }
-}
+use anyhow::{bail, Result};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AeadCipherText {
     pub msg: Base64Text,
-    pub auth_data: AeadAuthData,
+    pub channel: CommunicationChannel,
 }
 
 impl AeadCipherText {
     /// Decrypt this secret message using the secret key
-    pub fn decrypt(&self, secret_key: &TransportSk) -> Result<AeadPlainText> {
-        let auth_data = &self.auth_data;
+    pub fn decrypt(&self, sk: &TransportSk) -> Result<AeadPlainText> {
+        if !self.channel.contains(&sk.pk()?) {
+            bail!("Invalid recipient")
+        }
 
-        let their_pk = &auth_data.channel().peer(&secret_key.pk()?)?;
-
-        let plain_bytes = {
-            let crypto_box_sk = &secret_key.as_crypto_box_sk()?;
-            let crypto_box = ChaChaBox::new(&their_pk.as_crypto_box_pk()?, crypto_box_sk);
-
-            let msg_data = Vec::try_from(&self.msg)?;
-            let payload = Payload {
-                msg: msg_data.as_bytes(),
-                aad: self.auth_data.associated_data.as_bytes(),
-            };
-            let nonce = auth_data.nonce()?;
-
-            crypto_box.decrypt(&nonce, payload)?
+        let decrypted_vec = {
+            let encrypted = Vec::try_from(&self.msg)?;
+            age::decrypt(&sk.as_age()?, encrypted.as_slice())?
         };
 
         let plain_text = AeadPlainText {
-            msg: Base64Text::from(plain_bytes),
-            auth_data: self.auth_data.clone(),
+            msg: Base64Text::from(decrypted_vec),
+            channel: self.channel.clone(),
         };
 
         Ok(plain_text)
@@ -98,31 +38,30 @@ impl AeadCipherText {
 #[serde(rename_all = "camelCase")]
 pub struct AeadPlainText {
     pub msg: Base64Text,
-    pub auth_data: AeadAuthData,
+    pub channel: CommunicationChannel,
 }
 
 impl AeadPlainText {
-    pub fn encrypt(&self, sk: &CryptoBoxSecretKey) -> Result<AeadCipherText> {
-        let auth_data = &self.auth_data;
-
-        let cipher_text = {
-            let msg_data = Vec::try_from(&self.msg)?;
-            let payload = Payload {
-                msg: msg_data.as_bytes(),                  // your message to encrypt
-                aad: auth_data.associated_data.as_bytes(), // not encrypted, but authenticated in tag
-            };
-            let nonce = auth_data.nonce()?;
-
-            let crypto_box = {
-                let their_pk = auth_data.receiver();
-                ChaChaBox::new(&their_pk.as_crypto_box_pk()?, sk)
-            };
-            crypto_box.encrypt(&nonce, payload)?
+    pub fn encrypt(&self) -> Result<AeadCipherText> {
+        let encryptor = {
+            let recipients = self.channel.recipients()?;
+            age::Encryptor::with_recipients(recipients.iter().map(|r| r.as_ref() as _))?
         };
 
+        let mut ciphertext = vec![];
+
+        let armored_writer = ArmoredWriter::wrap_output(&mut ciphertext, Format::AsciiArmor)?;
+        let mut writer = encryptor.wrap_output(armored_writer)?;
+
+        let plaintext = String::try_from(&self.msg)?;
+        writer.write_all(plaintext.as_bytes())?;
+        writer.finish()?.finish()?;
+
+        let msg = Base64Text::from(ciphertext);
+
         let cipher_text = AeadCipherText {
-            msg: Base64Text::from(cipher_text),
-            auth_data: self.auth_data.clone(),
+            msg,
+            channel: self.channel.clone(),
         };
 
         Ok(cipher_text)
@@ -149,44 +88,9 @@ impl EncryptedMessage {
 #[cfg(test)]
 mod test {
     use crate::crypto::key_pair::KeyPair;
-    use crate::crypto::keys::{KeyManager, SecretBox};
-    use crate::node::common::model::crypto::aead::{
-        AeadAuthData, AeadCipherText, CommunicationChannel,
-    };
+    use crate::crypto::keys::KeyManager;
+    use crate::node::common::model::crypto::aead::AeadCipherText;
     use crate::secret::shared_secret::PlainText;
-    use crypto_box::aead::{Aead, Payload};
-    use crypto_box::ChaChaBox;
-
-    #[test]
-    fn crypto_box_encryption_test() -> anyhow::Result<()> {
-        let alice_km = KeyManager::generate();
-        let bob_km = KeyManager::generate();
-
-        let channel = CommunicationChannel::build(alice_km.transport.pk(), bob_km.transport.pk());
-
-        let auth_data = AeadAuthData::from(channel);
-        let nonce = auth_data.nonce()?;
-
-        let alice_sk = {
-            let alice_secret_box = SecretBox::from(&alice_km);
-            KeyManager::try_from(&alice_secret_box)?
-                .transport
-                .secret_key
-                .clone()
-        };
-
-        let alice_box = ChaChaBox::new(&alice_sk.public_key(), &alice_sk);
-
-        let checksum = String::from("tag");
-        let payload = Payload {
-            msg: b"Top secret message we're encrypting".as_ref(),
-            aad: checksum.as_bytes(),
-        };
-
-        let _ = alice_box.encrypt(&nonce, payload)?;
-
-        Ok(())
-    }
 
     #[test]
     fn encryption_test() -> anyhow::Result<()> {

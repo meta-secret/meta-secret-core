@@ -2,12 +2,26 @@ use crate::crypto::keys::TransportPk;
 use crate::errors::CoreError;
 use crate::CoreResult;
 use anyhow::{bail, Result};
+use std::collections::HashSet;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum CommunicationChannel {
     End2End(End2EndChannel),
     SingleDevice(LoopbackChannel),
+}
+
+impl CommunicationChannel {
+    pub fn recipients(&self) -> Result<Vec<Box<dyn age::Recipient>>> {
+        let mut recipients: Vec<Box<dyn age::Recipient>> = vec![];
+
+        let pks = HashSet::from([self.sender(), self.receiver()]);
+        for pk in pks {
+            recipients.push(Box::new(pk.as_recipient()?));
+        }
+
+        Ok(recipients)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -49,7 +63,7 @@ impl End2EndChannel {
 }
 
 impl CommunicationChannel {
-    pub fn build(sender: TransportPk, receiver: TransportPk) -> CommunicationChannel {
+    pub fn end_to_end(sender: TransportPk, receiver: TransportPk) -> CommunicationChannel {
         if sender == receiver {
             CommunicationChannel::SingleDevice(LoopbackChannel { device: sender })
         } else {
@@ -99,6 +113,15 @@ impl CommunicationChannel {
                 key_manager_pk: initiator_pk.clone(),
                 channel: self.clone(),
             }),
+        }
+    }
+
+    pub fn contains(&self, pk: &TransportPk) -> bool {
+        match self {
+            CommunicationChannel::End2End(channel) => {
+                channel.sender.eq(pk) || channel.receiver.eq(pk)
+            }
+            CommunicationChannel::SingleDevice(channel) => channel.device.eq(pk),
         }
     }
 }

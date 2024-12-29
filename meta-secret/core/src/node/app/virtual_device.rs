@@ -164,12 +164,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
                         let KvLogEvent { value: share, .. } = dist_event;
 
                         // re encrypt message?
-                        let msg_receiver = share
-                            .secret_message
-                            .cipher_text()
-                            .auth_data
-                            .channel()
-                            .receiver();
+                        let msg_receiver = share.secret_message.cipher_text().channel.receiver();
                         let msg_receiver_device = msg_receiver.to_device_id();
 
                         let msg = if msg_receiver_device.eq(&claim.sender) {

@@ -38,7 +38,6 @@ tracing-attributes = "0.1.27"
 
 
 ed25519-dalek.workspace = true
-crypto_box.workspace = true
 rand.workspace = true
 getrandom.workspace = true
 sha2.workspace = true
@@ -46,6 +45,7 @@ base64.workspace = true
 hex.workspace = true
 #https://github.com/dsprenkels/sss-rs
 shamirsecretsharing.workspace = true
+age.workspace = true
 
 serde_bytes = "0.11"
 serde-big-array = "0.4"

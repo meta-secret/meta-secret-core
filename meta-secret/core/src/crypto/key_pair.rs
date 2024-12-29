@@ -1,17 +1,15 @@
-use crypto_box::aead::OsRng as CryptoBoxOsRng;
+use age::secrecy::ExposeSecret;
+use age::x25519::Identity;
 use ed25519_dalek::{SecretKey, Signer, SigningKey};
 use rand::rngs::OsRng as RandOsRng;
 use rand::RngCore;
 
 use crate::crypto::encoding::base64::Base64Text;
 use crate::crypto::keys::{DsaPk, DsaSk, TransportPk, TransportSk};
-use crate::node::common::model::crypto::aead::{AeadAuthData, AeadCipherText, AeadPlainText};
+use crate::node::common::model::crypto::aead::{AeadCipherText, AeadPlainText};
 use crate::node::common::model::crypto::channel::CommunicationChannel;
 use crate::secret::shared_secret::PlainText;
 use crate::CoreResult;
-
-pub type CryptoBoxPublicKey = crypto_box::PublicKey;
-pub type CryptoBoxSecretKey = crypto_box::SecretKey;
 
 pub type DalekKeyPair = SigningKey;
 pub type DalekPublicKey = ed25519_dalek::VerifyingKey;
@@ -71,28 +69,29 @@ impl KeyPair<DsaPk, DsaSk> for DsaKeyPair {
 }
 
 pub struct TransportDsaKeyPair {
-    pub secret_key: CryptoBoxSecretKey,
+    pub secret_key: Identity,
 }
 
 impl TransportDsaKeyPair {
     pub fn sk(&self) -> TransportSk {
-        let raw_sk = Base64Text::from(self.secret_key.as_bytes());
+        let raw_sk = Base64Text::from(self.secret_key.to_string().expose_secret());
         TransportSk(raw_sk)
     }
 }
 
 impl KeyPair<TransportPk, TransportSk> for TransportDsaKeyPair {
     fn generate() -> Self {
-        let secret_key = CryptoBoxSecretKey::generate(&mut CryptoBoxOsRng);
+        let secret_key = Identity::generate();
         Self { secret_key }
     }
 
     fn pk(&self) -> TransportPk {
-        TransportPk::from(&self.secret_key.public_key())
+        let base64 = Base64Text::from(self.secret_key.to_public().to_string());
+        TransportPk::from(base64)
     }
 
     fn sk(&self) -> TransportSk {
-        let raw_sk = Base64Text::from(self.secret_key.as_bytes());
+        let raw_sk = Base64Text::from(self.secret_key.to_string().expose_secret());
         TransportSk(raw_sk)
     }
 }
@@ -108,14 +107,14 @@ impl TransportDsaKeyPair {
         plain_text: PlainText,
         receiver_pk: &TransportPk,
     ) -> anyhow::Result<AeadCipherText> {
-        let channel = CommunicationChannel::build(self.pk(), receiver_pk.clone());
+        let channel = CommunicationChannel::end_to_end(self.pk(), receiver_pk.clone());
 
         let plain_text = AeadPlainText {
             msg: Base64Text::from(plain_text),
-            auth_data: AeadAuthData::from(channel),
+            channel,
         };
 
-        plain_text.encrypt(&self.secret_key)
+        plain_text.encrypt()
     }
 }
 
@@ -124,7 +123,7 @@ pub mod test {
     use crate::crypto::encoding::base64::Base64Text;
     use crate::crypto::key_pair::KeyPair;
     use crate::crypto::keys::KeyManager;
-    use crate::node::common::model::crypto::aead::{AeadAuthData, AeadCipherText, AeadPlainText};
+    use crate::node::common::model::crypto::aead::{AeadCipherText, AeadPlainText};
     use crate::node::common::model::crypto::channel::CommunicationChannel;
     use crate::secret::shared_secret::PlainText;
 
@@ -148,17 +147,17 @@ pub mod test {
         let alice_km = KeyManager::generate();
         let bob_km = KeyManager::generate();
 
-        let channel = CommunicationChannel::build(alice_km.transport.pk(), bob_km.transport.pk());
+        let channel =
+            CommunicationChannel::end_to_end(alice_km.transport.pk(), bob_km.transport.pk());
 
         let plain_text = {
-            let auth_data = AeadAuthData::from(channel);
             AeadPlainText {
                 msg: Base64Text::from("t0p$3cr3t"),
-                auth_data,
+                channel,
             }
         };
 
-        let cipher_text = plain_text.encrypt(&alice_km.transport.secret_key)?;
+        let cipher_text = plain_text.encrypt()?;
 
         let decrypted_text = cipher_text.decrypt(&bob_km.transport.sk())?;
         assert_eq!(plain_text, decrypted_text);
@@ -168,7 +167,7 @@ pub mod test {
 
         let cipher_text = AeadCipherText {
             msg: cipher_text.msg,
-            auth_data: cipher_text.auth_data.with_inverse_channel(),
+            channel: cipher_text.channel.inverse(),
         };
 
         let decrypted_text = cipher_text.decrypt(&bob_km.transport.sk())?;
