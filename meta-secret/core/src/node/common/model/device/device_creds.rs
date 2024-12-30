@@ -31,6 +31,7 @@ pub mod fixture {
 
     pub struct DeviceCredentialsFixture {
         pub client: DeviceCredentials,
+        pub client_b: DeviceCredentials,
         pub vd: DeviceCredentials,
         pub server: DeviceCredentials,
     }
@@ -39,6 +40,7 @@ pub mod fixture {
         pub fn generate() -> Self {
             Self {
                 client: DeviceCredentials::generate(DeviceName::client()),
+                client_b: DeviceCredentials::generate(DeviceName::client_b()),
                 vd: DeviceCredentials::generate(DeviceName::virtual_device()),
                 server: DeviceCredentials::generate(DeviceName::server()),
             }

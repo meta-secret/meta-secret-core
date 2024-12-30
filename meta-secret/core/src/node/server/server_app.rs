@@ -208,7 +208,7 @@ mod test {
     use crate::meta_tests::spec::test_spec::TestSpec;
     use crate::node::common::meta_tracing::{client_span, server_span};
     use crate::node::common::model::user::common::UserData;
-    use crate::node::common::model::vault::VaultStatus;
+    use crate::node::common::model::vault::vault::VaultStatus;
     use crate::node::db::actions::sign_up::claim::spec::SignUpClaimSpec;
     use crate::node::db::actions::sign_up::claim::test_action::SignUpClaimTestAction;
     use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;

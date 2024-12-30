@@ -1,6 +1,6 @@
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::secret::{SsDistributionClaimDbId, SsDistributionId};
-use crate::node::common::model::vault::VaultName;
+use crate::node::common::model::vault::vault::VaultName;
 use crate::node::common::model::IdString;
 use crate::node::db::descriptors::object_descriptor::{
     ObjectDescriptor, ObjectType, ToObjectDescriptor,

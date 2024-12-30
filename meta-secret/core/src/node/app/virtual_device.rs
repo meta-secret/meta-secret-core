@@ -9,7 +9,7 @@ use crate::node::common::model::device::common::DeviceName;
 use crate::node::common::model::secret::{SecretDistributionData, SecretDistributionType};
 use crate::node::common::model::user::common::{UserDataOutsiderStatus, UserMembership};
 use crate::node::common::model::user::user_creds::UserCredentials;
-use crate::node::common::model::vault::{VaultName, VaultStatus};
+use crate::node::common::model::vault::vault::{VaultName, VaultStatus};
 use crate::node::db::actions::sign_up::claim::SignUpClaim;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;

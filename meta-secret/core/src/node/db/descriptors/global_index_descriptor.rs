@@ -1,4 +1,4 @@
-use crate::node::common::model::vault::VaultName;
+use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::{
     ObjectDescriptor, ObjectName, ObjectType, ToObjectDescriptor,
 };
@@ -63,7 +63,7 @@ impl ToObjectDescriptor for GlobalIndexDescriptor {
 mod test {
     use serde_json::json;
 
-    use crate::node::common::model::vault::VaultName;
+    use crate::node::common::model::vault::vault::VaultName;
     use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
     use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 

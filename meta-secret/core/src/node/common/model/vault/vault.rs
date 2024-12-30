@@ -3,11 +3,8 @@ use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::secret::{
     SecretDistributionType, SsDistributionClaim, SsDistributionClaimId, SsLogData, WasmSsLogData,
 };
-use crate::node::common::model::user::common::{
-    UserData, UserDataMember, UserDataOutsider, UserMembership, WasmUserMembership,
-};
-use crate::secret::data_block::common::SharedSecretConfig;
-use std::collections::{HashMap, HashSet};
+use crate::node::common::model::user::common::{UserData, UserDataMember, UserDataOutsider};
+use crate::node::common::model::vault::vault_data::{VaultData, WasmVaultData};
 use std::fmt::Display;
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -37,126 +34,6 @@ impl Display for VaultName {
 impl VaultName {
     pub fn test() -> VaultName {
         VaultName::from("q")
-    }
-}
-
-/////////////////// VaultData ///////////////////
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct VaultData {
-    pub vault_name: VaultName,
-    pub users: HashMap<DeviceId, UserMembership>,
-    pub secrets: HashSet<MetaPasswordId>,
-}
-
-#[wasm_bindgen(getter_with_clone)]
-pub struct WasmVaultData(VaultData);
-#[wasm_bindgen]
-impl WasmVaultData {
-    pub fn vault_name(&self) -> VaultName {
-        self.0.vault_name.clone()
-    }
-
-    pub fn users(&self) -> Vec<WasmUserMembership> {
-        self.0
-            .users
-            .values()
-            .map(|m| WasmUserMembership::from(m.clone()))
-            .collect()
-    }
-
-    pub fn members(&self) -> Vec<UserDataMember> {
-        self.0.members()
-    }
-
-    pub fn outsiders(&self) -> Vec<UserDataOutsider> {
-        self.0.outsiders()
-    }
-
-    pub fn secrets(&self) -> Vec<MetaPasswordId> {
-        self.0.secrets.iter().map(|pass| pass.clone()).collect()
-    }
-}
-
-impl From<VaultData> for WasmVaultData {
-    fn from(vault_data: VaultData) -> Self {
-        WasmVaultData(vault_data)
-    }
-}
-
-impl From<VaultName> for VaultData {
-    fn from(vault_name: VaultName) -> Self {
-        VaultData {
-            vault_name,
-            users: HashMap::new(),
-            secrets: HashSet::new(),
-        }
-    }
-}
-
-impl VaultData {
-    pub fn sss_cfg(&self) -> SharedSecretConfig {
-        let members_num = self.members().len();
-        SharedSecretConfig::calculate(members_num)
-    }
-
-    pub fn members(&self) -> Vec<UserDataMember> {
-        let mut members: Vec<UserDataMember> = vec![];
-        self.users.values().for_each(|membership| {
-            if let UserMembership::Member(user_data_member) = membership {
-                members.push(user_data_member.clone());
-            }
-        });
-
-        members
-    }
-
-    pub fn outsiders(&self) -> Vec<UserDataOutsider> {
-        let mut outsiders: Vec<UserDataOutsider> = vec![];
-        self.users.values().for_each(|membership| {
-            if let UserMembership::Outsider(outsider) = membership {
-                outsiders.push(outsider.clone());
-            }
-        });
-
-        outsiders
-    }
-
-    pub fn add_secret(&mut self, meta_password_id: MetaPasswordId) {
-        self.secrets.insert(meta_password_id);
-    }
-
-    pub fn update_membership(&self, membership: UserMembership) -> Self {
-        let mut new_vault = self.clone();
-        new_vault.users.insert(membership.device_id(), membership);
-        new_vault
-    }
-
-    pub fn is_not_member(&self, device_id: &DeviceId) -> bool {
-        !self.is_member(device_id)
-    }
-
-    pub fn is_member(&self, device_id: &DeviceId) -> bool {
-        let maybe_user = self.users.get(device_id);
-        if let Some(UserMembership::Member(UserDataMember { user_data })) = maybe_user {
-            user_data.device.device_id.eq(&device_id)
-        } else {
-            false
-        }
-    }
-
-    pub fn membership(&self, for_user: UserData) -> UserMembership {
-        let maybe_vault_user = self.users.get(&for_user.device.device_id);
-
-        if let Some(membership) = maybe_vault_user {
-            membership.clone()
-        } else {
-            UserMembership::Outsider(UserDataOutsider::non_member(for_user))
-        }
-    }
-
-    pub fn find_user(&self, device_id: &DeviceId) -> Option<UserMembership> {
-        self.users.get(device_id).map(|user| user.clone())
     }
 }
 
@@ -303,6 +180,7 @@ impl VaultStatus {
 mod test {
     use super::*;
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::node::common::model::user::common::UserMembership;
     use anyhow::Result;
 
     #[test]
@@ -310,24 +188,20 @@ mod test {
         let fixture = FixtureRegistry::empty();
 
         let client_creds = fixture.state.user_creds.client;
-        let client_user_data = UserDataMember {
+        let client_membership = UserMembership::Member(UserDataMember {
             user_data: client_creds.user(),
-        };
-        let client_membership = UserMembership::Member(client_user_data.clone());
+        });
 
         let vd_creds = fixture.state.user_creds.vd;
-        let vd_user_data = UserDataMember {
+        let vd_membership = UserMembership::Member(UserDataMember {
             user_data: vd_creds.user(),
-        };
-        let vd_membership = UserMembership::Member(vd_user_data.clone());
+        });
 
-        let mut vault_data = VaultData::from(client_creds.vault_name.clone());
-        vault_data = vault_data
-            .update_membership(client_membership)
-            .update_membership(vd_membership);
+        let vault_data =
+            VaultData::from(client_creds.user()).update_membership(vd_membership.clone());
 
         let vault_member = VaultMember {
-            member: client_user_data.clone(),
+            member: client_membership.user_data_member(),
             vault: vault_data,
         };
 

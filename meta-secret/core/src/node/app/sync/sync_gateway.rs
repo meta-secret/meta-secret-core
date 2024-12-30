@@ -7,7 +7,7 @@ use crate::node::app::sync::global_index::GlobalIndexDbSync;
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
 use crate::node::common::model::user::common::UserId;
 use crate::node::common::model::user::user_creds::UserCredentials;
-use crate::node::common::model::vault::VaultStatus;
+use crate::node::common::model::vault::vault::VaultStatus;
 use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ToObjectDescriptor};
 use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;

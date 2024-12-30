@@ -1,7 +1,7 @@
 use crate::node::common::model::device::common::DeviceName;
 use crate::node::common::model::device::device_creds::DeviceCredentials;
 use crate::node::common::model::user::user_creds::UserCredentials;
-use crate::node::common::model::vault::VaultName;
+use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::generic_log_event::{ToGenericEvent, UnitEvent};
 use crate::node::db::events::kv_log_event::KvLogEvent;
@@ -42,7 +42,7 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
     }
 
     #[instrument(skip(self))]
-    pub async fn save_device_creds(&self, device_creds: &DeviceCredentials) -> anyhow::Result<()> {
+    async fn save_device_creds(&self, device_creds: &DeviceCredentials) -> anyhow::Result<()> {
         let creds_obj = CredentialsObject::unit(device_creds.clone());
         let generic_event = creds_obj.to_generic();
         self.p_obj.repo.save(generic_event).await?;
@@ -149,25 +149,26 @@ pub mod fixture {
                 p_obj: state.p_obj.server.clone(),
             });
 
-            let _ = client_p_creds
+            client_p_creds
                 .save_device_creds(&state.device_creds.client)
                 .await?;
-            let _ = client_p_creds
+
+            client_p_creds
                 .get_or_generate_user_creds(
                     state.device_creds.client.device.device_name.clone(),
                     state.user_creds.client.user().vault_name(),
                 )
                 .await?;
 
-            let _ = vd_p_creds.save_device_creds(&state.device_creds.vd).await?;
-            let _ = vd_p_creds
+            vd_p_creds.save_device_creds(&state.device_creds.vd).await?;
+            vd_p_creds
                 .get_or_generate_user_creds(
                     state.device_creds.vd.device.device_name.clone(),
                     state.user_creds.vd.user().vault_name(),
                 )
                 .await?;
 
-            let _ = server_p_creds
+            server_p_creds
                 .save_device_creds(&state.device_creds.server)
                 .await?;
 
@@ -210,13 +211,11 @@ pub mod spec {
 
 #[cfg(test)]
 mod test {
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::meta_tests::setup_tracing;
     use crate::node::common::model::device::common::DeviceName;
-    use crate::node::common::model::vault::VaultName;
-    use crate::node::db::objects::persistent_object::PersistentObject;
+    use crate::node::common::model::vault::vault::VaultName;
     use crate::node::db::repo::persistent_credentials::spec::CredentialsRepoSpec;
-    use crate::node::db::repo::persistent_credentials::PersistentCredentials;
-    use std::sync::Arc;
     use tracing_attributes::instrument;
 
     #[tokio::test]
@@ -224,18 +223,16 @@ mod test {
     async fn test_get_or_generate_user_creds() -> anyhow::Result<()> {
         setup_tracing()?;
 
-        let p_obj = Arc::new(PersistentObject::in_mem());
+        let base_fixture = FixtureRegistry::base().await?;
+        let creds_repo = base_fixture.state.p_creds.server_p_creds;
 
-        let creds_repo = PersistentCredentials {
-            p_obj: p_obj.clone(),
-        };
         let vault_name = VaultName::from("test");
         let _ = creds_repo
             .get_or_generate_user_creds(DeviceName::server(), vault_name)
             .await?;
 
         let spec = CredentialsRepoSpec {
-            p_obj: p_obj.clone(),
+            p_obj: creds_repo.p_obj.clone(),
         };
         spec.verify().await?;
 

@@ -4,7 +4,7 @@ use crate::node::common::model::user::common::UserData;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::node::{
-    common::model::vault::VaultStatus,
+    common::model::vault::vault::VaultStatus,
     db::{
         objects::{
             persistent_device_log::PersistentDeviceLog, persistent_object::PersistentObject,
@@ -70,7 +70,7 @@ impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
 #[cfg(test)]
 pub mod test_action {
     use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
-    use crate::node::common::model::vault::VaultStatus;
+    use crate::node::common::model::vault::vault::VaultStatus;
     use crate::node::db::actions::sign_up::claim::SignUpClaim;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_object::PersistentObject;
@@ -168,7 +168,7 @@ mod test {
 
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::meta_tests::spec::test_spec::TestSpec;
-    use crate::node::common::model::vault::VaultStatus;
+    use crate::node::common::model::vault::vault::VaultStatus;
     use crate::node::db::actions::sign_up::claim::spec::SignUpClaimSpec;
     use crate::node::db::actions::sign_up::claim::test_action::SignUpClaimTestAction;
 

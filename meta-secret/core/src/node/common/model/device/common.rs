@@ -54,6 +54,10 @@ impl DeviceName {
         DeviceName::from("client_device")
     }
 
+    pub fn client_b() -> Self {
+        DeviceName::from("client_device__b")
+    }
+
     pub fn as_str(&self) -> String {
         self.0.clone()
     }

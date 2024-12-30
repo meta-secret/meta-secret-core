@@ -4,7 +4,7 @@ use std::sync::Arc;
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
 use crate::node::common::model::secret::{SecretDistributionType, SsDistributionStatus};
 use crate::node::common::model::user::common::UserData;
-use crate::node::common::model::vault::VaultStatus;
+use crate::node::common::model::vault::vault::VaultStatus;
 use crate::node::db::actions::vault::vault_action::VaultAction;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;

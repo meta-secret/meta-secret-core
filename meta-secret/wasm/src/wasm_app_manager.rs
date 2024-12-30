@@ -11,7 +11,7 @@ use meta_secret_core::node::app::meta_app::messaging::{
     ClusterDistributionRequest, GenericAppStateRequest,
 };
 use meta_secret_core::node::common::model::meta_pass::MetaPasswordId;
-use meta_secret_core::node::common::model::vault::VaultName;
+use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::common::model::WasmApplicationState;
 
 #[wasm_bindgen]

@@ -13,7 +13,7 @@ use meta_secret_core::node::app::virtual_device::VirtualDevice;
 use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::meta_tracing::{client_span, server_span, vd_span};
 use meta_secret_core::node::common::model::device::common::DeviceName;
-use meta_secret_core::node::common::model::vault::VaultName;
+use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;

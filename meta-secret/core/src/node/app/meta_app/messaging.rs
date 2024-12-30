@@ -1,5 +1,5 @@
 use crate::node::common::model::meta_pass::MetaPasswordId;
-use crate::node::common::model::vault::VaultName;
+use crate::node::common::model::vault::vault::VaultName;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

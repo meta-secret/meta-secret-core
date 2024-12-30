@@ -1,6 +1,6 @@
 use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::user::common::{UserData, UserDataMember};
-use crate::node::common::model::vault::VaultStatus;
+use crate::node::common::model::vault::vault::VaultStatus;
 use crate::node::db::actions::sign_up::action::SignUpAction;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
@@ -114,11 +114,10 @@ impl<Repo: KvLogEventRepo> VaultAction<Repo> {
                 meta_pass_id,
             } => {
                 let user = sender.user();
-                let (vault_artifact_id, vault) = p_vault.get_vault(&user).await?;
+                let (vault_artifact_id, vault) = p_vault.get_vault(user).await?;
 
                 let vault_event = {
-                    let mut new_vault = vault.clone();
-                    new_vault.add_secret(meta_pass_id.clone());
+                    let new_vault = vault.add_secret(meta_pass_id.clone());
 
                     let event = KvLogEvent {
                         key: KvKey {

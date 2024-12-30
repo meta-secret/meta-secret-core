@@ -17,7 +17,7 @@ pub struct DeviceLinkId(Base64Text);
 
 impl From<DeviceLink> for DeviceLinkId {
     fn from(link: DeviceLink) -> Self {
-        let mut ids = vec![link.sender().as_str(), link.receiver().as_str()];
+        let mut ids = [link.sender().as_str(), link.receiver().as_str()];
         ids.sort();
 
         let ids_str = ids.join("");
@@ -171,7 +171,7 @@ mod test {
     use crate::crypto::keys::KeyManager;
 
     #[test]
-    fn test_device_link_builder() -> anyhow::Result<()> {
+    fn test_device_link_builder() -> Result<()> {
         let sender_km = KeyManager::generate();
         let receiver_km = KeyManager::generate();
 
@@ -195,6 +195,27 @@ mod test {
         let device_link = sender.clone().loopback();
 
         assert_eq!(device_link, LoopbackDeviceLink { device: sender });
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_building_device_link_id_from_device_link() -> Result<()> {
+        let sender_km = KeyManager::generate();
+        let receiver_km = KeyManager::generate();
+
+        let sender = sender_km.transport.pk().to_device_id();
+        let receiver = receiver_km.transport.pk().to_device_id();
+
+        let device_link = sender
+            .clone()
+            .loopback()
+            .peer_to_peer(receiver.clone())?
+            .to_device_link();
+
+        let link_id = DeviceLinkId::from(device_link);
+
+        println!("{:?}", link_id.id_str());
 
         Ok(())
     }

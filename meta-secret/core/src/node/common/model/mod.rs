@@ -1,5 +1,5 @@
 use crate::node::common::model::device::common::DeviceData;
-use crate::node::common::model::vault::{VaultStatus, WasmVaultStatus};
+use crate::node::common::model::vault::vault::{VaultStatus, WasmVaultStatus};
 use wasm_bindgen::prelude::wasm_bindgen;
 
 pub mod crypto;

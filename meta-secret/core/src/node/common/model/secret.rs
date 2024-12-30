@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::node::common::model::crypto::aead::EncryptedMessage;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::meta_pass::{MetaPasswordId, SALT_LENGTH};
-use crate::node::common::model::vault::VaultName;
+use crate::node::common::model::vault::vault::VaultName;
 use crate::node::common::model::IdString;
 use rand::distributions::Alphanumeric;
 use rand::Rng;

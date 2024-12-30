@@ -1,5 +1,5 @@
 use crate::node::common::model::meta_pass::MetaPasswordId;
-use crate::node::common::model::vault::VaultStatus;
+use crate::node::common::model::vault::vault::VaultStatus;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;

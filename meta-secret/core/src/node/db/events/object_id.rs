@@ -2,7 +2,7 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::crypto::utils::NextId;
 use crate::node::common::model::user::common::UserData;
-use crate::node::common::model::vault::VaultName;
+use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::{
     ObjectDescriptor, ObjectDescriptorId, ToObjectDescriptor,
 };

@@ -6,7 +6,7 @@ use crate::node::common::model::secret::{
     SecretDistributionData, SsDistributionClaimId, SsDistributionId,
 };
 use crate::node::common::model::user::user_creds::UserCredentials;
-use crate::node::common::model::vault::VaultMember;
+use crate::node::common::model::vault::vault::VaultMember;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
 use crate::node::db::events::generic_log_event::ToGenericEvent;

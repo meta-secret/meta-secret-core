@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use crate::node::common::model::user::common::{UserData, UserDataMember, UserDataOutsider};
-use crate::node::common::model::vault::{VaultData, VaultMember, VaultName, VaultStatus};
+use crate::node::common::model::vault::vault::{VaultMember, VaultName, VaultStatus};
+use crate::node::common::model::vault::vault_data::VaultData;
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};

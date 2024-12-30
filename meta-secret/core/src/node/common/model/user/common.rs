@@ -1,5 +1,5 @@
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
-use crate::node::common::model::vault::VaultName;
+use crate::node::common::model::vault::vault::VaultName;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -121,6 +121,12 @@ pub enum UserDataOutsiderStatus {
 }
 
 impl UserMembership {
+    pub fn user_data_member(&self) -> UserDataMember {
+        UserDataMember {
+            user_data: self.user_data(),
+        }
+    }
+
     pub fn user_data(&self) -> UserData {
         match self {
             UserMembership::Outsider(UserDataOutsider { user_data, .. }) => user_data.clone(),

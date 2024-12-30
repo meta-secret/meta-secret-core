@@ -63,7 +63,7 @@ impl End2EndChannel {
 }
 
 impl CommunicationChannel {
-    pub fn end_to_end(sender: TransportPk, receiver: TransportPk) -> CommunicationChannel {
+    pub fn build(sender: TransportPk, receiver: TransportPk) -> CommunicationChannel {
         if sender == receiver {
             CommunicationChannel::SingleDevice(LoopbackChannel { device: sender })
         } else {
@@ -107,8 +107,8 @@ impl CommunicationChannel {
         let receiver = self.receiver();
 
         match initiator_pk {
-            pk if pk.eq(&sender) => Ok(receiver),
-            pk if pk.eq(&receiver) => Ok(sender),
+            pk if pk.eq(sender) => Ok(receiver),
+            pk if pk.eq(receiver) => Ok(sender),
             _ => bail!(CoreError::ThirdPartyEncryptionError {
                 key_manager_pk: initiator_pk.clone(),
                 channel: self.clone(),
@@ -123,5 +123,27 @@ impl CommunicationChannel {
             }
             CommunicationChannel::SingleDevice(channel) => channel.device.eq(pk),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::crypto::key_pair::KeyPair;
+    use crate::crypto::keys::KeyManager;
+    use crate::node::common::model::crypto::channel::CommunicationChannel;
+
+    #[test]
+    fn test_channel_inverse() {
+        let alice_km = KeyManager::generate();
+        let bob_km = KeyManager::generate();
+
+        let sender = alice_km.transport.pk();
+        let receiver = bob_km.transport.pk();
+
+        let channel = CommunicationChannel::build(sender.clone(), receiver.clone());
+        let inverse_channel = channel.inverse();
+
+        assert_eq!(&receiver, inverse_channel.sender());
+        assert_eq!(&sender, inverse_channel.receiver());
     }
 }

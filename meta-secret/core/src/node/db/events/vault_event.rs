@@ -1,7 +1,9 @@
+use super::object_id::{VaultGenesisEvent, VaultUnitEvent};
 use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::user::common::{UserData, UserDataMember, UserMembership};
-use crate::node::common::model::vault::{VaultData, VaultName};
+use crate::node::common::model::vault::vault::VaultName;
+use crate::node::common::model::vault::vault_data::VaultData;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::error::LogEventCastError;
@@ -12,8 +14,6 @@ use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, GenesisId, Next, ObjectId, UnitId};
 use anyhow::{anyhow, bail};
 use std::fmt::Display;
-
-use super::object_id::{VaultGenesisEvent, VaultUnitEvent};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -27,13 +27,7 @@ pub enum VaultObject {
 impl VaultObject {
     pub fn sign_up(vault_name: VaultName, candidate: UserData) -> Self {
         let desc = VaultDescriptor::vault(vault_name.clone());
-        let vault_data = {
-            let vault = VaultData::from(vault_name.clone());
-            let membership = UserMembership::Member(UserDataMember {
-                user_data: candidate.clone(),
-            });
-            vault.update_membership(membership)
-        };
+        let vault_data = VaultData::from(candidate);
 
         let vault_id = UnitId::vault_unit(vault_name).next().next();
 

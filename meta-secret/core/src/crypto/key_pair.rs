@@ -107,7 +107,7 @@ impl TransportDsaKeyPair {
         plain_text: PlainText,
         receiver_pk: &TransportPk,
     ) -> anyhow::Result<AeadCipherText> {
-        let channel = CommunicationChannel::end_to_end(self.pk(), receiver_pk.clone());
+        let channel = CommunicationChannel::build(self.pk(), receiver_pk.clone());
 
         let plain_text = AeadPlainText {
             msg: Base64Text::from(plain_text),
@@ -147,8 +147,7 @@ pub mod test {
         let alice_km = KeyManager::generate();
         let bob_km = KeyManager::generate();
 
-        let channel =
-            CommunicationChannel::end_to_end(alice_km.transport.pk(), bob_km.transport.pk());
+        let channel = CommunicationChannel::build(alice_km.transport.pk(), bob_km.transport.pk());
 
         let plain_text = {
             AeadPlainText {

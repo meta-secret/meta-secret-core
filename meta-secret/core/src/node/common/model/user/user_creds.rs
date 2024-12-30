@@ -1,7 +1,7 @@
 use crate::node::common::model::device::common::{DeviceData, DeviceName};
 use crate::node::common::model::device::device_creds::DeviceCredentials;
 use crate::node::common::model::user::common::{UserData, UserId};
-use crate::node::common::model::vault::VaultName;
+use crate::node::common::model::vault::vault::VaultName;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -49,11 +49,12 @@ pub mod fixture {
     use crate::node::common::model::device::common::DeviceName;
     use crate::node::common::model::device::device_creds::fixture::DeviceCredentialsFixture;
     use crate::node::common::model::user::user_creds::UserCredentials;
-    use crate::node::common::model::vault::VaultName;
+    use crate::node::common::model::vault::vault::VaultName;
 
     pub struct UserCredentialsFixture {
         pub client: UserCredentials,
         pub vd: UserCredentials,
+        pub client_b: UserCredentials,
     }
 
     impl UserCredentialsFixture {
@@ -67,6 +68,7 @@ pub mod fixture {
             Self {
                 client: UserCredentials::from(device_creds.client.clone(), VaultName::test()),
                 vd: UserCredentials::from(device_creds.vd.clone(), VaultName::test()),
+                client_b: UserCredentials::from(device_creds.client_b.clone(), VaultName::test()),
             }
         }
     }
