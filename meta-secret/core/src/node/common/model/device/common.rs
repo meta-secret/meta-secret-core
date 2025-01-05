@@ -13,7 +13,7 @@ pub struct DeviceId(pub U64IdUrlEnc);
 
 #[wasm_bindgen]
 impl DeviceId {
-    pub fn as_str(&self) -> String {
+    pub fn as_str(self) -> String {
         self.0.id_str()
     }
 }
@@ -25,7 +25,7 @@ impl DeviceId {
 
 impl Display for DeviceId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_str())
+        write!(f, "{}", self.clone().as_str())
     }
 }
 

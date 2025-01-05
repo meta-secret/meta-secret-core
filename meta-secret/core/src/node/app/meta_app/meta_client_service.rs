@@ -235,7 +235,7 @@ pub mod fixture {
             let state_provider = MetaClientStateProviderFixture::generate();
             let dt_fxr = MetaClientDataTransferFixture::generate();
 
-            let sync_gateway = SyncGatewayFixture::from(&base);
+            let sync_gateway = SyncGatewayFixture::from(base);
 
             let client = Arc::new(MetaClientService {
                 data_transfer: dt_fxr.client.clone(),

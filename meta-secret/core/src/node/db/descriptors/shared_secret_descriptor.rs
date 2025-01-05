@@ -37,11 +37,11 @@ impl ObjectType for SharedSecretDescriptor {
 impl SharedSecretDescriptor {
     pub fn as_id_str(&self) -> String {
         match self {
-            SharedSecretDescriptor::SsDistribution(event_id) => event_id.id_str(),
+            SharedSecretDescriptor::SsDistribution(event_id) => event_id.clone().id_str(),
             SharedSecretDescriptor::SsLog(vault_name) => vault_name.to_string(),
             SharedSecretDescriptor::SsDeviceLog(device_id) => device_id.to_string(),
-            SharedSecretDescriptor::SsDistributionStatus(id) => id.id_str(),
-            SharedSecretDescriptor::SsClaim(db_id) => db_id.id_str(),
+            SharedSecretDescriptor::SsDistributionStatus(id) => id.clone().id_str(),
+            SharedSecretDescriptor::SsClaim(db_id) => db_id.clone().id_str(),
         }
     }
 }

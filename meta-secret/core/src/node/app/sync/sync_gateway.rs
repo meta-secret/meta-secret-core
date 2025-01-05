@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use tracing::{debug, error, info, instrument};
 
-use crate::node::app::sync::global_index::GlobalIndexDbSync;
+use crate::node::app::sync::global_index::{GlobalIndexDbSync, GlobalIndexDbSyncRequest};
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
 use crate::node::common::model::user::common::UserId;
 use crate::node::common::model::user::user_creds::UserCredentials;
@@ -239,18 +239,30 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
 
     #[instrument(skip(self))]
     async fn download_global_index(&self, sender: DeviceData) -> Result<()> {
-        let gi_sync = GlobalIndexDbSync::new(self.p_obj.clone(), sender.clone());
-
-        let sync_request = gi_sync.get_gi_request().await?.to_sync_request();
-
+        let data_sync_request = self.build_sync_request(&sender).await?;
+        
         let DataEventsResponse(new_gi_events) = self
             .server_dt
             .dt
-            .send_to_service_and_get(DataSyncRequest::SyncRequest(sync_request))
+            .send_to_service_and_get(data_sync_request)
             .await?
             .to_data()?;
 
+        let gi_sync = GlobalIndexDbSync::new(self.p_obj.clone(), sender.clone());
         gi_sync.save(new_gi_events).await
+    }
+
+    pub async fn build_sync_request(&self, sender: &DeviceData) -> Result<DataSyncRequest> {
+        let data_sync_request = {
+            let db_sync_request = GlobalIndexDbSyncRequest {
+                p_obj: self.p_obj.clone(),
+                sender: sender.clone(),
+            };
+            let gi_sync_request = db_sync_request.get().await?;
+            let sync_request = SyncRequest::from(gi_sync_request);
+            DataSyncRequest::from(sync_request)
+        };
+        Ok(data_sync_request)
     }
 
     #[instrument(skip(self))]

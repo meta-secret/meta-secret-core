@@ -80,17 +80,21 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
         info!("Started ServerApp with: {:?}", &server_creds.device);
 
         while let Ok(sync_message) = self.server_dt.dt.service_receive().await {
-            let result = self
+            let response_result = self
                 .handle_client_request(server_creds.clone(), sync_message.clone())
                 .await;
-            if let Err(err) = &result {
-                error!(
-                    "Failed handling incoming request: {:?}, with error: {}",
-                    sync_message, err
-                );
-            }
 
-            result?
+            match response_result {
+                Ok(response) => {
+                    self.server_dt.dt.send_to_client(response).await;
+                }
+                Err(err) => {
+                    error!(
+                        "Failed handling incoming request: {:?}, with error: {}",
+                        sync_message, err
+                    );
+                }
+            }
         }
 
         Ok(())
@@ -101,21 +105,18 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
         &self,
         server_creds: DeviceCredentials,
         sync_message: DataSyncRequest,
-    ) -> Result<()> {
+    ) -> Result<DataSyncResponse> {
         match sync_message {
             DataSyncRequest::SyncRequest(request) => {
                 let new_events = self
                     .handle_sync_request(request, server_creds.device.device_id.clone())
                     .await?;
-
-                self.server_dt
-                    .dt
-                    .send_to_client(DataSyncResponse::Data(DataEventsResponse(new_events)))
-                    .await;
+                Ok(DataSyncResponse::Data(DataEventsResponse(new_events)))
             }
             DataSyncRequest::Event(event) => {
                 info!("Received new event: {:?}", event);
                 self.data_sync.handle(server_creds.device, event).await?;
+                Ok(DataSyncResponse::Empty)
             }
             DataSyncRequest::ServerTailRequest(user) => {
                 let p_device_log = PersistentDeviceLog {
@@ -141,11 +142,9 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                 };
 
                 let data_sync_response = DataSyncResponse::ServerTailResponse(response);
-
-                self.server_dt.dt.send_to_client(data_sync_response).await;
+                Ok(data_sync_response)
             }
         }
-        Ok(())
     }
 
     pub async fn handle_sync_request(
@@ -215,9 +214,7 @@ mod test {
     use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
     use crate::node::db::objects::persistent_vault::PersistentVault;
     use anyhow::bail;
-    use std::thread;
     use std::time::Duration;
-    use tokio::runtime::Builder;
     use tracing::{info, Instrument};
 
     #[tokio::test]
@@ -227,7 +224,7 @@ mod test {
 
         let registry = FixtureRegistry::extended().await?;
 
-        run_server(&registry).await?;
+        init_server(&registry).await?;
 
         info!("Executing 'sign up' claim");
         let client_p_obj = registry.state.base.empty.p_obj.client.clone();
@@ -325,16 +322,9 @@ mod test {
         Ok(())
     }
 
-    async fn run_server(registry: &FixtureRegistry<ExtendedState>) -> anyhow::Result<()> {
+    async fn init_server(registry: &FixtureRegistry<ExtendedState>) -> anyhow::Result<()> {
         let server_app = registry.state.server_app.server_app.clone();
         server_app.init().await?;
-
-        thread::spawn(move || {
-            let rt = Builder::new_multi_thread().enable_all().build().unwrap();
-            rt.block_on(async { server_app.run().instrument(server_span()).await })
-        });
-        async_std::task::sleep(Duration::from_secs(1)).await;
-
         Ok(())
     }
 }

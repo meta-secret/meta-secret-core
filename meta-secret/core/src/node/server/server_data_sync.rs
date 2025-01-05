@@ -1,6 +1,8 @@
 use std::cmp::PartialEq;
 use std::sync::Arc;
 
+use derive_more::From;
+
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
 use crate::node::common::model::secret::{SecretDistributionType, SsDistributionStatus};
 use crate::node::common::model::user::common::UserData;
@@ -38,7 +40,7 @@ pub struct ServerSyncGateway<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum DataSyncRequest {
     SyncRequest(SyncRequest),
@@ -49,6 +51,7 @@ pub enum DataSyncRequest {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum DataSyncResponse {
+    Empty,
     Data(DataEventsResponse),
     ServerTailResponse(ServerTailResponse),
 }

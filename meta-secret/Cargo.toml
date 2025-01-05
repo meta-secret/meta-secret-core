@@ -20,6 +20,8 @@ exclude = [
 thiserror = "2.0.9"
 anyhow = "1.0.95"
 
+derive_more = { version = "1.0.0", features = ["full"] }
+
 # Logging and tracing
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19" }

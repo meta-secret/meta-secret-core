@@ -22,7 +22,7 @@ pub struct SsDistributionId {
 }
 
 impl IdString for SsDistributionId {
-    fn id_str(&self) -> String {
+    fn id_str(self) -> String {
         [self.receiver.as_str(), self.pass_id.id.id_str()].join("|")
     }
 }
@@ -36,7 +36,7 @@ pub struct SsDistributionClaimId {
 }
 
 impl IdString for SsDistributionClaimId {
-    fn id_str(&self) -> String {
+    fn id_str(self) -> String {
         [self.id.0.clone(), self.pass_id.id.id_str()].join("|")
     }
 }
@@ -49,7 +49,7 @@ pub struct SsDistributionClaimDbId {
 }
 
 impl IdString for SsDistributionClaimDbId {
-    fn id_str(&self) -> String {
+    fn id_str(self) -> String {
         [self.distribution_id.id_str(), self.claim_id.id_str()].join("|")
     }
 }

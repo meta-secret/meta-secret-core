@@ -33,7 +33,7 @@ impl From<DeviceLink> for DeviceLinkId {
 }
 
 impl IdString for DeviceLinkId {
-    fn id_str(&self) -> String {
+    fn id_str(self) -> String {
         String::try_from(&self.0).unwrap()
     }
 }

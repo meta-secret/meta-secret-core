@@ -2,9 +2,10 @@ use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::user::common::UserData;
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::objects::persistent_vault::VaultTail;
+use derive_more::From;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SyncRequest {
     GlobalIndex(GlobalIndexRequest),

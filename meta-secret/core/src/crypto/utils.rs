@@ -24,6 +24,47 @@ pub fn generate_hash() -> String {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(getter_with_clone)]
+pub struct Id52bit {
+    pub text: String,
+}
+
+impl Id52bit {
+    pub fn generate() -> Self {
+        let mut rng = rand::thread_rng();
+
+        let random_u64: u64 = rng.gen::<u64>() & 0xFFFFFFFFFFFF;
+
+        let hex_num = Self::hex(random_u64);
+        Self { text: hex_num }
+    }
+
+    pub fn take(&self, n: usize) -> String {
+        self.text.chars().take(n).collect::<String>()
+    }
+
+    fn hex(n: u64) -> String {
+        let hex_string = format!("{:x}", n);
+
+        // Calculate the length of each part (rounded down)
+        let part_length = hex_string.len() / 3;
+
+        // Split the string into four parts using slicing
+        let (part1, rest) = hex_string.split_at(part_length);
+        let (part2, part3) = rest.split_at(part_length);
+
+        format!("{}-{}-{}", part1, part2, part3)
+    }
+}
+
+impl IdString for Id52bit {
+    fn id_str(self) -> String {
+        self.text
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[wasm_bindgen(getter_with_clone)]
 pub struct U64IdUrlEnc {
     pub text: Base64Text,
 }
@@ -44,7 +85,7 @@ impl From<String> for U64IdUrlEnc {
 }
 
 impl IdString for U64IdUrlEnc {
-    fn id_str(&self) -> String {
+    fn id_str(self) -> String {
         self.text.base64_str()
     }
 }
@@ -76,7 +117,7 @@ impl From<String> for UuidUrlEnc {
 }
 
 impl IdString for UuidUrlEnc {
-    fn id_str(&self) -> String {
+    fn id_str(self) -> String {
         self.text.base64_str()
     }
 }

@@ -64,7 +64,7 @@ impl From<ApplicationState> for WasmApplicationState {
 }
 
 pub trait IdString {
-    fn id_str(&self) -> String;
+    fn id_str(self) -> String;
 }
 
 #[cfg(test)]
