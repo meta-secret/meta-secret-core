@@ -1,4 +1,3 @@
-use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::user::common::UserData;
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::objects::persistent_vault::VaultTail;
@@ -8,9 +7,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, PartialEq, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SyncRequest {
-    GlobalIndex(GlobalIndexRequest),
     Vault(VaultRequest),
     Ss(SsRequest),
+    ServerTail(ServerTailRequest),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -22,20 +21,13 @@ pub struct VaultRequest {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GlobalIndexRequest {
-    pub sender: DeviceData,
-    pub global_index: ObjectId,
-}
-
-impl GlobalIndexRequest {
-    pub fn to_sync_request(self) -> SyncRequest {
-        SyncRequest::GlobalIndex(self)
-    }
+pub struct SsRequest {
+    pub sender: UserData,
+    pub ss_log: ObjectId,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SsRequest {
-    pub sender: UserData,
-    pub ss_log: ObjectId,
+pub struct ServerTailRequest {
+    pub sender: UserData
 }

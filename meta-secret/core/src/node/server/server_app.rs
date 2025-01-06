@@ -5,7 +5,6 @@ use crate::node::common::model::device::common::{DeviceId, DeviceName};
 use crate::node::common::model::device::device_creds::DeviceCredentials;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::object_id::Next;
-use crate::node::db::objects::global_index::ServerPersistentGlobalIndex;
 use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -55,14 +54,6 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
 
     async fn init(&self) -> Result<DeviceCredentials> {
         let device_creds = self.get_creds().await?;
-
-        let gi_obj = ServerPersistentGlobalIndex {
-            p_obj: self.data_sync.p_obj.clone(),
-            server_device: device_creds.device.clone(),
-        };
-
-        gi_obj.init().await?;
-
         Ok(device_creds)
     }
 

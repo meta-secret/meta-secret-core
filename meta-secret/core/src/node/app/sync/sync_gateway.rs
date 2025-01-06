@@ -3,7 +3,6 @@ use std::time::Duration;
 
 use tracing::{debug, error, info, instrument};
 
-use crate::node::app::sync::global_index::{GlobalIndexDbSync, GlobalIndexDbSyncRequest};
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
 use crate::node::common::model::user::common::UserId;
 use crate::node::common::model::user::user_creds::UserCredentials;
@@ -66,8 +65,6 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             return Ok(());
         };
 
-        self.download_global_index(creds_obj.device()).await?;
-
         let CredentialsObject::DefaultUser(user_creds_event) = creds_obj else {
             //info!("No user defined");
             return Ok(());
@@ -89,15 +86,17 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
     }
 
     async fn get_tail(&self, user_creds: &UserCredentials) -> Result<ServerTailResponse> {
-        let p_vault = PersistentVault {
-            p_obj: self.p_obj.clone(),
+        let vault_status = {
+            let p_vault = PersistentVault {
+                p_obj: self.p_obj.clone(),
+            };
+            p_vault.find(user_creds.user()).await?
         };
-        let vault_status = p_vault.find(user_creds.user()).await?;
 
         let server_tail_response = self
             .server_dt
             .dt
-            .send_to_service_and_get(DataSyncRequest::ServerTailRequest(vault_status.user()))
+            .send_to_service_and_get(DataSyncRequest::SyncRequest(vault_status.user()))
             .await?
             .to_server_tail()?;
         Ok(server_tail_response)
@@ -105,17 +104,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
 
     #[instrument(skip_all)]
     async fn sync_vault(&self, user_creds: &UserCredentials) -> Result<()> {
-        let vault_sync_request = {
-            let sender = user_creds.user();
-
-            let p_vault = PersistentVault {
-                p_obj: self.p_obj.clone(),
-            };
-
-            let tail = p_vault.vault_tail(user_creds.user()).await?;
-
-            SyncRequest::Vault(VaultRequest { sender, tail })
-        };
+        let vault_sync_request = self.get_vault_request(user_creds).await?;
 
         let DataEventsResponse(data_sync_events) = self
             .server_dt
@@ -132,6 +121,21 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             self.p_obj.repo.save(new_event).await?;
         }
         Ok(())
+    }
+
+    async fn get_vault_request(&self, user_creds: &UserCredentials) -> Result<SyncRequest, Error> {
+        let vault_sync_request = {
+            let sender = user_creds.user();
+
+            let p_vault = PersistentVault {
+                p_obj: self.p_obj.clone(),
+            };
+
+            let tail = p_vault.vault_tail(user_creds.user()).await?;
+
+            SyncRequest::Vault(VaultRequest { sender, tail })
+        };
+        Ok(vault_sync_request)
     }
 
     async fn sync_ss_device_log(
@@ -235,34 +239,6 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         }
 
         Ok(())
-    }
-
-    #[instrument(skip(self))]
-    async fn download_global_index(&self, sender: DeviceData) -> Result<()> {
-        let data_sync_request = self.build_sync_request(&sender).await?;
-        
-        let DataEventsResponse(new_gi_events) = self
-            .server_dt
-            .dt
-            .send_to_service_and_get(data_sync_request)
-            .await?
-            .to_data()?;
-
-        let gi_sync = GlobalIndexDbSync::new(self.p_obj.clone(), sender.clone());
-        gi_sync.save(new_gi_events).await
-    }
-
-    pub async fn build_sync_request(&self, sender: &DeviceData) -> Result<DataSyncRequest> {
-        let data_sync_request = {
-            let db_sync_request = GlobalIndexDbSyncRequest {
-                p_obj: self.p_obj.clone(),
-                sender: sender.clone(),
-            };
-            let gi_sync_request = db_sync_request.get().await?;
-            let sync_request = SyncRequest::from(gi_sync_request);
-            DataSyncRequest::from(sync_request)
-        };
-        Ok(data_sync_request)
     }
 
     #[instrument(skip(self))]

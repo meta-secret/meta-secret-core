@@ -44,7 +44,6 @@ pub struct ServerSyncGateway<Repo: KvLogEventRepo> {
 #[serde(rename_all = "camelCase")]
 pub enum DataSyncRequest {
     SyncRequest(SyncRequest),
-    ServerTailRequest(UserData),
     Event(GenericKvLogEvent),
 }
 
@@ -94,13 +93,6 @@ impl<Repo: KvLogEventRepo> DataSyncApi for ServerSyncGateway<Repo> {
         let mut commit_log: Vec<GenericKvLogEvent> = vec![];
 
         match &request {
-            SyncRequest::GlobalIndex(gi_request) => {
-                let gi_events = self
-                    .global_index_replication(gi_request.global_index.clone())
-                    .await?;
-                commit_log.extend(gi_events);
-            }
-
             SyncRequest::Vault(vault_request) => {
                 let p_vault = PersistentVault {
                     p_obj: self.p_obj.clone(),
@@ -214,12 +206,6 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         };
         action.do_processing(vault_action).await?;
         Ok(())
-    }
-
-    #[instrument(skip_all)]
-    async fn global_index_replication(&self, gi_id: ObjectId) -> Result<Vec<GenericKvLogEvent>> {
-        let events = self.p_obj.find_object_events(gi_id).await?;
-        Ok(events)
     }
 
     pub async fn vault_replication(&self, request: VaultRequest) -> Result<Vec<GenericKvLogEvent>> {

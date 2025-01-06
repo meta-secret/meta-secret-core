@@ -9,7 +9,6 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, ObjectId};
 use crate::node::db::events::vault::vault_log_event::VaultLogObject;
 use crate::node::db::events::vault_event::{VaultActionEvent, VaultObject};
-use crate::node::db::objects::global_index::ClientPersistentGlobalIndex;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
@@ -86,31 +85,17 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
 
     #[instrument(skip_all)]
     pub async fn find(&self, user: UserData) -> Result<VaultStatus> {
-        let p_gi = ClientPersistentGlobalIndex {
-            p_obj: self.p_obj.clone(),
-        };
-
-        let vault_exists = p_gi.exists(user.vault_name()).await?;
-        if !vault_exists {
-            return Ok(VaultStatus::NotExists(user));
-        }
-
         let maybe_vault_event = {
             let vault_desc = VaultDescriptor::vault(user.vault_name());
             self.p_obj.find_tail_event(vault_desc).await?
         };
 
-        let gi_and_vault = (vault_exists, maybe_vault_event);
+        let gi_and_vault = maybe_vault_event;
         match gi_and_vault {
-            (false, Some(_)) => {
-                bail!("Invalid state. Vault not in global index")
-            }
-            //Vault is not in global index, hence vault not exists
-            (false, None) => Ok(VaultStatus::NotExists(user)),
+            None => Ok(VaultStatus::NotExists(user)),
             //There is no vault table on local machine, but it is present in global index,
             //which means, current user is outsider
-            (true, None) => Ok(VaultStatus::Outsider(UserDataOutsider::non_member(user))),
-            (true, Some(vault_event)) => {
+            Some(vault_event) => {
                 let vault_obj = vault_event.vault()?;
 
                 match vault_obj {

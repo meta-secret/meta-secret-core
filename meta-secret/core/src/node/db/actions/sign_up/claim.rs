@@ -106,7 +106,6 @@ pub mod spec {
     use crate::meta_tests::spec::test_spec::TestSpec;
     use crate::node::common::model::device::common::DeviceData;
     use crate::node::common::model::user::common::UserData;
-    use crate::node::db::objects::global_index::spec::GlobalIndexSpec;
     use crate::node::db::objects::persistent_device_log::spec::DeviceLogSpec;
     use crate::node::db::objects::persistent_object::PersistentObject;
     use crate::node::db::objects::persistent_shared_secret::spec::SsDeviceLogSpec;
@@ -128,12 +127,6 @@ pub mod spec {
         #[instrument(skip(self))]
         async fn verify(&self) -> Result<()> {
             info!("SignUp claim spec");
-
-            let gi_spec = GlobalIndexSpec {
-                repo: self.p_obj.repo.clone(),
-                server_device: self.server_device.clone(),
-            };
-            gi_spec.verify().await?;
 
             let device_log_spec = DeviceLogSpec {
                 p_obj: self.p_obj.clone(),
