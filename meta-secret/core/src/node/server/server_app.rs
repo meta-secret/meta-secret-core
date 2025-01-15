@@ -159,7 +159,7 @@ mod test {
 
     #[tokio::test]
     async fn test_sign_up_one_device() -> anyhow::Result<()> {
-        setup_tracing()?;
+        //setup_tracing()?;
 
         let registry = FixtureRegistry::extended().await?;
 
