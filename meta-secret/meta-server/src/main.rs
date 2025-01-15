@@ -6,14 +6,13 @@ use axum::{
 use http::{StatusCode, Uri};
 use serde_derive::{Deserialize, Serialize};
 
-use meta_secret_core::node::server::server_data_sync::{
-    DataSyncRequest, DataSyncResponse, ServerTailResponse,
-};
+use meta_secret_core::node::server::server_data_sync::{DataSyncResponse, ServerTailResponse};
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::{info, Level};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
+use meta_secret_core::node::server::request::SyncRequest;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct MetaServerAppState {}
@@ -77,7 +76,7 @@ async fn not_found_handler(uri: Uri) -> (StatusCode, Json<ErrorResponse>) {
 
 pub async fn event_processing(
     State(state): State<MetaServerAppState>,
-    Json(msg_request): Json<DataSyncRequest>,
+    Json(msg_request): Json<SyncRequest>,
 ) -> Result<Json<DataSyncResponse>, StatusCode> {
     info!("Event processing");
 

@@ -5,6 +5,7 @@ use tracing::{info, instrument};
 
 use crate::node::app::meta_app::meta_client_service::MetaClientAccessProxy;
 use crate::node::app::sync::sync_gateway::SyncGateway;
+use crate::node::app::sync::sync_protocol::SyncProtocol;
 use crate::node::common::model::device::common::DeviceName;
 use crate::node::common::model::secret::{SecretDistributionData, SecretDistributionType};
 use crate::node::common::model::user::common::{UserDataOutsiderStatus, UserMembership};
@@ -25,29 +26,26 @@ use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
-use crate::node::server::server_app::ServerDataTransfer;
+use anyhow::Result;
 
-pub struct VirtualDevice<Repo: KvLogEventRepo> {
+pub struct VirtualDevice<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     p_obj: Arc<PersistentObject<Repo>>,
     pub meta_client_proxy: Arc<MetaClientAccessProxy>,
-    pub server_dt: Arc<ServerDataTransfer>,
-    gateway: Arc<SyncGateway<Repo>>,
+    gateway: Arc<SyncGateway<Repo, Sync>>,
 }
 
-impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
+impl<Repo: KvLogEventRepo, Sync: SyncProtocol> VirtualDevice<Repo, Sync> {
     #[instrument(skip_all)]
     pub async fn init(
         persistent_object: Arc<PersistentObject<Repo>>,
         meta_client_access_proxy: Arc<MetaClientAccessProxy>,
-        server_dt: Arc<ServerDataTransfer>,
-        gateway: Arc<SyncGateway<Repo>>,
-    ) -> anyhow::Result<VirtualDevice<Repo>> {
+        gateway: Arc<SyncGateway<Repo, Sync>>,
+    ) -> Result<VirtualDevice<Repo, Sync>> {
         info!("Initialize virtual device event handler");
 
         let virtual_device = Self {
             p_obj: persistent_object,
             meta_client_proxy: meta_client_access_proxy.clone(),
-            server_dt,
             gateway,
         };
 
@@ -55,7 +53,7 @@ impl<Repo: KvLogEventRepo> VirtualDevice<Repo> {
     }
 
     #[instrument(skip_all)]
-    pub async fn run(&self) -> anyhow::Result<()> {
+    pub async fn run(&self) -> Result<()> {
         info!("Run virtual device event handler");
 
         let creds_repo = PersistentCredentials {

@@ -1,5 +1,5 @@
 # https://docs.docker.com/develop/develop-images/multistage-build/
-FROM rust:1.80.1 AS build
+FROM rust:1.84.0-bookworm AS build
 COPY ./ /build
 WORKDIR /build
 RUN cargo test

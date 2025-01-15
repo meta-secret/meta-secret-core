@@ -189,12 +189,12 @@ pub mod spec {
     use crate::node::db::repo::generic_db::KvLogEventRepo;
     use std::sync::Arc;
 
-    pub struct CredentialsRepoSpec<Repo: KvLogEventRepo> {
+    pub struct PersistentCredentialsSpec<Repo: KvLogEventRepo> {
         pub p_obj: Arc<PersistentObject<Repo>>,
     }
 
-    impl CredentialsRepoSpec<InMemKvLogEventRepo> {
-        pub async fn verify(&self) -> anyhow::Result<()> {
+    impl PersistentCredentialsSpec<InMemKvLogEventRepo> {
+        pub async fn verify_user_creds(&self) -> anyhow::Result<()> {
             let creds_desc = ObjectDescriptor::CredsIndex;
 
             let events = self
@@ -203,6 +203,19 @@ pub mod spec {
                 .await?;
 
             assert_eq!(events.len(), 2);
+
+            Ok(())
+        }
+
+        pub async fn verify_device_creds(&self) -> anyhow::Result<()> {
+            let creds_desc = ObjectDescriptor::CredsIndex;
+
+            let events = self
+                .p_obj
+                .get_object_events_from_beginning(creds_desc)
+                .await?;
+
+            assert_eq!(events.len(), 1);
 
             Ok(())
         }
@@ -215,7 +228,7 @@ mod test {
     use crate::meta_tests::setup_tracing;
     use crate::node::common::model::device::common::DeviceName;
     use crate::node::common::model::vault::vault::VaultName;
-    use crate::node::db::repo::persistent_credentials::spec::CredentialsRepoSpec;
+    use crate::node::db::repo::persistent_credentials::spec::PersistentCredentialsSpec;
     use tracing_attributes::instrument;
 
     #[tokio::test]
@@ -226,15 +239,15 @@ mod test {
         let base_fixture = FixtureRegistry::base().await?;
         let creds_repo = base_fixture.state.p_creds.server_p_creds;
 
-        let vault_name = VaultName::from("test");
+        let vault_name = VaultName::test();
         let _ = creds_repo
             .get_or_generate_user_creds(DeviceName::server(), vault_name)
             .await?;
 
-        let spec = CredentialsRepoSpec {
+        let spec = PersistentCredentialsSpec {
             p_obj: creds_repo.p_obj.clone(),
         };
-        spec.verify().await?;
+        spec.verify_user_creds().await?;
 
         Ok(())
     }

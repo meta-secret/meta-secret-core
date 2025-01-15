@@ -5,6 +5,7 @@ use tracing::{error, info, instrument};
 
 use crate::node::app::meta_app::messaging::{GenericAppStateRequest, GenericAppStateResponse};
 use crate::node::app::sync::sync_gateway::SyncGateway;
+use crate::node::app::sync::sync_protocol::SyncProtocol;
 use crate::node::common::actor::ServiceState;
 use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::common::model::device::common::DeviceName;
@@ -20,17 +21,17 @@ use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::secret::MetaDistributor;
 
-pub struct MetaClientService<Repo: KvLogEventRepo> {
-    pub data_transfer: Arc<MetaClientDataTransfer>,
-    pub sync_gateway: Arc<SyncGateway<Repo>>,
-    pub state_provider: Arc<MetaClientStateProvider>,
+pub(crate) struct MetaClientService<Repo: KvLogEventRepo, Sync: SyncProtocol> {
+    data_transfer: Arc<MetaClientDataTransfer>,
+    sync_gateway: Arc<SyncGateway<Repo, Sync>>,
+    state_provider: Arc<MetaClientStateProvider>,
 }
 
 pub struct MetaClientDataTransfer {
     pub dt: MpscDataTransfer<GenericAppStateRequest, GenericAppStateResponse>,
 }
 
-impl<Repo: KvLogEventRepo> MetaClientService<Repo> {
+impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
     #[instrument(skip_all)]
     pub async fn run(&self) -> anyhow::Result<()> {
         info!("Run meta_app service");
@@ -210,7 +211,7 @@ impl MetaClientStateProvider {
 
 #[cfg(test)]
 pub mod fixture {
-    use crate::meta_tests::fixture_util::fixture::states::BaseState;
+    use crate::meta_tests::fixture_util::fixture::states::{BaseState, ExtendedState};
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::app::meta_app::meta_client_service::{
         MetaClientDataTransfer, MetaClientService, MetaClientStateProvider,
@@ -219,10 +220,12 @@ pub mod fixture {
     use crate::node::common::data_transfer::MpscDataTransfer;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use std::sync::Arc;
+    use crate::node::app::sync::sync_protocol::EmbeddedSyncProtocol;
+    use crate::node::app::sync::sync_protocol::fixture::SyncProtocolFixture;
 
     pub struct MetaClientServiceFixture {
-        pub client: Arc<MetaClientService<InMemKvLogEventRepo>>,
-        pub vd: Arc<MetaClientService<InMemKvLogEventRepo>>,
+        pub client: Arc<MetaClientService<InMemKvLogEventRepo, EmbeddedSyncProtocol>>,
+        pub vd: Arc<MetaClientService<InMemKvLogEventRepo, EmbeddedSyncProtocol>>,
 
         pub state_provider: MetaClientStateProviderFixture,
         pub data_transfer: MetaClientDataTransferFixture,
@@ -231,11 +234,11 @@ pub mod fixture {
     }
 
     impl MetaClientServiceFixture {
-        pub fn from(base: &FixtureRegistry<BaseState>) -> Self {
+        pub fn from(base: &BaseState, sync: &SyncProtocolFixture) -> Self {
             let state_provider = MetaClientStateProviderFixture::generate();
             let dt_fxr = MetaClientDataTransferFixture::generate();
 
-            let sync_gateway = SyncGatewayFixture::from(base);
+            let sync_gateway = SyncGatewayFixture::from(&base.empty, sync);
 
             let client = Arc::new(MetaClientService {
                 data_transfer: dt_fxr.client.clone(),
