@@ -5,7 +5,7 @@
   <h4 align="center"> <a href="https://apps.apple.com/app/metasecret/id1644286751">Meta Secret Mobile Application</a></h4>
   
   <h5 align="center"> <a href="https://meta-secret.org">Web site</a> </h5>
-  <h5 align="center"> <a href="https://meta-secret.github.io">Shamir Secret Sharing web app</a> </h5>
+  <h5 align="center"> <a href="https://meta-secret.github.io">Meta Secret Web App</a> </h5>
 </p>
 
 ### MetaSecret Application 
