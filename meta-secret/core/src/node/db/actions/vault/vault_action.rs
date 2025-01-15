@@ -8,7 +8,6 @@ use crate::node::db::events::generic_log_event::ToGenericEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{Next, ObjectId};
 use crate::node::db::events::vault_event::{VaultActionEvent, VaultMembershipObject, VaultObject};
-use crate::node::db::objects::global_index::ServerPersistentGlobalIndex;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
@@ -178,13 +177,6 @@ impl<Repo: KvLogEventRepo> CreateVaultAction<Repo> {
         for sign_up_event in sign_up_events {
             self.p_obj.repo.save(sign_up_event).await?;
         }
-
-        let p_gi = ServerPersistentGlobalIndex {
-            p_obj: self.p_obj.clone(),
-            server_device: self.server_device.clone(),
-        };
-        p_gi.update(candidate.vault_name()).await?;
-
         anyhow::Ok(())
     }
 }

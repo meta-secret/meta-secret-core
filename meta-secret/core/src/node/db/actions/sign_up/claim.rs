@@ -104,9 +104,7 @@ pub mod test_action {
 #[cfg(test)]
 pub mod spec {
     use crate::meta_tests::spec::test_spec::TestSpec;
-    use crate::node::common::model::device::common::DeviceData;
     use crate::node::common::model::user::common::UserData;
-    use crate::node::db::objects::global_index::spec::GlobalIndexSpec;
     use crate::node::db::objects::persistent_device_log::spec::DeviceLogSpec;
     use crate::node::db::objects::persistent_object::PersistentObject;
     use crate::node::db::objects::persistent_shared_secret::spec::SsDeviceLogSpec;
@@ -116,11 +114,11 @@ pub mod spec {
     use log::info;
     use std::sync::Arc;
     use tracing_attributes::instrument;
+    use crate::node::db::objects::persistent_vault::spec::VaultLogSpec;
 
     pub struct SignUpClaimSpec<Repo: KvLogEventRepo> {
         pub p_obj: Arc<PersistentObject<Repo>>,
-        pub user: UserData,
-        pub server_device: DeviceData,
+        pub user: UserData
     }
 
     #[async_trait(? Send)]
@@ -128,12 +126,6 @@ pub mod spec {
         #[instrument(skip(self))]
         async fn verify(&self) -> Result<()> {
             info!("SignUp claim spec");
-
-            let gi_spec = GlobalIndexSpec {
-                repo: self.p_obj.repo.clone(),
-                server_device: self.server_device.clone(),
-            };
-            gi_spec.verify().await?;
 
             let device_log_spec = DeviceLogSpec {
                 p_obj: self.p_obj.clone(),
@@ -143,12 +135,12 @@ pub mod spec {
             device_log_spec.check_initialization().await?;
             device_log_spec.check_sign_up_request().await?;
 
-            /*let vault_log_spec = VaultLogSpec {
+            let vault_log_spec = VaultLogSpec {
                 p_obj: self.p_obj.clone(),
                 user: self.user.clone(),
-            };*/
+            };
 
-            //vault_log_spec.verify_initial_state().await?;
+            vault_log_spec.verify_initial_state().await?;
 
             let ss_device_log_spec = SsDeviceLogSpec {
                 p_obj: self.p_obj.clone(),
@@ -191,7 +183,6 @@ mod test {
         let claim_spec = SignUpClaimSpec {
             p_obj,
             user: outsider.user_data,
-            server_device: registry.state.base.empty.device_creds.server.device,
         };
         claim_spec.verify().await?;
 

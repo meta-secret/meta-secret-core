@@ -1,11 +1,8 @@
 use std::cmp::PartialEq;
 use std::sync::Arc;
 
-use derive_more::From;
-
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
 use crate::node::common::model::secret::{SecretDistributionType, SsDistributionStatus};
-use crate::node::common::model::user::common::UserData;
 use crate::node::common::model::vault::vault::VaultStatus;
 use crate::node::db::actions::vault::vault_action::VaultAction;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
@@ -20,7 +17,7 @@ use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
-use crate::node::server::request::{SsRequest, SyncRequest, VaultRequest};
+use crate::node::server::request::{SsRequest, VaultRequest};
 use anyhow::Result;
 use anyhow::{anyhow, bail, Ok};
 use async_trait::async_trait;
@@ -28,24 +25,22 @@ use tracing::{info, instrument};
 
 #[async_trait(? Send)]
 pub trait DataSyncApi {
-    async fn replication(
+    async fn vault_replication(
         &self,
-        request: SyncRequest,
+        vault_request: VaultRequest,
+    ) -> Result<Vec<GenericKvLogEvent>>;
+
+    async fn ss_replication(
+        &self,
+        ss_request: SsRequest,
         server_device: DeviceId,
     ) -> Result<Vec<GenericKvLogEvent>>;
+
     async fn handle(&self, server_device: DeviceData, event: GenericKvLogEvent) -> Result<()>;
 }
 
 pub struct ServerSyncGateway<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
-}
-
-#[derive(Clone, Debug, PartialEq, From, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum DataSyncRequest {
-    SyncRequest(SyncRequest),
-    ServerTailRequest(UserData),
-    Event(GenericKvLogEvent),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -86,46 +81,41 @@ impl DataSyncResponse {
 #[async_trait(? Send)]
 impl<Repo: KvLogEventRepo> DataSyncApi for ServerSyncGateway<Repo> {
     #[instrument(skip(self))]
-    async fn replication(
+    async fn vault_replication(
         &self,
-        request: SyncRequest,
+        vault_request: VaultRequest,
+    ) -> Result<Vec<GenericKvLogEvent>> {
+        let mut commit_log: Vec<GenericKvLogEvent> = vec![];
+        let p_vault = PersistentVault {
+            p_obj: self.p_obj.clone(),
+        };
+
+        let vault_status = p_vault.find(vault_request.sender.clone()).await?;
+        if let VaultStatus::Member { .. } = vault_status {
+            let vault_events = self.vault_replication(vault_request.clone()).await?;
+            commit_log.extend(vault_events);
+        }
+
+        Ok(commit_log)
+    }
+
+    async fn ss_replication(
+        &self,
+        ss_request: SsRequest,
         server_device: DeviceId,
     ) -> Result<Vec<GenericKvLogEvent>> {
         let mut commit_log: Vec<GenericKvLogEvent> = vec![];
 
-        match &request {
-            SyncRequest::GlobalIndex(gi_request) => {
-                let gi_events = self
-                    .global_index_replication(gi_request.global_index.clone())
-                    .await?;
-                commit_log.extend(gi_events);
-            }
+        let p_vault = PersistentVault {
+            p_obj: self.p_obj.clone(),
+        };
 
-            SyncRequest::Vault(vault_request) => {
-                let p_vault = PersistentVault {
-                    p_obj: self.p_obj.clone(),
-                };
-
-                let vault_status = p_vault.find(vault_request.sender.clone()).await?;
-                if let VaultStatus::Member { .. } = vault_status {
-                    let vault_events = self.vault_replication(vault_request.clone()).await?;
-                    commit_log.extend(vault_events);
-                }
-            }
-
-            SyncRequest::Ss(ss_request) => {
-                let p_vault = PersistentVault {
-                    p_obj: self.p_obj.clone(),
-                };
-
-                let vault_status = p_vault.find(ss_request.sender.clone()).await?;
-                if let VaultStatus::Member { .. } = vault_status {
-                    let vault_events = self
-                        .ss_replication(ss_request.clone(), server_device)
-                        .await?;
-                    commit_log.extend(vault_events);
-                }
-            }
+        let vault_status = p_vault.find(ss_request.sender.clone()).await?;
+        if let VaultStatus::Member { .. } = vault_status {
+            let vault_events = self
+                .ss_replication(ss_request.clone(), server_device)
+                .await?;
+            commit_log.extend(vault_events);
         }
 
         Ok(commit_log)
@@ -214,12 +204,6 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         };
         action.do_processing(vault_action).await?;
         Ok(())
-    }
-
-    #[instrument(skip_all)]
-    async fn global_index_replication(&self, gi_id: ObjectId) -> Result<Vec<GenericKvLogEvent>> {
-        let events = self.p_obj.find_object_events(gi_id).await?;
-        Ok(events)
     }
 
     pub async fn vault_replication(&self, request: VaultRequest) -> Result<Vec<GenericKvLogEvent>> {

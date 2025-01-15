@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use tracing::{debug, error, info, instrument};
 
-use crate::node::app::sync::global_index::{GlobalIndexDbSync, GlobalIndexDbSyncRequest};
-use crate::node::common::model::device::common::{DeviceData, DeviceId};
+use crate::node::app::sync::sync_protocol::SyncProtocol;
+use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::user::common::UserId;
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::vault::VaultStatus;
@@ -22,20 +22,19 @@ use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
-use crate::node::server::request::{SsRequest, SyncRequest, VaultRequest};
-use crate::node::server::server_app::ServerDataTransfer;
-use crate::node::server::server_data_sync::{
-    DataEventsResponse, DataSyncRequest, ServerTailResponse,
+use crate::node::server::request::{
+    ReadSyncRequest, ServerTailRequest, SsRequest, SyncRequest, VaultRequest, WriteSyncRequest,
 };
+use crate::node::server::server_data_sync::{DataEventsResponse, ServerTailResponse};
 use anyhow::Result;
 
-pub struct SyncGateway<Repo: KvLogEventRepo> {
+pub(crate) struct SyncGateway<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub id: String,
     pub p_obj: Arc<PersistentObject<Repo>>,
-    pub server_dt: Arc<ServerDataTransfer>,
+    pub sync: Arc<Sync>,
 }
 
-impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
+impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
     #[instrument(skip_all)]
     pub async fn run(&self) {
         info!("Run sync gateway");
@@ -66,63 +65,60 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             return Ok(());
         };
 
-        self.download_global_index(creds_obj.device()).await?;
-
         let CredentialsObject::DefaultUser(user_creds_event) = creds_obj else {
-            //info!("No user defined");
             return Ok(());
         };
 
         let user_creds = user_creds_event.value;
 
-        self.sync_vault(&user_creds).await?;
+        let vault_sync_request = self.get_vault_request(&user_creds).await?;
 
-        let server_tail_response = self.get_tail(&user_creds).await?;
+        let server_tail = self.get_server_tail(&user_creds).await?;
 
-        self.sync_device_log(&server_tail_response, user_creds.user_id())
+        self.sync_vault(vault_sync_request).await?;
+        self.sync_device_log(&server_tail, user_creds.user_id())
             .await?;
 
-        self.sync_shared_secrets(&server_tail_response, &user_creds)
-            .await?;
+        self.sync_shared_secrets(&server_tail, &user_creds).await?;
 
         Ok(())
     }
 
-    async fn get_tail(&self, user_creds: &UserCredentials) -> Result<ServerTailResponse> {
-        let p_vault = PersistentVault {
-            p_obj: self.p_obj.clone(),
+    async fn get_server_tail(&self, user_creds: &UserCredentials) -> Result<ServerTailResponse> {
+        let server_tail = {
+            let server_tail_sync_request = self.get_server_tail_request(&user_creds).await?;
+            self.get_tail(server_tail_sync_request).await?
         };
-        let vault_status = p_vault.find(user_creds.user()).await?;
+        Ok(server_tail)
+    }
 
+    async fn get_tail(&self, server_tail_sync_request: SyncRequest) -> Result<ServerTailResponse> {
         let server_tail_response = self
-            .server_dt
-            .dt
-            .send_to_service_and_get(DataSyncRequest::ServerTailRequest(vault_status.user()))
+            .sync
+            .send(server_tail_sync_request)
             .await?
             .to_server_tail()?;
+
         Ok(server_tail_response)
     }
 
-    #[instrument(skip_all)]
-    async fn sync_vault(&self, user_creds: &UserCredentials) -> Result<()> {
-        let vault_sync_request = {
-            let sender = user_creds.user();
-
+    async fn get_server_tail_request(&self, user_creds: &UserCredentials) -> Result<SyncRequest> {
+        let sync_request = {
             let p_vault = PersistentVault {
                 p_obj: self.p_obj.clone(),
             };
-
-            let tail = p_vault.vault_tail(user_creds.user()).await?;
-
-            SyncRequest::Vault(VaultRequest { sender, tail })
+            let vault_status = p_vault.find(user_creds.user()).await?;
+            SyncRequest::Read(ReadSyncRequest::ServerTail(ServerTailRequest {
+                sender: vault_status.user(),
+            }))
         };
+        Ok(sync_request)
+    }
 
-        let DataEventsResponse(data_sync_events) = self
-            .server_dt
-            .dt
-            .send_to_service_and_get(DataSyncRequest::SyncRequest(vault_sync_request))
-            .await?
-            .to_data()?;
+    #[instrument(skip_all)]
+    async fn sync_vault(&self, vault_sync_request: SyncRequest) -> Result<()> {
+        let DataEventsResponse(data_sync_events) =
+            self.sync.send(vault_sync_request).await?.to_data()?;
 
         for new_event in data_sync_events {
             debug!(
@@ -132,6 +128,21 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
             self.p_obj.repo.save(new_event).await?;
         }
         Ok(())
+    }
+
+    async fn get_vault_request(&self, user_creds: &UserCredentials) -> Result<SyncRequest> {
+        let vault_sync_request = {
+            let sender = user_creds.user();
+
+            let p_vault = PersistentVault {
+                p_obj: self.p_obj.clone(),
+            };
+
+            let tail = p_vault.vault_tail(user_creds.user()).await?;
+
+            SyncRequest::Read(ReadSyncRequest::Vault(VaultRequest { sender, tail }))
+        };
+        Ok(vault_sync_request)
     }
 
     async fn sync_ss_device_log(
@@ -165,19 +176,21 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                 };
                 let dist_events = p_ss.get_ss_distribution_events(distribution_claim).await?;
                 for dist_event in dist_events {
-                    self.server_dt
-                        .dt
-                        .send_to_service(DataSyncRequest::Event(dist_event.clone()))
-                        .await;
+                    self.sync
+                        .send(SyncRequest::Write(WriteSyncRequest::Event(
+                            dist_event.clone(),
+                        )))
+                        .await?;
 
                     self.p_obj.repo.delete(dist_event.obj_id()).await;
                 }
             }
 
-            self.server_dt
-                .dt
-                .send_to_service(DataSyncRequest::Event(ss_device_log_event))
-                .await;
+            self.sync
+                .send(SyncRequest::Write(WriteSyncRequest::Event(
+                    ss_device_log_event,
+                )))
+                .await?;
         }
 
         Ok(())
@@ -191,18 +204,14 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
                 self.p_obj.find_free_id_by_obj_desc(obj_desc).await?
             };
 
-            SyncRequest::Ss(SsRequest {
+            SyncRequest::Read(ReadSyncRequest::Ss(SsRequest {
                 sender: user_creds.user(),
                 ss_log: ss_log_free_id,
-            })
+            }))
         };
 
-        let DataEventsResponse(data_sync_events) = self
-            .server_dt
-            .dt
-            .send_to_service_and_get(DataSyncRequest::SyncRequest(ss_sync_request))
-            .await?
-            .to_data()?;
+        let DataEventsResponse(data_sync_events) =
+            self.sync.send(ss_sync_request).await?.to_data()?;
 
         for new_event in data_sync_events {
             debug!(
@@ -220,49 +229,34 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         server_tail: &ServerTailResponse,
         user_id: UserId,
     ) -> Result<()> {
-        let tail_to_sync = match &server_tail.device_log_tail {
-            None => ObjectId::unit(VaultDescriptor::device_log(user_id)),
-            Some(server_tail_id) => server_tail_id.clone(),
-        };
-
-        let device_log_events_to_sync = self.p_obj.find_object_events(tail_to_sync).await?;
-
+        let device_log_events_to_sync = self.device_log_sync_request(&server_tail, user_id).await?;
         for device_log_event in device_log_events_to_sync {
-            self.server_dt
-                .dt
-                .send_to_service(DataSyncRequest::Event(device_log_event))
-                .await;
+            self.sync.send(device_log_event).await?;
         }
 
         Ok(())
     }
 
-    #[instrument(skip(self))]
-    async fn download_global_index(&self, sender: DeviceData) -> Result<()> {
-        let data_sync_request = self.build_sync_request(&sender).await?;
-        
-        let DataEventsResponse(new_gi_events) = self
-            .server_dt
-            .dt
-            .send_to_service_and_get(data_sync_request)
-            .await?
-            .to_data()?;
-
-        let gi_sync = GlobalIndexDbSync::new(self.p_obj.clone(), sender.clone());
-        gi_sync.save(new_gi_events).await
-    }
-
-    pub async fn build_sync_request(&self, sender: &DeviceData) -> Result<DataSyncRequest> {
-        let data_sync_request = {
-            let db_sync_request = GlobalIndexDbSyncRequest {
-                p_obj: self.p_obj.clone(),
-                sender: sender.clone(),
-            };
-            let gi_sync_request = db_sync_request.get().await?;
-            let sync_request = SyncRequest::from(gi_sync_request);
-            DataSyncRequest::from(sync_request)
+    async fn device_log_sync_request(
+        &self,
+        server_tail: &ServerTailResponse,
+        user_id: UserId,
+    ) -> Result<Vec<SyncRequest>> {
+        let tail_to_sync = match &server_tail.device_log_tail {
+            None => ObjectId::unit(VaultDescriptor::device_log(user_id)),
+            Some(server_tail_id) => server_tail_id.clone(),
         };
-        Ok(data_sync_request)
+
+        let device_log_events_to_sync: Vec<SyncRequest> = self
+            .p_obj
+            .find_object_events(tail_to_sync)
+            .await?
+            .iter()
+            .map(|device_log_event| {
+                SyncRequest::Write(WriteSyncRequest::Event(device_log_event.clone()))
+            })
+            .collect();
+        Ok(device_log_events_to_sync)
     }
 
     #[instrument(skip(self))]
@@ -284,7 +278,7 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
         };
 
         //sync ss_device_log and ss_log
-        self.sync_ss_device_log(&server_tail, creds.device().device_id)
+        self.sync_ss_device_log(server_tail, creds.device().device_id)
             .await?;
         self.sync_ss_log(creds).await?;
 
@@ -311,29 +305,31 @@ impl<Repo: KvLogEventRepo> SyncGateway<Repo> {
 
 #[cfg(test)]
 pub mod fixture {
-    use crate::meta_tests::fixture_util::fixture::states::BaseState;
+    use crate::meta_tests::fixture_util::fixture::states::{EmptyState, ExtendedState};
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::app::sync::sync_gateway::SyncGateway;
+    use crate::node::app::sync::sync_protocol::EmbeddedSyncProtocol;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use std::sync::Arc;
+    use crate::node::app::sync::sync_protocol::fixture::SyncProtocolFixture;
 
     pub struct SyncGatewayFixture {
-        pub client_gw: Arc<SyncGateway<InMemKvLogEventRepo>>,
-        pub vd_gw: Arc<SyncGateway<InMemKvLogEventRepo>>,
+        pub client_gw: Arc<SyncGateway<InMemKvLogEventRepo, EmbeddedSyncProtocol>>,
+        pub vd_gw: Arc<SyncGateway<InMemKvLogEventRepo, EmbeddedSyncProtocol>>,
     }
 
     impl SyncGatewayFixture {
-        pub fn from(registry: &FixtureRegistry<BaseState>) -> Self {
+        pub fn from(state: &EmptyState, sync: &SyncProtocolFixture) -> Self {
             let client_gw = Arc::new(SyncGateway {
                 id: "client_gw".to_string(),
-                p_obj: registry.state.empty.p_obj.client.clone(),
-                server_dt: registry.state.server_dt.server_dt.clone(),
+                p_obj: state.p_obj.client.clone(),
+                sync: sync.sync_protocol.clone(),
             });
 
             let vd_gw = Arc::new(SyncGateway {
                 id: "vd_gw".to_string(),
-                p_obj: registry.state.empty.p_obj.vd.clone(),
-                server_dt: registry.state.server_dt.server_dt.clone(),
+                p_obj: state.p_obj.vd.clone(),
+                sync: sync.sync_protocol.clone(),
             });
 
             Self { client_gw, vd_gw }

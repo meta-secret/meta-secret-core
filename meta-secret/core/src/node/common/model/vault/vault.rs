@@ -1,3 +1,4 @@
+use crate::crypto::utils::Id52bit;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::secret::{
@@ -7,7 +8,6 @@ use crate::node::common::model::user::common::{UserData, UserDataMember, UserDat
 use crate::node::common::model::vault::vault_data::{VaultData, WasmVaultData};
 use std::fmt::Display;
 use wasm_bindgen::prelude::wasm_bindgen;
-use crate::crypto::utils::Id52bit;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -38,7 +38,7 @@ impl VaultName {
         let id_str = Id52bit::generate().text;
         Self(id_str)
     }
-    
+
     pub fn test() -> VaultName {
         VaultName::from("q")
     }

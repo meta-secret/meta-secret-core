@@ -9,7 +9,6 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, ObjectId};
 use crate::node::db::events::vault::vault_log_event::VaultLogObject;
 use crate::node::db::events::vault_event::{VaultActionEvent, VaultObject};
-use crate::node::db::objects::global_index::ClientPersistentGlobalIndex;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
@@ -86,31 +85,17 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
 
     #[instrument(skip_all)]
     pub async fn find(&self, user: UserData) -> Result<VaultStatus> {
-        let p_gi = ClientPersistentGlobalIndex {
-            p_obj: self.p_obj.clone(),
-        };
-
-        let vault_exists = p_gi.exists(user.vault_name()).await?;
-        if !vault_exists {
-            return Ok(VaultStatus::NotExists(user));
-        }
-
         let maybe_vault_event = {
             let vault_desc = VaultDescriptor::vault(user.vault_name());
             self.p_obj.find_tail_event(vault_desc).await?
         };
 
-        let gi_and_vault = (vault_exists, maybe_vault_event);
+        let gi_and_vault = maybe_vault_event;
         match gi_and_vault {
-            (false, Some(_)) => {
-                bail!("Invalid state. Vault not in global index")
-            }
-            //Vault is not in global index, hence vault not exists
-            (false, None) => Ok(VaultStatus::NotExists(user)),
+            None => Ok(VaultStatus::NotExists(user)),
             //There is no vault table on local machine, but it is present in global index,
             //which means, current user is outsider
-            (true, None) => Ok(VaultStatus::Outsider(UserDataOutsider::non_member(user))),
-            (true, Some(vault_event)) => {
+            Some(vault_event) => {
                 let vault_obj = vault_event.vault()?;
 
                 match vault_obj {
@@ -165,7 +150,7 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
         Ok(())
     }
 
-    async fn vault_log_events(&self, vault_name: VaultName) -> anyhow::Result<Vec<VaultLogObject>> {
+    async fn vault_log_events(&self, vault_name: VaultName) -> Result<Vec<VaultLogObject>> {
         let desc = VaultDescriptor::vault_log(vault_name);
         let events = self.p_obj.find_object_events(ObjectId::unit(desc)).await?;
 
@@ -187,6 +172,12 @@ pub mod spec {
     use crate::node::db::objects::persistent_vault::PersistentVault;
     use crate::node::db::repo::generic_db::KvLogEventRepo;
     use std::sync::Arc;
+    use anyhow::{bail, Result};
+    use crate::node::common::model::device::common::DeviceName;
+    use crate::node::common::model::vault::vault::VaultName;
+    use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
+    use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
+    use crate::node::db::events::object_id::{VaultGenesisEvent, VaultUnitEvent};
 
     pub struct VaultLogSpec<Repo: KvLogEventRepo> {
         pub p_obj: Arc<PersistentObject<Repo>>,
@@ -194,14 +185,32 @@ pub mod spec {
     }
 
     impl<Repo: KvLogEventRepo> VaultLogSpec<Repo> {
-        pub async fn verify_initial_state(&self) -> anyhow::Result<()> {
+        pub async fn verify_initial_state(&self) -> Result<()> {
             let events = self.vault_log().await?;
-            assert_eq!(3, events.len());
+            assert_eq!(2, events.len());
 
+            if let VaultLogObject::Unit(VaultUnitEvent(unit_kv)) = events.first().unwrap() {
+                if let ObjectDescriptor::Vault(VaultDescriptor::VaultLog(name)) = &unit_kv.key.obj_desc {
+                    assert_eq!(name, &VaultName::test());
+                } else {
+                    bail!("Expected unit to be a vault");
+                }
+
+                assert_eq!(unit_kv.value, VaultName::test());
+            } else {
+                bail!("Invalid unit event");
+            }
+
+            if let VaultLogObject::Genesis(VaultGenesisEvent(event)) = events.get(1).unwrap() {
+                assert_eq!(event.value.device.device_name, DeviceName::client());
+            } else {
+                bail!("Invalid genesis event");
+            }
+            
             Ok(())
         }
 
-        async fn vault_log(&self) -> anyhow::Result<Vec<VaultLogObject>> {
+        async fn vault_log(&self) -> Result<Vec<VaultLogObject>> {
             let p_vault = PersistentVault {
                 p_obj: self.p_obj.clone(),
             };
