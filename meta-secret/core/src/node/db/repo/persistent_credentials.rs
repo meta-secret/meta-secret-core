@@ -12,6 +12,7 @@ use crate::node::db::repo::generic_db::KvLogEventRepo;
 use log::info;
 use std::sync::Arc;
 use tracing::instrument;
+use anyhow::Result;
 
 pub struct PersistentCredentials<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
@@ -22,7 +23,7 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
     pub async fn get_or_generate_device_creds(
         &self,
         device_name: DeviceName,
-    ) -> anyhow::Result<DeviceCredentials> {
+    ) -> Result<DeviceCredentials> {
         let maybe_creds = self.find().await?;
 
         let device_creds = match maybe_creds {
@@ -36,13 +37,13 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
     }
 
     #[instrument(skip(self))]
-    async fn save(&self, creds: CredentialsObject) -> anyhow::Result<ObjectId> {
+    async fn save(&self, creds: CredentialsObject) -> Result<ObjectId> {
         let generic_event = creds.to_generic();
         self.p_obj.repo.save(generic_event).await
     }
 
     #[instrument(skip(self))]
-    async fn save_device_creds(&self, device_creds: &DeviceCredentials) -> anyhow::Result<()> {
+    async fn save_device_creds(&self, device_creds: &DeviceCredentials) -> Result<()> {
         let creds_obj = CredentialsObject::unit(device_creds.clone());
         let generic_event = creds_obj.to_generic();
         self.p_obj.repo.save(generic_event).await?;
@@ -50,7 +51,7 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
     }
 
     #[instrument(skip_all)]
-    pub async fn get_user_creds(&self) -> anyhow::Result<Option<UserCredentials>> {
+    pub async fn get_user_creds(&self) -> Result<Option<UserCredentials>> {
         let maybe_creds_obj = self.find().await?;
 
         let Some(creds_obj) = maybe_creds_obj else {
@@ -64,25 +65,20 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
     }
 
     #[instrument(skip_all)]
-    pub async fn find(&self) -> anyhow::Result<Option<CredentialsObject>> {
+    pub async fn find(&self) -> Result<Option<CredentialsObject>> {
         let maybe_creds = self
             .p_obj
-            .find_tail_event(ObjectDescriptor::CredsIndex)
+            .find_tail_event::<CredentialsObject>(ObjectDescriptor::CredsIndex)
             .await?;
 
-        let Some(creds) = maybe_creds else {
-            return Ok(None);
-        };
-
-        let creds_obj = CredentialsObject::try_from(creds)?;
-        Ok(Some(creds_obj))
+        Ok(maybe_creds)
     }
 
     #[instrument(skip(self))]
     async fn generate_device_creds(
         &self,
         device_name: DeviceName,
-    ) -> anyhow::Result<DeviceCredentials> {
+    ) -> Result<DeviceCredentials> {
         let device_creds = DeviceCredentials::generate(device_name);
         info!(
             "Device credentials has been generated: {:?}",
@@ -98,7 +94,7 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
         &self,
         device_name: DeviceName,
         vault_name: VaultName,
-    ) -> anyhow::Result<UserCredentials> {
+    ) -> Result<UserCredentials> {
         let maybe_creds = self.find().await?;
 
         match maybe_creds {

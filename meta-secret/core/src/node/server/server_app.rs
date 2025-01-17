@@ -144,7 +144,7 @@ mod test {
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::meta_tests::setup_tracing;
     use crate::meta_tests::spec::test_spec::TestSpec;
-    use crate::node::common::meta_tracing::{client_span, server_span};
+    use crate::node::common::meta_tracing::{client_span, server_span, vd_span};
     use crate::node::common::model::user::common::UserData;
     use crate::node::common::model::vault::vault::VaultStatus;
     use crate::node::db::actions::sign_up::claim::spec::SignUpClaimSpec;
@@ -153,7 +153,6 @@ mod test {
     use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
     use crate::node::db::objects::persistent_vault::PersistentVault;
     use anyhow::bail;
-    use std::time::Duration;
     use tracing::{info, Instrument};
     use crate::node::db::repo::persistent_credentials::spec::PersistentCredentialsSpec;
 
@@ -172,7 +171,7 @@ mod test {
         info!("Executing 'sign up' claim");
         let client_p_obj = registry.state.base.empty.p_obj.client.clone();
         let client_user_creds = &registry.state.base.empty.user_creds;
-        SignUpClaimTestAction::sign_up(client_p_obj.clone(), client_user_creds)
+        SignUpClaimTestAction::sign_up(client_p_obj.clone(), &client_user_creds.client)
             .instrument(client_span())
             .await?;
 
@@ -191,23 +190,66 @@ mod test {
         let client_db = client_p_obj.repo.get_db().await;
         assert_eq!(17, client_db.len());
 
-        async_std::task::sleep(Duration::from_secs(3)).await;
-
         p_vault_check(&registry).await?;
+        sync_client(&registry).await?;
+        server_check(&registry, client_user).await?;
 
-        async_std::task::sleep(Duration::from_secs(1)).await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_sign_up_and_join_two_device() -> anyhow::Result<()> {
+        //setup_tracing()?;
+
+        let registry = FixtureRegistry::extended().await?;
+
+        init_server(&registry).await?;
+        let server_creds_spec = PersistentCredentialsSpec {
+            p_obj: registry.state.base.empty.p_obj.server.clone(),
+        };
+        server_creds_spec.verify_device_creds().await?;
+
+        info!("Executing 'sign up' claim");
+        let vd_p_obj = registry.state.base.empty.p_obj.vd.clone();
+        let user_creds = &registry.state.base.empty.user_creds;
+        SignUpClaimTestAction::sign_up(vd_p_obj.clone(), &user_creds.vd)
+            .instrument(vd_span())
+            .await?;
 
         sync_client(&registry).await?;
+        // second sync to get new messages created on server
+        sync_client(&registry).await?;
 
-        async_std::task::sleep(Duration::from_secs(1)).await;
+        info!("Verify SignUpClaim");
+        let vd_user = registry.state.base.empty.user_creds.vd.user();
+        let client_claim_spec = SignUpClaimSpec {
+            p_obj: vd_p_obj.clone(),
+            user: vd_user.clone(),
+        };
 
-        server_check(registry, client_user).await?;
+        client_claim_spec.verify().instrument(client_span()).await?;
+
+        let client_db = vd_p_obj.repo.get_db().await;
+        assert_eq!(17, client_db.len());
+
+        p_vault_check(&registry).await?;
+        sync_client(&registry).await?;
+        server_check(&registry, vd_user).await?;
+        
+        //join request by client
+        let client_p_obj = registry.state.base.empty.p_obj.client.clone();
+        SignUpClaimTestAction::sign_up(client_p_obj.clone(), &user_creds.client)
+            .instrument(client_span())
+            .await?;
+        
+        //accept join request by vd
+        
 
         Ok(())
     }
 
     async fn server_check(
-        registry: FixtureRegistry<ExtendedState>,
+        registry: &FixtureRegistry<ExtendedState>,
         client_user: UserData,
     ) -> anyhow::Result<()> {
         let server_app = registry.state.server_app.server_app.clone();

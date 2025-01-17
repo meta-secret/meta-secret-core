@@ -31,7 +31,7 @@ pub enum GenericKvLogEvent {
     SsDeviceLog(SsDeviceLogObject),
     SsLog(SsLogObject),
 
-    Error {
+    DbError {
         event: KvLogEvent<ArtifactId, ErrorMessage>,
     },
 }
@@ -82,6 +82,19 @@ impl GenericKvLogEvent {
     }
 }
 
+pub trait GenericKvLogEventConvertible: Sized {
+    fn try_from_event(event: GenericKvLogEvent) -> anyhow::Result<Self>;
+}
+
+impl<T> GenericKvLogEventConvertible for T
+where
+    T: TryFrom<GenericKvLogEvent, Error = anyhow::Error>,
+{
+    fn try_from_event(event: GenericKvLogEvent) -> anyhow::Result<Self> {
+        T::try_from(event)
+    }
+}
+
 pub trait ToGenericEvent {
     fn to_generic(self) -> GenericKvLogEvent;
 }
@@ -110,7 +123,7 @@ impl ObjIdExtractor for GenericKvLogEvent {
             GenericKvLogEvent::SharedSecret(obj) => obj.obj_id(),
             GenericKvLogEvent::Credentials(obj) => obj.obj_id(),
             GenericKvLogEvent::DbTail(obj) => obj.obj_id(),
-            GenericKvLogEvent::Error { event } => ObjectId::from(event.key.obj_id.clone()),
+            GenericKvLogEvent::DbError { event } => ObjectId::from(event.key.obj_id.clone()),
             GenericKvLogEvent::DeviceLog(obj) => obj.obj_id(),
             GenericKvLogEvent::VaultLog(obj) => obj.obj_id(),
             GenericKvLogEvent::VaultMembership(obj) => obj.obj_id(),
@@ -128,7 +141,7 @@ impl KeyExtractor for GenericKvLogEvent {
             GenericKvLogEvent::SharedSecret(obj) => obj.key(),
             GenericKvLogEvent::Credentials(obj) => obj.key(),
             GenericKvLogEvent::DbTail(obj) => obj.key(),
-            GenericKvLogEvent::Error { event } => GenericKvKey::from(event.key.clone()),
+            GenericKvLogEvent::DbError { event } => GenericKvKey::from(event.key.clone()),
             GenericKvLogEvent::DeviceLog(obj) => obj.key(),
             GenericKvLogEvent::VaultLog(obj) => obj.key(),
             GenericKvLogEvent::VaultMembership(obj) => obj.key(),

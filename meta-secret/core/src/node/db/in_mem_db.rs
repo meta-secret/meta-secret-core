@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor};
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::repo::generic_db::{DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand};
+use anyhow::Result;
 use tracing::instrument;
 
 pub struct InMemKvLogEventRepo {
@@ -27,12 +28,12 @@ pub enum InMemDbError {}
 #[async_trait(? Send)]
 impl FindOneQuery for InMemKvLogEventRepo {
     #[instrument(skip_all)]
-    async fn find_one(&self, key: ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>> {
+    async fn find_one(&self, key: ObjectId) -> Result<Option<GenericKvLogEvent>> {
         let maybe_value = self.db.lock().await.get(&key).cloned();
         Ok(maybe_value)
     }
 
-    async fn get_key(&self, key: ObjectId) -> anyhow::Result<Option<ObjectId>> {
+    async fn get_key(&self, key: ObjectId) -> Result<Option<ObjectId>> {
         let maybe_value = self.db.lock().await.get(&key).cloned();
         Ok(maybe_value.map(|value| value.obj_id()))
     }
@@ -41,7 +42,7 @@ impl FindOneQuery for InMemKvLogEventRepo {
 #[async_trait(? Send)]
 impl SaveCommand for InMemKvLogEventRepo {
     #[instrument(skip_all)]
-    async fn save(&self, value: GenericKvLogEvent) -> anyhow::Result<ObjectId> {
+    async fn save(&self, value: GenericKvLogEvent) -> Result<ObjectId> {
         let mut db = self.db.lock().await;
 
         let key = value.obj_id();

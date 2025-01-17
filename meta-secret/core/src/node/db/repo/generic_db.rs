@@ -1,29 +1,39 @@
 use async_trait::async_trait;
 
-use crate::node::db::events::generic_log_event::GenericKvLogEvent;
+use crate::node::db::events::generic_log_event::{GenericKvLogEvent, GenericKvLogEventConvertible};
 use crate::node::db::events::object_id::ObjectId;
+use anyhow::Result;
 
 // https://blog.rust-lang.org/2023/12/21/async-fn-rpit-in-traits.html
 
 #[async_trait(? Send)]
 pub trait SaveCommand {
-    async fn save(&self, value: GenericKvLogEvent) -> anyhow::Result<ObjectId>;
+    async fn save(&self, value: GenericKvLogEvent) -> Result<ObjectId>;
 }
 
 #[async_trait(? Send)]
 pub trait FindOneQuery {
-    async fn find_one(&self, key: ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>>;
-    async fn get_key(&self, key: ObjectId) -> anyhow::Result<Option<ObjectId>>;
+    async fn find_one(&self, key: ObjectId) -> Result<Option<GenericKvLogEvent>>;
+
+    async fn find_one_obj<T>(&self, key: ObjectId) -> Result<Option<T>>
+    where
+        T: GenericKvLogEventConvertible,
+    {
+        let maybe_value: Option<GenericKvLogEvent> = self.find_one(key).await?;
+        let result = match maybe_value {
+            Some(value) => Some(T::try_from_event(value)?),
+            None => None,
+        };
+
+        Ok(result)
+    }
+
+    async fn get_key(&self, key: ObjectId) -> Result<Option<ObjectId>>;
 }
 
 #[async_trait(? Send)]
 pub trait DeleteCommand {
     async fn delete(&self, key: ObjectId);
-}
-
-#[async_trait(? Send)]
-pub trait FindQuery<T> {
-    async fn find(&self, key: ObjectId) -> anyhow::Result<Vec<T>>;
 }
 
 #[async_trait(? Send)]

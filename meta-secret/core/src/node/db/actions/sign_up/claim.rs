@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::node::common::model::user::common::UserData;
+use crate::node::common::model::user::common::{UserData, UserDataOutsiderStatus};
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::node::{
@@ -46,10 +46,16 @@ impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
                 p_device_log.save_create_vault_request(user_data).await?;
             }
             VaultStatus::Outsider(outsider) => {
-                if outsider.is_non_member() {
-                    p_device_log.save_join_request(&outsider.user_data).await?;
-                } else {
-                    info!("Device is pending or declined")
+                match outsider.status {
+                    UserDataOutsiderStatus::NonMember => {
+                        p_device_log.save_join_request(&outsider.user_data).await?;
+                    }
+                    UserDataOutsiderStatus::Pending => {
+                        info!("Device is pending")
+                    }
+                    UserDataOutsiderStatus::Declined => {
+                        info!("Device has been declined")
+                    }
                 }
             }
             VaultStatus::Member { .. } => {
@@ -69,7 +75,6 @@ impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
 
 #[cfg(test)]
 pub mod test_action {
-    use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
     use crate::node::common::model::vault::vault::VaultStatus;
     use crate::node::db::actions::sign_up::claim::SignUpClaim;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
@@ -77,6 +82,7 @@ pub mod test_action {
     use std::sync::Arc;
     use tracing::info;
     use tracing_attributes::instrument;
+    use crate::node::common::model::user::user_creds::UserCredentials;
 
     pub struct SignUpClaimTestAction {
         _sign_up: SignUpClaim<InMemKvLogEventRepo>,
@@ -86,7 +92,7 @@ pub mod test_action {
         #[instrument(skip_all)]
         pub async fn sign_up(
             p_obj: Arc<PersistentObject<InMemKvLogEventRepo>>,
-            creds_fixture: &UserCredentialsFixture,
+            creds: &UserCredentials,
         ) -> anyhow::Result<VaultStatus> {
             info!("SignUp action");
 
@@ -94,7 +100,7 @@ pub mod test_action {
                 p_obj: p_obj.clone(),
             };
 
-            let status = sign_up_claim.sign_up(creds_fixture.client.user()).await?;
+            let status = sign_up_claim.sign_up(creds.user()).await?;
 
             Ok(status)
         }
@@ -171,7 +177,7 @@ mod test {
         let p_obj = registry.state.base.empty.p_obj.client.clone();
         let creds = registry.state.base.empty.user_creds;
 
-        let vault_status = SignUpClaimTestAction::sign_up(p_obj.clone(), &creds).await?;
+        let vault_status = SignUpClaimTestAction::sign_up(p_obj.clone(), &creds.client).await?;
 
         let VaultStatus::Outsider(outsider) = vault_status else {
             bail!("Invalid state: {:?}", vault_status);

@@ -1,6 +1,7 @@
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
 use crate::node::common::model::vault::vault::VaultName;
 use wasm_bindgen::prelude::wasm_bindgen;
+use derive_more::From;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -76,7 +77,7 @@ impl From<UserMembership> for WasmUserMembership {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(getter_with_clone)]
 pub struct UserDataMember {

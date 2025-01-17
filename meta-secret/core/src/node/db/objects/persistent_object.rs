@@ -4,7 +4,7 @@ use tracing::{instrument, Instrument};
 
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::db_tail::DbTail;
-use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor};
+use crate::node::db::events::generic_log_event::{GenericKvLogEvent, GenericKvLogEventConvertible, ObjIdExtractor};
 use crate::node::db::events::object_id::{Next, ObjectId};
 use crate::node::db::in_mem_db::InMemKvLogEventRepo;
 use crate::node::db::objects::persistent_object_navigator::PersistentObjectNavigator;
@@ -49,29 +49,28 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
     }
 
     #[instrument(skip_all)]
-    pub async fn find_tail_event(
+    pub async fn find_tail_event<T: GenericKvLogEventConvertible>(
         &self,
         obj_desc: ObjectDescriptor,
-    ) -> anyhow::Result<Option<GenericKvLogEvent>> {
+    ) -> anyhow::Result<Option<T>> {
         let maybe_tail_id = self.find_tail_id_by_obj_desc(obj_desc).await?;
-
         self.find_event_by_id(maybe_tail_id).await
     }
 
-    pub async fn find_tail_event_by_obj_id(
+    pub async fn find_tail_event_by_obj_id<T: GenericKvLogEventConvertible>(
         &self,
         obj_id: ObjectId,
-    ) -> anyhow::Result<Option<GenericKvLogEvent>> {
+    ) -> anyhow::Result<Option<T>> {
         let maybe_tail_id = self.find_tail_id(obj_id).await?;
         self.find_event_by_id(maybe_tail_id).await
     }
 
-    async fn find_event_by_id(
+    async fn find_event_by_id<T: GenericKvLogEventConvertible>(
         &self,
         maybe_tail_id: Option<ObjectId>,
-    ) -> anyhow::Result<Option<GenericKvLogEvent>> {
+    ) -> anyhow::Result<Option<T>> {
         if let Some(tail_id) = maybe_tail_id {
-            let maybe_tail_event = self.repo.find_one(tail_id).await?;
+            let maybe_tail_event = self.repo.find_one_obj(tail_id).await?;
             Ok(maybe_tail_event)
         } else {
             Ok(None)

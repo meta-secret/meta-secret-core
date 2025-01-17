@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::node::common::model::meta_pass::MetaPasswordId;
-use crate::node::common::model::user::common::{UserData, UserDataMember, UserId, UserMembership};
+use crate::node::common::model::user::common::{UserData, UserDataMember, UserDataOutsider, UserId, UserMembership};
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ToGenericEvent};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
@@ -32,19 +32,17 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
     pub async fn save_accept_join_request_event(
         &self,
         member: UserDataMember,
-        candidate: UserData,
+        candidate: UserDataOutsider,
     ) -> anyhow::Result<()> {
         info!("Accept join request");
 
         let member_user = member.user();
         self.init(member_user).await?;
 
-        let key = self.get_device_log_key(&member_user).await?;
+        let key = self.get_device_log_key(member_user).await?;
         let update = VaultActionEvent::UpdateMembership {
             sender: member,
-            update: UserMembership::Member(UserDataMember {
-                user_data: candidate,
-            }),
+            update: UserMembership::Member(UserDataMember::from(candidate.user_data)),
         };
         let join_request = DeviceLogObject::Action(KvLogEvent { key, value: update });
 
@@ -61,12 +59,10 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
 
         let maybe_generic_event = self
             .p_obj
-            .find_tail_event(VaultDescriptor::device_log(user.user_id()))
+            .find_tail_event::<DeviceLogObject>(VaultDescriptor::device_log(user.user_id()))
             .await?;
 
-        if let Some(GenericKvLogEvent::DeviceLog(DeviceLogObject::Action(event))) =
-            maybe_generic_event
-        {
+        if let Some(DeviceLogObject::Action(event)) = maybe_generic_event {
             if let VaultActionEvent::CreateVault(_) = event.value {
                 info!("SignUp request already exists");
                 return Ok(());
@@ -89,7 +85,7 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
         meta_pass_id: MetaPasswordId,
     ) -> anyhow::Result<()> {
         let meta_pass_request = DeviceLogObject::Action(KvLogEvent {
-            key: self.get_device_log_key(&sender.user()).await?,
+            key: self.get_device_log_key(sender.user()).await?,
             value: VaultActionEvent::AddMetaPassword {
                 sender,
                 meta_pass_id,
@@ -105,7 +101,7 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
         self.init(user).await?;
 
         let join_request = DeviceLogObject::Action(KvLogEvent {
-            key: self.get_device_log_key(&user).await?,
+            key: self.get_device_log_key(user).await?,
             value: VaultActionEvent::JoinClusterRequest {
                 candidate: user.clone(),
             },

@@ -8,19 +8,17 @@ use crate::node::app::sync::sync_gateway::SyncGateway;
 use crate::node::app::sync::sync_protocol::SyncProtocol;
 use crate::node::common::model::device::common::DeviceName;
 use crate::node::common::model::secret::{SecretDistributionData, SecretDistributionType};
-use crate::node::common::model::user::common::{UserDataOutsiderStatus, UserMembership};
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::vault::{VaultName, VaultStatus};
 use crate::node::db::actions::sign_up::claim::SignUpClaim;
+use crate::node::db::actions::sign_up::join::AcceptJoinAction;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
-use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::generic_log_event::ToGenericEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::shared_secret_event::SharedSecretObject;
 use crate::node::db::events::vault::vault_log_event::VaultLogObject;
 use crate::node::db::events::vault_event::VaultActionEvent;
-use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;
@@ -96,45 +94,32 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> VirtualDevice<Repo, Sync> {
 
         let maybe_vault_log_event = {
             let vault_name = member.vault.vault_name.clone();
-            //vault actions
-            let vault_log_desc = VaultDescriptor::VaultLog(vault_name).to_obj_desc();
-            self.p_obj.find_tail_event(vault_log_desc).await?
+            p_vault.vault_log(vault_name).await?
         };
 
-        if let Some(vault_log_event) = maybe_vault_log_event {
-            let vault_log = vault_log_event.vault_log()?;
+        if let Some(VaultLogObject::Action(vault_action)) = maybe_vault_log_event {
+            match vault_action.value {
+                VaultActionEvent::JoinClusterRequest { candidate } => {
+                    let accept_action = AcceptJoinAction {
+                        p_obj: self.p_obj.clone(),
+                        member,
+                    };
 
-            if let VaultLogObject::Action(vault_action) = vault_log {
-                match vault_action.value {
-                    VaultActionEvent::JoinClusterRequest { candidate } => {
-                        if let UserMembership::Outsider(outsider) =
-                            member.vault.membership(candidate.clone())
-                        {
-                            if let UserDataOutsiderStatus::NonMember = outsider.status {
-                                let p_device_log = PersistentDeviceLog {
-                                    p_obj: self.p_obj.clone(),
-                                };
-
-                                p_device_log
-                                    .save_accept_join_request_event(member.member, candidate)
-                                    .await?;
-                            }
-                        }
-                    }
-                    VaultActionEvent::UpdateMembership { .. } => {
-                        //changes made by another device, no need for any actions
-                    }
-                    VaultActionEvent::AddMetaPassword { .. } => {
-                        //changes made by another device, no need for any actions
-                    }
-                    VaultActionEvent::CreateVault(_) => {
-                        // server's responsibities
-                    }
-                    VaultActionEvent::ActionCompleted { .. } => {
-                        //no op, action completion event
-                    }
+                    accept_action.accept(candidate).await?;
                 }
-            };
+                VaultActionEvent::UpdateMembership { .. } => {
+                    //changes made by another device, no need for any actions
+                }
+                VaultActionEvent::AddMetaPassword { .. } => {
+                    //changes made by another device, no need for any actions
+                }
+                VaultActionEvent::CreateVault(_) => {
+                    // server's responsibities
+                }
+                VaultActionEvent::ActionCompleted { .. } => {
+                    //no op, action completion event
+                }
+            }
         }
 
         // shared secret actions
@@ -144,7 +129,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> VirtualDevice<Repo, Sync> {
 
         let ss_log_data = p_ss.get_ss_log_obj(user_creds.vault_name.clone()).await?;
 
-        for (_, claim) in &ss_log_data.claims {
+        for (_, claim) in ss_log_data.claims {
             if claim.distribution_type == SecretDistributionType::Recover {
                 //get distributions
                 for claim_db_id in claim.claim_db_ids() {

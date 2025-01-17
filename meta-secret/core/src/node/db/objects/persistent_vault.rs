@@ -14,6 +14,7 @@ use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use anyhow::{anyhow, bail, Result};
 use tracing_attributes::instrument;
+use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,6 +26,18 @@ pub struct VaultTail {
 
 pub struct PersistentVault<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
+}
+
+impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
+    pub async fn vault_log(&self, vault_name: VaultName) -> Result<Option<VaultLogObject>> {
+        //vault actions
+        let vault_log_desc = VaultDescriptor::VaultLog(vault_name).to_obj_desc();
+        let maybe_vault_log_event = self.p_obj
+            .find_tail_event::<VaultLogObject>(vault_log_desc)
+            .await?;
+
+        Ok(maybe_vault_log_event)
+    }
 }
 
 impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
@@ -87,7 +100,7 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
     pub async fn find(&self, user: UserData) -> Result<VaultStatus> {
         let maybe_vault_event = {
             let vault_desc = VaultDescriptor::vault(user.vault_name());
-            self.p_obj.find_tail_event(vault_desc).await?
+            self.p_obj.find_tail_event::<VaultObject>(vault_desc).await?
         };
 
         let gi_and_vault = maybe_vault_event;
@@ -95,9 +108,7 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
             None => Ok(VaultStatus::NotExists(user)),
             //There is no vault table on local machine, but it is present in global index,
             //which means, current user is outsider
-            Some(vault_event) => {
-                let vault_obj = vault_event.vault()?;
-
+            Some(vault_obj) => {
                 match vault_obj {
                     VaultObject::Unit(_) => {
                         bail!("Invalid state. Vault has only unit event")

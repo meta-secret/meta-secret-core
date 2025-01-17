@@ -52,12 +52,13 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
     pub async fn get_ss_distribution_events(
         &self,
         distribution_claim: SsDistributionClaim,
-    ) -> Result<Vec<GenericKvLogEvent>> {
+    ) -> Result<Vec<SharedSecretObject>> {
         let mut events = vec![];
         for distribution_id in distribution_claim.distribution_ids() {
             let desc = SharedSecretDescriptor::SsDistribution(distribution_id).to_obj_desc();
 
-            if let Some(event) = self.p_obj.find_tail_event(desc).await? {
+            let tail_event = self.p_obj.find_tail_event::<SharedSecretObject>(desc).await?;
+            if let Some(event) = tail_event {
                 events.push(event);
             }
         }
@@ -71,8 +72,8 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
     ) -> Result<SharedSecretObject> {
         let desc = SharedSecretDescriptor::SsDistribution(id).to_obj_desc();
 
-        if let Some(event) = self.p_obj.find_tail_event(desc).await? {
-            event.shared_secret()
+        if let Some(event) = self.p_obj.find_tail_event::<SharedSecretObject>(desc).await? {
+            Ok(event)
         } else {
             bail!("No distribution event found")
         }
@@ -86,7 +87,7 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
 
         let maybe_ss_log_event = {
             let obj_desc = SharedSecretDescriptor::SsLog(claim.vault_name.clone()).to_obj_desc();
-            self.p_obj.find_tail_event(obj_desc.clone()).await?
+            self.p_obj.find_tail_event::<SsLogObject>(obj_desc.clone()).await?
         };
 
         let vault_name = claim.vault_name.clone();
@@ -109,9 +110,7 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
                         .await?
                 }
                 GenericKvKey::ArtifactKey { .. } => {
-                    if let GenericKvLogEvent::SsLog(SsLogObject::Claims(ss_log_event)) =
-                        ss_log_event
-                    {
+                    if let SsLogObject::Claims(ss_log_event) = ss_log_event {
                         let mut new_log_data = ss_log_event.value.clone();
                         new_log_data.claims.insert(claim.id.clone(), claim);
 
@@ -190,15 +189,13 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
 
     pub async fn get_ss_log_obj(&self, vault_name: VaultName) -> Result<SsLogData> {
         let obj_desc = SharedSecretDescriptor::SsLog(vault_name).to_obj_desc();
-        let maybe_log_event = self.p_obj.find_tail_event(obj_desc).await?;
+        let maybe_log_event = self.p_obj.find_tail_event::<SsLogObject>(obj_desc).await?;
 
-        match maybe_log_event {
-            None => Ok(SsLogData::empty()),
-            Some(ss_log_event) => {
-                let ss_log_obj = SsLogObject::try_from(ss_log_event)?;
-                Ok(ss_log_obj.to_data())
-            }
-        }
+        let log_event = maybe_log_event
+            .map(|ss_log_event| ss_log_event.to_data())
+            .unwrap_or_else(|| SsLogData::empty());
+
+        Ok(log_event)
     }
 
     #[instrument(skip(self))]

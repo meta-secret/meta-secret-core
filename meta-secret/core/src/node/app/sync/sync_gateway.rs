@@ -178,7 +178,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                 for dist_event in dist_events {
                     self.sync
                         .send(SyncRequest::Write(WriteSyncRequest::Event(
-                            dist_event.clone(),
+                            dist_event.clone().to_generic(),
                         )))
                         .await?;
 
@@ -305,13 +305,12 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
 
 #[cfg(test)]
 pub mod fixture {
-    use crate::meta_tests::fixture_util::fixture::states::{EmptyState, ExtendedState};
-    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::meta_tests::fixture_util::fixture::states::EmptyState;
     use crate::node::app::sync::sync_gateway::SyncGateway;
+    use crate::node::app::sync::sync_protocol::fixture::SyncProtocolFixture;
     use crate::node::app::sync::sync_protocol::EmbeddedSyncProtocol;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use std::sync::Arc;
-    use crate::node::app::sync::sync_protocol::fixture::SyncProtocolFixture;
 
     pub struct SyncGatewayFixture {
         pub client_gw: Arc<SyncGateway<InMemKvLogEventRepo, EmbeddedSyncProtocol>>,

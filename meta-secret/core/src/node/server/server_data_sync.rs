@@ -272,13 +272,15 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                 let sender_device = request.sender.device.device_id.clone();
 
                 if sender_device.eq(&claim.sender) {
-                    if let Some(dist_event) = self.p_obj.find_tail_event(desc).await? {
+                    let ss_obj = self.p_obj.find_tail_event::<SharedSecretObject>(desc).await?;
+                    
+                    if let Some(dist_event) = ss_obj {
                         let p_ss = PersistentSharedSecret {
                             p_obj: self.p_obj.clone(),
                         };
                         p_ss.create_distribution_completion_status(dist_id).await?;
 
-                        commit_log.push(dist_event.clone());
+                        commit_log.push(dist_event.clone().to_generic());
                         self.p_obj.repo.delete(dist_event.obj_id()).await;
                     }
                 }
@@ -294,9 +296,11 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                 for dist_id in claim.claim_db_ids() {
                     let desc =
                         SharedSecretDescriptor::SsDistributionStatus(dist_id.clone()).to_obj_desc();
-                    let maybe_status_event = self.p_obj.find_tail_event(desc).await?;
+                    let maybe_status_event = self.p_obj
+                        .find_tail_event::<SharedSecretObject>(desc)
+                        .await?;
 
-                    let Some(GenericKvLogEvent::SharedSecret(ss_obj)) = maybe_status_event else {
+                    let Some(ss_obj) = maybe_status_event else {
                         completed = false;
                         break;
                     };

@@ -211,17 +211,16 @@ impl MetaClientStateProvider {
 
 #[cfg(test)]
 pub mod fixture {
-    use crate::meta_tests::fixture_util::fixture::states::{BaseState, ExtendedState};
-    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::meta_tests::fixture_util::fixture::states::BaseState;
     use crate::node::app::meta_app::meta_client_service::{
         MetaClientDataTransfer, MetaClientService, MetaClientStateProvider,
     };
     use crate::node::app::sync::sync_gateway::fixture::SyncGatewayFixture;
+    use crate::node::app::sync::sync_protocol::fixture::SyncProtocolFixture;
+    use crate::node::app::sync::sync_protocol::EmbeddedSyncProtocol;
     use crate::node::common::data_transfer::MpscDataTransfer;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use std::sync::Arc;
-    use crate::node::app::sync::sync_protocol::EmbeddedSyncProtocol;
-    use crate::node::app::sync::sync_protocol::fixture::SyncProtocolFixture;
 
     pub struct MetaClientServiceFixture {
         pub client: Arc<MetaClientService<InMemKvLogEventRepo, EmbeddedSyncProtocol>>,
