@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::node::db::events::generic_log_event::{GenericKvLogEvent, GenericKvLogEventConvertible};
+use crate::node::db::events::generic_log_event::{GenericKvLogEvent, GenericKvLogEventConvertible, ToGenericEvent};
 use crate::node::db::events::object_id::ObjectId;
 use anyhow::Result;
 
@@ -8,7 +8,7 @@ use anyhow::Result;
 
 #[async_trait(? Send)]
 pub trait SaveCommand {
-    async fn save(&self, value: GenericKvLogEvent) -> Result<ObjectId>;
+    async fn save<T: ToGenericEvent>(&self, value: T) -> Result<ObjectId>;
 }
 
 #[async_trait(? Send)]

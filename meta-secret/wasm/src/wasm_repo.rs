@@ -2,7 +2,7 @@ use anyhow::bail;
 use async_trait::async_trait;
 use tracing::{error, instrument};
 
-use meta_secret_core::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor};
+use meta_secret_core::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, ToGenericEvent};
 use meta_secret_core::node::db::events::object_id::ObjectId;
 use meta_secret_core::node::db::repo::generic_db::{
     CommitLogDbConfig, DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand,
@@ -85,10 +85,11 @@ impl WasmRepo {
 #[async_trait(? Send)]
 impl SaveCommand for WasmRepo {
     #[instrument(skip_all)]
-    async fn save(&self, event: GenericKvLogEvent) -> anyhow::Result<ObjectId> {
-        let maybe_key = self.get_key(event.obj_id()).await?;
+    async fn save<T: ToGenericEvent>(&self, event: T) -> anyhow::Result<ObjectId> {
+        let generic_event = event.to_generic();
+        let maybe_key = self.get_key(generic_event.obj_id()).await?;
         if let Some(_) = maybe_key {
-            bail!("Wrong behaviour. Event already exists: {:?}", event);
+            bail!("Wrong behaviour. Event already exists: {:?}", &generic_event);
         };
 
         let store_name = self.store_name.as_str();
@@ -100,13 +101,13 @@ impl SaveCommand for WasmRepo {
 
         let store = tx.store(store_name).unwrap();
 
-        let js_value = serde_wasm_bindgen::to_value(&event).unwrap();
-        let id_str = event.obj_id().id_str();
+        let js_value = serde_wasm_bindgen::to_value(&generic_event).unwrap();
+        let id_str = generic_event.obj_id().id_str();
         let obj_id_js = serde_wasm_bindgen::to_value(id_str.as_str()).unwrap();
 
         let op_result = store.add(&js_value, Some(&obj_id_js)).await;
         if let Err(_) = &op_result {
-            error!("Failed to save event: {:?}", &event);
+            error!("Failed to save event: {:?}", &generic_event);
         }
 
         op_result.unwrap();
@@ -114,7 +115,7 @@ impl SaveCommand for WasmRepo {
         // Waits for the transaction to complete
         tx.done().await.unwrap();
 
-        Ok(event.obj_id().clone())
+        Ok(generic_event.obj_id())
     }
 }
 

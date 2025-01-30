@@ -3,9 +3,10 @@ use crate::node::common::model::user::common::UserData;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ToGenericEvent};
 use crate::node::db::events::shared_secret_event::SsLogObject;
 use crate::node::db::events::vault::vault_log_event::VaultLogObject;
-use crate::node::db::events::vault_event::{VaultMembershipObject, VaultObject};
+use crate::node::db::events::vault::vault_event::{VaultObject};
 use log::info;
 use tracing_attributes::instrument;
+use crate::node::db::events::vault::vault_membership::VaultMembershipObject;
 
 pub struct SignUpAction {}
 

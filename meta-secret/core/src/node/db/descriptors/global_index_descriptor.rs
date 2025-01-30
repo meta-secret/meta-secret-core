@@ -2,6 +2,7 @@ use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::{
     ObjectDescriptor, ObjectName, ObjectType, ToObjectDescriptor,
 };
+use crate::node::db::events::global_index_event::GlobalIndexObject;
 use crate::node::db::events::object_id::UnitId;
 
 /// Allows to have access to the global index of all vaults exists across the system.
@@ -13,7 +14,7 @@ use crate::node::db::events::object_id::UnitId;
 pub enum GlobalIndexDescriptor {
     Index,
     /// An id of a vault. We have global index to keep track and being able to iterate over all vaults,
-    /// and to be able to check if a particular vault exists we ned to have vault index
+    /// and to be able to check if a particular vault exists we need to have vault index
     VaultIndex {
         vault_id: UnitId,
     },
@@ -54,6 +55,8 @@ impl GlobalIndexDescriptor {
 }
 
 impl ToObjectDescriptor for GlobalIndexDescriptor {
+    type EventType = GlobalIndexObject;
+
     fn to_obj_desc(self) -> ObjectDescriptor {
         ObjectDescriptor::GlobalIndex(self)
     }

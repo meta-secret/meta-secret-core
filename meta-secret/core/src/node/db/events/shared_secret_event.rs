@@ -4,7 +4,7 @@ use crate::node::common::model::secret::{
 };
 use crate::node::common::model::user::common::UserData;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
-use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
+use crate::node::db::descriptors::shared_secret_descriptor::SsLogDescriptor;
 use crate::node::db::events::error::LogEventCastError;
 use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
@@ -158,8 +158,8 @@ impl SsLogObject {
 
         //create new unit and genesis events
         let unit_key = {
-            let desc = SharedSecretDescriptor::SsLog(vault_name.clone()).to_obj_desc();
-            KvKey::unit(desc.clone())
+            let desc = SsLogDescriptor::from(vault_name.clone());
+            KvKey::unit(desc.to_obj_desc())
         };
 
         let unit_event = SsLogObject::Unit(VaultUnitEvent(KvLogEvent {

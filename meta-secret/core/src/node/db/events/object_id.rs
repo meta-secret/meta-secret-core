@@ -3,9 +3,7 @@ use serde_derive::{Deserialize, Serialize};
 use crate::crypto::utils::NextId;
 use crate::node::common::model::user::common::UserData;
 use crate::node::common::model::vault::vault::VaultName;
-use crate::node::db::descriptors::object_descriptor::{
-    ObjectDescriptor, ObjectDescriptorId, ToObjectDescriptor,
-};
+use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ObjectDescriptorFqdn, ObjectDescriptorId, ToObjectDescriptor};
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 
 use super::kv_log_event::{KvKey, KvLogEvent};
@@ -81,8 +79,12 @@ impl From<ArtifactId> for ObjectId {
 }
 
 impl ObjectId {
+    pub fn unit_from<T: ToObjectDescriptor>(obj_desc: T) -> Self {
+        ObjectId::Unit(UnitId::unit_from_desc(obj_desc))
+    }
+    
     pub fn unit(obj_desc: ObjectDescriptor) -> Self {
-        ObjectId::Unit(UnitId::unit(&obj_desc))
+        ObjectId::Unit(UnitId::unit(obj_desc.fqdn()))
     }
 
     pub fn genesis(obj_desc: ObjectDescriptor) -> Self {
@@ -109,18 +111,18 @@ impl Next<ObjectId> for ObjectId {
 }
 
 impl UnitId {
-    pub fn unit(obj_descriptor: &ObjectDescriptor) -> UnitId {
-        let fqdn = obj_descriptor.fqdn();
+    pub fn unit_from_desc<T: ToObjectDescriptor>(obj_descriptor: T) -> UnitId {
+        let fqdn = obj_descriptor.to_obj_desc().fqdn();
+        UnitId::unit(fqdn)
+    }
+
+    pub fn unit(fqdn: ObjectDescriptorFqdn) -> UnitId {
         UnitId { id: fqdn.next_id() }
     }
 
-    pub fn db_tail() -> UnitId {
-        UnitId::unit(&ObjectDescriptor::DbTail)
-    }
-
     pub fn vault_unit(vault_name: VaultName) -> UnitId {
-        let vault_desc = VaultDescriptor::Vault(vault_name.clone()).to_obj_desc();
-        UnitId::unit(&vault_desc)
+        let vault_desc = VaultDescriptor::from(vault_name);
+        UnitId::unit_from_desc(vault_desc)
     }
 }
 
@@ -146,7 +148,7 @@ impl Next<ArtifactId> for GenesisId {
 
 impl GenesisId {
     pub fn genesis(obj_desc: ObjectDescriptor) -> GenesisId {
-        let unit_id = UnitId::unit(&obj_desc);
+        let unit_id = UnitId::unit(obj_desc.fqdn());
         unit_id.next()
     }
 }

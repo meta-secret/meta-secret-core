@@ -4,7 +4,7 @@ use std::sync::Arc;
 use async_mutex::Mutex;
 use async_trait::async_trait;
 
-use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor};
+use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::repo::generic_db::{DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand};
 use anyhow::Result;
@@ -42,11 +42,11 @@ impl FindOneQuery for InMemKvLogEventRepo {
 #[async_trait(? Send)]
 impl SaveCommand for InMemKvLogEventRepo {
     #[instrument(skip_all)]
-    async fn save(&self, value: GenericKvLogEvent) -> Result<ObjectId> {
+    async fn save<T: ToGenericEvent>(&self, value: T) -> Result<ObjectId> {
         let mut db = self.db.lock().await;
 
-        let key = value.obj_id();
-        db.insert(key.clone(), value.clone());
+        let key = value.clone().to_generic().obj_id();
+        db.insert(key.clone(), value.to_generic());
         Ok(key)
     }
 }

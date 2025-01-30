@@ -1,4 +1,4 @@
-use crate::crypto::utils::Id52bit;
+use crate::crypto::utils::Id48bit;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::secret::{
@@ -35,7 +35,7 @@ impl Display for VaultName {
 #[wasm_bindgen]
 impl VaultName {
     pub fn generate() -> Self {
-        let id_str = Id52bit::generate().text;
+        let id_str = Id48bit::generate().text;
         Self(id_str)
     }
 

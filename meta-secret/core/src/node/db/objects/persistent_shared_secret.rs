@@ -8,8 +8,8 @@ use crate::node::common::model::secret::{
 use crate::node::common::model::user::common::UserData;
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
-use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
-use crate::node::db::events::generic_log_event::{GenericKvLogEvent, KeyExtractor, ToGenericEvent};
+use crate::node::db::descriptors::shared_secret_descriptor::{SharedSecretDescriptor, SsDeviceLogDescriptor, SsLogDescriptor};
+use crate::node::db::events::generic_log_event::{KeyExtractor, ToGenericEvent};
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{
     Next, ObjectId, UnitId, VaultGenesisEvent, VaultUnitEvent,
@@ -43,7 +43,7 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
             value: SsDistributionStatus::Delivered,
         });
 
-        self.p_obj.repo.save(unit_event.to_generic()).await?;
+        self.p_obj.repo.save(unit_event).await?;
         Ok(())
     }
 }
@@ -55,9 +55,8 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
     ) -> Result<Vec<SharedSecretObject>> {
         let mut events = vec![];
         for distribution_id in distribution_claim.distribution_ids() {
-            let desc = SharedSecretDescriptor::SsDistribution(distribution_id).to_obj_desc();
-
-            let tail_event = self.p_obj.find_tail_event::<SharedSecretObject>(desc).await?;
+            let desc = SharedSecretDescriptor::SsDistribution(distribution_id);
+            let tail_event = self.p_obj.find_tail_event(desc).await?;
             if let Some(event) = tail_event {
                 events.push(event);
             }
@@ -70,9 +69,9 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
         &self,
         id: SsDistributionId,
     ) -> Result<SharedSecretObject> {
-        let desc = SharedSecretDescriptor::SsDistribution(id).to_obj_desc();
+        let desc = SharedSecretDescriptor::SsDistribution(id);
 
-        if let Some(event) = self.p_obj.find_tail_event::<SharedSecretObject>(desc).await? {
+        if let Some(event) = self.p_obj.find_tail_event(desc).await? {
             Ok(event)
         } else {
             bail!("No distribution event found")
@@ -86,8 +85,8 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
         info!("Saving ss_log event");
 
         let maybe_ss_log_event = {
-            let obj_desc = SharedSecretDescriptor::SsLog(claim.vault_name.clone()).to_obj_desc();
-            self.p_obj.find_tail_event::<SsLogObject>(obj_desc.clone()).await?
+            let obj_desc = SsLogDescriptor::from(claim.vault_name.clone());
+            self.p_obj.find_tail_event(obj_desc.clone()).await?
         };
 
         let vault_name = claim.vault_name.clone();
@@ -123,7 +122,7 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
             },
         };
 
-        self.p_obj.repo.save(new_ss_log_event.to_generic()).await?;
+        self.p_obj.repo.save(new_ss_log_event).await?;
 
         Ok(())
     }
@@ -136,7 +135,7 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
     ) -> Result<SsLogObject> {
         info!("Creating new ss_log_claim");
 
-        let obj_desc = SharedSecretDescriptor::SsLog(vault_name).to_obj_desc();
+        let obj_desc = SsLogDescriptor::from(vault_name);
 
         let free_id = self
             .p_obj
@@ -147,7 +146,7 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
         };
 
         Ok(SsLogObject::Claims(KvLogEvent {
-            key: KvKey::artifact(obj_desc, free_artifact_id),
+            key: KvKey::artifact(obj_desc.to_obj_desc(), free_artifact_id),
             value: ss_log_data,
         }))
     }
@@ -158,7 +157,7 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
     pub async fn save_claim_in_ss_device_log(&self, claim: SsDistributionClaim) -> Result<()> {
         info!("Saving claim in_ss_device_log");
 
-        let obj_desc = SharedSecretDescriptor::SsDeviceLog(claim.sender.clone()).to_obj_desc();
+        let obj_desc = SsDeviceLogDescriptor::from(claim.sender.clone());
         let free_id = self
             .p_obj
             .find_free_id_by_obj_desc(obj_desc.clone())
@@ -168,7 +167,7 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
         };
 
         let obj = SsDeviceLogObject::Claim(KvLogEvent {
-            key: KvKey::artifact(obj_desc, free_artifact_id),
+            key: KvKey::artifact(obj_desc.to_obj_desc(), free_artifact_id),
             value: claim,
         });
 
@@ -183,13 +182,13 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
         &self,
         device_id: &DeviceId,
     ) -> Result<Option<ObjectId>> {
-        let obj_desc = SharedSecretDescriptor::SsDeviceLog(device_id.clone()).to_obj_desc();
+        let obj_desc = SsDeviceLogDescriptor::from(device_id.clone());
         self.p_obj.find_tail_id_by_obj_desc(obj_desc).await
     }
 
     pub async fn get_ss_log_obj(&self, vault_name: VaultName) -> Result<SsLogData> {
-        let obj_desc = SharedSecretDescriptor::SsLog(vault_name).to_obj_desc();
-        let maybe_log_event = self.p_obj.find_tail_event::<SsLogObject>(obj_desc).await?;
+        let obj_desc = SsLogDescriptor::from(vault_name);
+        let maybe_log_event = self.p_obj.find_tail_event(obj_desc).await?;
 
         let log_event = maybe_log_event
             .map(|ss_log_event| ss_log_event.to_data())
@@ -207,8 +206,8 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
     #[instrument(skip(self))]
     async fn init_ss_device_log(&self, user: UserData) -> Result<()> {
         let user_id = user.user_id();
-        let obj_desc = SharedSecretDescriptor::SsDeviceLog(user_id.device_id).to_obj_desc();
-        let unit_id = UnitId::unit(&obj_desc);
+        let obj_desc = SsDeviceLogDescriptor::from(user_id.device_id);
+        let unit_id = UnitId::unit_from_desc(obj_desc.clone());
 
         let maybe_unit_event = self.p_obj.repo.find_one(ObjectId::Unit(unit_id)).await?;
 
@@ -218,20 +217,20 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
         }
 
         //create new unit and genesis events
-        let unit_key = KvKey::unit(obj_desc.clone());
+        let unit_key = KvKey::unit_from(obj_desc);
         let unit_event = SsDeviceLogObject::Unit(VaultUnitEvent(KvLogEvent {
             key: unit_key.clone(),
             value: user_id.vault_name.clone(),
         }));
 
-        self.p_obj.repo.save(unit_event.to_generic()).await?;
+        self.p_obj.repo.save(unit_event).await?;
 
         let genesis_key = unit_key.next();
         let genesis_event = SsDeviceLogObject::Genesis(VaultGenesisEvent(KvLogEvent {
             key: genesis_key,
             value: user.clone(),
         }));
-        self.p_obj.repo.save(genesis_event.to_generic()).await?;
+        self.p_obj.repo.save(genesis_event).await?;
 
         Ok(())
     }
@@ -241,7 +240,7 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
 pub mod spec {
     use crate::node::common::model::user::common::UserData;
     use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
-    use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
+    use crate::node::db::descriptors::shared_secret_descriptor::{SharedSecretDescriptor, SsDeviceLogDescriptor};
     use crate::node::db::events::object_id::ObjectId;
     use crate::node::db::objects::persistent_object::PersistentObject;
     use crate::node::db::repo::generic_db::KvLogEventRepo;
@@ -261,10 +260,10 @@ pub mod spec {
             info!("SSDeviceLogSpec check_initialization");
 
             let device_id = self.client_user.device.device_id.clone();
-            let ss_obj_desc = SharedSecretDescriptor::SsDeviceLog(device_id).to_obj_desc();
+            let ss_obj_desc = SsDeviceLogDescriptor::from(device_id);
 
-            let ss_unit_id = ObjectId::unit(ss_obj_desc.clone());
-            let ss_genesis_id = ObjectId::genesis(ss_obj_desc);
+            let ss_unit_id = ObjectId::unit_from(ss_obj_desc.clone());
+            let ss_genesis_id = ObjectId::genesis(ss_obj_desc.to_obj_desc());
 
             let maybe_unit_event = self.p_obj.repo.find_one(ss_unit_id).await?;
 

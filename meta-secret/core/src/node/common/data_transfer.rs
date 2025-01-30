@@ -1,4 +1,4 @@
-use flume::{Receiver, RecvError, Sender};
+use flume::{Drain, Receiver, RecvError, Sender};
 use std::fmt::Debug;
 use tracing::{instrument, Instrument};
 
@@ -55,6 +55,15 @@ impl<Request: Debug, Response: Debug> MpscDataTransfer<Request, Response> {
             .send_async(message)
             .in_current_span()
             .await;
+    }
+
+    #[instrument(skip(self))]
+    pub fn service_drain(&self) -> Drain<Request> {
+        let request = self
+            .service_channel
+            .receiver
+            .drain();
+        request
     }
 
     #[instrument(skip(self))]

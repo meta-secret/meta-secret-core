@@ -142,18 +142,17 @@ pub mod fixture {
 mod test {
     use crate::meta_tests::fixture_util::fixture::states::ExtendedState;
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
-    use crate::meta_tests::setup_tracing;
     use crate::meta_tests::spec::test_spec::TestSpec;
     use crate::node::common::meta_tracing::{client_span, server_span, vd_span};
     use crate::node::common::model::user::common::UserData;
     use crate::node::common::model::vault::vault::VaultStatus;
     use crate::node::db::actions::sign_up::claim::spec::SignUpClaimSpec;
     use crate::node::db::actions::sign_up::claim::test_action::SignUpClaimTestAction;
-    use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
-    use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
+    use crate::node::db::descriptors::shared_secret_descriptor::{SsDeviceLogDescriptor};
     use crate::node::db::objects::persistent_vault::PersistentVault;
-    use anyhow::bail;
+    use log::warn;
     use tracing::{info, Instrument};
+    use crate::node::db::actions::sign_up::join::AcceptJoinAction;
     use crate::node::db::repo::persistent_credentials::spec::PersistentCredentialsSpec;
 
     #[tokio::test]
@@ -190,7 +189,8 @@ mod test {
         let client_db = client_p_obj.repo.get_db().await;
         assert_eq!(17, client_db.len());
 
-        p_vault_check(&registry).await?;
+        registry.state.base.spec.client.verify_user_is_a_member().await?;
+        
         sync_client(&registry).await?;
         server_check(&registry, client_user).await?;
 
@@ -204,47 +204,71 @@ mod test {
         let registry = FixtureRegistry::extended().await?;
 
         init_server(&registry).await?;
+        let empty_state = &registry.state.base.empty;
+        
         let server_creds_spec = PersistentCredentialsSpec {
-            p_obj: registry.state.base.empty.p_obj.server.clone(),
+            p_obj: empty_state.p_obj.server.clone(),
         };
         server_creds_spec.verify_device_creds().await?;
 
         info!("Executing 'sign up' claim");
-        let vd_p_obj = registry.state.base.empty.p_obj.vd.clone();
-        let user_creds = &registry.state.base.empty.user_creds;
+        let vd_p_obj = empty_state.p_obj.vd.clone();
+        let user_creds = &empty_state.user_creds;
         SignUpClaimTestAction::sign_up(vd_p_obj.clone(), &user_creds.vd)
             .instrument(vd_span())
             .await?;
 
-        sync_client(&registry).await?;
+        let vd_gw = registry.state.meta_client_service.sync_gateway.vd_gw.clone();
+        vd_gw.sync().await?;
         // second sync to get new messages created on server
-        sync_client(&registry).await?;
+        vd_gw.sync().await?;
 
         info!("Verify SignUpClaim");
-        let vd_user = registry.state.base.empty.user_creds.vd.user();
-        let client_claim_spec = SignUpClaimSpec {
+        let vd_user = empty_state.user_creds.vd.user();
+        let vd_claim_spec = SignUpClaimSpec {
             p_obj: vd_p_obj.clone(),
             user: vd_user.clone(),
         };
+        vd_claim_spec.verify().instrument(client_span()).await?;
 
-        client_claim_spec.verify().instrument(client_span()).await?;
+        let vd_db = vd_p_obj.repo.get_db().await;
+        assert_eq!(17, vd_db.len());
 
-        let client_db = vd_p_obj.repo.get_db().await;
-        assert_eq!(17, client_db.len());
+        registry.state.base.spec.vd.verify_user_is_a_member().await?;
 
-        p_vault_check(&registry).await?;
-        sync_client(&registry).await?;
+        vd_gw.sync().await?;
         server_check(&registry, vd_user).await?;
         
         //join request by client
-        let client_p_obj = registry.state.base.empty.p_obj.client.clone();
+        let client_p_obj = empty_state.p_obj.client.clone();
         SignUpClaimTestAction::sign_up(client_p_obj.clone(), &user_creds.client)
             .instrument(client_span())
             .await?;
+
+        let client_gw = registry.state.meta_client_service.sync_gateway.client_gw.clone();
+        client_gw.sync().await?;
+        client_gw.sync().await?;
+
+        vd_gw.sync().await?;
+        vd_gw.sync().await?;
         
         //accept join request by vd
-        
+        let p_vault = PersistentVault {
+            p_obj: empty_state.p_obj.vd.clone(),
+        };
+        let vault_status = p_vault.find(empty_state.user_creds.vd.user()).await?;
 
+        let VaultStatus::Member { member, .. } = vault_status else {
+            warn!("Not a vault member");
+            return Ok(());
+        };
+        
+        let accept_action = AcceptJoinAction {
+            p_obj: empty_state.p_obj.vd.clone(),
+            member
+        };
+        //accept_action.accept(client_p_obj).await?;
+        todo!("fix this test");
         Ok(())
     }
 
@@ -254,8 +278,7 @@ mod test {
     ) -> anyhow::Result<()> {
         let server_app = registry.state.server_app.server_app.clone();
         let server_ss_device_log_events = {
-            let ss_desc = SharedSecretDescriptor::SsDeviceLog(client_user.device.device_id.clone())
-                .to_obj_desc();
+            let ss_desc = SsDeviceLogDescriptor::from(client_user.device.device_id.clone());
 
             server_app
                 .p_obj
@@ -278,20 +301,6 @@ mod test {
         };
 
         server_claim_spec.verify().await?;
-        Ok(())
-    }
-
-    async fn p_vault_check(registry: &FixtureRegistry<ExtendedState>) -> anyhow::Result<()> {
-        let p_vault = PersistentVault {
-            p_obj: registry.state.base.empty.p_obj.client.clone(),
-        };
-        let vault_status = p_vault
-            .find(registry.state.base.empty.user_creds.client.user())
-            .await?;
-
-        let VaultStatus::Member { .. } = &vault_status else {
-            bail!("Client is not a vault member: {:?}", vault_status);
-        };
         Ok(())
     }
 

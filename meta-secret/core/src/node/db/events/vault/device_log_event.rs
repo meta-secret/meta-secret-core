@@ -4,8 +4,8 @@ use crate::node::db::events::generic_log_event::{
 };
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, ObjectId, VaultGenesisEvent, VaultUnitEvent};
-use crate::node::db::events::vault_event::VaultActionEvent;
-use anyhow::{anyhow, bail};
+use crate::node::db::events::vault::vault_log_event::VaultActionEvent;
+use anyhow::{anyhow, bail, Result};
 
 /// Each device has its own unique device_log table, to prevent conflicts in updates vault state
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -18,21 +18,21 @@ pub enum DeviceLogObject {
 }
 
 impl DeviceLogObject {
-    pub fn get_unit(&self) -> anyhow::Result<VaultUnitEvent> {
+    pub fn get_unit(&self) -> Result<VaultUnitEvent> {
         match self {
             DeviceLogObject::Unit(event) => Ok(event.clone()),
             _ => bail!(LogEventCastError::WrongDeviceLog(self.clone())),
         }
     }
 
-    pub fn get_genesis(&self) -> anyhow::Result<VaultGenesisEvent> {
+    pub fn get_genesis(&self) -> Result<VaultGenesisEvent> {
         match self {
             DeviceLogObject::Genesis(event) => Ok(event.clone()),
             _ => bail!(LogEventCastError::WrongDeviceLog(self.clone())),
         }
     }
 
-    pub fn get_action(&self) -> anyhow::Result<VaultActionEvent> {
+    pub fn get_action(&self) -> Result<VaultActionEvent> {
         match self {
             DeviceLogObject::Action(event) => Ok(event.value.clone()),
             _ => bail!(LogEventCastError::WrongDeviceLog(self.clone())),

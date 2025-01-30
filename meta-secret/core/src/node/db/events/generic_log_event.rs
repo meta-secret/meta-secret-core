@@ -1,18 +1,14 @@
-use anyhow::anyhow;
-
-use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
-use crate::node::db::events::db_tail::DbTail;
+use super::shared_secret_event::SsLogObject;
 use crate::node::db::events::error::ErrorMessage;
 use crate::node::db::events::global_index_event::GlobalIndexObject;
-use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
-use crate::node::db::events::local_event::{CredentialsObject, DbTailObject};
+use crate::node::db::events::kv_log_event::{GenericKvKey, KvLogEvent};
+use crate::node::db::events::local_event::CredentialsObject;
 use crate::node::db::events::object_id::{ArtifactId, ObjectId};
 use crate::node::db::events::shared_secret_event::{SharedSecretObject, SsDeviceLogObject};
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
+use crate::node::db::events::vault::vault_event::VaultObject;
 use crate::node::db::events::vault::vault_log_event::VaultLogObject;
-use crate::node::db::events::vault_event::{VaultMembershipObject, VaultObject};
-
-use super::shared_secret_event::SsLogObject;
+use crate::node::db::events::vault::vault_membership::VaultMembershipObject;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -20,8 +16,7 @@ pub enum GenericKvLogEvent {
     GlobalIndex(GlobalIndexObject),
 
     Credentials(CredentialsObject),
-    DbTail(DbTailObject),
-
+    
     DeviceLog(DeviceLogObject),
     VaultLog(VaultLogObject),
     Vault(VaultObject),
@@ -72,18 +67,16 @@ impl GenericKvLogEvent {
     pub fn ss_log(self) -> anyhow::Result<SsLogObject> {
         SsLogObject::try_from(self)
     }
-
-    pub fn to_db_tail(self) -> anyhow::Result<DbTail> {
-        if let GenericKvLogEvent::DbTail(DbTailObject(event)) = self {
-            Ok(event.value)
-        } else {
-            Err(anyhow!("DbTail. Invalid event type: {:?}", self))
-        }
-    }
 }
 
 pub trait GenericKvLogEventConvertible: Sized {
     fn try_from_event(event: GenericKvLogEvent) -> anyhow::Result<Self>;
+}
+
+impl GenericKvLogEventConvertible for GenericKvLogEvent {
+    fn try_from_event(event: GenericKvLogEvent) -> anyhow::Result<Self> {
+        Ok(event)
+    }
 }
 
 impl<T> GenericKvLogEventConvertible for T
@@ -95,8 +88,14 @@ where
     }
 }
 
-pub trait ToGenericEvent {
+pub trait ToGenericEvent: Clone {
     fn to_generic(self) -> GenericKvLogEvent;
+}
+
+impl ToGenericEvent for GenericKvLogEvent {
+    fn to_generic(self) -> GenericKvLogEvent {
+        self
+    }
 }
 
 pub trait UnitEvent<T> {
@@ -122,7 +121,6 @@ impl ObjIdExtractor for GenericKvLogEvent {
             GenericKvLogEvent::Vault(obj) => obj.obj_id(),
             GenericKvLogEvent::SharedSecret(obj) => obj.obj_id(),
             GenericKvLogEvent::Credentials(obj) => obj.obj_id(),
-            GenericKvLogEvent::DbTail(obj) => obj.obj_id(),
             GenericKvLogEvent::DbError { event } => ObjectId::from(event.key.obj_id.clone()),
             GenericKvLogEvent::DeviceLog(obj) => obj.obj_id(),
             GenericKvLogEvent::VaultLog(obj) => obj.obj_id(),
@@ -140,7 +138,6 @@ impl KeyExtractor for GenericKvLogEvent {
             GenericKvLogEvent::Vault(obj) => obj.key(),
             GenericKvLogEvent::SharedSecret(obj) => obj.key(),
             GenericKvLogEvent::Credentials(obj) => obj.key(),
-            GenericKvLogEvent::DbTail(obj) => obj.key(),
             GenericKvLogEvent::DbError { event } => GenericKvKey::from(event.key.clone()),
             GenericKvLogEvent::DeviceLog(obj) => obj.key(),
             GenericKvLogEvent::VaultLog(obj) => obj.key(),
@@ -148,15 +145,5 @@ impl KeyExtractor for GenericKvLogEvent {
             GenericKvLogEvent::SsDeviceLog(obj) => obj.key(),
             GenericKvLogEvent::SsLog(obj) => obj.key(),
         }
-    }
-}
-
-impl GenericKvLogEvent {
-    pub fn db_tail(db_tail: DbTail) -> GenericKvLogEvent {
-        let event = KvLogEvent {
-            key: KvKey::unit(ObjectDescriptor::DbTail),
-            value: db_tail,
-        };
-        GenericKvLogEvent::DbTail(DbTailObject(event))
     }
 }

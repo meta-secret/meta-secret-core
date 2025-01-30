@@ -1,6 +1,6 @@
 use crate::node::common::model::device::common::DeviceData;
 use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
-use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
+use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ToObjectDescriptor};
 use crate::node::db::events::object_id::{ArtifactId, GenesisId, Next, UnitId};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -87,9 +87,13 @@ pub struct KvKey<Id> {
 }
 
 impl KvKey<UnitId> {
+    pub fn unit_from<D: ToObjectDescriptor>(obj_desc: D) -> Self {
+        KvKey::unit(obj_desc.to_obj_desc())
+    }
+    
     pub fn unit(obj_desc: ObjectDescriptor) -> Self {
         Self {
-            obj_id: UnitId::unit(&obj_desc),
+            obj_id: UnitId::unit(obj_desc.fqdn()),
             obj_desc,
         }
     }

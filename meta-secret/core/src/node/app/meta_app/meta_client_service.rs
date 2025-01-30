@@ -20,11 +20,12 @@ use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::secret::MetaDistributor;
+use anyhow::Result;
 
-pub(crate) struct MetaClientService<Repo: KvLogEventRepo, Sync: SyncProtocol> {
-    data_transfer: Arc<MetaClientDataTransfer>,
-    sync_gateway: Arc<SyncGateway<Repo, Sync>>,
-    state_provider: Arc<MetaClientStateProvider>,
+pub struct MetaClientService<Repo: KvLogEventRepo, Sync: SyncProtocol> {
+    pub data_transfer: Arc<MetaClientDataTransfer>,
+    pub sync_gateway: Arc<SyncGateway<Repo, Sync>>,
+    pub state_provider: Arc<MetaClientStateProvider>,
 }
 
 pub struct MetaClientDataTransfer {
@@ -33,102 +34,118 @@ pub struct MetaClientDataTransfer {
 
 impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
     #[instrument(skip_all)]
-    pub async fn run(&self) -> anyhow::Result<()> {
+    pub async fn run(&self) -> Result<()> {
         info!("Run meta_app service");
-
-        let p_obj = self.sync_gateway.p_obj.clone();
-
+        
         let mut service_state = self.build_service_state().await?;
 
-        while let Ok(request) = self.data_transfer.dt.service_receive().await {
-            info!(
-                "Action execution. Request {:?}, state: {:?}",
-                &request, &service_state.app_state
-            );
+        loop {
+            let client_requests = self.data_transfer.dt.service_drain();
+            for request in client_requests {
+                let p_obj = self.sync_gateway.p_obj.clone();
+                self.handle_client_request(p_obj, &mut service_state, request)
+                    .await?;
+            }
+            
+            //handle client <-> server synchronization
+            
 
-            self.sync_gateway.sync().await?;
+            async_std::task::sleep(std::time::Duration::from_secs(1)).await;
+        }
+    }
 
-            match request {
-                GenericAppStateRequest::SignUp(vault_name) => match &service_state.app_state {
-                    ApplicationState::Local { device } => {
-                        let user_data = UserData {
-                            vault_name,
-                            device: device.clone(),
-                        };
+    async fn handle_client_request(
+        &self,
+        p_obj: Arc<PersistentObject<Repo>>,
+        service_state: &mut ServiceState<ApplicationState>,
+        request: GenericAppStateRequest,
+    ) -> Result<()> {
+        info!(
+            "Action execution. Request {:?}, state: {:?}",
+            &request, &service_state.app_state
+        );
 
-                        let sign_up_claim = SignUpClaim {
-                            p_obj: p_obj.clone(),
-                        };
-                        sign_up_claim.sign_up(user_data.clone()).await?;
-                        self.sync_gateway.sync().await?;
+        self.sync_gateway.sync().await?;
 
-                        let p_vault = PersistentVault {
-                            p_obj: self.p_obj(),
-                        };
-                        let new_status = p_vault.find(user_data.clone()).await?;
-                        service_state.app_state = ApplicationState::Vault { vault: new_status };
-                    }
-                    ApplicationState::Vault { vault } => {
-                        error!("You are already a vault member: {:?}", vault);
-                    }
-                },
-
-                GenericAppStateRequest::ClusterDistribution(request) => {
-                    let user_creds = {
-                        let creds_repo = PersistentCredentials {
-                            p_obj: p_obj.clone(),
-                        };
-                        let maybe_user_creds = creds_repo.get_user_creds().await?;
-
-                        let Some(user_creds) = maybe_user_creds else {
-                            bail!("Invalid state. UserCredentials must be present")
-                        };
-
-                        user_creds
+        match request {
+            GenericAppStateRequest::SignUp(vault_name) => match &service_state.app_state {
+                ApplicationState::Local { device } => {
+                    let user_data = UserData {
+                        vault_name,
+                        device: device.clone(),
                     };
 
-                    let vault_status = {
-                        let vault_repo = PersistentVault {
-                            p_obj: p_obj.clone(),
-                        };
-                        vault_repo.find(user_creds.user()).await?
-                    };
-
-                    match vault_status {
-                        VaultStatus::NotExists(_) => {
-                            bail!("Vault doesn't exists")
-                        }
-                        VaultStatus::Outsider(_) => {
-                            bail!("Outsider user can't manage a vault")
-                        }
-                        VaultStatus::Member {
-                            member: vault_member,
-                            ..
-                        } => {
-                            let distributor = MetaDistributor {
-                                p_obj: p_obj.clone(),
-                                vault_member: vault_member.clone(),
-                                user_creds: Arc::new(user_creds),
-                            };
-
-                            distributor
-                                .distribute(vault_member, request.pass_id, request.pass)
-                                .await?;
-                        }
-                    }
-                }
-
-                GenericAppStateRequest::Recover(meta_pass_id) => {
-                    let recovery_action = RecoveryAction {
+                    let sign_up_claim = SignUpClaim {
                         p_obj: p_obj.clone(),
                     };
-                    recovery_action.recovery_request(meta_pass_id).await?;
+                    sign_up_claim.sign_up(user_data.clone()).await?;
+                    self.sync_gateway.sync().await?;
+
+                    let p_vault = PersistentVault {
+                        p_obj: self.p_obj(),
+                    };
+                    let new_status = p_vault.find(user_data.clone()).await?;
+                    service_state.app_state = ApplicationState::Vault { vault: new_status };
+                }
+                ApplicationState::Vault { vault } => {
+                    error!("You are already a vault member: {:?}", vault);
+                }
+            },
+
+            GenericAppStateRequest::ClusterDistribution(request) => {
+                let user_creds = {
+                    let creds_repo = PersistentCredentials {
+                        p_obj: p_obj.clone(),
+                    };
+                    let maybe_user_creds = creds_repo.get_user_creds().await?;
+
+                    let Some(user_creds) = maybe_user_creds else {
+                        bail!("Invalid state. UserCredentials must be present")
+                    };
+
+                    user_creds
+                };
+
+                let vault_status = {
+                    let vault_repo = PersistentVault {
+                        p_obj: p_obj.clone(),
+                    };
+                    vault_repo.find(user_creds.user()).await?
+                };
+
+                match vault_status {
+                    VaultStatus::NotExists(_) => {
+                        bail!("Vault doesn't exists")
+                    }
+                    VaultStatus::Outsider(_) => {
+                        bail!("Outsider user can't manage a vault")
+                    }
+                    VaultStatus::Member {
+                        member: vault_member,
+                        ..
+                    } => {
+                        let distributor = MetaDistributor {
+                            p_obj: p_obj.clone(),
+                            vault_member: vault_member.clone(),
+                            user_creds: Arc::new(user_creds),
+                        };
+
+                        distributor
+                            .distribute(vault_member, request.pass_id, request.pass)
+                            .await?;
+                    }
                 }
             }
 
-            self.state_provider.push(&service_state.app_state).await
+            GenericAppStateRequest::Recover(meta_pass_id) => {
+                let recovery_action = RecoveryAction {
+                    p_obj: p_obj.clone(),
+                };
+                recovery_action.recovery_request(meta_pass_id).await?;
+            }
         }
 
+        self.state_provider.push(&service_state.app_state).await;
         Ok(())
     }
 

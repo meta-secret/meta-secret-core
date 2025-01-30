@@ -2,13 +2,13 @@ use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::device::device_creds::DeviceCredentials;
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
-use crate::node::db::events::db_tail::DbTail;
 use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent, UnitEvent,
 };
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{GenesisId, ObjectId, UnitId};
 use anyhow::{anyhow, Error};
+use crate::node::db::descriptors::creds::CredentialsDescriptor;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,7 +36,7 @@ impl ToGenericEvent for CredentialsObject {
 impl UnitEvent<DeviceCredentials> for CredentialsObject {
     fn unit(value: DeviceCredentials) -> Self {
         let event = KvLogEvent {
-            key: KvKey::unit(ObjectDescriptor::CredsIndex),
+            key: KvKey::unit(ObjectDescriptor::Creds(CredentialsDescriptor {})),
             value,
         };
 
@@ -47,7 +47,7 @@ impl UnitEvent<DeviceCredentials> for CredentialsObject {
 impl CredentialsObject {
     pub fn default_user(user: UserCredentials) -> Self {
         let event = KvLogEvent {
-            key: KvKey::genesis(ObjectDescriptor::CredsIndex),
+            key: KvKey::genesis(ObjectDescriptor::Creds(CredentialsDescriptor {})),
             value: user,
         };
 
@@ -82,7 +82,7 @@ impl KeyExtractor for CredentialsObject {
 
 impl CredentialsObject {
     pub fn unit_id() -> ObjectId {
-        ObjectId::unit(ObjectDescriptor::CredsIndex)
+        ObjectId::unit(ObjectDescriptor::Creds(CredentialsDescriptor {}))
     }
 
     pub fn device(&self) -> DeviceData {
@@ -90,35 +90,5 @@ impl CredentialsObject {
             CredentialsObject::Device(event) => event.value.device.clone(),
             CredentialsObject::DefaultUser(event) => event.value.device_creds.device.clone(),
         }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DbTailObject(pub KvLogEvent<UnitId, DbTail>);
-
-impl ToGenericEvent for DbTailObject {
-    fn to_generic(self) -> GenericKvLogEvent {
-        GenericKvLogEvent::DbTail(self)
-    }
-}
-
-impl KeyExtractor for DbTailObject {
-    fn key(&self) -> GenericKvKey {
-        GenericKvKey::from(self.0.key.clone())
-    }
-}
-
-impl ObjIdExtractor for DbTailObject {
-    fn obj_id(&self) -> ObjectId {
-        ObjectId::from(self.0.key.obj_id.clone())
-    }
-}
-
-impl UnitEvent<DbTail> for DbTailObject {
-    fn unit(value: DbTail) -> Self {
-        let key = KvKey::unit(ObjectDescriptor::DbTail);
-        let event = KvLogEvent { key, value };
-        Self(event)
     }
 }

@@ -2,7 +2,6 @@ use crate::node::common::model::device::common::DeviceName;
 use crate::node::common::model::device::device_creds::DeviceCredentials;
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::vault::VaultName;
-use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::generic_log_event::{ToGenericEvent, UnitEvent};
 use crate::node::db::events::kv_log_event::KvLogEvent;
 use crate::node::db::events::local_event::CredentialsObject;
@@ -13,6 +12,7 @@ use log::info;
 use std::sync::Arc;
 use tracing::instrument;
 use anyhow::Result;
+use crate::node::db::descriptors::creds::CredentialsDescriptor;
 
 pub struct PersistentCredentials<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
@@ -68,7 +68,7 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
     pub async fn find(&self) -> Result<Option<CredentialsObject>> {
         let maybe_creds = self
             .p_obj
-            .find_tail_event::<CredentialsObject>(ObjectDescriptor::CredsIndex)
+            .find_tail_event(CredentialsDescriptor)
             .await?;
 
         Ok(maybe_creds)
@@ -179,11 +179,11 @@ pub mod fixture {
 
 #[cfg(test)]
 pub mod spec {
-    use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_object::PersistentObject;
     use crate::node::db::repo::generic_db::KvLogEventRepo;
     use std::sync::Arc;
+    use crate::node::db::descriptors::creds::CredentialsDescriptor;
 
     pub struct PersistentCredentialsSpec<Repo: KvLogEventRepo> {
         pub p_obj: Arc<PersistentObject<Repo>>,
@@ -191,11 +191,9 @@ pub mod spec {
 
     impl PersistentCredentialsSpec<InMemKvLogEventRepo> {
         pub async fn verify_user_creds(&self) -> anyhow::Result<()> {
-            let creds_desc = ObjectDescriptor::CredsIndex;
-
             let events = self
                 .p_obj
-                .get_object_events_from_beginning(creds_desc)
+                .get_object_events_from_beginning(CredentialsDescriptor)
                 .await?;
 
             assert_eq!(events.len(), 2);
@@ -204,11 +202,9 @@ pub mod spec {
         }
 
         pub async fn verify_device_creds(&self) -> anyhow::Result<()> {
-            let creds_desc = ObjectDescriptor::CredsIndex;
-
             let events = self
                 .p_obj
-                .get_object_events_from_beginning(creds_desc)
+                .get_object_events_from_beginning(CredentialsDescriptor)
                 .await?;
 
             assert_eq!(events.len(), 1);

@@ -24,11 +24,11 @@ pub fn generate_hash() -> String {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(getter_with_clone)]
-pub struct Id52bit {
+pub struct Id48bit {
     pub text: String,
 }
 
-impl Id52bit {
+impl Id48bit {
     pub fn generate() -> Self {
         let mut rng = rand::thread_rng();
 
@@ -56,7 +56,7 @@ impl Id52bit {
     }
 }
 
-impl IdString for Id52bit {
+impl IdString for Id48bit {
     fn id_str(self) -> String {
         self.text
     }

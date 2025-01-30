@@ -9,6 +9,11 @@ use rand::distributions::Alphanumeric;
 use rand::Rng;
 use wasm_bindgen::prelude::wasm_bindgen;
 
+/// `ClaimId` is a wrapper around a `String` that serves as a unique identifier
+/// for claims within the system. It is used to track and manage claims associated
+/// with secret distributions, ensuring each claim can be uniquely identified and 
+/// referenced. The `ClaimId` is derived from various attributes and is utilized 
+/// throughout the secret management process to maintain integrity and traceability.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(getter_with_clone)]
