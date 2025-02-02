@@ -36,7 +36,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
     #[instrument(skip_all)]
     pub async fn run(&self) -> Result<()> {
         info!("Run meta_app service");
-        
+
         let mut service_state = self.build_service_state().await?;
 
         loop {
@@ -46,9 +46,8 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                 self.handle_client_request(p_obj, &mut service_state, request)
                     .await?;
             }
-            
+
             //handle client <-> server synchronization
-            
 
             async_std::task::sleep(std::time::Duration::from_secs(1)).await;
         }

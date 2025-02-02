@@ -4,11 +4,15 @@ use crate::node::common::model::user::common::{UserData, UserDataMember, UserDat
 use crate::node::common::model::vault::vault::{VaultMember, VaultName, VaultStatus};
 use crate::node::common::model::vault::vault_data::VaultData;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
-use crate::node::db::descriptors::vault_descriptor::{VaultDescriptor, VaultLogDescriptor, VaultMembershipDescriptor};
+use crate::node::db::descriptors::vault_descriptor::{
+    VaultDescriptor, VaultLogDescriptor, VaultMembershipDescriptor,
+};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, Next, ObjectId};
 use crate::node::db::events::vault::vault_event::VaultObject;
-use crate::node::db::events::vault::vault_log_event::{VaultActionEvent, VaultActionUpdateEvent, VaultLogObject};
+use crate::node::db::events::vault::vault_log_event::{
+    VaultActionEvent, VaultActionUpdateEvent, VaultLogObject,
+};
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
@@ -31,9 +35,7 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
     pub async fn vault_log(&self, vault_name: VaultName) -> Result<Option<VaultLogObject>> {
         //vault actions
         let vault_log_desc = VaultLogDescriptor::from(vault_name);
-        let maybe_vault_log_event = self.p_obj
-            .find_tail_event(vault_log_desc)
-            .await?;
+        let maybe_vault_log_event = self.p_obj.find_tail_event(vault_log_desc).await?;
 
         Ok(maybe_vault_log_event)
     }
@@ -78,10 +80,7 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
                 //save new vault state
                 let vault_desc = VaultDescriptor::from(member.vault.vault_name.clone());
 
-                let vault_free_id = self
-                    .p_obj
-                    .find_free_id_by_obj_desc(vault_desc)
-                    .await?;
+                let vault_free_id = self.p_obj.find_free_id_by_obj_desc(vault_desc).await?;
 
                 let ObjectId::Artifact(vault_artifact_id) = vault_free_id else {
                     return Err(anyhow!(
@@ -107,45 +106,41 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
             None => Ok(VaultStatus::NotExists(user)),
             //There is no vault table on local machine, but it is present in global index,
             //which means, current user is outsider
-            Some(vault_obj) => {
-                match vault_obj {
-                    VaultObject::Unit(_) => {
-                        bail!("Invalid state. Vault has only unit event")
-                    }
-                    VaultObject::Genesis(_) => {
-                        bail!("Invalid state. Genesis event is not enough")
-                    }
-                    VaultObject::Vault(KvLogEvent {
-                        value: vault_data, ..
-                    }) => {
-                        if vault_data.is_not_member(&user.device.device_id) {
-                            Ok(VaultStatus::Outsider(UserDataOutsider::non_member(user)))
-                        } else {
-                            let p_ss = PersistentSharedSecret {
-                                p_obj: self.p_obj.clone(),
-                            };
-                            let ss_claims = p_ss.get_ss_log_obj(user.vault_name()).await?;
+            Some(vault_obj) => match vault_obj {
+                VaultObject::Unit(_) => {
+                    bail!("Invalid state. Vault has only unit event")
+                }
+                VaultObject::Genesis(_) => {
+                    bail!("Invalid state. Genesis event is not enough")
+                }
+                VaultObject::Vault(KvLogEvent {
+                    value: vault_data, ..
+                }) => {
+                    if vault_data.is_not_member(&user.device.device_id) {
+                        Ok(VaultStatus::Outsider(UserDataOutsider::non_member(user)))
+                    } else {
+                        let p_ss = PersistentSharedSecret {
+                            p_obj: self.p_obj.clone(),
+                        };
+                        let ss_claims = p_ss.get_ss_log_obj(user.vault_name()).await?;
 
-                            Ok(VaultStatus::Member {
-                                member: VaultMember {
-                                    member: UserDataMember { user_data: user },
-                                    vault: vault_data,
-                                },
-                                ss_claims,
-                            })
-                        }
+                        Ok(VaultStatus::Member {
+                            member: VaultMember {
+                                member: UserDataMember { user_data: user },
+                                vault: vault_data,
+                            },
+                            ss_claims,
+                        })
                     }
                 }
-            }
+            },
         }
     }
 
     pub async fn save_vault_log_event(&self, action_event: VaultActionEvent) -> Result<()> {
         let desc = VaultLogDescriptor::from(action_event.vault_name());
-        let maybe_vault_log_event = self.p_obj
-            .find_tail_event(desc.clone())
-            .await?;
-        
+        let maybe_vault_log_event = self.p_obj.find_tail_event(desc.clone()).await?;
+
         let Some(vault_log_obj) = maybe_vault_log_event else {
             bail!("Invalid state, vault log is empty");
         };
@@ -157,7 +152,7 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
         let key = KvKey::artifact(desc.to_obj_desc(), kv.key.obj_id.next());
         let vault_log_event = VaultLogObject::Action(KvLogEvent {
             key,
-            value: kv.value.update(action_event)
+            value: kv.value.add(action_event),
         });
 
         self.p_obj.repo.save(vault_log_event).await?;
@@ -167,10 +162,11 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
 
     async fn vault_log_events(&self, vault_name: VaultName) -> Result<Vec<VaultLogObject>> {
         let desc = VaultLogDescriptor::from(vault_name);
-        let events = self.p_obj
-            .find_object_events::<VaultLogObject>(ObjectId::unit(desc.to_obj_desc()))
+        let events = self
+            .p_obj
+            .find_object_events::<VaultLogObject>(ObjectId::unit_from(desc))
             .await?;
-        
+
         Ok(events)
     }
 }
@@ -215,7 +211,7 @@ pub mod spec {
             } else {
                 bail!("Invalid genesis event");
             }
-            
+
             Ok(())
         }
 
@@ -237,15 +233,13 @@ pub mod spec {
             let p_vault = PersistentVault {
                 p_obj: self.p_obj.clone(),
             };
-            
-            let vault_status = p_vault
-                .find(self.user.clone())
-                .await?;
+
+            let vault_status = p_vault.find(self.user.clone()).await?;
 
             let VaultStatus::Member { .. } = &vault_status else {
                 bail!("Client is not a vault member: {:?}", vault_status);
             };
-            
+
             Ok(())
         }
     }

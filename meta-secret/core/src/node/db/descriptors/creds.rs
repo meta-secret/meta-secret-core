@@ -1,4 +1,6 @@
-use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ObjectName, ObjectType, ToObjectDescriptor};
+use crate::node::db::descriptors::object_descriptor::{
+    ObjectDescriptor, ObjectName, ObjectType, ToObjectDescriptor,
+};
 use crate::node::db::events::local_event::CredentialsObject;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

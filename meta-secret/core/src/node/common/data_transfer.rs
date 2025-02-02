@@ -59,10 +59,7 @@ impl<Request: Debug, Response: Debug> MpscDataTransfer<Request, Response> {
 
     #[instrument(skip(self))]
     pub fn service_drain(&self) -> Drain<Request> {
-        let request = self
-            .service_channel
-            .receiver
-            .drain();
+        let request = self.service_channel.receiver.drain();
         request
     }
 

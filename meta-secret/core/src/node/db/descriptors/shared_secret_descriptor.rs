@@ -1,10 +1,14 @@
-use derive_more::From;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::secret::{SsDistributionClaimDbId, SsDistributionId};
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::common::model::IdString;
-use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ObjectName, ObjectType, ToObjectDescriptor};
-use crate::node::db::events::shared_secret_event::{SharedSecretObject, SsDeviceLogObject, SsLogObject};
+use crate::node::db::descriptors::object_descriptor::{
+    ObjectDescriptor, ObjectName, ObjectType, ToObjectDescriptor,
+};
+use crate::node::db::events::shared_secret_event::{
+    SharedSecretObject, SsDeviceLogObject, SsLogObject,
+};
+use derive_more::From;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -31,7 +35,7 @@ impl ObjectType for SharedSecretDescriptor {
             SharedSecretDescriptor::SsDistributionStatus(_) => "SsDistributionStatus",
             SharedSecretDescriptor::SsClaim(_) => "SsClaim",
         };
-        
+
         String::from(obj_type)
     }
 }

@@ -2,7 +2,9 @@ use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
-use crate::node::db::events::generic_log_event::{GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent, UnitEventWithEmptyValue};
+use crate::node::db::events::generic_log_event::{
+    GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent, UnitEventWithEmptyValue,
+};
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, GenesisId, ObjectId, UnitId};
 
@@ -17,9 +19,8 @@ pub enum GlobalIndexObject {
 }
 
 impl GlobalIndexObject {
-    
     pub fn index_from_vault_name(vault_name: VaultName) -> GlobalIndexObject {
-        let vault_id = UnitId::vault_unit(vault_name);
+        let vault_id = UnitId::from(vault_name);
 
         GlobalIndexObject::index_from_vault_id(vault_id)
     }

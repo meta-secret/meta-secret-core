@@ -1,5 +1,5 @@
 use crate::node::common::model::device::common::DeviceData;
-use crate::node::common::model::user::common::{UserData};
+use crate::node::common::model::user::common::UserData;
 use crate::node::common::model::vault::vault::VaultStatus;
 use crate::node::db::actions::sign_up::action::SignUpAction;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
@@ -7,22 +7,22 @@ use crate::node::db::descriptors::vault_descriptor::{VaultDescriptor, VaultMembe
 use crate::node::db::events::generic_log_event::ToGenericEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{Next, ObjectId};
+use crate::node::db::events::vault::vault_event::VaultObject;
+use crate::node::db::events::vault::vault_log_event::{VaultActionEvent, VaultActionUpdateEvent};
+use crate::node::db::events::vault::vault_membership::VaultMembershipObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
+use anyhow::Result;
 use std::sync::Arc;
 use tracing::info;
-use crate::node::db::events::vault::vault_log_event::{VaultActionEvent, VaultActionUpdateEvent};
-use anyhow::Result;
-use crate::node::db::events::vault::vault_event::VaultObject;
-use crate::node::db::events::vault::vault_membership::VaultMembershipObject;
 
-pub struct VaultAction<Repo: KvLogEventRepo> {
+pub struct ServerVaultAction<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
     pub server_device: DeviceData,
 }
 
-impl<Repo: KvLogEventRepo> VaultAction<Repo> {
+impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
     pub async fn do_processing(&self, action_event: VaultActionEvent) -> Result<()> {
         let p_vault = PersistentVault {
             p_obj: self.p_obj.clone(),
@@ -66,9 +66,8 @@ impl<Repo: KvLogEventRepo> VaultAction<Repo> {
 
                         //update vault status accordingly
                         let vault_status_free_id = {
-                            let vault_membership_desc = {
-                                VaultMembershipDescriptor::from(update.user_data().user_id())
-                            };
+                            let vault_membership_desc =
+                                { VaultMembershipDescriptor::from(update.user_data().user_id()) };
 
                             self.p_obj
                                 .find_free_id_by_obj_desc(vault_membership_desc.clone())
@@ -76,18 +75,19 @@ impl<Repo: KvLogEventRepo> VaultAction<Repo> {
                         };
 
                         let vault_status_events = match vault_status_free_id {
-                            ObjectId::Unit(_) => {
-                                VaultMembershipObject::init(update.user_data())
-                            },
+                            ObjectId::Unit(_) => VaultMembershipObject::init(update.user_data()),
                             ObjectId::Genesis(artifact_id) => {
                                 let genesis = VaultMembershipObject::genesis(update.user_data());
-                                let member =
-                                    VaultMembershipObject::member(update.user_data(), artifact_id.next());
+                                let member = VaultMembershipObject::member(
+                                    update.user_data(),
+                                    artifact_id.next(),
+                                );
                                 vec![genesis.to_generic(), member.to_generic()]
                             }
                             ObjectId::Artifact(artifact_id) => {
-                                let event = VaultMembershipObject::membership(update.clone(), artifact_id)
-                                    .to_generic();
+                                let event =
+                                    VaultMembershipObject::membership(update.clone(), artifact_id)
+                                        .to_generic();
                                 vec![event]
                             }
                         };
@@ -97,16 +97,19 @@ impl<Repo: KvLogEventRepo> VaultAction<Repo> {
                         }
                         Ok(())
                     }
-                    VaultActionUpdateEvent::AddMetaPassword { sender, meta_pass_id } => {
+                    VaultActionUpdateEvent::AddMetaPass {
+                        sender,
+                        meta_pass_id,
+                    } => {
                         let user = sender.user();
                         let (vault_artifact_id, vault) = p_vault.get_vault(user).await?;
 
                         let vault_event = {
                             let new_vault = vault.add_secret(meta_pass_id.clone());
 
-                            let obj_desc = VaultDescriptor::from(user.vault_name.clone())
-                                .to_obj_desc();
-                            
+                            let obj_desc =
+                                VaultDescriptor::from(user.vault_name.clone()).to_obj_desc();
+
                             let event = KvLogEvent {
                                 key: KvKey {
                                     obj_id: vault_artifact_id,

@@ -9,7 +9,7 @@ use crate::node::common::model::vault::vault_data::{VaultData, WasmVaultData};
 use std::fmt::Display;
 use wasm_bindgen::prelude::wasm_bindgen;
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(getter_with_clone)]
 pub struct VaultName(pub String);

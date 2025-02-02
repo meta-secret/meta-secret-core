@@ -8,12 +8,15 @@ use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::user::common::UserId;
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::vault::VaultStatus;
-use crate::node::db::descriptors::shared_secret_descriptor::{SsDeviceLogDescriptor, SsLogDescriptor};
-use crate::node::db::descriptors::vault_descriptor::{DeviceLogDescriptor};
+use crate::node::db::descriptors::shared_secret_descriptor::{
+    SsDeviceLogDescriptor, SsLogDescriptor,
+};
+use crate::node::db::descriptors::vault_descriptor::DeviceLogDescriptor;
 use crate::node::db::events::generic_log_event::{ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::local_event::CredentialsObject;
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::events::shared_secret_event::SsDeviceLogObject;
+use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;
@@ -24,7 +27,6 @@ use crate::node::server::request::{
 };
 use crate::node::server::server_data_sync::{DataEventsResponse, ServerTailResponse};
 use anyhow::Result;
-use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 
 pub struct SyncGateway<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub id: String,

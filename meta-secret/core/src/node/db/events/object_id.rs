@@ -3,8 +3,10 @@ use serde_derive::{Deserialize, Serialize};
 use crate::crypto::utils::NextId;
 use crate::node::common::model::user::common::UserData;
 use crate::node::common::model::vault::vault::VaultName;
-use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ObjectDescriptorFqdn, ObjectDescriptorId, ToObjectDescriptor};
-use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
+use crate::node::common::model::IdString;
+use crate::node::db::descriptors::object_descriptor::{
+    ObjectDescriptor, ObjectDescriptorFqdn, ObjectDescriptorId, ToObjectDescriptor,
+};
 
 use super::kv_log_event::{KvKey, KvLogEvent};
 
@@ -16,12 +18,12 @@ pub enum ObjectId {
     Artifact(ArtifactId),
 }
 
-impl ObjectId {
-    pub fn id_str(&self) -> String {
+impl IdString for ObjectId {
+    fn id_str(self) -> String {
         let id = match self {
-            ObjectId::Unit(unit_id) => unit_id.id.clone(),
-            ObjectId::Genesis(genesis_id) => genesis_id.id.clone(),
-            ObjectId::Artifact(artifact_id) => artifact_id.id.clone(),
+            ObjectId::Unit(unit_id) => unit_id.id,
+            ObjectId::Genesis(genesis_id) => genesis_id.id,
+            ObjectId::Artifact(artifact_id) => artifact_id.id,
         };
 
         let id_str = format!("{}:{}::{}", id.fqdn.obj_type, id.fqdn.obj_instance, id.id);
@@ -43,6 +45,19 @@ pub trait Next<To> {
 #[serde(rename_all = "camelCase")]
 pub struct UnitId {
     pub id: ObjectDescriptorId,
+}
+
+impl<T: ToObjectDescriptor> From<T> for UnitId {
+    fn from(obj_desc: T) -> Self {
+        let fqdn = obj_desc.to_obj_desc().fqdn();
+        UnitId::from(fqdn)
+    }
+}
+
+impl From<ObjectDescriptorFqdn> for UnitId {
+    fn from(fqdn: ObjectDescriptorFqdn) -> Self {
+        UnitId { id: fqdn.next_id() }
+    }
 }
 
 impl Next<GenesisId> for UnitId {
@@ -80,22 +95,22 @@ impl From<ArtifactId> for ObjectId {
 
 impl ObjectId {
     pub fn unit_from<T: ToObjectDescriptor>(obj_desc: T) -> Self {
-        ObjectId::Unit(UnitId::unit_from_desc(obj_desc))
+        ObjectId::Unit(UnitId::from(obj_desc))
     }
-    
+
     pub fn unit(obj_desc: ObjectDescriptor) -> Self {
-        ObjectId::Unit(UnitId::unit(obj_desc.fqdn()))
+        ObjectId::Unit(UnitId::from(obj_desc.fqdn()))
     }
 
     pub fn genesis(obj_desc: ObjectDescriptor) -> Self {
-        ObjectId::Genesis(GenesisId::genesis(obj_desc))
+        ObjectId::Genesis(GenesisId::from(obj_desc))
     }
 
-    pub fn get_unit_id(&self) -> UnitId {
+    pub fn get_unit_id(&self) -> &UnitId {
         match self {
-            ObjectId::Unit(unit_id) => unit_id.clone(),
-            ObjectId::Genesis(genesis_id) => genesis_id.unit_id.clone(),
-            ObjectId::Artifact(artifact_id) => artifact_id.unit_id.clone(),
+            ObjectId::Unit(unit_id) => unit_id,
+            ObjectId::Genesis(genesis_id) => &genesis_id.unit_id,
+            ObjectId::Artifact(artifact_id) => &artifact_id.unit_id,
         }
     }
 }
@@ -107,22 +122,6 @@ impl Next<ObjectId> for ObjectId {
             ObjectId::Genesis(genesis_id) => ObjectId::from(genesis_id.next()),
             ObjectId::Artifact(artifact_id) => ObjectId::from(artifact_id.next()),
         }
-    }
-}
-
-impl UnitId {
-    pub fn unit_from_desc<T: ToObjectDescriptor>(obj_descriptor: T) -> UnitId {
-        let fqdn = obj_descriptor.to_obj_desc().fqdn();
-        UnitId::unit(fqdn)
-    }
-
-    pub fn unit(fqdn: ObjectDescriptorFqdn) -> UnitId {
-        UnitId { id: fqdn.next_id() }
-    }
-
-    pub fn vault_unit(vault_name: VaultName) -> UnitId {
-        let vault_desc = VaultDescriptor::from(vault_name);
-        UnitId::unit_from_desc(vault_desc)
     }
 }
 
@@ -146,10 +145,16 @@ impl Next<ArtifactId> for GenesisId {
     }
 }
 
-impl GenesisId {
-    pub fn genesis(obj_desc: ObjectDescriptor) -> GenesisId {
-        let unit_id = UnitId::unit(obj_desc.fqdn());
+impl From<ObjectDescriptor> for GenesisId {
+    fn from(obj_desc: ObjectDescriptor) -> Self {
+        let unit_id = UnitId::from(obj_desc.fqdn());
         unit_id.next()
+    }
+}
+
+impl<T: ToObjectDescriptor> From<T> for GenesisId {
+    fn from(obj_desc: T) -> Self {
+        GenesisId::from(obj_desc.to_obj_desc())
     }
 }
 
@@ -160,6 +165,12 @@ pub struct ArtifactId {
     id: ObjectDescriptorId,
     prev_id: ObjectDescriptorId,
     unit_id: UnitId,
+}
+
+impl<T: ToObjectDescriptor> From<T> for ArtifactId {
+    fn from(obj_desc: T) -> Self {
+        UnitId::from(obj_desc).next().next()
+    }
 }
 
 /// Generate next artifact from the previous one

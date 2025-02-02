@@ -4,7 +4,9 @@ use std::sync::Arc;
 use async_mutex::Mutex;
 use async_trait::async_trait;
 
-use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, ToGenericEvent};
+use crate::node::db::events::generic_log_event::{
+    GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
+};
 use crate::node::db::events::object_id::ObjectId;
 use crate::node::db::repo::generic_db::{DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand};
 use anyhow::Result;

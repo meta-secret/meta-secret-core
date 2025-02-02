@@ -8,7 +8,9 @@ use crate::node::common::model::secret::{
 use crate::node::common::model::user::common::UserData;
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
-use crate::node::db::descriptors::shared_secret_descriptor::{SharedSecretDescriptor, SsDeviceLogDescriptor, SsLogDescriptor};
+use crate::node::db::descriptors::shared_secret_descriptor::{
+    SharedSecretDescriptor, SsDeviceLogDescriptor, SsLogDescriptor,
+};
 use crate::node::db::events::generic_log_event::{KeyExtractor, ToGenericEvent};
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{
@@ -240,7 +242,9 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
 pub mod spec {
     use crate::node::common::model::user::common::UserData;
     use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
-    use crate::node::db::descriptors::shared_secret_descriptor::{SharedSecretDescriptor, SsDeviceLogDescriptor};
+    use crate::node::db::descriptors::shared_secret_descriptor::{
+        SharedSecretDescriptor, SsDeviceLogDescriptor,
+    };
     use crate::node::db::events::object_id::ObjectId;
     use crate::node::db::objects::persistent_object::PersistentObject;
     use crate::node::db::repo::generic_db::KvLogEventRepo;

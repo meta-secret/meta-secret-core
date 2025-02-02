@@ -101,7 +101,7 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
         meta_pass_id: MetaPasswordId,
     ) -> Result<()> {
         let meta_pass_request = {
-            let add_meta_pass = VaultActionUpdateEvent::AddMetaPassword {
+            let add_meta_pass = VaultActionUpdateEvent::AddMetaPass {
                 sender: sender.clone(),
                 meta_pass_id,
             };

@@ -100,7 +100,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> VirtualDevice<Repo, Sync> {
 
         if let Some(VaultLogObject::Action(action_event)) = maybe_vault_log_event {
             let VaultActionEvents(vault_actions) = action_event.value;
-            for vault_action in vault_actions {
+            for (id, vault_action) in vault_actions {
                 match vault_action {
                     VaultActionEvent::Request(request_event) => match request_event {
                         VaultActionRequestEvent::JoinCluster { candidate } => {

@@ -4,6 +4,7 @@ use crate::node::common::model::user::common::{
     UserData, UserDataMember, UserDataOutsider, UserMembership, WasmUserMembership,
 };
 use crate::node::common::model::vault::vault::VaultName;
+use crate::node::db::events::vault::vault_log_event::{VaultActionEvents, VaultActionUpdateEvent};
 use crate::secret::data_block::common::SharedSecretConfig;
 use std::collections::{HashMap, HashSet};
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -140,6 +141,35 @@ impl VaultData {
 
     pub fn find_user(&self, device_id: &DeviceId) -> Option<UserMembership> {
         self.users.get(device_id).cloned()
+    }
+
+    /// Take all vault action events and update vault with those events, then return updated vault
+    pub fn update(self, updates: &VaultActionEvents) -> VaultData {
+        let mut new_vault = self;
+
+        let upd_events = updates.get_update_events();
+        for upd_event in upd_events {
+            match upd_event {
+                VaultActionUpdateEvent::CreateVault { .. } => {
+                    //ignore
+                }
+                VaultActionUpdateEvent::UpdateMembership { sender, update, .. } => {
+                    if new_vault.is_member(&sender.user().device.device_id) {
+                        new_vault = new_vault.update_membership(update);
+                    }
+                }
+                VaultActionUpdateEvent::AddMetaPass {
+                    meta_pass_id,
+                    sender,
+                } => {
+                    if new_vault.is_member(&sender.user().device.device_id) {
+                        new_vault = new_vault.add_secret(meta_pass_id)
+                    }
+                }
+            }
+        }
+
+        new_vault
     }
 }
 

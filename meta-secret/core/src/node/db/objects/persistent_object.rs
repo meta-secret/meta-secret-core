@@ -53,7 +53,8 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
         obj_desc: Desc,
     ) -> Result<Option<Desc::EventType>> {
         let maybe_tail_id = self.find_tail_id_by_obj_desc(obj_desc).await?;
-        self.find_event_by_id::<Desc::EventType>(maybe_tail_id).await
+        self.find_event_by_id::<Desc::EventType>(maybe_tail_id)
+            .await
     }
 
     pub async fn find_tail_event_by_obj_id<T: GenericKvLogEventConvertible>(
@@ -105,7 +106,7 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
     pub async fn find_tail_id_by_obj_desc<Desc: ToObjectDescriptor>(
         &self,
         obj_desc: Desc,
-    ) ->Result<Option<ObjectId>> {
+    ) -> Result<Option<ObjectId>> {
         let unit_id = ObjectId::unit_from(obj_desc);
         self.find_tail_id(unit_id).await
     }

@@ -16,7 +16,7 @@ pub enum GenericKvLogEvent {
     GlobalIndex(GlobalIndexObject),
 
     Credentials(CredentialsObject),
-    
+
     DeviceLog(DeviceLogObject),
     VaultLog(VaultLogObject),
     Vault(VaultObject),

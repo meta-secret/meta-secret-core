@@ -4,7 +4,7 @@ use std::sync::Arc;
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
 use crate::node::common::model::secret::{SecretDistributionType, SsDistributionStatus};
 use crate::node::common::model::vault::vault::VaultStatus;
-use crate::node::db::actions::vault::vault_action::VaultAction;
+use crate::node::db::actions::vault::vault_action::ServerVaultAction;
 use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
 use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
@@ -180,10 +180,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         server_device: DeviceData,
         device_log_obj: DeviceLogObject,
     ) -> Result<()> {
-        self.p_obj
-            .repo
-            .save(device_log_obj.clone())
-            .await?;
+        self.p_obj.repo.save(device_log_obj.clone()).await?;
 
         let vault_action_event = match device_log_obj {
             DeviceLogObject::Unit { .. } => {
@@ -197,12 +194,13 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             DeviceLogObject::Action(event) => event,
         };
 
-        let vault_action = vault_action_event.value.clone();
+        let vault_action = vault_action_event.value;
 
-        let action = VaultAction {
+        let action = ServerVaultAction {
             p_obj: self.p_obj.clone(),
             server_device,
         };
+
         action.do_processing(vault_action).await?;
         Ok(())
     }
@@ -273,7 +271,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
                 if sender_device.eq(&claim.sender) {
                     let ss_obj = self.p_obj.find_tail_event(desc).await?;
-                    
+
                     if let Some(dist_event) = ss_obj {
                         let p_ss = PersistentSharedSecret {
                             p_obj: self.p_obj.clone(),
@@ -295,9 +293,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                 let mut completed = true;
                 for dist_id in claim.claim_db_ids() {
                     let desc = SharedSecretDescriptor::SsDistributionStatus(dist_id.clone());
-                    let maybe_status_event = self.p_obj
-                        .find_tail_event(desc)
-                        .await?;
+                    let maybe_status_event = self.p_obj.find_tail_event(desc).await?;
 
                     let Some(ss_obj) = maybe_status_event else {
                         completed = false;

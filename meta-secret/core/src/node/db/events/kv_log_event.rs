@@ -90,10 +90,10 @@ impl KvKey<UnitId> {
     pub fn unit_from<D: ToObjectDescriptor>(obj_desc: D) -> Self {
         KvKey::unit(obj_desc.to_obj_desc())
     }
-    
+
     pub fn unit(obj_desc: ObjectDescriptor) -> Self {
         Self {
-            obj_id: UnitId::unit(obj_desc.fqdn()),
+            obj_id: UnitId::from(obj_desc.fqdn()),
             obj_desc,
         }
     }

@@ -45,19 +45,17 @@ impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
                 info!("Vault doesn't exists");
                 p_device_log.save_create_vault_request(user_data).await?;
             }
-            VaultStatus::Outsider(outsider) => {
-                match outsider.status {
-                    UserDataOutsiderStatus::NonMember => {
-                        p_device_log.save_join_request(&outsider.user_data).await?;
-                    }
-                    UserDataOutsiderStatus::Pending => {
-                        info!("Device is pending")
-                    }
-                    UserDataOutsiderStatus::Declined => {
-                        info!("Device has been declined")
-                    }
+            VaultStatus::Outsider(outsider) => match outsider.status {
+                UserDataOutsiderStatus::NonMember => {
+                    p_device_log.save_join_request(&outsider.user_data).await?;
                 }
-            }
+                UserDataOutsiderStatus::Pending => {
+                    info!("Device is pending")
+                }
+                UserDataOutsiderStatus::Declined => {
+                    info!("Device has been declined")
+                }
+            },
             VaultStatus::Member { .. } => {
                 //trace!("User is already a vault member: {:?}", member);
             }
@@ -75,6 +73,7 @@ impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
 
 #[cfg(test)]
 pub mod test_action {
+    use crate::node::common::model::user::user_creds::UserCredentials;
     use crate::node::common::model::vault::vault::VaultStatus;
     use crate::node::db::actions::sign_up::claim::SignUpClaim;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
@@ -82,7 +81,6 @@ pub mod test_action {
     use std::sync::Arc;
     use tracing::info;
     use tracing_attributes::instrument;
-    use crate::node::common::model::user::user_creds::UserCredentials;
 
     pub struct SignUpClaimTestAction {
         _sign_up: SignUpClaim<InMemKvLogEventRepo>,
@@ -114,17 +112,17 @@ pub mod spec {
     use crate::node::db::objects::persistent_device_log::spec::DeviceLogSpec;
     use crate::node::db::objects::persistent_object::PersistentObject;
     use crate::node::db::objects::persistent_shared_secret::spec::SsDeviceLogSpec;
+    use crate::node::db::objects::persistent_vault::spec::VaultLogSpec;
     use crate::node::db::repo::generic_db::KvLogEventRepo;
     use anyhow::Result;
     use async_trait::async_trait;
     use log::info;
     use std::sync::Arc;
     use tracing_attributes::instrument;
-    use crate::node::db::objects::persistent_vault::spec::VaultLogSpec;
 
     pub struct SignUpClaimSpec<Repo: KvLogEventRepo> {
         pub p_obj: Arc<PersistentObject<Repo>>,
-        pub user: UserData
+        pub user: UserData,
     }
 
     #[async_trait(? Send)]

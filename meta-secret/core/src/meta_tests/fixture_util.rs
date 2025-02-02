@@ -1,16 +1,16 @@
 #[cfg(test)]
 pub mod fixture {
+    use crate::meta_tests::fixture_util::fixture::specs::BaseSpec;
     use crate::meta_tests::fixture_util::fixture::states::{BaseState, EmptyState, ExtendedState};
     use crate::node::app::meta_app::meta_client_service::fixture::MetaClientServiceFixture;
     use crate::node::app::sync::sync_protocol::fixture::SyncProtocolFixture;
     use crate::node::common::model::device::device_creds::fixture::DeviceCredentialsFixture;
     use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
     use crate::node::db::objects::persistent_object::fixture::PersistentObjectFixture;
+    use crate::node::db::objects::persistent_vault::spec::VaultSpec;
     use crate::node::db::repo::persistent_credentials::fixture::PersistentCredentialsFixture;
     use crate::node::server::server_app::fixture::ServerAppFixture;
     use std::sync::Arc;
-    use crate::meta_tests::fixture_util::fixture::specs::BaseSpec;
-    use crate::node::db::objects::persistent_vault::spec::VaultSpec;
 
     pub struct FixtureRegistry<S> {
         pub state: S,
@@ -34,7 +34,7 @@ pub mod fixture {
         pub async fn base() -> anyhow::Result<FixtureRegistry<BaseState>> {
             let empty = FixtureRegistry::empty();
             let p_creds = PersistentCredentialsFixture::init(&empty.state).await?;
-            
+
             let base_spec = BaseSpec {
                 client: VaultSpec {
                     p_obj: empty.state.p_obj.client.clone(),
@@ -78,6 +78,7 @@ pub mod fixture {
     }
 
     pub mod states {
+        use crate::meta_tests::fixture_util::fixture::specs::BaseSpec;
         use crate::node::app::meta_app::meta_client_service::fixture::MetaClientServiceFixture;
         use crate::node::app::sync::sync_protocol::fixture::SyncProtocolFixture;
         use crate::node::common::model::device::device_creds::fixture::DeviceCredentialsFixture;
@@ -86,7 +87,6 @@ pub mod fixture {
         use crate::node::db::repo::persistent_credentials::fixture::PersistentCredentialsFixture;
         use crate::node::server::server_app::fixture::ServerAppFixture;
         use std::sync::Arc;
-        use crate::meta_tests::fixture_util::fixture::specs::BaseSpec;
 
         pub enum Fixture {
             Empty(EmptyState),
@@ -121,7 +121,7 @@ pub mod fixture {
         pub struct BaseSpec {
             pub client: VaultSpec<InMemKvLogEventRepo>,
             pub client_b: VaultSpec<InMemKvLogEventRepo>,
-            pub vd: VaultSpec<InMemKvLogEventRepo>
+            pub vd: VaultSpec<InMemKvLogEventRepo>,
         }
     }
 }

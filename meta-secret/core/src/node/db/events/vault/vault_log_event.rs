@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::user::common::{UserData, UserDataMember, UserMembership};
 use crate::node::common::model::vault::vault::VaultName;
@@ -11,8 +10,9 @@ use crate::node::db::events::generic_log_event::{
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, ObjectId, VaultGenesisEvent, VaultUnitEvent};
 use anyhow::{anyhow, bail, Result};
+use std::collections::HashSet;
 use std::fmt::Display;
-use crate::crypto::utils::Id48bit;
+use tracing::info;
 
 /// VaultLog keeps incoming events in order, the log is a queue for incoming messages and used to
 /// recreate the vault state from events (event sourcing)
@@ -81,14 +81,45 @@ impl ObjIdExtractor for VaultLogObject {
     }
 }
 
+/// Represents all pending events to apply to the VaultObject
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct VaultActionEvents(pub HashMap<Id48bit, VaultActionEvent>);
+pub struct VaultActionEvents {
+    requests: HashSet<VaultActionRequestEvent>,
+    updates: HashSet<VaultActionUpdateEvent>,
+}
 
 impl VaultActionEvents {
-    pub fn update(self, action_event: VaultActionEvent) -> Self {
-        let events = self.0.into_iter().chain(vec![action_event]).collect();
-        Self(events)
+    pub fn update(mut self, event: VaultActionEvent) -> VaultActionEvents {
+        match event {
+            VaultActionEvent::Request(request) => {
+                self.requests.insert(request);
+                self
+            }
+            VaultActionEvent::Update(update) => {
+                let request = match &update {
+                    VaultActionUpdateEvent::CreateVault(event) => {
+                        VaultActionRequestEvent::CreateVault(event.clone())
+                    }
+                    VaultActionUpdateEvent::UpdateMembership { request, .. } => {
+                        VaultActionRequestEvent::JoinCluster(request.clone())
+                    }
+                    VaultActionUpdateEvent::AddMetaPass(event) => {
+                        VaultActionRequestEvent::AddMetaPass(event.clone())
+                    }
+                };
+
+                let removed = self.requests.remove(&request);
+                // if corresponding request exists we can apply the update
+                if removed {
+                    self.updates.insert(update.clone());
+                } else {
+                    info!("Request not found: {:?}", request);
+                }
+
+                self
+            }
+        }
     }
 }
 
@@ -99,53 +130,70 @@ pub enum VaultActionEvent {
     Update(VaultActionUpdateEvent),
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum VaultActionRequestEvent {
-    JoinCluster {
-        id: Id48bit,
-        candidate: UserData
-    },
+    CreateVault(CreateVaultEvent),
+    JoinCluster(JoinClusterEvent),
+    AddMetaPass(AddMetaPassEvent),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateVaultEvent {
+    owner: UserData,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JoinClusterEvent {
+    candidate: UserData,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddMetaPassEvent {
+    sender: UserDataMember,
+    meta_pass_id: MetaPasswordId,
 }
 
 impl VaultActionRequestEvent {
     pub fn name(&self) -> String {
-        match self {
-            VaultActionRequestEvent::JoinCluster { .. } => String::from("JoinRequest")
-        }
+        let name = match self {
+            VaultActionRequestEvent::JoinCluster { .. } => "JoinRequest",
+            VaultActionRequestEvent::CreateVault { .. } => "CreateVaultRequest",
+            VaultActionRequestEvent::AddMetaPass { .. } => "AddMetaPasswordRequest",
+        };
+
+        String::from(name)
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum VaultActionUpdateEvent {
-    CreateVault {
-        id: Id48bit,
-        owner: UserData,
-    },
+    CreateVault(CreateVaultEvent),
 
     /// When the device becomes a member of the vault, it can change membership of other members
     UpdateMembership {
-        id: Id48bit,
+        request: JoinClusterEvent,
         sender: UserDataMember,
         update: UserMembership,
     },
     /// A member can add a new meta password into the vault
-    AddMetaPassword {
-        id: Id48bit,
-        sender: UserDataMember,
-        meta_pass_id: MetaPasswordId,
-    },
+    AddMetaPass(AddMetaPassEvent),
 }
 
 impl VaultActionUpdateEvent {
     pub fn vault_name(&self) -> VaultName {
         match self {
-            VaultActionUpdateEvent::CreateVault {owner, .. } => owner.vault_name(),
+            VaultActionUpdateEvent::CreateVault(CreateVaultEvent { owner, .. }) => {
+                owner.vault_name()
+            }
             VaultActionUpdateEvent::UpdateMembership { update, .. } => {
                 update.user_data().vault_name
             }
-            VaultActionUpdateEvent::AddMetaPassword { sender, .. } => {
+            VaultActionUpdateEvent::AddMetaPass(AddMetaPassEvent { sender, .. }) => {
                 sender.user_data.vault_name()
             }
         }
@@ -155,11 +203,11 @@ impl VaultActionUpdateEvent {
 impl VaultActionUpdateEvent {
     pub fn name(&self) -> String {
         let name = match self {
-            VaultActionUpdateEvent::CreateVault{ .. } => "CreateVaultAction",
+            VaultActionUpdateEvent::CreateVault(_) => "CreateVaultAction",
             VaultActionUpdateEvent::UpdateMembership { .. } => "UpdateMembership",
-            VaultActionUpdateEvent::AddMetaPassword { .. } => "AddMetaPassword",
+            VaultActionUpdateEvent::AddMetaPass { .. } => "AddMetaPassword",
         };
-        
+
         name.to_string()
     }
 }
@@ -168,7 +216,7 @@ impl VaultActionEvent {
     fn name(&self) -> String {
         match self {
             VaultActionEvent::Request(request) => request.name(),
-            VaultActionEvent::Update(update) => update.name()
+            VaultActionEvent::Update(update) => update.name(),
         }
     }
 }
@@ -181,19 +229,19 @@ impl Display for VaultActionEvent {
 
 impl VaultActionEvent {
     pub fn get_create(self) -> Result<UserData> {
-        match self {
-            VaultActionEvent::Update(VaultActionUpdateEvent::CreateVault { owner, .. }) => Ok(owner),
-            _ => bail!(LogEventCastError::WrongVaultAction(
+        if let VaultActionEvent::Update(VaultActionUpdateEvent::CreateVault(upd_event)) = self {
+            Ok(upd_event.owner.clone())
+        } else {
+            bail!(LogEventCastError::WrongVaultAction(
                 String::from("CreateVault"),
                 self.clone()
-            )),
+            ))
         }
     }
 
     pub fn get_join_request(self) -> Result<UserData> {
-        if let VaultActionEvent::Request(VaultActionRequestEvent::JoinCluster { candidate, .. }) = self
-        {
-            Ok(candidate)
+        if let VaultActionEvent::Request(VaultActionRequestEvent::JoinCluster(join_event)) = self {
+            Ok(join_event.candidate)
         } else {
             bail!(LogEventCastError::WrongVaultAction(
                 String::from("JoinClusterRequest"),
@@ -204,10 +252,16 @@ impl VaultActionEvent {
 
     pub fn vault_name(&self) -> VaultName {
         match self {
-            VaultActionEvent::Request(VaultActionRequestEvent::JoinCluster { candidate, .. }) => {
-                candidate.vault_name()
+            VaultActionEvent::Request(VaultActionRequestEvent::JoinCluster(join_event)) => {
+                join_event.candidate.vault_name()
             }
-            VaultActionEvent::Update(update) => update.vault_name()
+            VaultActionEvent::Update(update) => update.vault_name(),
+            VaultActionEvent::Request(VaultActionRequestEvent::CreateVault(event)) => {
+                event.owner.vault_name()
+            }
+            VaultActionEvent::Request(VaultActionRequestEvent::AddMetaPass(event)) => {
+                event.sender.user_data.vault_name()
+            }
         }
     }
 }
@@ -216,20 +270,30 @@ impl VaultActionEvent {
 mod test {
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::db::events::vault::vault_log_event::{
-        VaultActionEvents, VaultActionUpdateEvent,
+        CreateVaultEvent, VaultActionEvent, VaultActionEvents, VaultActionRequestEvent,
+        VaultActionUpdateEvent,
     };
+    use anyhow::Result;
 
     #[test]
-    fn test() {
+    fn test_create_vault_action_progression() -> Result<()> {
         let fixture = FixtureRegistry::empty();
 
-        let actions = VaultActionEvents::default();
-
-        let actions = {
-            let owner = fixture.state.user_creds.client.user();
-            actions.update(VaultActionUpdateEvent::CreateVault { owner, .. })
+        let create = CreateVaultEvent {
+            owner: fixture.state.user_creds.client.user(),
         };
+        let event = VaultActionEvent::Request(VaultActionRequestEvent::CreateVault(create.clone()));
 
-        assert_eq!(actions.0.len(), 1);
+        let empty = VaultActionEvents::default();
+        let with_create_vault_request = empty.update(event);
+        assert_eq!(with_create_vault_request.requests.len(), 1);
+
+        let update = VaultActionUpdateEvent::CreateVault(create);
+        let event = VaultActionEvent::Update(update);
+        let with_update_vault_request = with_create_vault_request.update(event);
+        assert_eq!(with_update_vault_request.requests.len(), 0);
+        assert_eq!(with_update_vault_request.updates.len(), 1);
+
+        Ok(())
     }
 }

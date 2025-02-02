@@ -1,9 +1,9 @@
+use crate::node::db::in_mem_db::InMemKvLogEventRepo;
 use crate::node::server::request::SyncRequest;
 use crate::node::server::server_app::ServerApp;
 use crate::node::server::server_data_sync::DataSyncResponse;
 use anyhow::Result;
 use std::sync::Arc;
-use crate::node::db::in_mem_db::InMemKvLogEventRepo;
 
 pub trait SyncProtocol {
     async fn send(&self, request: SyncRequest) -> Result<DataSyncResponse>;

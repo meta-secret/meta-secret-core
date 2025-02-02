@@ -1,6 +1,7 @@
 use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::device::device_creds::DeviceCredentials;
 use crate::node::common::model::user::user_creds::UserCredentials;
+use crate::node::db::descriptors::creds::CredentialsDescriptor;
 use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent, UnitEvent,
@@ -8,7 +9,6 @@ use crate::node::db::events::generic_log_event::{
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{GenesisId, ObjectId, UnitId};
 use anyhow::{anyhow, Error};
-use crate::node::db::descriptors::creds::CredentialsDescriptor;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

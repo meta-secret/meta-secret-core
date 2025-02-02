@@ -1,9 +1,13 @@
 use crate::node::common::model::user::common::{UserData, UserDataMember, UserMembership};
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault_descriptor::VaultMembershipDescriptor;
-use crate::node::db::events::generic_log_event::{GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent};
+use crate::node::db::events::generic_log_event::{
+    GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
+};
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
-use crate::node::db::events::object_id::{ArtifactId, Next, ObjectId, UnitId, VaultGenesisEvent, VaultUnitEvent};
+use crate::node::db::events::object_id::{
+    ArtifactId, Next, ObjectId, UnitId, VaultGenesisEvent, VaultUnitEvent,
+};
 use anyhow::anyhow;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -22,7 +26,7 @@ impl VaultMembershipObject {
 
         let member_event = {
             let desc = VaultMembershipDescriptor::from(candidate.user_id());
-            let member_event_id = UnitId::unit_from_desc(desc).next().next();
+            let member_event_id = ArtifactId::from(desc);
             VaultMembershipObject::member(candidate, member_event_id).to_generic()
         };
 

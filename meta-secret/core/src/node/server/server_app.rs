@@ -148,12 +148,12 @@ mod test {
     use crate::node::common::model::vault::vault::VaultStatus;
     use crate::node::db::actions::sign_up::claim::spec::SignUpClaimSpec;
     use crate::node::db::actions::sign_up::claim::test_action::SignUpClaimTestAction;
-    use crate::node::db::descriptors::shared_secret_descriptor::{SsDeviceLogDescriptor};
+    use crate::node::db::actions::sign_up::join::AcceptJoinAction;
+    use crate::node::db::descriptors::shared_secret_descriptor::SsDeviceLogDescriptor;
     use crate::node::db::objects::persistent_vault::PersistentVault;
+    use crate::node::db::repo::persistent_credentials::spec::PersistentCredentialsSpec;
     use log::warn;
     use tracing::{info, Instrument};
-    use crate::node::db::actions::sign_up::join::AcceptJoinAction;
-    use crate::node::db::repo::persistent_credentials::spec::PersistentCredentialsSpec;
 
     #[tokio::test]
     async fn test_sign_up_one_device() -> anyhow::Result<()> {
@@ -189,8 +189,14 @@ mod test {
         let client_db = client_p_obj.repo.get_db().await;
         assert_eq!(17, client_db.len());
 
-        registry.state.base.spec.client.verify_user_is_a_member().await?;
-        
+        registry
+            .state
+            .base
+            .spec
+            .client
+            .verify_user_is_a_member()
+            .await?;
+
         sync_client(&registry).await?;
         server_check(&registry, client_user).await?;
 
@@ -205,7 +211,7 @@ mod test {
 
         init_server(&registry).await?;
         let empty_state = &registry.state.base.empty;
-        
+
         let server_creds_spec = PersistentCredentialsSpec {
             p_obj: empty_state.p_obj.server.clone(),
         };
@@ -218,7 +224,12 @@ mod test {
             .instrument(vd_span())
             .await?;
 
-        let vd_gw = registry.state.meta_client_service.sync_gateway.vd_gw.clone();
+        let vd_gw = registry
+            .state
+            .meta_client_service
+            .sync_gateway
+            .vd_gw
+            .clone();
         vd_gw.sync().await?;
         // second sync to get new messages created on server
         vd_gw.sync().await?;
@@ -234,24 +245,35 @@ mod test {
         let vd_db = vd_p_obj.repo.get_db().await;
         assert_eq!(17, vd_db.len());
 
-        registry.state.base.spec.vd.verify_user_is_a_member().await?;
+        registry
+            .state
+            .base
+            .spec
+            .vd
+            .verify_user_is_a_member()
+            .await?;
 
         vd_gw.sync().await?;
         server_check(&registry, vd_user).await?;
-        
+
         //join request by client
         let client_p_obj = empty_state.p_obj.client.clone();
         SignUpClaimTestAction::sign_up(client_p_obj.clone(), &user_creds.client)
             .instrument(client_span())
             .await?;
 
-        let client_gw = registry.state.meta_client_service.sync_gateway.client_gw.clone();
+        let client_gw = registry
+            .state
+            .meta_client_service
+            .sync_gateway
+            .client_gw
+            .clone();
         client_gw.sync().await?;
         client_gw.sync().await?;
 
         vd_gw.sync().await?;
         vd_gw.sync().await?;
-        
+
         //accept join request by vd
         let p_vault = PersistentVault {
             p_obj: empty_state.p_obj.vd.clone(),
@@ -262,10 +284,10 @@ mod test {
             warn!("Not a vault member");
             return Ok(());
         };
-        
+
         let accept_action = AcceptJoinAction {
             p_obj: empty_state.p_obj.vd.clone(),
-            member
+            member,
         };
         //accept_action.accept(client_p_obj).await?;
         todo!("fix this test");
@@ -297,7 +319,7 @@ mod test {
 
         let server_claim_spec = SignUpClaimSpec {
             p_obj: server_app.p_obj.clone(),
-            user: client_user.clone()
+            user: client_user.clone(),
         };
 
         server_claim_spec.verify().await?;

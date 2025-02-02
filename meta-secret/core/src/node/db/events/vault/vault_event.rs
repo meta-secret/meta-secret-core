@@ -2,16 +2,14 @@ use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::user::common::UserData;
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::common::model::vault::vault_data::VaultData;
+use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
 };
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
-use crate::node::db::events::object_id::{
-    ArtifactId, GenesisId, Next, ObjectId, UnitId, VaultUnitEvent,
-};
+use crate::node::db::events::object_id::{ArtifactId, GenesisId, ObjectId, VaultUnitEvent};
 use anyhow::anyhow;
-use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -27,7 +25,7 @@ impl VaultObject {
         let desc = VaultDescriptor::from(vault_name.clone());
         let vault_data = VaultData::from(candidate);
 
-        let vault_id = UnitId::vault_unit(vault_name).next().next();
+        let vault_id = ArtifactId::from(desc.clone());
 
         let sign_up_event = KvLogEvent {
             key: KvKey::artifact(desc.to_obj_desc(), vault_id),
@@ -51,7 +49,7 @@ impl VaultObject {
     pub fn unit(vault_name: VaultName) -> Self {
         let desc = VaultDescriptor::from(vault_name.clone());
         VaultObject::Unit(VaultUnitEvent(KvLogEvent {
-            key: KvKey::unit(desc.to_obj_desc()),
+            key: KvKey::unit_from(desc),
             value: vault_name,
         }))
     }
@@ -92,5 +90,29 @@ impl KeyExtractor for VaultObject {
             VaultObject::Genesis(event) => GenericKvKey::from(event.key.clone()),
             VaultObject::Vault(event) => GenericKvKey::from(event.key.clone()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+
+    #[test]
+    fn test_vault_object_sign_up() {
+        let fixture = FixtureRegistry::empty();
+        let user_creds = fixture.state.user_creds.client;
+
+        // Assuming VaultObject::sign_up creates a new event for the vault sign up
+        let sign_up = VaultObject::sign_up(VaultName::test(), user_creds.user());
+
+        let VaultObject::Vault(KvLogEvent {
+            value: vault_data, ..
+        }) = sign_up
+        else {
+            panic!("Invalid vault object");
+        };
+
+        assert_eq!(1, vault_data.users.len());
     }
 }

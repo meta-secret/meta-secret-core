@@ -1,9 +1,13 @@
 use crate::node::common::model::IdString;
 use crate::node::db::descriptors::creds::CredentialsDescriptor;
 use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
-use crate::node::db::descriptors::shared_secret_descriptor::{SharedSecretDescriptor, SsDeviceLogDescriptor, SsLogDescriptor};
-use crate::node::db::descriptors::vault_descriptor::{DeviceLogDescriptor, VaultDescriptor, VaultLogDescriptor, VaultMembershipDescriptor};
-use crate::node::db::events::generic_log_event::{GenericKvLogEventConvertible};
+use crate::node::db::descriptors::shared_secret_descriptor::{
+    SharedSecretDescriptor, SsDeviceLogDescriptor, SsLogDescriptor,
+};
+use crate::node::db::descriptors::vault_descriptor::{
+    DeviceLogDescriptor, VaultDescriptor, VaultLogDescriptor, VaultMembershipDescriptor,
+};
+use crate::node::db::events::generic_log_event::GenericKvLogEventConvertible;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -17,7 +21,7 @@ pub enum ObjectDescriptor {
     VaultLog(VaultLogDescriptor),
     Vault(VaultDescriptor),
     VaultMembership(VaultMembershipDescriptor),
-    
+
     /// Secret distribution (split, recover, recovery request and so on)
     SsLog(SsLogDescriptor),
     SsDeviceLog(SsDeviceLogDescriptor),
@@ -68,7 +72,7 @@ impl ObjectName for ObjectDescriptor {
         match self {
             ObjectDescriptor::GlobalIndex(desc) => desc.object_name(),
             ObjectDescriptor::Creds(desc) => desc.object_name(),
-            
+
             ObjectDescriptor::Vault(vault_desc) => vault_desc.object_name(),
             ObjectDescriptor::DeviceLog(device_log) => device_log.object_name(),
             ObjectDescriptor::VaultLog(vault_log) => vault_log.object_name(),
@@ -83,7 +87,6 @@ impl ObjectName for ObjectDescriptor {
 
 impl ObjectType for ObjectDescriptor {
     fn object_type(&self) -> String {
-        
         match self {
             ObjectDescriptor::GlobalIndex(gi_desc) => gi_desc.object_type(),
             ObjectDescriptor::Vault(vault_desc) => vault_desc.object_type(),
@@ -92,8 +95,8 @@ impl ObjectType for ObjectDescriptor {
             ObjectDescriptor::DeviceLog(device_log) => device_log.object_type(),
             ObjectDescriptor::VaultLog(vault_log) => vault_log.object_type(),
             ObjectDescriptor::VaultMembership(mem) => mem.object_type(),
-            ObjectDescriptor::SsLog(desc)  => desc.object_type(),
-            ObjectDescriptor::SsDeviceLog(desc) => desc.object_type()
+            ObjectDescriptor::SsLog(desc) => desc.object_type(),
+            ObjectDescriptor::SsDeviceLog(desc) => desc.object_type(),
         }
     }
 }
