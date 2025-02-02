@@ -1,7 +1,9 @@
 use async_trait::async_trait;
 use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection};
 
-use meta_secret_core::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, ToGenericEvent};
+use meta_secret_core::node::db::events::generic_log_event::{
+    GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
+};
 use meta_secret_core::node::db::events::object_id::ObjectId;
 use meta_secret_core::node::db::repo::generic_db::{
     DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand,

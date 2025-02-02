@@ -10,9 +10,7 @@ use crate::node::db::descriptors::vault_descriptor::{
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, Next, ObjectId};
 use crate::node::db::events::vault::vault_event::VaultObject;
-use crate::node::db::events::vault::vault_log_event::{
-    VaultActionEvent, VaultActionUpdateEvent, VaultLogObject,
-};
+use crate::node::db::events::vault::vault_log_event::{VaultActionEvent, VaultLogObject};
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
@@ -152,7 +150,7 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
         let key = KvKey::artifact(desc.to_obj_desc(), kv.key.obj_id.next());
         let vault_log_event = VaultLogObject::Action(KvLogEvent {
             key,
-            value: kv.value.add(action_event),
+            value: kv.value.update(action_event),
         });
 
         self.p_obj.repo.save(vault_log_event).await?;

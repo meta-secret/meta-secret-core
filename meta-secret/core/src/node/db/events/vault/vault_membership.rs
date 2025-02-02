@@ -6,7 +6,7 @@ use crate::node::db::events::generic_log_event::{
 };
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{
-    ArtifactId, Next, ObjectId, UnitId, VaultGenesisEvent, VaultUnitEvent,
+    ArtifactId, ObjectId, VaultGenesisEvent, VaultUnitEvent,
 };
 use anyhow::anyhow;
 

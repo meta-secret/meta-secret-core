@@ -1,5 +1,5 @@
 use crate::node::common::model::device::common::DeviceData;
-use crate::node::common::model::user::common::UserData;
+use crate::node::common::model::user::common::{UserData, UserDataMember};
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::common::model::vault::vault_data::VaultData;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
@@ -8,7 +8,7 @@ use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
 };
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
-use crate::node::db::events::object_id::{ArtifactId, GenesisId, ObjectId, VaultUnitEvent};
+use crate::node::db::events::object_id::{ArtifactId, GenesisId, ObjectId, UnitId, VaultUnitEvent};
 use anyhow::anyhow;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -18,6 +18,13 @@ pub enum VaultObject {
     /// Vault creator
     Genesis(KvLogEvent<GenesisId, DeviceData>),
     Vault(KvLogEvent<ArtifactId, VaultData>),
+}
+
+impl VaultObject {
+    pub fn unit_id(vault_name: VaultName) -> UnitId {
+        let vault_desc = VaultDescriptor::from(vault_name);
+        UnitId::from(vault_desc)
+    }
 }
 
 impl VaultObject {

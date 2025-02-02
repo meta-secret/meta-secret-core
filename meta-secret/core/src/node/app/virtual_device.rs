@@ -17,7 +17,7 @@ use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescript
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::shared_secret_event::SharedSecretObject;
 use crate::node::db::events::vault::vault_log_event::{
-    VaultActionEvent, VaultActionEvents, VaultActionRequestEvent, VaultActionUpdateEvent,
+    VaultActionEvent, VaultActionEvents, VaultActionRequestEvent,
     VaultLogObject,
 };
 use crate::node::db::objects::persistent_object::PersistentObject;

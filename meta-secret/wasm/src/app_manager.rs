@@ -5,7 +5,9 @@ use wasm_bindgen_futures::spawn_local;
 
 use meta_secret_core::node::app::app_state_update_manager::ApplicationManagerConfigurator;
 
-use meta_secret_core::node::app::meta_app::meta_client_service::{MetaClientAccessProxy, MetaClientDataTransfer, MetaClientService, MetaClientStateProvider};
+use meta_secret_core::node::app::meta_app::meta_client_service::{
+    MetaClientAccessProxy, MetaClientDataTransfer, MetaClientService, MetaClientStateProvider,
+};
 use meta_secret_core::node::app::sync::sync_gateway::SyncGateway;
 use meta_secret_core::node::app::sync::sync_protocol::SyncProtocol;
 use meta_secret_core::node::app::virtual_device::VirtualDevice;
@@ -16,7 +18,7 @@ use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
-use meta_secret_core::node::server::server_app::{ServerApp};
+use meta_secret_core::node::server::server_app::ServerApp;
 
 pub struct ApplicationManager<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub meta_client_service: Arc<MetaClientService<Repo, Sync>>,

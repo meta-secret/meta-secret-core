@@ -2,8 +2,10 @@ use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::{
     ObjectDescriptor, ObjectName, ObjectType, ToObjectDescriptor,
 };
+use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::global_index_event::GlobalIndexObject;
 use crate::node::db::events::object_id::UnitId;
+use crate::node::db::events::vault::vault_event::VaultObject;
 
 /// Allows to have access to the global index of all vaults exists across the system.
 /// Index + VaultIndex = LinkedHashMap, or linkedList + HaspMap, allows to navigate through the values in the index.
@@ -49,7 +51,7 @@ impl ObjectName for GlobalIndexDescriptor {
 
 impl GlobalIndexDescriptor {
     pub fn vault_index(vault_name: VaultName) -> GlobalIndexDescriptor {
-        let vault_id = UnitId::vault_unit(vault_name);
+        let vault_id = VaultDescriptor::from(vault_name).unit_id();
         GlobalIndexDescriptor::VaultIndex { vault_id }
     }
 }

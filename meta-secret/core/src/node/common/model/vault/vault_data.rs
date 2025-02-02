@@ -4,7 +4,7 @@ use crate::node::common::model::user::common::{
     UserData, UserDataMember, UserDataOutsider, UserMembership, WasmUserMembership,
 };
 use crate::node::common::model::vault::vault::VaultName;
-use crate::node::db::events::vault::vault_log_event::{VaultActionEvents, VaultActionUpdateEvent};
+use crate::node::db::events::vault::vault_log_event::{AddMetaPassEvent, VaultActionEvents, VaultActionUpdateEvent};
 use crate::secret::data_block::common::SharedSecretConfig;
 use std::collections::{HashMap, HashSet};
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -158,10 +158,10 @@ impl VaultData {
                         new_vault = new_vault.update_membership(update);
                     }
                 }
-                VaultActionUpdateEvent::AddMetaPass {
+                VaultActionUpdateEvent::AddMetaPass(AddMetaPassEvent {
                     meta_pass_id,
                     sender,
-                } => {
+                }) => {
                     if new_vault.is_member(&sender.user().device.device_id) {
                         new_vault = new_vault.add_secret(meta_pass_id)
                     }

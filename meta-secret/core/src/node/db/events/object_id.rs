@@ -40,7 +40,7 @@ pub trait Next<To> {
 /// The unit type serves as a foundational element within category theory,
 /// providing a way to represent the absence of information or the presence of a single unique value.
 ///
-/// Same here, Unit is a initial request to create/initialize an object, it's step zero.
+/// Same here, Unit is an initial request to create/initialize an object, it's step zero.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UnitId {

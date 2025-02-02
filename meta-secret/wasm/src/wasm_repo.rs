@@ -2,7 +2,9 @@ use anyhow::bail;
 use async_trait::async_trait;
 use tracing::{error, instrument};
 
-use meta_secret_core::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, ToGenericEvent};
+use meta_secret_core::node::db::events::generic_log_event::{
+    GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
+};
 use meta_secret_core::node::db::events::object_id::ObjectId;
 use meta_secret_core::node::db::repo::generic_db::{
     CommitLogDbConfig, DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand,
@@ -89,7 +91,10 @@ impl SaveCommand for WasmRepo {
         let generic_event = event.to_generic();
         let maybe_key = self.get_key(generic_event.obj_id()).await?;
         if let Some(_) = maybe_key {
-            bail!("Wrong behaviour. Event already exists: {:?}", &generic_event);
+            bail!(
+                "Wrong behaviour. Event already exists: {:?}",
+                &generic_event
+            );
         };
 
         let store_name = self.store_name.as_str();

@@ -12,6 +12,7 @@ use crate::node::db::events::object_id::{ArtifactId, ObjectId, VaultGenesisEvent
 use anyhow::{anyhow, bail, Result};
 use std::collections::HashSet;
 use std::fmt::Display;
+use derive_more::From;
 use tracing::info;
 
 /// VaultLog keeps incoming events in order, the log is a queue for incoming messages and used to
@@ -90,7 +91,7 @@ pub struct VaultActionEvents {
 }
 
 impl VaultActionEvents {
-    pub fn update(mut self, event: VaultActionEvent) -> VaultActionEvents {
+    pub fn update(mut self, event: VaultActionEvent) -> Self {
         match event {
             VaultActionEvent::Request(request) => {
                 self.requests.insert(request);
@@ -114,12 +115,22 @@ impl VaultActionEvents {
                 if removed {
                     self.updates.insert(update.clone());
                 } else {
-                    info!("Request not found: {:?}", request);
+                    info!(
+                        "Corresponding request not found: {:?}, update won't be applied",
+                        request
+                    );
                 }
 
                 self
             }
         }
+    }
+
+    /// Completing vault action event, which means the update has been applied to the VaultObject
+    /// and needs to be removed from the updates list
+    pub fn complete(mut self, upd_event: VaultActionUpdateEvent) -> Self {
+        self.updates.remove(&upd_event);
+        self
     }
 }
 
@@ -141,10 +152,10 @@ pub enum VaultActionRequestEvent {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateVaultEvent {
-    owner: UserData,
+    pub owner: UserData,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JoinClusterEvent {
     candidate: UserData,
@@ -153,8 +164,8 @@ pub struct JoinClusterEvent {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AddMetaPassEvent {
-    sender: UserDataMember,
-    meta_pass_id: MetaPasswordId,
+    pub sender: UserDataMember,
+    pub meta_pass_id: MetaPasswordId,
 }
 
 impl VaultActionRequestEvent {

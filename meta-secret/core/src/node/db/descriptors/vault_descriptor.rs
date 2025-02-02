@@ -8,6 +8,7 @@ use crate::node::db::events::vault::vault_event::VaultObject;
 use crate::node::db::events::vault::vault_log_event::VaultLogObject;
 use crate::node::db::events::vault::vault_membership::VaultMembershipObject;
 use derive_more::From;
+use crate::node::db::events::object_id::UnitId;
 
 #[derive(Clone, Debug, PartialEq, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -20,6 +21,12 @@ pub struct VaultLogDescriptor(VaultName);
 #[derive(Clone, Debug, PartialEq, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VaultDescriptor(VaultName);
+
+impl VaultDescriptor {
+    pub fn unit_id(&self) -> UnitId {
+        UnitId::from(self.clone())
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

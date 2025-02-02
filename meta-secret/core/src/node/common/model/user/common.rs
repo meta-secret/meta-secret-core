@@ -32,7 +32,7 @@ impl UserData {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum UserMembership {
     Outsider(UserDataOutsider),
@@ -87,6 +87,14 @@ pub struct UserDataMember {
 impl UserDataMember {
     pub fn user(&self) -> &UserData {
         &self.user_data
+    }
+}
+
+impl From<UserDataOutsider> for UserDataMember {
+    fn from(outsider: UserDataOutsider) -> Self {
+        UserDataMember {
+            user_data: outsider.user_data,
+        }
     }
 }
 
