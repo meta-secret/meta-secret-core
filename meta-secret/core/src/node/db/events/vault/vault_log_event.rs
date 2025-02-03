@@ -12,7 +12,7 @@ use crate::node::db::events::object_id::{ArtifactId, ObjectId, VaultGenesisEvent
 use anyhow::{anyhow, bail, Result};
 use std::collections::HashSet;
 use std::fmt::Display;
-use derive_more::From;
+use derive_more::{From};
 use tracing::info;
 
 /// VaultLog keeps incoming events in order, the log is a queue for incoming messages and used to
@@ -86,50 +86,69 @@ impl ObjIdExtractor for VaultLogObject {
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VaultActionEvents {
-    requests: HashSet<VaultActionRequestEvent>,
-    updates: HashSet<VaultActionUpdateEvent>,
+    pub requests: HashSet<VaultActionRequestEvent>,
+    pub updates: HashSet<VaultActionUpdateEvent>,
 }
 
 impl VaultActionEvents {
-    pub fn update(mut self, event: VaultActionEvent) -> Self {
+
+    pub fn synchronize(mut self) -> Self {
+        let updates = self.updates.clone();
+
+        for update in updates {
+            self = self.apply_event(VaultActionEvent::Update(update));
+        }
+        
+        self
+    }
+    
+    /// Take all vault action events and update vault with those events, then return updated vault
+    pub fn apply_event(mut self, event: VaultActionEvent) -> Self {
         match event {
             VaultActionEvent::Request(request) => {
-                self.requests.insert(request);
-                self
+                self = self.add(request);
             }
             VaultActionEvent::Update(update) => {
-                let request = match &update {
-                    VaultActionUpdateEvent::CreateVault(event) => {
-                        VaultActionRequestEvent::CreateVault(event.clone())
-                    }
-                    VaultActionUpdateEvent::UpdateMembership { request, .. } => {
-                        VaultActionRequestEvent::JoinCluster(request.clone())
-                    }
-                    VaultActionUpdateEvent::AddMetaPass(event) => {
-                        VaultActionRequestEvent::AddMetaPass(event.clone())
-                    }
-                };
-
-                let removed = self.requests.remove(&request);
-                // if corresponding request exists we can apply the update
-                if removed {
-                    self.updates.insert(update.clone());
-                } else {
-                    info!(
-                        "Corresponding request not found: {:?}, update won't be applied",
-                        request
-                    );
-                }
-
-                self
+                self = self.apply(update);
             }
         }
+
+        self
     }
 
-    /// Completing vault action event, which means the update has been applied to the VaultObject
+    pub fn add(mut self, request: VaultActionRequestEvent) -> Self {
+        self.requests.insert(request);
+        self
+    }
+    
+    pub fn apply(mut self, event: VaultActionUpdateEvent) -> Self {
+        let request = match &event {
+            VaultActionUpdateEvent::CreateVault(event) => {
+                VaultActionRequestEvent::CreateVault(event.clone())
+            }
+            VaultActionUpdateEvent::UpdateMembership { request, .. } => {
+                VaultActionRequestEvent::JoinCluster(request.clone())
+            }
+            VaultActionUpdateEvent::AddMetaPass(event) => {
+                VaultActionRequestEvent::AddMetaPass(event.clone())
+            }
+        };
+
+        let removed = self.requests.remove(&request);
+        // if corresponding request exists we can apply the update
+        if removed {
+            self.updates.insert(event.clone());
+        } else {
+            info!("Corresponding request not found: {:?}, update won't be applied", request);
+        }
+
+        self
+    }
+
+    /// Completing vault action update events, which means the updates has been applied to the VaultObject
     /// and needs to be removed from the updates list
-    pub fn complete(mut self, upd_event: VaultActionUpdateEvent) -> Self {
-        self.updates.remove(&upd_event);
+    pub fn complete(mut self) -> Self {
+        self.updates.clear();
         self
     }
 }
@@ -158,7 +177,7 @@ pub struct CreateVaultEvent {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JoinClusterEvent {
-    candidate: UserData,
+    pub candidate: UserData,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -296,12 +315,12 @@ mod test {
         let event = VaultActionEvent::Request(VaultActionRequestEvent::CreateVault(create.clone()));
 
         let empty = VaultActionEvents::default();
-        let with_create_vault_request = empty.update(event);
+        let with_create_vault_request = empty.apply_event(event);
         assert_eq!(with_create_vault_request.requests.len(), 1);
 
         let update = VaultActionUpdateEvent::CreateVault(create);
         let event = VaultActionEvent::Update(update);
-        let with_update_vault_request = with_create_vault_request.update(event);
+        let with_update_vault_request = with_create_vault_request.apply_event(event);
         assert_eq!(with_update_vault_request.requests.len(), 0);
         assert_eq!(with_update_vault_request.updates.len(), 1);
 

@@ -117,6 +117,7 @@ pub mod test {
     use serde_json::json;
 
     use crate::node::common::model::device::common::DeviceName;
+    use crate::node::common::model::IdString;
     use crate::node::common::model::user::user_creds::UserCredentials;
     use crate::node::common::model::vault::vault::VaultName;
     use crate::node::db::descriptors::object_descriptor::{
@@ -160,7 +161,7 @@ pub mod test {
         assert_eq!(descriptor.object_type(), device_log_type);
         assert_eq!(descriptor.object_name(), user_id.device_id.to_string());
 
-        let unit_id = UnitId::unit_from_desc(descriptor);
+        let unit_id = UnitId::from(descriptor);
 
         let id_json = serde_json::to_value(&unit_id.id).unwrap();
         let expected = json!({

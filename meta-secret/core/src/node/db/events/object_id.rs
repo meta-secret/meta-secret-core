@@ -1,3 +1,4 @@
+use derive_more::From;
 use serde_derive::{Deserialize, Serialize};
 
 use crate::crypto::utils::NextId;
@@ -10,7 +11,7 @@ use crate::node::db::descriptors::object_descriptor::{
 
 use super::kv_log_event::{KvKey, KvLogEvent};
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, From, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ObjectId {
     Unit(UnitId),

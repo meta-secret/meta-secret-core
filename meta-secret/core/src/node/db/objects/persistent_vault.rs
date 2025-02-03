@@ -150,7 +150,7 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
         let key = KvKey::artifact(desc.to_obj_desc(), kv.key.obj_id.next());
         let vault_log_event = VaultLogObject::Action(KvLogEvent {
             key,
-            value: kv.value.update(action_event),
+            value: kv.value.apply_event(action_event),
         });
 
         self.p_obj.repo.save(vault_log_event).await?;

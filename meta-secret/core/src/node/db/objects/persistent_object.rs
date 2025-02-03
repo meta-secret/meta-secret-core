@@ -97,7 +97,7 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
 
         let free_id = maybe_tail_id
             .map(|tail_id| tail_id.next())
-            .unwrap_or(ObjectId::from(obj_id.get_unit_id()));
+            .unwrap_or(ObjectId::from(obj_id.get_unit_id().clone()));
 
         Ok(free_id)
     }
