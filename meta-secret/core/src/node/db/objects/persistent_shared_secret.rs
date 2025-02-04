@@ -209,7 +209,7 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
     async fn init_ss_device_log(&self, user: UserData) -> Result<()> {
         let user_id = user.user_id();
         let obj_desc = SsDeviceLogDescriptor::from(user_id.device_id);
-        let unit_id = UnitId::unit_from_desc(obj_desc.clone());
+        let unit_id = UnitId::from(obj_desc.clone());
 
         let maybe_unit_event = self.p_obj.repo.find_one(ObjectId::Unit(unit_id)).await?;
 

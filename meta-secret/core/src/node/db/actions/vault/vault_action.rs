@@ -4,20 +4,19 @@ use crate::node::common::model::vault::vault::VaultStatus;
 use crate::node::db::actions::sign_up::action::SignUpAction;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault_descriptor::{VaultDescriptor, VaultMembershipDescriptor};
-use crate::node::db::events::generic_log_event::ToGenericEvent;
+use crate::node::db::events::generic_log_event::{ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{Next, ObjectId};
 use crate::node::db::events::vault::vault_event::VaultObject;
-use crate::node::db::events::vault::vault_log_event::{
-    AddMetaPassEvent, CreateVaultEvent, VaultActionEvent, VaultActionUpdateEvent,
-};
+use crate::node::db::events::vault::vault_log_event::{AddMetaPassEvent, CreateVaultEvent, VaultActionEvent, VaultActionInitEvent, VaultActionRequestEvent, VaultActionUpdateEvent};
 use crate::node::db::events::vault::vault_membership::VaultMembershipObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
-use anyhow::Result;
+use anyhow::{bail, Result};
 use std::sync::Arc;
 use tracing::info;
+use crate::node::common::model::vault::vault_data::VaultAggregate;
 
 pub struct ServerVaultAction<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
@@ -29,28 +28,50 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
         let p_vault = PersistentVault {
             p_obj: self.p_obj.clone(),
         };
-
+        
         match &action_event {
-            VaultActionEvent::Request(_) => {
+            VaultActionEvent::Init(VaultActionInitEvent::CreateVault(create_vault_event)) => {
+                let action = CreateVaultAction {
+                    p_obj: self.p_obj.clone(),
+                    server_device: self.server_device.clone(),
+                };
+                action.create(&create_vault_event.owner).await
+            }
+            
+            VaultActionEvent::Request(action_request) => {
                 //saving messages from device_log to vault_log guarantees ordering between events
                 //sent from different devices simultaneously
-                p_vault.save_vault_log_event(action_event).await?;
-                anyhow::Ok(())
+
+                let vault_log_events = {
+                    let maybe_vault_log_obj = p_vault.vault_log(action_request.vault_name()).await?;
+                    let Some(vault_log_kv) = maybe_vault_log_obj else {
+                        bail!("VaultLog not found");
+                    };
+                    
+                    vault_log_kv.get_events()?
+                };
+                
+                let vault_agg = VaultAggregate::build_from(vault_log_events, );
+
+                match action_request {
+                    VaultActionRequestEvent::JoinCluster(_) => {
+                        p_vault.save_vault_log_request_event(action_request.clone()).await?;
+                        anyhow::Ok(())
+                    }
+                    VaultActionRequestEvent::AddMetaPass(_) => {
+                        
+                    }
+                }
             }
             VaultActionEvent::Update(action_update) => {
                 match action_update {
-                    VaultActionUpdateEvent::CreateVault(CreateVaultEvent { owner }) => {
-                        let action = CreateVaultAction {
-                            p_obj: self.p_obj.clone(),
-                            server_device: self.server_device.clone(),
-                        };
-                        action.create(&owner).await
-                    }
                     VaultActionUpdateEvent::UpdateMembership { sender, update, .. } => {
                         let vault_name = action_event.vault_name();
                         //check if a sender is a member of the vault and update the vault then
                         let (vault_artifact_id, vault) = p_vault.get_vault(sender.user()).await?;
-
+                        
+                        todo!("get VaultActionEvents and update actual state of the vault");
+                        
                         let vault_event = {
                             let new_vault = vault.update_membership(update.clone());
 

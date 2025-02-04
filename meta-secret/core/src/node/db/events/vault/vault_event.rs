@@ -1,5 +1,5 @@
 use crate::node::common::model::device::common::DeviceData;
-use crate::node::common::model::user::common::{UserData, UserDataMember};
+use crate::node::common::model::user::common::UserData;
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::common::model::vault::vault_data::VaultData;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;

@@ -149,7 +149,7 @@ pub struct VaultAggregate {
 }
 
 impl VaultAggregate {
-    
+
     pub fn build_from(events: VaultActionEvents, vault: VaultData) -> Self {
         let current_state = Self { events, vault };
         current_state.synchronize()
@@ -162,7 +162,7 @@ impl VaultAggregate {
         for update in updates {
             self.events = self.events.apply_event(VaultActionEvent::Update(update));
         }
-        
+
         self = self.complete();
 
         self
@@ -171,9 +171,6 @@ impl VaultAggregate {
     fn complete(mut self) -> Self {
         for curr_update in &self.events.updates {
             match curr_update {
-                VaultActionUpdateEvent::CreateVault { .. } => {
-                    //ignore
-                }
                 VaultActionUpdateEvent::UpdateMembership { sender, update, .. } => {
                     if self.vault.is_member(&sender.user().device.device_id) {
                         self.vault = self.vault.update_membership(update.clone());
@@ -203,7 +200,7 @@ mod test {
     };
     use crate::node::common::model::vault::vault_data::{VaultAggregate, VaultData};
     use crate::node::db::events::vault::vault_log_event::{
-        JoinClusterEvent, VaultActionEvent, VaultActionEvents, VaultActionRequestEvent, 
+        JoinClusterEvent, VaultActionEvent, VaultActionEvents, VaultActionRequestEvent,
         VaultActionUpdateEvent
     };
     use anyhow::Result;
@@ -243,7 +240,7 @@ mod test {
         assert_eq!(2, vault_data.members().len());
         assert_eq!(1, vault_data.outsiders().len());
     }
-    
+
     #[test]
     fn test_vault_aggregate() -> Result<()> {
         let fixture = FixtureRegistry::empty();
@@ -254,22 +251,22 @@ mod test {
         let join_request_event = {
             VaultActionEvent::Request(VaultActionRequestEvent::JoinCluster(join_request.clone()))
         };
-        
+
         let update_membership = VaultActionUpdateEvent::UpdateMembership {
             request: join_request.clone(),
             sender: UserDataMember { user_data: client_creds.user() },
             update: UserMembership::Member(UserDataMember { user_data: join_request.candidate.clone() }),
         };
-        
+
         let update_membership_event = VaultActionEvent::Update(update_membership);
 
         let events = VaultActionEvents::default()
             .apply_event(join_request_event)
             .apply_event(update_membership_event);
-        
+
         let vault_aggregate = VaultAggregate::build_from(events, vault_data);
-        assert_eq!(22, vault_aggregate.vault.users.len());
-        
+        assert_eq!(2, vault_aggregate.vault.users.len());
+
         Ok(())
     }
 }

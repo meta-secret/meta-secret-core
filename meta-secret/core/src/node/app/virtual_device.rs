@@ -99,21 +99,23 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> VirtualDevice<Repo, Sync> {
         };
 
         if let Some(VaultLogObject::Action(action_event)) = maybe_vault_log_event {
-            let VaultActionEvents(vault_actions) = action_event.value;
-            for (id, vault_action) in vault_actions {
-                match vault_action {
-                    VaultActionEvent::Request(request_event) => match request_event {
-                        VaultActionRequestEvent::JoinCluster { candidate } => {
-                            let accept_action = AcceptJoinAction {
-                                p_obj: self.p_obj.clone(),
-                                member: member.clone(),
-                            };
+            let vault_actions = action_event.value;
 
-                            accept_action.accept(candidate).await?;
-                        }
-                    },
-                    VaultActionEvent::Update(_) => {
-                        //Updates are for server
+            for request in vault_actions.requests {
+                match request {
+                    VaultActionRequestEvent::CreateVault(_) => {
+                        //Ignore server side events
+                    }
+                    VaultActionRequestEvent::JoinCluster(join_request) => {
+                        let accept_action = AcceptJoinAction {
+                            p_obj: self.p_obj.clone(),
+                            member: member.clone(),
+                        };
+
+                        accept_action.accept(join_request).await?;
+                    }
+                    VaultActionRequestEvent::AddMetaPass(_) => {
+                        //Ignore server side events (no need approval)
                     }
                 }
             }

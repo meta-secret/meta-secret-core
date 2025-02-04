@@ -37,6 +37,7 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
     #[instrument(skip_all)]
     pub async fn save_accept_join_request_event(
         &self,
+        join_request: JoinClusterEvent,
         member: UserDataMember,
         candidate: UserDataOutsider,
     ) -> Result<()> {
@@ -47,7 +48,7 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
 
         let free_key = self.get_device_log_key(member_user).await?;
         let update = VaultActionUpdateEvent::UpdateMembership {
-            request: ???,
+            request: join_request,
             sender: member,
             update: UserMembership::Member(UserDataMember::from(candidate)),
         };

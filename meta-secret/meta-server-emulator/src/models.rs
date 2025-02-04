@@ -1,5 +1,6 @@
 use crate::schema::db_commit_log;
 use diesel::prelude::*;
+use meta_secret_core::node::common::model::IdString;
 use meta_secret_core::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor};
 
 #[derive(Debug, Queryable)]
