@@ -289,7 +289,7 @@ mod test {
             p_obj: empty_state.p_obj.vd.clone(),
             member,
         };
-        //accept_action.accept(client_p_obj).await?;
+        accept_action.accept(client_p_obj).await?;
         todo!("fix this test");
         Ok(())
     }

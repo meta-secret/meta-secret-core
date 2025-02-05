@@ -16,10 +16,7 @@ use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::shared_secret_event::SharedSecretObject;
-use crate::node::db::events::vault::vault_log_event::{
-    VaultActionEvent, VaultActionEvents, VaultActionRequestEvent,
-    VaultLogObject,
-};
+use crate::node::db::events::vault::vault_log_event::{VaultActionRequestEvent, VaultLogObject};
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;
@@ -103,9 +100,6 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> VirtualDevice<Repo, Sync> {
 
             for request in vault_actions.requests {
                 match request {
-                    VaultActionRequestEvent::CreateVault(_) => {
-                        //Ignore server side events
-                    }
                     VaultActionRequestEvent::JoinCluster(join_request) => {
                         let accept_action = AcceptJoinAction {
                             p_obj: self.p_obj.clone(),

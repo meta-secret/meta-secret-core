@@ -226,6 +226,15 @@ pub enum VaultActionUpdateEvent {
 }
 
 impl VaultActionUpdateEvent {
+    pub fn sender(&self) -> &UserDataMember {
+        match self {
+            VaultActionUpdateEvent::UpdateMembership { sender, .. } => sender,
+            VaultActionUpdateEvent::AddMetaPass(AddMetaPassEvent {sender, ..}) => sender
+        }
+    }
+}
+
+impl VaultActionUpdateEvent {
     pub fn vault_name(&self) -> VaultName {
         match self {
             VaultActionUpdateEvent::UpdateMembership { update, .. } => {

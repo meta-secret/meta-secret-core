@@ -144,8 +144,8 @@ pub struct EmptyVaultState;
 /// The documentation of aggregates in DDD/event source is
 /// [here](meta-secret/docs/programming/event-sourcing-aggregate.md):
 pub struct VaultAggregate {
-    events: VaultActionEvents,
-    vault: VaultData,
+    pub events: VaultActionEvents,
+    pub vault: VaultData,
 }
 
 impl VaultAggregate {

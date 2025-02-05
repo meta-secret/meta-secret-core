@@ -127,6 +127,12 @@ impl Next<KvKey<ArtifactId>> for KvKey<GenesisId> {
     }
 }
 
+impl Next<KvKey<ArtifactId>> for KvKey<ArtifactId> {
+    fn next(self) -> Self {
+        Self { obj_id: self.obj_id.next(), obj_desc: self.obj_desc }
+    }
+}
+
 impl KvKey<ArtifactId> {
     pub fn artifact(obj_desc: ObjectDescriptor, obj_id: ArtifactId) -> Self {
         Self { obj_id, obj_desc }
