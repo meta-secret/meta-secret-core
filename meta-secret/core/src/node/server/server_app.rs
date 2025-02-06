@@ -140,6 +140,7 @@ pub mod fixture {
 
 #[cfg(test)]
 mod test {
+    use anyhow::bail;
     use crate::meta_tests::fixture_util::fixture::states::ExtendedState;
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::meta_tests::spec::test_spec::TestSpec;
@@ -154,6 +155,7 @@ mod test {
     use crate::node::db::repo::persistent_credentials::spec::PersistentCredentialsSpec;
     use log::warn;
     use tracing::{info, Instrument};
+    use crate::node::app::orchestrator::MetaOrchestrator;
 
     #[tokio::test]
     async fn test_sign_up_one_device() -> anyhow::Result<()> {
@@ -274,23 +276,27 @@ mod test {
         vd_gw.sync().await?;
         vd_gw.sync().await?;
 
+        let orchestrator = MetaOrchestrator {
+            p_obj: empty_state.p_obj.vd.clone(),
+            user_creds: user_creds.vd.clone(),
+        };
+        orchestrator.orchestrate().await?;
+
+        vd_gw.sync().await?;
+        vd_gw.sync().await?;
+
         //accept join request by vd
-        let p_vault = PersistentVault {
+        let vd_p_vault = PersistentVault {
             p_obj: empty_state.p_obj.vd.clone(),
         };
-        let vault_status = p_vault.find(empty_state.user_creds.vd.user()).await?;
+        let vault_status = vd_p_vault.find(empty_state.user_creds.vd.user()).await?;
 
         let VaultStatus::Member { member, .. } = vault_status else {
-            warn!("Not a vault member");
-            return Ok(());
+            bail!("Virtual device is not a vault member");
         };
-
-        let accept_action = AcceptJoinAction {
-            p_obj: empty_state.p_obj.vd.clone(),
-            member,
-        };
-        accept_action.accept(client_p_obj).await?;
-        todo!("fix this test");
+        
+        assert_eq!(2, member.vault.users.len());
+        
         Ok(())
     }
 

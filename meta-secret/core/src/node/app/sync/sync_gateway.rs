@@ -86,7 +86,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
 
     async fn get_server_tail(&self, user_creds: &UserCredentials) -> Result<ServerTailResponse> {
         let server_tail = {
-            let server_tail_sync_request = self.get_server_tail_request(&user_creds).await?;
+            let server_tail_sync_request = self.get_server_tail_request(user_creds).await?;
             self.get_tail(server_tail_sync_request).await?
         };
         Ok(server_tail)
@@ -229,7 +229,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         server_tail: &ServerTailResponse,
         user_id: UserId,
     ) -> Result<()> {
-        let device_log_events_to_sync = self.device_log_sync_request(&server_tail, user_id).await?;
+        let device_log_events_to_sync = self.device_log_sync_request(server_tail, user_id).await?;
         for device_log_event in device_log_events_to_sync {
             self.sync.send(device_log_event).await?;
         }

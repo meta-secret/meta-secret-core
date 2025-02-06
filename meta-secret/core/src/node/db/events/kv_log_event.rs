@@ -1,5 +1,4 @@
 use crate::node::common::model::device::common::DeviceData;
-use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
 use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ToObjectDescriptor};
 use crate::node::db::events::object_id::{ArtifactId, GenesisId, Next, UnitId};
 
@@ -26,20 +25,6 @@ impl KvLogEvent<GenesisId, DeviceData> {
             key: KvKey::genesis(obj_desc),
             value: server_pk,
         }
-    }
-
-    pub fn global_index_unit() -> KvLogEvent<UnitId, ()> {
-        KvLogEvent {
-            key: KvKey::unit(ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index)),
-            value: (),
-        }
-    }
-
-    pub fn global_index_genesis(server_pk: DeviceData) -> KvLogEvent<GenesisId, DeviceData> {
-        Self::genesis(
-            ObjectDescriptor::GlobalIndex(GlobalIndexDescriptor::Index),
-            server_pk,
-        )
     }
 }
 

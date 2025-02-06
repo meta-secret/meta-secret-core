@@ -1,6 +1,5 @@
 use super::shared_secret_event::SsLogObject;
 use crate::node::db::events::error::ErrorMessage;
-use crate::node::db::events::global_index_event::GlobalIndexObject;
 use crate::node::db::events::kv_log_event::{GenericKvKey, KvLogEvent};
 use crate::node::db::events::local_event::CredentialsObject;
 use crate::node::db::events::object_id::{ArtifactId, ObjectId};
@@ -13,8 +12,6 @@ use crate::node::db::events::vault::vault_membership::VaultMembershipObject;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum GenericKvLogEvent {
-    GlobalIndex(GlobalIndexObject),
-
     Credentials(CredentialsObject),
 
     DeviceLog(DeviceLogObject),
@@ -32,10 +29,6 @@ pub enum GenericKvLogEvent {
 }
 
 impl GenericKvLogEvent {
-    pub fn global_index(self) -> anyhow::Result<GlobalIndexObject> {
-        GlobalIndexObject::try_from(self)
-    }
-
     pub fn credentials(self) -> anyhow::Result<CredentialsObject> {
         CredentialsObject::try_from(self)
     }
@@ -117,7 +110,6 @@ pub trait KeyExtractor {
 impl ObjIdExtractor for GenericKvLogEvent {
     fn obj_id(&self) -> ObjectId {
         match self {
-            GenericKvLogEvent::GlobalIndex(obj) => obj.obj_id(),
             GenericKvLogEvent::Vault(obj) => obj.obj_id(),
             GenericKvLogEvent::SharedSecret(obj) => obj.obj_id(),
             GenericKvLogEvent::Credentials(obj) => obj.obj_id(),
@@ -134,7 +126,6 @@ impl ObjIdExtractor for GenericKvLogEvent {
 impl KeyExtractor for GenericKvLogEvent {
     fn key(&self) -> GenericKvKey {
         match self {
-            GenericKvLogEvent::GlobalIndex(obj) => obj.key(),
             GenericKvLogEvent::Vault(obj) => obj.key(),
             GenericKvLogEvent::SharedSecret(obj) => obj.key(),
             GenericKvLogEvent::Credentials(obj) => obj.key(),

@@ -13,8 +13,8 @@ use crate::node::db::events::object_id::{
 };
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::events::vault::vault_log_event::{
-    AddMetaPassEvent, CreateVaultEvent, JoinClusterEvent, VaultActionEvent, VaultActionRequestEvent, 
-    VaultActionUpdateEvent
+    AddMetaPassEvent, CreateVaultEvent, JoinClusterEvent, VaultActionEvent, VaultActionInitEvent,
+    VaultActionRequestEvent, VaultActionUpdateEvent,
 };
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
@@ -68,28 +68,15 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
         info!("Save event: CreateVault request");
 
         self.init(user).await?;
-
-        let maybe_device_log_event = self
-            .p_obj
-            .find_tail_event(DeviceLogDescriptor::from(user.user_id()))
-            .await?;
-
-        if let Some(DeviceLogObject::Action(event)) = maybe_device_log_event {
-            if let VaultActionEvent::Update(VaultActionUpdateEvent::CreateVault { .. }) =
-                event.value
-            {
-                info!("SignUp request already exists");
-                return Ok(());
-            }
-        }
-
+        
         let create_request = {
-            let upd = VaultActionUpdateEvent::CreateVault(CreateVaultEvent {
+            let create_action = VaultActionInitEvent::CreateVault(CreateVaultEvent {
                 owner: user.clone(),
             });
+            let upd = VaultActionEvent::Init(create_action);
             DeviceLogObject::Action(KvLogEvent {
-                key: self.get_device_log_key(&user).await?,
-                value: VaultActionEvent::Update(upd),
+                key: self.get_device_log_key(user).await?,
+                value: upd,
             })
         };
         self.p_obj.repo.save(create_request).await?;
@@ -127,7 +114,7 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
         let request = VaultActionRequestEvent::JoinCluster(JoinClusterEvent::from(user.clone()));
         let join_request = DeviceLogObject::Action(KvLogEvent {
             key: self.get_device_log_key(user).await?,
-            value: VaultActionEvent::Request(request)
+            value: VaultActionEvent::Request(request),
         });
         self.p_obj.repo.save(join_request).await?;
 

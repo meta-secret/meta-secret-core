@@ -154,7 +154,7 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
         });
 
         self.p_obj.repo.save(vault_log_event).await?;
-        
+
         Ok(())
     }
 
@@ -229,10 +229,13 @@ pub mod spec {
             assert_eq!(2, events.len());
 
             if let VaultLogObject::Unit(VaultUnitEvent(unit_kv)) = events.first().unwrap() {
-                if let ObjectDescriptor::Vault(desc) = &unit_kv.key.obj_desc {
+                if let ObjectDescriptor::VaultLog(desc) = &unit_kv.key.obj_desc {
                     assert_eq!(desc.object_name(), VaultName::test().0);
                 } else {
-                    bail!("Expected unit to be a vault");
+                    bail!(
+                        "Expected a vault log descriptor. Actual: {:?}",
+                        &unit_kv.key.obj_desc
+                    );
                 }
 
                 assert_eq!(unit_kv.value, VaultName::test());
