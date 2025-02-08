@@ -8,7 +8,6 @@ use crate::node::db::events::vault::vault_event::VaultObject;
 use crate::node::db::events::vault::vault_log_event::VaultLogObject;
 use crate::node::db::events::vault::vault_membership::VaultMembershipObject;
 use derive_more::From;
-use crate::node::db::events::object_id::UnitId;
 
 #[derive(Clone, Debug, PartialEq, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -21,12 +20,6 @@ pub struct VaultLogDescriptor(VaultName);
 #[derive(Clone, Debug, PartialEq, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VaultDescriptor(VaultName);
-
-impl VaultDescriptor {
-    pub fn unit_id(&self) -> UnitId {
-        UnitId::from(self.clone())
-    }
-}
 
 #[derive(Clone, Debug, PartialEq, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -117,7 +110,6 @@ pub mod test {
     use serde_json::json;
 
     use crate::node::common::model::device::common::DeviceName;
-    use crate::node::common::model::IdString;
     use crate::node::common::model::user::user_creds::UserCredentials;
     use crate::node::common::model::vault::vault::VaultName;
     use crate::node::db::descriptors::object_descriptor::{
@@ -126,7 +118,7 @@ pub mod test {
     use crate::node::db::descriptors::vault_descriptor::{
         DeviceLogDescriptor, VaultDescriptor, VaultLogDescriptor,
     };
-    use crate::node::db::events::object_id::{ObjectId, UnitId};
+    use crate::node::db::events::object_id::ArtifactId;
 
     #[test]
     fn test_vault_naming() {
@@ -153,15 +145,12 @@ pub mod test {
         let descriptor = DeviceLogDescriptor(user_id.clone());
         let device_log_type = String::from("DeviceLog");
 
-        println!(
-            "{:?}",
-            ObjectId::unit(descriptor.clone().to_obj_desc()).id_str()
-        );
+        println!("{:?}", descriptor.clone().to_obj_desc());
 
         assert_eq!(descriptor.object_type(), device_log_type);
         assert_eq!(descriptor.object_name(), user_id.device_id.to_string());
 
-        let unit_id = UnitId::from(descriptor);
+        let unit_id = ArtifactId::from(descriptor);
 
         let id_json = serde_json::to_value(&unit_id.id).unwrap();
         let expected = json!({

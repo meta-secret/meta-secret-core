@@ -1,6 +1,6 @@
 use crate::node::common::model::user::common::UserData;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
-use crate::node::db::events::object_id::ObjectId;
+use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::objects::persistent_vault::VaultTail;
 use derive_more::From;
 use serde::{Deserialize, Serialize};
@@ -37,7 +37,7 @@ pub struct VaultRequest {
 #[serde(rename_all = "camelCase")]
 pub struct SsRequest {
     pub sender: UserData,
-    pub ss_log: ObjectId,
+    pub ss_log: ArtifactId,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

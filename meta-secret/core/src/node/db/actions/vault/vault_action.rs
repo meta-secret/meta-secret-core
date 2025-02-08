@@ -6,7 +6,7 @@ use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault_descriptor::{VaultDescriptor, VaultMembershipDescriptor};
 use crate::node::db::events::generic_log_event::{ToGenericEvent};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::object_id::{Next, ObjectId};
+use crate::node::db::events::object_id::Next;
 use crate::node::db::events::vault::vault_event::VaultObject;
 use crate::node::db::events::vault::vault_log_event::{
     AddMetaPassEvent, VaultActionEvent, VaultActionInitEvent, VaultActionUpdateEvent

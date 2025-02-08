@@ -4,7 +4,7 @@ use tracing::instrument;
 
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::events::generic_log_event::{GenericKvLogEventConvertible, ObjIdExtractor};
-use crate::node::db::events::object_id::{Next, ObjectId};
+use crate::node::db::events::object_id::{ArtifactId, Next};
 use crate::node::db::in_mem_db::InMemKvLogEventRepo;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use anyhow::Result;
@@ -19,16 +19,15 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
         &self,
         obj_desc: ObjDesc,
     ) -> Result<Vec<ObjDesc::EventType>> {
-        let unit_id = ObjectId::unit_from(obj_desc);
+        let unit_id = ArtifactId::from(obj_desc);
         let commit_log = self.find_object_events(unit_id).await?;
-
         Ok(commit_log)
     }
 
     #[instrument(skip_all)]
     pub async fn find_object_events<T: GenericKvLogEventConvertible>(
         &self,
-        tail_id: ObjectId,
+        tail_id: ArtifactId,
     ) -> Result<Vec<T>> {
         let mut commit_log: Vec<T> = vec![];
 
@@ -59,7 +58,7 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
 
     pub async fn find_tail_event_by_obj_id<T: GenericKvLogEventConvertible>(
         &self,
-        obj_id: ObjectId,
+        obj_id: ArtifactId,
     ) -> Result<Option<T>> {
         let maybe_tail_id = self.find_tail_id(obj_id).await?;
         self.find_event_by_id(maybe_tail_id).await
@@ -67,7 +66,7 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
 
     async fn find_event_by_id<T: GenericKvLogEventConvertible>(
         &self,
-        maybe_tail_id: Option<ObjectId>,
+        maybe_tail_id: Option<ArtifactId>,
     ) -> Result<Option<T>> {
         if let Some(tail_id) = maybe_tail_id {
             let maybe_tail_event = self.repo.find_one_obj(tail_id).await?;
@@ -81,23 +80,23 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
     pub async fn find_free_id_by_obj_desc<Desc: ToObjectDescriptor>(
         &self,
         obj_desc: Desc,
-    ) -> Result<ObjectId> {
+    ) -> Result<ArtifactId> {
         let maybe_tail_id = self.find_tail_id_by_obj_desc(obj_desc.clone()).await?;
 
         let free_id = maybe_tail_id
             .map(|tail_id| tail_id.next())
-            .unwrap_or(ObjectId::unit_from(obj_desc));
+            .unwrap_or(ArtifactId::from(obj_desc));
 
         Ok(free_id)
     }
 
     #[instrument(skip_all)]
-    pub async fn find_free_id(&self, obj_id: ObjectId) -> Result<ObjectId> {
+    pub async fn find_free_id(&self, obj_id: ArtifactId) -> Result<ArtifactId> {
         let maybe_tail_id = self.find_tail_id(obj_id.clone()).await?;
 
         let free_id = maybe_tail_id
             .map(|tail_id| tail_id.next())
-            .unwrap_or(ObjectId::from(obj_id.get_unit_id().clone()));
+            .unwrap_or(obj_id.first());
 
         Ok(free_id)
     }
@@ -106,13 +105,13 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
     pub async fn find_tail_id_by_obj_desc<Desc: ToObjectDescriptor>(
         &self,
         obj_desc: Desc,
-    ) -> Result<Option<ObjectId>> {
-        let unit_id = ObjectId::unit_from(obj_desc);
+    ) -> Result<Option<ArtifactId>> {
+        let unit_id = obj_desc.id();
         self.find_tail_id(unit_id).await
     }
 
     #[instrument(skip_all)]
-    pub async fn find_tail_id(&self, curr_id: ObjectId) -> Result<Option<ObjectId>> {
+    pub async fn find_tail_id(&self, curr_id: ArtifactId) -> Result<Option<ArtifactId>> {
         let maybe_event = self.repo.find_one(curr_id.clone()).await?;
 
         if let Some(curr_event) = maybe_event {

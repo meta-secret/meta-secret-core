@@ -135,10 +135,7 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
                 }
             };
 
-            let split_key = {
-                let split_obj_desc = SharedSecretDescriptor::SsDistribution(dist_id).to_obj_desc();
-                KvKey::unit(split_obj_desc)
-            };
+            let split_key = KvKey::from(SharedSecretDescriptor::SsDistribution(dist_id));
 
             let ss_obj = SharedSecretObject::SsDistribution(KvLogEvent {
                 key: split_key.clone(),

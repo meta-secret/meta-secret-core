@@ -3,10 +3,10 @@ use crate::node::common::model::device::device_creds::DeviceCredentials;
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::descriptors::creds::CredentialsDescriptor;
-use crate::node::db::events::generic_log_event::{ToGenericEvent, UnitEvent};
+use crate::node::db::events::generic_log_event::{ToGenericEvent};
 use crate::node::db::events::kv_log_event::KvLogEvent;
 use crate::node::db::events::local_event::CredentialsObject;
-use crate::node::db::events::object_id::ObjectId;
+use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use anyhow::Result;
@@ -37,14 +37,14 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
     }
 
     #[instrument(skip(self))]
-    async fn save(&self, creds: CredentialsObject) -> Result<ObjectId> {
+    async fn save(&self, creds: CredentialsObject) -> Result<ArtifactId> {
         let generic_event = creds.to_generic();
         self.p_obj.repo.save(generic_event).await
     }
 
     #[instrument(skip(self))]
     async fn save_device_creds(&self, device_creds: &DeviceCredentials) -> Result<()> {
-        let creds_obj = CredentialsObject::unit(device_creds.clone());
+        let creds_obj = CredentialsObject::from(device_creds.clone());
         let generic_event = creds_obj.to_generic();
         self.p_obj.repo.save(generic_event).await?;
         Ok(())

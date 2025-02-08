@@ -1,8 +1,8 @@
 use super::shared_secret_event::SsLogObject;
 use crate::node::db::events::error::ErrorMessage;
-use crate::node::db::events::kv_log_event::{GenericKvKey, KvLogEvent};
+use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::local_event::CredentialsObject;
-use crate::node::db::events::object_id::{ArtifactId, ObjectId};
+use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::events::shared_secret_event::{SharedSecretObject, SsDeviceLogObject};
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::events::vault::vault_event::VaultObject;
@@ -23,9 +23,7 @@ pub enum GenericKvLogEvent {
     SsDeviceLog(SsDeviceLogObject),
     SsLog(SsLogObject),
 
-    DbError {
-        event: KvLogEvent<ArtifactId, ErrorMessage>,
-    },
+    DbError(KvLogEvent<ErrorMessage>)
 }
 
 impl GenericKvLogEvent {
@@ -91,29 +89,21 @@ impl ToGenericEvent for GenericKvLogEvent {
     }
 }
 
-pub trait UnitEvent<T> {
-    fn unit(value: T) -> Self;
-}
-
-pub trait UnitEventWithEmptyValue {
-    fn unit() -> Self;
-}
-
 pub trait ObjIdExtractor {
-    fn obj_id(&self) -> ObjectId;
+    fn obj_id(&self) -> ArtifactId;
 }
 
 pub trait KeyExtractor {
-    fn key(&self) -> GenericKvKey;
+    fn key(&self) -> KvKey;
 }
 
 impl ObjIdExtractor for GenericKvLogEvent {
-    fn obj_id(&self) -> ObjectId {
+    fn obj_id(&self) -> ArtifactId {
         match self {
             GenericKvLogEvent::Vault(obj) => obj.obj_id(),
             GenericKvLogEvent::SharedSecret(obj) => obj.obj_id(),
             GenericKvLogEvent::Credentials(obj) => obj.obj_id(),
-            GenericKvLogEvent::DbError { event } => ObjectId::from(event.key.obj_id.clone()),
+            GenericKvLogEvent::DbError(event) => event.key.obj_id.clone(),
             GenericKvLogEvent::DeviceLog(obj) => obj.obj_id(),
             GenericKvLogEvent::VaultLog(obj) => obj.obj_id(),
             GenericKvLogEvent::VaultMembership(obj) => obj.obj_id(),
@@ -124,12 +114,12 @@ impl ObjIdExtractor for GenericKvLogEvent {
 }
 
 impl KeyExtractor for GenericKvLogEvent {
-    fn key(&self) -> GenericKvKey {
+    fn key(&self) -> KvKey {
         match self {
             GenericKvLogEvent::Vault(obj) => obj.key(),
             GenericKvLogEvent::SharedSecret(obj) => obj.key(),
             GenericKvLogEvent::Credentials(obj) => obj.key(),
-            GenericKvLogEvent::DbError { event } => GenericKvKey::from(event.key.clone()),
+            GenericKvLogEvent::DbError(event) => event.key.clone(),
             GenericKvLogEvent::DeviceLog(obj) => obj.key(),
             GenericKvLogEvent::VaultLog(obj) => obj.key(),
             GenericKvLogEvent::VaultMembership(obj) => obj.key(),

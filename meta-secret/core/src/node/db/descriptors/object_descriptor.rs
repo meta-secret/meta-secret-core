@@ -7,6 +7,7 @@ use crate::node::db::descriptors::vault_descriptor::{
     DeviceLogDescriptor, VaultDescriptor, VaultLogDescriptor, VaultMembershipDescriptor,
 };
 use crate::node::db::events::generic_log_event::GenericKvLogEventConvertible;
+use crate::node::db::events::object_id::{ArtifactId, Next, Prev};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -41,24 +42,58 @@ pub trait ObjectName {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ObjectDescriptorFqdn {
+pub struct ObjectFqdn {
     pub obj_type: String,
     pub obj_instance: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ObjectDescriptorId {
-    pub fqdn: ObjectDescriptorFqdn,
-    /// primary key of an object in the database in terms of keys in a table in relational databases.
-    /// In our case id is just a counter
-    pub id: usize,
+pub enum ChainId {
+    Genesis(GenesisId),
+    Seq(SeqId),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenesisId;
+
+impl Next<SeqId> for GenesisId {
+    fn next(self) -> SeqId {
+        let curr = 0;
+        SeqId {
+            curr: curr + 1,
+            prev: curr,
+        }
+    }
+}
+
+/// Sequential Id
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeqId {
+    curr: usize,
+    prev: usize,
+}
+
+impl SeqId {
+    pub fn first() -> Self {
+        GenesisId.next()
+    }
+}
+
+impl Next<SeqId> for SeqId {
+    fn next(mut self) -> SeqId {
+        self.prev += 1;
+        self.curr += 1;
+        self
+    }
 }
 
 impl ObjectDescriptor {
     /// Fully Qualified Domain Name - unique domain name of an object
-    pub fn fqdn(&self) -> ObjectDescriptorFqdn {
-        ObjectDescriptorFqdn {
+    pub fn fqdn(&self) -> ObjectFqdn {
+        ObjectFqdn {
             obj_type: self.object_type(),
             obj_instance: self.object_name(),
         }

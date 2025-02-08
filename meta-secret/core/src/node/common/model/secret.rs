@@ -145,6 +145,22 @@ pub struct SsLogData {
     pub claims: HashMap<SsDistributionClaimId, SsDistributionClaim>,
 }
 
+impl SsLogData {
+
+    pub fn new(claim: SsDistributionClaim) -> Self {
+        let mut claims = HashMap::new();
+        claims.insert(claim.id.clone(), claim);
+        Self {
+            claims,
+        }
+    }
+    
+    pub fn insert(mut self, claim: SsDistributionClaim) -> Self {
+        self.claims.insert(claim.id.clone(), claim);
+        self
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen]

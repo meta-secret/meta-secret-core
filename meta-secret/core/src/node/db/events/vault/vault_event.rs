@@ -1,4 +1,3 @@
-use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::user::common::UserData;
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::common::model::vault::vault_data::VaultData;
@@ -7,25 +6,13 @@ use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
 };
-use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
-use crate::node::db::events::object_id::{ArtifactId, GenesisId, ObjectId, UnitId, VaultUnitEvent};
+use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
+use crate::node::db::events::object_id::{ArtifactId};
 use anyhow::anyhow;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum VaultObject {
-    Unit(VaultUnitEvent),
-    /// Vault creator
-    Genesis(KvLogEvent<GenesisId, DeviceData>),
-    Vault(KvLogEvent<ArtifactId, VaultData>),
-}
-
-impl VaultObject {
-    pub fn unit_id(vault_name: VaultName) -> UnitId {
-        let vault_desc = VaultDescriptor::from(vault_name);
-        UnitId::from(vault_desc)
-    }
-}
+pub struct VaultObject(pub KvLogEvent<VaultData>);
 
 impl VaultObject {
     pub fn sign_up(vault_name: VaultName, candidate: UserData) -> Self {
@@ -38,27 +25,7 @@ impl VaultObject {
             key: KvKey::artifact(desc.to_obj_desc(), vault_id),
             value: vault_data,
         };
-        VaultObject::Vault(sign_up_event)
-    }
-}
-
-impl VaultObject {
-    pub fn genesis(vault_name: VaultName, server_device: DeviceData) -> Self {
-        let desc = VaultDescriptor::from(vault_name.clone());
-        VaultObject::Genesis(KvLogEvent {
-            key: KvKey::genesis(desc.to_obj_desc()),
-            value: server_device,
-        })
-    }
-}
-
-impl VaultObject {
-    pub fn unit(vault_name: VaultName) -> Self {
-        let desc = VaultDescriptor::from(vault_name.clone());
-        VaultObject::Unit(VaultUnitEvent(KvLogEvent {
-            key: KvKey::unit_from(desc),
-            value: vault_name,
-        }))
+        VaultObject(sign_up_event)
     }
 }
 
@@ -81,22 +48,14 @@ impl ToGenericEvent for VaultObject {
 }
 
 impl ObjIdExtractor for VaultObject {
-    fn obj_id(&self) -> ObjectId {
-        match self {
-            VaultObject::Unit(event) => ObjectId::from(event.key().obj_id.clone()),
-            VaultObject::Genesis(event) => ObjectId::from(event.key.obj_id.clone()),
-            VaultObject::Vault(event) => ObjectId::from(event.key.obj_id.clone()),
-        }
+    fn obj_id(&self) -> ArtifactId {
+        self.0.key.obj_id.clone()
     }
 }
 
 impl KeyExtractor for VaultObject {
-    fn key(&self) -> GenericKvKey {
-        match self {
-            VaultObject::Unit(event) => GenericKvKey::from(event.key()),
-            VaultObject::Genesis(event) => GenericKvKey::from(event.key.clone()),
-            VaultObject::Vault(event) => GenericKvKey::from(event.key.clone()),
-        }
+    fn key(&self) -> KvKey {
+        self.0.key.clone()
     }
 }
 
@@ -113,13 +72,6 @@ mod tests {
         // Assuming VaultObject::sign_up creates a new event for the vault sign up
         let sign_up = VaultObject::sign_up(VaultName::test(), user_creds.user());
 
-        let VaultObject::Vault(KvLogEvent {
-            value: vault_data, ..
-        }) = sign_up
-        else {
-            panic!("Invalid vault object");
-        };
-
-        assert_eq!(1, vault_data.users.len());
+        assert_eq!(1, sign_up.0.value.users.len());
     }
 }

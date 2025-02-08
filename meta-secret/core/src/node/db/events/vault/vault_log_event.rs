@@ -1,56 +1,23 @@
 use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::user::common::{UserData, UserDataMember, UserMembership};
 use crate::node::common::model::vault::vault::VaultName;
-use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
-use crate::node::db::descriptors::vault_descriptor::VaultLogDescriptor;
 use crate::node::db::events::error::LogEventCastError;
 use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
 };
-use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
-use crate::node::db::events::object_id::{ArtifactId, ObjectId, VaultGenesisEvent, VaultUnitEvent};
+use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use anyhow::{anyhow, bail, Result};
 use derive_more::From;
 use std::collections::HashSet;
 use std::fmt::Display;
 use tracing::info;
+use crate::node::db::events::object_id::ArtifactId;
 
 /// VaultLog keeps incoming events in order, the log is a queue for incoming messages and used to
 /// recreate the vault state from events (event sourcing)
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum VaultLogObject {
-    Unit(VaultUnitEvent),
-    Genesis(VaultGenesisEvent),
-    Action(KvLogEvent<ArtifactId, VaultActionEvents>),
-}
-
-impl VaultLogObject {
-    pub fn unit(vault_name: VaultName) -> Self {
-        let desc = VaultLogDescriptor::from(vault_name.clone());
-
-        VaultLogObject::Unit(VaultUnitEvent(KvLogEvent {
-            key: KvKey::unit_from(desc),
-            value: vault_name,
-        }))
-    }
-
-    pub fn genesis(vault_name: VaultName, candidate: UserData) -> Self {
-        let desc = VaultLogDescriptor::from(vault_name.clone());
-        VaultLogObject::Genesis(VaultGenesisEvent(KvLogEvent {
-            key: KvKey::genesis(desc.to_obj_desc()),
-            value: candidate.clone(),
-        }))
-    }
-    
-    pub fn get_events(&self) -> Result<VaultActionEvents> {
-        let VaultLogObject::Action(action) = self else {
-            bail!("Expected an action event");
-        };
-        
-        Ok(action.value.clone())
-    }
-}
+pub struct VaultLogObject(pub KvLogEvent<VaultActionEvents>);
 
 impl TryFrom<GenericKvLogEvent> for VaultLogObject {
     type Error = anyhow::Error;
@@ -71,22 +38,14 @@ impl ToGenericEvent for VaultLogObject {
 }
 
 impl KeyExtractor for VaultLogObject {
-    fn key(&self) -> GenericKvKey {
-        match self {
-            VaultLogObject::Unit(event) => GenericKvKey::from(event.key().clone()),
-            VaultLogObject::Genesis(event) => GenericKvKey::from(event.key().clone()),
-            VaultLogObject::Action(event) => GenericKvKey::from(event.key.clone()),
-        }
+    fn key(&self) -> KvKey {
+        self.0.key.clone()
     }
 }
 
 impl ObjIdExtractor for VaultLogObject {
-    fn obj_id(&self) -> ObjectId {
-        match self {
-            VaultLogObject::Unit(event) => ObjectId::from(event.key().obj_id.clone()),
-            VaultLogObject::Genesis(event) => ObjectId::from(event.key().obj_id.clone()),
-            VaultLogObject::Action(event) => ObjectId::from(event.key.obj_id.clone()),
-        }
+    fn obj_id(&self) -> ArtifactId {
+        self.0.key.obj_id.clone()
     }
 }
 

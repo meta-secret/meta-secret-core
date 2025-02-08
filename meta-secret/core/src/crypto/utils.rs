@@ -1,6 +1,5 @@
 use crate::crypto::encoding::base64::Base64Text;
 use crate::node::common::model::IdString;
-use crate::node::db::descriptors::object_descriptor::{ObjectDescriptorFqdn, ObjectDescriptorId};
 use rand::{distributions::Alphanumeric, Rng};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -119,27 +118,5 @@ impl From<String> for UuidUrlEnc {
 impl IdString for UuidUrlEnc {
     fn id_str(self) -> String {
         self.text.base64_str()
-    }
-}
-
-pub trait NextId {
-    fn next_id(self) -> ObjectDescriptorId;
-}
-
-impl NextId for ObjectDescriptorFqdn {
-    fn next_id(self) -> ObjectDescriptorId {
-        ObjectDescriptorId {
-            fqdn: self.clone(),
-            id: 0,
-        }
-    }
-}
-
-impl NextId for ObjectDescriptorId {
-    fn next_id(self) -> ObjectDescriptorId {
-        ObjectDescriptorId {
-            id: self.id + 1,
-            ..self
-        }
     }
 }
