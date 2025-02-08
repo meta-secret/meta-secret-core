@@ -3,7 +3,7 @@ use crate::node::common::model::device::device_creds::DeviceCredentials;
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::descriptors::creds::CredentialsDescriptor;
-use crate::node::db::events::generic_log_event::ToGenericEvent;
+use crate::node::db::events::generic_log_event::{ToGenericEvent};
 use crate::node::db::events::kv_log_event::KvLogEvent;
 use crate::node::db::events::local_event::CredentialsObject;
 use crate::node::db::events::object_id::ArtifactId;
@@ -43,8 +43,8 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
     }
 
     #[instrument(skip(self))]
-    async fn save_device_creds(&self, device_creds: DeviceCredentials) -> Result<()> {
-        let creds_obj = CredentialsObject::from(device_creds);
+    async fn save_device_creds(&self, device_creds: &DeviceCredentials) -> Result<()> {
+        let creds_obj = CredentialsObject::from(device_creds.clone());
         let generic_event = creds_obj.to_generic();
         self.p_obj.repo.save(generic_event).await?;
         Ok(())
@@ -66,18 +66,9 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
 
     #[instrument(skip_all)]
     pub async fn find(&self) -> Result<Option<CredentialsObject>> {
-        let maybe_device_creds = self
-            .p_obj
-            .find_tail_event(CredentialsDescriptor::Device)
-            .await?;
-        let maybe_user_creds = self
-            .p_obj
-            .find_tail_event(CredentialsDescriptor::User)
-            .await?;
+        let maybe_creds = self.p_obj.find_tail_event(CredentialsDescriptor).await?;
 
-        let creds = maybe_user_creds.or_else(|| maybe_device_creds);
-
-        Ok(creds)
+        Ok(maybe_creds)
     }
 
     #[instrument(skip(self))]
@@ -88,7 +79,7 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
             &device_creds.device
         );
 
-        self.save_device_creds(device_creds.clone()).await?;
+        self.save_device_creds(&device_creds).await?;
         Ok(device_creds)
     }
 
@@ -106,13 +97,13 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
                     .get_or_generate_device_creds(device_name.clone())
                     .await?;
                 let user_creds = UserCredentials::from(device_creds, vault_name);
-                self.save(CredentialsObject::from(user_creds.clone()))
+                self.save(CredentialsObject::default_user(user_creds.clone()))
                     .await?;
                 Ok(user_creds)
             }
             Some(CredentialsObject::Device(KvLogEvent { value: creds, .. })) => {
                 let user_creds = UserCredentials::from(creds, vault_name);
-                self.save(CredentialsObject::from(user_creds.clone()))
+                self.save(CredentialsObject::default_user(user_creds.clone()))
                     .await?;
                 Ok(user_creds)
             }
@@ -149,7 +140,7 @@ pub mod fixture {
             });
 
             client_p_creds
-                .save_device_creds(state.device_creds.client.clone())
+                .save_device_creds(&state.device_creds.client)
                 .await?;
 
             client_p_creds
@@ -159,9 +150,7 @@ pub mod fixture {
                 )
                 .await?;
 
-            vd_p_creds
-                .save_device_creds(state.device_creds.vd.clone())
-                .await?;
+            vd_p_creds.save_device_creds(&state.device_creds.vd).await?;
             vd_p_creds
                 .get_or_generate_user_creds(
                     state.device_creds.vd.device.device_name.clone(),
@@ -170,7 +159,7 @@ pub mod fixture {
                 .await?;
 
             server_p_creds
-                .save_device_creds(state.device_creds.server.clone())
+                .save_device_creds(&state.device_creds.server)
                 .await?;
 
             Ok(Self {
@@ -196,18 +185,12 @@ pub mod spec {
 
     impl PersistentCredentialsSpec<InMemKvLogEventRepo> {
         pub async fn verify_user_creds(&self) -> anyhow::Result<()> {
-            let device_creds = self
+            let events = self
                 .p_obj
-                .get_object_events_from_beginning(CredentialsDescriptor::Device)
-                .await?;
-            assert_eq!(device_creds.len(), 1);
-            
-            let user_creds = self
-                .p_obj
-                .get_object_events_from_beginning(CredentialsDescriptor::User)
+                .get_object_events_from_beginning(CredentialsDescriptor)
                 .await?;
 
-            assert_eq!(user_creds.len(), 1);
+            assert_eq!(events.len(), 2);
 
             Ok(())
         }
@@ -215,7 +198,7 @@ pub mod spec {
         pub async fn verify_device_creds(&self) -> anyhow::Result<()> {
             let events = self
                 .p_obj
-                .get_object_events_from_beginning(CredentialsDescriptor::Device)
+                .get_object_events_from_beginning(CredentialsDescriptor)
                 .await?;
 
             assert_eq!(events.len(), 1);

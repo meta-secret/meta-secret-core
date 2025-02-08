@@ -115,7 +115,7 @@ impl SsLogObject {
     pub fn to_data(&self) -> SsLogData {
         self.0.value.clone()
     }
-
+    
     pub fn insert(mut self, claim: SsDistributionClaim) -> Self {
         self.0.value = self.0.value.insert(claim);
         self

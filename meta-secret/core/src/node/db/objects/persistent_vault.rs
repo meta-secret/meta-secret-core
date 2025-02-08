@@ -6,17 +6,18 @@ use crate::node::common::model::vault::vault_data::VaultData;
 use crate::node::db::descriptors::vault_descriptor::{
     VaultDescriptor, VaultLogDescriptor, VaultMembershipDescriptor,
 };
-use crate::node::db::events::generic_log_event::KeyExtractor;
 use crate::node::db::events::kv_log_event::KvLogEvent;
 use crate::node::db::events::object_id::{ArtifactId, Next};
+use crate::node::db::events::vault::vault_event::VaultObject;
 use crate::node::db::events::vault::vault_log_event::{
     VaultActionEvents, VaultActionRequestEvent, VaultLogObject,
 };
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use tracing_attributes::instrument;
+use crate::node::db::events::generic_log_event::KeyExtractor;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -96,7 +97,7 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
             let vault_desc = VaultDescriptor::from(user.vault_name());
             self.p_obj.find_tail_event(vault_desc).await?
         };
-
+        
         todo!("Figure out if vault already exists");
 
         let gi_and_vault = maybe_vault_event;
@@ -163,7 +164,10 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
         Ok(())
     }
 
-    pub async fn get_vault_log_artifact(&self, vault_name: VaultName) -> Result<VaultLogObject> {
+    pub async fn get_vault_log_artifact(
+        &self,
+        vault_name: VaultName,
+    ) -> Result<VaultLogObject> {
         let desc = VaultLogDescriptor::from(vault_name);
         let maybe_vault_log_event = self.p_obj.find_tail_event(desc.clone()).await?;
 
@@ -188,7 +192,9 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
 #[cfg(test)]
 pub mod spec {
     use crate::node::common::model::user::common::UserData;
-    use crate::node::common::model::vault::vault::VaultStatus;
+    use crate::node::common::model::vault::vault::{VaultName, VaultStatus};
+    use crate::node::db::descriptors::object_descriptor::{ObjectDescriptor, ObjectName};
+    use crate::node::db::events::vault::vault_log_event::VaultLogObject;
     use crate::node::db::objects::persistent_object::PersistentObject;
     use crate::node::db::objects::persistent_vault::PersistentVault;
     use crate::node::db::repo::generic_db::KvLogEventRepo;
@@ -198,6 +204,16 @@ pub mod spec {
     pub struct VaultLogSpec<Repo: KvLogEventRepo> {
         pub p_obj: Arc<PersistentObject<Repo>>,
         pub user: UserData,
+    }
+
+    impl<Repo: KvLogEventRepo> VaultLogSpec<Repo> {
+        
+        async fn vault_log(&self) -> Result<Vec<VaultLogObject>> {
+            let p_vault = PersistentVault {
+                p_obj: self.p_obj.clone(),
+            };
+            p_vault.vault_log_events(self.user.vault_name()).await
+        }
     }
 
     pub struct VaultSpec<Repo: KvLogEventRepo> {

@@ -2,9 +2,9 @@ use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
 };
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::object_id::ArtifactId;
+use crate::node::db::events::object_id::{ArtifactId};
 use crate::node::db::events::vault::vault_log_event::VaultActionEvent;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 
 /// Each device has its own unique device_log table, to prevent conflicts in updates vault state
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

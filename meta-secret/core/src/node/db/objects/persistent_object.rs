@@ -106,7 +106,8 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
         &self,
         obj_desc: Desc,
     ) -> Result<Option<ArtifactId>> {
-        self.find_tail_id(ArtifactId::from(obj_desc)).await
+        let unit_id = obj_desc.id();
+        self.find_tail_id(unit_id).await
     }
 
     #[instrument(skip_all)]

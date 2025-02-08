@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::node::common::model::device::common::DeviceId;
@@ -9,9 +10,9 @@ use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::{
     SharedSecretDescriptor, SsDeviceLogDescriptor, SsLogDescriptor,
 };
-use crate::node::db::events::generic_log_event::ToGenericEvent;
+use crate::node::db::events::generic_log_event::{KeyExtractor, ToGenericEvent};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::object_id::ArtifactId;
+use crate::node::db::events::object_id::{ArtifactId, Next};
 use crate::node::db::events::shared_secret_event::{
     SharedSecretObject, SsDeviceLogObject, SsLogObject,
 };
@@ -165,7 +166,7 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
 
         let log_event = maybe_log_event
             .map(|ss_log_event| ss_log_event.to_data())
-            .unwrap_or_else(SsLogData::empty);
+            .unwrap_or_else(|| SsLogData::empty());
 
         Ok(log_event)
     }

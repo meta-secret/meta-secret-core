@@ -146,12 +146,15 @@ pub struct SsLogData {
 }
 
 impl SsLogData {
+
     pub fn new(claim: SsDistributionClaim) -> Self {
         let mut claims = HashMap::new();
         claims.insert(claim.id.clone(), claim);
-        Self { claims }
+        Self {
+            claims,
+        }
     }
-
+    
     pub fn insert(mut self, claim: SsDistributionClaim) -> Self {
         self.claims.insert(claim.id.clone(), claim);
         self
@@ -178,7 +181,6 @@ impl SsLogData {
 }
 
 #[wasm_bindgen]
-#[allow(unused)]
 pub struct WasmSsDistributionClaim(SsDistributionClaim);
 impl WasmSsDistributionClaim {}
 

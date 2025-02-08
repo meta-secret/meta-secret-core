@@ -7,7 +7,7 @@ use crate::node::db::descriptors::vault_descriptor::{
     DeviceLogDescriptor, VaultDescriptor, VaultLogDescriptor, VaultMembershipDescriptor,
 };
 use crate::node::db::events::generic_log_event::GenericKvLogEventConvertible;
-use crate::node::db::events::object_id::Next;
+use crate::node::db::events::object_id::{ArtifactId, Next, Prev};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

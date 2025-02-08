@@ -6,12 +6,12 @@ use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
 };
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::object_id::ArtifactId;
 use anyhow::{anyhow, bail, Result};
 use derive_more::From;
 use std::collections::HashSet;
 use std::fmt::Display;
 use tracing::info;
+use crate::node::db::events::object_id::ArtifactId;
 
 /// VaultLog keeps incoming events in order, the log is a queue for incoming messages and used to
 /// recreate the vault state from events (event sourcing)
@@ -58,6 +58,7 @@ pub struct VaultActionEvents {
 }
 
 impl VaultActionEvents {
+
     pub fn synchronize(mut self) -> Self {
         let updates = self.updates.clone();
 
@@ -105,10 +106,7 @@ impl VaultActionEvents {
         if removed {
             self.updates.insert(event.clone());
         } else {
-            info!(
-                "Corresponding request not found: {:?}, update won't be applied",
-                request
-            );
+            info!("Corresponding request not found: {:?}, update won't be applied", request);
         }
 
         self
@@ -190,7 +188,7 @@ impl VaultActionUpdateEvent {
     pub fn sender(&self) -> &UserDataMember {
         match self {
             VaultActionUpdateEvent::UpdateMembership { sender, .. } => sender,
-            VaultActionUpdateEvent::AddMetaPass(AddMetaPassEvent { sender, .. }) => sender,
+            VaultActionUpdateEvent::AddMetaPass(AddMetaPassEvent {sender, ..}) => sender
         }
     }
 }
@@ -212,7 +210,7 @@ impl VaultActionRequestEvent {
     pub fn vault_name(&self) -> VaultName {
         match self {
             VaultActionRequestEvent::JoinCluster(request) => request.candidate.vault_name(),
-            VaultActionRequestEvent::AddMetaPass(request) => request.sender.user_data.vault_name(),
+            VaultActionRequestEvent::AddMetaPass(request) => request.sender.user_data.vault_name()
         }
     }
 }
@@ -233,7 +231,7 @@ impl VaultActionEvent {
         match self {
             VaultActionEvent::Request(request) => request.name(),
             VaultActionEvent::Update(update) => update.name(),
-            VaultActionEvent::Init(_) => "CreateVaultRequest".to_string(),
+            VaultActionEvent::Init(_) => "CreateVaultRequest".to_string()
         }
     }
 }
@@ -287,10 +285,7 @@ impl VaultActionEvent {
 mod test {
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::common::model::user::common::{UserDataMember, UserMembership};
-    use crate::node::db::events::vault::vault_log_event::{
-        JoinClusterEvent, VaultActionEvent, VaultActionEvents, VaultActionRequestEvent,
-        VaultActionUpdateEvent,
-    };
+    use crate::node::db::events::vault::vault_log_event::{JoinClusterEvent, VaultActionEvent, VaultActionEvents, VaultActionRequestEvent, VaultActionUpdateEvent};
     use anyhow::Result;
 
     #[test]
@@ -302,20 +297,16 @@ mod test {
         let join_request = JoinClusterEvent {
             candidate: client_creds.user(),
         };
-        let event =
-            VaultActionEvent::Request(VaultActionRequestEvent::JoinCluster(join_request.clone()));
+        let event = VaultActionEvent::Request(VaultActionRequestEvent::JoinCluster(join_request.clone()));
 
-        let actions = VaultActionEvents::default().apply_event(event);
+        let actions = VaultActionEvents::default()
+            .apply_event(event);
         assert_eq!(actions.requests.len(), 1);
 
         let update = VaultActionUpdateEvent::UpdateMembership {
             request: join_request,
-            sender: UserDataMember {
-                user_data: client_creds.user(),
-            },
-            update: UserMembership::Member(UserDataMember {
-                user_data: client_b_creds.user(),
-            }),
+            sender: UserDataMember { user_data: client_creds.user() },
+            update: UserMembership::Member(UserDataMember { user_data: client_b_creds.user()}),
         };
         let event = VaultActionEvent::Update(update);
         let with_update_vault_request = actions.apply_event(event);

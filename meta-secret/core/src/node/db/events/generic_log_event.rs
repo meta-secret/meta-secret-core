@@ -23,7 +23,7 @@ pub enum GenericKvLogEvent {
     SsDeviceLog(SsDeviceLogObject),
     SsLog(SsLogObject),
 
-    DbError(KvLogEvent<ErrorMessage>),
+    DbError(KvLogEvent<ErrorMessage>)
 }
 
 impl GenericKvLogEvent {
