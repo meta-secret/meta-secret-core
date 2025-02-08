@@ -17,6 +17,24 @@ pub enum CredentialsObject {
     DefaultUser(KvLogEvent<UserCredentials>),
 }
 
+impl From<DeviceCredentials> for CredentialsObject {
+    fn from(creds: DeviceCredentials) -> Self {
+        Self::Device(KvLogEvent {
+            key: KvKey::from(CredentialsDescriptor::Device),
+            value: creds,
+        })
+    }
+}
+
+impl From<UserCredentials> for CredentialsObject {
+    fn from(creds: UserCredentials) -> Self {
+        Self::DefaultUser(KvLogEvent {
+            key: KvKey::from(CredentialsDescriptor::User),
+            value: creds,
+        })
+    }
+}
+
 impl ObjIdExtractor for CredentialsObject {
     fn obj_id(&self) -> ArtifactId {
         match self {
@@ -32,17 +50,6 @@ impl ToGenericEvent for CredentialsObject {
     }
 }
 
-impl CredentialsObject {
-    pub fn default_user(user: UserCredentials) -> Self {
-        let event = KvLogEvent {
-            key: KvKey::from(CredentialsDescriptor),
-            value: user,
-        };
-
-        CredentialsObject::DefaultUser(event)
-    }
-}
-
 impl TryFrom<GenericKvLogEvent> for CredentialsObject {
     type Error = Error;
 
@@ -52,7 +59,7 @@ impl TryFrom<GenericKvLogEvent> for CredentialsObject {
         } else {
             let error: Error = anyhow!(
                 "Invalid credentials event type: {:?}",
-                creds_event.key().
+                creds_event.key().obj_desc
             );
             Err(error)
         }
@@ -69,10 +76,6 @@ impl KeyExtractor for CredentialsObject {
 }
 
 impl CredentialsObject {
-    pub fn unit_id() -> ArtifactId {
-        ArtifactId::from(CredentialsDescriptor)
-    }
-
     pub fn device(&self) -> DeviceData {
         match self {
             CredentialsObject::Device(event) => event.value.device.clone(),

@@ -55,6 +55,7 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
                 let vault_action_events = p_vault
                     .get_vault_log_artifact(action_event.vault_name())
                     .await?
+                    .0
                     .value
                     .apply(action_update.clone());
                 
@@ -65,7 +66,7 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
                         obj_id: vault_artifact_id,
                         obj_desc: VaultDescriptor::from(vault_name.clone()).to_obj_desc(),
                     };
-                    VaultObject::Vault(KvLogEvent {
+                    VaultObject(KvLogEvent {
                         key,
                         value: agg.vault,
                     })

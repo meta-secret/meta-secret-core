@@ -43,8 +43,8 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
     }
 
     #[instrument(skip(self))]
-    async fn save_device_creds(&self, device_creds: &DeviceCredentials) -> Result<()> {
-        let creds_obj = CredentialsObject::from(device_creds.clone());
+    async fn save_device_creds(&self, device_creds: DeviceCredentials) -> Result<()> {
+        let creds_obj = CredentialsObject::from(device_creds);
         let generic_event = creds_obj.to_generic();
         self.p_obj.repo.save(generic_event).await?;
         Ok(())
