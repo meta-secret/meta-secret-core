@@ -1,4 +1,4 @@
-use crate::node::common::model::user::common::{UserData, UserDataMember, UserMembership};
+use crate::node::common::model::user::common::{UserDataMember, UserMembership};
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault_descriptor::VaultMembershipDescriptor;
 use crate::node::db::events::generic_log_event::{
@@ -13,24 +13,7 @@ use anyhow::anyhow;
 pub struct VaultMembershipObject(KvLogEvent<UserMembership>);
 
 impl VaultMembershipObject {
-    pub fn init(candidate: UserData) -> Vec<GenericKvLogEvent> {
-        let member_event = {
-            let desc = VaultMembershipDescriptor::from(candidate.user_id());
-            let member_event_id = ArtifactId::from(desc);
-            Self::member(candidate, member_event_id).to_generic()
-        };
-
-        vec![member_event]
-    }
-
-    pub fn member(candidate: UserData, event_id: ArtifactId) -> Self {
-        let member = UserMembership::Member(UserDataMember {
-            user_data: candidate.clone(),
-        });
-        Self::membership(member, event_id)
-    }
-
-    pub fn membership(membership: UserMembership, event_id: ArtifactId) -> Self {
+    pub fn new(membership: UserMembership, event_id: ArtifactId) -> Self {
         let user_id = membership.user_data().user_id();
         let desc = VaultMembershipDescriptor::from(user_id).to_obj_desc();
 
