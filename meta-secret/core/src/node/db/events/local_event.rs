@@ -6,8 +6,8 @@ use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
 };
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use anyhow::{anyhow, Error};
 use crate::node::db::events::object_id::ArtifactId;
+use anyhow::{anyhow, Error};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

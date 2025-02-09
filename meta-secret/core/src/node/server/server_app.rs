@@ -140,10 +140,10 @@ pub mod fixture {
 
 #[cfg(test)]
 mod test {
-    use anyhow::bail;
     use crate::meta_tests::fixture_util::fixture::states::ExtendedState;
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::meta_tests::spec::test_spec::TestSpec;
+    use crate::node::app::orchestrator::MetaOrchestrator;
     use crate::node::common::meta_tracing::{client_span, server_span, vd_span};
     use crate::node::common::model::user::common::UserData;
     use crate::node::common::model::vault::vault::VaultStatus;
@@ -153,9 +153,9 @@ mod test {
     use crate::node::db::descriptors::shared_secret_descriptor::SsDeviceLogDescriptor;
     use crate::node::db::objects::persistent_vault::PersistentVault;
     use crate::node::db::repo::persistent_credentials::spec::PersistentCredentialsSpec;
+    use anyhow::bail;
     use log::warn;
     use tracing::{info, Instrument};
-    use crate::node::app::orchestrator::MetaOrchestrator;
 
     #[tokio::test]
     async fn test_sign_up_one_device() -> anyhow::Result<()> {
@@ -294,9 +294,9 @@ mod test {
         let VaultStatus::Member { member, .. } = vault_status else {
             bail!("Virtual device is not a vault member");
         };
-        
+
         assert_eq!(2, member.vault.users.len());
-        
+
         Ok(())
     }
 

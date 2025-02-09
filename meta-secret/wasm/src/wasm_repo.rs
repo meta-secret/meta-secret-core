@@ -10,8 +10,8 @@ use meta_secret_core::node::db::repo::generic_db::{
     CommitLogDbConfig, DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand,
 };
 
-use rexie::*;
 use meta_secret_core::node::common::model::IdString;
+use rexie::*;
 
 pub struct WasmRepo {
     pub db_name: String,

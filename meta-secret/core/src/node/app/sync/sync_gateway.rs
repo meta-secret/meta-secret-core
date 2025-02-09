@@ -14,7 +14,7 @@ use crate::node::db::descriptors::shared_secret_descriptor::{
 use crate::node::db::descriptors::vault_descriptor::DeviceLogDescriptor;
 use crate::node::db::events::generic_log_event::{ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::local_event::CredentialsObject;
-use crate::node::db::events::object_id::ObjectId;
+use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::events::shared_secret_event::SsDeviceLogObject;
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
@@ -151,10 +151,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         device_id: DeviceId,
     ) -> Result<()> {
         let server_ss_device_log_tail_id = {
-            let unit_id = || {
-                let desc = SsDeviceLogDescriptor::from(device_id);
-                ObjectId::unit_from(desc)
-            };
+            let unit_id = || ArtifactId::from(SsDeviceLogDescriptor::from(device_id));
             server_tail
                 .ss_device_log_tail
                 .clone()
@@ -169,21 +166,20 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         for ss_device_log_event in ss_device_log_events_to_sync {
             //get SsDistribution events
             let ss_device_log = ss_device_log_event.clone();
-            if let SsDeviceLogObject::Claim(claim_event) = ss_device_log {
-                let distribution_claim = claim_event.value;
-                let p_ss = PersistentSharedSecret {
-                    p_obj: self.p_obj.clone(),
-                };
-                let dist_events = p_ss.get_ss_distribution_events(distribution_claim).await?;
-                for dist_event in dist_events {
-                    self.sync
-                        .send(SyncRequest::Write(WriteSyncRequest::Event(
-                            dist_event.clone().to_generic(),
-                        )))
-                        .await?;
 
-                    self.p_obj.repo.delete(dist_event.obj_id()).await;
-                }
+            let distribution_claim = ss_device_log.0.value;
+            let p_ss = PersistentSharedSecret {
+                p_obj: self.p_obj.clone(),
+            };
+            let dist_events = p_ss.get_ss_distribution_events(distribution_claim).await?;
+            for dist_event in dist_events {
+                self.sync
+                    .send(SyncRequest::Write(WriteSyncRequest::Event(
+                        dist_event.clone().to_generic(),
+                    )))
+                    .await?;
+
+                self.p_obj.repo.delete(dist_event.obj_id()).await;
             }
 
             self.sync
@@ -243,7 +239,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         user_id: UserId,
     ) -> Result<Vec<SyncRequest>> {
         let tail_to_sync = match &server_tail.device_log_tail {
-            None => ObjectId::unit_from(DeviceLogDescriptor::from(user_id)),
+            None => ArtifactId::from(DeviceLogDescriptor::from(user_id)),
             Some(server_tail_id) => server_tail_id.clone(),
         };
 

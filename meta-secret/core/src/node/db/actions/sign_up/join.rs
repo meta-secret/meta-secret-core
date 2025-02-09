@@ -25,7 +25,11 @@ impl<Repo: KvLogEventRepo> AcceptJoinAction<Repo> {
                     };
 
                     p_device_log
-                        .save_accept_join_request_event(join_request, self.member.member.clone(), outsider)
+                        .save_accept_join_request_event(
+                            join_request,
+                            self.member.member.clone(),
+                            outsider,
+                        )
                         .await
                 }
                 UserDataOutsiderStatus::Pending => {

@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use crate::node::common::model::user::common::{UserData, UserDataOutsiderStatus};
-use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::node::{
     common::model::vault::vault::VaultStatus,
@@ -61,12 +60,6 @@ impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
             }
         }
 
-        let p_ss_device_log = PersistentSharedSecret {
-            p_obj: self.p_obj.clone(),
-        };
-
-        p_ss_device_log.init(user_data).await?;
-
         Ok(vault_status.clone())
     }
 }
@@ -111,7 +104,6 @@ pub mod spec {
     use crate::node::common::model::user::common::UserData;
     use crate::node::db::objects::persistent_device_log::spec::DeviceLogSpec;
     use crate::node::db::objects::persistent_object::PersistentObject;
-    use crate::node::db::objects::persistent_shared_secret::spec::SsDeviceLogSpec;
     use crate::node::db::objects::persistent_vault::spec::VaultLogSpec;
     use crate::node::db::repo::generic_db::KvLogEventRepo;
     use anyhow::Result;
@@ -136,22 +128,7 @@ pub mod spec {
                 user: self.user.clone(),
             };
 
-            device_log_spec.check_initialization().await?;
             device_log_spec.check_sign_up_request().await?;
-
-            let vault_log_spec = VaultLogSpec {
-                p_obj: self.p_obj.clone(),
-                user: self.user.clone(),
-            };
-
-            vault_log_spec.verify_initial_state().await?;
-
-            let ss_device_log_spec = SsDeviceLogSpec {
-                p_obj: self.p_obj.clone(),
-                client_user: self.user.clone(),
-            };
-
-            ss_device_log_spec.check_initialization().await?;
 
             Ok(())
         }

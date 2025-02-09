@@ -7,7 +7,6 @@ use crate::node::common::model::secret::{
 };
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::vault::VaultMember;
-use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
 use crate::node::db::events::generic_log_event::ToGenericEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
