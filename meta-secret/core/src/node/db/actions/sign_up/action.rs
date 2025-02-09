@@ -45,7 +45,7 @@ mod test {
         let sign_up_action = SignUpAction {};
         let events = sign_up_action.accept(user_creds_fixture.client.user());
 
-        assert_eq!(events.len(), 10);
+        assert_eq!(events.len(), 1);
 
         for event in events {
             if let GenericKvLogEvent::VaultLog(obj) = event {

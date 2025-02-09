@@ -152,13 +152,16 @@ pub mod test {
 
         let unit_id = ArtifactId::from(descriptor);
 
-        let id_json = serde_json::to_value(&unit_id.id).unwrap();
+        let id_json = serde_json::to_value(&unit_id).unwrap();
         let expected = json!({
             "fqdn": {
                 "objType": device_log_type,
                 "objInstance": user_id.device_id.to_string()
             },
-            "id": 0
+            "id": {
+                "curr": 1,
+                "prev": 0
+            }
         });
 
         assert_eq!(expected, id_json);
