@@ -196,12 +196,18 @@ pub mod spec {
 
     impl PersistentCredentialsSpec<InMemKvLogEventRepo> {
         pub async fn verify_user_creds(&self) -> anyhow::Result<()> {
-            let events = self
+            let device_creds = self
+                .p_obj
+                .get_object_events_from_beginning(CredentialsDescriptor::Device)
+                .await?;
+            assert_eq!(device_creds.len(), 1);
+            
+            let user_creds = self
                 .p_obj
                 .get_object_events_from_beginning(CredentialsDescriptor::User)
                 .await?;
 
-            assert_eq!(events.len(), 2);
+            assert_eq!(user_creds.len(), 1);
 
             Ok(())
         }
