@@ -7,7 +7,6 @@ use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault_descriptor::{VaultDescriptor, VaultMembershipDescriptor};
 use crate::node::db::events::generic_log_event::ToGenericEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::object_id::Next;
 use crate::node::db::events::vault::vault_event::VaultObject;
 use crate::node::db::events::vault::vault_log_event::{
     AddMetaPassEvent, VaultActionEvent, VaultActionInitEvent, VaultActionUpdateEvent,
@@ -140,7 +139,7 @@ impl<Repo: KvLogEventRepo> CreateVaultAction<Repo> {
         );
 
         let sign_up_action = SignUpAction {};
-        let sign_up_events = sign_up_action.accept(candidate.clone(), self.server_device.clone());
+        let sign_up_events = sign_up_action.accept(candidate.clone());
 
         for sign_up_event in sign_up_events {
             self.p_obj.repo.save(sign_up_event).await?;

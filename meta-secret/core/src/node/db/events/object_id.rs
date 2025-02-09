@@ -1,6 +1,8 @@
 use serde_derive::{Deserialize, Serialize};
 
-use crate::node::db::descriptors::object_descriptor::{ChainId, ObjectFqdn, SeqId, ToObjectDescriptor};
+use crate::node::db::descriptors::object_descriptor::{
+    ChainId, ObjectFqdn, SeqId, ToObjectDescriptor,
+};
 
 pub trait Next<To> {
     fn next(self) -> To;
@@ -15,7 +17,7 @@ pub trait Prev<To> {
 #[serde(rename_all = "camelCase")]
 pub struct ArtifactId {
     pub fqdn: ObjectFqdn,
-    pub id: ChainId
+    pub id: ChainId,
 }
 
 impl ArtifactId {
@@ -44,14 +46,10 @@ impl<T: ToObjectDescriptor> From<T> for ArtifactId {
 impl Next<ArtifactId> for ArtifactId {
     fn next(mut self) -> Self {
         self.id = match self.id {
-            ChainId::Genesis(genesis_id) => {
-                ChainId::Seq(genesis_id.next())
-            }
-            ChainId::Seq(seq_id) => {
-                ChainId::Seq(seq_id.next())
-            }
+            ChainId::Genesis(genesis_id) => ChainId::Seq(genesis_id.next()),
+            ChainId::Seq(seq_id) => ChainId::Seq(seq_id.next()),
         };
-        
+
         self
     }
 }

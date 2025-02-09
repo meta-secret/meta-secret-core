@@ -10,7 +10,7 @@ use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
 };
 use crate::node::db::events::object_id::ArtifactId;
-use crate::node::db::events::shared_secret_event::{SharedSecretObject, SsDeviceLogObject};
+use crate::node::db::events::shared_secret_event::SharedSecretObject;
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -153,14 +153,13 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                     .repo
                     .save(ss_device_log_obj.clone().to_generic())
                     .await?;
-                
-                    let ss_claim = ss_device_log_obj.get_distribution_request();
 
-                    let p_ss_log = PersistentSharedSecret {
-                        p_obj: self.p_obj.clone(),
-                    };
-                    p_ss_log.save_ss_log_event(ss_claim).await?;
-                
+                let ss_claim = ss_device_log_obj.get_distribution_request();
+
+                let p_ss_log = PersistentSharedSecret {
+                    p_obj: self.p_obj.clone(),
+                };
+                p_ss_log.save_ss_log_event(ss_claim).await?;
             }
             GenericKvLogEvent::SharedSecret(_) => {
                 self.p_obj.repo.save(generic_event.clone()).await?;

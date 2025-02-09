@@ -56,7 +56,7 @@ impl TryFrom<GenericKvLogEvent> for VaultMembershipObject {
 
 impl KeyExtractor for VaultMembershipObject {
     fn key(&self) -> KvKey {
-       self.0.key.clone()
+        self.0.key.clone()
     }
 }
 
