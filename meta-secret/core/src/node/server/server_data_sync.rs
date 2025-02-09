@@ -9,8 +9,8 @@ use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescript
 use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
 };
-use crate::node::db::events::object_id::ObjectId;
-use crate::node::db::events::shared_secret_event::{SharedSecretObject, SsDeviceLogObject};
+use crate::node::db::events::object_id::ArtifactId;
+use crate::node::db::events::shared_secret_event::SharedSecretObject;
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -57,8 +57,8 @@ pub struct DataEventsResponse(pub Vec<GenericKvLogEvent>);
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServerTailResponse {
-    pub device_log_tail: Option<ObjectId>,
-    pub ss_device_log_tail: Option<ObjectId>,
+    pub device_log_tail: Option<ArtifactId>,
+    pub ss_device_log_tail: Option<ArtifactId>,
 }
 
 impl DataSyncResponse {
@@ -154,14 +154,12 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                     .save(ss_device_log_obj.clone().to_generic())
                     .await?;
 
-                if let SsDeviceLogObject::Claim(event) = ss_device_log_obj {
-                    let ss_claim = event.value.clone();
+                let ss_claim = ss_device_log_obj.get_distribution_request();
 
-                    let p_ss_log = PersistentSharedSecret {
-                        p_obj: self.p_obj.clone(),
-                    };
-                    p_ss_log.save_ss_log_event(ss_claim).await?;
-                }
+                let p_ss_log = PersistentSharedSecret {
+                    p_obj: self.p_obj.clone(),
+                };
+                p_ss_log.save_ss_log_event(ss_claim).await?;
             }
             GenericKvLogEvent::SharedSecret(_) => {
                 self.p_obj.repo.save(generic_event.clone()).await?;
@@ -182,18 +180,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
     ) -> Result<()> {
         self.p_obj.repo.save(device_log_obj.clone()).await?;
 
-        let vault_action_event = match device_log_obj {
-            DeviceLogObject::Unit { .. } => {
-                //ignore non action events (just save an event and do nothing)
-                return Ok(());
-            }
-            DeviceLogObject::Genesis(_) => {
-                //ignore non action events (just save an event and do nothing)
-                return Ok(());
-            }
-            DeviceLogObject::Action(event) => event,
-        };
-
+        let vault_action_event = device_log_obj.0;
         let vault_action = vault_action_event.value;
 
         let action = ServerVaultAction {

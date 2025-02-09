@@ -149,7 +149,6 @@ pub struct VaultAggregate {
 }
 
 impl VaultAggregate {
-
     pub fn build_from(events: VaultActionEvents, vault: VaultData) -> Self {
         let current_state = Self { events, vault };
         current_state.synchronize()
@@ -201,7 +200,7 @@ mod test {
     use crate::node::common::model::vault::vault_data::{VaultAggregate, VaultData};
     use crate::node::db::events::vault::vault_log_event::{
         JoinClusterEvent, VaultActionEvent, VaultActionEvents, VaultActionRequestEvent,
-        VaultActionUpdateEvent
+        VaultActionUpdateEvent,
     };
     use anyhow::Result;
 
@@ -254,8 +253,12 @@ mod test {
 
         let update_membership = VaultActionUpdateEvent::UpdateMembership {
             request: join_request.clone(),
-            sender: UserDataMember { user_data: client_creds.user() },
-            update: UserMembership::Member(UserDataMember { user_data: join_request.candidate.clone() }),
+            sender: UserDataMember {
+                user_data: client_creds.user(),
+            },
+            update: UserMembership::Member(UserDataMember {
+                user_data: join_request.candidate.clone(),
+            }),
         };
 
         let update_membership_event = VaultActionEvent::Update(update_membership);

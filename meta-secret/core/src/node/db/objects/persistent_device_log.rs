@@ -6,11 +6,8 @@ use crate::node::common::model::user::common::{
 };
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault_descriptor::DeviceLogDescriptor;
-use crate::node::db::events::generic_log_event::ToGenericEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::object_id::{
-    ArtifactId, Next, ObjectId, UnitId, VaultGenesisEvent, VaultUnitEvent,
-};
+use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::events::vault::vault_log_event::{
     AddMetaPassEvent, CreateVaultEvent, JoinClusterEvent, VaultActionEvent, VaultActionInitEvent,
@@ -18,8 +15,8 @@ use crate::node::db::events::vault::vault_log_event::{
 };
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
-use anyhow::{bail, Result};
-use tracing::{debug, info};
+use anyhow::Result;
+use tracing::info;
 use tracing_attributes::instrument;
 
 pub struct PersistentDeviceLog<Repo: KvLogEventRepo> {
@@ -27,7 +24,7 @@ pub struct PersistentDeviceLog<Repo: KvLogEventRepo> {
 }
 
 impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
-    pub async fn find_tail_id(&self, user_id: &UserId) -> Result<Option<ObjectId>> {
+    pub async fn find_tail_id(&self, user_id: &UserId) -> Result<Option<ArtifactId>> {
         let obj_desc = DeviceLogDescriptor::from(user_id.clone());
         self.p_obj.find_tail_id_by_obj_desc(obj_desc.clone()).await
     }
@@ -44,7 +41,6 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
         info!("Accept join request");
 
         let member_user = member.user();
-        self.init(member_user).await?;
 
         let free_key = self.get_device_log_key(member_user).await?;
         let update = VaultActionUpdateEvent::UpdateMembership {
@@ -53,7 +49,7 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
             update: UserMembership::Member(UserDataMember::from(candidate)),
         };
 
-        let join_request = DeviceLogObject::Action(KvLogEvent {
+        let join_request = DeviceLogObject(KvLogEvent {
             key: free_key,
             value: VaultActionEvent::Update(update),
         });
@@ -67,14 +63,12 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
     pub async fn save_create_vault_request(&self, user: &UserData) -> Result<()> {
         info!("Save event: CreateVault request");
 
-        self.init(user).await?;
-        
         let create_request = {
             let create_action = VaultActionInitEvent::CreateVault(CreateVaultEvent {
                 owner: user.clone(),
             });
             let upd = VaultActionEvent::Init(create_action);
-            DeviceLogObject::Action(KvLogEvent {
+            DeviceLogObject(KvLogEvent {
                 key: self.get_device_log_key(user).await?,
                 value: upd,
             })
@@ -96,7 +90,7 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
                 meta_pass_id,
             });
 
-            DeviceLogObject::Action(KvLogEvent {
+            DeviceLogObject(KvLogEvent {
                 key: self.get_device_log_key(sender.user()).await?,
                 value: VaultActionEvent::Update(add_meta_pass),
             })
@@ -109,10 +103,8 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
 
     #[instrument(skip_all)]
     pub async fn save_join_request(&self, user: &UserData) -> Result<()> {
-        self.init(user).await?;
-
         let request = VaultActionRequestEvent::JoinCluster(JoinClusterEvent::from(user.clone()));
-        let join_request = DeviceLogObject::Action(KvLogEvent {
+        let join_request = DeviceLogObject(KvLogEvent {
             key: self.get_device_log_key(user).await?,
             value: VaultActionEvent::Request(request),
         });
@@ -121,7 +113,7 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
         Ok(())
     }
 
-    async fn get_device_log_key(&self, user: &UserData) -> Result<KvKey<ArtifactId>> {
+    async fn get_device_log_key(&self, user: &UserData) -> Result<KvKey> {
         let obj_desc = DeviceLogDescriptor::from(user.user_id());
 
         let free_id = self
@@ -129,43 +121,7 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
             .find_free_id_by_obj_desc(obj_desc.clone())
             .await?;
 
-        let ObjectId::Artifact(free_artifact_id) = free_id else {
-            bail!("Invalid free id: {:?}", free_id);
-        };
-
-        Ok(KvKey::artifact(obj_desc.to_obj_desc(), free_artifact_id))
-    }
-
-    async fn init(&self, user: &UserData) -> Result<()> {
-        let user_id = user.user_id();
-        let obj_desc = DeviceLogDescriptor::from(user_id.clone());
-        let unit_id = UnitId::from(obj_desc.clone());
-
-        let maybe_unit_event = self.p_obj.repo.find_one(ObjectId::Unit(unit_id)).await?;
-
-        if let Some(unit_event) = maybe_unit_event {
-            debug!("Device log already initialized: {:?}", unit_event);
-            return Ok(());
-        }
-
-        //create new unit and genesis events
-        let unit_key = KvKey::unit_from(obj_desc.clone());
-
-        let unit_event = DeviceLogObject::Unit(VaultUnitEvent(KvLogEvent {
-            key: unit_key.clone(),
-            value: user_id.vault_name.clone(),
-        }));
-
-        self.p_obj.repo.save(unit_event.to_generic()).await?;
-
-        let genesis_key = unit_key.next();
-        let genesis_event = DeviceLogObject::Genesis(VaultGenesisEvent(KvLogEvent {
-            key: genesis_key,
-            value: user.clone(),
-        }));
-        self.p_obj.repo.save(genesis_event.to_generic()).await?;
-
-        Ok(())
+        Ok(KvKey::artifact(obj_desc.to_obj_desc(), free_id))
     }
 }
 
@@ -173,7 +129,7 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
 pub mod spec {
     use crate::node::common::model::user::common::UserData;
     use crate::node::db::descriptors::vault_descriptor::DeviceLogDescriptor;
-    use crate::node::db::events::object_id::{Next, ObjectId, UnitId};
+    use crate::node::db::events::object_id::{ArtifactId, Next};
     use crate::node::db::objects::persistent_object::PersistentObject;
     use crate::node::db::repo::generic_db::KvLogEventRepo;
     use anyhow::Result;
@@ -188,59 +144,12 @@ pub mod spec {
 
     impl<Repo: KvLogEventRepo> DeviceLogSpec<Repo> {
         #[instrument(skip(self))]
-        pub async fn check_initialization(&self) -> Result<()> {
-            info!("Check initialization");
-
-            let device_log_desc = DeviceLogDescriptor::from(self.user.user_id());
-
-            let unit_id = UnitId::from(device_log_desc);
-
-            let unit_event_vault_name = self
-                .p_obj
-                .repo
-                .find_one(ObjectId::from(unit_id.clone()))
-                .await?
-                .unwrap()
-                .device_log()?
-                .get_unit()?
-                .vault_name();
-
-            assert_eq!(unit_event_vault_name, self.user.vault_name());
-
-            let genesis_id = unit_id.clone().next();
-            let genesis_user = self
-                .p_obj
-                .repo
-                .find_one(ObjectId::from(genesis_id))
-                .await?
-                .unwrap()
-                .device_log()?
-                .get_genesis()?
-                .user();
-
-            assert_eq!(genesis_user, self.user);
-
-            Ok(())
-        }
-
-        #[instrument(skip(self))]
         pub async fn check_sign_up_request(&self) -> Result<()> {
             info!("check_sign_up_request");
 
             let device_log_desc = DeviceLogDescriptor::from(self.user.user_id());
 
-            let sign_up_request_id = UnitId::from(device_log_desc).next().next();
-
-            let candidate = self
-                .p_obj
-                .repo
-                .find_one(ObjectId::from(sign_up_request_id))
-                .await?
-                .unwrap()
-                .device_log()?
-                .get_action()?
-                .get_create()?;
-            assert_eq!(candidate.device, self.user.device);
+            //TODO add verification
 
             Ok(())
         }

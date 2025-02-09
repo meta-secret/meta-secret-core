@@ -1,11 +1,7 @@
-use std::sync::Arc;
-use anyhow::bail;
-use log::warn;
 use crate::node::common::model::secret::{SecretDistributionData, SecretDistributionType};
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::vault::VaultStatus;
 use crate::node::db::actions::sign_up::join::AcceptJoinAction;
-use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::shared_secret_event::SharedSecretObject;
@@ -14,6 +10,9 @@ use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
+use anyhow::bail;
+use log::warn;
+use std::sync::Arc;
 
 /// Contains business logic of secrets management and login/sign-up actions.
 /// Orchestrator is in charge of what is meta secret is made for (the most important part of the app).
@@ -22,11 +21,10 @@ use crate::node::db::repo::generic_db::KvLogEventRepo;
 /// 3. Secret orchestration
 pub struct MetaOrchestrator<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
-    pub user_creds: UserCredentials
+    pub user_creds: UserCredentials,
 }
 
 impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
-
     pub async fn orchestrate(&self) -> anyhow::Result<()> {
         let p_vault = PersistentVault {
             p_obj: self.p_obj(),
@@ -43,7 +41,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
             p_vault.vault_log(vault_name).await?
         };
 
-        if let Some(VaultLogObject::Action(action_event)) = maybe_vault_log_event {
+        if let Some(VaultLogObject(action_event)) = maybe_vault_log_event {
             let vault_actions = action_event.value;
 
             for request in vault_actions.requests {
@@ -68,7 +66,9 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
             p_obj: self.p_obj.clone(),
         };
 
-        let ss_log_data = p_ss.get_ss_log_obj(self.user_creds.vault_name.clone()).await?;
+        let ss_log_data = p_ss
+            .get_ss_log_obj(self.user_creds.vault_name.clone())
+            .await?;
 
         for (_, claim) in ss_log_data.claims {
             if claim.distribution_type != SecretDistributionType::Recover {
@@ -99,17 +99,14 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                         share.secret_message
                     } else {
                         // re-encrypt!
-                        self
-                            .user_creds
+                        self.user_creds
                             .device_creds
                             .secret_box
                             .re_encrypt(share.secret_message.clone(), msg_receiver)?
                     };
 
                     //compare with claim dist id, if match then create a claim
-                    let key = KvKey::unit(
-                        SharedSecretDescriptor::SsClaim(claim_db_id.clone()).to_obj_desc(),
-                    );
+                    let key = KvKey::from(SharedSecretDescriptor::SsClaim(claim_db_id.clone()));
 
                     let new_claim = SharedSecretObject::SsClaim(KvLogEvent {
                         key,
@@ -124,7 +121,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                 }
             }
         }
-        
+
         Ok(())
     }
 

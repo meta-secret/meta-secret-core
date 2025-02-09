@@ -74,7 +74,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> VirtualDevice<Repo, Sync> {
             p_obj: self.p_obj(),
             user_creds: user_creds.clone(),
         };
-        
+
         orchestrator.orchestrate().await?;
 
         self.gateway.sync().await?;

@@ -1,44 +1,15 @@
-use crate::node::db::events::error::LogEventCastError;
 use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
 };
-use crate::node::db::events::kv_log_event::{GenericKvKey, KvLogEvent};
-use crate::node::db::events::object_id::{ArtifactId, ObjectId, VaultGenesisEvent, VaultUnitEvent};
+use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
+use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::events::vault::vault_log_event::VaultActionEvent;
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, Result};
 
 /// Each device has its own unique device_log table, to prevent conflicts in updates vault state
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum DeviceLogObject {
-    Unit(VaultUnitEvent),
-    /// Device sends its data to ensure that the only this device can send events to this log
-    Genesis(VaultGenesisEvent),
-    Action(KvLogEvent<ArtifactId, VaultActionEvent>),
-}
-
-impl DeviceLogObject {
-    pub fn get_unit(&self) -> Result<VaultUnitEvent> {
-        match self {
-            DeviceLogObject::Unit(event) => Ok(event.clone()),
-            _ => bail!(LogEventCastError::WrongDeviceLog(self.clone())),
-        }
-    }
-
-    pub fn get_genesis(&self) -> Result<VaultGenesisEvent> {
-        match self {
-            DeviceLogObject::Genesis(event) => Ok(event.clone()),
-            _ => bail!(LogEventCastError::WrongDeviceLog(self.clone())),
-        }
-    }
-
-    pub fn get_action(&self) -> Result<VaultActionEvent> {
-        match self {
-            DeviceLogObject::Action(event) => Ok(event.value.clone()),
-            _ => bail!(LogEventCastError::WrongDeviceLog(self.clone())),
-        }
-    }
-}
+pub struct DeviceLogObject(pub KvLogEvent<VaultActionEvent>);
 
 impl TryFrom<GenericKvLogEvent> for DeviceLogObject {
     type Error = anyhow::Error;
@@ -59,21 +30,13 @@ impl ToGenericEvent for DeviceLogObject {
 }
 
 impl ObjIdExtractor for DeviceLogObject {
-    fn obj_id(&self) -> ObjectId {
-        match self {
-            DeviceLogObject::Unit(event) => ObjectId::from(event.key().obj_id.clone()),
-            DeviceLogObject::Genesis(event) => ObjectId::from(event.key().obj_id.clone()),
-            DeviceLogObject::Action(event) => ObjectId::from(event.key.obj_id.clone()),
-        }
+    fn obj_id(&self) -> ArtifactId {
+        self.key().obj_id.clone()
     }
 }
 
 impl KeyExtractor for DeviceLogObject {
-    fn key(&self) -> GenericKvKey {
-        match self {
-            DeviceLogObject::Unit(event) => GenericKvKey::from(event.key().clone()),
-            DeviceLogObject::Genesis(event) => GenericKvKey::from(event.key().clone()),
-            DeviceLogObject::Action(event) => GenericKvKey::from(event.key.clone()),
-        }
+    fn key(&self) -> KvKey {
+        self.0.key.clone()
     }
 }

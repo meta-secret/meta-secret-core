@@ -2,27 +2,44 @@ use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::device::device_creds::DeviceCredentials;
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::db::descriptors::creds::CredentialsDescriptor;
-use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 use crate::node::db::events::generic_log_event::{
-    GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent, UnitEvent,
+    GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
 };
-use crate::node::db::events::kv_log_event::{GenericKvKey, KvKey, KvLogEvent};
-use crate::node::db::events::object_id::{GenesisId, ObjectId, UnitId};
+use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
+use crate::node::db::events::object_id::ArtifactId;
 use anyhow::{anyhow, Error};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum CredentialsObject {
-    Device(KvLogEvent<UnitId, DeviceCredentials>),
+    Device(KvLogEvent<DeviceCredentials>),
     /// Default vault
-    DefaultUser(KvLogEvent<GenesisId, UserCredentials>),
+    DefaultUser(KvLogEvent<UserCredentials>),
+}
+
+impl From<DeviceCredentials> for CredentialsObject {
+    fn from(creds: DeviceCredentials) -> Self {
+        Self::Device(KvLogEvent {
+            key: KvKey::from(CredentialsDescriptor::Device),
+            value: creds,
+        })
+    }
+}
+
+impl From<UserCredentials> for CredentialsObject {
+    fn from(creds: UserCredentials) -> Self {
+        Self::DefaultUser(KvLogEvent {
+            key: KvKey::from(CredentialsDescriptor::User),
+            value: creds,
+        })
+    }
 }
 
 impl ObjIdExtractor for CredentialsObject {
-    fn obj_id(&self) -> ObjectId {
+    fn obj_id(&self) -> ArtifactId {
         match self {
-            CredentialsObject::Device(event) => ObjectId::from(event.key.obj_id.clone()),
-            CredentialsObject::DefaultUser(event) => ObjectId::from(event.key.obj_id.clone()),
+            CredentialsObject::Device(event) => event.key.obj_id.clone(),
+            CredentialsObject::DefaultUser(event) => event.key.obj_id.clone(),
         }
     }
 }
@@ -30,28 +47,6 @@ impl ObjIdExtractor for CredentialsObject {
 impl ToGenericEvent for CredentialsObject {
     fn to_generic(self) -> GenericKvLogEvent {
         GenericKvLogEvent::Credentials(self)
-    }
-}
-
-impl UnitEvent<DeviceCredentials> for CredentialsObject {
-    fn unit(value: DeviceCredentials) -> Self {
-        let event = KvLogEvent {
-            key: KvKey::unit(ObjectDescriptor::Creds(CredentialsDescriptor {})),
-            value,
-        };
-
-        CredentialsObject::Device(event)
-    }
-}
-
-impl CredentialsObject {
-    pub fn default_user(user: UserCredentials) -> Self {
-        let event = KvLogEvent {
-            key: KvKey::genesis(ObjectDescriptor::Creds(CredentialsDescriptor {})),
-            value: user,
-        };
-
-        CredentialsObject::DefaultUser(event)
     }
 }
 
@@ -64,7 +59,7 @@ impl TryFrom<GenericKvLogEvent> for CredentialsObject {
         } else {
             let error: Error = anyhow!(
                 "Invalid credentials event type: {:?}",
-                creds_event.key().obj_desc()
+                creds_event.key().obj_desc
             );
             Err(error)
         }
@@ -72,19 +67,15 @@ impl TryFrom<GenericKvLogEvent> for CredentialsObject {
 }
 
 impl KeyExtractor for CredentialsObject {
-    fn key(&self) -> GenericKvKey {
+    fn key(&self) -> KvKey {
         match self {
-            CredentialsObject::Device(event) => GenericKvKey::from(event.key.clone()),
-            CredentialsObject::DefaultUser(event) => GenericKvKey::from(event.key.clone()),
+            CredentialsObject::Device(event) => event.key.clone(),
+            CredentialsObject::DefaultUser(event) => event.key.clone(),
         }
     }
 }
 
 impl CredentialsObject {
-    pub fn unit_id() -> ObjectId {
-        ObjectId::unit(ObjectDescriptor::Creds(CredentialsDescriptor {}))
-    }
-
     pub fn device(&self) -> DeviceData {
         match self {
             CredentialsObject::Device(event) => event.value.device.clone(),
