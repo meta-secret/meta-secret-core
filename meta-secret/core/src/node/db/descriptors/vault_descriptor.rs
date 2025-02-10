@@ -6,7 +6,7 @@ use crate::node::db::descriptors::object_descriptor::{
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::events::vault::vault_event::VaultObject;
 use crate::node::db::events::vault::vault_log_event::VaultLogObject;
-use crate::node::db::events::vault::vault_membership::VaultMembershipObject;
+use crate::node::db::events::vault::vault_membership::VaultStatusObject;
 use derive_more::From;
 
 #[derive(Clone, Debug, PartialEq, From, Serialize, Deserialize)]
@@ -86,7 +86,7 @@ impl ObjectName for VaultDescriptor {
 }
 
 impl ToObjectDescriptor for VaultMembershipDescriptor {
-    type EventType = VaultMembershipObject;
+    type EventType = VaultStatusObject;
 
     fn to_obj_desc(self) -> ObjectDescriptor {
         ObjectDescriptor::VaultMembership(self)

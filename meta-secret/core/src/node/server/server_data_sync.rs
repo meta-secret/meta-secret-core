@@ -21,7 +21,7 @@ use anyhow::Result;
 use anyhow::{anyhow, bail, Ok};
 use async_trait::async_trait;
 use tracing::{info, instrument};
-use crate::node::db::events::vault::vault_membership::VaultMembershipObject;
+use crate::node::db::events::vault::vault_membership::VaultStatusObject;
 
 #[async_trait(? Send)]
 pub trait DataSyncApi {
@@ -219,7 +219,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             let p_vault = PersistentVault {
                 p_obj: self.p_obj.clone(),
             };
-            p_vault.update_vault_membership(request.sender.clone()).await?;
+            p_vault.update_vault_membership_info_for_user(request.sender.clone()).await?;
             
             let vault_status_events = self
                 .p_obj

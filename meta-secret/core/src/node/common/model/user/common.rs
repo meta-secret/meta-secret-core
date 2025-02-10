@@ -35,7 +35,6 @@ impl UserData {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum UserMembership {
-    NotExists(UserData),
     Outsider(UserDataOutsider),
     Member(UserDataMember),
 }
@@ -141,7 +140,7 @@ impl UserMembership {
         match self {
             UserMembership::Outsider(UserDataOutsider { user_data, .. }) => user_data.clone(),
             UserMembership::Member(UserDataMember { user_data }) => user_data.clone(),
-            UserMembership::NotExists(user_data) => user_data.clone()
+            UserMembership::VaultNotExists(user_data) => user_data.clone()
         }
     }
 

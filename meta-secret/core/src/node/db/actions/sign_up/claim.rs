@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
+use crate::node::common::model::device::common::DeviceName;
 use crate::node::common::model::user::common::{UserData, UserDataOutsiderStatus};
+use crate::node::common::model::user::user_creds::UserCredentials;
+use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::node::{
     common::model::vault::vault::VaultStatus,
@@ -20,22 +23,26 @@ pub struct SignUpClaim<Repo: KvLogEventRepo> {
 }
 
 impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
-    pub async fn sign_up(&self, user_data: UserData) -> anyhow::Result<VaultStatus> {
+    pub async fn prepare_sign_up(
+        &self,
+        device_name: DeviceName,
+        vault_name: VaultName,
+    ) -> anyhow::Result<UserCredentials> {
         let creds_repo = PersistentCredentials {
             p_obj: self.p_obj.clone(),
         };
+        creds_repo
+            .get_or_generate_user_creds(device_name, vault_name)
+            .await
+    }
+
+    pub async fn sign_up(&self, user_data: UserData) -> anyhow::Result<VaultStatus> {
         let p_device_log = PersistentDeviceLog {
             p_obj: self.p_obj.clone(),
         };
         let p_vault = PersistentVault {
             p_obj: self.p_obj.clone(),
         };
-
-        let device_name = user_data.device.device_name.clone();
-        let vault_name = user_data.vault_name.clone();
-        creds_repo
-            .get_or_generate_user_creds(device_name, vault_name)
-            .await?;
 
         let vault_status = p_vault.find(user_data.clone()).await?;
 

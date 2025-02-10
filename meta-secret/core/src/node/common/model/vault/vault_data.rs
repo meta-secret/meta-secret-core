@@ -125,13 +125,10 @@ impl VaultData {
     }
 
     pub fn membership(&self, for_user: UserData) -> UserMembership {
-        let maybe_vault_user = self.users.get(&for_user.device.device_id);
-
-        if let Some(membership) = maybe_vault_user {
-            membership.clone()
-        } else {
-            UserMembership::Outsider(UserDataOutsider::non_member(for_user))
-        }
+        self.users
+            .get(&for_user.device.device_id)
+            .map(|membership| membership.clone())
+            .unwrap_or_else(|| UserMembership::Outsider(UserDataOutsider::non_member(for_user)))
     }
 
     pub fn find_user(&self, device_id: &DeviceId) -> Option<UserMembership> {
@@ -145,7 +142,7 @@ pub struct EmptyVaultState;
 /// [here](meta-secret/docs/programming/event-sourcing-aggregate.md):
 pub struct VaultAggregate {
     pub events: VaultActionEvents,
-    pub vault: VaultData,
+    pub vault: VaultData
 }
 
 impl VaultAggregate {

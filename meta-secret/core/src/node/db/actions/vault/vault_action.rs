@@ -11,7 +11,7 @@ use crate::node::db::events::vault::vault_event::VaultObject;
 use crate::node::db::events::vault::vault_log_event::{
     AddMetaPassEvent, VaultActionEvent, VaultActionInitEvent, VaultActionUpdateEvent,
 };
-use crate::node::db::events::vault::vault_membership::VaultMembershipObject;
+use crate::node::db::events::vault::vault_membership::VaultStatusObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
@@ -91,7 +91,7 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
                         };
 
                         let event = {
-                            let membership = VaultMembershipObject::new(update.clone(), free_id);
+                            let membership = VaultStatusObject::new(update.clone(), free_id);
                             membership.to_generic()
                         };
 

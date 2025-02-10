@@ -7,17 +7,18 @@ use crate::node::db::events::generic_log_event::{
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::ArtifactId;
 use anyhow::anyhow;
+use crate::node::common::model::vault::vault::VaultStatus;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct VaultMembershipObject(pub KvLogEvent<UserMembership>);
+pub struct VaultStatusObject(pub KvLogEvent<VaultStatus>);
 
-impl VaultMembershipObject {
+impl VaultStatusObject {
     pub fn new(membership: UserMembership, event_id: ArtifactId) -> Self {
         let user_id = membership.user_data().user_id();
         let desc = VaultMembershipDescriptor::from(user_id).to_obj_desc();
 
-        VaultMembershipObject(KvLogEvent {
+        VaultStatusObject(KvLogEvent {
             key: KvKey {
                 obj_id: event_id,
                 obj_desc: desc,
@@ -31,9 +32,9 @@ impl VaultMembershipObject {
     }
 }
 
-impl VaultMembershipObject {
+impl VaultStatusObject {
     pub fn is_member(&self) -> bool {
-        let VaultMembershipObject(membership_event) = self;
+        let VaultStatusObject(membership_event) = self;
 
         matches!(
             membership_event.value,
@@ -46,7 +47,7 @@ impl VaultMembershipObject {
     }
 }
 
-impl TryFrom<GenericKvLogEvent> for VaultMembershipObject {
+impl TryFrom<GenericKvLogEvent> for VaultStatusObject {
     type Error = anyhow::Error;
 
     fn try_from(event: GenericKvLogEvent) -> Result<Self, Self::Error> {
@@ -58,19 +59,19 @@ impl TryFrom<GenericKvLogEvent> for VaultMembershipObject {
     }
 }
 
-impl KeyExtractor for VaultMembershipObject {
+impl KeyExtractor for VaultStatusObject {
     fn key(&self) -> KvKey {
         self.0.key.clone()
     }
 }
 
-impl ToGenericEvent for VaultMembershipObject {
+impl ToGenericEvent for VaultStatusObject {
     fn to_generic(self) -> GenericKvLogEvent {
         GenericKvLogEvent::VaultMembership(self)
     }
 }
 
-impl ObjIdExtractor for VaultMembershipObject {
+impl ObjIdExtractor for VaultStatusObject {
     fn obj_id(&self) -> ArtifactId {
         self.0.key.obj_id.clone()
     }

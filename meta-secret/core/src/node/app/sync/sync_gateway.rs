@@ -103,15 +103,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
     }
 
     async fn get_server_tail_request(&self, user_creds: &UserCredentials) -> Result<SyncRequest> {
-        let sync_request = {
-            let p_vault = PersistentVault {
-                p_obj: self.p_obj.clone(),
-            };
-            let vault_status = p_vault.find(user_creds.user()).await?;
-            SyncRequest::Read(ReadSyncRequest::ServerTail(ServerTailRequest {
-                sender: vault_status.user(),
-            }))
-        };
+        let sync_request = SyncRequest::Read(ReadSyncRequest::ServerTail(ServerTailRequest {
+            sender: user_creds.user(),
+        }));
         Ok(sync_request)
     }
 

@@ -42,22 +42,14 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> VirtualDevice<Repo, Sync> {
     pub async fn run(&self) -> Result<()> {
         info!("Run virtual device event handler");
 
-        let creds_repo = PersistentCredentials {
-            p_obj: self.p_obj(),
-        };
-
         let device_name = DeviceName::virtual_device();
-        let user_creds = creds_repo
-            .get_or_generate_user_creds(device_name, VaultName::test())
-            .await?;
-
-        self.gateway.sync().await?;
-
         //No matter what current vault status is, sign_up claim will handle the case properly
         info!("SignUp virtual device if needed");
         let sign_up_claim = SignUpClaim {
             p_obj: self.p_obj(),
         };
+        let user_creds = sign_up_claim.prepare_sign_up(device_name, VaultName::test()).await?;
+        self.gateway.sync().await?;
         sign_up_claim.sign_up(user_creds.user()).await?;
 
         // Handle state changes

@@ -50,10 +50,7 @@ impl VaultName {
 pub enum VaultStatus {
     NotExists(UserData),
     Outsider(UserDataOutsider),
-    Member {
-        member: VaultMember,
-        ss_claims: SsLogData,
-    },
+    Member(UserDataMember)
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -7,7 +7,7 @@ use crate::node::db::events::shared_secret_event::{SharedSecretObject, SsDeviceL
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::events::vault::vault_event::VaultObject;
 use crate::node::db::events::vault::vault_log_event::VaultLogObject;
-use crate::node::db::events::vault::vault_membership::VaultMembershipObject;
+use crate::node::db::events::vault::vault_membership::VaultStatusObject;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -17,7 +17,7 @@ pub enum GenericKvLogEvent {
     DeviceLog(DeviceLogObject),
     VaultLog(VaultLogObject),
     Vault(VaultObject),
-    VaultMembership(VaultMembershipObject),
+    VaultMembership(VaultStatusObject),
 
     SharedSecret(SharedSecretObject),
     SsDeviceLog(SsDeviceLogObject),
@@ -43,8 +43,8 @@ impl GenericKvLogEvent {
         VaultObject::try_from(self)
     }
 
-    pub fn vault_membership(self) -> anyhow::Result<VaultMembershipObject> {
-        VaultMembershipObject::try_from(self)
+    pub fn vault_membership(self) -> anyhow::Result<VaultStatusObject> {
+        VaultStatusObject::try_from(self)
     }
 
     pub fn shared_secret(self) -> anyhow::Result<SharedSecretObject> {
