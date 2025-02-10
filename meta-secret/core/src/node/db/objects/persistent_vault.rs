@@ -1,17 +1,21 @@
 use std::sync::Arc;
 
-use crate::node::common::model::user::common::{UserData, UserDataMember, UserDataOutsider};
+use crate::node::common::model::user::common::{
+    UserData, UserDataMember, UserDataOutsider, UserMembership,
+};
 use crate::node::common::model::vault::vault::{VaultMember, VaultName, VaultStatus};
 use crate::node::common::model::vault::vault_data::VaultData;
 use crate::node::db::descriptors::vault_descriptor::{
     VaultDescriptor, VaultLogDescriptor, VaultMembershipDescriptor,
 };
-use crate::node::db::events::generic_log_event::KeyExtractor;
-use crate::node::db::events::kv_log_event::KvLogEvent;
+use crate::node::db::events::generic_log_event::{KeyExtractor, ObjIdExtractor};
+use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, Next};
+use crate::node::db::events::vault::vault_event::VaultObject;
 use crate::node::db::events::vault::vault_log_event::{
     VaultActionEvents, VaultActionRequestEvent, VaultLogObject,
 };
+use crate::node::db::events::vault::vault_membership::VaultMembershipObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
@@ -66,49 +70,90 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
 }
 
 impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
-    pub async fn get_vault(&self, user_data: &UserData) -> Result<(ArtifactId, VaultData)> {
-        let p_vault = PersistentVault {
-            p_obj: self.p_obj.clone(),
-        };
-
-        let vault_status = p_vault.find(user_data.clone()).await?;
-        match vault_status {
-            VaultStatus::NotExists(_) => {
+    pub async fn get_vault(&self, user_data: &UserData) -> Result<VaultObject> {
+        let maybe_vault_obj = self.get_vault_object(user_data.vault_name()).await?;
+        match maybe_vault_obj {
+            None => {
                 bail!("Vault not found")
             }
-            VaultStatus::Outsider(_) => {
-                bail!("Sender is not a member of the vault")
-            }
-            VaultStatus::Member { member, .. } => {
-                //save new vault state
-                let vault_desc = VaultDescriptor::from(member.vault.vault_name.clone());
-
-                let vault_free_id = self.p_obj.find_free_id_by_obj_desc(vault_desc).await?;
-
-                Ok((vault_free_id, member.vault))
+            Some(vault_obj) => {
+                Ok(vault_obj)
             }
         }
     }
 
     #[instrument(skip_all)]
-    pub async fn find(&self, user: UserData) -> Result<VaultStatus> {
-        let maybe_vault_event = {
-            let vault_desc = VaultDescriptor::from(user.vault_name());
-            self.p_obj.find_tail_event(vault_desc).await?
+    pub async fn update_vault_membership(&self, user: UserData) -> Result<()> {
+        let maybe_vault_obj = self.get_vault_object(user.vault_name()).await?;
+        
+        let Some(vault_obj) = maybe_vault_obj else {
+            два варианта - если волта не существует, то и волт статуса не существует
+            либо надо добавлять NotExists в мембершип волта
+            тогда наверное статус волта можно будет как-то объединить с мембершипом
+            потому что они становятся по сути одним и тем же (в статусе правда данных больше в случае мембера
+            но может там эти данные и не нужны?)
+            return Ok(());
         };
 
-        todo!("Figure out if vault already exists");
+        let desc = VaultMembershipDescriptor::from(user.user_id());
+        let maybe_membership = self.p_obj.find_tail_event(desc.clone()).await?;
 
-        let gi_and_vault = maybe_vault_event;
-        match gi_and_vault {
-            None => Ok(VaultStatus::NotExists(user)),
-            //There is no vault table on local machine, but it is present in global index,
-            //which means, current user is outsider
-            Some(vault_obj) => {
-                let vault_data = vault_obj.0.value;
-                if vault_data.is_not_member(&user.device.device_id) {
-                    Ok(VaultStatus::Outsider(UserDataOutsider::non_member(user)))
-                } else {
+        match maybe_membership {
+            None => {
+                let obj = VaultMembershipObject(KvLogEvent {
+                    key: KvKey::from(desc),
+                    value: vault_obj.to_data().membership(user),
+                });
+                self.p_obj.repo.save(obj).await?;
+            }
+            Some(membership) => {
+                //verify that membership is up-to date with vault
+                let vault_membership = vault_obj.to_data().membership(user);
+                if vault_membership != membership.clone().membership() {
+                    let obj = VaultMembershipObject(KvLogEvent {
+                        key: membership.key().next(),
+                        value: vault_membership,
+                    });
+                    self.p_obj.repo.save(obj).await?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    #[instrument(skip_all)]
+    pub async fn vault_exists(&self, vault_name: VaultName) -> Result<bool> {
+        let maybe_vault_obj = self.get_vault_object(vault_name).await?;
+        Ok(maybe_vault_obj.is_some())
+    }
+
+    #[instrument(skip_all)]
+    pub async fn find(&self, user: UserData) -> Result<VaultStatus> {
+        let maybe_vault_obj = self.get_vault_object(user.vault_name()).await?;
+
+        let Some(vault_obj) = maybe_vault_obj else {
+            bail!("Vault not found");
+        };
+        
+        let vault_data = vault_obj.to_data();
+
+        let maybe_membership = {
+            let desc = VaultMembershipDescriptor::from(user.user_id());
+            self.p_obj.find_tail_event(desc).await?
+        };
+
+        let Some(membership_event) = maybe_membership else {
+            bail!("Unknown membership status");
+        };
+
+        match membership_event.membership() {
+            UserMembership::Outsider(outsider) => Ok(VaultStatus::Outsider(outsider)),
+            UserMembership::Member(_) => match vault_data.membership(user.clone()) {
+                UserMembership::Outsider(vault_outsider) => {
+                    Ok(VaultStatus::Outsider(vault_outsider))
+                }
+                UserMembership::Member(vault_member) => {
                     let p_ss = PersistentSharedSecret {
                         p_obj: self.p_obj.clone(),
                     };
@@ -116,14 +161,19 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
 
                     Ok(VaultStatus::Member {
                         member: VaultMember {
-                            member: UserDataMember { user_data: user },
+                            member: vault_member,
                             vault: vault_data,
                         },
                         ss_claims,
                     })
                 }
-            }
+            },
         }
+    }
+
+    async fn get_vault_object(&self, vault_name: VaultName) -> Result<Option<VaultObject>> {
+        let desc = VaultDescriptor::from(vault_name);
+        self.p_obj.find_tail_event(desc).await
     }
 
     pub async fn save_vault_log_events(

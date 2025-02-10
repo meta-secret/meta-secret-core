@@ -27,6 +27,10 @@ impl VaultObject {
         };
         VaultObject(sign_up_event)
     }
+    
+    pub fn to_data(self) -> VaultData {
+        self.0.value
+    }
 }
 
 impl TryFrom<GenericKvLogEvent> for VaultObject {

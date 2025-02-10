@@ -206,7 +206,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_sign_up_and_join_two_device() -> anyhow::Result<()> {
+    async fn test_sign_up_and_join_two_devices() -> anyhow::Result<()> {
         //setup_tracing()?;
 
         let registry = FixtureRegistry::extended().await?;

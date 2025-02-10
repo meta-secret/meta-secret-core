@@ -10,7 +10,7 @@ use anyhow::anyhow;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct VaultMembershipObject(KvLogEvent<UserMembership>);
+pub struct VaultMembershipObject(pub KvLogEvent<UserMembership>);
 
 impl VaultMembershipObject {
     pub fn new(membership: UserMembership, event_id: ArtifactId) -> Self {
@@ -24,6 +24,10 @@ impl VaultMembershipObject {
             },
             value: membership,
         })
+    }
+    
+    pub fn membership(self) -> UserMembership {
+        self.0.value
     }
 }
 

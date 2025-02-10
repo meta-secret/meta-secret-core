@@ -5,7 +5,7 @@ use crate::node::common::model::vault::vault_data::VaultAggregate;
 use crate::node::db::actions::sign_up::action::SignUpAction;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault_descriptor::{VaultDescriptor, VaultMembershipDescriptor};
-use crate::node::db::events::generic_log_event::ToGenericEvent;
+use crate::node::db::events::generic_log_event::{ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::vault::vault_event::VaultObject;
 use crate::node::db::events::vault::vault_log_event::{
@@ -18,6 +18,7 @@ use crate::node::db::repo::generic_db::KvLogEventRepo;
 use anyhow::Result;
 use std::sync::Arc;
 use tracing::info;
+use crate::node::db::events::object_id::Next;
 
 pub struct ServerVaultAction<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
@@ -49,8 +50,7 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
             VaultActionEvent::Update(action_update) => {
                 let vault_name = action_update.vault_name();
                 //check if a sender is a member of the vault and update the vault then
-                let (vault_artifact_id, vault) =
-                    p_vault.get_vault(action_update.sender().user()).await?;
+                let vault = p_vault.get_vault(action_update.sender().user()).await?;
 
                 let vault_action_events = p_vault
                     .get_vault_log_artifact(action_event.vault_name())
@@ -59,11 +59,11 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
                     .value
                     .apply(action_update.clone());
 
-                let agg = VaultAggregate::build_from(vault_action_events, vault);
+                let agg = VaultAggregate::build_from(vault_action_events, vault.clone().to_data());
 
                 let vault_event = {
                     let key = KvKey {
-                        obj_id: vault_artifact_id,
+                        obj_id: vault.obj_id().next(),
                         obj_desc: VaultDescriptor::from(vault_name.clone()).to_obj_desc(),
                     };
                     VaultObject(KvLogEvent {
@@ -120,8 +120,8 @@ impl<Repo: KvLogEventRepo> CreateVaultAction<Repo> {
             p_obj: self.p_obj.clone(),
         };
 
-        let vault_status = p_vault.find(owner.clone()).await?;
-        if let VaultStatus::NotExists(_) = vault_status {
+        let vault_exists = p_vault.vault_exists(owner.vault_name()).await?;
+        if !vault_exists {
             //create vault_log, vault and vault status
             self.create_vault(owner.clone()).await
         } else {
