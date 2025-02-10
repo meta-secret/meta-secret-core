@@ -3,13 +3,14 @@ use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::user::common::{
     UserData, UserDataMember, UserDataOutsider, UserMembership, WasmUserMembership,
 };
-use crate::node::common::model::vault::vault::VaultName;
+use crate::node::common::model::vault::vault::{VaultMember, VaultName, VaultStatus};
 use crate::node::db::events::vault::vault_log_event::{
     AddMetaPassEvent, VaultActionEvent, VaultActionEvents, VaultActionUpdateEvent,
 };
 use crate::secret::data_block::common::SharedSecretConfig;
 use std::collections::{HashMap, HashSet};
 use wasm_bindgen::prelude::wasm_bindgen;
+use anyhow::{bail, Result};
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -131,8 +132,26 @@ impl VaultData {
             .unwrap_or_else(|| UserMembership::Outsider(UserDataOutsider::non_member(for_user)))
     }
 
+    pub fn status(&self, user: UserData) -> VaultStatus {
+        let membership = self.membership(user);
+        VaultStatus::from(membership)
+    }
+
     pub fn find_user(&self, device_id: &DeviceId) -> Option<UserMembership> {
         self.users.get(device_id).cloned()
+    }
+    
+    pub fn to_vault_member(self, member: UserDataMember) -> Result<VaultMember> {
+        let is_member = self.is_member(&member.user_data.device.device_id.clone());
+        
+        if is_member {
+            Ok(VaultMember {
+                member,
+                vault: self,
+            })
+        } else {
+            bail!("User is not a member of this vault")
+        }
     }
 }
 

@@ -1,6 +1,7 @@
 use crate::node::common::model::device::common::DeviceData;
-use crate::node::common::model::vault::vault::{VaultStatus, WasmVaultStatus};
+use crate::node::common::model::vault::vault::{VaultMember, VaultStatus, WasmVaultStatus};
 use wasm_bindgen::prelude::wasm_bindgen;
+use crate::node::common::model::secret::SsLogData;
 
 pub mod crypto;
 pub mod device;
@@ -13,7 +14,11 @@ pub mod vault;
 #[serde(rename_all = "camelCase")]
 pub enum ApplicationState {
     Local { device: DeviceData },
-    Vault { vault: VaultStatus },
+    Vault { 
+        vault_status: VaultStatus,
+        member: VaultMember,
+        ss_claims: SsLogData,
+    },
 }
 
 #[wasm_bindgen]
@@ -26,7 +31,7 @@ impl WasmApplicationState {
         let vault_not_exists = matches!(
             &self.0,
             ApplicationState::Vault {
-                vault: VaultStatus::NotExists(_)
+                vault_status: VaultStatus::NotExists(_)
             }
         );
 

@@ -4,7 +4,7 @@ use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::secret::{
     SecretDistributionType, SsDistributionClaim, SsDistributionClaimId, SsLogData, WasmSsLogData,
 };
-use crate::node::common::model::user::common::{UserData, UserDataMember, UserDataOutsider};
+use crate::node::common::model::user::common::{UserData, UserDataMember, UserDataOutsider, UserMembership};
 use crate::node::common::model::vault::vault_data::{VaultData, WasmVaultData};
 use std::fmt::Display;
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -51,6 +51,15 @@ pub enum VaultStatus {
     NotExists(UserData),
     Outsider(UserDataOutsider),
     Member(UserDataMember)
+}
+
+impl From<UserMembership> for VaultStatus {
+    fn from(membership: UserMembership) -> Self {
+        match membership {
+            UserMembership::Outsider(outsider) => VaultStatus::Outsider(outsider),
+            UserMembership::Member(member) => VaultStatus::Member(member)
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -175,7 +184,7 @@ impl VaultStatus {
         match self {
             VaultStatus::NotExists(user) => user.clone(),
             VaultStatus::Outsider(UserDataOutsider { user_data, .. }) => user_data.clone(),
-            VaultStatus::Member { member, .. } => member.member.user().clone(),
+            VaultStatus::Member(member) => member.user().clone(),
         }
     }
 }

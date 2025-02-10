@@ -10,7 +10,7 @@ use crate::node::common::actor::ServiceState;
 use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::common::model::device::common::DeviceName;
 use crate::node::common::model::user::common::UserData;
-use crate::node::common::model::vault::vault::VaultStatus;
+use crate::node::common::model::vault::vault::{VaultMember, VaultStatus};
 use crate::node::common::model::ApplicationState;
 use crate::node::db::actions::recover::RecoveryAction;
 use crate::node::db::actions::sign_up::claim::SignUpClaim;
@@ -80,9 +80,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                     sign_up_claim.sign_up(user_data.clone()).await?;
                     self.sync_gateway.sync().await?;
 
-                    let p_vault = PersistentVault {
-                        p_obj: self.p_obj(),
-                    };
+                    let p_vault = PersistentVault::from(self.p_obj());
                     let new_status = p_vault.find(user_data.clone()).await?;
                     service_state.app_state = ApplicationState::Vault { vault: new_status };
                 }
@@ -119,10 +117,10 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                     VaultStatus::Outsider(_) => {
                         bail!("Outsider user can't manage a vault")
                     }
-                    VaultStatus::Member {
-                        member: vault_member,
-                        ..
-                    } => {
+                    VaultStatus::Member(member) => {
+                        let p_vault = PersistentVault::from(self.p_obj());
+                        let vault = p_vault.get_vault(member.user()).await?.to_data();
+                        let vault_member = VaultMember { member, vault };
                         let distributor = MetaDistributor {
                             p_obj: p_obj.clone(),
                             vault_member: vault_member.clone(),
@@ -148,7 +146,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         Ok(())
     }
 
-    async fn build_service_state(&self) -> anyhow::Result<ServiceState<ApplicationState>> {
+    async fn build_service_state(&self) -> Result<ServiceState<ApplicationState>> {
         let creds_repo = PersistentCredentials {
             p_obj: self.p_obj(),
         };

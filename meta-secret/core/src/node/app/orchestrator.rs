@@ -1,6 +1,6 @@
 use crate::node::common::model::secret::{SecretDistributionData, SecretDistributionType};
 use crate::node::common::model::user::user_creds::UserCredentials;
-use crate::node::common::model::vault::vault::VaultStatus;
+use crate::node::common::model::vault::vault::{VaultMember, VaultStatus};
 use crate::node::db::actions::sign_up::join::AcceptJoinAction;
 use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
@@ -31,25 +31,30 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
         };
         let vault_status = p_vault.find(self.user_creds.user()).await?;
 
-        let VaultStatus::Member { member, .. } = vault_status else {
+        let VaultStatus::Member(member) = vault_status else {
             warn!("Not a vault member");
             return Ok(());
         };
 
         let maybe_vault_log_event = {
-            let vault_name = member.vault.vault_name.clone();
+            let vault_name = member.user_data.vault_name();
             p_vault.vault_log(vault_name).await?
         };
 
         if let Some(VaultLogObject(action_event)) = maybe_vault_log_event {
             let vault_actions = action_event.value;
 
+            let vault = p_vault.get_vault(member.user()).await?.to_data();
+
             for request in vault_actions.requests {
                 match request {
                     VaultActionRequestEvent::JoinCluster(join_request) => {
                         let accept_action = AcceptJoinAction {
                             p_obj: self.p_obj.clone(),
-                            member: member.clone(),
+                            member: VaultMember {
+                                member: member.clone(),
+                                vault: vault.clone(),
+                            },
                         };
 
                         accept_action.accept(join_request).await?;

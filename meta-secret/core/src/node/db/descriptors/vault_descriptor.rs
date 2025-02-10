@@ -6,7 +6,7 @@ use crate::node::db::descriptors::object_descriptor::{
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::events::vault::vault_event::VaultObject;
 use crate::node::db::events::vault::vault_log_event::VaultLogObject;
-use crate::node::db::events::vault::vault_membership::VaultStatusObject;
+use crate::node::db::events::vault::vault_status::VaultStatusObject;
 use derive_more::From;
 
 #[derive(Clone, Debug, PartialEq, From, Serialize, Deserialize)]
@@ -23,7 +23,7 @@ pub struct VaultDescriptor(VaultName);
 
 #[derive(Clone, Debug, PartialEq, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct VaultMembershipDescriptor(UserId);
+pub struct VaultStatusDescriptor(UserId);
 
 impl ToObjectDescriptor for DeviceLogDescriptor {
     type EventType = DeviceLogObject;
@@ -85,21 +85,21 @@ impl ObjectName for VaultDescriptor {
     }
 }
 
-impl ToObjectDescriptor for VaultMembershipDescriptor {
+impl ToObjectDescriptor for VaultStatusDescriptor {
     type EventType = VaultStatusObject;
 
     fn to_obj_desc(self) -> ObjectDescriptor {
-        ObjectDescriptor::VaultMembership(self)
+        ObjectDescriptor::VaultStatus(self)
     }
 }
 
-impl ObjectType for VaultMembershipDescriptor {
+impl ObjectType for VaultStatusDescriptor {
     fn object_type(&self) -> String {
-        String::from("VaultMembership")
+        String::from("VaultStatus")
     }
 }
 
-impl ObjectName for VaultMembershipDescriptor {
+impl ObjectName for VaultStatusDescriptor {
     fn object_name(&self) -> String {
         self.0.device_id.to_string()
     }

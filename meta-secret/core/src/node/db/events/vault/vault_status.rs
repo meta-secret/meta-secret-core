@@ -1,6 +1,6 @@
 use crate::node::common::model::user::common::{UserDataMember, UserMembership};
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
-use crate::node::db::descriptors::vault_descriptor::VaultMembershipDescriptor;
+use crate::node::db::descriptors::vault_descriptor::VaultStatusDescriptor;
 use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
 };
@@ -14,20 +14,20 @@ use crate::node::common::model::vault::vault::VaultStatus;
 pub struct VaultStatusObject(pub KvLogEvent<VaultStatus>);
 
 impl VaultStatusObject {
-    pub fn new(membership: UserMembership, event_id: ArtifactId) -> Self {
-        let user_id = membership.user_data().user_id();
-        let desc = VaultMembershipDescriptor::from(user_id).to_obj_desc();
+    pub fn new(status: VaultStatus, event_id: ArtifactId) -> Self {
+        let user_id = status.user().user_id();
+        let desc = VaultStatusDescriptor::from(user_id).to_obj_desc();
 
         VaultStatusObject(KvLogEvent {
             key: KvKey {
                 obj_id: event_id,
                 obj_desc: desc,
             },
-            value: membership,
+            value: status,
         })
     }
     
-    pub fn membership(self) -> UserMembership {
+    pub fn status(self) -> VaultStatus {
         self.0.value
     }
 }
@@ -38,7 +38,7 @@ impl VaultStatusObject {
 
         matches!(
             membership_event.value,
-            UserMembership::Member(UserDataMember { .. })
+            VaultStatus::Member(UserDataMember { .. })
         )
     }
 

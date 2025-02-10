@@ -4,14 +4,14 @@ use crate::node::common::model::vault::vault::VaultStatus;
 use crate::node::common::model::vault::vault_data::VaultAggregate;
 use crate::node::db::actions::sign_up::action::SignUpAction;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
-use crate::node::db::descriptors::vault_descriptor::{VaultDescriptor, VaultMembershipDescriptor};
+use crate::node::db::descriptors::vault_descriptor::{VaultDescriptor, VaultStatusDescriptor};
 use crate::node::db::events::generic_log_event::{ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::vault::vault_event::VaultObject;
 use crate::node::db::events::vault::vault_log_event::{
     AddMetaPassEvent, VaultActionEvent, VaultActionInitEvent, VaultActionUpdateEvent,
 };
-use crate::node::db::events::vault::vault_membership::VaultStatusObject;
+use crate::node::db::events::vault::vault_status::VaultStatusObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
@@ -83,7 +83,7 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
                         //update vault status accordingly
                         let free_id = {
                             let vault_membership_desc =
-                                VaultMembershipDescriptor::from(update.user_data().user_id());
+                                VaultStatusDescriptor::from(update.user_data().user_id());
 
                             self.p_obj
                                 .find_free_id_by_obj_desc(vault_membership_desc.clone())

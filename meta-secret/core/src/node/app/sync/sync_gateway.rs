@@ -263,7 +263,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
             p_vault.find(creds.user()).await?
         };
 
-        let VaultStatus::Member { .. } = vault_status else {
+        let VaultStatus::Member(_) = vault_status else {
             return Ok(());
         };
 

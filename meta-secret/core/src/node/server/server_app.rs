@@ -291,7 +291,7 @@ mod test {
         };
         let vault_status = vd_p_vault.find(empty_state.user_creds.vd.user()).await?;
 
-        let VaultStatus::Member { member, .. } = vault_status else {
+        let VaultStatus::Member(member) = vault_status else {
             bail!("Virtual device is not a vault member");
         };
 

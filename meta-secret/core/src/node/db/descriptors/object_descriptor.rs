@@ -4,7 +4,7 @@ use crate::node::db::descriptors::shared_secret_descriptor::{
     SharedSecretDescriptor, SsDeviceLogDescriptor, SsLogDescriptor,
 };
 use crate::node::db::descriptors::vault_descriptor::{
-    DeviceLogDescriptor, VaultDescriptor, VaultLogDescriptor, VaultMembershipDescriptor,
+    DeviceLogDescriptor, VaultDescriptor, VaultLogDescriptor, VaultStatusDescriptor,
 };
 use crate::node::db::events::generic_log_event::GenericKvLogEventConvertible;
 use crate::node::db::events::object_id::Next;
@@ -19,7 +19,7 @@ pub enum ObjectDescriptor {
 
     VaultLog(VaultLogDescriptor),
     Vault(VaultDescriptor),
-    VaultMembership(VaultMembershipDescriptor),
+    VaultStatus(VaultStatusDescriptor),
 
     /// Secret distribution (split, recover, recovery request and so on)
     SsLog(SsLogDescriptor),
@@ -108,7 +108,7 @@ impl ObjectName for ObjectDescriptor {
             ObjectDescriptor::Vault(vault_desc) => vault_desc.object_name(),
             ObjectDescriptor::DeviceLog(device_log) => device_log.object_name(),
             ObjectDescriptor::VaultLog(vault_log) => vault_log.object_name(),
-            ObjectDescriptor::VaultMembership(membership) => membership.object_name(),
+            ObjectDescriptor::VaultStatus(membership) => membership.object_name(),
 
             ObjectDescriptor::SharedSecret(s_s_descriptor) => s_s_descriptor.clone().id_str(),
             ObjectDescriptor::SsLog(desc) => desc.clone().id_str(),
@@ -125,7 +125,7 @@ impl ObjectType for ObjectDescriptor {
             ObjectDescriptor::Creds(creds) => creds.object_type(),
             ObjectDescriptor::DeviceLog(device_log) => device_log.object_type(),
             ObjectDescriptor::VaultLog(vault_log) => vault_log.object_type(),
-            ObjectDescriptor::VaultMembership(mem) => mem.object_type(),
+            ObjectDescriptor::VaultStatus(mem) => mem.object_type(),
             ObjectDescriptor::SsLog(desc) => desc.object_type(),
             ObjectDescriptor::SsDeviceLog(desc) => desc.object_type(),
         }

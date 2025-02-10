@@ -7,7 +7,7 @@ use crate::node::db::events::shared_secret_event::{SharedSecretObject, SsDeviceL
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::events::vault::vault_event::VaultObject;
 use crate::node::db::events::vault::vault_log_event::VaultLogObject;
-use crate::node::db::events::vault::vault_membership::VaultStatusObject;
+use crate::node::db::events::vault::vault_status::VaultStatusObject;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
