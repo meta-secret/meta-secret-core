@@ -2,7 +2,7 @@ use crate::crypto::utils::Id48bit;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::secret::{
-    SecretDistributionType, SsDistributionClaim, SsDistributionClaimId, SsLogData, WasmSsLogData,
+    SecretDistributionType, SsDistributionClaim, SsDistributionClaimId, WasmSsLogData,
 };
 use crate::node::common::model::user::common::{UserData, UserDataMember, UserDataOutsider, UserMembership};
 use crate::node::common::model::vault::vault_data::{VaultData, WasmVaultData};
@@ -91,15 +91,6 @@ impl WasmVaultStatus {
         match &self.0 {
             VaultStatus::Outsider(outsider) => outsider.clone(),
             _ => panic!("Vault status is not 'outsider'"),
-        }
-    }
-
-    pub fn as_member(&self) -> WasmVaultMember {
-        match &self.0 {
-            VaultStatus::Member { member, ss_claims } => {
-                WasmVaultMember(member.clone(), WasmSsLogData::from(ss_claims.clone()))
-            }
-            _ => panic!("Vault status is not 'member'"),
         }
     }
 }

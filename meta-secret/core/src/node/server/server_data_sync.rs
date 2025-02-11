@@ -21,7 +21,6 @@ use anyhow::Result;
 use anyhow::{anyhow, bail, Ok};
 use async_trait::async_trait;
 use tracing::{info, instrument};
-use crate::node::db::events::vault::vault_status::VaultStatusObject;
 
 #[async_trait(? Send)]
 pub trait DataSyncApi {

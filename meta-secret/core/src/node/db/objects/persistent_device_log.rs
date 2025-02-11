@@ -129,7 +129,6 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
 pub mod spec {
     use crate::node::common::model::user::common::UserData;
     use crate::node::db::descriptors::vault_descriptor::DeviceLogDescriptor;
-    use crate::node::db::events::object_id::{ArtifactId, Next};
     use crate::node::db::objects::persistent_object::PersistentObject;
     use crate::node::db::repo::generic_db::KvLogEventRepo;
     use anyhow::Result;

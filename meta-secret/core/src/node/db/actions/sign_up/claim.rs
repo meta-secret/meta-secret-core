@@ -111,7 +111,6 @@ pub mod spec {
     use crate::node::common::model::user::common::UserData;
     use crate::node::db::objects::persistent_device_log::spec::DeviceLogSpec;
     use crate::node::db::objects::persistent_object::PersistentObject;
-    use crate::node::db::objects::persistent_vault::spec::VaultLogSpec;
     use crate::node::db::repo::generic_db::KvLogEventRepo;
     use anyhow::Result;
     use async_trait::async_trait;

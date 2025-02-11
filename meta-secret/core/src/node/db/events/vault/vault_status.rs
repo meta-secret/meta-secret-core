@@ -1,4 +1,5 @@
-use crate::node::common::model::user::common::{UserDataMember, UserMembership};
+use crate::node::common::model::user::common::UserDataMember;
+use crate::node::common::model::vault::vault::VaultStatus;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault_descriptor::VaultStatusDescriptor;
 use crate::node::db::events::generic_log_event::{
@@ -7,7 +8,6 @@ use crate::node::db::events::generic_log_event::{
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::ArtifactId;
 use anyhow::anyhow;
-use crate::node::common::model::vault::vault::VaultStatus;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

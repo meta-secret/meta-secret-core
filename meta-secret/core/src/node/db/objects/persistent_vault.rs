@@ -1,15 +1,11 @@
 use std::sync::Arc;
 
-use crate::node::common::model::user::common::{
-    UserData, UserDataMember, UserDataOutsider, UserMembership,
-};
-use crate::node::common::model::vault::vault::{VaultMember, VaultName, VaultStatus};
-use crate::node::common::model::vault::vault_data::VaultData;
+use crate::node::common::model::user::common::UserData;
+use crate::node::common::model::vault::vault::{VaultName, VaultStatus};
 use crate::node::db::descriptors::vault_descriptor::{
     VaultDescriptor, VaultLogDescriptor, VaultStatusDescriptor,
 };
-use crate::node::db::events::generic_log_event::GenericKvLogEvent::VaultMembership;
-use crate::node::db::events::generic_log_event::{KeyExtractor, ObjIdExtractor};
+use crate::node::db::events::generic_log_event::{KeyExtractor};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, Next};
 use crate::node::db::events::vault::vault_event::VaultObject;
@@ -18,7 +14,6 @@ use crate::node::db::events::vault::vault_log_event::{
 };
 use crate::node::db::events::vault::vault_status::VaultStatusObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
-use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use anyhow::{bail, Result};
 use derive_more::From;
@@ -164,13 +159,7 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
             (Some(vault_obj), Some(_)) => vault_obj.to_data().status(user),
         };
 
-        Ok(final_status);
-
-        todo!("move ss data somewhere else");
-        let p_ss = PersistentSharedSecret {
-            p_obj: self.p_obj.clone(),
-        };
-        let ss_claims = p_ss.get_ss_log_obj(user.vault_name()).await?;
+        Ok(final_status)
     }
 
     async fn get_vault_object(&self, vault_name: VaultName) -> Result<Option<VaultObject>> {

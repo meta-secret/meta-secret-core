@@ -8,9 +8,9 @@ use crate::node::db::events::vault::vault_log_event::{
     AddMetaPassEvent, VaultActionEvent, VaultActionEvents, VaultActionUpdateEvent,
 };
 use crate::secret::data_block::common::SharedSecretConfig;
+use anyhow::{bail, Result};
 use std::collections::{HashMap, HashSet};
 use wasm_bindgen::prelude::wasm_bindgen;
-use anyhow::{bail, Result};
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

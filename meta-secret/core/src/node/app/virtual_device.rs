@@ -11,7 +11,6 @@ use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::actions::sign_up::claim::SignUpClaim;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
-use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use anyhow::Result;
 
 pub struct VirtualDevice<Repo: KvLogEventRepo, Sync: SyncProtocol> {

@@ -149,12 +149,11 @@ mod test {
     use crate::node::common::model::vault::vault::VaultStatus;
     use crate::node::db::actions::sign_up::claim::spec::SignUpClaimSpec;
     use crate::node::db::actions::sign_up::claim::test_action::SignUpClaimTestAction;
-    use crate::node::db::actions::sign_up::join::AcceptJoinAction;
+
     use crate::node::db::descriptors::shared_secret_descriptor::SsDeviceLogDescriptor;
     use crate::node::db::objects::persistent_vault::PersistentVault;
     use crate::node::db::repo::persistent_credentials::spec::PersistentCredentialsSpec;
     use anyhow::bail;
-    use log::warn;
     use tracing::{info, Instrument};
 
     #[tokio::test]
@@ -295,7 +294,9 @@ mod test {
             bail!("Virtual device is not a vault member");
         };
 
-        assert_eq!(2, member.vault.users.len());
+        let vd_vault_obj = vd_p_vault.get_vault(&member.user_data).await?;
+
+        assert_eq!(2, vd_vault_obj.to_data().users.len());
 
         Ok(())
     }

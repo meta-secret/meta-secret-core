@@ -7,6 +7,7 @@ use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault_descriptor::{VaultDescriptor, VaultStatusDescriptor};
 use crate::node::db::events::generic_log_event::{ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
+use crate::node::db::events::object_id::Next;
 use crate::node::db::events::vault::vault_event::VaultObject;
 use crate::node::db::events::vault::vault_log_event::{
     AddMetaPassEvent, VaultActionEvent, VaultActionInitEvent, VaultActionUpdateEvent,
@@ -18,7 +19,6 @@ use crate::node::db::repo::generic_db::KvLogEventRepo;
 use anyhow::Result;
 use std::sync::Arc;
 use tracing::info;
-use crate::node::db::events::object_id::Next;
 
 pub struct ServerVaultAction<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
@@ -91,8 +91,9 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
                         };
 
                         let event = {
-                            let membership = VaultStatusObject::new(update.clone(), free_id);
-                            membership.to_generic()
+                            let status = VaultStatus::from(update.clone());
+                            let status_obj = VaultStatusObject::new(status, free_id);
+                            status_obj.to_generic()
                         };
 
                         self.p_obj.repo.save(event).await?;

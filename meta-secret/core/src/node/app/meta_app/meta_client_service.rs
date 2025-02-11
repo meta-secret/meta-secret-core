@@ -11,11 +11,12 @@ use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::common::model::device::common::DeviceName;
 use crate::node::common::model::user::common::UserData;
 use crate::node::common::model::vault::vault::{VaultMember, VaultStatus};
-use crate::node::common::model::ApplicationState;
+use crate::node::common::model::{ApplicationState, VaultFullInfo};
 use crate::node::db::actions::recover::RecoveryAction;
 use crate::node::db::actions::sign_up::claim::SignUpClaim;
 use crate::node::db::events::local_event::CredentialsObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
+use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
@@ -79,14 +80,12 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                     };
                     sign_up_claim.sign_up(user_data.clone()).await?;
                     self.sync_gateway.sync().await?;
-
-                    let p_vault = PersistentVault::from(self.p_obj());
-                    let new_status = p_vault.find(user_data.clone()).await?;
-                    service_state.app_state = ApplicationState::Vault { vault: new_status };
                 }
-                ApplicationState::Vault { vault } => {
-                    error!("You are already a vault member: {:?}", vault);
+                ApplicationState::Vault(VaultFullInfo::Member { member, .. }) => {
+                    error!("You are already a vault member: {:?}", member.vault);
                 }
+                ApplicationState::Vault(VaultFullInfo::NotExists(_)) => {}
+                ApplicationState::Vault(VaultFullInfo::Outsider(_)) => {}
             },
 
             GenericAppStateRequest::ClusterDistribution(request) => {
@@ -141,12 +140,24 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                 recovery_action.recovery_request(meta_pass_id).await?;
             }
         }
-
+        
+        //Update app state
+        let app_state = self.get_app_state().await?;
+        service_state.app_state = app_state;
+        
         self.state_provider.push(&service_state.app_state).await;
         Ok(())
     }
 
     async fn build_service_state(&self) -> Result<ServiceState<ApplicationState>> {
+        let app_state = self.get_app_state().await?;
+        let service_state = ServiceState { app_state };
+
+        self.state_provider.push(&service_state.app_state).await;
+        Ok(service_state)
+    }
+
+    async fn get_app_state(&self) -> Result<ApplicationState> {
         let creds_repo = PersistentCredentials {
             p_obj: self.p_obj(),
         };
@@ -166,22 +177,35 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                     device: device_creds_event.value.device,
                 },
                 CredentialsObject::DefaultUser(user_creds) => {
-                    let p_vault = PersistentVault {
-                        p_obj: self.p_obj(),
-                    };
+                    let p_vault = PersistentVault::from(self.p_obj());
                     let vault_status = p_vault.find(user_creds.value.user()).await?;
 
-                    ApplicationState::Vault {
-                        vault: vault_status,
+                    match vault_status {
+                        VaultStatus::NotExists(user) => {
+                            ApplicationState::Vault(VaultFullInfo::NotExists(user))
+                        }
+                        VaultStatus::Outsider(outsider) => {
+                            ApplicationState::Vault(VaultFullInfo::Outsider(outsider))
+                        }
+                        VaultStatus::Member(member_user) => {
+                            let vault = p_vault.get_vault(&member_user.user_data).await?;
+
+                            let p_ss = PersistentSharedSecret::from(self.p_obj());
+                            let ss_claims = p_ss.get_ss_log_obj(user_creds.value.vault_name).await?;
+
+                            ApplicationState::Vault(VaultFullInfo::Member {
+                                member: VaultMember {
+                                    member: member_user,
+                                    vault: vault.to_data()
+                                },
+                                ss_claims,
+                            })
+                        }
                     }
                 }
             },
         };
-
-        let service_state = ServiceState { app_state };
-
-        self.state_provider.push(&service_state.app_state).await;
-        Ok(service_state)
+        Ok(app_state)
     }
 
     pub async fn send_request(&self, request: GenericAppStateRequest) {
