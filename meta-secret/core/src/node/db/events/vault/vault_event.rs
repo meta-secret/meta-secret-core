@@ -1,7 +1,6 @@
-use crate::node::common::model::user::common::UserData;
+use crate::node::common::model::user::common::UserDataMember;
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::common::model::vault::vault_data::VaultData;
-use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
@@ -15,17 +14,19 @@ use anyhow::anyhow;
 pub struct VaultObject(pub KvLogEvent<VaultData>);
 
 impl VaultObject {
-    pub fn sign_up(vault_name: VaultName, candidate: UserData) -> Self {
+    pub fn sign_up(vault_name: VaultName, candidate: UserDataMember) -> Self {
         let desc = VaultDescriptor::from(vault_name.clone());
         let vault_data = VaultData::from(candidate);
 
-        let vault_id = ArtifactId::from(desc.clone());
-
         let sign_up_event = KvLogEvent {
-            key: KvKey::artifact(desc.to_obj_desc(), vault_id),
+            key: KvKey::from(desc),
             value: vault_data,
         };
         VaultObject(sign_up_event)
+    }
+
+    pub fn to_data(self) -> VaultData {
+        self.0.value
     }
 }
 
@@ -70,7 +71,8 @@ mod tests {
         let user_creds = fixture.state.user_creds.client;
 
         // Assuming VaultObject::sign_up creates a new event for the vault sign up
-        let sign_up = VaultObject::sign_up(VaultName::test(), user_creds.user());
+        let sign_up =
+            VaultObject::sign_up(VaultName::test(), UserDataMember::from(user_creds.user()));
 
         assert_eq!(1, sign_up.0.value.users.len());
     }

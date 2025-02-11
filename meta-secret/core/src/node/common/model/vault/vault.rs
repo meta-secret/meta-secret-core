@@ -2,9 +2,11 @@ use crate::crypto::utils::Id48bit;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::secret::{
-    SecretDistributionType, SsDistributionClaim, SsDistributionClaimId, SsLogData, WasmSsLogData,
+    SecretDistributionType, SsDistributionClaim, SsDistributionClaimId, WasmSsLogData,
 };
-use crate::node::common::model::user::common::{UserData, UserDataMember, UserDataOutsider};
+use crate::node::common::model::user::common::{
+    UserData, UserDataMember, UserDataOutsider, UserMembership,
+};
 use crate::node::common::model::vault::vault_data::{VaultData, WasmVaultData};
 use std::fmt::Display;
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -50,10 +52,16 @@ impl VaultName {
 pub enum VaultStatus {
     NotExists(UserData),
     Outsider(UserDataOutsider),
-    Member {
-        member: VaultMember,
-        ss_claims: SsLogData,
-    },
+    Member(UserDataMember),
+}
+
+impl From<UserMembership> for VaultStatus {
+    fn from(membership: UserMembership) -> Self {
+        match membership {
+            UserMembership::Outsider(outsider) => VaultStatus::Outsider(outsider),
+            UserMembership::Member(member) => VaultStatus::Member(member),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -85,15 +93,6 @@ impl WasmVaultStatus {
         match &self.0 {
             VaultStatus::Outsider(outsider) => outsider.clone(),
             _ => panic!("Vault status is not 'outsider'"),
-        }
-    }
-
-    pub fn as_member(&self) -> WasmVaultMember {
-        match &self.0 {
-            VaultStatus::Member { member, ss_claims } => {
-                WasmVaultMember(member.clone(), WasmSsLogData::from(ss_claims.clone()))
-            }
-            _ => panic!("Vault status is not 'member'"),
         }
     }
 }
@@ -178,7 +177,7 @@ impl VaultStatus {
         match self {
             VaultStatus::NotExists(user) => user.clone(),
             VaultStatus::Outsider(UserDataOutsider { user_data, .. }) => user_data.clone(),
-            VaultStatus::Member { member, .. } => member.member.user().clone(),
+            VaultStatus::Member(member) => member.user().clone(),
         }
     }
 }
@@ -204,8 +203,8 @@ mod test {
             user_data: vd_creds.user(),
         });
 
-        let vault_data =
-            VaultData::from(client_creds.user()).update_membership(vd_membership.clone());
+        let vault_data = VaultData::from(UserDataMember::from(client_creds.user()))
+            .update_membership(vd_membership.clone());
 
         let vault_member = VaultMember {
             member: client_membership.user_data_member(),

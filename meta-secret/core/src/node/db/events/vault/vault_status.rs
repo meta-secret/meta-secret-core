@@ -1,6 +1,7 @@
-use crate::node::common::model::user::common::{UserDataMember, UserMembership};
+use crate::node::common::model::user::common::UserDataMember;
+use crate::node::common::model::vault::vault::VaultStatus;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
-use crate::node::db::descriptors::vault_descriptor::VaultMembershipDescriptor;
+use crate::node::db::descriptors::vault_descriptor::VaultStatusDescriptor;
 use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
 };
@@ -10,30 +11,34 @@ use anyhow::anyhow;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct VaultMembershipObject(KvLogEvent<UserMembership>);
+pub struct VaultStatusObject(pub KvLogEvent<VaultStatus>);
 
-impl VaultMembershipObject {
-    pub fn new(membership: UserMembership, event_id: ArtifactId) -> Self {
-        let user_id = membership.user_data().user_id();
-        let desc = VaultMembershipDescriptor::from(user_id).to_obj_desc();
+impl VaultStatusObject {
+    pub fn new(status: VaultStatus, event_id: ArtifactId) -> Self {
+        let user_id = status.user().user_id();
+        let desc = VaultStatusDescriptor::from(user_id).to_obj_desc();
 
-        VaultMembershipObject(KvLogEvent {
+        VaultStatusObject(KvLogEvent {
             key: KvKey {
                 obj_id: event_id,
                 obj_desc: desc,
             },
-            value: membership,
+            value: status,
         })
+    }
+    
+    pub fn status(self) -> VaultStatus {
+        self.0.value
     }
 }
 
-impl VaultMembershipObject {
+impl VaultStatusObject {
     pub fn is_member(&self) -> bool {
-        let VaultMembershipObject(membership_event) = self;
+        let VaultStatusObject(membership_event) = self;
 
         matches!(
             membership_event.value,
-            UserMembership::Member(UserDataMember { .. })
+            VaultStatus::Member(UserDataMember { .. })
         )
     }
 
@@ -42,11 +47,11 @@ impl VaultMembershipObject {
     }
 }
 
-impl TryFrom<GenericKvLogEvent> for VaultMembershipObject {
+impl TryFrom<GenericKvLogEvent> for VaultStatusObject {
     type Error = anyhow::Error;
 
     fn try_from(event: GenericKvLogEvent) -> Result<Self, Self::Error> {
-        if let GenericKvLogEvent::VaultMembership(vault_status) = event {
+        if let GenericKvLogEvent::VaultStatus(vault_status) = event {
             Ok(vault_status)
         } else {
             Err(anyhow!("Not a vault status event"))
@@ -54,19 +59,19 @@ impl TryFrom<GenericKvLogEvent> for VaultMembershipObject {
     }
 }
 
-impl KeyExtractor for VaultMembershipObject {
+impl KeyExtractor for VaultStatusObject {
     fn key(&self) -> KvKey {
         self.0.key.clone()
     }
 }
 
-impl ToGenericEvent for VaultMembershipObject {
+impl ToGenericEvent for VaultStatusObject {
     fn to_generic(self) -> GenericKvLogEvent {
-        GenericKvLogEvent::VaultMembership(self)
+        GenericKvLogEvent::VaultStatus(self)
     }
 }
 
-impl ObjIdExtractor for VaultMembershipObject {
+impl ObjIdExtractor for VaultStatusObject {
     fn obj_id(&self) -> ArtifactId {
         self.0.key.obj_id.clone()
     }

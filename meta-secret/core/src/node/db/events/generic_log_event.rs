@@ -7,7 +7,7 @@ use crate::node::db::events::shared_secret_event::{SharedSecretObject, SsDeviceL
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::events::vault::vault_event::VaultObject;
 use crate::node::db::events::vault::vault_log_event::VaultLogObject;
-use crate::node::db::events::vault::vault_membership::VaultMembershipObject;
+use crate::node::db::events::vault::vault_status::VaultStatusObject;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -17,7 +17,7 @@ pub enum GenericKvLogEvent {
     DeviceLog(DeviceLogObject),
     VaultLog(VaultLogObject),
     Vault(VaultObject),
-    VaultMembership(VaultMembershipObject),
+    VaultStatus(VaultStatusObject),
 
     SharedSecret(SharedSecretObject),
     SsDeviceLog(SsDeviceLogObject),
@@ -43,8 +43,8 @@ impl GenericKvLogEvent {
         VaultObject::try_from(self)
     }
 
-    pub fn vault_membership(self) -> anyhow::Result<VaultMembershipObject> {
-        VaultMembershipObject::try_from(self)
+    pub fn vault_membership(self) -> anyhow::Result<VaultStatusObject> {
+        VaultStatusObject::try_from(self)
     }
 
     pub fn shared_secret(self) -> anyhow::Result<SharedSecretObject> {
@@ -106,7 +106,7 @@ impl ObjIdExtractor for GenericKvLogEvent {
             GenericKvLogEvent::DbError(event) => event.key.obj_id.clone(),
             GenericKvLogEvent::DeviceLog(obj) => obj.obj_id(),
             GenericKvLogEvent::VaultLog(obj) => obj.obj_id(),
-            GenericKvLogEvent::VaultMembership(obj) => obj.obj_id(),
+            GenericKvLogEvent::VaultStatus(obj) => obj.obj_id(),
             GenericKvLogEvent::SsDeviceLog(obj) => obj.obj_id(),
             GenericKvLogEvent::SsLog(obj) => obj.obj_id(),
         }
@@ -122,7 +122,7 @@ impl KeyExtractor for GenericKvLogEvent {
             GenericKvLogEvent::DbError(event) => event.key.clone(),
             GenericKvLogEvent::DeviceLog(obj) => obj.key(),
             GenericKvLogEvent::VaultLog(obj) => obj.key(),
-            GenericKvLogEvent::VaultMembership(obj) => obj.key(),
+            GenericKvLogEvent::VaultStatus(obj) => obj.key(),
             GenericKvLogEvent::SsDeviceLog(obj) => obj.key(),
             GenericKvLogEvent::SsLog(obj) => obj.key(),
         }

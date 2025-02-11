@@ -3,11 +3,12 @@ use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::user::common::{
     UserData, UserDataMember, UserDataOutsider, UserMembership, WasmUserMembership,
 };
-use crate::node::common::model::vault::vault::VaultName;
+use crate::node::common::model::vault::vault::{VaultMember, VaultName, VaultStatus};
 use crate::node::db::events::vault::vault_log_event::{
     AddMetaPassEvent, VaultActionEvent, VaultActionEvents, VaultActionUpdateEvent,
 };
 use crate::secret::data_block::common::SharedSecretConfig;
+use anyhow::{bail, Result};
 use std::collections::{HashMap, HashSet};
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -55,12 +56,12 @@ impl From<VaultData> for WasmVaultData {
     }
 }
 
-impl From<UserData> for VaultData {
-    fn from(user_data: UserData) -> Self {
-        let vault_name = user_data.vault_name.clone();
-        let device_id = DeviceId::from(&user_data.device.keys);
+impl From<UserDataMember> for VaultData {
+    fn from(member: UserDataMember) -> Self {
+        let vault_name = member.user_data.vault_name();
+        let device_id = DeviceId::from(&member.user_data.device.keys);
 
-        let member = UserMembership::Member(UserDataMember { user_data });
+        let member = UserMembership::Member(member);
 
         let mut users = HashMap::new();
         users.insert(device_id, member);
@@ -125,17 +126,32 @@ impl VaultData {
     }
 
     pub fn membership(&self, for_user: UserData) -> UserMembership {
-        let maybe_vault_user = self.users.get(&for_user.device.device_id);
+        self.users
+            .get(&for_user.device.device_id)
+            .map(|membership| membership.clone())
+            .unwrap_or_else(|| UserMembership::Outsider(UserDataOutsider::non_member(for_user)))
+    }
 
-        if let Some(membership) = maybe_vault_user {
-            membership.clone()
-        } else {
-            UserMembership::Outsider(UserDataOutsider::non_member(for_user))
-        }
+    pub fn status(&self, user: UserData) -> VaultStatus {
+        let membership = self.membership(user);
+        VaultStatus::from(membership)
     }
 
     pub fn find_user(&self, device_id: &DeviceId) -> Option<UserMembership> {
         self.users.get(device_id).cloned()
+    }
+
+    pub fn to_vault_member(self, member: UserDataMember) -> Result<VaultMember> {
+        let is_member = self.is_member(&member.user_data.device.device_id.clone());
+
+        if is_member {
+            Ok(VaultMember {
+                member,
+                vault: self,
+            })
+        } else {
+            bail!("User is not a member of this vault")
+        }
     }
 }
 
@@ -145,7 +161,7 @@ pub struct EmptyVaultState;
 /// [here](meta-secret/docs/programming/event-sourcing-aggregate.md):
 pub struct VaultAggregate {
     pub events: VaultActionEvents,
-    pub vault: VaultData,
+    pub vault: VaultData
 }
 
 impl VaultAggregate {
@@ -221,7 +237,7 @@ mod test {
             status: UserDataOutsiderStatus::Pending,
         });
 
-        let vault_data = VaultData::from(client_creds.user());
+        let vault_data = VaultData::from(UserDataMember::from(client_creds.user()));
         let cfg = vault_data.sss_cfg();
         assert_eq!(cfg.threshold, 1);
         assert_eq!(cfg.number_of_shares, 1);
@@ -244,7 +260,7 @@ mod test {
     fn test_vault_aggregate() -> Result<()> {
         let fixture = FixtureRegistry::empty();
         let client_creds = fixture.state.user_creds.client;
-        let vault_data = VaultData::from(client_creds.user());
+        let vault_data = VaultData::from(UserDataMember::from(client_creds.user()));
 
         let join_request = JoinClusterEvent::from(fixture.state.user_creds.client_b.user());
         let join_request_event = {

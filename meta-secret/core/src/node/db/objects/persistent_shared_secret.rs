@@ -18,9 +18,11 @@ use crate::node::db::events::shared_secret_event::{
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use anyhow::{bail, Ok, Result};
+use derive_more::From;
 use log::info;
 use tracing_attributes::instrument;
 
+#[derive(From)]
 pub struct PersistentSharedSecret<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
 }
