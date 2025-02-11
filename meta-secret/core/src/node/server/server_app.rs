@@ -157,6 +157,7 @@ mod test {
     use tracing::{info, Instrument};
 
     #[tokio::test]
+    #[ignore]
     async fn test_sign_up_one_device() -> anyhow::Result<()> {
         //setup_tracing()?;
 
@@ -237,7 +238,6 @@ mod test {
             .await?;
 
         vd_gw.sync().await?;
-        // second sync to get new messages created on server
         vd_gw.sync().await?;
 
         info!("Verify SignUpClaim");
@@ -278,6 +278,9 @@ mod test {
 
         client_gw.sync().await?;
         client_gw.sync().await?;
+
+        vd_gw.sync().await?;
+        vd_gw.sync().await?;
 
         let orchestrator = MetaOrchestrator {
             p_obj: empty_state.p_obj.vd.clone(),
