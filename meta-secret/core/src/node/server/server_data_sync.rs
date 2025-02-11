@@ -164,7 +164,22 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             GenericKvLogEvent::SharedSecret(_) => {
                 self.p_obj.repo.save(generic_event.clone()).await?;
             }
-            _ => {
+            GenericKvLogEvent::Credentials(_) => {
+                bail!("Invalid event type: {:?}", generic_event);
+            }
+            GenericKvLogEvent::VaultLog(_) => {
+                bail!("Invalid event type: {:?}", generic_event);
+            }
+            GenericKvLogEvent::Vault(_) => {
+                bail!("Invalid event type: {:?}", generic_event);
+            }
+            GenericKvLogEvent::VaultStatus(_) => {
+                bail!("Invalid event type: {:?}", generic_event);
+            }
+            GenericKvLogEvent::SsLog(_) => {
+                bail!("Invalid event type: {:?}", generic_event);
+            }
+            GenericKvLogEvent::DbError(_) => {
                 bail!("Invalid event type: {:?}", generic_event);
             }
         }
@@ -195,37 +210,49 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
     pub async fn vault_replication(&self, request: VaultRequest) -> Result<Vec<GenericKvLogEvent>> {
         let mut commit_log = vec![];
 
-        //sync VaultLog
-        {
-            let vault_log_events = self
-                .p_obj
-                .find_object_events::<GenericKvLogEvent>(request.tail.vault_log.clone())
-                .await?;
-            commit_log.extend(vault_log_events);
-        }
+        let p_vault = PersistentVault::from(self.p_obj.clone());
 
-        //sync Vault
-        {
-            let vault_events = self
-                .p_obj
-                .find_object_events::<GenericKvLogEvent>(request.tail.vault.clone())
-                .await?;
-            commit_log.extend(vault_events);
-        }
+        let vault_status = p_vault
+            .update_vault_membership_info_for_user(request.sender.clone())
+            .await?;
 
-        //sync vault status
+        //sync vault status (available to any user - just by definition)
         {
-            let p_vault = PersistentVault {
-                p_obj: self.p_obj.clone(),
-            };
-            p_vault.update_vault_membership_info_for_user(request.sender.clone()).await?;
-            
             let vault_status_events = self
                 .p_obj
                 .find_object_events::<GenericKvLogEvent>(request.tail.vault_status.clone())
                 .await?;
 
             commit_log.extend(vault_status_events);
+        }
+
+        /// guarding vault from sending event to outsiders
+        match vault_status {
+            VaultStatus::NotExists(_) => {
+                //ignore
+            }
+            VaultStatus::Outsider(_) => {
+                //ignore
+            }
+            VaultStatus::Member(_) => {
+                //sync VaultLog
+                {
+                    let vault_log_events = self
+                        .p_obj
+                        .find_object_events::<GenericKvLogEvent>(request.tail.vault_log.clone())
+                        .await?;
+                    commit_log.extend(vault_log_events);
+                }
+
+                //sync Vault
+                {
+                    let vault_events = self
+                        .p_obj
+                        .find_object_events::<GenericKvLogEvent>(request.tail.vault.clone())
+                        .await?;
+                    commit_log.extend(vault_events);
+                }
+            }
         }
 
         Ok(commit_log)

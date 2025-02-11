@@ -56,12 +56,12 @@ impl From<VaultData> for WasmVaultData {
     }
 }
 
-impl From<UserData> for VaultData {
-    fn from(user_data: UserData) -> Self {
-        let vault_name = user_data.vault_name.clone();
-        let device_id = DeviceId::from(&user_data.device.keys);
+impl From<UserDataMember> for VaultData {
+    fn from(member: UserDataMember) -> Self {
+        let vault_name = member.user_data.vault_name();
+        let device_id = DeviceId::from(&member.user_data.device.keys);
 
-        let member = UserMembership::Member(UserDataMember { user_data });
+        let member = UserMembership::Member(member);
 
         let mut users = HashMap::new();
         users.insert(device_id, member);
@@ -140,10 +140,10 @@ impl VaultData {
     pub fn find_user(&self, device_id: &DeviceId) -> Option<UserMembership> {
         self.users.get(device_id).cloned()
     }
-    
+
     pub fn to_vault_member(self, member: UserDataMember) -> Result<VaultMember> {
         let is_member = self.is_member(&member.user_data.device.device_id.clone());
-        
+
         if is_member {
             Ok(VaultMember {
                 member,
@@ -237,7 +237,7 @@ mod test {
             status: UserDataOutsiderStatus::Pending,
         });
 
-        let vault_data = VaultData::from(client_creds.user());
+        let vault_data = VaultData::from(UserDataMember::from(client_creds.user()));
         let cfg = vault_data.sss_cfg();
         assert_eq!(cfg.threshold, 1);
         assert_eq!(cfg.number_of_shares, 1);
@@ -260,7 +260,7 @@ mod test {
     fn test_vault_aggregate() -> Result<()> {
         let fixture = FixtureRegistry::empty();
         let client_creds = fixture.state.user_creds.client;
-        let vault_data = VaultData::from(client_creds.user());
+        let vault_data = VaultData::from(UserDataMember::from(client_creds.user()));
 
         let join_request = JoinClusterEvent::from(fixture.state.user_creds.client_b.user());
         let join_request_event = {

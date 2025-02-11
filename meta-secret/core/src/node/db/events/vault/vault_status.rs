@@ -51,7 +51,7 @@ impl TryFrom<GenericKvLogEvent> for VaultStatusObject {
     type Error = anyhow::Error;
 
     fn try_from(event: GenericKvLogEvent) -> Result<Self, Self::Error> {
-        if let GenericKvLogEvent::VaultMembership(vault_status) = event {
+        if let GenericKvLogEvent::VaultStatus(vault_status) = event {
             Ok(vault_status)
         } else {
             Err(anyhow!("Not a vault status event"))
@@ -67,7 +67,7 @@ impl KeyExtractor for VaultStatusObject {
 
 impl ToGenericEvent for VaultStatusObject {
     fn to_generic(self) -> GenericKvLogEvent {
-        GenericKvLogEvent::VaultMembership(self)
+        GenericKvLogEvent::VaultStatus(self)
     }
 }
 

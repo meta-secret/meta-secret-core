@@ -26,9 +26,7 @@ pub struct MetaOrchestrator<Repo: KvLogEventRepo> {
 
 impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
     pub async fn orchestrate(&self) -> anyhow::Result<()> {
-        let p_vault = PersistentVault {
-            p_obj: self.p_obj(),
-        };
+        let p_vault = PersistentVault::from(self.p_obj());
         let vault_status = p_vault.find(self.user_creds.user()).await?;
 
         let VaultStatus::Member(member) = vault_status else {

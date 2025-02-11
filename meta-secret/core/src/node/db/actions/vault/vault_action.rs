@@ -1,5 +1,5 @@
 use crate::node::common::model::device::common::DeviceData;
-use crate::node::common::model::user::common::UserData;
+use crate::node::common::model::user::common::{UserData, UserDataMember};
 use crate::node::common::model::vault::vault::VaultStatus;
 use crate::node::common::model::vault::vault_data::VaultAggregate;
 use crate::node::db::actions::sign_up::action::SignUpAction;
@@ -9,9 +9,7 @@ use crate::node::db::events::generic_log_event::{ObjIdExtractor, ToGenericEvent}
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::Next;
 use crate::node::db::events::vault::vault_event::VaultObject;
-use crate::node::db::events::vault::vault_log_event::{
-    AddMetaPassEvent, VaultActionEvent, VaultActionInitEvent, VaultActionUpdateEvent,
-};
+use crate::node::db::events::vault::vault_log_event::{AddMetaPassEvent, VaultActionEvent, VaultActionInitEvent, VaultActionRequestEvent, VaultActionUpdateEvent};
 use crate::node::db::events::vault::vault_status::VaultStatusObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_vault::PersistentVault;
@@ -27,9 +25,7 @@ pub struct ServerVaultAction<Repo: KvLogEventRepo> {
 
 impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
     pub async fn do_processing(&self, action_event: VaultActionEvent) -> Result<()> {
-        let p_vault = PersistentVault {
-            p_obj: self.p_obj.clone(),
-        };
+        let p_vault = PersistentVault::from(self.p_obj.clone());
 
         //saving messages from device_log to vault_log guarantees ordering between events
         //sent from different devices simultaneously
@@ -39,7 +35,9 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
                     p_obj: self.p_obj.clone(),
                     server_device: self.server_device.clone(),
                 };
-                let _ = action.create(&create_vault_event.owner).await;
+                action
+                    .create(create_vault_event.owner.clone())
+                    .await?;
             }
 
             VaultActionEvent::Request(action_request) => {
@@ -72,7 +70,7 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
                     })
                 };
 
-                self.p_obj.repo.save(vault_event).await?;
+                self.p_obj.repo.save(vault_event.clone()).await?;
 
                 p_vault
                     .save_vault_log_events(agg.events, vault_name)
@@ -91,7 +89,7 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
                         };
 
                         let event = {
-                            let status = VaultStatus::from(update.clone());
+                            let status = vault_event.to_data().status(update.user_data());
                             let status_obj = VaultStatusObject::new(status, free_id);
                             status_obj.to_generic()
                         };
@@ -115,16 +113,14 @@ pub struct CreateVaultAction<Repo: KvLogEventRepo> {
 }
 
 impl<Repo: KvLogEventRepo> CreateVaultAction<Repo> {
-    pub async fn create(&self, owner: &UserData) -> Result<()> {
+    pub async fn create(&self, owner: UserDataMember) -> Result<()> {
         // create vault if not exists
-        let p_vault = PersistentVault {
-            p_obj: self.p_obj.clone(),
-        };
+        let p_vault = PersistentVault::from(self.p_obj.clone());
 
-        let vault_exists = p_vault.vault_exists(owner.vault_name()).await?;
+        let vault_exists = p_vault.vault_exists(owner.user_data.vault_name()).await?;
         if !vault_exists {
             //create vault_log, vault and vault status
-            self.create_vault(owner.clone()).await
+            self.create_vault(owner).await
         } else {
             // vault already exists, and the event have been saved into vault_log already,
             // no action needed
@@ -132,14 +128,14 @@ impl<Repo: KvLogEventRepo> CreateVaultAction<Repo> {
         }
     }
 
-    async fn create_vault(&self, candidate: UserData) -> Result<()> {
+    async fn create_vault(&self, candidate: UserDataMember) -> Result<()> {
         //vault not found, we can create our new vault
         info!(
             "Accept SignUp request, for the vault: {:?}",
-            candidate.vault_name()
+            candidate.user_data.vault_name()
         );
 
-        let sign_up_action = SignUpAction {};
+        let sign_up_action = SignUpAction;
         let sign_up_events = sign_up_action.accept(candidate.clone());
 
         for sign_up_event in sign_up_events {

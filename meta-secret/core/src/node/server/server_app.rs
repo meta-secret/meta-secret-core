@@ -221,9 +221,6 @@ mod test {
         info!("Executing 'sign up' claim");
         let vd_p_obj = empty_state.p_obj.vd.clone();
         let user_creds = &empty_state.user_creds;
-        SignUpClaimTestAction::sign_up(vd_p_obj.clone(), &user_creds.vd)
-            .instrument(vd_span())
-            .await?;
 
         let vd_gw = registry
             .state
@@ -231,6 +228,14 @@ mod test {
             .sync_gateway
             .vd_gw
             .clone();
+        vd_gw.sync().await?;
+        // second sync to get new messages created on server
+        vd_gw.sync().await?;
+
+        SignUpClaimTestAction::sign_up(vd_p_obj.clone(), &user_creds.vd)
+            .instrument(vd_span())
+            .await?;
+
         vd_gw.sync().await?;
         // second sync to get new messages created on server
         vd_gw.sync().await?;
@@ -244,7 +249,7 @@ mod test {
         vd_claim_spec.verify().instrument(client_span()).await?;
 
         let vd_db = vd_p_obj.repo.get_db().await;
-        assert_eq!(17, vd_db.len());
+        assert_eq!(7, vd_db.len());
 
         registry
             .state
@@ -257,12 +262,6 @@ mod test {
         vd_gw.sync().await?;
         server_check(&registry, vd_user).await?;
 
-        //join request by client
-        let client_p_obj = empty_state.p_obj.client.clone();
-        SignUpClaimTestAction::sign_up(client_p_obj.clone(), &user_creds.client)
-            .instrument(client_span())
-            .await?;
-
         let client_gw = registry
             .state
             .meta_client_service
@@ -272,8 +271,13 @@ mod test {
         client_gw.sync().await?;
         client_gw.sync().await?;
 
-        vd_gw.sync().await?;
-        vd_gw.sync().await?;
+        let client_p_obj = empty_state.p_obj.client.clone();
+        SignUpClaimTestAction::sign_up(client_p_obj.clone(), &user_creds.client)
+            .instrument(client_span())
+            .await?;
+
+        client_gw.sync().await?;
+        client_gw.sync().await?;
 
         let orchestrator = MetaOrchestrator {
             p_obj: empty_state.p_obj.vd.clone(),
@@ -322,7 +326,7 @@ mod test {
 
         let server_db = server_app.p_obj.repo.get_db().await;
 
-        assert_eq!(16, server_db.len());
+        assert_eq!(6, server_db.len());
 
         let server_claim_spec = SignUpClaimSpec {
             p_obj: server_app.p_obj.clone(),

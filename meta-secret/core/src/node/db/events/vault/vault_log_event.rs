@@ -1,6 +1,7 @@
 use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::user::common::{UserData, UserDataMember, UserMembership};
 use crate::node::common::model::vault::vault::VaultName;
+use crate::node::db::descriptors::vault_descriptor::VaultLogDescriptor;
 use crate::node::db::events::error::LogEventCastError;
 use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
@@ -18,6 +19,15 @@ use tracing::info;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VaultLogObject(pub KvLogEvent<VaultActionEvents>);
+
+impl VaultLogObject {
+    pub fn create(owner: UserDataMember) -> Self {
+        Self(KvLogEvent {
+            key: KvKey::from(VaultLogDescriptor::from(owner.user_data.vault_name())),
+            value: VaultActionEvents::default(),
+        })
+    }
+}
 
 impl TryFrom<GenericKvLogEvent> for VaultLogObject {
     type Error = anyhow::Error;
@@ -146,7 +156,7 @@ pub enum VaultActionRequestEvent {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateVaultEvent {
-    pub owner: UserData,
+    pub owner: UserDataMember,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, From, Serialize, Deserialize)]
@@ -233,7 +243,7 @@ impl VaultActionEvent {
         match self {
             VaultActionEvent::Request(request) => request.name(),
             VaultActionEvent::Update(update) => update.name(),
-            VaultActionEvent::Init(_) => "CreateVaultRequest".to_string(),
+            VaultActionEvent::Init(_) => "CreateVaultInit".to_string(),
         }
     }
 }
@@ -245,17 +255,6 @@ impl Display for VaultActionEvent {
 }
 
 impl VaultActionEvent {
-    pub fn get_create(self) -> Result<UserData> {
-        if let VaultActionEvent::Init(VaultActionInitEvent::CreateVault(upd_event)) = self {
-            Ok(upd_event.owner.clone())
-        } else {
-            bail!(LogEventCastError::WrongVaultAction(
-                String::from("CreateVault"),
-                self.clone()
-            ))
-        }
-    }
-
     pub fn get_join_request(self) -> Result<UserData> {
         if let VaultActionEvent::Request(VaultActionRequestEvent::JoinCluster(join_event)) = self {
             Ok(join_event.candidate)
@@ -269,15 +268,16 @@ impl VaultActionEvent {
 
     pub fn vault_name(&self) -> VaultName {
         match self {
-            VaultActionEvent::Request(VaultActionRequestEvent::JoinCluster(join_event)) => {
-                join_event.candidate.vault_name()
+            VaultActionEvent::Request(request) => {
+                let user = match request {
+                    VaultActionRequestEvent::JoinCluster(event) => &event.candidate,
+                    VaultActionRequestEvent::AddMetaPass(event) => &event.sender.user_data,
+                };
+                user.vault_name()
             }
             VaultActionEvent::Update(update) => update.vault_name(),
             VaultActionEvent::Init(VaultActionInitEvent::CreateVault(event)) => {
-                event.owner.vault_name()
-            }
-            VaultActionEvent::Request(VaultActionRequestEvent::AddMetaPass(event)) => {
-                event.sender.user_data.vault_name()
+                event.owner.user_data.vault_name()
             }
         }
     }

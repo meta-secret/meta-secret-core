@@ -65,7 +65,7 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
 
         let create_request = {
             let create_action = VaultActionInitEvent::CreateVault(CreateVaultEvent {
-                owner: user.clone(),
+                owner: UserDataMember::from(user.clone()),
             });
             let upd = VaultActionEvent::Init(create_action);
             DeviceLogObject(KvLogEvent {

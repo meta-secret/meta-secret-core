@@ -4,7 +4,9 @@ use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::secret::{
     SecretDistributionType, SsDistributionClaim, SsDistributionClaimId, WasmSsLogData,
 };
-use crate::node::common::model::user::common::{UserData, UserDataMember, UserDataOutsider, UserMembership};
+use crate::node::common::model::user::common::{
+    UserData, UserDataMember, UserDataOutsider, UserMembership,
+};
 use crate::node::common::model::vault::vault_data::{VaultData, WasmVaultData};
 use std::fmt::Display;
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -50,14 +52,14 @@ impl VaultName {
 pub enum VaultStatus {
     NotExists(UserData),
     Outsider(UserDataOutsider),
-    Member(UserDataMember)
+    Member(UserDataMember),
 }
 
 impl From<UserMembership> for VaultStatus {
     fn from(membership: UserMembership) -> Self {
         match membership {
             UserMembership::Outsider(outsider) => VaultStatus::Outsider(outsider),
-            UserMembership::Member(member) => VaultStatus::Member(member)
+            UserMembership::Member(member) => VaultStatus::Member(member),
         }
     }
 }
@@ -201,8 +203,8 @@ mod test {
             user_data: vd_creds.user(),
         });
 
-        let vault_data =
-            VaultData::from(client_creds.user()).update_membership(vd_membership.clone());
+        let vault_data = VaultData::from(UserDataMember::from(client_creds.user()))
+            .update_membership(vd_membership.clone());
 
         let vault_member = VaultMember {
             member: client_membership.user_data_member(),

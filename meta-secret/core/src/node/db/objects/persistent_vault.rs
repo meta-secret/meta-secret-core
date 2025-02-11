@@ -80,35 +80,39 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
 
     /// Update membership information for a user on the server.
     #[instrument(skip_all)]
-    pub async fn update_vault_membership_info_for_user(&self, user: UserData) -> Result<()> {
+    pub async fn update_vault_membership_info_for_user(&self, user: UserData) -> Result<VaultStatus> {
         let maybe_vault_obj = self.get_vault_object(user.vault_name()).await?;
         let maybe_membership = self.get_vault_status_object(&user).await?;
 
-        match (maybe_vault_obj, maybe_membership) {
+        let final_status = match (maybe_vault_obj, maybe_membership) {
             // vault doesn't exist and no membership info
             (None, None) => {
                 let desc = VaultStatusDescriptor::from(user.user_id());
+                let curr_status = VaultStatus::NotExists(user);
                 let obj = VaultStatusObject(KvLogEvent {
                     key: KvKey::from(desc),
-                    value: VaultStatus::NotExists(user),
+                    value: curr_status.clone(),
                 });
                 self.p_obj.repo.save(obj).await?;
+                curr_status
             }
             // Just in case - verify that membership is VaultNotExists
             (None, Some(status)) => {
-                let not_exists = matches!(status.status(), VaultStatus::NotExists(_));
+                let not_exists = matches!(status.clone().status(), VaultStatus::NotExists(_));
                 if !not_exists {
                     bail!("Invalid vault membership state")
                 }
+                status.status()
             }
             (Some(vault_obj), None) => {
                 let status = vault_obj.to_data().status(user.clone());
 
                 let obj = VaultStatusObject(KvLogEvent {
                     key: KvKey::from(VaultStatusDescriptor::from(user.user_id())),
-                    value: status,
+                    value: status.clone(),
                 });
                 self.p_obj.repo.save(obj).await?;
+                status
             }
             // Verify that vault membership status is up to date
             (Some(vault_obj), Some(membership)) => {
@@ -118,14 +122,16 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
                 if vault_info != membership_info {
                     let obj = VaultStatusObject(KvLogEvent {
                         key: membership.key().next(),
-                        value: vault_info,
+                        value: vault_info.clone(),
                     });
                     self.p_obj.repo.save(obj).await?;
                 }
-            }
-        }
 
-        Ok(())
+                vault_info
+            }
+        };
+
+        Ok(final_status)
     }
 
     async fn get_vault_status_object(&self, user: &UserData) -> Result<Option<VaultStatusObject>> {
@@ -213,16 +219,6 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
         };
 
         Ok(vault_log_obj)
-    }
-
-    async fn vault_log_events(&self, vault_name: VaultName) -> Result<Vec<VaultLogObject>> {
-        let desc = VaultLogDescriptor::from(vault_name);
-        let events = self
-            .p_obj
-            .find_object_events::<VaultLogObject>(ArtifactId::from(desc))
-            .await?;
-
-        Ok(events)
     }
 }
 
