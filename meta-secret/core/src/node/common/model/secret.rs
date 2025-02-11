@@ -9,6 +9,11 @@ use rand::distributions::Alphanumeric;
 use rand::Rng;
 use wasm_bindgen::prelude::wasm_bindgen;
 
+/// `ClaimId` is a wrapper around a `String` that serves as a unique identifier
+/// for claims within the system. It is used to track and manage claims associated
+/// with secret distributions, ensuring each claim can be uniquely identified and
+/// referenced. The `ClaimId` is derived from various attributes and is utilized
+/// throughout the secret management process to maintain integrity and traceability.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(getter_with_clone)]
@@ -140,6 +145,19 @@ pub struct SsLogData {
     pub claims: HashMap<SsDistributionClaimId, SsDistributionClaim>,
 }
 
+impl SsLogData {
+    pub fn new(claim: SsDistributionClaim) -> Self {
+        let mut claims = HashMap::new();
+        claims.insert(claim.id.clone(), claim);
+        Self { claims }
+    }
+
+    pub fn insert(mut self, claim: SsDistributionClaim) -> Self {
+        self.claims.insert(claim.id.clone(), claim);
+        self
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen]
@@ -160,6 +178,7 @@ impl SsLogData {
 }
 
 #[wasm_bindgen]
+#[allow(unused)]
 pub struct WasmSsDistributionClaim(SsDistributionClaim);
 impl WasmSsDistributionClaim {}
 

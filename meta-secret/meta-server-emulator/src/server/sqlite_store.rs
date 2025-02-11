@@ -1,7 +1,9 @@
 use async_trait::async_trait;
 use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection};
-
-use meta_secret_core::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor};
+use meta_secret_core::node::common::model::IdString;
+use meta_secret_core::node::db::events::generic_log_event::{
+    GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
+};
 use meta_secret_core::node::db::events::object_id::ObjectId;
 use meta_secret_core::node::db::repo::generic_db::{
     DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand,
@@ -28,13 +30,14 @@ pub enum SqliteDbError {
 
 #[async_trait(? Send)]
 impl SaveCommand for SqlIteRepo {
-    async fn save(&self, value: GenericKvLogEvent) -> anyhow::Result<ObjectId> {
+    async fn save<T: ToGenericEvent>(&self, value: T) -> anyhow::Result<ObjectId> {
         let mut conn = SqliteConnection::establish(self.conn_url.as_str())?;
 
+        let generic_value = value.to_generic();
         diesel::insert_into(schema_log::table)
-            .values(&NewDbLogEvent::from(&value))
+            .values(&NewDbLogEvent::from(&generic_value))
             .execute(&mut conn)?;
-        Ok(value.obj_id())
+        Ok(generic_value.obj_id())
     }
 }
 

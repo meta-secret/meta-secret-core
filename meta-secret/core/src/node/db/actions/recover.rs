@@ -30,24 +30,23 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
             user_creds
         };
 
-        let vault_status = {
-            let vault_repo = PersistentVault {
-                p_obj: self.p_obj.clone(),
-            };
-            vault_repo.find(user_creds.user()).await?
-        };
+        let vault_repo = PersistentVault ::from(self.p_obj.clone());
+
+        let vault_status = vault_repo.find(user_creds.user()).await?;
 
         match vault_status {
             VaultStatus::NotExists(_) => {
                 bail!("Vault not exists")
             }
-            VaultStatus::Outsider(_) => {
-                bail!("Outsider status")
+            VaultStatus::Outsider(outsider) => {
+                bail!("Outsider status: {:?}", outsider)
             }
-            VaultStatus::Member {
-                member: vault_member,
-                ..
-            } => {
+            VaultStatus::Member(member) => {
+                let vault_member = vault_repo
+                    .get_vault(member.user())
+                    .await?
+                    .to_data()
+                    .to_vault_member(member)?;
                 let claim = vault_member.create_recovery_claim(pass_id);
 
                 let p_ss = PersistentSharedSecret {

@@ -1,11 +1,13 @@
 #[cfg(test)]
 pub mod fixture {
+    use crate::meta_tests::fixture_util::fixture::specs::BaseSpec;
     use crate::meta_tests::fixture_util::fixture::states::{BaseState, EmptyState, ExtendedState};
     use crate::node::app::meta_app::meta_client_service::fixture::MetaClientServiceFixture;
     use crate::node::app::sync::sync_protocol::fixture::SyncProtocolFixture;
     use crate::node::common::model::device::device_creds::fixture::DeviceCredentialsFixture;
     use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
     use crate::node::db::objects::persistent_object::fixture::PersistentObjectFixture;
+    use crate::node::db::objects::persistent_vault::spec::VaultSpec;
     use crate::node::db::repo::persistent_credentials::fixture::PersistentCredentialsFixture;
     use crate::node::server::server_app::fixture::ServerAppFixture;
     use std::sync::Arc;
@@ -33,8 +35,24 @@ pub mod fixture {
             let empty = FixtureRegistry::empty();
             let p_creds = PersistentCredentialsFixture::init(&empty.state).await?;
 
+            let base_spec = BaseSpec {
+                client: VaultSpec {
+                    p_obj: empty.state.p_obj.client.clone(),
+                    user: empty.state.user_creds.client.user(),
+                },
+                client_b: VaultSpec {
+                    p_obj: empty.state.p_obj.client_b.clone(),
+                    user: empty.state.user_creds.client_b.user(),
+                },
+                vd: VaultSpec {
+                    p_obj: empty.state.p_obj.vd.clone(),
+                    user: empty.state.user_creds.vd.user(),
+                },
+            };
+
             let base = BaseState {
                 empty: empty.state,
+                spec: base_spec,
                 p_creds,
             };
 
@@ -60,6 +78,7 @@ pub mod fixture {
     }
 
     pub mod states {
+        use crate::meta_tests::fixture_util::fixture::specs::BaseSpec;
         use crate::node::app::meta_app::meta_client_service::fixture::MetaClientServiceFixture;
         use crate::node::app::sync::sync_protocol::fixture::SyncProtocolFixture;
         use crate::node::common::model::device::device_creds::fixture::DeviceCredentialsFixture;
@@ -78,12 +97,12 @@ pub mod fixture {
         pub struct EmptyState {
             pub device_creds: DeviceCredentialsFixture,
             pub user_creds: UserCredentialsFixture,
-
             pub p_obj: PersistentObjectFixture,
         }
 
         pub struct BaseState {
             pub empty: EmptyState,
+            pub spec: BaseSpec,
             pub p_creds: PersistentCredentialsFixture,
         }
 
@@ -92,6 +111,17 @@ pub mod fixture {
             pub server_app: Arc<ServerAppFixture>,
             pub meta_client_service: MetaClientServiceFixture,
             pub sync: SyncProtocolFixture,
+        }
+    }
+
+    pub mod specs {
+        use crate::node::db::in_mem_db::InMemKvLogEventRepo;
+        use crate::node::db::objects::persistent_vault::spec::VaultSpec;
+
+        pub struct BaseSpec {
+            pub client: VaultSpec<InMemKvLogEventRepo>,
+            pub client_b: VaultSpec<InMemKvLogEventRepo>,
+            pub vd: VaultSpec<InMemKvLogEventRepo>,
         }
     }
 }

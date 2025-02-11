@@ -1,5 +1,7 @@
 use crate::node::common::model::device::common::DeviceData;
-use crate::node::common::model::vault::vault::{VaultStatus, WasmVaultStatus};
+use crate::node::common::model::secret::SsLogData;
+use crate::node::common::model::user::common::{UserData, UserDataOutsider};
+use crate::node::common::model::vault::vault::VaultMember;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 pub mod crypto;
@@ -13,8 +15,22 @@ pub mod vault;
 #[serde(rename_all = "camelCase")]
 pub enum ApplicationState {
     Local { device: DeviceData },
-    Vault { vault: VaultStatus },
+    Vault(VaultFullInfo)
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum VaultFullInfo {
+    NotExists(UserData),
+    Outsider(UserDataOutsider),
+    Member {
+        member: VaultMember,
+        ss_claims: SsLogData,
+    },
+}
+
+#[wasm_bindgen]
+pub struct WasmVaultFullInfo(VaultFullInfo);
 
 #[wasm_bindgen]
 pub struct WasmApplicationState(ApplicationState);
@@ -25,10 +41,13 @@ impl WasmApplicationState {
         let is_local = self.is_local();
         let vault_not_exists = matches!(
             &self.0,
-            ApplicationState::Vault {
-                vault: VaultStatus::NotExists(_)
-            }
+            ApplicationState::Vault(VaultFullInfo::Outsider(_))
         );
+        todo!("Unclear what should be executed");
+        //old version:
+        //ApplicationState::Vault {
+        //  vault_status: VaultStatus::NotExists(_)
+        //}
 
         is_local || vault_not_exists
     }
@@ -49,11 +68,12 @@ impl WasmApplicationState {
         }
     }
 
-    pub fn as_vault(&self) -> WasmVaultStatus {
-        match &self.0 {
-            ApplicationState::Vault { vault } => WasmVaultStatus::from(vault.clone()),
-            _ => panic!("not a vault state"),
-        }
+    pub fn as_vault(&self) -> WasmVaultFullInfo {
+        let ApplicationState::Vault(full_info) = &self.0 else {
+            panic!("not a vault app state");
+        };
+
+        WasmVaultFullInfo(full_info.clone())
     }
 }
 

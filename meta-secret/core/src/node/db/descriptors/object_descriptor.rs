@@ -1,21 +1,34 @@
-use crate::node::db::descriptors::global_index_descriptor::GlobalIndexDescriptor;
-use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
-use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
+use crate::node::common::model::IdString;
+use crate::node::db::descriptors::creds::CredentialsDescriptor;
+use crate::node::db::descriptors::shared_secret_descriptor::{
+    SharedSecretDescriptor, SsDeviceLogDescriptor, SsLogDescriptor,
+};
+use crate::node::db::descriptors::vault_descriptor::{
+    DeviceLogDescriptor, VaultDescriptor, VaultLogDescriptor, VaultStatusDescriptor,
+};
+use crate::node::db::events::generic_log_event::GenericKvLogEventConvertible;
+use crate::node::db::events::object_id::Next;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ObjectDescriptor {
-    DbTail,
-    GlobalIndex(GlobalIndexDescriptor),
     /// Describes device and user credentials
-    CredsIndex,
+    Creds(CredentialsDescriptor),
 
+    DeviceLog(DeviceLogDescriptor),
+
+    VaultLog(VaultLogDescriptor),
     Vault(VaultDescriptor),
+    VaultStatus(VaultStatusDescriptor),
+
     /// Secret distribution (split, recover, recovery request and so on)
+    SsLog(SsLogDescriptor),
+    SsDeviceLog(SsDeviceLogDescriptor),
     SharedSecret(SharedSecretDescriptor),
 }
 
-pub trait ToObjectDescriptor {
+pub trait ToObjectDescriptor: Clone {
+    type EventType: GenericKvLogEventConvertible;
     fn to_obj_desc(self) -> ObjectDescriptor;
 }
 
@@ -29,24 +42,58 @@ pub trait ObjectName {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ObjectDescriptorFqdn {
+pub struct ObjectFqdn {
     pub obj_type: String,
     pub obj_instance: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ObjectDescriptorId {
-    pub fqdn: ObjectDescriptorFqdn,
-    /// primary key of an object in the database in terms of keys in a table in relational databases.
-    /// In our case id is just a counter
-    pub id: usize,
+pub enum ChainId {
+    Genesis(GenesisId),
+    Seq(SeqId),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenesisId;
+
+impl Next<SeqId> for GenesisId {
+    fn next(self) -> SeqId {
+        let curr = 0;
+        SeqId {
+            curr: curr + 1,
+            prev: curr,
+        }
+    }
+}
+
+/// Sequential Id
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeqId {
+    curr: usize,
+    prev: usize,
+}
+
+impl SeqId {
+    pub fn first() -> Self {
+        GenesisId.next()
+    }
+}
+
+impl Next<SeqId> for SeqId {
+    fn next(mut self) -> SeqId {
+        self.prev += 1;
+        self.curr += 1;
+        self
+    }
 }
 
 impl ObjectDescriptor {
     /// Fully Qualified Domain Name - unique domain name of an object
-    pub fn fqdn(&self) -> ObjectDescriptorFqdn {
-        ObjectDescriptorFqdn {
+    pub fn fqdn(&self) -> ObjectFqdn {
+        ObjectFqdn {
             obj_type: self.object_type(),
             obj_instance: self.object_name(),
         }
@@ -56,11 +103,16 @@ impl ObjectDescriptor {
 impl ObjectName for ObjectDescriptor {
     fn object_name(&self) -> String {
         match self {
-            ObjectDescriptor::DbTail => String::from("db_tail"),
-            ObjectDescriptor::SharedSecret(s_s_descriptor) => s_s_descriptor.as_id_str(),
-            ObjectDescriptor::GlobalIndex(desc) => desc.object_name(),
-            ObjectDescriptor::CredsIndex => String::from("index"),
+            ObjectDescriptor::Creds(desc) => desc.object_name(),
+
             ObjectDescriptor::Vault(vault_desc) => vault_desc.object_name(),
+            ObjectDescriptor::DeviceLog(device_log) => device_log.object_name(),
+            ObjectDescriptor::VaultLog(vault_log) => vault_log.object_name(),
+            ObjectDescriptor::VaultStatus(membership) => membership.object_name(),
+
+            ObjectDescriptor::SharedSecret(s_s_descriptor) => s_s_descriptor.clone().id_str(),
+            ObjectDescriptor::SsLog(desc) => desc.clone().id_str(),
+            ObjectDescriptor::SsDeviceLog(desc) => desc.clone().id_str(),
         }
     }
 }
@@ -68,36 +120,14 @@ impl ObjectName for ObjectDescriptor {
 impl ObjectType for ObjectDescriptor {
     fn object_type(&self) -> String {
         match self {
-            ObjectDescriptor::GlobalIndex(gi_desc) => gi_desc.object_type(),
             ObjectDescriptor::Vault(vault_desc) => vault_desc.object_type(),
             ObjectDescriptor::SharedSecret(ss_desc) => ss_desc.object_type(),
-            ObjectDescriptor::CredsIndex { .. } => String::from("DeviceCreds"),
-            ObjectDescriptor::DbTail { .. } => String::from("DbTail"),
+            ObjectDescriptor::Creds(creds) => creds.object_type(),
+            ObjectDescriptor::DeviceLog(device_log) => device_log.object_type(),
+            ObjectDescriptor::VaultLog(vault_log) => vault_log.object_type(),
+            ObjectDescriptor::VaultStatus(mem) => mem.object_type(),
+            ObjectDescriptor::SsLog(desc) => desc.object_type(),
+            ObjectDescriptor::SsDeviceLog(desc) => desc.object_type(),
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use serde_json::json;
-
-    #[test]
-    fn test_db_tail() -> anyhow::Result<()> {
-        use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
-
-        let db_tail_json = {
-            let db_tail = ObjectDescriptor::DbTail;
-            serde_json::to_value(db_tail.fqdn())?
-        };
-
-        let expected_id = json!({
-            "objType": "DbTail",
-            "objInstance": "db_tail"
-        });
-
-        println!("db_tail_json: {}", db_tail_json);
-        assert_eq!(expected_id, db_tail_json);
-
-        Ok(())
     }
 }

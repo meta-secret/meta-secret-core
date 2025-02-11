@@ -7,7 +7,6 @@ use crate::node::common::model::secret::{
 };
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::vault::VaultMember;
-use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
 use crate::node::db::events::generic_log_event::ToGenericEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
@@ -135,10 +134,7 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
                 }
             };
 
-            let split_key = {
-                let split_obj_desc = SharedSecretDescriptor::SsDistribution(dist_id).to_obj_desc();
-                KvKey::unit(split_obj_desc)
-            };
+            let split_key = KvKey::from(SharedSecretDescriptor::SsDistribution(dist_id));
 
             let ss_obj = SharedSecretObject::SsDistribution(KvLogEvent {
                 key: split_key.clone(),

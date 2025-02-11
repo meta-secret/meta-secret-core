@@ -1,7 +1,7 @@
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
 use crate::node::common::model::vault::vault::VaultName;
-use wasm_bindgen::prelude::wasm_bindgen;
 use derive_more::From;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -11,7 +11,7 @@ pub struct UserId {
     pub device_id: DeviceId,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(getter_with_clone)]
 pub struct UserData {
@@ -32,7 +32,7 @@ impl UserData {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum UserMembership {
     Outsider(UserDataOutsider),
@@ -77,7 +77,7 @@ impl From<UserMembership> for WasmUserMembership {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, From, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(getter_with_clone)]
 pub struct UserDataMember {
@@ -90,7 +90,15 @@ impl UserDataMember {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+impl From<UserDataOutsider> for UserDataMember {
+    fn from(outsider: UserDataOutsider) -> Self {
+        UserDataMember {
+            user_data: outsider.user_data,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(getter_with_clone)]
 pub struct UserDataOutsider {
@@ -111,7 +119,7 @@ impl UserDataOutsider {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen]
 pub enum UserDataOutsiderStatus {

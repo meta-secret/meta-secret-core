@@ -1,6 +1,5 @@
 use crate::crypto::encoding::base64::Base64Text;
 use crate::node::common::model::IdString;
-use crate::node::db::descriptors::object_descriptor::{ObjectDescriptorFqdn, ObjectDescriptorId};
 use rand::{distributions::Alphanumeric, Rng};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -24,11 +23,11 @@ pub fn generate_hash() -> String {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(getter_with_clone)]
-pub struct Id52bit {
+pub struct Id48bit {
     pub text: String,
 }
 
-impl Id52bit {
+impl Id48bit {
     pub fn generate() -> Self {
         let mut rng = rand::thread_rng();
 
@@ -56,7 +55,7 @@ impl Id52bit {
     }
 }
 
-impl IdString for Id52bit {
+impl IdString for Id48bit {
     fn id_str(self) -> String {
         self.text
     }
@@ -119,27 +118,5 @@ impl From<String> for UuidUrlEnc {
 impl IdString for UuidUrlEnc {
     fn id_str(self) -> String {
         self.text.base64_str()
-    }
-}
-
-pub trait NextId {
-    fn next_id(self) -> ObjectDescriptorId;
-}
-
-impl NextId for ObjectDescriptorFqdn {
-    fn next_id(self) -> ObjectDescriptorId {
-        ObjectDescriptorId {
-            fqdn: self.clone(),
-            id: 0,
-        }
-    }
-}
-
-impl NextId for ObjectDescriptorId {
-    fn next_id(self) -> ObjectDescriptorId {
-        ObjectDescriptorId {
-            id: self.id + 1,
-            ..self
-        }
     }
 }
