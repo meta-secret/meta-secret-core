@@ -1,20 +1,18 @@
 const KEY_SIZE_32_BYTES: usize = 32;
 
 pub type Array256Bit = [u8; KEY_SIZE_32_BYTES];
-pub type Base64String = String;
 
 /// Base64 encoding/decoding
 pub mod base64 {
     extern crate base64;
-
-    use crate::crypto::encoding::Base64String;
+    
     use std::fmt::Display;
     use wasm_bindgen::prelude::wasm_bindgen;
 
     #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     #[wasm_bindgen(getter_with_clone)]
-    pub struct Base64Text(Base64String);
+    pub struct Base64Text(String);
 
     impl Display for Base64Text {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -23,7 +21,7 @@ pub mod base64 {
     }
 
     impl Base64Text {
-        pub fn base64_str(&self) -> Base64String {
+        pub fn base64_str(&self) -> String {
             self.0.clone()
         }
     }

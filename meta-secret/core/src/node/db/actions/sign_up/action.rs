@@ -48,7 +48,7 @@ mod test {
         assert_eq!(events.len(), 2);
 
         for event in events {
-            if let GenericKvLogEvent::VaultLog(obj) = event {
+            if let GenericKvLogEvent::VaultLog(_obj) = event {
                 //todo!("Verify events");
             }
         }

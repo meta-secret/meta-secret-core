@@ -11,7 +11,7 @@ use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::common::model::device::common::DeviceName;
 use crate::node::common::model::user::common::UserData;
 use crate::node::common::model::vault::vault::{VaultMember, VaultStatus};
-use crate::node::common::model::{ApplicationState, VaultFullInfo};
+use crate::node::common::model::{ApplicationState, UserMemberFullInfo, VaultFullInfo};
 use crate::node::db::actions::recover::RecoveryAction;
 use crate::node::db::actions::sign_up::claim::SignUpClaim;
 use crate::node::db::events::local_event::CredentialsObject;
@@ -44,8 +44,11 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
             let client_requests = self.data_transfer.dt.service_drain();
             for request in client_requests {
                 let p_obj = self.sync_gateway.p_obj.clone();
-                self.handle_client_request(p_obj, &mut service_state, request)
+                let new_app_state = self
+                    .handle_client_request(p_obj, service_state.app_state, request)
                     .await?;
+                service_state.app_state = new_app_state;
+                self.state_provider.push(&service_state.app_state).await;
             }
 
             //handle client <-> server synchronization
@@ -54,22 +57,23 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         }
     }
 
-    async fn handle_client_request(
+    pub async fn handle_client_request(
         &self,
         p_obj: Arc<PersistentObject<Repo>>,
-        service_state: &mut ServiceState<ApplicationState>,
+        app_state: ApplicationState,
         request: GenericAppStateRequest,
-    ) -> Result<()> {
+    ) -> Result<ApplicationState> {
         info!(
             "Action execution. Request {:?}, state: {:?}",
-            &request, &service_state.app_state
+            &request, &app_state
         );
 
         self.sync_gateway.sync().await?;
+        self.sync_gateway.sync().await?;
 
         match request {
-            GenericAppStateRequest::SignUp(vault_name) => match &service_state.app_state {
-                ApplicationState::Local { device } => {
+            GenericAppStateRequest::SignUp(vault_name) => match &app_state {
+                ApplicationState::Local(device) => {
                     let user_data = UserData {
                         vault_name,
                         device: device.clone(),
@@ -81,11 +85,15 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                     sign_up_claim.sign_up(user_data.clone()).await?;
                     self.sync_gateway.sync().await?;
                 }
-                ApplicationState::Vault(VaultFullInfo::Member { member, .. }) => {
+                ApplicationState::Vault(VaultFullInfo::Member(UserMemberFullInfo { member, .. })) => {
                     error!("You are already a vault member: {:?}", member.vault);
                 }
-                ApplicationState::Vault(VaultFullInfo::NotExists(_)) => {}
-                ApplicationState::Vault(VaultFullInfo::Outsider(_)) => {}
+                ApplicationState::Vault(VaultFullInfo::NotExists(_)) => {
+                    todo!("!!!")
+                }
+                ApplicationState::Vault(VaultFullInfo::Outsider(_)) => {
+                    todo!("!!!")
+                }
             },
 
             GenericAppStateRequest::ClusterDistribution(request) => {
@@ -140,13 +148,13 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                 recovery_action.recovery_request(meta_pass_id).await?;
             }
         }
-        
+
+        self.sync_gateway.sync().await?;
+        self.sync_gateway.sync().await?;
+
         //Update app state
         let app_state = self.get_app_state().await?;
-        service_state.app_state = app_state;
-        
-        self.state_provider.push(&service_state.app_state).await;
-        Ok(())
+        Ok(app_state)
     }
 
     async fn build_service_state(&self) -> Result<ServiceState<ApplicationState>> {
@@ -168,14 +176,12 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                 let device_creds = creds_repo
                     .get_or_generate_device_creds(DeviceName::client())
                     .await?;
-                ApplicationState::Local {
-                    device: device_creds.device,
-                }
+                ApplicationState::Local(device_creds.device)
             }
             Some(creds) => match creds {
-                CredentialsObject::Device(device_creds_event) => ApplicationState::Local {
-                    device: device_creds_event.value.device,
-                },
+                CredentialsObject::Device(device_creds_event) => ApplicationState::Local(
+                    device_creds_event.value.device,
+                ),
                 CredentialsObject::DefaultUser(user_creds) => {
                     let p_vault = PersistentVault::from(self.p_obj());
                     let vault_status = p_vault.find(user_creds.value.user()).await?;
@@ -191,15 +197,17 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                             let vault = p_vault.get_vault(&member_user.user_data).await?;
 
                             let p_ss = PersistentSharedSecret::from(self.p_obj());
-                            let ss_claims = p_ss.get_ss_log_obj(user_creds.value.vault_name).await?;
+                            let ss_claims =
+                                p_ss.get_ss_log_obj(user_creds.value.vault_name).await?;
 
-                            ApplicationState::Vault(VaultFullInfo::Member {
+                            let user_full_info = UserMemberFullInfo {
                                 member: VaultMember {
                                     member: member_user,
-                                    vault: vault.to_data()
+                                    vault: vault.to_data(),
                                 },
                                 ss_claims,
-                            })
+                            };
+                            ApplicationState::Vault(VaultFullInfo::Member(user_full_info))
                         }
                     }
                 }

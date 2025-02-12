@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::user::common::{
     UserData, UserDataMember, UserDataOutsider, UserId, UserMembership,
 };
@@ -9,10 +8,7 @@ use crate::node::db::descriptors::vault_descriptor::DeviceLogDescriptor;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
-use crate::node::db::events::vault::vault_log_event::{
-    AddMetaPassEvent, CreateVaultEvent, JoinClusterEvent, VaultActionEvent, VaultActionInitEvent,
-    VaultActionRequestEvent, VaultActionUpdateEvent,
-};
+use crate::node::db::events::vault::vault_log_event::{AddMetaPassEvent, CreateVaultEvent, JoinClusterEvent, VaultActionEvent, VaultActionInitEvent, VaultActionRequestEvent, VaultActionUpdateEvent, VaultLogObject};
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use anyhow::Result;
@@ -42,7 +38,7 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
 
         let member_user = member.user();
 
-        let free_key = self.get_device_log_key(member_user).await?;
+        let free_key = self.get_device_log_free_key(member_user).await?;
         let update = VaultActionUpdateEvent::UpdateMembership {
             request: join_request,
             sender: member,
@@ -69,7 +65,7 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
             });
             let upd = VaultActionEvent::Init(create_action);
             DeviceLogObject(KvLogEvent {
-                key: self.get_device_log_key(user).await?,
+                key: self.get_device_log_free_key(user).await?,
                 value: upd,
             })
         };
@@ -81,22 +77,18 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
     #[instrument(skip_all)]
     pub async fn save_add_meta_pass_request(
         &self,
-        sender: UserDataMember,
-        meta_pass_id: MetaPasswordId,
+        meta_pass_event: AddMetaPassEvent,
     ) -> Result<()> {
-        let meta_pass_request = {
-            let add_meta_pass = VaultActionUpdateEvent::AddMetaPass(AddMetaPassEvent {
-                sender: sender.clone(),
-                meta_pass_id,
-            });
+        let meta_pass = {
+            let add_meta_pass = VaultActionRequestEvent::AddMetaPass(meta_pass_event.clone());
 
             DeviceLogObject(KvLogEvent {
-                key: self.get_device_log_key(sender.user()).await?,
-                value: VaultActionEvent::Update(add_meta_pass),
+                key: self.get_device_log_free_key(meta_pass_event.sender.user()).await?,
+                value: VaultActionEvent::Request(add_meta_pass),
             })
         };
 
-        self.p_obj.repo.save(meta_pass_request).await?;
+        self.p_obj.repo.save(meta_pass).await?;
 
         Ok(())
     }
@@ -105,7 +97,7 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
     pub async fn save_join_request(&self, user: &UserData) -> Result<()> {
         let request = VaultActionRequestEvent::JoinCluster(JoinClusterEvent::from(user.clone()));
         let join_request = DeviceLogObject(KvLogEvent {
-            key: self.get_device_log_key(user).await?,
+            key: self.get_device_log_free_key(user).await?,
             value: VaultActionEvent::Request(request),
         });
         self.p_obj.repo.save(join_request).await?;
@@ -113,7 +105,7 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
         Ok(())
     }
 
-    async fn get_device_log_key(&self, user: &UserData) -> Result<KvKey> {
+    async fn get_device_log_free_key(&self, user: &UserData) -> Result<KvKey> {
         let obj_desc = DeviceLogDescriptor::from(user.user_id());
 
         let free_id = self

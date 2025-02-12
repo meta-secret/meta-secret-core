@@ -8,6 +8,7 @@ use crate::node::common::model::IdString;
 use rand::distributions::Alphanumeric;
 use rand::Rng;
 use wasm_bindgen::prelude::wasm_bindgen;
+use crate::crypto::utils::Id48bit;
 
 /// `ClaimId` is a wrapper around a `String` that serves as a unique identifier
 /// for claims within the system. It is used to track and manage claims associated
@@ -16,6 +17,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 /// throughout the secret management process to maintain integrity and traceability.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(transparent)]
 #[wasm_bindgen(getter_with_clone)]
 pub struct ClaimId(pub String);
 
@@ -62,7 +64,8 @@ impl IdString for SsDistributionClaimDbId {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SsDistributionClaim {
-    pub id: SsDistributionClaimId,
+    pub id: Id48bit,
+    pub dist_claim_id: SsDistributionClaimId,
 
     pub vault_name: VaultName,
     pub sender: DeviceId,
@@ -76,7 +79,7 @@ impl SsDistributionClaim {
         let mut ids = Vec::with_capacity(self.receivers.len());
         for receiver in self.receivers.iter() {
             ids.push(SsDistributionId {
-                pass_id: self.id.pass_id.clone(),
+                pass_id: self.dist_claim_id.pass_id.clone(),
                 receiver: receiver.clone(),
             });
         }
@@ -88,9 +91,9 @@ impl SsDistributionClaim {
         let mut ids = Vec::with_capacity(self.receivers.len());
         for receiver in self.receivers.iter() {
             ids.push(SsDistributionClaimDbId {
-                claim_id: self.id.clone(),
+                claim_id: self.dist_claim_id.clone(),
                 distribution_id: SsDistributionId {
-                    pass_id: self.id.pass_id.clone(),
+                    pass_id: self.dist_claim_id.pass_id.clone(),
                     receiver: receiver.clone(),
                 },
             });
@@ -142,7 +145,7 @@ pub struct SecretDistributionData {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SsLogData {
-    pub claims: HashMap<SsDistributionClaimId, SsDistributionClaim>,
+    pub claims: HashMap<Id48bit, SsDistributionClaim>,
 }
 
 impl SsLogData {

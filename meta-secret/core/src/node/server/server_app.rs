@@ -140,220 +140,261 @@ pub mod fixture {
 
 #[cfg(test)]
 mod test {
-    use crate::meta_tests::fixture_util::fixture::states::ExtendedState;
+    use crate::meta_tests::fixture_util::fixture::states::{EmptyState, ExtendedState};
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::meta_tests::spec::test_spec::TestSpec;
     use crate::node::app::orchestrator::MetaOrchestrator;
     use crate::node::common::meta_tracing::{client_span, server_span, vd_span};
-    use crate::node::common::model::user::common::UserData;
-    use crate::node::common::model::vault::vault::VaultStatus;
+    use crate::node::common::model::user::common::{
+        UserData, UserDataOutsider, UserDataOutsiderStatus, UserMembership,
+    };
+    use crate::node::common::model::vault::vault::{VaultName, VaultStatus};
     use crate::node::db::actions::sign_up::claim::spec::SignUpClaimSpec;
     use crate::node::db::actions::sign_up::claim::test_action::SignUpClaimTestAction;
+    use std::sync::Arc;
 
+    use crate::crypto::keys::{KeyManager, OpenBox, SecretBox};
+    use crate::crypto::utils::U64IdUrlEnc;
+    use crate::node::app::meta_app::messaging::{
+        ClusterDistributionRequest, GenericAppStateRequest,
+    };
+    use crate::node::app::sync::sync_gateway::SyncGateway;
+    use crate::node::app::sync::sync_protocol::EmbeddedSyncProtocol;
+    use crate::node::common::model::device::common::{DeviceData, DeviceId, DeviceName};
+    use crate::node::common::model::meta_pass::MetaPasswordId;
+    use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
+    use crate::node::common::model::vault::vault_data::VaultData;
+    use crate::node::common::model::{ApplicationState, VaultFullInfo};
     use crate::node::db::descriptors::shared_secret_descriptor::SsDeviceLogDescriptor;
+    use crate::node::db::in_mem_db::InMemKvLogEventRepo;
+    use crate::node::db::objects::persistent_object::PersistentObject;
     use crate::node::db::objects::persistent_vault::PersistentVault;
     use crate::node::db::repo::persistent_credentials::spec::PersistentCredentialsSpec;
     use anyhow::bail;
+    use anyhow::Result;
     use tracing::{info, Instrument};
 
-    #[tokio::test]
-    #[ignore]
-    async fn test_sign_up_one_device() -> anyhow::Result<()> {
-        //setup_tracing()?;
+    struct ServerAppSignUpSpec {
+        registry: FixtureRegistry<ExtendedState>,
+        server_creds_spec: PersistentCredentialsSpec<InMemKvLogEventRepo>,
+        vd_p_obj: Arc<PersistentObject<InMemKvLogEventRepo>>,
+        vd_gw: Arc<SyncGateway<InMemKvLogEventRepo, EmbeddedSyncProtocol>>,
+        vd_user: UserData,
+        vd_claim_spec: SignUpClaimSpec<InMemKvLogEventRepo>,
+        client_gw: Arc<SyncGateway<InMemKvLogEventRepo, EmbeddedSyncProtocol>>,
+        client_p_obj: Arc<PersistentObject<InMemKvLogEventRepo>>,
+        vd_orchestrator: MetaOrchestrator<InMemKvLogEventRepo>,
+        vd_p_vault: PersistentVault<InMemKvLogEventRepo>,
+    }
 
-        let registry = FixtureRegistry::extended().await?;
+    impl ServerAppSignUpSpec {
+        async fn build() -> Result<Self> {
+            let registry = FixtureRegistry::extended().await?;
+            let empty_state = &registry.state.base.empty;
+            let server_p_obj = empty_state.p_obj.server.clone();
+            let server_creds_spec = PersistentCredentialsSpec::from(server_p_obj.clone());
+            let vd_p_obj = empty_state.p_obj.vd.clone();
+            let user_creds = &empty_state.user_creds;
+            let vd_gw = registry
+                .state
+                .meta_client_service
+                .sync_gateway
+                .vd_gw
+                .clone();
+            let vd_user = empty_state.user_creds.vd.user();
+            let vd_claim_spec = SignUpClaimSpec {
+                p_obj: vd_p_obj.clone(),
+                user: vd_user.clone(),
+            };
 
-        init_server(&registry).await?;
-        let server_creds_spec = PersistentCredentialsSpec {
-            p_obj: registry.state.base.empty.p_obj.server.clone(),
-        };
-        server_creds_spec.verify_device_creds().await?;
+            let client_gw = registry
+                .state
+                .meta_client_service
+                .sync_gateway
+                .client_gw
+                .clone();
+            let client_p_obj = empty_state.p_obj.client.clone();
+            let vd_orchestrator = MetaOrchestrator {
+                p_obj: empty_state.p_obj.vd.clone(),
+                user_creds: user_creds.vd.clone(),
+            };
+            let vd_p_vault = PersistentVault {
+                p_obj: empty_state.p_obj.vd.clone(),
+            };
 
-        info!("Executing 'sign up' claim");
-        let client_p_obj = registry.state.base.empty.p_obj.client.clone();
-        let client_user_creds = &registry.state.base.empty.user_creds;
-        SignUpClaimTestAction::sign_up(client_p_obj.clone(), &client_user_creds.client)
-            .instrument(client_span())
-            .await?;
+            Ok(Self {
+                registry,
+                server_creds_spec,
+                vd_p_obj,
+                vd_gw,
+                vd_user,
+                vd_claim_spec,
+                client_gw,
+                client_p_obj,
+                vd_orchestrator,
+                vd_p_vault,
+            })
+        }
 
-        sync_client(&registry).await?;
-        sync_client(&registry).await?;
+        fn empty_state(&self) -> &EmptyState {
+            &self.registry.state.base.empty
+        }
 
-        info!("Verify SignUpClaim");
-        let client_user = registry.state.base.empty.user_creds.client.user();
-        let client_claim_spec = SignUpClaimSpec {
-            p_obj: client_p_obj.clone(),
-            user: client_user.clone(),
-        };
+        fn user_creds(&self) -> &UserCredentialsFixture {
+            &self.empty_state().user_creds
+        }
 
-        client_claim_spec.verify().instrument(client_span()).await?;
+        async fn sign_up_and_join_for_two_devices(&self) -> Result<()> {
+            //setup_tracing()?;
+            let vd_gw = self.vd_gw.clone();
+            let client_gw = self.client_gw.clone();
 
-        let client_db = client_p_obj.repo.get_db().await;
-        assert_eq!(17, client_db.len());
+            self.init_server().await?;
+            self.server_creds_spec.verify_device_creds().await?;
 
-        registry
-            .state
-            .base
-            .spec
-            .client
-            .verify_user_is_a_member()
-            .await?;
+            info!("Executing 'sign up' claim");
+            vd_gw.sync().await?;
+            // second sync to get new messages created on server
+            vd_gw.sync().await?;
 
-        sync_client(&registry).await?;
-        server_check(&registry, client_user).await?;
+            SignUpClaimTestAction::sign_up(self.vd_p_obj.clone(), &self.user_creds().vd)
+                .instrument(vd_span())
+                .await?;
 
-        Ok(())
+            vd_gw.sync().await?;
+            vd_gw.sync().await?;
+
+            info!("Verify SignUpClaim");
+            self.vd_claim_spec
+                .verify()
+                .instrument(client_span())
+                .await?;
+
+            let vd_db = self.vd_p_obj.repo.get_db().await;
+            assert_eq!(7, vd_db.len());
+
+            self.registry
+                .state
+                .base
+                .spec
+                .vd
+                .verify_user_is_a_member()
+                .await?;
+
+            vd_gw.sync().await?;
+            self.server_check(self.vd_user.clone()).await?;
+
+            client_gw.sync().await?;
+            client_gw.sync().await?;
+
+            SignUpClaimTestAction::sign_up(self.client_p_obj.clone(), &self.user_creds().client)
+                .instrument(client_span())
+                .await?;
+
+            client_gw.sync().await?;
+            client_gw.sync().await?;
+
+            vd_gw.sync().await?;
+            vd_gw.sync().await?;
+
+            self.vd_orchestrator.orchestrate().await?;
+
+            vd_gw.sync().await?;
+            vd_gw.sync().await?;
+
+            //accept join request by vd
+            let vault_status = self
+                .vd_p_vault
+                .find(self.empty_state().user_creds.vd.user())
+                .await?;
+
+            let VaultStatus::Member(member) = vault_status else {
+                bail!("Virtual device is not a vault member");
+            };
+
+            let vd_vault_obj = self.vd_p_vault.get_vault(&member.user_data).await?;
+
+            assert_eq!(2, vd_vault_obj.to_data().users.len());
+
+            Ok(())
+        }
+
+        async fn server_check(&self, client_user: UserData) -> Result<()> {
+            let server_app = self.registry.state.server_app.server_app.clone();
+            let server_ss_device_log_events = {
+                let ss_desc = SsDeviceLogDescriptor::from(client_user.device.device_id.clone());
+
+                server_app
+                    .p_obj
+                    .get_object_events_from_beginning(ss_desc)
+                    .instrument(server_span())
+                    .await?
+            };
+            info!(
+                "SERVER SS device log EVENTS: {:?}",
+                server_ss_device_log_events.len()
+            );
+
+            let server_db = server_app.p_obj.repo.get_db().await;
+
+            assert_eq!(6, server_db.len());
+
+            let server_claim_spec = SignUpClaimSpec {
+                p_obj: server_app.p_obj.clone(),
+                user: client_user.clone(),
+            };
+
+            server_claim_spec.verify().await?;
+            Ok(())
+        }
+
+        async fn init_server(&self) -> Result<()> {
+            let server_app = self.registry.state.server_app.server_app.clone();
+            server_app.init().await?;
+            Ok(())
+        }
     }
 
     #[tokio::test]
-    async fn test_sign_up_and_join_two_devices() -> anyhow::Result<()> {
-        //setup_tracing()?;
-
-        let registry = FixtureRegistry::extended().await?;
-
-        init_server(&registry).await?;
-        let empty_state = &registry.state.base.empty;
-
-        let server_creds_spec = PersistentCredentialsSpec {
-            p_obj: empty_state.p_obj.server.clone(),
-        };
-        server_creds_spec.verify_device_creds().await?;
-
-        info!("Executing 'sign up' claim");
-        let vd_p_obj = empty_state.p_obj.vd.clone();
-        let user_creds = &empty_state.user_creds;
-
-        let vd_gw = registry
-            .state
-            .meta_client_service
-            .sync_gateway
-            .vd_gw
-            .clone();
-        vd_gw.sync().await?;
-        // second sync to get new messages created on server
-        vd_gw.sync().await?;
-
-        SignUpClaimTestAction::sign_up(vd_p_obj.clone(), &user_creds.vd)
-            .instrument(vd_span())
-            .await?;
-
-        vd_gw.sync().await?;
-        vd_gw.sync().await?;
-
-        info!("Verify SignUpClaim");
-        let vd_user = empty_state.user_creds.vd.user();
-        let vd_claim_spec = SignUpClaimSpec {
-            p_obj: vd_p_obj.clone(),
-            user: vd_user.clone(),
-        };
-        vd_claim_spec.verify().instrument(client_span()).await?;
-
-        let vd_db = vd_p_obj.repo.get_db().await;
-        assert_eq!(7, vd_db.len());
-
-        registry
-            .state
-            .base
-            .spec
-            .vd
-            .verify_user_is_a_member()
-            .await?;
-
-        vd_gw.sync().await?;
-        server_check(&registry, vd_user).await?;
-
-        let client_gw = registry
-            .state
-            .meta_client_service
-            .sync_gateway
-            .client_gw
-            .clone();
-        client_gw.sync().await?;
-        client_gw.sync().await?;
-
-        let client_p_obj = empty_state.p_obj.client.clone();
-        SignUpClaimTestAction::sign_up(client_p_obj.clone(), &user_creds.client)
-            .instrument(client_span())
-            .await?;
-
-        client_gw.sync().await?;
-        client_gw.sync().await?;
-
-        vd_gw.sync().await?;
-        vd_gw.sync().await?;
-
-        let orchestrator = MetaOrchestrator {
-            p_obj: empty_state.p_obj.vd.clone(),
-            user_creds: user_creds.vd.clone(),
-        };
-        orchestrator.orchestrate().await?;
-
-        vd_gw.sync().await?;
-        vd_gw.sync().await?;
-
-        //accept join request by vd
-        let vd_p_vault = PersistentVault {
-            p_obj: empty_state.p_obj.vd.clone(),
-        };
-        let vault_status = vd_p_vault.find(empty_state.user_creds.vd.user()).await?;
-
-        let VaultStatus::Member(member) = vault_status else {
-            bail!("Virtual device is not a vault member");
-        };
-
-        let vd_vault_obj = vd_p_vault.get_vault(&member.user_data).await?;
-
-        assert_eq!(2, vd_vault_obj.to_data().users.len());
-
+    async fn test_sign_up_and_join_two_devices() -> Result<()> {
+        let spec = ServerAppSignUpSpec::build().await?;
+        spec.sign_up_and_join_for_two_devices().await?;
         Ok(())
     }
 
-    async fn server_check(
-        registry: &FixtureRegistry<ExtendedState>,
-        client_user: UserData,
-    ) -> anyhow::Result<()> {
-        let server_app = registry.state.server_app.server_app.clone();
-        let server_ss_device_log_events = {
-            let ss_desc = SsDeviceLogDescriptor::from(client_user.device.device_id.clone());
+    #[tokio::test]
+    async fn test_meta_pass() -> Result<()> {
+        let spec = ServerAppSignUpSpec::build().await?;
+        spec.sign_up_and_join_for_two_devices().await?;
 
-            server_app
-                .p_obj
-                .get_object_events_from_beginning(ss_desc)
-                .instrument(server_span())
-                .await?
+        let client_service = spec.registry.state.meta_client_service.client;
+
+        let app_state = {
+            let client_device = spec.registry.state.base.empty.device_creds.client.device;
+            ApplicationState::Local(client_device)
         };
-        info!(
-            "SERVER SS device log EVENTS: {:?}",
-            server_ss_device_log_events.len()
-        );
-
-        let server_db = server_app.p_obj.repo.get_db().await;
-
-        assert_eq!(6, server_db.len());
-
-        let server_claim_spec = SignUpClaimSpec {
-            p_obj: server_app.p_obj.clone(),
-            user: client_user.clone(),
+        let request = {
+            let dist_request = ClusterDistributionRequest {
+                pass_id: MetaPasswordId::build("test_pass"),
+                pass: "2bee|~".to_string(),
+            };
+            GenericAppStateRequest::ClusterDistribution(dist_request)
         };
 
-        server_claim_spec.verify().await?;
-        Ok(())
-    }
-
-    async fn sync_client(registry: &FixtureRegistry<ExtendedState>) -> anyhow::Result<()> {
-        registry
-            .state
-            .meta_client_service
-            .sync_gateway
-            .client_gw
-            .sync()
+        let new_app_state = client_service
+            .handle_client_request(spec.client_p_obj, app_state, request)
             .await?;
-        Ok(())
-    }
+        //println!("{:?}", new_app_state);
 
-    async fn init_server(registry: &FixtureRegistry<ExtendedState>) -> anyhow::Result<()> {
-        let server_app = registry.state.server_app.server_app.clone();
-        server_app.init().await?;
+        let ApplicationState::Vault(VaultFullInfo::Member(member)) = &new_app_state else {
+            bail!("Has to be Vault");
+        };
+
+        assert_eq!(1, member.member.vault.secrets.len());
+
+        let new_app_state_json = serde_json::to_string_pretty(&new_app_state)?;
+        println!("{}", new_app_state_json);
+
         Ok(())
     }
 }

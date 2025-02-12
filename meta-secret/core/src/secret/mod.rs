@@ -11,6 +11,7 @@ use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescript
 use crate::node::db::events::generic_log_event::ToGenericEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::shared_secret_event::SharedSecretObject;
+use crate::node::db::events::vault::vault_log_event::AddMetaPassEvent;
 use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -110,8 +111,12 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
         let p_device_log = PersistentDeviceLog {
             p_obj: self.p_obj.clone(),
         };
+        let add_meta_pass = AddMetaPassEvent {
+            sender: self.vault_member.member,
+            meta_pass_id: claim.dist_claim_id.pass_id.clone(),
+        };
         p_device_log
-            .save_add_meta_pass_request(self.vault_member.member, claim.id.pass_id.clone())
+            .save_add_meta_pass_request(add_meta_pass)
             .await?;
 
         let p_ss = PersistentSharedSecret {
@@ -122,14 +127,14 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
         for secret_share in encrypted_shares {
             let distribution_share = SecretDistributionData {
                 vault_name: vault_name.clone(),
-                claim_id: SsDistributionClaimId::from(claim.id.pass_id.clone()),
+                claim_id: SsDistributionClaimId::from(claim.dist_claim_id.pass_id.clone()),
                 secret_message: secret_share.clone(),
             };
 
             let dist_id = {
                 let receiver = secret_share.cipher_text().channel.receiver().to_device_id();
                 SsDistributionId {
-                    pass_id: claim.id.pass_id.clone(),
+                    pass_id: claim.dist_claim_id.pass_id.clone(),
                     receiver,
                 }
             };

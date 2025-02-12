@@ -22,6 +22,7 @@ pub fn generate_hash() -> String {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(transparent)]
 #[wasm_bindgen(getter_with_clone)]
 pub struct Id48bit {
     pub text: String,
@@ -63,6 +64,7 @@ impl IdString for Id48bit {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(transparent)]
 #[wasm_bindgen(getter_with_clone)]
 pub struct U64IdUrlEnc {
     pub text: Base64Text,

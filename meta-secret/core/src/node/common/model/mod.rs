@@ -14,7 +14,7 @@ pub mod vault;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ApplicationState {
-    Local { device: DeviceData },
+    Local(DeviceData),
     Vault(VaultFullInfo)
 }
 
@@ -23,10 +23,14 @@ pub enum ApplicationState {
 pub enum VaultFullInfo {
     NotExists(UserData),
     Outsider(UserDataOutsider),
-    Member {
-        member: VaultMember,
-        ss_claims: SsLogData,
-    },
+    Member(UserMemberFullInfo)
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserMemberFullInfo {
+    pub member: VaultMember,
+    pub ss_claims: SsLogData,
 }
 
 #[wasm_bindgen]
@@ -61,7 +65,7 @@ impl WasmApplicationState {
     }
 
     pub fn as_local(&self) -> DeviceData {
-        if let ApplicationState::Local { device } = &self.0 {
+        if let ApplicationState::Local(device) = &self.0 {
             device.clone()
         } else {
             panic!("not a local app state")
@@ -94,7 +98,7 @@ mod test {
 
     #[test]
     fn meta_password_id() {
-        let pass_id = MetaPasswordId::build("test".to_string(), "salt".to_string());
+        let pass_id = MetaPasswordId::build("test");
         assert_eq!(pass_id.id.id_str(), "CHKANX39xaM".to_string())
     }
 }

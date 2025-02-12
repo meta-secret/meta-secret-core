@@ -1,4 +1,5 @@
 use std::fmt::Display;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::crypto::keys::OpenBox;
@@ -8,6 +9,7 @@ use crate::node::common::model::IdString;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(transparent)]
 #[wasm_bindgen(getter_with_clone)]
 pub struct DeviceId(pub U64IdUrlEnc);
 

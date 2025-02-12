@@ -138,7 +138,8 @@ impl VaultMember {
             .collect();
 
         SsDistributionClaim {
-            id: SsDistributionClaimId::from(pass_id),
+            id: Id48bit::generate(),
+            dist_claim_id: SsDistributionClaimId::from(pass_id),
             vault_name: self.vault.vault_name.clone(),
             sender: self.user_device(),
             distribution_type,
@@ -211,7 +212,7 @@ mod test {
             vault: vault_data,
         };
 
-        let pass_id = MetaPasswordId::generate(String::from("test_password"));
+        let pass_id = MetaPasswordId::build("test_password");
         let claim = vault_member.create_split_claim(pass_id);
         assert_eq!(1, claim.receivers.len());
 

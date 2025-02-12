@@ -189,7 +189,9 @@ pub mod spec {
     use crate::node::db::objects::persistent_object::PersistentObject;
     use crate::node::db::repo::generic_db::KvLogEventRepo;
     use std::sync::Arc;
+    use derive_more::From;
 
+    #[derive(From)]
     pub struct PersistentCredentialsSpec<Repo: KvLogEventRepo> {
         pub p_obj: Arc<PersistentObject<Repo>>,
     }
