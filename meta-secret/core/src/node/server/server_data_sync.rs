@@ -5,12 +5,12 @@ use crate::node::common::model::device::common::{DeviceData, DeviceId};
 use crate::node::common::model::secret::{SecretDistributionType, SsDistributionStatus};
 use crate::node::common::model::vault::vault::VaultStatus;
 use crate::node::db::actions::vault::vault_action::ServerVaultAction;
-use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
+use crate::node::db::descriptors::shared_secret_descriptor::SsDescriptor;
 use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
 };
 use crate::node::db::events::object_id::ArtifactId;
-use crate::node::db::events::shared_secret_event::SharedSecretObject;
+use crate::node::db::events::shared_secret_event::SsObject;
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -27,12 +27,6 @@ pub trait DataSyncApi {
     async fn vault_replication(
         &self,
         vault_request: VaultRequest,
-    ) -> Result<Vec<GenericKvLogEvent>>;
-
-    async fn ss_replication(
-        &self,
-        ss_request: SsRequest,
-        server_device: DeviceId,
     ) -> Result<Vec<GenericKvLogEvent>>;
 
     async fn handle(&self, server_device: DeviceData, event: GenericKvLogEvent) -> Result<()>;
@@ -98,28 +92,6 @@ impl<Repo: KvLogEventRepo> DataSyncApi for ServerSyncGateway<Repo> {
         Ok(commit_log)
     }
 
-    async fn ss_replication(
-        &self,
-        ss_request: SsRequest,
-        server_device: DeviceId,
-    ) -> Result<Vec<GenericKvLogEvent>> {
-        let mut commit_log: Vec<GenericKvLogEvent> = vec![];
-
-        let p_vault = PersistentVault {
-            p_obj: self.p_obj.clone(),
-        };
-
-        let vault_status = p_vault.find(ss_request.sender.clone()).await?;
-        if let VaultStatus::Member { .. } = vault_status {
-            let vault_events = self
-                .ss_replication(ss_request.clone(), server_device)
-                .await?;
-            commit_log.extend(vault_events);
-        }
-
-        Ok(commit_log)
-    }
-
     /// Handle request: all types of requests will be handled
     /// and the actions will be executed accordingly
     async fn handle(
@@ -151,18 +123,16 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
                 self.p_obj
                     .repo
-                    .save(ss_device_log_obj.clone().to_generic())
+                    .save(ss_device_log_obj.clone())
                     .await?;
 
                 let ss_claim = ss_device_log_obj.get_distribution_request();
 
-                let p_ss_log = PersistentSharedSecret {
-                    p_obj: self.p_obj.clone(),
-                };
+                let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
                 p_ss_log.save_ss_log_event(ss_claim).await?;
             }
-            GenericKvLogEvent::SharedSecret(_) => {
-                self.p_obj.repo.save(generic_event.clone()).await?;
+            GenericKvLogEvent::SharedSecret(ss_object) => {
+                self.p_obj.repo.save(ss_object).await?;
             }
             GenericKvLogEvent::Credentials(_) => {
                 bail!("Invalid event type: {:?}", generic_event);
@@ -280,7 +250,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
         for (_, claim) in &ss_log_data.claims {
             for dist_id in claim.claim_db_ids() {
-                let desc = SharedSecretDescriptor::SsDistribution(dist_id.distribution_id.clone());
+                let desc = SsDescriptor::SsDistribution(dist_id.distribution_id.clone());
 
                 if claim.sender.eq(&server_device) {
                     bail!("Local shares must not be sent to server");
@@ -311,7 +281,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
                 let mut completed = true;
                 for dist_id in claim.claim_db_ids() {
-                    let desc = SharedSecretDescriptor::SsDistributionStatus(dist_id.clone());
+                    let desc = SsDescriptor::SsDistributionStatus(dist_id.clone());
                     let maybe_status_event = self.p_obj.find_tail_event(desc).await?;
 
                     let Some(ss_obj) = maybe_status_event else {
@@ -319,7 +289,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                         break;
                     };
 
-                    let SharedSecretObject::SsDistributionStatus(status_record) = ss_obj else {
+                    let SsObject::SsDistributionStatus(status_record) = ss_obj else {
                         completed = false;
                         break;
                     };

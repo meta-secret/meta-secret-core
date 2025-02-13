@@ -157,7 +157,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         Ok(app_state)
     }
 
-    async fn build_service_state(&self) -> Result<ServiceState<ApplicationState>> {
+    pub async fn build_service_state(&self) -> Result<ServiceState<ApplicationState>> {
         let app_state = self.get_app_state().await?;
         let service_state = ServiceState { app_state };
 
@@ -166,9 +166,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
     }
 
     async fn get_app_state(&self) -> Result<ApplicationState> {
-        let creds_repo = PersistentCredentials {
-            p_obj: self.p_obj(),
-        };
+        let creds_repo = PersistentCredentials::from(self.p_obj());
         let maybe_creds = creds_repo.find().await?;
 
         let app_state = match maybe_creds {
@@ -195,10 +193,11 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                         }
                         VaultStatus::Member(member_user) => {
                             let vault = p_vault.get_vault(&member_user.user_data).await?;
-
-                            let p_ss = PersistentSharedSecret::from(self.p_obj());
-                            let ss_claims =
-                                p_ss.get_ss_log_obj(user_creds.value.vault_name).await?;
+                            
+                            let ss_claims = {
+                                let p_ss = PersistentSharedSecret::from(self.p_obj());
+                                p_ss.get_ss_log_obj(user_creds.value.vault_name).await?
+                            };
 
                             let user_full_info = UserMemberFullInfo {
                                 member: VaultMember {

@@ -3,7 +3,7 @@ use crate::node::db::events::error::ErrorMessage;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::local_event::CredentialsObject;
 use crate::node::db::events::object_id::ArtifactId;
-use crate::node::db::events::shared_secret_event::{SharedSecretObject, SsDeviceLogObject};
+use crate::node::db::events::shared_secret_event::{SsObject, SsDeviceLogObject};
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::events::vault::vault_event::VaultObject;
 use crate::node::db::events::vault::vault_log_event::VaultLogObject;
@@ -19,7 +19,7 @@ pub enum GenericKvLogEvent {
     Vault(VaultObject),
     VaultStatus(VaultStatusObject),
 
-    SharedSecret(SharedSecretObject),
+    SharedSecret(SsObject),
     SsDeviceLog(SsDeviceLogObject),
     SsLog(SsLogObject),
 
@@ -47,8 +47,8 @@ impl GenericKvLogEvent {
         VaultStatusObject::try_from(self)
     }
 
-    pub fn shared_secret(self) -> anyhow::Result<SharedSecretObject> {
-        SharedSecretObject::try_from(self)
+    pub fn shared_secret(self) -> anyhow::Result<SsObject> {
+        SsObject::try_from(self)
     }
 
     pub fn ss_device_log(self) -> anyhow::Result<SsDeviceLogObject> {

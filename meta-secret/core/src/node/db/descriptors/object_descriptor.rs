@@ -1,7 +1,7 @@
 use crate::node::common::model::IdString;
 use crate::node::db::descriptors::creds::CredentialsDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::{
-    SharedSecretDescriptor, SsDeviceLogDescriptor, SsLogDescriptor,
+    SsDescriptor, SsDeviceLogDescriptor, SsLogDescriptor,
 };
 use crate::node::db::descriptors::vault_descriptor::{
     DeviceLogDescriptor, VaultDescriptor, VaultLogDescriptor, VaultStatusDescriptor,
@@ -24,7 +24,7 @@ pub enum ObjectDescriptor {
     /// Secret distribution (split, recover, recovery request and so on)
     SsLog(SsLogDescriptor),
     SsDeviceLog(SsDeviceLogDescriptor),
-    SharedSecret(SharedSecretDescriptor),
+    SharedSecret(SsDescriptor),
 }
 
 pub trait ToObjectDescriptor: Clone {

@@ -7,10 +7,10 @@ use crate::node::common::model::secret::{
 };
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::vault::VaultMember;
-use crate::node::db::descriptors::shared_secret_descriptor::SharedSecretDescriptor;
+use crate::node::db::descriptors::shared_secret_descriptor::SsDescriptor;
 use crate::node::db::events::generic_log_event::ToGenericEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::shared_secret_event::SharedSecretObject;
+use crate::node::db::events::shared_secret_event::SsObject;
 use crate::node::db::events::vault::vault_log_event::AddMetaPassEvent;
 use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use crate::node::db::objects::persistent_object::PersistentObject;
@@ -87,6 +87,7 @@ pub struct MetaDistributor<Repo: KvLogEventRepo> {
     pub vault_member: VaultMember,
 }
 
+/// Save meta password!!!
 impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
     #[instrument(skip(self, password))]
     pub async fn distribute(
@@ -95,7 +96,6 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
         password_id: MetaPasswordId,
         password: String,
     ) -> Result<()> {
-        //save meta password!!!
         let vault_name = self.user_creds.vault_name.clone();
 
         let encrypted_shares = {
@@ -108,24 +108,28 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
 
         let claim = vault_member.create_split_claim(password_id);
 
-        let p_device_log = PersistentDeviceLog {
-            p_obj: self.p_obj.clone(),
-        };
-        let add_meta_pass = AddMetaPassEvent {
-            sender: self.vault_member.member,
-            meta_pass_id: claim.dist_claim_id.pass_id.clone(),
-        };
-        p_device_log
-            .save_add_meta_pass_request(add_meta_pass)
-            .await?;
+        //save meta password
+        {
+            let add_meta_pass = AddMetaPassEvent {
+                sender: self.vault_member.member,
+                meta_pass_id: claim.dist_claim_id.pass_id.clone(),
+            };
+            
+            let p_device_log = PersistentDeviceLog::from(self.p_obj.clone());
+            p_device_log
+                .save_add_meta_pass_request(add_meta_pass)
+                .await?;
+        }
 
-        let p_ss = PersistentSharedSecret {
-            p_obj: self.p_obj.clone(),
-        };
-        p_ss.save_claim_in_ss_device_log(claim.clone()).await?;
+        // save a distribution claim: one claim is equal to a 
+        // distribution (split/recover) action for one password
+        {
+            let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
+            p_ss.save_claim_in_ss_device_log(claim.clone()).await?;
+        }
 
         for secret_share in encrypted_shares {
-            let distribution_share = SecretDistributionData {
+            let distribution_data = SecretDistributionData {
                 vault_name: vault_name.clone(),
                 claim_id: SsDistributionClaimId::from(claim.dist_claim_id.pass_id.clone()),
                 secret_message: secret_share.clone(),
@@ -139,14 +143,14 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
                 }
             };
 
-            let split_key = KvKey::from(SharedSecretDescriptor::SsDistribution(dist_id));
+            let split_key = KvKey::from(SsDescriptor::SsDistribution(dist_id));
 
-            let ss_obj = SharedSecretObject::SsDistribution(KvLogEvent {
+            let ss_obj = SsObject::SsDistribution(KvLogEvent {
                 key: split_key.clone(),
-                value: distribution_share,
+                value: distribution_data,
             });
 
-            self.p_obj.repo.save(ss_obj.to_generic()).await?;
+            self.p_obj.repo.save(ss_obj).await?;
         }
 
         Ok(())

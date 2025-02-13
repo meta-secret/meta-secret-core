@@ -302,6 +302,9 @@ mod test {
             vd_gw.sync().await?;
             vd_gw.sync().await?;
 
+            client_gw.sync().await?;
+            client_gw.sync().await?;
+
             //accept join request by vd
             let vault_status = self
                 .vd_p_vault
@@ -368,11 +371,8 @@ mod test {
         spec.sign_up_and_join_for_two_devices().await?;
 
         let client_service = spec.registry.state.meta_client_service.client;
-
-        let app_state = {
-            let client_device = spec.registry.state.base.empty.device_creds.client.device;
-            ApplicationState::Local(client_device)
-        };
+        let app_state = client_service.build_service_state().await?.app_state;
+        
         let request = {
             let dist_request = ClusterDistributionRequest {
                 pass_id: MetaPasswordId::build("test_pass"),

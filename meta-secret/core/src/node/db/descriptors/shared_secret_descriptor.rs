@@ -6,13 +6,13 @@ use crate::node::db::descriptors::object_descriptor::{
     ObjectDescriptor, ObjectName, ObjectType, ToObjectDescriptor,
 };
 use crate::node::db::events::shared_secret_event::{
-    SharedSecretObject, SsDeviceLogObject, SsLogObject,
+    SsObject, SsDeviceLogObject, SsLogObject,
 };
 use derive_more::From;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum SharedSecretDescriptor {
+pub enum SsDescriptor {
     /// Allows devices distributing their shares (split operation)
     SsDistribution(SsDistributionId),
 
@@ -28,19 +28,19 @@ pub struct SsDeviceLogDescriptor(DeviceId);
 #[serde(rename_all = "camelCase")]
 pub struct SsLogDescriptor(VaultName);
 
-impl ObjectType for SharedSecretDescriptor {
+impl ObjectType for SsDescriptor {
     fn object_type(&self) -> String {
         let obj_type = match self {
-            SharedSecretDescriptor::SsDistribution(_) => "SsDistribution",
-            SharedSecretDescriptor::SsDistributionStatus(_) => "SsDistributionStatus",
-            SharedSecretDescriptor::SsClaim(_) => "SsClaim",
+            SsDescriptor::SsDistribution(_) => "SsDistribution",
+            SsDescriptor::SsDistributionStatus(_) => "SsDistributionStatus",
+            SsDescriptor::SsClaim(_) => "SsClaim",
         };
 
         String::from(obj_type)
     }
 }
 
-impl ObjectName for SharedSecretDescriptor {
+impl ObjectName for SsDescriptor {
     fn object_name(&self) -> String {
         self.clone().id_str()
     }
@@ -58,12 +58,12 @@ impl ObjectType for SsLogDescriptor {
     }
 }
 
-impl IdString for SharedSecretDescriptor {
+impl IdString for SsDescriptor {
     fn id_str(self) -> String {
         match self {
-            SharedSecretDescriptor::SsDistribution(event_id) => event_id.clone().id_str(),
-            SharedSecretDescriptor::SsDistributionStatus(id) => id.clone().id_str(),
-            SharedSecretDescriptor::SsClaim(db_id) => db_id.clone().id_str(),
+            SsDescriptor::SsDistribution(event_id) => event_id.clone().id_str(),
+            SsDescriptor::SsDistributionStatus(id) => id.clone().id_str(),
+            SsDescriptor::SsClaim(db_id) => db_id.clone().id_str(),
         }
     }
 }
@@ -80,8 +80,8 @@ impl IdString for SsDeviceLogDescriptor {
     }
 }
 
-impl ToObjectDescriptor for SharedSecretDescriptor {
-    type EventType = SharedSecretObject;
+impl ToObjectDescriptor for SsDescriptor {
+    type EventType = SsObject;
 
     fn to_obj_desc(self) -> ObjectDescriptor {
         ObjectDescriptor::SharedSecret(self)

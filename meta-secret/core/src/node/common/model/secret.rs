@@ -61,6 +61,10 @@ impl IdString for SsDistributionClaimDbId {
     }
 }
 
+/// SsDistributionClaim represents a specific distribution of a secret across multiple devices.
+/// 
+/// This struct allows to easily represent a claim, and enables distribution logic to operate on it. 
+/// It is an abstraction that simplifies how secrets are shared between devices.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SsDistributionClaim {

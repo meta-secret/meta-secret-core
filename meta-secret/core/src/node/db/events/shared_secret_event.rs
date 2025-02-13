@@ -11,23 +11,23 @@ use anyhow::{bail, Ok};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum SharedSecretObject {
+pub enum SsObject {
     SsDistribution(KvLogEvent<SecretDistributionData>),
     SsDistributionStatus(KvLogEvent<SsDistributionStatus>),
     SsClaim(KvLogEvent<SecretDistributionData>),
 }
 
-impl KeyExtractor for SharedSecretObject {
+impl KeyExtractor for SsObject {
     fn key(&self) -> KvKey {
         match self {
-            SharedSecretObject::SsDistribution(event) => event.key.clone(),
-            SharedSecretObject::SsDistributionStatus(event) => event.key.clone(),
-            SharedSecretObject::SsClaim(event) => event.key.clone(),
+            SsObject::SsDistribution(event) => event.key.clone(),
+            SsObject::SsDistributionStatus(event) => event.key.clone(),
+            SsObject::SsClaim(event) => event.key.clone(),
         }
     }
 }
 
-impl TryFrom<GenericKvLogEvent> for SharedSecretObject {
+impl TryFrom<GenericKvLogEvent> for SsObject {
     type Error = anyhow::Error;
 
     fn try_from(event: GenericKvLogEvent) -> Result<Self, Self::Error> {
@@ -79,17 +79,17 @@ impl KeyExtractor for SsDeviceLogObject {
     }
 }
 
-impl ObjIdExtractor for SharedSecretObject {
+impl ObjIdExtractor for SsObject {
     fn obj_id(&self) -> ArtifactId {
         match self {
-            SharedSecretObject::SsDistribution(event) => event.key.obj_id.clone(),
-            SharedSecretObject::SsDistributionStatus(event) => event.key.obj_id.clone(),
-            SharedSecretObject::SsClaim(event) => event.key.obj_id.clone(),
+            SsObject::SsDistribution(event) => event.key.obj_id.clone(),
+            SsObject::SsDistributionStatus(event) => event.key.obj_id.clone(),
+            SsObject::SsClaim(event) => event.key.obj_id.clone(),
         }
     }
 }
 
-impl ToGenericEvent for SharedSecretObject {
+impl ToGenericEvent for SsObject {
     fn to_generic(self) -> GenericKvLogEvent {
         GenericKvLogEvent::SharedSecret(self)
     }

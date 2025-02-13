@@ -12,9 +12,11 @@ use crate::node::db::events::vault::vault_log_event::{AddMetaPassEvent, CreateVa
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use anyhow::Result;
+use derive_more::From;
 use tracing::info;
 use tracing_attributes::instrument;
 
+#[derive(From)]
 pub struct PersistentDeviceLog<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
 }
