@@ -1,8 +1,6 @@
 use serde_derive::{Deserialize, Serialize};
 
-use crate::node::db::descriptors::object_descriptor::{
-    ObjectFqdn, SeqId, ToObjectDescriptor,
-};
+use crate::node::db::descriptors::object_descriptor::{ObjectFqdn, SeqId, ToObjectDescriptor};
 
 pub trait Next<To> {
     fn next(self) -> To;

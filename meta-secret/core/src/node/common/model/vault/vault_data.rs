@@ -161,7 +161,7 @@ pub struct EmptyVaultState;
 /// [here](meta-secret/docs/programming/event-sourcing-aggregate.md):
 pub struct VaultAggregate {
     pub events: VaultActionEvents,
-    pub vault: VaultData
+    pub vault: VaultData,
 }
 
 impl VaultAggregate {

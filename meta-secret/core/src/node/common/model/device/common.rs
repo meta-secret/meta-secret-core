@@ -1,5 +1,5 @@
+use serde::{Deserialize, Serialize};
 use std::fmt::Display;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::crypto::keys::OpenBox;

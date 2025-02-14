@@ -85,7 +85,10 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                     sign_up_claim.sign_up(user_data.clone()).await?;
                     self.sync_gateway.sync().await?;
                 }
-                ApplicationState::Vault(VaultFullInfo::Member(UserMemberFullInfo { member, .. })) => {
+                ApplicationState::Vault(VaultFullInfo::Member(UserMemberFullInfo {
+                    member,
+                    ..
+                })) => {
                     error!("You are already a vault member: {:?}", member.vault);
                 }
                 ApplicationState::Vault(VaultFullInfo::NotExists(_)) => {
@@ -138,9 +141,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
             }
 
             GenericAppStateRequest::Recover(meta_pass_id) => {
-                let recovery_action = RecoveryAction {
-                    p_obj: p_obj.clone(),
-                };
+                let recovery_action = RecoveryAction::from(p_obj.clone());
                 recovery_action.recovery_request(meta_pass_id).await?;
             }
         }
@@ -173,9 +174,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                 ApplicationState::Local(device_creds.device)
             }
             Some(creds) => match creds {
-                CredentialsObject::Device(device_creds_event) => ApplicationState::Local(
-                    device_creds_event.value.device,
-                ),
+                CredentialsObject::Device(device_creds_event) => {
+                    ApplicationState::Local(device_creds_event.value.device)
+                }
                 CredentialsObject::DefaultUser(user_creds) => {
                     let p_vault = PersistentVault::from(self.p_obj());
                     let vault_status = p_vault.find(user_creds.value.user()).await?;
@@ -189,7 +190,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                         }
                         VaultStatus::Member(member_user) => {
                             let vault = p_vault.get_vault(&member_user.user_data).await?;
-                            
+
                             let ss_claims = {
                                 let p_ss = PersistentSharedSecret::from(self.p_obj());
                                 p_ss.get_ss_log_obj(user_creds.value.vault_name).await?

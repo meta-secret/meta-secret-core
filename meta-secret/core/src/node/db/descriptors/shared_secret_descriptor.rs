@@ -5,9 +5,7 @@ use crate::node::common::model::IdString;
 use crate::node::db::descriptors::object_descriptor::{
     ObjectDescriptor, ObjectName, ObjectType, ToObjectDescriptor,
 };
-use crate::node::db::events::shared_secret_event::{
-    SsObject, SsDeviceLogObject, SsLogObject,
-};
+use crate::node::db::events::shared_secret_event::{SsDeviceLogObject, SsLogObject, SsObject};
 use derive_more::From;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -44,7 +44,7 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
                 p_vault
                     .save_vault_log_request_event(action_request.clone())
                     .await?;
-                
+
                 match action_request {
                     VaultActionRequestEvent::JoinCluster(_) => {
                         //server has to ignore join request

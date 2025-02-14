@@ -29,7 +29,8 @@ pub trait DataSyncApi {
         vault_request: VaultRequest,
     ) -> Result<Vec<GenericKvLogEvent>>;
 
-    async fn handle_write(&self, server_device: DeviceData, event: GenericKvLogEvent) -> Result<()>;
+    async fn handle_write(&self, server_device: DeviceData, event: GenericKvLogEvent)
+        -> Result<()>;
 }
 
 pub struct ServerSyncGateway<Repo: KvLogEventRepo> {
@@ -99,7 +100,8 @@ impl<Repo: KvLogEventRepo> DataSyncApi for ServerSyncGateway<Repo> {
         server_device: DeviceData,
         generic_event: GenericKvLogEvent,
     ) -> Result<()> {
-        self.server_write_processing(server_device, generic_event).await
+        self.server_write_processing(server_device, generic_event)
+            .await
     }
 }
 
@@ -121,10 +123,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                     &ss_device_log_obj
                 );
 
-                self.p_obj
-                    .repo
-                    .save(ss_device_log_obj.clone())
-                    .await?;
+                self.p_obj.repo.save(ss_device_log_obj.clone()).await?;
 
                 let ss_claim = ss_device_log_obj.get_distribution_request();
 

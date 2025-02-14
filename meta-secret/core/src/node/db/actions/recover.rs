@@ -6,9 +6,11 @@ use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use anyhow::bail;
+use derive_more::From;
 use std::sync::Arc;
 use tracing_attributes::instrument;
 
+#[derive(From)]
 pub struct RecoveryAction<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
 }
@@ -30,7 +32,7 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
             user_creds
         };
 
-        let vault_repo = PersistentVault ::from(self.p_obj.clone());
+        let vault_repo = PersistentVault::from(self.p_obj.clone());
 
         let vault_status = vault_repo.find(user_creds.user()).await?;
 
@@ -49,9 +51,7 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
                     .to_vault_member(member)?;
                 let claim = vault_member.create_recovery_claim(pass_id);
 
-                let p_ss = PersistentSharedSecret {
-                    p_obj: self.p_obj.clone(),
-                };
+                let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
                 p_ss.save_claim_in_ss_device_log(claim.clone()).await?;
             }
         }

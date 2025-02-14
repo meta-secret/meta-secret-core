@@ -47,7 +47,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> VirtualDevice<Repo, Sync> {
         let sign_up_claim = SignUpClaim {
             p_obj: self.p_obj(),
         };
-        let user_creds = sign_up_claim.prepare_sign_up(device_name, VaultName::test()).await?;
+        let user_creds = sign_up_claim
+            .prepare_sign_up(device_name, VaultName::test())
+            .await?;
         self.gateway.sync().await?;
         sign_up_claim.sign_up(user_creds.user()).await?;
 

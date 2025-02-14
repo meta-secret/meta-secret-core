@@ -12,9 +12,7 @@ use crate::node::db::descriptors::shared_secret_descriptor::{
 use crate::node::db::events::generic_log_event::ToGenericEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::ArtifactId;
-use crate::node::db::events::shared_secret_event::{
-    SsObject, SsDeviceLogObject, SsLogObject,
-};
+use crate::node::db::events::shared_secret_event::{SsDeviceLogObject, SsLogObject, SsObject};
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use anyhow::{bail, Ok, Result};
@@ -64,10 +62,7 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
         Ok(events)
     }
 
-    pub async fn get_ss_distribution_event_by_id(
-        &self,
-        id: SsDistributionId,
-    ) -> Result<SsObject> {
+    pub async fn get_ss_distribution_event_by_id(&self, id: SsDistributionId) -> Result<SsObject> {
         let desc = SsDescriptor::SsDistribution(id);
 
         if let Some(event) = self.p_obj.find_tail_event(desc).await? {
@@ -84,12 +79,12 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
         info!("Saving ss_log event");
 
         let vault_name = claim.vault_name.clone();
-        
+
         let maybe_ss_log_event = {
             let obj_desc = SsLogDescriptor::from(vault_name.clone());
             self.p_obj.find_tail_event(obj_desc).await?
         };
-        
+
         let new_ss_log_event = match maybe_ss_log_event {
             None => {
                 let ss_log_data = SsLogData::new(claim);

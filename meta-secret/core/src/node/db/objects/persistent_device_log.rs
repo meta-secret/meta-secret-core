@@ -8,7 +8,10 @@ use crate::node::db::descriptors::vault_descriptor::DeviceLogDescriptor;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
-use crate::node::db::events::vault::vault_log_event::{AddMetaPassEvent, CreateVaultEvent, JoinClusterEvent, VaultActionEvent, VaultActionInitEvent, VaultActionRequestEvent, VaultActionUpdateEvent, VaultLogObject};
+use crate::node::db::events::vault::vault_log_event::{
+    AddMetaPassEvent, CreateVaultEvent, JoinClusterEvent, VaultActionEvent, VaultActionInitEvent,
+    VaultActionRequestEvent, VaultActionUpdateEvent,
+};
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use anyhow::Result;
@@ -85,7 +88,9 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
             let add_meta_pass = VaultActionRequestEvent::AddMetaPass(meta_pass_event.clone());
 
             DeviceLogObject(KvLogEvent {
-                key: self.get_device_log_free_key(meta_pass_event.sender.user()).await?,
+                key: self
+                    .get_device_log_free_key(meta_pass_event.sender.user())
+                    .await?,
                 value: VaultActionEvent::Request(add_meta_pass),
             })
         };

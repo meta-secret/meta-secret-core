@@ -5,7 +5,7 @@ use crate::node::common::model::vault::vault::{VaultName, VaultStatus};
 use crate::node::db::descriptors::vault_descriptor::{
     VaultDescriptor, VaultLogDescriptor, VaultStatusDescriptor,
 };
-use crate::node::db::events::generic_log_event::{KeyExtractor};
+use crate::node::db::events::generic_log_event::KeyExtractor;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::{ArtifactId, Next};
 use crate::node::db::events::vault::vault_event::VaultObject;
@@ -80,7 +80,10 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
 
     /// Update membership information for a user on the server.
     #[instrument(skip_all)]
-    pub async fn update_vault_membership_info_for_user(&self, user: UserData) -> Result<VaultStatus> {
+    pub async fn update_vault_membership_info_for_user(
+        &self,
+        user: UserData,
+    ) -> Result<VaultStatus> {
         let maybe_vault_obj = self.get_vault_object(user.vault_name()).await?;
         let maybe_membership = self.get_vault_status_object(&user).await?;
 
@@ -158,9 +161,12 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
                 bail!("It's expected that sync with the server has happened and vault status is present");
             }
             (Some(vault), None) => {
-                bail!("Vault and its status have to exists together: {:?}", vault.to_data().vault_name);
+                bail!(
+                    "Vault and its status have to exists together: {:?}",
+                    vault.to_data().vault_name
+                );
             }
-            // Vault doesn't exist or the user is outsider 
+            // Vault doesn't exist or the user is outsider
             (None, Some(status)) => status.status(),
             (Some(vault_obj), Some(_)) => vault_obj.to_data().status(user),
         };

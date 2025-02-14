@@ -26,7 +26,7 @@ impl VaultStatusObject {
             value: status,
         })
     }
-    
+
     pub fn status(self) -> VaultStatus {
         self.0.value
     }

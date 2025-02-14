@@ -15,7 +15,7 @@ pub mod vault;
 #[serde(rename_all = "camelCase")]
 pub enum ApplicationState {
     Local(DeviceData),
-    Vault(VaultFullInfo)
+    Vault(VaultFullInfo),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -23,7 +23,7 @@ pub enum ApplicationState {
 pub enum VaultFullInfo {
     NotExists(UserData),
     Outsider(UserDataOutsider),
-    Member(UserMemberFullInfo)
+    Member(UserMemberFullInfo),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -43,10 +43,8 @@ pub struct WasmApplicationState(ApplicationState);
 impl WasmApplicationState {
     pub fn is_new_user(&self) -> bool {
         let is_local = self.is_local();
-        let vault_not_exists = matches!(
-            &self.0,
-            ApplicationState::Vault(VaultFullInfo::Outsider(_))
-        );
+        let vault_not_exists =
+            matches!(&self.0, ApplicationState::Vault(VaultFullInfo::Outsider(_)));
         todo!("Unclear what should be executed");
         //old version:
         //ApplicationState::Vault {

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::crypto::utils::Id48bit;
 use crate::node::common::model::crypto::aead::EncryptedMessage;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::meta_pass::{MetaPasswordId, SALT_LENGTH};
@@ -8,7 +9,6 @@ use crate::node::common::model::IdString;
 use rand::distributions::Alphanumeric;
 use rand::Rng;
 use wasm_bindgen::prelude::wasm_bindgen;
-use crate::crypto::utils::Id48bit;
 
 /// `ClaimId` is a wrapper around a `String` that serves as a unique identifier
 /// for claims within the system. It is used to track and manage claims associated
@@ -62,8 +62,8 @@ impl IdString for SsDistributionClaimDbId {
 }
 
 /// SsDistributionClaim represents a specific distribution of a secret across multiple devices.
-/// 
-/// This struct allows to easily represent a claim, and enables distribution logic to operate on it. 
+///
+/// This struct allows to easily represent a claim, and enables distribution logic to operate on it.
 /// It is an abstraction that simplifies how secrets are shared between devices.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

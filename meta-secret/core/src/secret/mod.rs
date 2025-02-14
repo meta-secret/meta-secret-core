@@ -114,14 +114,14 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
                 sender: self.vault_member.member,
                 meta_pass_id: claim.dist_claim_id.pass_id.clone(),
             };
-            
+
             let p_device_log = PersistentDeviceLog::from(self.p_obj.clone());
             p_device_log
                 .save_add_meta_pass_request(add_meta_pass)
                 .await?;
         }
 
-        // save a distribution claim: one claim is equal to a 
+        // save a distribution claim: one claim is equal to a
         // distribution (split/recover) action for one password
         {
             let p_ss = PersistentSharedSecret::from(self.p_obj.clone());

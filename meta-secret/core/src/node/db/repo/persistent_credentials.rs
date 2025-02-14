@@ -10,9 +10,9 @@ use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use anyhow::Result;
+use derive_more::From;
 use log::info;
 use std::sync::Arc;
-use derive_more::From;
 use tracing::instrument;
 
 #[derive(From)]
@@ -190,8 +190,8 @@ pub mod spec {
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_object::PersistentObject;
     use crate::node::db::repo::generic_db::KvLogEventRepo;
-    use std::sync::Arc;
     use derive_more::From;
+    use std::sync::Arc;
 
     #[derive(From)]
     pub struct PersistentCredentialsSpec<Repo: KvLogEventRepo> {
@@ -205,7 +205,7 @@ pub mod spec {
                 .get_object_events_from_beginning(CredentialsDescriptor::Device)
                 .await?;
             assert_eq!(device_creds.len(), 1);
-            
+
             let user_creds = self
                 .p_obj
                 .get_object_events_from_beginning(CredentialsDescriptor::User)

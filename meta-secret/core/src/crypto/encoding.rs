@@ -5,7 +5,7 @@ pub type Array256Bit = [u8; KEY_SIZE_32_BYTES];
 /// Base64 encoding/decoding
 pub mod base64 {
     extern crate base64;
-    
+
     use std::fmt::Display;
     use wasm_bindgen::prelude::wasm_bindgen;
 
