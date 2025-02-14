@@ -29,7 +29,7 @@ pub trait DataSyncApi {
         vault_request: VaultRequest,
     ) -> Result<Vec<GenericKvLogEvent>>;
 
-    async fn handle(&self, server_device: DeviceData, event: GenericKvLogEvent) -> Result<()>;
+    async fn handle_write(&self, server_device: DeviceData, event: GenericKvLogEvent) -> Result<()>;
 }
 
 pub struct ServerSyncGateway<Repo: KvLogEventRepo> {
@@ -94,18 +94,18 @@ impl<Repo: KvLogEventRepo> DataSyncApi for ServerSyncGateway<Repo> {
 
     /// Handle request: all types of requests will be handled
     /// and the actions will be executed accordingly
-    async fn handle(
+    async fn handle_write(
         &self,
         server_device: DeviceData,
         generic_event: GenericKvLogEvent,
     ) -> Result<()> {
-        self.server_processing(server_device, generic_event).await
+        self.server_write_processing(server_device, generic_event).await
     }
 }
 
 impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
     #[instrument(skip(self))]
-    async fn server_processing(
+    async fn server_write_processing(
         &self,
         server_device: DeviceData,
         generic_event: GenericKvLogEvent,
@@ -250,8 +250,6 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
         for (_, claim) in &ss_log_data.claims {
             for dist_id in claim.claim_db_ids() {
-                let desc = SsDescriptor::SsDistribution(dist_id.distribution_id.clone());
-
                 if claim.sender.eq(&server_device) {
                     bail!("Local shares must not be sent to server");
                 };
@@ -259,12 +257,11 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                 let sender_device = request.sender.device.device_id.clone();
 
                 if sender_device.eq(&claim.sender) {
+                    let desc = SsDescriptor::SsDistribution(dist_id.distribution_id.clone());
                     let ss_obj = self.p_obj.find_tail_event(desc).await?;
 
                     if let Some(dist_event) = ss_obj {
-                        let p_ss = PersistentSharedSecret {
-                            p_obj: self.p_obj.clone(),
-                        };
+                        let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
                         p_ss.create_distribution_completion_status(dist_id).await?;
 
                         commit_log.push(dist_event.clone().to_generic());

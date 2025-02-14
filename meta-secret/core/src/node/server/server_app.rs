@@ -104,7 +104,7 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
             },
             SyncRequest::Write(WriteSyncRequest::Event(event)) => {
                 info!("Received new event: {:?}", event);
-                self.data_sync.handle(server_creds.device, event).await?;
+                self.data_sync.handle_write(server_creds.device, event).await?;
                 Ok(DataSyncResponse::Empty)
             }
         }
@@ -140,32 +140,30 @@ pub mod fixture {
 
 #[cfg(test)]
 mod test {
+    use std::collections::HashMap;
     use crate::meta_tests::fixture_util::fixture::states::{EmptyState, ExtendedState};
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::meta_tests::spec::test_spec::TestSpec;
     use crate::node::app::orchestrator::MetaOrchestrator;
     use crate::node::common::meta_tracing::{client_span, server_span, vd_span};
-    use crate::node::common::model::user::common::{
-        UserData, UserDataOutsider, UserDataOutsiderStatus, UserMembership,
-    };
-    use crate::node::common::model::vault::vault::{VaultName, VaultStatus};
+    use crate::node::common::model::user::common::{UserData};
+    use crate::node::common::model::vault::vault::{VaultStatus};
     use crate::node::db::actions::sign_up::claim::spec::SignUpClaimSpec;
     use crate::node::db::actions::sign_up::claim::test_action::SignUpClaimTestAction;
     use std::sync::Arc;
 
-    use crate::crypto::keys::{KeyManager, OpenBox, SecretBox};
-    use crate::crypto::utils::U64IdUrlEnc;
+
     use crate::node::app::meta_app::messaging::{
         ClusterDistributionRequest, GenericAppStateRequest,
     };
     use crate::node::app::sync::sync_gateway::SyncGateway;
     use crate::node::app::sync::sync_protocol::EmbeddedSyncProtocol;
-    use crate::node::common::model::device::common::{DeviceData, DeviceId, DeviceName};
+
     use crate::node::common::model::meta_pass::MetaPasswordId;
     use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
-    use crate::node::common::model::vault::vault_data::VaultData;
+
     use crate::node::common::model::{ApplicationState, VaultFullInfo};
-    use crate::node::db::descriptors::shared_secret_descriptor::SsDeviceLogDescriptor;
+    use crate::node::db::descriptors::shared_secret_descriptor::{SsDescriptor, SsDeviceLogDescriptor};
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_object::PersistentObject;
     use crate::node::db::objects::persistent_vault::PersistentVault;
@@ -173,6 +171,11 @@ mod test {
     use anyhow::bail;
     use anyhow::Result;
     use tracing::{info, Instrument};
+    use crate::crypto::encoding::base64::Base64Text;
+    use crate::node::common::model::secret::SsDistributionId;
+    use crate::node::db::events::generic_log_event::GenericKvLogEvent;
+    use crate::node::db::events::object_id::ArtifactId;
+    use crate::node::db::events::shared_secret_event::SsObject;
 
     struct ServerAppSignUpSpec {
         registry: FixtureRegistry<ExtendedState>,
@@ -366,13 +369,13 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_meta_pass() -> Result<()> {
+    async fn test_secret_distribution() -> Result<()> {
         let spec = ServerAppSignUpSpec::build().await?;
         spec.sign_up_and_join_for_two_devices().await?;
 
-        let client_service = spec.registry.state.meta_client_service.client;
+        let client_service = spec.registry.state.meta_client_service.client.clone();
         let app_state = client_service.build_service_state().await?.app_state;
-        
+
         let request = {
             let dist_request = ClusterDistributionRequest {
                 pass_id: MetaPasswordId::build("test_pass"),
@@ -382,7 +385,7 @@ mod test {
         };
 
         let new_app_state = client_service
-            .handle_client_request(spec.client_p_obj, app_state, request)
+            .handle_client_request(spec.client_p_obj.clone(), app_state, request)
             .await?;
         //println!("{:?}", new_app_state);
 
@@ -392,8 +395,32 @@ mod test {
 
         assert_eq!(1, member.member.vault.secrets.len());
 
-        let new_app_state_json = serde_json::to_string_pretty(&new_app_state)?;
-        println!("{}", new_app_state_json);
+        //let client_db: HashMap<ArtifactId, GenericKvLogEvent> = spec.client_p_obj.repo.get_db().await;
+        // for (id, event) in client_db {
+        //     let event_json = serde_json::to_string_pretty(&event)?;
+        //     println!("DbEvent:");
+        //     println!(" id: {:?}", &id);
+        //     println!(" event: {}", &event_json);
+        // }
+
+        let ss_dist_desc = SsDescriptor::SsDistribution(SsDistributionId {
+            pass_id: member.member.vault.secrets.iter().next().unwrap().clone(),
+            receiver: spec.user_creds().client.device_creds.device.device_id.clone(),
+        });
+
+        let client_ss_dist = spec.client_p_obj.find_tail_event(ss_dist_desc).await?.unwrap();
+        let SsObject::SsDistribution(client_dist_event) = client_ss_dist else {
+            panic!("No split events found on the client");
+        };
+
+        let secret_text = client_dist_event.value.secret_message
+            .cipher_text()
+            .decrypt(&spec.user_creds().client.device_creds.secret_box.transport.sk)?;
+        let share_plain_text = String::try_from(&secret_text.msg)?;
+        println!("{}", share_plain_text);
+
+        //let new_app_state_json = serde_json::to_string_pretty(&new_app_state)?;
+        //println!("{}", new_app_state_json);
 
         Ok(())
     }

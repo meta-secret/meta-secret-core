@@ -19,9 +19,9 @@ pub enum GenericKvLogEvent {
     Vault(VaultObject),
     VaultStatus(VaultStatusObject),
 
-    SharedSecret(SsObject),
     SsDeviceLog(SsDeviceLogObject),
     SsLog(SsLogObject),
+    SharedSecret(SsObject),
 
     DbError(KvLogEvent<ErrorMessage>),
 }

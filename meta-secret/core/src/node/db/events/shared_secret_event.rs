@@ -12,9 +12,14 @@ use anyhow::{bail, Ok};
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SsObject {
-    SsDistribution(KvLogEvent<SecretDistributionData>),
-    SsDistributionStatus(KvLogEvent<SsDistributionStatus>),
+    // Contains encrypted secret share for the receiver device 
+    // (will be deleted after sending to the receiver). 
+    // This is for SecretDistributionType::Recover
     SsClaim(KvLogEvent<SecretDistributionData>),
+    // This is for SecretDistributionType::Split
+    SsDistribution(KvLogEvent<SecretDistributionData>),
+    
+    SsDistributionStatus(KvLogEvent<SsDistributionStatus>),
 }
 
 impl KeyExtractor for SsObject {

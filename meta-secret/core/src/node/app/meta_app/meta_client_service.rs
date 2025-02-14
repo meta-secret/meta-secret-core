@@ -98,9 +98,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
 
             GenericAppStateRequest::ClusterDistribution(request) => {
                 let user_creds = {
-                    let creds_repo = PersistentCredentials {
-                        p_obj: p_obj.clone(),
-                    };
+                    let creds_repo = PersistentCredentials::from(p_obj.clone());
                     let maybe_user_creds = creds_repo.get_user_creds().await?;
 
                     let Some(user_creds) = maybe_user_creds else {
@@ -111,9 +109,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                 };
 
                 let vault_status = {
-                    let vault_repo = PersistentVault {
-                        p_obj: p_obj.clone(),
-                    };
+                    let vault_repo = PersistentVault::from(p_obj.clone());
                     vault_repo.find(user_creds.user()).await?
                 };
 
