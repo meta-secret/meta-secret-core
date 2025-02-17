@@ -14,9 +14,9 @@ use anyhow::{bail, Ok};
 pub enum SsObject {
     // Contains encrypted secret share for the receiver device
     // (will be deleted after sending to the receiver).
-    // This is for SecretDistributionType::Recover
+    // This is for SecretDistributionType::Recover/Split
     SsClaim(KvLogEvent<SecretDistributionData>),
-    // This is for SecretDistributionType::Split
+    // This is a secret share that device keeps for a password
     SsDistribution(KvLogEvent<SecretDistributionData>),
 
     SsDistributionStatus(KvLogEvent<SsDistributionStatus>),

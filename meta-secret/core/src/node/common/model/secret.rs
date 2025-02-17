@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-
+use derive_more::From;
 use crate::crypto::utils::Id48bit;
 use crate::node::common::model::crypto::aead::EncryptedMessage;
 use crate::node::common::model::device::common::DeviceId;
@@ -15,7 +15,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 /// with secret distributions, ensuring each claim can be uniquely identified and
 /// referenced. The `ClaimId` is derived from various attributes and is utilized
 /// throughout the secret management process to maintain integrity and traceability.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, From, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(transparent)]
 #[wasm_bindgen(getter_with_clone)]
@@ -192,5 +192,47 @@ impl WasmSsDistributionClaim {}
 impl From<SsDistributionClaim> for WasmSsDistributionClaim {
     fn from(claim: SsDistributionClaim) -> Self {
         WasmSsDistributionClaim(claim)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::crypto::utils::{Id48bit, U64IdUrlEnc};
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::node::common::model::meta_pass::MetaPasswordId;
+    use crate::node::common::model::secret::{
+        ClaimId, SecretDistributionType, SsDistributionClaim, SsDistributionClaimId
+    };
+    use crate::node::common::model::vault::vault::VaultName;
+    use anyhow::Result;
+
+    #[tokio::test]
+    async fn test_distribution_ids() -> Result<()> {
+        let registry = FixtureRegistry::empty();
+        
+        let client_device_id = registry.state.device_creds.client.device.device_id;
+        let client_b_device_id = registry.state.device_creds.client_b.device.device_id;
+        let vd_device_id = registry.state.device_creds.vd.device.device_id;
+        
+        let claim = SsDistributionClaim {
+            id: Id48bit::generate(),
+            dist_claim_id: SsDistributionClaimId {
+                id: ClaimId::from("123".to_string()),
+                pass_id: MetaPasswordId {
+                    id: U64IdUrlEnc::from("pass_id".to_string()),
+                    name: "test_pass".to_string(),
+                },
+            },
+            vault_name: VaultName::test(),
+            sender: client_device_id,
+            distribution_type: SecretDistributionType::Split,
+            receivers: vec![vd_device_id, client_b_device_id],
+        };
+
+        let dist_ids = claim.distribution_ids();
+        
+        assert_eq!(2, dist_ids.len());
+        
+        Ok(())
     }
 }
