@@ -1,13 +1,12 @@
-use std::collections::HashMap;
-use derive_more::From;
 use crate::crypto::utils::Id48bit;
 use crate::node::common::model::crypto::aead::EncryptedMessage;
 use crate::node::common::model::device::common::DeviceId;
-use crate::node::common::model::meta_pass::{MetaPasswordId, SALT_LENGTH};
+use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::common::model::IdString;
-use rand::distributions::Alphanumeric;
+use derive_more::From;
 use rand::Rng;
+use std::collections::HashMap;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 /// `ClaimId` is a wrapper around a `String` that serves as a unique identifier
@@ -19,7 +18,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 #[serde(rename_all = "camelCase")]
 #[serde(transparent)]
 #[wasm_bindgen(getter_with_clone)]
-pub struct ClaimId(pub String);
+pub struct ClaimId(pub Id48bit);
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -44,7 +43,7 @@ pub struct SsDistributionClaimId {
 
 impl IdString for SsDistributionClaimId {
     fn id_str(self) -> String {
-        [self.id.0.clone(), self.pass_id.id.id_str()].join("|")
+        [self.id.0.id_str(), self.pass_id.id.id_str()].join("|")
     }
 }
 
@@ -68,7 +67,7 @@ impl IdString for SsDistributionClaimDbId {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SsDistributionClaim {
-    pub id: Id48bit,
+    pub id: ClaimId,
     pub dist_claim_id: SsDistributionClaimId,
 
     pub vault_name: VaultName,
@@ -108,20 +107,6 @@ impl SsDistributionClaim {
     }
 }
 
-impl From<MetaPasswordId> for SsDistributionClaimId {
-    fn from(pass_id: MetaPasswordId) -> Self {
-        let id: String = rand::thread_rng()
-            .sample_iter(&Alphanumeric)
-            .take(SALT_LENGTH)
-            .map(char::from)
-            .collect();
-        Self {
-            id: ClaimId(id),
-            pass_id,
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SsDistributionStatus {
@@ -150,7 +135,18 @@ pub struct SecretDistributionData {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SsLogData {
-    pub claims: HashMap<Id48bit, SsDistributionClaim>,
+    pub claims: HashMap<ClaimId, SsDistributionClaim>,
+}
+
+impl SsLogData {
+    pub fn remove(mut self, completed_claims: Vec<SsDistributionClaim>) -> Self {
+        for completed_claim in completed_claims {
+            //complete distribution process by deleting the claim from ss_log
+            self.claims.remove(&completed_claim.id);
+        }
+        
+        self
+    }
 }
 
 impl SsLogData {
@@ -214,11 +210,12 @@ mod test {
         let client_device_id = registry.state.device_creds.client.device.device_id;
         let client_b_device_id = registry.state.device_creds.client_b.device.device_id;
         let vd_device_id = registry.state.device_creds.vd.device.device_id;
-        
+
+        let claim_id = ClaimId::from(Id48bit::generate());
         let claim = SsDistributionClaim {
-            id: Id48bit::generate(),
+            id: claim_id.clone(),
             dist_claim_id: SsDistributionClaimId {
-                id: ClaimId::from("123".to_string()),
+                id: claim_id,
                 pass_id: MetaPasswordId {
                     id: U64IdUrlEnc::from("pass_id".to_string()),
                     name: "test_pass".to_string(),

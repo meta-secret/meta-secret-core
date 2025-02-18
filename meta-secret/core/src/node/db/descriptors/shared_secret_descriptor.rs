@@ -12,6 +12,7 @@ use derive_more::From;
 #[serde(rename_all = "camelCase")]
 pub enum SsDescriptor {
     Claim(SsDistributionClaimDbId),
+    ClaimStatus(SsDistributionClaimDbId),
 
     /// Allows devices distributing their shares (split operation)
     Distribution(SsDistributionId),
@@ -32,6 +33,7 @@ impl ObjectType for SsDescriptor {
             SsDescriptor::Distribution(_) => "SsDistribution",
             SsDescriptor::DistributionStatus(_) => "SsDistributionStatus",
             SsDescriptor::Claim(_) => "SsClaim",
+            SsDescriptor::ClaimStatus(_) => "SsClaimStatus"
         };
 
         String::from(obj_type)
@@ -62,6 +64,7 @@ impl IdString for SsDescriptor {
             SsDescriptor::Distribution(event_id) => event_id.clone().id_str(),
             SsDescriptor::DistributionStatus(id) => id.clone().id_str(),
             SsDescriptor::Claim(db_id) => db_id.clone().id_str(),
+            SsDescriptor::ClaimStatus(db_id) => db_id.clone().id_str()
         }
     }
 }

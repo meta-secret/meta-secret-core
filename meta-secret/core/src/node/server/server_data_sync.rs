@@ -126,9 +126,8 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                 );
 
                 self.p_obj.repo.save(ss_device_log_obj.clone()).await?;
-
+                
                 let ss_claim = ss_device_log_obj.get_distribution_request();
-
                 let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
                 p_ss_log.save_ss_log_event(ss_claim).await?;
             }
@@ -197,7 +196,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             commit_log.extend(vault_status_events);
         }
 
-        /// guarding vault from sending event to outsiders
+        // guarding vault from sending event to outsiders
         match vault_status {
             VaultStatus::NotExists(_) => {
                 //ignore
@@ -264,6 +263,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
                 let sender_device = &request.sender.device.device_id;
 
+                // complete distribution action by sending the distribution event to the receiver
                 if dist_id.distribution_id.receiver.eq(sender_device) {
                     let desc = SsDescriptor::Distribution(dist_id.distribution_id.clone());
                     let ss_obj = self.p_obj.find_tail_event(desc).await?;
@@ -281,48 +281,69 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             }
 
             // handle completed claims
-            let mut completed_split_claims = vec![];
+            let mut completed_claims = vec![];
             for (_, claim) in ss_log_data.claims.iter() {
-                if claim.distribution_type != SecretDistributionType::Split {
-                    continue;
-                }
+                match claim.distribution_type {
+                    SecretDistributionType::Split => {
+                        let mut completed = true;
+                        for dist_id in claim.claim_db_ids() {
+                            let desc = SsDescriptor::DistributionStatus(dist_id.clone());
+                            let maybe_status_event = self.p_obj.find_tail_event(desc).await?;
 
-                let mut completed = true;
-                for dist_id in claim.claim_db_ids() {
-                    let desc = SsDescriptor::DistributionStatus(dist_id.clone());
-                    let maybe_status_event = self.p_obj.find_tail_event(desc).await?;
+                            let Some(ss_obj) = maybe_status_event else {
+                                completed = false;
+                                break;
+                            };
 
-                    let Some(ss_obj) = maybe_status_event else {
-                        completed = false;
-                        break;
-                    };
+                            let SsDistributionObject::DistributionStatus(status) = ss_obj else {
+                                completed = false;
+                                break;
+                            };
 
-                    let SsDistributionObject::DistributionStatus(status_record) = ss_obj else {
-                        completed = false;
-                        break;
-                    };
+                            if status.value != SsDistributionStatus::Delivered {
+                                completed = false;
+                                break;
+                            }
+                        }
 
-                    if status_record.value != SsDistributionStatus::Delivered {
-                        completed = false;
-                        break;
+                        if completed {
+                            completed_claims.push(claim.clone());
+                        }
+                    }
+                    SecretDistributionType::Recover => {
+                        let mut completed = true;
+                        for dist_id in claim.claim_db_ids() {
+                            let desc = SsDescriptor::ClaimStatus(dist_id.clone());
+                            let maybe_status_event = self.p_obj.find_tail_event(desc).await?;
+
+                            let Some(ss_obj) = maybe_status_event else {
+                                completed = false;
+                                break;
+                            };
+
+                            let SsDistributionObject::ClaimStatus(status) = ss_obj else {
+                                completed = false;
+                                break;
+                            };
+
+                            if status.value != SsDistributionStatus::Delivered {
+                                completed = false;
+                                break;
+                            }
+                        }
+
+                        if completed {
+                            completed_claims.push(claim.clone());
+                        }
                     }
                 }
-
-                if completed {
-                    completed_split_claims.push(claim.clone());
-                }
             }
 
-            let mut updated_ss_log_data = ss_log_data.clone();
-            for completed_claim in &completed_split_claims {
-                //complete distribution process by deleting the claim from ss_log
-                updated_ss_log_data.claims.remove(&completed_claim.id);
-            }
+            let completed_claims_num = completed_claims.len();
+            let updated_ss_log_data = ss_log_data.clone().remove(completed_claims);
 
-            if !completed_split_claims.is_empty() {
-                let p_ss = PersistentSharedSecret {
-                    p_obj: self.p_obj.clone(),
-                };
+            if completed_claims_num >0 {
+                let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
                 let new_ss_log_obj = p_ss
                     .create_new_ss_log_claim(updated_ss_log_data, request.sender.vault_name.clone())
                     .await?;

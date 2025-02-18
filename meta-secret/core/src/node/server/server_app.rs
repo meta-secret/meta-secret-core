@@ -142,7 +142,6 @@ mod test {
     use crate::node::common::model::vault::vault::VaultStatus;
     use crate::node::db::actions::sign_up::claim::spec::SignUpClaimSpec;
     use crate::node::db::actions::sign_up::claim::test_action::SignUpClaimTestAction;
-    use std::collections::HashMap;
     use std::sync::Arc;
 
     use crate::node::app::meta_app::messaging::{
@@ -154,16 +153,12 @@ mod test {
     use crate::node::common::model::meta_pass::MetaPasswordId;
     use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
 
-    use crate::crypto::encoding::base64::Base64Text;
-    use crate::node::common::model::secret::{
-        SsDistributionClaimDbId, SsDistributionClaimId, SsDistributionId,
-    };
+
+    use crate::node::common::model::secret::{SsDistributionId};
     use crate::node::common::model::{ApplicationState, VaultFullInfo};
     use crate::node::db::descriptors::shared_secret_descriptor::{
         SsDescriptor, SsDeviceLogDescriptor,
     };
-    use crate::node::db::events::generic_log_event::GenericKvLogEvent;
-    use crate::node::db::events::object_id::ArtifactId;
     use crate::node::db::events::shared_secret_event::SsDistributionObject;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_object::PersistentObject;
@@ -173,6 +168,7 @@ mod test {
     use anyhow::bail;
     use anyhow::Result;
     use tracing::{info, Instrument};
+    use crate::node::app::meta_app::meta_client_service::MetaClientService;
 
     struct ActorNode {
         user: UserData,
@@ -181,6 +177,7 @@ mod test {
         p_vault: PersistentVault<InMemKvLogEventRepo>,
         p_ss: PersistentSharedSecret<InMemKvLogEventRepo>,
         orchestrator: MetaOrchestrator<InMemKvLogEventRepo>,
+        client_service: Arc<MetaClientService<InMemKvLogEventRepo, EmbeddedSyncProtocol>>,
     }
 
     struct ServerAppSignUpSpec {
@@ -199,7 +196,6 @@ mod test {
             let empty_state = &registry.state.base.empty;
             let server_p_obj = empty_state.p_obj.server.clone();
             let server_creds_spec = PersistentCredentialsSpec::from(server_p_obj.clone());
-            let user_creds = &empty_state.user_creds;
 
             let client = ActorNode {
                 user: empty_state.user_creds.client.user(),
@@ -216,6 +212,11 @@ mod test {
                     p_obj: empty_state.p_obj.client.clone(),
                     user_creds: empty_state.user_creds.client.clone(),
                 },
+                client_service: registry
+                    .state
+                    .meta_client_service
+                    .client
+                    .clone(),
             };
 
             let vd = ActorNode {
@@ -233,6 +234,11 @@ mod test {
                     p_obj: empty_state.p_obj.vd.clone(),
                     user_creds: empty_state.user_creds.vd.clone(),
                 },
+                client_service: registry
+                    .state
+                    .meta_client_service
+                    .vd
+                    .clone(),
             };
 
             let vd_claim_spec = SignUpClaimSpec {
@@ -378,14 +384,8 @@ mod test {
 
     impl SplitSpec {
         async fn split(&self) -> Result<()> {
-            let client_service = self
-                .sign_up
-                .registry
-                .state
-                .meta_client_service
-                .client
-                .clone();
-            let app_state = client_service.build_service_state().await?.app_state;
+            let client_client_service = self.sign_up.client.client_service.clone();
+            let app_state = client_client_service.build_service_state().await?.app_state;
 
             let pass_id = MetaPasswordId::build("test_pass");
             let request = {
@@ -396,7 +396,7 @@ mod test {
                 GenericAppStateRequest::ClusterDistribution(dist_request)
             };
 
-            let new_app_state = client_service
+            let new_app_state = client_client_service
                 .handle_client_request(self.sign_up.client.p_obj.clone(), app_state, request)
                 .await?;
             //println!("{:?}", new_app_state);
@@ -406,7 +406,7 @@ mod test {
             };
 
             assert_eq!(1, member.member.vault.secrets.len());
-            
+
             self.sign_up.vd.gw.sync().await?;
             self.sign_up.vd.gw.sync().await?;
 
@@ -481,7 +481,7 @@ mod test {
                 .find_tail_event(vd_ss_dist_desc)
                 .await?
                 .unwrap();
-            let SsDistributionObject::Distribution(vd_dist_event) = vd_ss_dist else {
+            let SsDistributionObject::Distribution(_) = vd_ss_dist else {
                 panic!("No split events found on the vd device");
             };
 
@@ -512,39 +512,43 @@ mod test {
 
     #[tokio::test]
     async fn test_recover() -> Result<()> {
-        let spec = ServerAppSignUpSpec::build().await?;
-        let split = SplitSpec { sign_up: spec };
+        let split = {
+            let spec = ServerAppSignUpSpec::build().await?;
+            SplitSpec { sign_up: spec }
+        };
 
         split.sign_up.sign_up_and_join_for_two_devices().await?;
         split.split().await?;
 
-        todo!("qqqq");
-        //spec.client.p_ss.get_ss_distribution_events();
+        let vd_client_service = split.sign_up.vd.client_service.clone();
+        let vd_app_state = vd_client_service.build_service_state().await?.app_state;
 
-        // Recover secret
-        //let recover = {
-        //    let pass_id = member.member.vault.secrets.iter().next().unwrap().clone();
-        //    GenericAppStateRequest::Recover(pass_id)
-        //};
+        let ApplicationState::Vault(VaultFullInfo::Member(vd_user_state)) = &vd_app_state else {
+            bail!("Has to be Vault");
+        };
 
-        //let app_state_after_recover = client_service
-        //    .handle_client_request(spec.client.p_obj.clone(), new_app_state, recover)
-        //    .await?;
+        let recover = {
+            let pass_id = vd_user_state.member.vault.secrets.iter().next().unwrap().clone();
+            GenericAppStateRequest::Recover(pass_id)
+        };
 
-        // Secret recovery completion stage
-        // spec.vd.gw.sync().await?;
-        // spec.vd.gw.sync().await?;
-        //
-        // spec.vd.orchestrator.orchestrate().await?;
-        //
-        // spec.vd.gw.sync().await?;
-        // spec.vd.gw.sync().await?;
-        //
-        // spec.client.gw.sync().await?;
-        // spec.client.gw.sync().await?;
-        //
-        // let app_state_after_recover_json = serde_json::to_string_pretty(&app_state_after_recover)?;
-        // println!("{}", app_state_after_recover_json);
+        let app_state_after_recover = split.sign_up.vd.client_service
+            .handle_client_request(split.sign_up.vd.p_obj.clone(), vd_app_state, recover)
+            .await?;
+
+        split.sign_up.vd.gw.sync().await?;
+        split.sign_up.vd.gw.sync().await?;
+
+        split.sign_up.vd.orchestrator.orchestrate().await?;
+
+        split.sign_up.vd.gw.sync().await?;
+        split.sign_up.vd.gw.sync().await?;
+
+        split.sign_up.client.gw.sync().await?;
+        split.sign_up.client.gw.sync().await?;
+
+        let app_state_after_recover_json = serde_json::to_string_pretty(&app_state_after_recover)?;
+        println!("{}", app_state_after_recover_json);
 
         Ok(())
     }

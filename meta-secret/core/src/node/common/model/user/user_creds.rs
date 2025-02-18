@@ -1,4 +1,4 @@
-use crate::node::common::model::device::common::{DeviceData, DeviceName};
+use crate::node::common::model::device::common::{DeviceData, DeviceId, DeviceName};
 use crate::node::common::model::device::device_creds::DeviceCredentials;
 use crate::node::common::model::user::common::{UserData, UserId};
 use crate::node::common::model::vault::vault::VaultName;
@@ -41,6 +41,10 @@ impl UserCredentials {
             vault_name: self.vault_name.clone(),
             device_id: self.device().device_id.clone(),
         }
+    }
+    
+    pub fn device_id(&self) -> &DeviceId {
+        &self.device_creds.device.device_id
     }
 }
 

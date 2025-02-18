@@ -1,9 +1,7 @@
 use crate::crypto::utils::Id48bit;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::meta_pass::MetaPasswordId;
-use crate::node::common::model::secret::{
-    SecretDistributionType, SsDistributionClaim, SsDistributionClaimId, WasmSsLogData,
-};
+use crate::node::common::model::secret::{ClaimId, SecretDistributionType, SsDistributionClaim, SsDistributionClaimId, WasmSsLogData};
 use crate::node::common::model::user::common::{
     UserData, UserDataMember, UserDataOutsider, UserMembership,
 };
@@ -137,9 +135,13 @@ impl VaultMember {
             })
             .collect();
 
+        let claim_id = ClaimId::from(Id48bit::generate());
         SsDistributionClaim {
-            id: Id48bit::generate(),
-            dist_claim_id: SsDistributionClaimId::from(pass_id),
+            id: claim_id.clone(),
+            dist_claim_id: SsDistributionClaimId {
+                id: claim_id,
+                pass_id,
+            },
             vault_name: self.vault.vault_name.clone(),
             sender: self.user_device(),
             distribution_type,

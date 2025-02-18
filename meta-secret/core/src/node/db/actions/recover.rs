@@ -52,7 +52,7 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
                 let claim = vault_member.create_recovery_claim(pass_id);
 
                 let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
-                p_ss.save_claim_in_ss_device_log(claim.clone()).await?;
+                p_ss.save_claim_in_ss_device_log(claim).await?;
             }
         }
 

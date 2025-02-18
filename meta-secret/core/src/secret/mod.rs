@@ -2,9 +2,7 @@ use std::sync::Arc;
 
 use crate::node::common::model::crypto::aead::EncryptedMessage;
 use crate::node::common::model::meta_pass::MetaPasswordId;
-use crate::node::common::model::secret::{
-    SecretDistributionData, SsDistributionClaimId, SsDistributionId,
-};
+use crate::node::common::model::secret::{ClaimId, SecretDistributionData, SsDistributionClaimId, SsDistributionId};
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::vault::VaultMember;
 use crate::node::db::descriptors::shared_secret_descriptor::SsDescriptor;
@@ -21,6 +19,7 @@ use crate::CoreResult;
 use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
 use anyhow::Result;
 use tracing_attributes::instrument;
+use crate::crypto::utils::Id48bit;
 
 pub mod data_block;
 pub mod shared_secret;
@@ -131,7 +130,10 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
         for secret_share in encrypted_shares {
             let distribution_data = SecretDistributionData {
                 vault_name: vault_name.clone(),
-                claim_id: SsDistributionClaimId::from(claim.dist_claim_id.pass_id.clone()),
+                claim_id: SsDistributionClaimId {
+                    id: ClaimId::from(Id48bit::generate()),
+                    pass_id: claim.dist_claim_id.pass_id.clone(),
+                },
                 secret_message: secret_share.clone(),
             };
 
