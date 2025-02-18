@@ -25,18 +25,9 @@ pub struct ServerApp<Repo: KvLogEventRepo> {
 
 impl<Repo: KvLogEventRepo> ServerApp<Repo> {
     pub fn new(repo: Arc<Repo>) -> Result<Self> {
-        let p_obj = {
-            let obj = PersistentObject::new(repo);
-            Arc::new(obj)
-        };
-
-        let data_sync = ServerSyncGateway {
-            p_obj: p_obj.clone(),
-        };
-
-        let creds_repo = PersistentCredentials {
-            p_obj: p_obj.clone(),
-        };
+        let p_obj = Arc::new(PersistentObject::new(repo));
+        let data_sync = ServerSyncGateway::from(p_obj.clone());
+        let creds_repo = PersistentCredentials::from(p_obj.clone());
 
         Ok(Self {
             data_sync,
@@ -173,7 +164,7 @@ mod test {
     };
     use crate::node::db::events::generic_log_event::GenericKvLogEvent;
     use crate::node::db::events::object_id::ArtifactId;
-    use crate::node::db::events::shared_secret_event::SsObject;
+    use crate::node::db::events::shared_secret_event::SsDistributionObject;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_object::PersistentObject;
     use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -419,16 +410,16 @@ mod test {
             self.sign_up.vd.gw.sync().await?;
             self.sign_up.vd.gw.sync().await?;
 
-            let client_db: HashMap<ArtifactId, GenericKvLogEvent> =
-                self.sign_up.vd.p_obj.repo.get_db().await;
-            for (id, event) in client_db {
-                let event_json = serde_json::to_string_pretty(&event)?;
-                println!("DbEvent:");
-                println!(" id: {:?}", &id);
-                println!(" event: {}", &event_json);
-            }
+            // let client_db: HashMap<ArtifactId, GenericKvLogEvent> =
+            //     self.sign_up.vd.p_obj.repo.get_db().await;
+            // for (id, event) in client_db {
+            //     let event_json = serde_json::to_string_pretty(&event)?;
+            //     println!("DbEvent:");
+            //     println!(" id: {:?}", &id);
+            //     println!(" event: {}", &event_json);
+            // }
 
-            let dist_id = SsDistributionId {
+            let client_dist_id = SsDistributionId {
                 pass_id: pass_id.clone(),
                 receiver: self
                     .sign_up
@@ -439,7 +430,7 @@ mod test {
                     .device_id
                     .clone(),
             };
-            let ss_dist_desc = SsDescriptor::SsDistribution(dist_id.clone());
+            let ss_dist_desc = SsDescriptor::Distribution(client_dist_id.clone());
 
             let client_ss_dist = self
                 .sign_up
@@ -448,7 +439,7 @@ mod test {
                 .find_tail_event(ss_dist_desc)
                 .await?
                 .unwrap();
-            let SsObject::SsDistribution(client_dist_event) = client_ss_dist else {
+            let SsDistributionObject::Distribution(client_dist_event) = client_ss_dist else {
                 panic!("No split events found on the client");
             };
 
@@ -469,24 +460,29 @@ mod test {
             let share_plain_text = String::try_from(&secret_text.msg)?;
             println!("{}", share_plain_text);
 
-            //verify ss claim (vd device has to have SsClaim)
-            let claim_desc = SsDescriptor::SsClaim(SsDistributionClaimDbId {
-                claim_id: SsDistributionClaimId {
-                    id: client_dist_event.value.claim_id.id,
-                    pass_id,
-                },
-                distribution_id: dist_id,
-            });
+            //verify distribution share is present on vd device
+            let vd_dist_id = SsDistributionId {
+                pass_id: pass_id.clone(),
+                receiver: self
+                    .sign_up
+                    .user_creds()
+                    .vd
+                    .device_creds
+                    .device
+                    .device_id
+                    .clone(),
+            };
+            let vd_ss_dist_desc = SsDescriptor::Distribution(vd_dist_id.clone());
 
-            let vd_ss_claim = self
+            let vd_ss_dist = self
                 .sign_up
                 .vd
                 .p_obj
-                .find_tail_event(claim_desc)
+                .find_tail_event(vd_ss_dist_desc)
                 .await?
                 .unwrap();
-            let SsObject::SsClaim(_) = vd_ss_claim else {
-                panic!("No split claim event found on the vd");
+            let SsDistributionObject::Distribution(vd_dist_event) = vd_ss_dist else {
+                panic!("No split events found on the vd device");
             };
 
             //let new_app_state_json = serde_json::to_string_pretty(&new_app_state)?;

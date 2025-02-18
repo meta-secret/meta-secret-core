@@ -10,7 +10,7 @@ use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
 };
 use crate::node::db::events::object_id::ArtifactId;
-use crate::node::db::events::shared_secret_event::SsObject;
+use crate::node::db::events::shared_secret_event::{SsDistributionObject, SsLogObject};
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -20,6 +20,7 @@ use crate::node::server::request::{SsRequest, VaultRequest};
 use anyhow::Result;
 use anyhow::{anyhow, bail, Ok};
 use async_trait::async_trait;
+use derive_more::From;
 use tracing::{info, instrument};
 
 #[async_trait(? Send)]
@@ -33,6 +34,7 @@ pub trait DataSyncApi {
         -> Result<()>;
 }
 
+#[derive(From)]
 pub struct ServerSyncGateway<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
 }
@@ -130,7 +132,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                 let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
                 p_ss_log.save_ss_log_event(ss_claim).await?;
             }
-            GenericKvLogEvent::SharedSecret(ss_object) => {
+            GenericKvLogEvent::SsDistribution(ss_object) => {
                 self.p_obj.repo.save(ss_object).await?;
             }
             GenericKvLogEvent::Credentials(_) => {
@@ -232,52 +234,62 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         request: SsRequest,
         server_device: DeviceId,
     ) -> Result<Vec<GenericKvLogEvent>> {
-        let mut commit_log = vec![];
         //sync SsLog
-        let ss_log = self
+        let ss_log_events = self
             .p_obj
-            .find_object_events::<GenericKvLogEvent>(request.ss_log.clone())
+            .find_object_events::<SsLogObject>(request.ss_log.clone())
             .await?;
-        commit_log.extend(ss_log.clone());
 
-        let maybe_latest_ss_log_state = ss_log.last();
+        let maybe_latest_ss_log_state = ss_log_events.last();
         let Some(latest_ss_log_state) = maybe_latest_ss_log_state else {
-            return Ok(commit_log);
+            // Return empty result if there are no new events in the db 
+            // (no latest element, means - empty collection of events) 
+            return Ok(vec![]);
         };
-
-        let ss_log_data = latest_ss_log_state.clone().ss_log()?.to_data();
-
-        for (_, claim) in &ss_log_data.claims {
+        
+        let ss_log_data = latest_ss_log_state.as_data();
+        
+        let mut commit_log = vec![];
+        for ss_log_event in ss_log_events.clone() {
+            commit_log.push(ss_log_event.to_generic())
+        }
+        
+        for (_, claim) in ss_log_data.claims.iter() {
+            
+            // Distribute shares
             for dist_id in claim.claim_db_ids() {
                 if claim.sender.eq(&server_device) {
-                    bail!("Local shares must not be sent to server");
+                    bail!("Invalid state. Server can't manage encrypted shares");
                 };
 
-                let sender_device = request.sender.device.device_id.clone();
+                let sender_device = &request.sender.device.device_id;
 
-                if sender_device.eq(&claim.sender) {
-                    let desc = SsDescriptor::SsDistribution(dist_id.distribution_id.clone());
+                if dist_id.distribution_id.receiver.eq(sender_device) {
+                    let desc = SsDescriptor::Distribution(dist_id.distribution_id.clone());
                     let ss_obj = self.p_obj.find_tail_event(desc).await?;
 
                     if let Some(dist_event) = ss_obj {
+                        let ss_dist_obj_id = dist_event.obj_id();
+                        
                         let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
                         p_ss.create_distribution_completion_status(dist_id).await?;
 
-                        commit_log.push(dist_event.clone().to_generic());
-                        self.p_obj.repo.delete(dist_event.obj_id()).await;
+                        commit_log.push(dist_event.to_generic());
+                        self.p_obj.repo.delete(ss_dist_obj_id).await;
                     }
                 }
             }
 
+            // handle completed claims
             let mut completed_split_claims = vec![];
-            for (_, claim) in &ss_log_data.claims {
+            for (_, claim) in ss_log_data.claims.iter() {
                 if claim.distribution_type != SecretDistributionType::Split {
                     continue;
                 }
 
                 let mut completed = true;
                 for dist_id in claim.claim_db_ids() {
-                    let desc = SsDescriptor::SsDistributionStatus(dist_id.clone());
+                    let desc = SsDescriptor::DistributionStatus(dist_id.clone());
                     let maybe_status_event = self.p_obj.find_tail_event(desc).await?;
 
                     let Some(ss_obj) = maybe_status_event else {
@@ -285,7 +297,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                         break;
                     };
 
-                    let SsObject::SsDistributionStatus(status_record) = ss_obj else {
+                    let SsDistributionObject::DistributionStatus(status_record) = ss_obj else {
                         completed = false;
                         break;
                     };

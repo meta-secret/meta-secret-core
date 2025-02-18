@@ -10,7 +10,7 @@ use crate::node::common::model::vault::vault::VaultMember;
 use crate::node::db::descriptors::shared_secret_descriptor::SsDescriptor;
 use crate::node::db::events::generic_log_event::ToGenericEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::shared_secret_event::SsObject;
+use crate::node::db::events::shared_secret_event::SsDistributionObject;
 use crate::node::db::events::vault::vault_log_event::AddMetaPassEvent;
 use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use crate::node::db::objects::persistent_object::PersistentObject;
@@ -143,9 +143,9 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
                 }
             };
 
-            let split_key = KvKey::from(SsDescriptor::SsDistribution(dist_id));
+            let split_key = KvKey::from(SsDescriptor::Distribution(dist_id));
 
-            let ss_obj = SsObject::SsDistribution(KvLogEvent {
+            let ss_obj = SsDistributionObject::Distribution(KvLogEvent {
                 key: split_key.clone(),
                 value: distribution_data,
             });

@@ -75,6 +75,7 @@ pub struct SsDistributionClaim {
     pub sender: DeviceId,
 
     pub distribution_type: SecretDistributionType,
+    // All receivers of secret shares excluding the sender (the sender already has a share).
     pub receivers: Vec<DeviceId>,
 }
 

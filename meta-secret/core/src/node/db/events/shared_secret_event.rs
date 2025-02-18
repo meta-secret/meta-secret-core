@@ -11,32 +11,32 @@ use anyhow::{bail, Ok};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum SsObject {
+pub enum SsDistributionObject {
     // Contains encrypted secret share for the receiver device
     // (will be deleted after sending to the receiver).
-    // This is for SecretDistributionType::Recover/Split
-    SsClaim(KvLogEvent<SecretDistributionData>),
-    // This is a secret share that device keeps for a password
-    SsDistribution(KvLogEvent<SecretDistributionData>),
-
-    SsDistributionStatus(KvLogEvent<SsDistributionStatus>),
+    // This is for SecretDistributionType::Recover
+    Claim(KvLogEvent<SecretDistributionData>),
+    // This is a secret share that device keeps for a password (means - Split)
+    // We don't use split, because when a share on a target device, split - is confusing
+    Distribution(KvLogEvent<SecretDistributionData>),
+    DistributionStatus(KvLogEvent<SsDistributionStatus>),
 }
 
-impl KeyExtractor for SsObject {
+impl KeyExtractor for SsDistributionObject {
     fn key(&self) -> KvKey {
         match self {
-            SsObject::SsDistribution(event) => event.key.clone(),
-            SsObject::SsDistributionStatus(event) => event.key.clone(),
-            SsObject::SsClaim(event) => event.key.clone(),
+            SsDistributionObject::Distribution(event) => event.key.clone(),
+            SsDistributionObject::DistributionStatus(event) => event.key.clone(),
+            SsDistributionObject::Claim(event) => event.key.clone(),
         }
     }
 }
 
-impl TryFrom<GenericKvLogEvent> for SsObject {
+impl TryFrom<GenericKvLogEvent> for SsDistributionObject {
     type Error = anyhow::Error;
 
     fn try_from(event: GenericKvLogEvent) -> Result<Self, Self::Error> {
-        if let GenericKvLogEvent::SharedSecret(ss_obj) = event {
+        if let GenericKvLogEvent::SsDistribution(ss_obj) = event {
             Ok(ss_obj)
         } else {
             bail!(LogEventCastError::InvalidSharedSecret(event))
@@ -84,19 +84,19 @@ impl KeyExtractor for SsDeviceLogObject {
     }
 }
 
-impl ObjIdExtractor for SsObject {
+impl ObjIdExtractor for SsDistributionObject {
     fn obj_id(&self) -> ArtifactId {
         match self {
-            SsObject::SsDistribution(event) => event.key.obj_id.clone(),
-            SsObject::SsDistributionStatus(event) => event.key.obj_id.clone(),
-            SsObject::SsClaim(event) => event.key.obj_id.clone(),
+            SsDistributionObject::Distribution(event) => event.key.obj_id.clone(),
+            SsDistributionObject::DistributionStatus(event) => event.key.obj_id.clone(),
+            SsDistributionObject::Claim(event) => event.key.obj_id.clone(),
         }
     }
 }
 
-impl ToGenericEvent for SsObject {
+impl ToGenericEvent for SsDistributionObject {
     fn to_generic(self) -> GenericKvLogEvent {
-        GenericKvLogEvent::SharedSecret(self)
+        GenericKvLogEvent::SsDistribution(self)
     }
 }
 
@@ -117,8 +117,12 @@ impl TryFrom<GenericKvLogEvent> for SsLogObject {
 }
 
 impl SsLogObject {
-    pub fn to_data(&self) -> SsLogData {
-        self.0.value.clone()
+    pub fn to_data(self) -> SsLogData {
+        self.0.value
+    }
+
+    pub fn as_data(&self) -> &SsLogData {
+        &self.0.value
     }
 
     pub fn insert(mut self, claim: SsDistributionClaim) -> Self {

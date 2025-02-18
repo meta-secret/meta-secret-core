@@ -12,7 +12,7 @@ use crate::node::db::descriptors::shared_secret_descriptor::{
 use crate::node::db::events::generic_log_event::ToGenericEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::ArtifactId;
-use crate::node::db::events::shared_secret_event::{SsDeviceLogObject, SsLogObject, SsObject};
+use crate::node::db::events::shared_secret_event::{SsDeviceLogObject, SsLogObject, SsDistributionObject};
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use anyhow::{bail, Ok, Result};
@@ -33,9 +33,9 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
     ) -> Result<()> {
         info!("create_distribution_completion_status");
 
-        let desc = SsDescriptor::SsDistributionStatus(id);
+        let desc = SsDescriptor::DistributionStatus(id);
 
-        let unit_event = SsObject::SsDistributionStatus(KvLogEvent {
+        let unit_event = SsDistributionObject::DistributionStatus(KvLogEvent {
             key: KvKey::from(desc),
             value: SsDistributionStatus::Delivered,
         });
@@ -49,10 +49,10 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
     pub async fn get_ss_distribution_events(
         &self,
         distribution_claim: SsDistributionClaim,
-    ) -> Result<Vec<SsObject>> {
+    ) -> Result<Vec<SsDistributionObject>> {
         let mut events = vec![];
         for distribution_id in distribution_claim.distribution_ids() {
-            let desc = SsDescriptor::SsDistribution(distribution_id);
+            let desc = SsDescriptor::Distribution(distribution_id);
             let tail_event = self.p_obj.find_tail_event(desc).await?;
             if let Some(event) = tail_event {
                 events.push(event);
@@ -62,8 +62,8 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
         Ok(events)
     }
 
-    pub async fn get_ss_distribution_event_by_id(&self, id: SsDistributionId) -> Result<SsObject> {
-        let desc = SsDescriptor::SsDistribution(id);
+    pub async fn get_ss_distribution_event_by_id(&self, id: SsDistributionId) -> Result<SsDistributionObject> {
+        let desc = SsDescriptor::Distribution(id);
 
         if let Some(event) = self.p_obj.find_tail_event(desc).await? {
             Ok(event)

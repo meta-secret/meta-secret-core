@@ -3,7 +3,7 @@ use crate::node::db::events::error::ErrorMessage;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::local_event::CredentialsObject;
 use crate::node::db::events::object_id::ArtifactId;
-use crate::node::db::events::shared_secret_event::{SsDeviceLogObject, SsObject};
+use crate::node::db::events::shared_secret_event::{SsDeviceLogObject, SsDistributionObject};
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::events::vault::vault_event::VaultObject;
 use crate::node::db::events::vault::vault_log_event::VaultLogObject;
@@ -21,7 +21,7 @@ pub enum GenericKvLogEvent {
 
     SsDeviceLog(SsDeviceLogObject),
     SsLog(SsLogObject),
-    SharedSecret(SsObject),
+    SsDistribution(SsDistributionObject),
 
     DbError(KvLogEvent<ErrorMessage>),
 }
@@ -47,8 +47,8 @@ impl GenericKvLogEvent {
         VaultStatusObject::try_from(self)
     }
 
-    pub fn shared_secret(self) -> anyhow::Result<SsObject> {
-        SsObject::try_from(self)
+    pub fn shared_secret(self) -> anyhow::Result<SsDistributionObject> {
+        SsDistributionObject::try_from(self)
     }
 
     pub fn ss_device_log(self) -> anyhow::Result<SsDeviceLogObject> {
@@ -101,7 +101,7 @@ impl ObjIdExtractor for GenericKvLogEvent {
     fn obj_id(&self) -> ArtifactId {
         match self {
             GenericKvLogEvent::Vault(obj) => obj.obj_id(),
-            GenericKvLogEvent::SharedSecret(obj) => obj.obj_id(),
+            GenericKvLogEvent::SsDistribution(obj) => obj.obj_id(),
             GenericKvLogEvent::Credentials(obj) => obj.obj_id(),
             GenericKvLogEvent::DbError(event) => event.key.obj_id.clone(),
             GenericKvLogEvent::DeviceLog(obj) => obj.obj_id(),
@@ -117,7 +117,7 @@ impl KeyExtractor for GenericKvLogEvent {
     fn key(&self) -> KvKey {
         match self {
             GenericKvLogEvent::Vault(obj) => obj.key(),
-            GenericKvLogEvent::SharedSecret(obj) => obj.key(),
+            GenericKvLogEvent::SsDistribution(obj) => obj.key(),
             GenericKvLogEvent::Credentials(obj) => obj.key(),
             GenericKvLogEvent::DbError(event) => event.key.clone(),
             GenericKvLogEvent::DeviceLog(obj) => obj.key(),

@@ -162,9 +162,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
             let ss_device_log = ss_device_log_event.clone();
 
             let distribution_claim = ss_device_log.0.value;
-            let p_ss = PersistentSharedSecret {
-                p_obj: self.p_obj.clone(),
-            };
+            let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
             let dist_events = p_ss.get_ss_distribution_events(distribution_claim).await?;
             for dist_event in dist_events {
                 self.sync

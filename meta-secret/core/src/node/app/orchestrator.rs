@@ -4,7 +4,7 @@ use crate::node::common::model::vault::vault::{VaultMember, VaultStatus};
 use crate::node::db::actions::sign_up::join::AcceptJoinAction;
 use crate::node::db::descriptors::shared_secret_descriptor::SsDescriptor;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::shared_secret_event::SsObject;
+use crate::node::db::events::shared_secret_event::SsDistributionObject;
 use crate::node::db::events::vault::vault_log_event::{VaultActionRequestEvent, VaultLogObject};
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -85,7 +85,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                         .get_ss_distribution_event_by_id(claim_db_id.distribution_id.clone())
                         .await?;
 
-                    let SsObject::SsDistribution(dist_event) = ss_obj else {
+                    let SsDistributionObject::Distribution(dist_event) = ss_obj else {
                         bail!("Ss distribution object not found");
                     };
 
@@ -107,9 +107,9 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                     };
 
                     //compare with claim dist id, if match then create a claim
-                    let key = KvKey::from(SsDescriptor::SsClaim(claim_db_id.clone()));
+                    let key = KvKey::from(SsDescriptor::Claim(claim_db_id.clone()));
 
-                    let new_claim = SsObject::SsClaim(KvLogEvent {
+                    let new_claim = SsDistributionObject::Claim(KvLogEvent {
                         key,
                         value: SecretDistributionData {
                             vault_name: self.user_creds.vault_name.clone(),
