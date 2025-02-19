@@ -126,7 +126,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                 );
 
                 self.p_obj.repo.save(ss_device_log_obj.clone()).await?;
-                
+
                 let ss_claim = ss_device_log_obj.get_distribution_request();
                 let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
                 p_ss_log.save_ss_log_event(ss_claim).await?;
@@ -241,114 +241,54 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
         let maybe_latest_ss_log_state = ss_log_events.last();
         let Some(latest_ss_log_state) = maybe_latest_ss_log_state else {
-            // Return empty result if there are no new events in the db 
-            // (no latest element, means - empty collection of events) 
+            // Return empty result if there are no new events in the db
+            // (no latest element, means - empty collection of events)
             return Ok(vec![]);
         };
-        
-        let ss_log_data = latest_ss_log_state.as_data();
         
         let mut commit_log = vec![];
         for ss_log_event in ss_log_events.clone() {
             commit_log.push(ss_log_event.to_generic())
         }
-        
+
+        let ss_log_data = latest_ss_log_state.as_data();
+        let mut updated_ss_log_data = ss_log_data.clone();
+        let mut updated_state = false;
+
         for (_, claim) in ss_log_data.claims.iter() {
-            
             // Distribute shares
             for dist_id in claim.claim_db_ids() {
                 if claim.sender.eq(&server_device) {
                     bail!("Invalid state. Server can't manage encrypted shares");
                 };
 
-                let sender_device = &request.sender.device.device_id;
+                let receiver_device = request.sender.device.device_id.clone();
 
                 // complete distribution action by sending the distribution event to the receiver
-                if dist_id.distribution_id.receiver.eq(sender_device) {
+                if dist_id.distribution_id.receiver.eq(&receiver_device) {
                     let desc = SsDescriptor::Distribution(dist_id.distribution_id.clone());
                     let ss_obj = self.p_obj.find_tail_event(desc).await?;
 
                     if let Some(dist_event) = ss_obj {
                         let ss_dist_obj_id = dist_event.obj_id();
-                        
-                        let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
-                        p_ss.create_distribution_completion_status(dist_id).await?;
-
                         commit_log.push(dist_event.to_generic());
                         self.p_obj.repo.delete(ss_dist_obj_id).await;
+
+                        let claim_id = dist_id.claim_id.id;
+                        updated_ss_log_data =
+                            updated_ss_log_data.complete_for_device(claim_id, receiver_device);
+                        updated_state = true;
                     }
                 }
             }
+        }
 
-            // handle completed claims
-            let mut completed_claims = vec![];
-            for (_, claim) in ss_log_data.claims.iter() {
-                match claim.distribution_type {
-                    SecretDistributionType::Split => {
-                        let mut completed = true;
-                        for dist_id in claim.claim_db_ids() {
-                            let desc = SsDescriptor::DistributionStatus(dist_id.clone());
-                            let maybe_status_event = self.p_obj.find_tail_event(desc).await?;
-
-                            let Some(ss_obj) = maybe_status_event else {
-                                completed = false;
-                                break;
-                            };
-
-                            let SsDistributionObject::DistributionStatus(status) = ss_obj else {
-                                completed = false;
-                                break;
-                            };
-
-                            if status.value != SsDistributionStatus::Delivered {
-                                completed = false;
-                                break;
-                            }
-                        }
-
-                        if completed {
-                            completed_claims.push(claim.clone());
-                        }
-                    }
-                    SecretDistributionType::Recover => {
-                        let mut completed = true;
-                        for dist_id in claim.claim_db_ids() {
-                            let desc = SsDescriptor::ClaimStatus(dist_id.clone());
-                            let maybe_status_event = self.p_obj.find_tail_event(desc).await?;
-
-                            let Some(ss_obj) = maybe_status_event else {
-                                completed = false;
-                                break;
-                            };
-
-                            let SsDistributionObject::ClaimStatus(status) = ss_obj else {
-                                completed = false;
-                                break;
-                            };
-
-                            if status.value != SsDistributionStatus::Delivered {
-                                completed = false;
-                                break;
-                            }
-                        }
-
-                        if completed {
-                            completed_claims.push(claim.clone());
-                        }
-                    }
-                }
-            }
-
-            let completed_claims_num = completed_claims.len();
-            let updated_ss_log_data = ss_log_data.clone().remove(completed_claims);
-
-            if completed_claims_num >0 {
-                let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
-                let new_ss_log_obj = p_ss
-                    .create_new_ss_log_claim(updated_ss_log_data, request.sender.vault_name.clone())
-                    .await?;
-                self.p_obj.repo.save(new_ss_log_obj.to_generic()).await?;
-            }
+        if updated_state {
+            let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
+            let new_ss_log_obj = p_ss
+                .create_new_ss_log_claim(updated_ss_log_data, request.sender.vault_name.clone())
+                .await?;
+            self.p_obj.repo.save(new_ss_log_obj.to_generic()).await?;
         }
 
         Ok(commit_log)

@@ -1,7 +1,8 @@
+use std::collections::HashMap;
 use crate::crypto::utils::Id48bit;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::meta_pass::MetaPasswordId;
-use crate::node::common::model::secret::{ClaimId, SecretDistributionType, SsDistributionClaim, SsDistributionClaimId, WasmSsLogData};
+use crate::node::common::model::secret::{ClaimId, SecretDistributionType, SsDistributionClaim, SsDistributionClaimId, SsDistributionCompositeStatus, SsDistributionStatus, WasmSsLogData};
 use crate::node::common::model::user::common::{
     UserData, UserDataMember, UserDataOutsider, UserMembership,
 };
@@ -122,7 +123,7 @@ impl VaultMember {
         pass_id: MetaPasswordId,
         distribution_type: SecretDistributionType,
     ) -> SsDistributionClaim {
-        let links = self
+        let links: Vec<DeviceId> = self
             .vault
             .members()
             .iter()
@@ -136,6 +137,7 @@ impl VaultMember {
             .collect();
 
         let claim_id = ClaimId::from(Id48bit::generate());
+        
         SsDistributionClaim {
             id: claim_id.clone(),
             dist_claim_id: SsDistributionClaimId {
@@ -145,7 +147,8 @@ impl VaultMember {
             vault_name: self.vault.vault_name.clone(),
             sender: self.user_device(),
             distribution_type,
-            receivers: links,
+            receivers: links.clone(),
+            status: SsDistributionCompositeStatus::from(links),
         }
     }
 

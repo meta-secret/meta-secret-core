@@ -12,11 +12,8 @@ use derive_more::From;
 #[serde(rename_all = "camelCase")]
 pub enum SsDescriptor {
     Claim(SsDistributionClaimDbId),
-    ClaimStatus(SsDistributionClaimDbId),
-
     /// Allows devices distributing their shares (split operation)
     Distribution(SsDistributionId),
-    DistributionStatus(SsDistributionClaimDbId),
 }
 
 #[derive(Clone, Debug, PartialEq, From, Serialize, Deserialize)]
@@ -31,9 +28,7 @@ impl ObjectType for SsDescriptor {
     fn object_type(&self) -> String {
         let obj_type = match self {
             SsDescriptor::Distribution(_) => "SsDistribution",
-            SsDescriptor::DistributionStatus(_) => "SsDistributionStatus",
-            SsDescriptor::Claim(_) => "SsClaim",
-            SsDescriptor::ClaimStatus(_) => "SsClaimStatus"
+            SsDescriptor::Claim(_) => "SsClaim"
         };
 
         String::from(obj_type)
@@ -62,9 +57,7 @@ impl IdString for SsDescriptor {
     fn id_str(self) -> String {
         match self {
             SsDescriptor::Distribution(event_id) => event_id.clone().id_str(),
-            SsDescriptor::DistributionStatus(id) => id.clone().id_str(),
             SsDescriptor::Claim(db_id) => db_id.clone().id_str(),
-            SsDescriptor::ClaimStatus(db_id) => db_id.clone().id_str()
         }
     }
 }

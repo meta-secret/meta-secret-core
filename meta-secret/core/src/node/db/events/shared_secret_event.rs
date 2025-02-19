@@ -16,21 +16,16 @@ pub enum SsDistributionObject {
     // (will be deleted after sending to the receiver).
     // This is for SecretDistributionType::Recover
     Claim(KvLogEvent<SecretDistributionData>),
-    ClaimStatus(KvLogEvent<SsDistributionStatus>),
-    
     // This is a secret share that device keeps for a password (means - Split)
     // We don't use split, because when a share on a target device, split - is confusing
     Distribution(KvLogEvent<SecretDistributionData>),
-    DistributionStatus(KvLogEvent<SsDistributionStatus>),
 }
 
 impl KeyExtractor for SsDistributionObject {
     fn key(&self) -> KvKey {
         match self {
             SsDistributionObject::Distribution(event) => event.key.clone(),
-            SsDistributionObject::DistributionStatus(event) => event.key.clone(),
             SsDistributionObject::Claim(event) => event.key.clone(),
-            SsDistributionObject::ClaimStatus(event) => event.key.clone()
         }
     }
 }
@@ -91,9 +86,7 @@ impl ObjIdExtractor for SsDistributionObject {
     fn obj_id(&self) -> ArtifactId {
         match self {
             SsDistributionObject::Distribution(event) => event.key.obj_id.clone(),
-            SsDistributionObject::DistributionStatus(event) => event.key.obj_id.clone(),
-            SsDistributionObject::Claim(event) => event.key.obj_id.clone(),
-            SsDistributionObject::ClaimStatus(event) => event.key.obj_id.clone()
+            SsDistributionObject::Claim(event) => event.key.obj_id.clone()
         }
     }
 }

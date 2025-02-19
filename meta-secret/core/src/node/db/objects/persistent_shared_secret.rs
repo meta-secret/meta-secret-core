@@ -26,26 +26,6 @@ pub struct PersistentSharedSecret<Repo: KvLogEventRepo> {
 }
 
 impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
-    #[instrument(skip(self))]
-    pub async fn create_distribution_completion_status(
-        &self,
-        id: SsDistributionClaimDbId,
-    ) -> Result<()> {
-        info!("create_distribution_completion_status");
-
-        let desc = SsDescriptor::DistributionStatus(id);
-
-        let unit_event = SsDistributionObject::DistributionStatus(KvLogEvent {
-            key: KvKey::from(desc),
-            value: SsDistributionStatus::Delivered,
-        });
-
-        self.p_obj.repo.save(unit_event).await?;
-        Ok(())
-    }
-}
-
-impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
     pub async fn get_ss_distribution_events(
         &self,
         distribution_claim: SsDistributionClaim,
@@ -162,7 +142,7 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
 
         let log_event = maybe_log_event
             .map(|ss_log_event| ss_log_event.to_data())
-            .unwrap_or_else(SsLogData::empty);
+            .unwrap_or_else(SsLogData::default);
 
         Ok(log_event)
     }

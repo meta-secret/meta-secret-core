@@ -5,7 +5,6 @@ use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::common::model::IdString;
 use derive_more::From;
-use rand::Rng;
 use std::collections::HashMap;
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -76,6 +75,7 @@ pub struct SsDistributionClaim {
     pub distribution_type: SecretDistributionType,
     // All receivers of secret shares excluding the sender (the sender already has a share).
     pub receivers: Vec<DeviceId>,
+    pub status: SsDistributionCompositeStatus,
 }
 
 impl SsDistributionClaim {
@@ -107,13 +107,50 @@ impl SsDistributionClaim {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SsDistributionStatus {
     /// Server is waiting for distributions to arrive, to send them to target devices
     Pending,
     /// The receiver device has received the secret
     Delivered,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SsDistributionCompositeStatus {
+    statuses: HashMap<DeviceId, SsDistributionStatus>,
+}
+
+impl SsDistributionCompositeStatus {
+    pub fn complete(mut self, device_id: DeviceId) -> Self {
+        self.statuses.insert(device_id, SsDistributionStatus::Delivered);
+        self
+    }
+    
+    pub fn status(&self) -> SsDistributionStatus {
+        let pending = self
+            .statuses
+            .values()
+            .any(|dist_status| matches!(dist_status, SsDistributionStatus::Pending));
+
+        if pending {
+            SsDistributionStatus::Pending
+        } else {
+            SsDistributionStatus::Delivered
+        }
+    }
+}
+
+impl From<Vec<DeviceId>> for SsDistributionCompositeStatus {
+    fn from(devices: Vec<DeviceId>) -> Self {
+        let mut statuses = HashMap::new();
+        for device_id in devices {
+            statuses.insert(device_id, SsDistributionStatus::Pending);
+        }
+        
+        Self { statuses }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
@@ -132,19 +169,20 @@ pub struct SecretDistributionData {
     pub secret_message: EncryptedMessage,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SsLogData {
     pub claims: HashMap<ClaimId, SsDistributionClaim>,
 }
 
 impl SsLogData {
-    pub fn remove(mut self, completed_claims: Vec<SsDistributionClaim>) -> Self {
-        for completed_claim in completed_claims {
-            //complete distribution process by deleting the claim from ss_log
-            self.claims.remove(&completed_claim.id);
-        }
+    pub fn complete_for_device(mut self, claim_id: ClaimId, device_id: DeviceId) -> Self {
+        let maybe_claim = self.claims.remove(&claim_id);
         
+        if let Some(mut claim) = maybe_claim {
+            claim.status = claim.status.complete(device_id);
+        }
+
         self
     }
 }
@@ -162,24 +200,10 @@ impl SsLogData {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, From, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen]
 pub struct WasmSsLogData(SsLogData);
-
-impl From<SsLogData> for WasmSsLogData {
-    fn from(log: SsLogData) -> Self {
-        WasmSsLogData(log)
-    }
-}
-
-impl SsLogData {
-    pub fn empty() -> Self {
-        Self {
-            claims: HashMap::new(),
-        }
-    }
-}
 
 #[wasm_bindgen]
 #[allow(unused)]
@@ -197,21 +221,26 @@ mod test {
     use crate::crypto::utils::{Id48bit, U64IdUrlEnc};
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::common::model::meta_pass::MetaPasswordId;
-    use crate::node::common::model::secret::{
-        ClaimId, SecretDistributionType, SsDistributionClaim, SsDistributionClaimId
-    };
+    use crate::node::common::model::secret::{ClaimId, SecretDistributionType, SsDistributionClaim, SsDistributionClaimId, SsDistributionCompositeStatus, SsDistributionStatus};
     use crate::node::common::model::vault::vault::VaultName;
     use anyhow::Result;
+    use std::collections::HashMap;
 
     #[tokio::test]
     async fn test_distribution_ids() -> Result<()> {
         let registry = FixtureRegistry::empty();
-        
+
         let client_device_id = registry.state.device_creds.client.device.device_id;
         let client_b_device_id = registry.state.device_creds.client_b.device.device_id;
         let vd_device_id = registry.state.device_creds.vd.device.device_id;
 
+        let mut status = HashMap::new();
+        status.insert(vd_device_id.clone(), SsDistributionStatus::Pending);
+        status.insert(client_b_device_id.clone(), SsDistributionStatus::Pending);
+
         let claim_id = ClaimId::from(Id48bit::generate());
+        let receivers = vec![vd_device_id, client_b_device_id];
+        
         let claim = SsDistributionClaim {
             id: claim_id.clone(),
             dist_claim_id: SsDistributionClaimId {
@@ -224,13 +253,14 @@ mod test {
             vault_name: VaultName::test(),
             sender: client_device_id,
             distribution_type: SecretDistributionType::Split,
-            receivers: vec![vd_device_id, client_b_device_id],
+            receivers: receivers.clone(),
+            status: SsDistributionCompositeStatus::from(receivers),
         };
 
         let dist_ids = claim.distribution_ids();
-        
+
         assert_eq!(2, dist_ids.len());
-        
+
         Ok(())
     }
 }
