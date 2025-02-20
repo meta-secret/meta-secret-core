@@ -157,7 +157,7 @@ mod test {
     use crate::node::common::model::secret::{SsDistributionId};
     use crate::node::common::model::{ApplicationState, VaultFullInfo};
     use crate::node::db::descriptors::shared_secret_descriptor::{
-        SsDescriptor, SsDeviceLogDescriptor,
+        SsDistributionDescriptor, SsDeviceLogDescriptor,
     };
     use crate::node::db::events::shared_secret_event::SsDistributionObject;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
@@ -169,6 +169,8 @@ mod test {
     use anyhow::Result;
     use tracing::{info, Instrument};
     use crate::node::app::meta_app::meta_client_service::MetaClientService;
+    use crate::node::common::model::crypto::aead::EncryptedMessage;
+    use crate::node::db::events::generic_log_event::KeyExtractor;
 
     struct ActorNode {
         user: UserData,
@@ -430,7 +432,7 @@ mod test {
                     .device_id
                     .clone(),
             };
-            let ss_dist_desc = SsDescriptor::Distribution(client_dist_id.clone());
+            let ss_dist_desc = SsDistributionDescriptor::Distribution(client_dist_id.clone());
 
             let client_ss_dist = self
                 .sign_up
@@ -461,18 +463,19 @@ mod test {
             println!("{}", share_plain_text);
 
             //verify distribution share is present on vd device
+            let vd_receiver_device_id = self
+                .sign_up
+                .user_creds()
+                .vd
+                .device_creds
+                .device
+                .device_id
+                .clone();
             let vd_dist_id = SsDistributionId {
                 pass_id: pass_id.clone(),
-                receiver: self
-                    .sign_up
-                    .user_creds()
-                    .vd
-                    .device_creds
-                    .device
-                    .device_id
-                    .clone(),
+                receiver: vd_receiver_device_id.clone(),
             };
-            let vd_ss_dist_desc = SsDescriptor::Distribution(vd_dist_id.clone());
+            let vd_ss_dist_desc = SsDistributionDescriptor::Distribution(vd_dist_id.clone());
 
             let vd_ss_dist = self
                 .sign_up
@@ -481,9 +484,12 @@ mod test {
                 .find_tail_event(vd_ss_dist_desc)
                 .await?
                 .unwrap();
-            let SsDistributionObject::Distribution(_) = vd_ss_dist else {
+            let SsDistributionObject::Distribution(vd_dist_event) = vd_ss_dist else {
                 panic!("No split events found on the vd device");
             };
+
+            let EncryptedMessage::CipherShare { share } = vd_dist_event.value.secret_message;
+            assert_eq!(vd_receiver_device_id, share.channel.receiver().to_device_id());
 
             //let new_app_state_json = serde_json::to_string_pretty(&new_app_state)?;
             //println!("{}", new_app_state_json);
@@ -536,19 +542,21 @@ mod test {
             .handle_client_request(split.sign_up.vd.p_obj.clone(), vd_app_state, recover)
             .await?;
 
-        split.sign_up.vd.gw.sync().await?;
-        split.sign_up.vd.gw.sync().await?;
-
         split.sign_up.vd.orchestrator.orchestrate().await?;
 
         split.sign_up.vd.gw.sync().await?;
         split.sign_up.vd.gw.sync().await?;
 
-        split.sign_up.client.gw.sync().await?;
-        split.sign_up.client.gw.sync().await?;
+        let client_db = split.sign_up.vd.p_obj.repo.get_db().await;
+        for (id, event) in client_db {
+            let event_json = serde_json::to_string_pretty(&event)?;
+            println!("DbEvent:");
+            println!(" id: {:?}", &id);
+            println!(" event: {}", &event_json);
+        }
 
-        let app_state_after_recover_json = serde_json::to_string_pretty(&app_state_after_recover)?;
-        println!("{}", app_state_after_recover_json);
+        //let app_state_after_recover_json = serde_json::to_string_pretty(&app_state_after_recover)?;
+        //println!("{}", app_state_after_recover_json);
 
         Ok(())
     }

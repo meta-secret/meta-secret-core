@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use crate::crypto::utils::Id48bit;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::meta_pass::MetaPasswordId;
-use crate::node::common::model::secret::{ClaimId, SecretDistributionType, SsDistributionClaim, SsDistributionClaimId, SsDistributionCompositeStatus, SsDistributionStatus, WasmSsLogData};
+use crate::node::common::model::secret::{ClaimId, SecretDistributionType, SsClaim, SsClaimId, SsDistributionCompositeStatus, SsDistributionStatus, WasmSsLogData};
 use crate::node::common::model::user::common::{
     UserData, UserDataMember, UserDataOutsider, UserMembership,
 };
@@ -110,11 +110,11 @@ pub struct VaultMember {
 }
 
 impl VaultMember {
-    pub fn create_split_claim(&self, pass_id: MetaPasswordId) -> SsDistributionClaim {
+    pub fn create_split_claim(&self, pass_id: MetaPasswordId) -> SsClaim {
         self.create_distribution_claim(pass_id, SecretDistributionType::Split)
     }
 
-    pub fn create_recovery_claim(&self, pass_id: MetaPasswordId) -> SsDistributionClaim {
+    pub fn create_recovery_claim(&self, pass_id: MetaPasswordId) -> SsClaim {
         self.create_distribution_claim(pass_id, SecretDistributionType::Recover)
     }
 
@@ -122,7 +122,7 @@ impl VaultMember {
         &self,
         pass_id: MetaPasswordId,
         distribution_type: SecretDistributionType,
-    ) -> SsDistributionClaim {
+    ) -> SsClaim {
         let links: Vec<DeviceId> = self
             .vault
             .members()
@@ -138,9 +138,9 @@ impl VaultMember {
 
         let claim_id = ClaimId::from(Id48bit::generate());
         
-        SsDistributionClaim {
+        SsClaim {
             id: claim_id.clone(),
-            dist_claim_id: SsDistributionClaimId {
+            dist_claim_id: SsClaimId {
                 id: claim_id,
                 pass_id,
             },

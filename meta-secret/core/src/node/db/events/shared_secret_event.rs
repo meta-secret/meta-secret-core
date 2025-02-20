@@ -1,5 +1,5 @@
 use crate::node::common::model::secret::{
-    SecretDistributionData, SsDistributionClaim, SsDistributionStatus, SsLogData,
+    SecretDistributionData, SsClaim, SsDistributionStatus, SsLogData,
 };
 use crate::node::db::events::error::LogEventCastError;
 use crate::node::db::events::generic_log_event::{
@@ -44,10 +44,10 @@ impl TryFrom<GenericKvLogEvent> for SsDistributionObject {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SsDeviceLogObject(pub KvLogEvent<SsDistributionClaim>);
+pub struct SsDeviceLogObject(pub KvLogEvent<SsClaim>);
 
 impl SsDeviceLogObject {
-    pub fn get_distribution_request(&self) -> SsDistributionClaim {
+    pub fn get_distribution_request(&self) -> SsClaim {
         self.0.value.clone()
     }
 }
@@ -122,7 +122,7 @@ impl SsLogObject {
         &self.0.value
     }
 
-    pub fn insert(mut self, claim: SsDistributionClaim) -> Self {
+    pub fn insert(mut self, claim: SsClaim) -> Self {
         self.0.value = self.0.value.insert(claim);
         self
     }

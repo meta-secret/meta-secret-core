@@ -5,7 +5,7 @@ use crate::node::common::model::device::common::{DeviceData, DeviceId};
 use crate::node::common::model::secret::{SecretDistributionType, SsDistributionStatus};
 use crate::node::common::model::vault::vault::VaultStatus;
 use crate::node::db::actions::vault::vault_action::ServerVaultAction;
-use crate::node::db::descriptors::shared_secret_descriptor::SsDescriptor;
+use crate::node::db::descriptors::shared_secret_descriptor::SsDistributionDescriptor;
 use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
 };
@@ -266,7 +266,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
                 // complete distribution action by sending the distribution event to the receiver
                 if dist_id.distribution_id.receiver.eq(&receiver_device) {
-                    let desc = SsDescriptor::Distribution(dist_id.distribution_id.clone());
+                    let desc = SsDistributionDescriptor::Distribution(dist_id.distribution_id.clone());
                     let ss_obj = self.p_obj.find_tail_event(desc).await?;
 
                     if let Some(dist_event) = ss_obj {

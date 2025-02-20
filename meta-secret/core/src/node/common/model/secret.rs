@@ -35,12 +35,12 @@ impl IdString for SsDistributionId {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(getter_with_clone)]
-pub struct SsDistributionClaimId {
+pub struct SsClaimId {
     pub id: ClaimId,
     pub pass_id: MetaPasswordId,
 }
 
-impl IdString for SsDistributionClaimId {
+impl IdString for SsClaimId {
     fn id_str(self) -> String {
         [self.id.0.id_str(), self.pass_id.id.id_str()].join("|")
     }
@@ -48,14 +48,19 @@ impl IdString for SsDistributionClaimId {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SsDistributionClaimDbId {
-    pub claim_id: SsDistributionClaimId,
+pub struct SsClaimDbId {
+    pub claim_id: SsClaimId,
     pub distribution_id: SsDistributionId,
+    pub sender: DeviceId,
 }
 
-impl IdString for SsDistributionClaimDbId {
+impl IdString for SsClaimDbId {
     fn id_str(self) -> String {
-        [self.distribution_id.id_str(), self.claim_id.id_str()].join("|")
+        [
+            self.sender.as_str(),
+            self.distribution_id.id_str(), 
+            self.claim_id.id_str()
+        ].join("|")
     }
 }
 
@@ -65,9 +70,9 @@ impl IdString for SsDistributionClaimDbId {
 /// It is an abstraction that simplifies how secrets are shared between devices.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SsDistributionClaim {
+pub struct SsClaim {
     pub id: ClaimId,
-    pub dist_claim_id: SsDistributionClaimId,
+    pub dist_claim_id: SsClaimId,
 
     pub vault_name: VaultName,
     pub sender: DeviceId,
@@ -78,7 +83,7 @@ pub struct SsDistributionClaim {
     pub status: SsDistributionCompositeStatus,
 }
 
-impl SsDistributionClaim {
+impl SsClaim {
     pub fn distribution_ids(&self) -> Vec<SsDistributionId> {
         let mut ids = Vec::with_capacity(self.receivers.len());
         for receiver in self.receivers.iter() {
@@ -91,11 +96,12 @@ impl SsDistributionClaim {
         ids
     }
 
-    pub fn claim_db_ids(&self) -> Vec<SsDistributionClaimDbId> {
+    pub fn claim_db_ids(&self) -> Vec<SsClaimDbId> {
         let mut ids = Vec::with_capacity(self.receivers.len());
         for receiver in self.receivers.iter() {
-            ids.push(SsDistributionClaimDbId {
+            ids.push(SsClaimDbId {
                 claim_id: self.dist_claim_id.clone(),
+                sender: self.sender.clone(),
                 distribution_id: SsDistributionId {
                     pass_id: self.dist_claim_id.pass_id.clone(),
                     receiver: receiver.clone(),
@@ -127,7 +133,7 @@ impl SsDistributionCompositeStatus {
         self.statuses.insert(device_id, SsDistributionStatus::Delivered);
         self
     }
-    
+
     pub fn status(&self) -> SsDistributionStatus {
         let pending = self
             .statuses
@@ -148,7 +154,7 @@ impl From<Vec<DeviceId>> for SsDistributionCompositeStatus {
         for device_id in devices {
             statuses.insert(device_id, SsDistributionStatus::Pending);
         }
-        
+
         Self { statuses }
     }
 }
@@ -165,20 +171,20 @@ pub enum SecretDistributionType {
 #[serde(rename_all = "camelCase")]
 pub struct SecretDistributionData {
     pub vault_name: VaultName,
-    pub claim_id: SsDistributionClaimId,
+    pub claim_id: SsClaimId,
     pub secret_message: EncryptedMessage,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SsLogData {
-    pub claims: HashMap<ClaimId, SsDistributionClaim>,
+    pub claims: HashMap<ClaimId, SsClaim>,
 }
 
 impl SsLogData {
     pub fn complete_for_device(mut self, claim_id: ClaimId, device_id: DeviceId) -> Self {
         let maybe_claim = self.claims.remove(&claim_id);
-        
+
         if let Some(mut claim) = maybe_claim {
             claim.status = claim.status.complete(device_id);
         }
@@ -188,13 +194,13 @@ impl SsLogData {
 }
 
 impl SsLogData {
-    pub fn new(claim: SsDistributionClaim) -> Self {
+    pub fn new(claim: SsClaim) -> Self {
         let mut claims = HashMap::new();
         claims.insert(claim.id.clone(), claim);
         Self { claims }
     }
 
-    pub fn insert(mut self, claim: SsDistributionClaim) -> Self {
+    pub fn insert(mut self, claim: SsClaim) -> Self {
         self.claims.insert(claim.id.clone(), claim);
         self
     }
@@ -207,11 +213,11 @@ pub struct WasmSsLogData(SsLogData);
 
 #[wasm_bindgen]
 #[allow(unused)]
-pub struct WasmSsDistributionClaim(SsDistributionClaim);
+pub struct WasmSsDistributionClaim(SsClaim);
 impl WasmSsDistributionClaim {}
 
-impl From<SsDistributionClaim> for WasmSsDistributionClaim {
-    fn from(claim: SsDistributionClaim) -> Self {
+impl From<SsClaim> for WasmSsDistributionClaim {
+    fn from(claim: SsClaim) -> Self {
         WasmSsDistributionClaim(claim)
     }
 }
@@ -221,7 +227,7 @@ mod test {
     use crate::crypto::utils::{Id48bit, U64IdUrlEnc};
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::common::model::meta_pass::MetaPasswordId;
-    use crate::node::common::model::secret::{ClaimId, SecretDistributionType, SsDistributionClaim, SsDistributionClaimId, SsDistributionCompositeStatus, SsDistributionStatus};
+    use crate::node::common::model::secret::{ClaimId, SecretDistributionType, SsClaim, SsClaimId, SsDistributionCompositeStatus, SsDistributionStatus};
     use crate::node::common::model::vault::vault::VaultName;
     use anyhow::Result;
     use std::collections::HashMap;
@@ -240,10 +246,10 @@ mod test {
 
         let claim_id = ClaimId::from(Id48bit::generate());
         let receivers = vec![vd_device_id, client_b_device_id];
-        
-        let claim = SsDistributionClaim {
+
+        let claim = SsClaim {
             id: claim_id.clone(),
-            dist_claim_id: SsDistributionClaimId {
+            dist_claim_id: SsClaimId {
                 id: claim_id,
                 pass_id: MetaPasswordId {
                     id: U64IdUrlEnc::from("pass_id".to_string()),

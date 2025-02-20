@@ -1,10 +1,10 @@
 use crate::node::common::model::secret::{
-    SecretDistributionData, SecretDistributionType, SsDistributionClaim,
+    SecretDistributionData, SecretDistributionType, SsClaim,
 };
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::vault::{VaultMember, VaultStatus};
 use crate::node::db::actions::sign_up::join::AcceptJoinAction;
-use crate::node::db::descriptors::shared_secret_descriptor::SsDescriptor;
+use crate::node::db::descriptors::shared_secret_descriptor::SsDistributionDescriptor;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::shared_secret_event::SsDistributionObject;
 use crate::node::db::events::vault::vault_log_event::{VaultActionRequestEvent, VaultLogObject};
@@ -88,7 +88,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
         Ok(())
     }
 
-    async fn handle_recover(&self, claim: SsDistributionClaim) -> Result<()> {
+    async fn handle_recover(&self, claim: SsClaim) -> Result<()> {
         let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
 
         //get distributions
@@ -96,7 +96,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
             //get distribution id
             let local_device = self.user_creds.device_id();
             let claim_receiver = claim_db_id.distribution_id.receiver.clone();
-            if claim_receiver.eq(local_device) {
+            if !claim_receiver.eq(local_device) {
                 continue;
             }
 
@@ -118,7 +118,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                 .re_encrypt(share.secret_message.clone(), msg_receiver)?;
 
             //compare with claim dist id, if match then create a claim
-            let key = KvKey::from(SsDescriptor::Claim(claim_db_id.clone()));
+            let key = KvKey::from(SsDistributionDescriptor::Claim(claim_db_id.clone()));
 
             let new_claim = SsDistributionObject::Claim(KvLogEvent {
                 key,
