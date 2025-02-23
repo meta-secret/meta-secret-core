@@ -15,7 +15,7 @@ use crate::node::db::descriptors::vault_descriptor::DeviceLogDescriptor;
 use crate::node::db::events::generic_log_event::{ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::local_event::CredentialsObject;
 use crate::node::db::events::object_id::ArtifactId;
-use crate::node::db::events::shared_secret_event::SsDeviceLogObject;
+use crate::node::db::events::shared_secret_event::{SsDeviceLogObject};
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -158,27 +158,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
             .await?;
 
         for ss_device_log_event in ss_device_log_events_to_sync {
-            //get SsDistribution events
-            let ss_device_log = ss_device_log_event.clone();
-
-            let distribution_claim = ss_device_log.0.value;
-            let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
-            let dist_events = p_ss.get_ss_distribution_events(distribution_claim).await?;
-            for dist_event in dist_events {
-                self.sync
-                    .send(SyncRequest::Write(WriteSyncRequest::Event(
-                        dist_event.clone().to_generic(),
-                    )))
-                    .await?;
-
-                self.p_obj.repo.delete(dist_event.obj_id()).await;
-            }
-
-            self.sync
-                .send(SyncRequest::Write(WriteSyncRequest::Event(
-                    ss_device_log_event.to_generic(),
-                )))
-                .await?;
+            let sync_request =
+                SyncRequest::Write(WriteSyncRequest::Event(ss_device_log_event.to_generic()));
+            self.sync.send(sync_request).await?;
         }
 
         Ok(())
@@ -208,6 +190,29 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
             );
             self.p_obj.repo.save(new_event).await?;
         }
+
+        // Send claims
+        let maybe_ss_log = self
+            .p_obj
+            .find_tail_event(SsLogDescriptor::from(vault_name))
+            .await?;
+
+        if let Some(ss_log) = maybe_ss_log {
+            for (_, claim) in ss_log.to_data().claims {
+                let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
+                let dist_events = p_ss.get_ss_distribution_events(claim).await?;
+                for dist_event in dist_events {
+                    let obj_id = dist_event.obj_id();
+                    let request = {
+                        let event = WriteSyncRequest::Event(dist_event.to_generic());
+                        SyncRequest::Write(event)
+                    };
+                    self.sync.send(request).await?;
+                    self.p_obj.repo.delete(obj_id).await;
+                }
+            }
+        }
+
         Ok(())
     }
 

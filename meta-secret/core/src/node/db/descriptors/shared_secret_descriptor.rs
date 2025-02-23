@@ -56,8 +56,8 @@ impl ObjectType for SsLogDescriptor {
 impl IdString for SsDistributionDescriptor {
     fn id_str(self) -> String {
         match self {
-            SsDistributionDescriptor::Distribution(event_id) => event_id.clone().id_str(),
-            SsDistributionDescriptor::Claim(db_id) => db_id.clone().id_str(),
+            SsDistributionDescriptor::Distribution(event_id) => event_id.id_str(),
+            SsDistributionDescriptor::Claim(db_id) => db_id.id_str(),
         }
     }
 }

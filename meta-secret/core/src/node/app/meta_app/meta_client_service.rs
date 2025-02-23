@@ -27,6 +27,7 @@ pub struct MetaClientService<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub data_transfer: Arc<MetaClientDataTransfer>,
     pub sync_gateway: Arc<SyncGateway<Repo, Sync>>,
     pub state_provider: Arc<MetaClientStateProvider>,
+    pub p_obj: Arc<PersistentObject<Repo>>
 }
 
 pub struct MetaClientDataTransfer {
@@ -43,9 +44,8 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         loop {
             let client_requests = self.data_transfer.dt.service_drain();
             for request in client_requests {
-                let p_obj = self.sync_gateway.p_obj.clone();
                 let new_app_state = self
-                    .handle_client_request(p_obj, service_state.app_state, request)
+                    .handle_client_request(service_state.app_state, request)
                     .await?;
                 service_state.app_state = new_app_state;
                 self.state_provider.push(&service_state.app_state).await;
@@ -59,7 +59,6 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
 
     pub async fn handle_client_request(
         &self,
-        p_obj: Arc<PersistentObject<Repo>>,
         app_state: ApplicationState,
         request: GenericAppStateRequest,
     ) -> Result<ApplicationState> {
@@ -79,9 +78,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                         device: device.clone(),
                     };
 
-                    let sign_up_claim = SignUpClaim {
-                        p_obj: p_obj.clone(),
-                    };
+                    let sign_up_claim = SignUpClaim::from(self.p_obj.clone());
                     sign_up_claim.sign_up(user_data.clone()).await?;
                     self.sync_gateway.sync().await?;
                 }
@@ -101,7 +98,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
 
             GenericAppStateRequest::ClusterDistribution(request) => {
                 let user_creds = {
-                    let creds_repo = PersistentCredentials::from(p_obj.clone());
+                    let creds_repo = PersistentCredentials::from(self.p_obj.clone());
                     let maybe_user_creds = creds_repo.get_user_creds().await?;
 
                     let Some(user_creds) = maybe_user_creds else {
@@ -112,7 +109,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                 };
 
                 let vault_status = {
-                    let vault_repo = PersistentVault::from(p_obj.clone());
+                    let vault_repo = PersistentVault::from(self.p_obj.clone());
                     vault_repo.find(user_creds.user()).await?
                 };
 
@@ -128,7 +125,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                         let vault = p_vault.get_vault(member.user()).await?.to_data();
                         let vault_member = VaultMember { member, vault };
                         let distributor = MetaDistributor {
-                            p_obj: p_obj.clone(),
+                            p_obj: self.p_obj.clone(),
                             vault_member: vault_member.clone(),
                             user_creds: Arc::new(user_creds),
                         };
@@ -141,7 +138,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
             }
 
             GenericAppStateRequest::Recover(meta_pass_id) => {
-                let recovery_action = RecoveryAction::from(p_obj.clone());
+                let recovery_action = RecoveryAction::from(self.p_obj.clone());
                 recovery_action.recovery_request(meta_pass_id).await?;
             }
         }
@@ -162,7 +159,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         Ok(service_state)
     }
 
-    async fn get_app_state(&self) -> Result<ApplicationState> {
+    pub async fn get_app_state(&self) -> Result<ApplicationState> {
         let creds_repo = PersistentCredentials::from(self.p_obj());
         let maybe_creds = creds_repo.find().await?;
 
@@ -285,12 +282,14 @@ pub mod fixture {
                 data_transfer: dt_fxr.client.clone(),
                 sync_gateway: sync_gateway.client_gw.clone(),
                 state_provider: state_provider.client.clone(),
+                p_obj: sync_gateway.client_gw.p_obj.clone(),
             });
 
             let vd = Arc::new(MetaClientService {
                 data_transfer: dt_fxr.vd.clone(),
                 sync_gateway: sync_gateway.vd_gw.clone(),
                 state_provider: state_provider.vd.clone(),
+                p_obj: sync_gateway.vd_gw.p_obj.clone(),
             });
 
             Self {

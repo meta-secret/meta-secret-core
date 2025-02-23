@@ -14,8 +14,9 @@ use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use anyhow::bail;
 use anyhow::Result;
-use log::warn;
+use log::{debug, warn};
 use std::sync::Arc;
+use crate::node::common::model::vault::vault_data::VaultData;
 
 /// Contains business logic of secrets management and login/sign-up actions.
 /// Orchestrator is in charge of what is meta secret is made for (the most important part of the app).
@@ -37,6 +38,8 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
             return Ok(());
         };
 
+        let vault = p_vault.get_vault(member.user()).await?.to_data();
+
         let maybe_vault_log_event = {
             let vault_name = member.user_data.vault_name();
             p_vault.vault_log(vault_name).await?
@@ -44,8 +47,6 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
 
         if let Some(VaultLogObject(action_event)) = maybe_vault_log_event {
             let vault_actions = action_event.value;
-
-            let vault = p_vault.get_vault(member.user()).await?.to_data();
 
             for request in vault_actions.requests {
                 match request {
@@ -80,7 +81,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                     //skip
                 }
                 SecretDistributionType::Recover => {
-                    self.handle_recover(claim).await?;
+                    self.handle_recover(vault.clone(), claim).await?;
                 }
             }
         }
@@ -88,15 +89,24 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
         Ok(())
     }
 
-    async fn handle_recover(&self, claim: SsClaim) -> Result<()> {
+    /// The device has to send recovery request to the claims' sender
+    async fn handle_recover(&self, vault: VaultData, claim: SsClaim) -> Result<()> {
         let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
 
         //get distributions
         for claim_db_id in claim.claim_db_ids() {
             //get distribution id
             let local_device = self.user_creds.device_id();
+            
+            let claim_sender_device = claim_db_id.sender.clone();
+            if claim_sender_device.eq(local_device) {
+                warn!("No OP");
+                continue;
+            }
+
             let claim_receiver = claim_db_id.distribution_id.receiver.clone();
-            if !claim_receiver.eq(local_device) {
+            if !claim_receiver.eq(local_device) { 
+                debug!("Ignore any claims for other devices");
                 continue;
             }
 
@@ -109,27 +119,35 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
             };
 
             let KvLogEvent { value: share, .. } = dist_event;
+            
+            let maybe_claim_sender = vault.find_user(&claim_sender_device);
+            match maybe_claim_sender {
+                None => {
+                    bail!("Claim sender is not a member of the vault")
+                }
+                Some(claim_sender) => {
+                    // re encrypt message
+                    let msg_receiver = &claim_sender.user_data().device.keys.transport_pk;
+                    let msg = self.user_creds
+                        .device_creds
+                        .secret_box
+                        .re_encrypt(share.secret_message.clone(), msg_receiver)?;
 
-            // re encrypt message
-            let msg_receiver = share.secret_message.cipher_text().channel.receiver();
-            let msg = self.user_creds
-                .device_creds
-                .secret_box
-                .re_encrypt(share.secret_message.clone(), msg_receiver)?;
+                    //compare with claim dist id, if match then create a claim
+                    let key = KvKey::from(SsDistributionDescriptor::Claim(claim_db_id.clone()));
 
-            //compare with claim dist id, if match then create a claim
-            let key = KvKey::from(SsDistributionDescriptor::Claim(claim_db_id.clone()));
+                    let new_claim = SsDistributionObject::Claim(KvLogEvent {
+                        key,
+                        value: SecretDistributionData {
+                            vault_name: self.user_creds.vault_name.clone(),
+                            claim_id: claim_db_id.claim_id,
+                            secret_message: msg,
+                        },
+                    });
 
-            let new_claim = SsDistributionObject::Claim(KvLogEvent {
-                key,
-                value: SecretDistributionData {
-                    vault_name: self.user_creds.vault_name.clone(),
-                    claim_id: claim_db_id.claim_id,
-                    secret_message: msg,
-                },
-            });
-
-            p_ss.p_obj.repo.save(new_claim).await?;
+                    p_ss.p_obj.repo.save(new_claim).await?;
+                }
+            }
         }
         Ok(())
     }

@@ -153,12 +153,15 @@ mod test {
     use crate::node::common::model::meta_pass::MetaPasswordId;
     use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
 
-
-    use crate::node::common::model::secret::{SsDistributionId};
+    use crate::node::app::meta_app::meta_client_service::MetaClientService;
+    use crate::node::common::model::crypto::aead::EncryptedMessage;
+    use crate::node::common::model::device::common::{DeviceId};
+    use crate::node::common::model::secret::SsDistributionId;
     use crate::node::common::model::{ApplicationState, VaultFullInfo};
     use crate::node::db::descriptors::shared_secret_descriptor::{
-        SsDistributionDescriptor, SsDeviceLogDescriptor,
+        SsDeviceLogDescriptor, SsDistributionDescriptor,
     };
+    use crate::node::db::events::generic_log_event::{GenericKvLogEvent};
     use crate::node::db::events::shared_secret_event::SsDistributionObject;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_object::PersistentObject;
@@ -168,9 +171,6 @@ mod test {
     use anyhow::bail;
     use anyhow::Result;
     use tracing::{info, Instrument};
-    use crate::node::app::meta_app::meta_client_service::MetaClientService;
-    use crate::node::common::model::crypto::aead::EncryptedMessage;
-    use crate::node::db::events::generic_log_event::KeyExtractor;
 
     struct ActorNode {
         user: UserData,
@@ -182,12 +182,25 @@ mod test {
         client_service: Arc<MetaClientService<InMemKvLogEventRepo, EmbeddedSyncProtocol>>,
     }
 
+    impl ActorNode {
+        pub fn device_id(&self) -> DeviceId {
+            self.user.device.device_id.clone()
+        }
+    }
+
+    struct ServerNode {
+        p_obj: Arc<PersistentObject<InMemKvLogEventRepo>>,
+        p_vault: PersistentVault<InMemKvLogEventRepo>,
+        p_ss: PersistentSharedSecret<InMemKvLogEventRepo>,
+        server_creds_spec: PersistentCredentialsSpec<InMemKvLogEventRepo>,
+    }
+
     struct ServerAppSignUpSpec {
         registry: FixtureRegistry<ExtendedState>,
-        server_creds_spec: PersistentCredentialsSpec<InMemKvLogEventRepo>,
 
         client: ActorNode,
         vd: ActorNode,
+        server: ServerNode,
 
         vd_claim_spec: SignUpClaimSpec<InMemKvLogEventRepo>,
     }
@@ -214,11 +227,7 @@ mod test {
                     p_obj: empty_state.p_obj.client.clone(),
                     user_creds: empty_state.user_creds.client.clone(),
                 },
-                client_service: registry
-                    .state
-                    .meta_client_service
-                    .client
-                    .clone(),
+                client_service: registry.state.meta_client_service.client.clone(),
             };
 
             let vd = ActorNode {
@@ -236,11 +245,7 @@ mod test {
                     p_obj: empty_state.p_obj.vd.clone(),
                     user_creds: empty_state.user_creds.vd.clone(),
                 },
-                client_service: registry
-                    .state
-                    .meta_client_service
-                    .vd
-                    .clone(),
+                client_service: registry.state.meta_client_service.vd.clone(),
             };
 
             let vd_claim_spec = SignUpClaimSpec {
@@ -248,9 +253,16 @@ mod test {
                 user: empty_state.user_creds.vd.user(),
             };
 
+            let server = ServerNode {
+                p_obj: empty_state.p_obj.server.clone(),
+                p_vault: PersistentVault::from(empty_state.p_obj.server.clone()),
+                p_ss: PersistentSharedSecret::from(empty_state.p_obj.server.clone()),
+                server_creds_spec,
+            };
+
             Ok(Self {
                 registry,
-                server_creds_spec,
+                server,
                 client,
                 vd,
                 vd_claim_spec,
@@ -271,7 +283,7 @@ mod test {
             let client_gw = self.client.gw.clone();
 
             self.init_server().await?;
-            self.server_creds_spec.verify_device_creds().await?;
+            self.server.server_creds_spec.verify_device_creds().await?;
 
             info!("Executing 'sign up' claim");
             vd_gw.sync().await?;
@@ -381,12 +393,12 @@ mod test {
     }
 
     struct SplitSpec {
-        sign_up: ServerAppSignUpSpec,
+        spec: ServerAppSignUpSpec,
     }
 
     impl SplitSpec {
         async fn split(&self) -> Result<()> {
-            let client_client_service = self.sign_up.client.client_service.clone();
+            let client_client_service = self.spec.client.client_service.clone();
             let app_state = client_client_service.build_service_state().await?.app_state;
 
             let pass_id = MetaPasswordId::build("test_pass");
@@ -399,7 +411,7 @@ mod test {
             };
 
             let new_app_state = client_client_service
-                .handle_client_request(self.sign_up.client.p_obj.clone(), app_state, request)
+                .handle_client_request(app_state, request)
                 .await?;
             //println!("{:?}", new_app_state);
 
@@ -409,8 +421,9 @@ mod test {
 
             assert_eq!(1, member.member.vault.secrets.len());
 
-            self.sign_up.vd.gw.sync().await?;
-            self.sign_up.vd.gw.sync().await?;
+            self.spec.vd.gw.sync().await?;
+            self.spec.vd.gw.sync().await?;
+            self.spec.vd.gw.sync().await?;
 
             // let client_db: HashMap<ArtifactId, GenericKvLogEvent> =
             //     self.sign_up.vd.p_obj.repo.get_db().await;
@@ -423,19 +436,12 @@ mod test {
 
             let client_dist_id = SsDistributionId {
                 pass_id: pass_id.clone(),
-                receiver: self
-                    .sign_up
-                    .user_creds()
-                    .client
-                    .device_creds
-                    .device
-                    .device_id
-                    .clone(),
+                receiver: self.spec.client.device_id(),
             };
             let ss_dist_desc = SsDistributionDescriptor::Distribution(client_dist_id.clone());
 
             let client_ss_dist = self
-                .sign_up
+                .spec
                 .client
                 .p_obj
                 .find_tail_event(ss_dist_desc)
@@ -451,7 +457,7 @@ mod test {
                 .cipher_text()
                 .decrypt(
                     &self
-                        .sign_up
+                        .spec
                         .user_creds()
                         .client
                         .device_creds
@@ -460,17 +466,10 @@ mod test {
                         .sk,
                 )?;
             let share_plain_text = String::try_from(&secret_text.msg)?;
-            println!("{}", share_plain_text);
+            //println!("{}", share_plain_text);
 
             //verify distribution share is present on vd device
-            let vd_receiver_device_id = self
-                .sign_up
-                .user_creds()
-                .vd
-                .device_creds
-                .device
-                .device_id
-                .clone();
+            let vd_receiver_device_id = self.spec.vd.device_id();
             let vd_dist_id = SsDistributionId {
                 pass_id: pass_id.clone(),
                 receiver: vd_receiver_device_id.clone(),
@@ -478,7 +477,7 @@ mod test {
             let vd_ss_dist_desc = SsDistributionDescriptor::Distribution(vd_dist_id.clone());
 
             let vd_ss_dist = self
-                .sign_up
+                .spec
                 .vd
                 .p_obj
                 .find_tail_event(vd_ss_dist_desc)
@@ -489,7 +488,10 @@ mod test {
             };
 
             let EncryptedMessage::CipherShare { share } = vd_dist_event.value.secret_message;
-            assert_eq!(vd_receiver_device_id, share.channel.receiver().to_device_id());
+            assert_eq!(
+                vd_receiver_device_id,
+                share.channel.receiver().to_device_id()
+            );
 
             //let new_app_state_json = serde_json::to_string_pretty(&new_app_state)?;
             //println!("{}", new_app_state_json);
@@ -508,9 +510,9 @@ mod test {
     #[tokio::test]
     async fn test_secret_split() -> Result<()> {
         let spec = ServerAppSignUpSpec::build().await?;
-        let split = SplitSpec { sign_up: spec };
+        let split = SplitSpec { spec };
 
-        split.sign_up.sign_up_and_join_for_two_devices().await?;
+        split.spec.sign_up_and_join_for_two_devices().await?;
         split.split().await?;
 
         Ok(())
@@ -520,13 +522,13 @@ mod test {
     async fn test_recover() -> Result<()> {
         let split = {
             let spec = ServerAppSignUpSpec::build().await?;
-            SplitSpec { sign_up: spec }
+            SplitSpec { spec }
         };
 
-        split.sign_up.sign_up_and_join_for_two_devices().await?;
+        split.spec.sign_up_and_join_for_two_devices().await?;
         split.split().await?;
 
-        let vd_client_service = split.sign_up.vd.client_service.clone();
+        let vd_client_service = split.spec.vd.client_service.clone();
         let vd_app_state = vd_client_service.build_service_state().await?.app_state;
 
         let ApplicationState::Vault(VaultFullInfo::Member(vd_user_state)) = &vd_app_state else {
@@ -534,25 +536,88 @@ mod test {
         };
 
         let recover = {
-            let pass_id = vd_user_state.member.vault.secrets.iter().next().unwrap().clone();
+            let pass_id = vd_user_state
+                .member
+                .vault
+                .secrets
+                .iter()
+                .next()
+                .unwrap()
+                .clone();
             GenericAppStateRequest::Recover(pass_id)
         };
 
-        let app_state_after_recover = split.sign_up.vd.client_service
-            .handle_client_request(split.sign_up.vd.p_obj.clone(), vd_app_state, recover)
+        let app_state = split
+            .spec
+            .vd
+            .client_service
+            .handle_client_request(vd_app_state, recover)
             .await?;
 
-        split.sign_up.vd.orchestrator.orchestrate().await?;
+        split.spec.client.gw.sync().await?;
+        split.spec.client.gw.sync().await?;
+        split.spec.client.orchestrator.orchestrate().await?;
+        split.spec.client.gw.sync().await?;
+        split.spec.client.gw.sync().await?;
 
-        split.sign_up.vd.gw.sync().await?;
-        split.sign_up.vd.gw.sync().await?;
+        let vault_name = split.spec.client.user.vault_name;
+        let ss_log = split.spec.server.p_ss.get_ss_log_obj(vault_name).await?;
+        assert_eq!(1, ss_log.claims.len());
+        let recover_claim_on_server = ss_log.claims.values().next().unwrap();
+        let claim_ids = recover_claim_on_server.claim_db_ids();
+        assert_eq!(1, claim_ids.len());
 
-        let client_db = split.sign_up.vd.p_obj.repo.get_db().await;
-        for (id, event) in client_db {
-            let event_json = serde_json::to_string_pretty(&event)?;
-            println!("DbEvent:");
-            println!(" id: {:?}", &id);
-            println!(" event: {}", &event_json);
+        let recovery_claim_obj = {
+            let [claim_id, ..] = claim_ids.as_slice() else {
+                bail!("Empty claim")
+            };
+
+            let claim_id_desc = SsDistributionDescriptor::Claim(claim_id.clone());
+
+            split
+                .spec
+                .server
+                .p_obj
+                .find_tail_event(claim_id_desc)
+                .await?
+                .unwrap()
+        };
+        match recovery_claim_obj {
+            SsDistributionObject::Claim(claim_event) => {
+                assert_eq!(
+                    String::from("test"),
+                    claim_event.value.claim_id.pass_id.name
+                );
+            }
+            SsDistributionObject::Distribution(_) => {
+                bail!("Has to be claim object")
+            }
+        }
+
+        split.spec.vd.gw.sync().await?;
+        split.spec.vd.gw.sync().await?;
+
+        //Update app state
+        let app_state_after_full_recover = split.spec.vd.client_service.get_app_state().await?;
+
+        //split.sign_up.vd.orchestrator.orchestrate().await?;
+
+        //split.sign_up.vd.gw.sync().await?;
+        //split.sign_up.vd.gw.sync().await?;
+
+        let vd_db = split.spec.vd.p_obj.repo.get_db().await;
+        for (id, event) in vd_db {
+            if matches!(
+                event,
+                GenericKvLogEvent::SsDistribution(SsDistributionObject::Claim(_))
+            ) {
+                let event_json = serde_json::to_string_pretty(&event)?;
+                println!("DbEvent:");
+                println!(" id: {:?}", &id);
+                println!(" event: {}", &event_json);
+            } else {
+                println!("skip event")
+            }
         }
 
         //let app_state_after_recover_json = serde_json::to_string_pretty(&app_state_after_recover)?;

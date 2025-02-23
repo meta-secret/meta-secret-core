@@ -13,12 +13,12 @@ use crate::node::common::model::IdString;
 #[wasm_bindgen(getter_with_clone)]
 pub struct DeviceId(pub U64IdUrlEnc);
 
-#[wasm_bindgen]
-impl DeviceId {
-    pub fn as_str(self) -> String {
+impl IdString for DeviceId {
+    fn id_str(self) -> String {
         self.0.id_str()
     }
 }
+
 impl DeviceId {
     pub fn loopback(self) -> LoopbackDeviceLink {
         LoopbackDeviceLink::from(self)
@@ -27,7 +27,7 @@ impl DeviceId {
 
 impl Display for DeviceId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.clone().as_str())
+        write!(f, "{}", self.clone().id_str())
     }
 }
 

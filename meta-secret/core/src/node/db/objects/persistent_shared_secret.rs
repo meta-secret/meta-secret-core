@@ -28,12 +28,21 @@ pub struct PersistentSharedSecret<Repo: KvLogEventRepo> {
 impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
     pub async fn get_ss_distribution_events(
         &self,
-        distribution_claim: SsClaim,
+        ss_claim: SsClaim,
     ) -> Result<Vec<SsDistributionObject>> {
         let mut events = vec![];
-        for distribution_id in distribution_claim.distribution_ids() {
+        for distribution_id in ss_claim.distribution_ids() {
             let desc = SsDistributionDescriptor::Distribution(distribution_id);
             let tail_event = self.p_obj.find_tail_event(desc).await?;
+            if let Some(event) = tail_event {
+                events.push(event);
+            }
+        }
+
+        // Synchronize claims (recovery requests)
+        for claim_id in ss_claim.claim_db_ids() {
+            let claim_id_desc = SsDistributionDescriptor::Claim(claim_id);
+            let tail_event = self.p_obj.find_tail_event(claim_id_desc).await?;
             if let Some(event) = tail_event {
                 events.push(event);
             }

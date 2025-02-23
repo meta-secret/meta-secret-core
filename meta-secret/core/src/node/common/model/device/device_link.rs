@@ -17,7 +17,7 @@ pub struct DeviceLinkId(Base64Text);
 
 impl From<DeviceLink> for DeviceLinkId {
     fn from(link: DeviceLink) -> Self {
-        let mut ids = [link.sender().as_str(), link.receiver().as_str()];
+        let mut ids = [link.sender().id_str(), link.receiver().id_str()];
         ids.sort();
 
         let ids_str = ids.join("");

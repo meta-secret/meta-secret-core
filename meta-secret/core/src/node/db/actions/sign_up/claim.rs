@@ -16,8 +16,10 @@ use crate::node::{
     },
 };
 use anyhow::Ok;
+use derive_more::From;
 use log::info;
 
+#[derive(From)]
 pub struct SignUpClaim<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
 }

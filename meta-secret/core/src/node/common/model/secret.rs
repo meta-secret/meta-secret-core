@@ -28,7 +28,7 @@ pub struct SsDistributionId {
 
 impl IdString for SsDistributionId {
     fn id_str(self) -> String {
-        [self.receiver.as_str(), self.pass_id.id.id_str()].join("|")
+        [self.receiver.id_str(), self.pass_id.id.id_str()].join("|")
     }
 }
 
@@ -50,14 +50,14 @@ impl IdString for SsClaimId {
 #[serde(rename_all = "camelCase")]
 pub struct SsClaimDbId {
     pub claim_id: SsClaimId,
-    pub distribution_id: SsDistributionId,
     pub sender: DeviceId,
+    pub distribution_id: SsDistributionId,
 }
 
 impl IdString for SsClaimDbId {
     fn id_str(self) -> String {
         [
-            self.sender.as_str(),
+            self.sender.id_str(),
             self.distribution_id.id_str(), 
             self.claim_id.id_str()
         ].join("|")

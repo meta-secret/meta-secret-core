@@ -1,5 +1,5 @@
 use crate::node::common::model::secret::{
-    SecretDistributionData, SsClaim, SsDistributionStatus, SsLogData,
+    SecretDistributionData, SsClaim, SsLogData,
 };
 use crate::node::db::events::error::LogEventCastError;
 use crate::node::db::events::generic_log_event::{

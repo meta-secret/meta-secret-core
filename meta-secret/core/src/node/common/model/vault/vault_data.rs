@@ -137,8 +137,8 @@ impl VaultData {
         VaultStatus::from(membership)
     }
 
-    pub fn find_user(&self, device_id: &DeviceId) -> Option<UserMembership> {
-        self.users.get(device_id).cloned()
+    pub fn find_user(&self, device_id: &DeviceId) -> Option<&UserMembership> {
+        self.users.get(device_id)
     }
 
     pub fn to_vault_member(self, member: UserDataMember) -> Result<VaultMember> {

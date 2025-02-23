@@ -2,7 +2,6 @@ use std::cmp::PartialEq;
 use std::sync::Arc;
 
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
-use crate::node::common::model::secret::{SecretDistributionType, SsDistributionStatus};
 use crate::node::common::model::vault::vault::VaultStatus;
 use crate::node::db::actions::vault::vault_action::ServerVaultAction;
 use crate::node::db::descriptors::shared_secret_descriptor::SsDistributionDescriptor;
@@ -10,7 +9,7 @@ use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
 };
 use crate::node::db::events::object_id::ArtifactId;
-use crate::node::db::events::shared_secret_event::{SsDistributionObject, SsLogObject};
+use crate::node::db::events::shared_secret_event::{SsLogObject};
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -128,6 +127,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                 self.p_obj.repo.save(ss_device_log_obj.clone()).await?;
 
                 let ss_claim = ss_device_log_obj.get_distribution_request();
+                
                 let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
                 p_ss_log.save_ss_log_event(ss_claim).await?;
             }
