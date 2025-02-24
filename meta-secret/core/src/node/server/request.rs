@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 pub enum ReadSyncRequest {
     Vault(VaultRequest),
-    Ss(SsRequest),
+    SsRequest(SsRequest),
     ServerTail(ServerTailRequest),
 }
 

@@ -4,12 +4,12 @@ use std::sync::Arc;
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
 use crate::node::common::model::vault::vault::VaultStatus;
 use crate::node::db::actions::vault::vault_action::ServerVaultAction;
-use crate::node::db::descriptors::shared_secret_descriptor::SsDistributionDescriptor;
+use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
 use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
 };
 use crate::node::db::events::object_id::ArtifactId;
-use crate::node::db::events::shared_secret_event::{SsLogObject};
+use crate::node::db::events::shared_secret_event::SsLogObject;
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -127,12 +127,37 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                 self.p_obj.repo.save(ss_device_log_obj.clone()).await?;
 
                 let ss_claim = ss_device_log_obj.get_distribution_request();
-                
+
                 let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
                 p_ss_log.save_ss_log_event(ss_claim).await?;
             }
-            GenericKvLogEvent::SsDistribution(ss_object) => {
-                self.p_obj.repo.save(ss_object).await?;
+            GenericKvLogEvent::SsWorkflow(ss_object) => {
+                self.p_obj.repo.save(ss_object.clone()).await?;
+                //don't forget to update claim state?
+                let dist = ss_object.to_distribution_data();
+
+                let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
+                let maybe_ss_log_event = p_ss_log.find_ss_log_event(dist.vault_name.clone()).await?;
+                match maybe_ss_log_event {
+                    None => {
+                        bail!("No claim found for distribution: {:?}", dist)
+                    }
+                    Some(ss_event) => {
+                        let device_id = dist
+                            .secret_message
+                            .cipher_text()
+                            .channel
+                            .receiver()
+                            .to_device_id();
+                        
+                        
+                        let new_ss_log_data = ss_event.to_data().sent(dist.claim_id.id, device_id);
+                        let new_ss_log_event = p_ss_log
+                            .create_new_ss_log_object(new_ss_log_data, dist.vault_name)
+                            .await?;
+                        self.p_obj.repo.save(new_ss_log_event).await?;
+                    }
+                }
             }
             GenericKvLogEvent::Credentials(_) => {
                 bail!("Invalid event type: {:?}", generic_event);
@@ -245,7 +270,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             // (no latest element, means - empty collection of events)
             return Ok(vec![]);
         };
-        
+
         let mut commit_log = vec![];
         for ss_log_event in ss_log_events.clone() {
             commit_log.push(ss_log_event.to_generic())
@@ -266,7 +291,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
                 // complete distribution action by sending the distribution event to the receiver
                 if dist_id.distribution_id.receiver.eq(&receiver_device) {
-                    let desc = SsDistributionDescriptor::Distribution(dist_id.distribution_id.clone());
+                    let desc = SsWorkflowDescriptor::Distribution(dist_id.distribution_id.clone());
                     let ss_obj = self.p_obj.find_tail_event(desc).await?;
 
                     if let Some(dist_event) = ss_obj {
@@ -276,7 +301,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
                         let claim_id = dist_id.claim_id.id;
                         updated_ss_log_data =
-                            updated_ss_log_data.complete_for_device(claim_id, receiver_device);
+                            updated_ss_log_data.complete(claim_id, receiver_device);
                         updated_state = true;
                     }
                 }
@@ -286,7 +311,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         if updated_state {
             let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
             let new_ss_log_obj = p_ss
-                .create_new_ss_log_claim(updated_ss_log_data, request.sender.vault_name.clone())
+                .create_new_ss_log_object(updated_ss_log_data, request.sender.vault_name.clone())
                 .await?;
             self.p_obj.repo.save(new_ss_log_obj.to_generic()).await?;
         }

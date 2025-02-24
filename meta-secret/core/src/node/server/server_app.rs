@@ -59,7 +59,7 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                     let new_events = self.data_sync.vault_replication(request).await?;
                     Ok(DataSyncResponse::Data(DataEventsResponse(new_events)))
                 }
-                ReadSyncRequest::Ss(request) => {
+                ReadSyncRequest::SsRequest(request) => {
                     let new_events = self
                         .data_sync
                         .ss_replication(request, server_creds.device.device_id.clone())
@@ -159,10 +159,10 @@ mod test {
     use crate::node::common::model::secret::SsDistributionId;
     use crate::node::common::model::{ApplicationState, VaultFullInfo};
     use crate::node::db::descriptors::shared_secret_descriptor::{
-        SsDeviceLogDescriptor, SsDistributionDescriptor,
+        SsDeviceLogDescriptor, SsWorkflowDescriptor,
     };
     use crate::node::db::events::generic_log_event::{GenericKvLogEvent};
-    use crate::node::db::events::shared_secret_event::SsDistributionObject;
+    use crate::node::db::events::shared_secret_event::SsWorkflowObject;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_object::PersistentObject;
     use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -438,7 +438,7 @@ mod test {
                 pass_id: pass_id.clone(),
                 receiver: self.spec.client.device_id(),
             };
-            let ss_dist_desc = SsDistributionDescriptor::Distribution(client_dist_id.clone());
+            let ss_dist_desc = SsWorkflowDescriptor::Distribution(client_dist_id.clone());
 
             let client_ss_dist = self
                 .spec
@@ -447,7 +447,7 @@ mod test {
                 .find_tail_event(ss_dist_desc)
                 .await?
                 .unwrap();
-            let SsDistributionObject::Distribution(client_dist_event) = client_ss_dist else {
+            let SsWorkflowObject::Distribution(client_dist_event) = client_ss_dist else {
                 panic!("No split events found on the client");
             };
 
@@ -474,7 +474,7 @@ mod test {
                 pass_id: pass_id.clone(),
                 receiver: vd_receiver_device_id.clone(),
             };
-            let vd_ss_dist_desc = SsDistributionDescriptor::Distribution(vd_dist_id.clone());
+            let vd_ss_dist_desc = SsWorkflowDescriptor::Distribution(vd_dist_id.clone());
 
             let vd_ss_dist = self
                 .spec
@@ -483,7 +483,7 @@ mod test {
                 .find_tail_event(vd_ss_dist_desc)
                 .await?
                 .unwrap();
-            let SsDistributionObject::Distribution(vd_dist_event) = vd_ss_dist else {
+            let SsWorkflowObject::Distribution(vd_dist_event) = vd_ss_dist else {
                 panic!("No split events found on the vd device");
             };
 
@@ -572,7 +572,7 @@ mod test {
                 bail!("Empty claim")
             };
 
-            let claim_id_desc = SsDistributionDescriptor::Claim(claim_id.clone());
+            let claim_id_desc = SsWorkflowDescriptor::Claim(claim_id.clone());
 
             split
                 .spec
@@ -583,13 +583,13 @@ mod test {
                 .unwrap()
         };
         match recovery_claim_obj {
-            SsDistributionObject::Claim(claim_event) => {
+            SsWorkflowObject::Recovery(claim_event) => {
                 assert_eq!(
                     String::from("test"),
                     claim_event.value.claim_id.pass_id.name
                 );
             }
-            SsDistributionObject::Distribution(_) => {
+            SsWorkflowObject::Distribution(_) => {
                 bail!("Has to be claim object")
             }
         }
@@ -609,7 +609,7 @@ mod test {
         for (id, event) in vd_db {
             if matches!(
                 event,
-                GenericKvLogEvent::SsDistribution(SsDistributionObject::Claim(_))
+                GenericKvLogEvent::SsWorkflow(SsWorkflowObject::Recovery(_))
             ) {
                 let event_json = serde_json::to_string_pretty(&event)?;
                 println!("DbEvent:");

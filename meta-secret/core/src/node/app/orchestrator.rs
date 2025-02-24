@@ -4,9 +4,9 @@ use crate::node::common::model::secret::{
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::vault::{VaultMember, VaultStatus};
 use crate::node::db::actions::sign_up::join::AcceptJoinAction;
-use crate::node::db::descriptors::shared_secret_descriptor::SsDistributionDescriptor;
+use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::shared_secret_event::SsDistributionObject;
+use crate::node::db::events::shared_secret_event::SsWorkflowObject;
 use crate::node::db::events::vault::vault_log_event::{VaultActionRequestEvent, VaultLogObject};
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -97,7 +97,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
         for claim_db_id in claim.claim_db_ids() {
             //get distribution id
             let local_device = self.user_creds.device_id();
-            
+
             let claim_sender_device = claim_db_id.sender.clone();
             if claim_sender_device.eq(local_device) {
                 warn!("No OP");
@@ -105,7 +105,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
             }
 
             let claim_receiver = claim_db_id.distribution_id.receiver.clone();
-            if !claim_receiver.eq(local_device) { 
+            if !claim_receiver.eq(local_device) {
                 debug!("Ignore any claims for other devices");
                 continue;
             }
@@ -114,12 +114,12 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                 .get_ss_distribution_event_by_id(claim_db_id.distribution_id.clone())
                 .await?;
 
-            let SsDistributionObject::Distribution(dist_event) = ss_dist_obj else {
+            let SsWorkflowObject::Distribution(dist_event) = ss_dist_obj else {
                 bail!("Ss distribution object not found");
             };
 
             let KvLogEvent { value: share, .. } = dist_event;
-            
+
             let maybe_claim_sender = vault.find_user(&claim_sender_device);
             match maybe_claim_sender {
                 None => {
@@ -134,9 +134,9 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                         .re_encrypt(share.secret_message.clone(), msg_receiver)?;
 
                     //compare with claim dist id, if match then create a claim
-                    let key = KvKey::from(SsDistributionDescriptor::Claim(claim_db_id.clone()));
+                    let key = KvKey::from(SsWorkflowDescriptor::Claim(claim_db_id.clone()));
 
-                    let new_claim = SsDistributionObject::Claim(KvLogEvent {
+                    let new_claim = SsWorkflowObject::Recovery(KvLogEvent {
                         key,
                         value: SecretDistributionData {
                             vault_name: self.user_creds.vault_name.clone(),

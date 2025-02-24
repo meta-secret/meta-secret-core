@@ -5,12 +5,12 @@ use crate::node::common::model::IdString;
 use crate::node::db::descriptors::object_descriptor::{
     ObjectDescriptor, ObjectName, ObjectType, ToObjectDescriptor,
 };
-use crate::node::db::events::shared_secret_event::{SsDeviceLogObject, SsLogObject, SsDistributionObject};
+use crate::node::db::events::shared_secret_event::{SsDeviceLogObject, SsLogObject, SsWorkflowObject};
 use derive_more::From;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum SsDistributionDescriptor {
+pub enum SsWorkflowDescriptor {
     Claim(SsClaimDbId),
     /// Allows devices distributing their shares (split operation)
     Distribution(SsDistributionId),
@@ -24,18 +24,18 @@ pub struct SsDeviceLogDescriptor(DeviceId);
 #[serde(rename_all = "camelCase")]
 pub struct SsLogDescriptor(VaultName);
 
-impl ObjectType for SsDistributionDescriptor {
+impl ObjectType for SsWorkflowDescriptor {
     fn object_type(&self) -> String {
         let obj_type = match self {
-            SsDistributionDescriptor::Distribution(_) => "SsDistribution",
-            SsDistributionDescriptor::Claim(_) => "SsClaim"
+            SsWorkflowDescriptor::Distribution(_) => "SsDistribution",
+            SsWorkflowDescriptor::Claim(_) => "SsClaim"
         };
 
         String::from(obj_type)
     }
 }
 
-impl ObjectName for SsDistributionDescriptor {
+impl ObjectName for SsWorkflowDescriptor {
     fn object_name(&self) -> String {
         self.clone().id_str()
     }
@@ -53,11 +53,11 @@ impl ObjectType for SsLogDescriptor {
     }
 }
 
-impl IdString for SsDistributionDescriptor {
+impl IdString for SsWorkflowDescriptor {
     fn id_str(self) -> String {
         match self {
-            SsDistributionDescriptor::Distribution(event_id) => event_id.id_str(),
-            SsDistributionDescriptor::Claim(db_id) => db_id.id_str(),
+            SsWorkflowDescriptor::Distribution(event_id) => event_id.id_str(),
+            SsWorkflowDescriptor::Claim(db_id) => db_id.id_str(),
         }
     }
 }
@@ -74,8 +74,8 @@ impl IdString for SsDeviceLogDescriptor {
     }
 }
 
-impl ToObjectDescriptor for SsDistributionDescriptor {
-    type EventType = SsDistributionObject;
+impl ToObjectDescriptor for SsWorkflowDescriptor {
+    type EventType = SsWorkflowObject;
 
     fn to_obj_desc(self) -> ObjectDescriptor {
         ObjectDescriptor::SharedSecret(self)

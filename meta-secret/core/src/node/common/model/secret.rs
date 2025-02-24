@@ -58,9 +58,10 @@ impl IdString for SsClaimDbId {
     fn id_str(self) -> String {
         [
             self.sender.id_str(),
-            self.distribution_id.id_str(), 
-            self.claim_id.id_str()
-        ].join("|")
+            self.distribution_id.id_str(),
+            self.claim_id.id_str(),
+        ]
+        .join("|")
     }
 }
 
@@ -118,6 +119,8 @@ impl SsClaim {
 pub enum SsDistributionStatus {
     /// Server is waiting for distributions to arrive, to send them to target devices
     Pending,
+    /// The distribution is on the server
+    Sent,
     /// The receiver device has received the secret
     Delivered,
 }
@@ -125,13 +128,24 @@ pub enum SsDistributionStatus {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SsDistributionCompositeStatus {
-    statuses: HashMap<DeviceId, SsDistributionStatus>,
+    pub statuses: HashMap<DeviceId, SsDistributionStatus>,
 }
 
 impl SsDistributionCompositeStatus {
-    pub fn complete(mut self, device_id: DeviceId) -> Self {
-        self.statuses.insert(device_id, SsDistributionStatus::Delivered);
+    pub fn sent(mut self, device_id: DeviceId) -> Self {
+        self.statuses
+            .insert(device_id, SsDistributionStatus::Sent);
         self
+    }
+    
+    pub fn complete(mut self, device_id: DeviceId) -> Self {
+        self.statuses
+            .insert(device_id, SsDistributionStatus::Delivered);
+        self
+    }
+
+    pub fn get(&self, device_id: &DeviceId) -> Option<&SsDistributionStatus> {
+        self.statuses.get(device_id)
     }
 
     pub fn status(&self) -> SsDistributionStatus {
@@ -140,10 +154,17 @@ impl SsDistributionCompositeStatus {
             .values()
             .any(|dist_status| matches!(dist_status, SsDistributionStatus::Pending));
 
+        let delivered = self
+            .statuses
+            .values()
+            .all(|dist_status| matches!(dist_status, SsDistributionStatus::Delivered));
+        
         if pending {
             SsDistributionStatus::Pending
-        } else {
+        } else if delivered {
             SsDistributionStatus::Delivered
+        } else {
+            SsDistributionStatus::Sent
         }
     }
 }
@@ -182,7 +203,17 @@ pub struct SsLogData {
 }
 
 impl SsLogData {
-    pub fn complete_for_device(mut self, claim_id: ClaimId, device_id: DeviceId) -> Self {
+    pub fn sent(mut self, claim_id: ClaimId, device_id: DeviceId) -> Self {
+        let maybe_claim = self.claims.remove(&claim_id);
+
+        if let Some(mut claim) = maybe_claim {
+            claim.status = claim.status.sent(device_id);
+        }
+
+        self
+    }
+    
+    pub fn complete(mut self, claim_id: ClaimId, device_id: DeviceId) -> Self {
         let maybe_claim = self.claims.remove(&claim_id);
 
         if let Some(mut claim) = maybe_claim {
@@ -227,7 +258,10 @@ mod test {
     use crate::crypto::utils::{Id48bit, U64IdUrlEnc};
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::common::model::meta_pass::MetaPasswordId;
-    use crate::node::common::model::secret::{ClaimId, SecretDistributionType, SsClaim, SsClaimId, SsDistributionCompositeStatus, SsDistributionStatus};
+    use crate::node::common::model::secret::{
+        ClaimId, SecretDistributionType, SsClaim, SsClaimId, SsDistributionCompositeStatus,
+        SsDistributionStatus,
+    };
     use crate::node::common::model::vault::vault::VaultName;
     use anyhow::Result;
     use std::collections::HashMap;

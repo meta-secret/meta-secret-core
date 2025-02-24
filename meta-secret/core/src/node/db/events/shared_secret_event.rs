@@ -11,30 +11,39 @@ use anyhow::{bail, Ok};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum SsDistributionObject {
+pub enum SsWorkflowObject {
     // Contains encrypted secret share for the receiver device
     // (will be deleted after sending to the receiver).
     // This is for SecretDistributionType::Recover
-    Claim(KvLogEvent<SecretDistributionData>),
+    Recovery(KvLogEvent<SecretDistributionData>),
     // This is a secret share that device keeps for a password (means - Split)
     // We don't use split, because when a share on a target device, split - is confusing
     Distribution(KvLogEvent<SecretDistributionData>),
 }
 
-impl KeyExtractor for SsDistributionObject {
+impl KeyExtractor for SsWorkflowObject {
     fn key(&self) -> KvKey {
         match self {
-            SsDistributionObject::Distribution(event) => event.key.clone(),
-            SsDistributionObject::Claim(event) => event.key.clone(),
+            SsWorkflowObject::Distribution(event) => event.key.clone(),
+            SsWorkflowObject::Recovery(event) => event.key.clone(),
         }
     }
 }
 
-impl TryFrom<GenericKvLogEvent> for SsDistributionObject {
+impl SsWorkflowObject {
+    pub fn to_distribution_data(self) -> SecretDistributionData {
+        match self {
+            SsWorkflowObject::Recovery(claim) => claim.value,
+            SsWorkflowObject::Distribution(dist) => dist.value
+        }
+    }
+}
+
+impl TryFrom<GenericKvLogEvent> for SsWorkflowObject {
     type Error = anyhow::Error;
 
     fn try_from(event: GenericKvLogEvent) -> Result<Self, Self::Error> {
-        if let GenericKvLogEvent::SsDistribution(ss_obj) = event {
+        if let GenericKvLogEvent::SsWorkflow(ss_obj) = event {
             Ok(ss_obj)
         } else {
             bail!(LogEventCastError::InvalidSharedSecret(event))
@@ -82,18 +91,18 @@ impl KeyExtractor for SsDeviceLogObject {
     }
 }
 
-impl ObjIdExtractor for SsDistributionObject {
+impl ObjIdExtractor for SsWorkflowObject {
     fn obj_id(&self) -> ArtifactId {
         match self {
-            SsDistributionObject::Distribution(event) => event.key.obj_id.clone(),
-            SsDistributionObject::Claim(event) => event.key.obj_id.clone()
+            SsWorkflowObject::Distribution(event) => event.key.obj_id.clone(),
+            SsWorkflowObject::Recovery(event) => event.key.obj_id.clone()
         }
     }
 }
 
-impl ToGenericEvent for SsDistributionObject {
+impl ToGenericEvent for SsWorkflowObject {
     fn to_generic(self) -> GenericKvLogEvent {
-        GenericKvLogEvent::SsDistribution(self)
+        GenericKvLogEvent::SsWorkflow(self)
     }
 }
 

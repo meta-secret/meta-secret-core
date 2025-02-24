@@ -5,10 +5,10 @@ use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::secret::{ClaimId, SecretDistributionData, SsClaimId, SsDistributionId};
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::vault::VaultMember;
-use crate::node::db::descriptors::shared_secret_descriptor::SsDistributionDescriptor;
+use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
 use crate::node::db::events::generic_log_event::ToGenericEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::shared_secret_event::SsDistributionObject;
+use crate::node::db::events::shared_secret_event::SsWorkflowObject;
 use crate::node::db::events::vault::vault_log_event::AddMetaPassEvent;
 use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use crate::node::db::objects::persistent_object::PersistentObject;
@@ -120,8 +120,6 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
                 .await?;
         }
 
-        // save a distribution claim: one claim is equal to a
-        // distribution (split/recover) action for one password
         {
             let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
             p_ss.save_claim_in_ss_device_log(claim.clone()).await?;
@@ -145,9 +143,9 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
                 }
             };
 
-            let split_key = KvKey::from(SsDistributionDescriptor::Distribution(dist_id));
+            let split_key = KvKey::from(SsWorkflowDescriptor::Distribution(dist_id));
 
-            let ss_obj = SsDistributionObject::Distribution(KvLogEvent {
+            let ss_obj = SsWorkflowObject::Distribution(KvLogEvent {
                 key: split_key.clone(),
                 value: distribution_data,
             });

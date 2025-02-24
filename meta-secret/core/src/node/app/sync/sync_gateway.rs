@@ -1,3 +1,4 @@
+use std::cmp::PartialEq;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -5,6 +6,7 @@ use tracing::{debug, error, info, instrument};
 
 use crate::node::app::sync::sync_protocol::SyncProtocol;
 use crate::node::common::model::device::common::DeviceId;
+use crate::node::common::model::secret::{SecretDistributionType, SsDistributionStatus};
 use crate::node::common::model::user::common::UserId;
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::vault::VaultStatus;
@@ -12,10 +14,10 @@ use crate::node::db::descriptors::shared_secret_descriptor::{
     SsDeviceLogDescriptor, SsLogDescriptor,
 };
 use crate::node::db::descriptors::vault_descriptor::DeviceLogDescriptor;
-use crate::node::db::events::generic_log_event::{ObjIdExtractor, ToGenericEvent};
+use crate::node::db::events::generic_log_event::{KeyExtractor, ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::local_event::CredentialsObject;
 use crate::node::db::events::object_id::ArtifactId;
-use crate::node::db::events::shared_secret_event::{SsDeviceLogObject};
+use crate::node::db::events::shared_secret_event::{SsDeviceLogObject, SsWorkflowObject};
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -27,6 +29,7 @@ use crate::node::server::request::{
 };
 use crate::node::server::server_data_sync::{DataEventsResponse, ServerTailResponse};
 use anyhow::Result;
+use log::__private_api::loc;
 
 pub struct SyncGateway<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub id: String,
@@ -174,7 +177,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                 self.p_obj.find_free_id_by_obj_desc(obj_desc).await?
             };
 
-            SyncRequest::Read(ReadSyncRequest::Ss(SsRequest {
+            SyncRequest::Read(ReadSyncRequest::SsRequest(SsRequest {
                 sender: user_creds.user(),
                 ss_log: ss_log_free_id,
             }))
@@ -200,7 +203,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         if let Some(ss_log) = maybe_ss_log {
             for (_, claim) in ss_log.to_data().claims {
                 let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
-                let dist_events = p_ss.get_ss_distribution_events(claim).await?;
+                let dist_events = p_ss.get_ss_workflow_events(claim).await?;
                 for dist_event in dist_events {
                     let obj_id = dist_event.obj_id();
                     let request = {
