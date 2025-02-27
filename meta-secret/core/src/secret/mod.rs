@@ -6,7 +6,6 @@ use crate::node::common::model::secret::{ClaimId, SecretDistributionData, SsClai
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::vault::VaultMember;
 use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
-use crate::node::db::events::generic_log_event::ToGenericEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::shared_secret_event::SsWorkflowObject;
 use crate::node::db::events::vault::vault_log_event::AddMetaPassEvent;

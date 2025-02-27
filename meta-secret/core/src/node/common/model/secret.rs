@@ -48,13 +48,13 @@ impl IdString for SsClaimId {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SsClaimDbId {
+pub struct SsRecoveryId {
     pub claim_id: SsClaimId,
     pub sender: DeviceId,
     pub distribution_id: SsDistributionId,
 }
 
-impl IdString for SsClaimDbId {
+impl IdString for SsRecoveryId {
     fn id_str(self) -> String {
         [
             self.sender.id_str(),
@@ -97,10 +97,10 @@ impl SsClaim {
         ids
     }
 
-    pub fn claim_db_ids(&self) -> Vec<SsClaimDbId> {
+    pub fn claim_db_ids(&self) -> Vec<SsRecoveryId> {
         let mut ids = Vec::with_capacity(self.receivers.len());
         for receiver in self.receivers.iter() {
-            ids.push(SsClaimDbId {
+            ids.push(SsRecoveryId {
                 claim_id: self.dist_claim_id.clone(),
                 sender: self.sender.clone(),
                 distribution_id: SsDistributionId {
@@ -122,7 +122,7 @@ pub enum SsDistributionStatus {
     /// The distribution is on the server
     Sent,
     /// The receiver device has received the secret
-    Delivered,
+    Delivered
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

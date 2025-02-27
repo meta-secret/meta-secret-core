@@ -134,7 +134,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                         .re_encrypt(share.secret_message.clone(), msg_receiver)?;
 
                     //compare with claim dist id, if match then create a claim
-                    let key = KvKey::from(SsWorkflowDescriptor::Claim(claim_db_id.clone()));
+                    let key = KvKey::from(SsWorkflowDescriptor::Recovery(claim_db_id.clone()));
 
                     let new_claim = SsWorkflowObject::Recovery(KvLogEvent {
                         key,

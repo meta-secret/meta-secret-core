@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::secret::{
-    SsClaim, SsClaimDbId, SsDistributionId, SsDistributionStatus, SsLogData,
+    SsClaim, SsDistributionId, SsDistributionStatus, SsLogData,
 };
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
@@ -40,7 +40,7 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
 
         // Synchronize claims (recovery requests)
         for claim_id in ss_claim.claim_db_ids() {
-            let claim_id_desc = SsWorkflowDescriptor::Claim(claim_id);
+            let claim_id_desc = SsWorkflowDescriptor::Recovery(claim_id);
             let tail_event = self.p_obj.find_tail_event(claim_id_desc).await?;
             if let Some(event) = tail_event {
                 events.push(event);

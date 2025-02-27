@@ -277,7 +277,7 @@ mod test {
             &self.empty_state().user_creds
         }
 
-        async fn sign_up_and_join_for_two_devices(&self) -> Result<()> {
+        async fn sign_up_and_second_devices_joins(&self) -> Result<()> {
             //setup_tracing()?;
             let vd_gw = self.vd.gw.clone();
             let client_gw = self.client.gw.clone();
@@ -423,7 +423,6 @@ mod test {
 
             self.spec.vd.gw.sync().await?;
             self.spec.vd.gw.sync().await?;
-            self.spec.vd.gw.sync().await?;
 
             // let client_db: HashMap<ArtifactId, GenericKvLogEvent> =
             //     self.sign_up.vd.p_obj.repo.get_db().await;
@@ -503,7 +502,7 @@ mod test {
     #[tokio::test]
     async fn test_sign_up_and_join_two_devices() -> Result<()> {
         let spec = ServerAppSignUpSpec::build().await?;
-        spec.sign_up_and_join_for_two_devices().await?;
+        spec.sign_up_and_second_devices_joins().await?;
         Ok(())
     }
 
@@ -512,7 +511,7 @@ mod test {
         let spec = ServerAppSignUpSpec::build().await?;
         let split = SplitSpec { spec };
 
-        split.spec.sign_up_and_join_for_two_devices().await?;
+        split.spec.sign_up_and_second_devices_joins().await?;
         split.split().await?;
 
         Ok(())
@@ -525,7 +524,7 @@ mod test {
             SplitSpec { spec }
         };
 
-        split.spec.sign_up_and_join_for_two_devices().await?;
+        split.spec.sign_up_and_second_devices_joins().await?;
         split.split().await?;
 
         let vd_client_service = split.spec.vd.client_service.clone();
@@ -572,7 +571,7 @@ mod test {
                 bail!("Empty claim")
             };
 
-            let claim_id_desc = SsWorkflowDescriptor::Claim(claim_id.clone());
+            let claim_id_desc = SsWorkflowDescriptor::Recovery(claim_id.clone());
 
             split
                 .spec

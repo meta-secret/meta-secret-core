@@ -5,7 +5,6 @@ use tracing::{error, instrument};
 use meta_secret_core::node::db::events::generic_log_event::{
     GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
 };
-use meta_secret_core::node::db::events::object_id::ObjectId;
 use meta_secret_core::node::db::repo::generic_db::{
     CommitLogDbConfig, DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand,
 };

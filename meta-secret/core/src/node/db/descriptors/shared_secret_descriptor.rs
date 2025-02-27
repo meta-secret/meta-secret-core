@@ -1,5 +1,5 @@
 use crate::node::common::model::device::common::DeviceId;
-use crate::node::common::model::secret::{SsClaimDbId, SsDistributionId};
+use crate::node::common::model::secret::{SsRecoveryId, SsDistributionId};
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::common::model::IdString;
 use crate::node::db::descriptors::object_descriptor::{
@@ -11,7 +11,7 @@ use derive_more::From;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SsWorkflowDescriptor {
-    Claim(SsClaimDbId),
+    Recovery(SsRecoveryId),
     /// Allows devices distributing their shares (split operation)
     Distribution(SsDistributionId),
 }
@@ -28,7 +28,7 @@ impl ObjectType for SsWorkflowDescriptor {
     fn object_type(&self) -> String {
         let obj_type = match self {
             SsWorkflowDescriptor::Distribution(_) => "SsDistribution",
-            SsWorkflowDescriptor::Claim(_) => "SsClaim"
+            SsWorkflowDescriptor::Recovery(_) => "SsRecovery"
         };
 
         String::from(obj_type)
@@ -57,7 +57,7 @@ impl IdString for SsWorkflowDescriptor {
     fn id_str(self) -> String {
         match self {
             SsWorkflowDescriptor::Distribution(event_id) => event_id.id_str(),
-            SsWorkflowDescriptor::Claim(db_id) => db_id.id_str(),
+            SsWorkflowDescriptor::Recovery(db_id) => db_id.id_str(),
         }
     }
 }

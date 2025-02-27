@@ -9,7 +9,7 @@ use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
 };
 use crate::node::db::events::object_id::ArtifactId;
-use crate::node::db::events::shared_secret_event::SsLogObject;
+use crate::node::db::events::shared_secret_event::{SsLogObject, SsWorkflowObject};
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -133,6 +133,16 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             }
             GenericKvLogEvent::SsWorkflow(ss_object) => {
                 self.p_obj.repo.save(ss_object.clone()).await?;
+
+                match ss_object {
+                    SsWorkflowObject::Recovery(_) => {
+                        
+                    }
+                    SsWorkflowObject::Distribution(_) => {
+                        
+                    }
+                }
+                
                 //don't forget to update claim state?
                 let dist = ss_object.to_distribution_data();
 
@@ -149,6 +159,9 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                             .channel
                             .receiver()
                             .to_device_id();
+
+                        //где-то я генерирую разные клеймы и наступает пипец, и мы не можем найти клейм
+                        //и обновить статус
                         
                         
                         let new_ss_log_data = ss_event.to_data().sent(dist.claim_id.id, device_id);
