@@ -2,6 +2,7 @@ use std::cmp::PartialEq;
 use std::sync::Arc;
 
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
+use crate::node::common::model::secret::SecretDistributionType;
 use crate::node::common::model::vault::vault::VaultStatus;
 use crate::node::db::actions::vault::vault_action::ServerVaultAction;
 use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
@@ -294,6 +295,16 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         let mut updated_state = false;
 
         for (_, claim) in ss_log_data.claims.iter() {
+
+            match claim.distribution_type {
+                SecretDistributionType::Split => {
+                    
+                },
+                SecretDistributionType::Recover => {
+
+                },
+            }
+
             // Distribute shares
             for dist_id in claim.claim_db_ids() {
                 if claim.sender.eq(&server_device) {
@@ -301,6 +312,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                 };
 
                 let receiver_device = request.sender.device.device_id.clone();
+                
 
                 // complete distribution action by sending the distribution event to the receiver
                 if dist_id.distribution_id.receiver.eq(&receiver_device) {
