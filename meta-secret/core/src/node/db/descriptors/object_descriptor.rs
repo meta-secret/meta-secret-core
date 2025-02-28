@@ -47,6 +47,12 @@ pub struct ObjectFqdn {
     pub obj_instance: String,
 }
 
+impl IdString for ObjectFqdn {
+    fn id_str(self) -> String {
+        format!("{}:{}", self.obj_type, self.obj_instance)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ChainId {
@@ -72,7 +78,7 @@ impl Next<SeqId> for GenesisId {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SeqId {
-    curr: usize,
+    pub curr: usize,
     prev: usize,
 }
 
@@ -128,6 +134,76 @@ impl ObjectType for ObjectDescriptor {
             ObjectDescriptor::VaultStatus(mem) => mem.object_type(),
             ObjectDescriptor::SsLog(desc) => desc.object_type(),
             ObjectDescriptor::SsDeviceLog(desc) => desc.object_type(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod seq_id_tests {
+    use super::*;
+
+    #[test]
+    fn test_seq_id_first() {
+        let first_id = SeqId::first();
+        assert_eq!(first_id.curr, 1);
+        assert_eq!(first_id.prev, 0);
+    }
+
+    #[test]
+    fn test_seq_id_next() {
+        let first_id = SeqId::first();
+        let next_id = first_id.next();
+        
+        assert_eq!(next_id.curr, 2);
+        assert_eq!(next_id.prev, 1);
+        
+        // Test multiple next calls
+        let third_id = next_id.next();
+        assert_eq!(third_id.curr, 3);
+        assert_eq!(third_id.prev, 2);
+    }
+
+    #[test]
+    fn test_genesis_to_seq_id() {
+        let genesis = GenesisId;
+        let seq_id = genesis.next();
+        
+        assert_eq!(seq_id.curr, 1);
+        assert_eq!(seq_id.prev, 0);
+    }
+}
+
+#[cfg(test)]
+mod fqdn_tests {
+    use crate::node::common::model::IdString;
+    use crate::node::common::model::vault::vault::VaultName;
+    use crate::node::db::descriptors::creds::CredentialsDescriptor;
+    use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
+    use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
+
+    #[test]
+    fn test_object_fqdn_id_string() {
+        // Test with CredentialsDescriptor
+        {
+            let creds_device = CredentialsDescriptor::Device;
+            let creds_descriptor = creds_device.to_obj_desc();
+            let creds_fqdn = creds_descriptor.fqdn();
+            assert_eq!(creds_fqdn.id_str(), "DeviceCreds:index");
+        }
+
+        {
+            // Test with VaultDescriptor 
+            let vault_name = VaultName::from("test_vault");
+            let vault_descriptor = VaultDescriptor::from(vault_name).to_obj_desc();
+            let vault_fqdn = vault_descriptor.fqdn();
+            assert_eq!(vault_fqdn.id_str(), "Vault:test_vault");
+        }
+
+        {
+            let creds_device = CredentialsDescriptor::Device;
+            let creds_descriptor = creds_device.to_obj_desc();
+            let creds_fqdn = creds_descriptor.fqdn();
+            assert_eq!(creds_fqdn.id_str(), "DeviceCreds:index");
         }
     }
 }

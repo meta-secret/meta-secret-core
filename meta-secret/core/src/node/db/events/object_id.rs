@@ -1,5 +1,5 @@
 use serde_derive::{Deserialize, Serialize};
-
+use crate::node::common::model::IdString;
 use crate::node::db::descriptors::object_descriptor::{ObjectFqdn, SeqId, ToObjectDescriptor};
 
 pub trait Next<To> {
@@ -16,6 +16,12 @@ pub trait Prev<To> {
 pub struct ArtifactId {
     pub fqdn: ObjectFqdn,
     pub id: SeqId,
+}
+
+impl IdString for ArtifactId {
+    fn id_str(self) -> String {
+        format!("{}::{}", self.fqdn.id_str(), self.id.curr)
+    }
 }
 
 impl ArtifactId {

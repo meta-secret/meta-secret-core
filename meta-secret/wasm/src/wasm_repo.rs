@@ -11,6 +11,7 @@ use meta_secret_core::node::db::repo::generic_db::{
 
 use meta_secret_core::node::common::model::IdString;
 use rexie::*;
+use meta_secret_core::node::db::events::object_id::ArtifactId;
 
 pub struct WasmRepo {
     pub db_name: String,
@@ -87,7 +88,7 @@ impl WasmRepo {
 #[async_trait(? Send)]
 impl SaveCommand for WasmRepo {
     #[instrument(skip_all)]
-    async fn save<T: ToGenericEvent>(&self, event: T) -> anyhow::Result<ObjectId> {
+    async fn save<T: ToGenericEvent>(&self, event: T) -> anyhow::Result<ArtifactId> {
         let generic_event = event.to_generic();
         let maybe_key = self.get_key(generic_event.obj_id()).await?;
         if let Some(_) = maybe_key {
@@ -127,7 +128,7 @@ impl SaveCommand for WasmRepo {
 #[async_trait(? Send)]
 impl FindOneQuery for WasmRepo {
     #[instrument(skip_all)]
-    async fn find_one(&self, key: ObjectId) -> anyhow::Result<Option<GenericKvLogEvent>> {
+    async fn find_one(&self, key: ArtifactId) -> anyhow::Result<Option<GenericKvLogEvent>> {
         let store_name = self.store_name.as_str();
 
         let tx = self
@@ -156,7 +157,7 @@ impl FindOneQuery for WasmRepo {
         }
     }
 
-    async fn get_key(&self, key: ObjectId) -> anyhow::Result<Option<ObjectId>> {
+    async fn get_key(&self, key: ArtifactId) -> anyhow::Result<Option<ArtifactId>> {
         let maybe_event = self.find_one(key).await?;
         match maybe_event {
             None => Ok(None),
@@ -168,7 +169,7 @@ impl FindOneQuery for WasmRepo {
 #[async_trait(? Send)]
 impl DeleteCommand for WasmRepo {
     #[instrument(skip_all)]
-    async fn delete(&self, key: ObjectId) {
+    async fn delete(&self, key: ArtifactId) {
         let store_name = self.store_name.as_str();
 
         let tx = self
