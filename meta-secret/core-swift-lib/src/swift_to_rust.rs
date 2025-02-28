@@ -104,7 +104,7 @@ mod internal {
 
     pub fn generate_meta_password_id(password_id: *const u8, json_len: SizeT) -> CoreResult<String> {
         let password_id = data_to_string(password_id, json_len)?;
-        let meta_password_id = MetaPasswordId::generate(password_id);
+        let meta_password_id = MetaPasswordId::build(password_id.as_str());
 
         // Shares to JSon
         let result_json = serde_json::to_string_pretty(&meta_password_id)?;

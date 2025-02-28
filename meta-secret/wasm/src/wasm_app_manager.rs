@@ -107,7 +107,7 @@ impl WasmApplicationManager {
 
     pub async fn cluster_distribution(&self, pass_id: &str, pass: &str) {
         let request = GenericAppStateRequest::ClusterDistribution(ClusterDistributionRequest {
-            pass_id: MetaPasswordId::generate(pass_id.to_string()),
+            pass_id: MetaPasswordId::build(pass_id),
             pass: pass.to_string(),
         });
 
