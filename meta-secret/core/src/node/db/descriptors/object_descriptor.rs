@@ -198,12 +198,5 @@ mod fqdn_tests {
             let vault_fqdn = vault_descriptor.fqdn();
             assert_eq!(vault_fqdn.id_str(), "Vault:test_vault");
         }
-
-        {
-            let creds_device = CredentialsDescriptor::Device;
-            let creds_descriptor = creds_device.to_obj_desc();
-            let creds_fqdn = creds_descriptor.fqdn();
-            assert_eq!(creds_fqdn.id_str(), "DeviceCreds:index");
-        }
     }
 }

@@ -2,5 +2,6 @@
 description: Unit tests rules applied to the rust project (meta secret)
 globs: **/*.rs
 ---
+
 - write unit tests in the file that is open right now
 - don't create a new file for unit tests
