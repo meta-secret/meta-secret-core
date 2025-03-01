@@ -53,3 +53,37 @@ impl Next<ArtifactId> for ArtifactId {
         self
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::node::db::descriptors::object_descriptor::{ObjectFqdn, SeqId};
+
+    #[test]
+    fn test_artifact_id_id_str() {
+        // Create test data
+        let obj_type = "test_namespace".to_string();
+        let obj_instance = "test_object".to_string();
+        let fqdn = ObjectFqdn { obj_type, obj_instance };
+        
+        // Create ArtifactId using the From trait implementation
+        let artifact_id = ArtifactId::from(fqdn.clone());
+        
+        // Test the id_str method with hardcoded expected string
+        let expected_id_str = "test_namespace:test_object::1";
+        assert_eq!(artifact_id.clone().id_str(), expected_id_str);
+        
+        // Test with a different sequence ID
+        let mut seq_id = SeqId::first();
+        seq_id.curr = 100;
+        
+        let artifact_id2 = ArtifactId {
+            fqdn: fqdn.clone(),
+            id: seq_id,
+        };
+        
+        // Test with hardcoded expected string
+        let expected_id_str2 = "test_namespace:test_object::100";
+        assert_eq!(artifact_id2.id_str(), expected_id_str2);
+    }
+}
