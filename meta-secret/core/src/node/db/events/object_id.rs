@@ -86,4 +86,35 @@ mod tests {
         let expected_id_str2 = "test_namespace:test_object::100";
         assert_eq!(artifact_id2.id_str(), expected_id_str2);
     }
+
+    #[test]
+    fn test_artifact_id_next() {
+        // Create test data
+        let obj_type = "test_namespace".to_string();
+        let obj_instance = "test_object".to_string();
+        let fqdn = ObjectFqdn { obj_type, obj_instance };
+        
+        // Create initial ArtifactId
+        let artifact_id = ArtifactId::from(fqdn.clone());
+        
+        // Verify initial state
+        assert_eq!(artifact_id.id.curr, 1);
+        
+        // Call next() and verify the result
+        let next_artifact_id = artifact_id.next();
+        
+        // Verify that the FQDN remains the same
+        assert_eq!(next_artifact_id.fqdn, fqdn);
+        
+        // Verify that the sequence ID was incremented
+        assert_eq!(next_artifact_id.id.curr, 2);
+        
+        // Test multiple next calls
+        let third_artifact_id = next_artifact_id.next();
+        assert_eq!(third_artifact_id.id.curr, 3);
+        
+        // Verify id_str format after next() calls
+        let expected_id_str = "test_namespace:test_object::3";
+        assert_eq!(third_artifact_id.id_str(), expected_id_str);
+    }
 }
