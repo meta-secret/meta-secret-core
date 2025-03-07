@@ -66,7 +66,10 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
 
 impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
     #[instrument(skip(self))]
-    pub async fn find_ss_log_event(&self, vault_name: VaultName) -> Result<Option<SsLogObject>> {
+    pub async fn find_ss_log_tail_event(
+        &self,
+        vault_name: VaultName,
+    ) -> Result<Option<SsLogObject>> {
         let obj_desc = SsLogDescriptor::from(vault_name);
         self.p_obj.find_tail_event(obj_desc).await
     }
@@ -77,7 +80,7 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
 
         let vault_name = claim.vault_name.clone();
 
-        let maybe_ss_log_event = self.find_ss_log_event(vault_name.clone()).await?;
+        let maybe_ss_log_event = self.find_ss_log_tail_event(vault_name.clone()).await?;
 
         let new_ss_log_event = match maybe_ss_log_event {
             None => {

@@ -126,7 +126,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
                 self.p_obj.repo.save(ss_device_log_obj.clone()).await?;
 
-                let ss_claim = ss_device_log_obj.get_distribution_request();
+                let ss_claim = ss_device_log_obj.to_distribution_request();
 
                 let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
                 p_ss_log.save_ss_log_event(ss_claim).await?;
@@ -134,20 +134,13 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             GenericKvLogEvent::SsWorkflow(ss_object) => {
                 self.p_obj.repo.save(ss_object.clone()).await?;
 
-                match ss_object {
-                    SsWorkflowObject::Recovery(_) => {
-                        
-                    }
-                    SsWorkflowObject::Distribution(_) => {
-                        
-                    }
-                }
-                
                 //don't forget to update claim state?
                 let dist = ss_object.to_distribution_data();
 
                 let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
-                let maybe_ss_log_event = p_ss_log.find_ss_log_event(dist.vault_name.clone()).await?;
+                let maybe_ss_log_event = p_ss_log
+                    .find_ss_log_tail_event(dist.vault_name.clone())
+                    .await?;
                 match maybe_ss_log_event {
                     None => {
                         bail!("No claim found for distribution: {:?}", dist)
@@ -160,11 +153,8 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                             .receiver()
                             .to_device_id();
 
-                        //где-то я генерирую разные клеймы и наступает пипец, и мы не можем найти клейм
-                        //и обновить статус
-                        
-                        
-                        let new_ss_log_data = ss_event.to_data().sent(dist.claim_id.id, device_id);
+                        let new_ss_log_data =
+                            ss_event.to_data().sent(dist.claim_id.id, device_id);
                         let new_ss_log_event = p_ss_log
                             .create_new_ss_log_object(new_ss_log_data, dist.vault_name)
                             .await?;
@@ -305,9 +295,9 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                 // complete distribution action by sending the distribution event to the receiver
                 if dist_id.distribution_id.receiver.eq(&receiver_device) {
                     let desc = SsWorkflowDescriptor::Distribution(dist_id.distribution_id.clone());
-                    let ss_obj = self.p_obj.find_tail_event(desc).await?;
+                    let dist_obj = self.p_obj.find_tail_event(desc).await?;
 
-                    if let Some(dist_event) = ss_obj {
+                    if let Some(dist_event) = dist_obj {
                         let ss_dist_obj_id = dist_event.obj_id();
                         commit_log.push(dist_event.to_generic());
                         self.p_obj.repo.delete(ss_dist_obj_id).await;

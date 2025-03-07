@@ -16,25 +16,7 @@ use meta_secret_core::node::common::model::WasmApplicationState;
 
 #[wasm_bindgen]
 pub struct WasmApplicationManager {
-    app_manager: GenericApplicationManager,
-}
-
-pub enum GenericApplicationManager {
-    Wasm {
-        app_manager: ApplicationManager<WasmRepo>,
-    },
-    InMem {
-        app_manager: ApplicationManager<WasmRepo>,
-    },
-}
-
-impl GenericApplicationManager {
-    pub fn get_app_manager(&self) -> &ApplicationManager<WasmRepo> {
-        match self {
-            GenericApplicationManager::Wasm { app_manager } => app_manager,
-            GenericApplicationManager::InMem { app_manager } => app_manager,
-        }
-    }
+    app_manager: ApplicationManager<WasmRepo>,
 }
 
 #[wasm_bindgen]
@@ -54,9 +36,7 @@ impl WasmApplicationManager {
             .await
             .expect("Application manager must be initialized");
 
-        WasmApplicationManager {
-            app_manager: GenericApplicationManager::InMem { app_manager },
-        }
+        WasmApplicationManager { app_manager }
     }
 
     pub async fn init_wasm() -> WasmApplicationManager {
@@ -74,9 +54,7 @@ impl WasmApplicationManager {
             .await
             .expect("Application state manager must be initialized");
 
-        WasmApplicationManager {
-            app_manager: GenericApplicationManager::Wasm { app_manager },
-        }
+        WasmApplicationManager { app_manager }
     }
 
     pub async fn get_state(&self) -> WasmApplicationState {
@@ -92,17 +70,8 @@ impl WasmApplicationManager {
 
     pub async fn sign_up(&self, vault_name: String) {
         info!("Sign Up");
-
         let sign_up = GenericAppStateRequest::SignUp(VaultName::from(vault_name.as_str()));
-
-        match &self.app_manager {
-            GenericApplicationManager::Wasm { app_manager } => {
-                app_manager.meta_client_service.send_request(sign_up).await;
-            }
-            GenericApplicationManager::InMem { app_manager } => {
-                app_manager.meta_client_service.send_request(sign_up).await;
-            }
-        };
+        self.app_manager.meta_client_service.send_request(sign_up).await;
     }
 
     pub async fn cluster_distribution(&self, pass_id: &str, pass: &str) {
@@ -111,26 +80,11 @@ impl WasmApplicationManager {
             pass: pass.to_string(),
         });
 
-        match &self.app_manager {
-            GenericApplicationManager::Wasm { app_manager } => {
-                app_manager.meta_client_service.send_request(request).await;
-            }
-            GenericApplicationManager::InMem { app_manager } => {
-                app_manager.meta_client_service.send_request(request).await;
-            }
-        };
+        self.app_manager.meta_client_service.send_request(request).await;
     }
 
     pub async fn recover_js(&self, meta_pass_id: MetaPasswordId) {
         let request = GenericAppStateRequest::Recover(meta_pass_id);
-
-        match &self.app_manager {
-            GenericApplicationManager::Wasm { app_manager } => {
-                app_manager.meta_client_service.send_request(request).await;
-            }
-            GenericApplicationManager::InMem { app_manager } => {
-                app_manager.meta_client_service.send_request(request).await;
-            }
-        }
+        self.app_manager.meta_client_service.send_request(request).await;
     }
 }

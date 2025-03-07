@@ -56,8 +56,8 @@ impl TryFrom<GenericKvLogEvent> for SsWorkflowObject {
 pub struct SsDeviceLogObject(pub KvLogEvent<SsClaim>);
 
 impl SsDeviceLogObject {
-    pub fn get_distribution_request(&self) -> SsClaim {
-        self.0.value.clone()
+    pub fn to_distribution_request(self) -> SsClaim {
+        self.0.value
     }
 }
 

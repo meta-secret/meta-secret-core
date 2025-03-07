@@ -171,6 +171,7 @@ mod test {
     use anyhow::bail;
     use anyhow::Result;
     use tracing::{info, Instrument};
+    use crate::meta_tests::setup_tracing;
 
     struct ActorNode {
         user: UserData,
@@ -402,16 +403,16 @@ mod test {
             let app_state = client_client_service.build_service_state().await?.app_state;
 
             let pass_id = MetaPasswordId::build("test_pass");
-            let request = {
+            let dist_request = {
                 let dist_request = ClusterDistributionRequest {
                     pass_id: pass_id.clone(),
                     pass: "2bee|~".to_string(),
                 };
                 GenericAppStateRequest::ClusterDistribution(dist_request)
             };
-
+            
             let new_app_state = client_client_service
-                .handle_client_request(app_state, request)
+                .handle_client_request(app_state, dist_request)
                 .await?;
             //println!("{:?}", new_app_state);
 
@@ -508,6 +509,8 @@ mod test {
 
     #[tokio::test]
     async fn test_secret_split() -> Result<()> {
+        setup_tracing()?;
+        
         let spec = ServerAppSignUpSpec::build().await?;
         let split = SplitSpec { spec };
 

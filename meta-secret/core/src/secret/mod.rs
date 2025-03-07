@@ -94,6 +94,8 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
         password_id: MetaPasswordId,
         password: String,
     ) -> Result<()> {
+        println!("2. MetaDistributor::distribute");
+        
         let vault_name = self.user_creds.vault_name.clone();
 
         let encrypted_shares = {
@@ -141,6 +143,8 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
                     receiver,
                 }
             };
+            
+            println!("3. MetaDistributor::distribute. Receiver: {:?}", dist_id.receiver.clone());
 
             let split_key = KvKey::from(SsWorkflowDescriptor::Distribution(dist_id));
 
