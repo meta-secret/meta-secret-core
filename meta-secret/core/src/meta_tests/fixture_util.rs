@@ -8,6 +8,7 @@ pub mod fixture {
     use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
     use crate::node::common::model::vault::vault_data::fixture::VaultDataFixture;
     use crate::node::db::objects::persistent_object::fixture::PersistentObjectFixture;
+    use crate::node::db::objects::persistent_vault::fixture::PersistentVaultFixture;
     use crate::node::db::objects::persistent_vault::spec::VaultSpec;
     use crate::node::db::repo::persistent_credentials::fixture::PersistentCredentialsFixture;
     use crate::node::server::server_app::fixture::ServerAppFixture;
@@ -19,16 +20,18 @@ pub mod fixture {
 
     impl FixtureRegistry<BaseState> {
         pub fn empty() -> FixtureRegistry<EmptyState> {
-            let p_obj = PersistentObjectFixture::generate();
             let device_creds = DeviceCredentialsFixture::generate();
             let user_creds = UserCredentialsFixture::from(&device_creds);
+            let p_obj = PersistentObjectFixture::generate();
+            let p_vault = PersistentVaultFixture::generate(&p_obj);
             let vault_data = VaultDataFixture::from(&user_creds);
 
             FixtureRegistry {
                 state: EmptyState {
-                    p_obj,
                     device_creds,
                     user_creds,
+                    p_obj,
+                    p_vault,
                     vault_data,
                 },
             }
@@ -81,16 +84,18 @@ pub mod fixture {
     }
 
     pub mod states {
-        use crate::meta_tests::fixture_util::fixture::specs::BaseSpec;
+        use std::sync::Arc;
+
+        use crate::meta_tests::fixture_util::fixture::BaseSpec;
         use crate::node::app::meta_app::meta_client_service::fixture::MetaClientServiceFixture;
         use crate::node::app::sync::sync_protocol::fixture::SyncProtocolFixture;
         use crate::node::common::model::device::device_creds::fixture::DeviceCredentialsFixture;
         use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
         use crate::node::common::model::vault::vault_data::fixture::VaultDataFixture;
         use crate::node::db::objects::persistent_object::fixture::PersistentObjectFixture;
+        use crate::node::db::objects::persistent_vault::fixture::PersistentVaultFixture;
         use crate::node::db::repo::persistent_credentials::fixture::PersistentCredentialsFixture;
         use crate::node::server::server_app::fixture::ServerAppFixture;
-        use std::sync::Arc;
 
         pub enum Fixture {
             Empty(EmptyState),
@@ -102,6 +107,7 @@ pub mod fixture {
             pub device_creds: DeviceCredentialsFixture,
             pub user_creds: UserCredentialsFixture,
             pub p_obj: PersistentObjectFixture,
+            pub p_vault: PersistentVaultFixture,
             pub vault_data: VaultDataFixture,
         }
 

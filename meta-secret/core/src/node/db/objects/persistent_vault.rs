@@ -266,6 +266,32 @@ pub mod spec {
 }
 
 #[cfg(test)]
+pub mod fixture {
+    use super::PersistentVault;
+    use crate::node::db::in_mem_db::InMemKvLogEventRepo;
+    use crate::node::db::objects::persistent_object::fixture::PersistentObjectFixture;
+    use std::sync::Arc;
+
+    pub struct PersistentVaultFixture {
+        pub client: Arc<PersistentVault<InMemKvLogEventRepo>>,
+        pub client_b: Arc<PersistentVault<InMemKvLogEventRepo>>,
+        pub vd: Arc<PersistentVault<InMemKvLogEventRepo>>,
+        pub server: Arc<PersistentVault<InMemKvLogEventRepo>>,
+    }
+
+    impl PersistentVaultFixture {
+        pub fn generate(p_obj: &PersistentObjectFixture) -> Self {
+            Self {
+                client: Arc::new(PersistentVault::from(p_obj.client.clone())),
+                client_b: Arc::new(PersistentVault::from(p_obj.client_b.clone())),
+                vd: Arc::new(PersistentVault::from(p_obj.vd.clone())),
+                server: Arc::new(PersistentVault::from(p_obj.server.clone())),
+            }
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use anyhow::Result;
 
