@@ -164,3 +164,67 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
         Ok(log_event)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::node::common::model::meta_pass::MetaPasswordId;
+    use crate::node::common::model::secret::SecretDistributionType;
+    use crate::node::db::descriptors::shared_secret_descriptor::SsDeviceLogDescriptor;
+    use crate::node::db::events::shared_secret_event::SsDeviceLogObject;
+    use anyhow::Result;
+
+    #[tokio::test]
+    async fn test_save_claim_in_ss_device_log() -> Result<()> {
+        // Setup
+        let registry = FixtureRegistry::empty();
+        let p_obj = registry.state.p_obj.client;
+        let persistent_ss = super::PersistentSharedSecret { p_obj: p_obj.clone() };
+
+        // Get vault member from the fixture and create a claim using its method
+        let vault_member = registry.state.vault_data.client_vault_member;
+        let pass_id = MetaPasswordId::build("test_password");
+        
+        // Create a claim using the VaultMember helper (which properly creates receivers list)
+        let test_claim = vault_member.create_split_claim(pass_id);
+        
+        // Execute function being tested
+        persistent_ss.save_claim_in_ss_device_log(test_claim.clone()).await?;
+
+        // Verify results
+        let sender_device_id = test_claim.sender.clone();
+        let obj_desc = SsDeviceLogDescriptor::from(sender_device_id);
+        let tail_id = p_obj.find_tail_id_by_obj_desc(obj_desc.clone()).await?;
+        
+        assert!(tail_id.is_some(), "Expected to find tail ID but none was found");
+        
+        let event = p_obj.find_tail_event_by_obj_id::<SsDeviceLogObject>(tail_id.unwrap()).await?;
+        assert!(event.is_some(), "Expected to find event but none was found");
+        
+        let ss_device_log_obj = event.unwrap();
+        let saved_claim = ss_device_log_obj.to_distribution_request();
+        
+        // Verify the claim properties
+        assert_eq!(saved_claim.id, test_claim.id, "Claim IDs do not match");
+        assert_eq!(saved_claim.vault_name, test_claim.vault_name, "Vault names do not match");
+        assert_eq!(saved_claim.distribution_type, SecretDistributionType::Split, "Distribution types do not match");
+        assert_eq!(saved_claim.sender, test_claim.sender, "Sender does not match");
+        
+        // Verify receivers
+        assert_eq!(saved_claim.receivers.len(), 2, "Should have 2 receivers");
+        assert!(saved_claim.receivers.contains(&registry.state.vault_data.client_b_membership.device_id()), 
+                "Client B should be a receiver");
+        assert!(saved_claim.receivers.contains(&registry.state.vault_data.vd_membership.device_id()), 
+                "VD should be a receiver");
+        
+        // Verify receiver statuses
+        for receiver in saved_claim.receivers.iter() {
+            let status = saved_claim.status.get(receiver);
+            assert!(status.is_some(), "Receiver should have a status");
+            assert_eq!(*status.unwrap(), crate::node::common::model::secret::SsDistributionStatus::Pending, 
+                      "Status should be Pending");
+        }
+        
+        Ok(())
+    }
+}
