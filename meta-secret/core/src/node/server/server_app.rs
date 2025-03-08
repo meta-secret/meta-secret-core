@@ -177,7 +177,7 @@ mod test {
         user: UserData,
         p_obj: Arc<PersistentObject<InMemKvLogEventRepo>>,
         gw: Arc<SyncGateway<InMemKvLogEventRepo, EmbeddedSyncProtocol>>,
-        p_vault: PersistentVault<InMemKvLogEventRepo>,
+        p_vault: Arc<PersistentVault<InMemKvLogEventRepo>>,
         p_ss: PersistentSharedSecret<InMemKvLogEventRepo>,
         orchestrator: MetaOrchestrator<InMemKvLogEventRepo>,
         client_service: Arc<MetaClientService<InMemKvLogEventRepo, EmbeddedSyncProtocol>>,
@@ -191,7 +191,7 @@ mod test {
 
     struct ServerNode {
         p_obj: Arc<PersistentObject<InMemKvLogEventRepo>>,
-        p_vault: PersistentVault<InMemKvLogEventRepo>,
+        p_vault: Arc<PersistentVault<InMemKvLogEventRepo>>,
         p_ss: PersistentSharedSecret<InMemKvLogEventRepo>,
         server_creds_spec: PersistentCredentialsSpec<InMemKvLogEventRepo>,
     }
@@ -222,7 +222,7 @@ mod test {
                     .sync_gateway
                     .client_gw
                     .clone(),
-                p_vault: PersistentVault::from(empty_state.p_obj.client.clone()),
+                p_vault: empty_state.p_vault.client.clone(),
                 p_ss: PersistentSharedSecret::from(empty_state.p_obj.client.clone()),
                 orchestrator: MetaOrchestrator {
                     p_obj: empty_state.p_obj.client.clone(),
@@ -240,7 +240,7 @@ mod test {
                     .sync_gateway
                     .vd_gw
                     .clone(),
-                p_vault: PersistentVault::from(empty_state.p_obj.vd.clone()),
+                p_vault: empty_state.p_vault.vd.clone(),
                 p_ss: PersistentSharedSecret::from(empty_state.p_obj.vd.clone()),
                 orchestrator: MetaOrchestrator {
                     p_obj: empty_state.p_obj.vd.clone(),
@@ -256,7 +256,7 @@ mod test {
 
             let server = ServerNode {
                 p_obj: empty_state.p_obj.server.clone(),
-                p_vault: PersistentVault::from(empty_state.p_obj.server.clone()),
+                p_vault: empty_state.p_vault.server.clone(),
                 p_ss: PersistentSharedSecret::from(empty_state.p_obj.server.clone()),
                 server_creds_spec,
             };
