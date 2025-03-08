@@ -168,6 +168,67 @@ mod tests {
     use anyhow::Result;
 
     #[tokio::test]
+    async fn test_split_and_encrypt() -> Result<()> {
+        // Setup fixture with base state
+        let fixture = FixtureRegistry::base().await?;
+        let creds_fixture = fixture.state.empty.user_creds;
+
+        // Create a test password
+        let password = "test_password".to_string();
+
+        // Create member from user data
+        let client_user_data = creds_fixture.client.user();
+        let client_member = UserDataMember::from(client_user_data.clone());
+
+        // Create vault data from the fixture with multiple members
+        // This is crucial - MetaEncryptor needs at least 2 vault members to work properly
+        let vault_data = {
+            // Add additional member to ensure we have enough for shared secret distribution
+            let vd_user_data = creds_fixture.vd.user();
+            let vd_member = UserDataMember::from(vd_user_data);
+
+            VaultData::from(client_member.clone())
+                .update_membership(UserMembership::Member(vd_member))
+        };
+
+        // Create vault member
+        let vault_member = VaultMember {
+            member: client_member,
+            vault: vault_data,
+        };
+
+        // Create MetaEncryptor instance
+        let encryptor = MetaEncryptor {
+            creds: Arc::new(creds_fixture.client),
+            owner: vault_member,
+        };
+        
+        // Save the number of members before calling split_and_encrypt (which moves encryptor)
+        let member_count = encryptor.owner.vault.members().len();
+        
+        // Execute the split_and_encrypt function
+        let encrypted_shares = encryptor.split_and_encrypt(password)?;
+        
+        // Verify the results
+        assert!(!encrypted_shares.is_empty(), "Encrypted shares should not be empty");
+        assert_eq!(
+            encrypted_shares.len(),
+            member_count,
+            "There should be one encrypted share per vault member"
+        );
+        
+        // Verify all shares are CipherShare variants
+        for share in encrypted_shares {
+            assert!(
+                matches!(share, EncryptedMessage::CipherShare { .. }),
+                "All shares should be CipherShare variants"
+            );
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_distribute_password() -> Result<()> {
         // Setup fixture with base state
         let fixture = FixtureRegistry::base().await?;
