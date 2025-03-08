@@ -121,11 +121,82 @@ impl TransportDsaKeyPair {
 #[cfg(test)]
 pub mod test {
     use crate::crypto::encoding::base64::Base64Text;
-    use crate::crypto::key_pair::KeyPair;
+    use crate::crypto::key_pair::{Cipher, DsaKeyPair, KeyPair, TransportDsaKeyPair};
     use crate::crypto::keys::KeyManager;
     use crate::node::common::model::crypto::aead::{AeadCipherText, AeadPlainText};
     use crate::node::common::model::crypto::channel::CommunicationChannel;
+    use crate::node::common::model::IdString;
     use crate::secret::shared_secret::PlainText;
+    
+    #[test]
+    fn test_dsa_key_pair_generate() {
+        let key_pair = DsaKeyPair::generate();
+        
+        // Check that the generated key pair is valid
+        assert!(!key_pair.key_pair.to_bytes().is_empty());
+        
+        // Verify that public and secret keys are generated correctly
+        let pk = key_pair.pk();
+        let sk = key_pair.sk();
+        
+        assert!(!pk.0.to_string().is_empty());
+        assert!(!sk.0.to_string().is_empty());
+    }
+    
+    #[test]
+    fn test_dsa_key_pair_sign() {
+        let key_pair = DsaKeyPair::generate();
+        let text = "Test message to sign".to_string();
+        
+        let signature = key_pair.sign(text.clone());
+        
+        // Ensure signature is not empty
+        assert!(!signature.to_string().is_empty());
+        
+        // Ensure different messages have different signatures
+        let another_text = "Different message".to_string();
+        let another_signature = key_pair.sign(another_text);
+        
+        assert_ne!(signature.to_string(), another_signature.to_string());
+    }
+    
+    #[test]
+    fn test_dsa_key_pair_encode() {
+        let key_pair = DsaKeyPair::generate();
+        
+        let encoded = key_pair.encode_key_pair();
+        
+        // Ensure encoding is not empty
+        assert!(!encoded.to_string().is_empty());
+    }
+    
+    #[test]
+    fn test_transport_dsa_key_pair_generate() {
+        let key_pair = TransportDsaKeyPair::generate();
+        
+        // Verify that the transport key pair is valid
+        let pk = key_pair.pk();
+        let sk = key_pair.sk();
+        
+        // Just verify the device ID is not empty
+        assert!(!pk.to_device_id().0.text.base64_str().is_empty());
+        assert!(!sk.0.to_string().is_empty());
+    }
+    
+    #[test]
+    fn test_transport_key_pair_pk_sk_consistency() {
+        let key_pair = TransportDsaKeyPair::generate();
+        
+        // Get pk and sk multiple times and ensure they are consistent
+        let pk1 = key_pair.pk();
+        let pk2 = key_pair.pk();
+        let sk1 = key_pair.sk();
+        let sk2 = key_pair.sk();
+        
+        // Compare IDs using id_str()
+        assert_eq!(pk1.to_device_id().0.id_str(), pk2.to_device_id().0.id_str());
+        assert_eq!(sk1.0.to_string(), sk2.0.to_string());
+    }
 
     #[test]
     fn single_person_encryption() -> anyhow::Result<()> {
@@ -191,5 +262,53 @@ pub mod test {
         assert!(error);
 
         Ok(())
+    }
+    
+    #[test]
+    fn test_encrypt_string_functionality() -> anyhow::Result<()> {
+        let alice_key_pair = TransportDsaKeyPair::generate();
+        let bob_key_pair = TransportDsaKeyPair::generate();
+        
+        let plain_text = PlainText::from("Hello, Bob!");
+        
+        // Alice encrypts a message for Bob
+        let cipher_text = alice_key_pair.encrypt_string(plain_text.clone(), &bob_key_pair.pk())?;
+        
+        // Ensure the cipher text has the correct channel
+        let alice_device_id = alice_key_pair.pk().to_device_id();
+        let sender_device_id = cipher_text.channel.sender().to_device_id();
+        assert_eq!(alice_device_id.0.text.base64_str(), sender_device_id.0.text.base64_str());
+        
+        let bob_device_id = bob_key_pair.pk().to_device_id();
+        let receiver_device_id = cipher_text.channel.receiver().to_device_id();
+        assert_eq!(bob_device_id.0.text.base64_str(), receiver_device_id.0.text.base64_str());
+        
+        // Bob should be able to decrypt
+        let decrypted = cipher_text.decrypt(&bob_key_pair.sk())?;
+        
+        // Verify the decrypted message matches the original
+        assert_eq!(decrypted.msg, Base64Text::from(plain_text));
+        
+        Ok(())
+    }
+    
+    #[test]
+    fn test_different_keys_generate_different_outputs() {
+        // Test that multiple key pairs generate different keys
+        let key_pair1 = DsaKeyPair::generate();
+        let key_pair2 = DsaKeyPair::generate();
+        
+        assert_ne!(key_pair1.pk().0.to_string(), key_pair2.pk().0.to_string());
+        assert_ne!(key_pair1.sk().0.to_string(), key_pair2.sk().0.to_string());
+        
+        let t_key_pair1 = TransportDsaKeyPair::generate();
+        let t_key_pair2 = TransportDsaKeyPair::generate();
+        
+        // Compare using the base64 string of the device ID's text
+        assert_ne!(
+            t_key_pair1.pk().to_device_id().0.text.base64_str(),
+            t_key_pair2.pk().to_device_id().0.text.base64_str()
+        );
+        assert_ne!(t_key_pair1.sk().0.to_string(), t_key_pair2.sk().0.to_string());
     }
 }
