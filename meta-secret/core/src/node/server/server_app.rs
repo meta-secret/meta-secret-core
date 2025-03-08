@@ -564,6 +564,12 @@ mod test {
 
         let vault_name = split.spec.client.user.vault_name;
         let ss_log = split.spec.server.p_ss.get_ss_log_obj(vault_name).await?;
+
+        println!("Server SS_LOG:");
+        for claim in ss_log.claims.values() {
+            println!("  claim: {:?}", claim)
+        }
+        
         assert_eq!(1, ss_log.claims.len());
         let recover_claim_on_server = ss_log.claims.values().next().unwrap();
         let claim_ids = recover_claim_on_server.recovery_db_ids();

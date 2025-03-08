@@ -108,8 +108,6 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                     user_creds
                 };
 
-                println!("1. Distribution. DeviceId: {:?}", user_creds.device_id());
-
                 let vault_status = {
                     let vault_repo = PersistentVault::from(self.p_obj.clone());
                     vault_repo.find(user_creds.user()).await?

@@ -205,21 +205,14 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                 let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
                 let wf_events = p_ss.get_ss_workflow_events(claim.clone()).await?;
                 for wf_event in wf_events {
-                    match &wf_event {
-                        SsWorkflowObject::Recovery(_) => {
-                            unimplemented!("Implement for recovery task!!!")
-                        }
-                        SsWorkflowObject::Distribution(_) => {
-                            if claim.sender.eq(user_creds.device_id()) {
-                                let obj_id = wf_event.obj_id();
-                                let request = {
-                                    let event = WriteSyncRequest::Event(wf_event.to_generic());
-                                    SyncRequest::Write(event)
-                                };
-                                self.sync.send(request).await?;
-                                self.p_obj.repo.delete(obj_id).await;
-                            }
-                        }
+                    if claim.sender.eq(user_creds.device_id()) {
+                        let obj_id = wf_event.obj_id();
+                        let request = {
+                            let event = WriteSyncRequest::Event(wf_event.to_generic());
+                            SyncRequest::Write(event)
+                        };
+                        self.sync.send(request).await?;
+                        self.p_obj.repo.delete(obj_id).await;
                     }
                 }
             }

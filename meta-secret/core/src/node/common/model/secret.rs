@@ -220,8 +220,6 @@ impl SsLogData {
 
         if let Some(mut claim) = maybe_claim {
             claim.status = claim.status.complete(device_id);
-            // Insert the updated claim back into the hashmap
-            self.claims.insert(claim_id, claim);
         }
 
         self

@@ -8,7 +8,7 @@ use crate::node::common::model::vault::vault::VaultMember;
 use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::shared_secret_event::SsWorkflowObject;
-use crate::node::db::events::vault::vault_log_event::AddMetaPassEvent;
+use crate::node::db::events::vault::vault_log_event::{AddMetaPassEvent};
 use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -93,8 +93,6 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
         password_id: MetaPasswordId,
         password: String,
     ) -> Result<()> {
-        println!("2. MetaDistributor::distribute");
-
         let vault_name = self.user_creds.vault_name.clone();
 
         let encrypted_shares = {
@@ -140,11 +138,6 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
                 }
             };
 
-            println!(
-                "3. MetaDistributor::distribute. Receiver: {:?}",
-                dist_id.receiver.clone()
-            );
-
             let split_key = KvKey::from(SsWorkflowDescriptor::Distribution(dist_id));
 
             let ss_obj = SsWorkflowObject::Distribution(KvLogEvent {
@@ -154,6 +147,111 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
 
             self.p_obj.repo.save(ss_obj).await?;
         }
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::node::common::model::meta_pass::MetaPasswordId;
+    use crate::node::common::model::user::common::{UserDataMember, UserMembership};
+    use crate::node::common::model::vault::vault_data::VaultData;
+    use crate::node::db::descriptors::vault_descriptor::DeviceLogDescriptor;
+    use crate::node::db::events::vault::device_log_event::DeviceLogObject;
+    use crate::node::db::events::vault::vault_log_event::{
+        VaultActionEvent, VaultActionRequestEvent,
+    };
+    use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
+    use anyhow::Result;
+
+    #[tokio::test]
+    async fn test_distribute_password() -> Result<()> {
+        // Setup fixture with base state
+        let fixture = FixtureRegistry::base().await?;
+        let creds_fixture = fixture.state.empty.user_creds;
+
+        // Create a test password and ID
+        let password = "test_password".to_string();
+        let password_id = MetaPasswordId::build("test_password");
+
+        // Create member from user data
+        let client_user_data = creds_fixture.client.user();
+        let client_member = UserDataMember::from(client_user_data.clone());
+
+        // Create vault data from the fixture with multiple members
+        // This is crucial - MetaDistributor needs at least 2 vault members to work properly
+        let vault_data = {
+            // Add additional member to ensure we have enough for shared secret distribution
+            let vd_user_data = creds_fixture.vd.user();
+            let vd_member = UserDataMember::from(vd_user_data);
+
+            VaultData::from(client_member.clone())
+                .update_membership(UserMembership::Member(vd_member))
+        };
+
+        // Create vault member
+        let vault_member = VaultMember {
+            member: client_member,
+            vault: vault_data,
+        };
+
+        // Create MetaDistributor with the fixture state
+        let distributor = MetaDistributor {
+            p_obj: fixture.state.empty.p_obj.client.clone(),
+            user_creds: Arc::new(creds_fixture.client.clone()),
+            vault_member: vault_member.clone(),
+        };
+
+        // Call distribute function
+        let result = distributor
+            .distribute(vault_member.clone(), password_id.clone(), password)
+            .await;
+
+        // Verify distribution was successful
+        assert!(result.is_ok(), "Distribution failed: {:?}", result.err());
+
+        // Verify the claim was stored by checking the device log
+        let device_log_desc = DeviceLogDescriptor::from(client_user_data.user_id());
+        let device_log_events = fixture
+            .state
+            .empty
+            .p_obj
+            .client
+            .get_object_events_from_beginning(device_log_desc)
+            .await?;
+
+        // Check that the meta password was added to the device log
+        let found_password = device_log_events.iter().any(|event| {
+            let DeviceLogObject(log_event) = event;
+            
+            let VaultActionEvent::Request(request) = &log_event.value else {
+                return false;
+            };
+
+            let VaultActionRequestEvent::AddMetaPass(add_meta_pass) = request else {
+                return false;
+            };
+
+            add_meta_pass.meta_pass_id.name == password_id.name
+        });
+
+        assert!(
+            found_password,
+            "Meta password was not added to the device log"
+        );
+
+        // Verify that a claim was generated and distributions created
+        let p_ss = PersistentSharedSecret::from(fixture.state.empty.p_obj.client.clone());
+
+        // Create a test SsClaim to check if it was stored
+        let claim = vault_member.create_split_claim(password_id.clone());
+        let events = p_ss.get_ss_workflow_events(claim).await?;
+
+        // There should be at least one event for the distribution
+        assert!(!events.is_empty(), "No distribution events were created");
 
         Ok(())
     }
