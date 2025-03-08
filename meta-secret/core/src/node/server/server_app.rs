@@ -465,7 +465,7 @@ mod test {
                         .transport
                         .sk,
                 )?;
-            let share_plain_text = String::try_from(&secret_text.msg)?;
+            let _share_plain_text = String::try_from(&secret_text.msg)?;
             //println!("{}", share_plain_text);
 
             //verify distribution share is present on vd device
@@ -549,7 +549,7 @@ mod test {
             GenericAppStateRequest::Recover(pass_id)
         };
 
-        let app_state = split
+        let _app_state = split
             .spec
             .vd
             .client_service
@@ -606,7 +606,7 @@ mod test {
         split.spec.vd.gw.sync().await?;
 
         //Update app state
-        let app_state_after_full_recover = split.spec.vd.client_service.get_app_state().await?;
+        let _app_state_after_full_recover = split.spec.vd.client_service.get_app_state().await?;
 
         //split.sign_up.vd.orchestrator.orchestrate().await?;
 

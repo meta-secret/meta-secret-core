@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::secret::{
-    SsClaim, SsDistributionId, SsDistributionStatus, SsLogData,
+    SsClaim, SsDistributionId, SsLogData,
 };
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;

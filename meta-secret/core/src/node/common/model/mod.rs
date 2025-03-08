@@ -42,8 +42,8 @@ pub struct WasmApplicationState(ApplicationState);
 #[wasm_bindgen]
 impl WasmApplicationState {
     pub fn is_new_user(&self) -> bool {
-        let is_local = self.is_local();
-        let vault_not_exists =
+        let _is_local = self.is_local();
+        let _vault_not_exists =
             matches!(&self.0, ApplicationState::Vault(VaultFullInfo::Outsider(_)));
         todo!("Unclear what should be executed");
         //old version:
@@ -51,7 +51,7 @@ impl WasmApplicationState {
         //  vault_status: VaultStatus::NotExists(_)
         //}
 
-        is_local || vault_not_exists
+        _is_local || _vault_not_exists
     }
 
     pub fn is_local(&self) -> bool {

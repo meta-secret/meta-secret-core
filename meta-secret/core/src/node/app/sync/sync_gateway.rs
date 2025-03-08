@@ -15,7 +15,7 @@ use crate::node::db::descriptors::vault_descriptor::DeviceLogDescriptor;
 use crate::node::db::events::generic_log_event::{ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::local_event::CredentialsObject;
 use crate::node::db::events::object_id::ArtifactId;
-use crate::node::db::events::shared_secret_event::{SsDeviceLogObject, SsWorkflowObject};
+use crate::node::db::events::shared_secret_event::{SsDeviceLogObject};
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;

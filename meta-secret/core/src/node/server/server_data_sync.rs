@@ -9,7 +9,7 @@ use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
 };
 use crate::node::db::events::object_id::ArtifactId;
-use crate::node::db::events::shared_secret_event::{SsLogObject, SsWorkflowObject};
+use crate::node::db::events::shared_secret_event::{SsLogObject};
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;

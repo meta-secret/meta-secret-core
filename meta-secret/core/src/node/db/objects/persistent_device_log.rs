@@ -145,7 +145,7 @@ pub mod spec {
         pub async fn check_sign_up_request(&self) -> Result<()> {
             info!("check_sign_up_request");
 
-            let device_log_desc = DeviceLogDescriptor::from(self.user.user_id());
+            let _device_log_desc = DeviceLogDescriptor::from(self.user.user_id());
 
             //TODO add verification
 
