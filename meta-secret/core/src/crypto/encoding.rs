@@ -131,6 +131,9 @@ pub mod base64 {
     #[cfg(test)]
     mod test {
         use crate::crypto::encoding::base64::Base64Text;
+        use crate::crypto::encoding::Array256Bit;
+        use crate::crypto::encoding::KEY_SIZE_32_BYTES;
+        use crate::secret::shared_secret::PlainText;
 
         const TEST_STR: &str = "kjsfdbkjsfhdkjhsfdkjhsfdkjhksfdjhksjfdhksfd";
         const ENCODED_URL_SAFE_TEST_STR: &str =
@@ -148,6 +151,103 @@ pub mod base64 {
             let encoded = Base64Text::from(TEST_STR.as_bytes());
             let expected = Base64Text(ENCODED_URL_SAFE_TEST_STR.to_string());
             assert_eq!(encoded, expected);
+        }
+
+        #[test]
+        fn from_string() {
+            let encoded = Base64Text::from(String::from(TEST_STR));
+            let expected = Base64Text(ENCODED_URL_SAFE_TEST_STR.to_string());
+            assert_eq!(encoded, expected);
+        }
+
+        #[test]
+        fn from_str() {
+            let encoded = Base64Text::from(TEST_STR);
+            let expected = Base64Text(ENCODED_URL_SAFE_TEST_STR.to_string());
+            assert_eq!(encoded, expected);
+        }
+
+        #[test]
+        fn from_plaintext() {
+            let plain_text = PlainText::from(TEST_STR);
+            let encoded = Base64Text::from(plain_text);
+            let expected = Base64Text(ENCODED_URL_SAFE_TEST_STR.to_string());
+            assert_eq!(encoded, expected);
+        }
+
+        #[test]
+        fn from_array256bit() {
+            let mut array = [0u8; KEY_SIZE_32_BYTES];
+            for i in 0..array.len() {
+                array[i] = i as u8;
+            }
+            
+            let encoded = Base64Text::from(array);
+            let encoded_ref = Base64Text::from(&array);
+            
+            // Both ways of encoding should produce the same result
+            assert_eq!(encoded, encoded_ref);
+            
+            // Verify the actual encoding
+            let expected = Base64Text("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8".to_string());
+            assert_eq!(encoded, expected);
+        }
+
+        #[test]
+        fn display_implementation() {
+            let base64 = Base64Text("test_string".to_string());
+            assert_eq!(format!("{}", base64), "test_string");
+        }
+
+        #[test]
+        fn base64_str_method() {
+            let base64 = Base64Text("test_string".to_string());
+            assert_eq!(base64.base64_str(), "test_string");
+        }
+
+        #[test]
+        fn decode_to_string() {
+            let base64 = Base64Text(ENCODED_URL_SAFE_TEST_STR.to_string());
+            let decoded = String::try_from(&base64).unwrap();
+            assert_eq!(decoded, TEST_STR);
+        }
+
+        #[test]
+        fn decode_to_vec() {
+            let base64 = Base64Text(ENCODED_URL_SAFE_TEST_STR.to_string());
+            let decoded: Vec<u8> = Vec::try_from(&base64).unwrap();
+            assert_eq!(decoded, TEST_STR.as_bytes());
+        }
+
+        #[test]
+        fn roundtrip_array256bit() {
+            let mut original = [0u8; KEY_SIZE_32_BYTES];
+            for i in 0..original.len() {
+                original[i] = i as u8;
+            }
+            
+            let encoded = Base64Text::from(&original);
+            let decoded = Array256Bit::try_from(&encoded).unwrap();
+            
+            assert_eq!(original, decoded);
+        }
+
+        #[test]
+        fn decode_invalid_base64() {
+            let invalid_base64 = Base64Text("@$%^&*(".to_string());
+            let result: Result<Vec<u8>, _> = Vec::try_from(&invalid_base64);
+            assert!(result.is_err(), "Should fail with invalid base64 input");
+        }
+
+        #[test]
+        fn decode_wrong_size_array() {
+            // Create a Base64Text that encodes a shorter array than Array256Bit
+            let short_data = [1, 2, 3, 4, 5];
+            let encoded = Base64Text::from(&short_data[..]);
+            
+            // Trying to decode into Array256Bit should fail
+            let result = Array256Bit::try_from(&encoded);
+            assert!(result.is_err(), "Should fail when decoding to wrong size array");
         }
     }
 }
@@ -215,6 +315,8 @@ pub mod serialized_key_manager {
         };
         use crate::errors::CoreError;
         use age::x25519::Identity;
+        use base64::Engine as _;
+        use ed25519_dalek::Verifier;
         use std::str::FromStr;
 
         impl TryFrom<&SerializedDsaKeyPair> for DsaKeyPair {
@@ -284,8 +386,10 @@ pub mod serialized_key_manager {
         pub mod test {
             use crate::crypto::encoding::base64::Base64Text;
             use crate::crypto::key_pair::{DalekPublicKey, DalekSignature, KeyPair};
-            use crate::crypto::keys::KeyManager;
+            use crate::crypto::key_pair::{DsaKeyPair, TransportDsaKeyPair};
+            use crate::crypto::keys::{KeyManager, SecretBox, SerializedDsaKeyPair, SerializedTransportKeyPair};
             use crate::CoreResult;
+            use ed25519_dalek::Verifier;
 
             #[test]
             fn from_base64_to_dalek_public_key() -> CoreResult<()> {
@@ -305,6 +409,88 @@ pub mod serialized_key_manager {
 
                 assert_eq!(serialized_sign, serialized_sign_2nd_time);
                 Ok(())
+            }
+            
+            #[test]
+            fn key_manager_serialization_roundtrip() -> CoreResult<()> {
+                // Generate a key manager
+                let original_km = KeyManager::generate();
+                
+                // Serialize to SecretBox
+                let secret_box = SecretBox::from(&original_km);
+                
+                // Deserialize back to KeyManager
+                let deserialized_km = KeyManager::try_from(&secret_box)?;
+                
+                // Verify public keys match (full equality can't be tested due to private key comparison)
+                assert_eq!(original_km.dsa.pk(), deserialized_km.dsa.pk());
+                assert_eq!(original_km.transport.pk(), deserialized_km.transport.pk());
+                
+                Ok(())
+            }
+            
+            #[test]
+            fn dsa_key_pair_serialization_roundtrip() -> CoreResult<()> {
+                // Generate a DSA key pair
+                let original_dsa = DsaKeyPair::generate();
+                
+                // Serialize
+                let serialized = SerializedDsaKeyPair::from(&original_dsa);
+                
+                // Deserialize
+                let deserialized = DsaKeyPair::try_from(&serialized)?;
+                
+                // Verify the public key matches
+                assert_eq!(original_dsa.pk(), deserialized.pk());
+                
+                // Test signing with both to verify functionality
+                let test_msg = "test message";
+                let signature1 = original_dsa.sign(test_msg.to_string());
+                let signature2 = deserialized.sign(test_msg.to_string());
+                
+                // Different signatures (randomized) but both should verify correctly
+                // Convert Base64Text signatures to DalekSignature for verification
+                let dalek_sig1 = DalekSignature::try_from(&signature1)?;
+                let dalek_sig2 = DalekSignature::try_from(&signature2)?;
+                
+                // Verify signatures using the verifying_key
+                original_dsa.key_pair.verifying_key().verify(test_msg.as_bytes(), &dalek_sig2)?;
+                deserialized.key_pair.verifying_key().verify(test_msg.as_bytes(), &dalek_sig1)?;
+                
+                Ok(())
+            }
+            
+            #[test]
+            fn transport_key_pair_serialization_roundtrip() -> CoreResult<()> {
+                // Generate a transport key pair
+                let original_transport = TransportDsaKeyPair::generate();
+                
+                // Serialize
+                let serialized = SerializedTransportKeyPair::from(&original_transport);
+                
+                // Deserialize
+                let deserialized = TransportDsaKeyPair::try_from(&serialized)?;
+                
+                // Verify the public key matches
+                assert_eq!(original_transport.pk(), deserialized.pk());
+                
+                Ok(())
+            }
+            
+            #[test]
+            fn invalid_dalek_public_key_conversion() {
+                // Create an invalid Base64Text for conversion to DalekPublicKey
+                let invalid_base64 = Base64Text::from("too_short");
+                let result = DalekPublicKey::try_from(&invalid_base64);
+                assert!(result.is_err(), "Should fail with invalid public key data");
+            }
+            
+            #[test]
+            fn invalid_dalek_signature_conversion() {
+                // Create an invalid Base64Text for conversion to DalekSignature
+                let invalid_base64 = Base64Text::from("invalid_signature_data");
+                let result = DalekSignature::try_from(&invalid_base64);
+                assert!(result.is_err(), "Should fail with invalid signature data");
             }
         }
     }
