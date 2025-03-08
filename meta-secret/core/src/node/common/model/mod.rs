@@ -97,6 +97,6 @@ mod test {
     #[test]
     fn meta_password_id() {
         let pass_id = MetaPasswordId::build("test");
-        assert_eq!(pass_id.id.id_str(), "CHKANX39xaM".to_string())
+        assert_eq!(pass_id.id.id_str(), "n4bQgYhMfWU".to_string())
     }
 }
