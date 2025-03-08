@@ -1,6 +1,4 @@
-use crate::node::common::model::secret::{
-    SecretDistributionData, SsClaim, SsLogData,
-};
+use crate::node::common::model::secret::{SecretDistributionData, SsClaim, SsLogData};
 use crate::node::db::events::error::LogEventCastError;
 use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
@@ -34,7 +32,7 @@ impl SsWorkflowObject {
     pub fn to_distribution_data(self) -> SecretDistributionData {
         match self {
             SsWorkflowObject::Recovery(claim) => claim.value,
-            SsWorkflowObject::Distribution(dist) => dist.value
+            SsWorkflowObject::Distribution(dist) => dist.value,
         }
     }
 }
@@ -95,7 +93,7 @@ impl ObjIdExtractor for SsWorkflowObject {
     fn obj_id(&self) -> ArtifactId {
         match self {
             SsWorkflowObject::Distribution(event) => event.key.obj_id.clone(),
-            SsWorkflowObject::Recovery(event) => event.key.obj_id.clone()
+            SsWorkflowObject::Recovery(event) => event.key.obj_id.clone(),
         }
     }
 }

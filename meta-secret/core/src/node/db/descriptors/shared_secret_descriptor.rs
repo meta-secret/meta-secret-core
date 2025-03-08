@@ -1,11 +1,13 @@
 use crate::node::common::model::device::common::DeviceId;
-use crate::node::common::model::secret::{SsRecoveryId, SsDistributionId};
+use crate::node::common::model::secret::{SsDistributionId, SsRecoveryId};
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::common::model::IdString;
 use crate::node::db::descriptors::object_descriptor::{
     ObjectDescriptor, ObjectName, ObjectType, ToObjectDescriptor,
 };
-use crate::node::db::events::shared_secret_event::{SsDeviceLogObject, SsLogObject, SsWorkflowObject};
+use crate::node::db::events::shared_secret_event::{
+    SsDeviceLogObject, SsLogObject, SsWorkflowObject,
+};
 use derive_more::From;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -28,7 +30,7 @@ impl ObjectType for SsWorkflowDescriptor {
     fn object_type(&self) -> String {
         let obj_type = match self {
             SsWorkflowDescriptor::Distribution(_) => "SsDistribution",
-            SsWorkflowDescriptor::Recovery(_) => "SsRecovery"
+            SsWorkflowDescriptor::Recovery(_) => "SsRecovery",
         };
 
         String::from(obj_type)

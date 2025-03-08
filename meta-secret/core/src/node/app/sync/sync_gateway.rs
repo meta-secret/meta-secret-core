@@ -75,7 +75,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
 
         let vault_sync_request = self.get_vault_request(&user_creds).await?;
         self.sync_vault(vault_sync_request).await?;
-        
+
         self.sync_device_log(&server_tail, user_creds.user_id())
             .await?;
 
@@ -203,15 +203,24 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         if let Some(ss_log) = maybe_ss_log {
             for (_, claim) in ss_log.to_data().claims {
                 let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
-                let dist_events = p_ss.get_ss_workflow_events(claim).await?;
-                for dist_event in dist_events {
-                    let obj_id = dist_event.obj_id();
-                    let request = {
-                        let event = WriteSyncRequest::Event(dist_event.to_generic());
-                        SyncRequest::Write(event)
-                    };
-                    self.sync.send(request).await?;
-                    self.p_obj.repo.delete(obj_id).await;
+                let wf_events = p_ss.get_ss_workflow_events(claim.clone()).await?;
+                for wf_event in wf_events {
+                    match &wf_event {
+                        SsWorkflowObject::Recovery(_) => {
+                            unimplemented!("Implement for recovery task!!!")
+                        }
+                        SsWorkflowObject::Distribution(_) => {
+                            if claim.sender.eq(user_creds.device_id()) {
+                                let obj_id = wf_event.obj_id();
+                                let request = {
+                                    let event = WriteSyncRequest::Event(wf_event.to_generic());
+                                    SyncRequest::Write(event)
+                                };
+                                self.sync.send(request).await?;
+                                self.p_obj.repo.delete(obj_id).await;
+                            }
+                        }
+                    }
                 }
             }
         }

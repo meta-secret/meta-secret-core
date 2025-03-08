@@ -1,8 +1,7 @@
-use crate::node::common::model::secret::{
-    SecretDistributionData, SecretDistributionType, SsClaim,
-};
+use crate::node::common::model::secret::{SecretDistributionData, SecretDistributionType, SsClaim};
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::vault::{VaultMember, VaultStatus};
+use crate::node::common::model::vault::vault_data::VaultData;
 use crate::node::db::actions::sign_up::join::AcceptJoinAction;
 use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
@@ -16,7 +15,6 @@ use anyhow::bail;
 use anyhow::Result;
 use log::{debug, warn};
 use std::sync::Arc;
-use crate::node::common::model::vault::vault_data::VaultData;
 
 /// Contains business logic of secrets management and login/sign-up actions.
 /// Orchestrator is in charge of what is meta secret is made for (the most important part of the app).
@@ -94,7 +92,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
         let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
 
         //get distributions
-        for claim_db_id in claim.claim_db_ids() {
+        for claim_db_id in claim.recovery_db_ids() {
             //get distribution id
             let local_device = self.user_creds.device_id();
 
@@ -128,7 +126,8 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                 Some(claim_sender) => {
                     // re encrypt message
                     let msg_receiver = &claim_sender.user_data().device.keys.transport_pk;
-                    let msg = self.user_creds
+                    let msg = self
+                        .user_creds
                         .device_creds
                         .secret_box
                         .re_encrypt(share.secret_message.clone(), msg_receiver)?;

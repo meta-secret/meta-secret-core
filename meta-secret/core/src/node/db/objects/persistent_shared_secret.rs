@@ -39,7 +39,7 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
         }
 
         // Synchronize claims (recovery requests)
-        for claim_id in ss_claim.claim_db_ids() {
+        for claim_id in ss_claim.recovery_db_ids() {
             let claim_id_desc = SsWorkflowDescriptor::Recovery(claim_id);
             let tail_event = self.p_obj.find_tail_event(claim_id_desc).await?;
             if let Some(event) = tail_event {

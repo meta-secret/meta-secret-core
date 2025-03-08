@@ -72,6 +72,7 @@ impl IdString for SsRecoveryId {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SsClaim {
+    /// The unique identifier (in the hashmap) for the claim
     pub id: ClaimId,
     pub dist_claim_id: SsClaimId,
 
@@ -97,7 +98,7 @@ impl SsClaim {
         ids
     }
 
-    pub fn claim_db_ids(&self) -> Vec<SsRecoveryId> {
+    pub fn recovery_db_ids(&self) -> Vec<SsRecoveryId> {
         let mut ids = Vec::with_capacity(self.receivers.len());
         for receiver in self.receivers.iter() {
             ids.push(SsRecoveryId {
@@ -122,7 +123,7 @@ pub enum SsDistributionStatus {
     /// The distribution is on the server
     Sent,
     /// The receiver device has received the secret
-    Delivered
+    Delivered,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -133,11 +134,10 @@ pub struct SsDistributionCompositeStatus {
 
 impl SsDistributionCompositeStatus {
     pub fn sent(mut self, device_id: DeviceId) -> Self {
-        self.statuses
-            .insert(device_id, SsDistributionStatus::Sent);
+        self.statuses.insert(device_id, SsDistributionStatus::Sent);
         self
     }
-    
+
     pub fn complete(mut self, device_id: DeviceId) -> Self {
         self.statuses
             .insert(device_id, SsDistributionStatus::Delivered);
@@ -158,7 +158,7 @@ impl SsDistributionCompositeStatus {
             .statuses
             .values()
             .all(|dist_status| matches!(dist_status, SsDistributionStatus::Delivered));
-        
+
         if pending {
             SsDistributionStatus::Pending
         } else if delivered {
@@ -208,16 +208,20 @@ impl SsLogData {
 
         if let Some(mut claim) = maybe_claim {
             claim.status = claim.status.sent(device_id);
+            // Insert the updated claim back into the hashmap
+            self.claims.insert(claim_id, claim);
         }
 
         self
     }
-    
+
     pub fn complete(mut self, claim_id: ClaimId, device_id: DeviceId) -> Self {
         let maybe_claim = self.claims.remove(&claim_id);
 
         if let Some(mut claim) = maybe_claim {
             claim.status = claim.status.complete(device_id);
+            // Insert the updated claim back into the hashmap
+            self.claims.insert(claim_id, claim);
         }
 
         self

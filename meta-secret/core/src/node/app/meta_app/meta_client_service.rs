@@ -27,7 +27,7 @@ pub struct MetaClientService<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub data_transfer: Arc<MetaClientDataTransfer>,
     pub sync_gateway: Arc<SyncGateway<Repo, Sync>>,
     pub state_provider: Arc<MetaClientStateProvider>,
-    pub p_obj: Arc<PersistentObject<Repo>>
+    pub p_obj: Arc<PersistentObject<Repo>>,
 }
 
 pub struct MetaClientDataTransfer {

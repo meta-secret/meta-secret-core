@@ -153,8 +153,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                             .receiver()
                             .to_device_id();
 
-                        let new_ss_log_data =
-                            ss_event.to_data().sent(dist.claim_id.id, device_id);
+                        let new_ss_log_data = ss_event.to_data().sent(dist.claim_id.id, device_id);
                         let new_ss_log_event = p_ss_log
                             .create_new_ss_log_object(new_ss_log_data, dist.vault_name)
                             .await?;
@@ -285,7 +284,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
         for (_, claim) in ss_log_data.claims.iter() {
             // Distribute shares
-            for dist_id in claim.claim_db_ids() {
+            for dist_id in claim.recovery_db_ids() {
                 if claim.sender.eq(&server_device) {
                     bail!("Invalid state. Server can't manage encrypted shares");
                 };

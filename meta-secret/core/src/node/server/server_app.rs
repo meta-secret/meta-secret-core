@@ -153,15 +153,16 @@ mod test {
     use crate::node::common::model::meta_pass::MetaPasswordId;
     use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
 
+    use crate::meta_tests::setup_tracing;
     use crate::node::app::meta_app::meta_client_service::MetaClientService;
     use crate::node::common::model::crypto::aead::EncryptedMessage;
-    use crate::node::common::model::device::common::{DeviceId};
+    use crate::node::common::model::device::common::DeviceId;
     use crate::node::common::model::secret::SsDistributionId;
     use crate::node::common::model::{ApplicationState, VaultFullInfo};
     use crate::node::db::descriptors::shared_secret_descriptor::{
         SsDeviceLogDescriptor, SsWorkflowDescriptor,
     };
-    use crate::node::db::events::generic_log_event::{GenericKvLogEvent};
+    use crate::node::db::events::generic_log_event::GenericKvLogEvent;
     use crate::node::db::events::shared_secret_event::SsWorkflowObject;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_object::PersistentObject;
@@ -171,7 +172,6 @@ mod test {
     use anyhow::bail;
     use anyhow::Result;
     use tracing::{info, Instrument};
-    use crate::meta_tests::setup_tracing;
 
     struct ActorNode {
         user: UserData,
@@ -410,7 +410,7 @@ mod test {
                 };
                 GenericAppStateRequest::ClusterDistribution(dist_request)
             };
-            
+
             let new_app_state = client_client_service
                 .handle_client_request(app_state, dist_request)
                 .await?;
@@ -510,7 +510,7 @@ mod test {
     #[tokio::test]
     async fn test_secret_split() -> Result<()> {
         setup_tracing()?;
-        
+
         let spec = ServerAppSignUpSpec::build().await?;
         let split = SplitSpec { spec };
 
@@ -566,7 +566,7 @@ mod test {
         let ss_log = split.spec.server.p_ss.get_ss_log_obj(vault_name).await?;
         assert_eq!(1, ss_log.claims.len());
         let recover_claim_on_server = ss_log.claims.values().next().unwrap();
-        let claim_ids = recover_claim_on_server.claim_db_ids();
+        let claim_ids = recover_claim_on_server.recovery_db_ids();
         assert_eq!(1, claim_ids.len());
 
         let recovery_claim_obj = {

@@ -42,7 +42,7 @@ impl UserCredentials {
             device_id: self.device().device_id.clone(),
         }
     }
-    
+
     pub fn device_id(&self) -> &DeviceId {
         &self.device_creds.device.device_id
     }

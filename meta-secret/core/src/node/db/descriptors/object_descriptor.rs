@@ -1,7 +1,7 @@
 use crate::node::common::model::IdString;
 use crate::node::db::descriptors::creds::CredentialsDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::{
-    SsWorkflowDescriptor, SsDeviceLogDescriptor, SsLogDescriptor,
+    SsDeviceLogDescriptor, SsLogDescriptor, SsWorkflowDescriptor,
 };
 use crate::node::db::descriptors::vault_descriptor::{
     DeviceLogDescriptor, VaultDescriptor, VaultLogDescriptor, VaultStatusDescriptor,
@@ -153,10 +153,10 @@ mod seq_id_tests {
     fn test_seq_id_next() {
         let first_id = SeqId::first();
         let next_id = first_id.next();
-        
+
         assert_eq!(next_id.curr, 2);
         assert_eq!(next_id.prev, 1);
-        
+
         // Test multiple next calls
         let third_id = next_id.next();
         assert_eq!(third_id.curr, 3);
@@ -167,7 +167,7 @@ mod seq_id_tests {
     fn test_genesis_to_seq_id() {
         let genesis = GenesisId;
         let seq_id = genesis.next();
-        
+
         assert_eq!(seq_id.curr, 1);
         assert_eq!(seq_id.prev, 0);
     }
@@ -175,8 +175,8 @@ mod seq_id_tests {
 
 #[cfg(test)]
 mod fqdn_tests {
-    use crate::node::common::model::IdString;
     use crate::node::common::model::vault::vault::VaultName;
+    use crate::node::common::model::IdString;
     use crate::node::db::descriptors::creds::CredentialsDescriptor;
     use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
     use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
@@ -192,7 +192,7 @@ mod fqdn_tests {
         }
 
         {
-            // Test with VaultDescriptor 
+            // Test with VaultDescriptor
             let vault_name = VaultName::from("test_vault");
             let vault_descriptor = VaultDescriptor::from(vault_name).to_obj_desc();
             let vault_fqdn = vault_descriptor.fqdn();
