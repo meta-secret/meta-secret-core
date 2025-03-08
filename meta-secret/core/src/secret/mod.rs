@@ -8,7 +8,7 @@ use crate::node::common::model::vault::vault::VaultMember;
 use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::shared_secret_event::SsWorkflowObject;
-use crate::node::db::events::vault::vault_log_event::{AddMetaPassEvent};
+use crate::node::db::events::vault::vault_log_event::AddMetaPassEvent;
 use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -202,21 +202,24 @@ mod tests {
             creds: Arc::new(creds_fixture.client),
             owner: vault_member,
         };
-        
+
         // Save the number of members before calling split_and_encrypt (which moves encryptor)
         let member_count = encryptor.owner.vault.members().len();
-        
+
         // Execute the split_and_encrypt function
         let encrypted_shares = encryptor.split_and_encrypt(password)?;
-        
+
         // Verify the results
-        assert!(!encrypted_shares.is_empty(), "Encrypted shares should not be empty");
+        assert!(
+            !encrypted_shares.is_empty(),
+            "Encrypted shares should not be empty"
+        );
         assert_eq!(
             encrypted_shares.len(),
             member_count,
             "There should be one encrypted share per vault member"
         );
-        
+
         // Verify all shares are CipherShare variants
         for share in encrypted_shares {
             assert!(
@@ -287,7 +290,7 @@ mod tests {
         // Check that the meta password was added to the device log
         let found_password = device_log_events.iter().any(|event| {
             let DeviceLogObject(log_event) = event;
-            
+
             let VaultActionEvent::Request(request) = &log_event.value else {
                 return false;
             };

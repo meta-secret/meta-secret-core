@@ -274,7 +274,7 @@ pub mod fixture {
                 vd_membership,
                 client_vault_member,
                 client_b_vault_member,
-                vd_vault_member
+                vd_vault_member,
             }
         }
     }

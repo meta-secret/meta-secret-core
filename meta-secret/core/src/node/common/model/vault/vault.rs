@@ -194,8 +194,8 @@ impl VaultStatus {
 mod test {
     use super::*;
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
-    use anyhow::Result;
     use crate::node::common::model::secret::{SecretDistributionType, SsDistributionStatus};
+    use anyhow::Result;
 
     #[test]
     fn test_vault_status() -> Result<()> {
@@ -222,21 +222,25 @@ mod test {
 
         // Create password ID for test
         let pass_id = MetaPasswordId::build("test_password");
-        
+
         // Call the function being tested
         let claim = vault_member.create_split_claim(pass_id.clone());
-        
+
         // Verify the claim properties
         assert_eq!(claim.distribution_type, SecretDistributionType::Split);
         assert_eq!(claim.vault_name, vault_member.vault.vault_name);
         assert_eq!(claim.sender, vault_member.user_device());
         assert_eq!(claim.dist_claim_id.pass_id, pass_id);
-        
+
         // There should be one receiver (vd) since the client is the sender
         assert_eq!(claim.receivers.len(), 2);
-        assert!(claim.receivers.contains(&vault_data_fixture.client_b_membership.device_id()));
-        assert!(claim.receivers.contains(&vault_data_fixture.vd_membership.device_id()));
-        
+        assert!(claim
+            .receivers
+            .contains(&vault_data_fixture.client_b_membership.device_id()));
+        assert!(claim
+            .receivers
+            .contains(&vault_data_fixture.vd_membership.device_id()));
+
         // All receivers should have Pending status
         for receiver in claim.receivers.iter() {
             let status = claim.status.get(receiver);

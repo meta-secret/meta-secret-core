@@ -6,12 +6,12 @@ pub mod fixture {
     use crate::node::app::sync::sync_protocol::fixture::SyncProtocolFixture;
     use crate::node::common::model::device::device_creds::fixture::DeviceCredentialsFixture;
     use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
+    use crate::node::common::model::vault::vault_data::fixture::VaultDataFixture;
     use crate::node::db::objects::persistent_object::fixture::PersistentObjectFixture;
     use crate::node::db::objects::persistent_vault::spec::VaultSpec;
     use crate::node::db::repo::persistent_credentials::fixture::PersistentCredentialsFixture;
     use crate::node::server::server_app::fixture::ServerAppFixture;
     use std::sync::Arc;
-    use crate::node::common::model::vault::vault_data::fixture::VaultDataFixture;
 
     pub struct FixtureRegistry<S> {
         pub state: S,
@@ -29,7 +29,7 @@ pub mod fixture {
                     p_obj,
                     device_creds,
                     user_creds,
-                    vault_data
+                    vault_data,
                 },
             }
         }
@@ -86,11 +86,11 @@ pub mod fixture {
         use crate::node::app::sync::sync_protocol::fixture::SyncProtocolFixture;
         use crate::node::common::model::device::device_creds::fixture::DeviceCredentialsFixture;
         use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
+        use crate::node::common::model::vault::vault_data::fixture::VaultDataFixture;
         use crate::node::db::objects::persistent_object::fixture::PersistentObjectFixture;
         use crate::node::db::repo::persistent_credentials::fixture::PersistentCredentialsFixture;
         use crate::node::server::server_app::fixture::ServerAppFixture;
         use std::sync::Arc;
-        use crate::node::common::model::vault::vault_data::fixture::VaultDataFixture;
 
         pub enum Fixture {
             Empty(EmptyState),
@@ -102,7 +102,7 @@ pub mod fixture {
             pub device_creds: DeviceCredentialsFixture,
             pub user_creds: UserCredentialsFixture,
             pub p_obj: PersistentObjectFixture,
-            pub vault_data: VaultDataFixture
+            pub vault_data: VaultDataFixture,
         }
 
         pub struct BaseState {

@@ -569,7 +569,7 @@ mod test {
         for claim in ss_log.claims.values() {
             println!("  claim: {:?}", claim)
         }
-        
+
         assert_eq!(1, ss_log.claims.len());
         let recover_claim_on_server = ss_log.claims.values().next().unwrap();
         let claim_ids = recover_claim_on_server.recovery_db_ids();
