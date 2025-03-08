@@ -194,34 +194,55 @@ impl VaultStatus {
 mod test {
     use super::*;
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
-    use crate::node::common::model::user::common::UserMembership;
     use anyhow::Result;
+    use crate::node::common::model::secret::{SecretDistributionType, SsDistributionStatus};
 
     #[test]
     fn test_vault_status() -> Result<()> {
         let fixture = FixtureRegistry::empty();
+        let vault_data_fixture = fixture.state.vault_data;
 
-        let client_creds = fixture.state.user_creds.client;
-        let client_membership = UserMembership::Member(UserDataMember {
-            user_data: client_creds.user(),
-        });
-
-        let vd_creds = fixture.state.user_creds.vd;
-        let vd_membership = UserMembership::Member(UserDataMember {
-            user_data: vd_creds.user(),
-        });
-
-        let vault_data = VaultData::from(UserDataMember::from(client_creds.user()))
-            .update_membership(vd_membership.clone());
-
-        let vault_member = VaultMember {
-            member: client_membership.user_data_member(),
-            vault: vault_data,
-        };
+        let vault_member = vault_data_fixture.client_vault_member;
 
         let pass_id = MetaPasswordId::build("test_password");
         let claim = vault_member.create_split_claim(pass_id);
-        assert_eq!(1, claim.receivers.len());
+        assert_eq!(2, claim.receivers.len());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_create_split_claim() -> Result<()> {
+        // Set up test fixtures
+        let fixture = FixtureRegistry::empty();
+        let vault_data_fixture = fixture.state.vault_data;
+
+        // Create vault member from client membership
+        let vault_member = vault_data_fixture.client_vault_member;
+
+        // Create password ID for test
+        let pass_id = MetaPasswordId::build("test_password");
+        
+        // Call the function being tested
+        let claim = vault_member.create_split_claim(pass_id.clone());
+        
+        // Verify the claim properties
+        assert_eq!(claim.distribution_type, SecretDistributionType::Split);
+        assert_eq!(claim.vault_name, vault_member.vault.vault_name);
+        assert_eq!(claim.sender, vault_member.user_device());
+        assert_eq!(claim.dist_claim_id.pass_id, pass_id);
+        
+        // There should be one receiver (vd) since the client is the sender
+        assert_eq!(claim.receivers.len(), 2);
+        assert!(claim.receivers.contains(&vault_data_fixture.client_b_membership.device_id()));
+        assert!(claim.receivers.contains(&vault_data_fixture.vd_membership.device_id()));
+        
+        // All receivers should have Pending status
+        for receiver in claim.receivers.iter() {
+            let status = claim.status.get(receiver);
+            assert!(status.is_some());
+            assert_eq!(*status.unwrap(), SsDistributionStatus::Pending);
+        }
 
         Ok(())
     }

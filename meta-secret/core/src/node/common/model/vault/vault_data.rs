@@ -208,6 +208,79 @@ impl VaultAggregate {
 }
 
 #[cfg(test)]
+pub mod fixture {
+    use crate::node::common::model::user::common::{UserDataMember, UserMembership};
+    use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
+    use crate::node::common::model::vault::vault::VaultMember;
+    use crate::node::common::model::vault::vault_data::VaultData;
+
+    pub struct VaultDataFixture {
+        pub full_membership: VaultData,
+        pub client_membership: UserMembership,
+        pub client_b_membership: UserMembership,
+        pub vd_membership: UserMembership,
+
+        pub client_vault_member: VaultMember,
+        pub client_b_vault_member: VaultMember,
+        pub vd_vault_member: VaultMember,
+    }
+
+    impl VaultDataFixture {
+        pub fn from(creds: &UserCredentialsFixture) -> Self {
+            let client_membership = {
+                let client_creds = &creds.client;
+                UserMembership::Member(UserDataMember {
+                    user_data: client_creds.user(),
+                })
+            };
+
+            let client_b_membership = {
+                let client_b_creds = &creds.client_b;
+                UserMembership::Member(UserDataMember {
+                    user_data: client_b_creds.user(),
+                })
+            };
+
+            let vd_membership = {
+                let vd_creds = &creds.vd;
+                UserMembership::Member(UserDataMember {
+                    user_data: vd_creds.user(),
+                })
+            };
+
+            let full_membership = VaultData::from(client_membership.user_data_member())
+                .update_membership(vd_membership.clone())
+                .update_membership(client_b_membership.clone());
+
+            let client_vault_member = VaultMember {
+                member: client_membership.user_data_member(),
+                vault: full_membership.clone(),
+            };
+
+            let client_b_vault_member = VaultMember {
+                member: client_b_membership.user_data_member(),
+                vault: full_membership.clone(),
+            };
+
+            let vd_vault_member = VaultMember {
+                member: vd_membership.user_data_member(),
+                vault: full_membership.clone(),
+            };
+
+            Self {
+                full_membership,
+                client_membership,
+                client_b_membership,
+                vd_membership,
+                client_vault_member,
+                client_b_vault_member,
+                vd_vault_member
+            }
+        }
+    }
+}
+
+#[cfg(test)]
 mod test {
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::common::model::user::common::{
