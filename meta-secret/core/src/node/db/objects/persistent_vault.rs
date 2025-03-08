@@ -311,8 +311,7 @@ mod tests {
         // Setup using FixtureRegistry
         let registry = FixtureRegistry::empty();
         let user = registry.state.user_creds.client.user();
-        let p_obj = registry.state.p_obj.client.clone();
-        let p_vault = PersistentVault { p_obj: p_obj.clone() };
+        let p_vault = registry.state.p_vault.client.clone();
         
         // Test that it returns the expected error when neither vault nor status exists
         let result = p_vault.find(user).await;
@@ -329,8 +328,8 @@ mod tests {
         // Setup using FixtureRegistry
         let registry = FixtureRegistry::empty();
         let user = registry.state.user_creds.client.user();
+        let p_vault = registry.state.p_vault.client.clone();
         let p_obj = registry.state.p_obj.client.clone();
-        let p_vault = PersistentVault { p_obj: p_obj.clone() };
         
         // Create vault object but don't create status object
         let member = UserDataMember::from(user.clone());
@@ -352,8 +351,8 @@ mod tests {
         // Setup using FixtureRegistry
         let registry = FixtureRegistry::empty();
         let user = registry.state.user_creds.client.user();
+        let p_vault = registry.state.p_vault.client.clone();
         let p_obj = registry.state.p_obj.client.clone();
-        let p_vault = PersistentVault { p_obj: p_obj.clone() };
         
         // Create only status object with NotExists status
         let status = VaultStatus::NotExists(user.clone());
@@ -373,8 +372,8 @@ mod tests {
         // Setup using FixtureRegistry
         let registry = FixtureRegistry::empty();
         let user = registry.state.user_creds.client.user();
+        let p_vault = registry.state.p_vault.client.clone();
         let p_obj = registry.state.p_obj.client.clone();
-        let p_vault = PersistentVault { p_obj: p_obj.clone() };
         
         // Create status object with Outsider status
         let outsider = UserDataOutsider::non_member(user.clone());
@@ -395,8 +394,8 @@ mod tests {
         // Setup using FixtureRegistry
         let registry = FixtureRegistry::empty();
         let user = registry.state.user_creds.client.user();
+        let p_vault = registry.state.p_vault.client.clone();
         let p_obj = registry.state.p_obj.client.clone();
-        let p_vault = PersistentVault { p_obj: p_obj.clone() };
         
         // Create a member user and vault
         let member = UserDataMember::from(user.clone());
