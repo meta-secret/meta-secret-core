@@ -57,7 +57,7 @@ impl DeviceName {
     }
 
     pub fn client_b() -> Self {
-        DeviceName::from("client_device__b")
+        DeviceName::from("client_device_b")
     }
 
     pub fn as_str(&self) -> String {

@@ -219,4 +219,169 @@ mod test {
 
         Ok(())
     }
+
+    #[test]
+    fn test_is_loopback() -> Result<()> {
+        let km = KeyManager::generate();
+        let device_id = km.transport.pk().to_device_id();
+        
+        let loopback_link = device_id.clone().loopback().to_device_link();
+        assert!(loopback_link.is_loopback());
+        
+        let km2 = KeyManager::generate();
+        let device_id2 = km2.transport.pk().to_device_id();
+        
+        let p2p_link = device_id.loopback().peer_to_peer(device_id2)?.to_device_link();
+        assert!(!p2p_link.is_loopback());
+        
+        Ok(())
+    }
+    
+    #[test]
+    fn test_device_link_contains() -> Result<()> {
+        let km1 = KeyManager::generate();
+        let km2 = KeyManager::generate();
+        let km3 = KeyManager::generate();
+        
+        let device_id1 = km1.transport.pk().to_device_id();
+        let device_id2 = km2.transport.pk().to_device_id();
+        let device_id3 = km3.transport.pk().to_device_id();
+        
+        // Test loopback contains
+        let loopback_link = device_id1.clone().loopback().to_device_link();
+        assert!(loopback_link.contains(&device_id1));
+        assert!(!loopback_link.contains(&device_id2));
+        
+        // Test peer-to-peer contains
+        let p2p_link = device_id1.clone().loopback().peer_to_peer(device_id2.clone())?.to_device_link();
+        assert!(p2p_link.contains(&device_id1));
+        assert!(p2p_link.contains(&device_id2));
+        assert!(!p2p_link.contains(&device_id3));
+        
+        Ok(())
+    }
+    
+    #[test]
+    fn test_peer_to_peer_inverse() -> Result<()> {
+        let km1 = KeyManager::generate();
+        let km2 = KeyManager::generate();
+        
+        let device_id1 = km1.transport.pk().to_device_id();
+        let device_id2 = km2.transport.pk().to_device_id();
+        
+        let p2p_link = PeerToPeerDeviceLink {
+            sender: device_id1.clone(),
+            receiver: device_id2.clone(),
+        };
+        
+        let inverse = p2p_link.inverse();
+        
+        assert_eq!(inverse.sender, device_id2);
+        assert_eq!(inverse.receiver, device_id1);
+        
+        // Double inverse should equal original
+        let double_inverse = inverse.inverse();
+        assert_eq!(double_inverse.sender, device_id1);
+        assert_eq!(double_inverse.receiver, device_id2);
+        
+        Ok(())
+    }
+    
+    #[test]
+    fn test_peer_to_peer_creation_error() -> Result<()> {
+        let km = KeyManager::generate();
+        let device_id = km.transport.pk().to_device_id();
+        
+        // Try to create a peer-to-peer link with the same device ID for both sender and receiver
+        let result = device_id.clone().loopback().peer_to_peer(device_id);
+        
+        assert!(result.is_err());
+        
+        Ok(())
+    }
+    
+    #[test]
+    fn test_device_link_id_properties() -> Result<()> {
+        let km1 = KeyManager::generate();
+        let km2 = KeyManager::generate();
+        
+        let device_id1 = km1.transport.pk().to_device_id();
+        let device_id2 = km2.transport.pk().to_device_id();
+        
+        // Create a link from device1 to device2
+        let forward_link = device_id1.clone()
+            .loopback()
+            .peer_to_peer(device_id2.clone())?
+            .to_device_link();
+            
+        // Create a link from device2 to device1
+        let reverse_link = device_id2
+            .loopback()
+            .peer_to_peer(device_id1)?
+            .to_device_link();
+            
+        // The IDs should be the same regardless of the order
+        let forward_id = DeviceLinkId::from(forward_link);
+        let reverse_id = DeviceLinkId::from(reverse_link);
+        
+        assert_eq!(forward_id.id_str(), reverse_id.id_str());
+        
+        Ok(())
+    }
+    
+    #[test]
+    fn test_try_from_communication_channel() -> Result<()> {
+        use crate::node::common::model::crypto::channel::CommunicationChannel;
+        
+        let km1 = KeyManager::generate();
+        let km2 = KeyManager::generate();
+        
+        let sender_id = km1.transport.pk().to_device_id();
+        let receiver_id = km2.transport.pk().to_device_id();
+        
+        // Create a communication channel using the transport public keys
+        let channel = CommunicationChannel::build(
+            km1.transport.pk(),
+            km2.transport.pk()
+        );
+        
+        let device_link = DeviceLink::try_from(&channel)?;
+        
+        // Verify the sender and receiver are correct
+        assert_eq!(device_link.sender(), sender_id);
+        assert_eq!(device_link.receiver(), receiver_id);
+        
+        // Verify it's a P2P link
+        assert!(!device_link.is_loopback());
+        
+        Ok(())
+    }
+    
+    #[test]
+    fn test_device_link_sender_receiver() -> Result<()> {
+        // Test for loopback link
+        let km = KeyManager::generate();
+        let device_id = km.transport.pk().to_device_id();
+        
+        let loopback_link = device_id.clone().loopback().to_device_link();
+        
+        // For loopback links, sender and receiver should be the same device
+        assert_eq!(loopback_link.sender(), device_id.clone());
+        assert_eq!(loopback_link.receiver(), device_id.clone());
+        
+        // Test for peer-to-peer link
+        let km1 = KeyManager::generate();
+        let km2 = KeyManager::generate();
+        
+        let device_id1 = km1.transport.pk().to_device_id();
+        let device_id2 = km2.transport.pk().to_device_id();
+        
+        let p2p_link = device_id1.clone().loopback().peer_to_peer(device_id2.clone())?.to_device_link();
+        
+        // For P2P links, sender and receiver should be different
+        assert_eq!(p2p_link.sender(), device_id1);
+        assert_eq!(p2p_link.receiver(), device_id2);
+        
+        Ok(())
+    }
 }
