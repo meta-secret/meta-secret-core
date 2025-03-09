@@ -1,7 +1,12 @@
 ---
 description: Unit tests rules applied to the rust project (meta secret)
 globs: **/*.rs
+alwaysApply: false
 ---
 
 - write unit tests in the file that is open right now
 - don't create a new file for unit tests
+- the common pre created code for unit tests is in [fixture_util.rs](mdc:meta-secret/core/src/meta_tests/fixture_util.rs)
+  Fixtures has to be used in the unit tests if the test needs and dependency from it, for instance:
+   - [device_creds.rs](mdc:meta-secret/core/src/node/common/model/device/device_creds.rs)
+   - [user_creds.rs](mdc:meta-secret/core/src/node/common/model/user/user_creds.rs)
