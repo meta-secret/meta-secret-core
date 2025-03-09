@@ -220,6 +220,11 @@ impl SsLogData {
 
         if let Some(mut claim) = maybe_claim {
             claim.status = claim.status.complete(device_id);
+            
+            if  claim.status.status() != SsDistributionStatus::Delivered {
+                // Insert the updated claim back into the hashmap
+                self.claims.insert(claim_id, claim);
+            }
         }
 
         self
@@ -259,10 +264,11 @@ impl From<SsClaim> for WasmSsDistributionClaim {
 mod test {
     use crate::crypto::utils::{Id48bit, U64IdUrlEnc};
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::node::common::model::device::common::DeviceId;
     use crate::node::common::model::meta_pass::MetaPasswordId;
     use crate::node::common::model::secret::{
         ClaimId, SecretDistributionType, SsClaim, SsClaimId, SsDistributionCompositeStatus,
-        SsDistributionStatus,
+        SsDistributionStatus, SsLogData,
     };
     use crate::node::common::model::vault::vault::VaultName;
     use anyhow::Result;
@@ -275,10 +281,6 @@ mod test {
         let client_device_id = registry.state.device_creds.client.device.device_id;
         let client_b_device_id = registry.state.device_creds.client_b.device.device_id;
         let vd_device_id = registry.state.device_creds.vd.device.device_id;
-
-        let mut status = HashMap::new();
-        status.insert(vd_device_id.clone(), SsDistributionStatus::Pending);
-        status.insert(client_b_device_id.clone(), SsDistributionStatus::Pending);
 
         let claim_id = ClaimId::from(Id48bit::generate());
         let receivers = vec![vd_device_id, client_b_device_id];
@@ -302,6 +304,324 @@ mod test {
         let dist_ids = claim.distribution_ids();
 
         assert_eq!(2, dist_ids.len());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_recovery_db_ids() -> Result<()> {
+        // Setup with fixtures
+        let registry = FixtureRegistry::empty();
+
+        let client_device_id = registry.state.device_creds.client.device.device_id;
+        let client_b_device_id = registry.state.device_creds.client_b.device.device_id;
+        let vd_device_id = registry.state.device_creds.vd.device.device_id;
+
+        // Create a claim
+        let claim_id = ClaimId::from(Id48bit::generate());
+        let pass_id = MetaPasswordId {
+            id: U64IdUrlEnc::from("test_pass_id".to_string()),
+            name: "test_pass".to_string(),
+        };
+        let ss_claim_id = SsClaimId {
+            id: claim_id.clone(),
+            pass_id: pass_id.clone(),
+        };
+        let receivers = vec![client_b_device_id.clone(), vd_device_id.clone()];
+
+        let claim = SsClaim {
+            id: claim_id,
+            dist_claim_id: ss_claim_id.clone(),
+            vault_name: VaultName::test(),
+            sender: client_device_id.clone(),
+            distribution_type: SecretDistributionType::Split,
+            receivers: receivers.clone(),
+            status: SsDistributionCompositeStatus::from(receivers.clone()),
+        };
+
+        // Generate recovery IDs
+        let recovery_ids = claim.recovery_db_ids();
+
+        // Verify IDs are constructed correctly
+        assert_eq!(
+            recovery_ids.len(),
+            2,
+            "Should generate recovery IDs for both receivers"
+        );
+
+        // Check first recovery ID
+        let recovery_id_0 = &recovery_ids[0];
+        assert_eq!(
+            recovery_id_0.claim_id.id, claim.dist_claim_id.id,
+            "Claim ID should match"
+        );
+        assert_eq!(
+            recovery_id_0.claim_id.pass_id.id, pass_id.id,
+            "Password ID should match"
+        );
+        assert_eq!(
+            recovery_id_0.sender, client_device_id,
+            "Sender should match"
+        );
+        assert_eq!(
+            recovery_id_0.distribution_id.pass_id.id, pass_id.id,
+            "Distribution pass ID should match"
+        );
+        assert_eq!(
+            recovery_id_0.distribution_id.receiver, receivers[0],
+            "Receiver should match first receiver"
+        );
+
+        // Check second recovery ID
+        let recovery_id_1 = &recovery_ids[1];
+        assert_eq!(
+            recovery_id_1.claim_id.id, claim.dist_claim_id.id,
+            "Claim ID should match"
+        );
+        assert_eq!(
+            recovery_id_1.claim_id.pass_id.id, pass_id.id,
+            "Password ID should match"
+        );
+        assert_eq!(
+            recovery_id_1.sender, client_device_id,
+            "Sender should match"
+        );
+        assert_eq!(
+            recovery_id_1.distribution_id.pass_id.id, pass_id.id,
+            "Distribution pass ID should match"
+        );
+        assert_eq!(
+            recovery_id_1.distribution_id.receiver, receivers[1],
+            "Receiver should match second receiver"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_ss_distribution_composite_status() -> Result<()> {
+        // Setup with fixtures
+        let registry = FixtureRegistry::empty();
+        let client_b_device_id = registry.state.device_creds.client_b.device.device_id;
+        let vd_device_id = registry.state.device_creds.vd.device.device_id;
+
+        // Test creation from Vec<DeviceId>
+        let devices = vec![client_b_device_id.clone(), vd_device_id.clone()];
+        let status = SsDistributionCompositeStatus::from(devices);
+
+        // Verify all device statuses are pending
+        assert_eq!(
+            status.statuses.len(),
+            2,
+            "Should have status for all two devices"
+        );
+
+        for (_, device_status) in &status.statuses {
+            assert!(
+                matches!(device_status, SsDistributionStatus::Pending),
+                "Initial status should be Pending"
+            );
+        }
+
+        // Test sent method
+        let updated_status = status.sent(client_b_device_id.clone());
+        assert!(
+            matches!(
+                updated_status.get(&client_b_device_id),
+                Some(SsDistributionStatus::Sent)
+            ),
+            "Status for client b should be Sent"
+        );
+        assert!(
+            matches!(
+                updated_status.get(&vd_device_id),
+                Some(SsDistributionStatus::Pending)
+            ),
+            "Status for vd device should still be Pending"
+        );
+
+        // Test complete method
+        let final_status = updated_status.complete(client_b_device_id.clone());
+        assert!(
+            matches!(
+                final_status.get(&client_b_device_id),
+                Some(SsDistributionStatus::Delivered)
+            ),
+            "Status for device_1 should be Delivered"
+        );
+        assert!(
+            matches!(
+                final_status.get(&vd_device_id),
+                Some(SsDistributionStatus::Pending)
+            ),
+            "Status for vd_device_id should still be Pending"
+        );
+
+        // Test non-existent device
+        let non_existent_device = DeviceId(U64IdUrlEnc::from("non_existent_device".to_string()));
+        assert_eq!(
+            final_status.get(&non_existent_device),
+            None,
+            "Non-existent device should return None"
+        );
+
+        // Test overall status method
+        let all_pending = SsDistributionCompositeStatus::from(vec![
+            client_b_device_id.clone(),
+            vd_device_id.clone(),
+        ]);
+        assert!(
+            matches!(all_pending.status(), SsDistributionStatus::Pending),
+            "Overall status should be Pending when all are Pending"
+        );
+
+        let mut mixed_statuses = all_pending.clone();
+        mixed_statuses = mixed_statuses.sent(client_b_device_id.clone());
+        assert!(
+            matches!(mixed_statuses.status(), SsDistributionStatus::Pending),
+            "Overall status should be Pending when at least one is Pending"
+        );
+
+        let mut all_sent = mixed_statuses.clone();
+        all_sent = all_sent.sent(vd_device_id.clone());
+        assert!(
+            matches!(all_sent.status(), SsDistributionStatus::Sent),
+            "Overall status should be Sent when all are at least Sent"
+        );
+
+        let mut partially_delivered = all_sent.clone();
+        partially_delivered = partially_delivered.complete(client_b_device_id.clone());
+        assert!(
+            matches!(partially_delivered.status(), SsDistributionStatus::Sent),
+            "Overall status should be Sent when not all are Delivered"
+        );
+
+        let all_delivered = partially_delivered.complete(vd_device_id.clone());
+        assert!(
+            matches!(all_delivered.status(), SsDistributionStatus::Delivered),
+            "Overall status should be Delivered when all are Delivered"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_ss_log_data_sent_and_complete() -> Result<()> {
+        // Setup with fixtures
+        let registry = FixtureRegistry::empty();
+
+        let client_device_id = registry.state.device_creds.client.device.device_id;
+        let client_b_device_id = registry.state.device_creds.client_b.device.device_id;
+        let vd_device_id = registry.state.device_creds.vd.device.device_id;
+
+        // Create a claim
+        let claim_id = ClaimId::from(Id48bit::generate());
+        let receivers = vec![client_b_device_id.clone(), vd_device_id.clone()];
+
+        let claim = SsClaim {
+            id: claim_id.clone(),
+            dist_claim_id: SsClaimId {
+                id: claim_id.clone(),
+                pass_id: MetaPasswordId {
+                    id: U64IdUrlEnc::from("pass_id".to_string()),
+                    name: "test_pass".to_string(),
+                },
+            },
+            vault_name: VaultName::test(),
+            sender: client_device_id.clone(),
+            distribution_type: SecretDistributionType::Split,
+            receivers: receivers.clone(),
+            status: SsDistributionCompositeStatus::from(receivers.clone()),
+        };
+
+        // Create log data with the claim
+        let log_data = SsLogData::new(claim.clone());
+
+        // Verify the claim is in the log data
+        assert_eq!(
+            log_data.claims.len(),
+            1,
+            "Log data should contain one claim"
+        );
+        assert!(
+            log_data.claims.contains_key(&claim_id),
+            "Log data should contain our claim"
+        );
+
+        let stored_claim = log_data.claims.get(&claim_id).unwrap();
+        // Check if all statuses are Pending initially
+        for receiver in &receivers {
+            let status = stored_claim.status.get(receiver).unwrap();
+            assert!(
+                matches!(status, SsDistributionStatus::Pending),
+                "Initial status should be Pending"
+            );
+        }
+
+        // Test sent method
+        let log_data_sent = log_data.sent(claim_id.clone(), client_b_device_id.clone());
+
+        // Verify claim still exists
+        assert!(
+            log_data_sent.claims.contains_key(&claim_id),
+            "Log data should still contain our claim"
+        );
+
+        // Check if status was updated correctly
+        let updated_claim = log_data_sent.claims.get(&claim_id).unwrap();
+        let updated_status = updated_claim.status.get(&client_b_device_id).unwrap();
+        assert!(
+            matches!(updated_status, SsDistributionStatus::Sent),
+            "Status should be updated to Sent"
+        );
+
+        // Status for other device should still be Pending
+        let other_status = updated_claim.status.get(&vd_device_id).unwrap();
+        assert!(
+            matches!(other_status, SsDistributionStatus::Pending),
+            "Status for other device should still be Pending"
+        );
+
+        // Test complete method
+        let log_data_complete =
+            log_data_sent.complete(claim_id.clone(), client_b_device_id.clone());
+
+        // Verify claim still exists
+        assert!(
+            log_data_complete.claims.contains_key(&claim_id),
+            "Log data should still contain our claim"
+        );
+
+        // Check if status was updated correctly
+        let completed_claim = log_data_complete.claims.get(&claim_id).unwrap();
+        let completed_status = completed_claim.status.get(&client_b_device_id).unwrap();
+        assert!(
+            matches!(completed_status, SsDistributionStatus::Delivered),
+            "Status should be updated to Delivered"
+        );
+
+        // Status for other device should still be Pending
+        let other_status_final = completed_claim.status.get(&vd_device_id).unwrap();
+        assert!(
+            matches!(other_status_final, SsDistributionStatus::Pending),
+            "Status for other device should still be Pending"
+        );
+
+        // Test with non-existent claim ID
+        let non_existent_id = ClaimId::from(Id48bit::generate());
+        let log_data_non_existent =
+            log_data_complete.sent(non_existent_id.clone(), client_b_device_id.clone());
+
+        // Verify the operation is a no-op for non-existent claim
+        assert_eq!(
+            log_data_non_existent.claims.len(),
+            1,
+            "Log data should still contain only one claim"
+        );
+        assert!(
+            !log_data_non_existent.claims.contains_key(&non_existent_id),
+            "Log data should not contain the non-existent claim"
+        );
 
         Ok(())
     }
