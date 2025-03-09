@@ -165,7 +165,8 @@ impl SecretBox {
 mod test {
     use crate::crypto::encoding::base64::Base64Text;
     use crate::crypto::key_pair::KeyPair;
-    use crate::crypto::keys::{KeyManager, SecretBox};
+    use crate::crypto::keys::fixture::KeyManagerFixture;
+    use crate::crypto::keys::SecretBox;
     use crate::node::common::model::crypto::aead::EncryptedMessage;
     use crate::secret::shared_secret::PlainText;
     use anyhow::Result;
@@ -175,11 +176,12 @@ mod test {
         let plain_text = PlainText::from("2bee~");
         let base64_plaint_text = &Base64Text::from(plain_text.clone());
 
-        let alice_km = KeyManager::generate();
+        let fixture = KeyManagerFixture::generate();
+        let alice_km = fixture.client;
         let alice_sk = &alice_km.transport.sk();
         let alice_secret_box = SecretBox::from(&alice_km);
 
-        let bob_km = KeyManager::generate();
+        let bob_km = fixture.client_b;
         let bob_sk = &bob_km.transport.sk();
 
         let msg_1 = {

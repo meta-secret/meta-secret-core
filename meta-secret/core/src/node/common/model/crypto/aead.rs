@@ -88,15 +88,16 @@ impl EncryptedMessage {
 #[cfg(test)]
 mod test {
     use crate::crypto::key_pair::KeyPair;
-    use crate::crypto::keys::KeyManager;
+    use crate::crypto::keys::fixture::KeyManagerFixture;
     use crate::node::common::model::crypto::aead::AeadCipherText;
     use crate::secret::shared_secret::PlainText;
 
     #[test]
     fn encryption_test() -> anyhow::Result<()> {
         let password = PlainText::from("2bee~");
-        let alice_km = KeyManager::generate();
-        let bob_km = KeyManager::generate();
+        let fixture = KeyManagerFixture::generate();
+        let alice_km = fixture.client;
+        let bob_km = fixture.client_b;
 
         // 1. Encrypt the message
         let cipher_text: AeadCipherText = alice_km

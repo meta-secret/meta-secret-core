@@ -129,13 +129,15 @@ impl CommunicationChannel {
 #[cfg(test)]
 mod test {
     use crate::crypto::key_pair::KeyPair;
+    use crate::crypto::keys::fixture::KeyManagerFixture;
     use crate::crypto::keys::KeyManager;
-    use crate::node::common::model::crypto::channel::{CommunicationChannel, End2EndChannel, LoopbackChannel};
+    use crate::node::common::model::crypto::channel::CommunicationChannel;
 
     #[test]
     fn test_channel_inverse() {
-        let alice_km = KeyManager::generate();
-        let bob_km = KeyManager::generate();
+        let fixture = KeyManagerFixture::generate();
+        let alice_km = fixture.client;
+        let bob_km = fixture.client_b;
 
         let sender = alice_km.transport.pk();
         let receiver = bob_km.transport.pk();
@@ -150,8 +152,9 @@ mod test {
     #[test]
     fn test_channel_peer_function_end2end() {
         // Create key managers for testing
-        let alice_km = KeyManager::generate();
-        let bob_km = KeyManager::generate();
+        let fixture = KeyManagerFixture::generate();
+        let alice_km = fixture.client;
+        let bob_km = fixture.client_b;
 
         let sender_pk = alice_km.transport.pk();
         let receiver_pk = bob_km.transport.pk();
@@ -168,7 +171,7 @@ mod test {
         assert_eq!(peer_of_receiver, &sender_pk);
 
         // Test peer() with unknown public key
-        let charlie_km = KeyManager::generate();
+        let charlie_km = KeyManager::generate(); // We still need to generate a separate key manager for Charlie
         let result = channel.peer(&charlie_km.transport.pk());
         assert!(result.is_err());
     }
@@ -176,7 +179,8 @@ mod test {
     #[test]
     fn test_channel_peer_function_loopback() {
         // Create key manager for testing
-        let device_km = KeyManager::generate();
+        let fixture = KeyManagerFixture::generate();
+        let device_km = fixture.client; // Using client as the device
         let device_pk = device_km.transport.pk();
 
         // Create a SingleDevice channel
@@ -188,16 +192,17 @@ mod test {
         assert_eq!(peer, &device_pk);
 
         // Test peer() with unknown public key
-        let other_km = KeyManager::generate();
+        let other_km = fixture.client_b; // Using client_b as the other device
         let result = channel.peer(&other_km.transport.pk());
         assert!(result.is_err());
     }
 
     #[test]
     fn test_channel_contains() {
-        let alice_km = KeyManager::generate();
-        let bob_km = KeyManager::generate();
-        let charlie_km = KeyManager::generate();
+        let fixture = KeyManagerFixture::generate();
+        let alice_km = fixture.client;
+        let bob_km = fixture.client_b;
+        let charlie_km = KeyManager::generate(); // Still need a third key manager
 
         let sender_pk = alice_km.transport.pk();
         let receiver_pk = bob_km.transport.pk();
@@ -223,8 +228,9 @@ mod test {
 
     #[test]
     fn test_loopback_to_end2end_conversion() {
-        let alice_km = KeyManager::generate();
-        let bob_km = KeyManager::generate();
+        let fixture = KeyManagerFixture::generate();
+        let alice_km = fixture.client;
+        let bob_km = fixture.client_b;
 
         let device_pk = alice_km.transport.pk();
         let receiver_pk = bob_km.transport.pk();
@@ -250,8 +256,9 @@ mod test {
 
     #[test]
     fn test_end2end_channel_creation() {
-        let alice_km = KeyManager::generate();
-        let bob_km = KeyManager::generate();
+        let fixture = KeyManagerFixture::generate();
+        let alice_km = fixture.client;
+        let bob_km = fixture.client_b;
 
         let sender_pk = alice_km.transport.pk();
         let receiver_pk = bob_km.transport.pk();
@@ -271,8 +278,9 @@ mod test {
 
     #[test]
     fn test_channel_recipients() {
-        let alice_km = KeyManager::generate();
-        let bob_km = KeyManager::generate();
+        let fixture = KeyManagerFixture::generate();
+        let alice_km = fixture.client;
+        let bob_km = fixture.client_b;
 
         let sender_pk = alice_km.transport.pk();
         let receiver_pk = bob_km.transport.pk();

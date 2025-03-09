@@ -122,12 +122,12 @@ impl TransportDsaKeyPair {
 pub mod test {
     use crate::crypto::encoding::base64::Base64Text;
     use crate::crypto::key_pair::{DsaKeyPair, KeyPair, TransportDsaKeyPair};
-    use crate::crypto::keys::KeyManager;
+    use crate::crypto::keys::fixture::KeyManagerFixture;
     use crate::node::common::model::crypto::aead::{AeadCipherText, AeadPlainText};
     use crate::node::common::model::crypto::channel::CommunicationChannel;
     use crate::node::common::model::IdString;
     use crate::secret::shared_secret::PlainText;
-    
+
     #[test]
     fn test_dsa_key_pair_generate() {
         let key_pair = DsaKeyPair::generate();
@@ -202,7 +202,8 @@ pub mod test {
     fn single_person_encryption() -> anyhow::Result<()> {
         let password = PlainText::from("topSecret");
 
-        let alice_km = KeyManager::generate();
+        let fixture = KeyManagerFixture::generate();
+        let alice_km = fixture.client;
         let cipher_text: AeadCipherText = alice_km
             .transport
             .encrypt_string(password.clone(), &alice_km.transport.pk())?;
@@ -215,8 +216,9 @@ pub mod test {
 
     #[test]
     fn straight_and_backward_decryption() -> anyhow::Result<()> {
-        let alice_km = KeyManager::generate();
-        let bob_km = KeyManager::generate();
+        let fixture = KeyManagerFixture::generate();
+        let alice_km = fixture.client;
+        let bob_km = fixture.client_b;
 
         let channel = CommunicationChannel::build(alice_km.transport.pk(), bob_km.transport.pk());
 
@@ -249,8 +251,9 @@ pub mod test {
 
     #[test]
     fn third_party_decryption() -> anyhow::Result<()> {
-        let alice_km = KeyManager::generate();
-        let bob_km = KeyManager::generate();
+        let fixture = KeyManagerFixture::generate();
+        let alice_km = fixture.client;
+        let bob_km = fixture.client_b;
 
         let cipher_text: AeadCipherText = alice_km
             .transport
