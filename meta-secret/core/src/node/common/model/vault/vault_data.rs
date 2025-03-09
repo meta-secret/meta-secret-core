@@ -283,13 +283,14 @@ pub mod fixture {
 #[cfg(test)]
 mod test {
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::node::common::model::meta_pass::MetaPasswordId;
     use crate::node::common::model::user::common::{
         UserDataMember, UserDataOutsider, UserDataOutsiderStatus, UserMembership,
     };
     use crate::node::common::model::vault::vault_data::{VaultAggregate, VaultData};
     use crate::node::db::events::vault::vault_log_event::{
-        JoinClusterEvent, VaultActionEvent, VaultActionEvents, VaultActionRequestEvent,
-        VaultActionUpdateEvent,
+        AddMetaPassEvent, JoinClusterEvent, VaultActionEvent, VaultActionEvents,
+        VaultActionRequestEvent, VaultActionUpdateEvent,
     };
     use anyhow::Result;
 
@@ -358,6 +359,169 @@ mod test {
 
         let vault_aggregate = VaultAggregate::build_from(events, vault_data);
         assert_eq!(2, vault_aggregate.vault.users.len());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_vault_aggregate_complete_method() -> Result<()> {
+        // Setup
+        let fixture = FixtureRegistry::empty();
+        let client_creds = fixture.state.user_creds.client;
+        let vault_data = VaultData::from(UserDataMember::from(client_creds.user()));
+
+        // Create empty events
+        let events = VaultActionEvents::default();
+
+        // Create aggregate
+        let aggregate = VaultAggregate::build_from(events, vault_data);
+
+        // Verify initial state
+        assert_eq!(aggregate.events.updates.len(), 0);
+        assert_eq!(aggregate.vault.members().len(), 1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_vault_aggregate_with_add_meta_pass_event() -> Result<()> {
+        // Setup
+        let fixture = FixtureRegistry::empty();
+        let client_creds = fixture.state.user_creds.client;
+        let client_member = UserDataMember::from(client_creds.user());
+        let vault_data = VaultData::from(client_member.clone());
+
+        // Create meta password event
+        let meta_pass_id = MetaPasswordId::build("Test Password");
+        let add_meta_pass = AddMetaPassEvent {
+            sender: client_member,
+            meta_pass_id: meta_pass_id.clone(),
+        };
+
+        // Create update event
+        let update_event = VaultActionUpdateEvent::AddMetaPass(add_meta_pass);
+
+        // Create events with the update
+        let events = VaultActionEvents::default().apply(update_event);
+        
+        // Create aggregate and process
+        let aggregate = VaultAggregate::build_from(events, vault_data);
+
+        // Verify the meta pass was added
+        assert!(aggregate.vault.secrets.contains(&meta_pass_id));
+        assert_eq!(aggregate.events.updates.len(), 0); // Events should be processed
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_vault_aggregate_sender_not_member() -> Result<()> {
+        // Setup
+        let fixture = FixtureRegistry::empty();
+        let client_creds = fixture.state.user_creds.client;
+        let client_b_creds = fixture.state.user_creds.client_b;
+        let vault_data = VaultData::from(UserDataMember::from(client_creds.user()));
+
+        // Create event with non-member sender
+        let meta_pass_id = MetaPasswordId::build("Another Test Password");
+        let non_member_sender = UserDataMember {
+            user_data: client_b_creds.user(),
+        };
+        let add_meta_pass = AddMetaPassEvent {
+            sender: non_member_sender,
+            meta_pass_id: meta_pass_id.clone(),
+        };
+
+        // Create update event
+        let update_event = VaultActionUpdateEvent::AddMetaPass(add_meta_pass);
+
+        // Create events with the update
+        let events = VaultActionEvents::default().apply(update_event);
+
+        // Create aggregate and process
+        let aggregate = VaultAggregate::build_from(events, vault_data);
+
+        // Verify the meta pass was NOT added (sender not a member)
+        assert!(!aggregate.vault.secrets.contains(&meta_pass_id));
+        assert_eq!(aggregate.events.updates.len(), 0); // Events should be processed but not applied
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_vault_aggregate_add_member_update() -> Result<()> {
+        // Setup
+        let fixture = FixtureRegistry::empty();
+        let client_creds = fixture.state.user_creds.client;
+        let client_b_creds = fixture.state.user_creds.client_b;
+        let vault_data = VaultData::from(UserDataMember::from(client_creds.user()));
+
+        // Create join request
+        let join_request = JoinClusterEvent::from(client_b_creds.user());
+
+        // Create member update
+        let update_membership = VaultActionUpdateEvent::UpdateMembership {
+            request: join_request.clone(),
+            sender: UserDataMember::from(client_creds.user()), // Valid member as sender
+            update: UserMembership::Member(UserDataMember::from(client_b_creds.user())),
+        };
+
+        // Create events with the update
+        let events = VaultActionEvents::default().apply(update_membership);
+
+        // Create aggregate and process
+        let aggregate = VaultAggregate::build_from(events, vault_data);
+
+        // Verify the new member was added
+        assert_eq!(aggregate.vault.members().len(), 2);
+        assert!(aggregate
+            .vault
+            .is_member(&client_b_creds.user().device.device_id));
+        assert_eq!(aggregate.events.updates.len(), 0); // Events should be processed
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_vault_aggregate_multiple_events() -> Result<()> {
+        // Setup
+        let fixture = FixtureRegistry::empty();
+        let client_creds = fixture.state.user_creds.client;
+        let client_b_creds = fixture.state.user_creds.client_b;
+        let vd_creds = fixture.state.user_creds.vd;
+        let vault_data = VaultData::from(UserDataMember::from(client_creds.user()));
+
+        // Create first join request and member update
+        let join_request_b = JoinClusterEvent::from(client_b_creds.user());
+        let update_membership_b = VaultActionUpdateEvent::UpdateMembership {
+            request: join_request_b.clone(),
+            sender: UserDataMember::from(client_creds.user()),
+            update: UserMembership::Member(UserDataMember::from(client_b_creds.user())),
+        };
+
+        // Create second join request and member update
+        let join_request_vd = JoinClusterEvent::from(vd_creds.user());
+        let update_membership_vd = VaultActionUpdateEvent::UpdateMembership {
+            request: join_request_vd.clone(),
+            sender: UserDataMember::from(client_creds.user()),
+            update: UserMembership::Member(UserDataMember::from(vd_creds.user())),
+        };
+
+        // Create events with both updates
+        let events = VaultActionEvents::default()
+            .apply(update_membership_b)
+            .apply(update_membership_vd);
+
+        // Create aggregate and process
+        let aggregate = VaultAggregate::build_from(events, vault_data);
+
+        // Verify both members were added
+        assert_eq!(aggregate.vault.members().len(), 3);
+        assert!(aggregate
+            .vault
+            .is_member(&client_b_creds.user().device.device_id));
+        assert!(aggregate.vault.is_member(&vd_creds.user().device.device_id));
+        assert_eq!(aggregate.events.updates.len(), 0);
 
         Ok(())
     }
