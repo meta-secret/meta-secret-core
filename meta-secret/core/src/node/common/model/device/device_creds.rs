@@ -15,6 +15,16 @@ impl DeviceCredentials {
         let device = DeviceData::from(device_name, OpenBox::from(&secret_box));
         DeviceCredentials { secret_box, device }
     }
+
+    #[cfg(test)]
+    pub fn from_key_manager(
+        device_name: DeviceName,
+        key_manager: &KeyManager,
+    ) -> DeviceCredentials {
+        let secret_box = SecretBox::from(key_manager);
+        let device = DeviceData::from(device_name, OpenBox::from(&secret_box));
+        DeviceCredentials { secret_box, device }
+    }
 }
 
 impl DeviceCredentials {
@@ -26,6 +36,7 @@ impl DeviceCredentials {
 
 #[cfg(test)]
 pub mod fixture {
+    use crate::crypto::keys::fixture::KeyManagerFixture;
     use crate::node::common::model::device::common::DeviceName;
     use crate::node::common::model::device::device_creds::DeviceCredentials;
 
@@ -37,12 +48,24 @@ pub mod fixture {
     }
 
     impl DeviceCredentialsFixture {
-        pub fn generate() -> Self {
+        pub fn from_km(km_fixture: &KeyManagerFixture) -> Self {
             Self {
-                client: DeviceCredentials::generate(DeviceName::client()),
-                client_b: DeviceCredentials::generate(DeviceName::client_b()),
-                vd: DeviceCredentials::generate(DeviceName::virtual_device()),
-                server: DeviceCredentials::generate(DeviceName::server()),
+                client: DeviceCredentials::from_key_manager(
+                    DeviceName::client(),
+                    &km_fixture.client,
+                ),
+                client_b: DeviceCredentials::from_key_manager(
+                    DeviceName::client_b(),
+                    &km_fixture.client_b,
+                ),
+                vd: DeviceCredentials::from_key_manager(
+                    DeviceName::virtual_device(),
+                    &km_fixture.vd,
+                ),
+                server: DeviceCredentials::from_key_manager(
+                    DeviceName::server(),
+                    &km_fixture.server,
+                ),
             }
         }
     }

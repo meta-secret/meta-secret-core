@@ -121,7 +121,7 @@ impl TransportDsaKeyPair {
 #[cfg(test)]
 pub mod test {
     use crate::crypto::encoding::base64::Base64Text;
-    use crate::crypto::key_pair::{Cipher, DsaKeyPair, KeyPair, TransportDsaKeyPair};
+    use crate::crypto::key_pair::{DsaKeyPair, KeyPair, TransportDsaKeyPair};
     use crate::crypto::keys::KeyManager;
     use crate::node::common::model::crypto::aead::{AeadCipherText, AeadPlainText};
     use crate::node::common::model::crypto::channel::CommunicationChannel;

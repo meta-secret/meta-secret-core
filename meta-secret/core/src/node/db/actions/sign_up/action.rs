@@ -36,10 +36,12 @@ mod test {
         node::common::model::user::user_creds::fixture::UserCredentialsFixture,
         node::db::actions::sign_up::action::SignUpAction,
     };
+    use crate::crypto::keys::fixture::KeyManagerFixture;
 
     #[tokio::test]
     async fn test_sing_up() -> Result<()> {
-        let device_creds = &DeviceCredentialsFixture::generate();
+        let km = KeyManagerFixture::generate();
+        let device_creds = &DeviceCredentialsFixture::from_km(&km);
         let user_creds_fixture = UserCredentialsFixture::from(device_creds);
 
         let sign_up_action = SignUpAction;

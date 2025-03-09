@@ -12,6 +12,7 @@ pub mod fixture {
     use crate::node::db::objects::persistent_vault::spec::VaultSpec;
     use crate::node::db::repo::persistent_credentials::fixture::PersistentCredentialsFixture;
     use crate::node::server::server_app::fixture::ServerAppFixture;
+    use crate::crypto::keys::fixture::KeyManagerFixture;
     use std::sync::Arc;
 
     pub struct FixtureRegistry<S> {
@@ -20,7 +21,8 @@ pub mod fixture {
 
     impl FixtureRegistry<BaseState> {
         pub fn empty() -> FixtureRegistry<EmptyState> {
-            let device_creds = DeviceCredentialsFixture::generate();
+            let key_manager = KeyManagerFixture::generate();
+            let device_creds = DeviceCredentialsFixture::from_km(&key_manager);
             let user_creds = UserCredentialsFixture::from(&device_creds);
             let p_obj = PersistentObjectFixture::generate();
             let p_vault = PersistentVaultFixture::generate(&p_obj);
@@ -33,6 +35,7 @@ pub mod fixture {
                     p_obj,
                     p_vault,
                     vault_data,
+                    key_manager,
                 },
             }
         }
@@ -96,6 +99,7 @@ pub mod fixture {
         use crate::node::db::objects::persistent_vault::fixture::PersistentVaultFixture;
         use crate::node::db::repo::persistent_credentials::fixture::PersistentCredentialsFixture;
         use crate::node::server::server_app::fixture::ServerAppFixture;
+        use crate::crypto::keys::fixture::KeyManagerFixture;
 
         pub enum Fixture {
             Empty(EmptyState),
@@ -109,6 +113,7 @@ pub mod fixture {
             pub p_obj: PersistentObjectFixture,
             pub p_vault: PersistentVaultFixture,
             pub vault_data: VaultDataFixture,
+            pub key_manager: KeyManagerFixture,
         }
 
         pub struct BaseState {

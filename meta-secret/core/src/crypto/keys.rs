@@ -202,3 +202,26 @@ mod test {
         Ok(())
     }
 }
+
+#[cfg(test)]
+pub mod fixture {
+    use crate::crypto::keys::KeyManager;
+
+    pub struct KeyManagerFixture {
+        pub client: KeyManager,
+        pub client_b: KeyManager,
+        pub vd: KeyManager,
+        pub server: KeyManager,
+    }
+
+    impl KeyManagerFixture {
+        pub fn generate() -> Self {
+            Self {
+                client: KeyManager::generate(),
+                client_b: KeyManager::generate(),
+                vd: KeyManager::generate(),
+                server: KeyManager::generate(),
+            }
+        }
+    }
+}
