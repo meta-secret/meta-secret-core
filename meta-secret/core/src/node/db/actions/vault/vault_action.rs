@@ -290,31 +290,39 @@ mod tests {
         
         let new_member = UserDataMember::from(registry.state.empty.user_creds.vd.user());
         
-        // Create membership update event
+        // First, we need to add a join request to the vault log
+        let join_request = JoinClusterEvent::from(new_member.user_data.clone());
+        let request_event = VaultActionRequestEvent::JoinCluster(join_request.clone());
+        let vault_action_request = VaultActionEvent::Request(request_event);
+        
+        // Process the join request
+        server_vault_action.do_processing(vault_action_request).await?;
+        
+        // Now create the membership update event - it needs to match the request
         let update_event = VaultActionUpdateEvent::UpdateMembership {
             sender: owner.clone(),
             update: UserMembership::Member(new_member.clone()),
-            request: JoinClusterEvent::from(new_member.user_data.clone()),
+            request: join_request,  // Use the same join request as above
         };
         
         // Process the update
-        let update_membership = VaultActionEvent::Update(update_event);
-        let result = server_vault_action.do_processing(update_membership).await;
+        let vault_action_event = VaultActionEvent::Update(update_event);
+        let result = server_vault_action.do_processing(vault_action_event).await;
         assert!(result.is_ok(), "Membership update should succeed");
         
-        // The test should verify that the vault status was created for the new member
-        // This is what the handle_update method is supposed to do
+        // Now the new member should be properly added to the vault
         let p_vault = PersistentVault::from(server_vault_action.p_obj.clone());
+        let vault = p_vault.get_vault(&owner.user_data).await?;
         
-        // Check if the new member can find the vault
+        // Check if the new member was added to the vault
+        let is_member = vault.to_data().is_member(&new_member.user().device.device_id);
+        assert!(is_member, "New member should be part of the vault after membership update");
+        
+        // The status should now be Member
         let status = p_vault.find(new_member.user_data.clone()).await?;
-        
-        // In the current implementation, the status might be Outsider instead of Member
-        // This is because the member isn't added to the vault's users list in VaultAggregate::synchronize
-        // But the status should at least be created
-        assert!(matches!(status, VaultStatus::Member(_)),
-                "Expected VaultStatus::Member, got {:?}", status);
-        
-        Ok(())
+        match status {
+            VaultStatus::Member(_) => Ok(()),
+            _ => panic!("Expected VaultStatus::Member, got {:?}", status),
+        }
     }
 }
