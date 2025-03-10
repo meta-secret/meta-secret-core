@@ -6,6 +6,7 @@ use crate::node::common::model::user::common::{
 use crate::node::common::model::vault::vault::{VaultMember, VaultName, VaultStatus};
 use crate::node::db::events::vault::vault_log_event::{
     AddMetaPassEvent, VaultActionEvent, VaultActionEvents, VaultActionUpdateEvent,
+    VaultActionRequestEvent,
 };
 use crate::secret::data_block::common::SharedSecretConfig;
 use anyhow::{bail, Result};
@@ -172,36 +173,35 @@ impl VaultAggregate {
 
     /// Apply pending vault action events into the vault
     fn synchronize(mut self) -> Self {
+        // Process each update in the events
         let updates = self.events.updates.clone();
-
+        
         for update in updates {
-            self.events = self.events.apply_event(VaultActionEvent::Update(update));
-        }
-
-        self = self.complete();
-
-        self
-    }
-
-    fn complete(mut self) -> Self {
-        for curr_update in &self.events.updates {
-            match curr_update {
+            match &update {
                 VaultActionUpdateEvent::UpdateMembership { sender, update, .. } => {
                     if self.vault.is_member(&sender.user().device.device_id) {
                         self.vault = self.vault.update_membership(update.clone());
                     }
                 }
                 VaultActionUpdateEvent::AddMetaPass(AddMetaPassEvent {
-                    meta_pass_id,
                     sender,
+                    meta_pass_id,
                 }) => {
                     if self.vault.is_member(&sender.user().device.device_id) {
-                        self.vault = self.vault.add_secret(meta_pass_id.clone())
+                        self.vault = self.vault.add_secret(meta_pass_id.clone());
                     }
                 }
             }
         }
 
+        // After processing all updates, mark them as completed
+        self.events = self.events.complete();
+        
+        self
+    }
+
+    fn complete(mut self) -> Self {
+        // This method is now just a fallback - all processing happens in synchronize
         self.events = self.events.complete();
         self
     }
@@ -394,15 +394,20 @@ mod test {
         // Create meta password event
         let meta_pass_id = MetaPasswordId::build("Test Password");
         let add_meta_pass = AddMetaPassEvent {
-            sender: client_member,
+            sender: client_member.clone(),
             meta_pass_id: meta_pass_id.clone(),
         };
 
-        // Create update event
+        // First, create a request event
+        let request_event = VaultActionRequestEvent::AddMetaPass(add_meta_pass.clone());
+
+        // Then, create update event
         let update_event = VaultActionUpdateEvent::AddMetaPass(add_meta_pass);
 
-        // Create events with the update
-        let events = VaultActionEvents::default().apply(update_event);
+        // Create events with both the request and the update
+        let events = VaultActionEvents::default()
+            .request(request_event)
+            .apply(update_event);
         
         // Create aggregate and process
         let aggregate = VaultAggregate::build_from(events, vault_data);
@@ -458,6 +463,9 @@ mod test {
 
         // Create join request
         let join_request = JoinClusterEvent::from(client_b_creds.user());
+        
+        // Create request event
+        let request_event = VaultActionRequestEvent::JoinCluster(join_request.clone());
 
         // Create member update
         let update_membership = VaultActionUpdateEvent::UpdateMembership {
@@ -466,8 +474,10 @@ mod test {
             update: UserMembership::Member(UserDataMember::from(client_b_creds.user())),
         };
 
-        // Create events with the update
-        let events = VaultActionEvents::default().apply(update_membership);
+        // Create events with the request and update
+        let events = VaultActionEvents::default()
+            .request(request_event)
+            .apply(update_membership);
 
         // Create aggregate and process
         let aggregate = VaultAggregate::build_from(events, vault_data);
@@ -493,6 +503,7 @@ mod test {
 
         // Create first join request and member update
         let join_request_b = JoinClusterEvent::from(client_b_creds.user());
+        let request_event_b = VaultActionRequestEvent::JoinCluster(join_request_b.clone());
         let update_membership_b = VaultActionUpdateEvent::UpdateMembership {
             request: join_request_b.clone(),
             sender: UserDataMember::from(client_creds.user()),
@@ -501,15 +512,18 @@ mod test {
 
         // Create second join request and member update
         let join_request_vd = JoinClusterEvent::from(vd_creds.user());
+        let request_event_vd = VaultActionRequestEvent::JoinCluster(join_request_vd.clone());
         let update_membership_vd = VaultActionUpdateEvent::UpdateMembership {
             request: join_request_vd.clone(),
             sender: UserDataMember::from(client_creds.user()),
             update: UserMembership::Member(UserDataMember::from(vd_creds.user())),
         };
 
-        // Create events with both updates
+        // Create events with both requests and updates
         let events = VaultActionEvents::default()
+            .request(request_event_b)
             .apply(update_membership_b)
+            .request(request_event_vd)
             .apply(update_membership_vd);
 
         // Create aggregate and process
@@ -526,3 +540,4 @@ mod test {
         Ok(())
     }
 }
+

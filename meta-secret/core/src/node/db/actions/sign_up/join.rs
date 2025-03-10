@@ -51,7 +51,9 @@ mod tests {
     use super::*;
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::common::model::user::common::{UserDataOutsider, UserDataOutsiderStatus};
+    use crate::node::db::descriptors::vault_descriptor::DeviceLogDescriptor;
 
+    /// Tests successful acceptance of a join request for a non-member user
     #[tokio::test]
     async fn test_accept_join_request_success() -> Result<()> {
         // Setup fixture
@@ -88,12 +90,18 @@ mod tests {
         // Execute the function
         let result = action.accept(join_request).await;
 
-        // Verify result
+        // Verify result is successful
         assert!(result.is_ok(), "Accept join request should succeed");
+
+        // Check if device log has an entry (optional but more thorough validation)
+        let obj_desc = DeviceLogDescriptor::from(member.member.user().user_id());
+        let tail_id = p_obj.find_tail_id_by_obj_desc(obj_desc).await?;
+        assert!(tail_id.is_some(), "Expected device log to have an entry after accepting join request");
 
         Ok(())
     }
 
+    /// Tests that a user who is already in pending state cannot be accepted
     #[tokio::test]
     async fn test_accept_join_request_already_pending() -> Result<()> {
         // Setup fixture
@@ -135,8 +143,9 @@ mod tests {
 
         // Verify result
         assert!(result.is_err(), "Accept join request should fail for pending user");
+        let error = result.unwrap_err().to_string();
         assert_eq!(
-            result.unwrap_err().to_string(),
+            error,
             "User already in pending state",
             "Error message should indicate user is pending"
         );
@@ -144,6 +153,7 @@ mod tests {
         Ok(())
     }
 
+    /// Tests that a user who has been declined cannot be accepted
     #[tokio::test]
     async fn test_accept_join_request_already_declined() -> Result<()> {
         // Setup fixture
@@ -185,8 +195,9 @@ mod tests {
 
         // Verify result
         assert!(result.is_err(), "Accept join request should fail for declined user");
+        let error = result.unwrap_err().to_string();
         assert_eq!(
-            result.unwrap_err().to_string(),
+            error,
             "User request already declined",
             "Error message should indicate user request was declined"
         );
@@ -194,6 +205,7 @@ mod tests {
         Ok(())
     }
 
+    /// Tests that a user who is already a member cannot be accepted
     #[tokio::test]
     async fn test_accept_join_request_already_member() -> Result<()> {
         // Setup fixture
@@ -223,8 +235,9 @@ mod tests {
 
         // Verify result
         assert!(result.is_err(), "Accept join request should fail for existing member");
+        let error = result.unwrap_err().to_string();
         assert_eq!(
-            result.unwrap_err().to_string(),
+            error,
             "Membership cannot be accepted. Invalid state",
             "Error message should indicate membership cannot be accepted"
         );

@@ -208,7 +208,7 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
 
         let vault_log_event = VaultLogObject(KvLogEvent {
             key: next_key,
-            value: kv.0.value.add(action_event),
+            value: kv.0.value.request(action_event),
         });
 
         self.p_obj.repo.save(vault_log_event).await?;

@@ -82,7 +82,7 @@ impl VaultActionEvents {
     pub fn apply_event(mut self, event: VaultActionEvent) -> Self {
         match event {
             VaultActionEvent::Request(request) => {
-                self = self.add(request);
+                self = self.request(request);
             }
             VaultActionEvent::Update(update) => {
                 self = self.apply(update);
@@ -95,7 +95,7 @@ impl VaultActionEvents {
         self
     }
 
-    pub fn add(mut self, request: VaultActionRequestEvent) -> Self {
+    pub fn request(mut self, request: VaultActionRequestEvent) -> Self {
         self.requests.insert(request);
         self
     }
