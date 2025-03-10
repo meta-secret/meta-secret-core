@@ -303,9 +303,7 @@ mod tests {
     use crate::node::db::events::vault::vault_event::VaultObject;
     use crate::node::db::events::vault::vault_status::VaultStatusObject;
     use crate::node::db::repo::generic_db::SaveCommand;
-
-    use super::PersistentVault;
-
+    
     #[tokio::test]
     async fn test_find_non_existent_vault_and_status() -> Result<()> {
         // Setup using FixtureRegistry

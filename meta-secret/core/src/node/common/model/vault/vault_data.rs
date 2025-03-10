@@ -5,8 +5,8 @@ use crate::node::common::model::user::common::{
 };
 use crate::node::common::model::vault::vault::{VaultMember, VaultName, VaultStatus};
 use crate::node::db::events::vault::vault_log_event::{
-    AddMetaPassEvent, VaultActionEvent, VaultActionEvents, VaultActionUpdateEvent,
-    VaultActionRequestEvent,
+    AddMetaPassEvent, VaultActionEvents, VaultActionUpdateEvent
+    ,
 };
 use crate::secret::data_block::common::SharedSecretConfig;
 use anyhow::{bail, Result};
@@ -195,9 +195,7 @@ impl VaultAggregate {
         }
 
         // After processing all updates, mark them as completed
-        self.events = self.events.complete();
-        
-        self
+        self.complete()
     }
 
     fn complete(mut self) -> Self {

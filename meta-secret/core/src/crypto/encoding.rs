@@ -315,8 +315,6 @@ pub mod serialized_key_manager {
         };
         use crate::errors::CoreError;
         use age::x25519::Identity;
-        use base64::Engine as _;
-        use ed25519_dalek::Verifier;
         use std::str::FromStr;
 
         impl TryFrom<&SerializedDsaKeyPair> for DsaKeyPair {
