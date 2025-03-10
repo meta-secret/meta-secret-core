@@ -174,3 +174,179 @@ impl<Repo: KvLogEventRepo> CreateVaultAction<Repo> {
         anyhow::Ok(())
     }
 }
+
+/// Fixture for testing purposes
+#[cfg(test)]
+pub mod fixture {
+    use super::*;
+    use crate::meta_tests::fixture_util::fixture::states::EmptyState;
+    use crate::node::db::in_mem_db::InMemKvLogEventRepo;
+
+    pub struct ServerVaultActionFixture {
+        pub server: ServerVaultAction<InMemKvLogEventRepo>,
+    }
+
+    impl ServerVaultActionFixture {
+        pub fn from(state: &EmptyState) -> Self {
+            Self {
+                server: ServerVaultAction {
+                    p_obj: state.p_obj.server.clone(),
+                    server_device: state.device_creds.server.device.clone(),
+                },
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::node::common::model::meta_pass::MetaPasswordId;
+    use crate::node::common::model::user::common::{UserDataMember, UserMembership};
+    use crate::node::common::model::vault::vault::VaultStatus;
+    use crate::node::db::events::vault::vault_log_event::AddMetaPassEvent;
+    use crate::node::db::events::vault::vault_log_event::{
+        CreateVaultEvent, JoinClusterEvent, VaultActionInitEvent, VaultActionRequestEvent,
+    };
+    use anyhow::Result;
+
+    #[tokio::test]
+    async fn test_create_vault() -> Result<()> {
+        // Setup
+        let registry = FixtureRegistry::base().await?;
+        let owner = UserDataMember::from(registry.state.empty.user_creds.client.user());
+
+        // Get the fixture from the registry
+        let server_vault_action = &registry.state.server_vault_action.server;
+
+        // Create the event
+        let vault_action_event = {
+            let create_vault_event = CreateVaultEvent::from(owner.clone());
+            let init_event = VaultActionInitEvent::CreateVault(create_vault_event);
+            VaultActionEvent::Init(init_event)
+        };
+
+        // Act
+        let result = server_vault_action.do_processing(vault_action_event).await;
+
+        // Assert
+        assert!(result.is_ok());
+
+        // Verify vault was created
+        let p_vault = PersistentVault::from(server_vault_action.p_obj.clone());
+        let vault = p_vault.get_vault(owner.user()).await?;
+
+        assert!(vault.to_data().is_member(&owner.user().device.device_id));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_add_meta_pass() -> Result<()> {
+        // Setup
+        let registry = FixtureRegistry::base().await?;
+        let owner = UserDataMember::from(registry.state.empty.user_creds.client.user());
+
+        // Get the fixture from the registry
+        let server_vault_action = &registry.state.server_vault_action.server;
+
+        // First create a vault
+        // Create the event
+        let vault_action_event = {
+            let create_vault_event = CreateVaultEvent::from(owner.clone());
+            let init_event = VaultActionInitEvent::CreateVault(create_vault_event);
+            VaultActionEvent::Init(init_event)
+        };
+        
+        server_vault_action
+            .do_processing(vault_action_event)
+            .await?;
+
+        // Create meta pass event
+        let meta_pass_event = AddMetaPassEvent {
+            sender: owner.clone(),
+            meta_pass_id: MetaPasswordId::build("Test Password"),
+        };
+
+        let request_event = VaultActionRequestEvent::AddMetaPass(meta_pass_event);
+        let vault_action_event = VaultActionEvent::Request(request_event);
+
+        // Act
+        let result = server_vault_action.do_processing(vault_action_event).await;
+
+        // Assert
+        assert!(result.is_ok());
+
+        // Verify meta pass was added
+        let p_vault = PersistentVault::from(server_vault_action.p_obj.clone());
+        let vault = p_vault.get_vault(owner.user()).await?;
+
+        assert!(!vault.to_data().secrets.is_empty());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_handle_vault_membership_update() -> Result<()> {
+        // Setup
+        let registry = FixtureRegistry::base().await?;
+        let owner = UserDataMember::from(registry.state.empty.user_creds.client.user());
+        let new_member = UserDataMember::from(registry.state.empty.user_creds.vd.user());
+
+        // Get the fixture from the registry
+        let server_vault_action = &registry
+            .state
+            .server_vault_action
+            .server;
+
+        let vault_action_event = {
+            let create_vault_event = CreateVaultEvent::from(owner.clone());
+            let init_event = VaultActionInitEvent::CreateVault(create_vault_event);
+            VaultActionEvent::Init(init_event)
+        };
+        server_vault_action
+            .do_processing(vault_action_event)
+            .await?;
+
+        // Create membership update event
+        let update_event = VaultActionUpdateEvent::UpdateMembership {
+            sender: owner.clone(),
+            update: UserMembership::Member(new_member.clone()),
+            request: JoinClusterEvent {
+                candidate: new_member.user_data.clone(),
+            },
+        };
+
+        let vault_action_event = VaultActionEvent::Update(update_event);
+
+        // Act
+        let result = server_vault_action.do_processing(vault_action_event).await;
+
+        // Assert
+        assert!(result.is_ok());
+
+        // Verify new member was added
+        let p_vault = PersistentVault::from(server_vault_action.p_obj.clone());
+        let vault = p_vault.get_vault(owner.user()).await?;
+
+        assert!(vault
+            .to_data()
+            .is_member(&new_member.user().device.device_id));
+
+        // Verify vault status was created for the new member
+        let status = p_vault.find(new_member.user_data.clone()).await?;
+
+        // Check if the status is Member variant
+        match status {
+            VaultStatus::Member(_) => {
+                // Test passed
+            }
+            _ => {
+                panic!("Expected VaultStatus::Member, got {:?}", status);
+            }
+        }
+
+        Ok(())
+    }
+}

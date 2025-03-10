@@ -153,7 +153,7 @@ pub enum VaultActionRequestEvent {
     AddMetaPass(AddMetaPassEvent),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateVaultEvent {
     pub owner: UserDataMember,

@@ -7,6 +7,7 @@ pub mod fixture {
     use crate::node::common::model::device::device_creds::fixture::DeviceCredentialsFixture;
     use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
     use crate::node::common::model::vault::vault_data::fixture::VaultDataFixture;
+    use crate::node::db::actions::vault::vault_action::fixture::ServerVaultActionFixture;
     use crate::node::db::objects::persistent_object::fixture::PersistentObjectFixture;
     use crate::node::db::objects::persistent_vault::fixture::PersistentVaultFixture;
     use crate::node::db::objects::persistent_vault::spec::VaultSpec;
@@ -59,10 +60,14 @@ pub mod fixture {
                 },
             };
 
+            // Create fixtures that depend on other fixtures
+            let server_vault_action = ServerVaultActionFixture::from(&empty.state);
+
             let base = BaseState {
                 empty: empty.state,
                 spec: base_spec,
                 p_creds,
+                server_vault_action
             };
 
             Ok(FixtureRegistry { state: base })
@@ -95,6 +100,7 @@ pub mod fixture {
         use crate::node::common::model::device::device_creds::fixture::DeviceCredentialsFixture;
         use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
         use crate::node::common::model::vault::vault_data::fixture::VaultDataFixture;
+        use crate::node::db::actions::vault::vault_action::fixture::ServerVaultActionFixture;
         use crate::node::db::objects::persistent_object::fixture::PersistentObjectFixture;
         use crate::node::db::objects::persistent_vault::fixture::PersistentVaultFixture;
         use crate::node::db::repo::persistent_credentials::fixture::PersistentCredentialsFixture;
@@ -120,6 +126,7 @@ pub mod fixture {
             pub empty: EmptyState,
             pub spec: BaseSpec,
             pub p_creds: PersistentCredentialsFixture,
+            pub server_vault_action: ServerVaultActionFixture,
         }
 
         pub struct ExtendedState {
