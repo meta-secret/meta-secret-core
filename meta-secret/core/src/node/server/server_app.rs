@@ -594,11 +594,36 @@ mod test {
         split.spec.client.gw.sync().await?;
         split.spec.client.gw.sync().await?;
         
-        // Start Verification here...
         // Verify that client has received the recovery claim
-
-
-        // End Verification here
+        let client_p_ss = PersistentSharedSecret::from(split.spec.client.p_obj.clone());
+        let client_vault_name = split.spec.client.user.vault_name.clone();
+        
+        // Get the shared secret log for the client
+        let client_ss_log = client_p_ss.get_ss_log_obj(client_vault_name).await?;
+        
+        // Verify that the client has received the recovery claim
+        assert_eq!(1, client_ss_log.claims.len(), "Client should have received exactly one claim");
+        
+        // Get the recovery claim from the client's shared secret log
+        let client_recovery_claim = client_ss_log.claims.values().next().unwrap();
+        
+        // Verify the claim properties match what we expect
+        assert_eq!(client_recovery_claim.sender, split.spec.vd.device_id(), 
+            "Claim sender should be the verification device");
+        assert_eq!(client_recovery_claim.distribution_type, SecretDistributionType::Recover,
+            "Claim should be a recovery claim");
+        assert_eq!(client_recovery_claim.receivers.len(), 1, 
+            "Claim should have exactly one receiver");
+        assert_eq!(client_recovery_claim.receivers[0], split.spec.client.device_id(),
+            "Claim receiver should be the client device");
+        
+        // Verify that the recovery database IDs are present
+        let client_claim_ids = client_recovery_claim.recovery_db_ids();
+        assert_eq!(1, client_claim_ids.len(), "Claim should have exactly one recovery database ID");
+        
+        // Verify that the client claim matches the server claim
+        assert_eq!(client_recovery_claim, recover_claim_on_server, 
+            "Client claim should match server claim");
 
         //Update app state
         let _app_state_after_full_recover = split.spec.vd.client_service.get_app_state().await?;
