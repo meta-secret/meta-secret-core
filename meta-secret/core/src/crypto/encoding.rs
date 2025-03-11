@@ -252,6 +252,46 @@ pub mod base64 {
                 "Should fail when decoding to wrong size array"
             );
         }
+
+        #[test]
+        fn test_equality_same_content() {
+            let base64_1 = Base64Text("test_content".to_string());
+            let base64_2 = Base64Text("test_content".to_string());
+            
+            assert_eq!(base64_1, base64_2);
+        }
+        
+        #[test]
+        fn test_inequality_different_content() {
+            let base64_1 = Base64Text("content_a".to_string());
+            let base64_2 = Base64Text("content_b".to_string());
+            
+            assert_ne!(base64_1, base64_2);
+        }
+        
+        #[test]
+        fn test_hash_consistency() {
+            use std::collections::HashSet;
+            
+            let base64_1 = Base64Text("test_hash".to_string());
+            let base64_2 = Base64Text("test_hash".to_string());
+            let base64_3 = Base64Text("different".to_string());
+            
+            let mut set = HashSet::new();
+            set.insert(base64_1.clone());
+            
+            assert!(set.contains(&base64_2));
+            assert!(!set.contains(&base64_3));
+        }
+        
+        #[test]
+        fn test_clone() {
+            let original = Base64Text("test_clone".to_string());
+            let cloned = original.clone();
+            
+            assert_eq!(original, cloned);
+            assert_eq!(original.base64_str(), cloned.base64_str());
+        }
     }
 }
 

@@ -122,3 +122,126 @@ impl IdString for UuidUrlEnc {
         self.text.base64_str()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generate_hash() {
+        let hash1 = generate_hash();
+        let hash2 = generate_hash();
+        
+        // Verify hash has correct length (32 bytes as hex = 64 chars)
+        assert_eq!(hash1.len(), 64);
+        
+        // Verify uniqueness
+        assert_ne!(hash1, hash2);
+        
+        // Verify it's a valid hex string
+        assert!(hash1.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn test_id48bit_generate() {
+        let id1 = Id48bit::generate();
+        let id2 = Id48bit::generate();
+        
+        // Verify uniqueness
+        assert_ne!(id1.text, id2.text);
+        
+        // Verify format (should have two hyphens)
+        assert_eq!(id1.text.matches('-').count(), 2);
+        
+        // Verify all parts (except hyphens) are hexadecimal
+        let parts: Vec<&str> = id1.text.split('-').collect();
+        assert_eq!(parts.len(), 3);
+        for part in parts {
+            assert!(!part.is_empty());
+            assert!(part.chars().all(|c| c.is_ascii_hexdigit()));
+        }
+    }
+
+    #[test]
+    fn test_id48bit_take() {
+        let id = Id48bit { text: "abc-def-ghi".to_string() };
+        
+        assert_eq!(id.take(3), "abc");
+        assert_eq!(id.take(5), "abc-d");
+        assert_eq!(id.take(0), "");
+        assert_eq!(id.take(11), "abc-def-ghi");
+        assert_eq!(id.take(20), "abc-def-ghi"); // Should not panic
+    }
+
+    #[test]
+    fn test_id48bit_hex() {
+        assert_eq!(Id48bit::hex(0), "--0");
+        assert_eq!(Id48bit::hex(255), "--ff");
+        assert_eq!(Id48bit::hex(1099511627775), "fff-fff-ffff"); // 2^40 - 1
+    }
+
+    #[test]
+    fn test_id48bit_id_str() {
+        let id = Id48bit { text: "abc-def-ghi".to_string() };
+        assert_eq!(id.id_str(), "abc-def-ghi");
+    }
+
+    #[test]
+    fn test_u64idurlenc_from_string() {
+        let id1 = U64IdUrlEnc::from("test1".to_string());
+        let id2 = U64IdUrlEnc::from("test2".to_string());
+        let id1_dupe = U64IdUrlEnc::from("test1".to_string());
+        
+        // Should be deterministic
+        assert_eq!(id1.text.base64_str(), id1_dupe.text.base64_str());
+        
+        // Different input = different output
+        assert_ne!(id1.text.base64_str(), id2.text.base64_str());
+    }
+
+    #[test]
+    fn test_u64idurlenc_take() {
+        let id = U64IdUrlEnc::from("test".to_string());
+        let full = id.text.base64_str();
+        
+        assert_eq!(id.take(3), full.chars().take(3).collect::<String>());
+        assert_eq!(id.take(0), "");
+        assert_eq!(id.take(100), full); // Should not panic
+    }
+
+    #[test]
+    fn test_u64idurlenc_id_str() {
+        let id = U64IdUrlEnc::from("test".to_string());
+        let expected = id.text.base64_str();
+        assert_eq!(id.id_str(), expected);
+    }
+
+    #[test]
+    fn test_uuidurlenc_generate() {
+        let id1 = UuidUrlEnc::generate();
+        let id2 = UuidUrlEnc::generate();
+        
+        // Verify uniqueness
+        assert_ne!(id1.text.base64_str(), id2.text.base64_str());
+    }
+
+    #[test]
+    fn test_uuidurlenc_from_string() {
+        let id1 = UuidUrlEnc::from("test1".to_string());
+        let id2 = UuidUrlEnc::from("test2".to_string());
+        let id1_dupe = UuidUrlEnc::from("test1".to_string());
+        
+        // Should be deterministic
+        assert_eq!(id1.text.base64_str(), id1_dupe.text.base64_str());
+        
+        // Different input = different output
+        assert_ne!(id1.text.base64_str(), id2.text.base64_str());
+    }
+
+    #[test]
+    fn test_uuidurlenc_id_str() {
+        let id = UuidUrlEnc::from("test".to_string());
+        let expected = id.text.base64_str();
+        assert_eq!(id.id_str(), expected);
+    }
+}

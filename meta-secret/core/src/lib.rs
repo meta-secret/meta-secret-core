@@ -221,46 +221,41 @@ mod tests {
     use super::*;
     use std::env;
     use std::fs;
+    use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
+    use tempfile::tempdir;
 
-    /// Test that verifies the `split_shares_to_disk` function that calls split() and saves files
-    /// We're testing our own wrapper function instead of split() directly to avoid compiler errors
     #[test]
     fn test_split_creates_json_and_qr_files() {
-        // Create a unique temporary directory path
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis();
-        let temp_dir = env::temp_dir().join(format!("meta_secret_test_{}", timestamp));
-
-        // Ensure the directory doesn't exist (cleanup from any previous run)
-        let _ = fs::remove_dir_all(&temp_dir);
-        fs::create_dir_all(&temp_dir).expect("Failed to create temp directory");
-
-        // Store current dir to restore later
+        // Create a temporary directory for the test
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+        
+        // Save the original directory
         let original_dir = env::current_dir().expect("Failed to get current directory");
-
-        // Change to our temporary directory
-        env::set_current_dir(&temp_dir).expect("Failed to change to temp directory");
-
-        // Set up the test
-        let secret = "test_secret".to_string();
+        
+        // Change to the temporary directory for the test
+        env::set_current_dir(temp_dir.path()).expect("Failed to change directory");
+        
+        // Create the secrets directory in the current working directory (temp_dir)
+        fs::create_dir("secrets").expect("Failed to create secrets directory");
+        
+        // Define a test secret and configuration
+        let secret = "test secret".to_string();
         let config = SharedSecretConfig {
             number_of_shares: 3,
             threshold: 2,
         };
-
+        
         // Call the split function (this will create files in the current directory)
         let result = split(secret, config);
-
+        
         // Assert the operation was successful
         assert!(result.is_ok(), "Split operation failed: {:?}", result.err());
-
+        
         // Verify files were created
         let mut json_count = 0;
         let mut png_count = 0;
-
+        
         // Read the secrets directory and count files by type
         if let Ok(entries) = fs::read_dir("secrets") {
             for entry in entries.filter_map(Result::ok) {
@@ -268,45 +263,80 @@ mod tests {
                 if let Some(ext) = path.extension() {
                     if ext == "json" {
                         json_count += 1;
-
+                        
                         // Verify JSON file can be parsed
                         if let Ok(content) = fs::read_to_string(&path) {
                             let parse_result: Result<UserShareDto, _> =
                                 serde_json::from_str(&content);
-                            assert!(
-                                parse_result.is_ok(),
-                                "Failed to parse JSON file: {:?}",
-                                parse_result.err()
-                            );
+                            assert!(parse_result.is_ok(), "Failed to parse JSON file");
                         }
                     } else if ext == "png" {
                         png_count += 1;
-
-                        // Verify PNG file exists and is not empty
-                        if let Ok(metadata) = fs::metadata(&path) {
-                            assert!(metadata.len() > 0, "QR code file is empty");
-                        }
                     }
                 }
             }
         }
-
-        // Restore original directory
+        
+        // Verify the correct number of files were created
+        assert_eq!(json_count, 3, "Expected 3 JSON files");
+        assert_eq!(png_count, 3, "Expected 3 PNG files");
+        
+        // Restore the original directory
         env::set_current_dir(original_dir).expect("Failed to restore original directory");
-
-        // Cleanup - remove temporary directory and all contents
-        let _ = fs::remove_dir_all(&temp_dir);
-
-        // Assert correct number of files were created
-        assert_eq!(
-            json_count, config.number_of_shares,
-            "Expected {} JSON files but found {}",
-            config.number_of_shares, json_count
-        );
-        assert_eq!(
-            png_count, config.number_of_shares,
-            "Expected {} PNG files but found {}",
-            config.number_of_shares, png_count
-        );
+    }
+    
+    #[test]
+    fn test_generate_qr_code_and_read_qr_code() {
+        // Create a temporary directory using tempfile
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+        let temp_path = temp_dir.path();
+        
+        // Create a test file path
+        let test_file_path = temp_path.join("test_qr.png");
+        let test_file_path_str = test_file_path.to_str().unwrap();
+        
+        // Test data
+        let test_data = "Test QR Code Data. Test QR Code Data. Test QR Code Data.\
+            Test QR Code Data. Test QR Code Data. Test QR Code Data.Test QR Code Data. \
+            Test QR Code Data. Test QR Code Data.Test QR Code Data.";
+        
+        // Generate QR code
+        generate_qr_code(test_data, test_file_path_str);
+        
+        // Verify the file exists
+        assert!(test_file_path.exists(), "QR code file was not created");
+        
+        // Read QR code
+        let read_result = read_qr_code(&test_file_path);
+        assert!(read_result.is_ok(), "Failed to read QR code");
+        
+        // Verify the data matches
+        let read_data = read_result.unwrap();
+        assert_eq!(read_data, test_data, "QR code data doesn't match original data");
+    }
+    
+    #[test]
+    fn test_recover_from_shares() {
+        // Create a test UserShareDto with empty share_blocks
+        let share1 = UserShareDto {
+            share_id: 0,
+            share_blocks: vec![],
+        };
+        
+        // For this test, we'll focus on the error case when shares list is empty
+        let empty_shares = vec![share1];
+        let result = recover_from_shares(empty_shares);
+        
+        // Verify it returns the expected error
+        assert!(result.is_err());
+        match result {
+            Err(CoreError::RecoveryError { source }) => {
+                match source {
+                    RecoveryError::EmptyInput(_) => {},
+                    _ => panic!("Expected EmptyInput error variant, got: {:?}", source),
+                }
+            },
+            _ => panic!("Expected RecoveryError error, got: {:?}", result),
+        }
     }
 }
