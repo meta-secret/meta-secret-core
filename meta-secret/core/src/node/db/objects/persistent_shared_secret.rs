@@ -73,6 +73,15 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
     }
 
     #[instrument(skip(self))]
+    pub async fn find_ss_device_log_tail_event(
+        &self,
+        device_id: DeviceId,
+    ) -> Result<Option<SsDeviceLogObject>> {
+        let obj_desc = SsDeviceLogDescriptor::from(device_id);
+        self.p_obj.find_tail_event(obj_desc).await
+    }
+
+    #[instrument(skip(self))]
     pub async fn save_ss_log_event(&self, claim: SsClaim) -> Result<()> {
         info!("Saving ss_log event");
 

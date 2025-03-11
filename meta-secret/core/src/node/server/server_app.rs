@@ -133,6 +133,7 @@ pub mod fixture {
 
 #[cfg(test)]
 mod test {
+    use std::process::exit;
     use crate::meta_tests::fixture_util::fixture::states::{EmptyState, ExtendedState};
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::meta_tests::spec::test_spec::TestSpec;
@@ -157,7 +158,7 @@ mod test {
     use crate::node::app::meta_app::meta_client_service::MetaClientService;
     use crate::node::common::model::crypto::aead::EncryptedMessage;
     use crate::node::common::model::device::common::DeviceId;
-    use crate::node::common::model::secret::SsDistributionId;
+    use crate::node::common::model::secret::{SecretDistributionType, SsDistributionId};
     use crate::node::common::model::{ApplicationState, VaultFullInfo};
     use crate::node::db::descriptors::shared_secret_descriptor::{
         SsDeviceLogDescriptor, SsWorkflowDescriptor,
@@ -556,6 +557,21 @@ mod test {
             .handle_client_request(vd_app_state, recover)
             .await?;
 
+        // verify ss device log on vd
+        let p_ss = PersistentSharedSecret::from(split.spec.vd.p_obj.clone());
+        let vd_device_id = split.spec.vd.device_id();
+        let vd_device_log_tail_event = p_ss
+            .find_ss_device_log_tail_event(vd_device_id.clone())
+            .await?
+            .unwrap();
+        let vd_ss_claim = vd_device_log_tail_event.to_distribution_request();
+        assert_eq!(vd_ss_claim.sender, vd_device_id);
+        assert_eq!(vd_ss_claim.distribution_type, SecretDistributionType::Recover);
+        assert_eq!(vd_ss_claim.receivers.len(), 1);
+        assert_eq!(vd_ss_claim.receivers[0], split.spec.client.device_id());
+        
+        //verify server state
+        
         split.spec.client.gw.sync().await?;
         split.spec.client.gw.sync().await?;
         split.spec.client.orchestrator.orchestrate().await?;
@@ -574,7 +590,7 @@ mod test {
         let recover_claim_on_server = ss_log.claims.values().next().unwrap();
         let claim_ids = recover_claim_on_server.recovery_db_ids();
         assert_eq!(1, claim_ids.len());
-        
+
         split.spec.vd.gw.sync().await?;
         split.spec.vd.gw.sync().await?;
 
