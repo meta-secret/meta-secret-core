@@ -21,7 +21,7 @@ use anyhow::{anyhow, bail, Ok};
 use async_trait::async_trait;
 use derive_more::From;
 use tracing::{info, instrument};
-use crate::node::common::model::secret::SecretDistributionType;
+use crate::node::common::model::secret::{SecretDistributionType, SsClaim};
 
 #[async_trait(? Send)]
 pub trait DataSyncApi {
@@ -31,7 +31,7 @@ pub trait DataSyncApi {
     ) -> Result<Vec<GenericKvLogEvent>>;
 
     async fn handle_write(&self, server_device: DeviceData, event: GenericKvLogEvent)
-        -> Result<()>;
+                          -> Result<()>;
 }
 
 #[derive(From)]
@@ -136,29 +136,51 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                 self.p_obj.repo.save(ss_object.clone()).await?;
 
                 //don't forget to update claim state?
-                let dist = ss_object.to_distribution_data();
+                let wf = ss_object.to_distribution_data();
 
                 let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
                 let maybe_ss_log_event = p_ss_log
-                    .find_ss_log_tail_event(dist.vault_name.clone())
+                    .find_ss_log_tail_event(wf.vault_name.clone())
                     .await?;
                 match maybe_ss_log_event {
                     None => {
-                        bail!("No claim found for distribution: {:?}", dist)
+                        bail!("No claim found for distribution: {:?}", wf)
                     }
                     Some(ss_event) => {
-                        let device_id = dist
-                            .secret_message
-                            .cipher_text()
-                            .channel
-                            .receiver()
-                            .to_device_id();
+                        let ss_log_data = ss_event.to_data();
+                        let maybe_claim = ss_log_data.claims.get(&wf.claim_id.id);
 
-                        let new_ss_log_data = ss_event.to_data().sent(dist.claim_id.id, device_id);
-                        let new_ss_log_event = p_ss_log
-                            .create_new_ss_log_object(new_ss_log_data, dist.vault_name)
-                            .await?;
-                        self.p_obj.repo.save(new_ss_log_event).await?;
+                        match maybe_claim {
+                            None => {
+                                bail!("Invalid! No claim found for distribution: {:?}", wf)
+                            }
+                            Some(claim) => {
+                                let device_id = match claim.distribution_type {
+                                    SecretDistributionType::Split => {
+                                        wf
+                                            .secret_message
+                                            .cipher_text()
+                                            .channel
+                                            .receiver()
+                                            .to_device_id()
+                                    }
+                                    SecretDistributionType::Recover => {
+                                        wf
+                                            .secret_message
+                                            .cipher_text()
+                                            .channel
+                                            .sender()
+                                            .to_device_id()
+                                    }
+                                };
+
+                                let new_ss_log_data = ss_log_data.sent(wf.claim_id.id, device_id);
+                                let new_ss_log_event = p_ss_log
+                                    .create_new_ss_log_object(new_ss_log_data, wf.vault_name)
+                                    .await?;
+                                self.p_obj.repo.save(new_ss_log_event).await?;
+                            }
+                        }
                     }
                 }
             }
@@ -292,29 +314,41 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
                 let receiver_device = request.sender.device.device_id.clone();
 
-                // complete distribution action by sending the distribution event to the receiver
-                if dist_id.distribution_id.receiver.eq(&receiver_device) {
-                    let desc = match claim.distribution_type {
-                        SecretDistributionType::Split => {
-                            SsWorkflowDescriptor::Distribution(dist_id.distribution_id.clone())
-                        }
-                        SecretDistributionType::Recover => {
-                            SsWorkflowDescriptor::Recovery(dist_id.clone())
-                        }
-                    };
-                    
-                    let dist_obj = self.p_obj.find_tail_event(desc).await?;
-
-                    if let Some(dist_event) = dist_obj {
-                        let ss_dist_obj_id = dist_event.obj_id();
-                        commit_log.push(dist_event.to_generic());
-                        self.p_obj.repo.delete(ss_dist_obj_id).await;
-
-                        let claim_id = dist_id.claim_id.id;
-                        updated_ss_log_data =
-                            updated_ss_log_data.complete(claim_id, receiver_device);
-                        updated_state = true;
+                let for_delivery = match claim.distribution_type {
+                    SecretDistributionType::Split => {
+                        // If the device is a receiver of the share (vise versa to recovery)
+                        dist_id.distribution_id.receiver.eq(&receiver_device)
                     }
+                    SecretDistributionType::Recover => {
+                        // The device that sent recovery claim request is a receiver of the share
+                        dist_id.sender.eq(&receiver_device)
+                    }
+                };
+
+                if !for_delivery { 
+                    continue;
+                }
+                
+                let desc = match claim.distribution_type {
+                    SecretDistributionType::Split => {
+                        SsWorkflowDescriptor::Distribution(dist_id.distribution_id.clone())
+                    }
+                    SecretDistributionType::Recover => {
+                        SsWorkflowDescriptor::Recovery(dist_id.clone())
+                    }
+                };
+
+                let dist_obj = self.p_obj.find_tail_event(desc).await?;
+
+                if let Some(dist_event) = dist_obj {
+                    let ss_dist_obj_id = dist_event.obj_id();
+                    commit_log.push(dist_event.to_generic());
+                    self.p_obj.repo.delete(ss_dist_obj_id).await;
+
+                    let claim_id = dist_id.claim_id.id;
+                    updated_ss_log_data =
+                        updated_ss_log_data.complete(claim_id, receiver_device);
+                    updated_state = true;
                 }
             }
         }

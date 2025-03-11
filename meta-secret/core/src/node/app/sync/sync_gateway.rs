@@ -5,6 +5,7 @@ use tracing::{debug, error, info, instrument};
 
 use crate::node::app::sync::sync_protocol::SyncProtocol;
 use crate::node::common::model::device::common::DeviceId;
+use crate::node::common::model::secret::{SecretDistributionType, SsDistributionStatus};
 use crate::node::common::model::user::common::UserId;
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::vault::VaultStatus;
@@ -202,19 +203,41 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
 
         if let Some(ss_log) = maybe_ss_log {
             for (_, claim) in ss_log.to_data().claims {
-                let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
-                let wf_events = p_ss.get_ss_workflow_events(claim.clone()).await?;
-                for wf_event in wf_events {
-                    if claim.sender.eq(user_creds.device_id()) {
-                        let obj_id = wf_event.obj_id();
-                        let request = {
-                            let event = WriteSyncRequest::Event(wf_event.to_generic());
-                            SyncRequest::Write(event)
-                        };
-                        self.sync.send(request).await?;
-                        self.p_obj.repo.delete(obj_id).await;
-                    }
+                let is_delivered = claim.status.status() == SsDistributionStatus::Delivered;
+                if is_delivered {
+                    continue;
                 }
+
+                let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
+                match claim.distribution_type {
+                    SecretDistributionType::Split => {
+                        let wf_events = p_ss.get_distributions(claim.clone()).await?;
+
+                        for wf_event in wf_events {
+                            if claim.sender.eq(user_creds.device_id()) {
+                                let obj_id = wf_event.obj_id();
+                                let request = {
+                                    let event = WriteSyncRequest::Event(wf_event.to_generic());
+                                    SyncRequest::Write(event)
+                                };
+                                self.sync.send(request).await?;
+                                self.p_obj.repo.delete(obj_id).await;
+                            }
+                        }
+                    }
+                    SecretDistributionType::Recover => {
+                        let wf_events = p_ss.get_recoveries(claim.clone()).await?;
+                        for wf_event in wf_events {
+                            let obj_id = wf_event.obj_id();
+                            let request = {
+                                let event = WriteSyncRequest::Event(wf_event.to_generic());
+                                SyncRequest::Write(event)
+                            };
+                            self.sync.send(request).await?;
+                            self.p_obj.repo.delete(obj_id).await;
+                        }
+                    }
+                };
             }
         }
 

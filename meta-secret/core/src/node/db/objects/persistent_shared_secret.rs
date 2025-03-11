@@ -28,14 +28,19 @@ pub struct PersistentSharedSecret<Repo: KvLogEventRepo> {
 impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
     pub async fn get_ss_workflow_events(&self, ss_claim: SsClaim) -> Result<Vec<SsWorkflowObject>> {
         let mut events = vec![];
-        for distribution_id in ss_claim.distribution_ids() {
-            let desc = SsWorkflowDescriptor::Distribution(distribution_id);
-            let tail_event = self.p_obj.find_tail_event(desc).await?;
-            if let Some(event) = tail_event {
-                events.push(event);
-            }
-        }
+        
+        let distributions = self.get_distributions(ss_claim.clone()).await?;
+        events.extend(distributions);
 
+        // Synchronize claims (recovery requests)
+        let recoveries = self.get_recoveries(ss_claim).await?;
+        events.extend(recoveries);
+        
+        Ok(events)
+    }
+
+    pub async fn get_recoveries(&self, ss_claim: SsClaim) -> Result<Vec<SsWorkflowObject>> {
+        let mut events = vec![];
         // Synchronize claims (recovery requests)
         for claim_id in ss_claim.recovery_db_ids() {
             let claim_id_desc = SsWorkflowDescriptor::Recovery(claim_id);
@@ -45,6 +50,18 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
             }
         }
 
+        Ok(events)
+    }
+
+    pub async fn get_distributions(&self, ss_claim: SsClaim) -> Result<Vec<SsWorkflowObject>> {
+        let mut events = vec![];
+        for distribution_id in ss_claim.distribution_ids() {
+            let desc = SsWorkflowDescriptor::Distribution(distribution_id);
+            let tail_event = self.p_obj.find_tail_event(desc).await?;
+            if let Some(event) = tail_event {
+                events.push(event);
+            }
+        }
         Ok(events)
     }
 
