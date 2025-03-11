@@ -556,8 +556,6 @@ mod test {
 
     #[tokio::test]
     async fn test_secret_split() -> Result<()> {
-        setup_tracing()?;
-
         let spec = ServerAppSignUpSpec::build().await?;
         let split = SplitSpec { spec };
 
