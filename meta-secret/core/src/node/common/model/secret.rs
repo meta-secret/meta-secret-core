@@ -149,22 +149,22 @@ impl SsDistributionCompositeStatus {
     }
 
     pub fn status(&self) -> SsDistributionStatus {
-        let pending = self
+        let is_pending = self
             .statuses
             .values()
             .any(|dist_status| matches!(dist_status, SsDistributionStatus::Pending));
 
-        let delivered = self
+        let is_sent = self
             .statuses
             .values()
-            .all(|dist_status| matches!(dist_status, SsDistributionStatus::Delivered));
+            .any(|dist_status| matches!(dist_status, SsDistributionStatus::Sent));
 
-        if pending {
+        if is_pending {
             SsDistributionStatus::Pending
-        } else if delivered {
-            SsDistributionStatus::Delivered
-        } else {
+        } else if is_sent {
             SsDistributionStatus::Sent
+        } else {
+            SsDistributionStatus::Delivered
         }
     }
 }

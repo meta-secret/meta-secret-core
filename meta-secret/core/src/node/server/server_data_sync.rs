@@ -2,6 +2,7 @@ use std::cmp::PartialEq;
 use std::sync::Arc;
 
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
+use crate::node::common::model::secret::{SecretDistributionType, SsClaim};
 use crate::node::common::model::vault::vault::VaultStatus;
 use crate::node::db::actions::vault::vault_action::ServerVaultAction;
 use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
@@ -21,7 +22,6 @@ use anyhow::{anyhow, bail, Ok};
 use async_trait::async_trait;
 use derive_more::From;
 use tracing::{info, instrument};
-use crate::node::common::model::secret::{SecretDistributionType, SsClaim};
 
 #[async_trait(? Send)]
 pub trait DataSyncApi {
@@ -31,7 +31,7 @@ pub trait DataSyncApi {
     ) -> Result<Vec<GenericKvLogEvent>>;
 
     async fn handle_write(&self, server_device: DeviceData, event: GenericKvLogEvent)
-                          -> Result<()>;
+        -> Result<()>;
 }
 
 #[derive(From)]
@@ -156,22 +156,18 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                             }
                             Some(claim) => {
                                 let device_id = match claim.distribution_type {
-                                    SecretDistributionType::Split => {
-                                        wf
-                                            .secret_message
-                                            .cipher_text()
-                                            .channel
-                                            .receiver()
-                                            .to_device_id()
-                                    }
-                                    SecretDistributionType::Recover => {
-                                        wf
-                                            .secret_message
-                                            .cipher_text()
-                                            .channel
-                                            .sender()
-                                            .to_device_id()
-                                    }
+                                    SecretDistributionType::Split => wf
+                                        .secret_message
+                                        .cipher_text()
+                                        .channel
+                                        .receiver()
+                                        .to_device_id(),
+                                    SecretDistributionType::Recover => wf
+                                        .secret_message
+                                        .cipher_text()
+                                        .channel
+                                        .sender()
+                                        .to_device_id(),
                                 };
 
                                 let new_ss_log_data = ss_log_data.sent(wf.claim_id.id, device_id);
@@ -325,10 +321,10 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                     }
                 };
 
-                if !for_delivery { 
+                if !for_delivery {
                     continue;
                 }
-                
+
                 let desc = match claim.distribution_type {
                     SecretDistributionType::Split => {
                         SsWorkflowDescriptor::Distribution(dist_id.distribution_id.clone())
@@ -345,9 +341,19 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                     commit_log.push(dist_event.to_generic());
                     self.p_obj.repo.delete(ss_dist_obj_id).await;
 
-                    let claim_id = dist_id.claim_id.id;
-                    updated_ss_log_data =
-                        updated_ss_log_data.complete(claim_id, dist_id.distribution_id.receiver);
+                    match claim.distribution_type {
+                        SecretDistributionType::Split => {
+                            let claim_id = dist_id.claim_id.id;
+                            updated_ss_log_data = updated_ss_log_data
+                                .complete(claim_id, dist_id.distribution_id.receiver);
+                        }
+                        SecretDistributionType::Recover => {
+                            //skip: we can't complete the claim, otherwise we won't know 
+                            //on the sender device that the claim exists.
+                            //Completion event needs to be sent by the recovery claim creator
+                        }
+                    }
+
                     updated_state = true;
                 }
             }
@@ -358,7 +364,10 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             let new_ss_log_obj = p_ss
                 .create_new_ss_log_object(updated_ss_log_data, request.sender.vault_name.clone())
                 .await?;
-            self.p_obj.repo.save(new_ss_log_obj.clone().to_generic()).await?;
+            self.p_obj
+                .repo
+                .save(new_ss_log_obj.clone().to_generic())
+                .await?;
             commit_log.push(new_ss_log_obj.to_generic());
         }
 

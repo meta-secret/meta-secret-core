@@ -4,12 +4,15 @@ use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::objects::persistent_vault::VaultTail;
 use derive_more::From;
 use serde::{Deserialize, Serialize};
+use crate::node::common::model::secret::{SsRecoveryId};
+use crate::node::common::model::vault::vault::VaultName;
 
 #[derive(Clone, Debug, PartialEq, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ReadSyncRequest {
     Vault(VaultRequest),
     SsRequest(SsRequest),
+    SsRecoveryCompletion(SsRecoveryCompletion),
     ServerTail(ServerTailRequest),
 }
 
@@ -24,6 +27,13 @@ pub enum WriteSyncRequest {
 pub enum SyncRequest {
     Read(ReadSyncRequest),
     Write(WriteSyncRequest),
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SsRecoveryCompletion {
+    pub vault_name: VaultName,
+    pub recovery_id: SsRecoveryId,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
