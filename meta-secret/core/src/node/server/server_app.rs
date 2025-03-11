@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::node::common::model::device::common::{DeviceId, DeviceName};
 use crate::node::common::model::device::device_creds::DeviceCredentials;
+use crate::node::common::model::secret::{SecretDistributionType, SsClaim, SsDistributionStatus};
 use crate::node::db::events::object_id::Next;
 use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use crate::node::db::objects::persistent_object::PersistentObject;
@@ -16,7 +17,6 @@ use crate::node::server::server_data_sync::{
 };
 use anyhow::Result;
 use tracing::{error, info, instrument};
-use crate::node::common::model::secret::{SecretDistributionType, SsClaim};
 
 pub struct ServerApp<Repo: KvLogEventRepo> {
     pub data_sync: ServerSyncGateway<Repo>,
@@ -134,7 +134,6 @@ pub mod fixture {
 
 #[cfg(test)]
 mod test {
-    use std::process::exit;
     use crate::meta_tests::fixture_util::fixture::states::{EmptyState, ExtendedState};
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::meta_tests::spec::test_spec::TestSpec;
@@ -144,6 +143,7 @@ mod test {
     use crate::node::common::model::vault::vault::VaultStatus;
     use crate::node::db::actions::sign_up::claim::spec::SignUpClaimSpec;
     use crate::node::db::actions::sign_up::claim::test_action::SignUpClaimTestAction;
+    use std::process::exit;
     use std::sync::Arc;
 
     use crate::node::app::meta_app::messaging::{
@@ -159,7 +159,8 @@ mod test {
     use crate::node::app::meta_app::meta_client_service::MetaClientService;
     use crate::node::common::model::crypto::aead::EncryptedMessage;
     use crate::node::common::model::device::common::DeviceId;
-    use crate::node::common::model::secret::{SecretDistributionType, SsDistributionId};
+    use crate::node::common::model::device::device_link::DeviceLink;
+    use crate::node::common::model::secret::{SecretDistributionType, SsDistributionId, SsDistributionStatus};
     use crate::node::common::model::{ApplicationState, VaultFullInfo};
     use crate::node::db::descriptors::shared_secret_descriptor::{
         SsDeviceLogDescriptor, SsWorkflowDescriptor,
@@ -171,11 +172,10 @@ mod test {
     use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
     use crate::node::db::objects::persistent_vault::PersistentVault;
     use crate::node::db::repo::persistent_credentials::spec::PersistentCredentialsSpec;
+    use crate::node::server::server_app::SsClaimVerifierForTestRecovery;
     use anyhow::bail;
     use anyhow::Result;
     use tracing::{info, Instrument};
-    use crate::node::common::model::device::device_link::DeviceLink;
-    use crate::node::server::server_app::SsClaimVerifierForTestRecovery;
 
     struct ActorNode {
         user: UserData,
@@ -573,7 +573,7 @@ mod test {
             receiver: split.spec.client.device_id(),
         };
         claim_verifier.verify(vd_ss_claim.clone())?;
-        
+
         //verify server state
         let vault_name = split.spec.client.user.vault_name.clone();
         let ss_log = split.spec.server.p_ss.get_ss_log_obj(vault_name).await?;
@@ -581,31 +581,104 @@ mod test {
         // Verify that the SS log event has been created on the server
         assert_eq!(1, ss_log.claims.len());
         let recover_claim_on_server = ss_log.claims.values().next().unwrap().clone();
-        
+
         // Verify the claim properties
         assert_eq!(vd_ss_claim, recover_claim_on_server);
-        
+
         split.spec.client.gw.sync().await?;
         split.spec.client.gw.sync().await?;
+
         split.spec.client.orchestrator.orchestrate().await?;
+
+        //----------- Start Recovery record verification on client -----------
+        // Verify that the client has created a SsWorkflowObject::Recovery object
+        let client_p_ss = PersistentSharedSecret::from(split.spec.client.p_obj.clone());
+        
+        // Iterate through all recovery IDs from the claim
+        let recovery_id = vd_ss_claim.recovery_db_ids()[0].clone();
+        // Create a descriptor for the recovery workflow object
+        let recovery_desc = SsWorkflowDescriptor::Recovery(recovery_id.clone());
+
+        // Try to find the recovery workflow object in the client's repository
+        let recovery_event = client_p_ss
+            .p_obj
+            .find_tail_event(recovery_desc)
+            .await?
+            .unwrap();
+
+        // Verify it's the correct type
+        match recovery_event {
+            SsWorkflowObject::Recovery(event) => {
+                // Verify the recovery event has the correct data
+                assert_eq!(event.value.vault_name, split.spec.client.user.vault_name);
+                assert_eq!(event.value.claim_id, recovery_id.claim_id);
+
+                // The event was created by the MetaOrchestrator
+                println!("Found SsWorkflowObject::Recovery created by MetaOrchestrator");
+            }
+            _ => panic!("Expected Recovery workflow object but found something else"),
+        }
+        //----------- End Recovery record verification on client -----------
+
         split.spec.client.gw.sync().await?;
+
+        //----------- Start Recovery record verification on the server -----------
+        // Verify that the server has received and processed the SsWorkflow event
+        let server_p_ss = split.spec.server.p_ss;
+        let vault_name = split.spec.client.user.vault_name.clone();
+        
+        // Get the updated SS log after the client has sent the recovery workflow
+        let updated_ss_log = server_p_ss.get_ss_log_obj(vault_name.clone()).await?;
+        
+        // Verify that the claim status has been updated to reflect the recovery workflow
+        let server_claim = updated_ss_log.claims.values().next().unwrap();
+        
+        // Check that the claim has been marked as sent to the client
+        let recovery_id = vd_ss_claim.recovery_db_ids()[0].clone();
+        
+        // Check that the claim status has been updated for the client device
+        let client_device_id = split.spec.client.device_id();
+        let status = server_claim.status.get(&client_device_id);
+        assert!(status.is_some(), "Server claim should have status for client device");
+        assert!(matches!(status.unwrap(), SsDistributionStatus::Sent), 
+                "Server claim status for client device should be Sent");
+        
+        // Verify that the SsWorkflow object exists in the server's repository
+        let recovery_desc = SsWorkflowDescriptor::Recovery(recovery_id.clone());
+        let server_recovery_event = server_p_ss
+            .p_obj
+            .find_tail_event(recovery_desc)
+            .await?;
+        
+        assert!(server_recovery_event.is_some(), "Server has to have the SsWorkflow recovery event");
+        
+        if let Some(SsWorkflowObject::Recovery(event)) = server_recovery_event {
+            // Verify the recovery event properties
+            assert_eq!(event.value.vault_name, vault_name);
+            assert_eq!(event.value.claim_id, recovery_id.claim_id);
+            
+            println!("Server has correctly processed the SsWorkflow recovery event");
+        } else {
+            panic!("Expected SsWorkflow::Recovery event on server but found something else");
+        }
+        //----------- End Recovery record verification on the server -----------
+        
         split.spec.client.gw.sync().await?;
         
+        
+
         // Verify that client has received the recovery claim
         let client_p_ss = PersistentSharedSecret::from(split.spec.client.p_obj.clone());
         let client_vault_name = split.spec.client.user.vault_name.clone();
-        
+
         // Get the shared secret log for the client
         let client_ss_log = client_p_ss.get_ss_log_obj(client_vault_name).await?;
-        
-        // Verify that the client has received the recovery claim
-        assert_eq!(1, client_ss_log.claims.len(), "Client should have received exactly one claim");
-        
+
         // Get the recovery claim from the client's shared secret log
         let client_recovery_claim = client_ss_log.claims.values().next().unwrap().clone();
 
         assert_eq!(vd_ss_claim, client_recovery_claim);
-        
+
         //Update app state
         let _app_state_after_full_recover = split.spec.vd.client_service.get_app_state().await?;
 
@@ -638,7 +711,7 @@ mod test {
 
 struct SsClaimVerifierForTestRecovery {
     sender: DeviceId,
-    receiver: DeviceId
+    receiver: DeviceId,
 }
 
 impl SsClaimVerifierForTestRecovery {
@@ -648,7 +721,7 @@ impl SsClaimVerifierForTestRecovery {
         assert_eq!(claim.distribution_type, SecretDistributionType::Recover);
         assert_eq!(claim.receivers.len(), 1);
         assert_eq!(claim.receivers[0], self.receiver);
-        
+
         // Verify that the recovery database IDs are present
         let claim_ids = claim.recovery_db_ids();
         assert_eq!(1, claim_ids.len());

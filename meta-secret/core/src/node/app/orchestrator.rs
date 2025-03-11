@@ -15,6 +15,7 @@ use anyhow::bail;
 use anyhow::Result;
 use log::{debug, warn};
 use std::sync::Arc;
+use crate::node::common::model::user::common::UserMembership;
 
 /// Contains business logic of secrets management and login/sign-up actions.
 /// Orchestrator is in charge of what is meta secret is made for (the most important part of the app).
@@ -97,11 +98,6 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
             let local_device = self.user_creds.device_id();
 
             let claim_sender_device = claim_db_id.sender.clone();
-            if claim_sender_device.eq(local_device) {
-                warn!("No OP");
-                continue;
-            }
-
             let claim_receiver = claim_db_id.distribution_id.receiver.clone();
             if !claim_receiver.eq(local_device) {
                 debug!("Ignore any claims for other devices");
@@ -113,7 +109,9 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                 .await?;
 
             let SsWorkflowObject::Distribution(dist_event) = ss_dist_obj else {
-                bail!("Ss distribution object not found");
+                let msg_err = "Ss distribution object not found.";
+                let msg_info = "Verify the Distribution event is not messed up (sender and receiver not swapped)";
+                bail!("{} {}",msg_err, msg_info);
             };
 
             let KvLogEvent { value: share, .. } = dist_event;
@@ -124,27 +122,34 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                     bail!("Claim sender is not a member of the vault")
                 }
                 Some(claim_sender) => {
-                    // re encrypt message
-                    let msg_receiver = &claim_sender.user_data().device.keys.transport_pk;
-                    let msg = self
-                        .user_creds
-                        .device_creds
-                        .secret_box
-                        .re_encrypt(share.secret_message.clone(), msg_receiver)?;
+                    match claim_sender {
+                        UserMembership::Outsider(_) => {
+                            bail!("Claim sender is not a member of the vault")
+                        }
+                        UserMembership::Member(_) => {
+                            // re encrypt message
+                            let msg_receiver = &claim_sender.user_data().device.keys.transport_pk;
+                            let msg = self
+                                .user_creds
+                                .device_creds
+                                .secret_box
+                                .re_encrypt(share.secret_message.clone(), msg_receiver)?;
 
-                    //compare with claim dist id, if match then create a claim
-                    let key = KvKey::from(SsWorkflowDescriptor::Recovery(claim_db_id.clone()));
+                            //compare with claim dist id, if match then create a claim
+                            let key = KvKey::from(SsWorkflowDescriptor::Recovery(claim_db_id.clone()));
 
-                    let new_claim = SsWorkflowObject::Recovery(KvLogEvent {
-                        key,
-                        value: SecretDistributionData {
-                            vault_name: self.user_creds.vault_name.clone(),
-                            claim_id: claim_db_id.claim_id,
-                            secret_message: msg,
-                        },
-                    });
+                            let new_wf_event = SsWorkflowObject::Recovery(KvLogEvent {
+                                key,
+                                value: SecretDistributionData {
+                                    vault_name: self.user_creds.vault_name.clone(),
+                                    claim_id: claim_db_id.claim_id,
+                                    secret_message: msg,
+                                },
+                            });
 
-                    p_ss.p_obj.repo.save(new_claim).await?;
+                            p_ss.p_obj.repo.save(new_wf_event).await?;
+                        }
+                    }
                 }
             }
         }
