@@ -312,16 +312,16 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                     bail!("Invalid state. Server can't manage encrypted shares");
                 };
 
-                let receiver_device = request.sender.device.device_id.clone();
+                let request_sender_device = request.sender.device.device_id.clone();
 
                 let for_delivery = match claim.distribution_type {
                     SecretDistributionType::Split => {
                         // If the device is a receiver of the share (vise versa to recovery)
-                        dist_id.distribution_id.receiver.eq(&receiver_device)
+                        dist_id.distribution_id.receiver.eq(&request_sender_device)
                     }
                     SecretDistributionType::Recover => {
                         // The device that sent recovery claim request is a receiver of the share
-                        dist_id.sender.eq(&receiver_device)
+                        dist_id.sender.eq(&request_sender_device)
                     }
                 };
 
@@ -347,7 +347,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
                     let claim_id = dist_id.claim_id.id;
                     updated_ss_log_data =
-                        updated_ss_log_data.complete(claim_id, receiver_device);
+                        updated_ss_log_data.complete(claim_id, dist_id.distribution_id.receiver);
                     updated_state = true;
                 }
             }
@@ -358,7 +358,8 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             let new_ss_log_obj = p_ss
                 .create_new_ss_log_object(updated_ss_log_data, request.sender.vault_name.clone())
                 .await?;
-            self.p_obj.repo.save(new_ss_log_obj.to_generic()).await?;
+            self.p_obj.repo.save(new_ss_log_obj.clone().to_generic()).await?;
+            commit_log.push(new_ss_log_obj.to_generic());
         }
 
         Ok(commit_log)

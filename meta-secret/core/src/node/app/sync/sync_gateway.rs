@@ -226,6 +226,10 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                         }
                     }
                     SecretDistributionType::Recover => {
+                        if claim.sender.eq(user_creds.device_id()) {
+                            continue;
+                        }
+                        
                         let wf_events = p_ss.get_recoveries(claim.clone()).await?;
                         for wf_event in wf_events {
                             let obj_id = wf_event.obj_id();
