@@ -21,6 +21,7 @@ use anyhow::{anyhow, bail, Ok};
 use async_trait::async_trait;
 use derive_more::From;
 use tracing::{info, instrument};
+use crate::node::common::model::secret::SecretDistributionType;
 
 #[async_trait(? Send)]
 pub trait DataSyncApi {
@@ -293,7 +294,15 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
                 // complete distribution action by sending the distribution event to the receiver
                 if dist_id.distribution_id.receiver.eq(&receiver_device) {
-                    let desc = SsWorkflowDescriptor::Distribution(dist_id.distribution_id.clone());
+                    let desc = match claim.distribution_type {
+                        SecretDistributionType::Split => {
+                            SsWorkflowDescriptor::Distribution(dist_id.distribution_id.clone())
+                        }
+                        SecretDistributionType::Recover => {
+                            SsWorkflowDescriptor::Recovery(dist_id.clone())
+                        }
+                    };
+                    
                     let dist_obj = self.p_obj.find_tail_event(desc).await?;
 
                     if let Some(dist_event) = dist_obj {

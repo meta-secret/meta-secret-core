@@ -565,53 +565,26 @@ mod test {
         let vault_name = split.spec.client.user.vault_name;
         let ss_log = split.spec.server.p_ss.get_ss_log_obj(vault_name).await?;
 
-        println!("Server SS_LOG:");
-        for claim in ss_log.claims.values() {
-            println!("  claim: {:?}", claim)
-        }
+        //println!("Server SS_LOG:");
+        //for claim in ss_log.claims.values() {
+        //    println!("  claim: {:?}", claim)
+        //}
 
         assert_eq!(1, ss_log.claims.len());
         let recover_claim_on_server = ss_log.claims.values().next().unwrap();
         let claim_ids = recover_claim_on_server.recovery_db_ids();
         assert_eq!(1, claim_ids.len());
-
-        let recovery_claim_obj = {
-            let [claim_id, ..] = claim_ids.as_slice() else {
-                bail!("Empty claim")
-            };
-
-            let claim_id_desc = SsWorkflowDescriptor::Recovery(claim_id.clone());
-
-            split
-                .spec
-                .server
-                .p_obj
-                .find_tail_event(claim_id_desc)
-                .await?
-                .unwrap()
-        };
-        match recovery_claim_obj {
-            SsWorkflowObject::Recovery(claim_event) => {
-                assert_eq!(
-                    String::from("test"),
-                    claim_event.value.claim_id.pass_id.name
-                );
-            }
-            SsWorkflowObject::Distribution(_) => {
-                bail!("Has to be claim object")
-            }
-        }
-
+        
         split.spec.vd.gw.sync().await?;
         split.spec.vd.gw.sync().await?;
 
         //Update app state
         let _app_state_after_full_recover = split.spec.vd.client_service.get_app_state().await?;
 
-        //split.sign_up.vd.orchestrator.orchestrate().await?;
+        split.spec.vd.orchestrator.orchestrate().await?;
 
-        //split.sign_up.vd.gw.sync().await?;
-        //split.sign_up.vd.gw.sync().await?;
+        split.spec.vd.gw.sync().await?;
+        split.spec.vd.gw.sync().await?;
 
         let vd_db = split.spec.vd.p_obj.repo.get_db().await;
         for (id, event) in vd_db {

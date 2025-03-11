@@ -272,7 +272,7 @@ mod test {
     };
     use crate::node::common::model::vault::vault::VaultName;
     use anyhow::Result;
-    
+
     #[tokio::test]
     async fn test_distribution_ids() -> Result<()> {
         let registry = FixtureRegistry::empty();

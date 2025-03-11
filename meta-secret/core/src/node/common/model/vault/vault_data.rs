@@ -5,8 +5,7 @@ use crate::node::common::model::user::common::{
 };
 use crate::node::common::model::vault::vault::{VaultMember, VaultName, VaultStatus};
 use crate::node::db::events::vault::vault_log_event::{
-    AddMetaPassEvent, VaultActionEvents, VaultActionUpdateEvent
-    ,
+    AddMetaPassEvent, VaultActionEvents, VaultActionUpdateEvent,
 };
 use crate::secret::data_block::common::SharedSecretConfig;
 use anyhow::{bail, Result};
@@ -129,7 +128,7 @@ impl VaultData {
     pub fn membership(&self, for_user: UserData) -> UserMembership {
         self.users
             .get(&for_user.device.device_id)
-            .map(|membership| membership.clone())
+            .cloned()
             .unwrap_or_else(|| UserMembership::Outsider(UserDataOutsider::non_member(for_user)))
     }
 
@@ -175,7 +174,7 @@ impl VaultAggregate {
     fn synchronize(mut self) -> Self {
         // Process each update in the events
         let updates = self.events.updates.clone();
-        
+
         for update in updates {
             match &update {
                 VaultActionUpdateEvent::UpdateMembership { sender, update, .. } => {
@@ -406,7 +405,7 @@ mod test {
         let events = VaultActionEvents::default()
             .request(request_event)
             .apply(update_event);
-        
+
         // Create aggregate and process
         let aggregate = VaultAggregate::build_from(events, vault_data);
 
@@ -461,7 +460,7 @@ mod test {
 
         // Create join request
         let join_request = JoinClusterEvent::from(client_b_creds.user());
-        
+
         // Create request event
         let request_event = VaultActionRequestEvent::JoinCluster(join_request.clone());
 
