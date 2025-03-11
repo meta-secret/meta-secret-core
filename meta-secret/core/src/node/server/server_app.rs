@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::node::common::model::device::common::DeviceName;
+use crate::node::common::model::device::common::{DeviceId, DeviceName};
 use crate::node::common::model::device::device_creds::DeviceCredentials;
 use crate::node::db::events::object_id::Next;
 use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
@@ -16,6 +16,7 @@ use crate::node::server::server_data_sync::{
 };
 use anyhow::Result;
 use tracing::{error, info, instrument};
+use crate::node::common::model::secret::{SecretDistributionType, SsClaim};
 
 pub struct ServerApp<Repo: KvLogEventRepo> {
     pub data_sync: ServerSyncGateway<Repo>,
@@ -173,6 +174,8 @@ mod test {
     use anyhow::bail;
     use anyhow::Result;
     use tracing::{info, Instrument};
+    use crate::node::common::model::device::device_link::DeviceLink;
+    use crate::node::server::server_app::SsClaimVerifierForTestRecovery;
 
     struct ActorNode {
         user: UserData,
@@ -565,10 +568,11 @@ mod test {
             .await?
             .unwrap();
         let vd_ss_claim = vd_device_log_tail_event.to_distribution_request();
-        assert_eq!(vd_ss_claim.sender, vd_device_id);
-        assert_eq!(vd_ss_claim.distribution_type, SecretDistributionType::Recover);
-        assert_eq!(vd_ss_claim.receivers.len(), 1);
-        assert_eq!(vd_ss_claim.receivers[0], split.spec.client.device_id());
+        let claim_verifier = SsClaimVerifierForTestRecovery {
+            sender: vd_device_id.clone(),
+            receiver: split.spec.client.device_id(),
+        };
+        claim_verifier.verify(vd_ss_claim.clone())?;
         
         //verify server state
         let vault_name = split.spec.client.user.vault_name.clone();
@@ -576,18 +580,11 @@ mod test {
 
         // Verify that the SS log event has been created on the server
         assert_eq!(1, ss_log.claims.len());
-        let recover_claim_on_server = ss_log.claims.values().next().unwrap();
+        let recover_claim_on_server = ss_log.claims.values().next().unwrap().clone();
         
         // Verify the claim properties
-        assert_eq!(recover_claim_on_server.sender, split.spec.vd.device_id());
-        assert_eq!(recover_claim_on_server.distribution_type, SecretDistributionType::Recover);
-        assert_eq!(recover_claim_on_server.receivers.len(), 1);
-        assert_eq!(recover_claim_on_server.receivers[0], split.spec.client.device_id());
+        assert_eq!(vd_ss_claim, recover_claim_on_server);
         
-        // Verify that the recovery database IDs are present
-        let claim_ids = recover_claim_on_server.recovery_db_ids();
-        assert_eq!(1, claim_ids.len());
-
         split.spec.client.gw.sync().await?;
         split.spec.client.gw.sync().await?;
         split.spec.client.orchestrator.orchestrate().await?;
@@ -605,26 +602,10 @@ mod test {
         assert_eq!(1, client_ss_log.claims.len(), "Client should have received exactly one claim");
         
         // Get the recovery claim from the client's shared secret log
-        let client_recovery_claim = client_ss_log.claims.values().next().unwrap();
-        
-        // Verify the claim properties match what we expect
-        assert_eq!(client_recovery_claim.sender, split.spec.vd.device_id(), 
-            "Claim sender should be the verification device");
-        assert_eq!(client_recovery_claim.distribution_type, SecretDistributionType::Recover,
-            "Claim should be a recovery claim");
-        assert_eq!(client_recovery_claim.receivers.len(), 1, 
-            "Claim should have exactly one receiver");
-        assert_eq!(client_recovery_claim.receivers[0], split.spec.client.device_id(),
-            "Claim receiver should be the client device");
-        
-        // Verify that the recovery database IDs are present
-        let client_claim_ids = client_recovery_claim.recovery_db_ids();
-        assert_eq!(1, client_claim_ids.len(), "Claim should have exactly one recovery database ID");
-        
-        // Verify that the client claim matches the server claim
-        assert_eq!(client_recovery_claim, recover_claim_on_server, 
-            "Client claim should match server claim");
+        let client_recovery_claim = client_ss_log.claims.values().next().unwrap().clone();
 
+        assert_eq!(vd_ss_claim, client_recovery_claim);
+        
         //Update app state
         let _app_state_after_full_recover = split.spec.vd.client_service.get_app_state().await?;
 
@@ -650,6 +631,27 @@ mod test {
 
         //let app_state_after_recover_json = serde_json::to_string_pretty(&app_state_after_recover)?;
         //println!("{}", app_state_after_recover_json);
+
+        Ok(())
+    }
+}
+
+struct SsClaimVerifierForTestRecovery {
+    sender: DeviceId,
+    receiver: DeviceId
+}
+
+impl SsClaimVerifierForTestRecovery {
+    pub fn verify(&self, claim: SsClaim) -> Result<()> {
+        // Verify the claim properties
+        assert_eq!(claim.sender, self.sender);
+        assert_eq!(claim.distribution_type, SecretDistributionType::Recover);
+        assert_eq!(claim.receivers.len(), 1);
+        assert_eq!(claim.receivers[0], self.receiver);
+        
+        // Verify that the recovery database IDs are present
+        let claim_ids = claim.recovery_db_ids();
+        assert_eq!(1, claim_ids.len());
 
         Ok(())
     }
