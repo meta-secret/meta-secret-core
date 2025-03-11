@@ -214,7 +214,7 @@ mod test {
         // The channel should contain both sender and receiver
         assert!(channel.contains(&sender_pk));
         assert!(channel.contains(&receiver_pk));
-        
+
         // But not an outsider
         assert!(!channel.contains(&outsider_pk));
 
@@ -238,18 +238,18 @@ mod test {
         // Create a SingleDevice channel and convert to End2End
         let loopback = CommunicationChannel::single_device(device_pk.clone());
         let e2e_channel = loopback.build_end_2_end(receiver_pk.clone()).unwrap();
-        
+
         assert_eq!(e2e_channel.sender, device_pk);
         assert_eq!(e2e_channel.receiver, receiver_pk);
 
         // Convert to CommunicationChannel
         let channel = e2e_channel.to_channel();
-        
+
         match channel {
             CommunicationChannel::End2End(e2e) => {
                 assert_eq!(e2e.sender, device_pk);
                 assert_eq!(e2e.receiver, receiver_pk);
-            },
+            }
             _ => panic!("Expected End2End channel"),
         }
     }
@@ -265,13 +265,13 @@ mod test {
 
         // Create an End2End channel using build function
         let channel = CommunicationChannel::build(sender_pk.clone(), receiver_pk.clone());
-        
+
         // Verify the channel is End2End and has correct properties
         match channel {
             CommunicationChannel::End2End(e2e) => {
                 assert_eq!(e2e.sender, sender_pk);
                 assert_eq!(e2e.receiver, receiver_pk);
-            },
+            }
             _ => panic!("Expected End2End channel"),
         }
     }
@@ -287,18 +287,18 @@ mod test {
 
         // Create an End2End channel
         let channel = CommunicationChannel::build(sender_pk.clone(), receiver_pk.clone());
-        
+
         // Recipients should include both sender and receiver
         let recipients = channel.recipients().unwrap();
-        
+
         // Since recipients is a Vec<Box<dyn age::Recipient>>, we can only check the count
         // The order might not be guaranteed as it's created from a HashSet
         assert_eq!(recipients.len(), 2);
-        
+
         // For a single device channel, there should be just one recipient
         let loopback = CommunicationChannel::single_device(sender_pk.clone());
         let single_channel = loopback.to_channel();
-        
+
         let single_recipients = single_channel.recipients().unwrap();
         assert_eq!(single_recipients.len(), 1);
     }

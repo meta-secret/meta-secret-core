@@ -201,6 +201,7 @@ pub mod fixture {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::meta_tests::fixture_util::fixture::states::BaseState;
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::common::model::meta_pass::MetaPasswordId;
     use crate::node::common::model::user::common::{UserDataMember, UserMembership};
@@ -210,14 +211,13 @@ mod tests {
         CreateVaultEvent, JoinClusterEvent, VaultActionInitEvent, VaultActionRequestEvent,
     };
     use anyhow::Result;
-    use crate::meta_tests::fixture_util::fixture::states::BaseState;
 
     #[tokio::test]
     async fn test_create_vault() -> Result<()> {
         // Setup
         let registry = FixtureRegistry::base().await?;
         create_vault(&registry).await?;
-        
+
         Ok(())
     }
 
@@ -226,9 +226,8 @@ mod tests {
         let owner = UserDataMember::from(registry.state.empty.user_creds.client.user());
 
         // Create the event
-        let create_vault_event = VaultActionInitEvent::CreateVault(
-            CreateVaultEvent::from(owner.clone())
-        );
+        let create_vault_event =
+            VaultActionInitEvent::CreateVault(CreateVaultEvent::from(owner.clone()));
 
         let vault_action_event = VaultActionEvent::Init(create_vault_event);
 
@@ -252,30 +251,30 @@ mod tests {
         let registry = FixtureRegistry::base().await?;
         let server_vault_action = &registry.state.server_vault_action.server;
         let owner = UserDataMember::from(registry.state.empty.user_creds.client.user());
-        
+
         create_vault(&registry).await?;
-        
+
         // Create meta pass event
         let meta_pass_event = AddMetaPassEvent {
             sender: owner.clone(),
             meta_pass_id: MetaPasswordId::build("Test Password"),
         };
-        
+
         let request_event = VaultActionRequestEvent::AddMetaPass(meta_pass_event);
         let vault_action_event = VaultActionEvent::Request(request_event);
-        
+
         // Act
         let result = server_vault_action.do_processing(vault_action_event).await;
-        
+
         // Assert
         assert!(result.is_ok());
-        
+
         // Verify meta pass was added
         let p_vault = PersistentVault::from(server_vault_action.p_obj.clone());
         let vault = p_vault.get_vault(&owner.user_data).await?;
-        
+
         assert_eq!(1, vault.to_data().secrets.len());
-        
+
         Ok(())
     }
 
@@ -287,37 +286,44 @@ mod tests {
         let owner = UserDataMember::from(registry.state.empty.user_creds.client.user());
 
         create_vault(&registry).await?;
-        
+
         let new_member = UserDataMember::from(registry.state.empty.user_creds.vd.user());
-        
+
         // First, we need to add a join request to the vault log
         let join_request = JoinClusterEvent::from(new_member.user_data.clone());
         let request_event = VaultActionRequestEvent::JoinCluster(join_request.clone());
         let vault_action_request = VaultActionEvent::Request(request_event);
-        
+
         // Process the join request
-        server_vault_action.do_processing(vault_action_request).await?;
-        
+        server_vault_action
+            .do_processing(vault_action_request)
+            .await?;
+
         // Now create the membership update event - it needs to match the request
         let update_event = VaultActionUpdateEvent::UpdateMembership {
             sender: owner.clone(),
             update: UserMembership::Member(new_member.clone()),
-            request: join_request,  // Use the same join request as above
+            request: join_request, // Use the same join request as above
         };
-        
+
         // Process the update
         let vault_action_event = VaultActionEvent::Update(update_event);
         let result = server_vault_action.do_processing(vault_action_event).await;
         assert!(result.is_ok(), "Membership update should succeed");
-        
+
         // Now the new member should be properly added to the vault
         let p_vault = PersistentVault::from(server_vault_action.p_obj.clone());
         let vault = p_vault.get_vault(&owner.user_data).await?;
-        
+
         // Check if the new member was added to the vault
-        let is_member = vault.to_data().is_member(&new_member.user().device.device_id);
-        assert!(is_member, "New member should be part of the vault after membership update");
-        
+        let is_member = vault
+            .to_data()
+            .is_member(&new_member.user().device.device_id);
+        assert!(
+            is_member,
+            "New member should be part of the vault after membership update"
+        );
+
         // The status should now be Member
         let status = p_vault.find(new_member.user_data.clone()).await?;
         match status {

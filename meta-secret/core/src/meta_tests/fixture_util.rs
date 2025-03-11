@@ -1,5 +1,6 @@
 #[cfg(test)]
 pub mod fixture {
+    use crate::crypto::keys::fixture::KeyManagerFixture;
     use crate::meta_tests::fixture_util::fixture::specs::BaseSpec;
     use crate::meta_tests::fixture_util::fixture::states::{BaseState, EmptyState, ExtendedState};
     use crate::node::app::meta_app::meta_client_service::fixture::MetaClientServiceFixture;
@@ -13,7 +14,6 @@ pub mod fixture {
     use crate::node::db::objects::persistent_vault::spec::VaultSpec;
     use crate::node::db::repo::persistent_credentials::fixture::PersistentCredentialsFixture;
     use crate::node::server::server_app::fixture::ServerAppFixture;
-    use crate::crypto::keys::fixture::KeyManagerFixture;
     use std::sync::Arc;
 
     pub struct FixtureRegistry<S> {
@@ -67,7 +67,7 @@ pub mod fixture {
                 empty: empty.state,
                 spec: base_spec,
                 p_creds,
-                server_vault_action
+                server_vault_action,
             };
 
             Ok(FixtureRegistry { state: base })
@@ -94,6 +94,7 @@ pub mod fixture {
     pub mod states {
         use std::sync::Arc;
 
+        use crate::crypto::keys::fixture::KeyManagerFixture;
         use crate::meta_tests::fixture_util::fixture::BaseSpec;
         use crate::node::app::meta_app::meta_client_service::fixture::MetaClientServiceFixture;
         use crate::node::app::sync::sync_protocol::fixture::SyncProtocolFixture;
@@ -105,7 +106,6 @@ pub mod fixture {
         use crate::node::db::objects::persistent_vault::fixture::PersistentVaultFixture;
         use crate::node::db::repo::persistent_credentials::fixture::PersistentCredentialsFixture;
         use crate::node::server::server_app::fixture::ServerAppFixture;
-        use crate::crypto::keys::fixture::KeyManagerFixture;
 
         pub enum Fixture {
             Empty(EmptyState),

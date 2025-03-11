@@ -303,24 +303,24 @@ mod tests {
     use crate::node::db::events::vault::vault_event::VaultObject;
     use crate::node::db::events::vault::vault_status::VaultStatusObject;
     use crate::node::db::repo::generic_db::SaveCommand;
-    
+
     #[tokio::test]
     async fn test_find_non_existent_vault_and_status() -> Result<()> {
         // Setup using FixtureRegistry
         let registry = FixtureRegistry::empty();
         let user = registry.state.user_creds.client.user();
         let p_vault = registry.state.p_vault.client.clone();
-        
+
         // Test that it returns the expected error when neither vault nor status exists
         let result = p_vault.find(user).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains(
             "It's expected that sync with the server has happened and vault status is present"
         ));
-        
+
         Ok(())
     }
-    
+
     #[tokio::test]
     async fn test_find_existing_vault_no_status() -> Result<()> {
         // Setup using FixtureRegistry
@@ -328,22 +328,23 @@ mod tests {
         let user = registry.state.user_creds.client.user();
         let p_vault = registry.state.p_vault.client.clone();
         let p_obj = registry.state.p_obj.client.clone();
-        
+
         // Create vault object but don't create status object
         let member = UserDataMember::from(user.clone());
         let vault_obj = VaultObject::sign_up(user.vault_name(), member);
         p_obj.repo.save(vault_obj).await?;
-        
+
         // Test that it returns the expected error when vault exists but status doesn't
         let result = p_vault.find(user).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains(
-            "Vault and its status have to exists together"
-        ));
-        
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Vault and its status have to exists together"));
+
         Ok(())
     }
-    
+
     #[tokio::test]
     async fn test_find_status_no_vault() -> Result<()> {
         // Setup using FixtureRegistry
@@ -351,20 +352,20 @@ mod tests {
         let user = registry.state.user_creds.client.user();
         let p_vault = registry.state.p_vault.client.clone();
         let p_obj = registry.state.p_obj.client.clone();
-        
+
         // Create only status object with NotExists status
         let status = VaultStatus::NotExists(user.clone());
         let status_desc = VaultStatusDescriptor::from(user.user_id());
         let status_obj = VaultStatusObject::new(status.clone(), ArtifactId::from(status_desc));
         p_obj.repo.save(status_obj).await?;
-        
+
         // Test that it returns the status when only status exists (no vault)
         let result = p_vault.find(user).await?;
         assert!(matches!(result, VaultStatus::NotExists(_)));
-        
+
         Ok(())
     }
-    
+
     #[tokio::test]
     async fn test_find_with_outsider_status() -> Result<()> {
         // Setup using FixtureRegistry
@@ -372,21 +373,21 @@ mod tests {
         let user = registry.state.user_creds.client.user();
         let p_vault = registry.state.p_vault.client.clone();
         let p_obj = registry.state.p_obj.client.clone();
-        
+
         // Create status object with Outsider status
         let outsider = UserDataOutsider::non_member(user.clone());
         let status = VaultStatus::Outsider(outsider);
         let status_desc = VaultStatusDescriptor::from(user.user_id());
         let status_obj = VaultStatusObject::new(status, ArtifactId::from(status_desc));
         p_obj.repo.save(status_obj).await?;
-        
+
         // Test that it returns the status when only status exists
         let result = p_vault.find(user).await?;
         assert!(matches!(result, VaultStatus::Outsider(_)));
-        
+
         Ok(())
     }
-    
+
     #[tokio::test]
     async fn test_find_with_vault_and_status() -> Result<()> {
         // Setup using FixtureRegistry
@@ -394,22 +395,22 @@ mod tests {
         let user = registry.state.user_creds.client.user();
         let p_vault = registry.state.p_vault.client.clone();
         let p_obj = registry.state.p_obj.client.clone();
-        
+
         // Create a member user and vault
         let member = UserDataMember::from(user.clone());
         let vault_obj = VaultObject::sign_up(user.vault_name(), member.clone());
         p_obj.repo.save(vault_obj).await?;
-        
+
         // Create status object
         let status = VaultStatus::Member(member);
         let status_desc = VaultStatusDescriptor::from(user.user_id());
         let status_obj = VaultStatusObject::new(status, ArtifactId::from(status_desc));
         p_obj.repo.save(status_obj).await?;
-        
+
         // Test that it returns the member status from the vault object
         let result = p_vault.find(user).await?;
         assert!(matches!(result, VaultStatus::Member(_)));
-        
+
         Ok(())
     }
 }

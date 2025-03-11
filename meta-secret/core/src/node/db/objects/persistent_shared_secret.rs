@@ -1,13 +1,15 @@
 use std::sync::Arc;
 
 use crate::node::common::model::device::common::DeviceId;
-use crate::node::common::model::secret::{SsClaim, SsDistributionId, SsLogData, SsRecoveryId};
+use crate::node::common::model::secret::{
+    ClaimId, SsClaim, SsClaimId, SsDistributionId, SsLogData, SsRecoveryId,
+};
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::{
     SsDeviceLogDescriptor, SsLogDescriptor, SsWorkflowDescriptor,
 };
-use crate::node::db::events::generic_log_event::ToGenericEvent;
+use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ToGenericEvent};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::events::shared_secret_event::{
@@ -28,14 +30,14 @@ pub struct PersistentSharedSecret<Repo: KvLogEventRepo> {
 impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
     pub async fn get_ss_workflow_events(&self, ss_claim: SsClaim) -> Result<Vec<SsWorkflowObject>> {
         let mut events = vec![];
-        
+
         let distributions = self.get_distributions(ss_claim.clone()).await?;
         events.extend(distributions);
 
         // Synchronize claims (recovery requests)
         let recoveries = self.get_recoveries(ss_claim).await?;
         events.extend(recoveries);
-        
+
         Ok(events)
     }
 

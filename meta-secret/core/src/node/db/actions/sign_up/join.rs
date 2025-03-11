@@ -96,7 +96,10 @@ mod tests {
         // Check if device log has an entry (optional but more thorough validation)
         let obj_desc = DeviceLogDescriptor::from(member.member.user().user_id());
         let tail_id = p_obj.find_tail_id_by_obj_desc(obj_desc).await?;
-        assert!(tail_id.is_some(), "Expected device log to have an entry after accepting join request");
+        assert!(
+            tail_id.is_some(),
+            "Expected device log to have an entry after accepting join request"
+        );
 
         Ok(())
     }
@@ -112,7 +115,7 @@ mod tests {
         // Create a new candidate user who is in PENDING state
         let candidate_creds = registry.state.user_creds.vd.clone();
         let candidate_user = candidate_creds.user();
-        
+
         // Create a pending outsider
         let mut outsider = UserDataOutsider::non_member(candidate_user.clone());
         outsider.status = UserDataOutsiderStatus::Pending;
@@ -142,11 +145,13 @@ mod tests {
         let result = action.accept(join_request).await;
 
         // Verify result
-        assert!(result.is_err(), "Accept join request should fail for pending user");
+        assert!(
+            result.is_err(),
+            "Accept join request should fail for pending user"
+        );
         let error = result.unwrap_err().to_string();
         assert_eq!(
-            error,
-            "User already in pending state",
+            error, "User already in pending state",
             "Error message should indicate user is pending"
         );
 
@@ -164,7 +169,7 @@ mod tests {
         // Create a new candidate user who is in DECLINED state
         let candidate_creds = registry.state.user_creds.vd.clone();
         let candidate_user = candidate_creds.user();
-        
+
         // Create a declined outsider
         let mut outsider = UserDataOutsider::non_member(candidate_user.clone());
         outsider.status = UserDataOutsiderStatus::Declined;
@@ -194,11 +199,13 @@ mod tests {
         let result = action.accept(join_request).await;
 
         // Verify result
-        assert!(result.is_err(), "Accept join request should fail for declined user");
+        assert!(
+            result.is_err(),
+            "Accept join request should fail for declined user"
+        );
         let error = result.unwrap_err().to_string();
         assert_eq!(
-            error,
-            "User request already declined",
+            error, "User request already declined",
             "Error message should indicate user request was declined"
         );
 
@@ -215,7 +222,7 @@ mod tests {
 
         // Use an existing member as the candidate
         let candidate_user = vault_data_fixture.client_b_membership.user_data().clone();
-        
+
         // Use the standard vault data where the candidate is already a member
         let member = vault_data_fixture.client_vault_member.clone();
 
@@ -234,11 +241,13 @@ mod tests {
         let result = action.accept(join_request).await;
 
         // Verify result
-        assert!(result.is_err(), "Accept join request should fail for existing member");
+        assert!(
+            result.is_err(),
+            "Accept join request should fail for existing member"
+        );
         let error = result.unwrap_err().to_string();
         assert_eq!(
-            error,
-            "Membership cannot be accepted. Invalid state",
+            error, "Membership cannot be accepted. Invalid state",
             "Error message should indicate membership cannot be accepted"
         );
 

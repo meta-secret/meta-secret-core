@@ -1,10 +1,16 @@
 use crate::node::common::model::meta_pass::MetaPasswordId;
-use crate::node::common::model::vault::vault::VaultStatus;
+use crate::node::common::model::secret::{SecretDistributionData, SsDistributionId, SsRecoveryId};
+use crate::node::common::model::user::user_creds::UserCredentials;
+use crate::node::common::model::vault::vault::{VaultName, VaultStatus};
+use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
+use crate::recover_from_shares;
+use crate::secret::shared_secret::UserShareDto;
+use crate::PlainText;
 use anyhow::bail;
 use derive_more::From;
 use std::sync::Arc;
@@ -57,5 +63,88 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
         }
 
         Ok(())
+    }
+}
+
+/// Recovers secret from local shares on the client side
+pub struct RecoveryHandler<Repo: KvLogEventRepo> {
+    pub p_obj: Arc<PersistentObject<Repo>>,
+}
+
+impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
+    #[instrument(skip_all)]
+    pub async fn recover(
+        &self,
+        vault_name: VaultName,
+        user_creds: UserCredentials,
+        recovery_id: SsRecoveryId,
+    ) -> anyhow::Result<PlainText> {
+        // Create PersistentSharedSecret to access shared secret data
+        let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
+
+        // 2. Get the SS log to find the claim
+        let ss_log_data = p_ss.get_ss_log_obj(vault_name).await?;
+
+        // Find the claim using the ID in the recovery_id
+        let claim = ss_log_data
+            .claims
+            .get(&recovery_id.claim_id.id)
+            .ok_or_else(|| anyhow::anyhow!("Claim not found for recovery ID"))?
+            .clone();
+
+        // Get recoveries and distributions from the claim
+        let recoveries = p_ss.get_recoveries(claim.clone()).await?;
+
+        let desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
+            pass_id: recovery_id.distribution_id.pass_id.clone(),
+            receiver: user_creds.device_id().clone(),
+        });
+        let dist = self
+            .p_obj
+            .find_tail_event(desc)
+            .await?
+            .unwrap()
+            .to_distribution_data();
+
+        // Extract all SecretDistributionData objects from recoveries and dists
+        let recovery_data: Vec<SecretDistributionData> = recoveries
+            .into_iter()
+            .map(|r| r.to_distribution_data())
+            .collect();
+
+        let distribution_data = vec![dist];
+
+        // Decrypt the secret shares using the transport key
+        let transport_sk = &user_creds.device_creds.secret_box.transport.sk;
+
+        // Prepare vectors to collect all shares
+        let mut user_shares = Vec::new();
+
+        // Process recovery shares
+        for data in recovery_data {
+            let decrypted = data.secret_message.cipher_text().decrypt(transport_sk)?;
+            let share = UserShareDto::try_from(&decrypted.msg)?;
+            user_shares.push(share);
+        }
+
+        // Process distribution shares
+        for data in distribution_data {
+            let decrypted = data.secret_message.cipher_text().decrypt(transport_sk)?;
+            let share = UserShareDto::try_from(&decrypted.msg)?;
+            user_shares.push(share);
+        }
+
+        // We need at least 2 shares to recover the secret
+        if user_shares.len() < 2 {
+            bail!(
+                "Not enough shares to recover the secret. Required: 2, Found: {}",
+                user_shares.len()
+            );
+        }
+
+        // Recover the secret using the collected shares
+        let plain_text = recover_from_shares(user_shares)?;
+
+        Ok(plain_text)
     }
 }

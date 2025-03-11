@@ -6,6 +6,7 @@ use crate::node::common::model::secret::{SecretDistributionType, SsClaim, SsDist
 use crate::node::db::descriptors::shared_secret_descriptor::{
     SsLogDescriptor, SsWorkflowDescriptor,
 };
+use crate::node::db::events::generic_log_event::ToGenericEvent;
 use crate::node::db::events::object_id::Next;
 use crate::node::db::events::shared_secret_event::SsLogObject;
 use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
@@ -21,7 +22,6 @@ use crate::node::server::server_data_sync::{
 };
 use anyhow::{bail, Result};
 use tracing::{error, info, instrument};
-use crate::node::db::events::generic_log_event::ToGenericEvent;
 
 pub struct ServerApp<Repo: KvLogEventRepo> {
     pub data_sync: ServerSyncGateway<Repo>,
@@ -81,10 +81,7 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
 
                     match maybe_ss_log_event {
                         None => {
-                            bail!(
-                                "No SS log found for vault: {:?}",
-                                &vault_name
-                            )
+                            bail!("No SS log found for vault: {:?}", &vault_name)
                         }
                         Some(ss_log_event) => {
                             let ss_log_data = ss_log_event.to_data();
@@ -203,6 +200,7 @@ mod test {
         SecretDistributionType, SsDistributionId, SsDistributionStatus,
     };
     use crate::node::common::model::{ApplicationState, VaultFullInfo};
+    use crate::node::db::actions::recover::RecoveryHandler;
     use crate::node::db::descriptors::shared_secret_descriptor::{
         SsDeviceLogDescriptor, SsWorkflowDescriptor,
     };
@@ -221,6 +219,7 @@ mod test {
     struct ActorNode {
         user: UserData,
         p_obj: Arc<PersistentObject<InMemKvLogEventRepo>>,
+
         gw: Arc<SyncGateway<InMemKvLogEventRepo, EmbeddedSyncProtocol>>,
         p_vault: Arc<PersistentVault<InMemKvLogEventRepo>>,
         p_ss: Arc<PersistentSharedSecret<InMemKvLogEventRepo>>,
@@ -237,7 +236,7 @@ mod test {
     struct ServerNode {
         p_obj: Arc<PersistentObject<InMemKvLogEventRepo>>,
         p_vault: Arc<PersistentVault<InMemKvLogEventRepo>>,
-        p_ss: PersistentSharedSecret<InMemKvLogEventRepo>,
+        p_ss: Arc<PersistentSharedSecret<InMemKvLogEventRepo>>,
         server_creds_spec: PersistentCredentialsSpec<InMemKvLogEventRepo>,
     }
 
@@ -304,7 +303,9 @@ mod test {
             let server = ServerNode {
                 p_obj: empty_state.p_obj.server.clone(),
                 p_vault: empty_state.p_vault.server.clone(),
-                p_ss: PersistentSharedSecret::from(empty_state.p_obj.server.clone()),
+                p_ss: Arc::new(PersistentSharedSecret::from(
+                    empty_state.p_obj.server.clone(),
+                )),
                 server_creds_spec,
             };
 
@@ -665,7 +666,7 @@ mod test {
 
         //----------- Start Recovery record verification on the server -----------
         // Verify that the server has received and processed the SsWorkflow event
-        let server_p_ss = split.spec.server.p_ss;
+        let server_p_ss = split.spec.server.p_ss.clone();
         let vault_name = split.spec.client.user.vault_name.clone();
 
         // Get the updated SS log after the client has sent the recovery workflow
@@ -733,19 +734,29 @@ mod test {
         split.spec.vd.gw.sync().await?;
 
         let vd_db = split.spec.vd.p_obj.repo.get_db().await;
-        for (id, event) in vd_db {
-            if matches!(
+        let vd_db = vd_db.into_values().collect::<Vec<GenericKvLogEvent>>();
+
+        let recovery_event = vd_db.iter().find(|event| {
+            matches!(
                 event,
                 GenericKvLogEvent::SsWorkflow(SsWorkflowObject::Recovery(_))
-            ) {
-                let event_json = serde_json::to_string_pretty(&event)?;
-                println!("DbEvent:");
-                println!(" id: {:?}", &id);
-                println!(" event: {}", &event_json);
-            } else {
-                println!("skip event")
-            }
-        }
+            )
+        });
+        let recovery_event = recovery_event.unwrap();
+
+        //let event_json = serde_json::to_string_pretty(&recovery_event)?;
+        //println!("DbEvent:");
+        //println!(" event: {}", &event_json);
+
+        let recovery_handler = RecoveryHandler {
+            p_obj: split.spec.vd.p_obj.clone(),
+        };
+
+        let pass = recovery_handler
+            .recover(vault_name, split.spec.user_creds().vd.clone(), recovery_id)
+            .await?;
+
+        assert_eq!("2bee|~", pass.text);
 
         //let app_state_after_recover_json = serde_json::to_string_pretty(&app_state_after_recover)?;
         //println!("{}", app_state_after_recover_json);

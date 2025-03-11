@@ -103,15 +103,18 @@ mod test {
         let cipher_text: AeadCipherText = alice_km
             .transport
             .encrypt_string(password.clone(), &bob_km.transport.pk())?;
-        
+
         // 2. Decrypt the message
         let decrypted = cipher_text.decrypt(&bob_km.transport.sk())?;
-        
+
         // 3. Verify that decrypted plaintext matches the original
         let decrypted_text = String::try_from(&decrypted.msg)?;
-        
+
         // Access the text field of PlainText directly
-        assert_eq!(decrypted_text, password.text, "Decrypted text should match original plaintext");
+        assert_eq!(
+            decrypted_text, password.text,
+            "Decrypted text should match original plaintext"
+        );
 
         Ok(())
     }

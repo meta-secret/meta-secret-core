@@ -348,7 +348,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                                 .complete(claim_id, dist_id.distribution_id.receiver);
                         }
                         SecretDistributionType::Recover => {
-                            //skip: we can't complete the claim, otherwise we won't know 
+                            //skip: we can't complete the claim, otherwise we won't know
                             //on the sender device that the claim exists.
                             //Completion event needs to be sent by the recovery claim creator
                         }

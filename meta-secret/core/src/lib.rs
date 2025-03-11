@@ -219,8 +219,8 @@ pub fn read_qr_code(path: &Path) -> Result<String, QrCodeParserError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
     use std::env;
+    use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     /// Test that verifies the `split_shares_to_disk` function that calls split() and saves files
@@ -233,14 +233,14 @@ mod tests {
             .unwrap()
             .as_millis();
         let temp_dir = env::temp_dir().join(format!("meta_secret_test_{}", timestamp));
-        
+
         // Ensure the directory doesn't exist (cleanup from any previous run)
         let _ = fs::remove_dir_all(&temp_dir);
         fs::create_dir_all(&temp_dir).expect("Failed to create temp directory");
-        
+
         // Store current dir to restore later
         let original_dir = env::current_dir().expect("Failed to get current directory");
-        
+
         // Change to our temporary directory
         env::set_current_dir(&temp_dir).expect("Failed to change to temp directory");
 
@@ -250,17 +250,17 @@ mod tests {
             number_of_shares: 3,
             threshold: 2,
         };
-        
+
         // Call the split function (this will create files in the current directory)
         let result = split(secret, config);
-        
+
         // Assert the operation was successful
         assert!(result.is_ok(), "Split operation failed: {:?}", result.err());
-        
+
         // Verify files were created
         let mut json_count = 0;
         let mut png_count = 0;
-        
+
         // Read the secrets directory and count files by type
         if let Ok(entries) = fs::read_dir("secrets") {
             for entry in entries.filter_map(Result::ok) {
@@ -268,15 +268,20 @@ mod tests {
                 if let Some(ext) = path.extension() {
                     if ext == "json" {
                         json_count += 1;
-                        
+
                         // Verify JSON file can be parsed
                         if let Ok(content) = fs::read_to_string(&path) {
-                            let parse_result: Result<UserShareDto, _> = serde_json::from_str(&content);
-                            assert!(parse_result.is_ok(), "Failed to parse JSON file: {:?}", parse_result.err());
+                            let parse_result: Result<UserShareDto, _> =
+                                serde_json::from_str(&content);
+                            assert!(
+                                parse_result.is_ok(),
+                                "Failed to parse JSON file: {:?}",
+                                parse_result.err()
+                            );
                         }
                     } else if ext == "png" {
                         png_count += 1;
-                        
+
                         // Verify PNG file exists and is not empty
                         if let Ok(metadata) = fs::metadata(&path) {
                             assert!(metadata.len() > 0, "QR code file is empty");
@@ -285,17 +290,23 @@ mod tests {
                 }
             }
         }
-        
+
         // Restore original directory
         env::set_current_dir(original_dir).expect("Failed to restore original directory");
-        
+
         // Cleanup - remove temporary directory and all contents
         let _ = fs::remove_dir_all(&temp_dir);
-        
+
         // Assert correct number of files were created
-        assert_eq!(json_count, config.number_of_shares, 
-            "Expected {} JSON files but found {}", config.number_of_shares, json_count);
-        assert_eq!(png_count, config.number_of_shares, 
-            "Expected {} PNG files but found {}", config.number_of_shares, png_count);
+        assert_eq!(
+            json_count, config.number_of_shares,
+            "Expected {} JSON files but found {}",
+            config.number_of_shares, json_count
+        );
+        assert_eq!(
+            png_count, config.number_of_shares,
+            "Expected {} PNG files but found {}",
+            config.number_of_shares, png_count
+        );
     }
 }

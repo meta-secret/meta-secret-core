@@ -1,6 +1,6 @@
 use crate::crypto::utils::U64IdUrlEnc;
+use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::wasm_bindgen;
-use serde::{Serialize, Deserialize};
 
 pub const SALT_LENGTH: usize = 8;
 
@@ -36,10 +36,10 @@ mod tests {
     fn test_meta_password_id_build() {
         let name = "Test Password";
         let password_id = MetaPasswordId::build(name);
-        
+
         // Verify the name is preserved
         assert_eq!(password_id.name, name);
-        
+
         // Verify an id was generated
         assert!(!password_id.id().is_empty());
 
@@ -52,7 +52,7 @@ mod tests {
     fn test_meta_password_id_different_names() {
         let password_id1 = MetaPasswordId::build("Password 1");
         let password_id2 = MetaPasswordId::build("Password 2");
-        
+
         // Different names should produce different ids
         assert_ne!(password_id1.id(), password_id2.id());
     }
@@ -61,7 +61,7 @@ mod tests {
     fn test_meta_password_id_cloning() {
         let original = MetaPasswordId::build("Original Password");
         let cloned = original.clone();
-        
+
         // Cloning should produce an equal object
         assert_eq!(original, cloned);
         assert_eq!(original.id(), cloned.id());
@@ -73,10 +73,10 @@ mod tests {
         let password1 = MetaPasswordId::build("Test Password");
         let password2 = MetaPasswordId::build("Test Password");
         let password3 = MetaPasswordId::build("Different Password");
-        
+
         // Same name should create equal objects
         assert_eq!(password1, password2);
-        
+
         // Different names should create non-equal objects
         assert_ne!(password1, password3);
     }

@@ -1,11 +1,11 @@
+use crate::node::common::model::secret::SsRecoveryId;
 use crate::node::common::model::user::common::UserData;
+use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::objects::persistent_vault::VaultTail;
 use derive_more::From;
 use serde::{Deserialize, Serialize};
-use crate::node::common::model::secret::{SsRecoveryId};
-use crate::node::common::model::vault::vault::VaultName;
 
 #[derive(Clone, Debug, PartialEq, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

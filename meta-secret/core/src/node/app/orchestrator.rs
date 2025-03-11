@@ -1,4 +1,5 @@
 use crate::node::common::model::secret::{SecretDistributionData, SecretDistributionType, SsClaim};
+use crate::node::common::model::user::common::UserMembership;
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::vault::{VaultMember, VaultStatus};
 use crate::node::common::model::vault::vault_data::VaultData;
@@ -15,7 +16,6 @@ use anyhow::bail;
 use anyhow::Result;
 use log::{debug, warn};
 use std::sync::Arc;
-use crate::node::common::model::user::common::UserMembership;
 
 /// Contains business logic of secrets management and login/sign-up actions.
 /// Orchestrator is in charge of what is meta secret is made for (the most important part of the app).
@@ -111,7 +111,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
             let SsWorkflowObject::Distribution(dist_event) = ss_dist_obj else {
                 let msg_err = "Ss distribution object not found.";
                 let msg_info = "Verify the Distribution event is not messed up (sender and receiver not swapped)";
-                bail!("{} {}",msg_err, msg_info);
+                bail!("{} {}", msg_err, msg_info);
             };
 
             let KvLogEvent { value: share, .. } = dist_event;
@@ -136,7 +136,8 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                                 .re_encrypt(share.secret_message.clone(), msg_receiver)?;
 
                             //compare with claim dist id, if match then create a claim
-                            let key = KvKey::from(SsWorkflowDescriptor::Recovery(claim_db_id.clone()));
+                            let key =
+                                KvKey::from(SsWorkflowDescriptor::Recovery(claim_db_id.clone()));
 
                             let new_wf_event = SsWorkflowObject::Recovery(KvLogEvent {
                                 key,

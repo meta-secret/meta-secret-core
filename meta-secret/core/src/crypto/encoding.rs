@@ -181,13 +181,13 @@ pub mod base64 {
             for i in 0..array.len() {
                 array[i] = i as u8;
             }
-            
+
             let encoded = Base64Text::from(array);
             let encoded_ref = Base64Text::from(&array);
-            
+
             // Both ways of encoding should produce the same result
             assert_eq!(encoded, encoded_ref);
-            
+
             // Verify the actual encoding
             let expected = Base64Text("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8".to_string());
             assert_eq!(encoded, expected);
@@ -225,10 +225,10 @@ pub mod base64 {
             for i in 0..original.len() {
                 original[i] = i as u8;
             }
-            
+
             let encoded = Base64Text::from(&original);
             let decoded = Array256Bit::try_from(&encoded).unwrap();
-            
+
             assert_eq!(original, decoded);
         }
 
@@ -244,10 +244,13 @@ pub mod base64 {
             // Create a Base64Text that encodes a shorter array than Array256Bit
             let short_data = [1, 2, 3, 4, 5];
             let encoded = Base64Text::from(&short_data[..]);
-            
+
             // Trying to decode into Array256Bit should fail
             let result = Array256Bit::try_from(&encoded);
-            assert!(result.is_err(), "Should fail when decoding to wrong size array");
+            assert!(
+                result.is_err(),
+                "Should fail when decoding to wrong size array"
+            );
         }
     }
 }
@@ -385,7 +388,9 @@ pub mod serialized_key_manager {
             use crate::crypto::encoding::base64::Base64Text;
             use crate::crypto::key_pair::{DalekPublicKey, DalekSignature, KeyPair};
             use crate::crypto::key_pair::{DsaKeyPair, TransportDsaKeyPair};
-            use crate::crypto::keys::{KeyManager, SecretBox, SerializedDsaKeyPair, SerializedTransportKeyPair};
+            use crate::crypto::keys::{
+                KeyManager, SecretBox, SerializedDsaKeyPair, SerializedTransportKeyPair,
+            };
             use crate::CoreResult;
             use ed25519_dalek::Verifier;
 
@@ -408,73 +413,79 @@ pub mod serialized_key_manager {
                 assert_eq!(serialized_sign, serialized_sign_2nd_time);
                 Ok(())
             }
-            
+
             #[test]
             fn key_manager_serialization_roundtrip() -> CoreResult<()> {
                 // Generate a key manager
                 let original_km = KeyManager::generate();
-                
+
                 // Serialize to SecretBox
                 let secret_box = SecretBox::from(&original_km);
-                
+
                 // Deserialize back to KeyManager
                 let deserialized_km = KeyManager::try_from(&secret_box)?;
-                
+
                 // Verify public keys match (full equality can't be tested due to private key comparison)
                 assert_eq!(original_km.dsa.pk(), deserialized_km.dsa.pk());
                 assert_eq!(original_km.transport.pk(), deserialized_km.transport.pk());
-                
+
                 Ok(())
             }
-            
+
             #[test]
             fn dsa_key_pair_serialization_roundtrip() -> CoreResult<()> {
                 // Generate a DSA key pair
                 let original_dsa = DsaKeyPair::generate();
-                
+
                 // Serialize
                 let serialized = SerializedDsaKeyPair::from(&original_dsa);
-                
+
                 // Deserialize
                 let deserialized = DsaKeyPair::try_from(&serialized)?;
-                
+
                 // Verify the public key matches
                 assert_eq!(original_dsa.pk(), deserialized.pk());
-                
+
                 // Test signing with both to verify functionality
                 let test_msg = "test message";
                 let signature1 = original_dsa.sign(test_msg.to_string());
                 let signature2 = deserialized.sign(test_msg.to_string());
-                
+
                 // Different signatures (randomized) but both should verify correctly
                 // Convert Base64Text signatures to DalekSignature for verification
                 let dalek_sig1 = DalekSignature::try_from(&signature1)?;
                 let dalek_sig2 = DalekSignature::try_from(&signature2)?;
-                
+
                 // Verify signatures using the verifying_key
-                original_dsa.key_pair.verifying_key().verify(test_msg.as_bytes(), &dalek_sig2)?;
-                deserialized.key_pair.verifying_key().verify(test_msg.as_bytes(), &dalek_sig1)?;
-                
+                original_dsa
+                    .key_pair
+                    .verifying_key()
+                    .verify(test_msg.as_bytes(), &dalek_sig2)?;
+                deserialized
+                    .key_pair
+                    .verifying_key()
+                    .verify(test_msg.as_bytes(), &dalek_sig1)?;
+
                 Ok(())
             }
-            
+
             #[test]
             fn transport_key_pair_serialization_roundtrip() -> CoreResult<()> {
                 // Generate a transport key pair
                 let original_transport = TransportDsaKeyPair::generate();
-                
+
                 // Serialize
                 let serialized = SerializedTransportKeyPair::from(&original_transport);
-                
+
                 // Deserialize
                 let deserialized = TransportDsaKeyPair::try_from(&serialized)?;
-                
+
                 // Verify the public key matches
                 assert_eq!(original_transport.pk(), deserialized.pk());
-                
+
                 Ok(())
             }
-            
+
             #[test]
             fn invalid_dalek_public_key_conversion() {
                 // Create an invalid Base64Text for conversion to DalekPublicKey
@@ -482,7 +493,7 @@ pub mod serialized_key_manager {
                 let result = DalekPublicKey::try_from(&invalid_base64);
                 assert!(result.is_err(), "Should fail with invalid public key data");
             }
-            
+
             #[test]
             fn invalid_dalek_signature_conversion() {
                 // Create an invalid Base64Text for conversion to DalekSignature
