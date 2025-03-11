@@ -571,28 +571,34 @@ mod test {
         assert_eq!(vd_ss_claim.receivers[0], split.spec.client.device_id());
         
         //verify server state
+        let vault_name = split.spec.client.user.vault_name.clone();
+        let ss_log = split.spec.server.p_ss.get_ss_log_obj(vault_name).await?;
+
+        // Verify that the SS log event has been created on the server
+        assert_eq!(1, ss_log.claims.len());
+        let recover_claim_on_server = ss_log.claims.values().next().unwrap();
         
+        // Verify the claim properties
+        assert_eq!(recover_claim_on_server.sender, split.spec.vd.device_id());
+        assert_eq!(recover_claim_on_server.distribution_type, SecretDistributionType::Recover);
+        assert_eq!(recover_claim_on_server.receivers.len(), 1);
+        assert_eq!(recover_claim_on_server.receivers[0], split.spec.client.device_id());
+        
+        // Verify that the recovery database IDs are present
+        let claim_ids = recover_claim_on_server.recovery_db_ids();
+        assert_eq!(1, claim_ids.len());
+
         split.spec.client.gw.sync().await?;
         split.spec.client.gw.sync().await?;
         split.spec.client.orchestrator.orchestrate().await?;
         split.spec.client.gw.sync().await?;
         split.spec.client.gw.sync().await?;
+        
+        // Start Verification here...
+        // Verify that client has received the recovery claim
 
-        let vault_name = split.spec.client.user.vault_name;
-        let ss_log = split.spec.server.p_ss.get_ss_log_obj(vault_name).await?;
 
-        //println!("Server SS_LOG:");
-        //for claim in ss_log.claims.values() {
-        //    println!("  claim: {:?}", claim)
-        //}
-
-        assert_eq!(1, ss_log.claims.len());
-        let recover_claim_on_server = ss_log.claims.values().next().unwrap();
-        let claim_ids = recover_claim_on_server.recovery_db_ids();
-        assert_eq!(1, claim_ids.len());
-
-        split.spec.vd.gw.sync().await?;
-        split.spec.vd.gw.sync().await?;
+        // End Verification here
 
         //Update app state
         let _app_state_after_full_recover = split.spec.vd.client_service.get_app_state().await?;
