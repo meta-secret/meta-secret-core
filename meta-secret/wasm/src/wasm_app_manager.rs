@@ -33,7 +33,7 @@ impl WasmApplicationManager {
             device_repo: Arc::new(WasmRepo::virtual_device().await),
         };
 
-        let app_manager = ApplicationManager::init(cfg)
+        let app_manager = ApplicationManager::<WasmRepo, WasmSyncProtocol<WasmRepo>>::init(cfg)
             .await
             .expect("Application state manager must be initialized");
 

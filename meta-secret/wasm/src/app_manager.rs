@@ -45,7 +45,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
 
     pub async fn init(
         cfg: ApplicationManagerConfigurator<Repo>,
-    ) -> Result<ApplicationManager<Repo, Sync>> {
+    ) -> Result<ApplicationManager<Repo, WasmSyncProtocol<Repo>>> {
         info!("Initialize application state manager");
         
         let sync_protocol = {
@@ -63,8 +63,8 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
     #[instrument(name = "MetaClient", skip_all)]
     pub async fn client_setup(
         client_repo: Arc<Repo>,
-        sync_protocol: Arc<Sync>,
-    ) -> Result<ApplicationManager<Repo, Sync>> {
+        sync_protocol: Arc<WasmSyncProtocol<Repo>>,
+    ) -> Result<ApplicationManager<Repo, WasmSyncProtocol<Repo>>> {
         let persistent_obj = {
             let obj = PersistentObject::new(client_repo.clone());
             Arc::new(obj)
@@ -150,8 +150,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
         });
 
         let meta_client_access_proxy = Arc::new(MetaClientAccessProxy { dt: dt_meta_client });
-        let vd =
-            VirtualDevice::init(persistent_object, meta_client_access_proxy, gateway).await?;
+        let vd = VirtualDevice::init(persistent_object, meta_client_access_proxy, gateway).await?;
         let vd = Arc::new(vd);
         spawn_local(async move { vd.run().instrument(vd_span()).await.unwrap() });
 
