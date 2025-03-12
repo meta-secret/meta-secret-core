@@ -137,7 +137,7 @@ pub enum CredentialsError {
 mod tests {
     use super::*;
     use std::io::{Error as IoError, ErrorKind};
-    
+
     #[test]
     fn test_recovery_error_empty_input() {
         let error = RecoveryError::EmptyInput("Test empty input".to_string());

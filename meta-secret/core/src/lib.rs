@@ -221,8 +221,6 @@ mod tests {
     use super::*;
     use std::env;
     use std::fs;
-    use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
     use tempfile::tempdir;
 
     #[test]
