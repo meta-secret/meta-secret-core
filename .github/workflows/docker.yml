@@ -41,6 +41,6 @@ jobs:
           earthly \
             --allow-privileged \
             --ci \
-            --remote-cache=ghcr.io/meta-secret/core:cache \
+            --remote-cache=ghcr.io/meta-secret/meta-secret-core:cache \
             --push \
             +build-meta-server-image
