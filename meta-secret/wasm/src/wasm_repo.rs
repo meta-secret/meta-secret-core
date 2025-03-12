@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use anyhow::bail;
 use async_trait::async_trait;
 use tracing::{error, instrument};
@@ -12,6 +13,11 @@ use meta_secret_core::node::db::repo::generic_db::{
 use meta_secret_core::node::common::model::IdString;
 use rexie::*;
 use meta_secret_core::node::db::events::object_id::ArtifactId;
+use meta_secret_core::node::server::server_app::ServerApp;
+use anyhow::Result;
+use meta_secret_core::node::app::sync::sync_protocol::SyncProtocol;
+use meta_secret_core::node::server::request::SyncRequest;
+use meta_secret_core::node::server::server_data_sync::DataSyncResponse;
 
 pub struct WasmRepo {
     pub db_name: String,
@@ -128,7 +134,7 @@ impl SaveCommand for WasmRepo {
 #[async_trait(? Send)]
 impl FindOneQuery for WasmRepo {
     #[instrument(skip_all)]
-    async fn find_one(&self, key: ArtifactId) -> anyhow::Result<Option<GenericKvLogEvent>> {
+    async fn find_one(&self, key: ArtifactId) -> Result<Option<GenericKvLogEvent>> {
         let store_name = self.store_name.as_str();
 
         let tx = self
@@ -157,7 +163,7 @@ impl FindOneQuery for WasmRepo {
         }
     }
 
-    async fn get_key(&self, key: ArtifactId) -> anyhow::Result<Option<ArtifactId>> {
+    async fn get_key(&self, key: ArtifactId) -> Result<Option<ArtifactId>> {
         let maybe_event = self.find_one(key).await?;
         match maybe_event {
             None => Ok(None),
@@ -193,5 +199,15 @@ impl CommitLogDbConfig for WasmRepo {
 
     fn store_name(&self) -> String {
         self.store_name.clone()
+    }
+}
+
+pub struct WasmSyncProtocol<Repo: KvLogEventRepo> {
+    pub server: Arc<ServerApp<Repo>>,
+}
+
+impl<Repo: KvLogEventRepo> SyncProtocol for WasmSyncProtocol<Repo> {
+    async fn send(&self, request: SyncRequest) -> Result<DataSyncResponse> {
+        self.server.handle_client_request(request).await
     }
 }

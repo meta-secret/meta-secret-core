@@ -5,7 +5,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::app_manager::ApplicationManager;
 use crate::configure;
-use crate::wasm_repo::WasmRepo;
+use crate::wasm_repo::{WasmRepo, WasmSyncProtocol};
 use meta_secret_core::node::app::app_state_update_manager::ApplicationManagerConfigurator;
 use meta_secret_core::node::app::meta_app::messaging::{
     ClusterDistributionRequest, GenericAppStateRequest,
@@ -16,28 +16,11 @@ use meta_secret_core::node::common::model::WasmApplicationState;
 
 #[wasm_bindgen]
 pub struct WasmApplicationManager {
-    app_manager: ApplicationManager<WasmRepo>,
+    app_manager: ApplicationManager<WasmRepo, WasmSyncProtocol<WasmRepo>>,
 }
 
 #[wasm_bindgen]
 impl WasmApplicationManager {
-    pub async fn init_in_mem() -> WasmApplicationManager {
-        configure();
-
-        info!("Init Wasm state manager");
-
-        let cfg = ApplicationManagerConfigurator {
-            client_repo: Arc::new(WasmRepo::default().await),
-            server_repo: Arc::new(WasmRepo::server().await),
-            device_repo: Arc::new(WasmRepo::virtual_device().await),
-        };
-
-        let app_manager = ApplicationManager::init(cfg)
-            .await
-            .expect("Application manager must be initialized");
-
-        WasmApplicationManager { app_manager }
-    }
 
     pub async fn init_wasm() -> WasmApplicationManager {
         configure();
@@ -60,7 +43,6 @@ impl WasmApplicationManager {
     pub async fn get_state(&self) -> WasmApplicationState {
         let app_state = self
             .app_manager
-            .get_app_manager()
             .meta_client_service
             .state_provider
             .get()

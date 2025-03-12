@@ -9,7 +9,7 @@ use meta_secret_core::node::app::meta_app::meta_client_service::{
     MetaClientAccessProxy, MetaClientDataTransfer, MetaClientService, MetaClientStateProvider,
 };
 use meta_secret_core::node::app::sync::sync_gateway::SyncGateway;
-use meta_secret_core::node::app::sync::sync_protocol::SyncProtocol;
+use meta_secret_core::node::app::sync::sync_protocol::{EmbeddedSyncProtocol, SyncProtocol};
 use meta_secret_core::node::app::virtual_device::VirtualDevice;
 use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::meta_tracing::{client_span, server_span, vd_span};
@@ -19,22 +19,25 @@ use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
 use meta_secret_core::node::server::server_app::ServerApp;
+use crate::wasm_repo::WasmSyncProtocol;
+use anyhow::Result;
 
 pub struct ApplicationManager<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub meta_client_service: Arc<MetaClientService<Repo, Sync>>,
-    pub server_dt: Arc<ServerDataTransfer>,
-    pub sync_gateway: Arc<SyncGateway<Repo>>,
+    pub server: Arc<Sync>,
+    pub sync_gateway: Arc<SyncGateway<Repo, Sync>>,
 }
 
-impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
+impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
     pub fn new(
-        sync_gateway: Arc<SyncGateway<Repo>>,
-        meta_client_service: Arc<MetaClientService<Repo>>,
-    ) -> ApplicationManager<Repo> {
+        server: Arc<Sync>,
+        sync_gateway: Arc<SyncGateway<Repo, Sync>>,
+        meta_client_service: Arc<MetaClientService<Repo, Sync>>,
+    ) -> ApplicationManager<Repo, Sync> {
         info!("New. Application State Manager");
 
         ApplicationManager {
-            server_dt,
+            server,
             sync_gateway,
             meta_client_service,
         }
@@ -42,18 +45,17 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
 
     pub async fn init(
         cfg: ApplicationManagerConfigurator<Repo>,
-    ) -> anyhow::Result<ApplicationManager<Repo>> {
+    ) -> Result<ApplicationManager<Repo, Sync>> {
         info!("Initialize application state manager");
+        
+        let sync_protocol = {
+            let server = Arc::new(ServerApp::new(cfg.server_repo)?);
+            Arc::new(WasmSyncProtocol { server })
+        };
 
-        let server_dt = Arc::new(ServerDataTransfer {
-            dt: MpscDataTransfer::new(),
-        });
+        Self::virtual_device_setup(cfg.device_repo, sync_protocol.clone()).await?;
 
-        Self::server_setup(cfg.server_repo, server_dt.clone()).await?;
-
-        Self::virtual_device_setup(cfg.device_repo, server_dt.clone()).await?;
-
-        let app_manager = Self::client_setup(cfg.client_repo, server_dt.clone()).await?;
+        let app_manager = Self::client_setup(cfg.client_repo, sync_protocol.clone()).await?;
 
         Ok(app_manager)
     }
@@ -61,8 +63,8 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
     #[instrument(name = "MetaClient", skip_all)]
     pub async fn client_setup(
         client_repo: Arc<Repo>,
-        dt: Arc<ServerDataTransfer>,
-    ) -> anyhow::Result<ApplicationManager<Repo>> {
+        sync_protocol: Arc<Sync>,
+    ) -> Result<ApplicationManager<Repo, Sync>> {
         let persistent_obj = {
             let obj = PersistentObject::new(client_repo.clone());
             Arc::new(obj)
@@ -71,7 +73,7 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
         let sync_gateway = Arc::new(SyncGateway {
             id: String::from("client-gateway"),
             p_obj: persistent_obj.clone(),
-            server_dt: dt.clone(),
+            sync: sync_protocol.clone(),
         });
 
         let state_provider = Arc::new(MetaClientStateProvider::new());
@@ -83,10 +85,11 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
                 }),
                 sync_gateway: sync_gateway.clone(),
                 state_provider,
+                p_obj: persistent_obj.clone(),
             })
         };
 
-        let app_manager = ApplicationManager::new(dt, sync_gateway, meta_client_service.clone());
+        let app_manager = ApplicationManager::new(sync_protocol, sync_gateway, meta_client_service.clone());
 
         spawn_local(async move {
             meta_client_service
@@ -106,8 +109,8 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
     #[instrument(name = "Vd", skip_all)]
     pub async fn virtual_device_setup(
         device_repo: Arc<Repo>,
-        dt: Arc<ServerDataTransfer>,
-    ) -> anyhow::Result<()> {
+        sync_protocol: Arc<WasmSyncProtocol<Repo>>
+    ) -> Result<()> {
         info!("virtual device initialization");
 
         let persistent_object = Arc::new(PersistentObject::new(device_repo.clone()));
@@ -127,7 +130,7 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
         let gateway = Arc::new(SyncGateway {
             id: String::from("vd-gateway"),
             p_obj: persistent_object.clone(),
-            server_dt: dt.clone(),
+            sync: sync_protocol.clone(),
         });
 
         let state_provider = Arc::new(MetaClientStateProvider::new());
@@ -135,6 +138,7 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
             data_transfer: dt_meta_client.clone(),
             sync_gateway: gateway.clone(),
             state_provider,
+            p_obj: persistent_object.clone(),
         };
 
         spawn_local(async move {
@@ -147,28 +151,9 @@ impl<Repo: KvLogEventRepo> ApplicationManager<Repo> {
 
         let meta_client_access_proxy = Arc::new(MetaClientAccessProxy { dt: dt_meta_client });
         let vd =
-            VirtualDevice::init(persistent_object, meta_client_access_proxy, dt, gateway).await?;
+            VirtualDevice::init(persistent_object, meta_client_access_proxy, gateway).await?;
         let vd = Arc::new(vd);
         spawn_local(async move { vd.run().instrument(vd_span()).await.unwrap() });
-
-        Ok(())
-    }
-
-    #[instrument(name = "MetaServer", skip_all)]
-    pub async fn server_setup(
-        server_repo: Arc<Repo>,
-        server_dt: Arc<ServerDataTransfer>,
-    ) -> anyhow::Result<()> {
-        info!("Server initialization");
-
-        spawn_local(async move {
-            ServerApp::new(server_repo.clone(), server_dt)
-                .unwrap()
-                .run()
-                .instrument(server_span())
-                .await
-                .unwrap()
-        });
 
         Ok(())
     }
