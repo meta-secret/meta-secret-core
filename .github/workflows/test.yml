@@ -1,4 +1,4 @@
-name: "Testing"
+name: "tests"
 
 on:
   workflow_dispatch:
@@ -34,5 +34,6 @@ jobs:
           password: ${{ secrets.META_SECRET_GH_PAT }}
 
       - name: run tests
+        working-directory: ./meta-secret
         run: |
-          earthly --allow-privileged --ci --remote-cache=ghcr.io/meta-secret/core:cache --push +app-test
+          earthly --allow-privileged --ci --remote-cache=ghcr.io/meta-secret/meta-secret-core:cache --push +app-test
