@@ -15,12 +15,14 @@ builder:
 
     # Install sccache (cargo is too slow)
     ENV SCCACHE_VERSION="v0.9.0"
+    ENV SCCACHE_ARTIFACT=sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl
+    ENV SCCACHE_BUNDLE=${SCCACHE_ARTIFACT}.tar.gz
     #RUN cargo install sccache@${SCCACHE_VERSION}
     ENV RUSTC_WRAPPER=sccache
 
-    RUN wget https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz \
-        && tar xzf sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz \
-        && mv sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache /usr/local/bin/sccache \
+    RUN wget https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/${SCCACHE_BUNDLE} \
+        && tar xzf ${SCCACHE_BUNDLE} \
+        && mv ${SCCACHE_ARTIFACT}/sccache /usr/local/bin/sccache \
         && chmod +x /usr/local/bin/sccache
 
     # Install cargo-chef
