@@ -28,6 +28,9 @@ builder:
     # Install cargo-chef
     RUN cargo install cargo-chef --locked
 
+    #RUN cargo install wasm-pack slooooow
+    RUN cargo install wasm-pack --version 0.13.1 --locked
+
     # Cache dependencies with cargo chef
     COPY recipe.json .
     RUN cargo chef cook --release --recipe-path recipe.json
@@ -48,9 +51,6 @@ build-meta-server-image:
 
 wasm-build:
     FROM +builder
-
-    #RUN cargo install wasm-pack slooooow
-    RUN cargo install wasm-pack --version 0.13.1 --locked
 
     # Copy all source files first
     COPY . .
