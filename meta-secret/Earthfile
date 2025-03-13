@@ -67,20 +67,22 @@ wasm-build-local:
 web-build:
     FROM node:23.5.0-bookworm
 
-    ENV WEB_CLI_DIR=meta-secret/web-cli
+    ENV PROJECT_DIR=/meta-secret
+    ENV WEB_CLI_DIR=web-cli
     ENV UI_DIR=${WEB_CLI_DIR}/ui
 
     # Cache npm dependencies
-    WORKDIR /${UI_DIR}
-    COPY web-cli/ui/package.json .
-    RUN npm install && npm install --dev
+    WORKDIR ${PROJECT_DIR}/${UI_DIR}
 
     COPY +wasm-build/pkg ./pkg
 
-    WORKDIR /${WEB_CLI_DIR}
-    COPY web-cli .
+    COPY ${UI_DIR}/package.json .
+    RUN npm install && npm install --dev
 
-    WORKDIR ${UI_DIR}
+    WORKDIR ${PROJECT_DIR}/${WEB_CLI_DIR}
+    COPY ${WEB_CLI_DIR} .
+
+    WORKDIR ${PROJECT_DIR}/${UI_DIR}
     RUN --no-cache npm install && npm run build
     SAVE IMAGE --push ghcr.io/meta-secret/meta-secret-web:latest
 

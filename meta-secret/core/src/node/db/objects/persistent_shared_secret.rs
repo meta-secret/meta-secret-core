@@ -1,15 +1,13 @@
 use std::sync::Arc;
 
 use crate::node::common::model::device::common::DeviceId;
-use crate::node::common::model::secret::{
-    ClaimId, SsClaim, SsClaimId, SsDistributionId, SsLogData, SsRecoveryId,
-};
+use crate::node::common::model::secret::{SsClaim, SsDistributionId, SsLogData};
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::{
     SsDeviceLogDescriptor, SsLogDescriptor, SsWorkflowDescriptor,
 };
-use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ToGenericEvent};
+use crate::node::db::events::generic_log_event::{ToGenericEvent};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::events::shared_secret_event::{

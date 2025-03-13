@@ -2,13 +2,12 @@ use std::sync::Arc;
 
 use crate::node::common::model::device::common::{DeviceId, DeviceName};
 use crate::node::common::model::device::device_creds::DeviceCredentials;
-use crate::node::common::model::secret::{SecretDistributionType, SsClaim, SsDistributionStatus};
+use crate::node::common::model::secret::{SecretDistributionType, SsClaim};
 use crate::node::db::descriptors::shared_secret_descriptor::{
-    SsLogDescriptor, SsWorkflowDescriptor,
+    SsLogDescriptor,
 };
 use crate::node::db::events::generic_log_event::ToGenericEvent;
 use crate::node::db::events::object_id::Next;
-use crate::node::db::events::shared_secret_event::SsLogObject;
 use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;

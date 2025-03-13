@@ -2,7 +2,7 @@ use std::cmp::PartialEq;
 use std::sync::Arc;
 
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
-use crate::node::common::model::secret::{SecretDistributionType, SsClaim};
+use crate::node::common::model::secret::{SecretDistributionType};
 use crate::node::common::model::vault::vault::VaultStatus;
 use crate::node::db::actions::vault::vault_action::ServerVaultAction;
 use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
