@@ -1,10 +1,17 @@
 ---
 description: Common Rules
 globs: 
-alwaysApply: false
+alwaysApply: true
 ---
 
 ### Project Structure:
  - the project is structured in the following way:
-    - [meta-secret](mdc:meta-secret) - the main rust project, contains application logic
+    - [meta-secret application](mdc:meta-secret) - the main rust project, contains application logic
     - [infra](mdc:infra) - contains infrastructure code
+
+#### Meta-Secret application, which consists of:
+ - common code:
+    - [common code](mdc:meta-secret/core/src/node/common)
+    - [database](mdc:meta-secret/core/src/node/db)
+ - [client](mdc:meta-secret/core/src/node/app)
+ - [server](mdc:meta-secret/core/src/node/server)

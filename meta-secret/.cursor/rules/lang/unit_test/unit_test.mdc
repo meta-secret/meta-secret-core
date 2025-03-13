@@ -2,9 +2,6 @@
 description: Unit tests rules applied to the rust project (meta secret)
 globs: **/*.rs
 alwaysApply: false
-
-includes:
-  - [common rules](mdc:meta-secret/.cursor/rules/common.mdc)
 ---
 
 - write unit tests in the file that is open right now

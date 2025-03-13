@@ -5,8 +5,11 @@ alwaysApply: false
 ---
 
 ### Build system:
- - this project uses cargo to build rust code
+ - there are two two main components in meta-secret:
+   1. [web-cli](mdc:/meta-secret/web-cli) - the web client
+   2. [meta-secret application](mdc:meta-secret/core/src/node) - client and server applications
+ - this project uses cargo to build rust code (application code)
  - this project uses earthly as a build system:
-    - main build file is [Earthfile](mdc:Earthfile)
-    - after updates in Cargo.toml files, run `earthly +generate-cargo-chef-recipe` to update the recipe.json file
+    1. main build file is [Earthfile](mdc:Earthfile)
+    2. after updates in Cargo.toml files, run `earthly +generate-cargo-chef-recipe` to update the recipe.json file
       which caches all rust dependencies
