@@ -23,6 +23,9 @@ tracing-subscriber = { workspace = true, default-features = false, features = ["
 
 getrandom.workspace = true
 
+# Add explicit uuid dependency for wasm
+uuid.workspace = true
+
 # Wasm dependencies
 tracing-web = "0.1.3"
 

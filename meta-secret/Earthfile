@@ -1,6 +1,6 @@
 VERSION 0.8
 FROM scratch
-ENV RUST_VERSION="1.84.0"
+ENV RUST_VERSION="1.84.1"
 
 generate-cargo-chef-recipe:
     FROM lukemathwalker/cargo-chef:latest-rust-${RUST_VERSION}-bookworm
@@ -50,12 +50,12 @@ wasm-build:
     FROM +builder
 
     #RUN cargo install wasm-pack slooooow
-    RUN curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+    RUN cargo install wasm-pack --version 0.13.1 --locked
 
-    RUN cd wasm && wasm-pack build --target web
-
+    # Copy all source files first
     COPY . .
 
+    # Then build the wasm package
     WORKDIR /wasm
     RUN wasm-pack build --target web
     SAVE ARTIFACT pkg
