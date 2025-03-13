@@ -1,0 +1,10 @@
+---
+description: Common Rules
+globs: 
+alwaysApply: false
+---
+
+### Project Structure:
+ - the project is structured in the following way:
+    - [meta-secret](mdc:meta-secret) - the main rust project, contains application logic
+    - [infra](mdc:infra) - contains infrastructure code

@@ -1,0 +1,14 @@
+---
+description: Build System
+globs:
+alwaysApply: false
+
+includes:
+  - @file meta-secret/.cursor/rules/lang/common.mdc
+---
+
+### Build system:
+ - this project uses cargo to build rust code
+ - this project uses earthly as a build system:
+    - main build file is [Earthfile](mdc:Earthfile)
+    - ???
