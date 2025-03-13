@@ -40,7 +40,8 @@ jobs:
         run: |
           earthly \
             --ci \
-            --remote-cache=ghcr.io/meta-secret/meta-secret-core:cache \
+            --remote-cache=ghcr.io/meta-secret/meta-secret-web:cache \
+            --push \
             +web-build
 
       - name: build meta server

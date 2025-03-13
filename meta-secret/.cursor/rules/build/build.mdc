@@ -6,7 +6,7 @@ alwaysApply: false
 
 ### Build system:
  - there are two two main components in meta-secret:
-   1. [web-cli](mdc:/meta-secret/web-cli) - the web client
+   1. [web-cli](mdc:meta-secret/web-cli) - the web client
    2. [meta-secret application](mdc:meta-secret/core/src/node) - client and server applications
  - this project uses cargo to build rust code (application code)
  - this project uses earthly as a build system:

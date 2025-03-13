@@ -81,7 +81,7 @@ web-build:
 
     WORKDIR ${PROJECT_UI_DIR}
     RUN --no-cache npm install && npm run build
-    SAVE IMAGE meta-secret-web:latest
+    SAVE IMAGE --push ghcr.io/meta-secret/meta-secret-web:latest
 
 app-test:
     FROM +builder
