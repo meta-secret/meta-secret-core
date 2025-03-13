@@ -74,21 +74,26 @@ web-build:
     # Cache npm dependencies
     WORKDIR ${PROJECT_DIR}/${UI_DIR}
 
-    COPY +wasm-build/pkg ./pkg
-
     COPY ${UI_DIR}/package.json .
     RUN npm install && npm install --dev
+
+    COPY +wasm-build/pkg ./pkg
 
     WORKDIR ${PROJECT_DIR}/${WEB_CLI_DIR}
     COPY ${WEB_CLI_DIR} .
 
     WORKDIR ${PROJECT_DIR}/${UI_DIR}
     RUN --no-cache npm install && npm run build
+    EXPOSE 5173
+
     SAVE IMAGE --push ghcr.io/meta-secret/meta-secret-web:latest
 
 web-run:
-    FROM +web-build
-    RUN --no-cache npm run dev
+    LOCALLY
+    WITH DOCKER --load=+web-build
+        RUN docker run --rm -p 5173:5173 ghcr.io/meta-secret/meta-secret-web:latest npm run dev -- --host 0.0.0.0
+    END
+
 
 app-test:
     FROM +builder
