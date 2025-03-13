@@ -65,7 +65,7 @@ wasm-build-local:
     SAVE ARTIFACT pkg AS LOCAL web-cli/ui/pkg
 
 web-build:
-    FROM node:23.5.0-bookworm
+    FROM node:23.9.0-bookworm
 
     ENV PROJECT_DIR=/meta-secret
     ENV WEB_CLI_DIR=web-cli
