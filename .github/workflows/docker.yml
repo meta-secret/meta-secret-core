@@ -35,7 +35,15 @@ jobs:
           username: cypherkitty
           password: ${{ secrets.META_SECRET_GH_PAT }}
 
-      - name: run tests
+      - name: build web component
+        working-directory: ./meta-secret
+        run: |
+          earthly \
+            --ci \
+            --remote-cache=ghcr.io/meta-secret/meta-secret-core:cache \
+            +web-build
+
+      - name: build meta server
         working-directory: ./meta-secret
         run: |
           earthly \

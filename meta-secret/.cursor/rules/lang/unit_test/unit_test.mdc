@@ -4,7 +4,7 @@ globs: **/*.rs
 alwaysApply: false
 
 includes:
-  - @file mdc:meta-secret/.cursor/rules/lang/common.mdc
+  - [common rules](mdc:meta-secret/.cursor/rules/common.mdc)
 ---
 
 - write unit tests in the file that is open right now
