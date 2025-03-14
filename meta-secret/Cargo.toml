@@ -11,10 +11,6 @@ members = [
     "cli"
 ]
 
-exclude = [
-    "meta-server-serverless"
-]
-
 [workspace.dependencies]
 # Error handling
 thiserror = "2.0.12"
