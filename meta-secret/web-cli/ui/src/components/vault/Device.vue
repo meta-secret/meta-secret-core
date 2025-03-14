@@ -42,7 +42,7 @@ export default defineComponent({
       </div>
       <div class="text-sm text-gray-600 dark:text-gray-200 truncate">
         <p class="truncate w-24">
-          {{ this.getDevice().device_id.as_str() }}
+          {{ this.getDevice().device_id.wasm_id_str() }}
         </p>
       </div>
     </div>

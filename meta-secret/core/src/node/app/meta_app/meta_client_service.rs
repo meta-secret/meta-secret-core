@@ -73,6 +73,13 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         match request {
             GenericAppStateRequest::SignUp(vault_name) => match &app_state {
                 ApplicationState::Local(device) => {
+                    let creds_repo = PersistentCredentials::from(self.p_obj.clone());
+                    creds_repo
+                        .get_or_generate_user_creds(device.device_name.clone(), vault_name.clone())
+                        .await?;
+
+                    self.sync_gateway.sync().await?;
+
                     let user_data = UserData {
                         vault_name,
                         device: device.clone(),
@@ -175,6 +182,8 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                     ApplicationState::Local(device_creds_event.value.device)
                 }
                 CredentialsObject::DefaultUser(user_creds) => {
+                    self.sync_gateway.sync().await?;
+
                     let p_vault = PersistentVault::from(self.p_obj());
                     let vault_status = p_vault.find(user_creds.value.user()).await?;
 

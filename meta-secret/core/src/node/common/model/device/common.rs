@@ -19,6 +19,13 @@ impl IdString for DeviceId {
     }
 }
 
+#[wasm_bindgen]
+impl DeviceId {
+    pub fn wasm_id_str(&self) -> String {
+        self.clone().id_str()
+    }
+}
+
 impl DeviceId {
     pub fn loopback(self) -> LoopbackDeviceLink {
         LoopbackDeviceLink::from(self)

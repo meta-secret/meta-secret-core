@@ -35,19 +35,11 @@ export default {
     <ul class="w-full flex flex-col divide-y divide p-2">
       <li
         v-for="membership in this.users()"
-        :key="membership.user_data().device.device_id.as_str()"
+        :key="membership.user_data().device.device_id.wasm_id_str()"
         class="flex flex-row"
       >
         <Device :membership="membership" sig-status="active" />
       </li>
-
-      <!--<li
-          v-for="userSig in appState.internalState.vault?.pending"
-          :key="userSig.vault.device.deviceId"
-          class="flex flex-row"
-      >
-        <Device :user-sig="userSig" sig-status="pending"/>
-      </li>-->
     </ul>
   </div>
 </template>

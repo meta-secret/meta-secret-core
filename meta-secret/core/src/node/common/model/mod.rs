@@ -3,6 +3,7 @@ use crate::node::common::model::secret::SsLogData;
 use crate::node::common::model::user::common::{UserData, UserDataOutsider};
 use crate::node::common::model::vault::vault::VaultMember;
 use wasm_bindgen::prelude::wasm_bindgen;
+use crate::node::common::model::vault::vault_data::{VaultData, WasmVaultData};
 
 pub mod crypto;
 pub mod device;
@@ -35,6 +36,9 @@ pub struct UserMemberFullInfo {
 
 #[wasm_bindgen]
 pub struct WasmVaultFullInfo(VaultFullInfo);
+
+#[wasm_bindgen]
+pub struct WasmUserMemberFullInfo(UserMemberFullInfo);
 
 #[wasm_bindgen]
 pub struct WasmApplicationState(ApplicationState);
@@ -81,6 +85,28 @@ impl From<ApplicationState> for WasmApplicationState {
 
 pub trait IdString {
     fn id_str(self) -> String;
+}
+
+#[wasm_bindgen]
+impl WasmVaultFullInfo {
+    pub fn is_member(&self) -> bool {
+        matches!(self.0, VaultFullInfo::Member(_))
+    }
+    
+    pub fn as_member(&self) -> WasmUserMemberFullInfo {
+        if let VaultFullInfo::Member(member) = &self.0 {
+            WasmUserMemberFullInfo(member.clone())
+        } else {
+            panic!("not a member vault info")
+        }
+    }
+}
+
+#[wasm_bindgen]
+impl WasmUserMemberFullInfo {
+    pub fn vault_data(&self) -> WasmVaultData {
+        WasmVaultData::from(self.0.member.vault.clone())
+    }
 }
 
 #[cfg(test)]
