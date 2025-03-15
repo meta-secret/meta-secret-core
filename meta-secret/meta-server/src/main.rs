@@ -6,7 +6,7 @@ use axum::{
 use http::{StatusCode, Uri};
 use serde_derive::{Deserialize, Serialize};
 
-use meta_secret_core::node::server::request::SyncRequest;
+use meta_secret_core::node::api::SyncRequest;
 use meta_secret_core::node::server::server_data_sync::{DataSyncResponse, ServerTailResponse};
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;

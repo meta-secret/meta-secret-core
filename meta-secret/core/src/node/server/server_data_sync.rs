@@ -16,7 +16,7 @@ use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
-use crate::node::server::request::{SsRequest, VaultRequest};
+use crate::node::api::{SsRequest, VaultRequest};
 use anyhow::Result;
 use anyhow::{anyhow, bail, Ok};
 use async_trait::async_trait;

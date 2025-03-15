@@ -13,7 +13,7 @@ use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
-use crate::node::server::request::{
+use crate::node::api::{
     ReadSyncRequest, ServerTailRequest, SyncRequest, WriteSyncRequest,
 };
 use crate::node::server::server_data_sync::{

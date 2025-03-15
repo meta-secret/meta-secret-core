@@ -54,4 +54,4 @@ pub struct SsRequest {
 #[serde(rename_all = "camelCase")]
 pub struct ServerTailRequest {
     pub sender: UserData,
-}
+} 

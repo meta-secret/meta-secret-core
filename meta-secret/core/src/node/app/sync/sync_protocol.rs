@@ -1,5 +1,5 @@
 use crate::node::db::in_mem_db::InMemKvLogEventRepo;
-use crate::node::server::request::SyncRequest;
+use crate::node::api::SyncRequest;
 use crate::node::server::server_app::ServerApp;
 use crate::node::server::server_data_sync::DataSyncResponse;
 use anyhow::Result;
