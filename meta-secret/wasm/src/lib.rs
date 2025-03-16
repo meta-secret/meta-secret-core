@@ -12,7 +12,6 @@ pub mod utils;
 pub mod wasm_app_manager;
 pub mod wasm_repo;
 
-use tracing_subscriber::fmt::time::UtcTime;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_web::{performance_layer, MakeConsoleWriter};
 
@@ -43,7 +42,6 @@ pub fn configure() {
         .json()
         .without_time()
         .with_ansi(false)
-        .with_timer(UtcTime::rfc_3339()) // std::time is not available in browsers
         .with_writer(MakeConsoleWriter); // write events to the console
 
     let perf_layer = performance_layer();

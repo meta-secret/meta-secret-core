@@ -18,7 +18,6 @@ use anyhow::Result;
 use meta_secret_core::node::app::sync::sync_protocol::SyncProtocol;
 use meta_secret_core::node::api::SyncRequest;
 use meta_secret_core::node::server::server_data_sync::DataSyncResponse;
-use meta_secret_core::node::common::model::device::common::DeviceId;
 
 pub struct WasmRepo {
     pub db_name: String,
