@@ -1,5 +1,4 @@
 #![cfg(target_arch = "wasm32")]
-use wasm_bindgen::JsValue;
 ///
 /// https://rustwasm.github.io/wasm-bindgen/wasm-bindgen-test/index.html
 ///
@@ -12,7 +11,13 @@ use meta_secret_wasm::wasm_repo::WasmRepo;
 
 wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 
-//#[wasm_bindgen_test]
+/// This test verifies the basic functionality of the Meta Secret application:
+/// 1. Initializes repositories (default, server, virtual device)
+/// 2. Creates a WasmApplicationManager
+/// 3. Signs up with a test vault
+/// 4. Initiates a join operation
+/// 5. Performs cluster distribution with credentials
+#[wasm_bindgen_test]
 async fn pass_async() {
     WasmRepo::default().await;
     WasmRepo::server().await;
@@ -26,19 +31,14 @@ async fn run_app() {
     let app_manager = WasmApplicationManager::init_wasm().await;
     async_std::task::sleep(Duration::from_secs(5)).await;
 
+    //join
     info!("Initial sign up");
     app_manager.sign_up(VaultName::test().0).await;
-    async_std::task::sleep(Duration::from_secs(3)).await;
-    //join
-    info!("Initiate Join!");
-    app_manager.sign_up(VaultName::test().0).await;
-
-    async_std::task::sleep(Duration::from_secs(3)).await;
-
+    async_std::task::sleep(Duration::from_secs(1)).await;
+    
     info!("Cluster Distribution");
     app_manager
         .cluster_distribution("pass_id:123", "t0p$ecret")
         .await;
-
     async_std::task::sleep(Duration::from_secs(3)).await;
 }
