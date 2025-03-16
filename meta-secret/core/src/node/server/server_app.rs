@@ -763,7 +763,6 @@ mod test {
         Ok(())
     }
 }
-
 struct SsClaimVerifierForTestRecovery {
     sender: DeviceId,
     receiver: DeviceId,
@@ -784,3 +783,4 @@ impl SsClaimVerifierForTestRecovery {
         Ok(())
     }
 }
+

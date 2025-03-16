@@ -14,7 +14,7 @@ RUN wget ${EARTHLY_RELEASE} -O /usr/local/bin/earthly \
 
 #Rust
 ENV PATH="/root/.cargo/bin:${PATH}"
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.85.0
 RUN curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 RUN rustup target add x86_64-unknown-linux-gnu
 
@@ -30,7 +30,7 @@ RUN wget https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}
 # Node.js and npm (with nvm)
 RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.0/install.sh | bash
 ENV NVM_DIR="/root/.nvm"
-ENV NODE_VERSION="22.8.0"
+ENV NODE_VERSION="23.9.0"
 RUN . $NVM_DIR/nvm.sh \
     && nvm install $NODE_VERSION \
     && nvm alias default $NODE_VERSION \
