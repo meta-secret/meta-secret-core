@@ -1,6 +1,8 @@
 use crate::crypto::encoding::base64::Base64Text;
 use crate::node::common::model::IdString;
-use rand::{distributions::Alphanumeric, Rng};
+use rand::distr::Alphanumeric;
+use rand::rngs::OsRng;
+use rand::{Rng, TryRngCore};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -8,12 +10,14 @@ use wasm_bindgen::prelude::wasm_bindgen;
 const SEED_LENGTH: usize = 64;
 
 pub fn generate_hash() -> String {
-    let seed: String = rand::thread_rng()
-        .sample_iter(&Alphanumeric)
-        .take(SEED_LENGTH)
-        .map(char::from)
-        .collect();
+    // Use a cryptographically secure RNG to generate random bytes
+    let mut seed_bytes = [0u8; SEED_LENGTH];
+    OsRng.try_fill_bytes(&mut seed_bytes).expect("Failed to get random bytes from OS");
+    
+    // Convert bytes directly to a hex string for simplicity
+    let seed = hex::encode(&seed_bytes);
 
+    // Hash the seed with SHA-256
     let mut hasher = Sha256::new();
     hasher.update(seed.as_bytes());
 
@@ -30,9 +34,11 @@ pub struct Id48bit {
 
 impl Id48bit {
     pub fn generate() -> Self {
-        let mut rng = rand::thread_rng();
-
-        let random_u64: u64 = rng.r#gen::<u64>() & 0xFFFFFFFFFFFF;
+        let mut random_bytes = [0u8; 8];
+        OsRng.try_fill_bytes(&mut random_bytes).expect("Failed to get random bytes from OS");
+        
+        // Convert to u64 and mask to 48 bits
+        let random_u64 = u64::from_ne_bytes(random_bytes) & 0xFFFFFFFFFFFF;
 
         let hex_num = Self::hex(random_u64);
         Self { text: hex_num }
@@ -100,7 +106,11 @@ pub struct UuidUrlEnc {
 
 impl UuidUrlEnc {
     pub fn generate() -> UuidUrlEnc {
-        let uuid = Uuid::new_v4();
+        // Use a cryptographically secure RNG for UUID generation
+        let mut rng_bytes = [0u8; 16];
+        OsRng.try_fill_bytes(&mut rng_bytes).expect("Failed to get random bytes from OS");
+        
+        let uuid = Uuid::from_bytes(rng_bytes);
         let uuid_bytes = uuid.as_bytes().as_slice();
         let text = Base64Text::from(uuid_bytes);
 

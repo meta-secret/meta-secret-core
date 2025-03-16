@@ -1,8 +1,8 @@
 use age::secrecy::ExposeSecret;
 use age::x25519::Identity;
 use ed25519_dalek::{SecretKey, Signer, SigningKey};
-use rand::rngs::OsRng as RandOsRng;
-use rand::RngCore;
+use rand::rngs::OsRng;
+use rand::{Rng, TryRngCore};
 
 use crate::crypto::encoding::base64::Base64Text;
 use crate::crypto::keys::{DsaPk, DsaSk, TransportPk, TransportSk};
@@ -42,8 +42,7 @@ impl KeyPair<DsaPk, DsaSk> for DsaKeyPair {
         let sk_arr = {
             let mut sk_bytes: [u8; 32] = [0; 32];
 
-            let mut cs_prng = RandOsRng {};
-            cs_prng.fill_bytes(&mut sk_bytes);
+            OsRng.try_fill_bytes(&mut sk_bytes).expect("Failed to get random bytes from OS");
             sk_bytes
         };
 

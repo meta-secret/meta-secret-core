@@ -35,11 +35,12 @@ serde_json.workspace = true
 serde_derive.workspace = true
 
 tracing.workspace = true
-tracing-subscriber = { workspace = true, features = ["json", "env-filter"] }
+tracing-subscriber = { workspace = true, features = ["fmt", "json", "env-filter"] }
 tracing-attributes.workspace = true
 
 ed25519-dalek.workspace = true
 rand.workspace = true
+getrandom.workspace = true
 sha2.workspace = true
 base64.workspace = true
 hex.workspace = true
