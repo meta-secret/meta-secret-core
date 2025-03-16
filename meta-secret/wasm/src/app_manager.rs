@@ -21,6 +21,9 @@ use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredenti
 use meta_secret_core::node::server::server_app::ServerApp;
 use crate::wasm_repo::WasmSyncProtocol;
 use anyhow::Result;
+use meta_secret_core::node::app::meta_app::messaging::{ClusterDistributionRequest, GenericAppStateRequest};
+use meta_secret_core::node::common::model::meta_pass::MetaPasswordId;
+use meta_secret_core::node::common::model::WasmApplicationState;
 
 pub struct ApplicationManager<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub meta_client_service: Arc<MetaClientService<Repo, Sync>>,
@@ -58,6 +61,35 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
         let app_manager = Self::client_setup(cfg.client_repo, sync_protocol.clone()).await?;
 
         Ok(app_manager)
+    }
+
+    pub async fn sign_up(&self, vault_name: VaultName) {
+        info!("Sign Up");
+        let sign_up = GenericAppStateRequest::SignUp(vault_name);
+        self.meta_client_service.send_request(sign_up).await;
+    }
+
+    pub async fn cluster_distribution(&self, pass_id: &str, pass: &str) {
+        let request = GenericAppStateRequest::ClusterDistribution(ClusterDistributionRequest {
+            pass_id: MetaPasswordId::build(pass_id),
+            pass: pass.to_string(),
+        });
+
+        self.meta_client_service.send_request(request).await;
+    }
+
+    pub async fn recover_js(&self, meta_pass_id: MetaPasswordId) {
+        let request = GenericAppStateRequest::Recover(meta_pass_id);
+        self.meta_client_service.send_request(request).await;
+    }
+
+    pub async fn get_state(&self) -> WasmApplicationState {
+        let app_state = self
+            .meta_client_service
+            .state_provider
+            .get()
+            .await;
+        WasmApplicationState::from(app_state)
     }
 
     #[instrument(name = "MetaClient", skip_all)]

@@ -2,7 +2,7 @@ use age::secrecy::ExposeSecret;
 use age::x25519::Identity;
 use ed25519_dalek::{SecretKey, Signer, SigningKey};
 use rand::rngs::OsRng;
-use rand::{Rng, TryRngCore};
+use rand::TryRngCore;
 
 use crate::crypto::encoding::base64::Base64Text;
 use crate::crypto::keys::{DsaPk, DsaSk, TransportPk, TransportSk};
