@@ -3,7 +3,7 @@ use crate::node::common::model::secret::SsLogData;
 use crate::node::common::model::user::common::{UserData, UserDataOutsider};
 use crate::node::common::model::vault::vault::VaultMember;
 use wasm_bindgen::prelude::wasm_bindgen;
-use crate::node::common::model::vault::vault_data::{VaultData, WasmVaultData};
+use crate::node::common::model::vault::vault_data::WasmVaultData;
 
 pub mod crypto;
 pub mod device;

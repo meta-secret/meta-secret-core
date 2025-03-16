@@ -20,7 +20,7 @@ derive_more = { version = "2.0.1", features = ["full"] }
 
 # Logging and tracing
 tracing = "0.1.41"
-tracing-subscriber = { version = "0.3.19" }
+tracing-subscriber = { version = "0.3.19", default-features = false }
 tracing-attributes = "0.1.28"
 
 # Json

@@ -178,7 +178,6 @@ mod test {
     use crate::node::common::model::vault::vault::VaultStatus;
     use crate::node::db::actions::sign_up::claim::spec::SignUpClaimSpec;
     use crate::node::db::actions::sign_up::claim::test_action::SignUpClaimTestAction;
-    use std::process::exit;
     use std::sync::Arc;
 
     use crate::node::app::meta_app::messaging::{
@@ -190,14 +189,10 @@ mod test {
     use crate::node::common::model::meta_pass::MetaPasswordId;
     use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
 
-    use crate::meta_tests::setup_tracing;
     use crate::node::app::meta_app::meta_client_service::MetaClientService;
     use crate::node::common::model::crypto::aead::EncryptedMessage;
     use crate::node::common::model::device::common::DeviceId;
-    use crate::node::common::model::device::device_link::DeviceLink;
-    use crate::node::common::model::secret::{
-        SecretDistributionType, SsDistributionId, SsDistributionStatus,
-    };
+    use crate::node::common::model::secret::{SsDistributionId, SsDistributionStatus};
     use crate::node::common::model::{ApplicationState, VaultFullInfo};
     use crate::node::db::actions::recover::RecoveryHandler;
     use crate::node::db::descriptors::shared_secret_descriptor::{

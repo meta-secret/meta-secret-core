@@ -8,7 +8,6 @@ pub fn setup_tracing() -> anyhow::Result<()> {
         .with_max_level(Level::DEBUG)
         .without_time()
         .compact()
-        .pretty()
         .init();
     Ok(())
 }
