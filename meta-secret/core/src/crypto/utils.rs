@@ -32,7 +32,7 @@ impl Id48bit {
     pub fn generate() -> Self {
         let mut rng = rand::thread_rng();
 
-        let random_u64: u64 = rng.gen::<u64>() & 0xFFFFFFFFFFFF;
+        let random_u64: u64 = rng.r#gen::<u64>() & 0xFFFFFFFFFFFF;
 
         let hex_num = Self::hex(random_u64);
         Self { text: hex_num }
