@@ -14,16 +14,19 @@ use wasm_bindgen::prelude::*;
 /// https://rustwasm.github.io/wasm-bindgen/wasm-bindgen-test/index.html
 ///
 use wasm_bindgen_test::*;
+use meta_secret_core::node::common::model::device::common::DeviceId;
+use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
 
 // Configure tests to run in browser with debug output
 wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 
 #[wasm_bindgen_test]
-async fn pass_async() {
+async fn pass_async() -> anyhow::Result<()> {
     run_app().await;
+    Ok(())
 }
 
-async fn run_app() {
+async fn run_app() -> anyhow::Result<()> {
     info!("🔄 Starting run_app");
     let cfg = ApplicationManagerConfigurator {
         client_repo: Arc::new(InMemKvLogEventRepo::default()),
@@ -36,7 +39,7 @@ async fn run_app() {
             .await
             .expect("Application state manager must be initialized");
     info!("✅ WasmApplicationManager initialized");
-    async_std::task::sleep(Duration::from_secs(5)).await;
+    async_std::task::sleep(Duration::from_secs(3)).await;
 
     // Initial sign up - first device
     info!("🔄 Performing initial sign up");
@@ -47,6 +50,8 @@ async fn run_app() {
 
     // Get the application state and verify vault membership
     info!("🔄 Verifying vault membership");
+    app_manager.sync_gateway.sync().await?;
+    app_manager.sync_gateway.sync().await?;
     let state = app_manager.get_state().await;
     info!("✅ Application state retrieved");
 
@@ -75,18 +80,14 @@ async fn run_app() {
             info!("📊 Vault has {} users", users.len());
 
             // We expect at least 1 user (the current device)
-            assert!(users.len() >= 1, "Vault should have at least 1 user");
+            assert!(users.len() == 2, "Vault should have at least 1 user");
             info!("✅ TEST PASSED: Vault has users");
-
-            // Print user details
-            for (i, user) in users.iter().enumerate() {
-                info!("👤 User {}: is_member={}", i, user.is_member());
-            }
+            
         } else {
-            info!("⚠️ User is not a vault member yet, but we're in a vault state");
+            panic!("❌ TEST FAILED: User is not a vault member");
         }
     } else {
-        info!("⚠️ Not in a vault state yet, still in local state");
+        panic!("❌ TEST FAILED: local state is not a vault");
     }
 
     // Cluster distribution
@@ -95,8 +96,9 @@ async fn run_app() {
         .cluster_distribution("pass_id:123", "t0p$ecret")
         .await;
     info!("✅ Cluster Distribution completed");
-    async_std::task::sleep(Duration::from_secs(90)).await;
 
     // Test completed successfully
     info!("🎉 TEST COMPLETED SUCCESSFULLY");
+    
+    Ok(())
 }
