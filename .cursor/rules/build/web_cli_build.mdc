@@ -5,7 +5,7 @@ alwaysApply: false
 ---
 
 ### web-cli project
- - web-cli is a web client project that uses vuejs framework
+ - [web-cli](mdc:meta-secret/web-cli) is a web client project that uses vuejs framework
 
 #### web-cli run:
  - cd meta-secret/web-cli/ui

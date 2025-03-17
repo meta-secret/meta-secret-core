@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use axum::extract::State;
 use axum::{
     routing::{get, post},
@@ -12,6 +13,7 @@ use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::{info, Level};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
+use meta_server_node::server::server_app::ServerApp;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct MetaServerAppState {}
@@ -78,6 +80,9 @@ pub async fn event_processing(
     Json(msg_request): Json<SyncRequest>,
 ) -> Result<Json<DataSyncResponse>, StatusCode> {
     info!("Event processing");
+    
+    //let repo = Arc::new(???);
+    //let server = ServerApp::new(repo);
 
     let resp = ServerTailResponse {
         device_log_tail: None,

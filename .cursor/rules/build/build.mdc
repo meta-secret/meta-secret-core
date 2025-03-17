@@ -1,6 +1,6 @@
 ---
 description: Build System
-globs: **/Earthfile
+globs: meta-secret/Earthfile
 alwaysApply: false
 ---
 

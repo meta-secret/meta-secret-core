@@ -1,6 +1,6 @@
 ---
 description: Unit tests rules applied to the rust project (meta secret)
-globs: **/*.rs
+globs: meta-secret/**/*.rs
 alwaysApply: false
 ---
 
