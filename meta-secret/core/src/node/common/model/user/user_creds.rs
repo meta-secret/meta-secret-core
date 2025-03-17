@@ -48,7 +48,7 @@ impl UserCredentials {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-framework"))]
 pub mod fixture {
     use crate::node::common::model::device::common::DeviceName;
     use crate::node::common::model::device::device_creds::fixture::DeviceCredentialsFixture;

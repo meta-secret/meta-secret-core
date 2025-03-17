@@ -1,0 +1,28 @@
+[package]
+name = "meta-server-node"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+test-framework = []
+
+[dependencies]
+meta-secret-core = { path = "../../core" }
+thiserror.workspace = true
+anyhow.workspace = true
+
+derive_more.workspace = true
+
+async-trait.workspace = true
+
+serde.workspace = true
+serde_json.workspace = true
+serde_derive.workspace = true
+
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["fmt", "json", "env-filter"] }
+tracing-attributes.workspace = true
+
+[dev-dependencies]
+meta-secret-core = { path = "../../core", features = ["test-framework"] }
+tokio = { version = "1.44.0", features = ["full"] }

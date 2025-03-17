@@ -3,6 +3,10 @@ use std::time::Duration;
 
 use tracing::{debug, error, info, instrument};
 
+use crate::node::api::{
+    DataEventsResponse, ReadSyncRequest, ServerTailRequest, ServerTailResponse, SsRequest,
+    SyncRequest, VaultRequest, WriteSyncRequest,
+};
 use crate::node::app::sync::sync_protocol::SyncProtocol;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::secret::{SecretDistributionType, SsDistributionStatus};
@@ -23,10 +27,6 @@ use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
-use crate::node::api::{
-    ReadSyncRequest, ServerTailRequest, SsRequest, SyncRequest, VaultRequest, WriteSyncRequest,
-};
-use crate::node::server::server_data_sync::{DataEventsResponse, ServerTailResponse};
 use anyhow::Result;
 
 pub struct SyncGateway<Repo: KvLogEventRepo, Sync: SyncProtocol> {
@@ -311,32 +311,31 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-framework"))]
 pub mod fixture {
     use crate::meta_tests::fixture_util::fixture::states::EmptyState;
     use crate::node::app::sync::sync_gateway::SyncGateway;
-    use crate::node::app::sync::sync_protocol::fixture::SyncProtocolFixture;
-    use crate::node::app::sync::sync_protocol::EmbeddedSyncProtocol;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use std::sync::Arc;
+    use crate::node::app::sync::sync_protocol::SyncProtocol;
 
-    pub struct SyncGatewayFixture {
-        pub client_gw: Arc<SyncGateway<InMemKvLogEventRepo, EmbeddedSyncProtocol>>,
-        pub vd_gw: Arc<SyncGateway<InMemKvLogEventRepo, EmbeddedSyncProtocol>>,
+    pub struct SyncGatewayFixture<Sync: SyncProtocol> {
+        pub client_gw: Arc<SyncGateway<InMemKvLogEventRepo, Sync>>,
+        pub vd_gw: Arc<SyncGateway<InMemKvLogEventRepo, Sync>>,
     }
 
-    impl SyncGatewayFixture {
-        pub fn from(state: &EmptyState, sync: &SyncProtocolFixture) -> Self {
+    impl<Sync: SyncProtocol> SyncGatewayFixture<Sync> {
+        pub fn from(state: &EmptyState, server_sync: Arc<Sync>) -> Self {
             let client_gw = Arc::new(SyncGateway {
                 id: "client_gw".to_string(),
                 p_obj: state.p_obj.client.clone(),
-                sync: sync.sync_protocol.clone(),
+                sync: server_sync.clone(),
             });
 
             let vd_gw = Arc::new(SyncGateway {
                 id: "vd_gw".to_string(),
                 p_obj: state.p_obj.vd.clone(),
-                sync: sync.sync_protocol.clone(),
+                sync: server_sync,
             });
 
             Self { client_gw, vd_gw }

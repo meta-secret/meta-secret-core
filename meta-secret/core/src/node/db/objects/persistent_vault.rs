@@ -228,7 +228,7 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-framework"))]
 pub mod spec {
     use crate::node::common::model::user::common::UserData;
     use crate::node::common::model::vault::vault::VaultStatus;
@@ -265,7 +265,7 @@ pub mod spec {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-framework"))]
 pub mod fixture {
     use super::PersistentVault;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;

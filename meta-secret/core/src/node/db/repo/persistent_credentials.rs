@@ -123,7 +123,7 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-framework"))]
 pub mod fixture {
     use crate::meta_tests::fixture_util::fixture::states::EmptyState;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
@@ -184,7 +184,7 @@ pub mod fixture {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-framework"))]
 pub mod spec {
     use crate::node::db::descriptors::creds::CredentialsDescriptor;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;

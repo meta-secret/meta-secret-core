@@ -18,12 +18,12 @@ use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
-use meta_secret_core::node::server::server_app::ServerApp;
 use crate::wasm_repo::WasmSyncProtocol;
 use anyhow::Result;
 use meta_secret_core::node::app::meta_app::messaging::{ClusterDistributionRequest, GenericAppStateRequest};
 use meta_secret_core::node::common::model::meta_pass::MetaPasswordId;
 use meta_secret_core::node::common::model::WasmApplicationState;
+use meta_server_node::server::server_app::ServerApp;
 
 pub struct ApplicationManager<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub meta_client_service: Arc<MetaClientService<Repo, Sync>>,

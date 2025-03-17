@@ -1,10 +1,8 @@
-#[cfg(test)]
+#[cfg(any(test, feature = "test-framework"))]
 pub mod fixture {
     use crate::crypto::keys::fixture::KeyManagerFixture;
     use crate::meta_tests::fixture_util::fixture::specs::BaseSpec;
-    use crate::meta_tests::fixture_util::fixture::states::{BaseState, EmptyState, ExtendedState};
-    use crate::node::app::meta_app::meta_client_service::fixture::MetaClientServiceFixture;
-    use crate::node::app::sync::sync_protocol::fixture::SyncProtocolFixture;
+    use crate::meta_tests::fixture_util::fixture::states::{BaseState, EmptyState};
     use crate::node::common::model::device::device_creds::fixture::DeviceCredentialsFixture;
     use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
     use crate::node::common::model::vault::vault_data::fixture::VaultDataFixture;
@@ -13,8 +11,6 @@ pub mod fixture {
     use crate::node::db::objects::persistent_vault::fixture::PersistentVaultFixture;
     use crate::node::db::objects::persistent_vault::spec::VaultSpec;
     use crate::node::db::repo::persistent_credentials::fixture::PersistentCredentialsFixture;
-    use crate::node::server::server_app::fixture::ServerAppFixture;
-    use std::sync::Arc;
 
     pub struct FixtureRegistry<S> {
         pub state: S,
@@ -72,32 +68,11 @@ pub mod fixture {
 
             Ok(FixtureRegistry { state: base })
         }
-
-        //SyncGatewayFixture
-        pub async fn extended() -> anyhow::Result<FixtureRegistry<ExtendedState>> {
-            let base = FixtureRegistry::base().await?;
-
-            let server_app = Arc::new(ServerAppFixture::try_from(&base)?);
-            let sync = SyncProtocolFixture::new(server_app.clone());
-            let meta_client_service = MetaClientServiceFixture::from(&base.state, &sync);
-
-            let state = ExtendedState {
-                base: base.state,
-                server_app,
-                meta_client_service,
-                sync,
-            };
-            Ok(FixtureRegistry { state })
-        }
     }
 
     pub mod states {
-        use std::sync::Arc;
-
         use crate::crypto::keys::fixture::KeyManagerFixture;
         use crate::meta_tests::fixture_util::fixture::BaseSpec;
-        use crate::node::app::meta_app::meta_client_service::fixture::MetaClientServiceFixture;
-        use crate::node::app::sync::sync_protocol::fixture::SyncProtocolFixture;
         use crate::node::common::model::device::device_creds::fixture::DeviceCredentialsFixture;
         use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
         use crate::node::common::model::vault::vault_data::fixture::VaultDataFixture;
@@ -105,12 +80,10 @@ pub mod fixture {
         use crate::node::db::objects::persistent_object::fixture::PersistentObjectFixture;
         use crate::node::db::objects::persistent_vault::fixture::PersistentVaultFixture;
         use crate::node::db::repo::persistent_credentials::fixture::PersistentCredentialsFixture;
-        use crate::node::server::server_app::fixture::ServerAppFixture;
 
         pub enum Fixture {
             Empty(EmptyState),
             Base(BaseState),
-            Extended(ExtendedState),
         }
 
         pub struct EmptyState {
@@ -127,13 +100,6 @@ pub mod fixture {
             pub spec: BaseSpec,
             pub p_creds: PersistentCredentialsFixture,
             pub server_vault_action: ServerVaultActionFixture,
-        }
-
-        pub struct ExtendedState {
-            pub base: BaseState,
-            pub server_app: Arc<ServerAppFixture>,
-            pub meta_client_service: MetaClientServiceFixture,
-            pub sync: SyncProtocolFixture,
         }
     }
 

@@ -1,5 +1,4 @@
 #![cfg(target_arch = "wasm32")]
-
 use meta_secret_core::node::app::app_state_update_manager::ApplicationManagerConfigurator;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;

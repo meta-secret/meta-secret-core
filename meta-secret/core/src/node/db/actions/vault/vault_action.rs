@@ -176,7 +176,7 @@ impl<Repo: KvLogEventRepo> CreateVaultAction<Repo> {
 }
 
 /// Fixture for testing purposes
-#[cfg(test)]
+#[cfg(any(test, feature = "test-framework"))]
 pub mod fixture {
     use super::*;
     use crate::meta_tests::fixture_util::fixture::states::EmptyState;

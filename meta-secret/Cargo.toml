@@ -5,10 +5,12 @@ resolver = "2"
 members = [
     "core",
     "meta-server-emulator",
-    "meta-server",
+    "meta-server/server-node",
+    "meta-server/web-server",
     "core-swift-lib",
     "wasm",
-    "cli"
+    "cli",
+    "tests"
 ]
 
 [workspace.dependencies]

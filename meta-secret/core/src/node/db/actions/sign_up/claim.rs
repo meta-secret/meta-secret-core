@@ -73,7 +73,7 @@ impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-framework"))]
 pub mod test_action {
     use crate::node::common::model::user::user_creds::UserCredentials;
     use crate::node::common::model::vault::vault::VaultStatus;
@@ -107,7 +107,7 @@ pub mod test_action {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-framework"))]
 pub mod spec {
     use crate::meta_tests::spec::test_spec::TestSpec;
     use crate::node::common::model::user::common::UserData;
@@ -156,9 +156,9 @@ mod test {
     #[tokio::test]
     #[ignore]
     async fn test_sign_up() -> Result<()> {
-        let registry = FixtureRegistry::extended().await?;
-        let p_obj = registry.state.base.empty.p_obj.client.clone();
-        let creds = registry.state.base.empty.user_creds;
+        let registry = FixtureRegistry::base().await?;
+        let p_obj = registry.state.empty.p_obj.client.clone();
+        let creds = registry.state.empty.user_creds;
 
         let vault_status = SignUpClaimTestAction::sign_up(p_obj.clone(), &creds.client).await?;
 

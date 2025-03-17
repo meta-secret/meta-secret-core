@@ -12,6 +12,7 @@ default = ["console_error_panic_hook"]
 
 [dependencies]
 meta-secret-core = { path = "../core" }
+meta-server-node = { path = "../meta-server/server-node" }
 
 anyhow.workspace = true
 

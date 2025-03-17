@@ -149,7 +149,7 @@ impl PersistentObject<InMemKvLogEventRepo> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-framework"))]
 pub mod fixture {
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_object::PersistentObject;

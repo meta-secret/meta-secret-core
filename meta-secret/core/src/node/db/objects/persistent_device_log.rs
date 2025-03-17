@@ -124,7 +124,7 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-framework"))]
 pub mod spec {
     use crate::node::common::model::user::common::UserData;
     use crate::node::db::descriptors::vault_descriptor::DeviceLogDescriptor;

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-meta-secret-core = { path = "../core" }
+meta-secret-core = { path = "../../core" }
 
 thiserror.workspace = true
 anyhow.workspace = true

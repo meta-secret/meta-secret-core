@@ -204,7 +204,7 @@ impl VaultAggregate {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-framework"))]
 pub mod fixture {
     use crate::node::common::model::user::common::{UserDataMember, UserMembership};
     use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;

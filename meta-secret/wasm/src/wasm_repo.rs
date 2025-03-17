@@ -13,11 +13,10 @@ use meta_secret_core::node::db::repo::generic_db::{
 use meta_secret_core::node::common::model::IdString;
 use rexie::*;
 use meta_secret_core::node::db::events::object_id::ArtifactId;
-use meta_secret_core::node::server::server_app::ServerApp;
 use anyhow::Result;
 use meta_secret_core::node::app::sync::sync_protocol::SyncProtocol;
-use meta_secret_core::node::api::SyncRequest;
-use meta_secret_core::node::server::server_data_sync::DataSyncResponse;
+use meta_secret_core::node::api::{DataSyncResponse, SyncRequest};
+use meta_server_node::server::server_app::ServerApp;
 
 pub struct WasmRepo {
     pub db_name: String,

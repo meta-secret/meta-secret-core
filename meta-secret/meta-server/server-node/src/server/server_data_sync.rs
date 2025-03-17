@@ -1,27 +1,24 @@
 use std::cmp::PartialEq;
 use std::sync::Arc;
 
-use crate::node::common::model::device::common::{DeviceData, DeviceId};
-use crate::node::common::model::secret::{SecretDistributionType};
-use crate::node::common::model::vault::vault::VaultStatus;
-use crate::node::db::actions::vault::vault_action::ServerVaultAction;
-use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
-use crate::node::db::events::generic_log_event::{
-    GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
-};
-use crate::node::db::events::object_id::ArtifactId;
-use crate::node::db::events::shared_secret_event::SsLogObject;
-use crate::node::db::events::vault::device_log_event::DeviceLogObject;
-use crate::node::db::objects::persistent_object::PersistentObject;
-use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
-use crate::node::db::objects::persistent_vault::PersistentVault;
-use crate::node::db::repo::generic_db::KvLogEventRepo;
-use crate::node::api::{SsRequest, VaultRequest};
 use anyhow::Result;
 use anyhow::{anyhow, bail, Ok};
 use async_trait::async_trait;
 use derive_more::From;
 use tracing::{info, instrument};
+use meta_secret_core::node::api::{SsRequest, VaultRequest};
+use meta_secret_core::node::common::model::device::common::{DeviceData, DeviceId};
+use meta_secret_core::node::common::model::secret::SecretDistributionType;
+use meta_secret_core::node::common::model::vault::vault::VaultStatus;
+use meta_secret_core::node::db::actions::vault::vault_action::ServerVaultAction;
+use meta_secret_core::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
+use meta_secret_core::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, ToGenericEvent};
+use meta_secret_core::node::db::events::shared_secret_event::SsLogObject;
+use meta_secret_core::node::db::events::vault::device_log_event::DeviceLogObject;
+use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
+use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
+use meta_secret_core::node::db::objects::persistent_vault::PersistentVault;
+use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 
 #[async_trait(? Send)]
 pub trait DataSyncApi {
@@ -37,41 +34,6 @@ pub trait DataSyncApi {
 #[derive(From)]
 pub struct ServerSyncGateway<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum DataSyncResponse {
-    Empty,
-    Data(DataEventsResponse),
-    ServerTailResponse(ServerTailResponse),
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DataEventsResponse(pub Vec<GenericKvLogEvent>);
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ServerTailResponse {
-    pub device_log_tail: Option<ArtifactId>,
-    pub ss_device_log_tail: Option<ArtifactId>,
-}
-
-impl DataSyncResponse {
-    pub fn to_data(&self) -> Result<DataEventsResponse> {
-        match self {
-            DataSyncResponse::Data(data) => Ok(data.clone()),
-            _ => Err(anyhow!("Invalid response type")),
-        }
-    }
-
-    pub fn to_server_tail(&self) -> Result<ServerTailResponse> {
-        match self {
-            DataSyncResponse::ServerTailResponse(server_tail) => Ok(server_tail.clone()),
-            _ => Err(anyhow!("Invalid response type")),
-        }
-    }
 }
 
 #[async_trait(? Send)]

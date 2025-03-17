@@ -205,7 +205,7 @@ mod test {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-framework"))]
 pub mod fixture {
     use crate::crypto::keys::KeyManager;
 
@@ -222,7 +222,7 @@ pub mod fixture {
                 client: KeyManager::generate(),
                 client_b: KeyManager::generate(),
                 vd: KeyManager::generate(),
-                server: KeyManager::generate(),
+                server: KeyManager::generate()
             }
         }
     }

@@ -16,7 +16,6 @@ impl DeviceCredentials {
         DeviceCredentials { secret_box, device }
     }
 
-    #[cfg(test)]
     pub fn from_key_manager(
         device_name: DeviceName,
         key_manager: &KeyManager,
@@ -34,7 +33,7 @@ impl DeviceCredentials {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-framework"))]
 pub mod fixture {
     use crate::crypto::keys::fixture::KeyManagerFixture;
     use crate::node::common::model::device::common::DeviceName;
