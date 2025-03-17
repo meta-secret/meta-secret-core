@@ -1,25 +1,28 @@
-use std::sync::Arc;
 use axum::extract::State;
 use axum::{
-    routing::{get, post},
     Json, Router,
+    routing::{get, post},
 };
 use http::{StatusCode, Uri};
 use serde_derive::{Deserialize, Serialize};
+use std::sync::Arc;
 
+use meta_db_sqlite::db::sqlite_store::SqlIteRepo;
 use meta_secret_core::node::api::{DataSyncResponse, ServerTailResponse, SyncRequest};
+use meta_server_node::server::server_app::ServerApp;
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
-use tracing::{info, Level};
+use tracing::{Level, info};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
-use meta_server_node::server::server_app::ServerApp;
+use anyhow::Result;
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct MetaServerAppState {}
+pub struct MetaServerAppState {
+    server_app: Arc<ServerApp<SqlIteRepo>>
+}
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<()> {
     let filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("debug"))
         .add_directive("hyper=info".parse()?)
@@ -43,8 +46,15 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Creating router...");
     let cors = CorsLayer::permissive();
-
-    let app_state = MetaServerAppState {};
+    
+    let server_app = {
+        let repo = Arc::new(SqlIteRepo {
+            conn_url: String::from("file:///tmp/meta-secret.db"),
+        });
+        Arc::new(ServerApp::new(repo.clone())?)
+    };
+    
+    let app_state = Arc::new(MetaServerAppState { server_app });
 
     info!("Creating router...");
     let app = Router::new()
@@ -76,17 +86,17 @@ async fn not_found_handler(uri: Uri) -> (StatusCode, Json<ErrorResponse>) {
 }
 
 pub async fn event_processing(
-    State(state): State<MetaServerAppState>,
+    State(app_state): State<Arc<MetaServerAppState>>,
     Json(msg_request): Json<SyncRequest>,
 ) -> Result<Json<DataSyncResponse>, StatusCode> {
     info!("Event processing");
     
-    //let repo = Arc::new(???);
-    //let server = ServerApp::new(repo);
-
-    let resp = ServerTailResponse {
-        device_log_tail: None,
-        ss_device_log_tail: None,
-    };
-    Ok(Json(DataSyncResponse::ServerTailResponse(resp)))
+    let response = app_state.server_app.handle_client_request(msg_request)
+        .await
+        .map_err(|err| {
+            info!("Error processing request: {:?}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    
+    Ok(Json(response))
 }

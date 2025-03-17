@@ -3,7 +3,7 @@ use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use meta_secret_core::crypto::utils::UuidUrlEnc;
 use meta_secret_core::node::common::model::IdString;
 
-pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("../meta-server-emulator/migrations");
+pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
 
 pub struct EmbeddedMigrationsTool {
     pub db_url: String,

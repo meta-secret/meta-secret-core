@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 meta-secret-core = { path = "../../core" }
 meta-server-node = { path = "../server-node" }
+meta-db-sqlite = { path = "../../db/sqlite" }
 
 thiserror.workspace = true
 anyhow.workspace = true
