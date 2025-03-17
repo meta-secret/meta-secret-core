@@ -2,7 +2,7 @@ use std::cmp::PartialEq;
 use std::sync::Arc;
 
 use anyhow::Result;
-use anyhow::{anyhow, bail, Ok};
+use anyhow::{bail, Ok};
 use async_trait::async_trait;
 use derive_more::From;
 use tracing::{info, instrument};

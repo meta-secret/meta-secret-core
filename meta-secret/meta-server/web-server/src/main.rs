@@ -1,12 +1,10 @@
 use axum::extract::State;
-use axum::{
-    Json, Router,
-    routing::{get, post},
-};
+use axum::{Json, Router, routing::{post}, Extension};
 use http::{StatusCode, Uri};
-use serde_derive::{Deserialize, Serialize};
+use serde_derive::{Serialize};
 use std::sync::Arc;
 
+use anyhow::Result;
 use meta_db_sqlite::db::sqlite_store::SqlIteRepo;
 use meta_secret_core::node::api::{DataSyncResponse, ServerTailResponse, SyncRequest};
 use meta_server_node::server::server_app::ServerApp;
@@ -15,10 +13,10 @@ use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::{Level, info};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
-use anyhow::Result;
 
+#[derive(Clone)]
 pub struct MetaServerAppState {
-    server_app: Arc<ServerApp<SqlIteRepo>>
+    server_app: Arc<ServerApp<SqlIteRepo>>,
 }
 
 #[tokio::main]
@@ -46,19 +44,19 @@ async fn main() -> Result<()> {
 
     info!("Creating router...");
     let cors = CorsLayer::permissive();
-    
+
     let server_app = {
         let repo = Arc::new(SqlIteRepo {
             conn_url: String::from("file:///tmp/meta-secret.db"),
         });
         Arc::new(ServerApp::new(repo.clone())?)
     };
-    
-    let app_state = Arc::new(MetaServerAppState { server_app });
+
+    let app_state = MetaServerAppState { server_app };
 
     info!("Creating router...");
     let app = Router::new()
-        .route("/event", post(event_processing))
+        .route("/meta_request", post(meta_request))
         .with_state(app_state)
         .layer(cors)
         .layer(TraceLayer::new_for_http())
@@ -85,18 +83,20 @@ async fn not_found_handler(uri: Uri) -> (StatusCode, Json<ErrorResponse>) {
     (StatusCode::NOT_FOUND, response)
 }
 
-pub async fn event_processing(
-    State(app_state): State<Arc<MetaServerAppState>>,
+pub async fn meta_request(
+    State(state): State<MetaServerAppState>,
     Json(msg_request): Json<SyncRequest>,
 ) -> Result<Json<DataSyncResponse>, StatusCode> {
     info!("Event processing");
-    
-    let response = app_state.server_app.handle_client_request(msg_request)
+
+    let response = state
+        .server_app
+        .handle_client_request(msg_request)
         .await
         .map_err(|err| {
             info!("Error processing request: {:?}", err);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
-    
+
     Ok(Json(response))
 }

@@ -2,7 +2,7 @@ FROM debian:bookworm
 
 RUN apt update && apt install -y \
     build-essential pkg-config libssl-dev \
-    curl wget git bash-completion
+    curl wget git bash-completion libsqlite3-dev
 
 #################### Installation ####################
 #Earthly
