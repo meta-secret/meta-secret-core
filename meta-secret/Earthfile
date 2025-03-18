@@ -95,7 +95,7 @@ web-run:
     END
 
 
-app-test:
+test:
     FROM +builder
     COPY . .
     WORKDIR meta-secret
