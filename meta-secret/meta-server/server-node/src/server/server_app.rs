@@ -13,19 +13,19 @@ use meta_secret_core::node::db::events::generic_log_event::ToGenericEvent;
 use meta_secret_core::node::db::events::object_id::Next;
 use meta_secret_core::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
-use crate::server::server_data_sync::{DataSyncApi, ServerSyncGateway};
+use crate::server::server_data_sync::ServerSyncGateway;
 
 pub struct ServerApp<Repo: KvLogEventRepo> {
-    pub data_sync: ServerSyncGateway<Repo>,
-    pub p_obj: Arc<PersistentObject<Repo>>,
-    creds_repo: PersistentCredentials<Repo>,
+    data_sync: Arc<ServerSyncGateway<Repo>>,
+    p_obj: Arc<PersistentObject<Repo>>,
+    creds_repo: Arc<PersistentCredentials<Repo>>,
 }
 
 impl<Repo: KvLogEventRepo> ServerApp<Repo> {
     pub fn new(repo: Arc<Repo>) -> Result<Self> {
         let p_obj = Arc::new(PersistentObject::new(repo));
-        let data_sync = ServerSyncGateway::from(p_obj.clone());
-        let creds_repo = PersistentCredentials::from(p_obj.clone());
+        let data_sync = Arc::new(ServerSyncGateway::from(p_obj.clone()));
+        let creds_repo = Arc::new(PersistentCredentials::from(p_obj.clone()));
 
         Ok(Self {
             data_sync,

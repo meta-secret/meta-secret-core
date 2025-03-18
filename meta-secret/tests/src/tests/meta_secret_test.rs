@@ -1,14 +1,14 @@
+use anyhow::Result;
 use meta_secret_core::node::common::model::device::common::DeviceId;
 use meta_secret_core::node::common::model::secret::{SecretDistributionType, SsClaim};
-use anyhow::Result;
 
 #[cfg(test)]
 pub mod fixture {
-    use std::sync::Arc;
     use meta_secret_core::meta_tests::fixture_util::fixture::FixtureRegistry;
     use meta_secret_core::meta_tests::fixture_util::fixture::states::BaseState;
     use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
     use meta_server_node::server::server_app::ServerApp;
+    use std::sync::Arc;
 
     pub struct ServerAppFixture {
         pub server_app: Arc<ServerApp<InMemKvLogEventRepo>>,
@@ -25,19 +25,20 @@ pub mod fixture {
 
 #[cfg(test)]
 mod test {
-    use std::sync::Arc;
-    use anyhow::bail;
+    use crate::fixture::{ExtendedFixtureRegistry, ExtendedFixtureState};
+    use crate::tests::meta_secret_test::SsClaimVerifierForTestRecovery;
     use anyhow::Result;
-    use tracing::{info, Instrument};
+    use anyhow::bail;
     use meta_secret_core::meta_tests::fixture_util::fixture::FixtureRegistry;
     use meta_secret_core::meta_tests::fixture_util::fixture::states::EmptyState;
     use meta_secret_core::meta_tests::spec::test_spec::TestSpec;
-    use meta_secret_core::node::app::meta_app::messaging::{ClusterDistributionRequest, GenericAppStateRequest};
+    use meta_secret_core::node::app::meta_app::messaging::{
+        ClusterDistributionRequest, GenericAppStateRequest,
+    };
     use meta_secret_core::node::app::meta_app::meta_client_service::MetaClientService;
     use meta_secret_core::node::app::orchestrator::MetaOrchestrator;
     use meta_secret_core::node::app::sync::sync_gateway::SyncGateway;
     use meta_secret_core::node::common::meta_tracing::{client_span, server_span, vd_span};
-    use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
     use meta_secret_core::node::common::model::crypto::aead::EncryptedMessage;
     use meta_secret_core::node::common::model::device::common::DeviceId;
     use meta_secret_core::node::common::model::meta_pass::MetaPasswordId;
@@ -45,10 +46,13 @@ mod test {
     use meta_secret_core::node::common::model::user::common::UserData;
     use meta_secret_core::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
     use meta_secret_core::node::common::model::vault::vault::VaultStatus;
+    use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
     use meta_secret_core::node::db::actions::recover::RecoveryHandler;
     use meta_secret_core::node::db::actions::sign_up::claim::spec::SignUpClaimSpec;
     use meta_secret_core::node::db::actions::sign_up::claim::test_action::SignUpClaimTestAction;
-    use meta_secret_core::node::db::descriptors::shared_secret_descriptor::{SsDeviceLogDescriptor, SsWorkflowDescriptor};
+    use meta_secret_core::node::db::descriptors::shared_secret_descriptor::{
+        SsDeviceLogDescriptor, SsWorkflowDescriptor,
+    };
     use meta_secret_core::node::db::events::generic_log_event::GenericKvLogEvent;
     use meta_secret_core::node::db::events::shared_secret_event::SsWorkflowObject;
     use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
@@ -56,9 +60,9 @@ mod test {
     use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
     use meta_secret_core::node::db::objects::persistent_vault::PersistentVault;
     use meta_secret_core::node::db::repo::persistent_credentials::spec::PersistentCredentialsSpec;
-    use meta_server_node::server::server_sync_protocol::EmbeddedSyncProtocol;
-    use crate::fixture::{ExtendedFixtureRegistry, ExtendedFixtureState};
-    use crate::tests::meta_secret_test::SsClaimVerifierForTestRecovery;
+    use meta_server_node::server::server_sync_protocol::fixture::EmbeddedSyncProtocol;
+    use std::sync::Arc;
+    use tracing::{Instrument, info};
 
     struct ActorNode {
         user: UserData,
@@ -77,6 +81,7 @@ mod test {
         }
     }
 
+    #[allow(dead_code)]
     struct ServerNode {
         p_obj: Arc<PersistentObject<InMemKvLogEventRepo>>,
         p_vault: Arc<PersistentVault<InMemKvLogEventRepo>>,
@@ -249,13 +254,21 @@ mod test {
             Ok(())
         }
 
+        #[allow(unused_variables)]
         async fn server_check(&self, client_user: UserData) -> Result<()> {
             let server_app = self.registry.state.server_app.server_app.clone();
+            let server_p_obj = self.registry
+                .state
+                .base
+                .empty
+                .p_obj
+                .server
+                .clone();
+            
             let server_ss_device_log_events = {
                 let ss_desc = SsDeviceLogDescriptor::from(client_user.device.device_id.clone());
-
-                server_app
-                    .p_obj
+                
+                server_p_obj
                     .get_object_events_from_beginning(ss_desc)
                     .instrument(server_span())
                     .await?
@@ -265,12 +278,12 @@ mod test {
                 server_ss_device_log_events.len()
             );
 
-            let server_db = server_app.p_obj.repo.get_db().await;
+            let server_db = server_p_obj.repo.get_db().await;
 
             assert_eq!(6, server_db.len());
 
             let server_claim_spec = SignUpClaimSpec {
-                p_obj: server_app.p_obj.clone(),
+                p_obj: server_p_obj.clone(),
                 user: client_user.clone(),
             };
 
@@ -411,6 +424,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[allow(dead_code, unused_variables)]
     async fn test_recover() -> Result<()> {
         let split = {
             let spec = ServerAppSignUpSpec::build().await?;
@@ -608,12 +622,15 @@ mod test {
         Ok(())
     }
 }
+
+#[allow(dead_code)]
 struct SsClaimVerifierForTestRecovery {
     sender: DeviceId,
     receiver: DeviceId,
 }
 
 impl SsClaimVerifierForTestRecovery {
+    #[allow(dead_code)]
     pub fn verify(&self, claim: SsClaim) -> Result<()> {
         // Verify the claim properties
         assert_eq!(claim.sender, self.sender);
@@ -628,4 +645,3 @@ impl SsClaimVerifierForTestRecovery {
         Ok(())
     }
 }
-

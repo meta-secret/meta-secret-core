@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use anyhow::{bail, Ok};
-use async_trait::async_trait;
 use derive_more::From;
 use tracing::{info, instrument};
 use meta_secret_core::node::api::{SsRequest, VaultRequest};
@@ -20,26 +19,14 @@ use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSha
 use meta_secret_core::node::db::objects::persistent_vault::PersistentVault;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 
-#[async_trait(? Send)]
-pub trait DataSyncApi {
-    async fn vault_replication(
-        &self,
-        vault_request: VaultRequest,
-    ) -> Result<Vec<GenericKvLogEvent>>;
-
-    async fn handle_write(&self, server_device: DeviceData, event: GenericKvLogEvent)
-        -> Result<()>;
-}
-
 #[derive(From)]
 pub struct ServerSyncGateway<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
 }
 
-#[async_trait(? Send)]
-impl<Repo: KvLogEventRepo> DataSyncApi for ServerSyncGateway<Repo> {
+impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
     #[instrument(skip(self))]
-    async fn vault_replication(
+    pub async fn vault_replication(
         &self,
         vault_request: VaultRequest,
     ) -> Result<Vec<GenericKvLogEvent>> {
@@ -50,7 +37,7 @@ impl<Repo: KvLogEventRepo> DataSyncApi for ServerSyncGateway<Repo> {
 
         let vault_status = p_vault.find(vault_request.sender.clone()).await?;
         if let VaultStatus::Member { .. } = vault_status {
-            let vault_events = self.vault_replication(vault_request.clone()).await?;
+            let vault_events = self.vault_replication_0(vault_request.clone()).await?;
             commit_log.extend(vault_events);
         }
 
@@ -59,7 +46,7 @@ impl<Repo: KvLogEventRepo> DataSyncApi for ServerSyncGateway<Repo> {
 
     /// Handle request: all types of requests will be handled
     /// and the actions will be executed accordingly
-    async fn handle_write(
+    pub async fn handle_write(
         &self,
         server_device: DeviceData,
         generic_event: GenericKvLogEvent,
@@ -185,7 +172,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         Ok(())
     }
 
-    pub async fn vault_replication(&self, request: VaultRequest) -> Result<Vec<GenericKvLogEvent>> {
+    pub async fn vault_replication_0(&self, request: VaultRequest) -> Result<Vec<GenericKvLogEvent>> {
         let mut commit_log = vec![];
 
         let p_vault = PersistentVault::from(self.p_obj.clone());

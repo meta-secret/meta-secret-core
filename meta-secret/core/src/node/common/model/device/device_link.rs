@@ -81,6 +81,7 @@ impl TryFrom<&CommunicationChannel> for DeviceLink {
     }
 }
 
+#[allow(dead_code)]
 pub struct WasmDeviceLink(DeviceLink);
 impl WasmDeviceLink {}
 

@@ -1,12 +1,12 @@
 use axum::extract::State;
-use axum::{Json, Router, routing::{post}, Extension};
+use axum::{Json, Router, routing::{post}};
 use http::{StatusCode, Uri};
 use serde_derive::{Serialize};
 use std::sync::Arc;
 
 use anyhow::Result;
 use meta_db_sqlite::db::sqlite_store::SqlIteRepo;
-use meta_secret_core::node::api::{DataSyncResponse, ServerTailResponse, SyncRequest};
+use meta_secret_core::node::api::{DataSyncResponse, SyncRequest};
 use meta_server_node::server::server_app::ServerApp;
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
@@ -52,7 +52,7 @@ async fn main() -> Result<()> {
         Arc::new(ServerApp::new(repo.clone())?)
     };
 
-    let app_state = MetaServerAppState { server_app };
+    let app_state = Arc::new(MetaServerAppState { server_app });
 
     info!("Creating router...");
     let app = Router::new()
@@ -74,7 +74,6 @@ async fn main() -> Result<()> {
 struct ErrorResponse {
     message: String,
 }
-
 async fn not_found_handler(uri: Uri) -> (StatusCode, Json<ErrorResponse>) {
     let error_response = ErrorResponse {
         message: format!("404. MetaServer has no route: {uri}"),
@@ -84,19 +83,18 @@ async fn not_found_handler(uri: Uri) -> (StatusCode, Json<ErrorResponse>) {
 }
 
 pub async fn meta_request(
-    State(state): State<MetaServerAppState>,
+    State(state): State<Arc<MetaServerAppState>>,
     Json(msg_request): Json<SyncRequest>,
-) -> Result<Json<DataSyncResponse>, StatusCode> {
+) -> Json<DataSyncResponse> {
     info!("Event processing");
 
     let response = state
         .server_app
         .handle_client_request(msg_request)
         .await
-        .map_err(|err| {
-            info!("Error processing request: {:?}", err);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+        .unwrap();
 
-    Ok(Json(response))
+    Json(response)
 }
+
+

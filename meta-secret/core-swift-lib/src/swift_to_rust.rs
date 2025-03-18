@@ -80,6 +80,7 @@ mod internal {
     use meta_secret_core::secret;
     use meta_secret_core::secret::shared_secret::PlainText;
 
+    #[allow(unused_variables)]
     pub fn generate_security_box(vault_name_bytes: *const u8, len: SizeT) -> CoreResult<String> {
         let security_box = KeyManager::generate_secret_box();
         let user = serde_json::to_string_pretty(&security_box)?;
@@ -172,13 +173,13 @@ pub extern "C" fn rust_string_free(s: *mut c_char) {
         if s.is_null() {
             return;
         }
-        CString::from_raw(s)
+        let _ = CString::from_raw(s);
     };
 }
 
 fn data_to_string(bytes: *const u8, len: SizeT) -> CoreResult<String> {
     // JSON parsing
-    let bytes_slice = unsafe { slice::from_raw_parts(bytes, len as usize) };
+    let bytes_slice = unsafe { slice::from_raw_parts(bytes, len) };
     let result = str::from_utf8(bytes_slice)?;
     Ok(result.to_string())
 }

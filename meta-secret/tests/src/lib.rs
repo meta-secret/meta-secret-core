@@ -6,8 +6,7 @@ pub mod fixture {
     use meta_secret_core::meta_tests::fixture_util::fixture::FixtureRegistry;
     use meta_secret_core::meta_tests::fixture_util::fixture::states::BaseState;
     use meta_secret_core::node::app::meta_app::meta_client_service::fixture::MetaClientServiceFixture;
-    use meta_server_node::server::server_sync_protocol::EmbeddedSyncProtocol;
-    use meta_server_node::server::server_sync_protocol::fixture::SyncProtocolFixture;
+    use meta_server_node::server::server_sync_protocol::fixture::{EmbeddedSyncProtocol, SyncProtocolFixture};
     use crate::tests::meta_secret_test::fixture::ServerAppFixture;
 
     pub struct ExtendedFixtureRegistry;
