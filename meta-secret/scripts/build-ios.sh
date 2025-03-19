@@ -6,11 +6,11 @@ rustup target add aarch64-apple-ios x86_64-apple-ios
 
 # Компиляция для iOS device (arm64)
 echo "Компиляция для iOS устройств (arm64)..."
-cargo build --target aarch64-apple-ios --release --features mobile
+cargo build --package meta-secret-core --target aarch64-apple-ios --release --features mobile
 
 # Компиляция для iOS симулятора (x86_64)
 echo "Компиляция для iOS симулятора (x86_64)..."
-cargo build --target x86_64-apple-ios --release --features mobile
+cargo build --package meta-secret-core --target x86_64-apple-ios --release --features mobile
 
 # Создание универсальной бинарной библиотеки
 echo "Создание универсальной бинарной библиотеки..."
