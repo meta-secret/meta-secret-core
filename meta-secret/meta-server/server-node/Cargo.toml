@@ -23,6 +23,9 @@ tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["fmt", "json", "env-filter"] }
 tracing-attributes.workspace = true
 
+flume.workspace = true
+async-std = { version = "1.13.0" }
+
 [dev-dependencies]
 meta-secret-core = { path = "../../core", features = ["test-framework"] }
 tokio = { version = "1.44.0", features = ["full"] }

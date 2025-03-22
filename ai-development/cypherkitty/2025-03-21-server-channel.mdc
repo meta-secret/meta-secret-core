@@ -1,0 +1,22 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+### Web-server async issue
+
+#### Problem:
+1. meta-server axum web-server uses [sqlite_store.rs](mdc:meta-secret/db/sqlite/src/db/sqlite_store.rs)
+2. SqliteRepo uses implements KvLogEventRepo which has async functions which are non Send
+3. meta-secret/wasm crate contains WasmRepo which can only implement non Send functions, at the same time
+   SqliteRepo has to implement async Send functions, because it is used in axum web-server
+
+#### Solution:
+1. using flume crate, add run() function into [server_app.rs](mdc:meta-secret/meta-server/server-node/src/server/server_app.rs)
+2. run() function has to start listening on a flume receiver and get incoming messages
+3. use [meta_client_service.rs](mdc:meta-secret/core/src/node/app/meta_app/meta_client_service.rs) as an template and example:
+   - you need MetaServeDataTransfer, like MetaClientDataTransfer to send messages to the [server_app.rs](mdc:meta-secret/meta-server/server-node/src/server/server_app.rs)
+   - you have to reuse [data_transfer.rs](mdc:meta-secret/core/src/node/common/data_transfer.rs)
+
+#### Final verification:
+1. run tests to verify that all changes work correctly

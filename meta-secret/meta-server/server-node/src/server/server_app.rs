@@ -1,24 +1,50 @@
 use std::sync::Arc;
 
-use anyhow::{bail, Result};
+use crate::server::server_data_sync::ServerSyncGateway;
+use anyhow::{Result, bail};
+use meta_secret_core::node::api::{
+    DataEventsResponse, DataSyncResponse, ReadSyncRequest, ServerTailRequest, ServerTailResponse,
+    SyncRequest, WriteSyncRequest,
+};
+use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
+use meta_secret_core::node::common::model::device::common::DeviceName;
 use meta_secret_core::node::common::model::device::device_creds::DeviceCredentials;
-use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
-use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
-use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
-use tracing::{error, info, instrument};
-use meta_secret_core::node::api::{DataEventsResponse, DataSyncResponse, ReadSyncRequest, ServerTailRequest, ServerTailResponse, SyncRequest, WriteSyncRequest};
-use meta_secret_core::node::common::model::device::common::{DeviceName};
 use meta_secret_core::node::db::descriptors::shared_secret_descriptor::SsLogDescriptor;
 use meta_secret_core::node::db::events::generic_log_event::ToGenericEvent;
 use meta_secret_core::node::db::events::object_id::Next;
 use meta_secret_core::node::db::objects::persistent_device_log::PersistentDeviceLog;
+use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
-use crate::server::server_data_sync::ServerSyncGateway;
+use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
+use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
+use tracing::{error, info, instrument};
+
+pub struct MetaServerDataTransfer {
+    pub dt: MpscDataTransfer<SyncRequest, DataSyncResponse>,
+}
+
+impl Default for MetaServerDataTransfer {
+    fn default() -> Self {
+        Self {
+            dt: MpscDataTransfer::new(),
+        }
+    }
+}
+
+impl MetaServerDataTransfer {
+    pub async fn send_request(&self, request: SyncRequest) -> Result<DataSyncResponse> {
+        self.dt
+            .send_to_service_and_get(request)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to get response: {:?}", e))
+    }
+}
 
 pub struct ServerApp<Repo: KvLogEventRepo> {
     data_sync: Arc<ServerSyncGateway<Repo>>,
     p_obj: Arc<PersistentObject<Repo>>,
     creds_repo: Arc<PersistentCredentials<Repo>>,
+    data_transfer: Arc<MetaServerDataTransfer>,
 }
 
 impl<Repo: KvLogEventRepo> ServerApp<Repo> {
@@ -26,12 +52,47 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
         let p_obj = Arc::new(PersistentObject::new(repo));
         let data_sync = Arc::new(ServerSyncGateway::from(p_obj.clone()));
         let creds_repo = Arc::new(PersistentCredentials::from(p_obj.clone()));
+        let data_transfer = Arc::new(MetaServerDataTransfer::default());
 
         Ok(Self {
             data_sync,
             p_obj,
             creds_repo,
+            data_transfer,
         })
+    }
+
+    pub fn get_data_transfer(&self) -> Arc<MetaServerDataTransfer> {
+        self.data_transfer.clone()
+    }
+
+    pub async fn run(&self) -> Result<()> {
+        info!("Run server_app service");
+
+        let device_creds = self.get_creds().await?;
+        info!("Server initialized with credentials: {:?}", device_creds);
+
+        loop {
+            match self.data_transfer.dt.service_receive().await {
+                Ok(request) => {
+                    let response = self.handle_client_request(request).await;
+                    match response {
+                        Ok(resp) => {
+                            self.data_transfer.dt.send_to_client(resp).await;
+                        }
+                        Err(e) => {
+                            error!("Error processing request: {:?}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("Error receiving message: {:?}", e);
+                    // Continue the loop even if there's an error
+                }
+            }
+
+            async_std::task::sleep(std::time::Duration::from_millis(10)).await;
+        }
     }
 
     pub async fn init(&self) -> Result<DeviceCredentials> {

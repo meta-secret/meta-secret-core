@@ -7,7 +7,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use meta_db_sqlite::db::sqlite_store::SqlIteRepo;
 use meta_secret_core::node::api::{DataSyncResponse, SyncRequest};
-use meta_server_node::server::server_app::ServerApp;
+use meta_server_node::server::server_app::{ServerApp, MetaServerDataTransfer};
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
@@ -16,7 +16,7 @@ use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
 #[derive(Clone)]
 pub struct MetaServerAppState {
-    server_app: Arc<ServerApp<SqlIteRepo>>,
+    data_transfer: Arc<MetaServerDataTransfer>,
 }
 
 #[tokio::main]
@@ -51,8 +51,19 @@ async fn main() -> Result<()> {
         });
         Arc::new(ServerApp::new(repo.clone())?)
     };
+    
+    // Start the server background task
+    let data_transfer = server_app.get_data_transfer();
+    let server_app_clone = server_app.clone();
+    
+    // Use async-std with spawn_local which doesn't require Send
+    async_std::task::spawn_local(async move {
+        if let Err(e) = server_app_clone.run().await {
+            panic!("Server app background task failed: {:?}", e);
+        }
+    });
 
-    let app_state = Arc::new(MetaServerAppState { server_app });
+    let app_state = Arc::new(MetaServerAppState { data_transfer });
 
     info!("Creating router...");
     let app = Router::new()
@@ -89,12 +100,10 @@ pub async fn meta_request(
     info!("Event processing");
 
     let response = state
-        .server_app
-        .handle_client_request(msg_request)
+        .data_transfer
+        .send_request(msg_request)
         .await
         .unwrap();
 
     Json(response)
 }
-
-
