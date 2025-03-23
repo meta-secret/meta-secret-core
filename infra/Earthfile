@@ -5,4 +5,17 @@ kcl-config-gen:
     FROM --platform=linux/amd64 kcllang/kcl:v0.11.0
     RUN --no-cache kcl
 
+build-sops:
+    FROM quay.io/getsops/sops:v3.9.4
+    RUN apt update && apt install -y build-essential age curl tar
 
+    #Install age
+    ENV AGE_VERSION=v1.2.1
+    ENV AGE_ARCHIVE=age-${AGE_VERSION}-linux-amd64.tar.gz
+    ENV AGE_RELEASES_PAGE=https://github.com/FiloSottile/age/releases
+    RUN curl -LO ${AGE_RELEASES_PAGE}/download/${AGE_VERSION}/${AGE_ARCHIVE} && \
+        tar -xzf ${AGE_ARCHIVE} && \
+        mv age/age age/age-keygen /usr/local/bin/ && \
+        rm -rf age ${AGE_ARCHIVE}
+
+    RUN --no-cache age --version

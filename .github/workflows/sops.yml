@@ -1,0 +1,27 @@
+name: Decrypt SOPS File
+
+on:
+  workflow_dispatch:
+
+jobs:
+  decrypt:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install SOPS
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sops
+
+      - name: Decrypt a file using SOPS
+        run: |
+          echo "$SOPS_AGE_KEY" > age.key
+          export SOPS_AGE_KEY_FILE=age.key
+          sops --decrypt secrets.enc.yaml > secrets.yaml
+        env:
+          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
+
+      - name: Read decrypted secrets
+        run: cat secrets.yaml
