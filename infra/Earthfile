@@ -10,7 +10,10 @@ taskomatic-build:
     COPY k3d /tasko/k3d
     WORKDIR /tasko/k3d
     RUN pip install -r requirements.txt
-    RUN invoke --list
+    # Set entrypoint to show help if no command is provided
+    ENTRYPOINT ["invoke"]
+    CMD ["--list"]
+
     SAVE IMAGE localhost/taskomatic:latest
 
 taskomatic-run:
