@@ -17,12 +17,13 @@ taskomatic-build:
     SAVE IMAGE localhost/taskomatic:latest
 
 taskomatic-run:
+    ARG task
     LOCALLY
     WITH DOCKER --load=+taskomatic-build
-        RUN docker run -ti --rm \
+        RUN --no-cache docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
             --name taskomatic \
-            localhost/taskomatic:latest ???
+            localhost/taskomatic:latest ${task}
     END
 
 
