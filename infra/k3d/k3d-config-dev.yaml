@@ -1,0 +1,14 @@
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: meta-secret
+servers: 1
+agents: 3
+kubeAPI:
+  host: "0.0.0.0"
+  hostIP: "0.0.0.0"
+  hostPort: "6443"
+ports:
+  - port: 8080:80
+    nodeFilters:
+      - loadbalancer

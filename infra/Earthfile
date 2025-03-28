@@ -1,6 +1,32 @@
 VERSION 0.8
 FROM scratch
 
+taskomatic-build:
+    FROM python:3.11-slim-bookworm
+
+    RUN apt update && apt install -y build-essential curl wget
+    RUN wget -q -O - https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+
+    COPY k3d /tasko/k3d
+    WORKDIR /tasko/k3d
+    RUN pip install -r requirements.txt
+    # Set entrypoint to show help if no command is provided
+    ENTRYPOINT ["invoke"]
+    CMD ["--list"]
+
+    SAVE IMAGE localhost/taskomatic:latest
+
+taskomatic-run:
+    ARG task
+    LOCALLY
+    WITH DOCKER --load=+taskomatic-build
+        RUN --no-cache docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            --name taskomatic \
+            localhost/taskomatic:latest ${task}
+    END
+
+
 kcl-config-gen:
     FROM --platform=linux/amd64 kcllang/kcl:v0.11.0
     RUN --no-cache kcl
