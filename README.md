@@ -120,3 +120,81 @@ If you would like to extract data from QR's
   * or screenshot the terminal and upload it on this website: [webqr.com](https://webqr.com)
 
 <br>
+
+## Infrastructure Build
+
+### Using Earthly for builds
+
+The project uses Earthly for its build system. When building components that require API keys (like the AI-assisted development tools), you can provide them in several ways:
+
+1. **Using a .env file** (simplest approach):
+   ```bash
+   # Copy the example file
+   cp infra/.env.example infra/.env
+   
+   # Edit the .env file with your API key
+   # Then run the build
+   earthly +build-taskomatic-ai
+   ```
+
+2. **Using command line arguments**:
+   ```bash
+   earthly +build-taskomatic-ai --ANTHROPIC_API_KEY="your_api_key_here"
+   ```
+
+3. **Using environment variables**:
+   ```bash
+   export ANTHROPIC_API_KEY="your_api_key_here"
+   earthly +build-taskomatic-ai
+   ```
+
+Earthly will automatically pick up the API key from any of these sources. Command line arguments take precedence over environment variables and .env file values.
+
+**Note**: Never commit API keys or credentials to version control. The .env file is included in .gitignore.
+
+<br>
+
+# Taskomatic AI Docker Image
+
+This Docker image contains the [aider](https://github.com/paul-gauthier/aider) AI coding assistant configured to use Claude 3.5 Haiku.
+
+## Requirements
+
+- Docker installed
+- An Anthropic API key
+
+## Usage
+
+Run the container with your Anthropic API key as an environment variable:
+
+```bash
+docker run -it --rm \
+  -e ANTHROPIC_API_KEY=your-api-key-here \
+  -v $(pwd):/workspace \
+  localhost/taskomatic-ai:latest
+```
+
+### Additional options
+
+The container is pre-configured with Claude 3.5 Haiku, but you can pass additional arguments to aider:
+
+```bash
+# Run with a directory mounted and specific files to edit
+docker run -it --rm \
+  -e ANTHROPIC_API_KEY=your-api-key-here \
+  -v $(pwd):/workspace \
+  -w /workspace \
+  localhost/taskomatic-ai:latest your_file.py another_file.js
+```
+
+## Building the image
+
+To build the image yourself:
+
+```bash
+earthly +build-taskomatic-ai
+```
+
+## Issues and improvements
+
+If you encounter any issues or have suggestions for improvements, please report them to the project maintainers.

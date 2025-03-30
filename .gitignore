@@ -23,3 +23,7 @@ meta-secret/web-cli/ui/dist
 meta-secret/web-cli/ui/pkg
 
 .vscode
+.aider*
+
+infra/.env
+infra/.secret

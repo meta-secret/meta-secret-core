@@ -1,22 +1,26 @@
 VERSION 0.8
 FROM scratch
 
-taskomatic-build:
-    FROM python:3.11-slim-bookworm
+taskomatic-base-build:
+    FROM python:3.12-bookworm
 
     RUN apt update && apt install -y build-essential curl wget
     RUN wget -q -O - https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
 
-    COPY k3d /tasko/k3d
-    WORKDIR /tasko/k3d
-    RUN pip install -r requirements.txt
-    # Set entrypoint to show help if no command is provided
-    ENTRYPOINT ["invoke"]
-    CMD ["--list"]
+    ENV TASKOMATIC_DIR=/taskomatic
+    WORKDIR ${TASKOMATIC_DIR}
 
     SAVE IMAGE localhost/taskomatic:latest
 
-taskomatic-run:
+taskomatic-k3d-build:
+    FROM +taskomatic-base-build
+    ENV TASKOMATIC_DIR=/taskomatic
+    WORKDIR ${TASKOMATIC_DIR}/k3d
+    COPY k3d .
+    CMD ["--list"]
+    SAVE IMAGE localhost/taskomatic-k3d:latest
+
+taskomatic-k3d-run:
     ARG task
     LOCALLY
     WITH DOCKER --load=+taskomatic-build
@@ -26,10 +30,27 @@ taskomatic-run:
             localhost/taskomatic:latest ${task}
     END
 
+build-taskomatic-ai:
+    FROM +taskomatic-base-build
 
-kcl-config-gen:
-    FROM --platform=linux/amd64 kcllang/kcl:v0.11.0
+    ENV TASKOMATIC_DIR=/taskomatic
+    WORKDIR ${TASKOMATIC_DIR}/ai
+
+    COPY ./.aider.conf.yml .
+    COPY ./.env .
+
+    RUN pip install --upgrade pip setuptools && pip install aider-chat
+    # Verify aider installation works
+    RUN aider --help
+
+    SAVE IMAGE localhost/taskomatic-ai:latest
+
+taskomatic-k8s-build:
+    FROM +taskomatic-base-build
+    WORKDIR ${TASKOMATIC_DIR}/k8s
+    COPY k8s .
     RUN --no-cache kcl
+    SAVE IMAGE localhost/taskomatic-k8s:latest
 
 build-sops:
     FROM quay.io/getsops/sops:v3.9.4
