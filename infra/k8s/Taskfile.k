@@ -15,6 +15,13 @@ tasks = {
         silent = True
     }
 
+    deploy_meta_server = {
+        cmds = [
+            {task = "generate_meta_server_deployment_yaml"}
+            "kubectl apply -f meta-secret-server/build/meta-server.yaml"
+        ]
+    }
+
     generate_meta_server_deployment_yaml = {
         _build_dir = "meta-secret-server/build"
         desc = "Deploy meta-secret server"
