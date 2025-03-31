@@ -4,7 +4,7 @@ FROM scratch
 taskomatic-base-build:
     FROM debian:bookworm
 
-    RUN apt update && apt install -y build-essential curl wget gnupg2 ca-certificates lsb-release python3
+    RUN apt update && apt install -y build-essential curl wget gnupg2 ca-certificates lsb-release apt-transport-https
 
     # Install k3d
     RUN wget -q -O - https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
@@ -16,8 +16,8 @@ taskomatic-base-build:
     RUN sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d v3.36.0
 
     # Install kubectl
-    RUN curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /etc/apt/keyrings/kubernetes-archive-keyring.gpg && \
-        echo "deb [signed-by=/etc/apt/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | tee /etc/apt/sources.list.d/kubernetes.list && \
+    RUN curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg && \
+        echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /' | tee /etc/apt/sources.list.d/kubernetes.list && \
         apt update && apt install -y kubectl
 
     ENV TASKOMATIC_DIR=/taskomatic
