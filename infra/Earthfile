@@ -2,10 +2,15 @@ VERSION 0.8
 FROM scratch
 
 taskomatic-base-build:
-    FROM python:3.12-bookworm
+    FROM debian:bookworm
 
-    RUN apt update && apt install -y build-essential curl wget
+    RUN apt update && apt install -y build-essential curl wget gnupg2 ca-certificates lsb-release python3
+
+    # Install k3d
     RUN wget -q -O - https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+    
+    # Install go-task runner (https://taskfile.dev)
+    RUN sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d v3.36.0
 
     ENV TASKOMATIC_DIR=/taskomatic
     WORKDIR ${TASKOMATIC_DIR}
@@ -17,7 +22,6 @@ taskomatic-k3d-build:
     ENV TASKOMATIC_DIR=/taskomatic
     WORKDIR ${TASKOMATIC_DIR}/k3d
     COPY k3d .
-    CMD ["--list"]
     SAVE IMAGE localhost/taskomatic-k3d:latest
 
 taskomatic-k3d-run:
@@ -39,7 +43,7 @@ build-taskomatic-ai:
     COPY ./.aider.conf.yml .
     COPY ./.env .
 
-    RUN pip install --upgrade pip setuptools && pip install aider-chat
+    RUN pip install aider-chat
     # Verify aider installation works
     RUN aider --help
 
