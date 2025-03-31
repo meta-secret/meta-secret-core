@@ -35,7 +35,6 @@ taskomatic-base-build:
 
     WORKDIR ${TASKOMATIC_DIR}/k8s
     RUN kcl Taskfile.k > Taskfile.yml
-    RUN task generate_meta_server_deployment_yaml
 
     # Set entrypoint to show help if no command is provided
     ENTRYPOINT ["task"]
