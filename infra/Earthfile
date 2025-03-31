@@ -8,29 +8,44 @@ taskomatic-base-build:
 
     # Install k3d
     RUN wget -q -O - https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
-    
+
+    # Install kcl
+    RUN wget -q https://kcl-lang.io/script/install-cli.sh -O - | /bin/bash
+
     # Install go-task runner (https://taskfile.dev)
     RUN sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d v3.36.0
 
     ENV TASKOMATIC_DIR=/taskomatic
     WORKDIR ${TASKOMATIC_DIR}
 
-    SAVE IMAGE localhost/taskomatic:latest
+    COPY Taskfile.k Taskfile.k
+    COPY k3d k3d
+    COPY k8s k8s
 
-taskomatic-k3d-build:
-    FROM +taskomatic-base-build
-    ENV TASKOMATIC_DIR=/taskomatic
+    WORKDIR ${TASKOMATIC_DIR}
+    RUN kcl Taskfile.k > Taskfile.yml
+
     WORKDIR ${TASKOMATIC_DIR}/k3d
-    COPY k3d .
-    SAVE IMAGE localhost/taskomatic-k3d:latest
+    RUN kcl Taskfile.k > Taskfile.yml
+
+    WORKDIR ${TASKOMATIC_DIR}/k8s
+    RUN kcl Taskfile.k > Taskfile.yml
+    RUN task generate_meta_server_deployment_yaml
+
+    # Set entrypoint to show help if no command is provided
+    ENTRYPOINT ["task"]
+    CMD ["--list"]
+
+    SAVE IMAGE localhost/taskomatic:latest
 
 taskomatic-k3d-run:
     ARG task
     LOCALLY
-    WITH DOCKER --load=+taskomatic-build
+    WITH DOCKER --load=+taskomatic-base-build
         RUN --no-cache docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
             --name taskomatic \
+            --workdir /taskomatic \
             localhost/taskomatic:latest ${task}
     END
 
@@ -48,13 +63,6 @@ build-taskomatic-ai:
     RUN aider --help
 
     SAVE IMAGE localhost/taskomatic-ai:latest
-
-taskomatic-k8s-build:
-    FROM +taskomatic-base-build
-    WORKDIR ${TASKOMATIC_DIR}/k8s
-    COPY k8s .
-    RUN --no-cache kcl
-    SAVE IMAGE localhost/taskomatic-k8s:latest
 
 build-sops:
     FROM quay.io/getsops/sops:v3.9.4
