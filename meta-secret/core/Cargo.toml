@@ -18,6 +18,8 @@ crate-type = ["cdylib", "lib", "staticlib"]
 name = "meta_secret_core"
 
 [dependencies]
+meta-server-node = { path = "../meta-server/server-node" }
+
 thiserror.workspace = true
 anyhow.workspace = true
 

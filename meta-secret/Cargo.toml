@@ -11,7 +11,7 @@ members = [
     "wasm",
     "cli",
     "tests"
-]
+, "mobile"]
 
 [workspace.dependencies]
 # Error handling
