@@ -21,6 +21,8 @@ name = "meta_secret_core"
 target = "x86_64-unknown-linux-gnu"
 
 [dependencies]
+meta-server-node = { path = "../meta-server/server-node" }
+
 thiserror.workspace = true
 anyhow.workspace = true
 
