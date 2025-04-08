@@ -53,7 +53,7 @@ async fn main() -> Result<()> {
         });
         Arc::new(ServerApp::new(repo.clone())?)
     };
-    
+
     let data_transfer = server_app.get_data_transfer();
     let server_app_clone = server_app.clone();
     
@@ -63,7 +63,7 @@ async fn main() -> Result<()> {
             .enable_all()
             .build()
             .unwrap();
-        
+
         rt.block_on(async move {
             if let Err(e) = server_app_clone.run().await {
                 panic!("Server app background task failed: {:?}", e);

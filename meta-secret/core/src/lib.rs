@@ -26,8 +26,6 @@ pub mod errors;
 pub mod meta_tests;
 pub mod node;
 pub mod secret;
-pub mod ffi;
-
 pub type CoreResult<T> = Result<T, CoreError>;
 
 #[derive(Debug, thiserror::Error)]
