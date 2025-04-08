@@ -28,13 +28,6 @@ spec = {
                     imagePullPolicy = "Always"
                     image = option("imageName")
                     command = ["/bin/sh", "-c", "./meta-server"]
-                    volumeMounts = [
-                        {
-                            name = "config"
-                            mountPath = "${common.appPath}/config.yaml"
-                            subPath = "config.yaml"
-                        }
-                    ]
                 }
             ]
             volumes = [

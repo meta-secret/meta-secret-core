@@ -27,3 +27,5 @@ meta-secret/web-cli/ui/pkg
 
 infra/.env
 infra/.secret
+/infra/k8s/meta-secret-server/build/
+/infra/k8s/Taskfile.yml

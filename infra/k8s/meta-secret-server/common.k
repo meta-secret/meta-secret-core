@@ -9,4 +9,4 @@ schema Labels:
 
 projectName = "meta-secret-server"
 volumeName = "${projectName}-vol"
-appPath = "/meta-secret/app/meta-server"
+appPath = "/app/meta-server"
