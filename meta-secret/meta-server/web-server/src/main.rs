@@ -5,14 +5,18 @@ use serde_derive::{Serialize};
 use std::sync::Arc;
 
 use anyhow::Result;
+use axum::routing::get;
 use meta_db_sqlite::db::sqlite_store::SqlIteRepo;
-use meta_secret_core::node::api::{DataSyncResponse, SyncRequest};
+use meta_secret_core::node::api::{DataSyncResponse, ReadSyncRequest, ServerTailRequest, SyncRequest};
 use meta_server_node::server::server_app::{ServerApp, MetaServerDataTransfer};
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::{Level, info};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
+use meta_secret_core::node::common::model::device::common::DeviceName;
+use meta_secret_core::node::common::model::user::user_creds::UserCredentials;
+use meta_secret_core::node::common::model::vault::vault::VaultName;
 
 #[derive(Clone)]
 pub struct MetaServerAppState {
@@ -52,15 +56,21 @@ async fn main() -> Result<()> {
         Arc::new(ServerApp::new(repo.clone())?)
     };
     
-    // Start the server background task
     let data_transfer = server_app.get_data_transfer();
     let server_app_clone = server_app.clone();
     
-    // Use async-std with spawn_local which doesn't require Send
-    async_std::task::spawn_local(async move {
-        if let Err(e) = server_app_clone.run().await {
-            panic!("Server app background task failed: {:?}", e);
-        }
+    // Create a separate runtime for the server app
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        
+        rt.block_on(async move {
+            if let Err(e) = server_app_clone.run().await {
+                panic!("Server app background task failed: {:?}", e);
+            }
+        });
     });
 
     let app_state = Arc::new(MetaServerAppState { data_transfer });

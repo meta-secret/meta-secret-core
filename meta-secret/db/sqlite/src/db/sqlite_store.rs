@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection};
+use diesel::{Connection, ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl, SqliteConnection};
 use meta_secret_core::node::common::model::IdString;
 use meta_secret_core::node::db::events::generic_log_event::{
     GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
@@ -46,11 +46,15 @@ impl FindOneQuery for SqlIteRepo {
     async fn find_one(&self, key: ArtifactId) -> anyhow::Result<Option<GenericKvLogEvent>> {
         let mut conn = SqliteConnection::establish(self.conn_url.as_str())?;
 
-        let db_event: DbLogEvent = dsl::db_commit_log
+        let maybe_db_event = dsl::db_commit_log
             .filter(dsl::key_id.eq(key.id_str()))
-            .first::<DbLogEvent>(&mut conn)?;
+            .first::<DbLogEvent>(&mut conn)
+            .optional()?;
 
-        Ok(Some(GenericKvLogEvent::from(&db_event)))
+        match maybe_db_event {
+            None => Ok(None),
+            Some(db_event) => Ok(Some(GenericKvLogEvent::from(&db_event)))
+        }
     }
 
     async fn get_key(&self, key: ArtifactId) -> anyhow::Result<Option<ArtifactId>> {
