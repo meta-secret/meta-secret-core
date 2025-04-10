@@ -1,5 +1,5 @@
 
-DOCKER_IMAGE:="ghcr.io/meta-secret/cli:latest"
+DOCKER_IMAGE:="cypherkitty/meta-secret-cli:latest"
 
 docker_build:
 	docker buildx build --tag ${DOCKER_IMAGE} --output type=docker .

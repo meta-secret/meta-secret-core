@@ -1,9 +1,72 @@
 VERSION 0.8
 FROM scratch
 
-kcl-config-gen:
-    FROM --platform=linux/amd64 kcllang/kcl:v0.11.0
-    RUN --no-cache kcl
+taskomatic-base-build:
+    FROM debian:bookworm
+
+    RUN apt update && apt install -y build-essential curl wget gnupg2 ca-certificates lsb-release apt-transport-https
+
+    # Install k3d
+    RUN wget -q -O - https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+
+    # Install kcl
+    RUN wget -q https://kcl-lang.io/script/install-cli.sh -O - | /bin/bash
+
+    # Install go-task runner (https://taskfile.dev)
+    RUN sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d v3.36.0
+
+    # Install kubectl
+    RUN curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg && \
+        echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /' | tee /etc/apt/sources.list.d/kubernetes.list && \
+        apt update && apt install -y kubectl
+
+    ENV TASKOMATIC_DIR=/taskomatic
+    WORKDIR ${TASKOMATIC_DIR}
+
+    COPY Taskfile.k Taskfile.k
+    COPY k3d k3d
+    COPY k8s k8s
+
+    WORKDIR ${TASKOMATIC_DIR}
+    RUN kcl Taskfile.k > Taskfile.yml
+
+    WORKDIR ${TASKOMATIC_DIR}/k3d
+    RUN kcl Taskfile.k > Taskfile.yml
+
+    WORKDIR ${TASKOMATIC_DIR}/k8s
+    RUN kcl Taskfile.k > Taskfile.yml
+
+    # Set entrypoint to show help if no command is provided
+    ENTRYPOINT ["task"]
+    CMD ["--list"]
+
+    SAVE IMAGE localhost/taskomatic:latest
+
+taskomatic-run:
+    ARG task
+    LOCALLY
+    WITH DOCKER --load=+taskomatic-base-build
+        RUN --no-cache docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            --name taskomatic \
+            --workdir /taskomatic \
+            localhost/taskomatic:latest ${task}
+    END
+
+build-taskomatic-ai:
+    FROM +taskomatic-base-build
+
+    ENV TASKOMATIC_DIR=/taskomatic
+    WORKDIR ${TASKOMATIC_DIR}/ai
+
+    COPY ./.aider.conf.yml .
+    COPY ./.env .
+
+    RUN pip install aider-chat
+    # Verify aider installation works
+    RUN aider --help
+
+    SAVE IMAGE localhost/taskomatic-ai:latest
 
 build-sops:
     FROM quay.io/getsops/sops:v3.9.4
