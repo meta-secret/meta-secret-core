@@ -26,7 +26,7 @@ tasks = {
         desc = "Deploy meta-secret server"
         cmds = [
             "mkdir -p " + _build_dir,
-            "kcl meta-secret-server/statefulset.k -D imageName=" + _vars.registry_name + "/" + _vars.image_name +" > " + _build_dir + "/meta-server.yaml"
+            "kcl meta-secret-server/main.k -D imageName=" + _vars.registry_name + "/" + _vars.image_name +" > " + _build_dir + "/meta-server.yaml"
         ]
     }
 }
