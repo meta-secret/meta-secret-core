@@ -71,6 +71,10 @@ meta-server-builder:
     RUN cargo build --release
     SAVE ARTIFACT ${BASE_DIR}/target
 
+###
+# To run meta server:
+# earthly +build-meta-server-image && docker run --rm -p 3000:3000 cypherkitty/meta-secret-server:latest
+###
 build-meta-server-image:
     FROM debian:bookworm
 
@@ -86,11 +90,6 @@ build-meta-server-image:
     CMD ./meta-server
     SAVE IMAGE --push cypherkitty/meta-secret-server:latest
 
-run-meta-server:
-    LOCALLY
-    WITH DOCKER --load=+build-meta-server-image
-        RUN docker run --rm -p 3000:3000 cypherkitty/meta-secret-server:latest
-    END
 
 wasm-build:
     FROM +builder
