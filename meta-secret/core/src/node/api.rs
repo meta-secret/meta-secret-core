@@ -72,7 +72,9 @@ pub struct DataEventsResponse(pub Vec<GenericKvLogEvent>);
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServerTailResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub device_log_tail: Option<ArtifactId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub ss_device_log_tail: Option<ArtifactId>,
 }
 
