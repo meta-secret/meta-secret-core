@@ -6,16 +6,13 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use meta_db_sqlite::db::sqlite_store::SqlIteRepo;
-use meta_secret_core::node::api::{DataSyncResponse, ReadSyncRequest, ServerTailRequest, SyncRequest};
+use meta_secret_core::node::api::{DataSyncResponse, ServerTailRequest, SyncRequest};
 use meta_server_node::server::server_app::{ServerApp, MetaServerDataTransfer};
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::{Level, info};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
-use meta_secret_core::node::common::model::device::common::DeviceName;
-use meta_secret_core::node::common::model::user::user_creds::UserCredentials;
-use meta_secret_core::node::common::model::vault::vault::VaultName;
 
 #[derive(Clone)]
 pub struct MetaServerAppState {
@@ -50,7 +47,7 @@ async fn main() -> Result<()> {
 
     let server_app = {
         let repo = Arc::new(SqlIteRepo {
-            conn_url: String::from("file:///tmp/meta-secret.db"),
+            conn_url: String::from("file:meta-secret.db"),
         });
         Arc::new(ServerApp::new(repo.clone())?)
     };

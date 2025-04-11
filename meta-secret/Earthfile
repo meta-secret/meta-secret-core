@@ -31,35 +31,71 @@ builder:
     #RUN cargo install wasm-pack slooooow
     RUN cargo install wasm-pack --version 0.13.1 --locked
 
+    # Install diesel_cli if not already available
+    RUN cargo install diesel_cli --no-default-features --features sqlite || echo "Diesel CLI already installed"
+
     # Cache dependencies with cargo chef
     COPY recipe.json .
     RUN cargo chef cook --release --recipe-path recipe.json
 
+prepare-db:
+    FROM +builder
+
+    ENV BASE_DIR="/meta-secret-build"
+    WORKDIR ${BASE_DIR}
+    
+    # Create db directory and run migrations
+    RUN mkdir -p db
+    COPY db ./db
+    
+    # Set database URL and run migrations
+    ENV SQLITE_DIR=${BASE_DIR}/db/sqlite
+
+    RUN mkdir -p ${SQLITE_DIR}/build
+    WORKDIR ${SQLITE_DIR}
+
+    ENV DATABASE_URL=build/meta-secret.db
+    RUN diesel migration run
+    
+    SAVE ARTIFACT ${SQLITE_DIR}/build
+
 meta-server-builder:
     FROM +builder
+
+    ENV BASE_DIR="/meta-secret-build"
+    WORKDIR ${BASE_DIR}
     COPY . .
+
     WORKDIR meta-server/web-server
+
     RUN cargo build --release
-    SAVE ARTIFACT /target
+    SAVE ARTIFACT ${BASE_DIR}/target
 
 build-meta-server-image:
     FROM debian:bookworm
 
     RUN apt update && apt install -y ca-certificates curl iputils-ping sqlite3
 
-    WORKDIR /app
+    WORKDIR /meta-secret
+
     COPY +meta-server-builder/target/release/meta-server .
+    COPY +prepare-db/build/meta-secret.db ./meta-secret.db
+
+    EXPOSE 3000
+
     CMD ./meta-server
     SAVE IMAGE --push cypherkitty/meta-secret-server:latest
 
 wasm-build:
     FROM +builder
 
+    WORKDIR /meta-secret-build
+
     # Copy all source files first
     COPY . .
 
     # Then build the wasm package
-    WORKDIR /wasm
+    WORKDIR wasm
     RUN wasm-pack build --target web
     SAVE ARTIFACT pkg
 
