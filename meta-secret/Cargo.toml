@@ -10,8 +10,9 @@ members = [
     "core-swift-lib",
     "wasm",
     "cli",
-    "tests"
-, "mobile"]
+    "tests",
+    "mobile"
+]
 
 [workspace.dependencies]
 # Error handling
