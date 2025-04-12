@@ -32,9 +32,11 @@ builder:
     RUN cargo install wasm-pack --version 0.13.1 --locked
 
     # Install diesel_cli if not already available
-    RUN cargo install diesel_cli --no-default-features --features sqlite || echo "Diesel CLI already installed"
+    RUN cargo install diesel_cli --no-default-features --features sqlite
 
     # Cache dependencies with cargo chef
+    ENV BASE_DIR="/meta-secret-build"
+    WORKDIR ${BASE_DIR}
     COPY recipe.json .
     RUN cargo chef cook --release --recipe-path recipe.json
 
