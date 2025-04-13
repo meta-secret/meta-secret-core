@@ -82,13 +82,6 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                         }
                         Err(e) => {
                             error!("Error processing request: {:?}", e);
-                            self.data_transfer.dt.send_to_client(
-                                DataSyncResponse::ServerTailResponse(
-                                    ServerTailResponse{
-                                        device_log_tail: None,
-                                        ss_device_log_tail: None,
-                                    }
-                                )).await;
                         }
                     }
                 }

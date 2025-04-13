@@ -9,13 +9,11 @@ use meta_secret_core::node::app::sync::api_url::ApiUrl;
 use meta_secret_core::node::app::sync::sync_gateway::SyncGateway;
 use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
 use meta_secret_core::node::common::model::device::common::DeviceName;
-use meta_secret_core::node::common::model::device::device_creds::DeviceCredentials;
 use meta_secret_core::node::common::model::vault::vault::{VaultName, VaultStatus};
 use meta_secret_core::node::db::actions::sign_up::claim::SignUpClaim;
 use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::objects::persistent_vault::PersistentVault;
-use meta_secret_core::node::common::model::user::user_creds::UserCredentials;
 use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
 
 fn sync_wrapper<F: std::future::Future>(future: F) -> F::Output {
@@ -73,7 +71,7 @@ pub async extern "C" fn sign_up(user_name: *const c_char) -> *mut c_char {
 
         let result: Result<String, String> = match vault_status {
             VaultStatus::Member(member) => {
-                info!("Пользователь является членом хранилища");
+                info!("The user is a vault member!");
                 Ok(json!({
                     "success": true,
                     "status": "Member",
@@ -85,7 +83,7 @@ pub async extern "C" fn sign_up(user_name: *const c_char) -> *mut c_char {
                 }).to_string())
             },
             other_status => {
-                info!("Неожиданный статус хранилища: {:?}", other_status);
+                info!("Invalid storage status: {:?}", other_status);
                 Ok(json!({
                     "success": true,
                     "status": format!("{:?}", other_status)
@@ -124,7 +122,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_sign_up_debug() {
-        // Инициализируем логгер для тестов, чтобы видеть вывод tracing
         let subscriber = tracing_subscriber::fmt()
             .with_max_level(tracing::Level::DEBUG)
             .with_test_writer()
@@ -141,60 +138,53 @@ mod tests {
             .header("Content-Type", "application/json")
             .header("Access-Control-Allow-Origin", url.as_str());
 
-        // Выводим информацию о запросе
         info!("Request: {:?}", request_builder);
 
-        // Отправляем запрос
         let response = request_builder.send().await;
         info!("Response: {:?}", response);
-        // Создаем тестовое имя пользователя
         let username = "test_debug_user_1";
         let c_username = CString::new(username).unwrap();
 
-        info!("Вызываем sign_up для пользователя '{}'", username);
-        // Вызываем функцию sign_up
+        info!("Execute sign_up for user: '{}'", username);
         let result_ptr = sign_up(c_username.as_ptr()).await;
-
-        // Преобразуем результат обратно в Rust строку
+        
         let result_str = unsafe {
-            assert!(!result_ptr.is_null(), "Результат sign_up - нулевой указатель");
+            assert!(!result_ptr.is_null(), "sign_up - null pointer");
             let result_cstr = CStr::from_ptr(result_ptr);
-            let result_string = result_cstr.to_str().expect("Невалидный UTF-8").to_owned();
+            let result_string = result_cstr.to_str().expect("Invalid UTF-8").to_owned();
             
-            // Освобождаем память
             free_string(result_ptr);
             
             result_string
         };
         
-        info!("Получен результат: {}", result_str);
+        info!("Got result: {}", result_str);
         
-        // Разбираем JSON
-        let json_value: Value = serde_json::from_str(&result_str).expect("Невалидный JSON");
+        let json_value: Value = serde_json::from_str(&result_str).expect("Invalid JSON");
         
         // Проверяем успешность
-        let success = json_value["success"].as_bool().expect("Отсутствует поле 'success'");
-        info!("Успех: {}", success);
+        let success = json_value["success"].as_bool().expect("missing filed: 'success'");
+        info!("Success: {}", success);
         
         if success {
             // Проверяем статус
             if let Some(status) = json_value["status"].as_str() {
-                info!("Статус: {}", status);
+                info!("Status: {}", status);
                 
                 // Если статус Member, проверяем данные
                 if status == "Member" {
                     let data = &json_value["data"];
-                    info!("Данные пользователя:");
+                    info!("User info:");
                     info!("  User ID: {}", data["user_id"].as_str().unwrap_or("N/A"));
                     info!("  Device ID: {}", data["device_id"].as_str().unwrap_or("N/A"));
                     info!("  Vault Name: {}", data["vault_name"].as_str().unwrap_or("N/A"));
                 } else {
-                    info!("Пользователь не является членом хранилища. Статус: {}", status);
+                    info!("User is not a member. Status: {}", status);
                 }
             }
         } else {
             if let Some(error) = json_value["error"].as_str() {
-                info!("Ошибка: {}", error);
+                info!("Error: {}", error);
             }
         }
     }
