@@ -103,7 +103,7 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
             (None, Some(status)) => {
                 let not_exists = matches!(status.clone().status(), VaultStatus::NotExists(_));
                 if !not_exists {
-                    bail!("Invalid vault membership state")
+                    bail!("Invalid vault membership state. Vault already exists")
                 }
                 status.status()
             }
