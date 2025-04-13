@@ -48,6 +48,8 @@ taskomatic-run:
     WITH DOCKER --load=+taskomatic-base-build
         RUN --no-cache docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
+            -v $HOME/.kube:/root/.kube \
+            -v $HOME/.config/k3d:/root/.config/k3d \
             --name taskomatic \
             --workdir /taskomatic \
             localhost/taskomatic:latest ${task}
