@@ -11,6 +11,7 @@ readme = "README.md"
 
 [features]
 test-framework = []
+mobile = []
 
 [lib]
 crate-type = ["cdylib", "lib", "staticlib"]

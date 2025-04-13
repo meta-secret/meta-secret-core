@@ -9,14 +9,14 @@ pub trait SyncProtocol {
 }
 
 pub struct HttpSyncProtocol {
-    api_url: ApiUrl
+    pub api_url: ApiUrl
 }
 
 impl SyncProtocol for HttpSyncProtocol {
     async fn send(&self, request: SyncRequest) -> Result<DataSyncResponse> {
         let client = Client::new();
         let url = self.api_url.get_url() + "/meta_request";
-        
+
         let response = client
             .post(url.clone())
             .timeout(Duration::from_secs(5))
@@ -25,7 +25,7 @@ impl SyncProtocol for HttpSyncProtocol {
             .json(&request)
             .send()
             .await?;
-        
+
         let result: DataSyncResponse = response.json().await?;
         Ok(result)
 
