@@ -4,8 +4,8 @@ use meta_secret_core::node::common::model::secret::{SecretDistributionType, SsCl
 
 #[cfg(test)]
 pub mod fixture {
-    use meta_secret_core::meta_tests::fixture_util::fixture::FixtureRegistry;
     use meta_secret_core::meta_tests::fixture_util::fixture::states::BaseState;
+    use meta_secret_core::meta_tests::fixture_util::fixture::FixtureRegistry;
     use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
     use meta_server_node::server::server_app::ServerApp;
     use std::sync::Arc;
@@ -27,20 +27,16 @@ pub mod fixture {
 mod test {
     use crate::fixture::{ExtendedFixtureRegistry, ExtendedFixtureState};
     use crate::tests::meta_secret_test::SsClaimVerifierForTestRecovery;
-    use anyhow::Result;
     use anyhow::bail;
-    use meta_secret_core::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use anyhow::Result;
     use meta_secret_core::meta_tests::fixture_util::fixture::states::EmptyState;
+    use meta_secret_core::meta_tests::fixture_util::fixture::FixtureRegistry;
     use meta_secret_core::meta_tests::spec::test_spec::TestSpec;
     use meta_secret_core::node::app::meta_app::messaging::{
         ClusterDistributionRequest, GenericAppStateRequest,
     };
-    use meta_secret_core::node::app::meta_app::meta_client_service::MetaClientService;
-    use meta_secret_core::node::app::orchestrator::MetaOrchestrator;
-    use meta_secret_core::node::app::sync::sync_gateway::SyncGateway;
     use meta_secret_core::node::common::meta_tracing::{client_span, server_span, vd_span};
     use meta_secret_core::node::common::model::crypto::aead::EncryptedMessage;
-    use meta_secret_core::node::common::model::device::common::DeviceId;
     use meta_secret_core::node::common::model::meta_pass::MetaPasswordId;
     use meta_secret_core::node::common::model::secret::{SsDistributionId, SsDistributionStatus};
     use meta_secret_core::node::common::model::user::common::UserData;
@@ -55,116 +51,17 @@ mod test {
     };
     use meta_secret_core::node::db::events::generic_log_event::GenericKvLogEvent;
     use meta_secret_core::node::db::events::shared_secret_event::SsWorkflowObject;
-    use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
-    use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
     use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
-    use meta_secret_core::node::db::objects::persistent_vault::PersistentVault;
-    use meta_secret_core::node::db::repo::persistent_credentials::spec::PersistentCredentialsSpec;
-    use meta_server_node::server::server_sync_protocol::fixture::EmbeddedSyncProtocol;
-    use std::sync::Arc;
-    use tracing::{Instrument, info};
-
-    struct ActorNode {
-        user: UserData,
-        p_obj: Arc<PersistentObject<InMemKvLogEventRepo>>,
-
-        gw: Arc<SyncGateway<InMemKvLogEventRepo, EmbeddedSyncProtocol>>,
-        p_vault: Arc<PersistentVault<InMemKvLogEventRepo>>,
-        p_ss: Arc<PersistentSharedSecret<InMemKvLogEventRepo>>,
-        orchestrator: MetaOrchestrator<InMemKvLogEventRepo>,
-        client_service: Arc<MetaClientService<InMemKvLogEventRepo, EmbeddedSyncProtocol>>,
-    }
-
-    impl ActorNode {
-        pub fn device_id(&self) -> DeviceId {
-            self.user.device.device_id.clone()
-        }
-    }
-
-    #[allow(dead_code)]
-    struct ServerNode {
-        p_obj: Arc<PersistentObject<InMemKvLogEventRepo>>,
-        p_vault: Arc<PersistentVault<InMemKvLogEventRepo>>,
-        p_ss: Arc<PersistentSharedSecret<InMemKvLogEventRepo>>,
-        server_creds_spec: PersistentCredentialsSpec<InMemKvLogEventRepo>,
-    }
+    use tracing::{info, Instrument};
 
     struct ServerAppSignUpSpec {
         registry: FixtureRegistry<ExtendedFixtureState>,
-
-        client: ActorNode,
-        vd: ActorNode,
-        server: ServerNode,
-
-        vd_claim_spec: SignUpClaimSpec<InMemKvLogEventRepo>,
     }
 
     impl ServerAppSignUpSpec {
         async fn build() -> Result<Self> {
             let registry = ExtendedFixtureRegistry::extended().await?;
-            let empty_state = &registry.state.base.empty;
-            let server_p_obj = empty_state.p_obj.server.clone();
-            let server_creds_spec = PersistentCredentialsSpec::from(server_p_obj.clone());
-
-            let client = ActorNode {
-                user: empty_state.user_creds.client.user(),
-                p_obj: empty_state.p_obj.client.clone(),
-                gw: registry
-                    .state
-                    .meta_client_service
-                    .sync_gateway
-                    .client_gw
-                    .clone(),
-                p_vault: empty_state.p_vault.client.clone(),
-                p_ss: Arc::new(PersistentSharedSecret::from(
-                    empty_state.p_obj.client.clone(),
-                )),
-                orchestrator: MetaOrchestrator {
-                    p_obj: empty_state.p_obj.client.clone(),
-                    user_creds: empty_state.user_creds.client.clone(),
-                },
-                client_service: registry.state.meta_client_service.client.clone(),
-            };
-
-            let vd = ActorNode {
-                user: empty_state.user_creds.vd.user(),
-                p_obj: empty_state.p_obj.vd.clone(),
-                gw: registry
-                    .state
-                    .meta_client_service
-                    .sync_gateway
-                    .vd_gw
-                    .clone(),
-                p_vault: empty_state.p_vault.vd.clone(),
-                p_ss: Arc::new(PersistentSharedSecret::from(empty_state.p_obj.vd.clone())),
-                orchestrator: MetaOrchestrator {
-                    p_obj: empty_state.p_obj.vd.clone(),
-                    user_creds: empty_state.user_creds.vd.clone(),
-                },
-                client_service: registry.state.meta_client_service.vd.clone(),
-            };
-
-            let vd_claim_spec = SignUpClaimSpec {
-                p_obj: empty_state.p_obj.vd.clone(),
-                user: empty_state.user_creds.vd.user(),
-            };
-
-            let server = ServerNode {
-                p_obj: empty_state.p_obj.server.clone(),
-                p_vault: empty_state.p_vault.server.clone(),
-                p_ss: Arc::new(PersistentSharedSecret::from(
-                    empty_state.p_obj.server.clone(),
-                )),
-                server_creds_spec,
-            };
-
-            Ok(Self {
-                registry,
-                server,
-                client,
-                vd,
-                vd_claim_spec,
-            })
+            Ok(Self { registry })
         }
 
         fn empty_state(&self) -> &EmptyState {
@@ -177,31 +74,39 @@ mod test {
 
         async fn sign_up_and_second_devices_joins(&self) -> Result<()> {
             //setup_tracing()?;
-            let vd_gw = self.vd.gw.clone();
-            let client_gw = self.client.gw.clone();
+            let vd_gw = self.registry.state.vd.gw.clone();
+            let client_gw = self.registry.state.client.gw.clone();
 
             self.init_server().await?;
-            self.server.server_creds_spec.verify_device_creds().await?;
+            self.registry
+                .state
+                .server_node
+                .creds_spec
+                .verify_device_creds()
+                .await?;
 
             info!("Executing 'sign up' claim");
             vd_gw.sync().await?;
             // second sync to get new messages created on server
             vd_gw.sync().await?;
 
-            SignUpClaimTestAction::sign_up(self.vd.p_obj.clone(), &self.user_creds().vd)
-                .instrument(vd_span())
-                .await?;
+            SignUpClaimTestAction::sign_up(
+                self.registry.state.vd.p_obj.clone(),
+                &self.user_creds().vd,
+            )
+            .instrument(vd_span())
+            .await?;
 
             vd_gw.sync().await?;
             vd_gw.sync().await?;
 
             info!("Verify SignUpClaim");
-            self.vd_claim_spec
+            self.registry.state.vd_claim_spec
                 .verify()
                 .instrument(client_span())
                 .await?;
 
-            let vd_db = self.vd.p_obj.repo.get_db().await;
+            let vd_db = self.registry.state.vd.p_obj.repo.get_db().await;
             assert_eq!(7, vd_db.len());
 
             self.registry
@@ -213,22 +118,26 @@ mod test {
                 .await?;
 
             vd_gw.sync().await?;
-            self.server_check(self.vd.user.clone()).await?;
-
-            client_gw.sync().await?;
-            client_gw.sync().await?;
-
-            SignUpClaimTestAction::sign_up(self.client.p_obj.clone(), &self.user_creds().client)
-                .instrument(client_span())
+            self.server_check(self.registry.state.vd.user.clone())
                 .await?;
 
             client_gw.sync().await?;
             client_gw.sync().await?;
 
+            SignUpClaimTestAction::sign_up(
+                self.registry.state.client.p_obj.clone(),
+                &self.user_creds().client,
+            )
+            .instrument(client_span())
+            .await?;
+
+            client_gw.sync().await?;
+            client_gw.sync().await?;
+
             vd_gw.sync().await?;
             vd_gw.sync().await?;
 
-            self.vd.orchestrator.orchestrate().await?;
+            self.registry.state.vd.orchestrator.orchestrate().await?;
 
             vd_gw.sync().await?;
             vd_gw.sync().await?;
@@ -238,6 +147,8 @@ mod test {
 
             //accept join request by vd
             let vault_status = self
+                .registry
+                .state
                 .vd
                 .p_vault
                 .find(self.empty_state().user_creds.vd.user())
@@ -247,7 +158,13 @@ mod test {
                 bail!("Virtual device is not a vault member");
             };
 
-            let vd_vault_obj = self.vd.p_vault.get_vault(&member.user_data).await?;
+            let vd_vault_obj = self
+                .registry
+                .state
+                .vd
+                .p_vault
+                .get_vault(&member.user_data)
+                .await?;
 
             assert_eq!(2, vd_vault_obj.to_data().users.len());
 
@@ -257,17 +174,11 @@ mod test {
         #[allow(unused_variables)]
         async fn server_check(&self, client_user: UserData) -> Result<()> {
             let server_app = self.registry.state.server_app.server_app.clone();
-            let server_p_obj = self.registry
-                .state
-                .base
-                .empty
-                .p_obj
-                .server
-                .clone();
-            
+            let server_p_obj = self.registry.state.base.empty.p_obj.server.clone();
+
             let server_ss_device_log_events = {
                 let ss_desc = SsDeviceLogDescriptor::from(client_user.device.device_id.clone());
-                
+
                 server_p_obj
                     .get_object_events_from_beginning(ss_desc)
                     .instrument(server_span())
@@ -304,7 +215,7 @@ mod test {
 
     impl SplitSpec {
         async fn split(&self) -> Result<()> {
-            let client_client_service = self.spec.client.client_service.clone();
+            let client_client_service = self.spec.registry.state.client.client_service.clone();
             let app_state = client_client_service.build_service_state().await?.app_state;
 
             let pass_id = MetaPasswordId::build("test_pass");
@@ -327,8 +238,8 @@ mod test {
 
             assert_eq!(1, member.member.vault.secrets.len());
 
-            self.spec.vd.gw.sync().await?;
-            self.spec.vd.gw.sync().await?;
+            self.spec.registry.state.vd.gw.sync().await?;
+            self.spec.registry.state.vd.gw.sync().await?;
 
             // let client_db: HashMap<ArtifactId, GenericKvLogEvent> =
             //     self.sign_up.vd.p_obj.repo.get_db().await;
@@ -341,12 +252,14 @@ mod test {
 
             let client_dist_id = SsDistributionId {
                 pass_id: pass_id.clone(),
-                receiver: self.spec.client.device_id(),
+                receiver: self.spec.registry.state.client.device_id(),
             };
             let ss_dist_desc = SsWorkflowDescriptor::Distribution(client_dist_id.clone());
 
             let client_ss_dist = self
                 .spec
+                .registry
+                .state
                 .client
                 .p_obj
                 .find_tail_event(ss_dist_desc)
@@ -374,7 +287,7 @@ mod test {
             //println!("{}", share_plain_text);
 
             //verify distribution share is present on vd device
-            let vd_receiver_device_id = self.spec.vd.device_id();
+            let vd_receiver_device_id = self.spec.registry.state.vd.device_id();
             let vd_dist_id = SsDistributionId {
                 pass_id: pass_id.clone(),
                 receiver: vd_receiver_device_id.clone(),
@@ -383,6 +296,8 @@ mod test {
 
             let vd_ss_dist = self
                 .spec
+                .registry
+                .state
                 .vd
                 .p_obj
                 .find_tail_event(vd_ss_dist_desc)
@@ -434,7 +349,7 @@ mod test {
         split.spec.sign_up_and_second_devices_joins().await?;
         split.split().await?;
 
-        let vd_client_service = split.spec.vd.client_service.clone();
+        let vd_client_service = split.spec.registry.state.vd.client_service.clone();
         let vd_app_state = vd_client_service.build_service_state().await?.app_state;
 
         let ApplicationState::Vault(VaultFullInfo::Member(vd_user_state)) = &vd_app_state else {
@@ -455,14 +370,16 @@ mod test {
 
         let _app_state = split
             .spec
+            .registry
+            .state
             .vd
             .client_service
             .handle_client_request(vd_app_state, recover)
             .await?;
 
         // verify ss device log on vd
-        let p_ss = PersistentSharedSecret::from(split.spec.vd.p_obj.clone());
-        let vd_device_id = split.spec.vd.device_id();
+        let p_ss = PersistentSharedSecret::from(split.spec.registry.state.vd.p_obj.clone());
+        let vd_device_id = split.spec.registry.state.vd.device_id();
         let vd_device_log_tail_event = p_ss
             .find_ss_device_log_tail_event(vd_device_id.clone())
             .await?
@@ -470,13 +387,20 @@ mod test {
         let vd_ss_claim = vd_device_log_tail_event.to_distribution_request();
         let claim_verifier = SsClaimVerifierForTestRecovery {
             sender: vd_device_id.clone(),
-            receiver: split.spec.client.device_id(),
+            receiver: split.spec.registry.state.client.device_id(),
         };
         claim_verifier.verify(vd_ss_claim.clone())?;
 
         //verify server state
-        let vault_name = split.spec.client.user.vault_name.clone();
-        let ss_log = split.spec.server.p_ss.get_ss_log_obj(vault_name).await?;
+        let vault_name = split.spec.registry.state.client.user.vault_name.clone();
+        let ss_log = split
+            .spec
+            .registry
+            .state
+            .server_node
+            .p_ss
+            .get_ss_log_obj(vault_name)
+            .await?;
 
         // Verify that the SS log event has been created on the server
         assert_eq!(1, ss_log.claims.len());
@@ -485,14 +409,21 @@ mod test {
         // Verify the claim properties
         assert_eq!(vd_ss_claim, recover_claim_on_server);
 
-        split.spec.client.gw.sync().await?;
-        split.spec.client.gw.sync().await?;
+        split.spec.registry.state.client.gw.sync().await?;
+        split.spec.registry.state.client.gw.sync().await?;
 
-        split.spec.client.orchestrator.orchestrate().await?;
+        split
+            .spec
+            .registry
+            .state
+            .client
+            .orchestrator
+            .orchestrate()
+            .await?;
 
         //----------- Start Recovery record verification on client -----------
         // Verify that the client has created a SsWorkflowObject::Recovery object
-        let client_p_ss = split.spec.client.p_ss.clone();
+        let client_p_ss = split.spec.registry.state.client.p_ss.clone();
 
         // Iterate through all recovery IDs from the claim
         let recovery_id = vd_ss_claim.recovery_db_ids()[0].clone();
@@ -510,7 +441,10 @@ mod test {
         match recovery_event {
             SsWorkflowObject::Recovery(event) => {
                 // Verify the recovery event has the correct data
-                assert_eq!(event.value.vault_name, split.spec.client.user.vault_name);
+                assert_eq!(
+                    event.value.vault_name,
+                    split.spec.registry.state.client.user.vault_name
+                );
                 assert_eq!(event.value.claim_id, recovery_id.claim_id);
 
                 // The event was created by the MetaOrchestrator
@@ -520,12 +454,12 @@ mod test {
         }
         //----------- End Recovery record verification on client -----------
 
-        split.spec.client.gw.sync().await?;
+        split.spec.registry.state.client.gw.sync().await?;
 
         //----------- Start Recovery record verification on the server -----------
         // Verify that the server has received and processed the SsWorkflow event
-        let server_p_ss = split.spec.server.p_ss.clone();
-        let vault_name = split.spec.client.user.vault_name.clone();
+        let server_p_ss = split.spec.registry.state.server_node.p_ss.clone();
+        let vault_name = split.spec.registry.state.client.user.vault_name.clone();
 
         // Get the updated SS log after the client has sent the recovery workflow
         let updated_ss_log = server_p_ss.get_ss_log_obj(vault_name.clone()).await?;
@@ -537,7 +471,7 @@ mod test {
         let recovery_id = vd_ss_claim.recovery_db_ids()[0].clone();
 
         // Check that the claim status has been updated for the client device
-        let client_device_id = split.spec.client.device_id();
+        let client_device_id = split.spec.registry.state.client.device_id();
         let status = server_claim.status.get(&client_device_id);
         assert!(
             status.is_some(),
@@ -568,11 +502,12 @@ mod test {
         }
         //----------- End Recovery record verification on the server -----------
 
-        split.spec.client.gw.sync().await?;
+        split.spec.registry.state.client.gw.sync().await?;
 
         // Verify that client has received the recovery claim
-        let client_p_ss = PersistentSharedSecret::from(split.spec.client.p_obj.clone());
-        let client_vault_name = split.spec.client.user.vault_name.clone();
+        let client_p_ss =
+            PersistentSharedSecret::from(split.spec.registry.state.client.p_obj.clone());
+        let client_vault_name = split.spec.registry.state.client.user.vault_name.clone();
 
         // Get the shared secret log for the client
         let client_ss_log = client_p_ss.get_ss_log_obj(client_vault_name).await?;
@@ -583,15 +518,22 @@ mod test {
         claim_verifier.verify(client_recovery_claim.clone())?;
 
         //Update app state
-        let _app_state_after_full_recover = split.spec.vd.client_service.get_app_state().await?;
+        let _app_state_after_full_recover = split
+            .spec
+            .registry
+            .state
+            .vd
+            .client_service
+            .get_app_state()
+            .await?;
 
         //TODO we have to check if orchestrate breaks distribution (recovery)
         //split.spec.vd.orchestrator.orchestrate().await?;
 
-        split.spec.vd.gw.sync().await?;
-        split.spec.vd.gw.sync().await?;
+        split.spec.registry.state.vd.gw.sync().await?;
+        split.spec.registry.state.vd.gw.sync().await?;
 
-        let vd_db = split.spec.vd.p_obj.repo.get_db().await;
+        let vd_db = split.spec.registry.state.vd.p_obj.repo.get_db().await;
         let vd_db = vd_db.into_values().collect::<Vec<GenericKvLogEvent>>();
 
         let recovery_event = vd_db.iter().find(|event| {
@@ -607,7 +549,7 @@ mod test {
         //println!(" event: {}", &event_json);
 
         let recovery_handler = RecoveryHandler {
-            p_obj: split.spec.vd.p_obj.clone(),
+            p_obj: split.spec.registry.state.vd.p_obj.clone(),
         };
 
         let pass = recovery_handler
