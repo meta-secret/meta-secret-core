@@ -143,7 +143,9 @@ web-run:
 
 test:
     FROM +builder
+    ENV BASE_DIR="/meta-secret-build"
+    WORKDIR ${BASE_DIR}
+
     COPY . .
-    WORKDIR meta-secret
 
     RUN --no-cache cargo test --release

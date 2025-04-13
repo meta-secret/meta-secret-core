@@ -5,6 +5,8 @@ use serde_derive::{Serialize};
 use std::sync::Arc;
 
 use anyhow::Result;
+use axum::response::Html;
+use axum::routing::get;
 use meta_db_sqlite::db::sqlite_store::SqlIteRepo;
 use meta_secret_core::node::api::{DataSyncResponse, ServerTailRequest, SyncRequest};
 use meta_server_node::server::server_app::{ServerApp, MetaServerDataTransfer};
@@ -74,6 +76,7 @@ async fn main() -> Result<()> {
     info!("Creating router...");
     let app = Router::new()
         .route("/meta_request", post(meta_request))
+        .route("/hi", get(hi))
         .with_state(app_state)
         .layer(cors)
         .layer(TraceLayer::new_for_http())
@@ -85,6 +88,10 @@ async fn main() -> Result<()> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+async fn hi() -> Html<&'static str> {
+    Html("<h1>Hello, World!</h1>")
 }
 
 #[derive(Serialize)]
