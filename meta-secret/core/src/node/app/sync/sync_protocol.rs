@@ -9,7 +9,7 @@ pub trait SyncProtocol {
 }
 
 pub struct HttpSyncProtocol {
-    api_url: ApiUrl
+    pub api_url: ApiUrl
 }
 
 impl SyncProtocol for HttpSyncProtocol {

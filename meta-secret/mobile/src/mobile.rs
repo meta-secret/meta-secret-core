@@ -5,6 +5,7 @@ use serde_json::json;
 use std::sync::Arc;
 use anyhow::{anyhow};
 use tracing::info;
+use meta_secret_core::node::app::sync::api_url::ApiUrl;
 use meta_secret_core::node::app::sync::sync_gateway::SyncGateway;
 use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
 use meta_secret_core::node::common::model::device::common::DeviceName;
@@ -48,7 +49,10 @@ pub async extern "C" fn sign_up(user_name: *const c_char) -> *mut c_char {
             .get_or_generate_user_creds(device_name.clone(), vault_name.clone())
             .await.unwrap();
         
-        let sync_protocol = HttpSyncProtocol{};
+        let sync_protocol = HttpSyncProtocol {
+            api_url: ApiUrl::dev(3000),
+        };
+    
         let client_gw = Arc::new(SyncGateway {
             id: "mobile_client".to_string(),
             p_obj: p_obj.clone(),
@@ -116,7 +120,8 @@ mod tests {
     use std::time::Duration;
     use super::*;
     use serde_json::Value;
-    
+    use meta_secret_core::node::app::sync::api_url::ApiUrl;
+
     #[tokio::test]
     async fn test_sign_up_debug() {
         // Инициализируем логгер для тестов, чтобы видеть вывод tracing
@@ -128,13 +133,13 @@ mod tests {
         
         use reqwest::Client;
         let client = Client::new();
-        let url = "http://192.168.0.112:3000/putin";
+        let url = ApiUrl::dev(3000).get_url() + "/meta_request";
 
         let request_builder = client
-            .get(url)
+            .get(url.as_str())
             .timeout(Duration::from_secs(3))
             .header("Content-Type", "application/json")
-            .header("Access-Control-Allow-Origin", url);
+            .header("Access-Control-Allow-Origin", url.as_str());
 
         // Выводим информацию о запросе
         info!("Request: {:?}", request_builder);
