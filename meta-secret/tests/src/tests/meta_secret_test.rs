@@ -74,21 +74,12 @@ mod test {
 
         async fn sign_up_and_second_devices_joins(&self) -> Result<()> {
             //setup_tracing()?;
-            let vd_gw = self.registry.state.vd.gw.clone();
-            let client_gw = self.registry.state.client.gw.clone();
-
+            
             self.init_server().await?;
-            self.registry
-                .state
-                .server_node
-                .creds_spec
-                .verify_device_creds()
-                .await?;
+            self.verify_server_device_creds().await?;
 
             info!("Executing 'sign up' claim");
-            vd_gw.sync().await?;
-            // second sync to get new messages created on server
-            vd_gw.sync().await?;
+            self.vd_gw_sync().await?;
 
             SignUpClaimTestAction::sign_up(
                 self.registry.state.vd.p_obj.clone(),
@@ -97,8 +88,7 @@ mod test {
             .instrument(vd_span())
             .await?;
 
-            vd_gw.sync().await?;
-            vd_gw.sync().await?;
+            self.vd_gw_sync().await?;
 
             info!("Verify SignUpClaim");
             self.registry.state.vd_claim_spec
@@ -117,12 +107,11 @@ mod test {
                 .verify_user_is_a_member()
                 .await?;
 
-            vd_gw.sync().await?;
+            self.vd_gw_sync().await?;
             self.server_check(self.registry.state.vd.user.clone())
                 .await?;
 
-            client_gw.sync().await?;
-            client_gw.sync().await?;
+            self.client_gw_sync().await?;
 
             SignUpClaimTestAction::sign_up(
                 self.registry.state.client.p_obj.clone(),
@@ -131,19 +120,11 @@ mod test {
             .instrument(client_span())
             .await?;
 
-            client_gw.sync().await?;
-            client_gw.sync().await?;
-
-            vd_gw.sync().await?;
-            vd_gw.sync().await?;
-
+            self.client_gw_sync().await?;
+            self.vd_gw_sync().await?;
             self.registry.state.vd.orchestrator.orchestrate().await?;
-
-            vd_gw.sync().await?;
-            vd_gw.sync().await?;
-
-            client_gw.sync().await?;
-            client_gw.sync().await?;
+            self.vd_gw_sync().await?;
+            self.client_gw_sync().await?;
 
             //accept join request by vd
             let vault_status = self
@@ -168,6 +149,29 @@ mod test {
 
             assert_eq!(2, vd_vault_obj.to_data().users.len());
 
+            Ok(())
+        }
+
+        async fn client_gw_sync(&self) -> Result<()> {
+            self.registry.state.client.gw.sync().await?;
+            self.registry.state.client.gw.sync().await?;
+            Ok(())
+        }
+
+        async fn vd_gw_sync(&self) -> Result<()> {
+            self.registry.state.vd.gw.sync().await?;
+            // second sync to get new messages created on server
+            self.registry.state.vd.gw.sync().await?;
+            Ok(())
+        }
+
+        async fn verify_server_device_creds(&self) -> Result<()> {
+            self.registry
+                .state
+                .server_node
+                .creds_spec
+                .verify_device_creds()
+                .await?;
             Ok(())
         }
 

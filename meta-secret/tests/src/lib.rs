@@ -27,7 +27,7 @@ pub mod fixture {
         pub server_app: Arc<ServerAppFixture>,
         pub meta_client_service: MetaClientServiceFixture<EmbeddedSyncProtocol>,
         pub sync: SyncProtocolFixture,
-        
+
         pub server_node: ServerNode,
         pub client: ActorNode,
         pub vd: ActorNode,
@@ -40,10 +40,11 @@ pub mod fixture {
 
             let server_app_fixture = Arc::new(ServerAppFixture::try_from(&base)?);
             let sync = SyncProtocolFixture::new(server_app_fixture.server_app.clone());
+            
             let meta_client_service = MetaClientServiceFixture::from(&base.state, sync.sync_protocol.clone());
 
             let empty_state = &base.state.empty;
-            
+
             let server_node = {
                 let server_p_obj = empty_state.p_obj.server.clone();
                 ServerNode {
