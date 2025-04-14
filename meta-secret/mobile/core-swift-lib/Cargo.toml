@@ -8,7 +8,7 @@ crate-type = ["cdylib", "lib", "staticlib"]
 name = "meta_secret_core_swift"
 
 [dependencies]
-meta-secret-core = { path = "../core"}
+meta-secret-core = { path = "../../core"}
 
 anyhow.workspace = true
 

@@ -8,8 +8,8 @@ name = "mobile"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [dependencies]
-meta-secret-core = { path = "../core", features = ["mobile"] }
-meta-server-node = { path = "../meta-server/server-node", features = ["test-framework"] }
+meta-secret-core = { path = "../../core", features = ["mobile"] }
+meta-server-node = { path = "../../meta-server/server-node", features = ["test-framework"] }
 thiserror.workspace = true
 anyhow.workspace = true
 derive_more.workspace = true

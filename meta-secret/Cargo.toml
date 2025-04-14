@@ -7,11 +7,11 @@ members = [
     "db/sqlite",
     "meta-server/server-node",
     "meta-server/web-server",
-    "core-swift-lib",
     "wasm",
     "cli",
     "tests",
-    "mobile"
+    "mobile/core-swift-lib",
+    "mobile/ios"
 ]
 
 [workspace.dependencies]
