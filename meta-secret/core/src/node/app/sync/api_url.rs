@@ -22,6 +22,14 @@ impl ApiUrl {
             _run_mode: ClientRunMode::Dev,
         }
     }
+    
+    pub fn custom_dev(url: &'static str, port: u32) -> Self {
+        ApiUrl {
+            url,
+            port,
+            run_mode: ClientRunMode::Dev,
+        }
+    }
 
     pub fn prod() -> Self {
         ApiUrl {
