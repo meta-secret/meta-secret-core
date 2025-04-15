@@ -70,7 +70,7 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
         info!("Run server_app service");
 
         let device_creds = self.get_creds().await?;
-        info!("Server initialized with credentials: {:?}", device_creds);
+        info!("Server initialized with device: {:?}", &device_creds.device);
 
         loop {
             match self.data_transfer.dt.service_receive().await {
