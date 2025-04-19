@@ -1,5 +1,5 @@
-use crate::node::common::model::secret::{SecretDistributionData, SecretDistributionType, SsClaim};
-use crate::node::common::model::user::common::UserMembership;
+use crate::node::common::model::secret::{ClaimId, SecretDistributionData, SecretDistributionType, SsClaim, SsLogData};
+use crate::node::common::model::user::common::{UserDataMember, UserMembership};
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::vault::{VaultMember, VaultStatus};
 use crate::node::common::model::vault::vault_data::VaultData;
@@ -7,7 +7,7 @@ use crate::node::db::actions::sign_up::join::AcceptJoinAction;
 use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::shared_secret_event::SsWorkflowObject;
-use crate::node::db::events::vault::vault_log_event::{VaultActionRequestEvent, VaultLogObject};
+use crate::node::db::events::vault::vault_log_event::{JoinClusterEvent, VaultActionRequestEvent, VaultLogObject};
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;
@@ -28,28 +28,78 @@ pub struct MetaOrchestrator<Repo: KvLogEventRepo> {
 }
 
 impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
+    /// Accept all requests automatically
     pub async fn orchestrate(&self) -> Result<()> {
-        let p_vault = PersistentVault::from(self.p_obj());
-        let vault_status = p_vault.find(self.user_creds.user()).await?;
+        let member = self.get_member().await?;
+        let maybe_vault_log_event = self.get_vault_log_event(&member).await?;
 
-        let VaultStatus::Member(member) = vault_status else {
-            warn!("Not a vault member");
+        let Some(VaultLogObject(action_event)) = maybe_vault_log_event else {
             return Ok(());
         };
 
-        let vault = p_vault.get_vault(member.user()).await?.to_data();
+        let vault_actions = action_event.value;
 
-        let maybe_vault_log_event = {
-            let vault_name = member.user_data.vault_name();
-            p_vault.vault_log(vault_name).await?
+        for request in vault_actions.requests {
+            match request {
+                VaultActionRequestEvent::JoinCluster(join_request) => {
+                    self.accept_join(join_request).await?;
+                }
+                VaultActionRequestEvent::AddMetaPass(_) => {
+                    //skip
+                }
+            }
+        }
+
+        // shared secret actions
+        let ss_log_data = self.get_ss_log_data().await?;
+
+        for (_, claim) in ss_log_data.claims {
+            self.accept_recover(claim.id).await?;
+        }
+        
+        Ok(())
+    }
+}
+
+impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
+    pub async fn accept_recover(&self, claim_id: ClaimId) -> Result<()> {
+        let member = self.get_member().await?;
+        let vault = self.get_vault(member).await?;
+
+        // shared secret actions
+        let ss_log_data = self.get_ss_log_data().await?;
+
+        for (_, claim) in ss_log_data.claims {
+            match claim.distribution_type {
+                SecretDistributionType::Split => {
+                    //skip
+                }
+                SecretDistributionType::Recover => {
+                    if claim_id.eq(&claim.id) {
+                        self.handle_recover(vault.clone(), claim).await?;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn accept_join(&self, join_request: JoinClusterEvent) -> Result<()> {
+        let member = self.get_member().await?;
+        let vault = self.get_vault(member.clone()).await?;
+        let maybe_vault_log_event = self.get_vault_log_event(&member).await?;
+
+        let Some(VaultLogObject(action_event)) = maybe_vault_log_event else {
+            return Ok(());
         };
+        
+        let vault_actions = action_event.value;
 
-        if let Some(VaultLogObject(action_event)) = maybe_vault_log_event {
-            let vault_actions = action_event.value;
-
-            for request in vault_actions.requests {
-                match request {
-                    VaultActionRequestEvent::JoinCluster(join_request) => {
+        for request in vault_actions.requests {
+            match request {
+                VaultActionRequestEvent::JoinCluster(db_join_request) => {
+                    if join_request.eq(&db_join_request) {
                         let accept_action = AcceptJoinAction {
                             p_obj: self.p_obj.clone(),
                             member: VaultMember {
@@ -58,34 +108,52 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                             },
                         };
 
-                        accept_action.accept(join_request).await?;
-                    }
-                    VaultActionRequestEvent::AddMetaPass(_) => {
-                        //Ignore server side events (no need approval)
+                        accept_action.accept(db_join_request).await?;
                     }
                 }
-            }
-        }
-
-        // shared secret actions
-        let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
-
-        let ss_log_data = p_ss
-            .get_ss_log_obj(self.user_creds.vault_name.clone())
-            .await?;
-
-        for (_, claim) in ss_log_data.claims {
-            match claim.distribution_type {
-                SecretDistributionType::Split => {
-                    //skip
-                }
-                SecretDistributionType::Recover => {
-                    self.handle_recover(vault.clone(), claim).await?;
+                VaultActionRequestEvent::AddMetaPass(_) => {
+                    //Ignore server side events (no need approval)
                 }
             }
         }
 
         Ok(())
+    }
+
+    async fn get_vault(&self, member: UserDataMember) -> Result<VaultData> {
+        let p_vault = PersistentVault::from(self.p_obj());
+        let vault = p_vault.get_vault(member.user()).await?.to_data();
+        Ok(vault)
+    }
+
+    async fn get_vault_log_event(&self, member: &UserDataMember) -> Result<Option<VaultLogObject>> {
+        let p_vault = PersistentVault::from(self.p_obj());
+        let maybe_vault_log_event = {
+            let vault_name = member.user_data.vault_name();
+            p_vault.vault_log(vault_name).await?
+        };
+        Ok(maybe_vault_log_event)
+    }
+
+    async fn get_member(&self) -> Result<UserDataMember> {
+        let p_vault = PersistentVault::from(self.p_obj());
+        let vault_status = p_vault.find(self.user_creds.user()).await?;
+
+        let VaultStatus::Member(member) = vault_status else {
+            bail!("Not a vault member");
+        };
+
+        Ok(member)
+    }
+
+    async fn get_ss_log_data(&self) -> Result<SsLogData> {
+        let ss_log_data = {
+            let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
+            p_ss
+                .get_ss_log_obj(self.user_creds.vault_name.clone())
+                .await?
+        };
+        Ok(ss_log_data)
     }
 
     /// The device has to send recovery request to the claims' sender

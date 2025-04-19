@@ -22,7 +22,6 @@ use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::secret::MetaDistributor;
 use anyhow::Result;
-use crate::node::app::orchestrator::MetaOrchestrator;
 use crate::node::db::events::vault::vault_log_event::{VaultActionEvents, VaultLogObject};
 
 pub struct MetaClientService<Repo: KvLogEventRepo, Sync: SyncProtocol> {
@@ -52,8 +51,6 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                 service_state.app_state = new_app_state;
                 self.state_provider.push(&service_state.app_state).await;
             }
-
-            //handle client <-> server synchronization
 
             async_std::task::sleep(std::time::Duration::from_secs(1)).await;
         }

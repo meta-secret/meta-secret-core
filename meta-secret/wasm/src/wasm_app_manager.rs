@@ -38,7 +38,8 @@ impl WasmApplicationManager {
     }
 
     pub async fn get_state(&self) -> WasmApplicationState {
-        self.app_manager.get_state().await
+        let app_state = self.app_manager.get_state().await;
+        WasmApplicationState::from(app_state)
     }
 
     pub async fn sign_up(&self, vault_name: String) {

@@ -13,6 +13,7 @@ use derive_more::From;
 use std::collections::HashSet;
 use std::fmt::Display;
 use tracing::info;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 /// VaultLog keeps incoming events in order, the log is a queue for incoming messages and used to
 /// recreate the vault state from events (event sourcing)
@@ -161,6 +162,7 @@ pub struct CreateVaultEvent {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[wasm_bindgen(getter_with_clone)]
 pub struct JoinClusterEvent {
     pub candidate: UserData,
 }

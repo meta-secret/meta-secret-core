@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{bail, Context};
 use std::sync::Arc;
 use tracing::{info, instrument, Instrument};
 use wasm_bindgen_futures::spawn_local;
@@ -21,8 +21,12 @@ use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredenti
 use crate::wasm_repo::WasmSyncProtocol;
 use anyhow::Result;
 use meta_secret_core::node::app::meta_app::messaging::{ClusterDistributionRequest, GenericAppStateRequest};
+use meta_secret_core::node::app::orchestrator::MetaOrchestrator;
 use meta_secret_core::node::common::model::meta_pass::MetaPasswordId;
-use meta_secret_core::node::common::model::WasmApplicationState;
+use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo, WasmApplicationState};
+use meta_secret_core::node::common::model::secret::ClaimId;
+use meta_secret_core::node::common::model::user::user_creds::UserCredentials;
+use meta_secret_core::node::db::events::vault::vault_log_event::JoinClusterEvent;
 use meta_server_node::server::server_app::ServerApp;
 
 pub struct ApplicationManager<Repo: KvLogEventRepo, Sync: SyncProtocol> {
@@ -83,13 +87,84 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
         self.meta_client_service.send_request(request).await;
     }
 
-    pub async fn get_state(&self) -> WasmApplicationState {
-        let app_state = self
+    pub async fn get_state(&self) -> ApplicationState {
+        self
             .meta_client_service
             .state_provider
             .get()
-            .await;
-        WasmApplicationState::from(app_state)
+            .await
+    }
+
+    pub async fn accept_recover(&self, claim_id: ClaimId) -> Result<()> {
+        match &self.get_state().await {
+            ApplicationState::Local(_) => {
+                bail!("Invalid state. Local App State")
+            }
+            ApplicationState::Vault(vault_info) => {
+                match vault_info {
+                    VaultFullInfo::NotExists(_) => {
+                        bail!("Invalid state. Vault doesn't exist")
+                    }
+                    VaultFullInfo::Outsider(_) => {
+                        bail!("Invalid state. User is outsider")
+                    }
+                    VaultFullInfo::Member(_) => {
+                        let user_creds = self.get_user_creds().await?;
+
+                        let orchestrator = MetaOrchestrator {
+                            p_obj: self.sync_gateway.p_obj.clone(),
+                            user_creds
+                        };
+
+                        orchestrator.accept_recover(claim_id).await?;
+                        Ok(())
+                    }
+                }
+            }
+        }
+    }
+
+    async fn get_user_creds(&self) -> Result<UserCredentials> {
+        let user_creds = {
+            let creds_repo = PersistentCredentials::from(self.sync_gateway.p_obj.clone());
+            let maybe_user_creds = creds_repo.get_user_creds().await?;
+
+            let Some(user_creds) = maybe_user_creds else {
+                bail!("Invalid state. UserCredentials must be present")
+            };
+
+            user_creds
+        };
+        Ok(user_creds)
+    }
+
+    pub async fn accept_join(&self, join_request: JoinClusterEvent) -> Result<()> {
+        match &self.get_state().await {
+            ApplicationState::Local(_) => {
+                bail!("Invalid state. Local App State")
+            }
+            ApplicationState::Vault(vault_info) => {
+                match vault_info {
+                    VaultFullInfo::NotExists(_) => {
+                        bail!("Invalid state. Vault doesn't exist")
+                    }
+                    VaultFullInfo::Outsider(_) => {
+                        bail!("Invalid state. User is outsider")
+                    }
+                    VaultFullInfo::Member(_) => {
+                        let user_creds = self.get_user_creds().await?;
+                        
+                        let orchestrator = MetaOrchestrator {
+                            p_obj: self.sync_gateway.p_obj.clone(),
+                            user_creds
+                        };
+
+                        orchestrator.accept_join(join_request).await?;
+                        Ok(())
+                    }
+                }
+            }
+        }
     }
 
     #[instrument(name = "MetaClient", skip_all)]
