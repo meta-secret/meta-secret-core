@@ -22,6 +22,8 @@ use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::secret::MetaDistributor;
 use anyhow::Result;
+use crate::node::app::orchestrator::MetaOrchestrator;
+use crate::node::db::events::vault::vault_log_event::{VaultActionEvents, VaultLogObject};
 
 pub struct MetaClientService<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub data_transfer: Arc<MetaClientDataTransfer>,
@@ -202,12 +204,22 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                                 p_ss.get_ss_log_obj(user_creds.value.vault_name).await?
                             };
 
+                            let maybe_vault_log_event = {
+                                let vault_name = member_user.user_data.vault_name();
+                                p_vault.vault_log(vault_name).await?
+                            };
+
+                            let vault_action_events = maybe_vault_log_event
+                                .map(|obj| obj.0.value)
+                                .unwrap_or(VaultActionEvents::default());
+
                             let user_full_info = UserMemberFullInfo {
                                 member: VaultMember {
                                     member: member_user,
                                     vault: vault.to_data(),
                                 },
                                 ss_claims,
+                                vault_events: vault_action_events,
                             };
                             ApplicationState::Vault(VaultFullInfo::Member(user_full_info))
                         }

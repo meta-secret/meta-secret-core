@@ -4,6 +4,7 @@ use crate::node::common::model::user::common::{UserData, UserDataOutsider};
 use crate::node::common::model::vault::vault::VaultMember;
 use wasm_bindgen::prelude::wasm_bindgen;
 use crate::node::common::model::vault::vault_data::WasmVaultData;
+use crate::node::db::events::vault::vault_log_event::VaultActionEvents;
 
 pub mod crypto;
 pub mod device;
@@ -32,6 +33,7 @@ pub enum VaultFullInfo {
 pub struct UserMemberFullInfo {
     pub member: VaultMember,
     pub ss_claims: SsLogData,
+    pub vault_events: VaultActionEvents
 }
 
 #[wasm_bindgen]
