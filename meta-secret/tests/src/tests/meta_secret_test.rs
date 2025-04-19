@@ -53,6 +53,7 @@ mod test {
     use meta_secret_core::node::db::events::shared_secret_event::SsWorkflowObject;
     use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
     use tracing::{info, Instrument};
+    use meta_secret_core::node::db::events::vault::vault_log_event::VaultActionRequestEvent;
 
     struct ServerAppSignUpSpec {
         registry: FixtureRegistry<ExtendedFixtureState>,
@@ -122,7 +123,20 @@ mod test {
 
             self.client_gw_sync().await?;
             self.vd_gw_sync().await?;
-            self.registry.state.vd.orchestrator.orchestrate().await?;
+            
+            let vd_client = self.registry.state.vd.client_service.clone();
+            let vd_app_state = vd_client.get_app_state().await?;
+            let ApplicationState::Vault(VaultFullInfo::Member(vd_member_info)) = vd_app_state else {
+                bail!("Vd is not a vault member");
+            };
+
+            assert_eq!(1, vd_member_info.vault_events.requests.len());
+            let vault_action_event = vd_member_info.vault_events.requests.iter().next().unwrap();
+            let VaultActionRequestEvent::JoinCluster(join_request) = vault_action_event else {
+                 bail!("Join request is not found");
+            };
+            
+            self.registry.state.vd.orchestrator.accept_join(join_request.clone()).await?;
             self.vd_gw_sync().await?;
             self.client_gw_sync().await?;
 

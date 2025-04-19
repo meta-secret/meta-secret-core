@@ -22,7 +22,7 @@ use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::secret::MetaDistributor;
 use anyhow::Result;
-use crate::node::db::events::vault::vault_log_event::{VaultActionEvents, VaultLogObject};
+use crate::node::db::events::vault::vault_log_event::{VaultActionEvents};
 
 pub struct MetaClientService<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub data_transfer: Arc<MetaClientDataTransfer>,

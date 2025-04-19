@@ -14,7 +14,7 @@ use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use anyhow::bail;
 use anyhow::Result;
-use log::{debug, warn};
+use log::{debug};
 use std::sync::Arc;
 
 /// Contains business logic of secrets management and login/sign-up actions.
