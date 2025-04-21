@@ -110,7 +110,8 @@ pub mod test {
     use serde_json::json;
 
     use crate::node::common::model::device::common::DeviceName;
-    use crate::node::common::model::user::user_creds::UserCredentials;
+    use crate::node::common::model::device::device_creds::DeviceCredsBuilder;
+    use crate::node::common::model::user::user_creds::{UserCredentials, UserCredsBuilder};
     use crate::node::common::model::vault::vault::VaultName;
     use crate::node::db::descriptors::object_descriptor::{
         ObjectName, ObjectType, ToObjectDescriptor,
@@ -139,7 +140,10 @@ pub mod test {
     #[test]
     fn test_device_log_naming() {
         let vault_name = VaultName::test();
-        let user_creds = UserCredentials::generate(DeviceName::client(), vault_name.clone());
+        let user_creds = {
+            let device_creds = DeviceCredsBuilder::generate().build(DeviceName::client()).creds;
+            UserCredsBuilder::init(device_creds).build(vault_name.clone()).creds
+        };
         let user_id = user_creds.user_id();
 
         let descriptor = DeviceLogDescriptor(user_id.clone());

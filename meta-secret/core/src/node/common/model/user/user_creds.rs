@@ -1,4 +1,4 @@
-use crate::node::common::model::device::common::{DeviceData, DeviceId, DeviceName};
+use crate::node::common::model::device::common::{DeviceData, DeviceId};
 use crate::node::common::model::device::device_creds::DeviceCredentials;
 use crate::node::common::model::user::common::{UserData, UserId};
 use crate::node::common::model::vault::vault::VaultName;
@@ -11,20 +11,6 @@ pub struct UserCredentials {
 }
 
 impl UserCredentials {
-    pub fn from(device_creds: DeviceCredentials, vault_name: VaultName) -> UserCredentials {
-        UserCredentials {
-            vault_name,
-            device_creds,
-        }
-    }
-
-    pub fn generate(device_name: DeviceName, vault_name: VaultName) -> UserCredentials {
-        UserCredentials {
-            vault_name,
-            device_creds: DeviceCredentials::generate(device_name),
-        }
-    }
-
     pub fn device(&self) -> DeviceData {
         self.device_creds.device.clone()
     }
@@ -48,11 +34,29 @@ impl UserCredentials {
     }
 }
 
+pub struct UserCredsBuilder<Creds> {
+    pub creds: Creds,
+}
+
+impl UserCredsBuilder<DeviceCredentials> {
+    pub fn init(creds: DeviceCredentials) -> Self {
+        UserCredsBuilder { creds }
+    }
+
+    pub fn build(self, vault_name: VaultName) -> UserCredsBuilder<UserCredentials> {
+        let user_creds = UserCredentials {
+            vault_name,
+            device_creds: self.creds,
+        };
+        UserCredsBuilder { creds: user_creds }
+    }
+}
+
 #[cfg(any(test, feature = "test-framework"))]
 pub mod fixture {
     use crate::node::common::model::device::common::DeviceName;
     use crate::node::common::model::device::device_creds::fixture::DeviceCredentialsFixture;
-    use crate::node::common::model::user::user_creds::UserCredentials;
+    use crate::node::common::model::user::user_creds::{UserCredentials, UserCredsBuilder};
     use crate::node::common::model::vault::vault::VaultName;
 
     pub struct UserCredentialsFixture {
@@ -69,10 +73,12 @@ pub mod fixture {
 
     impl UserCredentialsFixture {
         pub fn from(device_creds: &DeviceCredentialsFixture) -> Self {
+            
+            
             Self {
-                client: UserCredentials::from(device_creds.client.clone(), VaultName::test()),
-                vd: UserCredentials::from(device_creds.vd.clone(), VaultName::test()),
-                client_b: UserCredentials::from(device_creds.client_b.clone(), VaultName::test()),
+                client: UserCredsBuilder::init(device_creds.client.clone()).build(VaultName::test()).creds,
+                vd: UserCredsBuilder::init(device_creds.vd.clone()).build(VaultName::test()).creds,
+                client_b: UserCredsBuilder::init(device_creds.client_b.clone()).build(VaultName::test()).creds,
             }
         }
     }

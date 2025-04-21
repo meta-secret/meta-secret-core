@@ -41,7 +41,7 @@ mod test {
     #[tokio::test]
     async fn test_sing_up() -> Result<()> {
         let km = KeyManagerFixture::generate();
-        let device_creds = &DeviceCredentialsFixture::from_km(&km);
+        let device_creds = &DeviceCredentialsFixture::from_km(km);
         let user_creds_fixture = UserCredentialsFixture::from(device_creds);
 
         let sign_up_action = SignUpAction;

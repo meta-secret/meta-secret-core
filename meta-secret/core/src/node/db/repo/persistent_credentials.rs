@@ -1,6 +1,6 @@
 use crate::node::common::model::device::common::DeviceName;
-use crate::node::common::model::device::device_creds::DeviceCredentials;
-use crate::node::common::model::user::user_creds::UserCredentials;
+use crate::node::common::model::device::device_creds::{DeviceCredentials, DeviceCredsBuilder};
+use crate::node::common::model::user::user_creds::{UserCredentials, UserCredsBuilder};
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::descriptors::creds::CredentialsDescriptor;
 use crate::node::db::events::generic_log_event::ToGenericEvent;
@@ -18,6 +18,22 @@ use tracing::instrument;
 #[derive(From)]
 pub struct PersistentCredentials<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
+}
+
+/// Initial state with no information about credentials (we don't know if they exist or not)
+pub struct InitialVoidCreds;
+
+struct PersistentCredsManager<Repo: KvLogEventRepo, Creds> {
+    p_obj: Arc<PersistentObject<Repo>>,
+    creds: Creds
+}
+
+impl<Repo: KvLogEventRepo> PersistentCredsManager<Repo, InitialVoidCreds> {
+    pub fn init(p_obj: Arc<PersistentObject<Repo>>) -> Self {
+        Self { p_obj, creds: InitialVoidCreds }
+    }
+    
+    
 }
 
 impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
@@ -77,14 +93,14 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
             .find_tail_event(CredentialsDescriptor::User)
             .await?;
 
-        let creds = maybe_user_creds.or_else(|| maybe_device_creds);
+        let creds = maybe_user_creds.or(maybe_device_creds);
 
         Ok(creds)
     }
 
     #[instrument(skip(self))]
     async fn generate_device_creds(&self, device_name: DeviceName) -> Result<DeviceCredentials> {
-        let device_creds = DeviceCredentials::generate(device_name);
+        let device_creds = DeviceCredsBuilder::generate().build(device_name).creds;
         info!(
             "Device credentials has been generated: {:?}",
             &device_creds.device
@@ -107,13 +123,13 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
                 let device_creds = self
                     .get_or_generate_device_creds(device_name.clone())
                     .await?;
-                let user_creds = UserCredentials::from(device_creds, vault_name);
+                let user_creds = UserCredsBuilder::init(device_creds).build(vault_name).creds;
                 self.save(CredentialsObject::from(user_creds.clone()))
                     .await?;
                 Ok(user_creds)
             }
             Some(CredentialsObject::Device(KvLogEvent { value: creds, .. })) => {
-                let user_creds = UserCredentials::from(creds, vault_name);
+                let user_creds = UserCredsBuilder::init(creds).build(vault_name).creds;
                 self.save(CredentialsObject::from(user_creds.clone()))
                     .await?;
                 Ok(user_creds)

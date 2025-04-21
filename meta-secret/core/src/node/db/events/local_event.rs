@@ -1,4 +1,4 @@
-use crate::node::common::model::device::common::DeviceData;
+use crate::node::common::model::device::common::{DeviceData};
 use crate::node::common::model::device::device_creds::DeviceCredentials;
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::db::descriptors::creds::CredentialsDescriptor;
