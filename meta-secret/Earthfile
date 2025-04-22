@@ -1,6 +1,6 @@
 VERSION 0.8
 FROM scratch
-ENV RUST_VERSION="1.85.0"
+ENV RUST_VERSION="1.86.0"
 
 generate-cargo-chef-recipe:
     FROM lukemathwalker/cargo-chef:latest-rust-${RUST_VERSION}-bookworm
@@ -146,6 +146,8 @@ test:
     ENV BASE_DIR="/meta-secret-build"
     WORKDIR ${BASE_DIR}
 
+    RUN cargo install --locked cargo-nextest
+
     COPY . .
 
-    RUN --no-cache cargo test --release
+    RUN --no-cache cargo nextest run --profile ci
