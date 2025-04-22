@@ -23,7 +23,7 @@ use anyhow::Result;
 use meta_secret_core::node::app::meta_app::messaging::{ClusterDistributionRequest, GenericAppStateRequest};
 use meta_secret_core::node::app::orchestrator::MetaOrchestrator;
 use meta_secret_core::node::common::model::meta_pass::MetaPasswordId;
-use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo, WasmApplicationState};
+use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
 use meta_secret_core::node::common::model::secret::ClaimId;
 use meta_secret_core::node::common::model::user::user_creds::UserCredentials;
 use meta_secret_core::node::db::events::vault::vault_log_event::JoinClusterEvent;
@@ -172,15 +172,25 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
         client_repo: Arc<Repo>,
         sync_protocol: Arc<WasmSyncProtocol<Repo>>,
     ) -> Result<ApplicationManager<Repo, WasmSyncProtocol<Repo>>> {
-        let persistent_obj = {
+        let p_obj = {
             let obj = PersistentObject::new(client_repo.clone());
             Arc::new(obj)
+        };
+        
+        //Get or generate device credentials
+        let creds_repo = PersistentCredentials::from(p_obj.clone());
+        let device_creds = {
+            let creds = creds_repo
+                .get_or_generate_device_creds(DeviceName::client())
+                .await?;
+            Arc::new(creds)
         };
 
         let sync_gateway = Arc::new(SyncGateway {
             id: String::from("client-gateway"),
-            p_obj: persistent_obj.clone(),
+            p_obj: p_obj.clone(),
             sync: sync_protocol.clone(),
+            device_creds: device_creds.clone()
         });
 
         let state_provider = Arc::new(MetaClientStateProvider::new());
@@ -192,7 +202,8 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
                 }),
                 sync_gateway: sync_gateway.clone(),
                 state_provider,
-                p_obj: persistent_obj.clone(),
+                p_obj: p_obj.clone(),
+                device_creds: device_creds.clone()
             })
         };
 
@@ -226,9 +237,10 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
             p_obj: persistent_object.clone(),
         };
 
-        let _user_creds = creds_repo
+        let user_creds = creds_repo
             .get_or_generate_user_creds(DeviceName::virtual_device(), VaultName::test())
             .await?;
+        let device_creds = Arc::new(user_creds.device_creds.clone());
 
         let dt_meta_client = Arc::new(MetaClientDataTransfer {
             dt: MpscDataTransfer::new(),
@@ -238,6 +250,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
             id: String::from("vd-gateway"),
             p_obj: persistent_object.clone(),
             sync: sync_protocol.clone(),
+            device_creds: device_creds.clone()
         });
 
         let state_provider = Arc::new(MetaClientStateProvider::new());
@@ -246,6 +259,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
             sync_gateway: gateway.clone(),
             state_provider,
             p_obj: persistent_object.clone(),
+            device_creds: device_creds.clone()
         };
 
         spawn_local(async move {

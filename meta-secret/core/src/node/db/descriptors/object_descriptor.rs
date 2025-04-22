@@ -1,5 +1,5 @@
 use crate::node::common::model::IdString;
-use crate::node::db::descriptors::creds::CredentialsDescriptor;
+use crate::node::db::descriptors::creds::{DeviceCredsDescriptor, UserCredsDescriptor};
 use crate::node::db::descriptors::shared_secret_descriptor::{
     SsDeviceLogDescriptor, SsLogDescriptor, SsWorkflowDescriptor,
 };
@@ -13,7 +13,8 @@ use crate::node::db::events::object_id::Next;
 #[serde(rename_all = "camelCase")]
 pub enum ObjectDescriptor {
     /// Describes device and user credentials
-    Creds(CredentialsDescriptor),
+    DeviceCreds(DeviceCredsDescriptor),
+    UserCreds(UserCredsDescriptor),
 
     DeviceLog(DeviceLogDescriptor),
 
@@ -109,7 +110,8 @@ impl ObjectDescriptor {
 impl ObjectName for ObjectDescriptor {
     fn object_name(&self) -> String {
         match self {
-            ObjectDescriptor::Creds(desc) => desc.object_name(),
+            ObjectDescriptor::DeviceCreds(desc) => desc.object_name(),
+            ObjectDescriptor::UserCreds(desc) => desc.object_name(),
 
             ObjectDescriptor::Vault(vault_desc) => vault_desc.object_name(),
             ObjectDescriptor::DeviceLog(device_log) => device_log.object_name(),
@@ -128,7 +130,8 @@ impl ObjectType for ObjectDescriptor {
         match self {
             ObjectDescriptor::Vault(vault_desc) => vault_desc.object_type(),
             ObjectDescriptor::SharedSecret(ss_desc) => ss_desc.object_type(),
-            ObjectDescriptor::Creds(creds) => creds.object_type(),
+            ObjectDescriptor::DeviceCreds(creds) => creds.object_type(),
+            ObjectDescriptor::UserCreds(creds) => creds.object_type(),
             ObjectDescriptor::DeviceLog(device_log) => device_log.object_type(),
             ObjectDescriptor::VaultLog(vault_log) => vault_log.object_type(),
             ObjectDescriptor::VaultStatus(mem) => mem.object_type(),
@@ -177,7 +180,7 @@ mod seq_id_tests {
 mod fqdn_tests {
     use crate::node::common::model::vault::vault::VaultName;
     use crate::node::common::model::IdString;
-    use crate::node::db::descriptors::creds::CredentialsDescriptor;
+    use crate::node::db::descriptors::creds::DeviceCredsDescriptor;
     use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
     use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;
 
@@ -185,7 +188,7 @@ mod fqdn_tests {
     fn test_object_fqdn_id_string() {
         // Test with CredentialsDescriptor
         {
-            let creds_device = CredentialsDescriptor::Device;
+            let creds_device = DeviceCredsDescriptor;
             let creds_descriptor = creds_device.to_obj_desc();
             let creds_fqdn = creds_descriptor.fqdn();
             assert_eq!(creds_fqdn.id_str(), "DeviceCreds:index");

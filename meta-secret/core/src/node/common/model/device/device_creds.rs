@@ -1,32 +1,39 @@
 use crate::crypto::keys::{KeyManager, OpenBox, SecretBox};
 use crate::node::common::model::device::common::{DeviceData, DeviceName};
 
+/// Contains full information about device (private keys and device id)
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DeviceCredentials {
+pub struct DeviceCreds {
     pub secret_box: SecretBox,
     pub device: DeviceData,
 }
 
-/// Contains full information about device (private keys and device id)
-impl DeviceCredentials {
-    pub fn generate(device_name: DeviceName) -> DeviceCredentials {
-        let secret_box = KeyManager::generate_secret_box();
-        let device = DeviceData::from(device_name, OpenBox::from(&secret_box));
-        DeviceCredentials { secret_box, device }
+pub struct DeviceCredsBuilder<S> {
+    pub creds: S,
+}
+
+impl DeviceCredsBuilder<KeyManager> {
+    pub fn init(key_manager: KeyManager) -> Self {
+        Self { creds: key_manager }
     }
 
-    pub fn from_key_manager(
-        device_name: DeviceName,
-        key_manager: &KeyManager,
-    ) -> DeviceCredentials {
-        let secret_box = SecretBox::from(key_manager);
+    pub fn generate() -> Self {
+        Self {
+            creds: KeyManager::generate(),
+        }
+    }
+
+    pub fn build(self, device_name: DeviceName) -> DeviceCredsBuilder<DeviceCreds> {
+        let secret_box = SecretBox::from(&self.creds);
         let device = DeviceData::from(device_name, OpenBox::from(&secret_box));
-        DeviceCredentials { secret_box, device }
+        let creds = DeviceCreds { secret_box, device };
+
+        DeviceCredsBuilder { creds }
     }
 }
 
-impl DeviceCredentials {
+impl DeviceCreds {
     pub fn key_manager(&self) -> anyhow::Result<KeyManager> {
         let key_manager = KeyManager::try_from(&self.secret_box)?;
         Ok(key_manager)
@@ -37,34 +44,35 @@ impl DeviceCredentials {
 pub mod fixture {
     use crate::crypto::keys::fixture::KeyManagerFixture;
     use crate::node::common::model::device::common::DeviceName;
-    use crate::node::common::model::device::device_creds::DeviceCredentials;
+    use crate::node::common::model::device::device_creds::{DeviceCreds, DeviceCredsBuilder};
 
     pub struct DeviceCredentialsFixture {
-        pub client: DeviceCredentials,
-        pub client_b: DeviceCredentials,
-        pub vd: DeviceCredentials,
-        pub server: DeviceCredentials,
+        pub client: DeviceCreds,
+        pub client_b: DeviceCreds,
+        pub vd: DeviceCreds,
+        pub server: DeviceCreds,
     }
 
     impl DeviceCredentialsFixture {
-        pub fn from_km(km_fixture: &KeyManagerFixture) -> Self {
+        pub fn from_km(km_fixture: KeyManagerFixture) -> Self {
+            let client = DeviceCredsBuilder::init(km_fixture.client)
+                .build(DeviceName::client())
+                .creds;
+            let client_b = DeviceCredsBuilder::init(km_fixture.client_b)
+                .build(DeviceName::client_b())
+                .creds;
+            let vd = DeviceCredsBuilder::init(km_fixture.vd)
+                .build(DeviceName::virtual_device())
+                .creds;
+            let server = DeviceCredsBuilder::init(km_fixture.server)
+                .build(DeviceName::server())
+                .creds;
+
             Self {
-                client: DeviceCredentials::from_key_manager(
-                    DeviceName::client(),
-                    &km_fixture.client,
-                ),
-                client_b: DeviceCredentials::from_key_manager(
-                    DeviceName::client_b(),
-                    &km_fixture.client_b,
-                ),
-                vd: DeviceCredentials::from_key_manager(
-                    DeviceName::virtual_device(),
-                    &km_fixture.vd,
-                ),
-                server: DeviceCredentials::from_key_manager(
-                    DeviceName::server(),
-                    &km_fixture.server,
-                ),
+                client,
+                client_b,
+                vd,
+                server,
             }
         }
     }

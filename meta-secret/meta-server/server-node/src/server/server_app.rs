@@ -8,7 +8,7 @@ use meta_secret_core::node::api::{
 };
 use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::model::device::common::DeviceName;
-use meta_secret_core::node::common::model::device::device_creds::DeviceCredentials;
+use meta_secret_core::node::common::model::device::device_creds::DeviceCreds;
 use meta_secret_core::node::db::descriptors::shared_secret_descriptor::SsLogDescriptor;
 use meta_secret_core::node::db::events::generic_log_event::ToGenericEvent;
 use meta_secret_core::node::db::events::object_id::Next;
@@ -95,7 +95,7 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
         }
     }
 
-    pub async fn init(&self) -> Result<DeviceCredentials> {
+    pub async fn init(&self) -> Result<DeviceCreds> {
         let device_creds = self.get_creds().await?;
         Ok(device_creds)
     }
@@ -193,7 +193,7 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
         }
     }
 
-    pub async fn get_creds(&self) -> Result<DeviceCredentials> {
+    pub async fn get_creds(&self) -> Result<DeviceCreds> {
         self.creds_repo
             .get_or_generate_device_creds(DeviceName::server())
             .await

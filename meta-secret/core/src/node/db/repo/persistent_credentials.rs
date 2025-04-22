@@ -1,19 +1,18 @@
 use crate::node::common::model::device::common::DeviceName;
-use crate::node::common::model::device::device_creds::DeviceCredentials;
-use crate::node::common::model::user::user_creds::UserCredentials;
+use crate::node::common::model::device::device_creds::{DeviceCreds, DeviceCredsBuilder};
+use crate::node::common::model::user::user_creds::{UserCredentials, UserCredsBuilder};
 use crate::node::common::model::vault::vault::VaultName;
-use crate::node::db::descriptors::creds::CredentialsDescriptor;
 use crate::node::db::events::generic_log_event::ToGenericEvent;
-use crate::node::db::events::kv_log_event::KvLogEvent;
-use crate::node::db::events::local_event::CredentialsObject;
+use crate::node::db::events::local_event::{DeviceCredsObject, UserCredsObject};
 use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
-use anyhow::Result;
+use anyhow::{bail, Result};
 use derive_more::From;
 use log::info;
 use std::sync::Arc;
 use tracing::instrument;
+use crate::node::db::descriptors::creds::{DeviceCredsDescriptor, UserCredsDescriptor};
 
 #[derive(From)]
 pub struct PersistentCredentials<Repo: KvLogEventRepo> {
@@ -25,28 +24,27 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
     pub async fn get_or_generate_device_creds(
         &self,
         device_name: DeviceName,
-    ) -> Result<DeviceCredentials> {
-        let maybe_creds = self.find().await?;
+    ) -> Result<DeviceCreds> {
+        let maybe_device_creds = self
+            .p_obj
+            .find_tail_event(DeviceCredsDescriptor)
+            .await?;
 
-        let device_creds = match maybe_creds {
+        let device_creds = match maybe_device_creds {
             None => self.generate_device_creds(device_name).await?,
-            Some(creds) => match creds {
-                CredentialsObject::Device(event) => event.value,
-                CredentialsObject::DefaultUser(event) => event.value.device_creds,
-            },
+            Some(creds) => creds.value(),
         };
         Ok(device_creds)
     }
 
     #[instrument(skip(self))]
-    async fn save(&self, creds: CredentialsObject) -> Result<ArtifactId> {
-        let generic_event = creds.to_generic();
-        self.p_obj.repo.save(generic_event).await
+    async fn save(&self, creds: UserCredsObject) -> Result<ArtifactId> {
+        self.p_obj.repo.save(creds).await
     }
 
     #[instrument(skip(self))]
-    pub async fn save_device_creds(&self, device_creds: DeviceCredentials) -> Result<()> {
-        let creds_obj = CredentialsObject::from(device_creds);
+    pub async fn save_device_creds(&self, device_creds: DeviceCreds) -> Result<()> {
+        let creds_obj = DeviceCredsObject::from(device_creds);
         let generic_event = creds_obj.to_generic();
         self.p_obj.repo.save(generic_event).await?;
         Ok(())
@@ -54,37 +52,18 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
 
     #[instrument(skip_all)]
     pub async fn get_user_creds(&self) -> Result<Option<UserCredentials>> {
-        let maybe_creds_obj = self.find().await?;
-
-        let Some(creds_obj) = maybe_creds_obj else {
-            return Ok(None);
-        };
-
-        match creds_obj {
-            CredentialsObject::Device { .. } => Ok(None),
-            CredentialsObject::DefaultUser(event) => Ok(Some(event.value)),
-        }
-    }
-
-    #[instrument(skip_all)]
-    pub async fn find(&self) -> Result<Option<CredentialsObject>> {
-        let maybe_device_creds = self
-            .p_obj
-            .find_tail_event(CredentialsDescriptor::Device)
-            .await?;
         let maybe_user_creds = self
             .p_obj
-            .find_tail_event(CredentialsDescriptor::User)
-            .await?;
+            .find_tail_event(UserCredsDescriptor)
+            .await?
+            .map(|obj| obj.value());
 
-        let creds = maybe_user_creds.or_else(|| maybe_device_creds);
-
-        Ok(creds)
+        Ok(maybe_user_creds)
     }
 
     #[instrument(skip(self))]
-    async fn generate_device_creds(&self, device_name: DeviceName) -> Result<DeviceCredentials> {
-        let device_creds = DeviceCredentials::generate(device_name);
+    async fn generate_device_creds(&self, device_name: DeviceName) -> Result<DeviceCreds> {
+        let device_creds = DeviceCredsBuilder::generate().build(device_name).creds;
         info!(
             "Device credentials has been generated: {:?}",
             &device_creds.device
@@ -100,26 +79,42 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
         device_name: DeviceName,
         vault_name: VaultName,
     ) -> Result<UserCredentials> {
-        let maybe_creds = self.find().await?;
-
-        match maybe_creds {
+        let maybe_device_creds = self
+            .p_obj
+            .find_tail_event(DeviceCredsDescriptor)
+            .await?;
+        
+        let device_creds = match maybe_device_creds {
             None => {
-                let device_creds = self
+                self
                     .get_or_generate_device_creds(device_name.clone())
-                    .await?;
-                let user_creds = UserCredentials::from(device_creds, vault_name);
-                self.save(CredentialsObject::from(user_creds.clone()))
-                    .await?;
-                Ok(user_creds)
+                    .await?
             }
-            Some(CredentialsObject::Device(KvLogEvent { value: creds, .. })) => {
-                let user_creds = UserCredentials::from(creds, vault_name);
-                self.save(CredentialsObject::from(user_creds.clone()))
+            Some(creds) => creds.value()
+        };
+
+        let maybe_user_creds = self
+            .p_obj
+            .find_tail_event(UserCredsDescriptor)
+            .await?;
+
+        let user_creds = match maybe_user_creds {
+            None => {
+                let user_creds = UserCredsBuilder::init(device_creds.clone()).build(vault_name).creds;
+                self.save(UserCredsObject::from(user_creds.clone()))
                     .await?;
-                Ok(user_creds)
+                user_creds
             }
-            Some(CredentialsObject::DefaultUser(event)) => Ok(event.value),
+            Some(creds_event) => {
+                creds_event.value()
+            }
+        };
+        
+        if !user_creds.device_creds.eq(&device_creds) { 
+            bail!("Inconsistent credentials: device credentials do not match user credentials");
         }
+        
+        Ok(user_creds)
     }
 }
 
@@ -186,12 +181,12 @@ pub mod fixture {
 
 #[cfg(any(test, feature = "test-framework"))]
 pub mod spec {
-    use crate::node::db::descriptors::creds::CredentialsDescriptor;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_object::PersistentObject;
     use crate::node::db::repo::generic_db::KvLogEventRepo;
     use derive_more::From;
     use std::sync::Arc;
+    use crate::node::db::descriptors::creds::{DeviceCredsDescriptor, UserCredsDescriptor};
 
     #[derive(From)]
     pub struct PersistentCredentialsSpec<Repo: KvLogEventRepo> {
@@ -202,13 +197,13 @@ pub mod spec {
         pub async fn verify_user_creds(&self) -> anyhow::Result<()> {
             let device_creds = self
                 .p_obj
-                .get_object_events_from_beginning(CredentialsDescriptor::Device)
+                .get_object_events_from_beginning(DeviceCredsDescriptor)
                 .await?;
             assert_eq!(device_creds.len(), 1);
 
             let user_creds = self
                 .p_obj
-                .get_object_events_from_beginning(CredentialsDescriptor::User)
+                .get_object_events_from_beginning(UserCredsDescriptor)
                 .await?;
 
             assert_eq!(user_creds.len(), 1);
@@ -219,7 +214,7 @@ pub mod spec {
         pub async fn verify_device_creds(&self) -> anyhow::Result<()> {
             let events = self
                 .p_obj
-                .get_object_events_from_beginning(CredentialsDescriptor::Device)
+                .get_object_events_from_beginning(DeviceCredsDescriptor)
                 .await?;
 
             assert_eq!(events.len(), 1);

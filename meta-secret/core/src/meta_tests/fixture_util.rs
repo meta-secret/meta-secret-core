@@ -19,7 +19,7 @@ pub mod fixture {
     impl FixtureRegistry<BaseState> {
         pub fn empty() -> FixtureRegistry<EmptyState> {
             let key_manager = KeyManagerFixture::generate();
-            let device_creds = DeviceCredentialsFixture::from_km(&key_manager);
+            let device_creds = DeviceCredentialsFixture::from_km(key_manager);
             let user_creds = UserCredentialsFixture::from(&device_creds);
             let p_obj = PersistentObjectFixture::generate();
             let p_vault = PersistentVaultFixture::generate(&p_obj);
@@ -32,7 +32,6 @@ pub mod fixture {
                     p_obj,
                     p_vault,
                     vault_data,
-                    key_manager,
                 },
             }
         }
@@ -71,7 +70,6 @@ pub mod fixture {
     }
 
     pub mod states {
-        use crate::crypto::keys::fixture::KeyManagerFixture;
         use crate::meta_tests::fixture_util::fixture::BaseSpec;
         use crate::node::common::model::device::device_creds::fixture::DeviceCredentialsFixture;
         use crate::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
@@ -92,7 +90,6 @@ pub mod fixture {
             pub p_obj: PersistentObjectFixture,
             pub p_vault: PersistentVaultFixture,
             pub vault_data: VaultDataFixture,
-            pub key_manager: KeyManagerFixture,
         }
 
         pub struct BaseState {
