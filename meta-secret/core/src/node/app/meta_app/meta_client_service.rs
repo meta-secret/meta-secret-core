@@ -8,13 +8,11 @@ use crate::node::app::sync::sync_gateway::SyncGateway;
 use crate::node::app::sync::sync_protocol::SyncProtocol;
 use crate::node::common::actor::ServiceState;
 use crate::node::common::data_transfer::MpscDataTransfer;
-use crate::node::common::model::device::common::DeviceName;
 use crate::node::common::model::user::common::UserData;
 use crate::node::common::model::vault::vault::{VaultMember, VaultStatus};
 use crate::node::common::model::{ApplicationState, UserMemberFullInfo, VaultFullInfo};
 use crate::node::db::actions::recover::RecoveryAction;
 use crate::node::db::actions::sign_up::claim::SignUpClaim;
-use crate::node::db::events::local_event::CredentialsObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;
@@ -22,6 +20,8 @@ use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::secret::MetaDistributor;
 use anyhow::Result;
+use crate::node::common::model::device::device_creds::DeviceCreds;
+use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::db::events::vault::vault_log_event::{VaultActionEvents};
 
 pub struct MetaClientService<Repo: KvLogEventRepo, Sync: SyncProtocol> {
@@ -29,6 +29,7 @@ pub struct MetaClientService<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub sync_gateway: Arc<SyncGateway<Repo, Sync>>,
     pub state_provider: Arc<MetaClientStateProvider>,
     pub p_obj: Arc<PersistentObject<Repo>>,
+    pub device_creds: Arc<DeviceCreds>
 }
 
 pub struct MetaClientDataTransfer {
@@ -66,18 +67,15 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
             &request, &app_state
         );
 
-        self.sync_gateway.sync().await?;
-        self.sync_gateway.sync().await?;
+        let user_creds = self.get_user_creds(&request).await?;
+
+        self.sync_gateway.sync(user_creds.user()).await?;
+        self.sync_gateway.sync(user_creds.user()).await?;
 
         match request {
             GenericAppStateRequest::SignUp(vault_name) => match &app_state {
                 ApplicationState::Local(device) => {
-                    let creds_repo = PersistentCredentials::from(self.p_obj.clone());
-                    creds_repo
-                        .get_or_generate_user_creds(device.device_name.clone(), vault_name.clone())
-                        .await?;
-
-                    self.sync_gateway.sync().await?;
+                    self.sync_gateway.sync(user_creds.user()).await?;
 
                     let user_data = UserData {
                         vault_name,
@@ -86,7 +84,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
 
                     let sign_up_claim = SignUpClaim::from(self.p_obj.clone());
                     sign_up_claim.sign_up(user_data.clone()).await?;
-                    self.sync_gateway.sync().await?;
+                    self.sync_gateway.sync(user_creds.user()).await?;
                 }
                 ApplicationState::Vault(VaultFullInfo::Member(UserMemberFullInfo {
                     member,
@@ -103,17 +101,6 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
             },
 
             GenericAppStateRequest::ClusterDistribution(request) => {
-                let user_creds = {
-                    let creds_repo = PersistentCredentials::from(self.p_obj.clone());
-                    let maybe_user_creds = creds_repo.get_user_creds().await?;
-
-                    let Some(user_creds) = maybe_user_creds else {
-                        bail!("Invalid state. UserCredentials must be present")
-                    };
-
-                    user_creds
-                };
-
                 let vault_status = {
                     let vault_repo = PersistentVault::from(self.p_obj.clone());
                     vault_repo.find(user_creds.user()).await?
@@ -133,7 +120,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                         let distributor = MetaDistributor {
                             p_obj: self.p_obj.clone(),
                             vault_member: vault_member.clone(),
-                            user_creds: Arc::new(user_creds),
+                            user_creds: Arc::new(user_creds.clone()),
                         };
 
                         distributor
@@ -145,16 +132,56 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
 
             GenericAppStateRequest::Recover(meta_pass_id) => {
                 let recovery_action = RecoveryAction::from(self.p_obj.clone());
-                recovery_action.recovery_request(meta_pass_id).await?;
+                recovery_action.recovery_request(user_creds.clone(), meta_pass_id).await?;
             }
         }
 
-        self.sync_gateway.sync().await?;
-        self.sync_gateway.sync().await?;
+        self.sync_gateway.sync(user_creds.user()).await?;
+        self.sync_gateway.sync(user_creds.user()).await?;
 
         //Update app state
         let app_state = self.get_app_state().await?;
         Ok(app_state)
+    }
+
+    async fn get_user_creds(&self, request: &GenericAppStateRequest) -> Result<UserCredentials> {
+        let creds_repo = PersistentCredentials::from(self.p_obj.clone());
+
+        let user_creds = match &request {
+            GenericAppStateRequest::SignUp(vault_name) => {
+                let device_name = self.device_creds.device.device_name.clone();
+                creds_repo
+                    .get_or_generate_user_creds(device_name, vault_name.clone())
+                    .await?
+            }
+            GenericAppStateRequest::ClusterDistribution(_) => {
+                let user_creds = {
+                    let maybe_user_creds = creds_repo.get_user_creds().await?;
+
+                    let Some(user_creds) = maybe_user_creds else {
+                        bail!("Invalid state. UserCredentials must be present")
+                    };
+
+                    user_creds
+                };
+
+                user_creds
+            }
+            GenericAppStateRequest::Recover(_) => {
+                let user_creds = {
+                    let maybe_user_creds = creds_repo.get_user_creds().await?;
+
+                    let Some(user_creds) = maybe_user_creds else {
+                        bail!("Invalid state. UserCredentials not exists")
+                    };
+
+                    user_creds
+                };
+
+                user_creds
+            }
+        };
+        Ok(user_creds)
     }
 
     pub async fn build_service_state(&self) -> Result<ServiceState<ApplicationState>> {
@@ -167,59 +194,51 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
 
     pub async fn get_app_state(&self) -> Result<ApplicationState> {
         let creds_repo = PersistentCredentials::from(self.p_obj());
-        let maybe_creds = creds_repo.find().await?;
+        let maybe_user_creds = creds_repo.get_user_creds().await?;
 
-        let app_state = match maybe_creds {
+        let app_state = match maybe_user_creds {
             None => {
-                let device_creds = creds_repo
-                    .get_or_generate_device_creds(DeviceName::client())
-                    .await?;
-                ApplicationState::Local(device_creds.device)
+                ApplicationState::Local(self.device_creds.device.clone())
             }
-            Some(creds) => match creds {
-                CredentialsObject::Device(device_creds_event) => {
-                    ApplicationState::Local(device_creds_event.value.device)
-                }
-                CredentialsObject::DefaultUser(user_creds) => {
-                    self.sync_gateway.sync().await?;
+            Some(user_creds) => {
+                self.sync_gateway.sync(user_creds.user()).await?;
 
-                    let p_vault = PersistentVault::from(self.p_obj());
-                    let vault_status = p_vault.find(user_creds.value.user()).await?;
+                let p_vault = PersistentVault::from(self.p_obj());
+                let vault_status = p_vault.find(user_creds.user()).await?;
 
-                    match vault_status {
-                        VaultStatus::NotExists(user) => {
-                            ApplicationState::Vault(VaultFullInfo::NotExists(user))
-                        }
-                        VaultStatus::Outsider(outsider) => {
-                            ApplicationState::Vault(VaultFullInfo::Outsider(outsider))
-                        }
-                        VaultStatus::Member(member_user) => {
-                            let vault = p_vault.get_vault(&member_user.user_data).await?;
+                match vault_status {
+                    VaultStatus::NotExists(user) => {
+                        ApplicationState::Vault(VaultFullInfo::NotExists(user))
+                    }
+                    VaultStatus::Outsider(outsider) => {
+                        ApplicationState::Vault(VaultFullInfo::Outsider(outsider))
+                    }
+                    VaultStatus::Member(member_user) => {
+                        let vault = p_vault.get_vault(&member_user.user_data).await?;
 
-                            let ss_claims = {
-                                let p_ss = PersistentSharedSecret::from(self.p_obj());
-                                p_ss.get_ss_log_obj(user_creds.value.vault_name).await?
-                            };
+                        let ss_claims = {
+                            let p_ss = PersistentSharedSecret::from(self.p_obj());
+                            p_ss.get_ss_log_obj(user_creds.vault_name).await?
+                        };
 
-                            let maybe_vault_log_event = {
-                                let vault_name = member_user.user_data.vault_name();
-                                p_vault.vault_log(vault_name).await?
-                            };
+                        let maybe_vault_log_event = {
+                            let vault_name = member_user.user_data.vault_name();
+                            p_vault.vault_log(vault_name).await?
+                        };
 
-                            let vault_action_events = maybe_vault_log_event
-                                .map(|obj| obj.0.value)
-                                .unwrap_or(VaultActionEvents::default());
+                        let vault_action_events = maybe_vault_log_event
+                            .map(|obj| obj.0.value)
+                            .unwrap_or(VaultActionEvents::default());
 
-                            let user_full_info = UserMemberFullInfo {
-                                member: VaultMember {
-                                    member: member_user,
-                                    vault: vault.to_data(),
-                                },
-                                ss_claims,
-                                vault_events: vault_action_events,
-                            };
-                            ApplicationState::Vault(VaultFullInfo::Member(user_full_info))
-                        }
+                        let user_full_info = UserMemberFullInfo {
+                            member: VaultMember {
+                                member: member_user,
+                                vault: vault.to_data(),
+                            },
+                            ss_claims,
+                            vault_events: vault_action_events,
+                        };
+                        ApplicationState::Vault(VaultFullInfo::Member(user_full_info))
                     }
                 }
             },
@@ -300,6 +319,7 @@ pub mod fixture {
                 sync_gateway: sync_gateway.client_gw.clone(),
                 state_provider: state_provider.client.clone(),
                 p_obj: sync_gateway.client_gw.p_obj.clone(),
+                device_creds: Arc::new(base.empty.device_creds.client.clone()),
             });
 
             let vd = Arc::new(MetaClientService {
@@ -307,6 +327,7 @@ pub mod fixture {
                 sync_gateway: sync_gateway.vd_gw.clone(),
                 state_provider: state_provider.vd.clone(),
                 p_obj: sync_gateway.vd_gw.p_obj.clone(),
+                device_creds: Arc::new(base.empty.device_creds.vd.clone())
             });
 
             Self {

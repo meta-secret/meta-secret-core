@@ -167,15 +167,17 @@ mod test {
         }
 
         async fn client_gw_sync(&self) -> Result<()> {
-            self.registry.state.client.gw.sync().await?;
-            self.registry.state.client.gw.sync().await?;
+            let user = self.registry.state.client.user.clone();
+            self.registry.state.client.gw.sync(user.clone()).await?;
+            self.registry.state.client.gw.sync(user).await?;
             Ok(())
         }
 
         async fn vd_gw_sync(&self) -> Result<()> {
-            self.registry.state.vd.gw.sync().await?;
+            let user = self.registry.state.vd.user.clone();
+            self.registry.state.vd.gw.sync(user.clone()).await?;
             // second sync to get new messages created on server
-            self.registry.state.vd.gw.sync().await?;
+            self.registry.state.vd.gw.sync(user).await?;
             Ok(())
         }
 
@@ -256,8 +258,7 @@ mod test {
 
             assert_eq!(1, member.member.vault.secrets.len());
 
-            self.spec.registry.state.vd.gw.sync().await?;
-            self.spec.registry.state.vd.gw.sync().await?;
+            self.vd_gw_sync().await?;
 
             // let client_db: HashMap<ArtifactId, GenericKvLogEvent> =
             //     self.sign_up.vd.p_obj.repo.get_db().await;
@@ -336,7 +337,16 @@ mod test {
 
             Ok(())
         }
+
+        async fn vd_gw_sync(&self) -> Result<()> {
+            let user = self.spec.registry.state.vd.user.clone();
+            self.spec.registry.state.vd.gw.sync(user.clone()).await?;
+            // second sync to get new messages created on server
+            self.spec.registry.state.vd.gw.sync(user).await?;
+            Ok(())
+        }
     }
+    
 
     #[tokio::test]
     async fn test_sign_up_and_join_two_devices() -> Result<()> {
@@ -427,9 +437,8 @@ mod test {
         // Verify the claim properties
         assert_eq!(vd_ss_claim, recover_claim_on_server);
 
-        split.spec.registry.state.client.gw.sync().await?;
-        split.spec.registry.state.client.gw.sync().await?;
-
+        split.spec.client_gw_sync().await?;
+        
         split
             .spec
             .registry
@@ -472,7 +481,7 @@ mod test {
         }
         //----------- End Recovery record verification on client -----------
 
-        split.spec.registry.state.client.gw.sync().await?;
+        split.spec.client_gw_sync().await?;
 
         //----------- Start Recovery record verification on the server -----------
         // Verify that the server has received and processed the SsWorkflow event
@@ -520,7 +529,7 @@ mod test {
         }
         //----------- End Recovery record verification on the server -----------
 
-        split.spec.registry.state.client.gw.sync().await?;
+        split.spec.client_gw_sync().await?;
 
         // Verify that client has received the recovery claim
         let client_p_ss =
@@ -548,9 +557,8 @@ mod test {
         //TODO we have to check if orchestrate breaks distribution (recovery)
         //split.spec.vd.orchestrator.orchestrate().await?;
 
-        split.spec.registry.state.vd.gw.sync().await?;
-        split.spec.registry.state.vd.gw.sync().await?;
-
+        split.spec.vd_gw_sync().await?;
+        
         let vd_db = split.spec.registry.state.vd.p_obj.repo.get_db().await;
         let vd_db = vd_db.into_values().collect::<Vec<GenericKvLogEvent>>();
 

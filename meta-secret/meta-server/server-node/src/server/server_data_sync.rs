@@ -165,7 +165,10 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                     }
                 }
             }
-            GenericKvLogEvent::Credentials(_) => {
+            GenericKvLogEvent::DeviceCreds(_) => {
+                bail!("Invalid event type: {:?}", generic_event);
+            }
+            GenericKvLogEvent::UserCreds(_) => {
                 bail!("Invalid event type: {:?}", generic_event);
             }
             GenericKvLogEvent::VaultLog(_) => {

@@ -50,7 +50,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> VirtualDevice<Repo, Sync> {
         let user_creds = sign_up_claim
             .prepare_sign_up(device_name, VaultName::test())
             .await?;
-        self.gateway.sync().await?;
+        self.gateway.sync(user_creds.user()).await?;
         sign_up_claim.sign_up(user_creds.user()).await?;
 
         // Handle state changes
@@ -61,7 +61,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> VirtualDevice<Repo, Sync> {
     }
 
     async fn do_work(&self, user_creds: &UserCredentials) -> Result<()> {
-        self.gateway.sync().await?;
+        self.gateway.sync(user_creds.user()).await?;
 
         let orchestrator = MetaOrchestrator {
             p_obj: self.p_obj(),
@@ -70,7 +70,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> VirtualDevice<Repo, Sync> {
 
         orchestrator.orchestrate().await?;
 
-        self.gateway.sync().await?;
+        self.gateway.sync(user_creds.user()).await?;
         Ok(())
     }
 

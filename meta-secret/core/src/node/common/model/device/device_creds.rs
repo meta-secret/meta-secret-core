@@ -4,7 +4,7 @@ use crate::node::common::model::device::common::{DeviceData, DeviceName};
 /// Contains full information about device (private keys and device id)
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DeviceCredentials {
+pub struct DeviceCreds {
     pub secret_box: SecretBox,
     pub device: DeviceData,
 }
@@ -24,16 +24,16 @@ impl DeviceCredsBuilder<KeyManager> {
         }
     }
 
-    pub fn build(self, device_name: DeviceName) -> DeviceCredsBuilder<DeviceCredentials> {
+    pub fn build(self, device_name: DeviceName) -> DeviceCredsBuilder<DeviceCreds> {
         let secret_box = SecretBox::from(&self.creds);
         let device = DeviceData::from(device_name, OpenBox::from(&secret_box));
-        let creds = DeviceCredentials { secret_box, device };
+        let creds = DeviceCreds { secret_box, device };
 
-        DeviceCredsBuilder { creds: creds }
+        DeviceCredsBuilder { creds }
     }
 }
 
-impl DeviceCredentials {
+impl DeviceCreds {
     pub fn key_manager(&self) -> anyhow::Result<KeyManager> {
         let key_manager = KeyManager::try_from(&self.secret_box)?;
         Ok(key_manager)
@@ -44,13 +44,13 @@ impl DeviceCredentials {
 pub mod fixture {
     use crate::crypto::keys::fixture::KeyManagerFixture;
     use crate::node::common::model::device::common::DeviceName;
-    use crate::node::common::model::device::device_creds::{DeviceCredentials, DeviceCredsBuilder};
+    use crate::node::common::model::device::device_creds::{DeviceCreds, DeviceCredsBuilder};
 
     pub struct DeviceCredentialsFixture {
-        pub client: DeviceCredentials,
-        pub client_b: DeviceCredentials,
-        pub vd: DeviceCredentials,
-        pub server: DeviceCredentials,
+        pub client: DeviceCreds,
+        pub client_b: DeviceCreds,
+        pub vd: DeviceCreds,
+        pub server: DeviceCreds,
     }
 
     impl DeviceCredentialsFixture {

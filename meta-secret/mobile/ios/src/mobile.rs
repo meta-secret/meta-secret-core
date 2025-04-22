@@ -55,16 +55,17 @@ pub async extern "C" fn sign_up(user_name: *const c_char) -> *mut c_char {
             id: "mobile_client".to_string(),
             p_obj: p_obj.clone(),
             sync: Arc::new(sync_protocol),
+            device_creds: Arc::new(user_creds.device_creds.clone())
         });
         
-        client_gw.sync().await.unwrap();
-        client_gw.sync().await.unwrap();
+        client_gw.sync(user_creds.user()).await.unwrap();
+        client_gw.sync(user_creds.user()).await.unwrap();
         
         let sign_up_claim = SignUpClaim { p_obj: p_obj.clone() };
         sign_up_claim.sign_up(user_creds.user().clone()).await.unwrap();
 
-        client_gw.sync().await.unwrap();
-        client_gw.sync().await.unwrap();
+        client_gw.sync(user_creds.user()).await.unwrap();
+        client_gw.sync(user_creds.user()).await.unwrap();
         
         let p_vault = Arc::new(PersistentVault::from(p_obj.clone()));
         let vault_status = p_vault.find(user_creds.user().clone()).await.unwrap();

@@ -1,5 +1,5 @@
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
-use crate::node::common::model::device::device_creds::DeviceCredentials;
+use crate::node::common::model::device::device_creds::DeviceCreds;
 use crate::node::common::model::user::common::{UserData, UserId};
 use crate::node::common::model::vault::vault::VaultName;
 
@@ -7,7 +7,7 @@ use crate::node::common::model::vault::vault::VaultName;
 #[serde(rename_all = "camelCase")]
 pub struct UserCredentials {
     pub vault_name: VaultName,
-    pub device_creds: DeviceCredentials,
+    pub device_creds: DeviceCreds,
 }
 
 impl UserCredentials {
@@ -38,8 +38,8 @@ pub struct UserCredsBuilder<Creds> {
     pub creds: Creds,
 }
 
-impl UserCredsBuilder<DeviceCredentials> {
-    pub fn init(creds: DeviceCredentials) -> Self {
+impl UserCredsBuilder<DeviceCreds> {
+    pub fn init(creds: DeviceCreds) -> Self {
         UserCredsBuilder { creds }
     }
 

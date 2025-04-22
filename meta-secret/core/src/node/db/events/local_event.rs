@@ -1,85 +1,235 @@
 use crate::node::common::model::device::common::{DeviceData};
-use crate::node::common::model::device::device_creds::DeviceCredentials;
+use crate::node::common::model::device::device_creds::DeviceCreds;
 use crate::node::common::model::user::user_creds::UserCredentials;
-use crate::node::db::descriptors::creds::CredentialsDescriptor;
 use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
 };
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::ArtifactId;
 use anyhow::{anyhow, Error};
+use crate::node::db::descriptors::creds::{DeviceCredsDescriptor, UserCredsDescriptor};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum CredentialsObject {
-    Device(KvLogEvent<DeviceCredentials>),
-    /// Default vault
-    DefaultUser(KvLogEvent<UserCredentials>),
-}
+pub struct DeviceCredsObject(pub KvLogEvent<DeviceCreds>);
 
-impl From<DeviceCredentials> for CredentialsObject {
-    fn from(creds: DeviceCredentials) -> Self {
-        Self::Device(KvLogEvent {
-            key: KvKey::from(CredentialsDescriptor::Device),
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserCredsObject(pub KvLogEvent<UserCredentials>);
+
+impl From<DeviceCreds> for DeviceCredsObject {
+    fn from(creds: DeviceCreds) -> Self {
+        DeviceCredsObject(KvLogEvent {
+            key: KvKey::from(DeviceCredsDescriptor),
             value: creds,
         })
     }
 }
 
-impl From<UserCredentials> for CredentialsObject {
+impl From<UserCredentials> for UserCredsObject {
     fn from(creds: UserCredentials) -> Self {
-        Self::DefaultUser(KvLogEvent {
-            key: KvKey::from(CredentialsDescriptor::User),
+        UserCredsObject(KvLogEvent {
+            key: KvKey::from(UserCredsDescriptor),
             value: creds,
         })
     }
 }
 
-impl ObjIdExtractor for CredentialsObject {
+impl ObjIdExtractor for DeviceCredsObject {
     fn obj_id(&self) -> ArtifactId {
-        match self {
-            CredentialsObject::Device(event) => event.key.obj_id.clone(),
-            CredentialsObject::DefaultUser(event) => event.key.obj_id.clone(),
-        }
+        self.0.key.obj_id.clone()
     }
 }
 
-impl ToGenericEvent for CredentialsObject {
+impl KeyExtractor for DeviceCredsObject {
+    fn key(&self) -> KvKey {
+        self.0.key.clone()
+    }
+}
+
+impl ToGenericEvent for DeviceCredsObject {
     fn to_generic(self) -> GenericKvLogEvent {
-        GenericKvLogEvent::Credentials(self)
+        GenericKvLogEvent::DeviceCreds(self)
     }
 }
 
-impl TryFrom<GenericKvLogEvent> for CredentialsObject {
+impl TryFrom<GenericKvLogEvent> for DeviceCredsObject {
     type Error = Error;
 
-    fn try_from(creds_event: GenericKvLogEvent) -> Result<Self, Self::Error> {
-        if let GenericKvLogEvent::Credentials(creds_obj) = creds_event {
-            Ok(creds_obj)
+    fn try_from(event: GenericKvLogEvent) -> Result<Self, Self::Error> {
+        if let GenericKvLogEvent::DeviceCreds(device_creds) = event {
+            Ok(device_creds)
         } else {
-            let error: Error = anyhow!(
-                "Invalid credentials event type: {:?}",
-                creds_event.key().obj_desc
-            );
-            Err(error)
+            Err(anyhow!("Invalid device credentials event type"))
         }
     }
 }
 
-impl KeyExtractor for CredentialsObject {
-    fn key(&self) -> KvKey {
-        match self {
-            CredentialsObject::Device(event) => event.key.clone(),
-            CredentialsObject::DefaultUser(event) => event.key.clone(),
-        }
-    }
-}
-
-impl CredentialsObject {
+impl DeviceCredsObject {
     pub fn device(&self) -> DeviceData {
-        match self {
-            CredentialsObject::Device(event) => event.value.device.clone(),
-            CredentialsObject::DefaultUser(event) => event.value.device_creds.device.clone(),
+        self.0.value.device.clone()
+    }
+    
+    pub fn value(self) -> DeviceCreds {
+        self.0.value
+    }
+}
+
+impl ObjIdExtractor for UserCredsObject {
+    fn obj_id(&self) -> ArtifactId {
+        self.0.key.obj_id.clone()
+    }
+}
+
+impl KeyExtractor for UserCredsObject {
+    fn key(&self) -> KvKey {
+        self.0.key.clone()
+    }
+}
+
+impl ToGenericEvent for UserCredsObject {
+    fn to_generic(self) -> GenericKvLogEvent {
+        GenericKvLogEvent::UserCreds(self)
+    }
+}
+
+impl TryFrom<GenericKvLogEvent> for UserCredsObject {
+    type Error = Error;
+
+    fn try_from(event: GenericKvLogEvent) -> Result<Self, Self::Error> {
+        if let GenericKvLogEvent::UserCreds(user_creds) = event {
+            Ok(user_creds)
+        } else {
+            Err(anyhow!("Invalid user credentials event type"))
         }
+    }
+}
+
+impl UserCredsObject {
+    pub fn device(&self) -> DeviceData {
+        self.0.value.device_creds.device.clone()
+    }
+    
+    pub fn value(&self) -> UserCredentials {
+        self.0.value.clone()
+    }
+    
+    pub fn device_creds(&self) -> DeviceCreds {
+        self.0.value.device_creds.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::node::common::model::device::common::DeviceName;
+    use crate::node::common::model::device::device_creds::DeviceCredsBuilder;
+    use crate::node::common::model::vault::vault::VaultName;
+    use crate::node::common::model::user::user_creds::UserCredsBuilder;
+    use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
+
+    fn create_test_device_credentials() -> DeviceCreds {
+        let device_name = DeviceName::from("test_device");
+        DeviceCredsBuilder::generate()
+            .build(device_name)
+            .creds
+    }
+
+    fn create_test_user_credentials() -> UserCredentials {
+        let device_creds = create_test_device_credentials();
+        let vault_name = VaultName::from("test_vault");
+        UserCredsBuilder::init(device_creds)
+            .build(vault_name)
+            .creds
+    }
+
+    #[test]
+    fn test_device_creds_object_from_device_credentials() {
+        let device_creds = create_test_device_credentials();
+        let device_creds_obj = DeviceCredsObject::from(device_creds.clone());
+        
+        assert_eq!(device_creds_obj.clone().value(), device_creds.clone());
+        assert_eq!(device_creds_obj.device(), device_creds.device);
+    }
+
+    #[test]
+    fn test_device_creds_object_key_extraction() {
+        let device_creds = create_test_device_credentials();
+        let device_creds_obj = DeviceCredsObject::from(device_creds);
+        
+        let key = device_creds_obj.key();
+        let obj_id = device_creds_obj.obj_id();
+        
+        assert_eq!(key.obj_id, obj_id);
+        
+        assert!(matches!(key.obj_desc, ObjectDescriptor::DeviceCreds(_)));
+    }
+
+    #[test]
+    fn test_user_creds_object_from_user_credentials() {
+        let user_creds = create_test_user_credentials();
+        let user_creds_obj = UserCredsObject::from(user_creds.clone());
+        
+        assert_eq!(user_creds_obj.value(), user_creds);
+        assert_eq!(user_creds_obj.device(), user_creds.device());
+        assert_eq!(user_creds_obj.device_creds(), user_creds.device_creds);
+    }
+
+    #[test]
+    fn test_user_creds_object_key_extraction() {
+        let user_creds = create_test_user_credentials();
+        let user_creds_obj = UserCredsObject::from(user_creds);
+        
+        let key = user_creds_obj.key();
+        let obj_id = user_creds_obj.obj_id();
+        
+        assert_eq!(key.obj_id, obj_id);
+        assert!(matches!(key.obj_desc, ObjectDescriptor::UserCreds(_)));
+    }
+
+    #[test]
+    fn test_device_creds_object_to_generic_event() {
+        let device_creds = create_test_device_credentials();
+        let device_creds_obj = DeviceCredsObject::from(device_creds);
+        let generic_event = device_creds_obj.clone().to_generic();
+        
+        // Try to convert it back
+        let recovered_object = DeviceCredsObject::try_from(generic_event).unwrap();
+        
+        // Check that the key is preserved
+        let original_key = device_creds_obj.key();
+        let recovered_key = recovered_object.key();
+        
+        assert_eq!(original_key.obj_id, recovered_key.obj_id);
+        assert!(matches!(recovered_key.obj_desc, ObjectDescriptor::DeviceCreds(_)));
+    }
+
+    #[test]
+    fn test_user_creds_object_to_generic_event() {
+        let user_creds = create_test_user_credentials();
+        let user_creds_obj = UserCredsObject::from(user_creds);
+        let generic_event = user_creds_obj.clone().to_generic();
+        
+        // Try to convert it back
+        let recovered_object = UserCredsObject::try_from(generic_event).unwrap();
+        
+        // Check that the key is preserved
+        let original_key = user_creds_obj.key();
+        let recovered_key = recovered_object.key();
+        
+        assert_eq!(original_key.obj_id, recovered_key.obj_id);
+
+        assert!(matches!(recovered_key.obj_desc, ObjectDescriptor::DeviceCreds(_)));
+    }
+
+    #[test]
+    fn test_try_from_wrong_event_type() {
+        let device_creds = create_test_device_credentials();
+        let device_creds_obj = DeviceCredsObject::from(device_creds);
+        let generic_event = device_creds_obj.to_generic();
+        
+        // Try to convert the device creds event to user creds - should fail
+        let result = UserCredsObject::try_from(generic_event);
+        assert!(result.is_err());
     }
 }

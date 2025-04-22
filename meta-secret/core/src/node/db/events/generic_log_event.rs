@@ -1,7 +1,7 @@
 use super::shared_secret_event::SsLogObject;
 use crate::node::db::events::error::ErrorMessage;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
-use crate::node::db::events::local_event::CredentialsObject;
+use crate::node::db::events::local_event::{DeviceCredsObject, UserCredsObject};
 use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::events::shared_secret_event::{SsDeviceLogObject, SsWorkflowObject};
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
@@ -12,7 +12,8 @@ use crate::node::db::events::vault::vault_status::VaultStatusObject;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum GenericKvLogEvent {
-    Credentials(CredentialsObject),
+    DeviceCreds(DeviceCredsObject),
+    UserCreds(UserCredsObject),
 
     DeviceLog(DeviceLogObject),
     VaultLog(VaultLogObject),
@@ -27,8 +28,12 @@ pub enum GenericKvLogEvent {
 }
 
 impl GenericKvLogEvent {
-    pub fn credentials(self) -> anyhow::Result<CredentialsObject> {
-        CredentialsObject::try_from(self)
+    pub fn device_creds(self) -> anyhow::Result<DeviceCredsObject> {
+        DeviceCredsObject::try_from(self)
+    }
+
+    pub fn user_creds(self) -> anyhow::Result<UserCredsObject> {
+        UserCredsObject::try_from(self)
     }
 
     pub fn device_log(self) -> anyhow::Result<DeviceLogObject> {
@@ -102,7 +107,8 @@ impl ObjIdExtractor for GenericKvLogEvent {
         match self {
             GenericKvLogEvent::Vault(obj) => obj.obj_id(),
             GenericKvLogEvent::SsWorkflow(obj) => obj.obj_id(),
-            GenericKvLogEvent::Credentials(obj) => obj.obj_id(),
+            GenericKvLogEvent::DeviceCreds(obj) => obj.obj_id(),
+            GenericKvLogEvent::UserCreds(obj) => obj.obj_id(),
             GenericKvLogEvent::DbError(event) => event.key.obj_id.clone(),
             GenericKvLogEvent::DeviceLog(obj) => obj.obj_id(),
             GenericKvLogEvent::VaultLog(obj) => obj.obj_id(),
@@ -118,7 +124,8 @@ impl KeyExtractor for GenericKvLogEvent {
         match self {
             GenericKvLogEvent::Vault(obj) => obj.key(),
             GenericKvLogEvent::SsWorkflow(obj) => obj.key(),
-            GenericKvLogEvent::Credentials(obj) => obj.key(),
+            GenericKvLogEvent::DeviceCreds(obj) => obj.key(),
+            GenericKvLogEvent::UserCreds(obj) => obj.key(),
             GenericKvLogEvent::DbError(event) => event.key.clone(),
             GenericKvLogEvent::DeviceLog(obj) => obj.key(),
             GenericKvLogEvent::VaultLog(obj) => obj.key(),
