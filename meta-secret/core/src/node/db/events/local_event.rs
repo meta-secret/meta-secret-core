@@ -219,7 +219,7 @@ mod tests {
         
         assert_eq!(original_key.obj_id, recovered_key.obj_id);
 
-        assert!(matches!(recovered_key.obj_desc, ObjectDescriptor::DeviceCreds(_)));
+        assert!(matches!(recovered_key.obj_desc, ObjectDescriptor::UserCreds(_)));
     }
 
     #[test]

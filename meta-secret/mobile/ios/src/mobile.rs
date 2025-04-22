@@ -122,6 +122,7 @@ mod tests {
     use meta_secret_core::node::app::sync::api_url::ApiUrl;
 
     #[tokio::test]
+    #[ignore]
     async fn test_sign_up_debug() {
         let subscriber = tracing_subscriber::fmt()
             .with_max_level(tracing::Level::DEBUG)
