@@ -150,4 +150,4 @@ test:
 
     COPY . .
 
-    RUN --no-cache cargo nextest run --profile ci
+    RUN cargo nextest run --profile ci
