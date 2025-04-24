@@ -83,13 +83,12 @@ impl<Request: Debug, Response: Debug> MpscDataTransfer<Request, Response> {
             .in_current_span()
             .await;
         //receive a message from the service via client channel
-        let result = self
+        self
             .client_channel
             .receiver
             .recv_async()
             .in_current_span()
-            .await;
-        result
+            .await
     }
 
     #[instrument(skip(self))]

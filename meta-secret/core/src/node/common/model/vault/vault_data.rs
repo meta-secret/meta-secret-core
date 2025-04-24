@@ -119,7 +119,7 @@ impl VaultData {
     pub fn is_member(&self, device_id: &DeviceId) -> bool {
         let maybe_user = self.users.get(device_id);
         if let Some(UserMembership::Member(UserDataMember { user_data })) = maybe_user {
-            user_data.device.device_id.eq(&device_id)
+            user_data.device.device_id.eq(device_id)
         } else {
             false
         }

@@ -147,3 +147,157 @@ impl UserMembership {
         self.user_data().device.device_id.clone()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::node::common::model::device::common::{DeviceData, DeviceId, DeviceName};
+    use crate::crypto::keys::OpenBox;
+    use crate::crypto::utils::U64IdUrlEnc;
+    use crate::node::common::model::vault::vault::VaultName;
+    use crate::crypto::encoding::base64::Base64Text;
+
+    fn create_test_device_id() -> DeviceId {
+        // Create U64IdUrlEnc from a string
+        let text = Base64Text::from("test123".as_bytes());
+        let id = U64IdUrlEnc { text };
+        DeviceId(id)
+    }
+
+    fn create_test_device_data() -> DeviceData {
+        let device_id = create_test_device_id();
+        let device_name = DeviceName::from("test_device");
+        
+        // Create a minimal OpenBox with required fields
+        let dsa_pk = crate::crypto::keys::DsaPk(Base64Text::from("test_dsa_pk".as_bytes()));
+        let transport_text = Base64Text::from("test_transport".as_bytes());
+        let transport_pk = crate::crypto::keys::TransportPk::from(transport_text);
+        
+        let open_box = OpenBox {
+            dsa_pk,
+            transport_pk,
+        };
+        
+        DeviceData {
+            device_id,
+            device_name,
+            keys: open_box,
+        }
+    }
+
+    fn create_test_user_data() -> UserData {
+        let vault_name = VaultName::from("test_vault");
+        let device = create_test_device_data();
+        
+        UserData {
+            vault_name,
+            device,
+        }
+    }
+
+    #[test]
+    fn test_user_data_methods() {
+        let user_data = create_test_user_data();
+        
+        // Test vault_name method
+        let vault_name = user_data.vault_name();
+        assert_eq!(vault_name.0, "test_vault");
+        
+        // Test user_id method
+        let user_id = user_data.user_id();
+        assert_eq!(user_id.vault_name.0, "test_vault");
+        // Compare device IDs directly since U64IdUrlEnc doesn't have as_u64 method
+        assert_eq!(user_id.device_id.0.text.base64_str(), user_data.device.device_id.0.text.base64_str());
+    }
+
+    #[test]
+    fn test_user_membership_member() {
+        let user_data = create_test_user_data();
+        let member = UserDataMember { user_data: user_data.clone() };
+        let membership = UserMembership::Member(member.clone());
+        
+        // Test access methods
+        assert!(matches!(membership, UserMembership::Member(_)));
+        assert_eq!(membership.user_data(), user_data.clone());
+        assert_eq!(membership.device_id().0.text.base64_str(), user_data.device.device_id.0.text.base64_str());
+        
+        // Convert to WasmUserMembership
+        let wasm_membership: WasmUserMembership = membership.into();
+        assert!(wasm_membership.is_member());
+        assert!(!wasm_membership.is_outsider());
+        
+        // Test as_member
+        let member_data = wasm_membership.as_member();
+        assert_eq!(member_data.user_data, user_data);
+    }
+
+    #[test]
+    fn test_user_membership_outsider() {
+        let user_data = create_test_user_data();
+        let outsider = UserDataOutsider {
+            user_data: user_data.clone(),
+            status: UserDataOutsiderStatus::NonMember,
+        };
+        let membership = UserMembership::Outsider(outsider.clone());
+        
+        // Test methods
+        assert!(matches!(membership, UserMembership::Outsider(_)));
+        assert_eq!(membership.user_data(), user_data.clone());
+        
+        // Convert to WasmUserMembership
+        let wasm_membership: WasmUserMembership = membership.into();
+        assert!(wasm_membership.is_outsider());
+        assert!(!wasm_membership.is_member());
+        
+        // Test as_outsider
+        let outsider_data = wasm_membership.as_outsider();
+        assert_eq!(outsider_data.user_data, user_data);
+        assert_eq!(outsider_data.status, UserDataOutsiderStatus::NonMember);
+    }
+
+    #[test]
+    fn test_user_data_outsider_methods() {
+        let user_data = create_test_user_data();
+        
+        // Test non_member factory method
+        let outsider = UserDataOutsider::non_member(user_data.clone());
+        assert_eq!(outsider.user_data, user_data);
+        assert_eq!(outsider.status, UserDataOutsiderStatus::NonMember);
+        
+        // Test is_non_member predicate
+        assert!(outsider.is_non_member());
+    }
+
+    #[test]
+    fn test_user_data_member_from_outsider() {
+        let user_data = create_test_user_data();
+        let outsider = UserDataOutsider::non_member(user_data.clone());
+        
+        // Convert from outsider to member
+        let member: UserDataMember = outsider.into();
+        assert_eq!(member.user_data, user_data);
+        
+        // Test user() method
+        assert_eq!(member.user(), &user_data);
+    }
+
+    #[test]
+    fn test_user_membership_user_data_member() {
+        let user_data = create_test_user_data();
+        
+        // Test with Member
+        let member = UserDataMember { user_data: user_data.clone() };
+        let membership = UserMembership::Member(member.clone());
+        let result = membership.user_data_member();
+        assert_eq!(result.user_data, user_data);
+        
+        // Test with Outsider
+        let outsider = UserDataOutsider {
+            user_data: user_data.clone(),
+            status: UserDataOutsiderStatus::NonMember,
+        };
+        let membership = UserMembership::Outsider(outsider);
+        let result = membership.user_data_member();
+        assert_eq!(result.user_data, user_data);
+    }
+}
