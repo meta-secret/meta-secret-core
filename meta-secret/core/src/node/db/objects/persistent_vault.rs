@@ -65,9 +65,7 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
             vault_status: vault_status_free_id,
         })
     }
-}
 
-impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
     pub async fn get_vault(&self, user_data: &UserData) -> Result<VaultObject> {
         let maybe_vault_obj = self.get_vault_object(user_data.vault_name()).await?;
         match maybe_vault_obj {
@@ -298,9 +296,11 @@ mod tests {
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::common::model::user::common::{UserDataMember, UserDataOutsider};
     use crate::node::common::model::vault::vault::VaultStatus;
-    use crate::node::db::descriptors::vault_descriptor::VaultStatusDescriptor;
+    use crate::node::db::descriptors::vault_descriptor::{VaultLogDescriptor, VaultStatusDescriptor};
+    use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
     use crate::node::db::events::object_id::ArtifactId;
     use crate::node::db::events::vault::vault_event::VaultObject;
+    use crate::node::db::events::vault::vault_log_event::{JoinClusterEvent, VaultActionEvents, VaultActionRequestEvent, VaultLogObject};
     use crate::node::db::events::vault::vault_status::VaultStatusObject;
     use crate::node::db::repo::generic_db::SaveCommand;
 
@@ -410,6 +410,164 @@ mod tests {
         // Test that it returns the member status from the vault object
         let result = p_vault.find(user).await?;
         assert!(matches!(result, VaultStatus::Member(_)));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_vault_exists() -> Result<()> {
+        let registry = FixtureRegistry::empty();
+        let user = registry.state.user_creds.client.user();
+        let p_vault = registry.state.p_vault.client.clone();
+        let p_obj = registry.state.p_obj.client.clone();
+
+        // Test non-existent vault
+        let exists = p_vault.vault_exists(user.vault_name()).await?;
+        assert!(!exists);
+
+        // Create vault and test again
+        let member = UserDataMember::from(user.clone());
+        let vault_obj = VaultObject::sign_up(user.vault_name(), member);
+        p_obj.repo.save(vault_obj).await?;
+
+        let exists = p_vault.vault_exists(user.vault_name()).await?;
+        assert!(exists);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_vault() -> Result<()> {
+        let registry = FixtureRegistry::empty();
+        let user = registry.state.user_creds.client.user();
+        let p_vault = registry.state.p_vault.client.clone();
+        let p_obj = registry.state.p_obj.client.clone();
+
+        // Test non-existent vault
+        let result = p_vault.get_vault(&user).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Vault not found"));
+
+        // Create vault and test again
+        let member = UserDataMember::from(user.clone());
+        let vault_obj = VaultObject::sign_up(user.vault_name(), member);
+        p_obj.repo.save(vault_obj.clone()).await?;
+
+        let result = p_vault.get_vault(&user).await?;
+        assert_eq!(result.to_data().vault_name, user.vault_name());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_vault_tail() -> Result<()> {
+        let registry = FixtureRegistry::empty();
+        let user = registry.state.user_creds.client.user();
+        let p_vault = registry.state.p_vault.client.clone();
+
+        let tail = p_vault.vault_tail(user).await?;
+        
+        // Verify the tail contains artifact IDs
+        assert!(tail.vault_log.id.curr > 0);
+        assert!(tail.vault.id.curr > 0);
+        assert!(tail.vault_status.id.curr > 0);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_update_vault_membership_info_for_user() -> Result<()> {
+        let registry = FixtureRegistry::empty();
+        let user = registry.state.user_creds.client.user();
+        let p_vault = registry.state.p_vault.client.clone();
+        let p_obj = registry.state.p_obj.client.clone();
+
+        // Case 1: No vault, no membership
+        let status = p_vault.update_vault_membership_info_for_user(user.clone()).await?;
+        assert!(matches!(status, VaultStatus::NotExists(_)));
+
+        // Case 2: Create vault, update membership
+        let member = UserDataMember::from(user.clone());
+        let vault_obj = VaultObject::sign_up(user.vault_name(), member.clone());
+        p_obj.repo.save(vault_obj).await?;
+
+        let status = p_vault.update_vault_membership_info_for_user(user.clone()).await?;
+        assert!(matches!(status, VaultStatus::Member(_)));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_vault_log_operations() -> Result<()> {
+        let registry = FixtureRegistry::empty();
+        let user = registry.state.user_creds.client.user();
+        let p_vault = registry.state.p_vault.client.clone();
+        let p_obj = registry.state.p_obj.client.clone();
+
+        // Create initial vault log object with empty action events
+        let desc = VaultLogDescriptor::from(user.vault_name());
+        let initial_log = VaultLogObject(KvLogEvent {
+            key: KvKey::from(desc.clone()),
+            value: VaultActionEvents::default(),
+        });
+        p_obj.repo.save(initial_log).await?;
+
+        // Test get_vault_log_artifact retrieves the log we just created
+        let log_artifact = p_vault.get_vault_log_artifact(user.vault_name()).await?;
+        assert_eq!(log_artifact.0.value, VaultActionEvents::default());
+
+        // Test save_vault_log_events by creating a join request event
+        let join_request = JoinClusterEvent {
+            candidate: user.clone(),
+        };
+        let new_events = VaultActionEvents::default().request(
+            VaultActionRequestEvent::JoinCluster(join_request)
+        );
+        p_vault.save_vault_log_events(new_events.clone(), user.vault_name()).await?;
+
+        // Verify the events were saved correctly
+        let updated_log = p_vault.get_vault_log_artifact(user.vault_name()).await?;
+        assert_eq!(updated_log.0.value, new_events);
+        assert_eq!(updated_log.0.value.requests.len(), 1);
+
+        // Test save_vault_log_request_event by adding another join request
+        // Note: This creates an identical request to the one we already added
+        let join_request2 = JoinClusterEvent {
+            candidate: user.clone(),
+        };
+        let request_event = VaultActionRequestEvent::JoinCluster(join_request2);
+        p_vault.save_vault_log_request_event(request_event).await?;
+
+        // Verify that the request count doesn't change 
+        // VaultActionEvents.requests is a HashSet, so identical requests are deduplicated
+        let final_log = p_vault.get_vault_log_artifact(user.vault_name()).await?;
+        assert_eq!(final_log.0.value.requests.len(), 1);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_vault_log() -> Result<()> {
+        let registry = FixtureRegistry::empty();
+        let user = registry.state.user_creds.client.user();
+        let p_vault = registry.state.p_vault.client.clone();
+        let p_obj = registry.state.p_obj.client.clone();
+
+        // Test with non-existent vault log
+        let result = p_vault.vault_log(user.vault_name()).await?;
+        assert!(result.is_none());
+
+        // Create vault log and test again
+        let desc = VaultLogDescriptor::from(user.vault_name());
+        let log_obj = VaultLogObject(KvLogEvent {
+            key: KvKey::from(desc),
+            value: VaultActionEvents::default(),
+        });
+        p_obj.repo.save(log_obj).await?;
+
+        let result = p_vault.vault_log(user.vault_name()).await?;
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().0.value, VaultActionEvents::default());
 
         Ok(())
     }

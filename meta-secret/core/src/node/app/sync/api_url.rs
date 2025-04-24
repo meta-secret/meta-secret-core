@@ -26,7 +26,7 @@ impl ApiUrl {
     pub fn prod() -> Self {
         ApiUrl {
             url: "https://api.meta-secret.org",
-            port: 443,
+            port: 8080,
             run_mode: ClientRunMode::Prod,
         }
     }
