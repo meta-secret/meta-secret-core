@@ -3,7 +3,7 @@ set -e
 
 # Проверяем, установлен ли cbindgen, и устанавливаем его при необходимости
 if ! command -v cbindgen &> /dev/null; then
-    echo "Устанавливаем cbindgen..."
+    echo "Installing cbindgen..."
     cargo install cbindgen
 fi
 
@@ -20,14 +20,14 @@ mkdir -p target/universal/release
 lipo -create \
   target/aarch64-apple-ios/release/libmobile.a \
   target/x86_64-apple-ios/release/libmobile.a \
-  -output target/universal/release/libmobile.a
+  -output target/universal/release/metasecret-mobile.a
 
 echo "Generating header file..."
 MOBILE_PROJECT_DIR="$(pwd)/mobile/ios"
 HEADER_OUTPUT_DIR="target/universal/release"
-HEADER_FILE="${HEADER_OUTPUT_DIR}/mobile.h"
+HEADER_FILE="${HEADER_OUTPUT_DIR}/metasecret-mobile.h"
 
 cbindgen --crate mobile --output "${HEADER_FILE}" --config "${MOBILE_PROJECT_DIR}/cbindgen.toml" --lang c
 
-echo "Done! The library is in target/universal/release/libmobile.a"
-echo "The header file is in target/universal/release/mobile.h"
+echo "Done! The library is in target/universal/release/metasecret-mobile.a"
+echo "The header file is in target/universal/release/metasecret-mobile.h"
