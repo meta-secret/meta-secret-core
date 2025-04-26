@@ -6,9 +6,9 @@ use meta_secret_core::secret::data_block::common::SharedSecretConfig;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Parser)]
-#[clap(about = "Meta Secret Command Line Application", long_about = None)]
+#[command(about = "Meta Secret Command Line Application", long_about = None)]
 struct CmdLine {
-    #[clap(subcommand)]
+    #[command(subcommand)]
     command: Command,
 }
 
@@ -24,5 +24,13 @@ struct MetaSecretConfig {
 }
 
 fn main() -> Result<()> {
+    let args = CmdLine::parse();
+    
+    match args.command {
+        Command::Info => {
+            println!("Meta Secret CLI Info");
+        }
+    }
+    
     Ok(())
 }

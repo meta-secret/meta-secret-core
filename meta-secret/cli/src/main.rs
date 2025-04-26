@@ -4,7 +4,7 @@ use std::fs::File;
 use std::string::FromUtf8Error;
 
 use anyhow::{Context, Result};
-use clap::{ArgEnum, Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use meta_secret_core::secret::data_block::common::SharedSecretConfig;
 use meta_secret_core::{
     convert_qr_images_to_json_files, recover, split, CoreResult, RecoveryOperationError,
@@ -12,9 +12,9 @@ use meta_secret_core::{
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Parser)]
-#[clap(about = "Meta Secret Command Line Application", long_about = None)]
+#[command(about = "Meta Secret Command Line Application", long_about = None)]
 struct CmdLine {
-    #[clap(subcommand)]
+    #[command(subcommand)]
     command: Command,
 }
 
@@ -22,17 +22,16 @@ struct CmdLine {
 #[derive(Subcommand, Debug)]
 enum Command {
     Split {
-        #[clap(short, long)]
+        #[arg(short, long)]
         secret: String,
     },
     Restore {
-        #[clap(short, long, arg_enum)]
+        #[arg(short, long, value_enum)]
         from: RestoreType,
     },
 }
 
-#[derive(Debug, Clone, ArgEnum, Eq, PartialEq)]
-#[clap(rename_all = "kebab_case")]
+#[derive(Debug, Clone, ValueEnum, Eq, PartialEq)]
 enum RestoreType {
     Qr,
     Json,
