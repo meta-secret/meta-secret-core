@@ -101,8 +101,8 @@ impl VaultActionEvents {
         self
     }
 
-    pub fn apply(mut self, event: VaultActionUpdateEvent) -> Self {
-        let request = match &event {
+    pub fn apply(mut self, upd_event: VaultActionUpdateEvent) -> Self {
+        let request = match &upd_event {
             VaultActionUpdateEvent::UpdateMembership { request, .. } => {
                 VaultActionRequestEvent::JoinCluster(request.clone())
             }
@@ -114,7 +114,7 @@ impl VaultActionEvents {
         let removed = self.requests.remove(&request);
         // if corresponding request exists we can apply the update
         if removed {
-            self.updates.insert(event.clone());
+            self.updates.insert(upd_event);
         } else {
             info!(
                 "Corresponding request not found: {:?}, update won't be applied",

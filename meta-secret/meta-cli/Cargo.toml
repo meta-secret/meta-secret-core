@@ -1,0 +1,15 @@
+[package]
+name = "meta-cli"
+version = "1.1.0"
+edition = "2024"
+
+[dependencies]
+meta-secret-core = { path = "../core" }
+
+thiserror.workspace = true
+anyhow.workspace = true
+
+clap = { version = "4.5.37", features = ["derive"] }
+
+serde.workspace = true
+serde_yaml.workspace = true

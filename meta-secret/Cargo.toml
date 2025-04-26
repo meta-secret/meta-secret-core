@@ -9,6 +9,7 @@ members = [
     "meta-server/web-server",
     "wasm",
     "cli",
+    "meta-cli",
     "tests",
     "mobile/core-swift-lib",
     "mobile/ios"
