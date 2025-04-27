@@ -27,6 +27,7 @@ use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
 use meta_server_node::server::server_app::ServerApp;
+use secrecy::SecretString;
 
 pub struct ApplicationManager<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub meta_client_service: Arc<MetaClientService<Repo, Sync>>,
@@ -73,7 +74,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
     }
 
     pub async fn cluster_distribution(&self, pass_id: &str, pass: &str) {
-        let pass_info = PassInfo::new(pass.to_string(), pass_id.to_string());
+        let pass_info = PassInfo::new(SecretString::new(pass.to_string().into()), pass_id.to_string());
         let request = GenericAppStateRequest::ClusterDistribution(pass_info);
         self.meta_client_service.send_request(request).await;
     }

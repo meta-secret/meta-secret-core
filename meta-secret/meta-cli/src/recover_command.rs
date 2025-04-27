@@ -37,6 +37,9 @@ impl RecoverCommand {
             .handle_client_request(app_state, recovery_request)
             .await?;
 
+        println!("Recovery request for '{}' submitted successfully", self.pass_name);
+        println!("The secret will be recovered when enough shares are available");
+
         Ok(())
     }
 } 

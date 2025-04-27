@@ -18,6 +18,7 @@ use crate::secret::shared_secret::UserSecretDto;
 use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
 use anyhow::Result;
 use tracing_attributes::instrument;
+use secrecy::SecretString;
 
 pub mod data_block;
 pub mod shared_secret;
@@ -50,8 +51,10 @@ impl MetaEncryptor {
     ///  - generate meta password id
     ///  - split
     ///  - encrypt each share with ECIES Encryption Scheme
-    fn split_and_encrypt(self, password: String) -> Result<Vec<EncryptedMessage>> {
-        let secret = split2(password, self.owner.vault.sss_cfg())?;
+    fn split_and_encrypt(self, password: SecretString) -> Result<Vec<EncryptedMessage>> {
+        // Safely get the password string
+        let password_str = secrecy::ExposeSecret::expose_secret(&password).to_string();
+        let secret = split2(password_str, self.owner.vault.sss_cfg())?;
 
         let mut encrypted_shares = vec![];
 
@@ -169,7 +172,7 @@ mod tests {
         let creds_fixture = fixture.state.empty.user_creds;
 
         // Create a test password
-        let password = "test_password".to_string();
+        let password = SecretString::new("test_password".to_string().into());
 
         // Create member from user data
         let client_user_data = creds_fixture.client.user();
@@ -233,7 +236,7 @@ mod tests {
         let creds_fixture = fixture.state.empty.user_creds;
 
         // Create a test password and ID
-        let password = "test_password".to_string();
+        let password = SecretString::new("test_password".to_string().into());
         let password_id = MetaPasswordId::build("test_password");
 
         // Create member from user data

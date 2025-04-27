@@ -1,6 +1,7 @@
 use crate::crypto::utils::U64IdUrlEnc;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer, Deserializer};
 use wasm_bindgen::prelude::wasm_bindgen;
+use secrecy::{SecretString, ExposeSecret};
 
 pub const SALT_LENGTH: usize = 8;
 
@@ -14,15 +15,56 @@ pub struct MetaPasswordId {
     pub name: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug)]
 pub struct PassInfo {
     pub pass_id: MetaPasswordId,
-    pub pass: String,
+    pub pass: SecretString,
+}
+
+impl PartialEq for PassInfo {
+    fn eq(&self, other: &Self) -> bool {
+        self.pass_id == other.pass_id && 
+        ExposeSecret::expose_secret(&self.pass) == ExposeSecret::expose_secret(&other.pass)
+    }
+}
+
+impl Eq for PassInfo {}
+
+impl Serialize for PassInfo {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("PassInfo", 2)?;
+        state.serialize_field("pass_id", &self.pass_id)?;
+        state.serialize_field("pass", ExposeSecret::expose_secret(&self.pass))?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for PassInfo {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct PassInfoHelper {
+            pass_id: MetaPasswordId,
+            pass: String,
+        }
+        
+        let helper = PassInfoHelper::deserialize(deserializer)?;
+        
+        Ok(PassInfo {
+            pass_id: helper.pass_id,
+            pass: SecretString::new(helper.pass.into()),
+        })
+    }
 }
 
 impl PassInfo {
-    pub fn new(pass: String, pass_name: String) -> Self {
+    pub fn new(pass: SecretString, pass_name: String) -> Self {
         let pass_id = MetaPasswordId::build(&pass_name);
         Self { pass_id, pass }
     }

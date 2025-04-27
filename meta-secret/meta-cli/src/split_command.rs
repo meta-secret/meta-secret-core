@@ -2,10 +2,11 @@ use crate::base_command::BaseCommand;
 use anyhow::{Result, bail};
 use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
 use meta_secret_core::node::common::model::meta_pass::PassInfo;
+use secrecy::SecretString;
 
 pub struct SplitCommand {
     pub base: BaseCommand,
-    pub pass: String,
+    pub pass: SecretString,
     pub pass_name: String,
 }
 
@@ -13,7 +14,7 @@ impl SplitCommand {
     pub fn new(db_name: String, pass: String, pass_name: String) -> Self {
         Self {
             base: BaseCommand::new(db_name),
-            pass,
+            pass: SecretString::new(pass.into()),
             pass_name,
         }
     }

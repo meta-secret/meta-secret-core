@@ -14,7 +14,7 @@ use std::path::Path;
 
 const TABLE_NAME: &str = "meta-secret-db";
 type KeyType = String;
-type ValueType = &'static [u8];
+type ValueType = Vec<u8>;
 
 // Table definition for storing KV log events
 const LOG_EVENTS_TABLE: TableDefinition<KeyType, ValueType> = TableDefinition::new(TABLE_NAME);
@@ -67,7 +67,7 @@ impl SaveCommand for ReDbRepo {
         let write_txn = self.db.begin_write()?;
         {
             let mut table = write_txn.open_table(LOG_EVENTS_TABLE)?;
-            table.insert(key.clone().id_str(), serialized.as_slice())?;
+            table.insert(key.clone().id_str(), serialized)?;
         }
         write_txn.commit()?;
 
@@ -84,7 +84,7 @@ impl FindOneQuery for ReDbRepo {
         match table.get(key.clone().id_str())? {
             Some(value) => {
                 let data = value.value();
-                let event: GenericKvLogEvent = serde_json::from_slice(data)?;
+                let event: GenericKvLogEvent = serde_json::from_slice(data.as_slice())?;
                 Ok(Some(event))
             }
             None => Ok(None),

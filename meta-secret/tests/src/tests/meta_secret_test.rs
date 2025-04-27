@@ -51,6 +51,7 @@ mod test {
     use meta_secret_core::node::db::events::shared_secret_event::SsWorkflowObject;
     use meta_secret_core::node::db::events::vault::vault_log_event::VaultActionRequestEvent;
     use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
+    use secrecy::SecretString;
     use tracing::{Instrument, info};
 
     struct ServerAppSignUpSpec {
@@ -248,7 +249,7 @@ mod test {
             let dist_request = {
                 let pass_info = PassInfo {
                     pass_id: pass_id.clone(),
-                    pass: "2bee|~".to_string(),
+                    pass: SecretString::new("2bee|~".to_string().into()),
                 };
                 GenericAppStateRequest::ClusterDistribution(pass_info)
             };
