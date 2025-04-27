@@ -1,6 +1,7 @@
 mod info_command;
 mod init_device_command;
 mod init_user_command;
+mod base_command;
 
 extern crate core;
 
@@ -56,25 +57,17 @@ async fn main() -> Result<()> {
 
     match args.command {
         Command::InitDevice { device_name } => {
-            let init_device_cmd = InitDeviceCommand {
-                db_name: db_name.clone(),
-                device_name,
-            };
-
+            let init_device_cmd = InitDeviceCommand::new(db_name.clone(), device_name);
             init_device_cmd.execute().await?
         }
 
         Command::InitUser { vault_name } => {
-            let init_user_cmd = InitUserCommand {
-                db_name: db_name.clone(),
-                vault_name,
-            };
-
+            let init_user_cmd = InitUserCommand::new(db_name.clone(), vault_name);
             init_user_cmd.execute().await?
         }
 
         Command::Info => {
-            let info_cmd = InfoCommand { db_name };
+            let info_cmd = InfoCommand::new(db_name);
             info_cmd.execute().await?
         }
     }

@@ -1,5 +1,4 @@
-use anyhow::{Result, bail};
-use meta_db_redb::ReDbRepo;
+use anyhow::Result;
 use meta_secret_core::node::app::meta_app::meta_client_service::{
     MetaClientDataTransfer, MetaClientService, MetaClientStateProvider,
 };
@@ -10,37 +9,28 @@ use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::model::user::common::UserMembership;
 use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
 use meta_secret_core::node::db::events::vault::vault_log_event::VaultActionRequestEvent;
-use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
-use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
-use std::path::Path;
 use std::sync::Arc;
+use crate::base_command::BaseCommand;
 
 pub struct InfoCommand {
-    pub db_name: String,
+    base: BaseCommand,
 }
 
 impl InfoCommand {
-    pub async fn execute(&self) -> Result<()> {
-        // Database file path
-        let db_path = Path::new(self.db_name.as_str());
-
-        if !db_path.exists() {
-            println!("No database found. Please run 'meta-secret init-device' command first.");
-            bail!("Database not found");
+    pub fn new(db_name: String) -> Self {
+        Self {
+            base: BaseCommand::new(db_name),
         }
-
-        // Open existing database
-        let repo = Arc::new(ReDbRepo::open(db_path)?);
-        let p_obj = Arc::new(PersistentObject::new(repo));
-        let p_creds = PersistentCredentials {
-            p_obj: p_obj.clone(),
-        };
+    }
+    
+    pub async fn execute(&self) -> Result<()> {
+        let db_context = self.base.open_existing_db().await?;
 
         println!("Meta Secret Information:");
         println!("------------------------");
 
         // Try to get device credentials
-        let maybe_device_creds = p_creds.get_device_creds().await?;
+        let maybe_device_creds = db_context.p_creds.get_device_creds().await?;
 
         match maybe_device_creds {
             Some(device_creds_event) => {
@@ -58,7 +48,7 @@ impl InfoCommand {
             }
         }
 
-        let maybe_user_creds = p_creds.get_user_creds().await?;
+        let maybe_user_creds = db_context.p_creds.get_user_creds().await?;
 
         println!();
         let Some(user_creds) = maybe_user_creds else {
@@ -81,7 +71,7 @@ impl InfoCommand {
         let device_creds = Arc::new(user_creds.device_creds.clone());
         let sync_gateway = Arc::new(SyncGateway {
             id: "meta-cli".to_string(),
-            p_obj: p_obj.clone(),
+            p_obj: db_context.p_obj.clone(),
             sync: Arc::new(sync_protocol),
             device_creds: device_creds.clone(),
         });
@@ -94,7 +84,7 @@ impl InfoCommand {
             }),
             sync_gateway,
             state_provider,
-            p_obj,
+            p_obj: db_context.p_obj,
             device_creds,
         };
 
