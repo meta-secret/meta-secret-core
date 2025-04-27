@@ -1,11 +1,12 @@
 [package]
-name = "mobile-ios"
+name = "mobile-android"
 version = "0.1.0"
 edition = "2024"
 
 [lib]
 name = "mobile"
 crate-type = ["lib", "cdylib", "staticlib"]
+path = "src/mobile.rs"
 
 [features]
 default = []
@@ -29,10 +30,10 @@ reqwest = { version = "0.12.15", features = ["json", "rustls-tls"], default-feat
 # Указываем rustls для всех крейтов, которые используют TLS
 hyper = { workspace = true, default-features = false, features = ["http1", "http2"] }
 hyper-rustls = { version = "0.27.0", default-features = false, features = ["http1", "http2", "tls12"] }
+jni = "0.21.1"
 
 [dev-dependencies]
 tokio = { version = "1.44.1", features = ["full"] }
 
-# Явно указываем, что мы хотим cdylib для Android
 [target.'cfg(target_os = "android")'.lib]
 crate-type = ["cdylib"]
