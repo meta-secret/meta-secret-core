@@ -165,6 +165,7 @@ android-lib-builder:
         ninja-build \
         git \
         pkg-config \
+        openssl \
         libssl-dev
 
     # Set up environment variables
@@ -185,7 +186,13 @@ android-lib-builder:
         sdkmanager "ndk;25.2.9519653" "platform-tools" "platforms;android-33"
     
     RUN cargo install cargo-ndk
-    RUN rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
+    RUN rustup target add \
+            aarch64-linux-android \
+            armv7-linux-androideabi \
+            x86_64-linux-android \
+            i686-linux-android
+
+    RUN sdkmanager --list
 
     WORKDIR /meta-secret-build
     
@@ -198,9 +205,10 @@ build-android-lib:
     WORKDIR /meta-secret-build/mobile/ios
     
     # Build the .so libraries for all targets
-    RUN cargo ndk --platform 25 --target x86_64-linux-android build
-    
+    #RUN cargo ndk --platform 25 --target x86_64-linux-android build
+    RUN cargo ndk --target x86_64-linux-android build --release
+
     # Create the output directory
-    #RUN mkdir -p /output/libs/android
+    RUN mkdir -p /output/libs/android
     
     #SAVE ARTIFACT /output/libs/android AS LOCAL meta-secret/mobile/libs/android

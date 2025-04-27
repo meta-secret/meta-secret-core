@@ -16,7 +16,7 @@ use serde_json::json;
 use std::sync::Arc;
 use tracing::info;
 
-fn sync_wrapper<F: std::future::Future>(future: F) -> F::Output {
+fn sync_wrapper<F: Future>(future: F) -> F::Output {
     async_std::task::block_on(future)
 }
 
