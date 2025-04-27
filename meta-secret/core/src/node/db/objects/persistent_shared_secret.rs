@@ -7,7 +7,7 @@ use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::{
     SsDeviceLogDescriptor, SsLogDescriptor, SsWorkflowDescriptor,
 };
-use crate::node::db::events::generic_log_event::{ToGenericEvent};
+use crate::node::db::events::generic_log_event::ToGenericEvent;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::events::shared_secret_event::{
@@ -15,7 +15,7 @@ use crate::node::db::events::shared_secret_event::{
 };
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
-use anyhow::{bail, Ok, Result};
+use anyhow::{Ok, Result, bail};
 use derive_more::From;
 use log::info;
 use tracing_attributes::instrument;

@@ -2,9 +2,9 @@ use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::secret::SsLogData;
 use crate::node::common::model::user::common::{UserData, UserDataOutsider};
 use crate::node::common::model::vault::vault::VaultMember;
-use wasm_bindgen::prelude::wasm_bindgen;
 use crate::node::common::model::vault::vault_data::WasmVaultData;
 use crate::node::db::events::vault::vault_log_event::VaultActionEvents;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 pub mod crypto;
 pub mod device;
@@ -33,7 +33,7 @@ pub enum VaultFullInfo {
 pub struct UserMemberFullInfo {
     pub member: VaultMember,
     pub ss_claims: SsLogData,
-    pub vault_events: VaultActionEvents
+    pub vault_events: VaultActionEvents,
 }
 
 #[wasm_bindgen]
@@ -49,8 +49,10 @@ pub struct WasmApplicationState(ApplicationState);
 impl WasmApplicationState {
     pub fn is_new_user(&self) -> bool {
         let is_local = self.is_local();
-        let vault_not_exists =
-            matches!(&self.0, ApplicationState::Vault(VaultFullInfo::NotExists(_)));
+        let vault_not_exists = matches!(
+            &self.0,
+            ApplicationState::Vault(VaultFullInfo::NotExists(_))
+        );
         is_local || vault_not_exists
     }
 
@@ -94,7 +96,7 @@ impl WasmVaultFullInfo {
     pub fn is_member(&self) -> bool {
         matches!(self.0, VaultFullInfo::Member(_))
     }
-    
+
     pub fn as_member(&self) -> WasmUserMemberFullInfo {
         if let VaultFullInfo::Member(member) = &self.0 {
             WasmUserMemberFullInfo(member.clone())
@@ -113,8 +115,8 @@ impl WasmUserMemberFullInfo {
 
 #[cfg(test)]
 mod test {
-    use crate::node::common::model::meta_pass::MetaPasswordId;
     use crate::node::common::model::IdString;
+    use crate::node::common::model::meta_pass::MetaPasswordId;
 
     #[test]
     fn meta_password_id() {

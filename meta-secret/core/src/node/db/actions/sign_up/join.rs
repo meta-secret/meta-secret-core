@@ -4,8 +4,8 @@ use crate::node::db::events::vault::vault_log_event::JoinClusterEvent;
 use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
-use anyhow::bail;
 use anyhow::Result;
+use anyhow::bail;
 use std::sync::Arc;
 
 pub struct AcceptJoinAction<Repo: KvLogEventRepo> {

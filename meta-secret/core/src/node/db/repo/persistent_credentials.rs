@@ -2,17 +2,17 @@ use crate::node::common::model::device::common::DeviceName;
 use crate::node::common::model::device::device_creds::{DeviceCreds, DeviceCredsBuilder};
 use crate::node::common::model::user::user_creds::{UserCredentials, UserCredsBuilder};
 use crate::node::common::model::vault::vault::VaultName;
+use crate::node::db::descriptors::creds::{DeviceCredsDescriptor, UserCredsDescriptor};
 use crate::node::db::events::generic_log_event::ToGenericEvent;
 use crate::node::db::events::local_event::{DeviceCredsObject, UserCredsObject};
 use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use derive_more::From;
 use log::info;
 use std::sync::Arc;
 use tracing::instrument;
-use crate::node::db::descriptors::creds::{DeviceCredsDescriptor, UserCredsDescriptor};
 
 #[derive(From)]
 pub struct PersistentCredentials<Repo: KvLogEventRepo> {
@@ -21,13 +21,10 @@ pub struct PersistentCredentials<Repo: KvLogEventRepo> {
 
 impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
     pub async fn get_device_creds(&self) -> Result<Option<DeviceCredsObject>> {
-        let maybe_device_creds = self
-            .p_obj
-            .find_tail_event(DeviceCredsDescriptor)
-            .await?;
+        let maybe_device_creds = self.p_obj.find_tail_event(DeviceCredsDescriptor).await?;
         Ok(maybe_device_creds)
     }
-    
+
     #[instrument(skip(self))]
     pub async fn get_or_generate_device_creds(
         &self,
@@ -84,41 +81,33 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
         device_name: DeviceName,
         vault_name: VaultName,
     ) -> Result<UserCredentials> {
-        let maybe_device_creds = self
-            .p_obj
-            .find_tail_event(DeviceCredsDescriptor)
-            .await?;
-        
+        let maybe_device_creds = self.p_obj.find_tail_event(DeviceCredsDescriptor).await?;
+
         let device_creds = match maybe_device_creds {
             None => {
-                self
-                    .get_or_generate_device_creds(device_name.clone())
+                self.get_or_generate_device_creds(device_name.clone())
                     .await?
             }
-            Some(creds) => creds.value()
+            Some(creds) => creds.value(),
         };
 
-        let maybe_user_creds = self
-            .p_obj
-            .find_tail_event(UserCredsDescriptor)
-            .await?;
+        let maybe_user_creds = self.p_obj.find_tail_event(UserCredsDescriptor).await?;
 
         let user_creds = match maybe_user_creds {
             None => {
-                let user_creds = UserCredsBuilder::init(device_creds.clone()).build(vault_name).creds;
-                self.save(UserCredsObject::from(user_creds.clone()))
-                    .await?;
+                let user_creds = UserCredsBuilder::init(device_creds.clone())
+                    .build(vault_name)
+                    .creds;
+                self.save(UserCredsObject::from(user_creds.clone())).await?;
                 user_creds
             }
-            Some(creds_event) => {
-                creds_event.value()
-            }
+            Some(creds_event) => creds_event.value(),
         };
-        
-        if !user_creds.device_creds.eq(&device_creds) { 
+
+        if !user_creds.device_creds.eq(&device_creds) {
             bail!("Inconsistent credentials: device credentials do not match user credentials");
         }
-        
+
         Ok(user_creds)
     }
 }
@@ -186,12 +175,12 @@ pub mod fixture {
 
 #[cfg(any(test, feature = "test-framework"))]
 pub mod spec {
+    use crate::node::db::descriptors::creds::{DeviceCredsDescriptor, UserCredsDescriptor};
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_object::PersistentObject;
     use crate::node::db::repo::generic_db::KvLogEventRepo;
     use derive_more::From;
     use std::sync::Arc;
-    use crate::node::db::descriptors::creds::{DeviceCredsDescriptor, UserCredsDescriptor};
 
     #[derive(From)]
     pub struct PersistentCredentialsSpec<Repo: KvLogEventRepo> {

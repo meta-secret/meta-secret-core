@@ -1,31 +1,31 @@
-use anyhow::{bail, Context};
+use anyhow::{Context, bail};
 use std::sync::Arc;
-use tracing::{info, instrument, Instrument};
+use tracing::{Instrument, info, instrument};
 use wasm_bindgen_futures::spawn_local;
 
 use meta_secret_core::node::app::app_state_update_manager::ApplicationManagerConfigurator;
 
+use crate::wasm_repo::WasmSyncProtocol;
+use anyhow::Result;
+use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
 use meta_secret_core::node::app::meta_app::meta_client_service::{
     MetaClientAccessProxy, MetaClientDataTransfer, MetaClientService, MetaClientStateProvider,
 };
 use meta_secret_core::node::app::sync::sync_gateway::SyncGateway;
-use meta_secret_core::node::app::sync::sync_protocol::{SyncProtocol};
+use meta_secret_core::node::app::sync::sync_protocol::SyncProtocol;
 use meta_secret_core::node::app::virtual_device::VirtualDevice;
 use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::meta_tracing::{client_span, vd_span};
+use meta_secret_core::node::common::model::ApplicationState;
 use meta_secret_core::node::common::model::device::common::DeviceName;
+use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PassInfo};
+use meta_secret_core::node::common::model::secret::ClaimId;
+use meta_secret_core::node::common::model::user::user_creds::UserCredentials;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
+use meta_secret_core::node::db::events::vault::vault_log_event::JoinClusterEvent;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
-use crate::wasm_repo::WasmSyncProtocol;
-use anyhow::Result;
-use meta_secret_core::node::app::meta_app::messaging::{ClusterDistributionRequest, GenericAppStateRequest};
-use meta_secret_core::node::common::model::meta_pass::MetaPasswordId;
-use meta_secret_core::node::common::model::{ApplicationState};
-use meta_secret_core::node::common::model::secret::ClaimId;
-use meta_secret_core::node::common::model::user::user_creds::UserCredentials;
-use meta_secret_core::node::db::events::vault::vault_log_event::JoinClusterEvent;
 use meta_server_node::server::server_app::ServerApp;
 
 pub struct ApplicationManager<Repo: KvLogEventRepo, Sync: SyncProtocol> {
@@ -53,7 +53,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
         cfg: ApplicationManagerConfigurator<Repo>,
     ) -> Result<ApplicationManager<Repo, WasmSyncProtocol<Repo>>> {
         info!("Initialize application state manager");
-        
+
         let sync_protocol = {
             let server = Arc::new(ServerApp::new(cfg.server_repo)?);
             Arc::new(WasmSyncProtocol { server })
@@ -73,11 +73,8 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
     }
 
     pub async fn cluster_distribution(&self, pass_id: &str, pass: &str) {
-        let request = GenericAppStateRequest::ClusterDistribution(ClusterDistributionRequest {
-            pass_id: MetaPasswordId::build(pass_id),
-            pass: pass.to_string(),
-        });
-
+        let pass_info = PassInfo::new(pass.to_string(), pass_id.to_string());
+        let request = GenericAppStateRequest::ClusterDistribution(pass_info);
         self.meta_client_service.send_request(request).await;
     }
 
@@ -87,11 +84,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
     }
 
     pub async fn get_state(&self) -> ApplicationState {
-        self
-            .meta_client_service
-            .state_provider
-            .get()
-            .await
+        self.meta_client_service.state_provider.get().await
     }
 
     pub async fn accept_recover(&self, claim_id: ClaimId) -> Result<()> {
@@ -125,7 +118,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
             let obj = PersistentObject::new(client_repo.clone());
             Arc::new(obj)
         };
-        
+
         //Get or generate device credentials
         let creds_repo = PersistentCredentials::from(p_obj.clone());
         let device_creds = {
@@ -139,7 +132,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
             id: String::from("client-gateway"),
             p_obj: p_obj.clone(),
             sync: sync_protocol.clone(),
-            device_creds: device_creds.clone()
+            device_creds: device_creds.clone(),
         });
 
         let state_provider = Arc::new(MetaClientStateProvider::new());
@@ -152,11 +145,12 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
                 sync_gateway: sync_gateway.clone(),
                 state_provider,
                 p_obj: p_obj.clone(),
-                device_creds: device_creds.clone()
+                device_creds: device_creds.clone(),
             })
         };
 
-        let app_manager = ApplicationManager::new(sync_protocol, sync_gateway, meta_client_service.clone());
+        let app_manager =
+            ApplicationManager::new(sync_protocol, sync_gateway, meta_client_service.clone());
 
         spawn_local(async move {
             meta_client_service
@@ -176,7 +170,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
     #[instrument(name = "Vd", skip_all)]
     pub async fn virtual_device_setup(
         device_repo: Arc<Repo>,
-        sync_protocol: Arc<WasmSyncProtocol<Repo>>
+        sync_protocol: Arc<WasmSyncProtocol<Repo>>,
     ) -> Result<()> {
         info!("virtual device initialization");
 
@@ -199,7 +193,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
             id: String::from("vd-gateway"),
             p_obj: persistent_object.clone(),
             sync: sync_protocol.clone(),
-            device_creds: device_creds.clone()
+            device_creds: device_creds.clone(),
         });
 
         let state_provider = Arc::new(MetaClientStateProvider::new());
@@ -208,7 +202,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
             sync_gateway: gateway.clone(),
             state_provider,
             p_obj: persistent_object.clone(),
-            device_creds: device_creds.clone()
+            device_creds: device_creds.clone(),
         };
 
         spawn_local(async move {

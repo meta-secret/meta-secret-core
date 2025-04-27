@@ -1,13 +1,13 @@
-use crate::node::common::model::device::common::{DeviceData};
+use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::device::device_creds::DeviceCreds;
 use crate::node::common::model::user::user_creds::UserCredentials;
+use crate::node::db::descriptors::creds::{DeviceCredsDescriptor, UserCredsDescriptor};
 use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
 };
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::ArtifactId;
-use anyhow::{anyhow, Error};
-use crate::node::db::descriptors::creds::{DeviceCredsDescriptor, UserCredsDescriptor};
+use anyhow::{Error, anyhow};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -69,7 +69,7 @@ impl DeviceCredsObject {
     pub fn device(&self) -> DeviceData {
         self.0.value.device.clone()
     }
-    
+
     pub fn value(self) -> DeviceCreds {
         self.0.value
     }
@@ -109,11 +109,11 @@ impl UserCredsObject {
     pub fn device(&self) -> DeviceData {
         self.0.value.device_creds.device.clone()
     }
-    
+
     pub fn value(&self) -> UserCredentials {
         self.0.value.clone()
     }
-    
+
     pub fn device_creds(&self) -> DeviceCreds {
         self.0.value.device_creds.clone()
     }
@@ -124,30 +124,26 @@ mod tests {
     use super::*;
     use crate::node::common::model::device::common::DeviceName;
     use crate::node::common::model::device::device_creds::DeviceCredsBuilder;
-    use crate::node::common::model::vault::vault::VaultName;
     use crate::node::common::model::user::user_creds::UserCredsBuilder;
+    use crate::node::common::model::vault::vault::VaultName;
     use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
 
     fn create_test_device_credentials() -> DeviceCreds {
         let device_name = DeviceName::from("test_device");
-        DeviceCredsBuilder::generate()
-            .build(device_name)
-            .creds
+        DeviceCredsBuilder::generate().build(device_name).creds
     }
 
     fn create_test_user_credentials() -> UserCredentials {
         let device_creds = create_test_device_credentials();
         let vault_name = VaultName::from("test_vault");
-        UserCredsBuilder::init(device_creds)
-            .build(vault_name)
-            .creds
+        UserCredsBuilder::init(device_creds).build(vault_name).creds
     }
 
     #[test]
     fn test_device_creds_object_from_device_credentials() {
         let device_creds = create_test_device_credentials();
         let device_creds_obj = DeviceCredsObject::from(device_creds.clone());
-        
+
         assert_eq!(device_creds_obj.clone().value(), device_creds.clone());
         assert_eq!(device_creds_obj.device(), device_creds.device);
     }
@@ -156,12 +152,12 @@ mod tests {
     fn test_device_creds_object_key_extraction() {
         let device_creds = create_test_device_credentials();
         let device_creds_obj = DeviceCredsObject::from(device_creds);
-        
+
         let key = device_creds_obj.key();
         let obj_id = device_creds_obj.obj_id();
-        
+
         assert_eq!(key.obj_id, obj_id);
-        
+
         assert!(matches!(key.obj_desc, ObjectDescriptor::DeviceCreds(_)));
     }
 
@@ -169,7 +165,7 @@ mod tests {
     fn test_user_creds_object_from_user_credentials() {
         let user_creds = create_test_user_credentials();
         let user_creds_obj = UserCredsObject::from(user_creds.clone());
-        
+
         assert_eq!(user_creds_obj.value(), user_creds);
         assert_eq!(user_creds_obj.device(), user_creds.device());
         assert_eq!(user_creds_obj.device_creds(), user_creds.device_creds);
@@ -179,10 +175,10 @@ mod tests {
     fn test_user_creds_object_key_extraction() {
         let user_creds = create_test_user_credentials();
         let user_creds_obj = UserCredsObject::from(user_creds);
-        
+
         let key = user_creds_obj.key();
         let obj_id = user_creds_obj.obj_id();
-        
+
         assert_eq!(key.obj_id, obj_id);
         assert!(matches!(key.obj_desc, ObjectDescriptor::UserCreds(_)));
     }
@@ -192,16 +188,19 @@ mod tests {
         let device_creds = create_test_device_credentials();
         let device_creds_obj = DeviceCredsObject::from(device_creds);
         let generic_event = device_creds_obj.clone().to_generic();
-        
+
         // Try to convert it back
         let recovered_object = DeviceCredsObject::try_from(generic_event).unwrap();
-        
+
         // Check that the key is preserved
         let original_key = device_creds_obj.key();
         let recovered_key = recovered_object.key();
-        
+
         assert_eq!(original_key.obj_id, recovered_key.obj_id);
-        assert!(matches!(recovered_key.obj_desc, ObjectDescriptor::DeviceCreds(_)));
+        assert!(matches!(
+            recovered_key.obj_desc,
+            ObjectDescriptor::DeviceCreds(_)
+        ));
     }
 
     #[test]
@@ -209,17 +208,20 @@ mod tests {
         let user_creds = create_test_user_credentials();
         let user_creds_obj = UserCredsObject::from(user_creds);
         let generic_event = user_creds_obj.clone().to_generic();
-        
+
         // Try to convert it back
         let recovered_object = UserCredsObject::try_from(generic_event).unwrap();
-        
+
         // Check that the key is preserved
         let original_key = user_creds_obj.key();
         let recovered_key = recovered_object.key();
-        
+
         assert_eq!(original_key.obj_id, recovered_key.obj_id);
 
-        assert!(matches!(recovered_key.obj_desc, ObjectDescriptor::UserCreds(_)));
+        assert!(matches!(
+            recovered_key.obj_desc,
+            ObjectDescriptor::UserCreds(_)
+        ));
     }
 
     #[test]
@@ -227,7 +229,7 @@ mod tests {
         let device_creds = create_test_device_credentials();
         let device_creds_obj = DeviceCredsObject::from(device_creds);
         let generic_event = device_creds_obj.to_generic();
-        
+
         // Try to convert the device creds event to user creds - should fail
         let result = UserCredsObject::try_from(generic_event);
         assert!(result.is_err());

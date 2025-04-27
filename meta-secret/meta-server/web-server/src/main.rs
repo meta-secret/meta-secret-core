@@ -1,7 +1,7 @@
 use axum::extract::State;
-use axum::{Json, Router, routing::{post}};
+use axum::{Json, Router, routing::post};
 use http::{StatusCode, Uri};
-use serde_derive::{Serialize};
+use serde_derive::Serialize;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -9,7 +9,7 @@ use axum::response::Html;
 use axum::routing::get;
 use meta_db_sqlite::db::sqlite_store::SqlIteRepo;
 use meta_secret_core::node::api::{DataSyncResponse, SyncRequest};
-use meta_server_node::server::server_app::{ServerApp, MetaServerDataTransfer};
+use meta_server_node::server::server_app::{MetaServerDataTransfer, ServerApp};
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
@@ -53,17 +53,17 @@ async fn main() -> Result<()> {
         });
         Arc::new(ServerApp::new(repo.clone())?)
     };
-    
+
     let data_transfer = server_app.get_data_transfer();
     let server_app_clone = server_app.clone();
-    
+
     // Create a separate runtime for the server app
     std::thread::spawn(move || {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap();
-        
+
         rt.block_on(async move {
             if let Err(e) = server_app_clone.run().await {
                 panic!("Server app background task failed: {:?}", e);
@@ -112,11 +112,7 @@ pub async fn meta_request(
 ) -> Json<DataSyncResponse> {
     info!("Event processing");
 
-    let response = state
-        .data_transfer
-        .send_request(msg_request)
-        .await
-        .unwrap();
+    let response = state.data_transfer.send_request(msg_request).await.unwrap();
 
     Json(response)
 }

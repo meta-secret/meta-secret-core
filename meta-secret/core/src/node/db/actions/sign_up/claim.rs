@@ -145,7 +145,7 @@ pub mod spec {
 
 #[cfg(test)]
 mod test {
-    use anyhow::{bail, Result};
+    use anyhow::{Result, bail};
 
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::meta_tests::spec::test_spec::TestSpec;

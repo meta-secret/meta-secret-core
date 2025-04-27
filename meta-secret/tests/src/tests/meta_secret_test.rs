@@ -4,8 +4,8 @@ use meta_secret_core::node::common::model::secret::{SecretDistributionType, SsCl
 
 #[cfg(test)]
 pub mod fixture {
-    use meta_secret_core::meta_tests::fixture_util::fixture::states::BaseState;
     use meta_secret_core::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use meta_secret_core::meta_tests::fixture_util::fixture::states::BaseState;
     use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
     use meta_server_node::server::server_app::ServerApp;
     use std::sync::Arc;
@@ -27,17 +27,15 @@ pub mod fixture {
 mod test {
     use crate::fixture::{ExtendedFixtureRegistry, ExtendedFixtureState};
     use crate::tests::meta_secret_test::SsClaimVerifierForTestRecovery;
-    use anyhow::bail;
     use anyhow::Result;
-    use meta_secret_core::meta_tests::fixture_util::fixture::states::EmptyState;
+    use anyhow::bail;
     use meta_secret_core::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use meta_secret_core::meta_tests::fixture_util::fixture::states::EmptyState;
     use meta_secret_core::meta_tests::spec::test_spec::TestSpec;
-    use meta_secret_core::node::app::meta_app::messaging::{
-        ClusterDistributionRequest, GenericAppStateRequest,
-    };
+    use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
     use meta_secret_core::node::common::meta_tracing::{client_span, server_span, vd_span};
     use meta_secret_core::node::common::model::crypto::aead::EncryptedMessage;
-    use meta_secret_core::node::common::model::meta_pass::MetaPasswordId;
+    use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PassInfo};
     use meta_secret_core::node::common::model::secret::{SsDistributionId, SsDistributionStatus};
     use meta_secret_core::node::common::model::user::common::UserData;
     use meta_secret_core::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
@@ -51,9 +49,9 @@ mod test {
     };
     use meta_secret_core::node::db::events::generic_log_event::GenericKvLogEvent;
     use meta_secret_core::node::db::events::shared_secret_event::SsWorkflowObject;
-    use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
-    use tracing::{info, Instrument};
     use meta_secret_core::node::db::events::vault::vault_log_event::VaultActionRequestEvent;
+    use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
+    use tracing::{Instrument, info};
 
     struct ServerAppSignUpSpec {
         registry: FixtureRegistry<ExtendedFixtureState>,
@@ -75,7 +73,7 @@ mod test {
 
         async fn sign_up_and_second_devices_joins(&self) -> Result<()> {
             //setup_tracing()?;
-            
+
             self.init_server().await?;
             self.verify_server_device_creds().await?;
 
@@ -92,7 +90,9 @@ mod test {
             self.vd_gw_sync().await?;
 
             info!("Verify SignUpClaim");
-            self.registry.state.vd_claim_spec
+            self.registry
+                .state
+                .vd_claim_spec
                 .verify()
                 .instrument(client_span())
                 .await?;
@@ -123,20 +123,26 @@ mod test {
 
             self.client_gw_sync().await?;
             self.vd_gw_sync().await?;
-            
+
             let vd_client = self.registry.state.vd.client_service.clone();
             let vd_app_state = vd_client.get_app_state().await?;
-            let ApplicationState::Vault(VaultFullInfo::Member(vd_member_info)) = vd_app_state else {
+            let ApplicationState::Vault(VaultFullInfo::Member(vd_member_info)) = vd_app_state
+            else {
                 bail!("Vd is not a vault member");
             };
 
             assert_eq!(1, vd_member_info.vault_events.requests.len());
             let vault_action_event = vd_member_info.vault_events.requests.iter().next().unwrap();
             let VaultActionRequestEvent::JoinCluster(join_request) = vault_action_event else {
-                 bail!("Join request is not found");
+                bail!("Join request is not found");
             };
-            
-            self.registry.state.vd.orchestrator.accept_join(join_request.clone()).await?;
+
+            self.registry
+                .state
+                .vd
+                .orchestrator
+                .accept_join(join_request.clone())
+                .await?;
             self.vd_gw_sync().await?;
             self.client_gw_sync().await?;
 
@@ -240,11 +246,11 @@ mod test {
 
             let pass_id = MetaPasswordId::build("test_pass");
             let dist_request = {
-                let dist_request = ClusterDistributionRequest {
+                let pass_info = PassInfo {
                     pass_id: pass_id.clone(),
                     pass: "2bee|~".to_string(),
                 };
-                GenericAppStateRequest::ClusterDistribution(dist_request)
+                GenericAppStateRequest::ClusterDistribution(pass_info)
             };
 
             let new_app_state = client_client_service
@@ -346,7 +352,6 @@ mod test {
             Ok(())
         }
     }
-    
 
     #[tokio::test]
     async fn test_sign_up_and_join_two_devices() -> Result<()> {
@@ -438,7 +443,7 @@ mod test {
         assert_eq!(vd_ss_claim, recover_claim_on_server);
 
         split.spec.client_gw_sync().await?;
-        
+
         split
             .spec
             .registry
@@ -558,7 +563,7 @@ mod test {
         //split.spec.vd.orchestrator.orchestrate().await?;
 
         split.spec.vd_gw_sync().await?;
-        
+
         let vd_db = split.spec.registry.state.vd.p_obj.repo.get_db().await;
         let vd_db = vd_db.into_values().collect::<Vec<GenericKvLogEvent>>();
 

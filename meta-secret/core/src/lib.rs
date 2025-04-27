@@ -226,33 +226,33 @@ mod tests {
     fn test_split_creates_json_and_qr_files() {
         // Create a temporary directory for the test
         let temp_dir = tempdir().expect("Failed to create temp dir");
-        
+
         // Save the original directory
         let original_dir = env::current_dir().expect("Failed to get current directory");
-        
+
         // Change to the temporary directory for the test
         env::set_current_dir(temp_dir.path()).expect("Failed to change directory");
-        
+
         // Create the secrets directory in the current working directory (temp_dir)
         fs::create_dir("secrets").expect("Failed to create secrets directory");
-        
+
         // Define a test secret and configuration
         let secret = "test secret".to_string();
         let config = SharedSecretConfig {
             number_of_shares: 3,
             threshold: 2,
         };
-        
+
         // Call the split function (this will create files in the current directory)
         let result = split(secret, config);
-        
+
         // Assert the operation was successful
         assert!(result.is_ok(), "Split operation failed: {:?}", result.err());
-        
+
         // Verify files were created
         let mut json_count = 0;
         let mut png_count = 0;
-        
+
         // Read the secrets directory and count files by type
         if let Ok(entries) = fs::read_dir("secrets") {
             for entry in entries.filter_map(Result::ok) {
@@ -260,7 +260,7 @@ mod tests {
                 if let Some(ext) = path.extension() {
                     if ext == "json" {
                         json_count += 1;
-                        
+
                         // Verify JSON file can be parsed
                         if let Ok(content) = fs::read_to_string(&path) {
                             let parse_result: Result<UserShareDto, _> =
@@ -273,45 +273,48 @@ mod tests {
                 }
             }
         }
-        
+
         // Verify the correct number of files were created
         assert_eq!(json_count, 3, "Expected 3 JSON files");
         assert_eq!(png_count, 3, "Expected 3 PNG files");
-        
+
         // Restore the original directory
         env::set_current_dir(original_dir).expect("Failed to restore original directory");
     }
-    
+
     #[test]
     fn test_generate_qr_code_and_read_qr_code() {
         // Create a temporary directory using tempfile
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let temp_path = temp_dir.path();
-        
+
         // Create a test file path
         let test_file_path = temp_path.join("test_qr.png");
         let test_file_path_str = test_file_path.to_str().unwrap();
-        
+
         // Test data
         let test_data = "Test QR Code Data. Test QR Code Data. Test QR Code Data.\
             Test QR Code Data. Test QR Code Data. Test QR Code Data.Test QR Code Data. \
             Test QR Code Data. Test QR Code Data.Test QR Code Data.";
-        
+
         // Generate QR code
         generate_qr_code(test_data, test_file_path_str);
-        
+
         // Verify the file exists
         assert!(test_file_path.exists(), "QR code file was not created");
-        
+
         // Read QR code
         let read_result = read_qr_code(&test_file_path);
         assert!(read_result.is_ok(), "Failed to read QR code");
-        
+
         // Verify the data matches
         let read_data = read_result.unwrap();
-        assert_eq!(read_data, test_data, "QR code data doesn't match original data");
+        assert_eq!(
+            read_data, test_data,
+            "QR code data doesn't match original data"
+        );
     }
-    
+
     #[test]
     fn test_recover_from_shares() {
         // Create a test UserShareDto with empty share_blocks
@@ -319,19 +322,17 @@ mod tests {
             share_id: 0,
             share_blocks: vec![],
         };
-        
+
         // For this test, we'll focus on the error case when shares list is empty
         let empty_shares = vec![share1];
         let result = recover_from_shares(empty_shares);
-        
+
         // Verify it returns the expected error
         assert!(result.is_err());
         match result {
-            Err(CoreError::RecoveryError { source }) => {
-                match source {
-                    RecoveryError::EmptyInput(_) => {},
-                    _ => panic!("Expected EmptyInput error variant, got: {:?}", source),
-                }
+            Err(CoreError::RecoveryError { source }) => match source {
+                RecoveryError::EmptyInput(_) => {}
+                _ => panic!("Expected EmptyInput error variant, got: {:?}", source),
             },
             _ => panic!("Expected RecoveryError error, got: {:?}", result),
         }

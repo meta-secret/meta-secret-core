@@ -4,15 +4,21 @@ use std::sync::Arc;
 use tracing::{error, info, instrument};
 
 use crate::node::app::meta_app::messaging::{GenericAppStateRequest, GenericAppStateResponse};
+use crate::node::app::orchestrator::MetaOrchestrator;
 use crate::node::app::sync::sync_gateway::SyncGateway;
 use crate::node::app::sync::sync_protocol::SyncProtocol;
 use crate::node::common::actor::ServiceState;
 use crate::node::common::data_transfer::MpscDataTransfer;
+use crate::node::common::model::device::common::DeviceData;
+use crate::node::common::model::device::device_creds::DeviceCreds;
+use crate::node::common::model::secret::ClaimId;
 use crate::node::common::model::user::common::{UserData, UserDataOutsiderStatus};
-use crate::node::common::model::vault::vault::{VaultMember, VaultName, VaultStatus};
+use crate::node::common::model::user::user_creds::UserCredentials;
+use crate::node::common::model::vault::vault::{VaultMember, VaultStatus};
 use crate::node::common::model::{ApplicationState, UserMemberFullInfo, VaultFullInfo};
 use crate::node::db::actions::recover::RecoveryAction;
 use crate::node::db::actions::sign_up::claim::SignUpClaim;
+use crate::node::db::events::vault::vault_log_event::{JoinClusterEvent, VaultActionEvents};
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;
@@ -20,19 +26,13 @@ use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::secret::MetaDistributor;
 use anyhow::Result;
-use crate::node::app::orchestrator::MetaOrchestrator;
-use crate::node::common::model::device::common::DeviceData;
-use crate::node::common::model::device::device_creds::DeviceCreds;
-use crate::node::common::model::secret::ClaimId;
-use crate::node::common::model::user::user_creds::UserCredentials;
-use crate::node::db::events::vault::vault_log_event::{JoinClusterEvent, VaultActionEvents};
 
 pub struct MetaClientService<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub data_transfer: Arc<MetaClientDataTransfer>,
     pub sync_gateway: Arc<SyncGateway<Repo, Sync>>,
     pub state_provider: Arc<MetaClientStateProvider>,
     pub p_obj: Arc<PersistentObject<Repo>>,
-    pub device_creds: Arc<DeviceCreds>
+    pub device_creds: Arc<DeviceCreds>,
 }
 
 pub struct MetaClientDataTransfer {
@@ -127,16 +127,16 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                             user_creds: Arc::new(user_creds.clone()),
                         };
 
-                        distributor
-                            .distribute(vault_member, request.pass_id, request.pass)
-                            .await?;
+                        distributor.distribute(vault_member, request).await?;
                     }
                 }
             }
 
             GenericAppStateRequest::Recover(meta_pass_id) => {
                 let recovery_action = RecoveryAction::from(self.p_obj.clone());
-                recovery_action.recovery_request(user_creds.clone(), meta_pass_id).await?;
+                recovery_action
+                    .recovery_request(user_creds.clone(), meta_pass_id)
+                    .await?;
             }
         }
 
@@ -172,12 +172,8 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                     .get_or_generate_user_creds(device_name, vault_name.clone())
                     .await?
             }
-            GenericAppStateRequest::ClusterDistribution(_) => {
-                self.find_user_creds().await?
-            }
-            GenericAppStateRequest::Recover(_) => {
-                self.find_user_creds().await?
-            }
+            GenericAppStateRequest::ClusterDistribution(_) => self.find_user_creds().await?,
+            GenericAppStateRequest::Recover(_) => self.find_user_creds().await?,
         };
         Ok(user_creds)
     }
@@ -210,9 +206,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         let maybe_user_creds = creds_repo.get_user_creds().await?;
 
         let app_state = match maybe_user_creds {
-            None => {
-                ApplicationState::Local(self.device_creds.device.clone())
-            }
+            None => ApplicationState::Local(self.device_creds.device.clone()),
             Some(user_creds) => {
                 self.sync_gateway.sync(user_creds.user()).await?;
 
@@ -254,7 +248,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                         ApplicationState::Vault(VaultFullInfo::Member(user_full_info))
                     }
                 }
-            },
+            }
         };
         Ok(app_state)
     }
@@ -264,10 +258,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
     }
 
     async fn get_state(&self) -> ApplicationState {
-        self
-            .state_provider
-            .get()
-            .await
+        self.state_provider.get().await
     }
 
     pub async fn accept_recover(&self, claim_id: ClaimId) -> Result<()> {
@@ -275,27 +266,25 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
             ApplicationState::Local(_) => {
                 bail!("Invalid state. Local App State")
             }
-            ApplicationState::Vault(vault_info) => {
-                match vault_info {
-                    VaultFullInfo::NotExists(_) => {
-                        bail!("Invalid state. Vault doesn't exist")
-                    }
-                    VaultFullInfo::Outsider(_) => {
-                        bail!("Invalid state. User is outsider")
-                    }
-                    VaultFullInfo::Member(_) => {
-                        let user_creds = self.find_user_creds().await?;
-
-                        let orchestrator = MetaOrchestrator {
-                            p_obj: self.sync_gateway.p_obj.clone(),
-                            user_creds
-                        };
-
-                        orchestrator.accept_recover(claim_id).await?;
-                        Ok(())
-                    }
+            ApplicationState::Vault(vault_info) => match vault_info {
+                VaultFullInfo::NotExists(_) => {
+                    bail!("Invalid state. Vault doesn't exist")
                 }
-            }
+                VaultFullInfo::Outsider(_) => {
+                    bail!("Invalid state. User is outsider")
+                }
+                VaultFullInfo::Member(_) => {
+                    let user_creds = self.find_user_creds().await?;
+
+                    let orchestrator = MetaOrchestrator {
+                        p_obj: self.sync_gateway.p_obj.clone(),
+                        user_creds,
+                    };
+
+                    orchestrator.accept_recover(claim_id).await?;
+                    Ok(())
+                }
+            },
         }
     }
 
@@ -304,27 +293,25 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
             ApplicationState::Local(_) => {
                 bail!("Invalid state. Local App State")
             }
-            ApplicationState::Vault(vault_info) => {
-                match vault_info {
-                    VaultFullInfo::NotExists(_) => {
-                        bail!("Invalid state. Vault doesn't exist")
-                    }
-                    VaultFullInfo::Outsider(_) => {
-                        bail!("Invalid state. User is outsider")
-                    }
-                    VaultFullInfo::Member(_) => {
-                        let user_creds = self.find_user_creds().await?;
-
-                        let orchestrator = MetaOrchestrator {
-                            p_obj: self.sync_gateway.p_obj.clone(),
-                            user_creds
-                        };
-
-                        orchestrator.accept_join(join_request).await?;
-                        Ok(())
-                    }
+            ApplicationState::Vault(vault_info) => match vault_info {
+                VaultFullInfo::NotExists(_) => {
+                    bail!("Invalid state. Vault doesn't exist")
                 }
-            }
+                VaultFullInfo::Outsider(_) => {
+                    bail!("Invalid state. User is outsider")
+                }
+                VaultFullInfo::Member(_) => {
+                    let user_creds = self.find_user_creds().await?;
+
+                    let orchestrator = MetaOrchestrator {
+                        p_obj: self.sync_gateway.p_obj.clone(),
+                        user_creds,
+                    };
+
+                    orchestrator.accept_join(join_request).await?;
+                    Ok(())
+                }
+            },
         }
     }
 
@@ -370,10 +357,10 @@ pub mod fixture {
         MetaClientDataTransfer, MetaClientService, MetaClientStateProvider,
     };
     use crate::node::app::sync::sync_gateway::fixture::SyncGatewayFixture;
+    use crate::node::app::sync::sync_protocol::SyncProtocol;
     use crate::node::common::data_transfer::MpscDataTransfer;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use std::sync::Arc;
-    use crate::node::app::sync::sync_protocol::SyncProtocol;
 
     pub struct MetaClientServiceFixture<Sync: SyncProtocol> {
         pub client: Arc<MetaClientService<InMemKvLogEventRepo, Sync>>,
@@ -405,7 +392,7 @@ pub mod fixture {
                 sync_gateway: sync_gateway.vd_gw.clone(),
                 state_provider: state_provider.vd.clone(),
                 p_obj: sync_gateway.vd_gw.p_obj.clone(),
-                device_creds: Arc::new(base.empty.device_creds.vd.clone())
+                device_creds: Arc::new(base.empty.device_creds.vd.clone()),
             });
 
             Self {

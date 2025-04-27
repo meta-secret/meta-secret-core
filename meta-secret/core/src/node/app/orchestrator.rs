@@ -1,4 +1,6 @@
-use crate::node::common::model::secret::{ClaimId, SecretDistributionData, SecretDistributionType, SsClaim, SsLogData};
+use crate::node::common::model::secret::{
+    ClaimId, SecretDistributionData, SecretDistributionType, SsClaim, SsLogData,
+};
 use crate::node::common::model::user::common::{UserDataMember, UserMembership};
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::vault::{VaultMember, VaultStatus};
@@ -7,14 +9,16 @@ use crate::node::db::actions::sign_up::join::AcceptJoinAction;
 use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::shared_secret_event::SsWorkflowObject;
-use crate::node::db::events::vault::vault_log_event::{JoinClusterEvent, VaultActionRequestEvent, VaultLogObject};
+use crate::node::db::events::vault::vault_log_event::{
+    JoinClusterEvent, VaultActionRequestEvent, VaultLogObject,
+};
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
-use anyhow::bail;
 use anyhow::Result;
-use log::{debug};
+use anyhow::bail;
+use log::debug;
 use std::sync::Arc;
 
 /// Contains business logic of secrets management and login/sign-up actions.
@@ -56,7 +60,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
         for (_, claim) in ss_log_data.claims {
             self.accept_recover(claim.id).await?;
         }
-        
+
         Ok(())
     }
 }
@@ -93,7 +97,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
         let Some(VaultLogObject(action_event)) = maybe_vault_log_event else {
             return Ok(());
         };
-        
+
         let vault_actions = action_event.value;
 
         for request in vault_actions.requests {
@@ -149,8 +153,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
     async fn get_ss_log_data(&self) -> Result<SsLogData> {
         let ss_log_data = {
             let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
-            p_ss
-                .get_ss_log_obj(self.user_creds.vault_name.clone())
+            p_ss.get_ss_log_obj(self.user_creds.vault_name.clone())
                 .await?
         };
         Ok(ss_log_data)

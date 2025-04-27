@@ -1,8 +1,8 @@
+use crate::base_command::BaseCommand;
 use anyhow::Result;
 use meta_secret_core::node::common::model::user::common::UserMembership;
 use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
 use meta_secret_core::node::db::events::vault::vault_log_event::VaultActionRequestEvent;
-use crate::base_command::BaseCommand;
 
 pub struct InfoCommand {
     base: BaseCommand,
@@ -14,7 +14,7 @@ impl InfoCommand {
             base: BaseCommand::new(db_name),
         }
     }
-    
+
     pub async fn execute(&self) -> Result<()> {
         let db_context = self.base.open_existing_db().await?;
 

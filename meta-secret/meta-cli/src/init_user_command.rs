@@ -1,6 +1,6 @@
+use crate::base_command::BaseCommand;
 use anyhow::{Result, bail};
 use meta_secret_core::node::common::model::vault::vault::VaultName;
-use crate::base_command::BaseCommand;
 
 pub struct InitUserCommand {
     base: BaseCommand,
@@ -14,7 +14,7 @@ impl InitUserCommand {
             vault_name,
         }
     }
-    
+
     pub async fn execute(&self) -> Result<()> {
         // Open existing database
         let db_context = self.base.open_existing_db().await?;
@@ -36,7 +36,8 @@ impl InitUserCommand {
         let device_name = device_creds.device.device_name.clone();
 
         // Generate user credentials
-        let user_creds = db_context.p_creds
+        let user_creds = db_context
+            .p_creds
             .get_or_generate_user_creds(device_name.clone(), self.vault_name.clone())
             .await?;
 

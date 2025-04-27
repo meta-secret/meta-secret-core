@@ -1,12 +1,12 @@
 use anyhow::Context;
 use anyhow::Result;
+use meta_secret_core::CoreResult;
 use meta_secret_core::crypto::keys::{KeyManager, SecretBox, TransportPk};
 use meta_secret_core::errors::CoreError;
 use meta_secret_core::node::common::model::secret::SecretDistributionData;
 use meta_secret_core::recover_from_shares;
 use meta_secret_core::secret::data_block::common::SharedSecretConfig;
 use meta_secret_core::secret::shared_secret::UserShareDto;
-use meta_secret_core::CoreResult;
 use serde::{Deserialize, Serialize};
 use std::ffi::CString;
 use std::os::raw::c_char;

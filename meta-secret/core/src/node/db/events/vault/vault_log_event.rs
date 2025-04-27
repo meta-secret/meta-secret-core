@@ -8,7 +8,7 @@ use crate::node::db::events::generic_log_event::{
 };
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::ArtifactId;
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use derive_more::From;
 use std::collections::HashSet;
 use std::fmt::Display;

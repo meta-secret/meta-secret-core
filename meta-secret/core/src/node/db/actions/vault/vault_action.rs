@@ -201,8 +201,8 @@ pub mod fixture {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::meta_tests::fixture_util::fixture::states::BaseState;
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::meta_tests::fixture_util::fixture::states::BaseState;
     use crate::node::common::model::meta_pass::MetaPasswordId;
     use crate::node::common::model::user::common::{UserDataMember, UserMembership};
     use crate::node::common::model::vault::vault::VaultStatus;

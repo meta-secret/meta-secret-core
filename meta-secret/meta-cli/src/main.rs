@@ -1,7 +1,7 @@
+mod base_command;
 mod info_command;
 mod init_device_command;
 mod init_user_command;
-mod base_command;
 mod join_vault_command;
 mod split_command;
 
@@ -10,13 +10,13 @@ extern crate core;
 use crate::info_command::InfoCommand;
 use crate::init_device_command::InitDeviceCommand;
 use crate::init_user_command::InitUserCommand;
+use crate::join_vault_command::JoinVaultCommand;
+use crate::split_command::SplitCommand;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::secret::data_block::common::SharedSecretConfig;
 use serde::{Deserialize, Serialize};
-use crate::join_vault_command::JoinVaultCommand;
-use crate::split_command::SplitCommand;
 
 #[derive(Debug, Parser)]
 #[command(about = "Meta Secret Command Line Application", long_about = None)]
@@ -65,7 +65,7 @@ enum SecretCommand {
         #[arg(short, long)]
         pass_name: String,
     },
-    Recover
+    Recover,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -103,18 +103,14 @@ async fn main() -> Result<()> {
         Command::SignUp => {
             let sign_up_cmd = JoinVaultCommand::new(db_name);
             sign_up_cmd.execute().await?
-        },
-        Command::Secret { command } => {
-            match command {
-                SecretCommand::Split { pass, pass_name } => {
-                    let split_cmd = SplitCommand::new(db_name, pass, pass_name);
-                    split_cmd.execute().await?
-                }
-                SecretCommand::Recover => {
-                    
-                }
-            }
         }
+        Command::Secret { command } => match command {
+            SecretCommand::Split { pass, pass_name } => {
+                let split_cmd = SplitCommand::new(db_name, pass, pass_name);
+                split_cmd.execute().await?
+            }
+            SecretCommand::Recover => {}
+        },
     }
 
     Ok(())
