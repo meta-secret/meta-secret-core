@@ -1,5 +1,6 @@
 mod init_command;
 mod info_command;
+mod init_user_command;
 
 extern crate core;
 
@@ -10,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use crate::init_command::InitCommand;
 use crate::info_command::InfoCommand;
+use crate::init_user_command::InitUserCommand;
 
 #[derive(Debug, Parser)]
 #[command(about = "Meta Secret Command Line Application", long_about = None)]
@@ -53,9 +55,6 @@ async fn main() -> Result<()> {
     let db_name = String::from("meta-secret.redb");
     
     match args.command {
-        Command::InitUser { .. } => {
-            
-        }
         Command::InitDevice { device_name } => {
             let init_cmd = InitCommand {
                 db_name: db_name.clone(),
@@ -63,6 +62,15 @@ async fn main() -> Result<()> {
             };
             
             init_cmd.execute().await?
+        }
+
+        Command::InitUser { vault_name } => {
+            let init_user_cmd = InitUserCommand {
+                db_name: db_name.clone(),
+                vault_name,
+            };
+            
+            init_user_cmd.execute().await?
         }
         
         Command::Info => {
