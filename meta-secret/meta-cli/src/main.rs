@@ -27,15 +27,10 @@ struct CmdLine {
 /// Simple program to greet a person
 #[derive(Subcommand, Debug)]
 enum Command {
-    /// Generate device credentials
-    InitDevice {
-        #[arg(short, long)]
-        device_name: String,
-    },
-    /// Generate user credentials
-    InitUser {
-        #[arg(short, long)]
-        vault_name: VaultName,
+    /// Initialize device or user credentials
+    Init {
+        #[command(subcommand)]
+        command: InitCommand,
     },
     /// Create or Join a vault
     SignUp,
@@ -45,7 +40,16 @@ enum Command {
 
 #[derive(Subcommand, Debug)]
 enum InitCommand {
-    
+    /// Generate device credentials
+    Device {
+        #[arg(short, long)]
+        device_name: String,
+    },
+    /// Generate user credentials
+    User {
+        #[arg(short, long)]
+        vault_name: VaultName,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -66,16 +70,16 @@ async fn main() -> Result<()> {
     let db_name = String::from("meta-secret.redb");
 
     match args.command {
-        Command::InitDevice { device_name } => {
-            let init_device_cmd = InitDeviceCommand::new(db_name.clone(), device_name);
-            init_device_cmd.execute().await?
-        }
-
-        Command::InitUser { vault_name } => {
-            let init_user_cmd = InitUserCommand::new(db_name.clone(), vault_name);
-            init_user_cmd.execute().await?
-        }
-
+        Command::Init { command } => match command {
+            InitCommand::Device { device_name } => {
+                let init_device_cmd = InitDeviceCommand::new(db_name.clone(), device_name);
+                init_device_cmd.execute().await?
+            }
+            InitCommand::User { vault_name } => {
+                let init_user_cmd = InitUserCommand::new(db_name.clone(), vault_name);
+                init_user_cmd.execute().await?
+            }
+        },
         Command::Info => {
             let info_cmd = InfoCommand::new(db_name);
             info_cmd.execute().await?
