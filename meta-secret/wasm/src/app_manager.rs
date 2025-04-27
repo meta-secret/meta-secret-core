@@ -90,21 +90,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
     pub async fn accept_recover(&self, claim_id: ClaimId) -> Result<()> {
         self.meta_client_service.accept_recover(claim_id).await
     }
-
-    async fn get_user_creds(&self) -> Result<UserCredentials> {
-        let user_creds = {
-            let creds_repo = PersistentCredentials::from(self.sync_gateway.p_obj.clone());
-            let maybe_user_creds = creds_repo.get_user_creds().await?;
-
-            let Some(user_creds) = maybe_user_creds else {
-                bail!("Invalid state. UserCredentials must be present")
-            };
-
-            user_creds
-        };
-        Ok(user_creds)
-    }
-
+    
     pub async fn accept_join(&self, join_request: JoinClusterEvent) -> Result<()> {
         self.meta_client_service.accept_join(join_request).await
     }

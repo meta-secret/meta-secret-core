@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::CoreResult;
 use crate::node::common::model::crypto::aead::EncryptedMessage;
-use crate::node::common::model::meta_pass::{MetaPasswordId, PassInfo};
+use crate::node::common::model::meta_pass::{PassInfo};
 use crate::node::common::model::secret::{SecretDistributionData, SsDistributionId};
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::vault::VaultMember;

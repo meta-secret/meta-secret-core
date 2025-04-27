@@ -9,7 +9,6 @@ use crate::node::app::sync::sync_gateway::SyncGateway;
 use crate::node::app::sync::sync_protocol::SyncProtocol;
 use crate::node::common::actor::ServiceState;
 use crate::node::common::data_transfer::MpscDataTransfer;
-use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::device::device_creds::DeviceCreds;
 use crate::node::common::model::secret::ClaimId;
 use crate::node::common::model::user::common::{UserData, UserDataOutsiderStatus};
