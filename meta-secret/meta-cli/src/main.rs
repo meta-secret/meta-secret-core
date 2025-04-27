@@ -43,6 +43,11 @@ enum Command {
     Info,
 }
 
+#[derive(Subcommand, Debug)]
+enum InitCommand {
+    
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct MetaSecretConfig {
     shared_secret: SharedSecretConfig,
@@ -76,10 +81,8 @@ async fn main() -> Result<()> {
             info_cmd.execute().await?
         }
         Command::SignUp => {
-            let sign_up_cmd = JoinVaultCommand {
-                base: BaseCommand::new(db_name),
-            };
-            sign_up_cmd.execute().await?;
+            let sign_up_cmd = JoinVaultCommand::new(db_name);
+            sign_up_cmd.execute().await?
         }
     }
 
