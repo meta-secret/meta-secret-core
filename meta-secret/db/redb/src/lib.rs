@@ -8,7 +8,7 @@ use meta_secret_core::node::db::events::object_id::ArtifactId;
 use meta_secret_core::node::db::repo::generic_db::{
     DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand,
 };
-use redb::{Database, ReadableTable, TableDefinition};
+use redb::{Database, TableDefinition};
 use serde_json;
 use std::path::Path;
 
@@ -35,12 +35,24 @@ pub struct ReDbRepo {
 impl ReDbRepo {
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
         let db = Database::create(path)?;
-        Ok(ReDbRepo { db })
+        let repo = ReDbRepo { db };
+        repo.init_table()?;
+        Ok(repo)
     }
     
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
         let db = Database::open(path)?;
-        Ok(ReDbRepo { db })
+        let repo = ReDbRepo { db };
+        repo.init_table()?;
+        Ok(repo)
+    }
+    
+    fn init_table(&self) -> Result<()> {
+        let write_txn = self.db.begin_write()?;
+        // Just open the table, which will create it if it doesn't exist
+        write_txn.open_table(LOG_EVENTS_TABLE)?;
+        write_txn.commit()?;
+        Ok(())
     }
 }
 
