@@ -7,6 +7,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use meta_secret_core::secret::data_block::common::SharedSecretConfig;
 use serde::{Deserialize, Serialize};
+use meta_secret_core::node::common::model::vault::vault::VaultName;
 use crate::init_command::InitCommand;
 use crate::info_command::InfoCommand;
 
@@ -21,9 +22,14 @@ struct CmdLine {
 #[derive(Subcommand, Debug)]
 enum Command {
     /// Generate device credentials
-    Init {
+    InitDevice {
         #[arg(short, long)]
         device_name: String,
+    },
+    /// Generate user credentials
+    InitUser {
+        #[arg(short, long)]
+        vault_name: VaultName,
     },
     /// Show information about the device and credentials
     Info,
@@ -47,7 +53,10 @@ async fn main() -> Result<()> {
     let db_name = String::from("meta-secret.redb");
     
     match args.command {
-        Command::Init { device_name } => {
+        Command::InitUser { .. } => {
+            
+        }
+        Command::InitDevice { device_name } => {
             let init_cmd = InitCommand {
                 db_name: db_name.clone(),
                 device_name,
