@@ -151,3 +151,56 @@ test:
     COPY . .
 
     RUN cargo nextest run --profile ci
+
+android-lib-builder:
+    FROM rust:${RUST_VERSION}-bookworm
+    
+    # Install required dependencies for Android build
+    RUN apt update && apt install -y \
+        curl \
+        unzip \
+        openjdk-17-jdk \
+        build-essential \
+        cmake \
+        ninja-build \
+        git \
+        pkg-config \
+        libssl-dev
+
+    # Set up environment variables
+    ENV ANDROID_HOME=/opt/android-sdk
+    ENV ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/25.2.9519653
+    ENV PATH=${ANDROID_HOME}/cmdline-tools/latest/bin:${PATH}
+    
+    # Install Android SDK
+    RUN mkdir -p ${ANDROID_HOME}/cmdline-tools && \
+        cd ${ANDROID_HOME}/cmdline-tools && \
+        curl -O https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip && \
+        unzip commandlinetools-linux-9477386_latest.zip && \
+        mv cmdline-tools latest && \
+        rm commandlinetools-linux-9477386_latest.zip
+    
+    # Accept licenses and install NDK
+    RUN yes | sdkmanager --licenses && \
+        sdkmanager "ndk;25.2.9519653" "platform-tools" "platforms;android-33"
+    
+    RUN cargo install cargo-ndk
+    RUN rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
+
+    WORKDIR /meta-secret-build
+    
+    # Copy the source code
+    COPY . .
+
+build-android-lib:
+    FROM +android-lib-builder
+    
+    WORKDIR /meta-secret-build/mobile/ios
+    
+    # Build the .so libraries for all targets
+    RUN cargo ndk --platform 25 --target x86_64-linux-android build
+    
+    # Create the output directory
+    #RUN mkdir -p /output/libs/android
+    
+    #SAVE ARTIFACT /output/libs/android AS LOCAL meta-secret/mobile/libs/android

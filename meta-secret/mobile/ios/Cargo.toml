@@ -19,7 +19,7 @@ serde_json.workspace = true
 tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["fmt"] }
 tracing-attributes.workspace = true
-reqwest = "0.12.15"
+reqwest.workspace = true
 
 [dev-dependencies]
 tokio = { version = "1.44.1", features = ["full"] }
