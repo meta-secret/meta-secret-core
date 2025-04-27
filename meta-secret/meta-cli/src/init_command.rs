@@ -47,9 +47,13 @@ impl InitCommand {
         let device_name = DeviceName::from(self.device_name.clone());
         let device_creds = p_creds.get_or_generate_device_creds(device_name).await?;
 
+        println!("Meta Secret Initialization:");
+        println!("---------------------------");
         println!("Device credentials generated successfully");
-        println!("Device Name: {}", device_creds.device.device_name.as_str());
-        println!("Device ID: {}", device_creds.device.device_id);
+        println!();
+        println!("Device Information:");
+        println!("  Device Name: {}", device_creds.device.device_name.as_str());
+        println!("  Device ID: {}", device_creds.device.device_id);
         
         Ok(())
     }

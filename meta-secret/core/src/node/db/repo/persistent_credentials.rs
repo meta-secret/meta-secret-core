@@ -20,15 +20,20 @@ pub struct PersistentCredentials<Repo: KvLogEventRepo> {
 }
 
 impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
+    pub async fn get_device_creds(&self) -> Result<Option<DeviceCredsObject>> {
+        let maybe_device_creds = self
+            .p_obj
+            .find_tail_event(DeviceCredsDescriptor)
+            .await?;
+        Ok(maybe_device_creds)
+    }
+    
     #[instrument(skip(self))]
     pub async fn get_or_generate_device_creds(
         &self,
         device_name: DeviceName,
     ) -> Result<DeviceCreds> {
-        let maybe_device_creds = self
-            .p_obj
-            .find_tail_event(DeviceCredsDescriptor)
-            .await?;
+        let maybe_device_creds = self.get_device_creds().await?;
 
         let device_creds = match maybe_device_creds {
             None => self.generate_device_creds(device_name).await?,
