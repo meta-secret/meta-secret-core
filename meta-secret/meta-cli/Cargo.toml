@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 meta-secret-core = { path = "../core" }
+meta-db-redb = { path = "../db/redb" }
 
 thiserror.workspace = true
 anyhow.workspace = true
@@ -13,3 +14,6 @@ clap = { version = "4.5.37", features = ["derive"] }
 
 serde.workspace = true
 serde_yaml.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

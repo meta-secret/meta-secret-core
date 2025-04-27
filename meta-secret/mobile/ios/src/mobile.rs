@@ -164,16 +164,13 @@ mod tests {
         
         let json_value: Value = serde_json::from_str(&result_str).expect("Invalid JSON");
         
-        // Проверяем успешность
         let success = json_value["success"].as_bool().expect("missing filed: 'success'");
         info!("Success: {}", success);
         
         if success {
-            // Проверяем статус
             if let Some(status) = json_value["status"].as_str() {
                 info!("Status: {}", status);
                 
-                // Если статус Member, проверяем данные
                 if status == "Member" {
                     let data = &json_value["data"];
                     info!("User info:");

@@ -5,6 +5,7 @@ resolver = "2"
 members = [
     "core",
     "db/sqlite",
+    "db/redb",
     "meta-server/server-node",
     "meta-server/web-server",
     "wasm",

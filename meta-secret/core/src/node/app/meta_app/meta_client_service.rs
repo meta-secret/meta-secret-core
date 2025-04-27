@@ -20,9 +20,11 @@ use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::secret::MetaDistributor;
 use anyhow::Result;
+use crate::node::app::orchestrator::MetaOrchestrator;
 use crate::node::common::model::device::device_creds::DeviceCreds;
+use crate::node::common::model::secret::ClaimId;
 use crate::node::common::model::user::user_creds::UserCredentials;
-use crate::node::db::events::vault::vault_log_event::{VaultActionEvents};
+use crate::node::db::events::vault::vault_log_event::{JoinClusterEvent, VaultActionEvents};
 
 pub struct MetaClientService<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub data_transfer: Arc<MetaClientDataTransfer>,
@@ -155,32 +157,27 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                     .await?
             }
             GenericAppStateRequest::ClusterDistribution(_) => {
-                let user_creds = {
-                    let maybe_user_creds = creds_repo.get_user_creds().await?;
-
-                    let Some(user_creds) = maybe_user_creds else {
-                        bail!("Invalid state. UserCredentials must be present")
-                    };
-
-                    user_creds
-                };
-
-                user_creds
+                self.find_user_creds().await?
             }
             GenericAppStateRequest::Recover(_) => {
-                let user_creds = {
-                    let maybe_user_creds = creds_repo.get_user_creds().await?;
-
-                    let Some(user_creds) = maybe_user_creds else {
-                        bail!("Invalid state. UserCredentials not exists")
-                    };
-
-                    user_creds
-                };
-
-                user_creds
+                self.find_user_creds().await?
             }
         };
+        Ok(user_creds)
+    }
+
+    async fn find_user_creds(&self) -> Result<UserCredentials> {
+        let creds_repo = PersistentCredentials::from(self.p_obj.clone());
+        let user_creds = {
+            let maybe_user_creds = creds_repo.get_user_creds().await?;
+
+            let Some(user_creds) = maybe_user_creds else {
+                bail!("Invalid state. UserCredentials must be present")
+            };
+
+            user_creds
+        };
+
         Ok(user_creds)
     }
 
@@ -248,6 +245,71 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
 
     pub async fn send_request(&self, request: GenericAppStateRequest) {
         self.data_transfer.dt.send_to_service(request).await
+    }
+
+    async fn get_state(&self) -> ApplicationState {
+        self
+            .state_provider
+            .get()
+            .await
+    }
+
+    pub async fn accept_recover(&self, claim_id: ClaimId) -> Result<()> {
+        match &self.get_state().await {
+            ApplicationState::Local(_) => {
+                bail!("Invalid state. Local App State")
+            }
+            ApplicationState::Vault(vault_info) => {
+                match vault_info {
+                    VaultFullInfo::NotExists(_) => {
+                        bail!("Invalid state. Vault doesn't exist")
+                    }
+                    VaultFullInfo::Outsider(_) => {
+                        bail!("Invalid state. User is outsider")
+                    }
+                    VaultFullInfo::Member(_) => {
+                        let user_creds = self.find_user_creds().await?;
+
+                        let orchestrator = MetaOrchestrator {
+                            p_obj: self.sync_gateway.p_obj.clone(),
+                            user_creds
+                        };
+
+                        orchestrator.accept_recover(claim_id).await?;
+                        Ok(())
+                    }
+                }
+            }
+        }
+    }
+
+    pub async fn accept_join(&self, join_request: JoinClusterEvent) -> Result<()> {
+        match &self.get_state().await {
+            ApplicationState::Local(_) => {
+                bail!("Invalid state. Local App State")
+            }
+            ApplicationState::Vault(vault_info) => {
+                match vault_info {
+                    VaultFullInfo::NotExists(_) => {
+                        bail!("Invalid state. Vault doesn't exist")
+                    }
+                    VaultFullInfo::Outsider(_) => {
+                        bail!("Invalid state. User is outsider")
+                    }
+                    VaultFullInfo::Member(_) => {
+                        let user_creds = self.find_user_creds().await?;
+
+                        let orchestrator = MetaOrchestrator {
+                            p_obj: self.sync_gateway.p_obj.clone(),
+                            user_creds
+                        };
+
+                        orchestrator.accept_join(join_request).await?;
+                        Ok(())
+                    }
+                }
+            }
+        }
     }
 
     fn p_obj(&self) -> Arc<PersistentObject<Repo>> {

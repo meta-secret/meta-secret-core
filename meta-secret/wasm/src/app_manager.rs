@@ -21,9 +21,8 @@ use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredenti
 use crate::wasm_repo::WasmSyncProtocol;
 use anyhow::Result;
 use meta_secret_core::node::app::meta_app::messaging::{ClusterDistributionRequest, GenericAppStateRequest};
-use meta_secret_core::node::app::orchestrator::MetaOrchestrator;
 use meta_secret_core::node::common::model::meta_pass::MetaPasswordId;
-use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
+use meta_secret_core::node::common::model::{ApplicationState};
 use meta_secret_core::node::common::model::secret::ClaimId;
 use meta_secret_core::node::common::model::user::user_creds::UserCredentials;
 use meta_secret_core::node::db::events::vault::vault_log_event::JoinClusterEvent;
@@ -96,32 +95,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
     }
 
     pub async fn accept_recover(&self, claim_id: ClaimId) -> Result<()> {
-        match &self.get_state().await {
-            ApplicationState::Local(_) => {
-                bail!("Invalid state. Local App State")
-            }
-            ApplicationState::Vault(vault_info) => {
-                match vault_info {
-                    VaultFullInfo::NotExists(_) => {
-                        bail!("Invalid state. Vault doesn't exist")
-                    }
-                    VaultFullInfo::Outsider(_) => {
-                        bail!("Invalid state. User is outsider")
-                    }
-                    VaultFullInfo::Member(_) => {
-                        let user_creds = self.get_user_creds().await?;
-
-                        let orchestrator = MetaOrchestrator {
-                            p_obj: self.sync_gateway.p_obj.clone(),
-                            user_creds
-                        };
-
-                        orchestrator.accept_recover(claim_id).await?;
-                        Ok(())
-                    }
-                }
-            }
-        }
+        self.meta_client_service.accept_recover(claim_id).await
     }
 
     async fn get_user_creds(&self) -> Result<UserCredentials> {
@@ -139,32 +113,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
     }
 
     pub async fn accept_join(&self, join_request: JoinClusterEvent) -> Result<()> {
-        match &self.get_state().await {
-            ApplicationState::Local(_) => {
-                bail!("Invalid state. Local App State")
-            }
-            ApplicationState::Vault(vault_info) => {
-                match vault_info {
-                    VaultFullInfo::NotExists(_) => {
-                        bail!("Invalid state. Vault doesn't exist")
-                    }
-                    VaultFullInfo::Outsider(_) => {
-                        bail!("Invalid state. User is outsider")
-                    }
-                    VaultFullInfo::Member(_) => {
-                        let user_creds = self.get_user_creds().await?;
-                        
-                        let orchestrator = MetaOrchestrator {
-                            p_obj: self.sync_gateway.p_obj.clone(),
-                            user_creds
-                        };
-
-                        orchestrator.accept_join(join_request).await?;
-                        Ok(())
-                    }
-                }
-            }
-        }
+        self.meta_client_service.accept_join(join_request).await
     }
 
     #[instrument(name = "MetaClient", skip_all)]
