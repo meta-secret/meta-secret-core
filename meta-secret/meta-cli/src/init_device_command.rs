@@ -1,22 +1,25 @@
-use std::path::Path;
-use std::sync::Arc;
+use anyhow::Result;
 use anyhow::bail;
-use tracing::info;
 use meta_db_redb::ReDbRepo;
 use meta_secret_core::node::common::model::device::common::DeviceName;
 use meta_secret_core::node::db::descriptors::creds::DeviceCredsDescriptor;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
-use anyhow::Result;
+use std::path::Path;
+use std::sync::Arc;
+use tracing::info;
 
 pub struct InitDeviceCommand {
     pub db_name: String,
-    pub device_name: String
+    pub device_name: String,
 }
 
 impl InitDeviceCommand {
     pub async fn execute(&self) -> Result<()> {
-        info!("Generating device credentials for device: {}", self.device_name);
+        info!(
+            "Generating device credentials for device: {}",
+            self.device_name
+        );
 
         // Database file path
         let db_path = Path::new(self.db_name.as_str());
@@ -32,7 +35,9 @@ impl InitDeviceCommand {
 
         // Create persistent object and credentials manager
         let p_obj = Arc::new(PersistentObject::new(repo));
-        let p_creds = PersistentCredentials { p_obj: p_obj.clone() };
+        let p_creds = PersistentCredentials {
+            p_obj: p_obj.clone(),
+        };
 
         // Check if device credentials already exist
         let maybe_device_creds = p_obj.find_tail_event(DeviceCredsDescriptor).await?;
@@ -52,9 +57,12 @@ impl InitDeviceCommand {
         println!("Device credentials generated successfully");
         println!();
         println!("Device Information:");
-        println!("  Device Name: {}", device_creds.device.device_name.as_str());
+        println!(
+            "  Device Name: {}",
+            device_creds.device.device_name.as_str()
+        );
         println!("  Device ID: {}", device_creds.device.device_id);
-        
+
         Ok(())
     }
-} 
+}

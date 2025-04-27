@@ -1,17 +1,17 @@
-mod init_device_command;
 mod info_command;
+mod init_device_command;
 mod init_user_command;
 
 extern crate core;
 
+use crate::info_command::InfoCommand;
+use crate::init_device_command::InitDeviceCommand;
+use crate::init_user_command::InitUserCommand;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::secret::data_block::common::SharedSecretConfig;
 use serde::{Deserialize, Serialize};
-use meta_secret_core::node::common::model::vault::vault::VaultName;
-use crate::init_device_command::InitDeviceCommand;
-use crate::info_command::InfoCommand;
-use crate::init_user_command::InitUserCommand;
 
 #[derive(Debug, Parser)]
 #[command(about = "Meta Secret Command Line Application", long_about = None)]
@@ -49,11 +49,11 @@ async fn main() -> Result<()> {
         .with_test_writer()
         .finish();
     tracing::subscriber::set_global_default(subscriber)?;
-    
+
     let args = CmdLine::parse();
-    
+
     let db_name = String::from("meta-secret.redb");
-    
+
     match args.command {
         Command::InitDevice { device_name } => {
             let init_device_cmd = InitDeviceCommand {
@@ -69,15 +69,15 @@ async fn main() -> Result<()> {
                 db_name: db_name.clone(),
                 vault_name,
             };
-            
+
             init_user_cmd.execute().await?
         }
-        
+
         Command::Info => {
-            let info_cmd = InfoCommand { db_name, };
+            let info_cmd = InfoCommand { db_name };
             info_cmd.execute().await?
         }
     }
-    
+
     Ok(())
 }
