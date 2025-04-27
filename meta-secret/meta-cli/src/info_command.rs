@@ -43,7 +43,7 @@ impl InfoCommand {
                 println!("  Device Name: {}", device_creds.device.device_name.as_str());
             }
             None => {
-                println!("Not initialized. Run the 'init' command first.");
+                println!("Not initialized. Run the 'init-device' command first.");
                 return Ok(());
             }
         }

@@ -33,7 +33,7 @@ impl InitUserCommand {
         let device_creds = match p_creds.get_device_creds().await? {
             Some(creds) => creds.value(),
             None => {
-                return Err(anyhow!("Device credentials not found. Please run `meta-secret init-device` first."));
+                bail!("Device credentials not found. Please run `meta-secret init-device` first.");
             }
         };
 

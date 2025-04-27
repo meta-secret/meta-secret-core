@@ -9,12 +9,12 @@ use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
 use anyhow::Result;
 
-pub struct InitCommand {
+pub struct InitDeviceCommand {
     pub db_name: String,
     pub device_name: String
 }
 
-impl InitCommand {
+impl InitDeviceCommand {
     pub async fn execute(&self) -> Result<()> {
         info!("Generating device credentials for device: {}", self.device_name);
 
@@ -57,4 +57,4 @@ impl InitCommand {
         
         Ok(())
     }
-}
+} 

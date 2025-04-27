@@ -1,4 +1,4 @@
-mod init_command;
+mod init_device_command;
 mod info_command;
 mod init_user_command;
 
@@ -9,7 +9,7 @@ use clap::{Parser, Subcommand};
 use meta_secret_core::secret::data_block::common::SharedSecretConfig;
 use serde::{Deserialize, Serialize};
 use meta_secret_core::node::common::model::vault::vault::VaultName;
-use crate::init_command::InitCommand;
+use crate::init_device_command::InitDeviceCommand;
 use crate::info_command::InfoCommand;
 use crate::init_user_command::InitUserCommand;
 
@@ -56,12 +56,12 @@ async fn main() -> Result<()> {
     
     match args.command {
         Command::InitDevice { device_name } => {
-            let init_cmd = InitCommand {
+            let init_device_cmd = InitDeviceCommand {
                 db_name: db_name.clone(),
                 device_name,
             };
-            
-            init_cmd.execute().await?
+
+            init_device_cmd.execute().await?
         }
 
         Command::InitUser { vault_name } => {
