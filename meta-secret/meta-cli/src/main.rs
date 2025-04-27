@@ -2,6 +2,7 @@ mod info_command;
 mod init_device_command;
 mod init_user_command;
 mod base_command;
+mod join_vault_command;
 
 extern crate core;
 
@@ -13,6 +14,8 @@ use clap::{Parser, Subcommand};
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::secret::data_block::common::SharedSecretConfig;
 use serde::{Deserialize, Serialize};
+use crate::base_command::BaseCommand;
+use crate::join_vault_command::JoinVaultCommand;
 
 #[derive(Debug, Parser)]
 #[command(about = "Meta Secret Command Line Application", long_about = None)]
@@ -34,6 +37,8 @@ enum Command {
         #[arg(short, long)]
         vault_name: VaultName,
     },
+    /// Create or Join a vault
+    SignUp,
     /// Show information about the device and credentials
     Info,
 }
@@ -69,6 +74,12 @@ async fn main() -> Result<()> {
         Command::Info => {
             let info_cmd = InfoCommand::new(db_name);
             info_cmd.execute().await?
+        }
+        Command::SignUp => {
+            let sign_up_cmd = JoinVaultCommand {
+                base: BaseCommand::new(db_name),
+            };
+            sign_up_cmd.execute().await?;
         }
     }
 

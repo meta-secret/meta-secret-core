@@ -8,8 +8,8 @@ use crate::node::app::sync::sync_gateway::SyncGateway;
 use crate::node::app::sync::sync_protocol::SyncProtocol;
 use crate::node::common::actor::ServiceState;
 use crate::node::common::data_transfer::MpscDataTransfer;
-use crate::node::common::model::user::common::UserData;
-use crate::node::common::model::vault::vault::{VaultMember, VaultStatus};
+use crate::node::common::model::user::common::{UserData, UserDataOutsiderStatus};
+use crate::node::common::model::vault::vault::{VaultMember, VaultName, VaultStatus};
 use crate::node::common::model::{ApplicationState, UserMemberFullInfo, VaultFullInfo};
 use crate::node::db::actions::recover::RecoveryAction;
 use crate::node::db::actions::sign_up::claim::SignUpClaim;
@@ -21,6 +21,7 @@ use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::secret::MetaDistributor;
 use anyhow::Result;
 use crate::node::app::orchestrator::MetaOrchestrator;
+use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::device::device_creds::DeviceCreds;
 use crate::node::common::model::secret::ClaimId;
 use crate::node::common::model::user::user_creds::UserCredentials;
@@ -75,18 +76,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         self.sync_gateway.sync(user_creds.user()).await?;
 
         match request {
-            GenericAppStateRequest::SignUp(vault_name) => match &app_state {
-                ApplicationState::Local(device) => {
-                    self.sync_gateway.sync(user_creds.user()).await?;
-
-                    let user_data = UserData {
-                        vault_name,
-                        device: device.clone(),
-                    };
-
-                    let sign_up_claim = SignUpClaim::from(self.p_obj.clone());
-                    sign_up_claim.sign_up(user_data.clone()).await?;
-                    self.sync_gateway.sync(user_creds.user()).await?;
+            GenericAppStateRequest::SignUp(_) => match &app_state {
+                ApplicationState::Local(_) => {
+                    self.sign_up(&user_creds).await?;
                 }
                 ApplicationState::Vault(VaultFullInfo::Member(UserMemberFullInfo {
                     member,
@@ -95,10 +87,20 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                     error!("You are already a vault member: {:?}", member.vault);
                 }
                 ApplicationState::Vault(VaultFullInfo::NotExists(_)) => {
-                    todo!("!!!")
+                    self.sign_up(&user_creds).await?;
                 }
-                ApplicationState::Vault(VaultFullInfo::Outsider(_)) => {
-                    todo!("!!!")
+                ApplicationState::Vault(VaultFullInfo::Outsider(outsider)) => {
+                    match outsider.status {
+                        UserDataOutsiderStatus::NonMember => {
+                            self.sign_up(&user_creds).await?;
+                        }
+                        UserDataOutsiderStatus::Pending => {
+                            bail!("Your request is already in pending status")
+                        }
+                        UserDataOutsiderStatus::Declined => {
+                            bail!("Device has been declined")
+                        }
+                    }
                 }
             },
 
@@ -144,6 +146,20 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         //Update app state
         let app_state = self.get_app_state().await?;
         Ok(app_state)
+    }
+
+    async fn sign_up(&self, user_creds: &UserCredentials) -> Result<()> {
+        self.sync_gateway.sync(user_creds.user()).await?;
+
+        let user_data = UserData {
+            vault_name: user_creds.vault_name.clone(),
+            device: user_creds.device(),
+        };
+
+        let sign_up_claim = SignUpClaim::from(self.p_obj.clone());
+        sign_up_claim.sign_up(user_data.clone()).await?;
+        self.sync_gateway.sync(user_creds.user()).await?;
+        Ok(())
     }
 
     async fn get_user_creds(&self, request: &GenericAppStateRequest) -> Result<UserCredentials> {
