@@ -27,10 +27,10 @@ pub mod base64 {
     }
 
     pub mod encoder {
-        use crate::crypto::encoding::base64::Base64Text;
         use crate::crypto::encoding::Array256Bit;
+        use crate::crypto::encoding::base64::Base64Text;
         use crate::secret::shared_secret::PlainText;
-        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+        use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
         use image::EncodableLayout;
 
         impl From<Vec<u8>> for Base64Text {
@@ -90,10 +90,10 @@ pub mod base64 {
     }
 
     pub mod decoder {
-        use crate::crypto::encoding::base64::Base64Text;
         use crate::crypto::encoding::Array256Bit;
+        use crate::crypto::encoding::base64::Base64Text;
         use crate::errors::CoreError;
-        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+        use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 
         impl TryFrom<&Base64Text> for String {
             type Error = CoreError;
@@ -130,9 +130,9 @@ pub mod base64 {
 
     #[cfg(test)]
     mod test {
-        use crate::crypto::encoding::base64::Base64Text;
         use crate::crypto::encoding::Array256Bit;
         use crate::crypto::encoding::KEY_SIZE_32_BYTES;
+        use crate::crypto::encoding::base64::Base64Text;
         use crate::secret::shared_secret::PlainText;
 
         const TEST_STR: &str = "kjsfdbkjsfhdkjhsfdkjhsfdkjhksfdjhksjfdhksfd";
@@ -257,38 +257,38 @@ pub mod base64 {
         fn test_equality_same_content() {
             let base64_1 = Base64Text("test_content".to_string());
             let base64_2 = Base64Text("test_content".to_string());
-            
+
             assert_eq!(base64_1, base64_2);
         }
-        
+
         #[test]
         fn test_inequality_different_content() {
             let base64_1 = Base64Text("content_a".to_string());
             let base64_2 = Base64Text("content_b".to_string());
-            
+
             assert_ne!(base64_1, base64_2);
         }
-        
+
         #[test]
         fn test_hash_consistency() {
             use std::collections::HashSet;
-            
+
             let base64_1 = Base64Text("test_hash".to_string());
             let base64_2 = Base64Text("test_hash".to_string());
             let base64_3 = Base64Text("different".to_string());
-            
+
             let mut set = HashSet::new();
             set.insert(base64_1.clone());
-            
+
             assert!(set.contains(&base64_2));
             assert!(!set.contains(&base64_3));
         }
-        
+
         #[test]
         fn test_clone() {
             let original = Base64Text("test_clone".to_string());
             let cloned = original.clone();
-            
+
             assert_eq!(original, cloned);
             assert_eq!(original.base64_str(), cloned.base64_str());
         }
@@ -348,8 +348,8 @@ pub mod serialized_key_manager {
     }
 
     pub mod decoder {
-        use crate::crypto::encoding::base64::Base64Text;
         use crate::crypto::encoding::Array256Bit;
+        use crate::crypto::encoding::base64::Base64Text;
         use crate::crypto::key_pair::{
             DalekKeyPair, DalekPublicKey, DalekSignature, DsaKeyPair, TransportDsaKeyPair,
         };
@@ -425,13 +425,13 @@ pub mod serialized_key_manager {
 
         #[cfg(test)]
         pub mod test {
+            use crate::CoreResult;
             use crate::crypto::encoding::base64::Base64Text;
             use crate::crypto::key_pair::{DalekPublicKey, DalekSignature, KeyPair};
             use crate::crypto::key_pair::{DsaKeyPair, TransportDsaKeyPair};
             use crate::crypto::keys::{
                 KeyManager, SecretBox, SerializedDsaKeyPair, SerializedTransportKeyPair,
             };
-            use crate::CoreResult;
             use ed25519_dalek::Verifier;
 
             #[test]

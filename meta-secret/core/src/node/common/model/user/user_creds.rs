@@ -73,12 +73,16 @@ pub mod fixture {
 
     impl UserCredentialsFixture {
         pub fn from(device_creds: &DeviceCredentialsFixture) -> Self {
-            
-            
             Self {
-                client: UserCredsBuilder::init(device_creds.client.clone()).build(VaultName::test()).creds,
-                vd: UserCredsBuilder::init(device_creds.vd.clone()).build(VaultName::test()).creds,
-                client_b: UserCredsBuilder::init(device_creds.client_b.clone()).build(VaultName::test()).creds,
+                client: UserCredsBuilder::init(device_creds.client.clone())
+                    .build(VaultName::test())
+                    .creds,
+                vd: UserCredsBuilder::init(device_creds.vd.clone())
+                    .build(VaultName::test())
+                    .creds,
+                client_b: UserCredsBuilder::init(device_creds.client_b.clone())
+                    .build(VaultName::test())
+                    .creds,
             }
         }
     }

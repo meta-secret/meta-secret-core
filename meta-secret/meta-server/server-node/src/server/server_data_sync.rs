@@ -2,22 +2,24 @@ use std::cmp::PartialEq;
 use std::sync::Arc;
 
 use anyhow::Result;
-use anyhow::{bail, Ok};
+use anyhow::{Ok, bail};
 use derive_more::From;
-use tracing::{info, instrument};
 use meta_secret_core::node::api::{SsRequest, VaultRequest};
 use meta_secret_core::node::common::model::device::common::{DeviceData, DeviceId};
 use meta_secret_core::node::common::model::secret::SecretDistributionType;
 use meta_secret_core::node::common::model::vault::vault::VaultStatus;
 use meta_secret_core::node::db::actions::vault::vault_action::ServerVaultAction;
 use meta_secret_core::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
-use meta_secret_core::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, ToGenericEvent};
+use meta_secret_core::node::db::events::generic_log_event::{
+    GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
+};
 use meta_secret_core::node::db::events::shared_secret_event::SsLogObject;
 use meta_secret_core::node::db::events::vault::device_log_event::DeviceLogObject;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use meta_secret_core::node::db::objects::persistent_vault::PersistentVault;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
+use tracing::{info, instrument};
 
 #[derive(From)]
 pub struct ServerSyncGateway<Repo: KvLogEventRepo> {
@@ -26,10 +28,7 @@ pub struct ServerSyncGateway<Repo: KvLogEventRepo> {
 
 impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
     #[instrument(skip(self))]
-    pub async fn vault_replication(
-        &self,
-        request: VaultRequest,
-    ) -> Result<Vec<GenericKvLogEvent>> {
+    pub async fn vault_replication(&self, request: VaultRequest) -> Result<Vec<GenericKvLogEvent>> {
         let mut commit_log = vec![];
 
         let p_vault = PersistentVault::from(self.p_obj.clone());

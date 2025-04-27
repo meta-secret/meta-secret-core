@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
+use crate::CoreResult;
 use crate::node::common::model::crypto::aead::EncryptedMessage;
-use crate::node::common::model::meta_pass::MetaPasswordId;
+use crate::node::common::model::meta_pass::{PassInfo};
 use crate::node::common::model::secret::{SecretDistributionData, SsDistributionId};
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::vault::VaultMember;
@@ -14,7 +15,6 @@ use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::secret::shared_secret::UserSecretDto;
-use crate::CoreResult;
 use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
 use anyhow::Result;
 use tracing_attributes::instrument;
@@ -86,13 +86,8 @@ pub struct MetaDistributor<Repo: KvLogEventRepo> {
 
 /// Save meta password!!!
 impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
-    #[instrument(skip(self, password))]
-    pub async fn distribute(
-        self,
-        vault_member: VaultMember,
-        password_id: MetaPasswordId,
-        password: String,
-    ) -> Result<()> {
+    #[instrument(skip(self, pass_info))]
+    pub async fn distribute(self, vault_member: VaultMember, pass_info: PassInfo) -> Result<()> {
         let vault_name = self.user_creds.vault_name.clone();
 
         let encrypted_shares = {
@@ -100,10 +95,10 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
                 creds: self.user_creds.clone(),
                 owner: self.vault_member.clone(),
             };
-            encryptor.split_and_encrypt(password)?
+            encryptor.split_and_encrypt(pass_info.pass)?
         };
 
-        let claim = vault_member.create_split_claim(password_id);
+        let claim = vault_member.create_split_claim(pass_info.pass_id);
 
         //save meta password
         {
@@ -271,7 +266,13 @@ mod tests {
 
         // Call distribute function
         let result = distributor
-            .distribute(vault_member.clone(), password_id.clone(), password)
+            .distribute(
+                vault_member.clone(),
+                PassInfo {
+                    pass_id: password_id.clone(),
+                    pass: password,
+                },
+            )
             .await;
 
         // Verify distribution was successful

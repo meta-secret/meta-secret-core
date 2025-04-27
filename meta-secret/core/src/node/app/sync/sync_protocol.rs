@@ -1,15 +1,15 @@
-use std::time::Duration;
 use crate::node::api::{DataSyncResponse, SyncRequest};
+use crate::node::app::sync::api_url::ApiUrl;
 use anyhow::Result;
 use reqwest::Client;
-use crate::node::app::sync::api_url::ApiUrl;
+use std::time::Duration;
 
 pub trait SyncProtocol {
     async fn send(&self, request: SyncRequest) -> Result<DataSyncResponse>;
 }
 
 pub struct HttpSyncProtocol {
-    pub api_url: ApiUrl
+    pub api_url: ApiUrl,
 }
 
 impl SyncProtocol for HttpSyncProtocol {
@@ -28,6 +28,5 @@ impl SyncProtocol for HttpSyncProtocol {
 
         let result: DataSyncResponse = response.json().await?;
         Ok(result)
-
     }
 }

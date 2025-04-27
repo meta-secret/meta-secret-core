@@ -1,7 +1,7 @@
 use crate::crypto::encoding::base64::Base64Text;
 use crate::node::common::model::IdString;
-use rand::rngs::OsRng;
 use rand::TryRngCore;
+use rand::rngs::OsRng;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -11,8 +11,10 @@ const SEED_LENGTH: usize = 64;
 pub fn generate_hash() -> String {
     // Use a cryptographically secure RNG to generate random bytes
     let mut seed_bytes = [0u8; SEED_LENGTH];
-    OsRng.try_fill_bytes(&mut seed_bytes).expect("Failed to get random bytes from OS");
-    
+    OsRng
+        .try_fill_bytes(&mut seed_bytes)
+        .expect("Failed to get random bytes from OS");
+
     // Convert bytes directly to a hex string for simplicity
     let seed = hex::encode(&seed_bytes);
 
@@ -34,8 +36,10 @@ pub struct Id48bit {
 impl Id48bit {
     pub fn generate() -> Self {
         let mut random_bytes = [0u8; 8];
-        OsRng.try_fill_bytes(&mut random_bytes).expect("Failed to get random bytes from OS");
-        
+        OsRng
+            .try_fill_bytes(&mut random_bytes)
+            .expect("Failed to get random bytes from OS");
+
         // Convert to u64 and mask to 48 bits
         let random_u64 = u64::from_ne_bytes(random_bytes) & 0xFFFFFFFFFFFF;
 
@@ -107,8 +111,10 @@ impl UuidUrlEnc {
     pub fn generate() -> UuidUrlEnc {
         // Use a cryptographically secure RNG for UUID generation
         let mut rng_bytes = [0u8; 16];
-        OsRng.try_fill_bytes(&mut rng_bytes).expect("Failed to get random bytes from OS");
-        
+        OsRng
+            .try_fill_bytes(&mut rng_bytes)
+            .expect("Failed to get random bytes from OS");
+
         let uuid = Uuid::from_bytes(rng_bytes);
         let uuid_bytes = uuid.as_bytes().as_slice();
         let text = Base64Text::from(uuid_bytes);
@@ -140,13 +146,13 @@ mod tests {
     fn test_generate_hash() {
         let hash1 = generate_hash();
         let hash2 = generate_hash();
-        
+
         // Verify hash has correct length (32 bytes as hex = 64 chars)
         assert_eq!(hash1.len(), 64);
-        
+
         // Verify uniqueness
         assert_ne!(hash1, hash2);
-        
+
         // Verify it's a valid hex string
         assert!(hash1.chars().all(|c| c.is_ascii_hexdigit()));
     }
@@ -155,13 +161,13 @@ mod tests {
     fn test_id48bit_generate() {
         let id1 = Id48bit::generate();
         let id2 = Id48bit::generate();
-        
+
         // Verify uniqueness
         assert_ne!(id1.text, id2.text);
-        
+
         // Verify format (should have two hyphens)
         assert_eq!(id1.text.matches('-').count(), 2);
-        
+
         // Verify all parts (except hyphens) are hexadecimal
         let parts: Vec<&str> = id1.text.split('-').collect();
         assert_eq!(parts.len(), 3);
@@ -173,8 +179,10 @@ mod tests {
 
     #[test]
     fn test_id48bit_take() {
-        let id = Id48bit { text: "abc-def-ghi".to_string() };
-        
+        let id = Id48bit {
+            text: "abc-def-ghi".to_string(),
+        };
+
         assert_eq!(id.take(3), "abc");
         assert_eq!(id.take(5), "abc-d");
         assert_eq!(id.take(0), "");
@@ -191,7 +199,9 @@ mod tests {
 
     #[test]
     fn test_id48bit_id_str() {
-        let id = Id48bit { text: "abc-def-ghi".to_string() };
+        let id = Id48bit {
+            text: "abc-def-ghi".to_string(),
+        };
         assert_eq!(id.id_str(), "abc-def-ghi");
     }
 
@@ -200,10 +210,10 @@ mod tests {
         let id1 = U64IdUrlEnc::from("test1".to_string());
         let id2 = U64IdUrlEnc::from("test2".to_string());
         let id1_dupe = U64IdUrlEnc::from("test1".to_string());
-        
+
         // Should be deterministic
         assert_eq!(id1.text.base64_str(), id1_dupe.text.base64_str());
-        
+
         // Different input = different output
         assert_ne!(id1.text.base64_str(), id2.text.base64_str());
     }
@@ -212,7 +222,7 @@ mod tests {
     fn test_u64idurlenc_take() {
         let id = U64IdUrlEnc::from("test".to_string());
         let full = id.text.base64_str();
-        
+
         assert_eq!(id.take(3), full.chars().take(3).collect::<String>());
         assert_eq!(id.take(0), "");
         assert_eq!(id.take(100), full); // Should not panic
@@ -229,7 +239,7 @@ mod tests {
     fn test_uuidurlenc_generate() {
         let id1 = UuidUrlEnc::generate();
         let id2 = UuidUrlEnc::generate();
-        
+
         // Verify uniqueness
         assert_ne!(id1.text.base64_str(), id2.text.base64_str());
     }
@@ -239,10 +249,10 @@ mod tests {
         let id1 = UuidUrlEnc::from("test1".to_string());
         let id2 = UuidUrlEnc::from("test2".to_string());
         let id1_dupe = UuidUrlEnc::from("test1".to_string());
-        
+
         // Should be deterministic
         assert_eq!(id1.text.base64_str(), id1_dupe.text.base64_str());
-        
+
         // Different input = different output
         assert_ne!(id1.text.base64_str(), id2.text.base64_str());
     }

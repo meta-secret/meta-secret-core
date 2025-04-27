@@ -1,0 +1,18 @@
+[package]
+name = "meta-db-redb"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+meta-secret-core = { path = "../../core" }
+
+thiserror.workspace = true
+anyhow.workspace = true
+
+async-trait.workspace = true
+
+serde.workspace = true
+serde_json.workspace = true
+serde_derive.workspace = true
+
+redb = "2.5.0"

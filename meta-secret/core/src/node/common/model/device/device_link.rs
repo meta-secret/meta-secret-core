@@ -1,9 +1,9 @@
 use crate::crypto::encoding::base64::Base64Text;
 use crate::crypto::utils::UuidUrlEnc;
+use crate::node::common::model::IdString;
 use crate::node::common::model::crypto::channel::CommunicationChannel;
 use crate::node::common::model::device::common::DeviceId;
-use crate::node::common::model::IdString;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use wasm_bindgen::prelude::wasm_bindgen;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

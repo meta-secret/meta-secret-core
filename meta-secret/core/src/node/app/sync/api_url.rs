@@ -25,7 +25,7 @@ impl ApiUrl {
 
     pub fn prod() -> Self {
         ApiUrl {
-            url: "https://api.meta-secret.org",
+            url: "http://api.meta-secret.org",
             port: 8080,
             run_mode: ClientRunMode::Prod,
         }
@@ -39,8 +39,8 @@ impl ApiUrl {
 }
 
 pub mod run_mode {
+    use anyhow::{Result, bail};
     use wasm_bindgen::prelude::wasm_bindgen;
-    use anyhow::{bail, Result};
 
     pub const DEV: &str = "dev";
     pub const PROD: &str = "prod";
@@ -51,7 +51,7 @@ pub mod run_mode {
         Dev,
         Prod,
     }
-    
+
     impl ClientRunMode {
         pub fn parse(mode: &str) -> Result<ClientRunMode> {
             match mode {

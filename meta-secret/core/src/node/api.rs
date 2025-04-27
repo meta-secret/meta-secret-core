@@ -4,9 +4,9 @@ use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::objects::persistent_vault::VaultTail;
+use anyhow::{Result, anyhow};
 use derive_more::From;
 use serde::{Deserialize, Serialize};
-use anyhow::{anyhow, Result};
 
 #[derive(Clone, Debug, PartialEq, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

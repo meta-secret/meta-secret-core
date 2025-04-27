@@ -1,3 +1,4 @@
+use crate::PlainText;
 use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::secret::{SecretDistributionData, SsDistributionId, SsRecoveryId};
 use crate::node::common::model::user::user_creds::UserCredentials;
@@ -9,7 +10,6 @@ use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::recover_from_shares;
 use crate::secret::shared_secret::UserShareDto;
-use crate::PlainText;
 use anyhow::bail;
 use derive_more::From;
 use std::sync::Arc;
@@ -23,7 +23,11 @@ pub struct RecoveryAction<Repo: KvLogEventRepo> {
 impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
     /// Send recover request to all vault members except current user
     #[instrument(skip_all)]
-    pub async fn recovery_request(&self, user_creds: UserCredentials, pass_id: MetaPasswordId) -> anyhow::Result<()> {
+    pub async fn recovery_request(
+        &self,
+        user_creds: UserCredentials,
+        pass_id: MetaPasswordId,
+    ) -> anyhow::Result<()> {
         let vault_repo = PersistentVault::from(self.p_obj.clone());
 
         let vault_status = vault_repo.find(user_creds.user()).await?;

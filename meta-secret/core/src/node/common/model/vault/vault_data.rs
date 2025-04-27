@@ -8,7 +8,7 @@ use crate::node::db::events::vault::vault_log_event::{
     AddMetaPassEvent, VaultActionEvents, VaultActionUpdateEvent,
 };
 use crate::secret::data_block::common::SharedSecretConfig;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use std::collections::{HashMap, HashSet};
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -481,9 +481,11 @@ mod test {
 
         // Verify the new member was added
         assert_eq!(aggregate.vault.members().len(), 2);
-        assert!(aggregate
-            .vault
-            .is_member(&client_b_creds.user().device.device_id));
+        assert!(
+            aggregate
+                .vault
+                .is_member(&client_b_creds.user().device.device_id)
+        );
         assert_eq!(aggregate.events.updates.len(), 0); // Events should be processed
 
         Ok(())
@@ -528,9 +530,11 @@ mod test {
 
         // Verify both members were added
         assert_eq!(aggregate.vault.members().len(), 3);
-        assert!(aggregate
-            .vault
-            .is_member(&client_b_creds.user().device.device_id));
+        assert!(
+            aggregate
+                .vault
+                .is_member(&client_b_creds.user().device.device_id)
+        );
         assert!(aggregate.vault.is_member(&vd_creds.user().device.device_id));
         assert_eq!(aggregate.events.updates.len(), 0);
 

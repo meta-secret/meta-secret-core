@@ -15,7 +15,7 @@ use crate::node::db::events::vault::vault_log_event::{
 use crate::node::db::events::vault::vault_status::VaultStatusObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use derive_more::From;
 use tracing_attributes::instrument;
 
@@ -156,7 +156,9 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
 
         let final_status = match (maybe_vault_obj, maybe_status) {
             (None, None) => {
-                bail!("It's expected that sync with the server has happened and vault status is present");
+                bail!(
+                    "It's expected that sync with the server has happened and vault status is present"
+                );
             }
             (Some(vault), None) => {
                 bail!(
@@ -233,7 +235,7 @@ pub mod spec {
     use crate::node::db::objects::persistent_object::PersistentObject;
     use crate::node::db::objects::persistent_vault::PersistentVault;
     use crate::node::db::repo::generic_db::KvLogEventRepo;
-    use anyhow::{bail, Result};
+    use anyhow::{Result, bail};
     use std::sync::Arc;
 
     pub struct VaultLogSpec<Repo: KvLogEventRepo> {
@@ -296,11 +298,15 @@ mod tests {
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::common::model::user::common::{UserDataMember, UserDataOutsider};
     use crate::node::common::model::vault::vault::VaultStatus;
-    use crate::node::db::descriptors::vault_descriptor::{VaultLogDescriptor, VaultStatusDescriptor};
+    use crate::node::db::descriptors::vault_descriptor::{
+        VaultLogDescriptor, VaultStatusDescriptor,
+    };
     use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
     use crate::node::db::events::object_id::ArtifactId;
     use crate::node::db::events::vault::vault_event::VaultObject;
-    use crate::node::db::events::vault::vault_log_event::{JoinClusterEvent, VaultActionEvents, VaultActionRequestEvent, VaultLogObject};
+    use crate::node::db::events::vault::vault_log_event::{
+        JoinClusterEvent, VaultActionEvents, VaultActionRequestEvent, VaultLogObject,
+    };
     use crate::node::db::events::vault::vault_status::VaultStatusObject;
     use crate::node::db::repo::generic_db::SaveCommand;
 
@@ -337,10 +343,12 @@ mod tests {
         // Test that it returns the expected error when vault exists but status doesn't
         let result = p_vault.find(user).await;
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Vault and its status have to exists together"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Vault and its status have to exists together")
+        );
 
         Ok(())
     }
@@ -466,7 +474,7 @@ mod tests {
         let p_vault = registry.state.p_vault.client.clone();
 
         let tail = p_vault.vault_tail(user).await?;
-        
+
         // Verify the tail contains artifact IDs
         assert!(tail.vault_log.id.curr > 0);
         assert!(tail.vault.id.curr > 0);
@@ -483,7 +491,9 @@ mod tests {
         let p_obj = registry.state.p_obj.client.clone();
 
         // Case 1: No vault, no membership
-        let status = p_vault.update_vault_membership_info_for_user(user.clone()).await?;
+        let status = p_vault
+            .update_vault_membership_info_for_user(user.clone())
+            .await?;
         assert!(matches!(status, VaultStatus::NotExists(_)));
 
         // Case 2: Create vault, update membership
@@ -491,7 +501,9 @@ mod tests {
         let vault_obj = VaultObject::sign_up(user.vault_name(), member.clone());
         p_obj.repo.save(vault_obj).await?;
 
-        let status = p_vault.update_vault_membership_info_for_user(user.clone()).await?;
+        let status = p_vault
+            .update_vault_membership_info_for_user(user.clone())
+            .await?;
         assert!(matches!(status, VaultStatus::Member(_)));
 
         Ok(())
@@ -520,10 +532,11 @@ mod tests {
         let join_request = JoinClusterEvent {
             candidate: user.clone(),
         };
-        let new_events = VaultActionEvents::default().request(
-            VaultActionRequestEvent::JoinCluster(join_request)
-        );
-        p_vault.save_vault_log_events(new_events.clone(), user.vault_name()).await?;
+        let new_events = VaultActionEvents::default()
+            .request(VaultActionRequestEvent::JoinCluster(join_request));
+        p_vault
+            .save_vault_log_events(new_events.clone(), user.vault_name())
+            .await?;
 
         // Verify the events were saved correctly
         let updated_log = p_vault.get_vault_log_artifact(user.vault_name()).await?;
@@ -538,7 +551,7 @@ mod tests {
         let request_event = VaultActionRequestEvent::JoinCluster(join_request2);
         p_vault.save_vault_log_request_event(request_event).await?;
 
-        // Verify that the request count doesn't change 
+        // Verify that the request count doesn't change
         // VaultActionEvents.requests is a HashSet, so identical requests are deduplicated
         let final_log = p_vault.get_vault_log_artifact(user.vault_name()).await?;
         assert_eq!(final_log.0.value.requests.len(), 1);

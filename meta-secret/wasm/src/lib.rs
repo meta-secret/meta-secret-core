@@ -13,7 +13,7 @@ pub mod wasm_app_manager;
 pub mod wasm_repo;
 
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_web::{performance_layer, MakeConsoleWriter};
+use tracing_web::{MakeConsoleWriter, performance_layer};
 
 /// Json utilities https://github.com/rustwasm/wasm-bindgen/blob/main/crates/js-sys/tests/wasm/JSON.rs
 

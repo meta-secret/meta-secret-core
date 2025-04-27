@@ -234,12 +234,16 @@ mod test {
 
         // There should be one receiver (vd) since the client is the sender
         assert_eq!(claim.receivers.len(), 2);
-        assert!(claim
-            .receivers
-            .contains(&vault_data_fixture.client_b_membership.device_id()));
-        assert!(claim
-            .receivers
-            .contains(&vault_data_fixture.vd_membership.device_id()));
+        assert!(
+            claim
+                .receivers
+                .contains(&vault_data_fixture.client_b_membership.device_id())
+        );
+        assert!(
+            claim
+                .receivers
+                .contains(&vault_data_fixture.vd_membership.device_id())
+        );
 
         // All receivers should have Pending status
         for receiver in claim.receivers.iter() {

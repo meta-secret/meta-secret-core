@@ -14,6 +14,20 @@ pub struct MetaPasswordId {
     pub name: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PassInfo {
+    pub pass_id: MetaPasswordId,
+    pub pass: String,
+}
+
+impl PassInfo {
+    pub fn new(pass: String, pass_name: String) -> Self {
+        let pass_id = MetaPasswordId::build(&pass_name);
+        Self { pass_id, pass }
+    }
+}
+
 #[wasm_bindgen]
 impl MetaPasswordId {
     pub fn id(&self) -> String {

@@ -18,7 +18,6 @@ pub struct WasmApplicationManager {
 
 #[wasm_bindgen]
 impl WasmApplicationManager {
-    
     pub async fn init_wasm() -> WasmApplicationManager {
         configure();
 

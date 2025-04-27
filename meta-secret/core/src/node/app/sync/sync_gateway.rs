@@ -9,6 +9,7 @@ use crate::node::api::{
 };
 use crate::node::app::sync::sync_protocol::SyncProtocol;
 use crate::node::common::model::device::common::DeviceId;
+use crate::node::common::model::device::device_creds::DeviceCreds;
 use crate::node::common::model::secret::{SecretDistributionType, SsDistributionStatus};
 use crate::node::common::model::user::common::{UserData, UserId};
 use crate::node::common::model::vault::vault::VaultStatus;
@@ -26,13 +27,12 @@ use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use anyhow::Result;
-use crate::node::common::model::device::device_creds::DeviceCreds;
 
 pub struct SyncGateway<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub id: String,
     pub p_obj: Arc<PersistentObject<Repo>>,
     pub sync: Arc<Sync>,
-    pub device_creds: Arc<DeviceCreds>
+    pub device_creds: Arc<DeviceCreds>,
 }
 
 impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
@@ -50,7 +50,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                 async_std::task::sleep(Duration::from_millis(500)).await;
                 continue;
             };
-            
+
             let result = self.sync(user_creds.user()).await;
             if let Err(err) = result {
                 error!("Sync error: {:?}", err);
@@ -70,8 +70,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         let vault_sync_request = self.get_vault_request(user.clone()).await?;
         self.sync_vault(vault_sync_request).await?;
 
-        self.sync_device_log(&server_tail, user.user_id())
-            .await?;
+        self.sync_device_log(&server_tail, user.user_id()).await?;
 
         let vault_sync_request = self.get_vault_request(user.clone()).await?;
         self.sync_vault(vault_sync_request).await?;
@@ -83,9 +82,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
 
     async fn get_server_tail(&self, user_data: UserData) -> Result<ServerTailResponse> {
         let server_tail = {
-            let server_tail_sync_request = self
-                .get_server_tail_request(user_data)
-                .await?;
+            let server_tail_sync_request = self.get_server_tail_request(user_data).await?;
             self.get_tail(server_tail_sync_request).await?
         };
         Ok(server_tail)
@@ -310,9 +307,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
 pub mod fixture {
     use crate::meta_tests::fixture_util::fixture::states::EmptyState;
     use crate::node::app::sync::sync_gateway::SyncGateway;
+    use crate::node::app::sync::sync_protocol::SyncProtocol;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use std::sync::Arc;
-    use crate::node::app::sync::sync_protocol::SyncProtocol;
 
     pub struct SyncGatewayFixture<Sync: SyncProtocol> {
         pub client_gw: Arc<SyncGateway<InMemKvLogEventRepo, Sync>>,

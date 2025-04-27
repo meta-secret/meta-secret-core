@@ -1,10 +1,10 @@
 #[cfg(any(test, feature = "test-framework"))]
 pub mod fixture {
     use crate::server::server_app::ServerApp;
-    use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
-    use std::sync::Arc;
     use meta_secret_core::node::api::{DataSyncResponse, SyncRequest};
     use meta_secret_core::node::app::sync::sync_protocol::SyncProtocol;
+    use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
+    use std::sync::Arc;
 
     pub struct EmbeddedSyncProtocol {
         pub server: Arc<ServerApp<InMemKvLogEventRepo>>,
@@ -15,7 +15,6 @@ pub mod fixture {
             self.server.handle_client_request(request).await
         }
     }
-
 
     pub struct SyncProtocolFixture {
         pub sync_protocol: Arc<EmbeddedSyncProtocol>,

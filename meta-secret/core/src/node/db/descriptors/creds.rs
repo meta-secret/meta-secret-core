@@ -60,12 +60,12 @@ mod tests {
     fn test_device_creds_descriptor_to_obj_desc() {
         let device_desc = DeviceCredsDescriptor;
         let obj_desc = device_desc.to_obj_desc();
-        
+
         match obj_desc {
             ObjectDescriptor::DeviceCreds(desc) => {
                 assert_eq!(desc.object_type(), "DeviceCreds");
                 assert_eq!(desc.object_name(), "index");
-            },
+            }
             _ => panic!("Expected DeviceCreds variant"),
         }
     }
@@ -74,12 +74,12 @@ mod tests {
     fn test_user_creds_descriptor_to_obj_desc() {
         let user_desc = UserCredsDescriptor;
         let obj_desc = user_desc.to_obj_desc();
-        
+
         match obj_desc {
             ObjectDescriptor::UserCreds(desc) => {
                 assert_eq!(desc.object_type(), "UserCreds");
                 assert_eq!(desc.object_name(), "index");
-            },
+            }
             _ => panic!("Expected UserCreds variant"),
         }
     }
@@ -90,16 +90,16 @@ mod tests {
         let device_desc = DeviceCredsDescriptor;
         let obj_desc = device_desc.to_obj_desc();
         let fqdn = obj_desc.fqdn();
-        
+
         assert_eq!(fqdn.obj_type, "DeviceCreds");
         assert_eq!(fqdn.obj_instance, "index");
         assert_eq!(fqdn.id_str(), "DeviceCreds:index");
-        
+
         // Test UserCredsDescriptor
         let user_desc = UserCredsDescriptor;
         let obj_desc = user_desc.to_obj_desc();
         let fqdn = obj_desc.fqdn();
-        
+
         assert_eq!(fqdn.obj_type, "UserCreds");
         assert_eq!(fqdn.obj_instance, "index");
         assert_eq!(fqdn.id_str(), "UserCreds:index");
