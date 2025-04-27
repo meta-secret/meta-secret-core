@@ -8,6 +8,8 @@ use meta_secret_core::node::app::sync::sync_gateway::SyncGateway;
 use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
 use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
+use meta_secret_core::node::common::model::user::common::UserMembership;
+use meta_secret_core::node::db::events::vault::vault_log_event::VaultActionRequestEvent;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
 
@@ -116,8 +118,33 @@ impl InfoCommand {
                         println!();
                         println!("Vault Information:");
                         println!("  Owner: {:?}", member_info.member.member.user_data.user_id());
+                        
                         println!("  Users: {}", member_info.member.vault.users.len());
+                        if !member_info.member.vault.users.is_empty() {
+                            println!("  User Details:");
+                            for (i, (device_id, user)) in member_info.member.vault.users.iter().enumerate() {
+                                if let UserMembership::Member(member) = user {
+                                    println!("    User #{}: ID={:?}, Device={}", 
+                                        i+1, 
+                                        member.user_data.user_id(),
+                                        member.user_data.device.device_name.as_str());
+                                } else {
+                                    println!("    User #{}: ID={:?} (not a member)", 
+                                        i+1, 
+                                        device_id);
+                                }
+                            }
+                        }
+                        
                         println!("  Secrets: {}", member_info.member.vault.secrets.len());
+                        if !member_info.member.vault.secrets.is_empty() {
+                            println!("  Secret Details:");
+                            for (i, secret_id) in member_info.member.vault.secrets.iter().enumerate() {
+                                println!("    Secret #{}: ID={:?}", 
+                                    i+1, 
+                                    secret_id);
+                            }
+                        }
                         
                         println!();
                         println!("Shared secret claims:");
@@ -132,15 +159,25 @@ impl InfoCommand {
                         
                         println!();
                         println!("Vault Actions:");
-                        if member_info.vault_events.join_requests.is_empty() {
+                        if member_info.vault_events.requests.is_empty() {
                             println!("  No pending join requests");
                         } else {
-                            println!("  Pending Join Requests: {}", member_info.vault_events.join_requests.len());
-                            for (i, request) in member_info.vault_events.join_requests.iter().enumerate() {
-                                println!("  Request #{}: Device={}, User={:?}", 
-                                    i+1, 
-                                    request.user_data.device.device_name.as_str(),
-                                    request.user_data.user_id());
+                            println!("  Pending Join Requests: {}", member_info.vault_events.requests.len());
+                            for (i, request) in member_info.vault_events.requests.iter().enumerate() {
+                                match request {
+                                    VaultActionRequestEvent::JoinCluster(join_request) => {
+                                        println!("  Request #{}: Device={}, User ID={:?}", 
+                                            i+1, 
+                                            join_request.candidate.device.device_name.as_str(),
+                                            join_request.candidate.user_id());
+                                    },
+                                    VaultActionRequestEvent::AddMetaPass(meta_pass) => {
+                                        println!("  Request #{}: Meta Pass ID={:?}, Sender={:?}", 
+                                            i+1,
+                                            meta_pass.meta_pass_id,
+                                            meta_pass.sender.user_data.user_id());
+                                    }
+                                }
                             }
                         }
                     }
