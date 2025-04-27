@@ -3,6 +3,7 @@ mod info_command;
 mod init_device_command;
 mod init_user_command;
 mod join_vault_command;
+mod recover_command;
 mod split_command;
 
 extern crate core;
@@ -11,6 +12,7 @@ use crate::info_command::InfoCommand;
 use crate::init_device_command::InitDeviceCommand;
 use crate::init_user_command::InitUserCommand;
 use crate::join_vault_command::JoinVaultCommand;
+use crate::recover_command::RecoverCommand;
 use crate::split_command::SplitCommand;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -47,12 +49,12 @@ enum Command {
 enum InitCommand {
     /// Generate device credentials
     Device {
-        #[arg(short, long)]
+        #[arg(long)]
         device_name: String,
     },
     /// Generate user credentials
     User {
-        #[arg(short, long)]
+        #[arg(long)]
         vault_name: VaultName,
     },
 }
@@ -60,12 +62,15 @@ enum InitCommand {
 #[derive(Subcommand, Debug)]
 enum SecretCommand {
     Split {
-        #[arg(short, long)]
+        #[arg(long)]
         pass: String,
-        #[arg(short, long)]
+        #[arg(long)]
         pass_name: String,
     },
-    Recover,
+    Recover {
+        #[arg(long)]
+        pass_name: String,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -109,7 +114,10 @@ async fn main() -> Result<()> {
                 let split_cmd = SplitCommand::new(db_name, pass, pass_name);
                 split_cmd.execute().await?
             }
-            SecretCommand::Recover => {}
+            SecretCommand::Recover { pass_name } => {
+                let recover_cmd = RecoverCommand::new(db_name, pass_name);
+                recover_cmd.execute().await?
+            }
         },
     }
 
