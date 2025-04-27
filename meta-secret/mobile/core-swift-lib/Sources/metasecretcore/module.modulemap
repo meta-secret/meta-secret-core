@@ -1,4 +1,0 @@
-module MetaSecretCore {
-    header "meta-secret-core.h"
-    export *
-}

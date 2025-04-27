@@ -30,6 +30,8 @@ infra/.secret
 /infra/k8s/meta-secret-server/build/
 /infra/k8s/Taskfile.yml
 /infra/k3d/Taskfile.yml
+/meta-secret/mobile/ios/target/
+/meta-secret/mobile/android/target/
 /meta-secret/meta-cli/meta-secret.redb
 /appp/
 /meta-secret/meta-cli/example/a
