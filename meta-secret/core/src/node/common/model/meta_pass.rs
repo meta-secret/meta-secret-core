@@ -14,15 +14,14 @@ pub struct MetaPasswordId {
     pub name: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, PartialEq)]
 #[wasm_bindgen(getter_with_clone)]
 pub struct PlainPassInfo {
     pub pass_id: MetaPasswordId,
     pub pass: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct SecurePassInfo {
     pub pass_id: MetaPasswordId,
     pub pass: SecretString,
