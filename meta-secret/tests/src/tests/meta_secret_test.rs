@@ -582,7 +582,7 @@ mod test {
         };
 
         let pass = recovery_handler
-            .recover(vault_name, split.spec.user_creds().vd.clone(), recovery_id)
+            .recover(vault_name, split.spec.user_creds().vd.clone(), recovery_id.claim_id.id, recovery_id.distribution_id.pass_id)
             .await?;
 
         assert_eq!("2bee|~", pass.text);

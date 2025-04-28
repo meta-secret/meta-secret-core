@@ -1,6 +1,5 @@
-use crate::PlainText;
 use crate::node::common::model::meta_pass::MetaPasswordId;
-use crate::node::common::model::secret::{ClaimId, SecretDistributionData, SsDistributionId, SsRecoveryId};
+use crate::node::common::model::secret::{ClaimId, SecretDistributionData, SsDistributionId};
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::vault::{VaultName, VaultStatus};
 use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
@@ -10,6 +9,7 @@ use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::recover_from_shares;
 use crate::secret::shared_secret::UserShareDto;
+use crate::PlainText;
 use anyhow::bail;
 use derive_more::From;
 use std::sync::Arc;
