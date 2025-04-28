@@ -257,7 +257,7 @@ mod tests {
         // Create meta pass event
         let meta_pass_event = AddMetaPassEvent {
             sender: owner.clone(),
-            meta_pass_id: MetaPasswordId::build("Test Password"),
+            meta_pass_id: MetaPasswordId::build_from_str("Test Password"),
         };
 
         let request_event = VaultActionRequestEvent::AddMetaPass(meta_pass_event);

@@ -9,6 +9,7 @@ test-framework = []
 [dependencies]
 meta-secret-core = { path = "../core", features = ["test-framework"] }
 meta-server-node = { path = "../meta-server/server-node", features = ["test-framework"] }
+secrecy = "0.10.3"
 
 thiserror.workspace = true
 anyhow.workspace = true

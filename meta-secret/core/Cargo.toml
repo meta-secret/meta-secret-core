@@ -47,6 +47,7 @@ hex.workspace = true
 #https://github.com/dsprenkels/sss-rs
 shamirsecretsharing.workspace = true
 age.workspace = true
+secrecy = "0.10.3"
 
 serde-big-array = "0.5.1"
 

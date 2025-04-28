@@ -25,7 +25,7 @@ impl PlainText {
 }
 
 impl PlainText {
-    pub fn to_data_blocks(&self) -> Vec<PlainDataBlock> {
+    pub fn to_data_blocks(self) -> Vec<PlainDataBlock> {
         self.text
             .clone()
             .into_bytes()
@@ -123,7 +123,7 @@ impl TryFrom<&SecretShareWithOrderingDto> for EncryptedDataBlock {
 pub struct SharedSecretEncryption;
 
 impl SharedSecretEncryption {
-    pub fn new(config: SharedSecretConfig, text: &PlainText) -> CoreResult<SharedSecret> {
+    pub fn new(config: SharedSecretConfig, text: PlainText) -> CoreResult<SharedSecret> {
         let mut secret_blocks = vec![];
         for data_block in text.to_data_blocks() {
             let secret_block = SharedSecretBlock::create(config, data_block)?;
@@ -219,7 +219,7 @@ mod test {
                 number_of_shares: 5,
                 threshold: 3,
             },
-            &plain_text,
+            plain_text.clone(),
         )?;
 
         let secret_message = secret.recover()?;

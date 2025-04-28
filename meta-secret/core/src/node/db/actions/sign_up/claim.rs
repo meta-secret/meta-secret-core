@@ -142,39 +142,3 @@ pub mod spec {
         }
     }
 }
-
-#[cfg(test)]
-mod test {
-    use anyhow::{Result, bail};
-
-    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
-    use crate::meta_tests::spec::test_spec::TestSpec;
-    use crate::node::common::model::vault::vault::VaultStatus;
-    use crate::node::db::actions::sign_up::claim::spec::SignUpClaimSpec;
-    use crate::node::db::actions::sign_up::claim::test_action::SignUpClaimTestAction;
-
-    #[tokio::test]
-    #[ignore]
-    async fn test_sign_up() -> Result<()> {
-        let registry = FixtureRegistry::base().await?;
-        let p_obj = registry.state.empty.p_obj.client.clone();
-        let creds = registry.state.empty.user_creds;
-
-        let vault_status = SignUpClaimTestAction::sign_up(p_obj.clone(), &creds.client).await?;
-
-        let VaultStatus::Outsider(outsider) = vault_status else {
-            bail!("Invalid state: {:?}", vault_status);
-        };
-
-        let db = p_obj.repo.get_db().await;
-        assert_eq!(db.len(), 8);
-
-        let claim_spec = SignUpClaimSpec {
-            p_obj,
-            user: outsider.user_data,
-        };
-        claim_spec.verify().await?;
-
-        Ok(())
-    }
-}

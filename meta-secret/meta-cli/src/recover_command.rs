@@ -30,12 +30,15 @@ impl RecoverCommand {
         let app_state = client.get_app_state().await?;
 
         // Create recovery request with password ID
-        let pass_id = MetaPasswordId::build(&self.pass_name);
+        let pass_id = MetaPasswordId::build(self.pass_name.clone());
         let recovery_request = GenericAppStateRequest::Recover(pass_id);
 
         client
             .handle_client_request(app_state, recovery_request)
             .await?;
+
+        println!("Recovery request for '{}' submitted successfully", self.pass_name);
+        println!("The secret will be recovered when enough shares are available");
 
         Ok(())
     }

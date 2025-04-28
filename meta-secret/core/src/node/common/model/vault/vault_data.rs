@@ -389,7 +389,7 @@ mod test {
         let vault_data = VaultData::from(client_member.clone());
 
         // Create meta password event
-        let meta_pass_id = MetaPasswordId::build("Test Password");
+        let meta_pass_id = MetaPasswordId::build_from_str("Test Password");
         let add_meta_pass = AddMetaPassEvent {
             sender: client_member.clone(),
             meta_pass_id: meta_pass_id.clone(),
@@ -425,7 +425,7 @@ mod test {
         let vault_data = VaultData::from(UserDataMember::from(client_creds.user()));
 
         // Create event with non-member sender
-        let meta_pass_id = MetaPasswordId::build("Another Test Password");
+        let meta_pass_id = MetaPasswordId::build_from_str("Another Test Password");
         let non_member_sender = UserDataMember {
             user_data: client_b_creds.user(),
         };

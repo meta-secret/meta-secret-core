@@ -9,6 +9,7 @@ meta-db-redb = { path = "../db/redb" }
 
 thiserror.workspace = true
 anyhow.workspace = true
+secrecy = "0.10.3"
 
 clap = { version = "4.5.37", features = ["derive"] }
 

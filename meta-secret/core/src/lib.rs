@@ -104,7 +104,7 @@ fn load_users_shares() -> Result<Vec<UserShareDto>, SharesLoaderError> {
 
 pub fn split(secret: String, config: SharedSecretConfig) -> CoreResult<()> {
     let plain_text = PlainText::from(secret);
-    let shared_secret = SharedSecretEncryption::new(config, &plain_text)?;
+    let shared_secret = SharedSecretEncryption::new(config, plain_text)?;
 
     let dir_op = fs::create_dir_all("secrets");
 

@@ -8,7 +8,7 @@ use crate::configure;
 use crate::wasm_repo::{WasmRepo, WasmSyncProtocol};
 use meta_secret_core::node::app::app_state_update_manager::ApplicationManagerConfigurator;
 use meta_secret_core::node::common::model::WasmApplicationState;
-use meta_secret_core::node::common::model::meta_pass::MetaPasswordId;
+use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 
 #[wasm_bindgen]
@@ -47,8 +47,8 @@ impl WasmApplicationManager {
             .await;
     }
 
-    pub async fn cluster_distribution(&self, pass_id: &str, pass: &str) {
-        self.app_manager.cluster_distribution(pass_id, pass).await;
+    pub async fn cluster_distribution(&self, plain_pass_info: PlainPassInfo) {
+        self.app_manager.cluster_distribution(plain_pass_info).await;
     }
 
     pub async fn recover_js(&self, meta_pass_id: MetaPasswordId) {
