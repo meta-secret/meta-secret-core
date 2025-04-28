@@ -1,7 +1,8 @@
 use crate::base_command::BaseCommand;
 use anyhow::Result;
 use meta_secret_core::node::common::model::user::common::UserMembership;
-use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
+use meta_secret_core::node::common::model::{ApplicationState, IdString, VaultFullInfo};
+use meta_secret_core::node::common::model::secret::SsDistributionStatus;
 use meta_secret_core::node::db::events::vault::vault_log_event::VaultActionRequestEvent;
 
 pub struct InfoCommand {
@@ -52,7 +53,6 @@ impl InfoCommand {
         };
 
         println!("User Information:");
-        println!("  User ID: {:?}", user_creds.user_id());
         println!("  Vault Name: {}", user_creds.vault_name);
         println!();
 
@@ -87,26 +87,25 @@ impl InfoCommand {
 
                     println!();
                     println!("Vault Information:");
-                    println!(
-                        "  Owner: {:?}",
-                        member_info.member.member.user_data.user_id()
-                    );
-
                     println!("  Users: {}", member_info.member.vault.users.len());
+                    println!(
+                        "  Current owner (device id): {:?}",
+                        member_info.member.member.user_data.user_id().device_id.id_str()
+                    );
+                    
                     if !member_info.member.vault.users.is_empty() {
                         println!("  User Details:");
-                        for (i, (device_id, user)) in
-                            member_info.member.vault.users.iter().enumerate()
-                        {
+                        let users = member_info.member.vault.users.iter();
+                        for (i, (device_id, user)) in users.enumerate() {
                             if let UserMembership::Member(member) = user {
                                 println!(
-                                    "    User #{}: ID={:?}, Device={}",
+                                    "    Member #{}: Device Id={:?}, Device Name={}",
                                     i + 1,
-                                    member.user_data.user_id(),
+                                    member.user_data.user_id().device_id.id_str(),
                                     member.user_data.device.device_name.as_str()
                                 );
                             } else {
-                                println!("    User #{}: ID={:?} (not a member)", i + 1, device_id);
+                                println!("    Outsider #{}: ID={:?} ", i + 1, device_id);
                             }
                         }
                     }
@@ -114,8 +113,11 @@ impl InfoCommand {
                     println!("  Secrets: {}", member_info.member.vault.secrets.len());
                     if !member_info.member.vault.secrets.is_empty() {
                         println!("  Secret Details:");
-                        for (i, secret_id) in member_info.member.vault.secrets.iter().enumerate() {
-                            println!("    Secret #{}: ID={:?}", i + 1, secret_id);
+                        let secrets = member_info.member.vault.secrets.iter();
+                        for (i, secret_id) in secrets.enumerate() {
+                            println!("    Secret #{}", i + 1);
+                            println!("    Id: {:?}", secret_id.id.clone().id_str());
+                            println!("    Name: {:?}", secret_id.name);
                         }
                     }
 
@@ -131,12 +133,28 @@ impl InfoCommand {
 
                         let claims = member_info.ss_claims.claims.iter();
                         for (i, (claim_id, ss_claim)) in claims.enumerate() {
-                            println!(
-                                "  Claim #{}: ID={:?}, Status={:?}",
-                                i + 1,
-                                claim_id,
-                                ss_claim.status.status()
-                            );
+                            println!("  Claim #{}: Id={:?}", i + 1, claim_id.0.clone().id_str());
+                            println!("    Sender: {:?}", ss_claim.sender.clone().id_str());
+                            
+                            println!("    Type={:?}", ss_claim.distribution_type);
+                            println!("    Password={:?}", ss_claim.dist_claim_id.pass_id.name);
+                            println!("    Status={:?}", ss_claim.status.status());
+                            
+                            // Display receivers and their statuses
+                            if !ss_claim.receivers.is_empty() {
+                                println!("    Receivers ({}):", ss_claim.receivers.len());
+                                for (j, receiver) in ss_claim.receivers.iter().enumerate() {
+                                    let status = ss_claim.status.get(receiver)
+                                        .map_or("Unknown", |s| match s {
+                                            SsDistributionStatus::Pending => "Pending",
+                                            SsDistributionStatus::Sent => "Sent",
+                                            SsDistributionStatus::Delivered => "Delivered",
+                                        });
+                                    println!("      Receiver #{}: {:?} (Status: {})", j + 1, receiver, status);
+                                }
+                                println!();
+                            }
+                            
                         }
                     }
 
