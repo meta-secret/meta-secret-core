@@ -51,11 +51,6 @@ impl WasmApplicationManager {
         self.app_manager.cluster_distribution(plain_pass_info).await;
     }
 
-    pub async fn cluster_distribution_str(&self, pass_id: &str, pass: &str) {
-        let plain_pass_info = PlainPassInfo::new(pass_id, pass);
-        self.app_manager.cluster_distribution(plain_pass_info).await;
-    }
-
     pub async fn recover_js(&self, meta_pass_id: MetaPasswordId) {
         self.app_manager.recover_js(meta_pass_id).await;
     }

@@ -204,7 +204,7 @@ mod test {
 
         let vault_member = vault_data_fixture.client_vault_member;
 
-        let pass_id = MetaPasswordId::build("test_password");
+        let pass_id = MetaPasswordId::build_from_str("test_password");
         let claim = vault_member.create_split_claim(pass_id);
         assert_eq!(2, claim.receivers.len());
 
@@ -221,7 +221,7 @@ mod test {
         let vault_member = vault_data_fixture.client_vault_member;
 
         // Create password ID for test
-        let pass_id = MetaPasswordId::build("test_password");
+        let pass_id = MetaPasswordId::build_from_str("test_password");
 
         // Call the function being tested
         let claim = vault_member.create_split_claim(pass_id.clone());

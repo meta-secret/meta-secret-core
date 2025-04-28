@@ -76,7 +76,7 @@ fn to_c_str(str: String) -> *mut c_char {
 mod internal {
     use super::*;
     use meta_secret_core::node::common::model::crypto::aead::{AeadCipherText, AeadPlainText, EncryptedMessage};
-    use meta_secret_core::node::common::model::meta_pass::MetaPasswordId;
+    use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo, SecurePassInfo};
     use meta_secret_core::secret;
     use meta_secret_core::secret::shared_secret::PlainText;
 
@@ -95,8 +95,10 @@ mod internal {
         };
 
         // JSON parsing
-        let json_string: String = data_to_string(strings_bytes, string_len)?;
-        let shares: Vec<UserShareDto> = secret::split(json_string, cfg)?;
+        let pass = data_to_string(strings_bytes, string_len)?;
+        let plain_pass = PlainPassInfo::new(String::from("test"), pass);
+        let pass_info = SecurePassInfo::from(plain_pass);
+        let shares: Vec<UserShareDto> = secret::split(pass_info, cfg)?;
 
         // Shares to JSon
         let result_json = serde_json::to_string_pretty(&shares)?;
@@ -105,7 +107,7 @@ mod internal {
 
     pub fn generate_meta_password_id(password_id: *const u8, json_len: SizeT) -> CoreResult<String> {
         let password_id = data_to_string(password_id, json_len)?;
-        let meta_password_id = MetaPasswordId::build(password_id.as_str());
+        let meta_password_id = MetaPasswordId::build(password_id);
 
         // Shares to JSon
         let result_json = serde_json::to_string_pretty(&meta_password_id)?;
@@ -241,6 +243,7 @@ pub mod test {
     use meta_secret_core::crypto::key_pair::KeyPair;
     use meta_secret_core::crypto::keys::KeyManager;
     use meta_secret_core::node::common::model::crypto::aead::AeadCipherText;
+    use meta_secret_core::node::common::model::meta_pass::{PlainPassInfo, SecurePassInfo};
     use meta_secret_core::secret;
     use meta_secret_core::secret::data_block::common::SharedSecretConfig;
     use meta_secret_core::secret::shared_secret::{PlainText, UserShareDto};
@@ -260,7 +263,10 @@ pub mod test {
         let key_manager_2 = KeyManager::generate();
 
         // Split
-        let shares: Vec<UserShareDto> = secret::split("Secret".to_string(), cfg)?;
+        let shares: Vec<UserShareDto> = {
+            let plain_pass = PlainPassInfo::new("test".to_string(), "Secret".to_string());
+            secret::split(SecurePassInfo::from(plain_pass), cfg)?
+        };
 
         // Encrypt shares
         let secret = shares[0].clone();

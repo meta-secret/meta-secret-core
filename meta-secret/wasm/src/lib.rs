@@ -60,7 +60,7 @@ pub fn split(pass: &str) -> Result<JsValue, JsValue> {
         number_of_shares: 3,
         threshold: 2,
     };
-    let shared_secret = SharedSecretEncryption::new(config, &plain_text).map_err(JsError::from)?;
+    let shared_secret = SharedSecretEncryption::new(config, plain_text).map_err(JsError::from)?;
 
     let mut res: Vec<UserShareDto> = vec![];
     for share_index in 0..config.number_of_shares {

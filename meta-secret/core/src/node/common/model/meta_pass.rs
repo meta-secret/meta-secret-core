@@ -39,7 +39,7 @@ impl From<PlainPassInfo> for SecurePassInfo {
 
 impl SecurePassInfo {
     pub fn new(pass: SecretString, pass_name: String) -> Self {
-        let pass_id = MetaPasswordId::build(&pass_name);
+        let pass_id = MetaPasswordId::build(pass_name);
         Self { pass_id, pass }
     }
     
@@ -57,10 +57,14 @@ impl MetaPasswordId {
         self.id.text.base64_str()
     }
 
-    pub fn build(name: &str) -> Self {
+    pub fn build_from_str(name: &str) -> Self {
+        Self::build(name.to_string())
+    }
+    
+    pub fn build(name: String) -> Self {
         Self {
-            id: U64IdUrlEnc::from(name.to_string()),
-            name: name.to_string(),
+            id: U64IdUrlEnc::from(name.clone()),
+            name,
         }
     }
 }
@@ -68,8 +72,8 @@ impl MetaPasswordId {
 #[wasm_bindgen]
 impl PlainPassInfo {
     #[wasm_bindgen(constructor)]
-    pub fn new(pass_id_str: &str, pass: &str) -> Self {
-        let pass_id = MetaPasswordId::build(pass_id_str);
+    pub fn new(pass_id: String, pass: String) -> Self {
+        let pass_id = MetaPasswordId::build(pass_id);
         Self {
             pass_id,
             pass: pass.to_string(),
@@ -83,8 +87,8 @@ mod tests {
 
     #[test]
     fn test_meta_password_id_build() {
-        let name = "Test Password";
-        let password_id = MetaPasswordId::build(name);
+        let name = String::from("Test Password");
+        let password_id = MetaPasswordId::build(name.clone());
 
         // Verify the name is preserved
         assert_eq!(password_id.name, name);
@@ -99,8 +103,8 @@ mod tests {
 
     #[test]
     fn test_meta_password_id_different_names() {
-        let password_id1 = MetaPasswordId::build("Password 1");
-        let password_id2 = MetaPasswordId::build("Password 2");
+        let password_id1 = MetaPasswordId::build(String::from("Password 1"));
+        let password_id2 = MetaPasswordId::build(String::from("Password 2"));
 
         // Different names should produce different ids
         assert_ne!(password_id1.id(), password_id2.id());
@@ -108,7 +112,7 @@ mod tests {
 
     #[test]
     fn test_meta_password_id_cloning() {
-        let original = MetaPasswordId::build("Original Password");
+        let original = MetaPasswordId::build(String::from("Original Password"));
         let cloned = original.clone();
 
         // Cloning should produce an equal object
@@ -119,9 +123,9 @@ mod tests {
 
     #[test]
     fn test_meta_password_id_equality() {
-        let password1 = MetaPasswordId::build("Test Password");
-        let password2 = MetaPasswordId::build("Test Password");
-        let password3 = MetaPasswordId::build("Different Password");
+        let password1 = MetaPasswordId::build(String::from("Test Password"));
+        let password2 = MetaPasswordId::build(String::from("Test Password"));
+        let password3 = MetaPasswordId::build(String::from("Different Password"));
 
         // Same name should create equal objects
         assert_eq!(password1, password2);

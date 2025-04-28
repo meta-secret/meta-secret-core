@@ -19,6 +19,7 @@ use clap::{Parser, Subcommand};
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::secret::data_block::common::SharedSecretConfig;
 use serde::{Deserialize, Serialize};
+use meta_secret_core::node::common::model::meta_pass::PlainPassInfo;
 
 #[derive(Debug, Parser)]
 #[command(about = "Meta Secret Command Line Application", long_about = None)]
@@ -111,8 +112,9 @@ async fn main() -> Result<()> {
         }
         Command::Secret { command } => match command {
             SecretCommand::Split { pass, pass_name } => {
-                let split_cmd = SplitCommand::new(db_name, pass, pass_name);
-                split_cmd.execute().await?
+                let plain_pass = PlainPassInfo::new(pass_name, pass);
+                let split_cmd = SplitCommand::new(db_name);
+                split_cmd.execute(plain_pass).await?
             }
             SecretCommand::Recover { pass_name } => {
                 let recover_cmd = RecoverCommand::new(db_name, pass_name);

@@ -209,7 +209,7 @@ mod test {
 
         // Get vault member from the fixture and create a claim using its method
         let vault_member = registry.state.vault_data.client_vault_member;
-        let pass_id = MetaPasswordId::build("test_password");
+        let pass_id = MetaPasswordId::build_from_str("test_password");
 
         // Create a claim using the VaultMember helper (which properly creates receivers list)
         let test_claim = vault_member.create_split_claim(pass_id);

@@ -244,7 +244,7 @@ mod test {
             let client_client_service = self.spec.registry.state.client.client_service.clone();
             let app_state = client_client_service.build_service_state().await?.app_state;
 
-            let pass_id = MetaPasswordId::build("test_pass");
+            let pass_id = MetaPasswordId::build_from_str("test_pass");
             let plain_pass = PlainPassInfo {
                 pass_id: pass_id.clone(),
                 pass: "2bee|~".to_string(),
