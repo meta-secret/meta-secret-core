@@ -1,6 +1,6 @@
 use crate::PlainText;
 use crate::node::common::model::meta_pass::MetaPasswordId;
-use crate::node::common::model::secret::{SecretDistributionData, SsDistributionId, SsRecoveryId};
+use crate::node::common::model::secret::{ClaimId, SecretDistributionData, SsDistributionId, SsRecoveryId};
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::vault::{VaultName, VaultStatus};
 use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
@@ -68,7 +68,8 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
         &self,
         vault_name: VaultName,
         user_creds: UserCredentials,
-        recovery_id: SsRecoveryId,
+        claim_id: ClaimId,
+        pass_id: MetaPasswordId
     ) -> anyhow::Result<PlainText> {
         // Create PersistentSharedSecret to access shared secret data
         let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
@@ -79,7 +80,7 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
         // Find the claim using the ID in the recovery_id
         let claim = ss_log_data
             .claims
-            .get(&recovery_id.claim_id.id)
+            .get(&claim_id)
             .ok_or_else(|| anyhow::anyhow!("Claim not found for recovery ID"))?
             .clone();
 
@@ -87,7 +88,7 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
         let recoveries = p_ss.get_recoveries(claim.clone()).await?;
 
         let desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
-            pass_id: recovery_id.distribution_id.pass_id.clone(),
+            pass_id,
             receiver: user_creds.device_id().clone(),
         });
         let dist = self

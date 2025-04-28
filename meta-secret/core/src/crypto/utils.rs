@@ -1,3 +1,4 @@
+use derive_more::From;
 use crate::crypto::encoding::base64::Base64Text;
 use crate::node::common::model::IdString;
 use rand::TryRngCore;
@@ -16,7 +17,7 @@ pub fn generate_hash() -> String {
         .expect("Failed to get random bytes from OS");
 
     // Convert bytes directly to a hex string for simplicity
-    let seed = hex::encode(&seed_bytes);
+    let seed = hex::encode(seed_bytes);
 
     // Hash the seed with SHA-256
     let mut hasher = Sha256::new();
@@ -25,7 +26,7 @@ pub fn generate_hash() -> String {
     hex::encode(hasher.finalize())
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(transparent)]
 #[wasm_bindgen(getter_with_clone)]

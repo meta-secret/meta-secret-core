@@ -5,6 +5,7 @@ mod init_user_command;
 mod join_vault_command;
 mod recovery_request_command;
 mod split_command;
+mod show_secret_command;
 
 extern crate core;
 
@@ -20,6 +21,7 @@ use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::secret::data_block::common::SharedSecretConfig;
 use serde::{Deserialize, Serialize};
 use meta_secret_core::node::common::model::meta_pass::PlainPassInfo;
+use crate::show_secret_command::ShowSecretCommand;
 
 #[derive(Debug, Parser)]
 #[command(about = "Meta Secret Command Line Application", long_about = None)]
@@ -72,6 +74,10 @@ enum SecretCommand {
         #[arg(long)]
         pass_name: String,
     },
+    Show {
+        #[arg(long)]
+        claim_id: String,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -119,6 +125,10 @@ async fn main() -> Result<()> {
             SecretCommand::RecoveryRequest { pass_name } => {
                 let recover_cmd = RecoveryRequestCommand::new(db_name, pass_name);
                 recover_cmd.execute().await?
+            }
+            SecretCommand::Show { claim_id } => {
+                let show_command = ShowSecretCommand::new(db_name);
+                show_command.execute(claim_id).await?;
             }
         },
     }
