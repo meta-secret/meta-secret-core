@@ -497,10 +497,7 @@ mod test {
 
         // Verify that the claim status has been updated to reflect the recovery workflow
         let server_claim = updated_ss_log.claims.values().next().unwrap();
-
-        // Check that the claim has been marked as sent to the client
-        let recovery_id = vd_ss_claim.recovery_db_ids()[0].clone();
-
+        
         // Check that the claim status has been updated for the client device
         let client_device_id = split.spec.registry.state.client.device_id();
         let status = server_claim.status.get(&client_device_id);
@@ -512,7 +509,9 @@ mod test {
             matches!(status.unwrap(), SsDistributionStatus::Sent),
             "Server claim status for client device should be Sent"
         );
-
+        
+        // Check that the claim has been marked as sent to the client
+        let recovery_id = vd_ss_claim.recovery_db_ids()[0].clone();
         // Verify that the SsWorkflow object exists in the server's repository
         let recovery_desc = SsWorkflowDescriptor::Recovery(recovery_id.clone());
         let server_recovery_event = server_p_ss.p_obj.find_tail_event(recovery_desc).await?;

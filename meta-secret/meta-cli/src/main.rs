@@ -3,7 +3,7 @@ mod info_command;
 mod init_device_command;
 mod init_user_command;
 mod join_vault_command;
-mod recover_command;
+mod recovery_request_command;
 mod split_command;
 
 extern crate core;
@@ -12,7 +12,7 @@ use crate::info_command::InfoCommand;
 use crate::init_device_command::InitDeviceCommand;
 use crate::init_user_command::InitUserCommand;
 use crate::join_vault_command::JoinVaultCommand;
-use crate::recover_command::RecoverCommand;
+use crate::recovery_request_command::RecoveryRequestCommand;
 use crate::split_command::SplitCommand;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -68,7 +68,7 @@ enum SecretCommand {
         #[arg(long)]
         pass_name: String,
     },
-    Recover {
+    RecoveryRequest {
         #[arg(long)]
         pass_name: String,
     },
@@ -82,7 +82,7 @@ struct MetaSecretConfig {
 #[tokio::main]
 async fn main() -> Result<()> {
     let subscriber = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG)
+        .with_max_level(tracing::Level::INFO)
         .with_test_writer()
         .finish();
     tracing::subscriber::set_global_default(subscriber)?;
@@ -116,8 +116,8 @@ async fn main() -> Result<()> {
                 let split_cmd = SplitCommand::new(db_name);
                 split_cmd.execute(plain_pass).await?
             }
-            SecretCommand::Recover { pass_name } => {
-                let recover_cmd = RecoverCommand::new(db_name, pass_name);
+            SecretCommand::RecoveryRequest { pass_name } => {
+                let recover_cmd = RecoveryRequestCommand::new(db_name, pass_name);
                 recover_cmd.execute().await?
             }
         },

@@ -57,6 +57,7 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
 }
 
 /// Recovers secret from local shares on the client side
+#[derive(From)]
 pub struct RecoveryHandler<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
 }

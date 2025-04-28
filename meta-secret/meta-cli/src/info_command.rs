@@ -128,14 +128,14 @@ impl InfoCommand {
                             "  Number of Shared Secret claims: {}",
                             member_info.ss_claims.claims.len()
                         );
-                        for (i, (claim_id, ss_claim)) in
-                            member_info.ss_claims.claims.iter().enumerate()
-                        {
+
+                        let claims = member_info.ss_claims.claims.iter();
+                        for (i, (claim_id, ss_claim)) in claims.enumerate() {
                             println!(
-                                "  Share #{}: ID={:?}, Status={:?}",
+                                "  Claim #{}: ID={:?}, Status={:?}",
                                 i + 1,
                                 claim_id,
-                                ss_claim.status
+                                ss_claim.status.status()
                             );
                         }
                     }
