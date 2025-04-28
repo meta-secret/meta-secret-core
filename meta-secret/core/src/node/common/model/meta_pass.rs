@@ -1,5 +1,5 @@
 use crate::crypto::utils::U64IdUrlEnc;
-use serde::{Deserialize, Serialize, Serializer, Deserializer};
+use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::wasm_bindgen;
 use secrecy::{SecretString, ExposeSecret};
 
@@ -7,7 +7,6 @@ pub const SALT_LENGTH: usize = 8;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-//#[serde(transparent)]
 #[wasm_bindgen(getter_with_clone)]
 pub struct MetaPasswordId {
     pub id: U64IdUrlEnc,
@@ -15,58 +14,40 @@ pub struct MetaPasswordId {
     pub name: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+#[wasm_bindgen(getter_with_clone)]
+pub struct PlainPassInfo {
+    pub pass_id: MetaPasswordId,
+    pub pass: String,
+}
+
 #[derive(Clone, Debug)]
-pub struct PassInfo {
+pub struct SecurePassInfo {
     pub pass_id: MetaPasswordId,
     pub pass: SecretString,
 }
 
-impl PartialEq for PassInfo {
-    fn eq(&self, other: &Self) -> bool {
-        self.pass_id == other.pass_id && 
-        ExposeSecret::expose_secret(&self.pass) == ExposeSecret::expose_secret(&other.pass)
-    }
-}
-
-impl Eq for PassInfo {}
-
-impl Serialize for PassInfo {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("PassInfo", 2)?;
-        state.serialize_field("pass_id", &self.pass_id)?;
-        state.serialize_field("pass", ExposeSecret::expose_secret(&self.pass))?;
-        state.end()
-    }
-}
-
-impl<'de> Deserialize<'de> for PassInfo {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        struct PassInfoHelper {
-            pass_id: MetaPasswordId,
-            pass: String,
+impl From<PlainPassInfo> for SecurePassInfo {
+    fn from(plain: PlainPassInfo) -> Self {
+        Self {
+            pass_id: plain.pass_id,
+            pass: SecretString::new(plain.pass.into()),
         }
-        
-        let helper = PassInfoHelper::deserialize(deserializer)?;
-        
-        Ok(PassInfo {
-            pass_id: helper.pass_id,
-            pass: SecretString::new(helper.pass.into()),
-        })
     }
 }
 
-impl PassInfo {
+impl SecurePassInfo {
     pub fn new(pass: SecretString, pass_name: String) -> Self {
         let pass_id = MetaPasswordId::build(&pass_name);
         Self { pass_id, pass }
+    }
+    
+    pub fn to_plain(&self) -> PlainPassInfo {
+        PlainPassInfo {
+            pass_id: self.pass_id.clone(),
+            pass: ExposeSecret::expose_secret(&self.pass).to_string(),
+        }
     }
 }
 
@@ -80,6 +61,18 @@ impl MetaPasswordId {
         Self {
             id: U64IdUrlEnc::from(name.to_string()),
             name: name.to_string(),
+        }
+    }
+}
+
+#[wasm_bindgen]
+impl PlainPassInfo {
+    #[wasm_bindgen(constructor)]
+    pub fn new(pass_id_str: &str, pass: &str) -> Self {
+        let pass_id = MetaPasswordId::build(pass_id_str);
+        Self {
+            pass_id,
+            pass: pass.to_string(),
         }
     }
 }

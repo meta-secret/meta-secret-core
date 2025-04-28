@@ -25,6 +25,7 @@ use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::secret::MetaDistributor;
 use anyhow::Result;
+use crate::node::common::model::meta_pass::SecurePassInfo;
 
 pub struct MetaClientService<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub data_transfer: Arc<MetaClientDataTransfer>,
@@ -103,7 +104,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                 }
             },
 
-            GenericAppStateRequest::ClusterDistribution(request) => {
+            GenericAppStateRequest::ClusterDistribution(plain_request) => {
                 let vault_status = {
                     let vault_repo = PersistentVault::from(self.p_obj.clone());
                     vault_repo.find(user_creds.user()).await?
@@ -126,7 +127,8 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                             user_creds: Arc::new(user_creds.clone()),
                         };
 
-                        distributor.distribute(vault_member, request).await?;
+                        let secure_request = SecurePassInfo::from(plain_request);
+                        distributor.distribute(vault_member, secure_request).await?;
                     }
                 }
             }

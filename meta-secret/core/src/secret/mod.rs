@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::CoreResult;
 use crate::node::common::model::crypto::aead::EncryptedMessage;
-use crate::node::common::model::meta_pass::{PassInfo};
+use crate::node::common::model::meta_pass::{SecurePassInfo};
 use crate::node::common::model::secret::{SecretDistributionData, SsDistributionId};
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::vault::VaultMember;
@@ -90,7 +90,7 @@ pub struct MetaDistributor<Repo: KvLogEventRepo> {
 /// Save meta password!!!
 impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
     #[instrument(skip(self, pass_info))]
-    pub async fn distribute(self, vault_member: VaultMember, pass_info: PassInfo) -> Result<()> {
+    pub async fn distribute(self, vault_member: VaultMember, pass_info: SecurePassInfo) -> Result<()> {
         let vault_name = self.user_creds.vault_name.clone();
 
         let encrypted_shares = {
@@ -271,7 +271,7 @@ mod tests {
         let result = distributor
             .distribute(
                 vault_member.clone(),
-                PassInfo {
+                SecurePassInfo {
                     pass_id: password_id.clone(),
                     pass: password,
                 },

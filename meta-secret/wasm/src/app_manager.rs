@@ -1,4 +1,4 @@
-use anyhow::{Context, bail};
+use anyhow::Context;
 use std::sync::Arc;
 use tracing::{Instrument, info, instrument};
 use wasm_bindgen_futures::spawn_local;
@@ -18,16 +18,14 @@ use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::meta_tracing::{client_span, vd_span};
 use meta_secret_core::node::common::model::ApplicationState;
 use meta_secret_core::node::common::model::device::common::DeviceName;
-use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PassInfo};
+use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::ClaimId;
-use meta_secret_core::node::common::model::user::user_creds::UserCredentials;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::db::events::vault::vault_log_event::JoinClusterEvent;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
 use meta_server_node::server::server_app::ServerApp;
-use secrecy::SecretString;
 
 pub struct ApplicationManager<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub meta_client_service: Arc<MetaClientService<Repo, Sync>>,
@@ -73,9 +71,8 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
         self.meta_client_service.send_request(sign_up).await;
     }
 
-    pub async fn cluster_distribution(&self, pass_id: &str, pass: &str) {
-        let pass_info = PassInfo::new(SecretString::new(pass.to_string().into()), pass_id.to_string());
-        let request = GenericAppStateRequest::ClusterDistribution(pass_info);
+    pub async fn cluster_distribution(&self, plain_pass_info: PlainPassInfo) {
+        let request = GenericAppStateRequest::ClusterDistribution(plain_pass_info);
         self.meta_client_service.send_request(request).await;
     }
 

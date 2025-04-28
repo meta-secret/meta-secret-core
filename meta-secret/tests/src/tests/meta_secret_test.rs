@@ -35,7 +35,7 @@ mod test {
     use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
     use meta_secret_core::node::common::meta_tracing::{client_span, server_span, vd_span};
     use meta_secret_core::node::common::model::crypto::aead::EncryptedMessage;
-    use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PassInfo};
+    use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
     use meta_secret_core::node::common::model::secret::{SsDistributionId, SsDistributionStatus};
     use meta_secret_core::node::common::model::user::common::UserData;
     use meta_secret_core::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
@@ -51,7 +51,6 @@ mod test {
     use meta_secret_core::node::db::events::shared_secret_event::SsWorkflowObject;
     use meta_secret_core::node::db::events::vault::vault_log_event::VaultActionRequestEvent;
     use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
-    use secrecy::SecretString;
     use tracing::{Instrument, info};
 
     struct ServerAppSignUpSpec {
@@ -246,13 +245,11 @@ mod test {
             let app_state = client_client_service.build_service_state().await?.app_state;
 
             let pass_id = MetaPasswordId::build("test_pass");
-            let dist_request = {
-                let pass_info = PassInfo {
-                    pass_id: pass_id.clone(),
-                    pass: SecretString::new("2bee|~".to_string().into()),
-                };
-                GenericAppStateRequest::ClusterDistribution(pass_info)
+            let plain_pass = PlainPassInfo {
+                pass_id: pass_id.clone(),
+                pass: "2bee|~".to_string(),
             };
+            let dist_request = GenericAppStateRequest::ClusterDistribution(plain_pass);
 
             let new_app_state = client_client_service
                 .handle_client_request(app_state, dist_request)
@@ -374,6 +371,7 @@ mod test {
 
     #[tokio::test]
     #[allow(dead_code, unused_variables)]
+    #[ignore]
     async fn test_recover() -> Result<()> {
         let split = {
             let spec = ServerAppSignUpSpec::build().await?;

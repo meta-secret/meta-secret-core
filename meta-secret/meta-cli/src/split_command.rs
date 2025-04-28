@@ -1,7 +1,7 @@
 use crate::base_command::BaseCommand;
 use anyhow::{Result, bail};
 use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
-use meta_secret_core::node::common::model::meta_pass::PassInfo;
+use meta_secret_core::node::common::model::meta_pass::{PlainPassInfo, MetaPasswordId};
 use secrecy::SecretString;
 
 pub struct SplitCommand {
@@ -33,8 +33,13 @@ impl SplitCommand {
         let app_state = client.get_app_state().await?;
 
         // Create cluster distribution request with password
-        let pass_info = PassInfo::new(self.pass.clone(), self.pass_name.clone());
-        let cluster_distribution_request = GenericAppStateRequest::ClusterDistribution(pass_info);
+        // Create a PlainPassInfo directly
+        let pass_id = MetaPasswordId::build(&self.pass_name);
+        let plain_pass = PlainPassInfo {
+            pass_id,
+            pass: secrecy::ExposeSecret::expose_secret(&self.pass).to_string(),
+        };
+        let cluster_distribution_request = GenericAppStateRequest::ClusterDistribution(plain_pass);
 
         client
             .handle_client_request(app_state, cluster_distribution_request)
