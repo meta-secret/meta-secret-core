@@ -9,7 +9,7 @@ extern crate core;
 use crate::info::InfoCommand;
 use crate::init::{InitDeviceCommand, InitUserCommand};
 use crate::auth::{JoinVaultCommand, AcceptJoinRequestCommand, AcceptAllJoinRequestsCommand};
-use crate::secret::{RecoveryRequestCommand, ShowSecretCommand, SplitCommand};
+use crate::secret::{RecoveryRequestCommand, ShowSecretCommand, SplitCommand, AcceptRecoveryRequestCommand, AcceptAllRecoveryRequestsCommand};
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use meta_secret_core::node::common::model::vault::vault::VaultName;
@@ -86,6 +86,12 @@ enum SecretCommand {
         #[arg(long)]
         claim_id: String,
     },
+    AcceptRecoveryRequest {
+        #[arg(long)]
+        claim_id: String,
+    },
+    /// Accept all pending recovery requests
+    AcceptAllRecoveryRequests,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -149,6 +155,14 @@ async fn main() -> Result<()> {
             SecretCommand::Show { claim_id } => {
                 let show_command = ShowSecretCommand::new(db_name);
                 show_command.execute(claim_id).await?;
+            }
+            SecretCommand::AcceptRecoveryRequest { claim_id } => {
+                let accept_recover_cmd = AcceptRecoveryRequestCommand::new(db_name, claim_id);
+                accept_recover_cmd.execute().await?
+            }
+            SecretCommand::AcceptAllRecoveryRequests => {
+                let accept_all_recover_cmd = AcceptAllRecoveryRequestsCommand::new(db_name);
+                accept_all_recover_cmd.execute().await?
             }
         },
     }

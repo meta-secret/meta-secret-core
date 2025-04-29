@@ -34,7 +34,7 @@ sign_up:
 	cd c && ./meta-cli auth sign-up
 
 ### 5. Device A will accept all join requests
-accept_all:
+accept_all_join_requests:
 	cd a && ./meta-cli auth accept-all-join-requests
 
 ### 6. Show device A info (it must be a vault with 3 members)
@@ -51,7 +51,32 @@ split:
 send_recovery_request:
 	cd a && ./meta-cli secret recovery-request --pass-name=$(PASS_NAME)
 
-all: init build device user sign_up accept_all device_a_info split send_recovery_request
+### 9. Accept recovery request by other devices
+accept_recovery_request:
+	cd b && ./meta-cli secret accept-all-recovery-requests && ./meta-cli info
+	cd c && ./meta-cli secret accept-all-recovery-requests && ./meta-cli info
+	cd a && ./meta-cli info
+
+### 10. Show recovered secret!
+show_secret:
+	# extract recovery claim id, and the show the secret
+	@cd a && \
+    	CLAIM_ID=$$(./meta-cli info | grep "Claim #1" | awk -F'Id="' '{print $$2}' | awk -F'"' '{print $$1}'); \
+    	echo "Claim ID: $$CLAIM_ID"; \
+    	./meta-cli secret show --claim-id=$$CLAIM_ID
+
+all: \
+	init \
+	build \
+	device \
+	user \
+	sign_up \
+	accept_all_join_requests \
+	device_a_info \
+	split \
+	send_recovery_request \
+	accept_recovery_request \
+	show_secret
 
 clean:
 	rm -rf a/meta-secret.redb
