@@ -1,21 +1,85 @@
 use crate::base_command::BaseCommand;
-use anyhow::Result;
+use anyhow::{bail, Result};
+use tracing::info;
+use meta_secret_core::node::common::model::{ApplicationState, IdString, VaultFullInfo};
+use meta_secret_core::node::db::events::vault::vault_log_event::VaultActionRequestEvent;
 
 pub struct AcceptJoinRequestCommand {
     pub base: BaseCommand,
-    pub claim_id: String,
+    pub device_id: String,
 }
 
 impl AcceptJoinRequestCommand {
-    pub fn new(db_name: String, claim_id: String) -> Self {
+    pub fn new(db_name: String, device_id: String) -> Self {
         Self {
             base: BaseCommand::new(db_name),
-            claim_id,
+            device_id,
         }
     }
 
     pub async fn execute(&self) -> Result<()> {
-        // TODO: Implement accept join request functionality
-        todo!("Implement accept join request functionality")
+        info!("Accepting join request for device ID: {}", self.device_id);
+        
+        // Open the existing database
+        let db_context = self.base.open_existing_db().await?;
+
+        // Create client service
+        let client = self.base.create_client_service(&db_context).await?;
+
+        // Get the application state
+        let app_state = client.get_app_state().await?;
+
+        // Check if application state is Vault and user is a member
+        match app_state {
+            ApplicationState::Local(_) => {
+                bail!("Invalid state. Local App State cannot accept join requests");
+            }
+            ApplicationState::Vault(vault_info) => match vault_info {
+                VaultFullInfo::NotExists(_) => {
+                    bail!("Invalid state. Vault doesn't exist");
+                }
+                VaultFullInfo::Outsider(_) => {
+                    bail!("Invalid state. User is outsider and cannot accept join requests");
+                }
+                VaultFullInfo::Member(member_info) => {
+                    info!("Find join request for device ID: {}", self.device_id);
+                    let found_join_request = member_info
+                        .vault_events
+                        .requests
+                        .iter()
+                        .filter_map(|request| {
+                            if let VaultActionRequestEvent::JoinCluster(join_request) = request {
+                                // Compare device ID strings
+                                let vault_request_join_id =
+                                    join_request.candidate.device.device_id.clone().id_str();
+                                
+                                if vault_request_join_id == self.device_id {
+                                    Some(join_request.clone())
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        })
+                        .next();
+
+                    match found_join_request {
+                        Some(join_request) => {
+                            info!("Accept the join request");
+                            client.accept_join(join_request).await?;
+                            println!(
+                                "Join request for device {} accepted successfully",
+                                self.device_id
+                            );
+                            Ok(())
+                        }
+                        None => {
+                            bail!("No join request found for device ID: {}", self.device_id);
+                        }
+                    }
+                }
+            },
+        }
     }
-} 
+}

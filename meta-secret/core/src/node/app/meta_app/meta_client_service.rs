@@ -290,7 +290,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
     }
 
     pub async fn accept_join(&self, join_request: JoinClusterEvent) -> Result<()> {
-        match &self.get_state().await {
+        match self.get_app_state().await? {
             ApplicationState::Local(_) => {
                 bail!("Invalid state. Local App State")
             }

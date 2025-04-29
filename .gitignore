@@ -32,3 +32,6 @@ infra/.secret
 /infra/k3d/Taskfile.yml
 /meta-secret/meta-cli/meta-secret.redb
 /appp/
+/meta-secret/meta-cli/example/a
+/meta-secret/meta-cli/example/b
+/meta-secret/meta-cli/example/c

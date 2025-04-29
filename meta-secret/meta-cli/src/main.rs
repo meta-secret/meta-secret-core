@@ -64,7 +64,7 @@ enum AuthCommand {
     SignUp,
     AcceptJoinRequest {
         #[arg(long)]
-        claim_id: String,
+        device_id: String,
     },
 }
 
@@ -124,8 +124,8 @@ async fn main() -> Result<()> {
                     let sign_up_cmd = JoinVaultCommand::new(db_name);
                     sign_up_cmd.execute().await?
                 },
-                AuthCommand::AcceptJoinRequest { claim_id } => {
-                    let accept_cmd = AcceptJoinRequestCommand::new(db_name, claim_id);
+                AuthCommand::AcceptJoinRequest { device_id } => {
+                    let accept_cmd = AcceptJoinRequestCommand::new(db_name, device_id);
                     accept_cmd.execute().await?
                 } 
             }
