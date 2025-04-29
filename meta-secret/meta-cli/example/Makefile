@@ -1,6 +1,7 @@
-VAULT_NAME := $(shell head -c 8 /dev/urandom | xxd -p)
-
 RELEASE_DIR := ../../target/release
+
+VAULT_NAME := $(shell head -c 8 /dev/urandom | xxd -p)
+PASS_NAME := test_pass
 
 init:
 	mkdir -p a
@@ -22,25 +23,35 @@ device:
 
 ### 3. Initialize users (define vault name)
 user:
-	 cd a && ./meta-cli init user --vault-name=$(VAULT_NAME)
-	 cd b && ./meta-cli init user --vault-name=$(VAULT_NAME)
-	 cd c && ./meta-cli init user --vault-name=$(VAULT_NAME)
+	cd a && ./meta-cli init user --vault-name=$(VAULT_NAME)
+	cd b && ./meta-cli init user --vault-name=$(VAULT_NAME)
+	cd c && ./meta-cli init user --vault-name=$(VAULT_NAME)
 
 ### 4. First user creates a new vault, others send join requests
 sign_up:
-	 cd a && ./meta-cli auth sign-up
-	 cd b && ./meta-cli auth sign-up
-	 cd c && ./meta-cli auth sign-up
+	cd a && ./meta-cli auth sign-up
+	cd b && ./meta-cli auth sign-up
+	cd c && ./meta-cli auth sign-up
 
 ### 5. Device A will accept all join requests
 accept_all:
-	 cd a && ./meta-cli auth accept-all-join-requests
+	cd a && ./meta-cli auth accept-all-join-requests
 
 ### 6. Show device A info (it must be a vault with 3 members)
 device_a_info:
-	 cd a && ./meta-cli info
+	cd a && ./meta-cli info
 
-all: init build device user sign_up accept_all device_a_info
+### 7. Device A: Split
+split:
+	cd a && ./meta-cli secret split --pass=p_ass_word --pass-name=$(PASS_NAME)
+	cd b && ./meta-cli info #download secret share
+	cd c && ./meta-cli info #download secret share
+
+### 8. Device A: Send recovery request
+send_recovery_request:
+	cd a && ./meta-cli secret recovery-request --pass-name=$(PASS_NAME)
+
+all: init build device user sign_up accept_all device_a_info split send_recovery_request
 
 clean:
 	rm -rf a/meta-secret.redb

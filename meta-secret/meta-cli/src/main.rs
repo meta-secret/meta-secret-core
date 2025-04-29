@@ -32,13 +32,13 @@ enum Command {
         #[command(subcommand)]
         command: InitCommand,
     },
-    Secret {
-        #[command(subcommand)]
-        command: SecretCommand,
-    },
     Auth {
         #[command(subcommand)]
         command: AuthCommand,
+    },
+    Secret {
+        #[command(subcommand)]
+        command: SecretCommand,
     },
     /// Show information about the device and credentials
     Info,
