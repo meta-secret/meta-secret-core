@@ -65,7 +65,7 @@ show_secret:
     	echo "Claim ID: $$CLAIM_ID"; \
     	./meta-cli secret show --claim-id=$$CLAIM_ID
 
-all: \
+run_all: \
 	init \
 	build \
 	device \
