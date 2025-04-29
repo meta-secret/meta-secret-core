@@ -1,3 +1,1 @@
-mod info_command;
-
-pub use info_command::InfoCommand; 
+pub mod info_command;

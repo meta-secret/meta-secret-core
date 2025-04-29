@@ -3,19 +3,31 @@ mod info;
 mod init;
 mod auth;
 mod secret;
+mod interactive_command;
 
 extern crate core;
 
-use crate::info::InfoCommand;
-use crate::init::{InitDeviceCommand, InitUserCommand};
-use crate::auth::{JoinVaultCommand, AcceptJoinRequestCommand, AcceptAllJoinRequestsCommand};
-use crate::secret::{RecoveryRequestCommand, ShowSecretCommand, SplitCommand, AcceptRecoveryRequestCommand, AcceptAllRecoveryRequestsCommand};
+use crate::interactive_command::InteractiveCommand;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::secret::data_block::common::SharedSecretConfig;
 use serde::{Deserialize, Serialize};
 use meta_secret_core::node::common::model::meta_pass::PlainPassInfo;
+use crate::auth::accept_all_join_requests_command::AcceptAllJoinRequestsCommand;
+use crate::auth::accept_join_request_command::AcceptJoinRequestCommand;
+use crate::auth::interactive_command::AuthInteractiveCommand;
+use crate::auth::sign_up_command::JoinVaultCommand;
+use crate::info::info_command::InfoCommand;
+use crate::init::device_command::InitDeviceCommand;
+use crate::init::interactive_command::InitInteractiveCommand;
+use crate::init::user_command::InitUserCommand;
+use crate::secret::accept_all_recovery_requests_command::AcceptAllRecoveryRequestsCommand;
+use crate::secret::accept_recovery_request_command::AcceptRecoveryRequestCommand;
+use crate::secret::interactive_command::SecretInteractiveCommand;
+use crate::secret::recovery_request_command::RecoveryRequestCommand;
+use crate::secret::show_secret_command::ShowSecretCommand;
+use crate::secret::split_command::SplitCommand;
 
 #[derive(Debug, Parser)]
 #[command(about = "Meta Secret CLI", long_about = None)]
@@ -42,6 +54,8 @@ enum Command {
     },
     /// Show information about the device and credentials
     Info,
+    /// Fully interactive mode
+    Interactive,
 }
 
 #[derive(Subcommand, Debug)]
@@ -56,6 +70,8 @@ enum InitCommand {
         #[arg(long)]
         vault_name: VaultName,
     },
+    /// Interactive mode for initialization
+    Interactive,
 }
 
 #[derive(Subcommand, Debug)]
@@ -68,6 +84,8 @@ enum AuthCommand {
     },
     /// Accept all pending join requests
     AcceptAllJoinRequests,
+    /// Interactive mode for authentication
+    Interactive,
 }
 
 #[derive(Subcommand, Debug)]
@@ -92,6 +110,8 @@ enum SecretCommand {
     },
     /// Accept all pending recovery requests
     AcceptAllRecoveryRequests,
+    /// Interactive mode for secret management
+    Interactive,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -121,11 +141,15 @@ async fn main() -> Result<()> {
                 let init_user_cmd = InitUserCommand::new(db_name.clone(), vault_name);
                 init_user_cmd.execute().await?
             }
+            InitCommand::Interactive => {
+                let init_interactive_cmd = InitInteractiveCommand::new(db_name.clone());
+                init_interactive_cmd.execute().await?
+            }
         },
         Command::Info => {
             let info_cmd = InfoCommand::new(db_name);
             info_cmd.execute().await?
-        }
+        },
         Command::Auth { command } => {
             match command { 
                 AuthCommand::SignUp => {
@@ -139,9 +163,13 @@ async fn main() -> Result<()> {
                 AuthCommand::AcceptAllJoinRequests => {
                     let accept_all_cmd = AcceptAllJoinRequestsCommand::new(db_name);
                     accept_all_cmd.execute().await?
+                },
+                AuthCommand::Interactive => {
+                    let auth_interactive_cmd = AuthInteractiveCommand::new(db_name);
+                    auth_interactive_cmd.execute().await?
                 }
             }
-        }
+        },
         Command::Secret { command } => match command {
             SecretCommand::Split { pass, pass_name } => {
                 let plain_pass = PlainPassInfo::new(pass_name, pass);
@@ -164,7 +192,15 @@ async fn main() -> Result<()> {
                 let accept_all_recover_cmd = AcceptAllRecoveryRequestsCommand::new(db_name);
                 accept_all_recover_cmd.execute().await?
             }
+            SecretCommand::Interactive => {
+                let secret_interactive_cmd = SecretInteractiveCommand::new(db_name);
+                secret_interactive_cmd.execute().await?
+            }
         },
+        Command::Interactive => {
+            let interactive_cmd = InteractiveCommand::new(db_name);
+            interactive_cmd.execute().await?
+        }
     }
 
     Ok(())
