@@ -27,12 +27,20 @@ user:
 	 cd c && ./meta-cli init user --vault-name=$(VAULT_NAME)
 
 ### 4. First user creates a new vault, others send join requests
-sign-up:
-	 cd a && ./meta-cli sign-up
-	 cd b && ./meta-cli sign-up
-	 cd c && ./meta-cli sign-up
+sign_up:
+	 cd a && ./meta-cli auth sign-up
+	 cd b && ./meta-cli auth sign-up
+	 cd c && ./meta-cli auth sign-up
 
-all: init build device user sign-up
+### 5. Device A will accept all join requests
+accept_all:
+	 cd a && ./meta-cli auth accept-all-join-requests
+
+### 6. Show device A info (it must be a vault with 3 members)
+device_a_info:
+	 cd a && ./meta-cli info
+
+all: init build device user sign_up accept_all device_a_info
 
 clean:
 	rm -rf a/meta-secret.redb

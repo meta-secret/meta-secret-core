@@ -8,7 +8,7 @@ extern crate core;
 
 use crate::info::InfoCommand;
 use crate::init::{InitDeviceCommand, InitUserCommand};
-use crate::auth::{JoinVaultCommand, AcceptJoinRequestCommand};
+use crate::auth::{JoinVaultCommand, AcceptJoinRequestCommand, AcceptAllJoinRequestsCommand};
 use crate::secret::{RecoveryRequestCommand, ShowSecretCommand, SplitCommand};
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -66,6 +66,8 @@ enum AuthCommand {
         #[arg(long)]
         device_id: String,
     },
+    /// Accept all pending join requests
+    AcceptAllJoinRequests,
 }
 
 #[derive(Subcommand, Debug)]
@@ -127,7 +129,11 @@ async fn main() -> Result<()> {
                 AuthCommand::AcceptJoinRequest { device_id } => {
                     let accept_cmd = AcceptJoinRequestCommand::new(db_name, device_id);
                     accept_cmd.execute().await?
-                } 
+                },
+                AuthCommand::AcceptAllJoinRequests => {
+                    let accept_all_cmd = AcceptAllJoinRequestsCommand::new(db_name);
+                    accept_all_cmd.execute().await?
+                }
             }
         }
         Command::Secret { command } => match command {
