@@ -24,7 +24,7 @@ use meta_secret_core::node::common::model::meta_pass::PlainPassInfo;
 use crate::show_secret_command::ShowSecretCommand;
 
 #[derive(Debug, Parser)]
-#[command(about = "Meta Secret Command Line Application", long_about = None)]
+#[command(about = "Meta Secret CLI", long_about = None)]
 struct CmdLine {
     #[command(subcommand)]
     command: Command,
@@ -42,8 +42,10 @@ enum Command {
         #[command(subcommand)]
         command: SecretCommand,
     },
-    /// Create or Join a vault
-    SignUp,
+    Auth {
+        #[command(subcommand)]
+        command: AuthCommand,
+    },
     /// Show information about the device and credentials
     Info,
 }
@@ -59,6 +61,16 @@ enum InitCommand {
     User {
         #[arg(long)]
         vault_name: VaultName,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum AuthCommand {
+    /// Create or Join a vault
+    SignUp,
+    AcceptJoinRequest {
+        #[arg(long)]
+        claim_id: String,
     },
 }
 
@@ -112,9 +124,16 @@ async fn main() -> Result<()> {
             let info_cmd = InfoCommand::new(db_name);
             info_cmd.execute().await?
         }
-        Command::SignUp => {
-            let sign_up_cmd = JoinVaultCommand::new(db_name);
-            sign_up_cmd.execute().await?
+        Command::Auth { command } => {
+            match command { 
+                AuthCommand::SignUp => {
+                    let sign_up_cmd = JoinVaultCommand::new(db_name);
+                    sign_up_cmd.execute().await?
+                },
+                AuthCommand::AcceptJoinRequest { .. } => {
+                    todo!()
+                } 
+            }
         }
         Command::Secret { command } => match command {
             SecretCommand::Split { pass, pass_name } => {

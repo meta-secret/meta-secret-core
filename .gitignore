@@ -31,3 +31,4 @@ infra/.secret
 /infra/k8s/Taskfile.yml
 /infra/k3d/Taskfile.yml
 /meta-secret/meta-cli/meta-secret.redb
+/appp/

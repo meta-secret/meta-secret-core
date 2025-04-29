@@ -11,6 +11,7 @@ use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
 use std::path::Path;
 use std::sync::Arc;
+use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
 
 /// Container for database-related components
 pub struct DbContext {
@@ -77,6 +78,38 @@ impl BaseCommand {
         let err_msg = "credentials already exist. Cannot initialize again.";
         let info_msg = "Use the 'info' command to view existing credentials.";
         format!("{} {} {}", entity, err_msg, info_msg)
+    }
+
+    /// Common error handling for missing device credentials
+    pub async fn ensure_device_creds(&self, db_context: &DbContext) -> Result<()> {
+        if db_context.p_creds.get_device_creds().await?.is_none() {
+            bail!("Device credentials not found. Please run `meta-secret init-device` first.");
+        }
+        Ok(())
+    }
+
+    /// Common error handling for missing user credentials
+    pub async fn ensure_user_creds(&self, db_context: &DbContext) -> Result<()> {
+        if db_context.p_creds.get_user_creds().await?.is_none() {
+            bail!("User credentials not found. Please run `meta-secret init-user` first.");
+        }
+        Ok(())
+    }
+
+    /// Helper method to create client, get app state, and handle a request
+    pub async fn handle_client_request(
+        &self, 
+        db_context: &DbContext, 
+        request: GenericAppStateRequest
+    ) -> Result<()> {
+        let client = self.create_client_service(db_context).await?;
+        let app_state = client.get_app_state().await?;
+        
+        client
+            .handle_client_request(app_state, request)
+            .await?;
+            
+        Ok(())
     }
 
     /// Creates a MetaClientService using the user credentials from the database

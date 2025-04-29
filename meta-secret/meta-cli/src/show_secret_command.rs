@@ -18,16 +18,10 @@ impl ShowSecretCommand {
     
     pub async fn execute(self, claim_id: String) -> Result<()> {
         let db_context = self.base.open_existing_db().await?;
-        let maybe_user_creds = db_context.p_creds.get_user_creds().await?;
-
-        println!();
-        let Some(user_creds) = maybe_user_creds else {
-            println!("User Status: Device is initialized but not associated with a vault.");
-            println!(
-                "Run the 'meta-secret init-user --vault-name <n>' command to associate it with a vault."
-            );
-            return Ok(());
-        };
+        
+        // Ensure user credentials exist
+        self.base.ensure_user_creds(&db_context).await?;
+        let user_creds = db_context.p_creds.get_user_creds().await?.unwrap();
 
         let client = self.base.create_client_service(&db_context).await?;
         let app_state = client.get_app_state().await?;
@@ -50,7 +44,7 @@ impl ShowSecretCommand {
                             ClaimId::from(typed_id)
                         };
                         
-                        let maybe_claim =  member_info.ss_claims.claims.get(&claim_id);
+                        let maybe_claim = member_info.ss_claims.claims.get(&claim_id);
                         match maybe_claim {
                             None => {
                                 bail!("Claim not found.");

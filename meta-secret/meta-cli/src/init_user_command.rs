@@ -20,12 +20,8 @@ impl InitUserCommand {
         let db_context = self.base.open_existing_db().await?;
 
         // Get device credentials (or fail if they don't exist)
-        let device_creds = match db_context.p_creds.get_device_creds().await? {
-            Some(creds) => creds.value(),
-            None => {
-                bail!("Device credentials not found. Please run `meta-secret init-device` first.");
-            }
-        };
+        self.base.ensure_device_creds(&db_context).await?;
+        let device_creds = db_context.p_creds.get_device_creds().await?.unwrap().value();
 
         // Check if user credentials already exist
         let maybe_user_creds = db_context.p_creds.get_user_creds().await?;
