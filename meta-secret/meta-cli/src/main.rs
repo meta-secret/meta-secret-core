@@ -1,27 +1,21 @@
 mod base_command;
-mod info_command;
-mod init_device_command;
-mod init_user_command;
-mod join_vault_command;
-mod recovery_request_command;
-mod split_command;
-mod show_secret_command;
+mod info;
+mod init;
+mod auth;
+mod secret;
 
 extern crate core;
 
-use crate::info_command::InfoCommand;
-use crate::init_device_command::InitDeviceCommand;
-use crate::init_user_command::InitUserCommand;
-use crate::join_vault_command::JoinVaultCommand;
-use crate::recovery_request_command::RecoveryRequestCommand;
-use crate::split_command::SplitCommand;
+use crate::info::InfoCommand;
+use crate::init::{InitDeviceCommand, InitUserCommand};
+use crate::auth::{JoinVaultCommand, AcceptJoinRequestCommand};
+use crate::secret::{RecoveryRequestCommand, ShowSecretCommand, SplitCommand};
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::secret::data_block::common::SharedSecretConfig;
 use serde::{Deserialize, Serialize};
 use meta_secret_core::node::common::model::meta_pass::PlainPassInfo;
-use crate::show_secret_command::ShowSecretCommand;
 
 #[derive(Debug, Parser)]
 #[command(about = "Meta Secret CLI", long_about = None)]
@@ -130,8 +124,9 @@ async fn main() -> Result<()> {
                     let sign_up_cmd = JoinVaultCommand::new(db_name);
                     sign_up_cmd.execute().await?
                 },
-                AuthCommand::AcceptJoinRequest { .. } => {
-                    todo!()
+                AuthCommand::AcceptJoinRequest { claim_id } => {
+                    let accept_cmd = AcceptJoinRequestCommand::new(db_name, claim_id);
+                    accept_cmd.execute().await?
                 } 
             }
         }

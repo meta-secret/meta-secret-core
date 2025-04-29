@@ -46,4 +46,4 @@ impl InitUserCommand {
 
         Ok(())
     }
-}
+} 

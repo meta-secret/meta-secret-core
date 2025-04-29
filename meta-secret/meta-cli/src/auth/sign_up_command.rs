@@ -30,4 +30,4 @@ impl JoinVaultCommand {
         println!("Join vault request submitted successfully");
         Ok(())
     }
-}
+} 

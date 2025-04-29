@@ -32,4 +32,4 @@ impl RecoveryRequestCommand {
 
         Ok(())
     }
-}
+} 

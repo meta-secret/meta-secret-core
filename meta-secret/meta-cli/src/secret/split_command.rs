@@ -27,4 +27,4 @@ impl SplitCommand {
         println!("Secret '{}' has been split successfully", pass.pass_id.name);
         Ok(())
     }
-}
+} 
