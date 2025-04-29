@@ -1,7 +1,7 @@
 use anyhow::bail;
 use flume::{Receiver, Sender};
 use std::sync::Arc;
-use tracing::{error, info, instrument};
+use tracing::{debug, error, info, instrument};
 
 use crate::node::app::meta_app::messaging::{GenericAppStateRequest, GenericAppStateResponse};
 use crate::node::app::orchestrator::MetaOrchestrator;
@@ -65,7 +65,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         app_state: ApplicationState,
         request: GenericAppStateRequest,
     ) -> Result<ApplicationState> {
-        info!(
+        debug!(
             "Action execution. Request {:?}, state: {:?}",
             &request, &app_state
         );
