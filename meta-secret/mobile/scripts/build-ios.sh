@@ -26,14 +26,14 @@ echo "Compilation for iOS simulator (x86_64)..."
 cargo build --package mobile-ios --target x86_64-apple-ios --release
 
 echo "Creating universal lib..."
-mkdir -p target/universal/release
+mkdir -p "${ROOT_DIR}/target/ios/universal/release"
 lipo -create \
   "${ROOT_DIR}/target/aarch64-apple-ios/release/libmobile.a" \
   "${ROOT_DIR}/target/x86_64-apple-ios/release/libmobile.a" \
-  -output target/universal/release/metasecret-mobile.a
+  -output "${ROOT_DIR}/target/ios/universal/release/metasecret-mobile.a"
 
 echo "Generating header file..."
-HEADER_OUTPUT_DIR="target/universal/release"
+HEADER_OUTPUT_DIR="${ROOT_DIR}/target/ios/universal/release"
 HEADER_FILE="${HEADER_OUTPUT_DIR}/metasecret-mobile.h"
 
 # Создаем директорию для заголовочного файла
@@ -47,5 +47,5 @@ else
 fi
 
 echo "✅ Done!"
-echo "Universal library is in: target/universal/release/metasecret-mobile.a"
+echo "Universal library is in: ${ROOT_DIR}/target/ios/universal/release/metasecret-mobile.a"
 echo "Header file is in: ${HEADER_FILE}"
