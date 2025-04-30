@@ -106,17 +106,17 @@ tasks:
     desc: 10. Show recovered secret!
     deps: [accept-recovery-request]
     cmds:
-      - cd a && ./meta-cli --output-format=json info recovery-claims > claims.json
       - |
         cd a && \
-        CLAIM_ID=$(cat claims.json | jq -r '.claims[0].id') && \
-        PASS_NAME=$(cat claims.json | jq -r '.claims[0].password') && \
+        RECOVERY_CLAIMS=$(./meta-cli --output-format=json info recovery-claims) && \
+        CLAIM_ID=$(echo "$RECOVERY_CLAIMS" | jq -r '.claims[0].id') && \
+        PASS_NAME=$(echo "$RECOVERY_CLAIMS" | jq -r '.claims[0].password') && \
         if [ -z "$CLAIM_ID" ]; then
           echo "Error: No recovery claims found."
           exit 1
         fi && \
-        ./meta-cli secret show --claim-id=$CLAIM_ID > secret.txt && \
-        SECRET=$(grep -v "^May the Meta" secret.txt | tr -d '\n' | tr -d '\r') && \
+        SECRET_RESULT=$(./meta-cli secret show --claim-id=$CLAIM_ID) && \
+        SECRET=$(echo "$SECRET_RESULT" | grep -v "^May the Meta" | tr -d '\n' | tr -d '\r') && \
         echo "Secret successfully recovered: $SECRET"
       - echo "Secret recovery demonstration completed successfully!"
 
