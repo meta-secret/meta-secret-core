@@ -26,8 +26,6 @@ use clap::{Parser, Subcommand};
 use dialoguer::Password;
 use meta_secret_core::node::common::model::meta_pass::PlainPassInfo;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
-use meta_secret_core::secret::data_block::common::SharedSecretConfig;
-use serde::{Deserialize, Serialize};
 use std::io::{self, IsTerminal, Read};
 
 #[derive(Debug, Parser)]
@@ -117,11 +115,6 @@ enum SecretCommand {
     AcceptAllRecoveryRequests,
     /// Interactive mode for secret management
     Interactive,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct MetaSecretConfig {
-    shared_secret: SharedSecretConfig,
 }
 
 /// Read password securely from stdin
