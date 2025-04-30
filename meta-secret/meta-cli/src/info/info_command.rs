@@ -29,15 +29,18 @@ impl InfoCommand {
     /// Shows recovery claims information in JSON format
     pub async fn show_recovery_claims(&self) -> Result<()> {
         let app_state = self.get_app_state().await?;
+        let mut context = Context::new();
 
         match app_state {
             ApplicationState::Vault(VaultFullInfo::Member(member_info)) => {
                 if member_info.ss_claims.claims.is_empty() {
-                    println!("{{\"claims\": []}}");
+                    // Empty context will result in empty claims array
+                    let output = TemplateManager::instance().render("recovery_claims", &context)?;
+                    println!("{}", output);
                     return Ok(());
                 }
 
-                let mut claims_json = Vec::new();
+                let mut claims_vec = Vec::new();
                 for (claim_id, ss_claim) in &member_info.ss_claims.claims {
                     let mut receivers = Vec::new();
                     for receiver in &ss_claim.receivers {
@@ -54,7 +57,7 @@ impl InfoCommand {
                         }));
                     }
 
-                    claims_json.push(json!({
+                    claims_vec.push(json!({
                         "id": claim_id.0.clone().id_str(),
                         "sender": ss_claim.sender.clone().id_str(),
                         "type": format!("{:?}", ss_claim.distribution_type),
@@ -64,14 +67,15 @@ impl InfoCommand {
                     }));
                 }
 
-                let output = json!({
-                    "claims": claims_json
-                });
-
-                println!("{}", serde_json::to_string_pretty(&output)?);
+                context.insert("claims", &claims_vec);
+                let output = TemplateManager::instance().render("recovery_claims", &context)?;
+                println!("{}", output);
             },
             _ => {
-                println!("{{\"error\": \"Not a vault member or vault doesn't exist\"}}");
+                let mut error_context = Context::new();
+                error_context.insert("message", "Not a vault member or vault doesn't exist");
+                let output = TemplateManager::instance().render("error", &error_context)?;
+                println!("{}", output);
             }
         }
 
@@ -81,30 +85,34 @@ impl InfoCommand {
     /// Shows secrets information in JSON format
     pub async fn show_secrets(&self) -> Result<()> {
         let app_state = self.get_app_state().await?;
+        let mut context = Context::new();
 
         match app_state {
             ApplicationState::Vault(VaultFullInfo::Member(member_info)) => {
                 if member_info.member.vault.secrets.is_empty() {
-                    println!("{{\"secrets\": []}}");
+                    // Empty context will result in empty secrets array
+                    let output = TemplateManager::instance().render("secrets", &context)?;
+                    println!("{}", output);
                     return Ok(());
                 }
 
-                let mut secrets_json = Vec::new();
+                let mut secrets_vec = Vec::new();
                 for secret_id in &member_info.member.vault.secrets {
-                    secrets_json.push(json!({
+                    secrets_vec.push(json!({
                         "id": secret_id.id.clone().id_str(),
                         "name": secret_id.name.clone()
                     }));
                 }
 
-                let output = json!({
-                    "secrets": secrets_json
-                });
-
-                println!("{}", serde_json::to_string_pretty(&output)?);
+                context.insert("secrets", &secrets_vec);
+                let output = TemplateManager::instance().render("secrets", &context)?;
+                println!("{}", output);
             },
             _ => {
-                println!("{{\"error\": \"Not a vault member or vault doesn't exist\"}}");
+                let mut error_context = Context::new();
+                error_context.insert("message", "Not a vault member or vault doesn't exist");
+                let output = TemplateManager::instance().render("error", &error_context)?;
+                println!("{}", output);
             }
         }
 
@@ -114,26 +122,29 @@ impl InfoCommand {
     /// Shows vault events information in JSON format
     pub async fn show_vault_events(&self) -> Result<()> {
         let app_state = self.get_app_state().await?;
+        let mut context = Context::new();
 
         match app_state {
             ApplicationState::Vault(VaultFullInfo::Member(member_info)) => {
                 if member_info.vault_events.requests.is_empty() {
-                    println!("{{\"events\": []}}");
+                    // Empty context will result in empty events array
+                    let output = TemplateManager::instance().render("vault_events", &context)?;
+                    println!("{}", output);
                     return Ok(());
                 }
 
-                let mut events_json = Vec::new();
+                let mut events_vec = Vec::new();
                 for request in &member_info.vault_events.requests {
                     match request {
                         VaultActionRequestEvent::JoinCluster(join_request) => {
-                            events_json.push(json!({
+                            events_vec.push(json!({
                                 "type": "JoinCluster",
                                 "device_name": join_request.candidate.device.device_name.as_str().to_string(),
                                 "user_id": format!("{:?}", join_request.candidate.user_id())
                             }));
                         },
                         VaultActionRequestEvent::AddMetaPass(meta_pass) => {
-                            events_json.push(json!({
+                            events_vec.push(json!({
                                 "type": "AddMetaPass",
                                 "meta_pass_id": format!("{:?}", meta_pass.meta_pass_id),
                                 "sender": format!("{:?}", meta_pass.sender.user_data.user_id())
@@ -142,14 +153,15 @@ impl InfoCommand {
                     }
                 }
 
-                let output = json!({
-                    "events": events_json
-                });
-
-                println!("{}", serde_json::to_string_pretty(&output)?);
+                context.insert("events", &events_vec);
+                let output = TemplateManager::instance().render("vault_events", &context)?;
+                println!("{}", output);
             },
             _ => {
-                println!("{{\"error\": \"Not a vault member or vault doesn't exist\"}}");
+                let mut error_context = Context::new();
+                error_context.insert("message", "Not a vault member or vault doesn't exist");
+                let output = TemplateManager::instance().render("error", &error_context)?;
+                println!("{}", output);
             }
         }
 

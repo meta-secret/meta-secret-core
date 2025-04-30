@@ -26,6 +26,10 @@ impl TemplateManager {
         
         // Add all templates
         tera.add_raw_template("info", include_str!("templates/info.tera"))?;
+        tera.add_raw_template("recovery_claims", include_str!("templates/recovery_claims.tera"))?;
+        tera.add_raw_template("secrets", include_str!("templates/secrets.tera"))?;
+        tera.add_raw_template("vault_events", include_str!("templates/vault_events.tera"))?;
+        tera.add_raw_template("error", include_str!("templates/error.tera"))?;
         
         // Add more templates as needed
         // tera.add_raw_template("another_template", include_str!("templates/another.tera"))?;
