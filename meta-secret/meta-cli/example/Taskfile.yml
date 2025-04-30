@@ -123,7 +123,7 @@ tasks:
     deps: [accept-all-join-requests]
     dir: a
     cmds:
-      - ./meta-cli info
+      - ./meta-cli info default
 
   split-secret:
     desc: Split secret on device A
@@ -137,14 +137,14 @@ tasks:
     deps: [split-secret]
     dir: b
     cmds:
-      - ./meta-cli info # download secret share
+      - ./meta-cli info default # download secret share
 
   sync-c:
     desc: Sync device C
     deps: [sync-b]
     dir: c
     cmds:
-      - ./meta-cli info # download secret share
+      - ./meta-cli info default # download secret share
       
   split:
     desc: 7. Split secret on device A and sync with others
@@ -163,7 +163,7 @@ tasks:
     dir: b
     cmds:
       - ./meta-cli secret accept-all-recovery-requests
-      - ./meta-cli info
+      - ./meta-cli info default
 
   accept-recovery-c:
     desc: Accept recovery request on device C
@@ -171,14 +171,14 @@ tasks:
     dir: c
     cmds:
       - ./meta-cli secret accept-all-recovery-requests
-      - ./meta-cli info
+      - ./meta-cli info default
 
   sync-recovery-a:
     desc: Sync device A recovery status
     deps: [accept-recovery-c]
     dir: a
     cmds:
-      - ./meta-cli info
+      - ./meta-cli info default
       
   accept-recovery-request:
     desc: 9. Other devices accept recovery request

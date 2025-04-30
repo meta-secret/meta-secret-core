@@ -46,8 +46,7 @@ impl InitUserCommand {
         println!("User credentials for vault successfully configured");
         println!("Device ID: {}", device_creds.device.device_id);
         println!("Device Name: {:?}", device_name);
-        println!("Vault Name: {}", self.vault_name);
-        println!("User ID: {:?}", user_creds.user_id());
+        println!("Vault Name: {}", user_creds.vault_name.0);
 
         Ok(())
     }
