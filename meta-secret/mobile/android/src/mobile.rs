@@ -78,7 +78,7 @@ pub extern "C" fn Java_sharedData_MetaSecretCoreServiceAndroid_00024NativeLib_si
 
         info!("Настройка HTTP протокола синхронизации");
         let sync_protocol = HttpSyncProtocol {
-            api_url: ApiUrl::custom_dev("http://192.168.0.112", 3000),
+            api_url: ApiUrl::prod(),
         };
 
         info!("Создание шлюза синхронизации");
@@ -171,12 +171,3 @@ pub extern "C" fn Java_sharedData_MetaSecretCoreServiceAndroid_00024NativeLib_fr
     // Данная функция оставлена для API-совместимости с iOS версией
 }
 
-#[cfg(test)]
-mod tests {
-    use std::time::Duration;
-    use super::*;
-    use serde_json::Value;
-    use meta_secret_core::node::app::sync::api_url::ApiUrl;
-    
-    // Для тестирования на Android можно добавить аналогичные тесты позже
-}
