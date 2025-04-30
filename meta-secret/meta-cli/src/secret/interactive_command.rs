@@ -66,6 +66,7 @@ impl SecretInteractiveCommand {
                 
                 let pass = Password::new()
                     .with_prompt("Enter password to split")
+                    .with_confirmation("Confirm password", "Passwords don't match")
                     .interact()?;
                 
                 let plain_pass = PlainPassInfo::new(pass_name, pass);

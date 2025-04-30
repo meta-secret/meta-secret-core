@@ -1,3 +1,4 @@
+extern crate core;
 mod base_command;
 mod info;
 mod init;
@@ -5,15 +6,6 @@ mod auth;
 mod secret;
 mod interactive_command;
 
-extern crate core;
-
-use crate::interactive_command::InteractiveCommand;
-use anyhow::Result;
-use clap::{Parser, Subcommand};
-use meta_secret_core::node::common::model::vault::vault::VaultName;
-use meta_secret_core::secret::data_block::common::SharedSecretConfig;
-use serde::{Deserialize, Serialize};
-use meta_secret_core::node::common::model::meta_pass::PlainPassInfo;
 use crate::auth::accept_all_join_requests_command::AcceptAllJoinRequestsCommand;
 use crate::auth::accept_join_request_command::AcceptJoinRequestCommand;
 use crate::auth::interactive_command::AuthInteractiveCommand;
@@ -22,12 +14,21 @@ use crate::info::info_command::InfoCommand;
 use crate::init::device_command::InitDeviceCommand;
 use crate::init::interactive_command::InitInteractiveCommand;
 use crate::init::user_command::InitUserCommand;
+use crate::interactive_command::InteractiveCommand;
 use crate::secret::accept_all_recovery_requests_command::AcceptAllRecoveryRequestsCommand;
 use crate::secret::accept_recovery_request_command::AcceptRecoveryRequestCommand;
 use crate::secret::interactive_command::SecretInteractiveCommand;
 use crate::secret::recovery_request_command::RecoveryRequestCommand;
 use crate::secret::show_secret_command::ShowSecretCommand;
 use crate::secret::split_command::SplitCommand;
+use anyhow::Result;
+use clap::{Parser, Subcommand};
+use dialoguer::Password;
+use meta_secret_core::node::common::model::meta_pass::PlainPassInfo;
+use meta_secret_core::node::common::model::vault::vault::VaultName;
+use meta_secret_core::secret::data_block::common::SharedSecretConfig;
+use serde::{Deserialize, Serialize};
+use std::io::{self, IsTerminal, Read};
 
 #[derive(Debug, Parser)]
 #[command(about = "Meta Secret CLI", long_about = None)]
@@ -90,11 +91,15 @@ enum AuthCommand {
 
 #[derive(Subcommand, Debug)]
 enum SecretCommand {
+    /// Split a password securely
     Split {
-        #[arg(long)]
-        pass: String,
+        /// Password name
         #[arg(long)]
         pass_name: String,
+        
+        /// Read password from stdin (pipe) instead of prompting
+        #[arg(long)]
+        stdin: bool,
     },
     RecoveryRequest {
         #[arg(long)]
@@ -117,6 +122,20 @@ enum SecretCommand {
 #[derive(Debug, Serialize, Deserialize)]
 struct MetaSecretConfig {
     shared_secret: SharedSecretConfig,
+}
+
+/// Read password securely from stdin
+fn read_password_from_stdin() -> Result<String> {
+    let mut password = String::new();
+    io::stdin().read_to_string(&mut password)?;
+    // Remove trailing newline if present
+    if password.ends_with('\n') {
+        password.pop();
+    }
+    if password.ends_with('\r') {
+        password.pop();
+    }
+    Ok(password)
 }
 
 #[tokio::main]
@@ -171,7 +190,22 @@ async fn main() -> Result<()> {
             }
         },
         Command::Secret { command } => match command {
-            SecretCommand::Split { pass, pass_name } => {
+            SecretCommand::Split { pass_name, stdin } => {
+                let pass = if stdin {
+                    // Read password from stdin (pipe)
+                    read_password_from_stdin()?
+                } else if io::stdin().is_terminal() {
+                    // Terminal is interactive, use secure password input
+                    Password::new()
+                        .with_prompt("Enter password to split")
+                        .with_confirmation("Confirm password", "Passwords don't match")
+                        .interact()?
+                } else {
+                    // Non-interactive but not explicitly set to stdin mode
+                    eprintln!("No terminal detected for password input. Use --stdin flag to read from stdin.");
+                    return Ok(());
+                };
+                
                 let plain_pass = PlainPassInfo::new(pass_name, pass);
                 let split_cmd = SplitCommand::new(db_name);
                 split_cmd.execute(plain_pass).await?

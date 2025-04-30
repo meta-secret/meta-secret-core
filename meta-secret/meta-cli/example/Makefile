@@ -2,6 +2,7 @@ RELEASE_DIR := ../../target/release
 
 VAULT_NAME := $(shell head -c 8 /dev/urandom | xxd -p)
 PASS_NAME := test_pass
+PASSWORD := p_ass_word
 
 init:
 	mkdir -p a
@@ -43,7 +44,7 @@ device_a_info:
 
 ### 7. Device A: Split
 split:
-	cd a && ./meta-cli secret split --pass=p_ass_word --pass-name=$(PASS_NAME)
+	cd a && echo $(PASSWORD) | ./meta-cli secret split --pass-name=$(PASS_NAME) --stdin
 	cd b && ./meta-cli info #download secret share
 	cd c && ./meta-cli info #download secret share
 
