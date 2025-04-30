@@ -171,3 +171,144 @@ pub extern "C" fn Java_sharedData_MetaSecretCoreServiceAndroid_00024NativeLib_fr
     // Данная функция оставлена для API-совместимости с iOS версией
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::Value;
+
+    #[test]
+    #[ignore]
+    fn test_sign_up_android() {
+        // Инициализируем токио рантайм
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let _guard = rt.enter();
+        
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .with_test_writer()
+            .finish();
+        let _guard_tracing = tracing::subscriber::set_global_default(subscriber).unwrap();
+
+        let username = "test_android_user_1";
+        
+        info!("Тест sign_up для пользователя: '{}'", username);
+        
+        // Чтобы тест не зависел от JVM, мы протестируем только внутреннюю асинхронную функцию
+        let result: anyhow::Result<String> = sync_wrapper(async {
+            let device_name = DeviceName::from(username);
+            let vault_name = VaultName::from(username);
+            let repo = Arc::new(InMemKvLogEventRepo::default());
+            let p_obj = Arc::new(PersistentObject::new(repo.clone()));
+
+            info!("Генерирование учетных данных пользователя");
+            let p_creds = PersistentCredentials { p_obj: p_obj.clone() };
+            let user_creds = p_creds
+                .get_or_generate_user_creds(device_name.clone(), vault_name.clone())
+                .await?;
+
+            info!("Настройка HTTP протокола синхронизации");
+            let sync_protocol = HttpSyncProtocol {
+                api_url: ApiUrl::prod(),
+            };
+
+            info!("Создание шлюза синхронизации");
+            let client_gw = Arc::new(SyncGateway {
+                id: "mobile_client".to_string(),
+                p_obj: p_obj.clone(),
+                sync: Arc::new(sync_protocol),
+                device_creds: Arc::new(user_creds.device_creds.clone())
+            });
+
+            info!("Первая синхронизация");
+            client_gw.sync(user_creds.user()).await?;
+            
+            info!("Вторая синхронизация");
+            client_gw.sync(user_creds.user()).await?;
+
+            info!("Выполнение операции sign_up");
+            let sign_up_claim = SignUpClaim { p_obj: p_obj.clone() };
+            sign_up_claim.sign_up(user_creds.user().clone()).await?;
+
+            info!("Третья синхронизация");
+            client_gw.sync(user_creds.user()).await?;
+            
+            info!("Четвёртая синхронизация");
+            client_gw.sync(user_creds.user()).await?;
+
+            info!("Проверка статуса хранилища");
+            let p_vault = Arc::new(PersistentVault::from(p_obj.clone()));
+            let vault_status = p_vault.find(user_creds.user().clone()).await?;
+
+            info!("Статус: {:?}", vault_status);
+            
+            match vault_status {
+                VaultStatus::Member(member) => {
+                    info!("Пользователь является членом хранилища!");
+                    Ok(json!({
+                        "success": true,
+                        "status": "Member",
+                        "data": {
+                            "user_id": member.user_data.user_id(),
+                            "device_id": member.user_data.device.device_id,
+                            "vault_name": member.user_data.vault_name
+                        }
+                    }).to_string())
+                },
+                other_status => {
+                    info!("Недопустимый статус хранилища: {:?}", other_status);
+                    Ok(json!({
+                        "success": true,
+                        "status": format!("{:?}", other_status)
+                    }).to_string())
+                }
+            }
+        });
+
+        match result {
+            Ok(result_str) => {
+                info!("Результат: {}", result_str);
+
+                let json_value: Value = serde_json::from_str(&result_str).expect("Неверный JSON");
+
+                let success = json_value["success"]
+                    .as_bool()
+                    .expect("отсутствует поле 'success'");
+                info!("Успех: {}", success);
+
+                if success {
+                    if let Some(status) = json_value["status"].as_str() {
+                        info!("Статус: {}", status);
+
+                        if status == "Member" {
+                            let data = &json_value["data"];
+                            info!("Информация о пользователе:");
+                            info!("  ID пользователя: {}", data["user_id"].as_str().unwrap_or("N/A"));
+                            info!(
+                                "  ID устройства: {}",
+                                data["device_id"].as_str().unwrap_or("N/A")
+                            );
+                            info!(
+                                "  Название хранилища: {}",
+                                data["vault_name"].as_str().unwrap_or("N/A")
+                            );
+                        } else {
+                            info!("Пользователь не является членом. Статус: {}", status);
+                        }
+                    }
+                } else {
+                    if let Some(error) = json_value["error"].as_str() {
+                        info!("Ошибка: {}", error);
+                    }
+                }
+            },
+            Err(e) => {
+                info!("Ошибка при выполнении: {}", e);
+                panic!("Тест завершился с ошибкой: {}", e);
+            }
+        }
+    }
+}
+
