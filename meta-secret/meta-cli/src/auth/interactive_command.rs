@@ -4,6 +4,20 @@ use dialoguer::{theme::ColorfulTheme, Input, Select};
 use crate::auth::accept_all_join_requests_command::AcceptAllJoinRequestsCommand;
 use crate::auth::accept_join_request_command::AcceptJoinRequestCommand;
 use crate::auth::sign_up_command::JoinVaultCommand;
+use strum::IntoEnumIterator;
+use strum_macros::{Display, EnumIter};
+
+#[derive(Debug, Clone, Copy, Display, EnumIter)]
+pub enum AuthOption {
+    #[strum(to_string = "Sign Up (Create/Join vault)")]
+    SignUp,
+    #[strum(to_string = "Accept Join Request")]
+    AcceptJoinRequest,
+    #[strum(to_string = "Accept All Join Requests")]
+    AcceptAllJoinRequests,
+    #[strum(to_string = "Back to Main Menu")]
+    Back,
+}
 
 pub struct AuthInteractiveCommand {
     base: BaseCommand,
@@ -17,20 +31,24 @@ impl AuthInteractiveCommand {
     }
 
     pub async fn execute(&self) -> Result<()> {
-        let items = vec!["Sign Up (Create/Join vault)", "Accept Join Request", "Accept All Join Requests", "Back to Main Menu"];
+        let options: Vec<AuthOption> = AuthOption::iter().collect();
+        let items: Vec<String> = options.iter().map(|o| o.to_string()).collect();
+        
         let selection = Select::with_theme(&ColorfulTheme::default())
             .with_prompt("Select authentication action")
             .default(0)
             .items(&items)
             .interact()?;
+        
+        let option = options[selection];
 
-        match selection {
-            0 => {
+        match option {
+            AuthOption::SignUp => {
                 // Sign Up
                 let sign_up_cmd = JoinVaultCommand::new(self.base.db_name.clone());
                 sign_up_cmd.execute().await?
             }
-            1 => {
+            AuthOption::AcceptJoinRequest => {
                 // Accept Join Request
                 let device_id = Input::<String>::new()
                     .with_prompt("Enter device ID")
@@ -39,18 +57,44 @@ impl AuthInteractiveCommand {
                 let accept_cmd = AcceptJoinRequestCommand::new(self.base.db_name.clone(), device_id);
                 accept_cmd.execute().await?
             }
-            2 => {
+            AuthOption::AcceptAllJoinRequests => {
                 // Accept All Join Requests
                 let accept_all_cmd = AcceptAllJoinRequestsCommand::new(self.base.db_name.clone());
                 accept_all_cmd.execute().await?
             }
-            3 => {
+            AuthOption::Back => {
                 // Back to main menu
                 println!("Returning to main menu");
             }
-            _ => unreachable!(),
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_auth_option_order_matches_selection_indices() {
+        // Collect all AuthOption variants in order
+        let options: Vec<AuthOption> = AuthOption::iter().collect();
+        
+        // Verify the order matches expected indices
+        assert_eq!(options.len(), 4);
+        assert!(matches!(options[0], AuthOption::SignUp));
+        assert!(matches!(options[1], AuthOption::AcceptJoinRequest));
+        assert!(matches!(options[2], AuthOption::AcceptAllJoinRequests));
+        assert!(matches!(options[3], AuthOption::Back));
+    }
+
+    #[test]
+    fn test_auth_option_display_strings() {
+        // Verify the Display implementation produces the correct strings
+        assert_eq!(AuthOption::SignUp.to_string(), "Sign Up (Create/Join vault)");
+        assert_eq!(AuthOption::AcceptJoinRequest.to_string(), "Accept Join Request");
+        assert_eq!(AuthOption::AcceptAllJoinRequests.to_string(), "Accept All Join Requests");
+        assert_eq!(AuthOption::Back.to_string(), "Back to Main Menu");
     }
 } 
