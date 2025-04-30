@@ -154,7 +154,7 @@ fn read_password_from_stdin() -> Result<String> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let subscriber = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
+        .with_max_level(tracing::Level::WARN)
         .with_test_writer()
         .finish();
     tracing::subscriber::set_global_default(subscriber)?;

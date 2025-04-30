@@ -15,23 +15,15 @@ vars:
   META_CLI_C: c/meta-cli
 
 tasks:
-  check-dependencies:
-    desc: Check if required dependencies are installed
+  clean:
+    desc: Clean all generated files
     cmds:
-      - |
-        DEPS="{\"dependencies\":["
-        if ! command -v jq &> /dev/null; then
-          DEPS="$DEPS{\"name\":\"jq\",\"installed\":false}"
-          exit 1
-        else
-          DEPS="$DEPS{\"name\":\"jq\",\"installed\":true}"
-        fi
-        DEPS="$DEPS]}"
-        echo "$DEPS" | jq .
+      - rm -rf a/meta-secret.redb b/meta-secret.redb c/meta-secret.redb || true
+      - rm -f {{.META_CLI_A}} {{.META_CLI_B}} {{.META_CLI_C}} || true
 
   init:
     desc: Create working directories
-    deps: [check-dependencies]
+    deps: [clean]
     cmds:
       - mkdir -p a b c
 
@@ -44,70 +36,160 @@ tasks:
       - cp {{.RELEASE_DIR}}/meta-cli {{.META_CLI_B}}
       - cp {{.RELEASE_DIR}}/meta-cli {{.META_CLI_C}}
 
+  device-a:
+    desc: Initialize device A
+    deps: [build]
+    dir: a
+    cmds:
+      - ./meta-cli init device --device-name=device_a
+
+  device-b:
+    desc: Initialize device B
+    deps: [device-a]
+    dir: b
+    cmds:
+      - ./meta-cli init device --device-name=device_b
+
+  device-c:
+    desc: Initialize device C
+    deps: [device-b]
+    dir: c
+    cmds:
+      - ./meta-cli init device --device-name=device_c
+      
   device:
     desc: 2. Initialize devices with unique names
-    deps: [build]
-    cmds:
-      - cd a && ./meta-cli init device --device-name=device_a
-      - cd b && ./meta-cli init device --device-name=device_b
-      - cd c && ./meta-cli init device --device-name=device_c
+    deps: [device-c]
 
+  user-a:
+    desc: Initialize user A
+    deps: [device]
+    dir: a
+    cmds:
+      - ./meta-cli init user --vault-name={{.VAULT_NAME}}
+
+  user-b:
+    desc: Initialize user B
+    deps: [user-a]
+    dir: b
+    cmds:
+      - ./meta-cli init user --vault-name={{.VAULT_NAME}}
+
+  user-c:
+    desc: Initialize user C
+    deps: [user-b]
+    dir: c
+    cmds:
+      - ./meta-cli init user --vault-name={{.VAULT_NAME}}
+      
   user:
     desc: 3. Initialize users with the same vault name
-    deps: [device]
-    cmds:
-      - cd a && ./meta-cli init user --vault-name={{.VAULT_NAME}}
-      - cd b && ./meta-cli init user --vault-name={{.VAULT_NAME}}
-      - cd c && ./meta-cli init user --vault-name={{.VAULT_NAME}}
+    deps: [user-c]
 
+  signup-a:
+    desc: Sign up user A
+    deps: [user]
+    dir: a
+    cmds:
+      - ./meta-cli auth sign-up
+
+  signup-b:
+    desc: Sign up user B
+    deps: [signup-a]
+    dir: b
+    cmds:
+      - ./meta-cli auth sign-up
+
+  signup-c:
+    desc: Sign up user C
+    deps: [signup-b]
+    dir: c
+    cmds:
+      - ./meta-cli auth sign-up
+      
   sign-up:
     desc: 4. Sign up all users - first user creates a new vault, others send join requests
-    deps: [user]
-    cmds:
-      - cd a && ./meta-cli auth sign-up
-      - cd b && ./meta-cli auth sign-up
-      - cd c && ./meta-cli auth sign-up
+    deps: [signup-c]
 
   accept-all-join-requests:
     desc: 5. Device A accepts all join requests
     deps: [sign-up]
+    dir: a
     cmds:
-      - cd a && ./meta-cli auth accept-all-join-requests
+      - ./meta-cli auth accept-all-join-requests
 
   device-a-info:
     desc: 6. Display device A vault information (it must be a vault with 3 members)
     deps: [accept-all-join-requests]
+    dir: a
     cmds:
-      - cd a && ./meta-cli info
+      - ./meta-cli info
 
+  split-secret:
+    desc: Split secret on device A
+    deps: [device-a-info]
+    dir: a
+    cmds:
+      - echo {{.PASSWORD}} | ./meta-cli secret split --pass-name={{.PASS_NAME}} --stdin
+
+  sync-b:
+    desc: Sync device B
+    deps: [split-secret]
+    dir: b
+    cmds:
+      - ./meta-cli info # download secret share
+
+  sync-c:
+    desc: Sync device C
+    deps: [sync-b]
+    dir: c
+    cmds:
+      - ./meta-cli info # download secret share
+      
   split:
     desc: 7. Split secret on device A and sync with others
-    deps: [device-a-info]
-    cmds:
-      - cd a && echo {{.PASSWORD}} | ./meta-cli secret split --pass-name={{.PASS_NAME}} --stdin
-      - cd b && ./meta-cli info # download secret share
-      - cd c && ./meta-cli info # download secret share
+    deps: [sync-c]
 
   send-recovery-request:
     desc: 8. Device A sends recovery request
     deps: [split]
+    dir: a
     cmds:
-      - cd a && ./meta-cli secret recovery-request --pass-name={{.PASS_NAME}}
+      - ./meta-cli secret recovery-request --pass-name={{.PASS_NAME}}
 
+  accept-recovery-b:
+    desc: Accept recovery request on device B
+    deps: [send-recovery-request]
+    dir: b
+    cmds:
+      - ./meta-cli secret accept-all-recovery-requests
+      - ./meta-cli info
+
+  accept-recovery-c:
+    desc: Accept recovery request on device C
+    deps: [accept-recovery-b]
+    dir: c
+    cmds:
+      - ./meta-cli secret accept-all-recovery-requests
+      - ./meta-cli info
+
+  sync-recovery-a:
+    desc: Sync device A recovery status
+    deps: [accept-recovery-c]
+    dir: a
+    cmds:
+      - ./meta-cli info
+      
   accept-recovery-request:
     desc: 9. Other devices accept recovery request
-    deps: [send-recovery-request]
-    cmds:
-      - cd b && ./meta-cli secret accept-all-recovery-requests && ./meta-cli info
-      - cd c && ./meta-cli secret accept-all-recovery-requests && ./meta-cli info
-      - cd a && ./meta-cli info
+    deps: [sync-recovery-a]
 
-  show-secret:
-    desc: 10. Show recovered secret!
+  retrieve-secret:
+    desc: Retrieve the secret from device A
     deps: [accept-recovery-request]
+    dir: a
     cmds:
       - |
-        cd a && \
         RECOVERY_CLAIMS=$(./meta-cli --output-format=json info recovery-claims) && \
         CLAIM_ID=$(echo "$RECOVERY_CLAIMS" | jq -r '.claims[0].id') && \
         PASS_NAME=$(echo "$RECOVERY_CLAIMS" | jq -r '.claims[0].password') && \
@@ -118,14 +200,13 @@ tasks:
         SECRET_RESULT=$(./meta-cli --output-format=json secret show --claim-id=$CLAIM_ID) && \
         SECRET=$(echo "$SECRET_RESULT" | jq -r '.secret') && \
         echo "Secret successfully recovered: $SECRET"
+
+  show-secret:
+    desc: 10. Show recovered secret!
+    deps: [retrieve-secret]
+    cmds:
       - echo "Secret recovery demonstration completed successfully!"
 
   run-all:
     desc: Run entire demo sequence
-    deps: [clean, show-secret]
-
-  clean:
-    desc: Clean all generated files
-    cmds:
-      - rm -rf a/meta-secret.redb b/meta-secret.redb c/meta-secret.redb
-      - rm -f {{.META_CLI_A}} {{.META_CLI_B}} {{.META_CLI_C}} 
+    deps: [show-secret]
