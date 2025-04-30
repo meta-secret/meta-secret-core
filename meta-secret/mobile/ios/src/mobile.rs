@@ -1,5 +1,6 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
+use std::future::Future;
 
 use anyhow::anyhow;
 use meta_secret_core::node::app::sync::api_url::ApiUrl;
@@ -21,7 +22,7 @@ fn sync_wrapper<F: Future>(future: F) -> F::Output {
 }
 
 #[unsafe(no_mangle)]
-pub async extern "C" fn sign_up(user_name: *const c_char) -> *mut c_char {
+pub extern "C" fn sign_up(user_name: *const c_char) -> *mut c_char {
     if user_name.is_null() {
         let error_json = json!({
             "success": false,
@@ -31,78 +32,79 @@ pub async extern "C" fn sign_up(user_name: *const c_char) -> *mut c_char {
         return CString::new(error_json).unwrap_or_default().into_raw();
     }
 
-    // let result: anyhow::Result<String> = sync_wrapper(async {
-    let user_name_str = unsafe { CStr::from_ptr(user_name) }
-        .to_str()
-        .map_err(|e| anyhow!("Invalid UTF-8 string: {}", e))
-        .unwrap();
-    let device_name = DeviceName::from(user_name_str);
-    let vault_name = VaultName::from(user_name_str);
-    let repo = Arc::new(InMemKvLogEventRepo::default());
-    let p_obj = Arc::new(PersistentObject::new(repo.clone()));
+    let result: anyhow::Result<String> = sync_wrapper(async {
+        let user_name_str = unsafe { CStr::from_ptr(user_name) }
+            .to_str()
+            .map_err(|e| anyhow!("Invalid UTF-8 string: {}", e))
+            .unwrap();
+        let device_name = DeviceName::from(user_name_str);
+        let vault_name = VaultName::from(user_name_str);
+        let repo = Arc::new(InMemKvLogEventRepo::default());
+        let p_obj = Arc::new(PersistentObject::new(repo.clone()));
 
-    // let device_creds = DeviceCredentials::generate(device_name.clone());
-    // let user_creds = UserCredentials::from(device_creds.clone(), vault_name.clone());
+        // let device_creds = DeviceCredentials::generate(device_name.clone());
+        // let user_creds = UserCredentials::from(device_creds.clone(), vault_name.clone());
 
-    let p_creds = PersistentCredentials {
-        p_obj: p_obj.clone(),
-    };
-    let user_creds = p_creds
-        .get_or_generate_user_creds(device_name.clone(), vault_name.clone())
-        .await
-        .unwrap();
+        let p_creds = PersistentCredentials {
+            p_obj: p_obj.clone(),
+        };
+        let user_creds = p_creds
+            .get_or_generate_user_creds(device_name.clone(), vault_name.clone())
+            .await
+            .unwrap();
 
-    let sync_protocol = HttpSyncProtocol {
-        api_url: ApiUrl::dev(3000),
-    };
+        let sync_protocol = HttpSyncProtocol {
+            api_url: ApiUrl::prod(),
+        };
 
-    let client_gw = Arc::new(SyncGateway {
-        id: "mobile_client".to_string(),
-        p_obj: p_obj.clone(),
-        sync: Arc::new(sync_protocol),
-        device_creds: Arc::new(user_creds.device_creds.clone()),
+        let client_gw = Arc::new(SyncGateway {
+            id: "mobile_client".to_string(),
+            p_obj: p_obj.clone(),
+            sync: Arc::new(sync_protocol),
+            device_creds: Arc::new(user_creds.device_creds.clone()),
+        });
+
+        client_gw.sync(user_creds.user()).await.unwrap();
+        client_gw.sync(user_creds.user()).await.unwrap();
+
+        let sign_up_claim = SignUpClaim {
+            p_obj: p_obj.clone(),
+        };
+        sign_up_claim
+            .sign_up(user_creds.user().clone())
+            .await
+            .unwrap();
+
+        client_gw.sync(user_creds.user()).await.unwrap();
+        client_gw.sync(user_creds.user()).await.unwrap();
+
+        let p_vault = Arc::new(PersistentVault::from(p_obj.clone()));
+        let vault_status = p_vault.find(user_creds.user().clone()).await.unwrap();
+
+        match vault_status {
+            VaultStatus::Member(member) => {
+                info!("The user is a vault member!");
+                Ok(json!({
+                    "success": true,
+                    "status": "Member",
+                    "data": {
+                        "user_id": member.user_data.user_id(),
+                        "device_id": member.user_data.device.device_id,
+                        "vault_name": member.user_data.vault_name
+                    }
+                })
+                .to_string())
+            }
+            other_status => {
+                info!("Invalid storage status: {:?}", other_status);
+                Ok(json!({
+                    "success": true,
+                    "status": format!("{:?}", other_status)
+                })
+                .to_string())
+            }
+        }
     });
-
-    client_gw.sync(user_creds.user()).await.unwrap();
-    client_gw.sync(user_creds.user()).await.unwrap();
-
-    let sign_up_claim = SignUpClaim {
-        p_obj: p_obj.clone(),
-    };
-    sign_up_claim
-        .sign_up(user_creds.user().clone())
-        .await
-        .unwrap();
-
-    client_gw.sync(user_creds.user()).await.unwrap();
-    client_gw.sync(user_creds.user()).await.unwrap();
-
-    let p_vault = Arc::new(PersistentVault::from(p_obj.clone()));
-    let vault_status = p_vault.find(user_creds.user().clone()).await.unwrap();
-
-    let result: Result<String, String> = match vault_status {
-        VaultStatus::Member(member) => {
-            info!("The user is a vault member!");
-            Ok(json!({
-                "success": true,
-                "status": "Member",
-                "data": {
-                    "user_id": member.user_data.user_id(),
-                    "device_id": member.user_data.device.device_id,
-                    "vault_name": member.user_data.vault_name
-                }
-            })
-            .to_string())
-        }
-        other_status => {
-            info!("Invalid storage status: {:?}", other_status);
-            Ok(json!({
-                "success": true,
-                "status": format!("{:?}", other_status)
-            })
-            .to_string())
-        }
-    };
 
     match result {
         Ok(json_str) => CString::new(json_str).unwrap_or_default().into_raw(),
@@ -144,7 +146,7 @@ mod tests {
 
         use reqwest::Client;
         let client = Client::new();
-        let url = ApiUrl::dev(3000).get_url() + "/meta_request";
+        let url = ApiUrl::prod().get_url() + "/meta_request";
 
         let request_builder = client
             .get(url.as_str())
@@ -160,7 +162,7 @@ mod tests {
         let c_username = CString::new(username).unwrap();
 
         info!("Execute sign_up for user: '{}'", username);
-        let result_ptr = sign_up(c_username.as_ptr()).await;
+        let result_ptr = sign_up(c_username.as_ptr());
 
         let result_str = unsafe {
             assert!(!result_ptr.is_null(), "sign_up - null pointer");
