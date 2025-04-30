@@ -25,7 +25,8 @@ impl SecretInteractiveCommand {
             "Request Recovery", 
             "Show Secret", 
             "Accept Recovery Request", 
-            "Accept All Recovery Requests"
+            "Accept All Recovery Requests",
+            "Back to Main Menu"
         ];
         let selection = Select::with_theme(&ColorfulTheme::default())
             .with_prompt("Select secret management action")
@@ -79,6 +80,10 @@ impl SecretInteractiveCommand {
                 // Accept All Recovery Requests
                 let accept_all_recover_cmd = AcceptAllRecoveryRequestsCommand::new(self.base.db_name.clone());
                 accept_all_recover_cmd.execute().await?
+            }
+            5 => {
+                // Back to main menu
+                println!("Returning to main menu");
             }
             _ => unreachable!(),
         }

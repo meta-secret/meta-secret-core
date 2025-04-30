@@ -17,7 +17,7 @@ impl InitInteractiveCommand {
     }
 
     pub async fn execute(&self) -> Result<()> {
-        let items = vec!["Device", "User"];
+        let items = vec!["Device", "User", "Back to Main Menu"];
         let selection = Select::with_theme(&ColorfulTheme::default())
             .with_prompt("Select initialization type")
             .default(0)
@@ -43,6 +43,10 @@ impl InitInteractiveCommand {
                 let vault_name = VaultName::from(vault_name_str);
                 let init_user_cmd = InitUserCommand::new(self.base.db_name.clone(), vault_name);
                 init_user_cmd.execute().await?
+            }
+            2 => {
+                // Back to main menu
+                println!("Returning to main menu");
             }
             _ => unreachable!(),
         }

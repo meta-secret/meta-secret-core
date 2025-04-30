@@ -17,7 +17,7 @@ impl AuthInteractiveCommand {
     }
 
     pub async fn execute(&self) -> Result<()> {
-        let items = vec!["Sign Up (Create/Join vault)", "Accept Join Request", "Accept All Join Requests"];
+        let items = vec!["Sign Up (Create/Join vault)", "Accept Join Request", "Accept All Join Requests", "Back to Main Menu"];
         let selection = Select::with_theme(&ColorfulTheme::default())
             .with_prompt("Select authentication action")
             .default(0)
@@ -43,6 +43,10 @@ impl AuthInteractiveCommand {
                 // Accept All Join Requests
                 let accept_all_cmd = AcceptAllJoinRequestsCommand::new(self.base.db_name.clone());
                 accept_all_cmd.execute().await?
+            }
+            3 => {
+                // Back to main menu
+                println!("Returning to main menu");
             }
             _ => unreachable!(),
         }
