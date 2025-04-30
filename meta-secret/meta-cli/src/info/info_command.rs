@@ -1,11 +1,12 @@
 use crate::base_command::BaseCommand;
+use crate::template_manager::TemplateManager;
 use anyhow::Result;
 use meta_secret_core::node::common::model::user::common::UserMembership;
 use meta_secret_core::node::common::model::{ApplicationState, IdString, VaultFullInfo};
 use meta_secret_core::node::common::model::secret::SsDistributionStatus;
 use meta_secret_core::node::db::events::vault::vault_log_event::VaultActionRequestEvent;
 use serde_json::json;
-use tera::{Tera, Context};
+use tera::Context;
 
 pub struct InfoCommand {
     base: BaseCommand,
@@ -157,118 +158,6 @@ impl InfoCommand {
 
     pub async fn execute(&self) -> Result<()> {
         let db_context = self.base.open_existing_db().await?;
-        let mut tera = Tera::default();
-        
-        // Define all templates as structured documents
-        tera.add_raw_template("main", r#"
-Meta Secret Information:
-------------------------
-
-{% if device %}
-Device Information:
-  Device ID: {{ device.id }}
-  Device Name: {{ device.name }}
-{% else %}
-Not initialized. Run the 'meta-secret init-device' command first.
-{% endif %}
-
-{% if user %}
-User Information:
-  Vault Name: {{ user.vault_name }}
-{% else %}
-User Status: Device is initialized but not associated with a vault.
-Run the 'meta-secret init-user --vault-name <n>' command to associate it with a vault.
-{% endif %}
-
-{% if app_state %}
-Syncing with server to get latest state...
-
-Application State:
-  Status: {{ app_state.status }}
-  {% if app_state.status == "Local" %}
-  Device is initialized but not connected to a vault
-  Device ID: {{ app_state.device_id }}
-  {% elif app_state.status == "Vault not exists" %}
-  User has created credentials but the vault doesn't exist yet
-  Vault Name: {{ app_state.vault_name }}
-  {% elif app_state.status == "Outsider" %}
-  User is not a member of the vault
-  Vault Name: {{ app_state.vault_name }}
-  User needs to be invited to join the vault
-  {% elif app_state.status == "Member" %}
-  User is a member of the vault
-  Vault Name: {{ app_state.vault_name }}
-
-  {% if app_state.vault %}
-  Vault Information:
-  Users: {{ app_state.vault.users | length }}
-  Current owner (device id): {{ app_state.vault.owner_id }}
-  
-  {% if app_state.vault.users | length > 0 %}
-  User Details:
-  {% for user in app_state.vault.users %}
-    {% if user.type == "Member" %}
-    Member #{{ loop.index }}: Device Id={{ user.device_id }}, Device Name={{ user.device_name }}
-    {% else %}
-    Outsider #{{ loop.index }}: ID={{ user.device_id }}
-    {% endif %}
-  {% endfor %}
-  {% endif %}
-  
-  ===== SECRETS_INFO_BEGIN =====
-  Total Secrets: {{ app_state.vault.secrets | length }}
-  {% if app_state.vault.secrets | length > 0 %}
-  Secret Details:
-  {% for secret in app_state.vault.secrets %}
-    Secret #{{ loop.index }}
-    Id: {{ secret.id }}
-    Name: {{ secret.name }}
-  {% endfor %}
-  {% endif %}
-  ===== SECRETS_INFO_END =====
-  
-  ===== RECOVERY_CLAIMS_INFO_BEGIN =====
-  {% if app_state.recovery_claims | length == 0 %}
-  No recovery claims available.
-  {% else %}
-  Total Recovery Claims: {{ app_state.recovery_claims | length }}
-  {% for claim in app_state.recovery_claims %}
-  Claim #{{ loop.index }}: Id="{{ claim.id }}"
-    Sender: {{ claim.sender }}
-    Type: {{ claim.type }}
-    Password: {{ claim.password }}
-    Status: {{ claim.status }}
-    
-    {% if claim.receivers | length > 0 %}
-    Receivers ({{ claim.receivers | length }}):
-    {% for receiver in claim.receivers %}
-      Receiver #{{ loop.index }}: {{ receiver.id }} (Status: {{ receiver.status }})
-    {% endfor %}
-    
-    {% endif %}
-  {% endfor %}
-  {% endif %}
-  ===== RECOVERY_CLAIMS_INFO_END =====
-  
-  ===== VAULT_EVENTS_INFO_BEGIN =====
-  {% if app_state.vault.events | length == 0 %}
-  No pending join requests
-  {% else %}
-  Pending Join Requests: {{ app_state.vault.events | length }}
-  {% for event in app_state.vault.events %}
-  {% if event.type == "JoinCluster" %}
-  Request #{{ loop.index }}: Device={{ event.device }}, User ID={{ event.user_id }}
-  {% elif event.type == "AddMetaPass" %}
-  Request #{{ loop.index }}: Meta Pass ID={{ event.meta_pass_id }}, Sender={{ event.sender }}
-  {% endif %}
-  {% endfor %}
-  {% endif %}
-  ===== VAULT_EVENTS_INFO_END =====
-  {% endif %}
-  {% endif %}
-{% endif %}
-"#)?;
-
         let mut context = Context::new();
         
         // Try to get device credentials
@@ -281,7 +170,9 @@ Application State:
                 "name": device_creds.device.device_name.as_str()
             }));
         } else {
-            print!("{}", tera.render("main", &context)?);
+            // Just render the template with the current context to show initialization message
+            let output = TemplateManager::instance().render("info", &context)?;
+            print!("{}", output);
             return Ok(());
         }
 
@@ -292,7 +183,9 @@ Application State:
                 "vault_name": user_creds.vault_name
             }));
         } else {
-            print!("{}", tera.render("main", &context)?);
+            // Just render the template with the current context to show the "no user" message
+            let output = TemplateManager::instance().render("info", &context)?;
+            print!("{}", output);
             return Ok(());
         }
 
@@ -408,7 +301,10 @@ Application State:
             },
         }
         
-        print!("{}", tera.render("main", &context)?);
+        // Render the template using the template manager
+        let output = TemplateManager::instance().render("info", &context)?;
+        print!("{}", output);
+        
         Ok(())
     }
 } 

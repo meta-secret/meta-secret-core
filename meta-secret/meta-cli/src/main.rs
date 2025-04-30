@@ -5,6 +5,7 @@ mod init;
 mod auth;
 mod secret;
 mod interactive_command;
+mod template_manager;
 
 use crate::auth::accept_all_join_requests_command::AcceptAllJoinRequestsCommand;
 use crate::auth::accept_join_request_command::AcceptJoinRequestCommand;

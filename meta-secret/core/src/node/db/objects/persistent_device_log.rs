@@ -16,7 +16,7 @@ use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use anyhow::Result;
 use derive_more::From;
-use tracing::info;
+use tracing::{debug, info};
 use tracing_attributes::instrument;
 
 #[derive(From)]
@@ -62,7 +62,7 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
 
     #[instrument(skip(self))]
     pub async fn save_create_vault_request(&self, user: &UserData) -> Result<()> {
-        info!("Save event: CreateVault request");
+        debug!("Save event: CreateVault request");
 
         let create_request = {
             let create_action = VaultActionInitEvent::CreateVault(CreateVaultEvent {
