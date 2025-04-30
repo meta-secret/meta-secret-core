@@ -188,7 +188,6 @@ mod tests {
     use meta_secret_core::node::app::sync::api_url::ApiUrl;
     use serde_json::Value;
     use std::time::Duration;
-    use reqwest::{Error, Response};
 
     #[tokio::test]
     #[ignore]
@@ -230,7 +229,7 @@ mod tests {
 
         let response = request_builder.send().await;
         info!("Response: {:?}", response);
-        let username = "test_debug_user_2";
+        let username = "test_debug_user_3";
         let c_username = CString::new(username).unwrap();
 
         info!("Execute sign_up for user: '{}'", username);
