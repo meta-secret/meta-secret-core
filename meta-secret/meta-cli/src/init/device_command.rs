@@ -3,11 +3,7 @@ use anyhow::Result;
 use anyhow::bail;
 use meta_secret_core::node::common::model::device::common::DeviceName;
 use meta_secret_core::node::db::descriptors::creds::DeviceCredsDescriptor;
-use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
-use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
-use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
-use std::sync::Arc;
 use tracing::info;
 
 pub struct InitDeviceCommand {
@@ -37,7 +33,7 @@ impl InitDeviceCommand {
     }
     
     // Generic method that works with any DbContext
-    async fn execute_with_context<Repo: KvLogEventRepo>(&self, db_context: &DbContext<Repo>) -> Result<()> {
+    pub async fn execute_with_context<Repo: KvLogEventRepo>(&self, db_context: &DbContext<Repo>) -> Result<()> {
         // Check if device credentials already exist
         let maybe_device_creds = db_context
             .p_obj
@@ -71,7 +67,11 @@ impl InitDeviceCommand {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
+    use std::sync::Arc;
+    use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
+    use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
+    use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
     use super::*;
 
     #[tokio::test]
@@ -116,9 +116,7 @@ mod tests {
     pub async fn create_in_memory_context() -> DbContext<InMemKvLogEventRepo> {
         let repo = Arc::new(InMemKvLogEventRepo::default());
         let p_obj = Arc::new(PersistentObject::new(repo.clone()));
-        let p_creds = PersistentCredentials {
-            p_obj: p_obj.clone(),
-        };
+        let p_creds = PersistentCredentials::from(p_obj.clone());
 
         DbContext {
             repo,
