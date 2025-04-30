@@ -10,4 +10,4 @@ events:
     sender: {{ event.sender }}
     {%- endif %}
   {%- endfor %}
-  {%- endif %} 
+  {%- endif %}

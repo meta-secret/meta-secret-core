@@ -12,4 +12,4 @@ claims:
         status: {{ receiver.status }}
       {%- endfor %}
   {%- endfor %}
-  {%- endif %} 
+  {%- endif %}

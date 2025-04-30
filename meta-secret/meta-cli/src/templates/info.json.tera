@@ -90,4 +90,4 @@
   "message": "Not initialized. Run the 'meta-secret init-device' command first."
 }
 {%- endif %}
-} 
+}
