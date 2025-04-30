@@ -10,14 +10,15 @@ use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
 use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
+use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use std::path::Path;
 use std::sync::Arc;
 
 /// Container for database-related components
-pub struct DbContext {
-    pub repo: Arc<ReDbRepo>,
-    pub p_obj: Arc<PersistentObject<ReDbRepo>>,
-    pub p_creds: PersistentCredentials<ReDbRepo>,
+pub struct DbContext<Repo: KvLogEventRepo> {
+    pub repo: Arc<Repo>,
+    pub p_obj: Arc<PersistentObject<Repo>>,
+    pub p_creds: PersistentCredentials<Repo>,
 }
 
 pub struct BaseCommand {
@@ -30,7 +31,7 @@ impl BaseCommand {
     }
 
     /// Opens an existing database and returns a context with repo, persistent object and credentials
-    pub async fn open_existing_db(&self) -> Result<DbContext> {
+    pub async fn open_existing_db(&self) -> Result<DbContext<ReDbRepo>> {
         let db_path = Path::new(self.db_name.as_str());
 
         if !db_path.exists() {
@@ -51,7 +52,7 @@ impl BaseCommand {
     }
 
     /// Opens an existing database or creates a new one if it doesn't exist
-    pub async fn open_or_create_db(&self) -> Result<DbContext> {
+    pub async fn open_or_create_db(&self) -> Result<DbContext<ReDbRepo>> {
         let db_path = Path::new(self.db_name.as_str());
 
         // Check if database exists and either open or create it
@@ -81,7 +82,7 @@ impl BaseCommand {
     }
 
     /// Common error handling for missing device credentials
-    pub async fn ensure_device_creds(&self, db_context: &DbContext) -> Result<()> {
+    pub async fn ensure_device_creds<Repo: KvLogEventRepo>(&self, db_context: &DbContext<Repo>) -> Result<()> {
         if db_context.p_creds.get_device_creds().await?.is_none() {
             bail!("Device credentials not found. Please run `meta-secret init-device` first.");
         }
@@ -89,7 +90,7 @@ impl BaseCommand {
     }
 
     /// Common error handling for missing user credentials
-    pub async fn ensure_user_creds(&self, db_context: &DbContext) -> Result<()> {
+    pub async fn ensure_user_creds<Repo: KvLogEventRepo>(&self, db_context: &DbContext<Repo>) -> Result<()> {
         if db_context.p_creds.get_user_creds().await?.is_none() {
             bail!("User credentials not found. Please run `meta-secret init-user` first.");
         }
@@ -99,7 +100,7 @@ impl BaseCommand {
     /// Helper method to create client, get app state, and handle a request
     pub async fn handle_client_request(
         &self,
-        db_context: &DbContext,
+        db_context: &DbContext<ReDbRepo>,
         request: GenericAppStateRequest,
     ) -> Result<()> {
         let client = self.create_client_service(db_context).await?;
@@ -113,7 +114,7 @@ impl BaseCommand {
     /// Creates a MetaClientService using the user credentials from the database
     pub async fn create_client_service(
         &self,
-        db_context: &DbContext,
+        db_context: &DbContext<ReDbRepo>,
     ) -> Result<MetaClientService<ReDbRepo, HttpSyncProtocol>> {
         // Get user credentials from the database
         let maybe_user_creds = db_context.p_creds.get_user_creds().await?;
