@@ -27,10 +27,10 @@ impl TemplateManager {
         
         // Add JSON templates
         tera.add_raw_template("info.json", include_str!("templates/info.json.tera"))?;
-        tera.add_raw_template("recovery_claims.json", include_str!("templates/recovery_claims.tera"))?;
-        tera.add_raw_template("secrets.json", include_str!("templates/secrets.tera"))?;
-        tera.add_raw_template("vault_events.json", include_str!("templates/vault_events.tera"))?;
-        tera.add_raw_template("error.json", include_str!("templates/error.tera"))?;
+        tera.add_raw_template("recovery_claims.json", include_str!("templates/recovery_claims.json.tera"))?;
+        tera.add_raw_template("secrets.json", include_str!("templates/secrets.json.tera"))?;
+        tera.add_raw_template("vault_events.json", include_str!("templates/vault_events.json.tera"))?;
+        tera.add_raw_template("error.json", include_str!("templates/error.json.tera"))?;
         
         // Add YAML templates
         tera.add_raw_template("info.yaml", include_str!("templates/info.yaml.tera"))?;
