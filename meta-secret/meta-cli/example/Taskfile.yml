@@ -115,8 +115,8 @@ tasks:
           echo "Error: No recovery claims found."
           exit 1
         fi && \
-        SECRET_RESULT=$(./meta-cli secret show --claim-id=$CLAIM_ID) && \
-        SECRET=$(echo "$SECRET_RESULT" | grep -v "^May the Meta" | tr -d '\n' | tr -d '\r') && \
+        SECRET_RESULT=$(./meta-cli --output-format=json secret show --claim-id=$CLAIM_ID) && \
+        SECRET=$(echo "$SECRET_RESULT" | jq -r '.secret') && \
         echo "Secret successfully recovered: $SECRET"
       - echo "Secret recovery demonstration completed successfully!"
 
