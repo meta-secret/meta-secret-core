@@ -3,7 +3,6 @@ use anyhow::Result;
 use meta_secret_core::node::common::model::user::common::UserMembership;
 use meta_secret_core::node::common::model::{ApplicationState, IdString, VaultFullInfo};
 use meta_secret_core::node::common::model::secret::SsDistributionStatus;
-use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::db::events::vault::vault_log_event::VaultActionRequestEvent;
 use serde_json::json;
 
@@ -18,11 +17,16 @@ impl InfoCommand {
         }
     }
 
-    /// Shows recovery claims information in JSON format
-    pub async fn show_recovery_claims(&self) -> Result<()> {
+    /// Helper method to initialize client and get application state
+    async fn get_app_state(&self) -> Result<ApplicationState> {
         let db_context = self.base.open_existing_db().await?;
         let client = self.base.create_client_service(&db_context).await?;
-        let app_state = client.get_app_state().await?;
+        client.get_app_state().await
+    }
+
+    /// Shows recovery claims information in JSON format
+    pub async fn show_recovery_claims(&self) -> Result<()> {
+        let app_state = self.get_app_state().await?;
 
         match app_state {
             ApplicationState::Vault(VaultFullInfo::Member(member_info)) => {
@@ -74,9 +78,7 @@ impl InfoCommand {
 
     /// Shows secrets information in JSON format
     pub async fn show_secrets(&self) -> Result<()> {
-        let db_context = self.base.open_existing_db().await?;
-        let client = self.base.create_client_service(&db_context).await?;
-        let app_state = client.get_app_state().await?;
+        let app_state = self.get_app_state().await?;
 
         match app_state {
             ApplicationState::Vault(VaultFullInfo::Member(member_info)) => {
@@ -109,9 +111,7 @@ impl InfoCommand {
 
     /// Shows vault events information in JSON format
     pub async fn show_vault_events(&self) -> Result<()> {
-        let db_context = self.base.open_existing_db().await?;
-        let client = self.base.create_client_service(&db_context).await?;
-        let app_state = client.get_app_state().await?;
+        let app_state = self.get_app_state().await?;
 
         match app_state {
             ApplicationState::Vault(VaultFullInfo::Member(member_info)) => {
@@ -194,11 +194,11 @@ impl InfoCommand {
         println!("  Vault Name: {}", user_creds.vault_name);
         println!();
 
-        // Create client service
+        // Get app state using client service
         println!("Syncing with server to get latest state...");
         let client = self.base.create_client_service(&db_context).await?;
         let app_state = client.get_app_state().await?;
-
+        
         println!("Application State:");
         match app_state {
             ApplicationState::Local(device_data) => {
