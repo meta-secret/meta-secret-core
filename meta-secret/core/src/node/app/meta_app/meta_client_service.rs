@@ -10,6 +10,7 @@ use crate::node::app::sync::sync_protocol::SyncProtocol;
 use crate::node::common::actor::ServiceState;
 use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::common::model::device::device_creds::DeviceCreds;
+use crate::node::common::model::meta_pass::SecurePassInfo;
 use crate::node::common::model::secret::ClaimId;
 use crate::node::common::model::user::common::{UserData, UserDataOutsiderStatus};
 use crate::node::common::model::user::user_creds::UserCredentials;
@@ -25,7 +26,6 @@ use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::secret::MetaDistributor;
 use anyhow::Result;
-use crate::node::common::model::meta_pass::SecurePassInfo;
 
 pub struct MetaClientService<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub data_transfer: Arc<MetaClientDataTransfer>,
@@ -257,7 +257,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
     pub async fn send_request(&self, request: GenericAppStateRequest) {
         self.data_transfer.dt.send_to_service(request).await
     }
-    
+
     #[warn(dead_code)]
     async fn get_state(&self) -> ApplicationState {
         self.state_provider.get().await

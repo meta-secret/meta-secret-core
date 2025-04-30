@@ -2,8 +2,8 @@ use crate::base_command::BaseCommand;
 use crate::cli_format::CliOutputFormat;
 use anyhow::{bail, Result};
 use meta_secret_core::crypto::utils::Id48bit;
+use meta_secret_core::node::common::model::secret::ClaimId;
 use meta_secret_core::node::common::model::{ApplicationState, IdString, VaultFullInfo};
-use meta_secret_core::node::common::model::secret::{ClaimId, SsClaim};
 use meta_secret_core::node::db::actions::recover::RecoveryHandler;
 use serde_json::json;
 
@@ -19,10 +19,10 @@ impl ShowSecretCommand {
             output_format,
         }
     }
-    
+
     pub async fn execute(self, claim_id: String) -> Result<()> {
         let db_context = self.base.open_existing_db().await?;
-        
+
         // Ensure user credentials exist
         self.base.ensure_user_creds(&db_context).await?;
         let user_creds = db_context.p_creds.get_user_creds().await?.unwrap();
@@ -47,7 +47,7 @@ impl ShowSecretCommand {
                             let typed_id = Id48bit::from(claim_id);
                             ClaimId::from(typed_id)
                         };
-                        
+
                         let maybe_claim = member_info.ss_claims.claims.get(&claim_id);
                         match maybe_claim {
                             None => {
@@ -60,10 +60,10 @@ impl ShowSecretCommand {
                                 let claim_id_for_recovery = claim_id.clone();
                                 let secret = handler
                                     .recover(
-                                        user_creds.vault_name.clone(), 
-                                        user_creds, 
-                                        claim_id_for_recovery, 
-                                        claim.dist_claim_id.pass_id.clone()
+                                        user_creds.vault_name.clone(),
+                                        user_creds,
+                                        claim_id_for_recovery,
+                                        claim.dist_claim_id.pass_id.clone(),
                                     )
                                     .await?;
 
@@ -76,12 +76,15 @@ impl ShowSecretCommand {
                                             "password_name": claim.dist_claim_id.pass_id.name
                                         });
                                         println!("{}", serde_json::to_string_pretty(&result)?);
-                                    },
+                                    }
                                     CliOutputFormat::Yaml => {
                                         println!("secret: {}", secret.text);
                                         println!("status: success");
                                         println!("claim_id: {}", claim_id.0.id_str());
-                                        println!("password_name: {}", claim.dist_claim_id.pass_id.name);
+                                        println!(
+                                            "password_name: {}",
+                                            claim.dist_claim_id.pass_id.name
+                                        );
                                     }
                                 }
                             }
@@ -90,7 +93,7 @@ impl ShowSecretCommand {
                 }
             }
         }
-        
+
         Ok(())
     }
-} 
+}

@@ -1,5 +1,6 @@
 use anyhow::{Result, bail};
 use meta_db_redb::ReDbRepo;
+use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
 use meta_secret_core::node::app::meta_app::meta_client_service::{
     MetaClientDataTransfer, MetaClientService, MetaClientStateProvider,
 };
@@ -11,7 +12,6 @@ use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
 use std::path::Path;
 use std::sync::Arc;
-use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
 
 /// Container for database-related components
 pub struct DbContext {
@@ -98,17 +98,15 @@ impl BaseCommand {
 
     /// Helper method to create client, get app state, and handle a request
     pub async fn handle_client_request(
-        &self, 
-        db_context: &DbContext, 
-        request: GenericAppStateRequest
+        &self,
+        db_context: &DbContext,
+        request: GenericAppStateRequest,
     ) -> Result<()> {
         let client = self.create_client_service(db_context).await?;
         let app_state = client.get_app_state().await?;
-        
-        client
-            .handle_client_request(app_state, request)
-            .await?;
-            
+
+        client.handle_client_request(app_state, request).await?;
+
         Ok(())
     }
 

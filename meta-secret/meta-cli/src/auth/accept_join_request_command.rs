@@ -1,8 +1,8 @@
 use crate::base_command::BaseCommand;
-use anyhow::{bail, Result};
-use tracing::info;
+use anyhow::{Result, bail};
 use meta_secret_core::node::common::model::{ApplicationState, IdString, VaultFullInfo};
 use meta_secret_core::node::db::events::vault::vault_log_event::VaultActionRequestEvent;
+use tracing::info;
 
 pub struct AcceptJoinRequestCommand {
     pub base: BaseCommand,
@@ -19,7 +19,7 @@ impl AcceptJoinRequestCommand {
 
     pub async fn execute(&self) -> Result<()> {
         info!("Accepting join request for device ID: {}", self.device_id);
-        
+
         // Open the existing database
         let db_context = self.base.open_existing_db().await?;
 
@@ -52,7 +52,7 @@ impl AcceptJoinRequestCommand {
                                 // Compare device ID strings
                                 let vault_request_join_id =
                                     join_request.candidate.device.device_id.clone().id_str();
-                                
+
                                 if vault_request_join_id == self.device_id {
                                     Some(join_request.clone())
                                 } else {

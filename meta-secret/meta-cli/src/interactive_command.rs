@@ -1,11 +1,11 @@
-use crate::base_command::BaseCommand;
-use crate::init::interactive_command::InitInteractiveCommand;
 use crate::auth::interactive_command::AuthInteractiveCommand;
-use crate::secret::interactive_command::SecretInteractiveCommand;
+use crate::base_command::BaseCommand;
 use crate::cli_format::CliOutputFormat;
-use anyhow::Result;
-use dialoguer::{theme::ColorfulTheme, Select};
 use crate::info::info_command::InfoCommand;
+use crate::init::interactive_command::InitInteractiveCommand;
+use crate::secret::interactive_command::SecretInteractiveCommand;
+use anyhow::Result;
+use dialoguer::{Select, theme::ColorfulTheme};
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter};
 
@@ -29,13 +29,13 @@ impl CategorySelector {
     pub fn select() -> Result<Category> {
         let categories: Vec<Category> = Category::iter().collect();
         let items: Vec<String> = categories.iter().map(|c| c.to_string()).collect();
-        
+
         let selection = Select::with_theme(&ColorfulTheme::default())
             .with_prompt("Select category")
             .default(0)
             .items(&items)
             .interact()?;
-        
+
         Ok(categories[selection])
     }
 }
@@ -54,25 +54,26 @@ impl InteractiveCommand {
     pub async fn execute(&self) -> Result<()> {
         loop {
             let category = CategorySelector::select()?;
-            
+
             match category {
                 Category::Initialize => {
                     let init_cmd = InitInteractiveCommand::new(self.base.db_name.clone());
                     init_cmd.execute().await?;
-                },
+                }
                 Category::Authentication => {
                     let auth_cmd = AuthInteractiveCommand::new(self.base.db_name.clone());
                     auth_cmd.execute().await?;
-                },
+                }
                 Category::SecretManagement => {
                     let secret_cmd = SecretInteractiveCommand::new(self.base.db_name.clone());
                     secret_cmd.execute().await?;
-                },
+                }
                 Category::ShowDeviceInfo => {
                     println!("Showing info about device and user...");
-                    let info_cmd = InfoCommand::new(self.base.db_name.clone(), CliOutputFormat::default());
+                    let info_cmd =
+                        InfoCommand::new(self.base.db_name.clone(), CliOutputFormat::default());
                     info_cmd.execute().await?;
-                },
+                }
                 Category::Exit => {
                     println!("Exiting meta-cli");
                     break;
@@ -92,7 +93,7 @@ mod tests {
     fn test_category_order_matches_selection_indices() {
         // Collect all Category variants in order
         let categories: Vec<Category> = Category::iter().collect();
-        
+
         // Verify the order matches expected indices
         assert_eq!(categories.len(), 5);
         assert!(matches!(categories[0], Category::Initialize));

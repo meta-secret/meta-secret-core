@@ -88,7 +88,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
     pub async fn accept_recover(&self, claim_id: ClaimId) -> Result<()> {
         self.meta_client_service.accept_recover(claim_id).await
     }
-    
+
     pub async fn accept_join(&self, join_request: JoinClusterEvent) -> Result<()> {
         self.meta_client_service.accept_join(join_request).await
     }

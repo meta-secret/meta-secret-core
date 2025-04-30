@@ -1,6 +1,6 @@
-use derive_more::From;
 use crate::crypto::encoding::base64::Base64Text;
 use crate::node::common::model::IdString;
+use derive_more::From;
 use rand::TryRngCore;
 use rand::rngs::OsRng;
 use sha2::{Digest, Sha256};

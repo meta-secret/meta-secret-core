@@ -1,8 +1,8 @@
 use crate::base_command::BaseCommand;
-use anyhow::{bail, Result};
-use tracing::info;
+use anyhow::{Result, bail};
 use meta_secret_core::node::common::model::{ApplicationState, IdString, VaultFullInfo};
 use meta_secret_core::node::db::events::vault::vault_log_event::VaultActionRequestEvent;
+use tracing::info;
 
 pub struct AcceptAllJoinRequestsCommand {
     pub base: BaseCommand,
@@ -17,7 +17,7 @@ impl AcceptAllJoinRequestsCommand {
 
     pub async fn execute(&self) -> Result<()> {
         info!("Accepting all pending join requests");
-        
+
         // Open the existing database
         let db_context = self.base.open_existing_db().await?;
 
@@ -60,27 +60,34 @@ impl AcceptAllJoinRequestsCommand {
                     }
 
                     println!("Found {} pending join requests", join_requests.len());
-                    
+
                     let mut accepted_count = 0;
                     for join_request in &join_requests {
                         let device_id = join_request.candidate.device.device_id.clone().id_str();
                         info!("Accepting join request for device ID: {}", device_id);
-                        
+
                         match client.accept_join(join_request.clone()).await {
                             Ok(_) => {
                                 println!("Accepted join request for device {}", device_id);
                                 accepted_count += 1;
                             }
                             Err(e) => {
-                                println!("Failed to accept join request for device {}: {}", device_id, e);
+                                println!(
+                                    "Failed to accept join request for device {}: {}",
+                                    device_id, e
+                                );
                             }
                         }
                     }
-                    
-                    println!("Successfully accepted {} out of {} join requests", accepted_count, join_requests.len());
+
+                    println!(
+                        "Successfully accepted {} out of {} join requests",
+                        accepted_count,
+                        join_requests.len()
+                    );
                     Ok(())
                 }
             },
         }
     }
-} 
+}

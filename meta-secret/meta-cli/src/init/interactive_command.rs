@@ -1,9 +1,9 @@
 use crate::base_command::BaseCommand;
-use anyhow::Result;
-use dialoguer::{theme::ColorfulTheme, Input, Select};
-use meta_secret_core::node::common::model::vault::vault::VaultName;
 use crate::init::device_command::InitDeviceCommand;
 use crate::init::user_command::InitUserCommand;
+use anyhow::Result;
+use dialoguer::{Input, Select, theme::ColorfulTheme};
+use meta_secret_core::node::common::model::vault::vault::VaultName;
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter};
 
@@ -23,13 +23,13 @@ impl InitOptionSelector {
     pub fn select() -> Result<InitOption> {
         let options: Vec<InitOption> = InitOption::iter().collect();
         let items: Vec<String> = options.iter().map(|o| o.to_string()).collect();
-        
+
         let selection = Select::with_theme(&ColorfulTheme::default())
             .with_prompt("Select initialization type")
             .default(0)
             .items(&items)
             .interact()?;
-        
+
         Ok(options[selection])
     }
 }
@@ -54,8 +54,9 @@ impl InitInteractiveCommand {
                 let device_name = Input::<String>::new()
                     .with_prompt("Enter device name")
                     .interact()?;
-                
-                let init_device_cmd = InitDeviceCommand::new(self.base.db_name.clone(), device_name);
+
+                let init_device_cmd =
+                    InitDeviceCommand::new(self.base.db_name.clone(), device_name);
                 init_device_cmd.execute().await?
             }
             InitOption::User => {
@@ -63,7 +64,7 @@ impl InitInteractiveCommand {
                 let vault_name_str = Input::<String>::new()
                     .with_prompt("Enter vault name")
                     .interact()?;
-                
+
                 let vault_name = VaultName::from(vault_name_str);
                 let init_user_cmd = InitUserCommand::new(self.base.db_name.clone(), vault_name);
                 init_user_cmd.execute().await?
@@ -86,7 +87,7 @@ mod tests {
     fn test_init_option_order_matches_selection_indices() {
         // Collect all InitOption variants in order
         let options: Vec<InitOption> = InitOption::iter().collect();
-        
+
         // Verify the order matches expected indices
         assert_eq!(options.len(), 3);
         assert!(matches!(options[0], InitOption::Device));

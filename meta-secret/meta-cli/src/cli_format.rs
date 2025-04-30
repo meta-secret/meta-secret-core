@@ -25,4 +25,4 @@ impl FromStr for CliOutputFormat {
             _ => Err(format!("Unknown format: {}", s)),
         }
     }
-} 
+}

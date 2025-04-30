@@ -1,11 +1,11 @@
 extern crate core;
+mod auth;
 mod base_command;
 mod cli_format;
 mod info;
 mod init;
-mod auth;
-mod secret;
 mod interactive_command;
+mod secret;
 mod template_manager;
 
 use crate::auth::accept_all_join_requests_command::AcceptAllJoinRequestsCommand;
@@ -37,7 +37,7 @@ struct CmdLine {
     /// Output format (json, yaml)
     #[arg(long, default_value = "yaml")]
     output_format: CliOutputFormat,
-    
+
     #[command(subcommand)]
     command: Command,
 }
@@ -104,7 +104,7 @@ enum SecretCommand {
         /// Password name
         #[arg(long)]
         pass_name: String,
-        
+
         /// Read password from stdin (pipe) instead of prompting
         #[arg(long)]
         stdin: bool,
@@ -188,25 +188,23 @@ async fn main() -> Result<()> {
                 },
                 None => info_cmd.execute().await?,
             }
-        },
-        Command::Auth { command } => {
-            match command { 
-                AuthCommand::SignUp => {
-                    let sign_up_cmd = JoinVaultCommand::new(db_name);
-                    sign_up_cmd.execute().await?
-                },
-                AuthCommand::AcceptJoinRequest { device_id } => {
-                    let accept_cmd = AcceptJoinRequestCommand::new(db_name, device_id);
-                    accept_cmd.execute().await?
-                },
-                AuthCommand::AcceptAllJoinRequests => {
-                    let accept_all_cmd = AcceptAllJoinRequestsCommand::new(db_name);
-                    accept_all_cmd.execute().await?
-                },
-                AuthCommand::Interactive => {
-                    let auth_interactive_cmd = AuthInteractiveCommand::new(db_name);
-                    auth_interactive_cmd.execute().await?
-                }
+        }
+        Command::Auth { command } => match command {
+            AuthCommand::SignUp => {
+                let sign_up_cmd = JoinVaultCommand::new(db_name);
+                sign_up_cmd.execute().await?
+            }
+            AuthCommand::AcceptJoinRequest { device_id } => {
+                let accept_cmd = AcceptJoinRequestCommand::new(db_name, device_id);
+                accept_cmd.execute().await?
+            }
+            AuthCommand::AcceptAllJoinRequests => {
+                let accept_all_cmd = AcceptAllJoinRequestsCommand::new(db_name);
+                accept_all_cmd.execute().await?
+            }
+            AuthCommand::Interactive => {
+                let auth_interactive_cmd = AuthInteractiveCommand::new(db_name);
+                auth_interactive_cmd.execute().await?
             }
         },
         Command::Secret { command } => match command {
@@ -222,10 +220,12 @@ async fn main() -> Result<()> {
                         .interact()?
                 } else {
                     // Non-interactive but not explicitly set to stdin mode
-                    eprintln!("No terminal detected for password input. Use --stdin flag to read from stdin.");
+                    eprintln!(
+                        "No terminal detected for password input. Use --stdin flag to read from stdin."
+                    );
                     return Ok(());
                 };
-                
+
                 let plain_pass = PlainPassInfo::new(pass_name, pass);
                 let split_cmd = SplitCommand::new(db_name);
                 split_cmd.execute(plain_pass).await?

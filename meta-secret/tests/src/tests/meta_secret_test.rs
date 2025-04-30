@@ -497,7 +497,7 @@ mod test {
 
         // Verify that the claim status has been updated to reflect the recovery workflow
         let server_claim = updated_ss_log.claims.values().next().unwrap();
-        
+
         // Check that the claim status has been updated for the client device
         let client_device_id = split.spec.registry.state.client.device_id();
         let status = server_claim.status.get(&client_device_id);
@@ -509,7 +509,7 @@ mod test {
             matches!(status.unwrap(), SsDistributionStatus::Sent),
             "Server claim status for client device should be Sent"
         );
-        
+
         // Check that the claim has been marked as sent to the client
         let recovery_id = vd_ss_claim.recovery_db_ids()[0].clone();
         // Verify that the SsWorkflow object exists in the server's repository
@@ -582,7 +582,12 @@ mod test {
         };
 
         let pass = recovery_handler
-            .recover(vault_name, split.spec.user_creds().vd.clone(), recovery_id.claim_id.id, recovery_id.distribution_id.pass_id)
+            .recover(
+                vault_name,
+                split.spec.user_creds().vd.clone(),
+                recovery_id.claim_id.id,
+                recovery_id.distribution_id.pass_id,
+            )
             .await?;
 
         assert_eq!("2bee|~", pass.text);

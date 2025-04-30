@@ -5,4 +5,4 @@ pub mod info;
 pub mod init;
 pub mod interactive_command;
 pub mod secret;
-pub mod template_manager; 
+pub mod template_manager;

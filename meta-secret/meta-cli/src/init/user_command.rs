@@ -21,7 +21,12 @@ impl InitUserCommand {
 
         // Get device credentials (or fail if they don't exist)
         self.base.ensure_device_creds(&db_context).await?;
-        let device_creds = db_context.p_creds.get_device_creds().await?.unwrap().value();
+        let device_creds = db_context
+            .p_creds
+            .get_device_creds()
+            .await?
+            .unwrap()
+            .value();
 
         // Check if user credentials already exist
         let maybe_user_creds = db_context.p_creds.get_user_creds().await?;
@@ -46,4 +51,4 @@ impl InitUserCommand {
 
         Ok(())
     }
-} 
+}

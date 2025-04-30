@@ -1,8 +1,8 @@
 use crate::base_command::BaseCommand;
-use anyhow::{bail, Result};
-use tracing::info;
-use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
+use anyhow::{Result, bail};
 use meta_secret_core::node::common::model::secret::SecretDistributionType;
+use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
+use tracing::info;
 
 pub struct AcceptAllRecoveryRequestsCommand {
     pub base: BaseCommand,
@@ -17,7 +17,7 @@ impl AcceptAllRecoveryRequestsCommand {
 
     pub async fn execute(&self) -> Result<()> {
         info!("Accepting all pending recovery requests");
-        
+
         // Open the existing database
         let db_context = self.base.open_existing_db().await?;
 
@@ -41,13 +41,15 @@ impl AcceptAllRecoveryRequestsCommand {
                 }
                 VaultFullInfo::Member(member_info) => {
                     info!("Finding all pending recovery requests");
-                    
+
                     // Filter recovery requests from ss_claims
                     let recovery_requests: Vec<_> = member_info
                         .ss_claims
                         .claims
                         .iter()
-                        .filter(|(_, claim)| claim.distribution_type == SecretDistributionType::Recover)
+                        .filter(|(_, claim)| {
+                            claim.distribution_type == SecretDistributionType::Recover
+                        })
                         .collect();
                     let recovery_requests_num = recovery_requests.len();
 
@@ -56,29 +58,42 @@ impl AcceptAllRecoveryRequestsCommand {
                         return Ok(());
                     }
 
-                    println!("Found {} pending recovery requests", recovery_requests.len());
-                    
+                    println!(
+                        "Found {} pending recovery requests",
+                        recovery_requests.len()
+                    );
+
                     let mut accepted_count = 0;
                     for (claim_id, claim) in recovery_requests {
-                        info!("Accepting recovery request for password: {}", claim.dist_claim_id.pass_id.name);
-                        
+                        info!(
+                            "Accepting recovery request for password: {}",
+                            claim.dist_claim_id.pass_id.name
+                        );
+
                         match client.accept_recover(claim_id.clone()).await {
                             Ok(_) => {
-                                println!("Accepted recovery request for password '{}'", claim.dist_claim_id.pass_id.name);
+                                println!(
+                                    "Accepted recovery request for password '{}'",
+                                    claim.dist_claim_id.pass_id.name
+                                );
                                 accepted_count += 1;
                             }
                             Err(e) => {
-                                println!("Failed to accept recovery request for password '{}': {}", 
-                                    claim.dist_claim_id.pass_id.name, e);
+                                println!(
+                                    "Failed to accept recovery request for password '{}': {}",
+                                    claim.dist_claim_id.pass_id.name, e
+                                );
                             }
                         }
                     }
-                    
-                    println!("Successfully accepted {} out of {} recovery requests", 
-                        accepted_count, recovery_requests_num);
+
+                    println!(
+                        "Successfully accepted {} out of {} recovery requests",
+                        accepted_count, recovery_requests_num
+                    );
                     Ok(())
                 }
             },
         }
     }
-} 
+}

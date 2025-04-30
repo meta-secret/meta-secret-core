@@ -111,7 +111,7 @@ pub mod test {
 
     use crate::node::common::model::device::common::DeviceName;
     use crate::node::common::model::device::device_creds::DeviceCredsBuilder;
-    use crate::node::common::model::user::user_creds::{UserCredsBuilder};
+    use crate::node::common::model::user::user_creds::UserCredsBuilder;
     use crate::node::common::model::vault::vault::VaultName;
     use crate::node::db::descriptors::object_descriptor::{
         ObjectName, ObjectType, ToObjectDescriptor,

@@ -57,4 +57,4 @@ impl InitDeviceCommand {
 
         Ok(())
     }
-} 
+}

@@ -1,7 +1,7 @@
 use crate::base_command::BaseCommand;
 use anyhow::Result;
 use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
-use meta_secret_core::node::common::model::meta_pass::{PlainPassInfo};
+use meta_secret_core::node::common::model::meta_pass::PlainPassInfo;
 
 pub struct SplitCommand {
     pub base: BaseCommand,
@@ -22,9 +22,11 @@ impl SplitCommand {
 
         // Handle cluster distribution request
         let request = GenericAppStateRequest::ClusterDistribution(pass.clone());
-        self.base.handle_client_request(&db_context, request).await?;
+        self.base
+            .handle_client_request(&db_context, request)
+            .await?;
 
         println!("Secret '{}' has been split successfully", pass.pass_id.name);
         Ok(())
     }
-} 
+}

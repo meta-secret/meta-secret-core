@@ -10,10 +10,9 @@ pub struct RecoveryRequestCommand {
 
 impl RecoveryRequestCommand {
     pub fn new(db_name: String, pass_name: String) -> Self {
-        
         Self {
             base: BaseCommand::new(db_name),
-            pass_id: MetaPasswordId::build(pass_name)
+            pass_id: MetaPasswordId::build(pass_name),
         }
     }
 
@@ -25,11 +24,16 @@ impl RecoveryRequestCommand {
 
         // Create recovery request with password ID and handle it
         let recovery_request = GenericAppStateRequest::Recover(self.pass_id.clone());
-        self.base.handle_client_request(&db_context, recovery_request).await?;
+        self.base
+            .handle_client_request(&db_context, recovery_request)
+            .await?;
 
-        println!("Recovery request for '{:?}' submitted successfully", self.pass_id);
+        println!(
+            "Recovery request for '{:?}' submitted successfully",
+            self.pass_id
+        );
         println!("The secret will be recovered when enough shares are available");
 
         Ok(())
     }
-} 
+}

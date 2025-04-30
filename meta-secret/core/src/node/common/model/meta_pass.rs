@@ -1,7 +1,7 @@
 use crate::crypto::utils::U64IdUrlEnc;
+use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::wasm_bindgen;
-use secrecy::{SecretString, ExposeSecret};
 
 pub const SALT_LENGTH: usize = 8;
 
@@ -41,7 +41,7 @@ impl SecurePassInfo {
         let pass_id = MetaPasswordId::build(pass_name);
         Self { pass_id, pass }
     }
-    
+
     pub fn to_plain(&self) -> PlainPassInfo {
         PlainPassInfo {
             pass_id: self.pass_id.clone(),
@@ -59,7 +59,7 @@ impl MetaPasswordId {
     pub fn build_from_str(name: &str) -> Self {
         Self::build(name.to_string())
     }
-    
+
     pub fn build(name: String) -> Self {
         Self {
             id: U64IdUrlEnc::from(name.clone()),
