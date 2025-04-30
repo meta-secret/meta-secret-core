@@ -18,7 +18,14 @@ use std::sync::Arc;
 use tracing::{info, error};
 
 fn sync_wrapper<F: Future>(future: F) -> F::Output {
-    async_std::task::block_on(future)
+    // Создаем однопоточный токио рантайм
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    
+    // Выполняем асинхронную операцию в рантайме
+    rt.block_on(future)
 }
 
 #[unsafe(no_mangle)]
@@ -289,7 +296,10 @@ mod tests {
     #[ignore]
     fn test_sign_up_sync() {
         // Инициализируем токио рантайм
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
         let _guard = rt.enter();
         
         let subscriber = tracing_subscriber::fmt()

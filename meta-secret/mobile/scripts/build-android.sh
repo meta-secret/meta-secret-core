@@ -111,7 +111,7 @@ export CARGO_TERM_PROGRESS_WHEN=never
 ROOT_DIR="$(cd .. && pwd)"
 
 # Создаем директории для выходных файлов
-JNILIBS_DIR="target/jniLibs"
+JNILIBS_DIR="${ROOT_DIR}/target/android/jniLibs"
 mkdir -p "$JNILIBS_DIR"
 
 echo "🛠 Building for Android targets..."
@@ -120,7 +120,7 @@ echo "🛠 Building for Android targets..."
 cd android
 
 # Генерируем заголовочный файл для C API
-HEADER_FILE="target/metasecret-mobile.h"
+HEADER_FILE="${ROOT_DIR}/target/android/metasecret-mobile.h"
 echo "📄 Generating header file: $HEADER_FILE"
 mkdir -p "$(dirname "$HEADER_FILE")"
 cbindgen --crate mobile-android --output "$HEADER_FILE" --lang c
