@@ -1,5 +1,6 @@
 extern crate core;
 mod base_command;
+mod cli_format;
 mod info;
 mod init;
 mod auth;
@@ -11,6 +12,7 @@ use crate::auth::accept_all_join_requests_command::AcceptAllJoinRequestsCommand;
 use crate::auth::accept_join_request_command::AcceptJoinRequestCommand;
 use crate::auth::interactive_command::AuthInteractiveCommand;
 use crate::auth::sign_up_command::JoinVaultCommand;
+use crate::cli_format::CliOutputFormat;
 use crate::info::info_command::InfoCommand;
 use crate::init::device_command::InitDeviceCommand;
 use crate::init::interactive_command::InitInteractiveCommand;
@@ -32,6 +34,10 @@ use std::io::{self, IsTerminal, Read};
 #[derive(Debug, Parser)]
 #[command(about = "Meta Secret CLI", long_about = None)]
 struct CmdLine {
+    /// Output format (json, yaml)
+    #[arg(long, default_value = "yaml")]
+    output_format: CliOutputFormat,
+    
     #[command(subcommand)]
     command: Command,
 }
@@ -173,7 +179,7 @@ async fn main() -> Result<()> {
             }
         },
         Command::Info { command } => {
-            let info_cmd = InfoCommand::new(db_name);
+            let info_cmd = InfoCommand::new(db_name, args.output_format);
             match command {
                 Some(sub_command) => match sub_command {
                     InfoSubCommand::RecoveryClaims => info_cmd.show_recovery_claims().await?,
@@ -229,7 +235,7 @@ async fn main() -> Result<()> {
                 recover_cmd.execute().await?
             }
             SecretCommand::Show { claim_id } => {
-                let show_command = ShowSecretCommand::new(db_name);
+                let show_command = ShowSecretCommand::new(db_name, args.output_format);
                 show_command.execute(claim_id).await?;
             }
             SecretCommand::AcceptRecoveryRequest { claim_id } => {

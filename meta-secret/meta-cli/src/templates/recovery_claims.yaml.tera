@@ -1,0 +1,15 @@
+claims:
+  {%- if claims %}
+  {%- for claim in claims %}
+  - id: {{ claim.id }}
+    sender: {{ claim.sender }}
+    type: {{ claim.type }}
+    password: {{ claim.password }}
+    status: {{ claim.status }}
+    receivers:
+      {%- for receiver in claim.receivers %}
+      - id: {{ receiver.id }}
+        status: {{ receiver.status }}
+      {%- endfor %}
+  {%- endfor %}
+  {%- endif %} 

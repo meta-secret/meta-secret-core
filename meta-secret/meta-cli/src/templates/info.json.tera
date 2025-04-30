@@ -1,0 +1,93 @@
+{
+{%- if device or user or app_state %}
+  {%- if device %}
+  "device": {
+    "id": "{{ device.id }}",
+    "name": "{{ device.name }}"
+  }{%- if user or app_state %},{% endif %}
+  {%- endif %}
+  
+  {%- if user %}
+  "user": {
+    "vault_name": "{{ user.vault_name }}"
+  }{%- if app_state %},{% endif %}
+  {%- endif %}
+  
+  {%- if app_state %}
+  "app_state": {
+    "status": "{{ app_state.status }}"
+    {%- if app_state.status == "Local" %}
+    ,"device_id": "{{ app_state.device_id }}"
+    {%- elif app_state.status == "Vault not exists" or app_state.status == "Outsider" %}
+    ,"vault_name": "{{ app_state.vault_name }}"
+    {%- elif app_state.status == "Member" %}
+    ,"vault_name": "{{ app_state.vault_name }}"
+    {%- if app_state.vault %}
+    ,"vault": {
+      "users": [
+        {%- for user in app_state.vault.users %}
+        {
+          "type": "{{ user.type }}",
+          "device_id": "{{ user.device_id }}"
+          {%- if user.type == "Member" %}
+          ,"device_name": "{{ user.device_name }}"
+          {%- endif %}
+        }{%- if not loop.last %},{% endif %}
+        {%- endfor %}
+      ],
+      "owner_id": "{{ app_state.vault.owner_id }}",
+      "secrets": [
+        {%- for secret in app_state.vault.secrets %}
+        {
+          "id": "{{ secret.id }}",
+          "name": "{{ secret.name }}"
+        }{%- if not loop.last %},{% endif %}
+        {%- endfor %}
+      ],
+      "events": [
+        {%- for event in app_state.vault.events %}
+        {
+          "type": "{{ event.type }}"
+          {%- if event.type == "JoinCluster" %}
+          ,"device": "{{ event.device }}",
+          "user_id": "{{ event.user_id }}"
+          {%- elif event.type == "AddMetaPass" %}
+          ,"meta_pass_id": "{{ event.meta_pass_id }}",
+          "sender": "{{ event.sender }}"
+          {%- endif %}
+        }{%- if not loop.last %},{% endif %}
+        {%- endfor %}
+      ]
+    }
+    {%- endif %}
+    {%- endif %}
+    {%- if app_state.recovery_claims %}
+    ,"recovery_claims": [
+      {%- for claim in app_state.recovery_claims %}
+      {
+        "id": "{{ claim.id }}",
+        "sender": "{{ claim.sender }}",
+        "type": "{{ claim.type }}",
+        "password": "{{ claim.password }}",
+        "status": "{{ claim.status }}",
+        "receivers": [
+          {%- for receiver in claim.receivers %}
+          {
+            "id": "{{ receiver.id }}",
+            "status": "{{ receiver.status }}"
+          }{%- if not loop.last %},{% endif %}
+          {%- endfor %}
+        ]
+      }{%- if not loop.last %},{% endif %}
+      {%- endfor %}
+    ]
+    {%- endif %}
+  }
+  {%- endif %}
+{%- else %}
+{
+  "status": "not_initialized",
+  "message": "Not initialized. Run the 'meta-secret init-device' command first."
+}
+{%- endif %}
+} 

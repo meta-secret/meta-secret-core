@@ -1,4 +1,5 @@
 use crate::base_command::BaseCommand;
+use crate::cli_format::CliOutputFormat;
 use anyhow::Result;
 use dialoguer::{theme::ColorfulTheme, Input, Password, Select};
 use meta_secret_core::node::common::model::meta_pass::PlainPassInfo;
@@ -88,7 +89,7 @@ impl SecretInteractiveCommand {
                     .with_prompt("Enter claim ID")
                     .interact()?;
                 
-                let show_command = ShowSecretCommand::new(self.base.db_name.clone());
+                let show_command = ShowSecretCommand::new(self.base.db_name.clone(), CliOutputFormat::default());
                 show_command.execute(claim_id).await?
             }
             SecretOption::AcceptRecoveryRequest => {

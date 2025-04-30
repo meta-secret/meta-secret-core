@@ -19,12 +19,15 @@ tasks:
     desc: Check if required dependencies are installed
     cmds:
       - |
+        DEPS="{\"dependencies\":["
         if ! command -v jq &> /dev/null; then
-          echo "Warning: jq is not installed. While not required, it provides better JSON parsing."
-          echo "You can install it with 'brew install jq' or your system's package manager."
+          DEPS="$DEPS{\"name\":\"jq\",\"installed\":false}"
+          exit 1
         else
-          echo "All recommended dependencies are installed."
+          DEPS="$DEPS{\"name\":\"jq\",\"installed\":true}"
         fi
+        DEPS="$DEPS]}"
+        echo "$DEPS" | jq .
 
   init:
     desc: Create working directories
@@ -103,47 +106,18 @@ tasks:
     desc: 10. Show recovered secret!
     deps: [accept-recovery-request]
     cmds:
+      - cd a && ./meta-cli --output-format=json info recovery-claims > claims.json
       - |
         cd a && \
-        echo "===== Recovered Secret from Device A =====" && \
-        CLAIMS_INFO=$(./meta-cli info recovery-claims) && \
-        
-        CLAIM_ID=$(echo "$CLAIMS_INFO" | jq -r '.claims[0].id')
-        PASS_NAME=$(echo "$CLAIMS_INFO" | jq -r '.claims[0].password')
-        
-        # Check if CLAIM_ID is empty
+        CLAIM_ID=$(cat claims.json | jq -r '.claims[0].id') && \
+        PASS_NAME=$(cat claims.json | jq -r '.claims[0].password') && \
         if [ -z "$CLAIM_ID" ]; then
-          echo "No recovery claims found. Secret recovery may have failed."
-          echo "$CLAIMS_INFO"
+          echo "Error: No recovery claims found."
           exit 1
-        fi
-        
-        echo "Found claim: $CLAIM_ID for password: $PASS_NAME"
-        echo "-----------------------------------"
-        echo "Processing claim: $CLAIM_ID"
-        
-        # Get the actual secret content (first strip headers, then get content)
-        SECRET_OUTPUT=$(./meta-cli secret show --claim-id=$CLAIM_ID)
-        
-        # Different approaches to get the actual secret
-        SECRET_LINE1=$(echo "$SECRET_OUTPUT" | sed -n '2p')  # Try line 2
-        SECRET_LINE2=$(echo "$SECRET_OUTPUT" | sed -n '3p')  # Try line 3
-        SECRET_LAST=$(echo "$SECRET_OUTPUT" | tail -n 1)     # Try the last line
-        
-        # Use the last non-empty line as the secret
-        if [ -n "$SECRET_LINE2" ]; then
-          SECRET="$SECRET_LINE2"
-        elif [ -n "$SECRET_LINE1" ]; then
-          SECRET="$SECRET_LINE1"
-        else
-          SECRET="$SECRET_LAST"
-        fi
-        
-        echo "-----------------------------------"
-        echo "Claim ID: $CLAIM_ID"
-        echo "Password Name: $PASS_NAME"
-        echo "Recovered Secret: $SECRET"
-        echo "-----------------------------------"
+        fi && \
+        ./meta-cli secret show --claim-id=$CLAIM_ID > secret.txt && \
+        SECRET=$(grep -v "^May the Meta" secret.txt | tr -d '\n' | tr -d '\r') && \
+        echo "Secret successfully recovered: $SECRET"
       - echo "Secret recovery demonstration completed successfully!"
 
   run-all:

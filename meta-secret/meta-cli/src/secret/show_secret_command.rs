@@ -1,18 +1,22 @@
 use crate::base_command::BaseCommand;
+use crate::cli_format::CliOutputFormat;
 use anyhow::{bail, Result};
 use meta_secret_core::crypto::utils::Id48bit;
-use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
+use meta_secret_core::node::common::model::{ApplicationState, IdString, VaultFullInfo};
 use meta_secret_core::node::common::model::secret::{ClaimId, SsClaim};
 use meta_secret_core::node::db::actions::recover::RecoveryHandler;
+use serde_json::json;
 
 pub struct ShowSecretCommand {
     base: BaseCommand,
+    output_format: CliOutputFormat,
 }
 
 impl ShowSecretCommand {
-    pub fn new(db_name: String) -> Self {
+    pub fn new(db_name: String, output_format: CliOutputFormat) -> Self {
         Self {
             base: BaseCommand::new(db_name),
+            output_format,
         }
     }
     
@@ -52,17 +56,34 @@ impl ShowSecretCommand {
                             Some(claim) => {
                                 let handler = RecoveryHandler::from(db_context.p_obj.clone());
 
+                                // Clone claim_id to avoid ownership issues
+                                let claim_id_for_recovery = claim_id.clone();
                                 let secret = handler
                                     .recover(
                                         user_creds.vault_name.clone(), 
                                         user_creds, 
-                                        claim_id, 
+                                        claim_id_for_recovery, 
                                         claim.dist_claim_id.pass_id.clone()
                                     )
                                     .await?;
 
-                                println!("May the Meta be with you...");
-                                println!("{}", secret.text)
+                                match self.output_format {
+                                    CliOutputFormat::Json => {
+                                        let result = json!({
+                                            "secret": secret.text,
+                                            "status": "success",
+                                            "claim_id": claim_id.0.id_str(),
+                                            "password_name": claim.dist_claim_id.pass_id.name
+                                        });
+                                        println!("{}", serde_json::to_string_pretty(&result)?);
+                                    },
+                                    CliOutputFormat::Yaml => {
+                                        println!("secret: {}", secret.text);
+                                        println!("status: success");
+                                        println!("claim_id: {}", claim_id.0.id_str());
+                                        println!("password_name: {}", claim.dist_claim_id.pass_id.name);
+                                    }
+                                }
                             }
                         }
                     }

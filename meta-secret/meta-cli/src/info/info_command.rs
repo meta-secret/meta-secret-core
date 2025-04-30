@@ -1,5 +1,6 @@
 use crate::base_command::BaseCommand;
 use crate::template_manager::TemplateManager;
+use crate::cli_format::CliOutputFormat;
 use anyhow::Result;
 use meta_secret_core::node::common::model::user::common::UserMembership;
 use meta_secret_core::node::common::model::{ApplicationState, IdString, VaultFullInfo};
@@ -10,12 +11,14 @@ use tera::Context;
 
 pub struct InfoCommand {
     base: BaseCommand,
+    output_format: CliOutputFormat,
 }
 
 impl InfoCommand {
-    pub fn new(db_name: String) -> Self {
+    pub fn new(db_name: String, output_format: CliOutputFormat) -> Self {
         Self {
             base: BaseCommand::new(db_name),
+            output_format,
         }
     }
 
@@ -35,7 +38,7 @@ impl InfoCommand {
             ApplicationState::Vault(VaultFullInfo::Member(member_info)) => {
                 if member_info.ss_claims.claims.is_empty() {
                     // Empty context will result in empty claims array
-                    let output = TemplateManager::instance().render("recovery_claims", &context)?;
+                    let output = TemplateManager::instance().render("recovery_claims", &context, self.output_format)?;
                     println!("{}", output);
                     return Ok(());
                 }
@@ -68,13 +71,13 @@ impl InfoCommand {
                 }
 
                 context.insert("claims", &claims_vec);
-                let output = TemplateManager::instance().render("recovery_claims", &context)?;
+                let output = TemplateManager::instance().render("recovery_claims", &context, self.output_format)?;
                 println!("{}", output);
             },
             _ => {
                 let mut error_context = Context::new();
                 error_context.insert("message", "Not a vault member or vault doesn't exist");
-                let output = TemplateManager::instance().render("error", &error_context)?;
+                let output = TemplateManager::instance().render("error", &error_context, self.output_format)?;
                 println!("{}", output);
             }
         }
@@ -91,7 +94,7 @@ impl InfoCommand {
             ApplicationState::Vault(VaultFullInfo::Member(member_info)) => {
                 if member_info.member.vault.secrets.is_empty() {
                     // Empty context will result in empty secrets array
-                    let output = TemplateManager::instance().render("secrets", &context)?;
+                    let output = TemplateManager::instance().render("secrets", &context, self.output_format)?;
                     println!("{}", output);
                     return Ok(());
                 }
@@ -105,13 +108,15 @@ impl InfoCommand {
                 }
 
                 context.insert("secrets", &secrets_vec);
-                let output = TemplateManager::instance().render("secrets", &context)?;
+                let output = TemplateManager::instance()
+                    .render("secrets", &context, self.output_format)?;
                 println!("{}", output);
             },
             _ => {
                 let mut error_context = Context::new();
                 error_context.insert("message", "Not a vault member or vault doesn't exist");
-                let output = TemplateManager::instance().render("error", &error_context)?;
+                let output = TemplateManager::instance()
+                    .render("error", &error_context, self.output_format)?;
                 println!("{}", output);
             }
         }
@@ -128,7 +133,7 @@ impl InfoCommand {
             ApplicationState::Vault(VaultFullInfo::Member(member_info)) => {
                 if member_info.vault_events.requests.is_empty() {
                     // Empty context will result in empty events array
-                    let output = TemplateManager::instance().render("vault_events", &context)?;
+                    let output = TemplateManager::instance().render("vault_events", &context, self.output_format)?;
                     println!("{}", output);
                     return Ok(());
                 }
@@ -154,13 +159,13 @@ impl InfoCommand {
                 }
 
                 context.insert("events", &events_vec);
-                let output = TemplateManager::instance().render("vault_events", &context)?;
+                let output = TemplateManager::instance().render("vault_events", &context, self.output_format)?;
                 println!("{}", output);
             },
             _ => {
                 let mut error_context = Context::new();
                 error_context.insert("message", "Not a vault member or vault doesn't exist");
-                let output = TemplateManager::instance().render("error", &error_context)?;
+                let output = TemplateManager::instance().render("error", &error_context, self.output_format)?;
                 println!("{}", output);
             }
         }
@@ -183,7 +188,7 @@ impl InfoCommand {
             }));
         } else {
             // Just render the template with the current context to show initialization message
-            let output = TemplateManager::instance().render("info", &context)?;
+            let output = TemplateManager::instance().render("info", &context, self.output_format)?;
             print!("{}", output);
             return Ok(());
         }
@@ -196,7 +201,7 @@ impl InfoCommand {
             }));
         } else {
             // Just render the template with the current context to show the "no user" message
-            let output = TemplateManager::instance().render("info", &context)?;
+            let output = TemplateManager::instance().render("info", &context, self.output_format)?;
             print!("{}", output);
             return Ok(());
         }
@@ -314,7 +319,7 @@ impl InfoCommand {
         }
         
         // Render the template using the template manager
-        let output = TemplateManager::instance().render("info", &context)?;
+        let output = TemplateManager::instance().render("info", &context, self.output_format)?;
         print!("{}", output);
         
         Ok(())

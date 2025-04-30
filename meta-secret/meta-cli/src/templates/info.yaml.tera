@@ -1,0 +1,84 @@
+meta_secret_info:
+  {%- if device %}
+  device:
+    id: {{ device.id }}
+    name: {{ device.name }}
+  {%- endif %}
+  
+  {%- if user %}
+  user:
+    vault_name: {{ user.vault_name }}
+  {%- endif %}
+  
+  {%- if app_state %}
+  app_state:
+    status: {{ app_state.status }}
+    {%- if app_state.status == "Local" %}
+    device_id: {{ app_state.device_id }}
+    {%- elif app_state.status == "Vault not exists" or app_state.status == "Outsider" or app_state.status == "Member" %}
+    vault_name: {{ app_state.vault_name }}
+    {%- endif %}
+    
+    {%- if app_state.status == "Member" and app_state.vault %}
+    vault:
+      user_count: {{ app_state.vault.users | length }}
+      owner_id: {{ app_state.vault.owner_id }}
+      
+      {%- if app_state.vault.users | length > 0 %}
+      users:
+        {%- for user in app_state.vault.users %}
+        - type: {{ user.type }}
+          {%- if user.type == "Member" %}
+          device_id: {{ user.device_id }}
+          device_name: {{ user.device_name }}
+          {%- else %}
+          device_id: {{ user.device_id }}
+          {%- endif %}
+        {%- endfor %}
+      {%- endif %}
+      
+      secrets:
+        count: {{ app_state.vault.secrets | length }}
+        {%- if app_state.vault.secrets | length > 0 %}
+        items:
+          {%- for secret in app_state.vault.secrets %}
+          - id: {{ secret.id }}
+            name: {{ secret.name }}
+          {%- endfor %}
+        {%- endif %}
+      
+      {%- if app_state.recovery_claims | length > 0 %}
+      recovery_claims:
+        count: {{ app_state.recovery_claims | length }}
+        items:
+          {%- for claim in app_state.recovery_claims %}
+          - id: {{ claim.id }}
+            sender: {{ claim.sender }}
+            type: {{ claim.type }}
+            password: {{ claim.password }}
+            status: {{ claim.status }}
+            receivers:
+              {%- for receiver in claim.receivers %}
+              - id: {{ receiver.id }}
+                status: {{ receiver.status }}
+              {%- endfor %}
+          {%- endfor %}
+      {%- endif %}
+      
+      {%- if app_state.vault.events | length > 0 %}
+      events:
+        count: {{ app_state.vault.events | length }}
+        items:
+          {%- for event in app_state.vault.events %}
+          - type: {{ event.type }}
+            {%- if event.type == "JoinCluster" %}
+            device: {{ event.device }}
+            user_id: {{ event.user_id }}
+            {%- elif event.type == "AddMetaPass" %}
+            meta_pass_id: {{ event.meta_pass_id }}
+            sender: {{ event.sender }}
+            {%- endif %}
+          {%- endfor %}
+      {%- endif %}
+    {%- endif %}
+  {%- endif %} 

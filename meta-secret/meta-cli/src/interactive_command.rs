@@ -2,6 +2,7 @@ use crate::base_command::BaseCommand;
 use crate::init::interactive_command::InitInteractiveCommand;
 use crate::auth::interactive_command::AuthInteractiveCommand;
 use crate::secret::interactive_command::SecretInteractiveCommand;
+use crate::cli_format::CliOutputFormat;
 use anyhow::Result;
 use dialoguer::{theme::ColorfulTheme, Select};
 use crate::info::info_command::InfoCommand;
@@ -68,7 +69,8 @@ impl InteractiveCommand {
                     secret_cmd.execute().await?;
                 },
                 Category::ShowDeviceInfo => {
-                    let info_cmd = InfoCommand::new(self.base.db_name.clone());
+                    println!("Showing info about device and user...");
+                    let info_cmd = InfoCommand::new(self.base.db_name.clone(), CliOutputFormat::default());
                     info_cmd.execute().await?;
                 },
                 Category::Exit => {
