@@ -210,3 +210,4 @@ tasks:
   run-all:
     desc: Run entire demo sequence
     deps: [show-secret]
+    silent: true

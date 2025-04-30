@@ -61,7 +61,7 @@ enum Command {
     /// Show information about the device and credentials
     Info {
         #[command(subcommand)]
-        command: Option<InfoSubCommand>,
+        command: InfoSubCommand,
     },
     /// Fully interactive mode
     Interactive,
@@ -135,6 +135,9 @@ enum InfoSubCommand {
     Secrets,
     /// Show information about vault events
     VaultEvents,
+    /// Show all information
+    #[command(alias = "all")]
+    Default,
 }
 
 /// Read password securely from stdin
@@ -181,12 +184,10 @@ async fn main() -> Result<()> {
         Command::Info { command } => {
             let info_cmd = InfoCommand::new(db_name, args.output_format);
             match command {
-                Some(sub_command) => match sub_command {
-                    InfoSubCommand::RecoveryClaims => info_cmd.show_recovery_claims().await?,
-                    InfoSubCommand::Secrets => info_cmd.show_secrets().await?,
-                    InfoSubCommand::VaultEvents => info_cmd.show_vault_events().await?,
-                },
-                None => info_cmd.execute().await?,
+                InfoSubCommand::RecoveryClaims => info_cmd.show_recovery_claims().await?,
+                InfoSubCommand::Secrets => info_cmd.show_secrets().await?,
+                InfoSubCommand::VaultEvents => info_cmd.show_vault_events().await?,
+                InfoSubCommand::Default => info_cmd.execute().await?,
             }
         }
         Command::Auth { command } => match command {
