@@ -26,6 +26,23 @@ pub enum SecretOption {
     Back,
 }
 
+pub struct SecretOptionSelector;
+
+impl SecretOptionSelector {
+    pub fn select() -> Result<SecretOption> {
+        let options: Vec<SecretOption> = SecretOption::iter().collect();
+        let items: Vec<String> = options.iter().map(|o| o.to_string()).collect();
+        
+        let selection = Select::with_theme(&ColorfulTheme::default())
+            .with_prompt("Select secret management action")
+            .default(0)
+            .items(&items)
+            .interact()?;
+        
+        Ok(options[selection])
+    }
+}
+
 pub struct SecretInteractiveCommand {
     base: BaseCommand,
 }
@@ -38,16 +55,7 @@ impl SecretInteractiveCommand {
     }
 
     pub async fn execute(&self) -> Result<()> {
-        let options: Vec<SecretOption> = SecretOption::iter().collect();
-        let items: Vec<String> = options.iter().map(|o| o.to_string()).collect();
-        
-        let selection = Select::with_theme(&ColorfulTheme::default())
-            .with_prompt("Select secret management action")
-            .default(0)
-            .items(&items)
-            .interact()?;
-        
-        let option = options[selection];
+        let option = SecretOptionSelector::select()?;
 
         match option {
             SecretOption::SplitSecret => {
@@ -135,4 +143,4 @@ mod tests {
         assert_eq!(SecretOption::AcceptAllRecoveryRequests.to_string(), "Accept All Recovery Requests");
         assert_eq!(SecretOption::Back.to_string(), "Back to Main Menu");
     }
-} 
+}

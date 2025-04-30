@@ -22,6 +22,23 @@ pub enum Category {
     Exit,
 }
 
+pub struct CategorySelector;
+
+impl CategorySelector {
+    pub fn select() -> Result<Category> {
+        let categories: Vec<Category> = Category::iter().collect();
+        let items: Vec<String> = categories.iter().map(|c| c.to_string()).collect();
+        
+        let selection = Select::with_theme(&ColorfulTheme::default())
+            .with_prompt("Select category")
+            .default(0)
+            .items(&items)
+            .interact()?;
+        
+        Ok(categories[selection])
+    }
+}
+
 pub struct InteractiveCommand {
     base: BaseCommand,
 }
@@ -35,16 +52,7 @@ impl InteractiveCommand {
 
     pub async fn execute(&self) -> Result<()> {
         loop {
-            let categories: Vec<Category> = Category::iter().collect();
-            let items: Vec<String> = categories.iter().map(|c| c.to_string()).collect();
-            
-            let selection = Select::with_theme(&ColorfulTheme::default())
-                .with_prompt("Select category")
-                .default(0)
-                .items(&items)
-                .interact()?;
-            
-            let category = categories[selection];
+            let category = CategorySelector::select()?;
             
             match category {
                 Category::Initialize => {
@@ -64,7 +72,7 @@ impl InteractiveCommand {
                     info_cmd.execute().await?;
                 },
                 Category::Exit => {
-                    println!("Exiting meta-secret CLI");
+                    println!("Exiting meta-cli");
                     break;
                 }
             }
@@ -101,4 +109,4 @@ mod tests {
         assert_eq!(Category::ShowDeviceInfo.to_string(), "Show Device Info");
         assert_eq!(Category::Exit.to_string(), "Exit");
     }
-} 
+}

@@ -19,6 +19,23 @@ pub enum AuthOption {
     Back,
 }
 
+pub struct AuthOptionSelector;
+
+impl AuthOptionSelector {
+    pub fn select() -> Result<AuthOption> {
+        let options: Vec<AuthOption> = AuthOption::iter().collect();
+        let items: Vec<String> = options.iter().map(|o| o.to_string()).collect();
+        
+        let selection = Select::with_theme(&ColorfulTheme::default())
+            .with_prompt("Select authentication action")
+            .default(0)
+            .items(&items)
+            .interact()?;
+        
+        Ok(options[selection])
+    }
+}
+
 pub struct AuthInteractiveCommand {
     base: BaseCommand,
 }
@@ -31,16 +48,7 @@ impl AuthInteractiveCommand {
     }
 
     pub async fn execute(&self) -> Result<()> {
-        let options: Vec<AuthOption> = AuthOption::iter().collect();
-        let items: Vec<String> = options.iter().map(|o| o.to_string()).collect();
-        
-        let selection = Select::with_theme(&ColorfulTheme::default())
-            .with_prompt("Select authentication action")
-            .default(0)
-            .items(&items)
-            .interact()?;
-        
-        let option = options[selection];
+        let option = AuthOptionSelector::select()?;
 
         match option {
             AuthOption::SignUp => {

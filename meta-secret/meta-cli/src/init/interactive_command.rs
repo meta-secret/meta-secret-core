@@ -17,6 +17,23 @@ pub enum InitOption {
     Back,
 }
 
+pub struct InitOptionSelector;
+
+impl InitOptionSelector {
+    pub fn select() -> Result<InitOption> {
+        let options: Vec<InitOption> = InitOption::iter().collect();
+        let items: Vec<String> = options.iter().map(|o| o.to_string()).collect();
+        
+        let selection = Select::with_theme(&ColorfulTheme::default())
+            .with_prompt("Select initialization type")
+            .default(0)
+            .items(&items)
+            .interact()?;
+        
+        Ok(options[selection])
+    }
+}
+
 pub struct InitInteractiveCommand {
     base: BaseCommand,
 }
@@ -29,16 +46,7 @@ impl InitInteractiveCommand {
     }
 
     pub async fn execute(&self) -> Result<()> {
-        let options: Vec<InitOption> = InitOption::iter().collect();
-        let items: Vec<String> = options.iter().map(|o| o.to_string()).collect();
-        
-        let selection = Select::with_theme(&ColorfulTheme::default())
-            .with_prompt("Select initialization type")
-            .default(0)
-            .items(&items)
-            .interact()?;
-        
-        let option = options[selection];
+        let option = InitOptionSelector::select()?;
 
         match option {
             InitOption::Device => {
@@ -93,4 +101,4 @@ mod tests {
         assert_eq!(InitOption::User.to_string(), "User");
         assert_eq!(InitOption::Back.to_string(), "Back to Main Menu");
     }
-} 
+}
