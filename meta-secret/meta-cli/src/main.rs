@@ -52,7 +52,10 @@ enum Command {
         command: SecretCommand,
     },
     /// Show information about the device and credentials
-    Info,
+    Info {
+        #[command(subcommand)]
+        command: Option<InfoSubCommand>,
+    },
     /// Fully interactive mode
     Interactive,
 }
@@ -117,6 +120,16 @@ enum SecretCommand {
     Interactive,
 }
 
+#[derive(Subcommand, Debug)]
+enum InfoSubCommand {
+    /// Show information about recovery claims
+    RecoveryClaims,
+    /// Show information about secrets in the vault
+    Secrets,
+    /// Show information about vault events
+    VaultEvents,
+}
+
 /// Read password securely from stdin
 fn read_password_from_stdin() -> Result<String> {
     let mut password = String::new();
@@ -158,9 +171,16 @@ async fn main() -> Result<()> {
                 init_interactive_cmd.execute().await?
             }
         },
-        Command::Info => {
+        Command::Info { command } => {
             let info_cmd = InfoCommand::new(db_name);
-            info_cmd.execute().await?
+            match command {
+                Some(sub_command) => match sub_command {
+                    InfoSubCommand::RecoveryClaims => info_cmd.show_recovery_claims().await?,
+                    InfoSubCommand::Secrets => info_cmd.show_secrets().await?,
+                    InfoSubCommand::VaultEvents => info_cmd.show_vault_events().await?,
+                },
+                None => info_cmd.execute().await?,
+            }
         },
         Command::Auth { command } => {
             match command { 
