@@ -22,7 +22,11 @@ fn sync_wrapper<F: Future>(future: F) -> F::Output {
 }
 
 #[unsafe(no_mangle)]
-pub async extern "C" fn sign_up(user_name: *const c_char) -> *mut c_char {
+pub extern "C" fn sign_up(user_name: *const c_char) -> *mut c_char {
+    sync_wrapper(async_sign_up(user_name))
+}
+
+async extern "C" fn async_sign_up(user_name: *const c_char) -> *mut c_char {
     if user_name.is_null() {
         let error_json = json!({
             "success": false,
@@ -161,7 +165,7 @@ mod tests {
         let c_username = CString::new(username).unwrap();
 
         info!("Execute sign_up for user: '{}'", username);
-        let result_ptr = sign_up(c_username.as_ptr()).await;
+        let result_ptr = sign_up(c_username.as_ptr());
 
         let result_str = unsafe {
             assert!(!result_ptr.is_null(), "sign_up - null pointer");
@@ -180,6 +184,71 @@ mod tests {
         let success = json_value["success"]
             .as_bool()
             .expect("missing filed: 'success'");
+        info!("Success: {}", success);
+
+        if success {
+            if let Some(status) = json_value["status"].as_str() {
+                info!("Status: {}", status);
+
+                if status == "Member" {
+                    let data = &json_value["data"];
+                    info!("User info:");
+                    info!("  User ID: {}", data["user_id"].as_str().unwrap_or("N/A"));
+                    info!(
+                        "  Device ID: {}",
+                        data["device_id"].as_str().unwrap_or("N/A")
+                    );
+                    info!(
+                        "  Vault Name: {}",
+                        data["vault_name"].as_str().unwrap_or("N/A")
+                    );
+                } else {
+                    info!("User is not a member. Status: {}", status);
+                }
+            }
+        } else {
+            if let Some(error) = json_value["error"].as_str() {
+                info!("Error: {}", error);
+            }
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn test_sign_up_sync() {
+        // Инициализируем токио рантайм
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let _guard = rt.enter();
+        
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .with_test_writer()
+            .finish();
+        let _guard_tracing = tracing::subscriber::set_global_default(subscriber).unwrap();
+
+        let username = "test_sync_user_1";
+        let c_username = CString::new(username).unwrap();
+
+        info!("Execute sign_up_sync for user: '{}'", username);
+        let result_ptr = sign_up(c_username.as_ptr());
+
+        let result_str = unsafe {
+            assert!(!result_ptr.is_null(), "sign_up_sync - null pointer");
+            let result_cstr = CStr::from_ptr(result_ptr);
+            let result_string = result_cstr.to_str().expect("Invalid UTF-8").to_owned();
+
+            free_string(result_ptr);
+
+            result_string
+        };
+
+        info!("Got result: {}", result_str);
+
+        let json_value: Value = serde_json::from_str(&result_str).expect("Invalid JSON");
+
+        let success = json_value["success"]
+            .as_bool()
+            .expect("missing field: 'success'");
         info!("Success: {}", success);
 
         if success {
