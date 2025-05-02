@@ -101,4 +101,4 @@ export default {
 .security-box-border {
   border: 1px solid rgb(209, 213, 219);
 }
-</style>
+</style> 

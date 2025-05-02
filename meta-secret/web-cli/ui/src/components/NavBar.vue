@@ -15,8 +15,8 @@ const navigation = [
 ];
 
 const toolsMenu = [
-  { name: 'Split', href: '/split' },
-  { name: 'Recover', href: '/recover' },
+  { name: 'Split', href: '/tools/split' },
+  { name: 'Recover', href: '/tools/recover' },
 ];
 
 const toggleDropdown = () => {
