@@ -23,8 +23,6 @@
 
 <template>
   <div class="flex justify-evenly mx-auto max-w-7xl">
-    <RouterLink class="btn-lg btn-trans" to="/split">Split</RouterLink>
-    <RouterLink class="btn-lg btn-trans" to="/recover">Recover</RouterLink>
     <RouterLink class="btn-lg btn-trans" to="/vault">Vault</RouterLink>
   </div>
 </template>

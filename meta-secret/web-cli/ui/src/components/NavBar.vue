@@ -1,12 +1,50 @@
 <script setup>
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/vue';
-import { MenuIcon, XIcon } from '@heroicons/vue/outline';
+import { MenuIcon, XIcon, ChevronDownIcon } from '@heroicons/vue/outline';
+import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { useRouter } from 'vue-router';
+
+const router = useRouter();
+const dropdownOpen = ref(false);
+const dropdownRef = ref(null);
 
 const navigation = [
   { name: 'Home', href: '/', current: false },
   { name: 'GitHub', href: 'https://github.com/meta-secret', current: false },
   { name: 'Contact', href: '/contact', current: false },
 ];
+
+const toolsMenu = [
+  { name: 'Split', href: '/split' },
+  { name: 'Recover', href: '/recover' },
+];
+
+const toggleDropdown = () => {
+  dropdownOpen.value = !dropdownOpen.value;
+};
+
+const closeDropdown = () => {
+  dropdownOpen.value = false;
+};
+
+const handleItemClick = (path) => {
+  closeDropdown();
+  router.push(path);
+};
+
+const handleClickOutside = (event) => {
+  if (dropdownRef.value && !dropdownRef.value.contains(event.target)) {
+    closeDropdown();
+  }
+};
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleClickOutside);
+});
 </script>
 
 <template>
@@ -34,6 +72,35 @@ const navigation = [
                   :aria-current="item.current ? 'page' : undefined"
                   >{{ item.name }}</a
                 >
+
+                <!-- Custom Tools dropdown menu -->
+                <div class="relative inline-block text-left" ref="dropdownRef">
+                  <button
+                    type="button"
+                    @click.stop="toggleDropdown"
+                    class="text-gray-900 hover:bg-gray-300 hover:text-black px-3 py-2 rounded-md text-sm font-medium flex items-center"
+                  >
+                    Tools
+                    <ChevronDownIcon class="ml-1 h-4 w-4" aria-hidden="true" />
+                  </button>
+
+                  <div
+                    v-if="dropdownOpen"
+                    class="absolute z-10 mt-2 w-36 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none"
+                  >
+                    <div class="py-1">
+                      <a
+                        v-for="item in toolsMenu"
+                        :key="item.name"
+                        @click.prevent="handleItemClick(item.href)"
+                        href="#"
+                        class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900 cursor-pointer"
+                      >
+                        {{ item.name }}
+                      </a>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -63,6 +130,17 @@ const navigation = [
               'block px-3 py-2 rounded-md text-base font-medium',
             ]"
             :aria-current="item.current ? 'page' : undefined"
+            >{{ item.name }}
+          </DisclosureButton>
+
+          <!-- Tools items in mobile menu -->
+          <div class="mt-1 px-3 text-gray-800 font-medium">Tools:</div>
+          <DisclosureButton
+            v-for="item in toolsMenu"
+            :key="item.name"
+            as="button"
+            @click="router.push(item.href)"
+            class="text-gray-700 hover:bg-gray-300 hover:text-black block px-3 py-2 rounded-md text-base font-medium pl-6 text-left w-full"
             >{{ item.name }}
           </DisclosureButton>
         </div>
