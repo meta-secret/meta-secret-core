@@ -1,10 +1,10 @@
 import { createRouter, createWebHistory } from 'vue-router';
-import HomeView from '../views/HomeView.vue';
 import SplitView from '../views/tools/SplitView.vue';
 import RecoverView from '../views/tools/RecoverView.vue';
 import VaultView from '../views/VaultView.vue';
 import ContactView from '../views/ContactView.vue';
 import NotFoundView from '../views/404View.vue';
+import DocumentationView from '../views/tools/DocumentationView.vue';
 
 import VaultDevices from '../components/vault/Devices.vue';
 import VaultSecrets from '../components/vault/Secrets.vue';
@@ -15,7 +15,24 @@ const router = createRouter({
     {
       path: '/',
       name: 'home',
-      component: HomeView,
+      component: VaultView,
+      children: [
+        {
+          path: '',
+          name: 'home-default',
+          component: VaultSecrets,
+        },
+        {
+          path: 'secrets',
+          name: 'homeSecrets',
+          component: VaultSecrets,
+        },
+        {
+          path: 'devices',
+          name: 'homeDevices',
+          component: VaultDevices,
+        },
+      ],
     },
     {
       path: '/tools/split',
@@ -48,6 +65,11 @@ const router = createRouter({
       path: '/tools/recover',
       name: 'recover',
       component: RecoverView,
+    },
+    {
+      path: '/tools/docs',
+      name: 'documentation',
+      component: DocumentationView,
     },
     {
       path: '/contact',

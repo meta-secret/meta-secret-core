@@ -15,8 +15,10 @@ const navigation = [
 ];
 
 const toolsMenu = [
-  { name: 'Split', href: '/tools/split' },
-  { name: 'Recover', href: '/tools/recover' },
+  { name: 'Split', href: '/tools/split', external: false },
+  { name: 'Recover', href: '/tools/recover', external: false },
+  { name: 'Documentation', href: '/tools/docs', external: false },
+  { name: 'Download', href: 'https://github.com/meta-secret/meta-secret-node/releases', external: true },
 ];
 
 const toggleDropdown = () => {
@@ -27,9 +29,13 @@ const closeDropdown = () => {
   dropdownOpen.value = false;
 };
 
-const handleItemClick = (path) => {
+const handleItemClick = (path, isExternal) => {
   closeDropdown();
-  router.push(path);
+  if (isExternal) {
+    window.open(path, '_blank');
+  } else {
+    router.push(path);
+  }
 };
 
 const handleClickOutside = (event) => {
@@ -92,7 +98,7 @@ onBeforeUnmount(() => {
                       <a
                         v-for="item in toolsMenu"
                         :key="item.name"
-                        @click.prevent="handleItemClick(item.href)"
+                        @click.prevent="handleItemClick(item.href, item.external)"
                         href="#"
                         class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900 cursor-pointer"
                       >
@@ -139,7 +145,7 @@ onBeforeUnmount(() => {
             v-for="item in toolsMenu"
             :key="item.name"
             as="button"
-            @click="router.push(item.href)"
+            @click="handleItemClick(item.href, item.external)"
             class="text-gray-700 hover:bg-gray-300 hover:text-black block px-3 py-2 rounded-md text-base font-medium pl-6 text-left w-full"
             >{{ item.name }}
           </DisclosureButton>
