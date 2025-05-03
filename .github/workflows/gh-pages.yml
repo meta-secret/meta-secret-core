@@ -49,10 +49,19 @@ jobs:
         run: npm run build
         
       - name: Deploy to GitHub Pages
-        uses: JamesIves/github-pages-deploy-action@v4
+        uses: peaceiris/actions-gh-pages@v3
         with:
-          token: ${{ secrets.GH_PAGES_TOKEN }}
-          repository-name: meta-secret/meta-secret.github.io
-          branch: main
-          folder: meta-secret/web-cli/ui/dist
-          commit-message: ${{ github.event.inputs.deploy_message }}
+          deploy_key: ${{ secrets.META_SECRET_IO_DEPLOY_KEY }}
+          external_repository: meta-secret/meta-secret.github.io
+          publish_branch: main
+          publish_dir: meta-secret/web-cli/ui/dist
+          commit_message: ${{ github.event.inputs.deploy_message }}
+
+      - name: Deploy web-cli (cloudflare pages)
+        uses: cloudflare/pages-action@1
+        with:
+          apiToken: ${{ secrets.CLOUD_FLARE_PAGES_TOKEN }}
+          accountId: ${{ secrets.CLOUD_FLARE_ACCOUNT_ID }}
+          projectName: meta-secret-web-cli
+          directory: meta-secret/web-cli/ui/dist
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
