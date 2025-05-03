@@ -18,7 +18,7 @@ jobs:
 
       - uses: earthly/actions-setup@v1
         with:
-          version: v0.8.0
+          version: v0.8.15
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -26,27 +26,13 @@ jobs:
           username: cypherkitty
           password: ${{ secrets.META_SECRET_SERVER_DOCKER_PAT }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '23'
-          
-      - name: Build Wasm Package
+      - name: Build Web UI
         working-directory: meta-secret
         run: |
           earthly \
             --ci \
             --remote-cache=ghcr.io/meta-secret/meta-secret-core:cache \
-            +wasm-build-local
-          
-        
-      - name: Install Dependencies for Web UI
-        working-directory: meta-secret/web-cli/ui
-        run: npm install
-        
-      - name: Build Web UI
-        working-directory: meta-secret/web-cli/ui
-        run: npm run build
+            +web-build-local
         
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
@@ -54,7 +40,7 @@ jobs:
           deploy_key: ${{ secrets.META_SECRET_IO_DEPLOY_KEY }}
           external_repository: meta-secret/meta-secret.github.io
           publish_branch: main
-          publish_dir: meta-secret/web-cli/ui/dist
+          publish_dir: meta-secret/target/web-cli/ui/dist
           commit_message: ${{ github.event.inputs.deploy_message }}
 
       - name: Deploy web-cli (cloudflare pages)
@@ -63,5 +49,5 @@ jobs:
           apiToken: ${{ secrets.CLOUD_FLARE_PAGES_TOKEN }}
           accountId: ${{ secrets.CLOUD_FLARE_ACCOUNT_ID }}
           projectName: meta-secret-web-cli
-          directory: meta-secret/web-cli/ui/dist
+          directory: meta-secret/target/web-cli/ui/dist
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}

@@ -112,7 +112,7 @@ wasm-build-local:
     FROM +wasm-build
     SAVE ARTIFACT pkg AS LOCAL web-cli/ui/pkg
 
-web-build:
+web-build-base:
     FROM node:23.9.0-bookworm
 
     ENV PROJECT_DIR=/meta-secret
@@ -132,9 +132,16 @@ web-build:
 
     WORKDIR ${PROJECT_DIR}/${UI_DIR}
     RUN --no-cache npm install && npm run build
-    EXPOSE 5173
+    SAVE ARTIFACT dist
 
-    SAVE IMAGE --push cypherkitty/meta-secret-web:latest
+web-build:
+   FROM +web-build-base
+   EXPOSE 5173
+   SAVE IMAGE --push cypherkitty/meta-secret-web:latest
+
+web-build-local:
+    FROM +web-build-base
+    SAVE ARTIFACT dist AS LOCAL target/web-cli/ui/dist
 
 web-run:
     LOCALLY
