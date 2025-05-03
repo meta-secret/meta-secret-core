@@ -70,22 +70,22 @@ export default defineComponent({
 
   <div class="py-4" />
 
-  <!-- https://www.tailwind-kit.com/components/list -->
+  <!-- Secrets list with improved styling -->
   <div :class="$style.secrets">
-    <ul class="w-full flex flex-col divide-y dark:divide-gray-700 p-2">
-      <li v-for="secret in metaPasswords()" :key="secret.id()" class="flex flex-col">
-        <div class="flex items-center flex-1 p-4 cursor-pointer select-none">
+    <ul class="w-full flex flex-col">
+      <li v-for="secret in metaPasswords()" :key="secret.id()" :class="$style.secretListItem">
+        <div :class="$style.secretHeader">
           <div class="flex-1 pl-1 mr-16">
-            <div class="font-medium dark:text-white">
+            <div :class="$style.secretName">
               {{ secret.name }}
             </div>
-            <div class="text-sm text-gray-600 dark:text-gray-300">
+            <div :class="$style.secretId">
               {{ secret.id() }}
             </div>
           </div>
           <div class="flex space-x-2">
             <button :class="$style.actionButtonText" @click="recover(secret)">Recovery Request</button>
-            <button :class="$style.actionButtonText" @click="showRecovered(secret)">Show</button>
+            <button :class="$style.showButton" @click="showRecovered(secret)">Show</button>
           </div>
         </div>
         
@@ -107,12 +107,13 @@ export default defineComponent({
 <style module>
 .secrets {
   @apply container max-w-md flex flex-col items-center justify-center w-full;
-  @apply mx-auto bg-white shadow dark:bg-gray-800 rounded-md;
+  @apply mx-auto bg-gray-50 shadow-md dark:bg-gray-800 rounded-md overflow-hidden;
+  @apply border border-gray-200 dark:border-gray-700;
 }
 
 .newPasswordDiv {
-  @apply block max-w-md mx-auto items-center justify-center border-b border-t border-l border-r py-2 px-4;
-  @apply bg-white dark:bg-gray-800 dark:border-gray-700 rounded-md shadow;
+  @apply block max-w-md mx-auto items-center justify-center py-3 px-5;
+  @apply bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-md;
 }
 
 .passwordInput {
@@ -121,12 +122,38 @@ export default defineComponent({
 
 .addButton {
   @apply flex-shrink-0 bg-orange-400 border-orange-500 text-sm border-2 text-white py-1 px-4 rounded;
-  @apply hover:bg-orange-700 hover:border-orange-700 transition-colors duration-200;
+  @apply hover:bg-orange-500 hover:border-orange-600 transition-colors duration-200;
+}
+
+.secretListItem {
+  @apply flex flex-col w-full transition-colors duration-200;
+  @apply border-b border-gray-200 dark:border-gray-700 last:border-b-0;
+  @apply bg-white dark:bg-gray-800;
+  @apply hover:bg-orange-50 dark:hover:bg-gray-700;
+}
+
+.secretHeader {
+  @apply flex items-center flex-1 p-4 cursor-pointer select-none;
+}
+
+.secretName {
+  @apply font-medium text-gray-800 dark:text-gray-200 text-lg;
+}
+
+.secretId {
+  @apply text-sm text-gray-500 dark:text-gray-400 mt-1;
 }
 
 .actionButtonText {
-  @apply flex-shrink-0 bg-gray-700 border-gray-800 text-sm border-0 text-white py-2 px-4 rounded;
-  @apply hover:bg-gray-900 hover:border-gray-900 transition-colors duration-200;
+  @apply flex-shrink-0 bg-gray-700 text-sm text-white py-2 px-4 rounded;
+  @apply hover:bg-gray-800 transition-colors duration-200;
+  @apply dark:bg-gray-600 dark:hover:bg-gray-700 dark:text-gray-100;
+}
+
+.showButton {
+  @apply flex-shrink-0 bg-orange-500 text-sm text-white py-2 px-4 rounded;
+  @apply hover:bg-orange-600 transition-colors duration-200;
+  @apply dark:bg-orange-600 dark:hover:bg-orange-700 dark:text-white;
 }
 
 .secretContainer {
