@@ -4,17 +4,19 @@ import init, { MetaPasswordId, PlainPassInfo, WasmApplicationState } from 'meta-
 import { AppState } from '@/stores/app-state';
 
 export default defineComponent({
-  async setup() {
-    console.log('Secrets Component. Init');
-
-    await init();
-    const appState = AppState();
-
+  data() {
     return {
       newPassword: '',
       newPassDescription: '',
-      appState: appState,
+      appState: null,
+      currentSecret: null,
+      currentSecretId: null,
     };
+  },
+
+  async mounted() {
+    await init();
+    this.appState = AppState();
   },
 
   methods: {
@@ -29,11 +31,19 @@ export default defineComponent({
     },
 
     async showRecovered(metaPassId: MetaPasswordId) {
+      // Store the ID first to avoid null pointer issues
+      const id = metaPassId.id();
+
+      // Then get the secret
       const secret = await this.appState.appManager.show_recovered(metaPassId);
-      console.log('SECRET of Secrets: ', secret);
+
+      // Update data properties directly
+      this.currentSecret = secret;
+      this.currentSecretId = id;
     },
 
     metaPasswords(): MetaPasswordId[] {
+      if (!this.appState) return [];
       const msAppState: WasmApplicationState = this.appState.metaSecretAppState;
       return msAppState.as_vault().as_member().vault_data().secrets();
     },
@@ -63,7 +73,7 @@ export default defineComponent({
   <!-- https://www.tailwind-kit.com/components/list -->
   <div :class="$style.secrets">
     <ul class="w-full flex flex-col divide-y divide p-2">
-      <li v-for="secret in this.metaPasswords()" :key="secret.id" class="flex flex-row">
+      <li v-for="secret in metaPasswords()" :key="secret.id()" class="flex flex-col">
         <div class="flex items-center flex-1 p-4 cursor-pointer select-none">
           <div class="flex-1 pl-1 mr-16">
             <div class="font-medium dark:text-white">
@@ -76,6 +86,17 @@ export default defineComponent({
           <div class="flex space-x-2">
             <button :class="$style.actionButtonText" @click="recover(secret)">Recovery Request</button>
             <button :class="$style.actionButtonText" @click="showRecovered(secret)">Show</button>
+          </div>
+        </div>
+        
+        <!-- Improved secret display -->
+        <div
+          v-if="currentSecretId === secret.id() && currentSecret"
+          :class="$style.secretContainer"
+        >
+          <div :class="$style.secretContent">
+            <span :class="$style.secretLabel">Secret:</span>
+            <span :class="$style.secretValue">{{ currentSecret }}</span>
           </div>
         </div>
       </li>
@@ -105,5 +126,25 @@ export default defineComponent({
 .actionButtonText {
   @apply flex-shrink-0 bg-gray-700 border-gray-800 text-sm border-2 text-white py-1 px-4 rounded;
   @apply hover:bg-gray-900 hover:border-gray-900 transition-colors duration-200;
+}
+
+.secretContainer {
+  @apply mx-4 mb-4 p-3 rounded-md;
+  @apply bg-green-100 dark:bg-green-900 border border-green-500;
+  @apply transition-all duration-300 ease-in-out;
+  @apply shadow-sm;
+}
+
+.secretContent {
+  @apply flex items-center;
+}
+
+.secretLabel {
+  @apply font-bold text-green-700 dark:text-green-300 mr-2;
+}
+
+.secretValue {
+  @apply font-mono text-green-800 dark:text-green-200 bg-green-50 dark:bg-green-800 px-2 py-1 rounded;
+  @apply border border-green-200 dark:border-green-700;
 }
 </style>
