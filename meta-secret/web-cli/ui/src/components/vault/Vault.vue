@@ -5,13 +5,23 @@
 
   <div class="container flex max-w-md py-2 items-stretch">
     <RouterLink
-      class="w-1/2 text-center rounded-l-lg px-6 py-3 text-white bg-orange-600 active:bg-orange-800"
+      :class="[
+        'w-1/2 text-center rounded-l-lg px-6 py-3',
+        $route.path.includes('/vault/secrets')
+          ? 'text-white bg-orange-600 active:bg-orange-800'
+          : 'text-dark bg-gray-100 active:bg-gray-300',
+      ]"
       to="/vault/secrets"
       >Secrets
     </RouterLink>
 
     <RouterLink
-      class="w-1/2 text-center rounded-r-lg px-6 py-3 text-dark bg-gray-100 active:bg-gray-300"
+      :class="[
+        'w-1/2 text-center rounded-r-lg px-6 py-3',
+        $route.path.includes('/vault/devices')
+          ? 'text-white bg-orange-600 active:bg-orange-800'
+          : 'text-dark bg-gray-100 active:bg-gray-300',
+      ]"
       to="/vault/devices"
       >Devices
     </RouterLink>
