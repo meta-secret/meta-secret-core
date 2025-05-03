@@ -47,7 +47,7 @@ export default defineComponent({
 
 <template>
   <div class="flex justify-center py-6">
-    <p class="text-2xl">Personal Secret Manager</p>
+    <p class="text-2xl text-gray-900 dark:text-white">Personal Secret Manager</p>
   </div>
 
   <div v-if="isLocalState || isVaultNotExists">
@@ -56,7 +56,7 @@ export default defineComponent({
   <div v-else-if="isMemberState">
     <VaultComponent />
   </div>
-  <div v-else>
+  <div v-else class="text-gray-900 dark:text-white">
     <h1>Outsider!</h1>
   </div>
 </template>

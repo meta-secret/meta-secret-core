@@ -56,11 +56,11 @@ export default defineComponent({
 
   <div :class="$style.newPasswordDiv">
     <div class="flex items-center">
-      <label>description: </label>
+      <label class="text-gray-700 dark:text-gray-300 w-28">description: </label>
       <input type="text" :class="$style.passwordInput" placeholder="my meta secret" v-model="newPassDescription" />
     </div>
     <div class="flex items-center">
-      <label>secret: </label>
+      <label class="text-gray-700 dark:text-gray-300 w-28">secret: </label>
       <input type="text" :class="$style.passwordInput" placeholder="top$ecret" v-model="newPassword" />
     </div>
     <div class="flex justify-end">
@@ -72,14 +72,14 @@ export default defineComponent({
 
   <!-- https://www.tailwind-kit.com/components/list -->
   <div :class="$style.secrets">
-    <ul class="w-full flex flex-col divide-y divide p-2">
+    <ul class="w-full flex flex-col divide-y dark:divide-gray-700 p-2">
       <li v-for="secret in metaPasswords()" :key="secret.id()" class="flex flex-col">
         <div class="flex items-center flex-1 p-4 cursor-pointer select-none">
           <div class="flex-1 pl-1 mr-16">
             <div class="font-medium dark:text-white">
               {{ secret.name }}
             </div>
-            <div class="text-sm text-gray-600 dark:text-gray-200">
+            <div class="text-sm text-gray-600 dark:text-gray-300">
               {{ secret.id() }}
             </div>
           </div>
@@ -107,30 +107,31 @@ export default defineComponent({
 <style module>
 .secrets {
   @apply container max-w-md flex flex-col items-center justify-center w-full;
-  @apply mx-auto bg-white shadow dark:bg-gray-800;
+  @apply mx-auto bg-white shadow dark:bg-gray-800 rounded-md;
 }
 
 .newPasswordDiv {
   @apply block max-w-md mx-auto items-center justify-center border-b border-t border-l border-r py-2 px-4;
+  @apply bg-white dark:bg-gray-800 dark:border-gray-700 rounded-md shadow;
 }
 
 .passwordInput {
-  @apply appearance-none bg-transparent border-none w-full text-gray-700 mr-3 py-1 px-2 leading-tight focus:outline-none;
+  @apply appearance-none bg-transparent border-none w-full text-gray-700 dark:text-gray-200 mr-3 py-1 px-2 leading-tight focus:outline-none;
 }
 
 .addButton {
   @apply flex-shrink-0 bg-orange-400 border-orange-500 text-sm border-2 text-white py-1 px-4 rounded;
-  @apply hover:bg-orange-700 hover:border-orange-700;
+  @apply hover:bg-orange-700 hover:border-orange-700 transition-colors duration-200;
 }
 
 .actionButtonText {
-  @apply flex-shrink-0 bg-gray-700 border-gray-800 text-sm border-2 text-white py-1 px-4 rounded;
+  @apply flex-shrink-0 bg-gray-700 border-gray-800 text-sm border-0 text-white py-2 px-4 rounded;
   @apply hover:bg-gray-900 hover:border-gray-900 transition-colors duration-200;
 }
 
 .secretContainer {
   @apply mx-4 mb-4 p-3 rounded-md;
-  @apply bg-orange-50 dark:bg-gray-700 border border-orange-300;
+  @apply bg-orange-50 dark:bg-gray-700 border border-orange-300 dark:border-gray-600;
   @apply transition-all duration-300 ease-in-out;
   @apply shadow-sm;
 }

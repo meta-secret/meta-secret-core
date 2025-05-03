@@ -54,6 +54,6 @@ export default defineComponent({
 
 <style module>
 .actionButtonText {
-  @apply flex justify-end w-24 text-right;
+  @apply flex justify-end w-24 text-right text-gray-700 dark:text-gray-200 hover:text-gray-900 dark:hover:text-white;
 }
 </style>

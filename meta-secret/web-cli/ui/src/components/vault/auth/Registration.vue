@@ -49,23 +49,23 @@ export default defineComponent({
   <div v-cloak>
     <div
       v-if="!isLocalState && vaultName"
-      class="container max-w-md py-2 px-4 mb-3 bg-gray-100 rounded-md border border-gray-200"
+      class="container max-w-md py-2 px-4 mb-3 bg-gray-100 dark:bg-gray-700 rounded-md border border-gray-200 dark:border-gray-600"
     >
       <div class="flex items-center justify-between">
-        <div class="text-gray-700">
+        <div class="text-gray-700 dark:text-gray-200">
           <span class="text-sm font-medium">Vault Name:</span>
-          <span class="ml-1 text-md font-bold text-teal-600">{{ vaultName }}</span>
+          <span class="ml-1 text-md font-bold text-teal-600 dark:text-teal-400">{{ vaultName }}</span>
         </div>
       </div>
     </div>
 
     <div v-if="isLocalState">
       <div class="container flex items-center max-w-md py-2">
-        <label>Enter vault name:</label>
+        <label class="text-gray-700 dark:text-gray-300">Enter vault name:</label>
       </div>
 
-      <div class="container flex items-center justify-center max-w-md border-b border-t border-l border-r py-2 px-2">
-        <label>@</label>
+      <div class="container flex items-center justify-center max-w-md border-b border-t border-l border-r py-2 px-2 dark:border-gray-700 dark:bg-gray-800">
+        <label class="text-gray-700 dark:text-gray-300">@</label>
         <input :class="$style.nicknameUserInput" type="text" placeholder="vault name" v-model="vaultName" />
 
         <button :class="$style.registrationButton" @click="generate_user_creds">Create User Creds</button>
@@ -90,7 +90,7 @@ export default defineComponent({
 
 <style module>
 .joinLabel {
-  @apply appearance-none bg-transparent border-none w-full text-gray-700 mr-3 py-1 leading-tight focus:outline-none;
+  @apply appearance-none bg-transparent border-none w-full text-gray-700 dark:text-gray-300 mr-3 py-1 leading-tight focus:outline-none;
 }
 
 .registrationButton {
@@ -105,7 +105,7 @@ export default defineComponent({
 
 .nicknameUserInput {
   @apply appearance-none bg-transparent border-none;
-  @apply w-full text-gray-700 mr-3 py-1 px-2 leading-tight focus:outline-none;
+  @apply w-full text-gray-700 dark:text-gray-200 mr-3 py-1 px-2 leading-tight focus:outline-none;
 }
 
 /* v-cloak will hide components until Vue renders them */

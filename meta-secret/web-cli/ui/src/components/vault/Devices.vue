@@ -32,7 +32,7 @@ export default {
       <h3 :class="$style.listTitle">Devices</h3>
       <p :class="$style.listDescription">Detailed information about user devices</p>
     </div>
-    <ul class="w-full flex flex-col divide-y divide p-2">
+    <ul class="w-full flex flex-col divide-y divide p-2 dark:divide-gray-700">
       <li
         v-for="membership in this.users()"
         :key="membership.user_data().device.device_id.wasm_id_str()"
@@ -55,7 +55,7 @@ export default {
 }
 
 .listHeader {
-  @apply w-full px-4 py-5 border-b sm:px-6;
+  @apply w-full px-4 py-5 border-b sm:px-6 dark:border-gray-700;
 }
 
 .listTitle {
