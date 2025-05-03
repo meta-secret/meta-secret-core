@@ -88,12 +88,46 @@ impl WasmVaultFullInfo {
         matches!(self.0, VaultFullInfo::Member(_))
     }
 
+    pub fn is_outsider(&self) -> bool {
+        matches!(self.0, VaultFullInfo::Outsider(_))
+    }
+
+    pub fn is_vault_not_exists(&self) -> bool {
+        matches!(self.0, VaultFullInfo::NotExists(_))
+    }
+
+    pub fn as_outsider(&self) -> UserDataOutsider {
+        if let VaultFullInfo::Outsider(outsider) = &self.0 {
+            outsider.clone()
+        } else {
+            panic!("not an outsider")
+        }
+    }
+
+    pub fn as_not_exists(&self) -> UserData {
+        if let VaultFullInfo::NotExists(user_data) = &self.0 {
+            user_data.clone()
+        } else {
+            panic!("Is not a vault not exists")
+        }
+    }
+
     pub fn as_member(&self) -> WasmUserMemberFullInfo {
         if let VaultFullInfo::Member(member) = &self.0 {
             WasmUserMemberFullInfo(member.clone())
         } else {
             panic!("not a member vault info")
         }
+    }
+    
+    pub fn vault_name(&self) -> String {
+        let vault_name = match &self.0 {
+            VaultFullInfo::Member(member) => &member.member.vault.vault_name,
+            VaultFullInfo::Outsider(outsider) => &outsider.user_data.vault_name,
+            VaultFullInfo::NotExists(user_data) => &user_data.vault_name,
+        };
+        
+        vault_name.0.clone()
     }
 }
 

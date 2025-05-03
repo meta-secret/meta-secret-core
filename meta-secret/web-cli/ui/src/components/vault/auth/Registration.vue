@@ -8,6 +8,8 @@ export default defineComponent({
       jsAppState: null,
       vaultName: '',
       isLocalState: false,
+      isOutsiderState: false,
+      isVaultNotExists: false,
     };
   },
 
@@ -18,7 +20,10 @@ export default defineComponent({
 
   async mounted() {
     console.log('Registration component mounted');
+    await this.checkVaultName();
     await this.checkIsLocal();
+    await this.checkIsOutsider();
+    await this.checkIsVaultNotExists();
   },
 
   methods: {
@@ -27,41 +32,66 @@ export default defineComponent({
       await this.checkIsLocal();
     },
 
-    async registration() {
+    async signUp() {
       console.log('Generate vault');
-      await this.jsAppState.appManager.sign_up(this.vaultName);
+      await this.jsAppState.appManager.sign_up();
       await this.checkIsLocal();
     },
 
-    async checkIsLocal() {
-      console.log('Checking if state is local');
+    async checkVaultName() {
       const currState = await this.jsAppState.appManager.get_state();
-      console.log('Current state:', currState);
-
-      // Use original method without boolean conversion since it works
-      const isLocal = currState.is_local();
-      console.log('Is local state (converted):', isLocal);
-
-      // Set state
-      this.isLocalState = isLocal;
-      console.log('Component isLocalState after setting:', this.isLocalState);
-    },
-
-    async isMember() {
-      const currState = await this.jsAppState.appManager.get_state();
-      const isVault = currState.is_vault();
-      if (!isVault) {
-        return false;
+      if (currState.is_local()) {
+        this.vaultName = '';
+        return;
       }
 
-      return this.metaSecretAppState.jsAppState.as_vault().is_member();
+      if (currState.is_vault()) {
+        const vaultState = currState.as_vault();
+        this.vaultName = vaultState.vault_name();
+      } else {
+        this.vaultName = '';
+      }
+    },
+
+    async checkIsLocal() {
+      const currState = await this.jsAppState.appManager.get_state();
+      this.isLocalState = currState.is_local();
+      console.log('is in Local state: ', this.isLocalState);
+    },
+
+    async checkIsOutsider() {
+      const currState = await this.jsAppState.appManager.get_state();
+      const isVault = currState.is_vault();
+
+      if (!isVault) {
+        this.isOutsiderState = false;
+        return;
+      }
+
+      const vaultState = currState.as_vault();
+      this.isOutsiderState = vaultState.is_outsider();
+      console.log('is in Outsider state: ', this.isOutsiderState);
+    },
+
+    async checkIsVaultNotExists() {
+      const currState = await this.jsAppState.appManager.get_state();
+      const isVault = currState.is_vault();
+
+      if (!isVault) {
+        this.isOutsiderState = false;
+        return;
+      }
+
+      const vaultState = currState.as_vault();
+      this.isVaultNotExists = vaultState.is_vault_not_exists();
+      console.log('is in VaultNotExists state: ', this.isVaultNotExists);
     },
   },
 });
 </script>
 
 <template>
-  <!-- Only render content when state check is complete -->
+
   <div v-cloak>
     <div v-if="isLocalState">
       <div class="container flex items-center max-w-md py-2">
@@ -76,6 +106,19 @@ export default defineComponent({
       </div>
     </div>
 
+    <div v-if="isOutsiderState">
+      <div class="container flex items-center max-w-md py-2">
+        <label :class="$style.joinLabel">Vault already exists, would you like to join?</label>
+        <button :class="$style.joinButton" @click="signUp">Join</button>
+      </div>
+    </div>
+
+    <div v-if="isVaultNotExists">
+      <div class="container flex items-center max-w-md py-2">
+        <label :class="$style.joinLabel">Vault doesn't exist, let's create one!</label>
+        <button :class="$style.joinButton" @click="signUp">Create</button>
+      </div>
+    </div>
 
   </div>
 </template>

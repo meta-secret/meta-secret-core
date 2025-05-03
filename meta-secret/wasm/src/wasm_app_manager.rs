@@ -47,10 +47,8 @@ impl WasmApplicationManager {
             .await;
     }
 
-    pub async fn sign_up(&self, vault_name: String) {
-        self.app_manager
-            .sign_up(VaultName::from(vault_name.as_str()))
-            .await;
+    pub async fn sign_up(&self) {
+        self.app_manager.sign_up().await.unwrap();
     }
 
     pub async fn cluster_distribution(&self, plain_pass_info: PlainPassInfo) {

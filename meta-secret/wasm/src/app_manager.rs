@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{bail, Context};
 use std::sync::Arc;
 use tracing::{Instrument, info, instrument};
 use wasm_bindgen_futures::spawn_local;
@@ -16,10 +16,11 @@ use meta_secret_core::node::app::sync::sync_protocol::SyncProtocol;
 use meta_secret_core::node::app::virtual_device::VirtualDevice;
 use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::meta_tracing::{client_span, vd_span};
-use meta_secret_core::node::common::model::ApplicationState;
+use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
 use meta_secret_core::node::common::model::device::common::DeviceName;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::ClaimId;
+use meta_secret_core::node::common::model::user::common::UserDataOutsiderStatus;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::db::events::vault::vault_log_event::JoinClusterEvent;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
@@ -71,10 +72,37 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
         self.meta_client_service.send_request(creds).await;
     }
 
-    pub async fn sign_up(&self, vault_name: VaultName) {
+    pub async fn sign_up(&self) -> Result<()> {
         info!("Sign Up");
-        let sign_up = GenericAppStateRequest::SignUp(vault_name);
-        self.meta_client_service.send_request(sign_up).await;
+        match self.get_state().await {
+            ApplicationState::Local(_) => {
+                bail!("Sign up is not allowed in local state");
+            }
+            ApplicationState::Vault(vault_info) => {
+                let vault_name = match vault_info {
+                    VaultFullInfo::NotExists(user) => user.vault_name,
+                    VaultFullInfo::Outsider(outsider) => {
+                        match outsider.status {
+                            UserDataOutsiderStatus::NonMember => {
+                                outsider.user_data.vault_name
+                            }
+                            UserDataOutsiderStatus::Pending => {
+                                bail!("Sign up is not allowed in pending state");
+                            }
+                            UserDataOutsiderStatus::Declined => {
+                                bail!("Sign up is not allowed in declined state");
+                            }
+                        }
+                    }
+                    VaultFullInfo::Member(_) => {
+                        bail!("Sign up is not allowed in vault state");
+                    }
+                };
+                let sign_up = GenericAppStateRequest::SignUp(vault_name);
+                self.meta_client_service.send_request(sign_up).await;
+                Ok(())
+            }
+        }
     }
 
     pub async fn cluster_distribution(&self, plain_pass_info: PlainPassInfo) {

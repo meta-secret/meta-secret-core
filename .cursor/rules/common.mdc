@@ -3,6 +3,8 @@ description: Common Rules
 globs: 
 alwaysApply: true
 ---
+### Common Rules:
+ - Don't write extensive documentation for almost any line of code. We need just bare minimum, only when additional explanations is needed and could be useful.
 
 ### Project Structure:
  - the project is structured in the following way:
