@@ -32,7 +32,6 @@ jobs:
           earthly \
             --ci \
             --remote-cache=ghcr.io/meta-secret/meta-secret-core:cache \
-            --push \
             +web-build-local
         
       - name: Deploy to GitHub Pages
