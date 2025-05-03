@@ -91,8 +91,19 @@ export default defineComponent({
 </script>
 
 <template>
-
   <div v-cloak>
+    <div
+      v-if="!isLocalState && vaultName"
+      class="container max-w-md py-2 px-4 mb-3 bg-gray-100 rounded-md border border-gray-200"
+    >
+      <div class="flex items-center justify-between">
+        <div class="text-gray-700">
+          <span class="text-sm font-medium">Vault Name:</span>
+          <span class="ml-1 text-md font-bold text-teal-600">{{ vaultName }}</span>
+        </div>
+      </div>
+    </div>
+
     <div v-if="isLocalState">
       <div class="container flex items-center max-w-md py-2">
         <label>Enter vault name:</label>
@@ -119,7 +130,6 @@ export default defineComponent({
         <button :class="$style.joinButton" @click="signUp">Create</button>
       </div>
     </div>
-
   </div>
 </template>
 

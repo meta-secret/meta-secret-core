@@ -25,7 +25,39 @@ export default defineComponent({
     };
   },
 
+  data() {
+    return {
+      isLocalState: false,
+      isMemberState: false,
+    };
+  },
+
+  async mounted() {
+    await this.checkIsLocal();
+    await this.checkIsMember();
+  },
+
   methods: {
+    async checkIsLocal() {
+      const currState = await this.jsAppState.appManager.get_state();
+      this.isLocalState = currState.is_local();
+      console.log('is in Local state: ', this.isLocalState);
+    },
+
+    async checkIsMember() {
+      const currState = await this.jsAppState.appManager.get_state();
+      const isVault = currState.is_vault();
+      
+      if (!isVault) {
+        this.isMemberState = false;
+        return;
+      }
+
+      const vaultState = currState.as_vault();
+      this.isMemberState = vaultState.is_member();
+      console.log('is in Member state: ', this.isMemberState);
+    },
+
     async isLocal() {
       const currState = await this.jsAppState.appManager.get_state();
       return currState.is_local();
@@ -38,7 +70,7 @@ export default defineComponent({
         return false;
       }
 
-      return this.metaSecretAppState.jsAppState.as_vault().is_member();
+      return currState.as_vault().is_member();
     },
   },
 });
@@ -49,10 +81,10 @@ export default defineComponent({
     <p class="text-2xl">Personal Secret Manager</p>
   </div>
 
-  <div v-if="this.isLocal()">
+  <div v-if="isLocalState">
     <RegistrationComponent />
   </div>
-  <div v-else-if="this.isMember()">
+  <div v-else-if="isMemberState">
     <VaultComponent />
   </div>
   <div v-else>

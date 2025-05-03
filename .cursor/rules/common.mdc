@@ -5,6 +5,7 @@ alwaysApply: true
 ---
 ### Common Rules:
  - Don't write extensive documentation for almost any line of code. We need just bare minimum, only when additional explanations is needed and could be useful.
+ - Strictly follow instructions in the prompt, don't try to do too much. If you really need to fix other part od the project, that os not related to what user is asking, then ask the user, if you should make the changes you need to make.
 
 ### Project Structure:
  - the project is structured in the following way:
