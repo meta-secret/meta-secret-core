@@ -16,10 +16,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Earthly
-        run: |
-          sudo /bin/sh -c 'wget https://github.com/earthly/earthly/releases/latest/download/earthly-linux-amd64 -O /usr/local/bin/earthly && chmod +x /usr/local/bin/earthly'
-          earthly --version
+      - uses: earthly/actions-setup@v1
+        with:
+          version: v0.8.0
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: cypherkitty
+          password: ${{ secrets.META_SECRET_SERVER_DOCKER_PAT }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -28,14 +33,19 @@ jobs:
           
       - name: Build Wasm Package
         working-directory: meta-secret
-        run: earthly +wasm-build-local
+        run: |
+          earthly \
+            --ci \
+            --remote-cache=ghcr.io/meta-secret/meta-secret-core:cache \
+            +wasm-build-local
+          
         
       - name: Install Dependencies for Web UI
-        working-directory: ./web-cli/ui
+        working-directory: meta-secret/web-cli/ui
         run: npm ci
         
       - name: Build Web UI
-        working-directory: ./web-cli/ui
+        working-directory: meta-secret/web-cli/ui
         run: npm run build
         
       - name: Deploy to GitHub Pages
@@ -44,5 +54,5 @@ jobs:
           token: ${{ secrets.GH_PAGES_TOKEN }}
           repository-name: meta-secret/meta-secret.github.io
           branch: main
-          folder: web-cli/ui/dist
-          commit-message: ${{ github.event.inputs.deploy_message }} 
+          folder: meta-secret/web-cli/ui/dist
+          commit-message: ${{ github.event.inputs.deploy_message }}
