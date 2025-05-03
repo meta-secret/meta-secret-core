@@ -51,12 +51,12 @@ impl WasmApplicationManager {
         self.app_manager.sign_up().await.unwrap();
     }
 
-    pub async fn cluster_distribution(&self, plain_pass_info: PlainPassInfo) {
-        self.app_manager.cluster_distribution(plain_pass_info).await;
+    pub async fn cluster_distribution(&self, plain_pass_info: &PlainPassInfo) {
+        self.app_manager.cluster_distribution(plain_pass_info.clone()).await;
     }
 
-    pub async fn recover_js(&self, meta_pass_id: MetaPasswordId) {
-        self.app_manager.recover_js(meta_pass_id).await;
+    pub async fn recover_js(&self, meta_pass_id: &MetaPasswordId) {
+        self.app_manager.recover_js(meta_pass_id.clone()).await;
     }
 
     pub async fn show_recovered(&self, pass_id: &MetaPasswordId) -> String {
