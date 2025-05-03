@@ -18,7 +18,7 @@ use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::meta_tracing::{client_span, vd_span};
 use meta_secret_core::node::common::model::device::common::DeviceName;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
-use meta_secret_core::node::common::model::secret::ClaimId;
+use meta_secret_core::node::common::model::secret::{ClaimId, SecretDistributionType, SsDistributionStatus};
 use meta_secret_core::node::common::model::user::common::UserDataOutsiderStatus;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
@@ -125,21 +125,62 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
         self.meta_client_service.accept_join(join_request).await
     }
 
-    pub async fn show_recovered(
-        &self,
-        claim_id: ClaimId,
-        pass_id: MetaPasswordId,
-    ) -> Result<PlainText> {
+    pub async fn show_recovered(&self, pass_id: MetaPasswordId) -> Result<PlainText> {
         let user_creds = self.meta_client_service.find_user_creds().await?;
+        match &self.get_state().await {
+            ApplicationState::Local(_) => {
+                bail!("Show recovered is not allowed in local state");
+            }
+            ApplicationState::Vault(vault_info) => {
+                match vault_info {
+                    VaultFullInfo::NotExists(_) => {
+                        bail!("Show recovered is not allowed in not exists state");
+                    }
+                    VaultFullInfo::Outsider(_) => {
+                        bail!("Show recovered is not allowed in outsider state");
+                    }
+                    VaultFullInfo::Member(member_info) => {
+                        let mut claim_id = None;
+                        for (_, claim) in member_info.ss_claims.claims.iter() {
+                            let SecretDistributionType::Recover = claim.distribution_type else {
+                                continue;
+                            };
+                            
+                            match claim.status.status() {
+                                SsDistributionStatus::Pending => {}
+                                SsDistributionStatus::Sent => {
+                                    
+                                }
+                                SsDistributionStatus::Delivered => {}
+                            }
+                            
+                            let claim_pass_id = &claim.dist_claim_id.pass_id;
+                            
+                            if pass_id.eq(claim_pass_id) { 
+                                claim_id = Some(claim.id.clone());
+                                break;
+                            }
+                        }
 
-        let recovery_handler = RecoveryHandler {
-            p_obj: self.sync_gateway.p_obj.clone(),
-        };
+                        match claim_id {
+                            None => {
+                                bail!("Claim id not found");
+                            }
+                            Some(claim_id) => {
+                                let recovery_handler = RecoveryHandler {
+                                    p_obj: self.sync_gateway.p_obj.clone(),
+                                };
 
-        let pass = recovery_handler
-            .recover(user_creds, claim_id, pass_id)
-            .await?;
-        Ok(pass)
+                                let pass = recovery_handler
+                                    .recover(user_creds, claim_id, pass_id)
+                                    .await?;
+                                Ok(pass)
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     #[instrument(name = "MetaClient", skip_all)]

@@ -28,6 +28,11 @@ export default defineComponent({
       await this.appState.appManager.recover_js(metaPassId);
     },
 
+    async showRecovered(metaPassId: MetaPasswordId) {
+      const secret = await this.appState.appManager.show_recovered(metaPassId);
+      console.log('SECRET of Secrets: ', secret);
+    },
+
     metaPasswords(): MetaPasswordId[] {
       const msAppState: WasmApplicationState = this.appState.metaSecretAppState;
       return msAppState.as_vault().as_member().vault_data().secrets();
@@ -68,7 +73,10 @@ export default defineComponent({
               {{ secret.id() }}
             </div>
           </div>
-          <button :class="$style.actionButtonText" @click="recover(secret)">Recover</button>
+          <div class="flex space-x-2">
+            <button :class="$style.actionButtonText" @click="recover(secret)">Recovery Request</button>
+            <button :class="$style.actionButtonText" @click="showRecovered(secret)">Show</button>
+          </div>
         </div>
       </li>
     </ul>
