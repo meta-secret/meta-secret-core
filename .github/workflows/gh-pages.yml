@@ -42,7 +42,7 @@ jobs:
         
       - name: Install Dependencies for Web UI
         working-directory: meta-secret/web-cli/ui
-        run: npm ci
+        run: npm install
         
       - name: Build Web UI
         working-directory: meta-secret/web-cli/ui
