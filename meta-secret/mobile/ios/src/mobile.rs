@@ -16,6 +16,7 @@ use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredenti
 use serde_json::json;
 use std::sync::Arc;
 use tracing::{info, error};
+use meta_secret_core::node::common::model::user::common::UserMembership;
 
 fn sync_wrapper<F: Future>(future: F) -> F::Output {
     // Создаем однопоточный токио рантайм
@@ -166,6 +167,196 @@ async extern "C" fn async_sign_up(user_name: *const c_char) -> *mut c_char {
             Ok(json!({
                 "success": true,
                 "status": format!("{:?}", other_status)
+            })
+            .to_string())
+        }
+    };
+
+    match result {
+        Ok(json_str) => CString::new(json_str).unwrap_or_default().into_raw(),
+        Err(err) => {
+            let error_json = json!({
+                "success": false,
+                "error": err.to_string()
+            })
+            .to_string();
+            CString::new(error_json).unwrap_or_default().into_raw()
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn get_info() -> *mut c_char {
+    sync_wrapper(async_get_info())
+}
+
+async extern "C" fn async_get_info() -> *mut c_char {
+    let repo = Arc::new(InMemKvLogEventRepo::default());
+    let p_obj = Arc::new(PersistentObject::new(repo.clone()));
+
+    let p_creds = PersistentCredentials {
+        p_obj: p_obj.clone(),
+    };
+
+    // Проверяем, есть ли учетные данные устройства
+    let maybe_device_creds = match p_creds.get_device_creds().await {
+        Ok(creds) => creds,
+        Err(e) => {
+            error!("Failed to get device credentials: {}", e);
+            let error_json = json!({
+                "success": false,
+                "error": format!("Failed to get device credentials: {}", e)
+            })
+            .to_string();
+            return CString::new(error_json).unwrap_or_default().into_raw();
+        }
+    };
+
+    // Если устройство не инициализировано, возвращаем соответствующий статус
+    if maybe_device_creds.is_none() {
+        let result_json = json!({
+            "success": false,
+            "status": "NotInitialized",
+            "message": "Устройство не инициализировано"
+        })
+        .to_string();
+        return CString::new(result_json).unwrap_or_default().into_raw();
+    }
+
+    let device_creds = maybe_device_creds.unwrap().value();
+
+    // Получаем данные пользователя
+    let maybe_user_creds = match p_creds.get_user_creds().await {
+        Ok(creds) => creds,
+        Err(e) => {
+            error!("Failed to get user credentials: {}", e);
+            let error_json = json!({
+                "success": false,
+                "error": format!("Failed to get user credentials: {}", e)
+            })
+            .to_string();
+            return CString::new(error_json).unwrap_or_default().into_raw();
+        }
+    };
+
+    // Если пользователь не инициализирован, возвращаем информацию только об устройстве
+    if maybe_user_creds.is_none() {
+        let result_json = json!({
+            "success": false,
+            "status": "DeviceOnly",
+            "device": {
+                "id": device_creds.device.device_id,
+                "name": device_creds.device.device_name.as_str()
+            }
+        })
+        .to_string();
+        return CString::new(result_json).unwrap_or_default().into_raw();
+    }
+
+    let user_creds = maybe_user_creds.unwrap();
+
+    // Создаем клиентский шлюз
+    let sync_protocol = HttpSyncProtocol {
+        api_url: ApiUrl::prod(),
+    };
+
+    let client_gw = Arc::new(SyncGateway {
+        id: "mobile_client".to_string(),
+        p_obj: p_obj.clone(),
+        sync: Arc::new(sync_protocol),
+        device_creds: Arc::new(device_creds.clone()),
+    });
+
+    // Синхронизируемся для получения актуальной информации
+    if let Err(e) = client_gw.sync(user_creds.user()).await {
+        error!("Sync failed when getting info: {}", e);
+        let warning_json = json!({
+            "success": false,
+            "warning": format!("Sync failed: {}", e),
+            "status": "Offline",
+            "device": {
+                "id": device_creds.device.device_id,
+                "name": device_creds.device.device_name.as_str()
+            },
+            "user": {
+                "vault_name": user_creds.vault_name
+            }
+        })
+        .to_string();
+        return CString::new(warning_json).unwrap_or_default().into_raw();
+    }
+
+    // Получаем состояние хранилища
+    let p_vault = Arc::new(PersistentVault::from(p_obj.clone()));
+    let vault_status = match p_vault.find(user_creds.user().clone()).await {
+        Ok(status) => status,
+        Err(e) => {
+            error!("Failed to find vault status: {}", e);
+            let error_json = json!({
+                "success": false,
+                "error": format!("Failed to find vault status: {}", e)
+            })
+            .to_string();
+            return CString::new(error_json).unwrap_or_default().into_raw();
+        }
+    };
+
+    // Формируем результат в зависимости от статуса хранилища
+    let result: Result<String, String> = match vault_status {
+        VaultStatus::Member(member) => {
+            Ok(json!({
+                "success": true,
+                "status": "Member",
+                "device": {
+                    "id": device_creds.device.device_id,
+                    "name": device_creds.device.device_name.as_str()
+                },
+                "vault": {
+                    "name": member.user_data.vault_name,
+                    "owner_id": member.user_data.user_id().device_id.to_string(),
+                }
+            })
+            .to_string())
+        },
+        VaultStatus::Outsider(outsider) => {
+            Ok(json!({
+                "success": true,
+                "status": "Outsider",
+                "device": {
+                    "id": device_creds.device.device_id,
+                    "name": device_creds.device.device_name.as_str()
+                },
+                "vault": {
+                    "name": outsider.user_data.vault_name()
+                }
+            })
+            .to_string())
+        },
+        VaultStatus::NotExists(user_data) => {
+            Ok(json!({
+                "success": false,
+                "status": "VaultNotExists",
+                "device": {
+                    "id": device_creds.device.device_id,
+                    "name": device_creds.device.device_name.as_str()
+                },
+                "vault": {
+                    "name": user_data.vault_name()
+                }
+            })
+            .to_string())
+        },
+        _ => {
+            Ok(json!({
+                "success": false,
+                "status": "Unknown",
+                "device": {
+                    "id": device_creds.device.device_id,
+                    "name": device_creds.device.device_name.as_str()
+                },
+                "user": {
+                    "vault_name": user_creds.vault_name
+                }
             })
             .to_string())
         }
@@ -351,6 +542,104 @@ mod tests {
                     );
                 } else {
                     info!("User is not a member. Status: {}", status);
+                }
+            }
+        } else {
+            if let Some(error) = json_value["error"].as_str() {
+                info!("Error: {}", error);
+            }
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn test_get_info() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let _guard = rt.enter();
+        
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .with_test_writer()
+            .finish();
+        let _guard_tracing = tracing::subscriber::set_global_default(subscriber).unwrap();
+
+        info!("Executing get_info test");
+        let result_ptr = get_info();
+
+        let result_str = unsafe {
+            assert!(!result_ptr.is_null(), "get_info - null pointer");
+            let result_cstr = CStr::from_ptr(result_ptr);
+            let result_string = result_cstr.to_str().expect("Invalid UTF-8").to_owned();
+
+            free_string(result_ptr);
+
+            result_string
+        };
+
+        info!("Got result: {}", result_str);
+
+        let json_value: Value = serde_json::from_str(&result_str).expect("Invalid JSON");
+
+        let success = json_value["success"]
+            .as_bool()
+            .expect("missing field: 'success'");
+        info!("Success: {}", success);
+
+        if success {
+            if let Some(status) = json_value["status"].as_str() {
+                info!("Status: {}", status);
+
+                match status {
+                    "NotInitialized" => {
+                        info!("Device is not initialized");
+                    },
+                    "DeviceOnly" => {
+                        let device = &json_value["device"];
+                        info!("Device info:");
+                        info!("  Device ID: {}", device["id"].as_str().unwrap_or("N/A"));
+                        info!("  Device Name: {}", device["name"].as_str().unwrap_or("N/A"));
+                    },
+                    "Member" => {
+                        let device = &json_value["device"];
+                        let vault = &json_value["vault"];
+                        
+                        info!("Device info:");
+                        info!("  Device ID: {}", device["id"].as_str().unwrap_or("N/A"));
+                        info!("  Device Name: {}", device["name"].as_str().unwrap_or("N/A"));
+                        
+                        info!("Vault info:");
+                        info!("  Vault Name: {}", vault["name"].as_str().unwrap_or("N/A"));
+                        info!("  Owner ID: {}", vault["owner_id"].as_str().unwrap_or("N/A"));
+                        
+                        if let Some(users) = vault["users"].as_array() {
+                            info!("Users in vault:");
+                            for user in users {
+                                let user_type = user["type"].as_str().unwrap_or("Unknown");
+                                let device_id = user["device_id"].as_str().unwrap_or("N/A");
+                                if user_type == "Member" {
+                                    let device_name = user["device_name"].as_str().unwrap_or("N/A");
+                                    info!("  Member: {} ({})", device_name, device_id);
+                                } else {
+                                    info!("  Outsider: {}", device_id);
+                                }
+                            }
+                        }
+                        
+                        if let Some(secrets) = vault["secrets"].as_array() {
+                            info!("Secrets in vault:");
+                            for secret in secrets {
+                                let secret_id = secret["id"].as_str().unwrap_or("N/A");
+                                let secret_name = secret["name"].as_str().unwrap_or("N/A");
+                                info!("  Secret: {} ({})", secret_name, secret_id);
+                            }
+                        }
+                    },
+                    _ => {
+                        info!("Other status: {}", status);
+                    }
                 }
             }
         } else {
