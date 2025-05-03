@@ -10,18 +10,13 @@ use crate::node::common::model::user::common::{
 };
 use crate::node::common::model::vault::vault_data::{VaultData, WasmVaultData};
 use std::fmt::Display;
+use derive_more::From;
 use wasm_bindgen::prelude::wasm_bindgen;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(getter_with_clone)]
 pub struct VaultName(pub String);
-
-impl From<String> for VaultName {
-    fn from(vault_name: String) -> Self {
-        Self(vault_name)
-    }
-}
 
 impl From<&str> for VaultName {
     fn from(vault_name: &str) -> Self {

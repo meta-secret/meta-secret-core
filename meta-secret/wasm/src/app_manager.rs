@@ -65,6 +65,12 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
         Ok(app_manager)
     }
 
+    pub async fn generate_user_creds(&self, vault_name: VaultName) {
+        info!("Sign Up");
+        let creds = GenericAppStateRequest::GenerateUserCreds(vault_name);
+        self.meta_client_service.send_request(creds).await;
+    }
+
     pub async fn sign_up(&self, vault_name: VaultName) {
         info!("Sign Up");
         let sign_up = GenericAppStateRequest::SignUp(vault_name);
@@ -82,7 +88,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
     }
 
     pub async fn get_state(&self) -> ApplicationState {
-        self.meta_client_service.state_provider.get().await
+        self.meta_client_service.get_app_state().await.unwrap()
     }
 
     pub async fn accept_recover(&self, claim_id: ClaimId) -> Result<()> {

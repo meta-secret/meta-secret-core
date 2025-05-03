@@ -41,6 +41,12 @@ impl WasmApplicationManager {
         WasmApplicationState::from(app_state)
     }
 
+    pub async fn generate_user_creds(&self, vault_name: String) {
+        self.app_manager
+            .generate_user_creds(VaultName::from(vault_name))
+            .await;
+    }
+
     pub async fn sign_up(&self, vault_name: String) {
         self.app_manager
             .sign_up(VaultName::from(vault_name.as_str()))

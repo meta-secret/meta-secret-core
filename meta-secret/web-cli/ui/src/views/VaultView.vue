@@ -17,30 +17,28 @@ export default defineComponent({
 
     await init();
 
-    const appState = AppState();
-    await appState.appStateInit();
+    const jsAppState = AppState();
+    await jsAppState.appStateInit();
 
     return {
-      appState: appState,
+      jsAppState: jsAppState,
     };
   },
 
   methods: {
-    isNewUser() {
-      return this.appState.metaSecretAppState.is_new_user();
+    async isLocal() {
+      const currState = await this.jsAppState.appManager.get_state();
+      return currState.is_local();
     },
 
-    isLocalEnv() {
-      return this.appState.metaSecretAppState.is_local();
-    },
-
-    isMember() {
-      const isVault = this.appState.metaSecretAppState.is_vault();
+    async isMember() {
+      const currState = await this.jsAppState.appManager.get_state();
+      const isVault = currState.is_vault();
       if (!isVault) {
         return false;
       }
 
-      return this.appState.metaSecretAppState.as_vault().is_member();
+      return this.metaSecretAppState.jsAppState.as_vault().is_member();
     },
   },
 });
@@ -51,13 +49,13 @@ export default defineComponent({
     <p class="text-2xl">Personal Secret Manager</p>
   </div>
 
-  <div v-if="this.isNewUser()">
+  <div v-if="this.isLocal()">
     <RegistrationComponent />
   </div>
   <div v-else-if="this.isMember()">
     <VaultComponent />
   </div>
   <div v-else>
-    <h1>Another status: isNotNewUser, isNotMember. So it's outsider</h1>
+    <h1>Outsider!</h1>
   </div>
 </template>

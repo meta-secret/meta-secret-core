@@ -21,7 +21,8 @@ export const AppState = defineStore('app_state', {
 
       this.appManager = appManager;
 
-      const subscribe = async (appManager: WasmApplicationManager) => {
+      // Temporary disabled: reactive app state!
+      /*const subscribe = async (appManager: WasmApplicationManager) => {
         const state = await appManager.get_state();
         console.log('Js: Updated State: ', state);
         this.metaSecretAppState = state;
@@ -29,7 +30,7 @@ export const AppState = defineStore('app_state', {
         await subscribe(appManager);
       };
 
-      subscribe(appManager).then(() => console.log('Finished subscribing'));
+      subscribe(appManager).then(() => console.log('Finished subscribing'));*/
     },
   },
 });

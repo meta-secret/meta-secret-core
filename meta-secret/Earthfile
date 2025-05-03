@@ -98,6 +98,8 @@ wasm-build:
 
     WORKDIR /meta-secret-build
 
+    RUN rustup target add wasm32-unknown-unknown
+
     # Copy all source files first
     COPY . .
 

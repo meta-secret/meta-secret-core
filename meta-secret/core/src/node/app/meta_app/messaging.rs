@@ -3,6 +3,7 @@ use crate::node::common::model::vault::vault::VaultName;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum GenericAppStateRequest {
+    GenerateUserCreds(VaultName),
     SignUp(VaultName),
     ClusterDistribution(PlainPassInfo),
     Recover(MetaPasswordId),

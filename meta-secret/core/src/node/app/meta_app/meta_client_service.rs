@@ -76,6 +76,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         self.sync_gateway.sync(user_creds.user()).await?;
 
         match request {
+            GenericAppStateRequest::GenerateUserCreds(_) => {
+                //skip - we just have generates user creds (get_user_creds)
+            }
             GenericAppStateRequest::SignUp(_) => match &app_state {
                 ApplicationState::Local(_) => {
                     self.sign_up(&user_creds).await?;
@@ -167,6 +170,12 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         let creds_repo = PersistentCredentials::from(self.p_obj.clone());
 
         let user_creds = match &request {
+            GenericAppStateRequest::GenerateUserCreds(vault_name) => {
+                let device_name = self.device_creds.device.device_name.clone();
+                creds_repo
+                    .get_or_generate_user_creds(device_name, vault_name.clone())
+                    .await?
+            }
             GenericAppStateRequest::SignUp(vault_name) => {
                 let device_name = self.device_creds.device.device_name.clone();
                 creds_repo
@@ -256,11 +265,6 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
 
     pub async fn send_request(&self, request: GenericAppStateRequest) {
         self.data_transfer.dt.send_to_service(request).await
-    }
-
-    #[warn(dead_code)]
-    async fn get_state(&self) -> ApplicationState {
-        self.state_provider.get().await
     }
 
     pub async fn accept_recover(&self, claim_id: ClaimId) -> Result<()> {

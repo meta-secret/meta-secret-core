@@ -1,75 +1,82 @@
 <script lang="ts">
 import { defineComponent } from 'vue';
 import { AppState } from '@/stores/app-state';
-import { WasmApplicationState } from '../../../../pkg';
 
 export default defineComponent({
-  async setup() {
-    console.log('JS: Registration component. Init');
-
-    const appState = AppState();
+  data() {
     return {
-      appState: appState,
+      jsAppState: null,
       vaultName: '',
+      isLocalState: false,
     };
   },
 
+  async created() {
+    console.log('JS: Registration component created');
+    this.jsAppState = AppState();
+  },
+
+  async mounted() {
+    console.log('Registration component mounted');
+    await this.checkIsLocal();
+  },
+
   methods: {
-    async registration() {
-      console.log('Generate vault');
-      await this.appState.appManager.sign_up(this.vaultName);
+    async generate_user_creds() {
+      await this.jsAppState.appManager.generate_user_creds(this.vaultName);
+      await this.checkIsLocal();
     },
 
-    isMember() {
-      const isVault = this.appState.metaSecretAppState.is_vault();
+    async registration() {
+      console.log('Generate vault');
+      await this.jsAppState.appManager.sign_up(this.vaultName);
+      await this.checkIsLocal();
+    },
+
+    async checkIsLocal() {
+      console.log('Checking if state is local');
+      const currState = await this.jsAppState.appManager.get_state();
+      console.log('Current state:', currState);
+
+      // Use original method without boolean conversion since it works
+      const isLocal = currState.is_local();
+      console.log('Is local state (converted):', isLocal);
+
+      // Set state
+      this.isLocalState = isLocal;
+      console.log('Component isLocalState after setting:', this.isLocalState);
+    },
+
+    async isMember() {
+      const currState = await this.jsAppState.appManager.get_state();
+      const isVault = currState.is_vault();
       if (!isVault) {
         return false;
       }
 
-      return this.metaSecretAppState.appState.as_vault().is_member();
-    },
-
-    isNonMember() {
-      return !this.isMember();
-    },
-
-    isLocalEnv() {
-      const appState: WasmApplicationState = this.appState.metaSecretAppState;
-      if (!appState) {
-        console.log('isEmptyEnv: appState is not initialized');
-        throw new Error('Invalid environment');
-      }
-
-      return appState.is_local();
-    },
-
-    isNewUser() {
-      const appState: WasmApplicationState = this.appState.metaSecretAppState;
-      return appState.is_new_user();
+      return this.metaSecretAppState.jsAppState.as_vault().is_member();
     },
   },
 });
 </script>
 
 <template>
-  <div v-if="this.isLocalEnv()">
-    <div class="container flex items-center max-w-md py-2">
-      <label>User:</label>
+  <!-- Only render content when state check is complete -->
+  <div v-cloak>
+    <div v-if="isLocalState">
+      <div class="container flex items-center max-w-md py-2">
+        <label>Enter vault name:</label>
+      </div>
+
+      <div class="container flex items-center justify-center max-w-md border-b border-t border-l border-r py-2 px-2">
+        <label>@</label>
+        <input :class="$style.nicknameUserInput" type="text" placeholder="vault name" v-model="vaultName" />
+
+        <button :class="$style.registrationButton" @click="generate_user_creds">Create User Creds</button>
+      </div>
     </div>
 
-    <div class="container flex items-center justify-center max-w-md border-b border-t border-l border-r py-2 px-2">
-      <label>@</label>
-      <input :class="$style.nicknameUserInput" type="text" placeholder="vault name" v-model="vaultName" />
 
-      <button v-if="this.isNewUser()" :class="$style.registrationButton" @click="registration">Register</button>
-    </div>
-  </div>
-
-  <div v-if="this.isNonMember()">
-    <div class="container flex items-center max-w-md py-2">
-      <label :class="$style.joinLabel">Vault already exists, would you like to join?</label>
-      <button :class="$style.joinButton" @click="registration">Join</button>
-    </div>
   </div>
 </template>
 
@@ -91,5 +98,10 @@ export default defineComponent({
 .nicknameUserInput {
   @apply appearance-none bg-transparent border-none;
   @apply w-full text-gray-700 mr-3 py-1 px-2 leading-tight focus:outline-none;
+}
+
+/* v-cloak will hide components until Vue renders them */
+[v-cloak] {
+  display: none;
 }
 </style>
