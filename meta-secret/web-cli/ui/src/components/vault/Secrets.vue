@@ -1,6 +1,6 @@
 <script lang="ts">
 import { defineComponent } from 'vue';
-import init, { MetaPasswordId, WasmApplicationState } from 'meta-secret-web-cli';
+import init, { MetaPasswordId, PlainPassInfo, WasmApplicationState } from 'meta-secret-web-cli';
 import { AppState } from '@/stores/app-state';
 
 export default defineComponent({
@@ -20,7 +20,8 @@ export default defineComponent({
   methods: {
     async addPassword() {
       await init();
-      await this.appState.appManager.cluster_distribution(this.newPassDescription, this.newPassword);
+      const pass = new PlainPassInfo(this.newPassDescription, this.newPassword);
+      await this.appState.appManager.cluster_distribution(pass);
     },
 
     async recover(metaPassId: MetaPasswordId) {
