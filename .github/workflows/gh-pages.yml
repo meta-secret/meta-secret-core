@@ -41,7 +41,7 @@ jobs:
           personal_token: ${{ secrets.META_SECRET_GH_PAT }}
           external_repository: meta-secret/meta-secret.github.io
           publish_branch: main
-          publish_dir: meta-secret/target/web-cli/ui/dist
+          publish_dir: meta-secret/web-cli/ui/dist
           commit_message: ${{ github.event.inputs.deploy_message }}
 
       - name: Deploy web-cli (cloudflare pages)
@@ -50,6 +50,6 @@ jobs:
           apiToken: ${{ secrets.CLOUD_FLARE_PAGES_TOKEN }}
           accountId: ${{ secrets.CLOUD_FLARE_ACCOUNT_ID }}
           projectName: meta-secret-web-cli
-          directory: meta-secret/target/web-cli/ui/dist
+          directory: meta-secret/web-cli/ui/dist
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
           wranglerVersion: 2

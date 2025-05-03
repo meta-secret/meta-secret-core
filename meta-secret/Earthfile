@@ -141,7 +141,7 @@ web-build:
 
 web-build-local:
     FROM +web-build-base
-    SAVE ARTIFACT dist AS LOCAL target/web-cli/ui/dist
+    SAVE ARTIFACT dist AS LOCAL web-cli/ui/dist
 
 web-run:
     LOCALLY
