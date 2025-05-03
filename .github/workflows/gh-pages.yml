@@ -1,0 +1,47 @@
+name: Deploy to GitHub Pages
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_message:
+        description: 'Deployment message'
+        required: false
+        default: 'Manual deployment'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Earthly
+        run: |
+          sudo /bin/sh -c 'wget https://github.com/earthly/earthly/releases/latest/download/earthly-linux-amd64 -O /usr/local/bin/earthly && chmod +x /usr/local/bin/earthly'
+          earthly --version
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '23'
+          
+      - name: Build Wasm Package
+        run: earthly +wasm-build-local
+        
+      - name: Install Dependencies for Web UI
+        working-directory: ./web-cli/ui
+        run: npm ci
+        
+      - name: Build Web UI
+        working-directory: ./web-cli/ui
+        run: npm run build
+        
+      - name: Deploy to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          token: ${{ secrets.GH_PAGES_TOKEN }}
+          repository-name: meta-secret/meta-secret.github.io
+          branch: main
+          folder: web-cli/ui/dist
+          commit-message: ${{ github.event.inputs.deploy_message }} 
