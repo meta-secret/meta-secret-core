@@ -95,6 +95,7 @@ export default defineComponent({
 }
 
 .actionButtonText {
-  @apply flex justify-end w-24 text-right;
+  @apply flex-shrink-0 bg-gray-700 border-gray-800 text-sm border-2 text-white py-1 px-4 rounded;
+  @apply hover:bg-gray-900 hover:border-gray-900 transition-colors duration-200;
 }
 </style>
