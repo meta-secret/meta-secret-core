@@ -171,6 +171,188 @@ pub extern "C" fn Java_sharedData_MetaSecretCoreServiceAndroid_00024NativeLib_fr
     // Данная функция оставлена для API-совместимости с iOS версией
 }
 
+/// Получение информации о статусе устройства, пользователя и хранилища
+/// 
+/// @param env JNI окружение
+/// @param _class JNI класс (не используется)
+/// @return jstring с JSON-результатом операции
+#[unsafe(no_mangle)]
+pub extern "C" fn Java_sharedData_MetaSecretCoreServiceAndroid_00024NativeLib_get_1info
+(mut env: JNIEnv, _: JClass) -> jstring {
+    // Инициализация системы логирования
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .try_init();
+
+    info!("Вызов функции get_info");
+
+    let result: anyhow::Result<String> = sync_wrapper(async {
+        info!("Начало асинхронной операции get_info");
+        
+        let repo = Arc::new(InMemKvLogEventRepo::default());
+        let p_obj = Arc::new(PersistentObject::new(repo.clone()));
+
+        let p_creds = PersistentCredentials {
+            p_obj: p_obj.clone(),
+        };
+
+        // Проверяем, есть ли учетные данные устройства
+        let maybe_device_creds = p_creds.get_device_creds().await?;
+
+        // Если устройство не инициализировано, возвращаем соответствующий статус
+        if maybe_device_creds.is_none() {
+            info!("Устройство не инициализировано");
+            return Ok(json!({
+                "success": true,
+                "status": "NotInitialized",
+                "message": "Устройство не инициализировано"
+            }).to_string());
+        }
+
+        let device_creds = maybe_device_creds.unwrap().value();
+
+        // Получаем данные пользователя
+        let maybe_user_creds = p_creds.get_user_creds().await?;
+
+        // Если пользователь не инициализирован, возвращаем информацию только об устройстве
+        if maybe_user_creds.is_none() {
+            info!("Только устройство инициализировано, пользователь отсутствует");
+            return Ok(json!({
+                "success": true,
+                "status": "DeviceOnly",
+                "device": {
+                    "id": device_creds.device.device_id,
+                    "name": device_creds.device.device_name.as_str()
+                }
+            }).to_string());
+        }
+
+        let user_creds = maybe_user_creds.unwrap();
+
+        // Создаем клиентский шлюз
+        let sync_protocol = HttpSyncProtocol {
+            api_url: ApiUrl::prod(),
+        };
+
+        let client_gw = Arc::new(SyncGateway {
+            id: "mobile_client".to_string(),
+            p_obj: p_obj.clone(),
+            sync: Arc::new(sync_protocol),
+            device_creds: Arc::new(device_creds.clone()),
+        });
+
+        // Синхронизируемся для получения актуальной информации
+        match client_gw.sync(user_creds.user()).await {
+            Err(e) => {
+                info!("Синхронизация не удалась: {}", e);
+                return Ok(json!({
+                    "success": true,
+                    "warning": format!("Sync failed: {}", e),
+                    "status": "Offline",
+                    "device": {
+                        "id": device_creds.device.device_id,
+                        "name": device_creds.device.device_name.as_str()
+                    },
+                    "user": {
+                        "vault_name": user_creds.vault_name
+                    }
+                }).to_string());
+            },
+            _ => info!("Синхронизация выполнена успешно")
+        }
+
+        // Получаем состояние хранилища
+        let p_vault = Arc::new(PersistentVault::from(p_obj.clone()));
+        let vault_status = p_vault.find(user_creds.user().clone()).await?;
+
+        info!("Статус хранилища: {:?}", vault_status);
+
+        // Формируем результат в зависимости от статуса хранилища
+        match vault_status {
+            VaultStatus::Member(member) => {
+                info!("Пользователь является членом хранилища");
+                Ok(json!({
+                    "success": true,
+                    "status": "Member",
+                    "device": {
+                        "id": device_creds.device.device_id,
+                        "name": device_creds.device.device_name.as_str()
+                    },
+                    "vault": {
+                        "name": member.user_data.vault_name,
+                        "owner_id": member.user_data.user_id().device_id.to_string()
+                    }
+                }).to_string())
+            },
+            VaultStatus::Outsider(outsider) => {
+                info!("Пользователь является внешним");
+                Ok(json!({
+                    "success": true,
+                    "status": "Outsider",
+                    "device": {
+                        "id": device_creds.device.device_id,
+                        "name": device_creds.device.device_name.as_str()
+                    },
+                    "vault": {
+                        "name": outsider.user_data.vault_name()
+                    }
+                }).to_string())
+            },
+            VaultStatus::NotExists(user_data) => {
+                info!("Хранилище не существует");
+                Ok(json!({
+                    "success": true,
+                    "status": "VaultNotExists",
+                    "device": {
+                        "id": device_creds.device.device_id,
+                        "name": device_creds.device.device_name.as_str()
+                    },
+                    "vault": {
+                        "name": user_data.vault_name()
+                    }
+                }).to_string())
+            },
+            _ => {
+                info!("Неизвестный статус хранилища");
+                Ok(json!({
+                    "success": true,
+                    "status": "Unknown",
+                    "device": {
+                        "id": device_creds.device.device_id,
+                        "name": device_creds.device.device_name.as_str()
+                    },
+                    "user": {
+                        "vault_name": user_creds.vault_name
+                    }
+                }).to_string())
+            }
+        }
+    });
+
+    info!("Асинхронная операция get_info завершена, результат: {:?}", result.is_ok());
+
+    match result {
+        Ok(json_str) => match env.new_string(json_str) {
+            Ok(s) => s.into_raw(),
+            Err(_) => std::ptr::null_mut(),
+        },
+        Err(err) => {
+            let error_msg = err.to_string();
+            info!("Ошибка: {}", error_msg);
+            
+            let error_json = json!({
+                "success": false,
+                "error": error_msg
+            }).to_string();
+            
+            match env.new_string(error_json) {
+                Ok(s) => s.into_raw(),
+                Err(_) => std::ptr::null_mut(),
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -296,6 +478,244 @@ mod tests {
                             );
                         } else {
                             info!("Пользователь не является членом. Статус: {}", status);
+                        }
+                    }
+                } else {
+                    if let Some(error) = json_value["error"].as_str() {
+                        info!("Ошибка: {}", error);
+                    }
+                }
+            },
+            Err(e) => {
+                info!("Ошибка при выполнении: {}", e);
+                panic!("Тест завершился с ошибкой: {}", e);
+            }
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn test_get_info_android() {
+        // Инициализируем токио рантайм
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let _guard = rt.enter();
+        
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .with_test_writer()
+            .finish();
+        let _guard_tracing = tracing::subscriber::set_global_default(subscriber).unwrap();
+
+        info!("Тест get_info");
+        
+        // Тестируем только внутреннюю асинхронную функцию
+        let result: anyhow::Result<String> = sync_wrapper(async {
+            let repo = Arc::new(InMemKvLogEventRepo::default());
+            let p_obj = Arc::new(PersistentObject::new(repo.clone()));
+
+            let p_creds = PersistentCredentials {
+                p_obj: p_obj.clone(),
+            };
+
+            // Проверяем, есть ли учетные данные устройства
+            let maybe_device_creds = p_creds.get_device_creds().await?;
+
+            // Если устройство не инициализировано, возвращаем соответствующий статус
+            if maybe_device_creds.is_none() {
+                info!("Устройство не инициализировано");
+                return Ok(json!({
+                    "success": true,
+                    "status": "NotInitialized",
+                    "message": "Устройство не инициализировано"
+                }).to_string());
+            }
+
+            let device_creds = maybe_device_creds.unwrap().value();
+
+            // Получаем данные пользователя
+            let maybe_user_creds = p_creds.get_user_creds().await?;
+
+            // Если пользователь не инициализирован, возвращаем информацию только об устройстве
+            if maybe_user_creds.is_none() {
+                info!("Только устройство инициализировано, пользователь отсутствует");
+                return Ok(json!({
+                    "success": true,
+                    "status": "DeviceOnly",
+                    "device": {
+                        "id": device_creds.device.device_id,
+                        "name": device_creds.device.device_name.as_str()
+                    }
+                }).to_string());
+            }
+
+            let user_creds = maybe_user_creds.unwrap();
+
+            // Создаем клиентский шлюз
+            let sync_protocol = HttpSyncProtocol {
+                api_url: ApiUrl::prod(),
+            };
+
+            let client_gw = Arc::new(SyncGateway {
+                id: "mobile_client".to_string(),
+                p_obj: p_obj.clone(),
+                sync: Arc::new(sync_protocol),
+                device_creds: Arc::new(device_creds.clone()),
+            });
+
+            // Синхронизируемся для получения актуальной информации
+            match client_gw.sync(user_creds.user()).await {
+                Err(e) => {
+                    info!("Синхронизация не удалась: {}", e);
+                    return Ok(json!({
+                        "success": true,
+                        "warning": format!("Sync failed: {}", e),
+                        "status": "Offline",
+                        "device": {
+                            "id": device_creds.device.device_id,
+                            "name": device_creds.device.device_name.as_str()
+                        },
+                        "user": {
+                            "vault_name": user_creds.vault_name
+                        }
+                    }).to_string());
+                },
+                _ => info!("Синхронизация выполнена успешно")
+            }
+
+            // Получаем состояние хранилища
+            let p_vault = Arc::new(PersistentVault::from(p_obj.clone()));
+            let vault_status = p_vault.find(user_creds.user().clone()).await?;
+
+            info!("Статус хранилища: {:?}", vault_status);
+
+            // Формируем результат в зависимости от статуса хранилища
+            match vault_status {
+                VaultStatus::Member(member) => {
+                    info!("Пользователь является членом хранилища");
+                    Ok(json!({
+                        "success": true,
+                        "status": "Member",
+                        "device": {
+                            "id": device_creds.device.device_id,
+                            "name": device_creds.device.device_name.as_str()
+                        },
+                        "vault": {
+                            "name": member.user_data.vault_name,
+                            "owner_id": member.user_data.user_id().device_id.to_string()
+                        }
+                    }).to_string())
+                },
+                VaultStatus::Outsider(outsider) => {
+                    info!("Пользователь является внешним");
+                    Ok(json!({
+                        "success": true,
+                        "status": "Outsider",
+                        "device": {
+                            "id": device_creds.device.device_id,
+                            "name": device_creds.device.device_name.as_str()
+                        },
+                        "vault": {
+                            "name": outsider.user_data.vault_name()
+                        }
+                    }).to_string())
+                },
+                VaultStatus::NotExists(user_data) => {
+                    info!("Хранилище не существует");
+                    Ok(json!({
+                        "success": true,
+                        "status": "VaultNotExists",
+                        "device": {
+                            "id": device_creds.device.device_id,
+                            "name": device_creds.device.device_name.as_str()
+                        },
+                        "vault": {
+                            "name": user_data.vault_name()
+                        }
+                    }).to_string())
+                },
+                _ => {
+                    info!("Неизвестный статус хранилища");
+                    Ok(json!({
+                        "success": true,
+                        "status": "Unknown",
+                        "device": {
+                            "id": device_creds.device.device_id,
+                            "name": device_creds.device.device_name.as_str()
+                        },
+                        "user": {
+                            "vault_name": user_creds.vault_name
+                        }
+                    }).to_string())
+                }
+            }
+        });
+
+        match result {
+            Ok(result_str) => {
+                info!("Результат: {}", result_str);
+
+                let json_value: Value = serde_json::from_str(&result_str).expect("Неверный JSON");
+
+                let success = json_value["success"]
+                    .as_bool()
+                    .expect("отсутствует поле 'success'");
+                info!("Успех: {}", success);
+
+                if success {
+                    if let Some(status) = json_value["status"].as_str() {
+                        info!("Статус: {}", status);
+
+                        match status {
+                            "NotInitialized" => {
+                                info!("Устройство не инициализировано");
+                            },
+                            "DeviceOnly" => {
+                                let device = &json_value["device"];
+                                info!("Информация об устройстве:");
+                                info!("  ID устройства: {}", device["id"].as_str().unwrap_or("N/A"));
+                                info!("  Имя устройства: {}", device["name"].as_str().unwrap_or("N/A"));
+                            },
+                            "Member" => {
+                                let device = &json_value["device"];
+                                let vault = &json_value["vault"];
+                                
+                                info!("Информация об устройстве:");
+                                info!("  ID устройства: {}", device["id"].as_str().unwrap_or("N/A"));
+                                info!("  Имя устройства: {}", device["name"].as_str().unwrap_or("N/A"));
+                                
+                                info!("Информация о хранилище:");
+                                info!("  Название хранилища: {}", vault["name"].as_str().unwrap_or("N/A"));
+                                info!("  ID владельца: {}", vault["owner_id"].as_str().unwrap_or("N/A"));
+                                
+                                if let Some(users) = vault["users"].as_array() {
+                                    info!("Пользователи в хранилище:");
+                                    for user in users {
+                                        let user_type = user["type"].as_str().unwrap_or("Неизвестно");
+                                        let device_id = user["device_id"].as_str().unwrap_or("N/A");
+                                        if user_type == "Member" {
+                                            let device_name = user["device_name"].as_str().unwrap_or("N/A");
+                                            info!("  Участник: {} ({})", device_name, device_id);
+                                        } else {
+                                            info!("  Внешний: {}", device_id);
+                                        }
+                                    }
+                                }
+                                
+                                if let Some(secrets) = vault["secrets"].as_array() {
+                                    info!("Секреты в хранилище:");
+                                    for secret in secrets {
+                                        let secret_id = secret["id"].as_str().unwrap_or("N/A");
+                                        let secret_name = secret["name"].as_str().unwrap_or("N/A");
+                                        info!("  Секрет: {} ({})", secret_name, secret_id);
+                                    }
+                                }
+                            },
+                            _ => {
+                                info!("Другой статус: {}", status);
+                            }
                         }
                     }
                 } else {
