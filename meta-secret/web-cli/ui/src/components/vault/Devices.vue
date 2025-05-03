@@ -36,7 +36,7 @@ export default defineComponent({
 </script>
 
 <template>
-  <div class="py-3" />
+  <div :class="$style.spacer" />
 
   <!-- Devices list with improved styling -->
   <div :class="$style.devicesContainer">
@@ -45,7 +45,7 @@ export default defineComponent({
 
     <div v-if="deviceList.length === 0" :class="$style.emptyState">No devices connected yet</div>
 
-    <ul v-else class="w-full flex flex-col">
+    <ul v-else :class="$style.devicesList">
       <li
         v-for="membership in deviceList"
         :key="membership.user_data().device.device_id.wasm_id_str()"
@@ -58,6 +58,14 @@ export default defineComponent({
 </template>
 
 <style module>
+.spacer {
+  @apply py-3;
+}
+
+.devicesList {
+  @apply w-full flex flex-col;
+}
+
 .devicesContainer {
   @apply container max-w-md mx-auto rounded-lg overflow-hidden;
   @apply bg-white dark:bg-gray-850;

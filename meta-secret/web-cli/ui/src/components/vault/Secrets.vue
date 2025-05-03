@@ -61,7 +61,7 @@ export default defineComponent({
 </script>
 
 <template>
-  <div class="py-3" />
+  <div :class="$style.spacer" />
   <!-- Secrets list with improved styling -->
   <div :class="$style.secretsContainer">
     <div :class="$style.secretsHeader">
@@ -73,16 +73,16 @@ export default defineComponent({
 
     <div v-if="metaPasswords().length === 0" :class="$style.emptyState">No secrets added yet</div>
 
-    <ul v-else class="w-full flex flex-col">
+    <ul v-else :class="$style.secretsList">
       <li v-for="secret in metaPasswords()" :key="secret.id()" :class="$style.secretListItem">
         <div :class="$style.secretHeader">
-          <div class="flex-1 pl-1 mr-4">
+          <div :class="$style.secretInfo">
             <div :class="$style.secretName">
               {{ secret.name }}
             </div>
             <div :class="$style.secretId">ID: {{ secret.id() }}</div>
           </div>
-          <div class="flex space-x-2">
+          <div :class="$style.secretActions">
             <button :class="$style.recoveryButton" @click="recover(secret)">Recovery Request</button>
             <button :class="$style.showButton" @click="showRecovered(secret)">Show</button>
           </div>
@@ -99,7 +99,7 @@ export default defineComponent({
     </ul>
   </div>
 
-  <div class="py-5" />
+  <div :class="$style.spacerLarge" />
 
   <!-- Modal overlay for the Add Secret form -->
   <div v-if="showAddForm" :class="$style.modalOverlay" @click.self="toggleAddForm">
@@ -136,6 +136,26 @@ export default defineComponent({
 </template>
 
 <style module>
+.spacer {
+  @apply py-3;
+}
+
+.spacerLarge {
+  @apply py-5;
+}
+
+.secretsList {
+  @apply w-full flex flex-col;
+}
+
+.secretInfo {
+  @apply flex-1 pl-1 mr-4;
+}
+
+.secretActions {
+  @apply flex space-x-2;
+}
+
 .newPasswordCard {
   @apply block max-w-md mx-auto px-6 py-5;
   @apply bg-gray-50 dark:bg-gray-850 rounded-lg shadow-md;
