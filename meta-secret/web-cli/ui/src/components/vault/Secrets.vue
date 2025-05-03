@@ -182,7 +182,7 @@ export default defineComponent({
 .secretListItem {
   @apply flex flex-col w-full transition-colors duration-200;
   @apply border-b border-gray-200 dark:border-gray-700 last:border-b-0;
-  @apply hover:bg-orange-50 dark:hover:bg-gray-700;
+  @apply hover:bg-gray-100 dark:hover:bg-gray-750;
 }
 
 .secretHeader {

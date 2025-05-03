@@ -59,7 +59,7 @@ export default defineComponent({
   @apply flex items-center justify-between w-full py-4 px-5;
   @apply border-b border-gray-200 dark:border-gray-700 last:border-b-0;
   @apply transition-colors duration-200;
-  @apply hover:bg-orange-50 dark:hover:bg-gray-700;
+  @apply hover:bg-gray-100 dark:hover:bg-gray-750;
 }
 
 .deviceInfo {
