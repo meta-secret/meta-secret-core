@@ -35,25 +35,62 @@ export default defineComponent({
 </script>
 
 <template>
-  <div class="flex items-center flex-1 p-4 cursor-pointer select-none">
-    <div class="flex-1 pl-1 mr-16">
-      <div class="font-medium dark:text-white">
-        {{ this.getDevice().device_name.as_str() }}
+  <div :class="$style.deviceContainer">
+    <div :class="$style.deviceInfo">
+      <div :class="$style.deviceName">
+        {{ this.getDevice().device_name.as_str() || "Device" }}
       </div>
-      <div class="text-sm text-gray-600 dark:text-gray-200 truncate">
-        <p class="truncate w-24">
-          {{ this.getDevice().device_id.wasm_id_str() }}
-        </p>
+      <div :class="$style.deviceId">
+        ID: {{ this.getDevice().device_id.wasm_id_str() }}
       </div>
     </div>
-    <div class="text-xs text-gray-600 dark:text-gray-200">Active</div>
-    <button v-if="this.isPending()" :class="$style.actionButtonText" @click="accept()">Accept</button>
-    <button v-if="this.isPending()" :class="$style.actionButtonText" @click="decline()">Decline</button>
+    <div :class="$style.statusBadge">
+      Active
+    </div>
+    <div v-if="this.isPending()" :class="$style.actionButtons">
+      <button :class="$style.acceptButton" @click="accept()">Accept</button>
+      <button :class="$style.declineButton" @click="decline()">Decline</button>
+    </div>
   </div>
 </template>
 
 <style module>
-.actionButtonText {
-  @apply flex justify-end w-24 text-right text-gray-700 dark:text-gray-200 hover:text-gray-900 dark:hover:text-white;
+.deviceContainer {
+  @apply flex items-center justify-between w-full py-4 px-5;
+  @apply border-b border-gray-200 dark:border-gray-700 last:border-b-0;
+  @apply transition-colors duration-200;
+  @apply hover:bg-orange-50 dark:hover:bg-gray-700;
+}
+
+.deviceInfo {
+  @apply flex-1 flex flex-col;
+}
+
+.deviceName {
+  @apply font-medium text-gray-800 dark:text-white text-base;
+}
+
+.deviceId {
+  @apply text-sm text-gray-600 dark:text-gray-400 mt-1;
+}
+
+.statusBadge {
+  @apply inline-flex items-center justify-center px-2 py-1 mx-3;
+  @apply text-xs font-bold leading-none text-green-100 bg-green-600 rounded-full;
+}
+
+.actionButtons {
+  @apply flex space-x-2;
+}
+
+.acceptButton {
+  @apply bg-green-500 hover:bg-green-600 text-white text-xs font-medium py-1 px-3 rounded-md;
+  @apply transition-colors duration-150;
+}
+
+.declineButton {
+  @apply bg-red-500 hover:bg-red-600 text-white text-xs font-medium py-1 px-3 rounded-md;
+  @apply transition-colors duration-150;
 }
 </style>
+

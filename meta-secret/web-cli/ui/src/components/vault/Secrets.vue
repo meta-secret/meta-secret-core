@@ -72,7 +72,7 @@ export default defineComponent({
             <div :class="$style.secretId">ID: {{ secret.id() }}</div>
           </div>
           <div class="flex space-x-2">
-            <button :class="$style.recoveryButton" @click="recover(secret)">Recovery</button>
+            <button :class="$style.recoveryButton" @click="recover(secret)">Recovery Request</button>
             <button :class="$style.showButton" @click="showRecovered(secret)">Show</button>
           </div>
         </div>
@@ -120,7 +120,7 @@ export default defineComponent({
 <style module>
 .newPasswordCard {
   @apply block max-w-md mx-auto px-6 py-5;
-  @apply bg-white dark:bg-gray-800 rounded-lg shadow-md;
+  @apply bg-white dark:bg-gray-850 rounded-lg shadow-md;
   @apply border border-gray-200 dark:border-gray-700;
   @apply transition-all duration-200;
 }
@@ -145,7 +145,7 @@ export default defineComponent({
 
 .inputWrapper {
   @apply relative rounded-md;
-  @apply bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600;
+  @apply bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600;
   @apply focus-within:ring-2 focus-within:ring-orange-400 dark:focus-within:ring-orange-500;
   @apply focus-within:border-orange-400 dark:focus-within:border-orange-500;
   @apply transition-all duration-200;
@@ -171,7 +171,7 @@ export default defineComponent({
 
 .secretsContainer {
   @apply container max-w-md mx-auto rounded-lg overflow-hidden;
-  @apply bg-white dark:bg-gray-800;
+  @apply bg-white dark:bg-gray-850;
   @apply border border-gray-200 dark:border-gray-700 shadow-md;
 }
 
@@ -211,7 +211,7 @@ export default defineComponent({
 
 .secretContainer {
   @apply mx-4 mb-4 p-3 rounded-md;
-  @apply bg-orange-50 dark:bg-gray-700;
+  @apply bg-orange-50 dark:bg-gray-750;
   @apply border border-orange-200 dark:border-gray-600;
   @apply transition-all duration-300 ease-in-out;
 }
@@ -226,7 +226,7 @@ export default defineComponent({
 
 .secretValue {
   @apply font-mono text-gray-800 dark:text-gray-200;
-  @apply bg-white dark:bg-gray-800 px-3 py-1.5 rounded-md;
+  @apply bg-white dark:bg-gray-750 px-3 py-1.5 rounded-md;
   @apply border border-orange-200 dark:border-gray-600;
 }
 </style>

@@ -1,42 +1,55 @@
 <script lang="ts">
+import { defineComponent } from 'vue';
 import { AppState } from '@/stores/app-state';
 import Device from '@/components/vault/Device.vue';
 import { WasmUserMembership } from '../../../pkg';
 
-export default {
+export default defineComponent({
   components: { Device },
-  async setup() {
-    console.log('Device component. Init');
-
-    const appState = AppState();
-
+  
+  data() {
     return {
-      appState: appState,
+      appState: null as any,
+      deviceList: [] as WasmUserMembership[]
     };
+  },
+  
+  mounted() {
+    console.log('Device component. Init');
+    this.appState = AppState();
+    this.refreshDevices();
   },
 
   methods: {
-    users(): WasmUserMembership[] {
-      return this.appState.metaSecretAppState.as_vault().as_member().vault_data().users();
-    },
-  },
-};
+    refreshDevices() {
+      try {
+        if (this.appState && this.appState.metaSecretAppState) {
+          this.deviceList = this.appState.metaSecretAppState.as_vault().as_member().vault_data().users();
+        }
+      } catch (e) {
+        console.error("Error getting devices:", e);
+        this.deviceList = [];
+      }
+    }
+  }
+});
 </script>
 
 <template>
-  <div class="py-4" />
+  <div class="py-3" />
 
-  <!-- https://www.tailwind-kit.com/components/list -->
-  <div :class="$style.devices">
-    <div :class="$style.listHeader">
-      <h3 :class="$style.listTitle">Devices</h3>
-      <p :class="$style.listDescription">Detailed information about user devices</p>
-    </div>
-    <ul class="w-full flex flex-col divide-y divide p-2 dark:divide-gray-700">
+  <!-- Devices list with improved styling -->
+  <div :class="$style.devicesContainer">
+    <h3 :class="$style.devicesTitle">Devices</h3>
+    <p :class="$style.devicesDescription">Detailed information about user devices</p>
+
+    <div v-if="deviceList.length === 0" :class="$style.emptyState">No devices connected yet</div>
+
+    <ul v-else class="w-full flex flex-col">
       <li
-        v-for="membership in this.users()"
+        v-for="membership in deviceList"
         :key="membership.user_data().device.device_id.wasm_id_str()"
-        class="flex flex-row"
+        :class="$style.deviceListItem"
       >
         <Device :membership="membership" sig-status="active" />
       </li>
@@ -45,24 +58,32 @@ export default {
 </template>
 
 <style module>
-.devices {
-  @apply container max-w-md flex flex-col items-center justify-center w-full;
-  @apply mx-auto bg-white rounded-lg shadow dark:bg-gray-800;
+.devicesContainer {
+  @apply container max-w-md mx-auto rounded-lg overflow-hidden;
+  @apply bg-white dark:bg-gray-850;
+  @apply border border-gray-200 dark:border-gray-700 shadow-md;
+}
+
+.devicesTitle {
+  @apply text-lg font-medium text-gray-800 dark:text-gray-200 px-4 pt-4 pb-1;
+}
+
+.devicesDescription {
+  @apply max-w-2xl text-sm text-gray-500 dark:text-gray-300 px-4 pb-3;
+  @apply border-b border-gray-200 dark:border-gray-700;
+}
+
+.emptyState {
+  @apply py-6 text-center text-gray-500 dark:text-gray-400 italic;
+}
+
+.deviceListItem {
+  @apply flex flex-col w-full transition-colors duration-200;
+  @apply border-b border-gray-200 dark:border-gray-700 last:border-b-0;
+  @apply hover:bg-orange-50 dark:hover:bg-gray-700;
 }
 
 .actionButtonText {
   @apply flex justify-end w-24 text-right;
-}
-
-.listHeader {
-  @apply w-full px-4 py-5 border-b sm:px-6 dark:border-gray-700;
-}
-
-.listTitle {
-  @apply text-lg font-medium leading-6 text-gray-900 dark:text-white;
-}
-
-.listDescription {
-  @apply max-w-2xl mt-1 text-sm text-gray-500 dark:text-gray-200;
 }
 </style>
