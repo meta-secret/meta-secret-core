@@ -130,7 +130,7 @@ export default defineComponent({
 
 .secretContainer {
   @apply mx-4 mb-4 p-3 rounded-md;
-  @apply bg-green-100 dark:bg-green-900 border border-green-500;
+  @apply bg-orange-50 dark:bg-gray-700 border border-orange-300;
   @apply transition-all duration-300 ease-in-out;
   @apply shadow-sm;
 }
@@ -140,11 +140,11 @@ export default defineComponent({
 }
 
 .secretLabel {
-  @apply font-bold text-green-700 dark:text-green-300 mr-2;
+  @apply font-bold text-orange-700 dark:text-orange-300 mr-2;
 }
 
 .secretValue {
-  @apply font-mono text-green-800 dark:text-green-200 bg-green-50 dark:bg-green-800 px-2 py-1 rounded;
-  @apply border border-green-200 dark:border-green-700;
+  @apply font-mono text-gray-800 dark:text-gray-200 bg-white dark:bg-gray-800 px-2 py-1 rounded;
+  @apply border border-orange-200 dark:border-gray-600;
 }
 </style>
