@@ -9,7 +9,9 @@ use crate::wasm_repo::{WasmRepo, WasmSyncProtocol};
 use meta_secret_core::node::app::app_state_update_manager::ApplicationManagerConfigurator;
 use meta_secret_core::node::common::model::WasmApplicationState;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
+use meta_secret_core::node::common::model::secret::ClaimId;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
+use meta_secret_core::node::db::actions::recover::RecoveryHandler;
 
 #[wasm_bindgen]
 pub struct WasmApplicationManager {
@@ -57,5 +59,9 @@ impl WasmApplicationManager {
 
     pub async fn recover_js(&self, meta_pass_id: MetaPasswordId) {
         self.app_manager.recover_js(meta_pass_id).await;
+    }
+
+    pub async fn show_recovered(&self, claim_id: ClaimId, pass_id: MetaPasswordId) -> String {
+        self.app_manager.show_recovered(claim_id, pass_id).await.unwrap().text
     }
 }

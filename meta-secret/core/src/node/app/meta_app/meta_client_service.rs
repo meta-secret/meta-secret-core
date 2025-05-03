@@ -188,7 +188,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         Ok(user_creds)
     }
 
-    async fn find_user_creds(&self) -> Result<UserCredentials> {
+    pub async fn find_user_creds(&self) -> Result<UserCredentials> {
         let creds_repo = PersistentCredentials::from(self.p_obj.clone());
         let user_creds = {
             let maybe_user_creds = creds_repo.get_user_creds().await?;

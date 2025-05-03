@@ -66,7 +66,6 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
     #[instrument(skip_all)]
     pub async fn recover(
         &self,
-        vault_name: VaultName,
         user_creds: UserCredentials,
         claim_id: ClaimId,
         pass_id: MetaPasswordId,
@@ -75,6 +74,7 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
         let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
 
         // 2. Get the SS log to find the claim
+        let vault_name = user_creds.vault_name.clone();
         let ss_log_data = p_ss.get_ss_log_obj(vault_name).await?;
 
         // Find the claim using the ID in the recovery_id
@@ -124,14 +124,6 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
             let decrypted = data.secret_message.cipher_text().decrypt(transport_sk)?;
             let share = UserShareDto::try_from(&decrypted.msg)?;
             user_shares.push(share);
-        }
-
-        // We need at least 2 shares to recover the secret
-        if user_shares.len() < 2 {
-            bail!(
-                "Not enough shares to recover the secret. Required: 2, Found: {}",
-                user_shares.len()
-            );
         }
 
         // Recover the secret using the collected shares

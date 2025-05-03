@@ -1,4 +1,4 @@
-use anyhow::{bail, Context};
+use anyhow::{Context, bail};
 use std::sync::Arc;
 use tracing::{Instrument, info, instrument};
 use wasm_bindgen_futures::spawn_local;
@@ -16,16 +16,18 @@ use meta_secret_core::node::app::sync::sync_protocol::SyncProtocol;
 use meta_secret_core::node::app::virtual_device::VirtualDevice;
 use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::meta_tracing::{client_span, vd_span};
-use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
 use meta_secret_core::node::common::model::device::common::DeviceName;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::ClaimId;
 use meta_secret_core::node::common::model::user::common::UserDataOutsiderStatus;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
+use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
+use meta_secret_core::node::db::actions::recover::RecoveryHandler;
 use meta_secret_core::node::db::events::vault::vault_log_event::JoinClusterEvent;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
+use meta_secret_core::secret::shared_secret::PlainText;
 use meta_server_node::server::server_app::ServerApp;
 
 pub struct ApplicationManager<Repo: KvLogEventRepo, Sync: SyncProtocol> {
@@ -81,19 +83,15 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
             ApplicationState::Vault(vault_info) => {
                 let vault_name = match vault_info {
                     VaultFullInfo::NotExists(user) => user.vault_name,
-                    VaultFullInfo::Outsider(outsider) => {
-                        match outsider.status {
-                            UserDataOutsiderStatus::NonMember => {
-                                outsider.user_data.vault_name
-                            }
-                            UserDataOutsiderStatus::Pending => {
-                                bail!("Sign up is not allowed in pending state");
-                            }
-                            UserDataOutsiderStatus::Declined => {
-                                bail!("Sign up is not allowed in declined state");
-                            }
+                    VaultFullInfo::Outsider(outsider) => match outsider.status {
+                        UserDataOutsiderStatus::NonMember => outsider.user_data.vault_name,
+                        UserDataOutsiderStatus::Pending => {
+                            bail!("Sign up is not allowed in pending state");
                         }
-                    }
+                        UserDataOutsiderStatus::Declined => {
+                            bail!("Sign up is not allowed in declined state");
+                        }
+                    },
                     VaultFullInfo::Member(_) => {
                         bail!("Sign up is not allowed in vault state");
                     }
@@ -125,6 +123,23 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
 
     pub async fn accept_join(&self, join_request: JoinClusterEvent) -> Result<()> {
         self.meta_client_service.accept_join(join_request).await
+    }
+
+    pub async fn show_recovered(
+        &self,
+        claim_id: ClaimId,
+        pass_id: MetaPasswordId,
+    ) -> Result<PlainText> {
+        let user_creds = self.meta_client_service.find_user_creds().await?;
+
+        let recovery_handler = RecoveryHandler {
+            p_obj: self.sync_gateway.p_obj.clone(),
+        };
+
+        let pass = recovery_handler
+            .recover(user_creds, claim_id, pass_id)
+            .await?;
+        Ok(pass)
     }
 
     #[instrument(name = "MetaClient", skip_all)]
