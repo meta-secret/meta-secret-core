@@ -1,6 +1,9 @@
 <template>
-  <div class="container flex justify-center max-w-md py-2 items-stretch">
-    <!--    <p class="flex">{{ this.getVaultName() }}</p>-->
+  <div class="container flex justify-center max-w-md pt-1 pb-4 items-stretch">
+    <div class="flex items-center">
+      <span class="text-gray-600 mr-2">Vault:</span>
+      <h2 class="text-xl font-bold text-gray-800 py-1 px-2 border-b-2 border-orange-500">{{ vaultName }}</h2>
+    </div>
   </div>
 
   <div class="container flex max-w-md py-2 items-stretch">
@@ -31,3 +34,15 @@
     <RouterView />
   </div>
 </template>
+
+<script setup>
+import { ref, onMounted } from 'vue';
+import { AppState } from '@/stores/app-state';
+
+const appState = AppState();
+const vaultName = ref('');
+
+onMounted(async () => {
+  vaultName.value = await appState.getVaultName();
+});
+</script>
