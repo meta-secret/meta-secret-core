@@ -20,71 +20,26 @@ export default defineComponent({
 
   async mounted() {
     console.log('Registration component mounted');
-    await this.checkVaultName();
-    await this.checkIsLocal();
-    await this.checkIsOutsider();
-    await this.checkIsVaultNotExists();
+    this.vaultName = await this.jsAppState.getVaultName();
+    this.isLocalState = await this.jsAppState.checkIsLocal();
+    this.isOutsiderState = await this.jsAppState.checkIsOutsider();
+    this.isVaultNotExists = await this.jsAppState.checkIsVaultNotExists();
+
+    console.log('is in Local state: ', this.isLocalState);
+    console.log('is in Outsider state: ', this.isOutsiderState);
+    console.log('is in VaultNotExists state: ', this.isVaultNotExists);
   },
 
   methods: {
     async generate_user_creds() {
       await this.jsAppState.appManager.generate_user_creds(this.vaultName);
-      await this.checkIsLocal();
+      this.isLocalState = await this.jsAppState.checkIsLocal();
     },
 
     async signUp() {
       console.log('Generate vault');
       await this.jsAppState.appManager.sign_up();
-      await this.checkIsLocal();
-    },
-
-    async checkVaultName() {
-      const currState = await this.jsAppState.appManager.get_state();
-      if (currState.is_local()) {
-        this.vaultName = '';
-        return;
-      }
-
-      if (currState.is_vault()) {
-        const vaultState = currState.as_vault();
-        this.vaultName = vaultState.vault_name();
-      } else {
-        this.vaultName = '';
-      }
-    },
-
-    async checkIsLocal() {
-      const currState = await this.jsAppState.appManager.get_state();
-      this.isLocalState = currState.is_local();
-      console.log('is in Local state: ', this.isLocalState);
-    },
-
-    async checkIsOutsider() {
-      const currState = await this.jsAppState.appManager.get_state();
-      const isVault = currState.is_vault();
-
-      if (!isVault) {
-        this.isOutsiderState = false;
-        return;
-      }
-
-      const vaultState = currState.as_vault();
-      this.isOutsiderState = vaultState.is_outsider();
-      console.log('is in Outsider state: ', this.isOutsiderState);
-    },
-
-    async checkIsVaultNotExists() {
-      const currState = await this.jsAppState.appManager.get_state();
-      const isVault = currState.is_vault();
-
-      if (!isVault) {
-        this.isOutsiderState = false;
-        return;
-      }
-
-      const vaultState = currState.as_vault();
-      this.isVaultNotExists = vaultState.is_vault_not_exists();
-      console.log('is in VaultNotExists state: ', this.isVaultNotExists);
+      this.isLocalState = await this.jsAppState.checkIsLocal();
     },
   },
 });

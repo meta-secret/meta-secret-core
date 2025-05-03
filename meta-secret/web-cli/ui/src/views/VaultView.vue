@@ -21,7 +21,7 @@ export default defineComponent({
     await jsAppState.appStateInit();
 
     return {
-      jsAppState: jsAppState,
+      jsAppState,
     };
   },
 
@@ -29,49 +29,18 @@ export default defineComponent({
     return {
       isLocalState: false,
       isMemberState: false,
+      isVaultNotExists: false,
     };
   },
 
   async mounted() {
-    await this.checkIsLocal();
-    await this.checkIsMember();
-  },
+    this.isLocalState = await this.jsAppState.checkIsLocal();
+    this.isMemberState = await this.jsAppState.checkIsMember();
+    this.isVaultNotExists = await this.jsAppState.checkIsVaultNotExists();
 
-  methods: {
-    async checkIsLocal() {
-      const currState = await this.jsAppState.appManager.get_state();
-      this.isLocalState = currState.is_local();
-      console.log('is in Local state: ', this.isLocalState);
-    },
-
-    async checkIsMember() {
-      const currState = await this.jsAppState.appManager.get_state();
-      const isVault = currState.is_vault();
-      
-      if (!isVault) {
-        this.isMemberState = false;
-        return;
-      }
-
-      const vaultState = currState.as_vault();
-      this.isMemberState = vaultState.is_member();
-      console.log('is in Member state: ', this.isMemberState);
-    },
-
-    async isLocal() {
-      const currState = await this.jsAppState.appManager.get_state();
-      return currState.is_local();
-    },
-
-    async isMember() {
-      const currState = await this.jsAppState.appManager.get_state();
-      const isVault = currState.is_vault();
-      if (!isVault) {
-        return false;
-      }
-
-      return currState.as_vault().is_member();
-    },
+    console.log('is in Local state: ', this.isLocalState);
+    console.log('is in VaultNotExists state: ', this.isVaultNotExists);
+    console.log('is in Member state: ', this.isMemberState);
   },
 });
 </script>
@@ -81,7 +50,7 @@ export default defineComponent({
     <p class="text-2xl">Personal Secret Manager</p>
   </div>
 
-  <div v-if="isLocalState">
+  <div v-if="isLocalState || isVaultNotExists">
     <RegistrationComponent />
   </div>
   <div v-else-if="isMemberState">
