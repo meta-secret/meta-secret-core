@@ -32,6 +32,7 @@ jobs:
           earthly \
             --ci \
             --remote-cache=ghcr.io/meta-secret/meta-secret-core:cache \
+            --push \
             +web-build-local
         
       - name: Deploy to GitHub Pages
@@ -51,3 +52,4 @@ jobs:
           projectName: meta-secret-web-cli
           directory: meta-secret/target/web-cli/ui/dist
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          wranglerVersion: 2
