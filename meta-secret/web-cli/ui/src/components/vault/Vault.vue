@@ -49,11 +49,11 @@ onMounted(async () => {
 }
 
 .labelText {
-  @apply text-gray-700 dark:text-orange-200 mr-2 font-medium;
+  @apply text-2xl text-white dark:text-orange-200 mr-2 font-medium;
 }
 
 .vaultTitle {
-  @apply text-xl font-bold text-gray-800 py-1 px-4 rounded-md;
+  @apply text-lg font-medium text-white py-1 px-4 rounded-md;
   @apply dark:text-yellow-200 dark:bg-gradient-to-r dark:from-orange-500 dark:to-amber-500;
   @apply shadow-md dark:shadow-orange-400/30;
   @apply border-b-2 border-orange-500 dark:border-orange-300;
