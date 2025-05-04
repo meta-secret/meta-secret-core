@@ -14,7 +14,29 @@ const toggleDropdown = () => {
 };
 
 const setTheme = (theme) => {
+  // Direct approach to theme switching
+  console.log('Setting theme to:', theme);
+  
+  // Update localStorage
+  localStorage.setItem('theme', theme);
+  
+  // Update store value
   themeStore.theme = theme;
+  
+  // Direct DOM manipulation to ensure theme change
+  const isDark = 
+    theme === 'dark' || 
+    (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  
+  if (isDark) {
+    document.documentElement.classList.add('dark');
+  } else {
+    document.documentElement.classList.remove('dark');
+  }
+  
+  // Also call store's apply function as backup
+  themeStore.applyTheme();
+  
   isOpen.value = false;
 };
 
@@ -27,6 +49,7 @@ const handleClickOutside = (event) => {
 // Add click outside listener when component is mounted
 onMounted(() => {
   document.addEventListener('click', handleClickOutside);
+  console.log('Current theme on mount:', currentTheme.value);
 });
 
 // Remove listener when component is unmounted
@@ -79,4 +102,42 @@ onBeforeUnmount(() => {
       </div>
     </div>
   </div>
-</template> 
+</template>
+
+<style module>
+.container {
+  @apply relative;
+}
+
+.themeButton {
+  @apply flex items-center text-gray-900 dark:text-gray-100;
+  @apply bg-gray-200 dark:bg-transparent;
+  @apply border border-gray-300 dark:border-transparent;
+  @apply hover:bg-gray-300 dark:hover:bg-gray-700;
+  @apply px-3 py-2 rounded-md text-sm font-medium;
+}
+
+.icon {
+  @apply h-5 w-5;
+}
+
+.dropdown {
+  @apply absolute right-0 z-10 mt-2 w-40 origin-top-right;
+  @apply rounded-md bg-white dark:bg-gray-800 shadow-lg;
+  @apply ring-1 ring-black ring-opacity-5 focus:outline-none;
+}
+
+.dropdownContent {
+  @apply py-1;
+}
+
+.menuItem {
+  @apply flex items-center px-4 py-2 text-sm;
+  @apply text-gray-700 dark:text-gray-200;
+  @apply hover:bg-gray-100 dark:hover:bg-gray-700;
+}
+
+.menuIcon {
+  @apply h-5 w-5 mr-2;
+}
+</style> 

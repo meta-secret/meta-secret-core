@@ -249,13 +249,13 @@ onBeforeUnmount(() => {
 }
 
 .mobileMenuButton {
-  @apply -mr-2 flex md:hidden ml-2;
+  @apply -mr-2 flex md:hidden;
 }
 
 .disclosureBtn {
-  @apply bg-gray-800 inline-flex items-center justify-center p-2 rounded-md;
+  @apply inline-flex items-center justify-center p-2 rounded-md;
   @apply text-gray-400 hover:text-white hover:bg-gray-700;
-  @apply focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-white;
+  @apply focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white;
 }
 
 .srOnly {
@@ -271,35 +271,28 @@ onBeforeUnmount(() => {
 }
 
 .mobileMenuItems {
-  @apply px-2 pt-2 pb-3 space-y-1 sm:px-3;
+  @apply px-2 pt-2 pb-3 space-y-1;
 }
 
 .activeMobileItem {
-  @apply bg-gray-900 text-white;
-  @apply block px-3 py-2 rounded-md text-base font-medium;
+  @apply bg-gray-700 text-white block px-3 py-2 rounded-md text-base font-medium;
 }
 
 .mobileNavItem {
-  @apply text-gray-300;
-  @apply hover:bg-gray-700 hover:text-white;
+  @apply text-gray-300 hover:bg-gray-700 hover:text-white;
   @apply block px-3 py-2 rounded-md text-base font-medium;
 }
 
 .mobileGroupLabel {
-  @apply mt-1 px-3 text-gray-300 font-medium;
+  @apply text-gray-400 px-3 py-2 text-sm font-medium;
 }
 
 .mobileToolItem {
-  @apply text-gray-300;
-  @apply hover:bg-gray-700 hover:text-white;
-  @apply block px-3 py-2 rounded-md text-base font-medium pl-6 text-left w-full;
+  @apply text-gray-300 hover:bg-gray-700 hover:text-white w-full text-left;
+  @apply block px-3 py-2 rounded-md text-base font-medium;
 }
 </style>
 
 <style>
-.nav-style {
-  border-bottom: solid 1px;
-  border-bottom-color: #1a1a1a;
-  background-color: #0f172a;
-}
+/* Remove the global style that might be interfering with theming */
 </style>

@@ -10,6 +10,11 @@ export default defineComponent({
     
     onMounted(() => {
       themeStore.applyTheme();
+      console.log("App mounted - applying theme");
+      
+      // Debug log for dark mode detection
+      const isDarkMode = document.documentElement.classList.contains('dark');
+      console.log("Is dark mode active:", isDarkMode);
     });
     
     return { themeStore };
@@ -31,11 +36,8 @@ export default defineComponent({
   </div>
 </template>
 
-<style>
+<style module>
 .container {
-  display: flex;
-  justify-content: flex-start;
-  max-width: 1376px;
-  margin: 0 auto;
+  @apply flex justify-start max-w-[1376px] mx-auto;
 }
 </style>

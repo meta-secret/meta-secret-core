@@ -46,8 +46,8 @@ export default defineComponent({
 </script>
 
 <template>
-  <div class="flex justify-center py-6">
-    <p class="text-2xl text-gray-900 dark:text-white">Personal Secret Manager</p>
+  <div :class="$style.titleContainer">
+    <p :class="$style.titleText">Personal Secret Manager</p>
   </div>
 
   <div v-if="isLocalState || isVaultNotExists">
@@ -56,7 +56,21 @@ export default defineComponent({
   <div v-else-if="isMemberState">
     <VaultComponent />
   </div>
-  <div v-else class="text-gray-900 dark:text-white">
+  <div v-else :class="$style.errorMessage">
     <h1>Outsider!</h1>
   </div>
 </template>
+
+<style module>
+.titleContainer {
+  @apply flex justify-center py-6;
+}
+
+.titleText {
+  @apply text-2xl text-gray-900 dark:text-white;
+}
+
+.errorMessage {
+  @apply text-gray-900 dark:text-white;
+}
+</style>
