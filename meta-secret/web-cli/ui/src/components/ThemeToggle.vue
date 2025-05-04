@@ -39,7 +39,7 @@ onBeforeUnmount(() => {
   <div class="relative" ref="dropdownRef">
     <button 
       @click.stop="toggleDropdown" 
-      class="flex items-center text-gray-900 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium"
+      class="flex items-center text-gray-900 dark:text-gray-100 bg-gray-200 dark:bg-transparent border border-gray-300 dark:border-transparent hover:bg-gray-300 dark:hover:bg-gray-700 px-3 py-2 rounded-md text-sm font-medium"
       title="Theme settings"
     >
       <SunIcon v-if="currentTheme === 'light'" class="h-5 w-5" />
