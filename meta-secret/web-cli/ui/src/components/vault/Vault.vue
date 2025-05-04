@@ -49,11 +49,11 @@ onMounted(async () => {
 }
 
 .labelText {
-  @apply text-gray-600 dark:text-gray-400 mr-2;
+  @apply text-gray-700 dark:text-gray-300 mr-2 font-medium;
 }
 
 .vaultTitle {
-  @apply text-xl font-bold text-gray-800 dark:text-white py-1 px-2 border-b-2 border-orange-500;
+  @apply text-xl font-bold text-gray-800 dark:text-orange-300 py-1 px-2 border-b-2 border-orange-500;
 }
 
 .navContainer {
