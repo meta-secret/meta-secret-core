@@ -1,13 +1,20 @@
 <script setup>
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/vue';
 import { MenuIcon, XIcon, ChevronDownIcon } from '@heroicons/vue/outline';
-import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import ThemeToggle from './ThemeToggle.vue';
+import { useThemeStore } from '../stores/theme';
 
 const router = useRouter();
 const dropdownOpen = ref(false);
 const dropdownRef = ref(null);
+const themeStore = useThemeStore();
+
+// Watch for theme changes to ensure navbar updates
+watch(() => themeStore.theme, () => {
+  console.log('Theme changed in navbar component');
+});
 
 const navigation = [
   { name: 'Home', href: '/', current: false },
@@ -163,15 +170,15 @@ onBeforeUnmount(() => {
 }
 
 .navbar {
-  @apply bg-gray-900 dark:bg-gray-900;
+  @apply bg-white dark:bg-gray-900 transition-colors duration-300;
 }
 
 .navInner {
-  @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 transition-colors duration-300;
 }
 
 .navFlex {
-  @apply flex items-center justify-between h-16;
+  @apply flex items-center justify-between h-16 transition-colors duration-300;
 }
 
 .logoSection {
@@ -191,7 +198,7 @@ onBeforeUnmount(() => {
 }
 
 .brandLink {
-  @apply text-white;
+  @apply text-gray-900 dark:text-white;
 }
 
 .desktopMenu {
@@ -203,13 +210,13 @@ onBeforeUnmount(() => {
 }
 
 .activeNavItem {
-  @apply bg-gray-700 text-white;
+  @apply bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white;
   @apply px-3 py-2 rounded-md text-sm font-medium;
 }
 
 .navItem {
-  @apply text-gray-300;
-  @apply hover:bg-gray-700 hover:text-white;
+  @apply text-gray-700 dark:text-gray-300;
+  @apply hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-white;
   @apply px-3 py-2 rounded-md text-sm font-medium;
 }
 
@@ -218,8 +225,8 @@ onBeforeUnmount(() => {
 }
 
 .dropdownButton {
-  @apply text-gray-300;
-  @apply hover:bg-gray-700 hover:text-white;
+  @apply text-gray-700 dark:text-gray-300;
+  @apply hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-white;
   @apply px-3 py-2 rounded-md text-sm font-medium flex items-center;
 }
 
@@ -229,7 +236,7 @@ onBeforeUnmount(() => {
 
 .dropdownMenu {
   @apply absolute z-10 mt-2 w-36 rounded-md shadow-lg;
-  @apply bg-gray-800;
+  @apply bg-white dark:bg-gray-800;
   @apply ring-1 ring-black ring-opacity-5 focus:outline-none;
 }
 
@@ -239,8 +246,8 @@ onBeforeUnmount(() => {
 
 .dropdownItem {
   @apply block px-4 py-2 text-sm;
-  @apply text-gray-200;
-  @apply hover:bg-gray-700 hover:text-white;
+  @apply text-gray-700 dark:text-gray-200;
+  @apply hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-white;
   @apply cursor-pointer;
 }
 
@@ -254,7 +261,7 @@ onBeforeUnmount(() => {
 
 .disclosureBtn {
   @apply inline-flex items-center justify-center p-2 rounded-md;
-  @apply text-gray-400 hover:text-white hover:bg-gray-700;
+  @apply text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700;
   @apply focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white;
 }
 
@@ -275,20 +282,20 @@ onBeforeUnmount(() => {
 }
 
 .activeMobileItem {
-  @apply bg-gray-700 text-white block px-3 py-2 rounded-md text-base font-medium;
+  @apply bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white block px-3 py-2 rounded-md text-base font-medium;
 }
 
 .mobileNavItem {
-  @apply text-gray-300 hover:bg-gray-700 hover:text-white;
+  @apply text-gray-700 dark:text-gray-300 hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-white;
   @apply block px-3 py-2 rounded-md text-base font-medium;
 }
 
 .mobileGroupLabel {
-  @apply text-gray-400 px-3 py-2 text-sm font-medium;
+  @apply text-gray-500 dark:text-gray-400 px-3 py-2 text-sm font-medium;
 }
 
 .mobileToolItem {
-  @apply text-gray-300 hover:bg-gray-700 hover:text-white w-full text-left;
+  @apply text-gray-700 dark:text-gray-300 hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-white w-full text-left;
   @apply block px-3 py-2 rounded-md text-base font-medium;
 }
 </style>

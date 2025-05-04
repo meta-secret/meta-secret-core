@@ -16,12 +16,20 @@ export const useThemeStore = defineStore('theme', () => {
   watch(theme, () => {
     localStorage.setItem('theme', theme.value);
     applyTheme();
+    
+    // Force CSS reapplication
+    document.body.classList.add('theme-transition');
+    setTimeout(() => {
+      document.body.classList.remove('theme-transition');
+    }, 300);
   });
   
   function applyTheme() {
     const isDark = 
       theme.value === 'dark' || 
       (theme.value === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    
+    console.log('Applying theme, isDark:', isDark);
     
     if (isDark) {
       document.documentElement.classList.add('dark');

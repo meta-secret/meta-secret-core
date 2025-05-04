@@ -9,12 +9,15 @@ export default defineComponent({
     const themeStore = useThemeStore();
     
     onMounted(() => {
-      themeStore.applyTheme();
-      console.log("App mounted - applying theme");
-      
-      // Debug log for dark mode detection
-      const isDarkMode = document.documentElement.classList.contains('dark');
-      console.log("Is dark mode active:", isDarkMode);
+      // Force theme application with a small delay to ensure it applies after rendering
+      setTimeout(() => {
+        themeStore.applyTheme();
+        console.log("App mounted - applying theme");
+        
+        // Debug log for dark mode detection
+        const isDarkMode = document.documentElement.classList.contains('dark');
+        console.log("Is dark mode active:", isDarkMode);
+      }, 50);
     });
     
     return { themeStore };
