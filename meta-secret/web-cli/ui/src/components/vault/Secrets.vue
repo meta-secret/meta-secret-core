@@ -36,13 +36,18 @@ export default defineComponent({
     },
 
     async showRecovered(metaPassId: MetaPasswordId) {
-      // Store the ID first to avoid null pointer issues
+      // Get the ID
       const id = metaPassId.id();
+      
+      // If this secret is already being shown, hide it
+      if (this.currentSecretId === id) {
+        this.currentSecret = null;
+        this.currentSecretId = null;
+        return;
+      }
 
-      // Then get the secret
+      // Otherwise, show the secret
       const secret = await this.appState.appManager.show_recovered(metaPassId);
-
-      // Update data properties directly
       this.currentSecret = secret;
       this.currentSecretId = id;
     },
@@ -84,7 +89,9 @@ export default defineComponent({
           </div>
           <div :class="$style.secretActions">
             <button :class="$style.recoveryButton" @click="recover(secret)">Recovery Request</button>
-            <button :class="$style.showButton" @click="showRecovered(secret)">Show</button>
+            <button :class="$style.showButton" @click="showRecovered(secret)">
+              {{ currentSecretId === secret.id() ? 'Hide' : 'Show' }}
+            </button>
           </div>
         </div>
 
