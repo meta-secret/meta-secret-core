@@ -1,7 +1,7 @@
 <script setup>
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/vue';
 import { MenuIcon, XIcon, ChevronDownIcon } from '@heroicons/vue/outline';
-import { ref, onMounted, onBeforeUnmount, watch } from 'vue';
+import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import ThemeToggle from './ThemeToggle.vue';
 import { useThemeStore } from '../stores/theme';
@@ -11,9 +11,21 @@ const dropdownOpen = ref(false);
 const dropdownRef = ref(null);
 const themeStore = useThemeStore();
 
+// Compute whether dark mode is active
+const isDarkMode = computed(() => {
+  if (typeof document !== 'undefined') {
+    return document.documentElement.classList.contains('dark');
+  }
+  return false;
+});
+
 // Watch for theme changes to ensure navbar updates
 watch(() => themeStore.theme, () => {
   console.log('Theme changed in navbar component');
+});
+
+watch(isDarkMode, (newVal) => {
+  console.log('Dark mode changed:', newVal);
 });
 
 const navigation = [
@@ -63,7 +75,10 @@ onBeforeUnmount(() => {
 
 <template>
   <div :class="$style.navContainer">
-    <Disclosure as="nav" :class="$style.navbar" v-slot="{ open }">
+    <Disclosure as="nav" 
+      :class="[$style.navbar, isDarkMode ? 'dark-navbar' : 'light-navbar']" 
+      :style="isDarkMode ? { backgroundColor: '#111827', color: 'white' } : {}"
+      v-slot="{ open }">
       <div :class="$style.navInner">
         <div :class="$style.navFlex">
           <div :class="$style.logoSection">
@@ -170,7 +185,7 @@ onBeforeUnmount(() => {
 }
 
 .navbar {
-  @apply bg-white dark:bg-gray-900 transition-colors duration-300;
+  @apply bg-white dark:!bg-gray-900 transition-colors duration-300;
 }
 
 .navInner {
@@ -215,7 +230,7 @@ onBeforeUnmount(() => {
 }
 
 .navItem {
-  @apply text-gray-700 dark:text-gray-300;
+  @apply text-orange-300 dark:text-gray-300;
   @apply hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-white;
   @apply px-3 py-2 rounded-md text-sm font-medium;
 }
@@ -225,7 +240,7 @@ onBeforeUnmount(() => {
 }
 
 .dropdownButton {
-  @apply text-gray-700 dark:text-gray-300;
+  @apply text-orange-300 dark:text-gray-300;
   @apply hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-white;
   @apply px-3 py-2 rounded-md text-sm font-medium flex items-center;
 }
@@ -301,5 +316,26 @@ onBeforeUnmount(() => {
 </style>
 
 <style>
-/* Remove the global style that might be interfering with theming */
+/* Global styles to ensure dark mode properly works */
+:root.dark .navbar {
+  background-color: #1a1a1a !important;
+}
+
+html.dark .navbar {
+  background-color: #1a1a1a !important;
+}
+
+.dark .navbar {
+  background-color: #1a1a1a !important;
+}
+
+.dark-navbar {
+  background-color: #111827 !important; /* gray-900 */
+  color: white !important;
+}
+
+.light-navbar {
+  background-color: white !important;
+  color: #111827 !important;
+}
 </style>
