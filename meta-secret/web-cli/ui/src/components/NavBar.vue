@@ -11,21 +11,44 @@ const dropdownOpen = ref(false);
 const dropdownRef = ref(null);
 const themeStore = useThemeStore();
 
-// Compute whether dark mode is active
+// Use the theme store's theme value directly
+const currentTheme = computed(() => themeStore.theme);
+
+// Compute dark mode based on theme value and system preference
 const isDarkMode = computed(() => {
-  if (typeof document !== 'undefined') {
-    return document.documentElement.classList.contains('dark');
+  const theme = currentTheme.value;
+  if (typeof window !== 'undefined') {
+    if (theme === 'dark') return true;
+    if (theme === 'light') return false;
+    // System preference
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
   }
   return false;
 });
 
-// Watch for theme changes to ensure navbar updates
+// Force re-evaluation when theme changes
 watch(() => themeStore.theme, () => {
-  console.log('Theme changed in navbar component');
+  console.log('Theme changed in navbar to:', themeStore.theme);
+  // Force component update
+  document.documentElement.classList.add('theme-transition');
+  setTimeout(() => {
+    document.documentElement.classList.remove('theme-transition');
+  }, 300);
 });
 
-watch(isDarkMode, (newVal) => {
-  console.log('Dark mode changed:', newVal);
+// Also watch system preference changes
+onMounted(() => {
+  if (typeof window !== 'undefined') {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      if (currentTheme.value === 'system') {
+        // Force component update
+        document.documentElement.classList.add('theme-transition');
+        setTimeout(() => {
+          document.documentElement.classList.remove('theme-transition');
+        }, 300);
+      }
+    });
+  }
 });
 
 const navigation = [
@@ -77,7 +100,6 @@ onBeforeUnmount(() => {
   <div :class="$style.navContainer">
     <Disclosure as="nav" 
       :class="[$style.navbar, isDarkMode ? 'dark-navbar' : 'light-navbar']" 
-      :style="isDarkMode ? { backgroundColor: '#111827', color: 'white' } : {}"
       v-slot="{ open }">
       <div :class="$style.navInner">
         <div :class="$style.navFlex">
@@ -85,7 +107,11 @@ onBeforeUnmount(() => {
           <div :class="$style.logoContainer">
             <img :class="$style.logo" src="/logo.png" alt="Workflow" />
             <div :class="$style.logoText">
-              <RouterLink :class="$style.brandLink" to="/">Meta Secret</RouterLink>
+              <RouterLink 
+                :class="[$style.brandLink, isDarkMode ? $style.darkBrand : $style.lightBrand]" 
+                to="/">
+                Meta Secret
+              </RouterLink>
             </div>
           </div>
 
@@ -98,6 +124,7 @@ onBeforeUnmount(() => {
                 :href="item.href"
                 :class="[
                   item.current ? $style.activeNavItem : $style.navItem,
+                  isDarkMode ? $style.darkNavItem : $style.lightNavItem
                 ]"
                 :aria-current="item.current ? 'page' : undefined"
                 >{{ item.name }}</a
@@ -108,7 +135,7 @@ onBeforeUnmount(() => {
                 <button
                   type="button"
                   @click.stop="toggleDropdown"
-                  :class="$style.dropdownButton"
+                  :class="[$style.dropdownButton, isDarkMode ? $style.darkNavItem : $style.lightNavItem]"
                 >
                   Tools
                   <ChevronDownIcon :class="$style.chevronIcon" aria-hidden="true" />
@@ -186,7 +213,7 @@ onBeforeUnmount(() => {
 }
 
 .navbar {
-  @apply bg-white dark:!bg-gray-900 transition-colors duration-300;
+  @apply transition-colors duration-300;
 }
 
 .navInner {
@@ -210,8 +237,17 @@ onBeforeUnmount(() => {
   @apply px-2;
 }
 
+/* Brand link styles - separated for light and dark */
 .brandLink {
-  @apply text-gray-900 dark:text-white;
+  @apply font-medium transition-colors duration-300;
+}
+
+.lightBrand {
+  @apply text-gray-900;
+}
+
+.darkBrand {
+  @apply text-white;
 }
 
 .desktopMenu {
@@ -222,15 +258,22 @@ onBeforeUnmount(() => {
   @apply flex items-baseline space-x-1;
 }
 
+/* Navigation Item styles - light mode */
+.lightNavItem {
+  @apply text-gray-700 hover:bg-gray-100 hover:text-gray-900;
+}
+
+/* Navigation Item styles - dark mode */
+.darkNavItem {
+  @apply text-gray-300 hover:bg-gray-700 hover:text-white;
+}
+
 .activeNavItem {
-  @apply bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white;
-  @apply px-3 py-2 rounded-md text-sm font-medium;
+  @apply bg-gray-200 rounded-md text-sm font-medium px-3 py-2;
 }
 
 .navItem {
-  @apply text-orange-300 dark:text-gray-300;
-  @apply hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-white;
-  @apply px-3 py-2 rounded-md text-sm font-medium;
+  @apply rounded-md text-sm font-medium px-3 py-2 transition-colors duration-300;
 }
 
 .dropdown {
@@ -238,9 +281,7 @@ onBeforeUnmount(() => {
 }
 
 .dropdownButton {
-  @apply text-orange-300 dark:text-gray-300;
-  @apply hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-white;
-  @apply px-3 py-2 rounded-md text-sm font-medium flex items-center;
+  @apply rounded-md text-sm font-medium px-3 py-2 flex items-center transition-colors duration-300;
 }
 
 .chevronIcon {
@@ -262,10 +303,6 @@ onBeforeUnmount(() => {
   @apply text-gray-700 dark:text-gray-200;
   @apply hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-white;
   @apply cursor-pointer;
-}
-
-.navRight {
-  @apply flex items-center;
 }
 
 .mobileMenuButton {
@@ -314,26 +351,25 @@ onBeforeUnmount(() => {
 </style>
 
 <style>
-/* Global styles to ensure dark mode properly works */
-:root.dark .navbar {
-  background-color: #1a1a1a !important;
-}
-
-html.dark .navbar {
-  background-color: #1a1a1a !important;
-}
-
-.dark .navbar {
-  background-color: #1a1a1a !important;
-}
-
-.dark-navbar {
-  background-color: #111827 !important; /* gray-900 */
-  color: white !important;
-}
-
+/* Global styles for light/dark mode */
 .light-navbar {
   background-color: white !important;
   color: #111827 !important;
+}
+
+.dark-navbar {
+  background-color: #111827 !important;
+  color: white !important;
+}
+
+/* Reset any browser cached styles */
+html.dark .navbar *,
+.dark .navbar * {
+  color: inherit;
+}
+
+/* Theme toggle transitions */
+.theme-transition * {
+  transition: background-color 0.3s ease, color 0.3s ease !important;
 }
 </style>
