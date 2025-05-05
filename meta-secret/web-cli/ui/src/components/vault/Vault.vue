@@ -56,7 +56,7 @@ onMounted(async () => {
   @apply text-lg font-medium text-zinc-600 py-1 px-4 rounded-md;
   @apply dark:text-yellow-200 dark:bg-gradient-to-r dark:from-orange-500 dark:to-amber-500;
   @apply shadow-md dark:shadow-orange-400/30;
-  @apply border-b-2 border-orange-500 dark:border-orange-300;
+  @apply border-t-2 border-b-2 border-orange-500 dark:border-orange-300;
   @apply transition-all duration-200;
   @apply dark:animate-pulse;
   animation-duration: 3s;
