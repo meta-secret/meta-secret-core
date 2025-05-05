@@ -12,8 +12,10 @@ const dropdownRef = ref(null);
 const themeStore = useThemeStore();
 
 // Store media query references for cleanup
-const mediaQuery = ref(null);
-const mediaQueryHandler = ref(null);
+const darkModeMediaQuery = ref(null);
+const darkModeMediaQueryHandler = ref(null);
+const reducedMotionMediaQuery = ref(null);
+const reducedMotionMediaQueryHandler = ref(null);
 
 // Use the theme store's theme value directly
 const currentTheme = computed(() => themeStore.theme);
@@ -30,34 +32,52 @@ const isDarkMode = computed(() => {
   return false;
 });
 
+// Compute if reduced motion is preferred
+const prefersReducedMotion = computed(() => {
+  if (typeof window !== 'undefined') {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+  return false;
+});
+
+// Function to apply theme transition with reduced motion check
+const applyThemeTransition = () => {
+  if (typeof window !== 'undefined' && !prefersReducedMotion.value) {
+    document.documentElement.classList.add('theme-transition');
+    setTimeout(() => {
+      document.documentElement.classList.remove('theme-transition');
+    }, 300);
+  } else {
+    // For users who prefer reduced motion, just change the theme without transition
+    document.documentElement.classList.remove('theme-transition');
+  }
+};
+
 // Force re-evaluation when theme changes
 watch(() => themeStore.theme, () => {
   console.log('Theme changed in navbar to:', themeStore.theme);
-  // Force component update
-  document.documentElement.classList.add('theme-transition');
-  setTimeout(() => {
-    document.documentElement.classList.remove('theme-transition');
-  }, 300);
+  applyThemeTransition();
 });
 
-// Also watch system preference changes
+// Set up media queries
 onMounted(() => {
   if (typeof window !== 'undefined') {
-    mediaQuery.value = window.matchMedia('(prefers-color-scheme: dark)');
-    
-    // Define the handler function and store reference
-    mediaQueryHandler.value = () => {
+    // Set up media query for dark mode
+    darkModeMediaQuery.value = window.matchMedia('(prefers-color-scheme: dark)');
+    darkModeMediaQueryHandler.value = () => {
       if (currentTheme.value === 'system') {
-        // Force component update
-        document.documentElement.classList.add('theme-transition');
-        setTimeout(() => {
-          document.documentElement.classList.remove('theme-transition');
-        }, 300);
+        applyThemeTransition();
       }
     };
+    darkModeMediaQuery.value.addEventListener('change', darkModeMediaQueryHandler.value);
     
-    // Add the event listener
-    mediaQuery.value.addEventListener('change', mediaQueryHandler.value);
+    // Set up media query for reduced motion preference
+    reducedMotionMediaQuery.value = window.matchMedia('(prefers-reduced-motion: reduce)');
+    reducedMotionMediaQueryHandler.value = () => {
+      // Update UI when reduced motion preference changes
+      applyThemeTransition();
+    };
+    reducedMotionMediaQuery.value.addEventListener('change', reducedMotionMediaQueryHandler.value);
   }
 });
 
@@ -104,9 +124,13 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside);
   
-  // Clean up the media query listener
-  if (mediaQuery.value && mediaQueryHandler.value) {
-    mediaQuery.value.removeEventListener('change', mediaQueryHandler.value);
+  // Clean up the media query listeners
+  if (darkModeMediaQuery.value && darkModeMediaQueryHandler.value) {
+    darkModeMediaQuery.value.removeEventListener('change', darkModeMediaQueryHandler.value);
+  }
+  
+  if (reducedMotionMediaQuery.value && reducedMotionMediaQueryHandler.value) {
+    reducedMotionMediaQuery.value.removeEventListener('change', reducedMotionMediaQueryHandler.value);
   }
 });
 </script>
@@ -254,7 +278,14 @@ onBeforeUnmount(() => {
 
 /* Brand link styles - separated for light and dark */
 .brandLink {
-  @apply font-medium transition-colors duration-300;
+  @apply font-medium;
+}
+
+/* Update brand transitions to respect motion preferences */
+@media (prefers-reduced-motion: no-preference) {
+  .brandLink {
+    @apply transition-colors duration-300;
+  }
 }
 
 .lightBrand {
@@ -288,7 +319,14 @@ onBeforeUnmount(() => {
 }
 
 .navItem {
-  @apply rounded-md text-sm font-medium px-3 py-2 transition-colors duration-300;
+  @apply rounded-md text-sm font-medium px-3 py-2;
+}
+
+/* Add motion preference check for navItem transitions */
+@media (prefers-reduced-motion: no-preference) {
+  .navItem {
+    @apply transition-colors duration-300;
+  }
 }
 
 .dropdown {
@@ -296,7 +334,14 @@ onBeforeUnmount(() => {
 }
 
 .dropdownButton {
-  @apply rounded-md text-sm font-medium px-3 py-2 flex items-center transition-colors duration-300;
+  @apply rounded-md text-sm font-medium px-3 py-2 flex items-center;
+}
+
+/* Add motion preference check for dropdownButton transitions */
+@media (prefers-reduced-motion: no-preference) {
+  .dropdownButton {
+    @apply transition-colors duration-300;
+  }
 }
 
 .chevronIcon {
@@ -383,8 +428,39 @@ html.dark .navbar *,
   color: inherit;
 }
 
-/* Theme toggle transitions */
-.theme-transition * {
-  transition: background-color 0.3s ease, color 0.3s ease !important;
+/* Theme toggle transitions - only apply when user hasn't specified reduced motion preference */
+@media (prefers-reduced-motion: no-preference) {
+  .theme-transition * {
+    transition: background-color 0.3s ease, color 0.3s ease !important;
+  }
+
+  .navbar {
+    transition-property: background-color, color;
+    transition-duration: 0.3s;
+    transition-timing-function: ease;
+  }
+
+  .navInner,
+  .navFlex {
+    transition-property: background-color, color;
+    transition-duration: 0.3s;
+    transition-timing-function: ease;
+  }
+}
+
+/* Override transitions for users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .theme-transition * {
+    transition: none !important;
+  }
+  
+  /* Apply to all transition elements */
+  .navbar,
+  .navInner,
+  .navFlex,
+  .navItem,
+  .dropdownButton {
+    transition: none !important;
+  }
 }
 </style>
