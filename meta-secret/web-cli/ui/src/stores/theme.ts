@@ -12,17 +12,17 @@ export interface ThemeState {
 export const useThemeStore = defineStore('theme', (): ThemeState => {
   // Store theme state in pinia, default to system
   const theme = ref<ThemeOption>('system');
-  
+
   // Computed property to determine if dark mode should be applied
   const isDarkMode = computed(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     return theme.value === 'dark' || (theme.value === 'system' && mediaQuery.matches);
   });
-  
+
   // Watch for system preference changes
   if (typeof window !== 'undefined') {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    
+
     mediaQuery.addEventListener('change', () => {
       if (theme.value === 'system') {
         // The isDarkMode computed property will automatically update
@@ -30,16 +30,16 @@ export const useThemeStore = defineStore('theme', (): ThemeState => {
       }
     });
   }
-  
+
   // Change the theme
   function setTheme(newTheme: ThemeOption) {
     console.log(`Changing theme to ${newTheme}`);
     theme.value = newTheme;
   }
-  
+
   return {
     theme,
     isDarkMode,
-    setTheme
+    setTheme,
   };
-}); 
+});
