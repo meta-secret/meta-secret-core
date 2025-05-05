@@ -37,6 +37,7 @@ export default {
 
         const canvasDiv = document.createElement('div');
         canvasDiv.id = 'qrCanvas' + shareId;
+        canvasDiv.className = 'qr-canvas-container';
 
         qrCodeStyling.append(canvasDiv);
         qrImages.appendChild(canvasDiv);
@@ -46,14 +47,11 @@ export default {
           qrCodeStyling.download({ name: 'qr' + shareId, extension: 'png' });
         };
         downloadLink.id = 'downloadQr-' + shareId;
-        downloadLink.innerHTML = 'download';
-        downloadLink.style.marginLeft = '30px';
-        downloadLink.className = 'submit-button m-2';
+        downloadLink.innerHTML = 'Download QR';
+        downloadLink.className = 'download-button';
 
         const qrDiv = document.getElementById('qrCanvas' + shareId);
         qrDiv.appendChild(downloadLink);
-
-        //generateQrCode(qr, share);
       });
     },
 
@@ -178,96 +176,261 @@ export default {
 </script>
 
 <template>
-  <div class="flex justify-center">
-    <p class="text-2xl">Split Password</p>
-  </div>
+  <div class="split-password-container">
+    <div class="header">
+      <h1>Split Password</h1>
+      <p class="description">
+        Enter your password and optional notes to split it into secure shares
+      </p>
+    </div>
 
-  <div class="container flex justify-center px-4">
-    <div class="flex flex-col items-start">
-      <div>
-        <label for="note1">Note1:</label>
-        <input class="input-element" type="text" v-model="note1" max="10" size="10" />
-      </div>
-
-      <div>
-        <label for="note2">Note2:</label>
-        <input class="input-element" type="text" id="note2" v-model="note2" max="10" size="10" />
-      </div>
-
-      <label for="password">password:</label>
-      <div class="flex flex-col items-stretch">
-        <input class="input-element" type="text" id="password" v-model="password" size="50" />
+    <div class="form-container">
+      <div class="form-group">
+        <label for="note1">Note 1</label>
         <input
-          class="submit-button dark:text-white"
-          type="button"
-          id="splitButton"
-          value="Split"
-          @click="splitPassword"
+          class="input-field"
+          type="text"
+          id="note1"
+          v-model="note1"
+          placeholder="Enter first note (optional)"
+          maxlength="10"
         />
       </div>
-    </div>
-  </div>
 
-  <div class="container flex flex-col justify-center items-center py-4" id="qr-images"></div>
+      <div class="form-group">
+        <label for="note2">Note 2</label>
+        <input
+          class="input-field"
+          type="text"
+          id="note2"
+          v-model="note2"
+          placeholder="Enter second note (optional)"
+          maxlength="10"
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input
+          class="input-field"
+          type="text"
+          id="password"
+          v-model="password"
+          placeholder="Enter your password"
+        />
+      </div>
+
+      <button class="split-button" @click="splitPassword">
+        <span class="button-icon">🔒</span>
+        <span>Split Password</span>
+      </button>
+    </div>
+
+    <div class="qr-container" id="qr-images"></div>
+  </div>
 </template>
 
 <style>
-.input-element {
-  width: 100%;
-  padding: 12px;
-  margin: 6px 0 4px;
-  border: 1px solid #ccc;
-  background: #fafafa;
-  color: #000;
-  font-family: sans-serif;
-  font-size: 12px;
-  line-height: normal;
-  box-sizing: border-box;
-  border-radius: 2px;
+.split-password-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 2rem;
+  font-family: 'Inter var', system-ui, -apple-system, sans-serif;
 }
 
-.submit-button {
-  background-color: #ffffff;
-  border: 1px solid rgb(209, 213, 219);
-  border-radius: 0.1rem;
-  box-sizing: border-box;
-  color: #111827;
-  font-family:
-    'Inter var',
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    system-ui,
-    'Segoe UI',
-    Roboto,
-    'Helvetica Neue',
-    Arial,
-    'Noto Sans',
-    sans-serif,
-    'Apple Color Emoji',
-    'Segoe UI Emoji',
-    'Segoe UI Symbol',
-    'Noto Color Emoji';
-  font-size: 0.875rem;
-  font-weight: 600;
-  line-height: 1.25rem;
-  padding: 0.75rem 1rem;
+.header {
   text-align: center;
-  text-decoration: none #d1d5db solid;
-  text-decoration-thickness: auto;
+  margin-bottom: 2rem;
+}
+
+.header h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.description {
+  color: #6b7280;
+  font-size: 1rem;
+}
+
+.form-container {
+  background-color: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border-radius: 0.75rem;
+  padding: 2rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 2rem;
+}
+
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: #374151;
+  font-size: 0.875rem;
+}
+
+.input-field {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375rem;
+  background-color: #f9fafb;
+  color: #111827;
+  font-size: 1rem;
+  transition: all 0.2s;
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.input-field:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+}
+
+.input-field::placeholder {
+  color: #9ca3af;
+}
+
+.split-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+  color: white;
+  border: none;
+  border-radius: 0.375rem;
+  font-weight: 600;
+  font-size: 1rem;
   cursor: pointer;
-  user-select: none;
-  -webkit-user-select: none;
-  touch-action: manipulation;
+  transition: all 0.2s;
+  box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.5);
 }
 
-.submit-button:focus {
-  outline: 2px solid transparent;
-  outline-offset: 2px;
+.split-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 8px -1px rgba(59, 130, 246, 0.6);
 }
 
-.submit-button:focus-visible {
-  box-shadow: none;
+.split-button:active {
+  transform: translateY(0);
+}
+
+.button-icon {
+  margin-right: 0.5rem;
+  font-size: 1.25rem;
+}
+
+.qr-container {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2rem;
+  margin-top: 2rem;
+}
+
+.qr-canvas-container {
+  position: relative;
+  background-color: white;
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  transition: transform 0.2s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.qr-canvas-container:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+.download-button {
+  margin-top: 1rem;
+  padding: 0.5rem 1rem;
+  background-color: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 0.375rem;
+  font-weight: 500;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.download-button:hover {
+  background-color: #2563eb;
+}
+
+@media (max-width: 768px) {
+  .split-password-container {
+    padding: 1rem;
+  }
+  
+  .form-container {
+    padding: 1.5rem;
+  }
+  
+  .qr-container {
+    gap: 1rem;
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .header h1 {
+    background: linear-gradient(90deg, #60a5fa, #a78bfa);
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+  
+  .description {
+    color: #9ca3af;
+  }
+  
+  .form-container {
+    background-color: rgba(30, 41, 59, 0.5);
+    border-color: rgba(55, 65, 81, 0.5);
+  }
+  
+  .form-group label {
+    color: #e5e7eb;
+  }
+  
+  .input-field {
+    background-color: #1f2937;
+    border-color: #374151;
+    color: #f9fafb;
+  }
+  
+  .input-field:focus {
+    border-color: #60a5fa;
+  }
+  
+  .input-field::placeholder {
+    color: #6b7280;
+  }
+  
+  .split-button {
+    background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+  }
+  
+  .qr-canvas-container {
+    background-color: #1f2937;
+    border: 1px solid #374151;
+  }
 }
 </style> 
