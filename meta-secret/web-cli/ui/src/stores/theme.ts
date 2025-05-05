@@ -1,45 +1,45 @@
 import { defineStore } from 'pinia';
-import { ref, watch } from 'vue';
+import { ref, computed, Ref, ComputedRef } from 'vue';
 
-export const useThemeStore = defineStore('theme', () => {
-  const theme = ref(localStorage.getItem('theme') || 'system');
-  
-  // Apply theme on initial load
-  applyTheme();
+type ThemeOption = 'light' | 'dark' | 'system';
 
-  // Watch for system preference changes
-  if (typeof window !== 'undefined') {
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
-  }
+export interface ThemeState {
+  theme: Ref<ThemeOption>;
+  isDarkMode: ComputedRef<boolean>;
+  setTheme: (theme: ThemeOption) => void;
+}
+
+export const useThemeStore = defineStore('theme', (): ThemeState => {
+  // Store theme state in pinia, default to system
+  const theme = ref<ThemeOption>('system');
   
-  // Watch for theme changes
-  watch(theme, () => {
-    localStorage.setItem('theme', theme.value);
-    applyTheme();
-    
-    // Force CSS reapplication
-    document.body.classList.add('theme-transition');
-    setTimeout(() => {
-      document.body.classList.remove('theme-transition');
-    }, 300);
+  // Computed property to determine if dark mode should be applied
+  const isDarkMode = computed(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    return theme.value === 'dark' || (theme.value === 'system' && mediaQuery.matches);
   });
   
-  function applyTheme() {
-    const isDark = 
-      theme.value === 'dark' || 
-      (theme.value === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  // Watch for system preference changes
+  if (typeof window !== 'undefined') {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     
-    console.log('Applying theme, isDark:', isDark);
-    
-    if (isDark) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    mediaQuery.addEventListener('change', () => {
+      if (theme.value === 'system') {
+        // The isDarkMode computed property will automatically update
+        console.log('System preference changed');
+      }
+    });
+  }
+  
+  // Change the theme
+  function setTheme(newTheme: ThemeOption) {
+    console.log(`Changing theme to ${newTheme}`);
+    theme.value = newTheme;
   }
   
   return {
     theme,
-    applyTheme
+    isDarkMode,
+    setTheme
   };
 }); 

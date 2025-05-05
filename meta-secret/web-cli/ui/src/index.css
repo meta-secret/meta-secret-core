@@ -17,6 +17,18 @@
     transition: none !important;
   }
 
+  /* Special class to force style recomputation when transitioning from dark to light */
+  html.theme-transitioning {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+  
+  html.theme-transitioning * {
+    transition: none !important;
+    background-color: inherit;
+    color: inherit;
+  }
+
   /* Direct dark mode overrides */
   html.dark {
     background-color: #121212;
