@@ -11,6 +11,10 @@ const dropdownOpen = ref(false);
 const dropdownRef = ref(null);
 const themeStore = useThemeStore();
 
+// Store media query references for cleanup
+const mediaQuery = ref(null);
+const mediaQueryHandler = ref(null);
+
 // Use the theme store's theme value directly
 const currentTheme = computed(() => themeStore.theme);
 
@@ -39,7 +43,10 @@ watch(() => themeStore.theme, () => {
 // Also watch system preference changes
 onMounted(() => {
   if (typeof window !== 'undefined') {
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    mediaQuery.value = window.matchMedia('(prefers-color-scheme: dark)');
+    
+    // Define the handler function and store reference
+    mediaQueryHandler.value = () => {
       if (currentTheme.value === 'system') {
         // Force component update
         document.documentElement.classList.add('theme-transition');
@@ -47,7 +54,10 @@ onMounted(() => {
           document.documentElement.classList.remove('theme-transition');
         }, 300);
       }
-    });
+    };
+    
+    // Add the event listener
+    mediaQuery.value.addEventListener('change', mediaQueryHandler.value);
   }
 });
 
@@ -93,6 +103,11 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside);
+  
+  // Clean up the media query listener
+  if (mediaQuery.value && mediaQueryHandler.value) {
+    mediaQuery.value.removeEventListener('change', mediaQueryHandler.value);
+  }
 });
 </script>
 
