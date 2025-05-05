@@ -1,37 +1,50 @@
 import { defineStore } from 'pinia';
-import { ref, watch } from 'vue';
+import { ref, computed, Ref, ComputedRef } from 'vue';
 
-export const useThemeStore = defineStore('theme', () => {
-  const theme = ref(localStorage.getItem('theme') || 'system');
-  
-  // Apply theme on initial load
-  applyTheme();
+type ThemeOption = 'light' | 'dark' | 'system';
+
+export interface ThemeState {
+  theme: Ref<ThemeOption>;
+  isDarkMode: ComputedRef<boolean>;
+  setTheme: (theme: ThemeOption) => void;
+}
+
+export const useThemeStore = defineStore('theme', (): ThemeState => {
+  // Store theme state in pinia, default to system
+  const theme = ref<ThemeOption>('system');
+
+  // Computed property to determine if dark mode should be applied
+  const isDarkMode = computed(() => {
+    if (typeof window === 'undefined') {
+      // Default to false during SSR
+      return false;
+    }
+    
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    return theme.value === 'dark' || (theme.value === 'system' && mediaQuery.matches);
+  });
 
   // Watch for system preference changes
   if (typeof window !== 'undefined') {
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+    mediaQuery.addEventListener('change', () => {
+      if (theme.value === 'system') {
+        // The isDarkMode computed property will automatically update
+        console.log('System preference changed');
+      }
+    });
   }
-  
-  // Watch for theme changes
-  watch(theme, () => {
-    localStorage.setItem('theme', theme.value);
-    applyTheme();
-  });
-  
-  function applyTheme() {
-    const isDark = 
-      theme.value === 'dark' || 
-      (theme.value === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    
-    if (isDark) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+
+  // Change the theme
+  function setTheme(newTheme: ThemeOption) {
+    console.log(`Changing theme to ${newTheme}`);
+    theme.value = newTheme;
   }
-  
+
   return {
     theme,
-    applyTheme
+    isDarkMode,
+    setTheme,
   };
-}); 
+});

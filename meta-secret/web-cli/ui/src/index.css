@@ -1,3 +1,51 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html {
+    transition: background-color 0.3s ease;
+  }
+  
+  body, header, nav, div, button {
+    transition-property: background-color, border-color, color, fill, stroke;
+    transition-duration: 0.3s;
+    transition-timing-function: ease;
+  }
+  
+  .theme-transition * {
+    transition: none !important;
+  }
+
+  /* Special class to force style recomputation when transitioning from dark to light */
+  html.theme-transitioning {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+  
+  html.theme-transitioning * {
+    transition: none !important;
+    background-color: inherit;
+    color: inherit;
+  }
+
+  /* Direct dark mode overrides */
+  html.dark {
+    background-color: #121212;
+    color: white;
+  }
+  
+  html.dark body {
+    background-color: #121212;
+    color: white;
+  }
+  
+  html.dark nav.navbar {
+    background-color: #111827 !important; /* tailwind gray-900 */
+  }
+}
+
+/* Global dark mode overrides */
+.dark .navbar {
+  background-color: #111827 !important; /* tailwind gray-900 */
+}

@@ -47,7 +47,7 @@ export default defineComponent({
 
 <template>
   <div class="flex justify-center py-6">
-    <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">Personal Secret Manager</p>
+    <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">Decentralized Secret Manager</p>
   </div>
 
   <div v-if="isLocalState || isVaultNotExists">

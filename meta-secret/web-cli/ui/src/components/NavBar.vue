@@ -1,13 +1,85 @@
 <script setup>
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/vue';
 import { MenuIcon, XIcon, ChevronDownIcon } from '@heroicons/vue/outline';
-import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import ThemeToggle from './ThemeToggle.vue';
+import { useThemeStore } from '../stores/theme';
 
 const router = useRouter();
 const dropdownOpen = ref(false);
 const dropdownRef = ref(null);
+const themeStore = useThemeStore();
+
+// Store media query references for cleanup
+const darkModeMediaQuery = ref(null);
+const darkModeMediaQueryHandler = ref(null);
+const reducedMotionMediaQuery = ref(null);
+const reducedMotionMediaQueryHandler = ref(null);
+
+// Use the theme store's theme value directly
+const currentTheme = computed(() => themeStore.theme);
+
+// Compute dark mode based on theme value and system preference
+const isDarkMode = computed(() => {
+  const theme = currentTheme.value;
+  if (typeof window !== 'undefined') {
+    if (theme === 'dark') return true;
+    if (theme === 'light') return false;
+    // System preference
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  return false;
+});
+
+// Compute if reduced motion is preferred
+const prefersReducedMotion = computed(() => {
+  if (typeof window !== 'undefined') {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+  return false;
+});
+
+// Function to apply theme transition with reduced motion check
+const applyThemeTransition = () => {
+  if (typeof window !== 'undefined' && !prefersReducedMotion.value) {
+    document.documentElement.classList.add('theme-transition');
+    setTimeout(() => {
+      document.documentElement.classList.remove('theme-transition');
+    }, 300);
+  } else {
+    // For users who prefer reduced motion, just change the theme without transition
+    document.documentElement.classList.remove('theme-transition');
+  }
+};
+
+// Force re-evaluation when theme changes
+watch(() => themeStore.theme, () => {
+  console.log('Theme changed in navbar to:', themeStore.theme);
+  applyThemeTransition();
+});
+
+// Set up media queries
+onMounted(() => {
+  if (typeof window !== 'undefined') {
+    // Set up media query for dark mode
+    darkModeMediaQuery.value = window.matchMedia('(prefers-color-scheme: dark)');
+    darkModeMediaQueryHandler.value = () => {
+      if (currentTheme.value === 'system') {
+        applyThemeTransition();
+      }
+    };
+    darkModeMediaQuery.value.addEventListener('change', darkModeMediaQueryHandler.value);
+    
+    // Set up media query for reduced motion preference
+    reducedMotionMediaQuery.value = window.matchMedia('(prefers-reduced-motion: reduce)');
+    reducedMotionMediaQueryHandler.value = () => {
+      // Update UI when reduced motion preference changes
+      applyThemeTransition();
+    };
+    reducedMotionMediaQuery.value.addEventListener('change', reducedMotionMediaQueryHandler.value);
+  }
+});
 
 const navigation = [
   { name: 'Home', href: '/', current: false },
@@ -51,78 +123,95 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside);
+  
+  // Clean up the media query listeners
+  if (darkModeMediaQuery.value && darkModeMediaQueryHandler.value) {
+    darkModeMediaQuery.value.removeEventListener('change', darkModeMediaQueryHandler.value);
+  }
+  
+  if (reducedMotionMediaQuery.value && reducedMotionMediaQueryHandler.value) {
+    reducedMotionMediaQuery.value.removeEventListener('change', reducedMotionMediaQueryHandler.value);
+  }
 });
 </script>
 
 <template>
   <div :class="$style.navContainer">
-    <Disclosure as="nav" :class="$style.navbar" v-slot="{ open }">
+    <Disclosure as="nav" 
+      :class="[$style.navbar, isDarkMode ? 'dark-navbar' : 'light-navbar']" 
+      v-slot="{ open }">
       <div :class="$style.navInner">
         <div :class="$style.navFlex">
-          <div :class="$style.logoSection">
-            <div :class="$style.logoContainer">
-              <img :class="$style.logo" src="/logo.png" alt="Workflow" />
-              <div :class="$style.logoText">
-                <RouterLink :class="$style.brandLink" to="/">Meta Secret</RouterLink>
-              </div>
+          <!-- Logo -->
+          <div :class="$style.logoContainer">
+            <img :class="$style.logo" src="/logo.png" alt="Workflow" />
+            <div :class="$style.logoText">
+              <RouterLink 
+                :class="[$style.brandLink, isDarkMode ? $style.darkBrand : $style.lightBrand]" 
+                to="/">
+                Meta Secret
+              </RouterLink>
             </div>
-            <div :class="$style.desktopMenu">
-              <div :class="$style.menuItems">
-                <a
-                  v-for="item in navigation"
-                  :key="item.name"
-                  :href="item.href"
-                  :class="[
-                    item.current ? $style.activeNavItem : $style.navItem,
-                  ]"
-                  :aria-current="item.current ? 'page' : undefined"
-                  >{{ item.name }}</a
+          </div>
+
+          <!-- Desktop Menu (centered) -->
+          <div :class="$style.desktopMenu">
+            <div :class="$style.menuItems">
+              <a
+                v-for="item in navigation"
+                :key="item.name"
+                :href="item.href"
+                :class="[
+                  item.current ? $style.activeNavItem : $style.navItem,
+                  isDarkMode ? $style.darkNavItem : $style.lightNavItem
+                ]"
+                :aria-current="item.current ? 'page' : undefined"
+                >{{ item.name }}</a
+              >
+
+              <!-- Custom Tools dropdown menu -->
+              <div :class="$style.dropdown" ref="dropdownRef">
+                <button
+                  type="button"
+                  @click.stop="toggleDropdown"
+                  :class="[$style.dropdownButton, isDarkMode ? $style.darkNavItem : $style.lightNavItem]"
                 >
+                  Tools
+                  <ChevronDownIcon :class="$style.chevronIcon" aria-hidden="true" />
+                </button>
 
-                <!-- Custom Tools dropdown menu -->
-                <div :class="$style.dropdown" ref="dropdownRef">
-                  <button
-                    type="button"
-                    @click.stop="toggleDropdown"
-                    :class="$style.dropdownButton"
-                  >
-                    Tools
-                    <ChevronDownIcon :class="$style.chevronIcon" aria-hidden="true" />
-                  </button>
-
-                  <div
-                    v-if="dropdownOpen"
-                    :class="$style.dropdownMenu"
-                  >
-                    <div :class="$style.dropdownMenuInner">
-                      <a
-                        v-for="item in toolsMenu"
-                        :key="item.name"
-                        @click.prevent="handleItemClick(item.href, item.external)"
-                        href="#"
-                        :class="$style.dropdownItem"
-                      >
-                        {{ item.name }}
-                      </a>
-                    </div>
+                <div
+                  v-if="dropdownOpen"
+                  :class="$style.dropdownMenu"
+                >
+                  <div :class="$style.dropdownMenuInner">
+                    <a
+                      v-for="item in toolsMenu"
+                      :key="item.name"
+                      @click.prevent="handleItemClick(item.href, item.external)"
+                      href="#"
+                      :class="$style.dropdownItem"
+                    >
+                      {{ item.name }}
+                    </a>
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <div :class="$style.navRight">
-            <ThemeToggle />
-            <div :class="$style.mobileMenuButton">
-              <!-- Mobile menu button -->
-              <DisclosureButton
-                :class="$style.disclosureBtn"
-              >
-                <span :class="$style.srOnly">Open main menu</span>
-                <MenuIcon v-if="!open" :class="$style.menuIcon" aria-hidden="true" />
-                <XIcon v-else :class="$style.menuIcon" aria-hidden="true" />
-              </DisclosureButton>
-            </div>
+          <!-- Theme Toggle -->
+          <ThemeToggle />
+          
+          <!-- Mobile menu button -->
+          <div :class="$style.mobileMenuButton">
+            <DisclosureButton
+              :class="$style.disclosureBtn"
+            >
+              <span :class="$style.srOnly">Open main menu</span>
+              <MenuIcon v-if="!open" :class="$style.menuIcon" aria-hidden="true" />
+              <XIcon v-else :class="$style.menuIcon" aria-hidden="true" />
+            </DisclosureButton>
           </div>
         </div>
       </div>
@@ -163,19 +252,16 @@ onBeforeUnmount(() => {
 }
 
 .navbar {
-  @apply bg-gray-900 dark:bg-gray-900;
+  @apply transition-colors duration-300;
 }
 
 .navInner {
-  @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  @apply max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 transition-colors duration-300;
 }
 
 .navFlex {
-  @apply flex items-center justify-between h-16;
-}
-
-.logoSection {
-  @apply flex items-center;
+  @apply flex items-center h-16 transition-colors duration-300;
+  @apply justify-center gap-3;
 }
 
 .logoContainer {
@@ -187,10 +273,26 @@ onBeforeUnmount(() => {
 }
 
 .logoText {
-  @apply px-6;
+  @apply px-2;
 }
 
+/* Brand link styles - separated for light and dark */
 .brandLink {
+  @apply font-medium;
+}
+
+/* Update brand transitions to respect motion preferences */
+@media (prefers-reduced-motion: no-preference) {
+  .brandLink {
+    @apply transition-colors duration-300;
+  }
+}
+
+.lightBrand {
+  @apply text-gray-900;
+}
+
+.darkBrand {
   @apply text-white;
 }
 
@@ -199,18 +301,32 @@ onBeforeUnmount(() => {
 }
 
 .menuItems {
-  @apply ml-10 flex items-baseline space-x-4;
+  @apply flex items-baseline space-x-1;
+}
+
+/* Navigation Item styles - light mode */
+.lightNavItem {
+  @apply text-gray-700 hover:bg-gray-100 hover:text-gray-900;
+}
+
+/* Navigation Item styles - dark mode */
+.darkNavItem {
+  @apply text-gray-300 hover:bg-gray-700 hover:text-white;
 }
 
 .activeNavItem {
-  @apply bg-gray-700 text-white;
-  @apply px-3 py-2 rounded-md text-sm font-medium;
+  @apply bg-gray-200 rounded-md text-sm font-medium px-3 py-2;
 }
 
 .navItem {
-  @apply text-gray-300;
-  @apply hover:bg-gray-700 hover:text-white;
-  @apply px-3 py-2 rounded-md text-sm font-medium;
+  @apply rounded-md text-sm font-medium px-3 py-2;
+}
+
+/* Add motion preference check for navItem transitions */
+@media (prefers-reduced-motion: no-preference) {
+  .navItem {
+    @apply transition-colors duration-300;
+  }
 }
 
 .dropdown {
@@ -218,9 +334,14 @@ onBeforeUnmount(() => {
 }
 
 .dropdownButton {
-  @apply text-gray-300;
-  @apply hover:bg-gray-700 hover:text-white;
-  @apply px-3 py-2 rounded-md text-sm font-medium flex items-center;
+  @apply rounded-md text-sm font-medium px-3 py-2 flex items-center;
+}
+
+/* Add motion preference check for dropdownButton transitions */
+@media (prefers-reduced-motion: no-preference) {
+  .dropdownButton {
+    @apply transition-colors duration-300;
+  }
 }
 
 .chevronIcon {
@@ -229,7 +350,7 @@ onBeforeUnmount(() => {
 
 .dropdownMenu {
   @apply absolute z-10 mt-2 w-36 rounded-md shadow-lg;
-  @apply bg-gray-800;
+  @apply bg-white dark:bg-gray-800;
   @apply ring-1 ring-black ring-opacity-5 focus:outline-none;
 }
 
@@ -239,13 +360,9 @@ onBeforeUnmount(() => {
 
 .dropdownItem {
   @apply block px-4 py-2 text-sm;
-  @apply text-gray-200;
-  @apply hover:bg-gray-700 hover:text-white;
+  @apply text-gray-700 dark:text-gray-200;
+  @apply hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-white;
   @apply cursor-pointer;
-}
-
-.navRight {
-  @apply flex items-center;
 }
 
 .mobileMenuButton {
@@ -254,7 +371,7 @@ onBeforeUnmount(() => {
 
 .disclosureBtn {
   @apply inline-flex items-center justify-center p-2 rounded-md;
-  @apply text-gray-400 hover:text-white hover:bg-gray-700;
+  @apply text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700;
   @apply focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white;
 }
 
@@ -275,24 +392,75 @@ onBeforeUnmount(() => {
 }
 
 .activeMobileItem {
-  @apply bg-gray-700 text-white block px-3 py-2 rounded-md text-base font-medium;
+  @apply bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white block px-3 py-2 rounded-md text-base font-medium;
 }
 
 .mobileNavItem {
-  @apply text-gray-300 hover:bg-gray-700 hover:text-white;
+  @apply text-gray-700 dark:text-gray-300 hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-white;
   @apply block px-3 py-2 rounded-md text-base font-medium;
 }
 
 .mobileGroupLabel {
-  @apply text-gray-400 px-3 py-2 text-sm font-medium;
+  @apply text-gray-500 dark:text-gray-400 px-3 py-2 text-sm font-medium;
 }
 
 .mobileToolItem {
-  @apply text-gray-300 hover:bg-gray-700 hover:text-white w-full text-left;
+  @apply text-gray-700 dark:text-gray-300 hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-white w-full text-left;
   @apply block px-3 py-2 rounded-md text-base font-medium;
 }
 </style>
 
 <style>
-/* Remove the global style that might be interfering with theming */
+/* Global styles for light/dark mode */
+.light-navbar {
+  background-color: white !important;
+  color: #111827 !important;
+}
+
+.dark-navbar {
+  background-color: #111827 !important;
+  color: white !important;
+}
+
+/* Reset any browser cached styles */
+html.dark .navbar *,
+.dark .navbar * {
+  color: inherit;
+}
+
+/* Theme toggle transitions - only apply when user hasn't specified reduced motion preference */
+@media (prefers-reduced-motion: no-preference) {
+  .theme-transition * {
+    transition: background-color 0.3s ease, color 0.3s ease !important;
+  }
+
+  .navbar {
+    transition-property: background-color, color;
+    transition-duration: 0.3s;
+    transition-timing-function: ease;
+  }
+
+  .navInner,
+  .navFlex {
+    transition-property: background-color, color;
+    transition-duration: 0.3s;
+    transition-timing-function: ease;
+  }
+}
+
+/* Override transitions for users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .theme-transition * {
+    transition: none !important;
+  }
+  
+  /* Apply to all transition elements */
+  .navbar,
+  .navInner,
+  .navFlex,
+  .navItem,
+  .dropdownButton {
+    transition: none !important;
+  }
+}
 </style>

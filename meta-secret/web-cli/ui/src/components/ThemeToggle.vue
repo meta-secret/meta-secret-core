@@ -1,47 +1,27 @@
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useThemeStore } from '../stores/theme';
 import { SunIcon, MoonIcon, DesktopComputerIcon } from '@heroicons/vue/outline';
 
 const themeStore = useThemeStore();
 const isOpen = ref(false);
-const dropdownRef = ref(null);
+const dropdownRef = ref<HTMLElement | null>(null);
 
+// Access the current theme
 const currentTheme = computed(() => themeStore.theme);
+const isDark = computed(() => themeStore.isDarkMode);
 
-const toggleDropdown = () => {
+const toggleDropdown = (): void => {
   isOpen.value = !isOpen.value;
 };
 
-const setTheme = (theme) => {
-  // Direct approach to theme switching
-  console.log('Setting theme to:', theme);
-  
-  // Update localStorage
-  localStorage.setItem('theme', theme);
-  
-  // Update store value
-  themeStore.theme = theme;
-  
-  // Direct DOM manipulation to ensure theme change
-  const isDark = 
-    theme === 'dark' || 
-    (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-  
-  if (isDark) {
-    document.documentElement.classList.add('dark');
-  } else {
-    document.documentElement.classList.remove('dark');
-  }
-  
-  // Also call store's apply function as backup
-  themeStore.applyTheme();
-  
+const setTheme = (theme: 'light' | 'dark' | 'system'): void => {
+  themeStore.setTheme(theme);
   isOpen.value = false;
 };
 
-const handleClickOutside = (event) => {
-  if (dropdownRef.value && !dropdownRef.value.contains(event.target)) {
+const handleClickOutside = (event: MouseEvent): void => {
+  if (dropdownRef.value && !dropdownRef.value.contains(event.target as Node)) {
     isOpen.value = false;
   }
 };
@@ -49,7 +29,6 @@ const handleClickOutside = (event) => {
 // Add click outside listener when component is mounted
 onMounted(() => {
   document.addEventListener('click', handleClickOutside);
-  console.log('Current theme on mount:', currentTheme.value);
 });
 
 // Remove listener when component is unmounted
@@ -79,6 +58,7 @@ onBeforeUnmount(() => {
           href="#" 
           @click.prevent="setTheme('light')" 
           class="flex items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+          data-test-id="light-theme-button"
         >
           <SunIcon class="h-5 w-5 mr-2" />
           Light
@@ -87,6 +67,7 @@ onBeforeUnmount(() => {
           href="#" 
           @click.prevent="setTheme('dark')" 
           class="flex items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+          data-test-id="dark-theme-button"
         >
           <MoonIcon class="h-5 w-5 mr-2" />
           Dark
@@ -95,6 +76,7 @@ onBeforeUnmount(() => {
           href="#" 
           @click.prevent="setTheme('system')" 
           class="flex items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+          data-test-id="system-theme-button"
         >
           <DesktopComputerIcon class="h-5 w-5 mr-2" />
           System
