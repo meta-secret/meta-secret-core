@@ -5,16 +5,20 @@ import { useThemeStore } from './stores/theme';
 
 export default defineComponent({
   components: {
-    NavBar
+    NavBar,
   },
   setup() {
     const themeStore = useThemeStore();
     const forceDarkModeActive = ref(false);
-    
+
     // Watch for changes to the isDarkMode computed property
-    watch(() => themeStore.isDarkMode, (isDark) => {
-      applyTheme(isDark);
-    }, { immediate: true });
+    watch(
+      () => themeStore.isDarkMode,
+      (isDark) => {
+        applyTheme(isDark);
+      },
+      { immediate: true },
+    );
 
     // Apply theme on initial mount
     onMounted(() => {
@@ -27,25 +31,29 @@ export default defineComponent({
       if (isDark) {
         html.classList.add('dark');
         forceDarkModeActive.value = true;
-        console.log("Forced dark mode applied");
-        
+        console.log('Forced dark mode applied');
+
         // Debug - check all dark mode classes
         const hasHtmlDark = document.documentElement.classList.contains('dark');
-        console.log("HTML has dark class:", hasHtmlDark);
+        console.log('HTML has dark class:', hasHtmlDark);
       } else {
         html.classList.remove('dark');
         forceDarkModeActive.value = false;
-        console.log("Forced dark mode removed");
+        console.log('Forced dark mode removed');
       }
     }
-    
+
     return { themeStore, forceDarkModeActive };
-  }
+  },
 });
 </script>
 
 <template>
-  <div id="app" class="min-h-screen bg-white dark:bg-gray-900 transition-colors duration-200" :class="{ 'force-dark-mode': forceDarkModeActive }">
+  <div
+    id="app"
+    class="min-h-screen bg-white dark:bg-gray-900 transition-colors duration-200"
+    :class="{ 'force-dark-mode': forceDarkModeActive }"
+  >
     <NavBar />
     <div id="content">
       <router-view />
@@ -57,6 +65,7 @@ export default defineComponent({
 .force-dark-mode {
   background-color: #121212 !important;
 }
+
 .force-dark-mode header nav {
   background-color: #111827 !important;
 }
