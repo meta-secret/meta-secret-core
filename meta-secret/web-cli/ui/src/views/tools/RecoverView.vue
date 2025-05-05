@@ -12,10 +12,10 @@ export default {
   methods: {
     recoverPassword() {
       init().then(() => {
-        let imagesElement = document.getElementById('qrImages');
-        let qrCodes = imagesElement.getElementsByTagName('img');
+        const imagesElement = document.getElementById('qrImages');
+        const qrCodes = imagesElement.getElementsByTagName('img');
 
-        let asyncShares = [];
+        const asyncShares = [];
 
         Array.from(qrCodes).forEach((qr) => {
           asyncShares.push(QrScanner.scanImage(qr, { returnDetailedScanResult: true }));
@@ -24,7 +24,7 @@ export default {
         Promise.all(asyncShares)
           .then((qrShares) => {
             //use wasm to recover from json files
-            let shares = qrShares.map((share) => JSON.parse(share.data));
+            const shares = qrShares.map((share) => JSON.parse(share.data));
             console.log('restore password, js!');
             this.recoveredPassword = restore_password(shares);
           })
@@ -35,18 +35,18 @@ export default {
     },
 
     openFile(event) {
-      let input = event.target;
+      const input = event.target;
 
       Array.from(input.files).forEach((qr) => {
-        let reader = new FileReader();
+        const reader = new FileReader();
 
         reader.onload = function () {
-          let dataURL = reader.result;
-          let outputImg = document.createElement('img');
+          const dataURL = reader.result;
+          const outputImg = document.createElement('img');
           outputImg.style.margin = '0 0 0 0';
           outputImg.src = dataURL;
 
-          let imagesElement = document.getElementById('qrImages');
+          const imagesElement = document.getElementById('qrImages');
           imagesElement.appendChild(outputImg);
         };
 
