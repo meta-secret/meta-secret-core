@@ -6,6 +6,7 @@ alwaysApply: false
 
 ### web-cli project
  - [web-cli](mdc:meta-secret/web-cli) is a web client project that uses vuejs framework
+ - web-cli/ui/cypress contains E2E tests
 
 #### web-cli run:
  - cd meta-secret/web-cli/ui

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useThemeStore } from '../stores/theme';
-import { SunIcon, MoonIcon, DesktopComputerIcon } from '@heroicons/vue/outline';
+import { SunIcon, MoonIcon, ComputerDesktopIcon } from '@heroicons/vue/24/outline';
 
 const themeStore = useThemeStore();
 const isOpen = ref(false);
@@ -46,7 +46,7 @@ onBeforeUnmount(() => {
     >
       <SunIcon v-if="currentTheme === 'light'" class="h-5 w-5" />
       <MoonIcon v-else-if="currentTheme === 'dark'" class="h-5 w-5" />
-      <DesktopComputerIcon v-else class="h-5 w-5" />
+      <ComputerDesktopIcon v-else class="h-5 w-5" />
     </button>
     
     <div 
@@ -78,7 +78,7 @@ onBeforeUnmount(() => {
           class="flex items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
           data-test-id="system-theme-button"
         >
-          <DesktopComputerIcon class="h-5 w-5 mr-2" />
+          <ComputerDesktopIcon class="h-5 w-5 mr-2" />
           System
         </a>
       </div>

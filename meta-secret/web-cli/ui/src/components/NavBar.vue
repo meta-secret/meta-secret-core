@@ -1,6 +1,6 @@
 <script setup>
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/vue';
-import { MenuIcon, XIcon, ChevronDownIcon } from '@heroicons/vue/outline';
+import { Bars3Icon, XMarkIcon, ChevronDownIcon } from '@heroicons/vue/24/outline';
 import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import ThemeToggle from './ThemeToggle.vue';
@@ -209,8 +209,8 @@ onBeforeUnmount(() => {
               :class="$style.disclosureBtn"
             >
               <span :class="$style.srOnly">Open main menu</span>
-              <MenuIcon v-if="!open" :class="$style.menuIcon" aria-hidden="true" />
-              <XIcon v-else :class="$style.menuIcon" aria-hidden="true" />
+              <Bars3Icon v-if="!open" :class="$style.menuIcon" aria-hidden="true" />
+              <XMarkIcon v-else :class="$style.menuIcon" aria-hidden="true" />
             </DisclosureButton>
           </div>
         </div>
