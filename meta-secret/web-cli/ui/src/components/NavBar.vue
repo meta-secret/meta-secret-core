@@ -81,70 +81,71 @@ onBeforeUnmount(() => {
       v-slot="{ open }">
       <div :class="$style.navInner">
         <div :class="$style.navFlex">
-          <div :class="$style.logoSection">
-            <div :class="$style.logoContainer">
-              <img :class="$style.logo" src="/logo.png" alt="Workflow" />
-              <div :class="$style.logoText">
-                <RouterLink :class="$style.brandLink" to="/">Meta Secret</RouterLink>
-              </div>
+          <!-- Logo -->
+          <div :class="$style.logoContainer">
+            <img :class="$style.logo" src="/logo.png" alt="Workflow" />
+            <div :class="$style.logoText">
+              <RouterLink :class="$style.brandLink" to="/">Meta Secret</RouterLink>
             </div>
-            <div :class="$style.desktopMenu">
-              <div :class="$style.menuItems">
-                <a
-                  v-for="item in navigation"
-                  :key="item.name"
-                  :href="item.href"
-                  :class="[
-                    item.current ? $style.activeNavItem : $style.navItem,
-                  ]"
-                  :aria-current="item.current ? 'page' : undefined"
-                  >{{ item.name }}</a
+          </div>
+
+          <!-- Desktop Menu (centered) -->
+          <div :class="$style.desktopMenu">
+            <div :class="$style.menuItems">
+              <a
+                v-for="item in navigation"
+                :key="item.name"
+                :href="item.href"
+                :class="[
+                  item.current ? $style.activeNavItem : $style.navItem,
+                ]"
+                :aria-current="item.current ? 'page' : undefined"
+                >{{ item.name }}</a
+              >
+
+              <!-- Custom Tools dropdown menu -->
+              <div :class="$style.dropdown" ref="dropdownRef">
+                <button
+                  type="button"
+                  @click.stop="toggleDropdown"
+                  :class="$style.dropdownButton"
                 >
+                  Tools
+                  <ChevronDownIcon :class="$style.chevronIcon" aria-hidden="true" />
+                </button>
 
-                <!-- Custom Tools dropdown menu -->
-                <div :class="$style.dropdown" ref="dropdownRef">
-                  <button
-                    type="button"
-                    @click.stop="toggleDropdown"
-                    :class="$style.dropdownButton"
-                  >
-                    Tools
-                    <ChevronDownIcon :class="$style.chevronIcon" aria-hidden="true" />
-                  </button>
-
-                  <div
-                    v-if="dropdownOpen"
-                    :class="$style.dropdownMenu"
-                  >
-                    <div :class="$style.dropdownMenuInner">
-                      <a
-                        v-for="item in toolsMenu"
-                        :key="item.name"
-                        @click.prevent="handleItemClick(item.href, item.external)"
-                        href="#"
-                        :class="$style.dropdownItem"
-                      >
-                        {{ item.name }}
-                      </a>
-                    </div>
+                <div
+                  v-if="dropdownOpen"
+                  :class="$style.dropdownMenu"
+                >
+                  <div :class="$style.dropdownMenuInner">
+                    <a
+                      v-for="item in toolsMenu"
+                      :key="item.name"
+                      @click.prevent="handleItemClick(item.href, item.external)"
+                      href="#"
+                      :class="$style.dropdownItem"
+                    >
+                      {{ item.name }}
+                    </a>
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <div :class="$style.navRight">
-            <ThemeToggle />
-            <div :class="$style.mobileMenuButton">
-              <!-- Mobile menu button -->
-              <DisclosureButton
-                :class="$style.disclosureBtn"
-              >
-                <span :class="$style.srOnly">Open main menu</span>
-                <MenuIcon v-if="!open" :class="$style.menuIcon" aria-hidden="true" />
-                <XIcon v-else :class="$style.menuIcon" aria-hidden="true" />
-              </DisclosureButton>
-            </div>
+          <!-- Theme Toggle -->
+          <ThemeToggle />
+          
+          <!-- Mobile menu button -->
+          <div :class="$style.mobileMenuButton">
+            <DisclosureButton
+              :class="$style.disclosureBtn"
+            >
+              <span :class="$style.srOnly">Open main menu</span>
+              <MenuIcon v-if="!open" :class="$style.menuIcon" aria-hidden="true" />
+              <XIcon v-else :class="$style.menuIcon" aria-hidden="true" />
+            </DisclosureButton>
           </div>
         </div>
       </div>
@@ -189,15 +190,12 @@ onBeforeUnmount(() => {
 }
 
 .navInner {
-  @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 transition-colors duration-300;
+  @apply max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 transition-colors duration-300;
 }
 
 .navFlex {
-  @apply flex items-center justify-between h-16 transition-colors duration-300;
-}
-
-.logoSection {
-  @apply flex items-center;
+  @apply flex items-center h-16 transition-colors duration-300;
+  @apply justify-center gap-3;
 }
 
 .logoContainer {
@@ -209,7 +207,7 @@ onBeforeUnmount(() => {
 }
 
 .logoText {
-  @apply px-6;
+  @apply px-2;
 }
 
 .brandLink {
@@ -221,7 +219,7 @@ onBeforeUnmount(() => {
 }
 
 .menuItems {
-  @apply ml-10 flex items-baseline space-x-4;
+  @apply flex items-baseline space-x-1;
 }
 
 .activeNavItem {
