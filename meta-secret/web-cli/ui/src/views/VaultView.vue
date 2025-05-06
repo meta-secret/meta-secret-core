@@ -78,8 +78,10 @@ export default defineComponent({
   <div v-else-if="isMemberState">
     <VaultComponent />
   </div>
-  <div v-else class="text-gray-900 dark:text-white">
-    <h1>Outsider!</h1>
+  <div v-else class="container mx-auto flex justify-center max-w-md pt-1 pb-4">
+    <div class="text-gray-900 dark:text-white">
+      <h1>Outsider!</h1>
+    </div>
   </div>
 </template>
 
