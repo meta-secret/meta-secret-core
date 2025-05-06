@@ -19,13 +19,10 @@ use tracing::{info, error};
 use meta_secret_core::node::common::model::user::common::UserMembership;
 
 fn sync_wrapper<F: Future>(future: F) -> F::Output {
-    // Создаем однопоточный токио рантайм
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .unwrap();
-    
-    // Выполняем асинхронную операцию в рантайме
     rt.block_on(future)
 }
 
@@ -198,7 +195,6 @@ async extern "C" fn async_get_info() -> *mut c_char {
         p_obj: p_obj.clone(),
     };
 
-    // Проверяем, есть ли учетные данные устройства
     let maybe_device_creds = match p_creds.get_device_creds().await {
         Ok(creds) => creds,
         Err(e) => {
@@ -212,7 +208,6 @@ async extern "C" fn async_get_info() -> *mut c_char {
         }
     };
 
-    // Если устройство не инициализировано, возвращаем соответствующий статус
     if maybe_device_creds.is_none() {
         let result_json = json!({
             "success": false,
@@ -225,7 +220,6 @@ async extern "C" fn async_get_info() -> *mut c_char {
 
     let device_creds = maybe_device_creds.unwrap().value();
 
-    // Получаем данные пользователя
     let maybe_user_creds = match p_creds.get_user_creds().await {
         Ok(creds) => creds,
         Err(e) => {
@@ -239,7 +233,6 @@ async extern "C" fn async_get_info() -> *mut c_char {
         }
     };
 
-    // Если пользователь не инициализирован, возвращаем информацию только об устройстве
     if maybe_user_creds.is_none() {
         let result_json = json!({
             "success": false,
@@ -255,7 +248,6 @@ async extern "C" fn async_get_info() -> *mut c_char {
 
     let user_creds = maybe_user_creds.unwrap();
 
-    // Создаем клиентский шлюз
     let sync_protocol = HttpSyncProtocol {
         api_url: ApiUrl::prod(),
     };
@@ -267,7 +259,6 @@ async extern "C" fn async_get_info() -> *mut c_char {
         device_creds: Arc::new(device_creds.clone()),
     });
 
-    // Синхронизируемся для получения актуальной информации
     if let Err(e) = client_gw.sync(user_creds.user()).await {
         error!("Sync failed when getting info: {}", e);
         let warning_json = json!({
@@ -286,7 +277,6 @@ async extern "C" fn async_get_info() -> *mut c_char {
         return CString::new(warning_json).unwrap_or_default().into_raw();
     }
 
-    // Получаем состояние хранилища
     let p_vault = Arc::new(PersistentVault::from(p_obj.clone()));
     let vault_status = match p_vault.find(user_creds.user().clone()).await {
         Ok(status) => status,
@@ -301,7 +291,6 @@ async extern "C" fn async_get_info() -> *mut c_char {
         }
     };
 
-    // Формируем результат в зависимости от статуса хранилища
     let result: Result<String, String> = match vault_status {
         VaultStatus::Member(member) => {
             Ok(json!({
@@ -486,7 +475,6 @@ mod tests {
     #[test]
     #[ignore]
     fn test_sign_up_sync() {
-        // Инициализируем токио рантайм
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
