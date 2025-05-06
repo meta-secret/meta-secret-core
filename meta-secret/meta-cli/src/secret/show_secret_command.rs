@@ -60,7 +60,6 @@ impl ShowSecretCommand {
                                 let claim_id_for_recovery = claim_id.clone();
                                 let secret = handler
                                     .recover(
-                                        user_creds.vault_name.clone(),
                                         user_creds,
                                         claim_id_for_recovery,
                                         claim.dist_claim_id.pass_id.clone(),
