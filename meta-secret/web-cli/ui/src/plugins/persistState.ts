@@ -13,7 +13,7 @@ interface PersistOptions {
 export function createPersistedState(options: PersistOptions = {}) {
   return ({ store }: PiniaPluginContext) => {
     const storeKey = options.key || `pinia-${store.$id}`;
-    const debounceTime = options.debounceTime || 500; // Default 500ms debounce
+    const debounceTime = options.debounceTime || 100;
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     
     // Initialize store with persisted state if available

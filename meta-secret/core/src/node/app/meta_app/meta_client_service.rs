@@ -1,6 +1,7 @@
 use anyhow::bail;
 use flume::{Receiver, Sender};
 use std::sync::Arc;
+use std::time::Duration;
 use tracing::{debug, error, info, instrument};
 
 use crate::node::app::meta_app::messaging::{GenericAppStateRequest, GenericAppStateResponse};
@@ -47,16 +48,14 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         let mut service_state = self.build_service_state().await?;
 
         loop {
-            let client_requests = self.data_transfer.dt.service_drain();
-            for request in client_requests {
-                let new_app_state = self
-                    .handle_client_request(service_state.app_state, request)
-                    .await?;
-                service_state.app_state = new_app_state;
-                self.state_provider.push(&service_state.app_state).await;
-            }
+            let request = self.data_transfer.dt.service_receive().await?;
+            let new_app_state = self
+                .handle_client_request(service_state.app_state, request)
+                .await?;
+            service_state.app_state = new_app_state;
+            self.state_provider.push(&service_state.app_state).await;
 
-            async_std::task::sleep(std::time::Duration::from_secs(1)).await;
+            async_std::task::sleep(Duration::from_millis(100)).await;
         }
     }
 
@@ -216,9 +215,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         let maybe_user_creds = creds_repo.get_user_creds().await?;
 
         let app_state = match maybe_user_creds {
-            None => {
-                ApplicationState::Local(self.device_creds.device.clone())
-            },
+            None => ApplicationState::Local(self.device_creds.device.clone()),
             Some(user_creds) => {
                 self.sync_gateway.sync(user_creds.user()).await?;
 

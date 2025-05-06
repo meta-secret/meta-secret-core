@@ -17,7 +17,9 @@ use crate::node::db::descriptors::shared_secret_descriptor::{
     SsDeviceLogDescriptor, SsLogDescriptor,
 };
 use crate::node::db::descriptors::vault_descriptor::DeviceLogDescriptor;
-use crate::node::db::events::generic_log_event::{ObjIdExtractor, ToGenericEvent};
+use crate::node::db::events::generic_log_event::{
+    GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
+};
 use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::events::shared_secret_event::SsDeviceLogObject;
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
@@ -47,7 +49,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
 
             let maybe_user_creds = creds_repo.get_user_creds().await.unwrap();
             let Some(user_creds) = maybe_user_creds else {
-                async_std::task::sleep(Duration::from_millis(500)).await;
+                async_std::task::sleep(Duration::from_millis(300)).await;
                 continue;
             };
 
@@ -56,7 +58,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                 error!("Sync error: {:?}", err);
             }
 
-            async_std::task::sleep(Duration::from_millis(500)).await;
+            async_std::task::sleep(Duration::from_millis(100)).await;
         }
     }
 
@@ -66,9 +68,6 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
     #[instrument(skip_all)]
     pub async fn sync(&self, user: UserData) -> Result<()> {
         let server_tail = self.get_server_tail(user.clone()).await?;
-
-        let vault_sync_request = self.get_vault_request(user.clone()).await?;
-        self.sync_vault(vault_sync_request).await?;
 
         self.sync_device_log(&server_tail, user.user_id()).await?;
 
@@ -111,6 +110,16 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
             self.sync.send(vault_sync_request).await?.to_data()?;
 
         for new_event in data_sync_events {
+            if let GenericKvLogEvent::VaultStatus(vault_status) = &new_event {
+                let maybe_local_vault_status_id =
+                    self.p_obj.find_tail_id(vault_status.obj_id()).await?;
+
+                if let Some(local_vault_status_id) = maybe_local_vault_status_id {
+                    if local_vault_status_id.eq(&vault_status.obj_id()) {
+                        continue;
+                    }
+                }
+            }
             debug!(
                 "id: {:?}. Sync gateway. New event from server: {:?}",
                 self.id, new_event
@@ -123,11 +132,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
     async fn get_vault_request(&self, user: UserData) -> Result<SyncRequest> {
         let vault_sync_request = {
             let sender = user.clone();
-
-            let p_vault = PersistentVault {
-                p_obj: self.p_obj.clone(),
-            };
-
+            let p_vault = PersistentVault::from(self.p_obj.clone());
             let tail = p_vault.vault_tail(user).await?;
 
             SyncRequest::Read(ReadSyncRequest::Vault(VaultRequest { sender, tail }))

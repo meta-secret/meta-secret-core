@@ -14,7 +14,7 @@ pub struct MpscServiceChannel<Request> {
 
 impl<Request> MpscServiceChannel<Request> {
     fn new() -> MpscServiceChannel<Request> {
-        let (server_sender, server_receiver) = flume::bounded(100);
+        let (server_sender, server_receiver) = flume::bounded(1);
         MpscServiceChannel {
             sender: server_sender,
             receiver: server_receiver,
@@ -29,11 +29,17 @@ pub struct MpscClientChannel<Response> {
 
 impl<Response> MpscClientChannel<Response> {
     fn new() -> MpscClientChannel<Response> {
-        let (client_sender, client_receiver) = flume::bounded(100);
+        let (client_sender, client_receiver) = flume::bounded(1);
         MpscClientChannel {
             sender: client_sender,
             receiver: client_receiver,
         }
+    }
+}
+
+impl<Request, Response> Default for MpscDataTransfer<Request, Response> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -59,19 +65,17 @@ impl<Request: Debug, Response: Debug> MpscDataTransfer<Request, Response> {
 
     #[instrument(skip(self))]
     pub fn service_drain(&self) -> Drain<Request> {
-        let request = self.service_channel.receiver.drain();
-        request
+        self.service_channel.receiver.drain()
     }
 
     #[instrument(skip(self))]
     pub async fn service_receive(&self) -> Result<Request, RecvError> {
-        let request = self
+        self
             .service_channel
             .receiver
             .recv_async()
             .in_current_span()
-            .await;
-        request
+            .await
     }
 
     #[instrument(skip(self))]
