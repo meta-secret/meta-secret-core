@@ -18,26 +18,17 @@ use meta_secret_core::node::db::objects::persistent_vault::PersistentVault;
 use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
 
 fn sync_wrapper<F: Future>(future: F) -> F::Output {
-    // Создаем новый runtime для выполнения асинхронного кода
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all() // включаем все возможности
         .build()
         .unwrap();
-        
-    // Блокирующий вызов future в runtime
+    
     runtime.block_on(future)
 }
 
-/// Регистрация нового пользователя
-/// 
-/// @param env JNI окружение
-/// @param _class JNI класс (не используется)
-/// @param user_name Имя пользователя в JString
-/// @return jstring с JSON-результатом операции
 #[unsafe(no_mangle)]
 pub extern "C" fn Java_sharedData_MetaSecretCoreServiceAndroid_00024NativeLib_sign_1up
 (mut env: JNIEnv, _: JClass, user_name: JString) -> jstring {
-    // Инициализация системы логирования
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
         .try_init();
@@ -158,28 +149,15 @@ pub extern "C" fn Java_sharedData_MetaSecretCoreServiceAndroid_00024NativeLib_si
     }
 }
 
-/// Освобождает память, выделенную для строки (используется в JNI-мосте)
-/// 
-/// @param _env JNI окружение
-/// @param _class JNI класс (не используется)
-/// @param _ptr Указатель на строку, возвращенную любой функцией API
 #[unsafe(no_mangle)]
 pub extern "C" fn Java_sharedData_MetaSecretCoreServiceAndroid_00024NativeLib_free_1string
 (_env: JNIEnv, _: JClass, _ptr: jstring) {
     info!("JNI free_string called");
-    // В JNI среде освобождение строк происходит автоматически через сборщик мусора Java
-    // Данная функция оставлена для API-совместимости с iOS версией
 }
 
-/// Получение информации о статусе устройства, пользователя и хранилища
-/// 
-/// @param env JNI окружение
-/// @param _class JNI класс (не используется)
-/// @return jstring с JSON-результатом операции
 #[unsafe(no_mangle)]
 pub extern "C" fn Java_sharedData_MetaSecretCoreServiceAndroid_00024NativeLib_get_1info
 (mut env: JNIEnv, _: JClass) -> jstring {
-    // Инициализация системы логирования
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
         .try_init();
@@ -196,10 +174,7 @@ pub extern "C" fn Java_sharedData_MetaSecretCoreServiceAndroid_00024NativeLib_ge
             p_obj: p_obj.clone(),
         };
 
-        // Проверяем, есть ли учетные данные устройства
         let maybe_device_creds = p_creds.get_device_creds().await?;
-
-        // Если устройство не инициализировано, возвращаем соответствующий статус
         if maybe_device_creds.is_none() {
             info!("Устройство не инициализировано");
             return Ok(json!({
@@ -211,10 +186,8 @@ pub extern "C" fn Java_sharedData_MetaSecretCoreServiceAndroid_00024NativeLib_ge
 
         let device_creds = maybe_device_creds.unwrap().value();
 
-        // Получаем данные пользователя
+        
         let maybe_user_creds = p_creds.get_user_creds().await?;
-
-        // Если пользователь не инициализирован, возвращаем информацию только об устройстве
         if maybe_user_creds.is_none() {
             info!("Только устройство инициализировано, пользователь отсутствует");
             return Ok(json!({
@@ -229,7 +202,6 @@ pub extern "C" fn Java_sharedData_MetaSecretCoreServiceAndroid_00024NativeLib_ge
 
         let user_creds = maybe_user_creds.unwrap();
 
-        // Создаем клиентский шлюз
         let sync_protocol = HttpSyncProtocol {
             api_url: ApiUrl::prod(),
         };
@@ -241,7 +213,6 @@ pub extern "C" fn Java_sharedData_MetaSecretCoreServiceAndroid_00024NativeLib_ge
             device_creds: Arc::new(device_creds.clone()),
         });
 
-        // Синхронизируемся для получения актуальной информации
         match client_gw.sync(user_creds.user()).await {
             Err(e) => {
                 info!("Синхронизация не удалась: {}", e);
@@ -260,14 +231,12 @@ pub extern "C" fn Java_sharedData_MetaSecretCoreServiceAndroid_00024NativeLib_ge
             },
             _ => info!("Синхронизация выполнена успешно")
         }
-
-        // Получаем состояние хранилища
+        
         let p_vault = Arc::new(PersistentVault::from(p_obj.clone()));
         let vault_status = p_vault.find(user_creds.user().clone()).await?;
 
         info!("Статус хранилища: {:?}", vault_status);
 
-        // Формируем результат в зависимости от статуса хранилища
         match vault_status {
             VaultStatus::Member(member) => {
                 info!("Пользователь является членом хранилища");
@@ -361,7 +330,6 @@ mod tests {
     #[test]
     #[ignore]
     fn test_sign_up_android() {
-        // Инициализируем токио рантайм
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -378,7 +346,6 @@ mod tests {
         
         info!("Тест sign_up для пользователя: '{}'", username);
         
-        // Чтобы тест не зависел от JVM, мы протестируем только внутреннюю асинхронную функцию
         let result: anyhow::Result<String> = sync_wrapper(async {
             let device_name = DeviceName::from(username);
             let vault_name = VaultName::from(username);
@@ -496,7 +463,6 @@ mod tests {
     #[test]
     #[ignore]
     fn test_get_info_android() {
-        // Инициализируем токио рантайм
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -511,7 +477,6 @@ mod tests {
 
         info!("Тест get_info");
         
-        // Тестируем только внутреннюю асинхронную функцию
         let result: anyhow::Result<String> = sync_wrapper(async {
             let repo = Arc::new(InMemKvLogEventRepo::default());
             let p_obj = Arc::new(PersistentObject::new(repo.clone()));
@@ -519,11 +484,9 @@ mod tests {
             let p_creds = PersistentCredentials {
                 p_obj: p_obj.clone(),
             };
-
-            // Проверяем, есть ли учетные данные устройства
+            
             let maybe_device_creds = p_creds.get_device_creds().await?;
-
-            // Если устройство не инициализировано, возвращаем соответствующий статус
+            
             if maybe_device_creds.is_none() {
                 info!("Устройство не инициализировано");
                 return Ok(json!({
@@ -534,11 +497,9 @@ mod tests {
             }
 
             let device_creds = maybe_device_creds.unwrap().value();
-
-            // Получаем данные пользователя
+            
             let maybe_user_creds = p_creds.get_user_creds().await?;
-
-            // Если пользователь не инициализирован, возвращаем информацию только об устройстве
+            
             if maybe_user_creds.is_none() {
                 info!("Только устройство инициализировано, пользователь отсутствует");
                 return Ok(json!({
@@ -552,8 +513,7 @@ mod tests {
             }
 
             let user_creds = maybe_user_creds.unwrap();
-
-            // Создаем клиентский шлюз
+            
             let sync_protocol = HttpSyncProtocol {
                 api_url: ApiUrl::prod(),
             };
@@ -564,8 +524,7 @@ mod tests {
                 sync: Arc::new(sync_protocol),
                 device_creds: Arc::new(device_creds.clone()),
             });
-
-            // Синхронизируемся для получения актуальной информации
+            
             match client_gw.sync(user_creds.user()).await {
                 Err(e) => {
                     info!("Синхронизация не удалась: {}", e);
@@ -584,14 +543,11 @@ mod tests {
                 },
                 _ => info!("Синхронизация выполнена успешно")
             }
-
-            // Получаем состояние хранилища
+            
             let p_vault = Arc::new(PersistentVault::from(p_obj.clone()));
             let vault_status = p_vault.find(user_creds.user().clone()).await?;
 
             info!("Статус хранилища: {:?}", vault_status);
-
-            // Формируем результат в зависимости от статуса хранилища
             match vault_status {
                 VaultStatus::Member(member) => {
                     info!("Пользователь является членом хранилища");
