@@ -85,8 +85,3 @@ export default defineComponent({
   </div>
 </template>
 
-<style module>
-.errorMessage {
-  @apply text-gray-900 dark:text-white;
-}
-</style>

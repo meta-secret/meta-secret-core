@@ -39,9 +39,8 @@ export default defineComponent({
       this.vaultName = await this.jsAppState.getVaultName();
       
       console.log("User creds generated, emitting state change event");
-      
-      // Emit event to parent component
-      this.$emit('state-changed');
+
+      window.location.reload();
     },
 
     async signUp() {
@@ -52,9 +51,8 @@ export default defineComponent({
       this.isLocalState = await this.jsAppState.checkIsLocal();
       
       console.log("Signup complete, emitting state change event");
-      
-      // Emit event to parent component
-      this.$emit('state-changed');
+
+      window.location.reload();
     },
   },
 });
@@ -64,7 +62,7 @@ export default defineComponent({
   <div v-cloak :class="$style.container">
     <div :class="$style.header">
       <p v-if="isVaultNotExists && vaultName" :class="$style.titleText">
-        Creating new vault: <span :class="$style.vaultNameHighlight">{{ vaultName }}</span>
+        Creating new vault
       </p>
       <p v-else-if="isOutsiderState && vaultName" :class="$style.titleText">
         Joining existing vault: <span :class="$style.vaultNameHighlight">{{ vaultName }}</span>

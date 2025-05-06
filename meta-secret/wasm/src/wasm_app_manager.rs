@@ -5,8 +5,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::app_manager::ApplicationManager;
 use crate::configure;
-use crate::wasm_repo::{WasmRepo, WasmSyncProtocol};
-use meta_secret_core::node::app::app_state_update_manager::ApplicationManagerConfigurator;
+use crate::wasm_repo::{WasmRepo};
 use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
 use meta_secret_core::node::common::model::WasmApplicationState;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
@@ -24,13 +23,8 @@ impl WasmApplicationManager {
 
         info!("Init Wasm state manager");
 
-        let cfg = ApplicationManagerConfigurator {
-            client_repo: Arc::new(WasmRepo::default().await),
-            server_repo: Arc::new(WasmRepo::server().await),
-            device_repo: Arc::new(WasmRepo::virtual_device().await),
-        };
-
-        let app_manager = ApplicationManager::<WasmRepo, WasmSyncProtocol<WasmRepo>>::init(cfg)
+        let client_repo = Arc::new(WasmRepo::default().await);
+        let app_manager = ApplicationManager::<WasmRepo, HttpSyncProtocol>::init(client_repo)
             .await
             .expect("Application state manager must be initialized");
 

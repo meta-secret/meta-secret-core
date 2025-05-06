@@ -46,7 +46,7 @@ const applyThemeTransition = () => {
     document.documentElement.classList.add('theme-transition');
     setTimeout(() => {
       document.documentElement.classList.remove('theme-transition');
-    }, 300);
+    }, 100);
   } else {
     // For users who prefer reduced motion, just change the theme without transition
     document.documentElement.classList.remove('theme-transition');

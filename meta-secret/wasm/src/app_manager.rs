@@ -3,8 +3,6 @@ use std::sync::Arc;
 use tracing::{Instrument, info, instrument};
 use wasm_bindgen_futures::spawn_local;
 
-use meta_secret_core::node::app::app_state_update_manager::ApplicationManagerConfigurator;
-
 use anyhow::Result;
 use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
 use meta_secret_core::node::app::meta_app::meta_client_service::{
@@ -49,16 +47,14 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
         }
     }
 
-    pub async fn init(
-        cfg: ApplicationManagerConfigurator<Repo>,
-    ) -> Result<ApplicationManager<Repo, HttpSyncProtocol>> {
+    pub async fn init(client_repo: Arc<Repo>) -> Result<ApplicationManager<Repo, HttpSyncProtocol>> {
         info!("Initialize application state manager");
 
         let sync_protocol = Arc::new(HttpSyncProtocol{
             api_url: ApiUrl::prod(),
         });
-
-        let app_manager = Self::client_setup(cfg.client_repo, sync_protocol.clone()).await?;
+        
+        let app_manager = Self::client_setup(client_repo, sync_protocol.clone()).await?;
 
         Ok(app_manager)
     }
@@ -178,7 +174,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
         }
     }
 
-    #[instrument(name = "MetaClient", skip_all)]
+    #[instrument(name = "MetaClientService", skip_all)]
     pub async fn client_setup(
         client_repo: Arc<Repo>,
         sync_protocol: Arc<HttpSyncProtocol>,
@@ -229,9 +225,6 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
                 .with_context(|| "Meta client error")
                 .unwrap();
         });
-
-        let sync_gateway_rc = app_manager.sync_gateway.clone();
-        spawn_local(async move { sync_gateway_rc.run().instrument(client_span()).await });
 
         Ok(app_manager)
     }

@@ -19,7 +19,7 @@ impl SyncProtocol for HttpSyncProtocol {
 
         let response = client
             .post(url.clone())
-            .timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(3))
             .header("Content-Type", "application/json")
             .header("Access-Control-Allow-Origin", url)
             .json(&request)
