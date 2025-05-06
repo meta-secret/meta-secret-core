@@ -93,10 +93,10 @@ impl WasmRepo {
 #[async_trait(? Send)]
 impl SaveCommand for WasmRepo {
     #[instrument(skip_all)]
-    async fn save<T: ToGenericEvent>(&self, event: T) -> anyhow::Result<ArtifactId> {
+    async fn save<T: ToGenericEvent>(&self, event: T) -> Result<ArtifactId> {
         let generic_event = event.to_generic();
         let maybe_key = self.get_key(generic_event.obj_id()).await?;
-        if let Some(_) = maybe_key {
+        if maybe_key.is_some() {
             bail!(
                 "Wrong behaviour. Event already exists: {:?}",
                 &generic_event

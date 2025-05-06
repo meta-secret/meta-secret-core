@@ -105,7 +105,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         Ok(sync_request)
     }
 
-    #[instrument(skip_all)]
+    #[instrument(skip(self))]
     async fn sync_vault(&self, vault_sync_request: SyncRequest) -> Result<()> {
         let DataEventsResponse(data_sync_events) =
             self.sync.send(vault_sync_request).await?.to_data()?;

@@ -40,28 +40,6 @@ const router = createRouter({
       component: SplitView,
     },
     {
-      path: '/vault',
-      name: 'vault',
-      component: VaultView,
-      children: [
-        {
-          path: '',
-          name: 'vault-default',
-          component: VaultSecrets,
-        },
-        {
-          path: 'secrets',
-          name: 'vaultSecrets',
-          component: VaultSecrets,
-        },
-        {
-          path: 'devices',
-          name: 'vaultDevices',
-          component: VaultDevices,
-        },
-      ],
-    },
-    {
       path: '/tools/recover',
       name: 'recover',
       component: RecoverView,

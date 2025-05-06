@@ -216,7 +216,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         let maybe_user_creds = creds_repo.get_user_creds().await?;
 
         let app_state = match maybe_user_creds {
-            None => ApplicationState::Local(self.device_creds.device.clone()),
+            None => {
+                ApplicationState::Local(self.device_creds.device.clone())
+            },
             Some(user_creds) => {
                 self.sync_gateway.sync(user_creds.user()).await?;
 

@@ -14,32 +14,39 @@ export default defineComponent({
   },
 
   async created() {
-    console.log('JS: Registration component created');
     this.jsAppState = AppState();
   },
 
   async mounted() {
-    console.log('Registration component mounted');
+    console.log("Mounted!")
+
     this.vaultName = await this.jsAppState.getVaultName();
     this.isLocalState = await this.jsAppState.checkIsLocal();
     this.isOutsiderState = await this.jsAppState.checkIsOutsider();
     this.isVaultNotExists = await this.jsAppState.checkIsVaultNotExists();
-
-    console.log('is in Local state: ', this.isLocalState);
-    console.log('is in Outsider state: ', this.isOutsiderState);
-    console.log('is in VaultNotExists state: ', this.isVaultNotExists);
   },
 
   methods: {
     async generate_user_creds() {
       await this.jsAppState.appManager.generate_user_creds(this.vaultName);
+      // Update all state variables to ensure UI reflects current state
       this.isLocalState = await this.jsAppState.checkIsLocal();
+      this.isOutsiderState = await this.jsAppState.checkIsOutsider();
+      this.isVaultNotExists = await this.jsAppState.checkIsVaultNotExists();
+      this.vaultName = await this.jsAppState.getVaultName();
+      
+      // Add timestamp to force component remount
+      console.log("User creds. Update router!")
+      await this.$router.push('/?refresh=' + Date.now());
     },
 
     async signUp() {
       console.log('Generate vault');
       await this.jsAppState.appManager.sign_up();
       this.isLocalState = await this.jsAppState.checkIsLocal();
+      
+      // Add timestamp to force component remount
+      await this.$router.push('/?refresh=' + Date.now());
     },
   },
 });
@@ -75,7 +82,7 @@ export default defineComponent({
           <span :class="$style.atSymbol">@</span>
           <input :class="$style.vaultNameInput" type="text" placeholder="vault name" v-model="vaultName" />
         </div>
-        <button :class="$style.actionButton" @click="generate_user_creds">Create User Creds</button>
+        <button :class="$style.actionButton" @click="generate_user_creds">Set Vault Name</button>
       </div>
 
       <div v-if="vaultName" :class="$style.vaultInfoMessage">

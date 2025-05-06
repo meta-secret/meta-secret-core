@@ -11,3 +11,6 @@ alwaysApply: false
 #### web-cli run:
  - cd meta-secret/web-cli/ui
  - npm run dev
+
+#### web-cli rules:
+ - don't use console.log when developing, you create excessive amount of unnecessary logs

@@ -7,13 +7,14 @@ use crate::app_manager::ApplicationManager;
 use crate::configure;
 use crate::wasm_repo::{WasmRepo, WasmSyncProtocol};
 use meta_secret_core::node::app::app_state_update_manager::ApplicationManagerConfigurator;
+use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
 use meta_secret_core::node::common::model::WasmApplicationState;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 
 #[wasm_bindgen]
 pub struct WasmApplicationManager {
-    app_manager: ApplicationManager<WasmRepo, WasmSyncProtocol<WasmRepo>>,
+    app_manager: ApplicationManager<WasmRepo, HttpSyncProtocol>,
 }
 
 #[wasm_bindgen]
@@ -42,6 +43,7 @@ impl WasmApplicationManager {
     }
 
     pub async fn generate_user_creds(&self, vault_name: String) {
+        info!("Generate user credentials for vault: {}", vault_name);
         self.app_manager
             .generate_user_creds(VaultName::from(vault_name))
             .await;
