@@ -12,35 +12,53 @@ export default defineComponent({
     VaultComponent,
   },
 
-  async setup() {
-    console.log('VaultView. Init');
-
-    await init();
-
-    const jsAppState = AppState();
-    await jsAppState.appStateInit();
-
-    return {
-      jsAppState,
-    };
-  },
-
   data() {
     return {
+      jsAppState: null,
       isLocalState: false,
       isMemberState: false,
       isVaultNotExists: false,
+      isInitialized: false
     };
   },
 
-  async mounted() {
-    this.isLocalState = await this.jsAppState.checkIsLocal();
-    this.isMemberState = await this.jsAppState.checkIsMember();
-    this.isVaultNotExists = await this.jsAppState.checkIsVaultNotExists();
+  created() {
+    console.log('VaultView. Init');
+    this.initializeApp();
+  },
 
-    console.log('is in Local state: ', this.isLocalState);
-    console.log('is in VaultNotExists state: ', this.isVaultNotExists);
-    console.log('is in Member state: ', this.isMemberState);
+  methods: {
+    async initializeApp() {
+      try {
+        await init();
+        this.jsAppState = AppState();
+        await this.jsAppState.appStateInit();
+        this.isInitialized = true;
+        await this.updateAppState();
+      } catch (error) {
+        console.error('Failed to initialize app:', error);
+      }
+    },
+
+    async updateAppState() {
+      if (!this.jsAppState) {
+        console.warn('Attempted to update app state before initialization');
+        return;
+      }
+
+      this.isLocalState = await this.jsAppState.checkIsLocal();
+      this.isMemberState = await this.jsAppState.checkIsMember();
+      this.isVaultNotExists = await this.jsAppState.checkIsVaultNotExists();
+
+      console.log('is in Local state: ', this.isLocalState);
+      console.log('is in VaultNotExists state: ', this.isVaultNotExists);
+      console.log('is in Member state: ', this.isMemberState);
+    },
+
+    async handleStateChange() {
+      console.log('Application state change detected');
+      await this.updateAppState();
+    }
   },
 });
 </script>
@@ -50,8 +68,12 @@ export default defineComponent({
     <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">Decentralized Secret Manager</p>
   </div>
 
-  <div v-if="isLocalState || isVaultNotExists">
-    <RegistrationComponent />
+  <div v-if="!isInitialized" class="text-center mt-8">
+    <p class="text-gray-400">Initializing application...</p>
+  </div>
+
+  <div v-else-if="isLocalState || isVaultNotExists">
+    <RegistrationComponent @state-changed="handleStateChange" />
   </div>
   <div v-else-if="isMemberState">
     <VaultComponent />

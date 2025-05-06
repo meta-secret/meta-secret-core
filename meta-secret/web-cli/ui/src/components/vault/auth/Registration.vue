@@ -3,6 +3,8 @@ import { defineComponent } from 'vue';
 import { AppState } from '@/stores/app-state';
 
 export default defineComponent({
+  emits: ['state-changed'],
+  
   data() {
     return {
       jsAppState: null,
@@ -29,24 +31,30 @@ export default defineComponent({
   methods: {
     async generate_user_creds() {
       await this.jsAppState.appManager.generate_user_creds(this.vaultName);
-      // Update all state variables to ensure UI reflects current state
+      
+      // Update local component state
       this.isLocalState = await this.jsAppState.checkIsLocal();
       this.isOutsiderState = await this.jsAppState.checkIsOutsider();
       this.isVaultNotExists = await this.jsAppState.checkIsVaultNotExists();
       this.vaultName = await this.jsAppState.getVaultName();
       
-      // Add timestamp to force component remount
-      console.log("User creds. Update router!")
-      await this.$router.push('/?refresh=' + Date.now());
+      console.log("User creds generated, emitting state change event");
+      
+      // Emit event to parent component
+      this.$emit('state-changed');
     },
 
     async signUp() {
       console.log('Generate vault');
       await this.jsAppState.appManager.sign_up();
+      
+      // Update local component state
       this.isLocalState = await this.jsAppState.checkIsLocal();
       
-      // Add timestamp to force component remount
-      await this.$router.push('/?refresh=' + Date.now());
+      console.log("Signup complete, emitting state change event");
+      
+      // Emit event to parent component
+      this.$emit('state-changed');
     },
   },
 });
