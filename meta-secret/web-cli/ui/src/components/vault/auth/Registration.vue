@@ -1,54 +1,30 @@
-<script lang="ts">
-import { defineComponent } from 'vue';
+<script setup lang="ts">
+import { ref, onMounted } from 'vue';
 import { AppState } from '@/stores/app-state';
 import { ApplicationStateInfo } from '../../../../pkg';
 
-export default defineComponent({
-  computed: {
-    ApplicationStateInfo() {
-      return ApplicationStateInfo;
-    },
-  },
-  data() {
-    return {
-      jsAppState: null,
-      vaultName: '',
-      app_state_info: ApplicationStateInfo.Local,
-      initialized: false,
-    };
-  },
+const jsAppState = AppState();
+const vaultName = ref('');
+const app_state_info = ref(ApplicationStateInfo.Local);
+const initialized = ref(false);
 
-  async created() {
-    this.jsAppState = AppState();
-  },
+const generate_user_creds = async () => {
+  await jsAppState.appManager.generate_user_creds(vaultName.value);
+  app_state_info.value = await jsAppState.stateInfo();
+  vaultName.value = await jsAppState.getVaultName();
+  window.location.reload();
+};
 
-  async mounted() {
-    this.vaultName = await this.jsAppState.getVaultName();
-    this.app_state_info = await this.jsAppState.stateInfo();
-    this.initialized = true;
-  },
+const signUp = async () => {
+  await jsAppState.appManager.sign_up();
+  app_state_info.value = await jsAppState.stateInfo();
+  window.location.reload();
+};
 
-  methods: {
-    async generate_user_creds() {
-      await this.jsAppState.appManager.generate_user_creds(this.vaultName);
-
-      // Update local component state
-      this.app_state_info = await this.jsAppState.stateInfo();
-      this.vaultName = await this.jsAppState.getVaultName();
-
-      window.location.reload();
-    },
-
-    async signUp() {
-      console.log('Generate vault');
-      await this.jsAppState.appManager.sign_up();
-
-      // Update local component state
-      this.app_state_info = await this.jsAppState.stateInfo();
-
-      window.location.reload();
-    },
-  },
+onMounted(async () => {
+  vaultName.value = await jsAppState.getVaultName();
+  app_state_info.value = await jsAppState.stateInfo();
+  initialized.value = true;
 });
 </script>
 
