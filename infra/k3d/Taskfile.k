@@ -1,7 +1,7 @@
 version = "3"
 _vars = {
     cluster_name = "meta-secret"
-    config_file = "k3d-config-dev.yaml"
+    config_file = "k3d-config-prod.yaml"
     registry_name = "meta-secret-registry"
     registry_port = 5000
     image_name = "meta-secret-server:latest"
