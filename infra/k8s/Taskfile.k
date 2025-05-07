@@ -1,7 +1,7 @@
 version = "3"
 _vars = {
-    cluster_name = "meta-secret-dev"
-    config_file = "k3d-config-dev.yaml"
+    cluster_name = "meta-secret-prod"
+    config_file = "k3d-config-prod.yaml"
     registry_name = "cypherkitty"
     image_name = "meta-secret-server:latest"
 }
@@ -15,6 +15,7 @@ tasks = {
     }
 
     deploy_meta_server = {
+        desc = "Deploy meta-secret server"
         cmds = [
             {task = "generate_meta_server_deployment_yaml"}
             "kubectl apply -f meta-secret-server/build/meta-server.yaml"
