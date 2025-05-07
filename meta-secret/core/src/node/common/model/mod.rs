@@ -15,6 +15,16 @@ pub mod vault;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[wasm_bindgen]
+pub enum  ApplicationStateInfo {
+    Local,
+    Member,
+    Outsider,
+    VaultNotExists,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum ApplicationState {
     Local(DeviceData),
     Vault(VaultFullInfo),
@@ -47,6 +57,20 @@ pub struct WasmApplicationState(ApplicationState);
 
 #[wasm_bindgen]
 impl WasmApplicationState {
+
+    pub fn as_info(&self) -> ApplicationStateInfo {
+        match &self.0 {
+            ApplicationState::Local(_) => ApplicationStateInfo::Local,
+            ApplicationState::Vault(vault_info) => {
+                match vault_info {
+                    VaultFullInfo::NotExists(_) => ApplicationStateInfo::VaultNotExists,
+                    VaultFullInfo::Outsider(_) => ApplicationStateInfo::Outsider,
+                    VaultFullInfo::Member(_) => ApplicationStateInfo::Member
+                }
+            }
+        }
+    }
+    
     pub fn is_local(&self) -> bool {
         matches!(self.0, ApplicationState::Local { .. })
     }

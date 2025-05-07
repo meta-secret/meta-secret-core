@@ -1,65 +1,32 @@
-<script lang="ts">
-import { defineComponent } from 'vue';
+<script setup lang="ts">
+import { ref, onMounted } from 'vue';
 import RegistrationComponent from '@/components/vault/auth/Registration.vue';
 import VaultComponent from '@/components/vault/Vault.vue';
 
 import { AppState } from '@/stores/app-state';
-import init from 'meta-secret-web-cli';
+import init, { ApplicationStateInfo } from 'meta-secret-web-cli';
 
-export default defineComponent({
-  components: {
-    RegistrationComponent,
-    VaultComponent,
-  },
+const jsAppState = ref<any>(null);
+const state_info = ref<ApplicationStateInfo>(ApplicationStateInfo.Local);
+const isInitialized = ref(false);
 
-  data() {
-    return {
-      jsAppState: null,
-      isLocalState: false,
-      isMemberState: false,
-      isVaultNotExists: false,
-      isInitialized: false
-    };
-  },
+async function updateAppState() {
+  if (!jsAppState.value) {
+    return;
+  }
+  state_info.value = await jsAppState.value.stateInfo();
+}
 
-  created() {
-    console.log('VaultView. Init');
-    this.initializeApp();
-  },
+async function initializeApp() {
+  await init();
+  jsAppState.value = AppState();
+  await jsAppState.value.appStateInit();
+  await updateAppState();
+  isInitialized.value = true;
+}
 
-  methods: {
-    async initializeApp() {
-      try {
-        await init();
-        this.jsAppState = AppState();
-        await this.jsAppState.appStateInit();
-        this.isInitialized = true;
-        await this.updateAppState();
-      } catch (error) {
-        console.error('Failed to initialize app:', error);
-      }
-    },
-
-    async updateAppState() {
-      if (!this.jsAppState) {
-        console.warn('Attempted to update app state before initialization');
-        return;
-      }
-
-      this.isLocalState = await this.jsAppState.checkIsLocal();
-      this.isMemberState = await this.jsAppState.checkIsMember();
-      this.isVaultNotExists = await this.jsAppState.checkIsVaultNotExists();
-
-      console.log('is in Local state: ', this.isLocalState);
-      console.log('is in VaultNotExists state: ', this.isVaultNotExists);
-      console.log('is in Member state: ', this.isMemberState);
-    },
-
-    async handleStateChange() {
-      console.log('Application state change detected');
-      await this.updateAppState();
-    }
-  },
+onMounted(() => {
+  initializeApp();
 });
 </script>
 
@@ -69,19 +36,20 @@ export default defineComponent({
   </div>
 
   <div v-if="!isInitialized" class="text-center mt-8">
-    <p class="text-gray-400">Initializing application...</p>
+    <p class="text-gray-400">Loading Vault Information...</p>
   </div>
 
-  <div v-else-if="isLocalState || isVaultNotExists">
-    <RegistrationComponent @state-changed="handleStateChange" />
+  <div v-else-if="state_info == ApplicationStateInfo.Local || state_info == ApplicationStateInfo.VaultNotExists">
+    <RegistrationComponent />
   </div>
-  <div v-else-if="isMemberState">
+  <div v-else-if="state_info == ApplicationStateInfo.Member">
     <VaultComponent />
   </div>
-  <div v-else class="container mx-auto flex justify-center max-w-md pt-1 pb-4">
-    <div class="text-gray-900 dark:text-white">
-      <h1>Outsider!</h1>
+  <div v-else-if="state_info == ApplicationStateInfo.Outsider">
+    <div class="container mx-auto flex justify-center max-w-md pt-1 pb-4">
+      <div class="text-gray-900 dark:text-white">
+        <h1>Outsider!</h1>
+      </div>
     </div>
   </div>
 </template>
-

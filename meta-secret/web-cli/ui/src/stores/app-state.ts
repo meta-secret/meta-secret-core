@@ -33,45 +33,9 @@ export const AppState = defineStore('app_state', {
       subscribe(appManager).then(() => console.log('Finished subscribing'));*/
     },
 
-    async checkIsLocal() {
+    async stateInfo() {
       const currState = await this.appManager.get_state();
-      return currState.is_local();
-    },
-
-    async checkIsMember() {
-      const currState = await this.appManager.get_state();
-      const isVault = currState.is_vault();
-
-      if (!isVault) {
-        return false;
-      }
-
-      const vaultState = currState.as_vault();
-      return vaultState.is_member();
-    },
-
-    async checkIsOutsider() {
-      const currState = await this.appManager.get_state();
-      const isVault = currState.is_vault();
-
-      if (!isVault) {
-        return false;
-      }
-
-      const vaultState = currState.as_vault();
-      return vaultState.is_outsider();
-    },
-
-    async checkIsVaultNotExists() {
-      const currState = await this.appManager.get_state();
-      const isVault = currState.is_vault();
-
-      if (!isVault) {
-        return false;
-      }
-
-      const vaultState = currState.as_vault();
-      return vaultState.is_vault_not_exists();
+      return currState.as_info();
     },
 
     async getVaultName() {

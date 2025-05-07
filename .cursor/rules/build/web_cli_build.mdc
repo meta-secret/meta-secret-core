@@ -8,9 +8,10 @@ alwaysApply: false
  - [web-cli](mdc:meta-secret/web-cli) is a web client project that uses vuejs framework
  - web-cli/ui/cypress contains E2E tests
 
+### The most important web-cli rules:
+ - always use Composition API in vuejs
+ - don't use console.log when developing, you create excessive amount of unnecessary logs
+
 #### web-cli run:
  - cd meta-secret/web-cli/ui
  - npm run dev
-
-#### web-cli rules:
- - don't use console.log when developing, you create excessive amount of unnecessary logs

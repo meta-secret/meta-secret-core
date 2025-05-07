@@ -1,17 +1,20 @@
 <script lang="ts">
 import { defineComponent } from 'vue';
 import { AppState } from '@/stores/app-state';
+import { ApplicationStateInfo } from '../../../../pkg';
 
 export default defineComponent({
-  emits: ['state-changed'],
-  
+  computed: {
+    ApplicationStateInfo() {
+      return ApplicationStateInfo;
+    },
+  },
   data() {
     return {
       jsAppState: null,
       vaultName: '',
-      isLocalState: false,
-      isOutsiderState: false,
-      isVaultNotExists: false,
+      app_state_info: ApplicationStateInfo.Local,
+      initialized: false,
     };
   },
 
@@ -20,25 +23,18 @@ export default defineComponent({
   },
 
   async mounted() {
-    console.log("Mounted!")
-
     this.vaultName = await this.jsAppState.getVaultName();
-    this.isLocalState = await this.jsAppState.checkIsLocal();
-    this.isOutsiderState = await this.jsAppState.checkIsOutsider();
-    this.isVaultNotExists = await this.jsAppState.checkIsVaultNotExists();
+    this.app_state_info = await this.jsAppState.stateInfo();
+    this.initialized = true;
   },
 
   methods: {
     async generate_user_creds() {
       await this.jsAppState.appManager.generate_user_creds(this.vaultName);
-      
+
       // Update local component state
-      this.isLocalState = await this.jsAppState.checkIsLocal();
-      this.isOutsiderState = await this.jsAppState.checkIsOutsider();
-      this.isVaultNotExists = await this.jsAppState.checkIsVaultNotExists();
+      this.app_state_info = await this.jsAppState.stateInfo();
       this.vaultName = await this.jsAppState.getVaultName();
-      
-      console.log("User creds generated, emitting state change event");
 
       window.location.reload();
     },
@@ -46,11 +42,9 @@ export default defineComponent({
     async signUp() {
       console.log('Generate vault');
       await this.jsAppState.appManager.sign_up();
-      
+
       // Update local component state
-      this.isLocalState = await this.jsAppState.checkIsLocal();
-      
-      console.log("Signup complete, emitting state change event");
+      this.app_state_info = await this.jsAppState.stateInfo();
 
       window.location.reload();
     },
@@ -59,58 +53,63 @@ export default defineComponent({
 </script>
 
 <template>
-  <div v-cloak :class="$style.container">
-    <div :class="$style.header">
-      <p v-if="isVaultNotExists && vaultName" :class="$style.titleText">
-        Creating new vault
-      </p>
-      <p v-else-if="isOutsiderState && vaultName" :class="$style.titleText">
-        Joining existing vault: <span :class="$style.vaultNameHighlight">{{ vaultName }}</span>
-      </p>
-    </div>
-
-    <div v-if="!isLocalState && vaultName" :class="$style.vaultInfoContainer">
-      <div :class="$style.vaultInfoRow">
-        <div :class="$style.vaultInfoText">
-          <span :class="$style.vaultInfoLabel">Vault Name:</span>
-          <span :class="$style.vaultInfoValue">{{ vaultName }}</span>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="isLocalState" :class="$style.formContainer">
-      <div :class="$style.labelContainer">
-        <label :class="$style.formLabel">Enter vault name:</label>
-      </div>
-
-      <div :class="$style.inputWrapper">
-        <div :class="$style.inputContainer">
-          <span :class="$style.atSymbol">@</span>
-          <input :class="$style.vaultNameInput" type="text" placeholder="vault name" v-model="vaultName" />
-        </div>
-        <button :class="$style.actionButton" @click="generate_user_creds">Set Vault Name</button>
-      </div>
-
-      <div v-if="vaultName" :class="$style.vaultInfoMessage">
-        <p>
-          This will create a new vault named <span :class="$style.vaultNameHighlight">{{ vaultName }}</span>
+  <div v-if="initialized">
+    <div :class="$style.container">
+      <div :class="$style.header">
+        <p v-if="app_state_info == ApplicationStateInfo.VaultNotExists && vaultName" :class="$style.titleText">
+          Creating new vault
+        </p>
+        <p v-else-if="app_state_info == ApplicationStateInfo.Outsider && vaultName" :class="$style.titleText">
+          Joining existing vault: <span :class="$style.vaultNameHighlight">{{ vaultName }}</span>
         </p>
       </div>
-    </div>
 
-    <div v-if="isOutsiderState" :class="$style.optionContainer">
-      <div :class="$style.statusContainer">
-        <label :class="$style.statusLabel">Vault already exists, would you like to join?</label>
-        <button :class="$style.actionButton" @click="signUp">Join</button>
+      <div v-if="app_state_info != ApplicationStateInfo.Local && vaultName" :class="$style.vaultInfoContainer">
+        <div :class="$style.vaultInfoRow">
+          <div :class="$style.vaultInfoText">
+            <span :class="$style.vaultInfoLabel">Vault Name:</span>
+            <span :class="$style.vaultInfoValue">{{ vaultName }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="app_state_info == ApplicationStateInfo.Local" :class="$style.formContainer">
+        <div :class="$style.labelContainer">
+          <label :class="$style.formLabel">Enter vault name:</label>
+        </div>
+
+        <div :class="$style.inputWrapper">
+          <div :class="$style.inputContainer">
+            <span :class="$style.atSymbol">@</span>
+            <input :class="$style.vaultNameInput" type="text" placeholder="vault name" v-model="vaultName" />
+          </div>
+          <button :class="$style.actionButton" @click="generate_user_creds">Set Vault Name</button>
+        </div>
+
+        <div v-if="vaultName" :class="$style.vaultInfoMessage">
+          <p>
+            This will create a new vault named <span :class="$style.vaultNameHighlight">{{ vaultName }}</span>
+          </p>
+        </div>
+      </div>
+
+      <div v-if="app_state_info == ApplicationStateInfo.Outsider" :class="$style.optionContainer">
+        <div :class="$style.statusContainer">
+          <label :class="$style.statusLabel">Vault already exists, would you like to join?</label>
+          <button :class="$style.actionButton" @click="signUp">Join</button>
+        </div>
+      </div>
+
+      <div v-if="app_state_info == ApplicationStateInfo.VaultNotExists" :class="$style.optionContainer">
+        <div :class="$style.statusContainer">
+          <label :class="$style.statusLabel">Vault doesn't exist, let's create one!</label>
+          <button :class="$style.actionButton" @click="signUp">Create</button>
+        </div>
       </div>
     </div>
-
-    <div v-if="isVaultNotExists" :class="$style.optionContainer">
-      <div :class="$style.statusContainer">
-        <label :class="$style.statusLabel">Vault doesn't exist, let's create one!</label>
-        <button :class="$style.actionButton" @click="signUp">Create</button>
-      </div>
-    </div>
+  </div>
+  <div v-else class="text-center mt-8">
+    <p class="text-gray-400">Loading Vault Status...</p>
   </div>
 </template>
 
@@ -209,10 +208,5 @@ export default defineComponent({
   @apply appearance-none bg-transparent border-none w-full;
   @apply text-gray-800 dark:text-white mx-2 py-1 leading-tight focus:outline-none;
   @apply placeholder-gray-400;
-}
-
-/* v-cloak will hide components until Vue renders them */
-[v-cloak] {
-  display: none;
 }
 </style>

@@ -1,3 +1,15 @@
+<script setup lang="ts">
+import { ref, onMounted } from 'vue';
+import { AppState } from '@/stores/app-state';
+
+const appState = AppState();
+const vaultName = ref('');
+
+onMounted(async () => {
+  vaultName.value = await appState.getVaultName();
+});
+</script>
+
 <template>
   <div :class="$style.headerContainer">
     <div :class="$style.headerContent">
@@ -26,18 +38,6 @@
     <RouterView />
   </div>
 </template>
-
-<script setup>
-import { ref, onMounted } from 'vue';
-import { AppState } from '@/stores/app-state';
-
-const appState = AppState();
-const vaultName = ref('');
-
-onMounted(async () => {
-  vaultName.value = await appState.getVaultName();
-});
-</script>
 
 <style module>
 .headerContainer {
