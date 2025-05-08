@@ -33,7 +33,7 @@ impl WasmVaultData {
         self.0
             .users
             .values()
-            .map(|m| WasmUserMembership::from(m.clone()))
+            .map(|user| WasmUserMembership::from(user.clone()))
             .collect()
     }
 

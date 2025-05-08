@@ -22,13 +22,13 @@ onMounted(async () => {
     <div :class="$style.navWrapper">
       <RouterLink
         :class="[$style.navLink, $route.path.includes('/secrets') ? $style.activeLink : '']"
-        to="/vault/secrets"
+        to="/secrets"
         >Secrets
       </RouterLink>
 
       <RouterLink
         :class="[$style.navLink, $route.path.includes('/devices') ? $style.activeLink : '']"
-        to="/vault/devices"
+        to="/devices"
         >Devices
       </RouterLink>
     </div>

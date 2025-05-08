@@ -3,9 +3,13 @@ import { DeviceData, UserDataOutsiderStatus, WasmUserMembership } from '../../..
 
 const props = defineProps<{ membership: WasmUserMembership }>();
 
-const getDevice = (): DeviceData | undefined => {
+const getDevice = (): DeviceData => {
   return props.membership.user_data().device;
 };
+
+const isMember = () => {
+  return props.membership.is_member();
+}
 
 const isPending = () => {
   const isOutsider = props.membership.is_outsider();
@@ -36,10 +40,10 @@ const decline = async () => {
         ID: {{ getDevice().device_id.wasm_id_str() }}
       </div>
     </div>
-    <div :class="$style.statusBadge">
-      Active
+    <div v-if="isMember()" :class="$style.statusBadge">
+      Member
     </div>
-    <div v-if="isPending" :class="$style.actionButtons">
+    <div v-if="isPending()" :class="$style.actionButtons">
       <button :class="$style.acceptButton" @click="accept">Accept</button>
       <button :class="$style.declineButton" @click="decline">Decline</button>
     </div>

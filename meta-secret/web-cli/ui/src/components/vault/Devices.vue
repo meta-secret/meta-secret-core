@@ -12,6 +12,7 @@ const refreshDevices = async () => {
     const metaAppState = await appState.appManager.get_state();
     deviceList.value = metaAppState.as_vault().as_member().vault_data().users();
   } catch (e) {
+    console.error("Failed to get devices:", e);
     deviceList.value = [];
   }
 };
@@ -29,15 +30,15 @@ onMounted(() => {
     <h3 :class="$style.devicesTitle">Devices</h3>
     <p :class="$style.devicesDescription">Detailed information about user devices</p>
 
-    <div v-if="deviceList.value.length === 0" :class="$style.emptyState">No devices connected yet</div>
+    <div v-if="deviceList.length === 0" :class="$style.emptyState">No devices connected yet</div>
 
     <ul v-else :class="$style.devicesList">
       <li
-        v-for="membership in deviceList.value"
+        v-for="membership in deviceList"
         :key="membership.user_data().device.device_id.wasm_id_str()"
         :class="$style.deviceListItem"
       >
-        <Device :membership="membership" sig-status="active" />
+        <Device :membership="membership"/>
       </li>
     </ul>
   </div>
