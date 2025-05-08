@@ -10,14 +10,11 @@ const initialized = ref(false);
 
 const generate_user_creds = async () => {
   await jsAppState.appManager.generate_user_creds(vaultName.value);
-  app_state_info.value = await jsAppState.stateInfo();
-  vaultName.value = await jsAppState.getVaultName();
   window.location.reload();
 };
 
 const signUp = async () => {
   await jsAppState.appManager.sign_up();
-  app_state_info.value = await jsAppState.stateInfo();
   window.location.reload();
 };
 

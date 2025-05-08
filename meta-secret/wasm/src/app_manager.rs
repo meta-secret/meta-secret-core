@@ -62,7 +62,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
     pub async fn generate_user_creds(&self, vault_name: VaultName) {
         info!("Generate user credentials for vault: {}", vault_name);
         let creds = GenericAppStateRequest::GenerateUserCreds(vault_name);
-        self.meta_client_service.send_request(creds).await;
+        self.meta_client_service.send_request(creds).await.unwrap();
     }
 
     pub async fn sign_up(&self) -> Result<()> {
@@ -88,7 +88,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
                     }
                 };
                 let sign_up = GenericAppStateRequest::SignUp(vault_name);
-                self.meta_client_service.send_request(sign_up).await;
+                self.meta_client_service.send_request(sign_up).await?;
                 Ok(())
             }
         }
@@ -96,16 +96,17 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
 
     pub async fn cluster_distribution(&self, plain_pass_info: PlainPassInfo) {
         let request = GenericAppStateRequest::ClusterDistribution(plain_pass_info);
-        self.meta_client_service.send_request(request).await;
+        self.meta_client_service.send_request(request).await.unwrap();
     }
 
     pub async fn recover_js(&self, meta_pass_id: MetaPasswordId) {
         let request = GenericAppStateRequest::Recover(meta_pass_id);
-        self.meta_client_service.send_request(request).await;
+        self.meta_client_service.send_request(request).await.unwrap();
     }
 
     pub async fn get_state(&self) -> ApplicationState {
-        self.meta_client_service.get_app_state().await.unwrap()
+        let request = GenericAppStateRequest::GetState;
+        self.meta_client_service.send_request(request).await.unwrap()
     }
 
     pub async fn accept_recover(&self, claim_id: ClaimId) -> Result<()> {

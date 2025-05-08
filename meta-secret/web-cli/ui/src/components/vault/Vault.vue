@@ -21,13 +21,13 @@ onMounted(async () => {
   <div :class="$style.navContainer">
     <div :class="$style.navWrapper">
       <RouterLink
-        :class="[$style.navLink, $route.path.includes('/vault/secrets') ? $style.activeLink : '']"
+        :class="[$style.navLink, $route.path.includes('/secrets') ? $style.activeLink : '']"
         to="/vault/secrets"
         >Secrets
       </RouterLink>
 
       <RouterLink
-        :class="[$style.navLink, $route.path.includes('/vault/devices') ? $style.activeLink : '']"
+        :class="[$style.navLink, $route.path.includes('/devices') ? $style.activeLink : '']"
         to="/vault/devices"
         >Devices
       </RouterLink>

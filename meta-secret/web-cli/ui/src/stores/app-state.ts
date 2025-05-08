@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { WasmApplicationManager, WasmApplicationState } from 'meta-secret-web-cli';
+import { ApplicationStateInfo, WasmApplicationManager } from 'meta-secret-web-cli';
 
 export const AppState = defineStore('app_state', {
   state: () => {
@@ -7,7 +7,6 @@ export const AppState = defineStore('app_state', {
 
     return {
       appManager: WasmApplicationManager,
-      metaSecretAppState: WasmApplicationState,
     };
   },
 
@@ -16,7 +15,6 @@ export const AppState = defineStore('app_state', {
       console.log('Js: App state, start initialization');
 
       const appManager = await WasmApplicationManager.init_wasm();
-      this.metaSecretAppState = await appManager.get_state();
       console.log('Js: Initial App State!!!!');
 
       this.appManager = appManager;
@@ -40,7 +38,7 @@ export const AppState = defineStore('app_state', {
 
     async getVaultName() {
       const currState = await this.appManager.get_state();
-      if (currState.is_local()) {
+      if (currState.as_info() == ApplicationStateInfo.Local) {
         return '';
       }
 

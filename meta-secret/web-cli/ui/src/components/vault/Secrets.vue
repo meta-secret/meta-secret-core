@@ -1,68 +1,50 @@
-<script lang="ts">
-import { defineComponent } from 'vue';
-import init, { MetaPasswordId, PlainPassInfo, WasmApplicationState } from 'meta-secret-web-cli';
+<script setup lang="ts">
+import { ref } from 'vue';
+import { MetaPasswordId, PlainPassInfo } from 'meta-secret-web-cli';
 import { AppState } from '@/stores/app-state';
 
-export default defineComponent({
-  data() {
-    return {
-      newPassword: '',
-      newPassDescription: '',
-      appState: null,
-      currentSecret: null,
-      currentSecretId: null,
-      showAddForm: false,
-    };
-  },
+const appState = ref<any>(AppState());
 
-  async mounted() {
-    await init();
-    this.appState = AppState();
-  },
+const newPassword = ref('');
+const newPassDescription = ref('');
 
-  methods: {
-    async addPassword() {
-      await init();
-      const pass = new PlainPassInfo(this.newPassDescription, this.newPassword);
-      await this.appState.appManager.cluster_distribution(pass);
-      // Clear inputs after adding
-      this.newPassword = '';
-      this.newPassDescription = '';
-      this.showAddForm = false; // Hide the form after adding
-    },
+const currentSecret = ref<any>(null);
+const currentSecretId = ref<any>(null);
 
-    async recover(metaPassId: MetaPasswordId) {
-      await this.appState.appManager.recover_js(metaPassId);
-    },
+const showAddForm = ref(false);
 
-    async showRecovered(metaPassId: MetaPasswordId) {
-      // Get the ID
-      const id = metaPassId.id();
-      
-      // If this secret is already being shown, hide it
-      if (this.currentSecretId === id) {
-        this.currentSecret = null;
-        this.currentSecretId = null;
-        return;
-      }
+const addPassword = async () => {
+  const pass = new PlainPassInfo(newPassDescription.value, newPassword.value);
+  await appState.value.appManager.cluster_distribution(pass);
+  newPassword.value = '';
+  newPassDescription.value = '';
+  showAddForm.value = false;
+};
 
-      // Otherwise, show the secret
-      const secret = await this.appState.appManager.show_recovered(metaPassId);
-      this.currentSecret = secret;
-      this.currentSecretId = id;
-    },
+const recover = async (metaPassId: MetaPasswordId) => {
+  await appState.value.appManager.recover_js(metaPassId);
+};
 
-    metaPasswords(): MetaPasswordId[] {
-      if (!this.appState) return [];
-      const msAppState: WasmApplicationState = this.appState.metaSecretAppState;
-      return msAppState.as_vault().as_member().vault_data().secrets();
-    },
+const showRecovered = async (metaPassId: MetaPasswordId) => {
+  const id = metaPassId.id();
+  if (currentSecretId.value === id) {
+    currentSecret.value = null;
+    currentSecretId.value = null;
+    return;
+  }
+  currentSecret.value = await appState.value.appManager.show_recovered(metaPassId);
+  currentSecretId.value = id;
+};
 
-    toggleAddForm() {
-      this.showAddForm = !this.showAddForm;
-    },
-  },
-});
+const metaPasswords = async () => {
+  const metaSecretState = await appState.value.appManager.get_state();
+  return metaSecretState.as_vault().as_member().vault_data().secrets();
+};
+
+const toggleAddForm = () => {
+  showAddForm.value = !showAddForm.value;
+};
+
 </script>
 
 <template>
@@ -115,7 +97,7 @@ export default defineComponent({
         <h3 :class="$style.modalTitle">Add New Secret</h3>
         <button :class="$style.closeButton" @click="toggleAddForm">&times;</button>
       </div>
-      
+
       <div :class="$style.modalBody">
         <div :class="$style.inputGroup">
           <label :class="$style.inputLabel">Description</label>
@@ -139,7 +121,6 @@ export default defineComponent({
       </div>
     </div>
   </div>
-
 </template>
 
 <style module>

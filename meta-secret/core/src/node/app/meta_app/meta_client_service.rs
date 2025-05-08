@@ -2,7 +2,7 @@ use anyhow::bail;
 use flume::{Receiver, Sender};
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{debug, error, info, instrument};
+use tracing::{debug, info, instrument};
 
 use crate::node::app::meta_app::messaging::{GenericAppStateRequest, GenericAppStateResponse};
 use crate::node::app::orchestrator::MetaOrchestrator;
@@ -53,7 +53,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                 .handle_client_request(service_state.app_state, request)
                 .await?;
             service_state.app_state = new_app_state;
-            self.state_provider.push(&service_state.app_state).await;
+            //self.state_provider.push(&service_state.app_state).await?;
+            let response_state = GenericAppStateResponse::AppState(service_state.app_state.clone());
+            self.data_transfer.dt.send_to_client(response_state).await;
 
             async_std::task::sleep(Duration::from_millis(100)).await;
         }
@@ -69,44 +71,55 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
             &request, &app_state
         );
 
-        let user_creds = self.get_user_creds(&request).await?;
-
-        self.sync_gateway.sync(user_creds.user()).await?;
-        self.sync_gateway.sync(user_creds.user()).await?;
-
-        match request {
-            GenericAppStateRequest::GenerateUserCreds(_) => {
-                //skip - we just have generates user creds (get_user_creds)
+        match &request {
+            GenericAppStateRequest::GetState => {
+                //skip - nothing to do
             }
-            GenericAppStateRequest::SignUp(_) => match &app_state {
-                ApplicationState::Local(_) => {
-                    self.sign_up(&user_creds).await?;
-                }
-                ApplicationState::Vault(VaultFullInfo::Member(UserMemberFullInfo {
-                    member,
-                    ..
-                })) => {
-                    error!("You are already a vault member: {:?}", member.vault);
-                }
-                ApplicationState::Vault(VaultFullInfo::NotExists(_)) => {
-                    self.sign_up(&user_creds).await?;
-                }
-                ApplicationState::Vault(VaultFullInfo::Outsider(outsider)) => {
-                    match outsider.status {
-                        UserDataOutsiderStatus::NonMember => {
-                            self.sign_up(&user_creds).await?;
-                        }
-                        UserDataOutsiderStatus::Pending => {
-                            bail!("Your request is already in pending status")
-                        }
-                        UserDataOutsiderStatus::Declined => {
-                            bail!("Device has been declined")
+            GenericAppStateRequest::GenerateUserCreds(_) => {
+                self.get_user_creds(&request).await?;
+            }
+            GenericAppStateRequest::SignUp(_) => {
+                let user_creds = self.get_user_creds(&request).await?;
+
+                self.sync_gateway.sync(user_creds.user()).await?;
+                self.sync_gateway.sync(user_creds.user()).await?;
+
+                match &app_state {
+                    ApplicationState::Local(_) => {
+                        self.sign_up(&user_creds).await?;
+                    }
+                    ApplicationState::Vault(VaultFullInfo::Member(member_info)) => {
+                        let vault = &member_info.member.vault;
+                        bail!("You are already a vault member: {:?}", vault);
+                    }
+                    ApplicationState::Vault(VaultFullInfo::NotExists(_)) => {
+                        self.sign_up(&user_creds).await?;
+                    }
+                    ApplicationState::Vault(VaultFullInfo::Outsider(outsider)) => {
+                        match outsider.status {
+                            UserDataOutsiderStatus::NonMember => {
+                                self.sign_up(&user_creds).await?;
+                            }
+                            UserDataOutsiderStatus::Pending => {
+                                bail!("Your request is already in pending status")
+                            }
+                            UserDataOutsiderStatus::Declined => {
+                                bail!("Device has been declined")
+                            }
                         }
                     }
                 }
-            },
+
+                self.sync_gateway.sync(user_creds.user()).await?;
+                self.sync_gateway.sync(user_creds.user()).await?;
+            }
 
             GenericAppStateRequest::ClusterDistribution(plain_request) => {
+                let user_creds = self.get_user_creds(&request).await?;
+
+                self.sync_gateway.sync(user_creds.user()).await?;
+                self.sync_gateway.sync(user_creds.user()).await?;
+
                 let vault_status = {
                     let vault_repo = PersistentVault::from(self.p_obj.clone());
                     vault_repo.find(user_creds.user()).await?
@@ -129,22 +142,30 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                             user_creds: Arc::new(user_creds.clone()),
                         };
 
-                        let secure_request = SecurePassInfo::from(plain_request);
+                        let secure_request = SecurePassInfo::from(plain_request.clone());
                         distributor.distribute(vault_member, secure_request).await?;
                     }
                 }
+
+                self.sync_gateway.sync(user_creds.user()).await?;
+                self.sync_gateway.sync(user_creds.user()).await?;
             }
 
             GenericAppStateRequest::Recover(meta_pass_id) => {
+                let user_creds = self.get_user_creds(&request).await?;
+
+                self.sync_gateway.sync(user_creds.user()).await?;
+                self.sync_gateway.sync(user_creds.user()).await?;
+
                 let recovery_action = RecoveryAction::from(self.p_obj.clone());
                 recovery_action
-                    .recovery_request(user_creds.clone(), meta_pass_id)
+                    .recovery_request(user_creds.clone(), meta_pass_id.clone())
                     .await?;
+
+                self.sync_gateway.sync(user_creds.user()).await?;
+                self.sync_gateway.sync(user_creds.user()).await?;
             }
         }
-
-        self.sync_gateway.sync(user_creds.user()).await?;
-        self.sync_gateway.sync(user_creds.user()).await?;
 
         //Update app state
         let app_state = self.get_app_state().await?;
@@ -169,6 +190,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         let creds_repo = PersistentCredentials::from(self.p_obj.clone());
 
         let user_creds = match &request {
+            GenericAppStateRequest::GetState => {
+                bail!("Invalid state. GetState request!")
+            }
             GenericAppStateRequest::GenerateUserCreds(vault_name) => {
                 let device_name = self.device_creds.device.device_name.clone();
                 creds_repo
@@ -206,7 +230,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         let app_state = self.get_app_state().await?;
         let service_state = ServiceState { app_state };
 
-        self.state_provider.push(&service_state.app_state).await;
+        //self.state_provider.push(&service_state.app_state).await?;
         Ok(service_state)
     }
 
@@ -262,8 +286,17 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         Ok(app_state)
     }
 
-    pub async fn send_request(&self, request: GenericAppStateRequest) {
-        self.data_transfer.dt.send_to_service(request).await
+    pub async fn send_request(&self, request: GenericAppStateRequest) -> Result<ApplicationState> {
+        let resp = self
+            .data_transfer
+            .dt
+            .send_to_service_and_get(request)
+            .await?;
+        match resp {
+            GenericAppStateResponse::AppState(app_state) => {
+                Ok(app_state)
+            }
+        }
     }
 
     pub async fn accept_recover(&self, claim_id: ClaimId) -> Result<()> {
@@ -329,12 +362,6 @@ pub struct MetaClientAccessProxy {
     pub dt: Arc<MetaClientDataTransfer>,
 }
 
-impl MetaClientAccessProxy {
-    pub async fn send_request(&self, request: GenericAppStateRequest) {
-        self.dt.dt.send_to_service(request).await
-    }
-}
-
 pub struct MetaClientStateProvider {
     sender: Sender<ApplicationState>,
     receiver: Receiver<ApplicationState>,
@@ -342,16 +369,13 @@ pub struct MetaClientStateProvider {
 
 impl MetaClientStateProvider {
     pub fn new() -> Self {
-        let (sender, receiver) = flume::bounded(100);
+        let (sender, receiver) = flume::bounded(1);
         Self { sender, receiver }
     }
 
-    pub async fn get(&self) -> ApplicationState {
-        self.receiver.recv_async().await.unwrap()
-    }
-
-    pub async fn push(&self, state: &ApplicationState) {
-        self.sender.send_async(state.clone()).await.unwrap()
+    pub async fn push(&self, state: &ApplicationState) -> Result<()> {
+        self.sender.send_async(state.clone()).await?;
+        Ok(())
     }
 }
 

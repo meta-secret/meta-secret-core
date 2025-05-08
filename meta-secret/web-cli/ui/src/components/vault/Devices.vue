@@ -1,37 +1,23 @@
-<script lang="ts">
-import { defineComponent } from 'vue';
+<script setup lang="ts">
+import { ref, onMounted } from 'vue';
 import { AppState } from '@/stores/app-state';
 import Device from '@/components/vault/Device.vue';
 import { WasmUserMembership } from '../../../pkg';
 
-export default defineComponent({
-  components: { Device },
-  
-  data() {
-    return {
-      appState: null as any,
-      deviceList: [] as WasmUserMembership[]
-    };
-  },
-  
-  mounted() {
-    console.log('Device component. Init');
-    this.appState = AppState();
-    this.refreshDevices();
-  },
+const appState = AppState();
+const deviceList = ref<WasmUserMembership[]>([]);
 
-  methods: {
-    refreshDevices() {
-      try {
-        if (this.appState && this.appState.metaSecretAppState) {
-          this.deviceList = this.appState.metaSecretAppState.as_vault().as_member().vault_data().users();
-        }
-      } catch (e) {
-        console.error("Error getting devices:", e);
-        this.deviceList = [];
-      }
-    }
+const refreshDevices = async () => {
+  try {
+    const metaAppState = await appState.appManager.get_state();
+    deviceList.value = metaAppState.as_vault().as_member().vault_data().users();
+  } catch (e) {
+    deviceList.value = [];
   }
+};
+
+onMounted(() => {
+  refreshDevices();
 });
 </script>
 
@@ -43,11 +29,11 @@ export default defineComponent({
     <h3 :class="$style.devicesTitle">Devices</h3>
     <p :class="$style.devicesDescription">Detailed information about user devices</p>
 
-    <div v-if="deviceList.length === 0" :class="$style.emptyState">No devices connected yet</div>
+    <div v-if="deviceList.value.length === 0" :class="$style.emptyState">No devices connected yet</div>
 
     <ul v-else :class="$style.devicesList">
       <li
-        v-for="membership in deviceList"
+        v-for="membership in deviceList.value"
         :key="membership.user_data().device.device_id.wasm_id_str()"
         :class="$style.deviceListItem"
       >

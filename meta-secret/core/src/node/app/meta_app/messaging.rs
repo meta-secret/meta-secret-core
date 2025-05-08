@@ -1,8 +1,10 @@
+use crate::node::common::model::ApplicationState;
 use crate::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use crate::node::common::model::vault::vault::VaultName;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum GenericAppStateRequest {
+    GetState,
     GenerateUserCreds(VaultName),
     SignUp(VaultName),
     ClusterDistribution(PlainPassInfo),
@@ -10,4 +12,6 @@ pub enum GenericAppStateRequest {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum GenericAppStateResponse {}
+pub enum GenericAppStateResponse {
+    AppState(ApplicationState),
+}

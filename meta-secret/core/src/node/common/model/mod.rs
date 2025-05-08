@@ -23,14 +23,14 @@ pub enum  ApplicationStateInfo {
     VaultNotExists,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ApplicationState {
     Local(DeviceData),
     Vault(VaultFullInfo),
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum VaultFullInfo {
     NotExists(UserData),
@@ -38,7 +38,7 @@ pub enum VaultFullInfo {
     Member(UserMemberFullInfo),
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UserMemberFullInfo {
     pub member: VaultMember,

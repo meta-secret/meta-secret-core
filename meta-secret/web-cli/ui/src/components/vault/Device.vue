@@ -1,55 +1,47 @@
-<script lang="ts">
-import type { PropType } from 'vue';
-import { defineComponent } from 'vue';
-import { DeviceData, UserDataOutsider, UserDataOutsiderStatus, WasmUserMembership } from '../../../pkg';
+<script setup lang="ts">
+import { DeviceData, UserDataOutsiderStatus, WasmUserMembership } from '../../../pkg';
 
-export default defineComponent({
-  props: {
-    membership: Object as PropType<WasmUserMembership>,
-  },
+const props = defineProps<{ membership: WasmUserMembership }>();
 
-  methods: {
-    async accept() {
-      //await this.membership(deviceInfo, MembershipRequestType.Accept);
-    },
+const getDevice = (): DeviceData | undefined => {
+  return props.membership.user_data().device;
+};
 
-    async decline() {
-      //await this.membership(deviceInfo, MembershipRequestType.Decline);
-    },
+const isPending = () => {
+  const isOutsider = props.membership.is_outsider();
+  if (isOutsider) {
+    const outsider = props.membership.as_outsider();
+    return outsider.status === UserDataOutsiderStatus.Pending;
+  } else {
+    return false;
+  }
+};
 
-    getDevice(): DeviceData {
-      return this.membership.user_data().device;
-    },
+const accept = async () => {
+  //await props.membership(deviceInfo, MembershipRequestType.Accept);
+};
 
-    isPending() {
-      const isOutsider = this.membership.is_outsider();
-      if (isOutsider) {
-        const outsider: UserDataOutsider = this.membership.as_outsider();
-        return outsider.status === UserDataOutsiderStatus.Pending;
-      } else {
-        return false;
-      }
-    },
-  },
-});
+const decline = async () => {
+  //await props.membership(deviceInfo, MembershipRequestType.Decline);
+};
 </script>
 
 <template>
   <div :class="$style.deviceContainer">
     <div :class="$style.deviceInfo">
       <div :class="$style.deviceName">
-        {{ this.getDevice().device_name.as_str() || "Device" }}
+        {{ getDevice().device_name.as_str() }}
       </div>
       <div :class="$style.deviceId">
-        ID: {{ this.getDevice().device_id.wasm_id_str() }}
+        ID: {{ getDevice().device_id.wasm_id_str() }}
       </div>
     </div>
     <div :class="$style.statusBadge">
       Active
     </div>
-    <div v-if="this.isPending()" :class="$style.actionButtons">
-      <button :class="$style.acceptButton" @click="accept()">Accept</button>
-      <button :class="$style.declineButton" @click="decline()">Decline</button>
+    <div v-if="isPending" :class="$style.actionButtons">
+      <button :class="$style.acceptButton" @click="accept">Accept</button>
+      <button :class="$style.declineButton" @click="decline">Decline</button>
     </div>
   </div>
 </template>
