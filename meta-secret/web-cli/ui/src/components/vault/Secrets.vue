@@ -12,7 +12,7 @@ const currentSecret = ref<any>(null);
 const currentSecretId = ref<any>(null);
 
 const showAddForm = ref(false);
-const passwords = ref<any[]>([]);
+const passwords = ref<MetaPasswordId[]>([]);
 
 const loadPasswords = () => {
   passwords.value = appState.currState.as_vault().as_member().vault_data().secrets();
@@ -47,10 +47,16 @@ const showRecovered = async (metaPassId: MetaPasswordId) => {
   currentSecretId.value = id;
 };
 
+const isRecovered = async (metaPassId: MetaPasswordId) => {
+  let maybeCompletedClaim = await appState.appManager.find_claim_by_pass_id(metaPassId);
+  const isRecovered = maybeCompletedClaim !== undefined;
+  console.log("maybeCompletedClaim!!!!!!!!!!!!!!!!!!!!!!!", maybeCompletedClaim, "recoverd: ", isRecovered);
+  return isRecovered;
+};
+
 const toggleAddForm = () => {
   showAddForm.value = !showAddForm.value;
 };
-
 </script>
 
 <template>
@@ -76,12 +82,14 @@ const toggleAddForm = () => {
             <div :class="$style.secretId">ID: {{ secret.id() }}</div>
           </div>
           <div :class="$style.secretActions">
-            <button :class="$style.recoveryButton" @click="recover(secret)">Recovery Request</button>
-
-            <button :class="$style.showButton" @click="showRecovered(secret)">
-              {{ currentSecretId === secret.id() ? 'Hide' : 'Show' }}
-            </button>
-
+            <div v-if="isRecovered(secret)">
+              <button :class="$style.showButton" @click="showRecovered(secret)">
+                {{ currentSecretId === secret.id() ? 'Hide' : 'Show' }}
+              </button>
+            </div>
+            <div v-else>
+              <button :class="$style.recoveryButton" @click="recover(secret)">Recovery Request</button>
+            </div>
           </div>
         </div>
 
