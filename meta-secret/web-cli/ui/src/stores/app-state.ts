@@ -15,10 +15,22 @@ export const AppState = defineStore('app_state', {
     currentState: (state) => state.currState,
 
     // Helper methods for state comparisons
-    isLocal: (state) => state.currState.as_info() === ApplicationStateInfo.Local,
-    isVaultNotExists: (state) => state.currState.as_info() === ApplicationStateInfo.VaultNotExists,
-    isMember: (state) => state.currState.as_info() === ApplicationStateInfo.Member,
-    isOutsider: (state) => state.currState.as_info() === ApplicationStateInfo.Outsider,
+    isLocal: (state) => {
+      if (!state.currState) return false;
+      return state.currState.as_info() === ApplicationStateInfo.Local;
+    },
+    isVaultNotExists: (state) => {
+      if (!state.currState) return false;
+      return state.currState.as_info() === ApplicationStateInfo.VaultNotExists;
+    },
+    isMember: (state) => {
+      if (!state.currState) return false;
+      return state.currState.as_info() === ApplicationStateInfo.Member;
+    },
+    isOutsider: (state) => {
+      if (!state.currState) return false;
+      return state.currState.as_info() === ApplicationStateInfo.Outsider;
+    },
   },
 
   actions: {
@@ -45,13 +57,16 @@ export const AppState = defineStore('app_state', {
     },
 
     async updateState() {
+      if (!this.appManager) return null;
       this.currState = await this.appManager.get_state();
       return this.currState;
     },
 
     getVaultName() {
       const currState = this.currState;
-      const currStateInfo = this.currState.as_info();
+      if (!currState) return '';
+      
+      const currStateInfo = currState.as_info();
       if (currStateInfo === ApplicationStateInfo.Local) {
         return '';
       }

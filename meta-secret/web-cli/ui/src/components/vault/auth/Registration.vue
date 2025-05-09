@@ -8,7 +8,6 @@ import VaultNotExists from './VaultNotExists.vue';
 import VaultTitle from './VaultTitle.vue';
 
 const jsAppState = AppState();
-const vaultName = ref(jsAppState.getVaultName());
 const signUpProcessing = ref(false);
 const signUpCompleted = ref(false);
 
@@ -42,11 +41,17 @@ const signUp = async () => {
   <div :class="$style.container">
     <VaultTitle />
 
-    <LocalVaultCreation v-if="jsAppState.isLocal" :signUpProcessing="signUpProcessing" />
+    <div v-if="jsAppState.isLocal">
+      <LocalVaultCreation :signUpProcessing="signUpProcessing" />
+    </div>
 
-    <OutsiderJoin :signUpProcessing="signUpProcessing" @join="signUp" />
+    <div v-if="jsAppState.isOutsider">
+      <OutsiderJoin :signUpProcessing="signUpProcessing" @join="signUp" />
+    </div>
 
-    <VaultNotExists :signUpProcessing="signUpProcessing" @create="signUp" />
+    <div v-if="jsAppState.isVaultNotExists">
+      <VaultNotExists :signUpProcessing="signUpProcessing" @create="signUp" />
+    </div>
 
     <ProgressSimulation :isActive="signUpProcessing" :completed="signUpCompleted" />
   </div>

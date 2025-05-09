@@ -2,7 +2,7 @@
 import { AppState } from '@/stores/app-state';
 import { ref } from 'vue';
 
-const props = defineProps({
+defineProps({
   signUpProcessing: Boolean
 });
 
