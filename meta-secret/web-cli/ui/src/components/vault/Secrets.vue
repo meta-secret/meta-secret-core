@@ -3,7 +3,7 @@ import { ref, onMounted } from 'vue';
 import { MetaPasswordId, PlainPassInfo } from 'meta-secret-web-cli';
 import { AppState } from '@/stores/app-state';
 
-const appState = ref<any>(AppState());
+const appState = AppState();
 
 const newPassword = ref('');
 const newPassDescription = ref('');
@@ -14,26 +14,25 @@ const currentSecretId = ref<any>(null);
 const showAddForm = ref(false);
 const passwords = ref<any[]>([]);
 
-const loadPasswords = async () => {
-  const metaSecretState = await appState.value.appManager.get_state();
-  passwords.value = metaSecretState.as_vault().as_member().vault_data().secrets();
+const loadPasswords = () => {
+  passwords.value = appState.currState.as_vault().as_member().vault_data().secrets();
 };
 
-onMounted(async () => {
-  await loadPasswords();
+onMounted(() => {
+  loadPasswords();
 });
 
 const addPassword = async () => {
   const pass = new PlainPassInfo(newPassDescription.value, newPassword.value);
-  await appState.value.appManager.cluster_distribution(pass);
+  await appState.appManager.cluster_distribution(pass);
   newPassword.value = '';
   newPassDescription.value = '';
   showAddForm.value = false;
-  await loadPasswords();
+  loadPasswords();
 };
 
 const recover = async (metaPassId: MetaPasswordId) => {
-  await appState.value.appManager.recover_js(metaPassId);
+  await appState.appManager.recover_js(metaPassId);
 };
 
 const showRecovered = async (metaPassId: MetaPasswordId) => {
@@ -43,7 +42,7 @@ const showRecovered = async (metaPassId: MetaPasswordId) => {
     currentSecretId.value = null;
     return;
   }
-  currentSecret.value = await appState.value.appManager.show_recovered(metaPassId);
+  currentSecret.value = await appState.appManager.show_recovered(metaPassId);
   currentSecretId.value = id;
 };
 
@@ -150,18 +149,6 @@ const toggleAddForm = () => {
 
 .secretActions {
   @apply flex space-x-2;
-}
-
-.newPasswordCard {
-  @apply block max-w-md mx-auto px-6 py-5;
-  @apply bg-gray-50 dark:bg-gray-850 rounded-lg shadow-md;
-  @apply border border-gray-200 dark:border-gray-700;
-  @apply transition-all duration-200;
-}
-
-.cardTitle {
-  @apply text-lg font-medium text-gray-800 dark:text-gray-200 mb-4;
-  @apply border-b border-gray-200 dark:border-gray-700 pb-2;
 }
 
 .secretsTitle {

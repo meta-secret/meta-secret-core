@@ -11,6 +11,7 @@ alwaysApply: false
 ### The most important web-cli rules:
  - always use Composition API in vuejs
  - don't use console.log when developing, you create excessive amount of unnecessary logs
+ - always use css modules in vuejs
 
 #### web-cli run:
  - cd meta-secret/web-cli/ui

@@ -71,8 +71,3 @@ export default defineComponent({
 }
 </style>
 
-<style module>
-.container {
-  @apply flex justify-start max-w-[1376px] mx-auto;
-}
-</style>
