@@ -10,6 +10,7 @@ const newPassDescription = ref('');
 
 const currentSecret = ref<any>(null);
 const currentSecretId = ref<any>(null);
+const copySuccess = ref<string | null>(null);
 
 const showAddForm = ref(false);
 const passwords = ref<MetaPasswordId[]>([]);
@@ -49,6 +50,21 @@ const showRecovered = async (metaPassId: MetaPasswordId) => {
   currentSecretId.value = id;
 };
 
+const copyToClipboard = async (metaPassId: MetaPasswordId) => {
+  try {
+    const secretText = await appState.appManager.show_recovered(metaPassId);
+    await navigator.clipboard.writeText(secretText);
+    copySuccess.value = metaPassId.id();
+    setTimeout(() => {
+      if (copySuccess.value === metaPassId.id()) {
+        copySuccess.value = null;
+      }
+    }, 2000);
+  } catch (err) {
+    console.error('Failed to copy: ', err);
+  }
+};
+
 const isRecovered = (metaPassId: MetaPasswordId) => {
   const maybeCompletedClaim = appState.currState.as_vault().as_member().find_recovery_claim(metaPassId);
   return maybeCompletedClaim !== undefined;
@@ -82,9 +98,12 @@ const toggleAddForm = () => {
             <div :class="$style.secretId">ID: {{ secret.id() }}</div>
           </div>
           <div :class="$style.secretActions">
-            <div v-if="isRecovered(secret)">
+            <div v-if="isRecovered(secret)" :class="$style.buttonGroup">
               <button :class="$style.showButton" @click="showRecovered(secret)">
                 {{ currentSecretId === secret.id() ? 'Hide' : 'Show' }}
+              </button>
+              <button :class="$style.copyButton" @click="copyToClipboard(secret)">
+                {{ copySuccess === secret.id() ? 'Copied!' : 'Copy' }}
               </button>
             </div>
             <div v-else>
@@ -157,7 +176,7 @@ const toggleAddForm = () => {
 }
 
 .secretActions {
-  @apply flex space-x-2;
+  @apply flex space-x-4;
 }
 
 .secretsTitle {
@@ -243,6 +262,12 @@ const toggleAddForm = () => {
   @apply transition-colors duration-200;
 }
 
+.copyButton {
+  @apply bg-blue-500 hover:bg-blue-600 text-sm text-white py-1.5 px-3 rounded-md;
+  @apply dark:bg-blue-600 dark:hover:bg-blue-700;
+  @apply transition-colors duration-200;
+}
+
 .secretContainer {
   @apply mx-4 mb-4 p-3 rounded-md;
   @apply bg-slate-100 dark:bg-slate-800;
@@ -301,5 +326,9 @@ const toggleAddForm = () => {
 
 .modalBody {
   @apply px-6 py-5;
+}
+
+.buttonGroup {
+  @apply flex items-center space-x-6;
 }
 </style>
