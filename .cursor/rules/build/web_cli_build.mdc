@@ -12,6 +12,7 @@ alwaysApply: false
  - always use Composition API in vuejs
  - don't use console.log when developing, you create excessive amount of unnecessary logs
  - always use css modules in vuejs
+ - write only important comments in the code, don't write comments that are obvious
 
 #### web-cli run:
  - cd meta-secret/web-cli/ui
