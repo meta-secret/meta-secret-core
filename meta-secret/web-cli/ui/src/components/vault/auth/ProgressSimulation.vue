@@ -93,16 +93,17 @@ defineExpose({
 
 <style module>
 .progressContainer {
-  @apply w-full max-w-md mt-8;
+  @apply w-full mt-4;
 }
 
 .warningBox {
-  @apply bg-gray-800 border border-yellow-600 rounded-lg p-4;
+  @apply bg-gray-800/80 border border-yellow-600 rounded-lg p-6;
   @apply shadow-lg transition-all duration-200;
+  @apply w-full;
 }
 
 .warningHeader {
-  @apply flex items-center mb-2;
+  @apply flex items-center mb-3;
 }
 
 .warningIcon {
@@ -118,7 +119,7 @@ defineExpose({
 }
 
 .progressBarContainer {
-  @apply w-full h-2 bg-gray-700 rounded-full mb-2;
+  @apply w-full h-3 bg-gray-700 rounded-full mb-2;
   @apply overflow-hidden;
 }
 
