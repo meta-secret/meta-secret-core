@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
 import { AppState } from '@/stores/app-state';
+import { ref } from 'vue';
 
 const jsAppState = AppState();
 const vaultName = ref(jsAppState.getVaultName());
+const signUpProcessing = ref(false);
 
 const generate_user_creds = async () => {
   await jsAppState.appManager.generate_user_creds(vaultName.value);
@@ -11,6 +12,7 @@ const generate_user_creds = async () => {
 };
 
 const signUp = async () => {
+  signUpProcessing.value = true;
   await jsAppState.appManager.sign_up();
   window.location.reload();
 };
@@ -66,6 +68,10 @@ const signUp = async () => {
         <label :class="$style.statusLabel">Vault doesn't exist, let's create one!</label>
         <button :class="$style.actionButton" @click="signUp">Create</button>
       </div>
+    </div>
+
+    <div v-if="signUpProcessing" class="text-center mt-8">
+      <p class="text-gray-400">Creating Vault...</p>
     </div>
   </div>
 </template>
