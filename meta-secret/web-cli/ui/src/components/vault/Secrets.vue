@@ -59,7 +59,7 @@ const copyToClipboard = async (metaPassId: MetaPasswordId) => {
       if (copySuccess.value === metaPassId.id()) {
         copySuccess.value = null;
       }
-    }, 2000);
+    }, 5000);
   } catch (err) {
     console.error('Failed to copy: ', err);
   }
@@ -257,14 +257,14 @@ const toggleAddForm = () => {
 }
 
 .showButton {
-  @apply bg-orange-500 hover:bg-orange-600 text-sm text-white py-1.5 px-3 rounded-md;
-  @apply dark:bg-orange-600 dark:hover:bg-orange-700;
+  @apply bg-gray-500 hover:bg-gray-600 text-sm text-white py-1.5 px-3 rounded-md;
+  @apply dark:bg-gray-600 dark:hover:bg-gray-700;
   @apply transition-colors duration-200;
 }
 
 .copyButton {
-  @apply bg-blue-500 hover:bg-blue-600 text-sm text-white py-1.5 px-3 rounded-md;
-  @apply dark:bg-blue-600 dark:hover:bg-blue-700;
+  @apply bg-slate-400 hover:bg-slate-500 text-sm text-white py-1.5 px-3 rounded-md;
+  @apply dark:bg-slate-500 dark:hover:bg-slate-600;
   @apply transition-colors duration-200;
 }
 
