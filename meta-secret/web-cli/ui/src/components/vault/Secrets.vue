@@ -28,6 +28,7 @@ const addPassword = async () => {
   newPassword.value = '';
   newPassDescription.value = '';
   showAddForm.value = false;
+  await appState.updateState();
   loadPasswords();
 };
 
