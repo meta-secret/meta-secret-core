@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import { MetaPasswordId, PlainPassInfo } from 'meta-secret-web-cli';
 import { AppState } from '@/stores/app-state';
 
@@ -12,6 +12,16 @@ const currentSecret = ref<any>(null);
 const currentSecretId = ref<any>(null);
 
 const showAddForm = ref(false);
+const passwords = ref<any[]>([]);
+
+const loadPasswords = async () => {
+  const metaSecretState = await appState.value.appManager.get_state();
+  passwords.value = metaSecretState.as_vault().as_member().vault_data().secrets();
+};
+
+onMounted(async () => {
+  await loadPasswords();
+});
 
 const addPassword = async () => {
   const pass = new PlainPassInfo(newPassDescription.value, newPassword.value);
@@ -19,6 +29,7 @@ const addPassword = async () => {
   newPassword.value = '';
   newPassDescription.value = '';
   showAddForm.value = false;
+  await loadPasswords();
 };
 
 const recover = async (metaPassId: MetaPasswordId) => {
@@ -34,11 +45,6 @@ const showRecovered = async (metaPassId: MetaPasswordId) => {
   }
   currentSecret.value = await appState.value.appManager.show_recovered(metaPassId);
   currentSecretId.value = id;
-};
-
-const metaPasswords = async () => {
-  const metaSecretState = await appState.value.appManager.get_state();
-  return metaSecretState.as_vault().as_member().vault_data().secrets();
 };
 
 const toggleAddForm = () => {
@@ -58,10 +64,10 @@ const toggleAddForm = () => {
       </button>
     </div>
 
-    <div v-if="metaPasswords().length === 0" :class="$style.emptyState">No secrets added yet</div>
+    <div v-if="passwords.length === 0" :class="$style.emptyState">No secrets added yet</div>
 
     <ul v-else :class="$style.secretsList">
-      <li v-for="secret in metaPasswords()" :key="secret.id()" :class="$style.secretListItem">
+      <li v-for="secret in passwords" :key="secret.id()" :class="$style.secretListItem">
         <div :class="$style.secretHeader">
           <div :class="$style.secretInfo">
             <div :class="$style.secretName">
@@ -71,9 +77,11 @@ const toggleAddForm = () => {
           </div>
           <div :class="$style.secretActions">
             <button :class="$style.recoveryButton" @click="recover(secret)">Recovery Request</button>
+
             <button :class="$style.showButton" @click="showRecovered(secret)">
               {{ currentSecretId === secret.id() ? 'Hide' : 'Show' }}
             </button>
+
           </div>
         </div>
 
