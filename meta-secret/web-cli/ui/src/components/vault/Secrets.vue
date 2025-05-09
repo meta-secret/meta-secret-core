@@ -34,6 +34,8 @@ const addPassword = async () => {
 
 const recover = async (metaPassId: MetaPasswordId) => {
   await appState.appManager.recover_js(metaPassId);
+  await appState.updateState();
+  loadPasswords();
 };
 
 const showRecovered = async (metaPassId: MetaPasswordId) => {
