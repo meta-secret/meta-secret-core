@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { onMounted, ref } from 'vue';
 import { MetaPasswordId, PlainPassInfo } from 'meta-secret-web-cli';
 import { AppState } from '@/stores/app-state';
 
@@ -47,11 +47,9 @@ const showRecovered = async (metaPassId: MetaPasswordId) => {
   currentSecretId.value = id;
 };
 
-const isRecovered = async (metaPassId: MetaPasswordId) => {
-  let maybeCompletedClaim = await appState.appManager.find_claim_by_pass_id(metaPassId);
-  const isRecovered = maybeCompletedClaim !== undefined;
-  console.log("maybeCompletedClaim!!!!!!!!!!!!!!!!!!!!!!!", maybeCompletedClaim, "recoverd: ", isRecovered);
-  return isRecovered;
+const isRecovered = (metaPassId: MetaPasswordId) => {
+  const maybeCompletedClaim = appState.currState.as_vault().as_member().find_recovery_claim(metaPassId);
+  return maybeCompletedClaim !== undefined;
 };
 
 const toggleAddForm = () => {

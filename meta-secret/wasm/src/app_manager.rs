@@ -171,39 +171,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
             return None;
         };
 
-        let ss_log_data = &member.ss_claims;
-
-        let mut claim_id = None;
-        for (_, claim) in ss_log_data.claims.iter() {
-            let SecretDistributionType::Recover = claim.distribution_type else {
-                continue;
-            };
-
-            let claim_pass_id = &claim.dist_claim_id.pass_id;
-
-            if !pass_id.eq(claim_pass_id) {
-                continue;
-            }
-
-            match claim.status.status() {
-                SsDistributionStatus::Pending => {
-                    claim_id = None;
-                    break;
-                }
-                SsDistributionStatus::Sent => {
-                    //bail!("Claim is in sent state");
-                    // TODO There is a bug, that claim never changes state to delivered
-                    claim_id = Some(claim.id.clone());
-                    break;
-                }
-                SsDistributionStatus::Delivered => {
-                    claim_id = Some(claim.id.clone());
-                    break;
-                }
-            }
-        }
-
-        claim_id
+        member.ss_claims.find_recovery_claim(pass_id)
     }
 
     #[instrument(name = "MetaClientService", skip_all)]
