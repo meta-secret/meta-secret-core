@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia';
-import init from 'meta-secret-web-cli';
-import { ApplicationStateInfo, WasmApplicationManager } from 'meta-secret-web-cli';
+import init, { ApplicationStateInfo, WasmApplicationManager, WasmApplicationState } from 'meta-secret-web-cli';
 
 export const AppState = defineStore('app_state', {
   state: () => {
@@ -8,32 +7,30 @@ export const AppState = defineStore('app_state', {
 
     return {
       appManager: WasmApplicationManager,
-      stateInfo: ApplicationStateInfo.Local,
+      currState: WasmApplicationState,
     };
   },
 
   getters: {
-    currentStateInfo: (state) => state.stateInfo,
-    
+    currentState: (state) => state.currState,
+
     // Helper methods for state comparisons
-    isLocal: (state) => state.stateInfo === ApplicationStateInfo.Local,
-    isVaultNotExists: (state) => state.stateInfo === ApplicationStateInfo.VaultNotExists,
-    isMember: (state) => state.stateInfo === ApplicationStateInfo.Member,
-    isOutsider: (state) => state.stateInfo === ApplicationStateInfo.Outsider,
+    isLocal: (state) => state.currState.as_info() === ApplicationStateInfo.Local,
+    isVaultNotExists: (state) => state.currState.as_info() === ApplicationStateInfo.VaultNotExists,
+    isMember: (state) => state.currState.as_info() === ApplicationStateInfo.Member,
+    isOutsider: (state) => state.currState.as_info() === ApplicationStateInfo.Outsider,
   },
 
   actions: {
     async appStateInit() {
       console.log('Js: App state, start initialization');
-      
+
       await init();
       const appManager = await WasmApplicationManager.init_wasm();
       console.log('Js: Initial App State!!!!');
 
       this.appManager = appManager;
-      
-      // Update state info after initialization
-      await this.updateStateInfo();
+      await this.updateState();
 
       // Temporary disabled: reactive app state!
       /*const subscribe = async (appManager: WasmApplicationManager) => {
@@ -47,15 +44,15 @@ export const AppState = defineStore('app_state', {
       subscribe(appManager).then(() => console.log('Finished subscribing'));*/
     },
 
-    async updateStateInfo() {
-      const currState = await this.appManager.get_state();
-      this.stateInfo = currState.as_info();
-      return this.stateInfo;
+    async updateState() {
+      this.currState = await this.appManager.get_state();
+      return this.currState;
     },
 
-    async getVaultName() {
-      const currState = await this.appManager.get_state();
-      if (currState.as_info() == ApplicationStateInfo.Local) {
+    getVaultName() {
+      const currState = this.currState;
+      const currStateInfo = this.currState.as_info();
+      if (currStateInfo === ApplicationStateInfo.Local) {
         return '';
       }
 

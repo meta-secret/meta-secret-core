@@ -1,12 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { AppState } from '@/stores/app-state';
-import { ApplicationStateInfo } from '../../../../pkg';
 
 const jsAppState = AppState();
-const vaultName = ref('');
-const app_state_info = ref(ApplicationStateInfo.Local);
-const initialized = ref(false);
+const vaultName = ref(jsAppState.getVaultName());
 
 const generate_user_creds = async () => {
   await jsAppState.appManager.generate_user_creds(vaultName.value);
@@ -17,72 +14,59 @@ const signUp = async () => {
   await jsAppState.appManager.sign_up();
   window.location.reload();
 };
-
-onMounted(async () => {
-  vaultName.value = await jsAppState.getVaultName();
-  app_state_info.value = await jsAppState.stateInfo();
-  initialized.value = true;
-});
 </script>
 
 <template>
-  <div v-if="initialized">
-    <div :class="$style.container">
-      <div :class="$style.header">
-        <p v-if="app_state_info == ApplicationStateInfo.VaultNotExists && vaultName" :class="$style.titleText">
-          Creating new vault
-        </p>
-        <p v-else-if="app_state_info == ApplicationStateInfo.Outsider && vaultName" :class="$style.titleText">
-          Joining existing vault: <span :class="$style.vaultNameHighlight">{{ vaultName }}</span>
-        </p>
-      </div>
+  <div :class="$style.container">
+    <div :class="$style.header">
+      <p v-if="jsAppState.isVaultNotExists" :class="$style.titleText">Creating new vault</p>
+      <p v-else-if="jsAppState.isOutsider" :class="$style.titleText">
+        Joining existing vault: <span :class="$style.vaultNameHighlight">{{ vaultName }}</span>
+      </p>
+    </div>
 
-      <div v-if="app_state_info != ApplicationStateInfo.Local && vaultName" :class="$style.vaultInfoContainer">
-        <div :class="$style.vaultInfoRow">
-          <div :class="$style.vaultInfoText">
-            <span :class="$style.vaultInfoLabel">Vault Name:</span>
-            <span :class="$style.vaultInfoValue">{{ vaultName }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div v-if="app_state_info == ApplicationStateInfo.Local" :class="$style.formContainer">
-        <div :class="$style.labelContainer">
-          <label :class="$style.formLabel">Enter vault name:</label>
-        </div>
-
-        <div :class="$style.inputWrapper">
-          <div :class="$style.inputContainer">
-            <span :class="$style.atSymbol">@</span>
-            <input :class="$style.vaultNameInput" type="text" placeholder="vault name" v-model="vaultName" />
-          </div>
-          <button :class="$style.actionButton" @click="generate_user_creds">Set Vault Name</button>
-        </div>
-
-        <div v-if="vaultName" :class="$style.vaultInfoMessage">
-          <p>
-            This will create a new vault named <span :class="$style.vaultNameHighlight">{{ vaultName }}</span>
-          </p>
-        </div>
-      </div>
-
-      <div v-if="app_state_info == ApplicationStateInfo.Outsider" :class="$style.optionContainer">
-        <div :class="$style.statusContainer">
-          <label :class="$style.statusLabel">Vault already exists, would you like to join?</label>
-          <button :class="$style.actionButton" @click="signUp">Join</button>
-        </div>
-      </div>
-
-      <div v-if="app_state_info == ApplicationStateInfo.VaultNotExists" :class="$style.optionContainer">
-        <div :class="$style.statusContainer">
-          <label :class="$style.statusLabel">Vault doesn't exist, let's create one!</label>
-          <button :class="$style.actionButton" @click="signUp">Create</button>
+    <div v-if="!jsAppState.isLocal" :class="$style.vaultInfoContainer">
+      <div :class="$style.vaultInfoRow">
+        <div :class="$style.vaultInfoText">
+          <span :class="$style.vaultInfoLabel">Vault Name:</span>
+          <span :class="$style.vaultInfoValue">{{ vaultName }}</span>
         </div>
       </div>
     </div>
-  </div>
-  <div v-else class="text-center mt-8">
-    <p class="text-gray-400">Loading Vault Status...</p>
+
+    <div v-if="jsAppState.isLocal" :class="$style.formContainer">
+      <div :class="$style.labelContainer">
+        <label :class="$style.formLabel">Enter vault name:</label>
+      </div>
+
+      <div :class="$style.inputWrapper">
+        <div :class="$style.inputContainer">
+          <span :class="$style.atSymbol">@</span>
+          <input :class="$style.vaultNameInput" type="text" placeholder="vault name" v-model="vaultName" />
+        </div>
+        <button :class="$style.actionButton" @click="generate_user_creds">Set Vault Name</button>
+      </div>
+
+      <div v-if="vaultName" :class="$style.vaultInfoMessage">
+        <p>
+          This will create a new vault named <span :class="$style.vaultNameHighlight">{{ vaultName }}</span>
+        </p>
+      </div>
+    </div>
+
+    <div v-if="jsAppState.isOutsider" :class="$style.optionContainer">
+      <div :class="$style.statusContainer">
+        <label :class="$style.statusLabel">Vault already exists, would you like to join?</label>
+        <button :class="$style.actionButton" @click="signUp">Join</button>
+      </div>
+    </div>
+
+    <div v-if="jsAppState.isVaultNotExists" :class="$style.optionContainer">
+      <div :class="$style.statusContainer">
+        <label :class="$style.statusLabel">Vault doesn't exist, let's create one!</label>
+        <button :class="$style.actionButton" @click="signUp">Create</button>
+      </div>
+    </div>
   </div>
 </template>
 

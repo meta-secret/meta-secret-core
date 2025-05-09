@@ -1,13 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref } from 'vue';
 import { AppState } from '@/stores/app-state';
 
 const appState = AppState();
-const vaultName = ref('');
-
-onMounted(async () => {
-  vaultName.value = await appState.getVaultName();
-});
+const vaultName = ref(appState.getVaultName());
 </script>
 
 <template>
