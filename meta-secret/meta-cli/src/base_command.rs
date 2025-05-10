@@ -23,11 +23,15 @@ pub struct DbContext<Repo: KvLogEventRepo> {
 
 pub struct BaseCommand {
     pub db_name: String,
+    pub api_url: ApiUrl
 }
 
 impl BaseCommand {
     pub fn new(db_name: String) -> Self {
-        Self { db_name }
+        Self { 
+            db_name,
+            api_url: ApiUrl::prod()
+        }
     }
 
     /// Opens an existing database and returns a context with repo, persistent object and credentials
@@ -125,7 +129,7 @@ impl BaseCommand {
         let device_creds = Arc::new(user_creds.device_creds.clone());
 
         let sync_protocol = HttpSyncProtocol {
-            api_url: ApiUrl::prod(),
+            api_url: self.api_url.clone(),
         };
 
         let sync_gateway = Arc::new(SyncGateway {

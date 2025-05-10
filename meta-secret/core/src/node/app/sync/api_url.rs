@@ -8,17 +8,17 @@ pub struct ApiUrl {
 }
 
 impl ApiUrl {
-    pub fn get(port: u32, run_mode: ClientRunMode) -> Self {
+    pub fn get(run_mode: ClientRunMode) -> Self {
         match run_mode {
-            ClientRunMode::Dev => ApiUrl::dev(port),
+            ClientRunMode::Dev => ApiUrl::dev(),
             ClientRunMode::Prod => ApiUrl::prod(),
         }
     }
 
-    pub fn dev(port: u32) -> Self {
+    pub fn dev() -> Self {
         ApiUrl {
-            url: "http://localhost",
-            port,
+            url: "https://localhost",
+            port: 443,
             run_mode: ClientRunMode::Dev,
         }
     }

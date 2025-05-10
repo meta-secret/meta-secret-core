@@ -53,7 +53,7 @@ pub async extern "C" fn sign_up(user_name: *const c_char) -> *mut c_char {
         .unwrap();
 
     let sync_protocol = HttpSyncProtocol {
-        api_url: ApiUrl::dev(3000),
+        api_url: ApiUrl::dev(),
     };
 
     let client_gw = Arc::new(SyncGateway {
@@ -144,7 +144,7 @@ mod tests {
 
         use reqwest::Client;
         let client = Client::new();
-        let url = ApiUrl::dev(3000).get_url() + "/meta_request";
+        let url = ApiUrl::dev().get_url() + "/meta_request";
 
         let request_builder = client
             .get(url.as_str())

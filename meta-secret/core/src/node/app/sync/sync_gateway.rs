@@ -110,16 +110,6 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
             self.sync.send(vault_sync_request).await?.to_data()?;
 
         for new_event in data_sync_events {
-            if let GenericKvLogEvent::VaultStatus(vault_status) = &new_event {
-                let maybe_local_vault_status_id =
-                    self.p_obj.find_tail_id(vault_status.obj_id()).await?;
-
-                if let Some(local_vault_status_id) = maybe_local_vault_status_id {
-                    if local_vault_status_id.eq(&vault_status.obj_id()) {
-                        continue;
-                    }
-                }
-            }
             debug!(
                 "id: {:?}. Sync gateway. New event from server: {:?}",
                 self.id, new_event

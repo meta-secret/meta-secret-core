@@ -35,4 +35,4 @@ jobs:
       - name: run tests
         working-directory: ./meta-secret
         run: |
-          earthly --allow-privileged --ci --remote-cache=ghcr.io/meta-secret/meta-secret-core:cache --push +test
+          earthly --allow-privileged --ci --remote-cache=cypherkitty/meta-secret-core:cache --push +test

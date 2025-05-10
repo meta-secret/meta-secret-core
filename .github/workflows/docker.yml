@@ -39,7 +39,7 @@ jobs:
         run: |
           earthly \
             --ci \
-            --remote-cache=ghcr.io/meta-secret/meta-secret-core:cache \
+            --remote-cache=cypherkitty/meta-secret-core:cache \
             --push \
             +web-build
 
@@ -49,6 +49,6 @@ jobs:
           earthly \
             --allow-privileged \
             --ci \
-            --remote-cache=ghcr.io/meta-secret/meta-secret-core:cache \
+            --remote-cache=cypherkitty/meta-secret-core:cache \
             --push \
             +build-meta-server-image
