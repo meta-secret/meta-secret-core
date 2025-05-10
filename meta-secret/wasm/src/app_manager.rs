@@ -15,9 +15,7 @@ use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::meta_tracing::client_span;
 use meta_secret_core::node::common::model::device::common::DeviceName;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
-use meta_secret_core::node::common::model::secret::{
-    ClaimId, SecretDistributionType, SsDistributionStatus, SsLogData,
-};
+use meta_secret_core::node::common::model::secret::{ClaimId};
 use meta_secret_core::node::common::model::user::common::UserDataOutsiderStatus;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};

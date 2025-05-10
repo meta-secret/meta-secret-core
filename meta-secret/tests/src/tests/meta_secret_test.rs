@@ -164,7 +164,7 @@ mod test {
                 .state
                 .vd
                 .p_vault
-                .get_vault(&member.user_data)
+                .get_vault(member.user_data.vault_name())
                 .await?;
 
             assert_eq!(2, vd_vault_obj.to_data().users.len());

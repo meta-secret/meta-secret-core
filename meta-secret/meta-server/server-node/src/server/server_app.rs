@@ -121,7 +121,7 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
         let server_creds = init_result?;
 
         match sync_message {
-            SyncRequest::Read(read_request) => match read_request {
+            SyncRequest::Read(read_request) => match *read_request {
                 ReadSyncRequest::Vault(request) => {
                     let new_events = self.data_sync.vault_replication(request).await?;
                     Ok(DataSyncResponse::Data(DataEventsResponse(new_events)))
@@ -191,12 +191,16 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                     Ok(data_sync_response)
                 }
             },
-            SyncRequest::Write(WriteSyncRequest::Event(event)) => {
-                info!("Received new event: {:?}", event);
-                self.data_sync
-                    .handle_write(server_creds.device, event)
-                    .await?;
-                Ok(DataSyncResponse::Empty)
+            SyncRequest::Write(write_request) => {
+                match *write_request {
+                    WriteSyncRequest::Event(event) => {
+                        info!("Received new event: {:?}", event);
+                        self.data_sync
+                            .handle_write(server_creds.device, event)
+                            .await?;
+                        Ok(DataSyncResponse::Empty)
+                    }
+                }
             }
         }
     }

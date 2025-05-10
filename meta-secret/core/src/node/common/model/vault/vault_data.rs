@@ -8,7 +8,7 @@ use crate::node::db::events::vault::vault_log_event::{
     AddMetaPassEvent, VaultActionEvents, VaultActionUpdateEvent,
 };
 use crate::secret::data_block::common::SharedSecretConfig;
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use std::collections::{HashMap, HashSet};
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -190,6 +190,11 @@ impl VaultAggregate {
                         self.vault = self.vault.add_secret(meta_pass_id.clone());
                     }
                 }
+                VaultActionUpdateEvent::AddToPending { candidate } => {
+                    let pending =
+                        UserMembership::Outsider(UserDataOutsider::pending(candidate.clone()));
+                    self.vault = self.vault.update_membership(pending);
+                }
             }
         }
 
@@ -282,7 +287,7 @@ mod test {
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::common::model::meta_pass::MetaPasswordId;
     use crate::node::common::model::user::common::{
-        UserDataMember, UserDataOutsider, UserDataOutsiderStatus, UserMembership,
+        UserDataMember, UserDataOutsider, UserMembership,
     };
     use crate::node::common::model::vault::vault_data::{VaultAggregate, VaultData};
     use crate::node::db::events::vault::vault_log_event::{
@@ -303,10 +308,8 @@ mod test {
         });
 
         let client_b_creds = fixture.state.user_creds.client_b;
-        let client_b_membership = UserMembership::Outsider(UserDataOutsider {
-            user_data: client_b_creds.user(),
-            status: UserDataOutsiderStatus::Pending,
-        });
+        let client_b_membership =
+            UserMembership::Outsider(UserDataOutsider::pending(client_b_creds.user()));
 
         let vault_data = VaultData::from(UserDataMember::from(client_creds.user()));
         let cfg = vault_data.sss_cfg();

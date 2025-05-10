@@ -66,8 +66,8 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
         })
     }
 
-    pub async fn get_vault(&self, user_data: &UserData) -> Result<VaultObject> {
-        let maybe_vault_obj = self.get_vault_object(user_data.vault_name()).await?;
+    pub async fn get_vault(&self, vault_name: VaultName) -> Result<VaultObject> {
+        let maybe_vault_obj = self.get_vault_object(vault_name).await?;
         match maybe_vault_obj {
             None => {
                 bail!("Vault not found")
@@ -452,7 +452,7 @@ mod tests {
         let p_obj = registry.state.p_obj.client.clone();
 
         // Test non-existent vault
-        let result = p_vault.get_vault(&user).await;
+        let result = p_vault.get_vault(user.vault_name()).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Vault not found"));
 
@@ -461,7 +461,7 @@ mod tests {
         let vault_obj = VaultObject::sign_up(user.vault_name(), member);
         p_obj.repo.save(vault_obj.clone()).await?;
 
-        let result = p_vault.get_vault(&user).await?;
+        let result = p_vault.get_vault(user.vault_name()).await?;
         assert_eq!(result.to_data().vault_name, user.vault_name());
 
         Ok(())

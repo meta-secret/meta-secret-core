@@ -152,7 +152,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                     }
                     VaultStatus::Member(member) => {
                         let p_vault = PersistentVault::from(self.p_obj());
-                        let vault = p_vault.get_vault(member.user()).await?.to_data();
+                        let vault = p_vault.get_vault(member.user().vault_name()).await?.to_data();
                         let vault_member = VaultMember { member, vault };
                         let distributor = MetaDistributor {
                             p_obj: self.p_obj.clone(),
@@ -270,7 +270,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                         ApplicationState::Vault(VaultFullInfo::Outsider(outsider))
                     }
                     VaultStatus::Member(member_user) => {
-                        let vault = p_vault.get_vault(&member_user.user_data).await?;
+                        let vault = p_vault.get_vault(member_user.user_data.vault_name()).await?;
 
                         let ss_claims = {
                             let p_ss = PersistentSharedSecret::from(self.p_obj());

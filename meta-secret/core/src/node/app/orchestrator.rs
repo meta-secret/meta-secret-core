@@ -126,7 +126,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
 
     async fn get_vault(&self, member: UserDataMember) -> Result<VaultData> {
         let p_vault = PersistentVault::from(self.p_obj());
-        let vault = p_vault.get_vault(member.user()).await?.to_data();
+        let vault = p_vault.get_vault(member.user().vault_name()).await?.to_data();
         Ok(vault)
     }
 
