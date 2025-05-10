@@ -36,7 +36,7 @@ pub enum ApplicationState {
 pub enum VaultFullInfo {
     NotExists(UserData),
     Outsider(UserDataOutsider),
-    Member(UserMemberFullInfo),
+    Member(Box<UserMemberFullInfo>),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -139,7 +139,7 @@ impl WasmVaultFullInfo {
 
     pub fn as_member(&self) -> WasmUserMemberFullInfo {
         if let VaultFullInfo::Member(member) = &self.0 {
-            WasmUserMemberFullInfo(member.clone())
+            WasmUserMemberFullInfo(*member.clone())
         } else {
             panic!("not a member vault info")
         }

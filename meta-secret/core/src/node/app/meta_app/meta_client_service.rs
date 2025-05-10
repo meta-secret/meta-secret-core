@@ -294,7 +294,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                             ss_claims,
                             vault_events: vault_action_events,
                         };
-                        ApplicationState::Vault(VaultFullInfo::Member(user_full_info))
+                        ApplicationState::Vault(VaultFullInfo::Member(Box::from(user_full_info)))
                     }
                 }
             }
