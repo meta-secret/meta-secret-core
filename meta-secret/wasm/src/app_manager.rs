@@ -15,7 +15,7 @@ use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::meta_tracing::client_span;
 use meta_secret_core::node::common::model::device::common::DeviceName;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
-use meta_secret_core::node::common::model::secret::{ClaimId, SecretDistributionType, SsDistributionStatus};
+use meta_secret_core::node::common::model::secret::{ClaimId};
 use meta_secret_core::node::common::model::user::common::UserDataOutsiderStatus;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
@@ -47,13 +47,15 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
         }
     }
 
-    pub async fn init(client_repo: Arc<Repo>) -> Result<ApplicationManager<Repo, HttpSyncProtocol>> {
+    pub async fn init(
+        client_repo: Arc<Repo>,
+    ) -> Result<ApplicationManager<Repo, HttpSyncProtocol>> {
         info!("Initialize application state manager");
 
-        let sync_protocol = Arc::new(HttpSyncProtocol{
+        let sync_protocol = Arc::new(HttpSyncProtocol {
             api_url: ApiUrl::prod(),
         });
-        
+
         let app_manager = Self::client_setup(client_repo, sync_protocol.clone()).await?;
 
         Ok(app_manager)
@@ -65,7 +67,8 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
         self.meta_client_service.send_request(creds).await.unwrap();
     }
 
-    pub async fn sign_up(&self) -> Result<()> {
+    #[instrument(skip(self))]
+    pub async fn sign_up(&self) -> Result<ApplicationState> {
         info!("Sign Up");
         match self.get_state().await {
             ApplicationState::Local(_) => {
@@ -73,9 +76,13 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
             }
             ApplicationState::Vault(vault_info) => {
                 let vault_name = match vault_info {
-                    VaultFullInfo::NotExists(user) => user.vault_name,
+                    VaultFullInfo::NotExists(user) => {
+                        user.vault_name
+                    }
                     VaultFullInfo::Outsider(outsider) => match outsider.status {
-                        UserDataOutsiderStatus::NonMember => outsider.user_data.vault_name,
+                        UserDataOutsiderStatus::NonMember => {
+                            outsider.user_data.vault_name
+                        },
                         UserDataOutsiderStatus::Pending => {
                             bail!("Sign up is not allowed in pending state");
                         }
@@ -88,25 +95,35 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
                     }
                 };
                 let sign_up = GenericAppStateRequest::SignUp(vault_name);
-                self.meta_client_service.send_request(sign_up).await?;
-                Ok(())
+                let new_state = self.meta_client_service.send_request(sign_up).await?;
+                info!("Sign Up. Completed");
+                Ok(new_state)
             }
         }
     }
 
     pub async fn cluster_distribution(&self, plain_pass_info: PlainPassInfo) {
         let request = GenericAppStateRequest::ClusterDistribution(plain_pass_info);
-        self.meta_client_service.send_request(request).await.unwrap();
+        self.meta_client_service
+            .send_request(request)
+            .await
+            .unwrap();
     }
 
     pub async fn recover_js(&self, meta_pass_id: MetaPasswordId) {
         let request = GenericAppStateRequest::Recover(meta_pass_id);
-        self.meta_client_service.send_request(request).await.unwrap();
+        self.meta_client_service
+            .send_request(request)
+            .await
+            .unwrap();
     }
 
     pub async fn get_state(&self) -> ApplicationState {
         let request = GenericAppStateRequest::GetState;
-        self.meta_client_service.send_request(request).await.unwrap()
+        self.meta_client_service
+            .send_request(request)
+            .await
+            .unwrap()
     }
 
     pub async fn accept_recover(&self, claim_id: ClaimId) -> Result<()> {
@@ -123,56 +140,42 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
             ApplicationState::Local(_) => {
                 bail!("Show recovered is not allowed in local state");
             }
-            ApplicationState::Vault(vault_info) => {
-                match vault_info {
-                    VaultFullInfo::NotExists(_) => {
-                        bail!("Show recovered is not allowed in not exists state");
-                    }
-                    VaultFullInfo::Outsider(_) => {
-                        bail!("Show recovered is not allowed in outsider state");
-                    }
-                    VaultFullInfo::Member(member_info) => {
-                        let mut claim_id = None;
-                        for (_, claim) in member_info.ss_claims.claims.iter() {
-                            let SecretDistributionType::Recover = claim.distribution_type else {
-                                continue;
-                            };
-                            
-                            match claim.status.status() {
-                                SsDistributionStatus::Pending => {}
-                                SsDistributionStatus::Sent => {
-                                    
-                                }
-                                SsDistributionStatus::Delivered => {}
-                            }
-                            
-                            let claim_pass_id = &claim.dist_claim_id.pass_id;
-                            
-                            if pass_id.eq(claim_pass_id) { 
-                                claim_id = Some(claim.id.clone());
-                                break;
-                            }
+            ApplicationState::Vault(vault_info) => match vault_info {
+                VaultFullInfo::NotExists(_) => {
+                    bail!("Show recovered is not allowed in not exists state");
+                }
+                VaultFullInfo::Outsider(_) => {
+                    bail!("Show recovered is not allowed in outsider state");
+                }
+                VaultFullInfo::Member(_) => {
+                    let claim_id = self.find_claim_by_pass_id(&pass_id).await;
+
+                    match claim_id {
+                        None => {
+                            bail!("Claim id not found");
                         }
+                        Some(claim_id) => {
+                            let recovery_handler = RecoveryHandler {
+                                p_obj: self.sync_gateway.p_obj.clone(),
+                            };
 
-                        match claim_id {
-                            None => {
-                                bail!("Claim id not found");
-                            }
-                            Some(claim_id) => {
-                                let recovery_handler = RecoveryHandler {
-                                    p_obj: self.sync_gateway.p_obj.clone(),
-                                };
-
-                                let pass = recovery_handler
-                                    .recover(user_creds, claim_id, pass_id)
-                                    .await?;
-                                Ok(pass)
-                            }
+                            let pass = recovery_handler
+                                .recover(user_creds, claim_id, pass_id)
+                                .await?;
+                            Ok(pass)
                         }
                     }
                 }
-            }
+            },
         }
+    }
+
+    pub async fn find_claim_by_pass_id(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
+        let ApplicationState::Vault(VaultFullInfo::Member(member)) = &self.get_state().await else {
+            return None;
+        };
+
+        member.ss_claims.find_recovery_claim(pass_id)
     }
 
     #[instrument(name = "MetaClientService", skip_all)]

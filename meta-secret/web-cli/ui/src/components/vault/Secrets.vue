@@ -1,39 +1,42 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { onMounted, ref } from 'vue';
 import { MetaPasswordId, PlainPassInfo } from 'meta-secret-web-cli';
 import { AppState } from '@/stores/app-state';
 
-const appState = ref<any>(AppState());
+const appState = AppState();
 
 const newPassword = ref('');
 const newPassDescription = ref('');
 
 const currentSecret = ref<any>(null);
 const currentSecretId = ref<any>(null);
+const copySuccess = ref<string | null>(null);
 
 const showAddForm = ref(false);
-const passwords = ref<any[]>([]);
+const passwords = ref<MetaPasswordId[]>([]);
 
-const loadPasswords = async () => {
-  const metaSecretState = await appState.value.appManager.get_state();
-  passwords.value = metaSecretState.as_vault().as_member().vault_data().secrets();
+const loadPasswords = () => {
+  passwords.value = appState.currState.as_vault().as_member().vault_data().secrets();
 };
 
-onMounted(async () => {
-  await loadPasswords();
+onMounted(() => {
+  loadPasswords();
 });
 
 const addPassword = async () => {
   const pass = new PlainPassInfo(newPassDescription.value, newPassword.value);
-  await appState.value.appManager.cluster_distribution(pass);
+  await appState.appManager.cluster_distribution(pass);
   newPassword.value = '';
   newPassDescription.value = '';
   showAddForm.value = false;
-  await loadPasswords();
+  await appState.updateState();
+  loadPasswords();
 };
 
 const recover = async (metaPassId: MetaPasswordId) => {
-  await appState.value.appManager.recover_js(metaPassId);
+  await appState.appManager.recover_js(metaPassId);
+  await appState.updateState();
+  loadPasswords();
 };
 
 const showRecovered = async (metaPassId: MetaPasswordId) => {
@@ -43,14 +46,33 @@ const showRecovered = async (metaPassId: MetaPasswordId) => {
     currentSecretId.value = null;
     return;
   }
-  currentSecret.value = await appState.value.appManager.show_recovered(metaPassId);
+  currentSecret.value = await appState.appManager.show_recovered(metaPassId);
   currentSecretId.value = id;
+};
+
+const copyToClipboard = async (metaPassId: MetaPasswordId) => {
+  try {
+    const secretText = await appState.appManager.show_recovered(metaPassId);
+    await navigator.clipboard.writeText(secretText);
+    copySuccess.value = metaPassId.id();
+    setTimeout(() => {
+      if (copySuccess.value === metaPassId.id()) {
+        copySuccess.value = null;
+      }
+    }, 5000);
+  } catch (err) {
+    console.error('Failed to copy: ', err);
+  }
+};
+
+const isRecovered = (metaPassId: MetaPasswordId) => {
+  const maybeCompletedClaim = appState.currState.as_vault().as_member().find_recovery_claim(metaPassId);
+  return maybeCompletedClaim !== undefined;
 };
 
 const toggleAddForm = () => {
   showAddForm.value = !showAddForm.value;
 };
-
 </script>
 
 <template>
@@ -76,12 +98,17 @@ const toggleAddForm = () => {
             <div :class="$style.secretId">ID: {{ secret.id() }}</div>
           </div>
           <div :class="$style.secretActions">
-            <button :class="$style.recoveryButton" @click="recover(secret)">Recovery Request</button>
-
-            <button :class="$style.showButton" @click="showRecovered(secret)">
-              {{ currentSecretId === secret.id() ? 'Hide' : 'Show' }}
-            </button>
-
+            <div v-if="isRecovered(secret)" :class="$style.buttonGroup">
+              <button :class="$style.showButton" @click="showRecovered(secret)">
+                {{ currentSecretId === secret.id() ? 'Hide' : 'Show' }}
+              </button>
+              <button :class="$style.copyButton" @click="copyToClipboard(secret)">
+                {{ copySuccess === secret.id() ? 'Copied!' : 'Copy' }}
+              </button>
+            </div>
+            <div v-else>
+              <button :class="$style.recoveryButton" @click="recover(secret)">Recovery Request</button>
+            </div>
           </div>
         </div>
 
@@ -149,19 +176,7 @@ const toggleAddForm = () => {
 }
 
 .secretActions {
-  @apply flex space-x-2;
-}
-
-.newPasswordCard {
-  @apply block max-w-md mx-auto px-6 py-5;
-  @apply bg-gray-50 dark:bg-gray-850 rounded-lg shadow-md;
-  @apply border border-gray-200 dark:border-gray-700;
-  @apply transition-all duration-200;
-}
-
-.cardTitle {
-  @apply text-lg font-medium text-gray-800 dark:text-gray-200 mb-4;
-  @apply border-b border-gray-200 dark:border-gray-700 pb-2;
+  @apply flex space-x-4;
 }
 
 .secretsTitle {
@@ -242,8 +257,14 @@ const toggleAddForm = () => {
 }
 
 .showButton {
-  @apply bg-orange-500 hover:bg-orange-600 text-sm text-white py-1.5 px-3 rounded-md;
-  @apply dark:bg-orange-600 dark:hover:bg-orange-700;
+  @apply bg-gray-500 hover:bg-gray-600 text-sm text-white py-1.5 px-3 rounded-md;
+  @apply dark:bg-gray-600 dark:hover:bg-gray-700;
+  @apply transition-colors duration-200;
+}
+
+.copyButton {
+  @apply bg-slate-400 hover:bg-slate-500 text-sm text-white py-1.5 px-3 rounded-md;
+  @apply dark:bg-slate-500 dark:hover:bg-slate-600;
   @apply transition-colors duration-200;
 }
 
@@ -305,5 +326,9 @@ const toggleAddForm = () => {
 
 .modalBody {
   @apply px-6 py-5;
+}
+
+.buttonGroup {
+  @apply flex items-center space-x-6;
 }
 </style>

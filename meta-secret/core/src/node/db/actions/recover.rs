@@ -41,7 +41,7 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
             }
             VaultStatus::Member(member) => {
                 let vault_member = vault_repo
-                    .get_vault(member.user())
+                    .get_vault(member.user().vault_name())
                     .await?
                     .to_data()
                     .to_vault_member(member)?;

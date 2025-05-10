@@ -1,10 +1,11 @@
 use crate::node::common::model::device::common::DeviceData;
-use crate::node::common::model::secret::SsLogData;
+use crate::node::common::model::secret::{ClaimId, SsLogData};
 use crate::node::common::model::user::common::{UserData, UserDataOutsider};
 use crate::node::common::model::vault::vault::VaultMember;
 use crate::node::common::model::vault::vault_data::WasmVaultData;
 use crate::node::db::events::vault::vault_log_event::VaultActionEvents;
 use wasm_bindgen::prelude::wasm_bindgen;
+use crate::node::common::model::meta_pass::MetaPasswordId;
 
 pub mod crypto;
 pub mod device;
@@ -35,7 +36,7 @@ pub enum ApplicationState {
 pub enum VaultFullInfo {
     NotExists(UserData),
     Outsider(UserDataOutsider),
-    Member(UserMemberFullInfo),
+    Member(Box<UserMemberFullInfo>),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -138,7 +139,7 @@ impl WasmVaultFullInfo {
 
     pub fn as_member(&self) -> WasmUserMemberFullInfo {
         if let VaultFullInfo::Member(member) = &self.0 {
-            WasmUserMemberFullInfo(member.clone())
+            WasmUserMemberFullInfo(*member.clone())
         } else {
             panic!("not a member vault info")
         }
@@ -159,6 +160,10 @@ impl WasmVaultFullInfo {
 impl WasmUserMemberFullInfo {
     pub fn vault_data(&self) -> WasmVaultData {
         WasmVaultData::from(self.0.member.vault.clone())
+    }
+    
+    pub fn find_recovery_claim(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
+        self.0.ss_claims.find_recovery_claim(pass_id)
     }
 }
 

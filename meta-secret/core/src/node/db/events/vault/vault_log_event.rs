@@ -102,25 +102,37 @@ impl VaultActionEvents {
     }
 
     pub fn apply(mut self, upd_event: VaultActionUpdateEvent) -> Self {
-        let request = match &upd_event {
+        match &upd_event {
             VaultActionUpdateEvent::UpdateMembership { request, .. } => {
-                VaultActionRequestEvent::JoinCluster(request.clone())
+                let request = VaultActionRequestEvent::JoinCluster(request.clone());
+                let removed = self.requests.remove(&request);
+                // if corresponding request exists we can apply the update
+                if removed {
+                    self.updates.insert(upd_event);
+                } else {
+                    info!(
+                        "Corresponding request not found: {:?}, update won't be applied",
+                        request
+                    );
+                }
             }
             VaultActionUpdateEvent::AddMetaPass(event) => {
-                VaultActionRequestEvent::AddMetaPass(event.clone())
+                let request = VaultActionRequestEvent::AddMetaPass(event.clone());
+                let removed = self.requests.remove(&request);
+                // if corresponding request exists we can apply the update
+                if removed {
+                    self.updates.insert(upd_event);
+                } else {
+                    info!(
+                        "Corresponding request not found: {:?}, update won't be applied",
+                        request
+                    );
+                }
+            }
+            VaultActionUpdateEvent::AddToPending { .. } => {
+                self.updates.insert(upd_event);
             }
         };
-
-        let removed = self.requests.remove(&request);
-        // if corresponding request exists we can apply the update
-        if removed {
-            self.updates.insert(upd_event);
-        } else {
-            info!(
-                "Corresponding request not found: {:?}, update won't be applied",
-                request
-            );
-        }
 
         self
     }
@@ -188,6 +200,8 @@ impl VaultActionRequestEvent {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum VaultActionUpdateEvent {
+    /// There is no corresponding request for this event (server prematurely adds candidate to pending list)
+    AddToPending { candidate: UserData },
     /// When the device becomes a member of the vault, it can change membership of other members
     UpdateMembership {
         request: JoinClusterEvent,
@@ -199,22 +213,16 @@ pub enum VaultActionUpdateEvent {
 }
 
 impl VaultActionUpdateEvent {
-    pub fn sender(&self) -> &UserDataMember {
-        match self {
-            VaultActionUpdateEvent::UpdateMembership { sender, .. } => sender,
-            VaultActionUpdateEvent::AddMetaPass(AddMetaPassEvent { sender, .. }) => sender,
-        }
-    }
-}
-
-impl VaultActionUpdateEvent {
     pub fn vault_name(&self) -> VaultName {
         match self {
             VaultActionUpdateEvent::UpdateMembership { update, .. } => {
-                update.user_data().vault_name
+                update.user_data().vault_name()
             }
             VaultActionUpdateEvent::AddMetaPass(AddMetaPassEvent { sender, .. }) => {
                 sender.user_data.vault_name()
+            }
+            VaultActionUpdateEvent::AddToPending { candidate } => {
+                candidate.vault_name()
             }
         }
     }
@@ -234,6 +242,7 @@ impl VaultActionUpdateEvent {
         let name = match self {
             VaultActionUpdateEvent::UpdateMembership { .. } => "UpdateMembership",
             VaultActionUpdateEvent::AddMetaPass { .. } => "AddMetaPassword",
+            VaultActionUpdateEvent::AddToPending { .. } => "AddToPending",
         };
 
         name.to_string()

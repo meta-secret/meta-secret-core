@@ -17,7 +17,7 @@ use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use anyhow::{Ok, Result, bail};
 use derive_more::From;
-use log::info;
+use tracing::info;
 use tracing_attributes::instrument;
 
 #[derive(From)]

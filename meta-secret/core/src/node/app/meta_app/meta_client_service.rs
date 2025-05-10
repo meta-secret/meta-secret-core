@@ -27,6 +27,7 @@ use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::secret::MetaDistributor;
 use anyhow::Result;
+use log::error;
 
 pub struct MetaClientService<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub data_transfer: Arc<MetaClientDataTransfer>,
@@ -49,9 +50,20 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
 
         loop {
             let request = self.data_transfer.dt.service_receive().await?;
-            let new_app_state = self
+            let new_app_state_result = self
                 .handle_client_request(service_state.app_state, request)
-                .await?;
+                .await;
+
+            let new_app_state = match new_app_state_result {
+                Ok(new_state) => {
+                    new_state
+                }
+                Err(err) => {
+                    error!("Error while handling request: {:?}", err);
+                    bail!("Error while handling request: {:?}", err);
+                }
+            };
+            
             service_state.app_state = new_app_state;
             //self.state_provider.push(&service_state.app_state).await?;
             let response_state = GenericAppStateResponse::AppState(service_state.app_state.clone());
@@ -61,6 +73,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         }
     }
 
+    #[instrument(skip(self))]
     pub async fn handle_client_request(
         &self,
         app_state: ApplicationState,
@@ -79,6 +92,8 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                 self.get_user_creds(&request).await?;
             }
             GenericAppStateRequest::SignUp(_) => {
+                info!("Handle sign up request");
+                
                 let user_creds = self.get_user_creds(&request).await?;
 
                 self.sync_gateway.sync(user_creds.user()).await?;
@@ -96,8 +111,11 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                         self.sign_up(&user_creds).await?;
                     }
                     ApplicationState::Vault(VaultFullInfo::Outsider(outsider)) => {
+                        info!("Handle outsider sign up request");
+                        
                         match outsider.status {
                             UserDataOutsiderStatus::NonMember => {
+                                info!("Handle outsider NON_MEMBER sign up request");
                                 self.sign_up(&user_creds).await?;
                             }
                             UserDataOutsiderStatus::Pending => {
@@ -134,7 +152,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                     }
                     VaultStatus::Member(member) => {
                         let p_vault = PersistentVault::from(self.p_obj());
-                        let vault = p_vault.get_vault(member.user()).await?.to_data();
+                        let vault = p_vault.get_vault(member.user().vault_name()).await?.to_data();
                         let vault_member = VaultMember { member, vault };
                         let distributor = MetaDistributor {
                             p_obj: self.p_obj.clone(),
@@ -173,8 +191,6 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
     }
 
     async fn sign_up(&self, user_creds: &UserCredentials) -> Result<()> {
-        self.sync_gateway.sync(user_creds.user()).await?;
-
         let user_data = UserData {
             vault_name: user_creds.vault_name.clone(),
             device: user_creds.device(),
@@ -182,7 +198,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
 
         let sign_up_claim = SignUpClaim::from(self.p_obj.clone());
         sign_up_claim.sign_up(user_data.clone()).await?;
-        self.sync_gateway.sync(user_creds.user()).await?;
+
         Ok(())
     }
 
@@ -254,7 +270,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                         ApplicationState::Vault(VaultFullInfo::Outsider(outsider))
                     }
                     VaultStatus::Member(member_user) => {
-                        let vault = p_vault.get_vault(&member_user.user_data).await?;
+                        let vault = p_vault.get_vault(member_user.user_data.vault_name()).await?;
 
                         let ss_claims = {
                             let p_ss = PersistentSharedSecret::from(self.p_obj());
@@ -278,7 +294,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                             ss_claims,
                             vault_events: vault_action_events,
                         };
-                        ApplicationState::Vault(VaultFullInfo::Member(user_full_info))
+                        ApplicationState::Vault(VaultFullInfo::Member(Box::from(user_full_info)))
                     }
                 }
             }
@@ -293,9 +309,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
             .send_to_service_and_get(request)
             .await?;
         match resp {
-            GenericAppStateResponse::AppState(app_state) => {
-                Ok(app_state)
-            }
+            GenericAppStateResponse::AppState(app_state) => Ok(app_state),
         }
     }
 

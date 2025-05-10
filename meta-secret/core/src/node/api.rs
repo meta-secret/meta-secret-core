@@ -26,8 +26,8 @@ pub enum WriteSyncRequest {
 #[derive(Clone, Debug, PartialEq, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SyncRequest {
-    Read(ReadSyncRequest),
-    Write(WriteSyncRequest),
+    Read(Box<ReadSyncRequest>),
+    Write(Box<WriteSyncRequest>),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -63,6 +63,9 @@ pub enum DataSyncResponse {
     Empty,
     Data(DataEventsResponse),
     ServerTailResponse(ServerTailResponse),
+    Error {
+        msg: String,
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

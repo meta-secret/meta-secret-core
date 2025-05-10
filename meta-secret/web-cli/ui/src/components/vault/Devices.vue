@@ -1,25 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
 import { AppState } from '@/stores/app-state';
 import Device from '@/components/vault/Device.vue';
-import { WasmUserMembership } from '../../../pkg';
 
 const appState = AppState();
-const deviceList = ref<WasmUserMembership[]>([]);
+const users = appState.currState.as_vault().as_member().vault_data().users()
 
-const refreshDevices = async () => {
-  try {
-    const metaAppState = await appState.appManager.get_state();
-    deviceList.value = metaAppState.as_vault().as_member().vault_data().users();
-  } catch (e) {
-    console.error("Failed to get devices:", e);
-    deviceList.value = [];
-  }
-};
-
-onMounted(() => {
-  refreshDevices();
-});
 </script>
 
 <template>
@@ -30,11 +15,11 @@ onMounted(() => {
     <h3 :class="$style.devicesTitle">Devices</h3>
     <p :class="$style.devicesDescription">Detailed information about user devices</p>
 
-    <div v-if="deviceList.length === 0" :class="$style.emptyState">No devices connected yet</div>
+    <div v-if="users.length === 0" :class="$style.emptyState">No devices connected yet</div>
 
     <ul v-else :class="$style.devicesList">
       <li
-        v-for="membership in deviceList"
+        v-for="membership in users"
         :key="membership.user_data().device.device_id.wasm_id_str()"
         :class="$style.deviceListItem"
       >
@@ -76,9 +61,5 @@ onMounted(() => {
   @apply flex flex-col w-full transition-colors duration-200;
   @apply border-b border-gray-200 dark:border-gray-700 last:border-b-0;
   @apply hover:bg-orange-50 dark:hover:bg-gray-700;
-}
-
-.actionButtonText {
-  @apply flex justify-end w-24 text-right;
 }
 </style>

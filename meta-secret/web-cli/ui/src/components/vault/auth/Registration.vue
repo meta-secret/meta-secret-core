@@ -1,185 +1,89 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
 import { AppState } from '@/stores/app-state';
-import { ApplicationStateInfo } from '../../../../pkg';
+import { ref, computed } from 'vue';
+import LocalVaultCreation from './LocalVaultCreation.vue';
+import ProgressSimulation from './ProgressSimulation.vue';
+import OutsiderJoin from './OutsiderJoin.vue';
+import VaultNotExists from './VaultNotExists.vue';
+import VaultTitle from './VaultTitle.vue';
 
 const jsAppState = AppState();
-const vaultName = ref('');
-const app_state_info = ref(ApplicationStateInfo.Local);
-const initialized = ref(false);
+const signUpProcessing = ref(false);
+const signUpCompleted = ref(false);
 
-const generate_user_creds = async () => {
-  await jsAppState.appManager.generate_user_creds(vaultName.value);
-  window.location.reload();
-};
+// Set different progress messages based on the current state
+const progressTitle = computed(() => {
+  if (jsAppState.isOutsider) return 'Joining Vault...';
+  if (jsAppState.isVaultNotExists) return 'Creating Vault...';
+  return 'Processing...';
+});
+
+const progressMessage = computed(() => {
+  if (jsAppState.isOutsider) {
+    return "Please don't close this page. Your request to join the vault is being processed...";
+  }
+  if (jsAppState.isVaultNotExists) {
+    return "Please don't close this page. Vault creation is in progress...";
+  }
+  return "Please don't close this page. Operation in progress...";
+});
 
 const signUp = async () => {
-  await jsAppState.appManager.sign_up();
-  window.location.reload();
-};
+  if (signUpProcessing.value) {
+    return;
+  }
 
-onMounted(async () => {
-  vaultName.value = await jsAppState.getVaultName();
-  app_state_info.value = await jsAppState.stateInfo();
-  initialized.value = true;
-});
+  signUpProcessing.value = true;
+  signUpCompleted.value = false;
+
+  try {
+    console.log("Signing up...");
+    const newState = await jsAppState.appManager.sign_up();
+
+    // Mark the progress as completed
+    signUpCompleted.value = true;
+
+    jsAppState.updateStateWith(newState);
+
+    // Small delay to allow the user to see 100% before reload
+    //setTimeout(() => {
+    //  window.location.reload();
+    //}, 500);
+  } catch (error) {
+    signUpProcessing.value = false;
+    signUpCompleted.value = false;
+  }
+};
 </script>
 
 <template>
-  <div v-if="initialized">
-    <div :class="$style.container">
-      <div :class="$style.header">
-        <p v-if="app_state_info == ApplicationStateInfo.VaultNotExists && vaultName" :class="$style.titleText">
-          Creating new vault
-        </p>
-        <p v-else-if="app_state_info == ApplicationStateInfo.Outsider && vaultName" :class="$style.titleText">
-          Joining existing vault: <span :class="$style.vaultNameHighlight">{{ vaultName }}</span>
-        </p>
-      </div>
+  <div :class="$style.container">
+    <VaultTitle />
 
-      <div v-if="app_state_info != ApplicationStateInfo.Local && vaultName" :class="$style.vaultInfoContainer">
-        <div :class="$style.vaultInfoRow">
-          <div :class="$style.vaultInfoText">
-            <span :class="$style.vaultInfoLabel">Vault Name:</span>
-            <span :class="$style.vaultInfoValue">{{ vaultName }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div v-if="app_state_info == ApplicationStateInfo.Local" :class="$style.formContainer">
-        <div :class="$style.labelContainer">
-          <label :class="$style.formLabel">Enter vault name:</label>
-        </div>
-
-        <div :class="$style.inputWrapper">
-          <div :class="$style.inputContainer">
-            <span :class="$style.atSymbol">@</span>
-            <input :class="$style.vaultNameInput" type="text" placeholder="vault name" v-model="vaultName" />
-          </div>
-          <button :class="$style.actionButton" @click="generate_user_creds">Set Vault Name</button>
-        </div>
-
-        <div v-if="vaultName" :class="$style.vaultInfoMessage">
-          <p>
-            This will create a new vault named <span :class="$style.vaultNameHighlight">{{ vaultName }}</span>
-          </p>
-        </div>
-      </div>
-
-      <div v-if="app_state_info == ApplicationStateInfo.Outsider" :class="$style.optionContainer">
-        <div :class="$style.statusContainer">
-          <label :class="$style.statusLabel">Vault already exists, would you like to join?</label>
-          <button :class="$style.actionButton" @click="signUp">Join</button>
-        </div>
-      </div>
-
-      <div v-if="app_state_info == ApplicationStateInfo.VaultNotExists" :class="$style.optionContainer">
-        <div :class="$style.statusContainer">
-          <label :class="$style.statusLabel">Vault doesn't exist, let's create one!</label>
-          <button :class="$style.actionButton" @click="signUp">Create</button>
-        </div>
-      </div>
+    <div v-if="jsAppState.isLocal">
+      <LocalVaultCreation :signUpProcessing="signUpProcessing" />
     </div>
-  </div>
-  <div v-else class="text-center mt-8">
-    <p class="text-gray-400">Loading Vault Status...</p>
+
+    <div v-if="jsAppState.isOutsider">
+      <OutsiderJoin :signUpProcessing="signUpProcessing" @join="signUp" />
+    </div>
+
+    <div v-if="jsAppState.isVaultNotExists">
+      <VaultNotExists :signUpProcessing="signUpProcessing" @create="signUp" />
+    </div>
+
+    <ProgressSimulation 
+      :isActive="signUpProcessing" 
+      :completed="signUpCompleted"
+      :title="progressTitle"
+      :message="progressMessage"
+    />
   </div>
 </template>
 
 <style module>
 .container {
   @apply flex flex-col items-center justify-center;
-}
-
-.header {
-  @apply text-center mb-6 mt-4;
-}
-
-.titleText {
-  @apply text-xl text-gray-300;
-}
-
-.vaultNameHighlight {
-  @apply font-bold text-orange-400;
-}
-
-.vaultInfoContainer {
-  @apply container max-w-md py-3 px-5 mb-4 rounded-lg;
-  @apply bg-gray-800 border border-gray-700;
-  @apply shadow-lg transition-all duration-200;
-}
-
-.vaultInfoRow {
-  @apply flex items-center justify-between;
-}
-
-.vaultInfoText {
-  @apply text-gray-300;
-}
-
-.vaultInfoLabel {
-  @apply text-sm font-medium;
-}
-
-.vaultInfoValue {
-  @apply ml-1 text-base font-bold text-orange-400;
-}
-
-.formContainer {
-  @apply w-full max-w-md;
-}
-
-.labelContainer {
-  @apply mb-2 text-left;
-}
-
-.formLabel {
-  @apply text-white text-xl mb-2;
-}
-
-.inputWrapper {
-  @apply flex flex-col md:flex-row gap-4 items-center justify-between;
-  @apply w-full;
-}
-
-.inputContainer {
-  @apply flex items-center w-full;
-  @apply bg-white dark:bg-gray-700 rounded-lg px-4 py-3;
-  @apply border border-gray-300 dark:border-gray-600;
-  @apply transition-all duration-200 shadow-lg;
-}
-
-.atSymbol {
-  @apply text-gray-400 text-xl;
-}
-
-.vaultInfoMessage {
-  @apply mt-4 text-center text-gray-400;
-}
-
-.optionContainer {
-  @apply w-full max-w-md mt-6;
-}
-
-.statusContainer {
-  @apply flex items-center justify-between py-4 px-5 rounded-lg;
-  @apply bg-gray-800 border border-gray-700;
-  @apply shadow-lg transition-all duration-200;
-}
-
-.statusLabel {
-  @apply text-gray-300 text-sm md:text-base;
-}
-
-.actionButton {
-  @apply bg-orange-600 hover:bg-orange-700 text-white font-medium py-3 px-6 rounded-lg;
-  @apply transition-colors duration-200 shadow-md;
-  @apply text-sm md:text-base whitespace-nowrap;
-}
-
-.vaultNameInput {
-  @apply appearance-none bg-transparent border-none w-full;
-  @apply text-gray-800 dark:text-white mx-2 py-1 leading-tight focus:outline-none;
-  @apply placeholder-gray-400;
+  @apply w-full max-w-md mx-auto;
 }
 </style>

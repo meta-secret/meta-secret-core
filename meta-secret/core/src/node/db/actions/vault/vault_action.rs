@@ -1,5 +1,5 @@
 use crate::node::common::model::device::common::DeviceData;
-use crate::node::common::model::user::common::UserDataMember;
+use crate::node::common::model::user::common::{UserDataMember, UserDataOutsider, UserMembership};
 use crate::node::common::model::vault::vault_data::VaultAggregate;
 use crate::node::db::actions::sign_up::action::SignUpAction;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
@@ -9,8 +9,8 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::Next;
 use crate::node::db::events::vault::vault_event::VaultObject;
 use crate::node::db::events::vault::vault_log_event::{
-    AddMetaPassEvent, VaultActionEvent, VaultActionInitEvent, VaultActionRequestEvent,
-    VaultActionUpdateEvent,
+    AddMetaPassEvent, VaultActionEvent, VaultActionInitEvent, VaultActionRequestEvent, 
+    VaultActionUpdateEvent
 };
 use crate::node::db::events::vault::vault_status::VaultStatusObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
@@ -46,8 +46,11 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
                     .await?;
 
                 match action_request {
-                    VaultActionRequestEvent::JoinCluster(_) => {
-                        //server has to ignore join request
+                    VaultActionRequestEvent::JoinCluster(join_event) => {
+                        let upd = VaultActionUpdateEvent::AddToPending {
+                            candidate: join_event.candidate.clone(),
+                        };
+                        self.handle_update(&upd).await?;
                     }
                     VaultActionRequestEvent::AddMetaPass(add_meta_pass_event) => {
                         //server is a handler for add meta pass requests
@@ -81,7 +84,7 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
         let p_vault = PersistentVault::from(self.p_obj.clone());
         let vault_name = action_update.vault_name();
         //check if a sender is a member of the vault and update the vault then
-        let vault = p_vault.get_vault(action_update.sender().user()).await?;
+        let vault = p_vault.get_vault(vault_name.clone()).await?;
 
         let vault_action_events = p_vault
             .get_vault_log_artifact(vault_name.clone())
@@ -111,28 +114,37 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
 
         match action_update {
             VaultActionUpdateEvent::UpdateMembership { update, .. } => {
-                //update vault status accordingly
-                let free_id = {
-                    let vault_membership_desc =
-                        VaultStatusDescriptor::from(update.user_data().user_id());
-
-                    self.p_obj
-                        .find_free_id_by_obj_desc(vault_membership_desc.clone())
-                        .await?
-                };
-
-                let event = {
-                    let status = vault_event.to_data().status(update.user_data());
-                    let status_obj = VaultStatusObject::new(status, free_id);
-                    status_obj.to_generic()
-                };
-
-                self.p_obj.repo.save(event).await?;
+                self.update_vault_status(vault_event, update.clone()).await?;
             }
             VaultActionUpdateEvent::AddMetaPass(AddMetaPassEvent { .. }) => {
                 // no extra steps required (vault  is already updated by VaultAggregate)
             }
+            VaultActionUpdateEvent::AddToPending { candidate } => {
+                let update = UserMembership::Outsider(UserDataOutsider::pending(candidate.clone()));
+                self.update_vault_status(vault_event, update).await?;
+            }
         }
+        Ok(())
+    }
+
+    async fn update_vault_status(&self, vault_event: VaultObject, update: UserMembership) -> Result<()> {
+        //update vault status accordingly
+        let free_id = {
+            let user_id = update.user_data().user_id();
+            let vault_membership_desc = VaultStatusDescriptor::from(user_id);
+
+            self.p_obj
+                .find_free_id_by_obj_desc(vault_membership_desc.clone())
+                .await?
+        };
+
+        let event = {
+            let status = vault_event.to_data().status(update.user_data());
+            let status_obj = VaultStatusObject::new(status, free_id);
+            status_obj.to_generic()
+        };
+
+        self.p_obj.repo.save(event).await?;
         Ok(())
     }
 }
@@ -239,7 +251,7 @@ mod tests {
 
         // Verify vault was created
         let p_vault = PersistentVault::from(server_vault_action.p_obj.clone());
-        let vault = p_vault.get_vault(&owner.user_data).await?;
+        let vault = p_vault.get_vault(owner.user_data.vault_name()).await?;
 
         assert!(vault.to_data().is_member(&owner.user().device.device_id));
         Ok(())
@@ -271,7 +283,7 @@ mod tests {
 
         // Verify meta pass was added
         let p_vault = PersistentVault::from(server_vault_action.p_obj.clone());
-        let vault = p_vault.get_vault(&owner.user_data).await?;
+        let vault = p_vault.get_vault(owner.user_data.vault_name()).await?;
 
         assert_eq!(1, vault.to_data().secrets.len());
 
@@ -313,7 +325,7 @@ mod tests {
 
         // Now the new member should be properly added to the vault
         let p_vault = PersistentVault::from(server_vault_action.p_obj.clone());
-        let vault = p_vault.get_vault(&owner.user_data).await?;
+        let vault = p_vault.get_vault(owner.user_data.vault_name()).await?;
 
         // Check if the new member was added to the vault
         let is_member = vault

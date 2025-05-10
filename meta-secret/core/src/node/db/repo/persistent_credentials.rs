@@ -10,9 +10,8 @@ use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use anyhow::{Result, bail};
 use derive_more::From;
-use log::info;
 use std::sync::Arc;
-use tracing::instrument;
+use tracing::{info, instrument};
 
 #[derive(From)]
 pub struct PersistentCredentials<Repo: KvLogEventRepo> {

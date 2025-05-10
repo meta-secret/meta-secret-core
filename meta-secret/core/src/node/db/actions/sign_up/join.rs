@@ -16,14 +16,11 @@ pub struct AcceptJoinAction<Repo: KvLogEventRepo> {
 impl<Repo: KvLogEventRepo> AcceptJoinAction<Repo> {
     pub async fn accept(&self, join_request: JoinClusterEvent) -> Result<()> {
         let candidate_membership = self.member.vault.membership(join_request.candidate.clone());
-
+        let p_device_log = PersistentDeviceLog::from(self.p_obj.clone());
+        
         match candidate_membership {
             UserMembership::Outsider(outsider) => match outsider.status {
                 UserDataOutsiderStatus::NonMember => {
-                    let p_device_log = PersistentDeviceLog {
-                        p_obj: self.p_obj.clone(),
-                    };
-
                     p_device_log
                         .save_accept_join_request_event(
                             join_request,
@@ -33,7 +30,13 @@ impl<Repo: KvLogEventRepo> AcceptJoinAction<Repo> {
                         .await
                 }
                 UserDataOutsiderStatus::Pending => {
-                    bail!("User already in pending state")
+                    p_device_log
+                        .save_accept_join_request_event(
+                            join_request,
+                            self.member.member.clone(),
+                            outsider,
+                        )
+                        .await
                 }
                 UserDataOutsiderStatus::Declined => {
                     bail!("User request already declined")
@@ -99,60 +102,6 @@ mod tests {
         assert!(
             tail_id.is_some(),
             "Expected device log to have an entry after accepting join request"
-        );
-
-        Ok(())
-    }
-
-    /// Tests that a user who is already in pending state cannot be accepted
-    #[tokio::test]
-    async fn test_accept_join_request_already_pending() -> Result<()> {
-        // Setup fixture
-        let registry = FixtureRegistry::empty();
-        let p_obj = registry.state.p_obj.client.clone();
-        let vault_data_fixture = &registry.state.vault_data;
-
-        // Create a new candidate user who is in PENDING state
-        let candidate_creds = registry.state.user_creds.vd.clone();
-        let candidate_user = candidate_creds.user();
-
-        // Create a pending outsider
-        let mut outsider = UserDataOutsider::non_member(candidate_user.clone());
-        outsider.status = UserDataOutsiderStatus::Pending;
-
-        // Create custom vault data where the candidate is pending
-        let mut custom_vault = vault_data_fixture.full_membership.clone();
-        custom_vault = custom_vault.update_membership(UserMembership::Outsider(outsider));
-
-        // Create a vault member with the custom vault data
-        let member = VaultMember {
-            member: vault_data_fixture.client_membership.user_data_member(),
-            vault: custom_vault,
-        };
-
-        // Create the action
-        let action = AcceptJoinAction {
-            p_obj: p_obj.clone(),
-            member: member.clone(),
-        };
-
-        // Create the join request
-        let join_request = JoinClusterEvent {
-            candidate: candidate_user.clone(),
-        };
-
-        // Execute the function
-        let result = action.accept(join_request).await;
-
-        // Verify result
-        assert!(
-            result.is_err(),
-            "Accept join request should fail for pending user"
-        );
-        let error = result.unwrap_err().to_string();
-        assert_eq!(
-            error, "User already in pending state",
-            "Error message should indicate user is pending"
         );
 
         Ok(())

@@ -9,6 +9,7 @@ use crate::wasm_repo::{WasmRepo};
 use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
 use meta_secret_core::node::common::model::WasmApplicationState;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
+use meta_secret_core::node::common::model::secret::ClaimId;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 
 #[wasm_bindgen]
@@ -43,8 +44,9 @@ impl WasmApplicationManager {
             .await;
     }
 
-    pub async fn sign_up(&self) {
-        self.app_manager.sign_up().await.unwrap();
+    pub async fn sign_up(&self) -> WasmApplicationState {
+        let app_state = self.app_manager.sign_up().await.unwrap();
+        WasmApplicationState::from(app_state)
     }
 
     pub async fn cluster_distribution(&self, plain_pass_info: &PlainPassInfo) {
@@ -58,5 +60,9 @@ impl WasmApplicationManager {
     pub async fn show_recovered(&self, pass_id: &MetaPasswordId) -> String {
         info!("Show recovered pass id: {:?}", pass_id);
         self.app_manager.show_recovered(pass_id.clone()).await.unwrap().text
+    }
+
+    pub async fn find_claim_by_pass_id(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
+        self.app_manager.find_claim_by_pass_id(pass_id).await
     }
 }

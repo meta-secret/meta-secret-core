@@ -107,6 +107,13 @@ pub struct UserDataOutsider {
 }
 
 impl UserDataOutsider {
+    pub fn pending(user_data: UserData) -> Self {
+        Self {
+            user_data,
+            status: UserDataOutsiderStatus::Pending,
+        }
+    }
+    
     pub fn non_member(user_data: UserData) -> Self {
         Self {
             user_data,

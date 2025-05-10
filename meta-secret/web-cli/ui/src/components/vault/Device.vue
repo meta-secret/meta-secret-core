@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { DeviceData, UserDataOutsiderStatus, WasmUserMembership } from '../../../pkg';
+import { DeviceData, UserDataOutsiderStatus, WasmUserMembership } from 'meta-secret-web-cli';
 
 const props = defineProps<{ membership: WasmUserMembership }>();
 

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ApplicationStateInfo, WasmApplicationManager } from 'meta-secret-web-cli';
+import init, { ApplicationStateInfo, WasmApplicationManager, WasmApplicationState } from 'meta-secret-web-cli';
 
 export const AppState = defineStore('app_state', {
   state: () => {
@@ -7,17 +7,42 @@ export const AppState = defineStore('app_state', {
 
     return {
       appManager: WasmApplicationManager,
+      currState: WasmApplicationState,
     };
+  },
+
+  getters: {
+    currentState: (state) => state.currState,
+
+    // Helper methods for state comparisons
+    isLocal: (state) => {
+      if (!state.currState) return false;
+      return state.currState.as_info() === ApplicationStateInfo.Local;
+    },
+    isVaultNotExists: (state) => {
+      if (!state.currState) return false;
+      return state.currState.as_info() === ApplicationStateInfo.VaultNotExists;
+    },
+    isMember: (state) => {
+      if (!state.currState) return false;
+      return state.currState.as_info() === ApplicationStateInfo.Member;
+    },
+    isOutsider: (state) => {
+      if (!state.currState) return false;
+      return state.currState.as_info() === ApplicationStateInfo.Outsider;
+    },
   },
 
   actions: {
     async appStateInit() {
       console.log('Js: App state, start initialization');
 
+      await init();
       const appManager = await WasmApplicationManager.init_wasm();
       console.log('Js: Initial App State!!!!');
 
       this.appManager = appManager;
+      await this.updateState();
 
       // Temporary disabled: reactive app state!
       /*const subscribe = async (appManager: WasmApplicationManager) => {
@@ -31,14 +56,22 @@ export const AppState = defineStore('app_state', {
       subscribe(appManager).then(() => console.log('Finished subscribing'));*/
     },
 
-    async stateInfo() {
-      const currState = await this.appManager.get_state();
-      return currState.as_info();
+    async updateState() {
+      this.currState = await this.appManager.get_state();
+      return this.currState;
     },
 
-    async getVaultName() {
-      const currState = await this.appManager.get_state();
-      if (currState.as_info() == ApplicationStateInfo.Local) {
+    updateStateWith(newState: WasmApplicationState) {
+      this.currState = newState;
+      return this.currState;
+    },
+
+    getVaultName() {
+      const currState = this.currState;
+      if (!currState) return '';
+      
+      const currStateInfo = currState.as_info();
+      if (currStateInfo === ApplicationStateInfo.Local) {
         return '';
       }
 

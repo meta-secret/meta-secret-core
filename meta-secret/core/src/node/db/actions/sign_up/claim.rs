@@ -17,7 +17,8 @@ use crate::node::{
 };
 use anyhow::Ok;
 use derive_more::From;
-use log::info;
+use tracing::info;
+use tracing_attributes::instrument;
 
 #[derive(From)]
 pub struct SignUpClaim<Repo: KvLogEventRepo> {
@@ -38,13 +39,12 @@ impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
             .await
     }
 
+    #[instrument(skip(self))]
     pub async fn sign_up(&self, user_data: UserData) -> anyhow::Result<VaultStatus> {
-        let p_device_log = PersistentDeviceLog {
-            p_obj: self.p_obj.clone(),
-        };
-        let p_vault = PersistentVault {
-            p_obj: self.p_obj.clone(),
-        };
+        info!("Sign up action");
+        
+        let p_device_log = PersistentDeviceLog::from(self.p_obj.clone());
+        let p_vault = PersistentVault::from(self.p_obj.clone());
 
         let vault_status = p_vault.find(user_data.clone()).await?;
 
@@ -55,6 +55,7 @@ impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
             }
             VaultStatus::Outsider(outsider) => match outsider.status {
                 UserDataOutsiderStatus::NonMember => {
+                    info!("Save Join request");
                     p_device_log.save_join_request(&outsider.user_data).await?;
                 }
                 UserDataOutsiderStatus::Pending => {
@@ -116,8 +117,8 @@ pub mod spec {
     use crate::node::db::repo::generic_db::KvLogEventRepo;
     use anyhow::Result;
     use async_trait::async_trait;
-    use log::info;
     use std::sync::Arc;
+    use tracing::info;
     use tracing_attributes::instrument;
 
     pub struct SignUpClaimSpec<Repo: KvLogEventRepo> {

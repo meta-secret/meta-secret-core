@@ -6,6 +6,9 @@ edition = "2024"
 [features]
 test-framework = []
 
+[profile.dev]
+overflow-checks = true
+
 [dependencies]
 meta-secret-core = { path = "../core", features = ["test-framework"] }
 meta-server-node = { path = "../meta-server/server-node", features = ["test-framework"] }
@@ -25,3 +28,4 @@ tracing-subscriber = { workspace = true, features = ["fmt", "json", "env-filter"
 tracing-attributes.workspace = true
 
 tokio.workspace = true
+
