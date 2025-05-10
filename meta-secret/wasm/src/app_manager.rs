@@ -20,7 +20,7 @@ use meta_secret_core::node::common::model::secret::{
 };
 use meta_secret_core::node::common::model::user::common::UserDataOutsiderStatus;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
-use meta_secret_core::node::common::model::{ApplicationState, UserMemberFullInfo, VaultFullInfo};
+use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
 use meta_secret_core::node::db::actions::recover::RecoveryHandler;
 use meta_secret_core::node::db::events::vault::vault_log_event::JoinClusterEvent;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
@@ -69,7 +69,8 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
         self.meta_client_service.send_request(creds).await.unwrap();
     }
 
-    pub async fn sign_up(&self) -> Result<()> {
+    #[instrument(skip(self))]
+    pub async fn sign_up(&self) -> Result<ApplicationState> {
         info!("Sign Up");
         match self.get_state().await {
             ApplicationState::Local(_) => {
@@ -77,9 +78,13 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
             }
             ApplicationState::Vault(vault_info) => {
                 let vault_name = match vault_info {
-                    VaultFullInfo::NotExists(user) => user.vault_name,
+                    VaultFullInfo::NotExists(user) => {
+                        user.vault_name
+                    }
                     VaultFullInfo::Outsider(outsider) => match outsider.status {
-                        UserDataOutsiderStatus::NonMember => outsider.user_data.vault_name,
+                        UserDataOutsiderStatus::NonMember => {
+                            outsider.user_data.vault_name
+                        },
                         UserDataOutsiderStatus::Pending => {
                             bail!("Sign up is not allowed in pending state");
                         }
@@ -92,8 +97,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
                     }
                 };
                 let sign_up = GenericAppStateRequest::SignUp(vault_name);
-                self.meta_client_service.send_request(sign_up).await?;
-                Ok(())
+                let new_state = self.meta_client_service.send_request(sign_up).await?;
+                info!("Sign Up. Completed");
+                Ok(new_state)
             }
         }
     }

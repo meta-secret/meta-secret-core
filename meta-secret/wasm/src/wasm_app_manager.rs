@@ -44,8 +44,9 @@ impl WasmApplicationManager {
             .await;
     }
 
-    pub async fn sign_up(&self) {
-        self.app_manager.sign_up().await.unwrap();
+    pub async fn sign_up(&self) -> WasmApplicationState {
+        let app_state = self.app_manager.sign_up().await.unwrap();
+        WasmApplicationState::from(app_state)
     }
 
     pub async fn cluster_distribution(&self, plain_pass_info: &PlainPassInfo) {

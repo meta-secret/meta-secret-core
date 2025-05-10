@@ -57,8 +57,12 @@ export const AppState = defineStore('app_state', {
     },
 
     async updateState() {
-      if (!this.appManager) return null;
       this.currState = await this.appManager.get_state();
+      return this.currState;
+    },
+
+    updateStateWith(newState: WasmApplicationState) {
+      this.currState = newState;
       return this.currState;
     },
 

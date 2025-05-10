@@ -102,6 +102,7 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
 
     #[instrument(skip_all)]
     pub async fn save_join_request(&self, user: &UserData) -> Result<()> {
+        info!("Save event: Join request");
         let request = VaultActionRequestEvent::JoinCluster(JoinClusterEvent::from(user.clone()));
         let join_request = DeviceLogObject(KvLogEvent {
             key: self.get_device_log_free_key(user).await?,
@@ -131,8 +132,8 @@ pub mod spec {
     use crate::node::db::objects::persistent_object::PersistentObject;
     use crate::node::db::repo::generic_db::KvLogEventRepo;
     use anyhow::Result;
-    use log::info;
     use std::sync::Arc;
+    use tracing::info;
     use tracing_attributes::instrument;
 
     pub struct DeviceLogSpec<Repo: KvLogEventRepo> {

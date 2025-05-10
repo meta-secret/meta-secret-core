@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { AppState } from '@/stores/app-state';
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import LocalVaultCreation from './LocalVaultCreation.vue';
 import ProgressSimulation from './ProgressSimulation.vue';
 import OutsiderJoin from './OutsiderJoin.vue';
@@ -11,6 +11,23 @@ const jsAppState = AppState();
 const signUpProcessing = ref(false);
 const signUpCompleted = ref(false);
 
+// Set different progress messages based on the current state
+const progressTitle = computed(() => {
+  if (jsAppState.isOutsider) return 'Joining Vault...';
+  if (jsAppState.isVaultNotExists) return 'Creating Vault...';
+  return 'Processing...';
+});
+
+const progressMessage = computed(() => {
+  if (jsAppState.isOutsider) {
+    return "Please don't close this page. Your request to join the vault is being processed...";
+  }
+  if (jsAppState.isVaultNotExists) {
+    return "Please don't close this page. Vault creation is in progress...";
+  }
+  return "Please don't close this page. Operation in progress...";
+});
+
 const signUp = async () => {
   if (signUpProcessing.value) {
     return;
@@ -20,16 +37,18 @@ const signUp = async () => {
   signUpCompleted.value = false;
 
   try {
-    // @ts-ignore - Method exists in Rust but TS definitions might be outdated
-    await jsAppState.appManager.sign_up();
+    console.log("Signing up...");
+    const newState = await jsAppState.appManager.sign_up();
 
     // Mark the progress as completed
     signUpCompleted.value = true;
 
+    jsAppState.updateStateWith(newState);
+
     // Small delay to allow the user to see 100% before reload
-    setTimeout(() => {
-      window.location.reload();
-    }, 500);
+    //setTimeout(() => {
+    //  window.location.reload();
+    //}, 500);
   } catch (error) {
     signUpProcessing.value = false;
     signUpCompleted.value = false;
@@ -53,7 +72,12 @@ const signUp = async () => {
       <VaultNotExists :signUpProcessing="signUpProcessing" @create="signUp" />
     </div>
 
-    <ProgressSimulation :isActive="signUpProcessing" :completed="signUpCompleted" />
+    <ProgressSimulation 
+      :isActive="signUpProcessing" 
+      :completed="signUpCompleted"
+      :title="progressTitle"
+      :message="progressMessage"
+    />
   </div>
 </template>
 

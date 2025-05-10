@@ -63,6 +63,9 @@ pub enum DataSyncResponse {
     Empty,
     Data(DataEventsResponse),
     ServerTailResponse(ServerTailResponse),
+    Error {
+        msg: String,
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -1,6 +1,6 @@
 <script setup>
 import { AppState } from '@/stores/app-state';
-import { ref, computed } from 'vue';
+import { computed, onMounted } from 'vue';
 import { UserDataOutsiderStatus } from 'meta-secret-web-cli';
 
 defineProps({
@@ -11,14 +11,47 @@ const emit = defineEmits(['join']);
 
 const jsAppState = AppState();
 
+// Using direct numeric comparison for status
 const outsiderStatus = computed(() => {
-  return jsAppState.currState.as_vault().as_outsider().status;
+  try {
+    if (jsAppState.currState && jsAppState.isOutsider) {
+      const vaultState = jsAppState.currState.as_vault();
+      if (vaultState.is_outsider()) {
+        const outsider = vaultState.as_outsider();
+        console.log('Outsider status:', outsider.status);
+        return outsider.status;
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting outsider status:', error);
+    return null;
+  }
 });
 
-// UserDataOutsiderStatus enum values: NonMember = 0, Pending = 1, Declined = 2
-const isNonMember = computed(() => outsiderStatus.value === UserDataOutsiderStatus.NonMember);
-const isPending = computed(() => outsiderStatus.value === UserDataOutsiderStatus.Pending);
-const isDeclined = computed(() => outsiderStatus.value === UserDataOutsiderStatus.Declined);
+// Important: UserDataOutsiderStatus enum values are: NonMember = 0, Pending = 1, Declined = 2
+const isNonMember = computed(() => {
+  const status = Number(outsiderStatus.value);
+  console.log('NonMember check:', status, UserDataOutsiderStatus.NonMember, status === UserDataOutsiderStatus.NonMember);
+  return status === UserDataOutsiderStatus.NonMember;
+});
+
+const isPending = computed(() => {
+  const status = Number(outsiderStatus.value);
+  console.log('Pending check:', status, UserDataOutsiderStatus.Pending, status === UserDataOutsiderStatus.Pending);
+  return status === UserDataOutsiderStatus.Pending;
+});
+
+const isDeclined = computed(() => {
+  const status = Number(outsiderStatus.value);
+  console.log('Declined check:', status, UserDataOutsiderStatus.Declined, status === UserDataOutsiderStatus.Declined);
+  return status === UserDataOutsiderStatus.Declined;
+});
+
+onMounted(() => {
+  console.log('Outsider component mounted, status value:', outsiderStatus.value);
+  console.log('UserDataOutsiderStatus enum:', UserDataOutsiderStatus);
+});
 
 const joinVault = () => {
   emit('join');
@@ -27,7 +60,6 @@ const joinVault = () => {
 
 <template>
   <div v-if="jsAppState.isOutsider">
-
     <div :class="$style.optionContainer">
       <!-- NonMember: Ask to join -->
       <div v-if="isNonMember" :class="$style.statusContainer">
@@ -52,47 +84,22 @@ const joinVault = () => {
           <label :class="$style.statusLabel">Your request to join this vault was declined.</label>
         </div>
       </div>
+      
+      <!-- Fallback for unexpected states -->
+      <div v-else :class="$style.statusContainer">
+        <div :class="$style.statusContent">
+          <label :class="$style.statusLabel">
+            Status: {{ outsiderStatus !== null ? outsiderStatus : 'Unknown' }}
+          </label>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <style module>
-.header {
-  @apply text-center mb-6 mt-4;
-}
-
-.titleText {
-  @apply text-xl text-gray-300;
-}
-
-.vaultNameHighlight {
-  @apply font-bold text-orange-400;
-}
-
-.vaultInfoContainer {
-  @apply container max-w-md py-3 px-5 mb-4 rounded-lg;
-  @apply bg-gray-800 border border-gray-700;
-  @apply shadow-lg transition-all duration-200;
-}
-
-.vaultInfoRow {
-  @apply flex items-center justify-between;
-}
-
-.vaultInfoText {
-  @apply text-gray-300;
-}
-
-.vaultInfoLabel {
-  @apply text-sm font-medium;
-}
-
-.vaultInfoValue {
-  @apply ml-1 text-base font-bold text-orange-400;
-}
-
 .optionContainer {
-  @apply w-full max-w-md mt-6;
+  @apply w-full max-w-md;
 }
 
 .statusContainer {

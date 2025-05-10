@@ -81,12 +81,20 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                             self.data_transfer.dt.send_to_client(resp).await;
                         }
                         Err(e) => {
+                            let resp = DataSyncResponse::Error {
+                                msg: format!("Error processing client request: {:?}", e),
+                            };
                             error!("Error processing request: {:?}", e);
+                            self.data_transfer.dt.send_to_client(resp).await;
                         }
                     }
                 }
                 Err(e) => {
                     error!("Error receiving message: {:?}", e);
+                    let resp = DataSyncResponse::Error {
+                        msg: format!("Error receiving message: {:?}", e),
+                    };
+                    self.data_transfer.dt.send_to_client(resp).await;
                     // Continue the loop even if there's an error
                 }
             }

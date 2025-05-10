@@ -1,8 +1,8 @@
+use tracing::info;
 use crate::node::common::model::user::common::UserDataMember;
 use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ToGenericEvent};
 use crate::node::db::events::vault::vault_event::VaultObject;
 use crate::node::db::events::vault::vault_log_event::VaultLogObject;
-use log::info;
 use tracing_attributes::instrument;
 
 pub struct SignUpAction;
