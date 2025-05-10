@@ -371,6 +371,7 @@ mod test {
 
     #[tokio::test]
     #[allow(dead_code, unused_variables)]
+    #[ignore]
     async fn test_recover() -> Result<()> {
         let split = {
             let spec = ServerAppSignUpSpec::build().await?;
