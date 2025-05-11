@@ -177,9 +177,9 @@ impl VaultAggregate {
 
         for update in updates {
             match &update {
-                VaultActionUpdateEvent::UpdateMembership { sender, update, .. } => {
-                    if self.vault.is_member(&sender.user().device.device_id) {
-                        self.vault = self.vault.update_membership(update.clone());
+                VaultActionUpdateEvent::UpdateMembership(membership) => {
+                    if self.vault.is_member(&membership.sender.user().device.device_id) {
+                        self.vault = self.vault.update_membership(membership.update.clone());
                     }
                 }
                 VaultActionUpdateEvent::AddMetaPass(AddMetaPassEvent {
@@ -290,10 +290,7 @@ mod test {
         UserDataMember, UserDataOutsider, UserMembership,
     };
     use crate::node::common::model::vault::vault_data::{VaultAggregate, VaultData};
-    use crate::node::db::events::vault::vault_log_event::{
-        AddMetaPassEvent, JoinClusterEvent, VaultActionEvent, VaultActionEvents,
-        VaultActionRequestEvent, VaultActionUpdateEvent,
-    };
+    use crate::node::db::events::vault::vault_log_event::{AddMetaPassEvent, JoinClusterEvent, UpdateMembershipEvent, VaultActionEvent, VaultActionEvents, VaultActionRequestEvent, VaultActionUpdateEvent};
     use anyhow::Result;
 
     #[test]
@@ -341,7 +338,7 @@ mod test {
             VaultActionEvent::Request(VaultActionRequestEvent::JoinCluster(join_request.clone()))
         };
 
-        let update_membership = VaultActionUpdateEvent::UpdateMembership {
+        let update_membership = VaultActionUpdateEvent::UpdateMembership(UpdateMembershipEvent {
             request: join_request.clone(),
             sender: UserDataMember {
                 user_data: client_creds.user(),
@@ -349,7 +346,7 @@ mod test {
             update: UserMembership::Member(UserDataMember {
                 user_data: join_request.candidate.clone(),
             }),
-        };
+        });
 
         let update_membership_event = VaultActionEvent::Update(update_membership);
 
@@ -468,11 +465,11 @@ mod test {
         let request_event = VaultActionRequestEvent::JoinCluster(join_request.clone());
 
         // Create member update
-        let update_membership = VaultActionUpdateEvent::UpdateMembership {
+        let update_membership = VaultActionUpdateEvent::UpdateMembership(UpdateMembershipEvent {
             request: join_request.clone(),
             sender: UserDataMember::from(client_creds.user()), // Valid member as sender
             update: UserMembership::Member(UserDataMember::from(client_b_creds.user())),
-        };
+        });
 
         // Create events with the request and update
         let events = VaultActionEvents::default()
@@ -506,20 +503,20 @@ mod test {
         // Create first join request and member update
         let join_request_b = JoinClusterEvent::from(client_b_creds.user());
         let request_event_b = VaultActionRequestEvent::JoinCluster(join_request_b.clone());
-        let update_membership_b = VaultActionUpdateEvent::UpdateMembership {
+        let update_membership_b = VaultActionUpdateEvent::UpdateMembership(UpdateMembershipEvent {
             request: join_request_b.clone(),
             sender: UserDataMember::from(client_creds.user()),
             update: UserMembership::Member(UserDataMember::from(client_b_creds.user())),
-        };
+        });
 
         // Create second join request and member update
         let join_request_vd = JoinClusterEvent::from(vd_creds.user());
         let request_event_vd = VaultActionRequestEvent::JoinCluster(join_request_vd.clone());
-        let update_membership_vd = VaultActionUpdateEvent::UpdateMembership {
+        let update_membership_vd = VaultActionUpdateEvent::UpdateMembership(UpdateMembershipEvent {
             request: join_request_vd.clone(),
             sender: UserDataMember::from(client_creds.user()),
             update: UserMembership::Member(UserDataMember::from(vd_creds.user())),
-        };
+        });
 
         // Create events with both requests and updates
         let events = VaultActionEvents::default()

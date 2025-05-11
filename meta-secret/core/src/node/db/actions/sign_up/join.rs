@@ -1,42 +1,56 @@
-use crate::node::common::model::user::common::{UserDataOutsiderStatus, UserMembership};
+use crate::node::common::model::user::common::{UserDataMember, UserDataOutsider, UserDataOutsiderStatus, UserMembership};
 use crate::node::common::model::vault::vault::VaultMember;
-use crate::node::db::events::vault::vault_log_event::JoinClusterEvent;
+use crate::node::db::events::vault::vault_log_event::{JoinClusterEvent, UpdateMembershipEvent};
 use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use anyhow::Result;
 use anyhow::bail;
 use std::sync::Arc;
+use wasm_bindgen::prelude::wasm_bindgen;
 
-pub struct AcceptJoinAction<Repo: KvLogEventRepo> {
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[wasm_bindgen]
+pub enum JoinActionUpdate {
+    Accept,
+    Decline
+}
+
+pub struct JoinAction<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
     pub member: VaultMember,
 }
 
-impl<Repo: KvLogEventRepo> AcceptJoinAction<Repo> {
-    pub async fn accept(&self, join_request: JoinClusterEvent) -> Result<()> {
+impl<Repo: KvLogEventRepo> JoinAction<Repo> {
+    pub async fn update(&self, join_request: JoinClusterEvent, upd: JoinActionUpdate) -> Result<()> {
         let candidate_membership = self.member.vault.membership(join_request.candidate.clone());
         let p_device_log = PersistentDeviceLog::from(self.p_obj.clone());
         
         match candidate_membership {
             UserMembership::Outsider(outsider) => match outsider.status {
-                UserDataOutsiderStatus::NonMember => {
-                    p_device_log
-                        .save_accept_join_request_event(
-                            join_request,
-                            self.member.member.clone(),
-                            outsider,
-                        )
-                        .await
-                }
-                UserDataOutsiderStatus::Pending => {
-                    p_device_log
-                        .save_accept_join_request_event(
-                            join_request,
-                            self.member.member.clone(),
-                            outsider,
-                        )
-                        .await
+                UserDataOutsiderStatus::NonMember | UserDataOutsiderStatus::Pending => {
+                    let update = match upd {
+                        JoinActionUpdate::Accept => {
+                            UserMembership::Member(UserDataMember {
+                                user_data: outsider.user_data,
+                            })
+                        }
+                        JoinActionUpdate::Decline => {
+                            UserMembership::Outsider(UserDataOutsider {
+                                user_data: outsider.user_data,
+                                status: UserDataOutsiderStatus::Declined,
+                            })
+                        }
+                    };
+                    
+                    let update_event = UpdateMembershipEvent {
+                        request: join_request,
+                        sender: self.member.member.clone(),
+                        update
+                    };
+                    
+                    p_device_log.save_updated_membership_event(update_event).await
                 }
                 UserDataOutsiderStatus::Declined => {
                     bail!("User request already declined")
@@ -80,7 +94,7 @@ mod tests {
         };
 
         // Create the action
-        let action = AcceptJoinAction {
+        let action = JoinAction {
             p_obj: p_obj.clone(),
             member: member.clone(),
         };
@@ -91,7 +105,7 @@ mod tests {
         };
 
         // Execute the function
-        let result = action.accept(join_request).await;
+        let result = action.update(join_request, JoinActionUpdate::Accept).await;
 
         // Verify result is successful
         assert!(result.is_ok(), "Accept join request should succeed");
@@ -134,7 +148,7 @@ mod tests {
         };
 
         // Create the action
-        let action = AcceptJoinAction {
+        let action = JoinAction {
             p_obj: p_obj.clone(),
             member: member.clone(),
         };
@@ -145,7 +159,7 @@ mod tests {
         };
 
         // Execute the function
-        let result = action.accept(join_request).await;
+        let result = action.update(join_request, JoinActionUpdate::Accept).await;
 
         // Verify result
         assert!(
@@ -176,7 +190,7 @@ mod tests {
         let member = vault_data_fixture.client_vault_member.clone();
 
         // Create the action
-        let action = AcceptJoinAction {
+        let action = JoinAction {
             p_obj: p_obj.clone(),
             member: member.clone(),
         };
@@ -187,7 +201,7 @@ mod tests {
         };
 
         // Execute the function
-        let result = action.accept(join_request).await;
+        let result = action.update(join_request, JoinActionUpdate::Accept).await;
 
         // Verify result
         assert!(

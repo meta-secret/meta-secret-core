@@ -5,7 +5,7 @@ use crate::node::common::model::user::common::{UserDataMember, UserMembership};
 use crate::node::common::model::user::user_creds::UserCredentials;
 use crate::node::common::model::vault::vault::{VaultMember, VaultStatus};
 use crate::node::common::model::vault::vault_data::VaultData;
-use crate::node::db::actions::sign_up::join::AcceptJoinAction;
+use crate::node::db::actions::sign_up::join::{JoinAction, JoinActionUpdate};
 use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::shared_secret_event::SsWorkflowObject;
@@ -46,7 +46,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
         for request in vault_actions.requests {
             match request {
                 VaultActionRequestEvent::JoinCluster(join_request) => {
-                    self.accept_join(join_request).await?;
+                    self.update_membership(join_request, JoinActionUpdate::Accept).await?;
                 }
                 VaultActionRequestEvent::AddMetaPass(_) => {
                     //skip
@@ -89,7 +89,11 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
         Ok(())
     }
 
-    pub async fn accept_join(&self, join_request: JoinClusterEvent) -> Result<()> {
+    pub async fn update_membership(
+        &self,
+        join_request: JoinClusterEvent,
+        upd: JoinActionUpdate,
+    ) -> Result<()> {
         let member = self.get_member().await?;
         let vault = self.get_vault(member.clone()).await?;
         let maybe_vault_log_event = self.get_vault_log_event(&member).await?;
@@ -104,7 +108,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
             match request {
                 VaultActionRequestEvent::JoinCluster(db_join_request) => {
                     if join_request.eq(&db_join_request) {
-                        let accept_action = AcceptJoinAction {
+                        let join_action = JoinAction {
                             p_obj: self.p_obj.clone(),
                             member: VaultMember {
                                 member: member.clone(),
@@ -112,7 +116,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                             },
                         };
 
-                        accept_action.accept(db_join_request).await?;
+                        join_action.update(db_join_request, upd.clone()).await?;
                     }
                 }
                 VaultActionRequestEvent::AddMetaPass(_) => {
@@ -126,7 +130,10 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
 
     async fn get_vault(&self, member: UserDataMember) -> Result<VaultData> {
         let p_vault = PersistentVault::from(self.p_obj());
-        let vault = p_vault.get_vault(member.user().vault_name()).await?.to_data();
+        let vault = p_vault
+            .get_vault(member.user().vault_name())
+            .await?
+            .to_data();
         Ok(vault)
     }
 

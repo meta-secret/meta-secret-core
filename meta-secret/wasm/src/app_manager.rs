@@ -20,6 +20,7 @@ use meta_secret_core::node::common::model::user::common::{UserData, UserDataOuts
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
 use meta_secret_core::node::db::actions::recover::RecoveryHandler;
+use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
 use meta_secret_core::node::db::events::vault::vault_log_event::JoinClusterEvent;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
@@ -126,9 +127,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
         self.meta_client_service.accept_recover(claim_id).await
     }
 
-    pub async fn accept_join(&self, candidate: UserData) -> Result<()> {
+    pub async fn update_membership(&self, candidate: UserData, upd: JoinActionUpdate) -> Result<()> {
         let join_request = JoinClusterEvent { candidate };
-        self.meta_client_service.accept_join(join_request).await
+        self.meta_client_service.update_membership(join_request, upd).await
     }
 
     pub async fn show_recovered(&self, pass_id: MetaPasswordId) -> Result<PlainText> {

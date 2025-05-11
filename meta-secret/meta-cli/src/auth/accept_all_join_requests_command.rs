@@ -1,6 +1,7 @@
 use crate::base_command::BaseCommand;
 use anyhow::{Result, bail};
 use meta_secret_core::node::common::model::{ApplicationState, IdString, VaultFullInfo};
+use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
 use meta_secret_core::node::db::events::vault::vault_log_event::VaultActionRequestEvent;
 use tracing::info;
 
@@ -66,7 +67,10 @@ impl AcceptAllJoinRequestsCommand {
                         let device_id = join_request.candidate.device.device_id.clone().id_str();
                         info!("Accepting join request for device ID: {}", device_id);
 
-                        match client.accept_join(join_request.clone()).await {
+                        match client
+                            .update_membership(join_request.clone(), JoinActionUpdate::Accept)
+                            .await
+                        {
                             Ok(_) => {
                                 println!("Accepted join request for device {}", device_id);
                                 accepted_count += 1;

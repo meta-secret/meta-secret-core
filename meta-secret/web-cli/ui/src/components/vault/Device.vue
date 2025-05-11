@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import { DeviceData, UserData, UserDataOutsiderStatus, WasmUserMembership } from 'meta-secret-web-cli';
+import {
+  DeviceData,
+  JoinActionUpdate,
+  UserData,
+  UserDataOutsiderStatus,
+  WasmUserMembership,
+} from 'meta-secret-web-cli';
 import { AppState } from '@/stores/app-state';
 
 const props = defineProps<{ membership: WasmUserMembership }>();
@@ -16,7 +22,7 @@ const getDevice = (): DeviceData => {
 
 const isMember = () => {
   return props.membership.is_member();
-}
+};
 
 const isPending = () => {
   const isOutsider = props.membership.is_outsider();
@@ -30,12 +36,14 @@ const isPending = () => {
 
 const accept = async () => {
   const user = getUser();
-  await appState.appManager.accept_join(user);
+  await appState.appManager.update_membership(user, JoinActionUpdate.Accept);
 };
 
 const decline = async () => {
-  //await props.membership(deviceInfo, MembershipRequestType.Decline);
+  const user = getUser();
+  await appState.appManager.update_membership(user, JoinActionUpdate.Decline);
 };
+
 </script>
 
 <template>
@@ -44,13 +52,9 @@ const decline = async () => {
       <div :class="$style.deviceName">
         {{ getDevice().device_name.as_str() }}
       </div>
-      <div :class="$style.deviceId">
-        ID: {{ getDevice().device_id.wasm_id_str() }}
-      </div>
+      <div :class="$style.deviceId">ID: {{ getDevice().device_id.wasm_id_str() }}</div>
     </div>
-    <div v-if="isMember()" :class="$style.statusBadge">
-      Member
-    </div>
+    <div v-if="isMember()" :class="$style.statusBadge">Member</div>
     <div v-if="isPending()" :class="$style.actionButtons">
       <button :class="$style.acceptButton" @click="accept">Accept</button>
       <button :class="$style.declineButton" @click="decline">Decline</button>
@@ -97,4 +101,3 @@ const decline = async () => {
   @apply transition-colors duration-150;
 }
 </style>
-

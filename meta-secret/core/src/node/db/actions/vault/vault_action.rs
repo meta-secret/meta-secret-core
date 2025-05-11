@@ -113,8 +113,8 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
             .await?;
 
         match action_update {
-            VaultActionUpdateEvent::UpdateMembership { update, .. } => {
-                self.update_vault_status(vault_event, update.clone()).await?;
+            VaultActionUpdateEvent::UpdateMembership(update) => {
+                self.update_vault_status(vault_event, update.update.clone()).await?;
             }
             VaultActionUpdateEvent::AddMetaPass(AddMetaPassEvent { .. }) => {
                 // no extra steps required (vault  is already updated by VaultAggregate)
@@ -218,7 +218,7 @@ mod tests {
     use crate::node::common::model::meta_pass::MetaPasswordId;
     use crate::node::common::model::user::common::{UserDataMember, UserMembership};
     use crate::node::common::model::vault::vault::VaultStatus;
-    use crate::node::db::events::vault::vault_log_event::AddMetaPassEvent;
+    use crate::node::db::events::vault::vault_log_event::{AddMetaPassEvent, UpdateMembershipEvent};
     use crate::node::db::events::vault::vault_log_event::{
         CreateVaultEvent, JoinClusterEvent, VaultActionInitEvent, VaultActionRequestEvent,
     };
@@ -312,11 +312,11 @@ mod tests {
             .await?;
 
         // Now create the membership update event - it needs to match the request
-        let update_event = VaultActionUpdateEvent::UpdateMembership {
+        let update_event = VaultActionUpdateEvent::UpdateMembership(UpdateMembershipEvent {
             sender: owner.clone(),
             update: UserMembership::Member(new_member.clone()),
             request: join_request, // Use the same join request as above
-        };
+        });
 
         // Process the update
         let vault_action_event = VaultActionEvent::Update(update_event);

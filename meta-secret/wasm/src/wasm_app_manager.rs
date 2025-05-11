@@ -12,7 +12,7 @@ use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPass
 use meta_secret_core::node::common::model::secret::ClaimId;
 use meta_secret_core::node::common::model::user::common::UserData;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
-use meta_secret_core::node::db::events::vault::vault_log_event::JoinClusterEvent;
+use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
 
 #[wasm_bindgen]
 pub struct WasmApplicationManager {
@@ -51,8 +51,8 @@ impl WasmApplicationManager {
         WasmApplicationState::from(app_state)
     }
 
-    pub async fn accept_join(&self, candidate: UserData) {
-        self.app_manager.accept_join(candidate).await.unwrap()
+    pub async fn update_membership(&self, candidate: UserData, upd: JoinActionUpdate) {
+        self.app_manager.update_membership(candidate, upd).await.unwrap()
     }
 
     pub async fn cluster_distribution(&self, plain_pass_info: &PlainPassInfo) {

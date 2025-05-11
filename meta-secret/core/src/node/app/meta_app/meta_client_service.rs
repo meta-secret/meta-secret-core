@@ -19,6 +19,7 @@ use crate::node::common::model::vault::vault::{VaultMember, VaultStatus};
 use crate::node::common::model::{ApplicationState, UserMemberFullInfo, VaultFullInfo};
 use crate::node::db::actions::recover::RecoveryAction;
 use crate::node::db::actions::sign_up::claim::SignUpClaim;
+use crate::node::db::actions::sign_up::join::JoinActionUpdate;
 use crate::node::db::events::vault::vault_log_event::{JoinClusterEvent, VaultActionEvents};
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -55,15 +56,13 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                 .await;
 
             let new_app_state = match new_app_state_result {
-                Ok(new_state) => {
-                    new_state
-                }
+                Ok(new_state) => new_state,
                 Err(err) => {
                     error!("Error while handling request: {:?}", err);
                     bail!("Error while handling request: {:?}", err);
                 }
             };
-            
+
             service_state.app_state = new_app_state;
             //self.state_provider.push(&service_state.app_state).await?;
             let response_state = GenericAppStateResponse::AppState(service_state.app_state.clone());
@@ -93,7 +92,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
             }
             GenericAppStateRequest::SignUp(_) => {
                 info!("Handle sign up request");
-                
+
                 let user_creds = self.get_user_creds(&request).await?;
 
                 self.sync_gateway.sync(user_creds.user()).await?;
@@ -112,7 +111,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                     }
                     ApplicationState::Vault(VaultFullInfo::Outsider(outsider)) => {
                         info!("Handle outsider sign up request");
-                        
+
                         match outsider.status {
                             UserDataOutsiderStatus::NonMember => {
                                 info!("Handle outsider NON_MEMBER sign up request");
@@ -152,7 +151,10 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                     }
                     VaultStatus::Member(member) => {
                         let p_vault = PersistentVault::from(self.p_obj());
-                        let vault = p_vault.get_vault(member.user().vault_name()).await?.to_data();
+                        let vault = p_vault
+                            .get_vault(member.user().vault_name())
+                            .await?
+                            .to_data();
                         let vault_member = VaultMember { member, vault };
                         let distributor = MetaDistributor {
                             p_obj: self.p_obj.clone(),
@@ -270,7 +272,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                         ApplicationState::Vault(VaultFullInfo::Outsider(outsider))
                     }
                     VaultStatus::Member(member_user) => {
-                        let vault = p_vault.get_vault(member_user.user_data.vault_name()).await?;
+                        let vault = p_vault
+                            .get_vault(member_user.user_data.vault_name())
+                            .await?;
 
                         let ss_claims = {
                             let p_ss = PersistentSharedSecret::from(self.p_obj());
@@ -340,7 +344,11 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         }
     }
 
-    pub async fn accept_join(&self, join_request: JoinClusterEvent) -> Result<()> {
+    pub async fn update_membership(
+        &self,
+        join_request: JoinClusterEvent,
+        upd: JoinActionUpdate,
+    ) -> Result<()> {
         match self.get_app_state().await? {
             ApplicationState::Local(_) => {
                 bail!("Invalid state. Local App State")
@@ -360,7 +368,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                         user_creds,
                     };
 
-                    orchestrator.accept_join(join_request).await?;
+                    orchestrator.update_membership(join_request, upd).await?;
                     Ok(())
                 }
             },

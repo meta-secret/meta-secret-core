@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::node::common::model::user::common::{
-    UserData, UserDataMember, UserDataOutsider, UserId, UserMembership,
+    UserData, UserDataMember, UserId, UserMembership,
 };
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault_descriptor::DeviceLogDescriptor;
@@ -9,8 +9,8 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::events::vault::vault_log_event::{
-    AddMetaPassEvent, CreateVaultEvent, JoinClusterEvent, VaultActionEvent, VaultActionInitEvent,
-    VaultActionRequestEvent, VaultActionUpdateEvent,
+    AddMetaPassEvent, CreateVaultEvent, JoinClusterEvent, UpdateMembershipEvent, VaultActionEvent,
+    VaultActionInitEvent, VaultActionRequestEvent, VaultActionUpdateEvent,
 };
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
@@ -33,26 +33,16 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
 
 impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
     #[instrument(skip_all)]
-    pub async fn save_accept_join_request_event(
-        &self,
-        join_request: JoinClusterEvent,
-        member: UserDataMember,
-        candidate: UserDataOutsider,
-    ) -> Result<()> {
-        info!("Accept join request");
+    pub async fn save_updated_membership_event(&self, update: UpdateMembershipEvent) -> Result<()> {
+        info!("Update membership");
 
-        let member_user = member.user();
+        let member_user = update.sender.user();
 
         let free_key = self.get_device_log_free_key(member_user).await?;
-        let update = VaultActionUpdateEvent::UpdateMembership {
-            request: join_request,
-            sender: member,
-            update: UserMembership::Member(UserDataMember::from(candidate)),
-        };
-
+        
         let join_request = DeviceLogObject(KvLogEvent {
             key: free_key,
-            value: VaultActionEvent::Update(update),
+            value: VaultActionEvent::Update(VaultActionUpdateEvent::UpdateMembership(update)),
         });
 
         self.p_obj.repo.save(join_request).await?;

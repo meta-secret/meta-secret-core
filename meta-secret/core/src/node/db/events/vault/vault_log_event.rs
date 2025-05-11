@@ -103,8 +103,8 @@ impl VaultActionEvents {
 
     pub fn apply(mut self, upd_event: VaultActionUpdateEvent) -> Self {
         match &upd_event {
-            VaultActionUpdateEvent::UpdateMembership { request, .. } => {
-                let request = VaultActionRequestEvent::JoinCluster(request.clone());
+            VaultActionUpdateEvent::UpdateMembership(update) => {
+                let request = VaultActionRequestEvent::JoinCluster(update.request.clone());
                 let removed = self.requests.remove(&request);
                 // if corresponding request exists we can apply the update
                 if removed {
@@ -186,6 +186,14 @@ pub struct AddMetaPassEvent {
     pub meta_pass_id: MetaPasswordId,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateMembershipEvent {
+    pub request: JoinClusterEvent,
+    pub sender: UserDataMember,
+    pub update: UserMembership,
+}
+
 impl VaultActionRequestEvent {
     pub fn name(&self) -> String {
         let name = match self {
@@ -203,11 +211,7 @@ pub enum VaultActionUpdateEvent {
     /// There is no corresponding request for this event (server prematurely adds candidate to pending list)
     AddToPending { candidate: UserData },
     /// When the device becomes a member of the vault, it can change membership of other members
-    UpdateMembership {
-        request: JoinClusterEvent,
-        sender: UserDataMember,
-        update: UserMembership,
-    },
+    UpdateMembership(UpdateMembershipEvent),
     /// A member can add a new meta password into the vault
     AddMetaPass(AddMetaPassEvent),
 }
@@ -215,8 +219,8 @@ pub enum VaultActionUpdateEvent {
 impl VaultActionUpdateEvent {
     pub fn vault_name(&self) -> VaultName {
         match self {
-            VaultActionUpdateEvent::UpdateMembership { update, .. } => {
-                update.user_data().vault_name()
+            VaultActionUpdateEvent::UpdateMembership(update) => {
+                update.update.user_data().vault_name()
             }
             VaultActionUpdateEvent::AddMetaPass(AddMetaPassEvent { sender, .. }) => {
                 sender.user_data.vault_name()
@@ -296,7 +300,8 @@ impl VaultActionEvent {
 
 #[cfg(test)]
 mod test {
-    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::node::db::events::vault::vault_log_event::UpdateMembershipEvent;
+use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::common::model::user::common::{UserDataMember, UserMembership};
     use crate::node::db::events::vault::vault_log_event::{
         JoinClusterEvent, VaultActionEvent, VaultActionEvents, VaultActionRequestEvent,
@@ -319,7 +324,7 @@ mod test {
         let actions = VaultActionEvents::default().apply_event(event);
         assert_eq!(actions.requests.len(), 1);
 
-        let update = VaultActionUpdateEvent::UpdateMembership {
+        let update = VaultActionUpdateEvent::UpdateMembership(UpdateMembershipEvent {
             request: join_request,
             sender: UserDataMember {
                 user_data: client_creds.user(),
@@ -327,7 +332,7 @@ mod test {
             update: UserMembership::Member(UserDataMember {
                 user_data: client_b_creds.user(),
             }),
-        };
+        });
         let event = VaultActionEvent::Update(update);
         let with_update_vault_request = actions.apply_event(event);
         assert_eq!(with_update_vault_request.requests.len(), 0);

@@ -52,6 +52,7 @@ mod test {
     use meta_secret_core::node::db::events::vault::vault_log_event::VaultActionRequestEvent;
     use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
     use tracing::{Instrument, info};
+    use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
 
     struct ServerAppSignUpSpec {
         registry: FixtureRegistry<ExtendedFixtureState>,
@@ -141,7 +142,7 @@ mod test {
                 .state
                 .vd
                 .orchestrator
-                .accept_join(join_request.clone())
+                .update_membership(join_request.clone(), JoinActionUpdate::Accept)
                 .await?;
             self.vd_gw_sync().await?;
             self.client_gw_sync().await?;
