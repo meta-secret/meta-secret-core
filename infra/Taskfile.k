@@ -22,7 +22,9 @@ tasks = {
     generate_tasks = {
         desc = "Generate tasks"
         cmds = [
-            "kcl "
+            "kcl Taskfile.k > Taskfile.yml"
+            "cd k3d && kcl Taskfile.k > Taskfile.yml"
+            "cd k8s && kcl Taskfile.k > Taskfile.yml"
         ]
     }
 
