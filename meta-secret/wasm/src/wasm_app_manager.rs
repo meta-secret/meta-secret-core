@@ -10,7 +10,9 @@ use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
 use meta_secret_core::node::common::model::WasmApplicationState;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::ClaimId;
+use meta_secret_core::node::common::model::user::common::UserData;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
+use meta_secret_core::node::db::events::vault::vault_log_event::JoinClusterEvent;
 
 #[wasm_bindgen]
 pub struct WasmApplicationManager {
@@ -47,6 +49,10 @@ impl WasmApplicationManager {
     pub async fn sign_up(&self) -> WasmApplicationState {
         let app_state = self.app_manager.sign_up().await.unwrap();
         WasmApplicationState::from(app_state)
+    }
+
+    pub async fn accept_join(&self, candidate: UserData) {
+        self.app_manager.accept_join(candidate).await.unwrap()
     }
 
     pub async fn cluster_distribution(&self, plain_pass_info: &PlainPassInfo) {

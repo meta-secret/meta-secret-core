@@ -129,7 +129,7 @@ impl BaseCommand {
         let device_creds = Arc::new(user_creds.device_creds.clone());
 
         let sync_protocol = HttpSyncProtocol {
-            api_url: self.api_url.clone(),
+            api_url: self.api_url,
         };
 
         let sync_gateway = Arc::new(SyncGateway {

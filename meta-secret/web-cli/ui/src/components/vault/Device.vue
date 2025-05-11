@@ -1,7 +1,14 @@
 <script setup lang="ts">
-import { DeviceData, UserDataOutsiderStatus, WasmUserMembership } from 'meta-secret-web-cli';
+import { DeviceData, UserData, UserDataOutsiderStatus, WasmUserMembership } from 'meta-secret-web-cli';
+import { AppState } from '@/stores/app-state';
 
 const props = defineProps<{ membership: WasmUserMembership }>();
+
+const appState = AppState();
+
+const getUser = (): UserData => {
+  return props.membership.user_data();
+};
 
 const getDevice = (): DeviceData => {
   return props.membership.user_data().device;
@@ -22,7 +29,8 @@ const isPending = () => {
 };
 
 const accept = async () => {
-  //await props.membership(deviceInfo, MembershipRequestType.Accept);
+  const user = getUser();
+  await appState.appManager.accept_join(user);
 };
 
 const decline = async () => {

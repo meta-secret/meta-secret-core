@@ -15,8 +15,8 @@ use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::meta_tracing::client_span;
 use meta_secret_core::node::common::model::device::common::DeviceName;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
-use meta_secret_core::node::common::model::secret::{ClaimId};
-use meta_secret_core::node::common::model::user::common::UserDataOutsiderStatus;
+use meta_secret_core::node::common::model::secret::ClaimId;
+use meta_secret_core::node::common::model::user::common::{UserData, UserDataOutsiderStatus};
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
 use meta_secret_core::node::db::actions::recover::RecoveryHandler;
@@ -76,13 +76,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
             }
             ApplicationState::Vault(vault_info) => {
                 let vault_name = match vault_info {
-                    VaultFullInfo::NotExists(user) => {
-                        user.vault_name
-                    }
+                    VaultFullInfo::NotExists(user) => user.vault_name,
                     VaultFullInfo::Outsider(outsider) => match outsider.status {
-                        UserDataOutsiderStatus::NonMember => {
-                            outsider.user_data.vault_name
-                        },
+                        UserDataOutsiderStatus::NonMember => outsider.user_data.vault_name,
                         UserDataOutsiderStatus::Pending => {
                             bail!("Sign up is not allowed in pending state");
                         }
@@ -130,7 +126,8 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
         self.meta_client_service.accept_recover(claim_id).await
     }
 
-    pub async fn accept_join(&self, join_request: JoinClusterEvent) -> Result<()> {
+    pub async fn accept_join(&self, candidate: UserData) -> Result<()> {
+        let join_request = JoinClusterEvent { candidate };
         self.meta_client_service.accept_join(join_request).await
     }
 
