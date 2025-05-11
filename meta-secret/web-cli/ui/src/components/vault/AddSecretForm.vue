@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, defineEmits, defineProps } from 'vue';
-import { PlainPassInfo, WasmApplicationManager } from 'meta-secret-web-cli';
+import { MetaPasswordId, PlainPassInfo, WasmApplicationManager } from 'meta-secret-web-cli';
 import { AppState } from '@/stores/app-state';
 import ProgressBar from '@/components/common/ProgressBar.vue';
 
@@ -12,6 +12,7 @@ const newPassword = ref('');
 const newPassDescription = ref('');
 const isSubmitting = ref(false);
 const lastSubmitTime = ref(0);
+const errorMessage = ref('');
 const DEBOUNCE_MS = 2000; // Prevent resubmissions within 2 seconds
 const progress = ref(0);
 const progressInterval = ref<number | null>(null);
@@ -21,6 +22,7 @@ watch(() => props.show, (val) => {
     newPassword.value = '';
     newPassDescription.value = '';
     isSubmitting.value = false;
+    errorMessage.value = '';
     resetProgress();
   }
 });
@@ -63,6 +65,20 @@ const handleAdd = async () => {
     return;
   }
   
+  // Check if a password with this description already exists
+  const existingPasswords = appState.passwords;
+  const passwordExists = existingPasswords.some(
+    (secret: MetaPasswordId) => secret.name === newPassDescription.value
+  );
+  
+  if (passwordExists) {
+    errorMessage.value = "A secret with this description already exists";
+    return;
+  }
+  
+  // Clear any previous error message
+  errorMessage.value = '';
+  
   // Add time-based debounce protection
   const now = Date.now();
   if (now - lastSubmitTime.value < DEBOUNCE_MS) {
@@ -104,6 +120,7 @@ const handleAdd = async () => {
   } catch (error) {
     console.error("Error during secret distribution:", error);
     resetProgress();
+    errorMessage.value = "Failed to add secret. Please try again.";
   } finally {
     // Set a slight delay before allowing new submissions
     setTimeout(() => {
@@ -155,6 +172,9 @@ const handleClose = () => {
               :disabled="isSubmitting" 
             />
           </div>
+        </div>
+        <div v-if="errorMessage" :class="$style.errorMessage">
+          {{ errorMessage }}
         </div>
         <div :class="$style.buttonContainer">
           <button 
@@ -224,5 +244,8 @@ const handleClose = () => {
 }
 .modalBody {
   @apply px-6 py-5;
+}
+.errorMessage {
+  @apply text-red-500 text-sm mt-2 mb-3;
 }
 </style> 
