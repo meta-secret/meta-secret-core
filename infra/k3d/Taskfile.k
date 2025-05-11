@@ -27,7 +27,7 @@ tasks = {
         desc = "Delete the k3d cluster"
         cmds = [
             "echo Deleting k3d cluster " + _vars.cluster_name,
-            "k3d cluster delete " + _vars.cluster_name
+            "k3d cluster delete " + _vars.cluster_name + " || true"
         ]
     }
 

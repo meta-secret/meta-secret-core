@@ -18,5 +18,21 @@ tasks = {
         ]
         silent = True
     }
+
+    generate_tasks = {
+        desc = "Generate tasks"
+        cmds = [
+            "kcl "
+        ]
+    }
+
+    redeploy_all = {
+        desc = "Full redeploy"
+        cmds = [
+            {task = "k3d:delete_cluster"}
+            {task = "k3d:create_cluster"}
+            {task = "k8s:deploy_meta_server"}
+        ]
+    }
 }
 
