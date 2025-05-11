@@ -1,42 +1,21 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, computed } from 'vue';
 import { MetaPasswordId, PlainPassInfo } from 'meta-secret-web-cli';
 import { AppState } from '@/stores/app-state';
+import AddSecretForm from './AddSecretForm.vue';
 
 const appState = AppState();
-
-const newPassword = ref('');
-const newPassDescription = ref('');
 
 const currentSecret = ref<any>(null);
 const currentSecretId = ref<any>(null);
 const copySuccess = ref<string | null>(null);
 
 const showAddForm = ref(false);
-const passwords = ref<MetaPasswordId[]>([]);
-
-const loadPasswords = () => {
-  passwords.value = appState.currState.as_vault().as_member().vault_data().secrets();
-};
-
-onMounted(() => {
-  loadPasswords();
-});
-
-const addPassword = async () => {
-  const pass = new PlainPassInfo(newPassDescription.value, newPassword.value);
-  await appState.appManager.cluster_distribution(pass);
-  newPassword.value = '';
-  newPassDescription.value = '';
-  showAddForm.value = false;
-  await appState.updateState();
-  loadPasswords();
-};
+const passwords = computed(() => appState.passwords);
 
 const recover = async (metaPassId: MetaPasswordId) => {
   await appState.appManager.recover_js(metaPassId);
   await appState.updateState();
-  loadPasswords();
 };
 
 const showRecovered = async (metaPassId: MetaPasswordId) => {
@@ -72,6 +51,10 @@ const isRecovered = (metaPassId: MetaPasswordId) => {
 
 const toggleAddForm = () => {
   showAddForm.value = !showAddForm.value;
+};
+
+const handleSecretAdded = () => {
+  showAddForm.value = false; // Just close the form without toggling
 };
 </script>
 
@@ -125,37 +108,7 @@ const toggleAddForm = () => {
 
   <div :class="$style.spacerLarge" />
 
-  <!-- Modal overlay for the Add Secret form -->
-  <div v-if="showAddForm" :class="$style.modalOverlay" @click.self="toggleAddForm">
-    <div :class="$style.modalContainer">
-      <div :class="$style.modalHeader">
-        <h3 :class="$style.modalTitle">Add New Secret</h3>
-        <button :class="$style.closeButton" @click="toggleAddForm">&times;</button>
-      </div>
-
-      <div :class="$style.modalBody">
-        <div :class="$style.inputGroup">
-          <label :class="$style.inputLabel">Description</label>
-          <div :class="$style.inputWrapper">
-            <input type="text" :class="$style.input" placeholder="my meta secret" v-model="newPassDescription" />
-          </div>
-        </div>
-
-        <div :class="$style.inputGroup">
-          <label :class="$style.inputLabel">Secret</label>
-          <div :class="$style.inputWrapper">
-            <input type="password" :class="$style.input" placeholder="top$ecret" v-model="newPassword" />
-          </div>
-        </div>
-
-        <div :class="$style.buttonContainer">
-          <button :class="$style.addButton" @click="addPassword" :disabled="!newPassword || !newPassDescription">
-            Add
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
+  <AddSecretForm :show="showAddForm" @added="handleSecretAdded" @close="toggleAddForm" />
 </template>
 
 <style module>
@@ -186,40 +139,6 @@ const toggleAddForm = () => {
 .secretsHeader {
   @apply flex justify-between items-center px-4 py-3;
   @apply border-b border-gray-200 dark:border-gray-700;
-}
-
-.inputGroup {
-  @apply mb-4;
-}
-
-.inputLabel {
-  @apply block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1;
-}
-
-.inputWrapper {
-  @apply relative rounded-md;
-  @apply bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600;
-  @apply focus-within:ring-2 focus-within:ring-slate-500 dark:focus-within:ring-slate-400;
-  @apply focus-within:border-slate-500 dark:focus-within:border-slate-400;
-  @apply transition-all duration-200;
-}
-
-.input {
-  @apply block w-full rounded-md py-2 px-3;
-  @apply bg-transparent text-gray-700 dark:text-gray-200;
-  @apply placeholder-gray-400 dark:placeholder-gray-500;
-  @apply focus:outline-none;
-}
-
-.buttonContainer {
-  @apply flex justify-end mt-5;
-}
-
-.addButton {
-  @apply bg-slate-600 hover:bg-slate-700 text-white font-medium py-2 px-5 rounded-md;
-  @apply dark:bg-slate-700 dark:hover:bg-slate-800;
-  @apply transition-colors duration-200;
-  @apply disabled:opacity-50 disabled:cursor-not-allowed;
 }
 
 .secretsContainer {
@@ -294,38 +213,6 @@ const toggleAddForm = () => {
   @apply dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300;
   @apply border border-slate-300 dark:border-slate-600;
   @apply transition-colors duration-200;
-}
-
-.modalOverlay {
-  @apply fixed inset-0 bg-black bg-opacity-50 dark:bg-opacity-70 flex items-center justify-center z-50;
-  @apply transition-opacity duration-300 ease-in-out;
-  @apply backdrop-blur-sm;
-}
-
-.modalContainer {
-  @apply bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md mx-4;
-  @apply border border-gray-200 dark:border-gray-700;
-  @apply transform transition-all duration-300 ease-in-out;
-  @apply scale-100 opacity-100;
-}
-
-.modalHeader {
-  @apply flex items-center justify-between px-6 py-4;
-  @apply border-b border-gray-200 dark:border-gray-700;
-}
-
-.modalTitle {
-  @apply text-lg font-medium text-gray-800 dark:text-gray-200;
-}
-
-.closeButton {
-  @apply text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200;
-  @apply text-2xl font-bold leading-none;
-  @apply transition-colors duration-200;
-}
-
-.modalBody {
-  @apply px-6 py-5;
 }
 
 .buttonGroup {

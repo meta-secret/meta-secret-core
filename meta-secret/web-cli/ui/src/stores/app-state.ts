@@ -13,22 +13,21 @@ export const AppState = defineStore('app_state', {
 
   getters: {
     currentState: (state) => state.currState,
+    passwords: (state) => {
+        return state.currState.as_vault().as_member().vault_data().secrets();
+    },
 
     // Helper methods for state comparisons
     isLocal: (state) => {
-      if (!state.currState) return false;
       return state.currState.as_info() === ApplicationStateInfo.Local;
     },
     isVaultNotExists: (state) => {
-      if (!state.currState) return false;
       return state.currState.as_info() === ApplicationStateInfo.VaultNotExists;
     },
     isMember: (state) => {
-      if (!state.currState) return false;
       return state.currState.as_info() === ApplicationStateInfo.Member;
     },
     isOutsider: (state) => {
-      if (!state.currState) return false;
       return state.currState.as_info() === ApplicationStateInfo.Outsider;
     },
   },
