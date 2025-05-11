@@ -5,17 +5,26 @@ import { AppState } from '@/stores/app-state';
 import AddSecretForm from './AddSecretForm.vue';
 
 const appState = AppState();
+// Treat appManager as any type to avoid TypeScript errors
+const appManager = appState.appManager as any;
 
 const currentSecret = ref<any>(null);
 const currentSecretId = ref<any>(null);
 const copySuccess = ref<string | null>(null);
+const loadingRecovery = ref<string | null>(null); // Track which secret is being recovered
 
 const showAddForm = ref(false);
 const passwords = computed(() => appState.passwords);
 
 const recover = async (metaPassId: MetaPasswordId) => {
-  await appState.appManager.recover_js(metaPassId);
-  await appState.updateState();
+  const id = metaPassId.id();
+  loadingRecovery.value = id; // Set loading state for this specific secret
+  try {
+    await appManager.recover_js(metaPassId);
+    await appState.updateState();
+  } finally {
+    loadingRecovery.value = null; // Clear loading state regardless of outcome
+  }
 };
 
 const showRecovered = async (metaPassId: MetaPasswordId) => {
@@ -25,13 +34,13 @@ const showRecovered = async (metaPassId: MetaPasswordId) => {
     currentSecretId.value = null;
     return;
   }
-  currentSecret.value = await appState.appManager.show_recovered(metaPassId);
+  currentSecret.value = await appManager.show_recovered(metaPassId);
   currentSecretId.value = id;
 };
 
 const copyToClipboard = async (metaPassId: MetaPasswordId) => {
   try {
-    const secretText = await appState.appManager.show_recovered(metaPassId);
+    const secretText = await appManager.show_recovered(metaPassId);
     await navigator.clipboard.writeText(secretText);
     copySuccess.value = metaPassId.id();
     setTimeout(() => {
@@ -45,7 +54,8 @@ const copyToClipboard = async (metaPassId: MetaPasswordId) => {
 };
 
 const isRecovered = (metaPassId: MetaPasswordId) => {
-  const maybeCompletedClaim = appState.currState.as_vault().as_member().find_recovery_claim(metaPassId);
+  // Safely access properties using optional chaining
+  const maybeCompletedClaim = (appState.currState as any).as_vault?.()?.as_member?.()?.find_recovery_claim(metaPassId);
   return maybeCompletedClaim !== undefined;
 };
 
@@ -90,7 +100,14 @@ const handleSecretAdded = () => {
               </button>
             </div>
             <div v-else>
-              <button :class="$style.recoveryButton" @click="recover(secret)">Recovery Request</button>
+              <button 
+                :class="loadingRecovery === secret.id() ? [$style.recoveryButton, $style.loading] : $style.recoveryButton" 
+                @click="recover(secret)" 
+                :disabled="loadingRecovery === secret.id()"
+              >
+                <span v-if="loadingRecovery === secret.id()" :class="$style.spinner"></span>
+                <span>{{ loadingRecovery === secret.id() ? 'Processing...' : 'Recovery Request' }}</span>
+              </button>
             </div>
           </div>
         </div>
@@ -173,6 +190,17 @@ const handleSecretAdded = () => {
   @apply bg-gray-600 hover:bg-gray-700 text-sm text-white py-1.5 px-3 rounded-md;
   @apply dark:bg-gray-700 dark:hover:bg-gray-600;
   @apply transition-colors duration-200;
+  @apply flex items-center space-x-1;
+}
+
+.loading {
+  @apply bg-gray-500 dark:bg-gray-600 cursor-wait;
+}
+
+.spinner {
+  @apply inline-block w-4 h-4 mr-2;
+  @apply border-2 border-white border-t-transparent rounded-full;
+  @apply animate-spin;
 }
 
 .showButton {
@@ -217,5 +245,18 @@ const handleSecretAdded = () => {
 
 .buttonGroup {
   @apply flex items-center space-x-6;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
 }
 </style>
