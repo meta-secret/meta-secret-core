@@ -2,6 +2,7 @@
 import { ref, watch, defineEmits, defineProps } from 'vue';
 import { PlainPassInfo, WasmApplicationManager } from 'meta-secret-web-cli';
 import { AppState } from '@/stores/app-state';
+import ProgressBar from '@/components/common/ProgressBar.vue';
 
 const props = defineProps<{ show: boolean }>();
 const emit = defineEmits(['added', 'close']);
@@ -12,14 +13,49 @@ const newPassDescription = ref('');
 const isSubmitting = ref(false);
 const lastSubmitTime = ref(0);
 const DEBOUNCE_MS = 2000; // Prevent resubmissions within 2 seconds
+const progress = ref(0);
+const progressInterval = ref<number | null>(null);
 
 watch(() => props.show, (val) => {
   if (!val) {
     newPassword.value = '';
     newPassDescription.value = '';
     isSubmitting.value = false;
+    resetProgress();
   }
 });
+
+const resetProgress = () => {
+  if (progressInterval.value) {
+    clearInterval(progressInterval.value);
+    progressInterval.value = null;
+  }
+  progress.value = 0;
+};
+
+const startProgressSimulation = () => {
+  resetProgress();
+  
+  // Simulate progress during submission
+  progressInterval.value = window.setInterval(() => {
+    if (progress.value < 90) {
+      progress.value += Math.random() * 5;
+    }
+  }, 100);
+};
+
+const completeProgress = () => {
+  if (progressInterval.value) {
+    clearInterval(progressInterval.value);
+    progressInterval.value = null;
+  }
+  progress.value = 100;
+  
+  // Reset progress after a delay
+  setTimeout(() => {
+    progress.value = 0;
+  }, 1000);
+};
 
 const handleAdd = async () => {
   // Multiple protection checks to avoid double submission
@@ -37,6 +73,7 @@ const handleAdd = async () => {
   try {
     isSubmitting.value = true;
     lastSubmitTime.value = now;
+    startProgressSimulation();
     
     // Add timestamp to description to make each submission unique
     // This helps prevent creating the same event twice
@@ -57,12 +94,16 @@ const handleAdd = async () => {
     
     await appState.updateState();
     
+    // Complete the progress animation
+    completeProgress();
+    
     // Clear form and notify parent
     emit('added');
     newPassword.value = '';
     newPassDescription.value = '';
   } catch (error) {
     console.error("Error during secret distribution:", error);
+    resetProgress();
   } finally {
     // Set a slight delay before allowing new submissions
     setTimeout(() => {
@@ -86,6 +127,10 @@ const handleClose = () => {
         <h3 :class="$style.modalTitle">Add New Secret</h3>
         <button :class="$style.closeButton" @click="handleClose" :disabled="isSubmitting">&times;</button>
       </div>
+      
+      <!-- Progress bar -->
+      <ProgressBar v-if="isSubmitting" :progress="progress" color="green" height="4px" />
+      
       <div :class="$style.modalBody">
         <div :class="$style.inputGroup">
           <label :class="$style.inputLabel">Description</label>
