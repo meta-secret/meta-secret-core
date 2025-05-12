@@ -14,7 +14,6 @@ const toggleDeviceId = () => {
 
 <template>
   <div :class="$style.headerContainer">
-    <div :class="$style.alphaBadge">Alpha Version</div>
     <div :class="$style.vaultBadge">
       <div :class="$style.vaultLabel">Vault Name</div>
       <div :class="$style.vaultSeparator"></div>
@@ -58,14 +57,6 @@ const toggleDeviceId = () => {
 .headerContainer {
   @apply container mx-auto flex flex-col items-center max-w-md pt-3 pb-4;
   position: relative;
-}
-
-.alphaBadge {
-  @apply absolute -top-1 right-2 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded;
-  @apply shadow-md shadow-red-900/20;
-  @apply uppercase tracking-wide;
-  font-size: 0.65rem;
-  transform: rotate(5deg);
 }
 
 .vaultBadge {
