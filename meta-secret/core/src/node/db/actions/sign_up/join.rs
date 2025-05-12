@@ -1,11 +1,13 @@
-use crate::node::common::model::user::common::{UserDataMember, UserDataOutsider, UserDataOutsiderStatus, UserMembership};
+use crate::node::common::model::user::common::{
+    UserDataMember, UserDataOutsider, UserDataOutsiderStatus, UserMembership,
+};
 use crate::node::common::model::vault::vault::VaultMember;
 use crate::node::db::events::vault::vault_log_event::{JoinClusterEvent, UpdateMembershipEvent};
 use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
-use anyhow::Result;
 use anyhow::bail;
+use anyhow::Result;
 use std::sync::Arc;
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -14,7 +16,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 #[wasm_bindgen]
 pub enum JoinActionUpdate {
     Accept,
-    Decline
+    Decline,
 }
 
 pub struct JoinAction<Repo: KvLogEventRepo> {
@@ -23,34 +25,36 @@ pub struct JoinAction<Repo: KvLogEventRepo> {
 }
 
 impl<Repo: KvLogEventRepo> JoinAction<Repo> {
-    pub async fn update(&self, join_request: JoinClusterEvent, upd: JoinActionUpdate) -> Result<()> {
+    pub async fn update(
+        &self,
+        join_request: JoinClusterEvent,
+        upd: JoinActionUpdate,
+    ) -> Result<()> {
         let candidate_membership = self.member.vault.membership(join_request.candidate.clone());
         let p_device_log = PersistentDeviceLog::from(self.p_obj.clone());
-        
+
         match candidate_membership {
             UserMembership::Outsider(outsider) => match outsider.status {
                 UserDataOutsiderStatus::NonMember | UserDataOutsiderStatus::Pending => {
                     let update = match upd {
-                        JoinActionUpdate::Accept => {
-                            UserMembership::Member(UserDataMember {
-                                user_data: outsider.user_data,
-                            })
-                        }
-                        JoinActionUpdate::Decline => {
-                            UserMembership::Outsider(UserDataOutsider {
-                                user_data: outsider.user_data,
-                                status: UserDataOutsiderStatus::Declined,
-                            })
-                        }
+                        JoinActionUpdate::Accept => UserMembership::Member(UserDataMember {
+                            user_data: outsider.user_data,
+                        }),
+                        JoinActionUpdate::Decline => UserMembership::Outsider(UserDataOutsider {
+                            user_data: outsider.user_data,
+                            status: UserDataOutsiderStatus::Declined,
+                        }),
                     };
-                    
+
                     let update_event = UpdateMembershipEvent {
                         request: join_request,
                         sender: self.member.member.clone(),
-                        update
+                        update,
                     };
-                    
-                    p_device_log.save_updated_membership_event(update_event).await
+
+                    p_device_log
+                        .save_updated_membership_event(update_event)
+                        .await
                 }
                 UserDataOutsiderStatus::Declined => {
                     bail!("User request already declined")

@@ -15,7 +15,7 @@ use crate::node::db::events::vault::vault_log_event::{
 use crate::node::db::events::vault::vault_status::VaultStatusObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use derive_more::From;
 use tracing_attributes::instrument;
 
@@ -235,7 +235,7 @@ pub mod spec {
     use crate::node::db::objects::persistent_object::PersistentObject;
     use crate::node::db::objects::persistent_vault::PersistentVault;
     use crate::node::db::repo::generic_db::KvLogEventRepo;
-    use anyhow::{Result, bail};
+    use anyhow::{bail, Result};
     use std::sync::Arc;
 
     pub struct VaultLogSpec<Repo: KvLogEventRepo> {

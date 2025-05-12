@@ -1,9 +1,9 @@
 use crate::crypto::utils::Id48bit;
-use crate::node::common::model::IdString;
 use crate::node::common::model::crypto::aead::EncryptedMessage;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::vault::vault::VaultName;
+use crate::node::common::model::IdString;
 use derive_more::From;
 use std::collections::HashMap;
 use wasm_bindgen::prelude::wasm_bindgen;

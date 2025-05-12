@@ -1,5 +1,5 @@
 use crate::base_command::BaseCommand;
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use meta_secret_core::crypto::utils::Id48bit;
 use meta_secret_core::node::common::model::secret::{ClaimId, SecretDistributionType};
 use meta_secret_core::node::common::model::{ApplicationState, IdString, VaultFullInfo};

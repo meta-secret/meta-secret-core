@@ -4,7 +4,7 @@ use crate::info::interactive_command::InfoInteractiveCommand;
 use crate::init::interactive_command::InitInteractiveCommand;
 use crate::secret::interactive_command::SecretInteractiveCommand;
 use anyhow::Result;
-use dialoguer::{Select, theme::ColorfulTheme};
+use dialoguer::{theme::ColorfulTheme, Select};
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter};
 

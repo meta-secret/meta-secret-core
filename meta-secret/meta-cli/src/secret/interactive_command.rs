@@ -6,7 +6,7 @@ use crate::secret::recovery_request_command::RecoveryRequestCommand;
 use crate::secret::show_secret_command::ShowSecretCommand;
 use crate::secret::split_command::SplitCommand;
 use anyhow::Result;
-use dialoguer::{Input, Password, Select, theme::ColorfulTheme};
+use dialoguer::{theme::ColorfulTheme, Input, Password, Select};
 use meta_secret_core::node::common::model::meta_pass::PlainPassInfo;
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter};

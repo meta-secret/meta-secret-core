@@ -125,18 +125,18 @@ impl DbCleanUpCommand for ReDbRepo {
                 return;
             }
         };
-        
+
         // Try to clear the table by recreating it
         if let Err(err) = write_txn.delete_table(LOG_EVENTS_TABLE) {
             error!("Failed to delete table during cleanup: {:?}", err);
             return;
         }
-        
+
         if let Err(err) = write_txn.open_table(LOG_EVENTS_TABLE) {
             error!("Failed to recreate table during cleanup: {:?}", err);
             return;
         }
-        
+
         if let Err(err) = write_txn.commit() {
             error!("Failed to commit transaction during cleanup: {:?}", err);
         }

@@ -1,6 +1,6 @@
-use anyhow::{Context, bail};
+use anyhow::{bail, Context};
 use std::sync::Arc;
-use tracing::{Instrument, info, instrument};
+use tracing::{info, instrument, Instrument};
 use wasm_bindgen_futures::spawn_local;
 
 use anyhow::Result;
@@ -127,9 +127,15 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
         self.meta_client_service.accept_recover(claim_id).await
     }
 
-    pub async fn update_membership(&self, candidate: UserData, upd: JoinActionUpdate) -> Result<()> {
+    pub async fn update_membership(
+        &self,
+        candidate: UserData,
+        upd: JoinActionUpdate,
+    ) -> Result<()> {
         let join_request = JoinClusterEvent { candidate };
-        self.meta_client_service.update_membership(join_request, upd).await
+        self.meta_client_service
+            .update_membership(join_request, upd)
+            .await
     }
 
     pub async fn show_recovered(&self, pass_id: MetaPasswordId) -> Result<PlainText> {

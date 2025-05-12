@@ -15,7 +15,7 @@ use crate::node::db::events::shared_secret_event::{
 };
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
-use anyhow::{Ok, Result, bail};
+use anyhow::{bail, Ok, Result};
 use derive_more::From;
 use tracing::info;
 use tracing_attributes::instrument;

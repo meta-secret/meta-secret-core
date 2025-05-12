@@ -1,11 +1,11 @@
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
+use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::secret::{ClaimId, SsLogData};
 use crate::node::common::model::user::common::{UserData, UserDataOutsider};
 use crate::node::common::model::vault::vault::VaultMember;
 use crate::node::common::model::vault::vault_data::WasmVaultData;
 use crate::node::db::events::vault::vault_log_event::VaultActionEvents;
 use wasm_bindgen::prelude::wasm_bindgen;
-use crate::node::common::model::meta_pass::MetaPasswordId;
 
 pub mod crypto;
 pub mod device;
@@ -17,7 +17,7 @@ pub mod vault;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen]
-pub enum  ApplicationStateInfo {
+pub enum ApplicationStateInfo {
     Local,
     Member,
     Outsider,
@@ -58,20 +58,17 @@ pub struct WasmApplicationState(ApplicationState);
 
 #[wasm_bindgen]
 impl WasmApplicationState {
-
     pub fn as_info(&self) -> ApplicationStateInfo {
         match &self.0 {
             ApplicationState::Local(_) => ApplicationStateInfo::Local,
-            ApplicationState::Vault(vault_info) => {
-                match vault_info {
-                    VaultFullInfo::NotExists(_) => ApplicationStateInfo::VaultNotExists,
-                    VaultFullInfo::Outsider(_) => ApplicationStateInfo::Outsider,
-                    VaultFullInfo::Member(_) => ApplicationStateInfo::Member
-                }
-            }
+            ApplicationState::Vault(vault_info) => match vault_info {
+                VaultFullInfo::NotExists(_) => ApplicationStateInfo::VaultNotExists,
+                VaultFullInfo::Outsider(_) => ApplicationStateInfo::Outsider,
+                VaultFullInfo::Member(_) => ApplicationStateInfo::Member,
+            },
         }
     }
-    
+
     pub fn is_local(&self) -> bool {
         matches!(self.0, ApplicationState::Local { .. })
     }
@@ -95,25 +92,17 @@ impl WasmApplicationState {
 
         WasmVaultFullInfo(full_info.clone())
     }
-    
+
     pub fn device_id(&self) -> DeviceId {
         match &self.0 {
-            ApplicationState::Local(device) => {
-                device.device_id.clone()
-            },
-            ApplicationState::Vault(vault_info) => {
-                match vault_info {
-                    VaultFullInfo::NotExists(user_data) => {
-                        user_data.device.device_id.clone()
-                    },
-                    VaultFullInfo::Outsider(outsider) => {
-                        outsider.user_data.device.device_id.clone()
-                    },
-                    VaultFullInfo::Member(member) => {
-                        member.member.member.user_data.device.device_id.clone()
-                    },
+            ApplicationState::Local(device) => device.device_id.clone(),
+            ApplicationState::Vault(vault_info) => match vault_info {
+                VaultFullInfo::NotExists(user_data) => user_data.device.device_id.clone(),
+                VaultFullInfo::Outsider(outsider) => outsider.user_data.device.device_id.clone(),
+                VaultFullInfo::Member(member) => {
+                    member.member.member.user_data.device.device_id.clone()
                 }
-            }
+            },
         }
     }
 }
@@ -165,14 +154,14 @@ impl WasmVaultFullInfo {
             panic!("not a member vault info")
         }
     }
-    
+
     pub fn vault_name(&self) -> String {
         let vault_name = match &self.0 {
             VaultFullInfo::Member(member) => &member.member.vault.vault_name,
             VaultFullInfo::Outsider(outsider) => &outsider.user_data.vault_name,
             VaultFullInfo::NotExists(user_data) => &user_data.vault_name,
         };
-        
+
         vault_name.0.clone()
     }
 }
@@ -182,7 +171,7 @@ impl WasmUserMemberFullInfo {
     pub fn vault_data(&self) -> WasmVaultData {
         WasmVaultData::from(self.0.member.vault.clone())
     }
-    
+
     pub fn find_recovery_claim(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
         self.0.ss_claims.find_recovery_claim(pass_id)
     }
@@ -190,8 +179,8 @@ impl WasmUserMemberFullInfo {
 
 #[cfg(test)]
 mod test {
-    use crate::node::common::model::IdString;
     use crate::node::common::model::meta_pass::MetaPasswordId;
+    use crate::node::common::model::IdString;
 
     #[test]
     fn meta_password_id() {

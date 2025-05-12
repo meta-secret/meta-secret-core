@@ -178,7 +178,10 @@ impl VaultAggregate {
         for update in updates {
             match &update {
                 VaultActionUpdateEvent::UpdateMembership(membership) => {
-                    if self.vault.is_member(&membership.sender.user().device.device_id) {
+                    if self
+                        .vault
+                        .is_member(&membership.sender.user().device.device_id)
+                    {
                         self.vault = self.vault.update_membership(membership.update.clone());
                     }
                 }
@@ -290,7 +293,10 @@ mod test {
         UserDataMember, UserDataOutsider, UserMembership,
     };
     use crate::node::common::model::vault::vault_data::{VaultAggregate, VaultData};
-    use crate::node::db::events::vault::vault_log_event::{AddMetaPassEvent, JoinClusterEvent, UpdateMembershipEvent, VaultActionEvent, VaultActionEvents, VaultActionRequestEvent, VaultActionUpdateEvent};
+    use crate::node::db::events::vault::vault_log_event::{
+        AddMetaPassEvent, JoinClusterEvent, UpdateMembershipEvent, VaultActionEvent,
+        VaultActionEvents, VaultActionRequestEvent, VaultActionUpdateEvent,
+    };
     use anyhow::Result;
 
     #[test]
@@ -512,11 +518,12 @@ mod test {
         // Create second join request and member update
         let join_request_vd = JoinClusterEvent::from(vd_creds.user());
         let request_event_vd = VaultActionRequestEvent::JoinCluster(join_request_vd.clone());
-        let update_membership_vd = VaultActionUpdateEvent::UpdateMembership(UpdateMembershipEvent {
-            request: join_request_vd.clone(),
-            sender: UserDataMember::from(client_creds.user()),
-            update: UserMembership::Member(UserDataMember::from(vd_creds.user())),
-        });
+        let update_membership_vd =
+            VaultActionUpdateEvent::UpdateMembership(UpdateMembershipEvent {
+                request: join_request_vd.clone(),
+                sender: UserDataMember::from(client_creds.user()),
+                update: UserMembership::Member(UserDataMember::from(vd_creds.user())),
+            });
 
         // Create events with both requests and updates
         let events = VaultActionEvents::default()

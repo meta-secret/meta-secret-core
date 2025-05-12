@@ -9,8 +9,8 @@ use crate::node::common::model::user::common::{
     UserData, UserDataMember, UserDataOutsider, UserMembership,
 };
 use crate::node::common::model::vault::vault_data::{VaultData, WasmVaultData};
-use std::fmt::Display;
 use derive_more::From;
+use std::fmt::Display;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, From, Serialize, Deserialize)]

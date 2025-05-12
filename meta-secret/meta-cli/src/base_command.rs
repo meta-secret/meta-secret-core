@@ -1,4 +1,4 @@
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use meta_db_redb::ReDbRepo;
 use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
 use meta_secret_core::node::app::meta_app::meta_client_service::{
@@ -9,8 +9,8 @@ use meta_secret_core::node::app::sync::sync_gateway::SyncGateway;
 use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
 use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
-use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
+use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -23,14 +23,14 @@ pub struct DbContext<Repo: KvLogEventRepo> {
 
 pub struct BaseCommand {
     pub db_name: String,
-    pub api_url: ApiUrl
+    pub api_url: ApiUrl,
 }
 
 impl BaseCommand {
     pub fn new(db_name: String) -> Self {
-        Self { 
+        Self {
             db_name,
-            api_url: ApiUrl::prod()
+            api_url: ApiUrl::prod(),
         }
     }
 
@@ -86,7 +86,10 @@ impl BaseCommand {
     }
 
     /// Common error handling for missing device credentials
-    pub async fn ensure_device_creds<Repo: KvLogEventRepo>(&self, db_context: &DbContext<Repo>) -> Result<()> {
+    pub async fn ensure_device_creds<Repo: KvLogEventRepo>(
+        &self,
+        db_context: &DbContext<Repo>,
+    ) -> Result<()> {
         if db_context.p_creds.get_device_creds().await?.is_none() {
             bail!("Device credentials not found. Please run `meta-secret init-device` first.");
         }
@@ -94,7 +97,10 @@ impl BaseCommand {
     }
 
     /// Common error handling for missing user credentials
-    pub async fn ensure_user_creds<Repo: KvLogEventRepo>(&self, db_context: &DbContext<Repo>) -> Result<()> {
+    pub async fn ensure_user_creds<Repo: KvLogEventRepo>(
+        &self,
+        db_context: &DbContext<Repo>,
+    ) -> Result<()> {
         if db_context.p_creds.get_user_creds().await?.is_none() {
             bail!("User credentials not found. Please run `meta-secret init-user` first.");
         }

@@ -80,4 +80,4 @@ impl InfoCommandTrait for VaultEventsInfoCommand {
 
         Ok(())
     }
-} 
+}

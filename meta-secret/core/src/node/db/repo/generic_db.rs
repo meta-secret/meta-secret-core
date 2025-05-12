@@ -44,7 +44,10 @@ pub trait DbCleanUpCommand {
 }
 
 #[async_trait(? Send)]
-pub trait KvLogEventRepo: FindOneQuery + SaveCommand + DeleteCommand + DbCleanUpCommand + 'static {}
+pub trait KvLogEventRepo:
+    FindOneQuery + SaveCommand + DeleteCommand + DbCleanUpCommand + 'static
+{
+}
 
 pub trait CommitLogDbConfig {
     fn db_name(&self) -> String;

@@ -13,7 +13,12 @@ use crate::auth::accept_join_request_command::AcceptJoinRequestCommand;
 use crate::auth::interactive_command::AuthInteractiveCommand;
 use crate::auth::sign_up_command::JoinVaultCommand;
 use crate::cli_format::CliOutputFormat;
+use crate::info::default_info_command::DefaultInfoCommand;
 use crate::info::info_command_base::InfoCommandTrait;
+use crate::info::interactive_command::InfoInteractiveCommand;
+use crate::info::recovery_claims_command::RecoveryClaimsInfoCommand;
+use crate::info::secrets_command::SecretsInfoCommand;
+use crate::info::vault_events_command::VaultEventsInfoCommand;
 use crate::init::device_command::InitDeviceCommand;
 use crate::init::interactive_command::InitInteractiveCommand;
 use crate::init::user_command::InitUserCommand;
@@ -30,11 +35,6 @@ use dialoguer::Password;
 use meta_secret_core::node::common::model::meta_pass::PlainPassInfo;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use std::io::{self, IsTerminal, Read};
-use crate::info::default_info_command::DefaultInfoCommand;
-use crate::info::recovery_claims_command::RecoveryClaimsInfoCommand;
-use crate::info::secrets_command::SecretsInfoCommand;
-use crate::info::vault_events_command::VaultEventsInfoCommand;
-use crate::info::interactive_command::InfoInteractiveCommand;
 
 #[derive(Debug, Parser)]
 #[command(about = "Meta Secret CLI", long_about = None)]
@@ -188,30 +188,28 @@ async fn main() -> Result<()> {
                 init_interactive_cmd.execute().await?
             }
         },
-        Command::Info { command } => {
-            match command {
-                InfoSubCommand::RecoveryClaims => {
-                    let cmd = RecoveryClaimsInfoCommand::new(db_name, args.output_format);
-                    cmd.execute().await?
-                },
-                InfoSubCommand::Secrets => {
-                    let cmd = SecretsInfoCommand::new(db_name, args.output_format);
-                    cmd.execute().await?
-                },
-                InfoSubCommand::VaultEvents => {
-                    let cmd = VaultEventsInfoCommand::new(db_name, args.output_format);
-                    cmd.execute().await?
-                },
-                InfoSubCommand::Default => {
-                    let cmd = DefaultInfoCommand::new(db_name, args.output_format);
-                    cmd.execute().await?
-                },
-                InfoSubCommand::Interactive => {
-                    let cmd = InfoInteractiveCommand::new(db_name);
-                    cmd.execute().await?
-                },
+        Command::Info { command } => match command {
+            InfoSubCommand::RecoveryClaims => {
+                let cmd = RecoveryClaimsInfoCommand::new(db_name, args.output_format);
+                cmd.execute().await?
             }
-        }
+            InfoSubCommand::Secrets => {
+                let cmd = SecretsInfoCommand::new(db_name, args.output_format);
+                cmd.execute().await?
+            }
+            InfoSubCommand::VaultEvents => {
+                let cmd = VaultEventsInfoCommand::new(db_name, args.output_format);
+                cmd.execute().await?
+            }
+            InfoSubCommand::Default => {
+                let cmd = DefaultInfoCommand::new(db_name, args.output_format);
+                cmd.execute().await?
+            }
+            InfoSubCommand::Interactive => {
+                let cmd = InfoInteractiveCommand::new(db_name);
+                cmd.execute().await?
+            }
+        },
         Command::Auth { command } => match command {
             AuthCommand::SignUp => {
                 let sign_up_cmd = JoinVaultCommand::new(db_name);

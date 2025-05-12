@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::server::server_data_sync::ServerSyncGateway;
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use meta_secret_core::node::api::{
     DataEventsResponse, DataSyncResponse, ReadSyncRequest, ServerTailRequest, ServerTailResponse,
     SyncRequest, WriteSyncRequest,
@@ -191,17 +191,15 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                     Ok(data_sync_response)
                 }
             },
-            SyncRequest::Write(write_request) => {
-                match *write_request {
-                    WriteSyncRequest::Event(event) => {
-                        info!("Received new event: {:?}", event);
-                        self.data_sync
-                            .handle_write(server_creds.device, event)
-                            .await?;
-                        Ok(DataSyncResponse::Empty)
-                    }
+            SyncRequest::Write(write_request) => match *write_request {
+                WriteSyncRequest::Event(event) => {
+                    info!("Received new event: {:?}", event);
+                    self.data_sync
+                        .handle_write(server_creds.device, event)
+                        .await?;
+                    Ok(DataSyncResponse::Empty)
                 }
-            }
+            },
         }
     }
 

@@ -4,7 +4,7 @@ use std::io::Write;
 use crate::crypto::encoding::base64::Base64Text;
 use crate::crypto::keys::TransportSk;
 use crate::node::common::model::crypto::channel::CommunicationChannel;
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

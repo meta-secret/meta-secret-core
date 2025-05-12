@@ -1,5 +1,5 @@
 use crate::base_command::BaseCommand;
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use meta_secret_core::node::common::model::{ApplicationState, IdString, VaultFullInfo};
 use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
 use meta_secret_core::node::db::events::vault::vault_log_event::VaultActionRequestEvent;

@@ -4,8 +4,8 @@ use meta_secret_core::node::common::model::secret::{SecretDistributionType, SsCl
 
 #[cfg(test)]
 pub mod fixture {
-    use meta_secret_core::meta_tests::fixture_util::fixture::FixtureRegistry;
     use meta_secret_core::meta_tests::fixture_util::fixture::states::BaseState;
+    use meta_secret_core::meta_tests::fixture_util::fixture::FixtureRegistry;
     use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
     use meta_server_node::server::server_app::ServerApp;
     use std::sync::Arc;
@@ -27,10 +27,10 @@ pub mod fixture {
 mod test {
     use crate::fixture::{ExtendedFixtureRegistry, ExtendedFixtureState};
     use crate::tests::meta_secret_test::SsClaimVerifierForTestRecovery;
-    use anyhow::Result;
     use anyhow::bail;
-    use meta_secret_core::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use anyhow::Result;
     use meta_secret_core::meta_tests::fixture_util::fixture::states::EmptyState;
+    use meta_secret_core::meta_tests::fixture_util::fixture::FixtureRegistry;
     use meta_secret_core::meta_tests::spec::test_spec::TestSpec;
     use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
     use meta_secret_core::node::common::meta_tracing::{client_span, server_span, vd_span};
@@ -44,6 +44,7 @@ mod test {
     use meta_secret_core::node::db::actions::recover::RecoveryHandler;
     use meta_secret_core::node::db::actions::sign_up::claim::spec::SignUpClaimSpec;
     use meta_secret_core::node::db::actions::sign_up::claim::test_action::SignUpClaimTestAction;
+    use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
     use meta_secret_core::node::db::descriptors::shared_secret_descriptor::{
         SsDeviceLogDescriptor, SsWorkflowDescriptor,
     };
@@ -51,8 +52,7 @@ mod test {
     use meta_secret_core::node::db::events::shared_secret_event::SsWorkflowObject;
     use meta_secret_core::node::db::events::vault::vault_log_event::VaultActionRequestEvent;
     use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
-    use tracing::{Instrument, info};
-    use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
+    use tracing::{info, Instrument};
 
     struct ServerAppSignUpSpec {
         registry: FixtureRegistry<ExtendedFixtureState>,

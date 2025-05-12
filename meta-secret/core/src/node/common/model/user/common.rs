@@ -113,7 +113,7 @@ impl UserDataOutsider {
             status: UserDataOutsiderStatus::Pending,
         }
     }
-    
+
     pub fn non_member(user_data: UserData) -> Self {
         Self {
             user_data,

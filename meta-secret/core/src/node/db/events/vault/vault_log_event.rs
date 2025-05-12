@@ -8,7 +8,7 @@ use crate::node::db::events::generic_log_event::{
 };
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::ArtifactId;
-use anyhow::{Result, anyhow, bail};
+use anyhow::{anyhow, bail, Result};
 use derive_more::From;
 use std::collections::HashSet;
 use std::fmt::Display;
@@ -225,9 +225,7 @@ impl VaultActionUpdateEvent {
             VaultActionUpdateEvent::AddMetaPass(AddMetaPassEvent { sender, .. }) => {
                 sender.user_data.vault_name()
             }
-            VaultActionUpdateEvent::AddToPending { candidate } => {
-                candidate.vault_name()
-            }
+            VaultActionUpdateEvent::AddToPending { candidate } => candidate.vault_name(),
         }
     }
 }
@@ -300,9 +298,9 @@ impl VaultActionEvent {
 
 #[cfg(test)]
 mod test {
-    use crate::node::db::events::vault::vault_log_event::UpdateMembershipEvent;
-use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::common::model::user::common::{UserDataMember, UserMembership};
+    use crate::node::db::events::vault::vault_log_event::UpdateMembershipEvent;
     use crate::node::db::events::vault::vault_log_event::{
         JoinClusterEvent, VaultActionEvent, VaultActionEvents, VaultActionRequestEvent,
         VaultActionUpdateEvent,

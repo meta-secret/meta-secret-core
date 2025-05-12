@@ -8,7 +8,7 @@ use crate::node::db::events::local_event::{DeviceCredsObject, UserCredsObject};
 use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use derive_more::From;
 use std::sync::Arc;
 use tracing::{info, instrument};

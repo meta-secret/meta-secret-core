@@ -178,8 +178,8 @@ mod seq_id_tests {
 
 #[cfg(test)]
 mod fqdn_tests {
-    use crate::node::common::model::IdString;
     use crate::node::common::model::vault::vault::VaultName;
+    use crate::node::common::model::IdString;
     use crate::node::db::descriptors::creds::DeviceCredsDescriptor;
     use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
     use crate::node::db::descriptors::vault_descriptor::VaultDescriptor;

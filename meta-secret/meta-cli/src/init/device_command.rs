@@ -1,6 +1,6 @@
 use crate::base_command::{BaseCommand, DbContext};
-use anyhow::Result;
 use anyhow::bail;
+use anyhow::Result;
 use meta_secret_core::node::common::model::device::common::DeviceName;
 use meta_secret_core::node::db::descriptors::creds::DeviceCredsDescriptor;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
@@ -31,9 +31,12 @@ impl InitDeviceCommand {
         // Delegate to the generic execute method
         self.execute_with_context(&db_context).await
     }
-    
+
     // Generic method that works with any DbContext
-    pub async fn execute_with_context<Repo: KvLogEventRepo>(&self, db_context: &DbContext<Repo>) -> Result<()> {
+    pub async fn execute_with_context<Repo: KvLogEventRepo>(
+        &self,
+        db_context: &DbContext<Repo>,
+    ) -> Result<()> {
         // Check if device credentials already exist
         let maybe_device_creds = db_context
             .p_obj
@@ -68,48 +71,61 @@ impl InitDeviceCommand {
 
 #[cfg(test)]
 pub mod tests {
-    use std::sync::Arc;
+    use super::*;
     use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
     use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
     use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
-    use super::*;
+    use std::sync::Arc;
 
     #[tokio::test]
     async fn test_init_device_command() -> Result<()> {
         // Create an in-memory database context
         let db_context = create_in_memory_context().await;
-        
+
         // Define test parameters (similar to device-a in Taskfile.yml)
         let device_name = "device_a";
-        
+
         // Create the command instance
         let init_device_cmd = InitDeviceCommand::new(
             "in_memory_db".to_string(), // This name is just for consistency, not used for actual file
             device_name.to_string(),
         );
-        
+
         // Execute the command with our in-memory context
         let result = init_device_cmd.execute_with_context(&db_context).await;
-        
+
         // Verify the command succeeded
-        assert!(result.is_ok(), "Command should succeed but failed with: {:?}", result);
-        
+        assert!(
+            result.is_ok(),
+            "Command should succeed but failed with: {:?}",
+            result
+        );
+
         // Verify that device credentials were created correctly
-        let maybe_device_creds = db_context.p_obj.find_tail_event(DeviceCredsDescriptor).await?;
-        assert!(maybe_device_creds.is_some(), "Device credentials should exist after initialization");
-        
+        let maybe_device_creds = db_context
+            .p_obj
+            .find_tail_event(DeviceCredsDescriptor)
+            .await?;
+        assert!(
+            maybe_device_creds.is_some(),
+            "Device credentials should exist after initialization"
+        );
+
         // Verify the device name is correct
         let device_creds = maybe_device_creds.unwrap();
         assert_eq!(
-            device_creds.value().device.device_name.as_str(), 
+            device_creds.value().device.device_name.as_str(),
             device_name,
             "Device name should match the input value"
         );
-        
+
         // Try to run the command again - should fail because credentials already exist
         let result = init_device_cmd.execute_with_context(&db_context).await;
-        assert!(result.is_err(), "Second execution should fail but succeeded");
-        
+        assert!(
+            result.is_err(),
+            "Second execution should fail but succeeded"
+        );
+
         Ok(())
     }
 

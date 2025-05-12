@@ -190,9 +190,10 @@ impl InfoCommandTrait for DefaultInfoCommand {
         }
 
         // Render the template using the template manager
-        let output = TemplateManager::instance().render("info", &context, self.base.output_format())?;
+        let output =
+            TemplateManager::instance().render("info", &context, self.base.output_format())?;
         print!("{}", output);
 
         Ok(())
     }
-} 
+}

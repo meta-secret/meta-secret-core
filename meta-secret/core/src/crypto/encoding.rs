@@ -27,10 +27,10 @@ pub mod base64 {
     }
 
     pub mod encoder {
-        use crate::crypto::encoding::Array256Bit;
         use crate::crypto::encoding::base64::Base64Text;
+        use crate::crypto::encoding::Array256Bit;
         use crate::secret::shared_secret::PlainText;
-        use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
         use image::EncodableLayout;
 
         impl From<Vec<u8>> for Base64Text {
@@ -90,10 +90,10 @@ pub mod base64 {
     }
 
     pub mod decoder {
-        use crate::crypto::encoding::Array256Bit;
         use crate::crypto::encoding::base64::Base64Text;
+        use crate::crypto::encoding::Array256Bit;
         use crate::errors::CoreError;
-        use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 
         impl TryFrom<&Base64Text> for String {
             type Error = CoreError;
@@ -130,9 +130,9 @@ pub mod base64 {
 
     #[cfg(test)]
     mod test {
+        use crate::crypto::encoding::base64::Base64Text;
         use crate::crypto::encoding::Array256Bit;
         use crate::crypto::encoding::KEY_SIZE_32_BYTES;
-        use crate::crypto::encoding::base64::Base64Text;
         use crate::secret::shared_secret::PlainText;
 
         const TEST_STR: &str = "kjsfdbkjsfhdkjhsfdkjhsfdkjhksfdjhksjfdhksfd";
@@ -348,8 +348,8 @@ pub mod serialized_key_manager {
     }
 
     pub mod decoder {
-        use crate::crypto::encoding::Array256Bit;
         use crate::crypto::encoding::base64::Base64Text;
+        use crate::crypto::encoding::Array256Bit;
         use crate::crypto::key_pair::{
             DalekKeyPair, DalekPublicKey, DalekSignature, DsaKeyPair, TransportDsaKeyPair,
         };
@@ -425,13 +425,13 @@ pub mod serialized_key_manager {
 
         #[cfg(test)]
         pub mod test {
-            use crate::CoreResult;
             use crate::crypto::encoding::base64::Base64Text;
             use crate::crypto::key_pair::{DalekPublicKey, DalekSignature, KeyPair};
             use crate::crypto::key_pair::{DsaKeyPair, TransportDsaKeyPair};
             use crate::crypto::keys::{
                 KeyManager, SecretBox, SerializedDsaKeyPair, SerializedTransportKeyPair,
             };
+            use crate::CoreResult;
             use ed25519_dalek::Verifier;
 
             #[test]

@@ -3,7 +3,7 @@ use crate::auth::accept_join_request_command::AcceptJoinRequestCommand;
 use crate::auth::sign_up_command::JoinVaultCommand;
 use crate::base_command::BaseCommand;
 use anyhow::Result;
-use dialoguer::{Input, Select, theme::ColorfulTheme};
+use dialoguer::{theme::ColorfulTheme, Input, Select};
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter};
 

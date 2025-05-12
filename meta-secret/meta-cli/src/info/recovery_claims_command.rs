@@ -3,7 +3,7 @@ use crate::info::info_command_base::{InfoCommandBase, InfoCommandTrait};
 use crate::template_manager::TemplateManager;
 use anyhow::Result;
 use meta_secret_core::node::common::model::secret::SsDistributionStatus;
-use meta_secret_core::node::common::model::{IdString, VaultFullInfo, ApplicationState};
+use meta_secret_core::node::common::model::{ApplicationState, IdString, VaultFullInfo};
 use serde_json::json;
 use tera::Context;
 
@@ -89,4 +89,4 @@ impl InfoCommandTrait for RecoveryClaimsInfoCommand {
 
         Ok(())
     }
-} 
+}

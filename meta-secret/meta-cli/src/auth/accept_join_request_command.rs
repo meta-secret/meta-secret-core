@@ -1,9 +1,9 @@
 use crate::base_command::BaseCommand;
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use meta_secret_core::node::common::model::{ApplicationState, IdString, VaultFullInfo};
+use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
 use meta_secret_core::node::db::events::vault::vault_log_event::VaultActionRequestEvent;
 use tracing::info;
-use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
 
 pub struct AcceptJoinRequestCommand {
     pub base: BaseCommand,
@@ -68,7 +68,9 @@ impl AcceptJoinRequestCommand {
                     match found_join_request {
                         Some(join_request) => {
                             info!("Accept the join request");
-                            client.update_membership(join_request, JoinActionUpdate::Accept).await?;
+                            client
+                                .update_membership(join_request, JoinActionUpdate::Accept)
+                                .await?;
                             println!(
                                 "Join request for device {} accepted successfully",
                                 self.device_id

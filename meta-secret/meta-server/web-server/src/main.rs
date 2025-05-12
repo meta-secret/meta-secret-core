@@ -1,5 +1,5 @@
 use axum::extract::State;
-use axum::{Json, Router, routing::post};
+use axum::{routing::post, Json, Router};
 use http::{StatusCode, Uri};
 use serde_derive::Serialize;
 use std::sync::Arc;
@@ -13,7 +13,7 @@ use meta_server_node::server::server_app::{MetaServerDataTransfer, ServerApp};
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
-use tracing::{Level, info};
+use tracing::{info, Level};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
 #[derive(Clone)]

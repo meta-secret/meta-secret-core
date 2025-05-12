@@ -3,10 +3,10 @@ mod tests;
 #[cfg(test)]
 pub mod fixture {
     use crate::tests::meta_secret_test::fixture::ServerAppFixture;
-    use meta_secret_core::meta_tests::fixture_util::fixture::FixtureRegistry;
     use meta_secret_core::meta_tests::fixture_util::fixture::states::BaseState;
-    use meta_secret_core::node::app::meta_app::meta_client_service::MetaClientService;
+    use meta_secret_core::meta_tests::fixture_util::fixture::FixtureRegistry;
     use meta_secret_core::node::app::meta_app::meta_client_service::fixture::MetaClientServiceFixture;
+    use meta_secret_core::node::app::meta_app::meta_client_service::MetaClientService;
     use meta_secret_core::node::app::orchestrator::MetaOrchestrator;
     use meta_secret_core::node::app::sync::sync_gateway::SyncGateway;
     use meta_secret_core::node::common::model::device::common::DeviceId;

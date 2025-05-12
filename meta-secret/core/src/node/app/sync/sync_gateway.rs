@@ -96,9 +96,10 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
     }
 
     async fn get_server_tail_request(&self, user_data: UserData) -> Result<SyncRequest> {
-        let sync_request = SyncRequest::Read(Box::from(ReadSyncRequest::ServerTail(ServerTailRequest {
-            sender: user_data,
-        })));
+        let sync_request =
+            SyncRequest::Read(Box::from(ReadSyncRequest::ServerTail(ServerTailRequest {
+                sender: user_data,
+            })));
         Ok(sync_request)
     }
 
@@ -123,7 +124,10 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
             let p_vault = PersistentVault::from(self.p_obj.clone());
             let tail = p_vault.vault_tail(user).await?;
 
-            SyncRequest::Read(Box::from(ReadSyncRequest::Vault(VaultRequest { sender, tail })))
+            SyncRequest::Read(Box::from(ReadSyncRequest::Vault(VaultRequest {
+                sender,
+                tail,
+            })))
         };
         Ok(vault_sync_request)
     }
@@ -147,8 +151,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
             .await?;
 
         for ss_device_log_event in ss_device_log_events_to_sync {
-            let sync_request =
-                SyncRequest::Write(Box::from(WriteSyncRequest::Event(ss_device_log_event.to_generic())));
+            let sync_request = SyncRequest::Write(Box::from(WriteSyncRequest::Event(
+                ss_device_log_event.to_generic(),
+            )));
             self.sync.send(sync_request).await?;
         }
 
@@ -263,7 +268,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
             .await?
             .into_iter()
             .map(|device_log_event| {
-                SyncRequest::Write(Box::from(WriteSyncRequest::Event(device_log_event.to_generic())))
+                SyncRequest::Write(Box::from(WriteSyncRequest::Event(
+                    device_log_event.to_generic(),
+                )))
             })
             .collect();
         Ok(device_log_events_to_sync)

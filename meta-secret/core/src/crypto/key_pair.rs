@@ -1,15 +1,15 @@
 use age::secrecy::ExposeSecret;
 use age::x25519::Identity;
 use ed25519_dalek::{SecretKey, Signer, SigningKey};
-use rand::TryRngCore;
 use rand::rngs::OsRng;
+use rand::TryRngCore;
 
-use crate::CoreResult;
 use crate::crypto::encoding::base64::Base64Text;
 use crate::crypto::keys::{DsaPk, DsaSk, TransportPk, TransportSk};
 use crate::node::common::model::crypto::aead::{AeadCipherText, AeadPlainText};
 use crate::node::common::model::crypto::channel::CommunicationChannel;
 use crate::secret::shared_secret::PlainText;
+use crate::CoreResult;
 
 pub type DalekKeyPair = SigningKey;
 pub type DalekPublicKey = ed25519_dalek::VerifyingKey;
@@ -124,9 +124,9 @@ pub mod test {
     use crate::crypto::encoding::base64::Base64Text;
     use crate::crypto::key_pair::{DsaKeyPair, KeyPair, TransportDsaKeyPair};
     use crate::crypto::keys::fixture::KeyManagerFixture;
-    use crate::node::common::model::IdString;
     use crate::node::common::model::crypto::aead::{AeadCipherText, AeadPlainText};
     use crate::node::common::model::crypto::channel::CommunicationChannel;
+    use crate::node::common::model::IdString;
     use crate::secret::shared_secret::PlainText;
 
     #[test]

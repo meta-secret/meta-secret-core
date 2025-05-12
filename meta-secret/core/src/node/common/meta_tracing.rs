@@ -1,4 +1,4 @@
-use tracing::{Span, info_span};
+use tracing::{info_span, Span};
 
 pub const SERVER_SPAN: &str = "MetaServer";
 pub const CLIENT_SPAN: &str = "MetaClient";

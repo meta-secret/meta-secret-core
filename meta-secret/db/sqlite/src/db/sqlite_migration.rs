@@ -1,5 +1,5 @@
 use diesel::{Connection, SqliteConnection};
-use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
+use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use meta_secret_core::crypto::utils::UuidUrlEnc;
 use meta_secret_core::node::common::model::IdString;
 

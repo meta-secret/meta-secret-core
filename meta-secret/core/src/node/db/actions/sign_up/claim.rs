@@ -42,7 +42,7 @@ impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
     #[instrument(skip(self))]
     pub async fn sign_up(&self, user_data: UserData) -> anyhow::Result<VaultStatus> {
         info!("Sign up action");
-        
+
         let p_device_log = PersistentDeviceLog::from(self.p_obj.clone());
         let p_vault = PersistentVault::from(self.p_obj.clone());
 

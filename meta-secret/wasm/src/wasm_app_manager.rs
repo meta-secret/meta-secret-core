@@ -5,13 +5,13 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::app_manager::ApplicationManager;
 use crate::configure;
-use crate::wasm_repo::{WasmRepo};
+use crate::wasm_repo::WasmRepo;
 use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
-use meta_secret_core::node::common::model::WasmApplicationState;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::ClaimId;
 use meta_secret_core::node::common::model::user::common::UserData;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
+use meta_secret_core::node::common::model::WasmApplicationState;
 use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
 
 #[wasm_bindgen]
@@ -52,11 +52,16 @@ impl WasmApplicationManager {
     }
 
     pub async fn update_membership(&self, candidate: UserData, upd: JoinActionUpdate) {
-        self.app_manager.update_membership(candidate, upd).await.unwrap()
+        self.app_manager
+            .update_membership(candidate, upd)
+            .await
+            .unwrap()
     }
 
     pub async fn cluster_distribution(&self, plain_pass_info: &PlainPassInfo) {
-        self.app_manager.cluster_distribution(plain_pass_info.clone()).await;
+        self.app_manager
+            .cluster_distribution(plain_pass_info.clone())
+            .await;
     }
 
     pub async fn recover_js(&self, meta_pass_id: &MetaPasswordId) {
@@ -65,7 +70,11 @@ impl WasmApplicationManager {
 
     pub async fn show_recovered(&self, pass_id: &MetaPasswordId) -> String {
         info!("Show recovered pass id: {:?}", pass_id);
-        self.app_manager.show_recovered(pass_id.clone()).await.unwrap().text
+        self.app_manager
+            .show_recovered(pass_id.clone())
+            .await
+            .unwrap()
+            .text
     }
 
     pub async fn find_claim_by_pass_id(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {

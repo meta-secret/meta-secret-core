@@ -8,9 +8,11 @@ use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
 };
 use crate::node::db::events::object_id::ArtifactId;
-use crate::node::db::repo::generic_db::{DbCleanUpCommand, DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand};
+use crate::node::db::repo::generic_db::{
+    DbCleanUpCommand, DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand,
+};
 use anyhow::Result;
-use tracing::{instrument};
+use tracing::instrument;
 
 pub struct InMemKvLogEventRepo {
     pub db: Arc<Mutex<HashMap<ArtifactId, GenericKvLogEvent>>>,

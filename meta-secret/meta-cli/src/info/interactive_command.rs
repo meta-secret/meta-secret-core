@@ -1,14 +1,14 @@
 use crate::base_command::BaseCommand;
 use crate::cli_format::CliOutputFormat;
 use crate::info::default_info_command::DefaultInfoCommand;
+use crate::info::info_command_base::InfoCommandTrait;
 use crate::info::recovery_claims_command::RecoveryClaimsInfoCommand;
 use crate::info::secrets_command::SecretsInfoCommand;
 use crate::info::vault_events_command::VaultEventsInfoCommand;
 use anyhow::Result;
-use dialoguer::{Select, theme::ColorfulTheme};
+use dialoguer::{theme::ColorfulTheme, Select};
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter};
-use crate::info::info_command_base::InfoCommandTrait;
 
 #[derive(Debug, Clone, Copy, Display, EnumIter)]
 pub enum InfoOption {
@@ -55,34 +55,35 @@ impl InfoInteractiveCommand {
     pub async fn execute(&self) -> Result<()> {
         loop {
             let option = InfoOptionSelector::select()?;
-            
+
             if matches!(option, InfoOption::Back) {
                 break;
             }
-            
+
             let output_format = CliOutputFormat::default();
-            
+
             match option {
                 InfoOption::Default => {
                     let cmd = DefaultInfoCommand::new(self.base.db_name.clone(), output_format);
                     cmd.execute().await?;
-                },
+                }
                 InfoOption::RecoveryClaims => {
-                    let cmd = RecoveryClaimsInfoCommand::new(self.base.db_name.clone(), output_format);
+                    let cmd =
+                        RecoveryClaimsInfoCommand::new(self.base.db_name.clone(), output_format);
                     cmd.execute().await?;
-                },
+                }
                 InfoOption::Secrets => {
                     let cmd = SecretsInfoCommand::new(self.base.db_name.clone(), output_format);
                     cmd.execute().await?;
-                },
+                }
                 InfoOption::VaultEvents => {
                     let cmd = VaultEventsInfoCommand::new(self.base.db_name.clone(), output_format);
                     cmd.execute().await?;
-                },
+                }
                 InfoOption::Back => unreachable!(), // Already handled above
             }
         }
-        
+
         Ok(())
     }
 }
@@ -114,4 +115,4 @@ mod tests {
         assert_eq!(InfoOption::VaultEvents.to_string(), "Vault Events");
         assert_eq!(InfoOption::Back.to_string(), "Back to Main Menu");
     }
-} 
+}

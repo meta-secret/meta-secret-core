@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
-use crate::node::common::model::user::common::{
-    UserData, UserDataMember, UserId, UserMembership,
-};
+use crate::node::common::model::user::common::{UserData, UserDataMember, UserId};
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault_descriptor::DeviceLogDescriptor;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
@@ -39,7 +37,7 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
         let member_user = update.sender.user();
 
         let free_key = self.get_device_log_free_key(member_user).await?;
-        
+
         let join_request = DeviceLogObject(KvLogEvent {
             key: free_key,
             value: VaultActionEvent::Update(VaultActionUpdateEvent::UpdateMembership(update)),

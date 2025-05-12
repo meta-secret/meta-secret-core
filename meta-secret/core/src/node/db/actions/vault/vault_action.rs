@@ -9,8 +9,8 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::Next;
 use crate::node::db::events::vault::vault_event::VaultObject;
 use crate::node::db::events::vault::vault_log_event::{
-    AddMetaPassEvent, VaultActionEvent, VaultActionInitEvent, VaultActionRequestEvent, 
-    VaultActionUpdateEvent
+    AddMetaPassEvent, VaultActionEvent, VaultActionInitEvent, VaultActionRequestEvent,
+    VaultActionUpdateEvent,
 };
 use crate::node::db::events::vault::vault_status::VaultStatusObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
@@ -114,7 +114,8 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
 
         match action_update {
             VaultActionUpdateEvent::UpdateMembership(update) => {
-                self.update_vault_status(vault_event, update.update.clone()).await?;
+                self.update_vault_status(vault_event, update.update.clone())
+                    .await?;
             }
             VaultActionUpdateEvent::AddMetaPass(AddMetaPassEvent { .. }) => {
                 // no extra steps required (vault  is already updated by VaultAggregate)
@@ -127,7 +128,11 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
         Ok(())
     }
 
-    async fn update_vault_status(&self, vault_event: VaultObject, update: UserMembership) -> Result<()> {
+    async fn update_vault_status(
+        &self,
+        vault_event: VaultObject,
+        update: UserMembership,
+    ) -> Result<()> {
         //update vault status accordingly
         let free_id = {
             let user_id = update.user_data().user_id();
@@ -213,12 +218,14 @@ pub mod fixture {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::meta_tests::fixture_util::fixture::states::BaseState;
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::common::model::meta_pass::MetaPasswordId;
     use crate::node::common::model::user::common::{UserDataMember, UserMembership};
     use crate::node::common::model::vault::vault::VaultStatus;
-    use crate::node::db::events::vault::vault_log_event::{AddMetaPassEvent, UpdateMembershipEvent};
+    use crate::node::db::events::vault::vault_log_event::{
+        AddMetaPassEvent, UpdateMembershipEvent,
+    };
     use crate::node::db::events::vault::vault_log_event::{
         CreateVaultEvent, JoinClusterEvent, VaultActionInitEvent, VaultActionRequestEvent,
     };

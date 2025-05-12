@@ -2,7 +2,7 @@ use crate::base_command::BaseCommand;
 use crate::init::device_command::InitDeviceCommand;
 use crate::init::user_command::InitUserCommand;
 use anyhow::Result;
-use dialoguer::{Input, Select, theme::ColorfulTheme};
+use dialoguer::{theme::ColorfulTheme, Input, Select};
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter};

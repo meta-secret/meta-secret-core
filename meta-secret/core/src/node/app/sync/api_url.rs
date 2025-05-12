@@ -39,7 +39,7 @@ impl ApiUrl {
 }
 
 pub mod run_mode {
-    use anyhow::{Result, bail};
+    use anyhow::{bail, Result};
     use wasm_bindgen::prelude::wasm_bindgen;
 
     pub const DEV: &str = "dev";

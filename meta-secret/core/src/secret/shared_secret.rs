@@ -4,14 +4,14 @@ use std::str;
 
 use serde::{Deserialize, Serialize};
 
-use crate::CoreResult;
 use crate::crypto::encoding::base64::Base64Text;
 use crate::errors::RecoveryError::InvalidShare;
 use crate::errors::{CoreError, RecoveryError};
 use crate::secret::data_block::common::{BlockMetaData, SharedSecretConfig};
 use crate::secret::data_block::encrypted_data_block::EncryptedDataBlock;
-use crate::secret::data_block::plain_data_block::{PLAIN_DATA_BLOCK_SIZE, PlainDataBlock};
+use crate::secret::data_block::plain_data_block::{PlainDataBlock, PLAIN_DATA_BLOCK_SIZE};
 use crate::secret::data_block::shared_secret_data_block::SharedSecretBlock;
+use crate::CoreResult;
 
 #[derive(Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
 pub struct PlainText {

@@ -6,7 +6,7 @@ use crate::node::common::model::crypto::channel::{CommunicationChannel, Loopback
 use crate::node::common::model::device::common::DeviceId;
 use crate::secret::shared_secret::PlainText;
 use age::x25519::{Identity, Recipient};
-use anyhow::{Result, anyhow, bail};
+use anyhow::{anyhow, bail, Result};
 use std::str::FromStr;
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -165,8 +165,8 @@ impl SecretBox {
 mod test {
     use crate::crypto::encoding::base64::Base64Text;
     use crate::crypto::key_pair::KeyPair;
-    use crate::crypto::keys::SecretBox;
     use crate::crypto::keys::fixture::KeyManagerFixture;
+    use crate::crypto::keys::SecretBox;
     use crate::node::common::model::crypto::aead::EncryptedMessage;
     use crate::secret::shared_secret::PlainText;
     use anyhow::Result;

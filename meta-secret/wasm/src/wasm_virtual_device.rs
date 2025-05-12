@@ -1,7 +1,7 @@
-use std::sync::Arc;
-use tracing::{info, instrument, Instrument};
-use wasm_bindgen_futures::spawn_local;
-use meta_secret_core::node::app::meta_app::meta_client_service::{MetaClientAccessProxy, MetaClientDataTransfer, MetaClientService, MetaClientStateProvider};
+use crate::wasm_repo::WasmSyncProtocol;
+use meta_secret_core::node::app::meta_app::meta_client_service::{
+    MetaClientAccessProxy, MetaClientDataTransfer, MetaClientService, MetaClientStateProvider,
+};
 use meta_secret_core::node::app::sync::sync_gateway::SyncGateway;
 use meta_secret_core::node::app::virtual_device::VirtualDevice;
 use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
@@ -11,7 +11,9 @@ use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
-use crate::wasm_repo::WasmSyncProtocol;
+use std::sync::Arc;
+use tracing::{info, instrument, Instrument};
+use wasm_bindgen_futures::spawn_local;
 
 #[instrument(name = "Vd", skip_all)]
 pub async fn virtual_device_setup<Repo: KvLogEventRepo>(
@@ -66,4 +68,3 @@ pub async fn virtual_device_setup<Repo: KvLogEventRepo>(
 
     Ok(())
 }
-

@@ -36,4 +36,4 @@ impl InfoCommandBase {
     pub fn output_format(&self) -> CliOutputFormat {
         self.output_format
     }
-} 
+}

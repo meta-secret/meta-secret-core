@@ -46,8 +46,11 @@ impl InfoCommandTrait for SecretsInfoCommand {
                 }
 
                 context.insert("secrets", &secrets_vec);
-                let output =
-                    TemplateManager::instance().render("secrets", &context, self.base.output_format())?;
+                let output = TemplateManager::instance().render(
+                    "secrets",
+                    &context,
+                    self.base.output_format(),
+                )?;
                 println!("{}", output);
             }
             _ => {
@@ -64,4 +67,4 @@ impl InfoCommandTrait for SecretsInfoCommand {
 
         Ok(())
     }
-} 
+}

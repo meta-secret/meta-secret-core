@@ -13,10 +13,10 @@ pub mod wasm_app_manager;
 pub mod wasm_repo;
 mod wasm_virtual_device;
 
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_web::{MakeWebConsoleWriter, performance_layer};
 use tracing_subscriber::fmt::format::Pretty;
 use tracing_subscriber::fmt::time::UtcTime;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_web::{performance_layer, MakeWebConsoleWriter};
 
 #[wasm_bindgen]
 extern "C" {
@@ -41,11 +41,10 @@ pub fn configure() {
 
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_ansi(false) // Only partially supported across browsers
-        .with_timer(UtcTime::rfc_3339())   // std::time is not available in browsers, see note below
+        .with_timer(UtcTime::rfc_3339()) // std::time is not available in browsers, see note below
         .pretty()
         .with_writer(MakeWebConsoleWriter::new()); // write events to the console
-    let perf_layer = performance_layer()
-        .with_details_from_fields(Pretty::default());
+    let perf_layer = performance_layer().with_details_from_fields(Pretty::default());
 
     tracing_subscriber::registry()
         .with(fmt_layer)

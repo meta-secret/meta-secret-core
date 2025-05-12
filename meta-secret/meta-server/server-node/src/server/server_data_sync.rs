@@ -2,7 +2,7 @@ use std::cmp::PartialEq;
 use std::sync::Arc;
 
 use anyhow::Result;
-use anyhow::{Ok, bail};
+use anyhow::{bail, Ok};
 use derive_more::From;
 use meta_secret_core::node::api::{SsRequest, VaultRequest};
 use meta_secret_core::node::common::model::device::common::{DeviceData, DeviceId};

@@ -6,7 +6,9 @@ use tracing::{error, instrument};
 use meta_secret_core::node::db::events::generic_log_event::{
     GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
 };
-use meta_secret_core::node::db::repo::generic_db::{CommitLogDbConfig, DbCleanUpCommand, DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand};
+use meta_secret_core::node::db::repo::generic_db::{
+    CommitLogDbConfig, DbCleanUpCommand, DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand,
+};
 
 use anyhow::Result;
 use meta_secret_core::node::api::{DataSyncResponse, SyncRequest};
@@ -191,23 +193,27 @@ impl DeleteCommand for WasmRepo {
 impl DbCleanUpCommand for WasmRepo {
     async fn db_clean_up(&self) {
         // In this implementation, we'll delete the entire store
-        
+
         let store_name = self.store_name.as_str();
-        
+
         // First create a transaction to clear the store
         let tx = self
             .rexie
             .transaction(&[store_name], TransactionMode::ReadWrite)
             .unwrap();
-            
+
         let store = tx.store(store_name).unwrap();
-        
+
         // Clear all records in the store
         let clear_result = store.clear().await;
         if clear_result.is_err() {
-            error!("Failed to clear store {}: {:?}", store_name, clear_result.err());
+            error!(
+                "Failed to clear store {}: {:?}",
+                store_name,
+                clear_result.err()
+            );
         }
-        
+
         // Ensure transaction completes
         if let Err(e) = tx.done().await {
             error!("Failed to complete clear transaction: {:?}", e);

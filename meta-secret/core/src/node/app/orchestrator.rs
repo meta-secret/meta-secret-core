@@ -16,8 +16,8 @@ use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
-use anyhow::Result;
 use anyhow::bail;
+use anyhow::Result;
 use log::debug;
 use std::sync::Arc;
 
@@ -46,7 +46,8 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
         for request in vault_actions.requests {
             match request {
                 VaultActionRequestEvent::JoinCluster(join_request) => {
-                    self.update_membership(join_request, JoinActionUpdate::Accept).await?;
+                    self.update_membership(join_request, JoinActionUpdate::Accept)
+                        .await?;
                 }
                 VaultActionRequestEvent::AddMetaPass(_) => {
                     //skip

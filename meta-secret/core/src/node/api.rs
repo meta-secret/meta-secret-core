@@ -4,7 +4,7 @@ use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::objects::persistent_vault::VaultTail;
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use derive_more::From;
 use serde::{Deserialize, Serialize};
 
@@ -63,9 +63,7 @@ pub enum DataSyncResponse {
     Empty,
     Data(DataEventsResponse),
     ServerTailResponse(ServerTailResponse),
-    Error {
-        msg: String,
-    }
+    Error { msg: String },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

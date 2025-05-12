@@ -1,6 +1,6 @@
 use flume::{Drain, Receiver, RecvError, Sender};
 use std::fmt::Debug;
-use tracing::{Instrument, instrument};
+use tracing::{instrument, Instrument};
 
 pub struct MpscDataTransfer<Request, Response> {
     pub service_channel: MpscServiceChannel<Request>,
@@ -70,8 +70,7 @@ impl<Request: Debug, Response: Debug> MpscDataTransfer<Request, Response> {
 
     #[instrument(skip(self))]
     pub async fn service_receive(&self) -> Result<Request, RecvError> {
-        self
-            .service_channel
+        self.service_channel
             .receiver
             .recv_async()
             .in_current_span()
