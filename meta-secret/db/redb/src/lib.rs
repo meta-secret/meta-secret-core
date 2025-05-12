@@ -142,3 +142,168 @@ impl DbCleanUpCommand for ReDbRepo {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use meta_secret_core::node::common::model::device::common::DeviceName;
+    use meta_secret_core::node::common::model::device::device_creds::DeviceCredsBuilder;
+    use meta_secret_core::node::db::descriptors::object_descriptor::{ObjectFqdn, ToObjectDescriptor};
+    use meta_secret_core::node::db::events::local_event::DeviceCredsObject;
+    use meta_secret_core::node::db::events::object_id::{ArtifactId, Next};
+    use meta_secret_core::node::db::descriptors::creds::DeviceCredsDescriptor;
+    use meta_secret_core::node::db::events::kv_log_event::{KvKey, KvLogEvent};
+    use tempfile::tempdir;
+
+    fn create_test_db() -> (ReDbRepo, tempfile::TempDir) {
+        // Create a temporary directory for the database file
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join("test_redb.db");
+        let repo = ReDbRepo::new(db_path).unwrap();
+        
+        (repo, temp_dir)
+    }
+
+    #[tokio::test]
+    async fn test_redb_repo_basic_operations() -> Result<()> {
+        // Create a temporary ReDbRepo for testing
+        let (repo, _temp_dir) = create_test_db();
+
+        // Create a test event
+        let fqdn = ObjectFqdn {
+            obj_type: "DeviceCreds".to_string(),
+            obj_instance: "index".to_string(),
+        };
+        let id = ArtifactId::from(fqdn);
+        let device_creds = DeviceCredsBuilder::generate()
+            .build(DeviceName::client())
+            .creds;
+        let creds_obj = DeviceCredsObject::from(device_creds);
+        let test_event = creds_obj.to_generic();
+
+        // Test save operation
+        let saved_id = repo.save(test_event).await?;
+        assert_eq!(saved_id.id_str(), id.clone().id_str());
+
+        // Test find_one operation
+        let found = repo.find_one(id.clone()).await?;
+        assert!(found.is_some());
+
+        // Test get_key operation
+        let found_key = repo.get_key(id.clone()).await?;
+        assert!(found_key.is_some());
+        assert_eq!(found_key.unwrap().id_str(), id.clone().id_str());
+
+        // Test delete operation
+        repo.delete(id.clone()).await;
+        let found_after_delete = repo.find_one(id.clone()).await?;
+        assert!(found_after_delete.is_none());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_redb_repo_db_clean_up() -> Result<()> {
+        // Create a temporary ReDbRepo for testing
+        let (repo, _temp_dir) = create_test_db();
+
+        // Create multiple test events to populate the database
+        let device_creds = DeviceCredsBuilder::generate()
+            .build(DeviceName::client())
+            .creds;
+        let creds_desc = DeviceCredsDescriptor;
+        let initial_id = ArtifactId::from(creds_desc.clone());
+        let mut id = initial_id.clone();
+
+        // Insert multiple events
+        for i in 1..=5 {
+            let kv_event = KvLogEvent {
+                key: KvKey::artifact(creds_desc.clone().to_obj_desc(), id.clone()),
+                value: device_creds.clone(),
+            };
+            
+            let creds_obj = DeviceCredsObject(kv_event);
+            let test_event = creds_obj.to_generic();
+
+            repo.save(test_event).await?;
+            
+            // Verify the event was saved
+            let found = repo.find_one(id.clone()).await?;
+            assert!(found.is_some(), "Failed to save event {}", i);
+            
+            id = id.next();
+        }
+
+        // Since redb doesn't provide a direct way to get the path after the database is created,
+        // we need to create a new repo with the same path for testing persistence
+        let db_path = _temp_dir.path().join("test_redb.db");
+        drop(repo);
+        let repo = ReDbRepo::open(&db_path)?;
+        
+        // Verify events are still there after reopening
+        let mut id = initial_id.clone();
+        for i in 1..=5 {
+            let found = repo.find_one(id.clone()).await?;
+            assert!(found.is_some(), "Event {} not found after reopen", i);
+            id = id.next();
+        }
+
+        // Execute the db_clean_up method
+        repo.db_clean_up().await;
+
+        // Verify all records have been deleted
+        let mut id = initial_id;
+        for i in 1..=5 {
+            let found = repo.find_one(id.clone()).await?;
+            assert!(found.is_none(), "Failed to clean up event {}", i);
+            id = id.next();
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_redb_repo_reopen() -> Result<()> {
+        // Create and use a repo
+        let temp_dir = tempdir()?;
+        let db_path = temp_dir.path().join("reopen_test.db");
+        
+        // Create initial repo and add one item
+        {
+            let repo = ReDbRepo::new(&db_path)?;
+            
+            let fqdn = ObjectFqdn {
+                obj_type: "DeviceCreds".to_string(),
+                obj_instance: "index".to_string(),
+            };
+            let _id = ArtifactId::from(fqdn);
+            let device_creds = DeviceCredsBuilder::generate()
+                .build(DeviceName::client())
+                .creds;
+            let creds_obj = DeviceCredsObject::from(device_creds);
+            
+            repo.save(creds_obj).await?;
+            
+            // Let the repo go out of scope and close
+        }
+        
+        // Reopen the same database file
+        let reopened_repo = ReDbRepo::open(&db_path)?;
+        
+        // Check if the data is still there
+        let fqdn = ObjectFqdn {
+            obj_type: "DeviceCreds".to_string(),
+            obj_instance: "index".to_string(),
+        };
+        // Fix warning: use _id for unused variable
+        let _id = ArtifactId::from(fqdn.clone());
+        
+        // Use fqdn to create id for test
+        let id = ArtifactId::from(fqdn);
+        
+        let found = reopened_repo.find_one(id).await?;
+        assert!(found.is_some(), "Data should persist after reopening the database");
+        
+        Ok(())
+    }
+}

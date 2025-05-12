@@ -114,11 +114,13 @@ mod tests {
     use crate::db::sqlite_migration::EmbeddedMigrationsTool;
     use meta_secret_core::node::common::model::device::common::DeviceName;
     use meta_secret_core::node::common::model::device::device_creds::DeviceCredsBuilder;
-    use meta_secret_core::node::db::descriptors::object_descriptor::ObjectFqdn;
+    use meta_secret_core::node::db::descriptors::object_descriptor::{ObjectFqdn, ToObjectDescriptor};
     use meta_secret_core::node::db::events::local_event::DeviceCredsObject;
-    use meta_secret_core::node::db::events::object_id::ArtifactId;
+    use meta_secret_core::node::db::events::object_id::{ArtifactId, Next};
     use std::clone::Clone;
     use tempfile::tempdir;
+    use meta_secret_core::node::db::descriptors::creds::DeviceCredsDescriptor;
+    use meta_secret_core::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 
     #[tokio::test]
     async fn test_sqlite_repo_with_migrations() -> anyhow::Result<()> {
@@ -159,6 +161,61 @@ mod tests {
         repo.delete(id.clone()).await;
         let found_after_delete = repo.find_one(id.clone()).await?;
         assert!(found_after_delete.is_none());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_db_clean_up() -> anyhow::Result<()> {
+        // Create a temporary directory for the database
+        let temp_dir = tempdir()?;
+        let db_path = temp_dir.path().join("clean_up_test.db");
+        let conn_url = format!("file:{}", db_path.to_string_lossy());
+
+        // Initialize migrations
+        let migration_tool = EmbeddedMigrationsTool {
+            db_url: conn_url.clone(),
+        };
+        migration_tool.migrate();
+
+        // Create the repository
+        let repo = SqlIteRepo { conn_url };
+
+        // Create multiple test events to populate the database
+        let device_creds = DeviceCredsBuilder::generate()
+            .build(DeviceName::client())
+            .creds;
+        let creds_desc = DeviceCredsDescriptor;
+        let initial_id = ArtifactId::from(creds_desc.clone());
+        let mut id = initial_id.clone();
+
+        for i in 1..=5 {
+            let kv_event = KvLogEvent {
+                key: KvKey::artifact(creds_desc.clone().to_obj_desc(), id.clone()),
+                value: device_creds.clone(),
+            };
+            
+            let creds_obj = DeviceCredsObject(kv_event);
+            let test_event = creds_obj.to_generic();
+
+            repo.save(test_event).await?;
+            
+            // Verify the event was saved
+            let found = repo.find_one(id.clone()).await?;
+            assert!(found.is_some(), "Failed to save event {}", i);
+
+            id = id.next();
+        }
+
+        // Execute the db_clean_up method
+        repo.db_clean_up().await;
+
+        // Verify all records have been deleted
+        let mut id = initial_id.clone();
+        for i in 1..=5 {
+            let found = repo.find_one(id.clone()).await?;
+            assert!(found.is_none(), "Failed to clean up event {}", i);
+        }
 
         Ok(())
     }
