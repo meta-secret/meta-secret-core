@@ -6,11 +6,11 @@ use meta_secret_core::node::db::events::generic_log_event::{
 };
 use meta_secret_core::node::db::events::object_id::ArtifactId;
 use meta_secret_core::node::db::repo::generic_db::{
-    DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand,
+    DbCleanUpCommand, DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand,
 };
 use redb::{Database, TableDefinition};
-use serde_json;
 use std::path::Path;
+use tracing::{error, instrument};
 
 const TABLE_NAME: &str = "meta-secret-db";
 type KeyType = String;
@@ -113,3 +113,32 @@ impl DeleteCommand for ReDbRepo {
 }
 
 impl KvLogEventRepo for ReDbRepo {}
+
+#[async_trait(? Send)]
+impl DbCleanUpCommand for ReDbRepo {
+    #[instrument(skip_all)]
+    async fn db_clean_up(&self) {
+        let write_txn = match self.db.begin_write() {
+            Ok(txn) => txn,
+            Err(err) => {
+                error!("Failed to begin transaction for cleanup: {:?}", err);
+                return;
+            }
+        };
+        
+        // Try to clear the table by recreating it
+        if let Err(err) = write_txn.delete_table(LOG_EVENTS_TABLE) {
+            error!("Failed to delete table during cleanup: {:?}", err);
+            return;
+        }
+        
+        if let Err(err) = write_txn.open_table(LOG_EVENTS_TABLE) {
+            error!("Failed to recreate table during cleanup: {:?}", err);
+            return;
+        }
+        
+        if let Err(err) = write_txn.commit() {
+            error!("Failed to commit transaction during cleanup: {:?}", err);
+        }
+    }
+}

@@ -12,7 +12,6 @@ pub struct EmbeddedMigrationsTool {
 impl EmbeddedMigrationsTool {
     pub fn migrate(&self) {
         let conn = &mut SqliteConnection::establish(self.db_url.as_str()).unwrap();
-        conn.revert_all_migrations(MIGRATIONS).unwrap();
         conn.run_pending_migrations(MIGRATIONS).unwrap();
     }
 }

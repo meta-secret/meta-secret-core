@@ -39,7 +39,12 @@ pub trait DeleteCommand {
 }
 
 #[async_trait(? Send)]
-pub trait KvLogEventRepo: FindOneQuery + SaveCommand + DeleteCommand + 'static {}
+pub trait DbCleanUpCommand {
+    async fn db_clean_up(&self);
+}
+
+#[async_trait(? Send)]
+pub trait KvLogEventRepo: FindOneQuery + SaveCommand + DeleteCommand + DbCleanUpCommand + 'static {}
 
 pub trait CommitLogDbConfig {
     fn db_name(&self) -> String;

@@ -8,9 +8,9 @@ use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
 };
 use crate::node::db::events::object_id::ArtifactId;
-use crate::node::db::repo::generic_db::{DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand};
+use crate::node::db::repo::generic_db::{DbCleanUpCommand, DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand};
 use anyhow::Result;
-use tracing::instrument;
+use tracing::{instrument};
 
 pub struct InMemKvLogEventRepo {
     pub db: Arc<Mutex<HashMap<ArtifactId, GenericKvLogEvent>>>,
@@ -59,6 +59,15 @@ impl DeleteCommand for InMemKvLogEventRepo {
     async fn delete(&self, key: ArtifactId) {
         let mut db = self.db.lock().await;
         let _ = db.remove(&key);
+    }
+}
+
+#[async_trait(? Send)]
+impl DbCleanUpCommand for InMemKvLogEventRepo {
+    #[instrument(skip_all)]
+    async fn db_clean_up(&self) {
+        let mut db = self.db.lock().await;
+        db.clear();
     }
 }
 

@@ -17,3 +17,9 @@ serde_derive.workspace = true
 
 diesel = { workspace = true, features = ["sqlite"] }
 diesel_migrations = { workspace = true, features = ["sqlite"] }
+tracing.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[dev-dependencies]
+tempfile = "3.20.0"
+tokio = { workspace = true, features = ["rt-multi-thread"] }
