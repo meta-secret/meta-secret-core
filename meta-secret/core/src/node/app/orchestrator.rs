@@ -138,7 +138,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
         Ok(vault)
     }
 
-    async fn get_vault_log_event(&self, member: &UserDataMember) -> Result<Option<VaultLogObject>> {
+    pub async fn get_vault_log_event(&self, member: &UserDataMember) -> Result<Option<VaultLogObject>> {
         let p_vault = PersistentVault::from(self.p_obj());
         let maybe_vault_log_event = {
             let vault_name = member.user_data.vault_name();
