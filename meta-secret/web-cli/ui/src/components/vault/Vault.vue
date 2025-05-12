@@ -5,16 +5,29 @@ import { AppState } from '@/stores/app-state';
 const appState = AppState();
 const vaultName = ref(appState.getVaultName());
 const deviceId = (appState.currState as any).device_id().wasm_id_str();
+const showDeviceId = ref(false);
+
+const toggleDeviceId = () => {
+  showDeviceId.value = !showDeviceId.value;
+};
 </script>
 
 <template>
   <div :class="$style.headerContainer">
-    <div :class="$style.headerContent">
-      <span :class="$style.labelText">Vault:</span>
-      <h2 :class="$style.vaultTitle">{{ vaultName }}</h2>
+    <div :class="$style.vaultBadge">
+      <div :class="$style.vaultLabel">Vault Name</div>
+      <div :class="$style.vaultSeparator"></div>
+      <div :class="$style.vaultName">{{ vaultName }}</div>
+      <button :class="$style.infoButton" @click="toggleDeviceId" title="Show Technical Information">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="16" x2="12" y2="12"></line>
+          <line x1="12" y1="8" x2="12.01" y2="8"></line>
+        </svg>
+      </button>
     </div>
-    <div :class="$style.deviceIdContainer">
-      <span :class="$style.deviceIdLabel">Device ID:</span>
+    <div v-if="showDeviceId" :class="$style.deviceIdContainer">
+      <span :class="$style.deviceIdLabel">Device Id:</span>
       <span :class="$style.deviceIdValue">{{ deviceId }}</span>
     </div>
   </div>
@@ -42,37 +55,51 @@ const deviceId = (appState.currState as any).device_id().wasm_id_str();
 
 <style module>
 .headerContainer {
-  @apply container mx-auto flex flex-col items-center max-w-md pt-1 pb-4;
+  @apply container mx-auto flex flex-col items-center max-w-md pt-3 pb-4;
 }
 
-.headerContent {
-  @apply flex items-center;
+.vaultBadge {
+  @apply flex items-center gap-1 bg-slate-800/90 dark:bg-slate-800/70;
+  @apply px-4 py-2 rounded-full shadow-lg border border-slate-700;
+  @apply transition-all duration-300 hover:shadow-orange-900/20;
+  @apply backdrop-blur-sm;
+  box-shadow: 0 0 15px rgba(234, 88, 12, 0.2), inset 0 0 10px rgba(0, 0, 0, 0.3);
 }
 
-.labelText {
-  @apply text-2xl text-slate-600 dark:text-slate-50 mr-2 font-medium;
+.vaultLabel {
+  @apply text-sm text-slate-400 dark:text-slate-400 font-medium uppercase tracking-wider;
+  @apply py-0.5;
 }
 
-.vaultTitle {
-  @apply text-lg font-medium text-zinc-600 py-1 px-4 rounded-md;
-  @apply dark:text-yellow-200 dark:bg-gradient-to-r dark:from-orange-500 dark:to-amber-500;
-  @apply shadow-none dark:shadow-orange-400/30;
-  @apply border-t-2 border-b-2 border-orange-500 dark:border-orange-300;
-  @apply transition-all duration-200;
-  @apply dark:animate-pulse;
-  animation-duration: 3s;
+.vaultSeparator {
+  @apply w-0.5 h-6 mx-2 bg-gradient-to-b from-slate-700 via-orange-500 to-slate-700 rounded-full;
+}
+
+.vaultName {
+  @apply text-xl font-bold bg-gradient-to-r from-orange-500 to-amber-500 bg-clip-text text-transparent;
+  @apply py-0.5 px-2;
+  text-shadow: 0 0 10px rgba(234, 88, 12, 0.3);
+}
+
+.infoButton {
+  @apply text-slate-400 hover:text-orange-400 transition-all duration-300;
+  @apply w-7 h-7 flex items-center justify-center rounded-full ml-1;
+  @apply hover:bg-slate-700/50 hover:scale-110;
 }
 
 .deviceIdContainer {
-  @apply mt-2 text-sm text-center;
+  @apply mt-2 text-xs text-center bg-slate-800/80 py-2 px-4 rounded-lg;
+  @apply border border-slate-700/50 backdrop-blur-sm;
+  @apply shadow-md shadow-black/30;
+  @apply animate-fadeIn;
 }
 
 .deviceIdLabel {
-  @apply text-slate-500 dark:text-slate-400 mr-1;
+  @apply text-slate-400 dark:text-slate-300 mr-1 font-medium;
 }
 
 .deviceIdValue {
-  @apply font-mono text-slate-700 dark:text-slate-300;
+  @apply font-mono text-orange-300 font-medium;
 }
 
 .navContainer {
@@ -89,5 +116,14 @@ const deviceId = (appState.currState as any).device_id().wasm_id_str();
 
 .activeLink {
   @apply bg-orange-600 hover:bg-orange-600;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.2s ease-out forwards;
 }
 </style>
