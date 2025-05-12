@@ -13,8 +13,10 @@ members = [
     "meta-cli",
     "tests",
     "mobile/ios",
-    "mobile/android"
-, "mobile/uniffi-mobile"]
+    "mobile/android",
+    "mobile/uniffi-mobile",
+    "mobile/uniffi-bindgen"
+]
 
 [workspace.dependencies]
 #uniffi
