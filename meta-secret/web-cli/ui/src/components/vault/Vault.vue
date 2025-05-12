@@ -4,6 +4,7 @@ import { AppState } from '@/stores/app-state';
 
 const appState = AppState();
 const vaultName = ref(appState.getVaultName());
+const deviceId = (appState.currState as any).device_id().wasm_id_str();
 </script>
 
 <template>
@@ -11,6 +12,10 @@ const vaultName = ref(appState.getVaultName());
     <div :class="$style.headerContent">
       <span :class="$style.labelText">Vault:</span>
       <h2 :class="$style.vaultTitle">{{ vaultName }}</h2>
+    </div>
+    <div :class="$style.deviceIdContainer">
+      <span :class="$style.deviceIdLabel">Device ID:</span>
+      <span :class="$style.deviceIdValue">{{ deviceId }}</span>
     </div>
   </div>
 
@@ -37,7 +42,7 @@ const vaultName = ref(appState.getVaultName());
 
 <style module>
 .headerContainer {
-  @apply container mx-auto flex justify-center max-w-md pt-1 pb-4;
+  @apply container mx-auto flex flex-col items-center max-w-md pt-1 pb-4;
 }
 
 .headerContent {
@@ -56,6 +61,18 @@ const vaultName = ref(appState.getVaultName());
   @apply transition-all duration-200;
   @apply dark:animate-pulse;
   animation-duration: 3s;
+}
+
+.deviceIdContainer {
+  @apply mt-2 text-sm text-center;
+}
+
+.deviceIdLabel {
+  @apply text-slate-500 dark:text-slate-400 mr-1;
+}
+
+.deviceIdValue {
+  @apply font-mono text-slate-700 dark:text-slate-300;
 }
 
 .navContainer {

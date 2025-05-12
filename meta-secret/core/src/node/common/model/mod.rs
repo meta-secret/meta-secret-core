@@ -1,4 +1,4 @@
-use crate::node::common::model::device::common::DeviceData;
+use crate::node::common::model::device::common::{DeviceData, DeviceId};
 use crate::node::common::model::secret::{ClaimId, SsLogData};
 use crate::node::common::model::user::common::{UserData, UserDataOutsider};
 use crate::node::common::model::vault::vault::VaultMember;
@@ -94,6 +94,27 @@ impl WasmApplicationState {
         };
 
         WasmVaultFullInfo(full_info.clone())
+    }
+    
+    pub fn device_id(&self) -> DeviceId {
+        match &self.0 {
+            ApplicationState::Local(device) => {
+                device.device_id.clone()
+            },
+            ApplicationState::Vault(vault_info) => {
+                match vault_info {
+                    VaultFullInfo::NotExists(user_data) => {
+                        user_data.device.device_id.clone()
+                    },
+                    VaultFullInfo::Outsider(outsider) => {
+                        outsider.user_data.device.device_id.clone()
+                    },
+                    VaultFullInfo::Member(member) => {
+                        member.member.member.user_data.device.device_id.clone()
+                    },
+                }
+            }
+        }
     }
 }
 
