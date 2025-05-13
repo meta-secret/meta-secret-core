@@ -1,13 +1,16 @@
 <script setup>
 import { AppState } from '@/stores/app-state';
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { UserDataOutsiderStatus } from 'meta-secret-web-cli';
+import { useRouter } from 'vue-router';
 
 defineProps({
   signUpProcessing: Boolean
 });
 
 const emit = defineEmits(['join']);
+const router = useRouter();
+const isCleaning = ref(false);
 
 const jsAppState = AppState();
 
@@ -56,6 +59,20 @@ onMounted(() => {
 const joinVault = () => {
   emit('join');
 };
+
+async function cleanDatabase() {
+  if (isCleaning.value) return;
+  
+  isCleaning.value = true;
+  try {
+    await jsAppState.appManager.clean_up_database();
+    await jsAppState.appStateInit();
+    // Navigate back to home after cleaning
+    await router.push('/');
+  } finally {
+    isCleaning.value = false;
+  }
+}
 </script>
 
 <template>
@@ -65,7 +82,13 @@ const joinVault = () => {
       <div v-if="isNonMember" :class="$style.statusContainer">
         <div :class="$style.statusContent">
           <label :class="$style.statusLabel">Vault already exists, would you like to join?</label>
-          <button :class="$style.actionButton" @click="joinVault" :disabled="signUpProcessing">Join</button>
+          <div :class="$style.buttonGroup">
+            <button :class="$style.secondaryButton" @click="cleanDatabase" :disabled="isCleaning">
+              <span v-if="isCleaning">Cleaning...</span>
+              <span v-else>Reset</span>
+            </button>
+            <button :class="$style.actionButton" @click="joinVault" :disabled="signUpProcessing || isCleaning">Join</button>
+          </div>
         </div>
       </div>
       
@@ -75,6 +98,12 @@ const joinVault = () => {
           <span :class="$style.statusIcon">⏳</span>
           <label :class="$style.statusLabel">Your request to join this vault is pending approval.</label>
         </div>
+        <div :class="$style.buttonContainer">
+          <button :class="$style.secondaryButton" @click="cleanDatabase" :disabled="isCleaning">
+            <span v-if="isCleaning">Cleaning...</span>
+            <span v-else>Reset & Start Over</span>
+          </button>
+        </div>
       </div>
       
       <!-- Declined: Show declined status -->
@@ -82,6 +111,12 @@ const joinVault = () => {
         <div :class="$style.declinedStatus">
           <span :class="$style.statusIcon">❌</span>
           <label :class="$style.statusLabel">Your request to join this vault was declined.</label>
+        </div>
+        <div :class="$style.buttonContainer">
+          <button :class="$style.secondaryButton" @click="cleanDatabase" :disabled="isCleaning">
+            <span v-if="isCleaning">Cleaning...</span>
+            <span v-else>Reset & Create New</span>
+          </button>
         </div>
       </div>
       
@@ -91,6 +126,10 @@ const joinVault = () => {
           <label :class="$style.statusLabel">
             Status: {{ outsiderStatus !== null ? outsiderStatus : 'Unknown' }}
           </label>
+          <button :class="$style.secondaryButton" @click="cleanDatabase" :disabled="isCleaning">
+            <span v-if="isCleaning">Cleaning...</span>
+            <span v-else>Reset & Create New</span>
+          </button>
         </div>
       </div>
     </div>
@@ -126,7 +165,23 @@ const joinVault = () => {
   @apply min-w-[80px]; /* Ensure minimum width */
 }
 
-.actionButton:disabled {
+.secondaryButton {
+  @apply bg-gray-600 hover:bg-gray-700 text-white font-medium py-2 px-5 rounded-lg;
+  @apply transition-colors duration-200 shadow-md;
+  @apply text-sm md:text-base whitespace-nowrap;
+  @apply flex-shrink-0; /* Prevent button from shrinking */
+  @apply min-w-[140px]; /* Ensure minimum width for longer text */
+}
+
+.buttonGroup {
+  @apply flex gap-2;
+}
+
+.buttonContainer {
+  @apply mt-3 flex justify-end;
+}
+
+.actionButton:disabled, .secondaryButton:disabled {
   @apply bg-gray-500 cursor-not-allowed;
 }
 

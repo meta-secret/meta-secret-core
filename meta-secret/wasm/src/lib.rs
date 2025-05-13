@@ -56,10 +56,10 @@ pub fn configure() {
         let perf_layer = performance_layer().with_details_from_fields(Pretty::default());
 
         // Try to initialize the subscriber
-        if let Ok(_) = tracing_subscriber::registry()
+        if tracing_subscriber::registry()
             .with(fmt_layer)
             .with(perf_layer)
-            .try_init() {
+            .try_init().is_ok() {
                 TRACING_INITIALIZED = true;
             }
     }
