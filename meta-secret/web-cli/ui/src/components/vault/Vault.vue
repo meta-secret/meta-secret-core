@@ -127,10 +127,19 @@ const toggleDeviceId = () => {
 }
 
 .navLink {
-  @apply w-1/2 text-center py-3 px-6 text-white font-medium transition-colors bg-gray-700 hover:bg-gray-600;
+  @apply w-1/2 text-center py-3 px-6 font-medium transition-colors;
+  @apply bg-slate-200 text-slate-800 hover:bg-slate-300;
+}
+
+:global(.dark) .navLink {
+  @apply bg-gray-700 text-white hover:bg-gray-600;
 }
 
 .activeLink {
+  @apply bg-orange-500 text-white hover:bg-orange-500;
+}
+
+:global(.dark) .activeLink {
   @apply bg-orange-600 hover:bg-orange-600;
 }
 

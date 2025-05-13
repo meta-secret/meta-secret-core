@@ -39,57 +39,57 @@ function toggleConfirmation() {
       <AlphaBadge />
     </div>
     
-    <header class="settings-header">
-      <button @click="goBack" class="back-button">
-        <span class="back-icon">←</span>
+    <header :class="$style.settingsHeader">
+      <button @click="goBack" :class="$style.backButton">
+        <span :class="$style.backIcon">←</span>
         <span>Back</span>
       </button>
-      <h1 class="settings-title">Settings</h1>
+      <h1 :class="$style.settingsTitle">Settings</h1>
     </header>
 
-    <div class="settings-content">
-      <section class="settings-section">
-        <h2 class="section-title">Data Management</h2>
+    <div :class="$style.settingsContent">
+      <section :class="$style.settingsSection">
+        <h2 :class="$style.sectionTitle">Data Management</h2>
         
-        <div class="section-card">
-          <div class="card-header">
-            <div class="card-icon danger">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon">
+        <div :class="$style.sectionCard">
+          <div :class="$style.cardHeader">
+            <div :class="[$style.cardIcon, $style.danger]">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" :class="$style.icon">
                 <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
                 <line x1="12" y1="9" x2="12" y2="13"></line>
                 <line x1="12" y1="17" x2="12.01" y2="17"></line>
               </svg>
             </div>
-            <h3 class="card-title">Clean Database</h3>
+            <h3 :class="$style.cardTitle">Clean Database</h3>
           </div>
           
-          <div class="card-content">
-            <p class="card-description">
+          <div :class="$style.cardContent">
+            <p :class="$style.cardDescription">
               Delete all vault data and start fresh. This action removes all secrets,
               vault configurations, and resets the application to its initial state.
             </p>
             
-            <div v-if="!showConfirmation" class="card-actions">
+            <div v-if="!showConfirmation" :class="$style.cardActions">
               <button 
-                class="action-button danger"
+                :class="[$style.actionButton, $style.danger]"
                 @click="toggleConfirmation"
               >
                 Clean Database
               </button>
             </div>
             
-            <div v-else class="confirmation-box">
-              <p class="confirmation-text">Are you sure? This action cannot be undone.</p>
-              <div class="confirmation-actions">
+            <div v-else :class="$style.confirmationBox">
+              <p :class="$style.confirmationText">Are you sure? This action cannot be undone.</p>
+              <div :class="$style.confirmationActions">
                 <button 
-                  class="action-button secondary"
+                  :class="[$style.actionButton, $style.secondary]"
                   @click="toggleConfirmation"
                   :disabled="isCleaning"
                 >
                   Cancel
                 </button>
                 <button 
-                  class="action-button danger"
+                  :class="[$style.actionButton, $style.danger]"
                   :disabled="isCleaning"
                   @click="cleanDatabase"
                 >
@@ -105,15 +105,15 @@ function toggleConfirmation() {
   </div>
 </template>
 
-<style scoped>
-.settings-header {
+<style module>
+.settingsHeader {
   display: flex;
   align-items: center;
   margin: 2rem 0;
   position: relative;
 }
 
-.back-button {
+.backButton {
   display: flex;
   align-items: center;
   background: none;
@@ -126,16 +126,24 @@ function toggleConfirmation() {
   left: 0;
 }
 
-.back-button:hover {
+.backButton:hover {
   color: #1f2937;
 }
 
-.back-icon {
+:global(.dark) .backButton {
+  color: #9ca3af;
+}
+
+:global(.dark) .backButton:hover {
+  color: #f3f4f6;
+}
+
+.backIcon {
   margin-right: 0.25rem;
   font-size: 1.25rem;
 }
 
-.settings-title {
+.settingsTitle {
   text-align: center;
   font-size: 1.5rem;
   font-weight: 700;
@@ -143,19 +151,23 @@ function toggleConfirmation() {
   flex-grow: 1;
 }
 
-.settings-content {
+:global(.dark) .settingsTitle {
+  color: #f9fafb;
+}
+
+.settingsContent {
   display: flex;
   flex-direction: column;
   gap: 2rem;
 }
 
-.settings-section {
+.settingsSection {
   display: flex;
   flex-direction: column;
   gap: 1rem;
 }
 
-.section-title {
+.sectionTitle {
   font-size: 1.125rem;
   font-weight: 600;
   color: #4b5563;
@@ -164,7 +176,12 @@ function toggleConfirmation() {
   margin-bottom: 0.5rem;
 }
 
-.section-card {
+:global(.dark) .sectionTitle {
+  color: #9ca3af;
+  border-bottom-color: #374151;
+}
+
+.sectionCard {
   background-color: white;
   border-radius: 0.75rem;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
@@ -173,7 +190,13 @@ function toggleConfirmation() {
   transition: all 0.2s ease;
 }
 
-.card-header {
+:global(.dark) .sectionCard {
+  background-color: #1f2937;
+  border-color: #374151;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+}
+
+.cardHeader {
   display: flex;
   align-items: center;
   padding: 1.25rem 1.5rem;
@@ -181,7 +204,11 @@ function toggleConfirmation() {
   gap: 1rem;
 }
 
-.card-icon {
+:global(.dark) .cardHeader {
+  border-bottom-color: #374151;
+}
+
+.cardIcon {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -190,7 +217,7 @@ function toggleConfirmation() {
   border-radius: 0.5rem;
 }
 
-.card-icon.danger {
+.cardIcon.danger {
   background-color: rgba(239, 68, 68, 0.1);
   color: #ef4444;
 }
@@ -200,33 +227,41 @@ function toggleConfirmation() {
   height: 1.5rem;
 }
 
-.card-title {
+.cardTitle {
   font-size: 1.125rem;
   font-weight: 600;
   color: #111827;
   margin: 0;
 }
 
-.card-content {
+:global(.dark) .cardTitle {
+  color: #f3f4f6;
+}
+
+.cardContent {
   padding: 1.5rem;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
 }
 
-.card-description {
+.cardDescription {
   font-size: 0.875rem;
   color: #6b7280;
   line-height: 1.5;
   margin: 0;
 }
 
-.card-actions {
+:global(.dark) .cardDescription {
+  color: #9ca3af;
+}
+
+.cardActions {
   display: flex;
   justify-content: flex-end;
 }
 
-.action-button {
+.actionButton {
   padding: 0.625rem 1.25rem;
   font-weight: 500;
   font-size: 0.875rem;
@@ -236,101 +271,73 @@ function toggleConfirmation() {
   transition: all 0.2s;
 }
 
-.action-button.danger {
+.actionButton.danger {
   background-color: #ef4444;
   color: white;
 }
 
-.action-button.danger:hover:not(:disabled) {
+.actionButton.danger:hover:not(:disabled) {
   background-color: #dc2626;
 }
 
-.action-button.secondary {
+.actionButton.secondary {
   background-color: #f3f4f6;
   color: #4b5563;
 }
 
-.action-button.secondary:hover:not(:disabled) {
+.actionButton.secondary:hover:not(:disabled) {
   background-color: #e5e7eb;
 }
 
-.action-button:disabled {
+:global(.dark) .actionButton.secondary {
+  background-color: #374151;
+  color: #d1d5db;
+}
+
+:global(.dark) .actionButton.secondary:hover:not(:disabled) {
+  background-color: #4b5563;
+}
+
+.actionButton:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-.confirmation-box {
+.confirmationBox {
   background-color: #fff1f2;
   border: 1px solid #fecdd3;
   border-radius: 0.5rem;
   padding: 1rem;
 }
 
-.confirmation-text {
+:global(.dark) .confirmationBox {
+  background-color: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.confirmationText {
   color: #be123c;
   font-size: 0.875rem;
   font-weight: 500;
   margin: 0 0 1rem 0;
 }
 
-.confirmation-actions {
+:global(.dark) .confirmationText {
+  color: #fca5a5;
+}
+
+.confirmationActions {
   display: flex;
   justify-content: flex-end;
   gap: 0.75rem;
 }
 
-/* Dark mode styles */
-@media (prefers-color-scheme: dark) {
-  .settings-title {
-    color: #f9fafb;
-  }
-  
-  .section-title {
-    color: #9ca3af;
-    border-bottom-color: #374151;
-  }
-  
-  .section-card {
-    background-color: #1f2937;
-    border-color: #374151;
-  }
-  
-  .card-header {
-    border-bottom-color: #374151;
-  }
-  
-  .card-title {
-    color: #f3f4f6;
-  }
-  
-  .card-description {
-    color: #9ca3af;
-  }
-  
-  .action-button.secondary {
-    background-color: #374151;
-    color: #d1d5db;
-  }
-  
-  .action-button.secondary:hover:not(:disabled) {
-    background-color: #4b5563;
-  }
-  
-  .confirmation-box {
-    background-color: rgba(239, 68, 68, 0.1);
-    border-color: rgba(239, 68, 68, 0.3);
-  }
-  
-  .confirmation-text {
-    color: #fca5a5;
-  }
-  
-  .back-button {
-    color: #9ca3af;
-  }
-  
-  .back-button:hover {
-    color: #f3f4f6;
-  }
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.2s ease-out forwards;
 }
 </style> 
