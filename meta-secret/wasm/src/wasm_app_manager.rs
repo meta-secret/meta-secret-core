@@ -77,6 +77,10 @@ impl WasmApplicationManager {
             .text
     }
 
+    pub async fn clean_up_database(&self) {
+        self.app_manager.clean_up_database().await
+    }
+
     pub async fn find_claim_by_pass_id(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
         self.app_manager.find_claim_by_pass_id(pass_id).await
     }

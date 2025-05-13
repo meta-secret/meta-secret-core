@@ -174,6 +174,10 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
         }
     }
 
+    pub async fn clean_up_database(&self) {
+        self.sync_gateway.p_obj.repo.db_clean_up().await
+    }
+
     pub async fn find_claim_by_pass_id(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
         let ApplicationState::Vault(VaultFullInfo::Member(member)) = &self.get_state().await else {
             return None;
