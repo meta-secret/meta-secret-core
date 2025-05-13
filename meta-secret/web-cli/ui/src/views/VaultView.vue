@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import RegistrationComponent from '@/components/vault/auth/Registration.vue';
 import VaultComponent from '@/components/vault/Vault.vue';
 
 import { AppState } from '@/stores/app-state';
 
+const router = useRouter();
 const jsAppState = AppState();
 const isInitialized = ref(false);
 const isCleaning = ref(false);
@@ -55,6 +57,10 @@ function handleClickOutside(event: MouseEvent) {
   }
 }
 
+function navigateToSettings() {
+  router.push('/settings');
+}
+
 onMounted(async () => {
   await jsAppState.appStateInit();
   isInitialized.value = true;
@@ -77,7 +83,7 @@ onMounted(async () => {
     <button 
       id="settings-button"
       :class="$style.settingsButton" 
-      @click.stop="toggleSettings"
+      @click="navigateToSettings"
       aria-label="Settings"
     >
       <span class="text-2xl">⚙️</span>
