@@ -31,7 +31,7 @@ export default {
     sharesProcessing: function (shares, qrImages) {
       shares.forEach((share) => {
         const shareId = share['share_id'];
-        const shareIdText = 'part: ' + shareId + '/' + shares.length;
+        const shareIdText = 'Share ' + shareId + ' of ' + shares.length;
         const textImage = this.textToImage(this.note1, this.note2, shareIdText, shareId);
         const qrCodeStyling = this.generateQrCodeStyling(JSON.stringify(share), textImage);
 
@@ -47,7 +47,7 @@ export default {
           qrCodeStyling.download({ name: 'qr' + shareId, extension: 'png' });
         };
         downloadLink.id = 'downloadQr-' + shareId;
-        downloadLink.innerHTML = 'Download QR';
+        downloadLink.innerHTML = 'Save QR Code';
         downloadLink.className = 'download-button';
 
         const qrDiv = document.getElementById('qrCanvas' + shareId);
@@ -178,39 +178,39 @@ export default {
 <template>
   <div class="split-password-container">
     <div class="header">
-      <h1>Split Password</h1>
+      <h1>Create Password Shares</h1>
       <p class="description">
-        Enter your password and optional notes to split it into secure shares
+        Enter your password and optional notes to create secure QR code shares.
       </p>
     </div>
 
     <div class="form-container">
       <div class="form-group">
-        <label for="note1">Note 1</label>
+        <label for="note1">Label 1</label>
         <input
           class="input-field"
           type="text"
           id="note1"
           v-model="note1"
-          placeholder="Enter first note (optional)"
+          placeholder="Short label for your QR code (optional)"
           maxlength="10"
         />
       </div>
 
       <div class="form-group">
-        <label for="note2">Note 2</label>
+        <label for="note2">Label 2</label>
         <input
           class="input-field"
           type="text"
           id="note2"
           v-model="note2"
-          placeholder="Enter second note (optional)"
+          placeholder="Additional label for your QR code (optional)"
           maxlength="10"
         />
       </div>
 
       <div class="form-group">
-        <label for="password">Password</label>
+        <label for="password">Your Password</label>
         <input
           class="input-field"
           type="text"
