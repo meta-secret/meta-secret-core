@@ -224,6 +224,7 @@ const handleSecretAdded = () => {
 
 .secretContent {
   @apply flex items-center;
+  @apply flex-wrap;
 }
 
 .secretLabel {
@@ -234,6 +235,8 @@ const handleSecretAdded = () => {
   @apply font-mono text-gray-800 dark:text-gray-200;
   @apply bg-white dark:bg-gray-700 px-3 py-1.5 rounded-md;
   @apply border border-slate-300 dark:border-slate-600;
+  @apply break-all overflow-auto max-w-full;
+  max-height: 200px;
 }
 
 .addSecretButton {
