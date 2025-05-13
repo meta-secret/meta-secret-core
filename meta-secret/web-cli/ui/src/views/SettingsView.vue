@@ -16,7 +16,7 @@ async function cleanDatabase() {
     await (jsAppState.appManager as any).clean_up_database();
     await jsAppState.appStateInit();
     // Navigate back to home after cleaning
-    router.push('/');
+    await router.push('/');
   } finally {
     isCleaning.value = false;
     showConfirmation.value = false;
@@ -24,7 +24,7 @@ async function cleanDatabase() {
 }
 
 function goBack() {
-  router.back();
+  router.push('/');
 }
 
 function toggleConfirmation() {
