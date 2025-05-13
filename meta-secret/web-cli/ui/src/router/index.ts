@@ -6,6 +6,7 @@ import ContactView from '../views/ContactView.vue';
 import NotFoundView from '../views/404View.vue';
 import DocumentationView from '../views/tools/DocumentationView.vue';
 import SettingsView from '../views/SettingsView.vue';
+import InformationView from '../views/InformationView.vue';
 
 import VaultDevices from '../components/vault/Devices.vue';
 import VaultSecrets from '../components/vault/Secrets.vue';
@@ -34,6 +35,11 @@ const router = createRouter({
           component: VaultDevices,
         },
       ],
+    },
+    {
+      path: '/info',
+      name: 'information',
+      component: InformationView,
     },
     {
       path: '/settings',

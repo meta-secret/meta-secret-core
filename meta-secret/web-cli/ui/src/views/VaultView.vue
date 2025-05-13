@@ -80,6 +80,15 @@ onMounted(async () => {
   <div class="flex justify-center items-center py-6 relative">
     <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">Decentralized Secret Manager</p>
     
+    <!-- Information Button -->
+    <button 
+      :class="$style.infoButton" 
+      @click="router.push('/info')"
+      aria-label="Information"
+    >
+      <span class="text-2xl">ℹ️</span>
+    </button>
+    
     <!-- Settings Icon Button -->
     <button 
       id="settings-button"
@@ -113,6 +122,24 @@ onMounted(async () => {
 
   <div v-else-if="!jsAppState.isMember">
     <RegistrationComponent />
+    
+    <!-- Information Card -->
+    <div class="max-w-lg mx-auto mt-6 p-4 bg-blue-50 dark:bg-blue-900 rounded-lg shadow">
+      <div class="flex items-center justify-between">
+        <div>
+          <h3 class="font-medium text-blue-800 dark:text-blue-200">New to Meta Secret?</h3>
+          <p class="text-sm text-blue-700 dark:text-blue-300 mt-1">
+            Learn how Meta Secret works and how to use it effectively
+          </p>
+        </div>
+        <button 
+          @click="router.push('/info')"
+          class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+        >
+          Learn More
+        </button>
+      </div>
+    </div>
   </div>
   <div v-else-if="jsAppState.isMember">
     <VaultComponent />
@@ -123,6 +150,14 @@ onMounted(async () => {
 .headerContainer {
   @apply container mx-auto flex flex-col items-center max-w-md;
   position: relative;
+}
+
+.infoButton {
+  @apply ml-2 flex items-center justify-center rounded-full;
+  @apply hover:bg-gray-100 dark:hover:bg-gray-700;
+  @apply transition-colors duration-200 ease-in-out;
+  width: 44px;
+  height: 44px;
 }
 
 .settingsButton {
