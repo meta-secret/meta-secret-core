@@ -60,10 +60,16 @@ const toggleDeviceId = () => {
 }
 
 .vaultBadge {
-  @apply flex items-center gap-1 bg-slate-800/90 dark:bg-slate-800/70;
-  @apply px-4 py-2 rounded-full shadow-lg border border-slate-700;
+  @apply flex items-center gap-1;
+  @apply px-4 py-2 rounded-full shadow-lg;
   @apply transition-all duration-300 hover:shadow-orange-900/20;
   @apply backdrop-blur-sm;
+  @apply bg-white/90 border border-slate-300;
+  box-shadow: 0 0 15px rgba(234, 88, 12, 0.2), inset 0 0 10px rgba(255, 255, 255, 0.3);
+}
+
+:global(.dark) .vaultBadge {
+  @apply bg-slate-800/90 border-slate-700;
   box-shadow: 0 0 15px rgba(234, 88, 12, 0.2), inset 0 0 10px rgba(0, 0, 0, 0.3);
 }
 
@@ -89,14 +95,23 @@ const toggleDeviceId = () => {
 }
 
 .deviceIdContainer {
-  @apply mt-2 text-xs text-center bg-slate-800/80 py-2 px-4 rounded-lg;
-  @apply border border-slate-700/50 backdrop-blur-sm;
-  @apply shadow-md shadow-black/30;
+  @apply mt-2 text-xs text-center py-2 px-4 rounded-lg;
+  @apply backdrop-blur-sm;
   @apply animate-fadeIn;
+  @apply bg-white/90 border border-slate-300/50 shadow-md shadow-black/10;
+}
+
+:global(.dark) .deviceIdContainer {
+  @apply bg-slate-800/80 border-slate-700/50 shadow-black/30;
 }
 
 .deviceIdLabel {
-  @apply text-slate-400 dark:text-slate-300 mr-1 font-medium;
+  @apply mr-1 font-medium;
+  @apply text-slate-600;
+}
+
+:global(.dark) .deviceIdLabel {
+  @apply text-slate-300;
 }
 
 .deviceIdValue {
