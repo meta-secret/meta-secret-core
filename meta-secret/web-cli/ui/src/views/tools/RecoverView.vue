@@ -15,7 +15,7 @@ export default {
     recoverPassword() {
       this.error = '';
       if (this.imagesLoaded === 0) {
-        this.error = 'Please upload QR code images first';
+        this.error = 'Please upload at least one QR code image.';
         return;
       }
 
@@ -24,7 +24,7 @@ export default {
         const qrCodes = imagesElement.getElementsByTagName('img');
 
         if (qrCodes.length === 0) {
-          this.error = 'No QR code found';
+          this.error = 'Could not find any QR codes in the uploaded images.';
           return;
         }
 
@@ -43,7 +43,7 @@ export default {
           })
           .catch((err) => {
             console.error('QR Scanning Error:', err);
-            this.error = 'Error recovering password: ' + err;
+            this.error = 'Unable to process QR codes: ' + err;
           });
       });
     },
@@ -89,15 +89,15 @@ export default {
 <template>
   <div class="recover-password-container">
     <div class="header">
-      <h1>Recover Password</h1>
+      <h1>Password Recovery</h1>
       <p class="description">
-        Upload your QR code shares to recover your secret password
+        Upload your QR code shares to retrieve your password.
       </p>
     </div>
 
     <div class="form-container">
       <div class="form-group">
-        <label for="file-upload">QR Code Shares</label>
+        <label for="file-upload">Your QR Codes</label>
         <div class="file-upload-wrapper">
           <input
             class="input-field file-input"
@@ -107,16 +107,16 @@ export default {
             @change="openFile"
             multiple
           />
-          <div class="file-upload-label">Choose QR code images</div>
+          <div class="file-upload-label">Upload QR code images</div>
         </div>
         <div v-if="imagesLoaded > 0" class="images-status">
-          {{ imagesLoaded }} QR images loaded
+          {{ imagesLoaded }} {{ imagesLoaded === 1 ? 'image' : 'images' }} loaded
         </div>
       </div>
 
       <button class="recover-button" @click="recoverPassword">
         <span class="button-icon">🔑</span>
-        <span>Recover Password</span>
+        <span>Retrieve Password</span>
       </button>
 
       <div v-if="error" class="error-message">
@@ -124,7 +124,7 @@ export default {
       </div>
 
       <div class="form-group result-container" v-if="recoveredPassword">
-        <label for="passwordBox">Recovered Password:</label>
+        <label for="passwordBox">Your Password:</label>
         <input 
           class="input-field" 
           id="passwordBox" 
