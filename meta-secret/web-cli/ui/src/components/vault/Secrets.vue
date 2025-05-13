@@ -12,6 +12,8 @@ const currentSecret = ref<any>(null);
 const currentSecretId = ref<any>(null);
 const copySuccess = ref<string | null>(null);
 const loadingRecovery = ref<string | null>(null); // Track which secret is being recovered
+const loadingShow = ref<string | null>(null); // Track which secret is being shown
+const loadingCopy = ref<string | null>(null); // Track which secret is being copied
 
 const showAddForm = ref(false);
 const passwords = computed(() => appState.passwords);
@@ -34,22 +36,31 @@ const showRecovered = async (metaPassId: MetaPasswordId) => {
     currentSecretId.value = null;
     return;
   }
-  currentSecret.value = await appManager.show_recovered(metaPassId);
-  currentSecretId.value = id;
+  loadingShow.value = id; // Set loading state
+  try {
+    currentSecret.value = await appManager.show_recovered(metaPassId);
+    currentSecretId.value = id;
+  } finally {
+    loadingShow.value = null; // Clear loading state
+  }
 };
 
 const copyToClipboard = async (metaPassId: MetaPasswordId) => {
   try {
+    const id = metaPassId.id();
+    loadingCopy.value = id; // Set loading state
     const secretText = await appManager.show_recovered(metaPassId);
     await navigator.clipboard.writeText(secretText);
-    copySuccess.value = metaPassId.id();
+    copySuccess.value = id;
     setTimeout(() => {
-      if (copySuccess.value === metaPassId.id()) {
+      if (copySuccess.value === id) {
         copySuccess.value = null;
       }
     }, 5000);
   } catch (err) {
     console.error('Failed to copy: ', err);
+  } finally {
+    loadingCopy.value = null; // Clear loading state
   }
 };
 
@@ -92,11 +103,21 @@ const handleSecretAdded = () => {
           </div>
           <div :class="$style.secretActions">
             <div v-if="isRecovered(secret)" :class="$style.buttonGroup">
-              <button :class="$style.showButton" @click="showRecovered(secret)">
-                {{ currentSecretId === secret.id() ? 'Hide' : 'Show' }}
+              <button 
+                :class="loadingShow === secret.id() ? [$style.showButton, $style.loading] : $style.showButton" 
+                @click="showRecovered(secret)"
+                :disabled="loadingShow === secret.id()"
+              >
+                <span v-if="loadingShow === secret.id()" :class="$style.spinner"></span>
+                {{ currentSecretId === secret.id() ? 'Hide' : (loadingShow === secret.id() ? 'Loading...' : 'Show') }}
               </button>
-              <button :class="$style.copyButton" @click="copyToClipboard(secret)">
-                {{ copySuccess === secret.id() ? 'Copied!' : 'Copy' }}
+              <button 
+                :class="loadingCopy === secret.id() || copySuccess === secret.id() ? [$style.copyButton, copySuccess === secret.id() ? $style.success : $style.loading] : $style.copyButton" 
+                @click="copyToClipboard(secret)"
+                :disabled="loadingCopy === secret.id()"
+              >
+                <span v-if="loadingCopy === secret.id()" :class="$style.spinner"></span>
+                {{ copySuccess === secret.id() ? 'Copied!' : (loadingCopy === secret.id() ? 'Copying...' : 'Copy') }}
               </button>
             </div>
             <div v-else>
@@ -195,6 +216,10 @@ const handleSecretAdded = () => {
 
 .loading {
   @apply bg-gray-500 dark:bg-gray-600 cursor-wait;
+}
+
+.success {
+  @apply bg-green-500 dark:bg-green-600 cursor-default;
 }
 
 .spinner {
