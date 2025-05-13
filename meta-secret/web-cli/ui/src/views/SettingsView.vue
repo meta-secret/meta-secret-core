@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { AppState } from '@/stores/app-state';
+import AlphaBadge from '@/components/common/AlphaBadge.vue';
 
 const router = useRouter();
 const jsAppState = AppState();
@@ -34,6 +35,10 @@ function toggleConfirmation() {
 
 <template>
   <div class="container mx-auto max-w-md px-4">
+    <div class="relative">
+      <AlphaBadge />
+    </div>
+    
     <header class="settings-header">
       <button @click="goBack" class="back-button">
         <span class="back-icon">←</span>
