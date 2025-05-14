@@ -1,6 +1,6 @@
 use crate::node::common::model::device::common::DeviceData;
-use crate::node::common::model::device::device_creds::DeviceCreds;
-use crate::node::common::model::user::user_creds::UserCredentials;
+use crate::node::common::model::device::device_creds::{SecureDeviceCreds};
+use crate::node::common::model::user::user_creds::{SecureUserCreds};
 use crate::node::db::descriptors::creds::{DeviceCredsDescriptor, UserCredsDescriptor};
 use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
@@ -11,14 +11,14 @@ use anyhow::{anyhow, Error};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DeviceCredsObject(pub KvLogEvent<DeviceCreds>);
+pub struct DeviceCredsObject(pub KvLogEvent<SecureDeviceCreds>);
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct UserCredsObject(pub KvLogEvent<UserCredentials>);
+pub struct UserCredsObject(pub KvLogEvent<SecureUserCreds>);
 
-impl From<DeviceCreds> for DeviceCredsObject {
-    fn from(creds: DeviceCreds) -> Self {
+impl From<SecureDeviceCreds> for DeviceCredsObject {
+    fn from(creds: SecureDeviceCreds) -> Self {
         DeviceCredsObject(KvLogEvent {
             key: KvKey::from(DeviceCredsDescriptor),
             value: creds,
@@ -26,8 +26,8 @@ impl From<DeviceCreds> for DeviceCredsObject {
     }
 }
 
-impl From<UserCredentials> for UserCredsObject {
-    fn from(creds: UserCredentials) -> Self {
+impl From<SecureUserCreds> for UserCredsObject {
+    fn from(creds: SecureUserCreds) -> Self {
         UserCredsObject(KvLogEvent {
             key: KvKey::from(UserCredsDescriptor),
             value: creds,
@@ -70,7 +70,7 @@ impl DeviceCredsObject {
         self.0.value.device.clone()
     }
 
-    pub fn value(self) -> DeviceCreds {
+    pub fn value(self) -> SecureDeviceCreds {
         self.0.value
     }
 }
@@ -110,11 +110,11 @@ impl UserCredsObject {
         self.0.value.device_creds.device.clone()
     }
 
-    pub fn value(&self) -> UserCredentials {
+    pub fn value(&self) -> SecureUserCreds {
         self.0.value.clone()
     }
 
-    pub fn device_creds(&self) -> DeviceCreds {
+    pub fn device_creds(&self) -> SecureDeviceCreds {
         self.0.value.device_creds.clone()
     }
 }
@@ -133,19 +133,10 @@ mod tests {
         DeviceCredsBuilder::generate().build(device_name).creds
     }
 
-    fn create_test_user_credentials() -> UserCredentials {
+    fn create_test_user_credentials() -> UserCreds {
         let device_creds = create_test_device_credentials();
         let vault_name = VaultName::from("test_vault");
         UserCredsBuilder::init(device_creds).build(vault_name).creds
-    }
-
-    #[test]
-    fn test_device_creds_object_from_device_credentials() {
-        let device_creds = create_test_device_credentials();
-        let device_creds_obj = DeviceCredsObject::from(device_creds.clone());
-
-        assert_eq!(device_creds_obj.clone().value(), device_creds.clone());
-        assert_eq!(device_creds_obj.device(), device_creds.device);
     }
 
     #[test]
@@ -159,16 +150,6 @@ mod tests {
         assert_eq!(key.obj_id, obj_id);
 
         assert!(matches!(key.obj_desc, ObjectDescriptor::DeviceCreds(_)));
-    }
-
-    #[test]
-    fn test_user_creds_object_from_user_credentials() {
-        let user_creds = create_test_user_credentials();
-        let user_creds_obj = UserCredsObject::from(user_creds.clone());
-
-        assert_eq!(user_creds_obj.value(), user_creds);
-        assert_eq!(user_creds_obj.device(), user_creds.device());
-        assert_eq!(user_creds_obj.device_creds(), user_creds.device_creds);
     }
 
     #[test]

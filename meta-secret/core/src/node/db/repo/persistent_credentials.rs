@@ -1,6 +1,12 @@
+use crate::crypto::encoding::base64::Base64Text;
+use crate::crypto::keys::{SecureSecretBox, TransportSk};
+use crate::node::common::model::crypto::aead::AeadPlainText;
+use crate::node::common::model::crypto::channel::CommunicationChannel;
 use crate::node::common::model::device::common::DeviceName;
-use crate::node::common::model::device::device_creds::{DeviceCreds, DeviceCredsBuilder};
-use crate::node::common::model::user::user_creds::{UserCredentials, UserCredsBuilder};
+use crate::node::common::model::device::device_creds::{
+    DeviceCreds, DeviceCredsBuilder, SecureDeviceCreds,
+};
+use crate::node::common::model::user::user_creds::{UserCreds, UserCredsBuilder};
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::descriptors::creds::{DeviceCredsDescriptor, UserCredsDescriptor};
 use crate::node::db::events::generic_log_event::ToGenericEvent;
@@ -8,7 +14,7 @@ use crate::node::db::events::local_event::{DeviceCredsObject, UserCredsObject};
 use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use derive_more::From;
 use std::sync::Arc;
 use tracing::{info, instrument};
@@ -16,12 +22,21 @@ use tracing::{info, instrument};
 #[derive(From)]
 pub struct PersistentCredentials<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
+    pub master_key: TransportSk,
 }
 
 impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
-    pub async fn get_device_creds(&self) -> Result<Option<DeviceCredsObject>> {
-        let maybe_device_creds = self.p_obj.find_tail_event(DeviceCredsDescriptor).await?;
-        Ok(maybe_device_creds)
+    pub async fn get_device_creds(&self) -> Result<Option<DeviceCreds>> {
+        let maybe_secure_device_creds_obj =
+            self.p_obj.find_tail_event(DeviceCredsDescriptor).await?;
+
+        match maybe_secure_device_creds_obj {
+            None => Ok(None),
+            Some(secure_device_creds_obj) => {
+                let device_creds = secure_device_creds_obj.value().decrypt(&self.master_key)?;
+                Ok(Some(device_creds))
+            }
+        }
     }
 
     #[instrument(skip(self))]
@@ -45,14 +60,15 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
 
     #[instrument(skip(self))]
     pub async fn save_device_creds(&self, device_creds: DeviceCreds) -> Result<()> {
-        let creds_obj = DeviceCredsObject::from(device_creds);
+        let secure_creds = SecureDeviceCreds::try_from(device_creds.clone())?;
+        let creds_obj = DeviceCredsObject::from(secure_creds);
         let generic_event = creds_obj.to_generic();
         self.p_obj.repo.save(generic_event).await?;
         Ok(())
     }
 
     #[instrument(skip_all)]
-    pub async fn get_user_creds(&self) -> Result<Option<UserCredentials>> {
+    pub async fn get_user_creds(&self) -> Result<Option<UserCreds>> {
         let maybe_user_creds = self
             .p_obj
             .find_tail_event(UserCredsDescriptor)
@@ -79,7 +95,7 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
         &self,
         device_name: DeviceName,
         vault_name: VaultName,
-    ) -> Result<UserCredentials> {
+    ) -> Result<UserCreds> {
         let maybe_device_creds = self.p_obj.find_tail_event(DeviceCredsDescriptor).await?;
 
         let device_creds = match maybe_device_creds {

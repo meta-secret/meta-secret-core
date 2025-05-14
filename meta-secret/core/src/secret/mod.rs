@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::node::common::model::crypto::aead::EncryptedMessage;
 use crate::node::common::model::meta_pass::SecurePassInfo;
 use crate::node::common::model::secret::{SecretDistributionData, SsDistributionId};
-use crate::node::common::model::user::user_creds::UserCredentials;
+use crate::node::common::model::user::user_creds::UserCreds;
 use crate::node::common::model::vault::vault::VaultMember;
 use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
@@ -46,7 +46,7 @@ pub fn split(
 }
 
 pub struct MetaEncryptor {
-    creds: Arc<UserCredentials>,
+    creds: Arc<UserCreds>,
     owner: VaultMember,
 }
 
@@ -86,7 +86,7 @@ impl MetaEncryptor {
 
 pub struct MetaDistributor<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
-    pub user_creds: Arc<UserCredentials>,
+    pub user_creds: Arc<UserCreds>,
     pub vault_member: VaultMember,
 }
 

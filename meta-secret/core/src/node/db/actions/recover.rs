@@ -1,6 +1,6 @@
 use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::secret::{ClaimId, SecretDistributionData, SsDistributionId};
-use crate::node::common::model::user::user_creds::UserCredentials;
+use crate::node::common::model::user::user_creds::UserCreds;
 use crate::node::common::model::vault::vault::VaultStatus;
 use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
 use crate::node::db::objects::persistent_object::PersistentObject;
@@ -25,7 +25,7 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
     #[instrument(skip_all)]
     pub async fn recovery_request(
         &self,
-        user_creds: UserCredentials,
+        user_creds: UserCreds,
         pass_id: MetaPasswordId,
     ) -> anyhow::Result<()> {
         let vault_repo = PersistentVault::from(self.p_obj.clone());
@@ -66,7 +66,7 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
     #[instrument(skip_all)]
     pub async fn recover(
         &self,
-        user_creds: UserCredentials,
+        user_creds: UserCreds,
         claim_id: ClaimId,
         pass_id: MetaPasswordId,
     ) -> anyhow::Result<PlainText> {

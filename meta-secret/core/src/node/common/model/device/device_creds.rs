@@ -1,5 +1,55 @@
-use crate::crypto::keys::{KeyManager, OpenBox, SecretBox};
+use crate::crypto::encoding::base64::Base64Text;
+use crate::crypto::keys::{SecureSecretBox, KeyManager, OpenBox, SecretBox, TransportSk};
+use crate::node::common::model::crypto::aead::AeadPlainText;
+use crate::node::common::model::crypto::channel::CommunicationChannel;
 use crate::node::common::model::device::common::{DeviceData, DeviceName};
+use anyhow::Result;
+
+/// Contains full information about device (private keys and device id)
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecureDeviceCreds {
+    pub secret_box: SecureSecretBox,
+    pub device: DeviceData,
+}
+
+impl SecureDeviceCreds {
+    pub fn decrypt(self, sk: &TransportSk) -> Result<DeviceCreds> {
+        let encrypted_secret_box = self.secret_box.secret_box;
+        let secret_box_json = encrypted_secret_box.decrypt(sk)?;
+        let secret_box_str = String::try_from(&secret_box_json.msg)?;
+        
+        let secret_box: SecretBox = serde_json::from_str(&secret_box_str)?;
+        
+        let device_creds = DeviceCreds { secret_box, device: self.device };
+        Ok(device_creds)
+    }
+}
+
+impl TryFrom<DeviceCreds> for SecureDeviceCreds {
+    type Error = anyhow::Error;
+
+    fn try_from(device_creds: DeviceCreds) -> Result<Self> {
+        let device_creds_json = serde_json::to_string(&device_creds)?;
+        let channel =
+            CommunicationChannel::single_device(device_creds.secret_box.transport.pk.clone())
+                .to_channel();
+
+        let plain_secret_box = AeadPlainText {
+            msg: Base64Text::from(device_creds_json),
+            channel,
+        };
+
+        let secure_secret_box = plain_secret_box.encrypt()?;
+
+        Ok(SecureDeviceCreds {
+            secret_box: SecureSecretBox {
+                secret_box: secure_secret_box,
+            },
+            device: device_creds.device,
+        })
+    }
+}
 
 /// Contains full information about device (private keys and device id)
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

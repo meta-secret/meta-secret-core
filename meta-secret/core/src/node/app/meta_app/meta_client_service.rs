@@ -14,7 +14,7 @@ use crate::node::common::model::device::device_creds::DeviceCreds;
 use crate::node::common::model::meta_pass::SecurePassInfo;
 use crate::node::common::model::secret::ClaimId;
 use crate::node::common::model::user::common::{UserData, UserDataOutsiderStatus};
-use crate::node::common::model::user::user_creds::UserCredentials;
+use crate::node::common::model::user::user_creds::UserCreds;
 use crate::node::common::model::vault::vault::{VaultMember, VaultStatus};
 use crate::node::common::model::{ApplicationState, UserMemberFullInfo, VaultFullInfo};
 use crate::node::db::actions::recover::RecoveryAction;
@@ -192,7 +192,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         Ok(app_state)
     }
 
-    async fn sign_up(&self, user_creds: &UserCredentials) -> Result<()> {
+    async fn sign_up(&self, user_creds: &UserCreds) -> Result<()> {
         let user_data = UserData {
             vault_name: user_creds.vault_name.clone(),
             device: user_creds.device(),
@@ -204,7 +204,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         Ok(())
     }
 
-    async fn get_user_creds(&self, request: &GenericAppStateRequest) -> Result<UserCredentials> {
+    async fn get_user_creds(&self, request: &GenericAppStateRequest) -> Result<UserCreds> {
         let creds_repo = PersistentCredentials::from(self.p_obj.clone());
 
         let user_creds = match &request {
@@ -229,7 +229,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         Ok(user_creds)
     }
 
-    pub async fn find_user_creds(&self) -> Result<UserCredentials> {
+    pub async fn find_user_creds(&self) -> Result<UserCreds> {
         let creds_repo = PersistentCredentials::from(self.p_obj.clone());
         let user_creds = {
             let maybe_user_creds = creds_repo.get_user_creds().await?;

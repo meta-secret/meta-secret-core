@@ -6,7 +6,7 @@ use crate::node::app::orchestrator::MetaOrchestrator;
 use crate::node::app::sync::sync_gateway::SyncGateway;
 use crate::node::app::sync::sync_protocol::SyncProtocol;
 use crate::node::common::model::device::common::DeviceName;
-use crate::node::common::model::user::user_creds::UserCredentials;
+use crate::node::common::model::user::user_creds::UserCreds;
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::actions::sign_up::claim::SignUpClaim;
 use crate::node::db::objects::persistent_object::PersistentObject;
@@ -60,7 +60,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> VirtualDevice<Repo, Sync> {
         }
     }
 
-    async fn do_work(&self, user_creds: &UserCredentials) -> Result<()> {
+    async fn do_work(&self, user_creds: &UserCreds) -> Result<()> {
         self.gateway.sync(user_creds.user()).await?;
 
         let orchestrator = MetaOrchestrator {

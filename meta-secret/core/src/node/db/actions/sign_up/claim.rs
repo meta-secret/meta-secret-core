@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::node::common::model::device::common::DeviceName;
 use crate::node::common::model::user::common::{UserData, UserDataOutsiderStatus};
-use crate::node::common::model::user::user_creds::UserCredentials;
+use crate::node::common::model::user::user_creds::UserCreds;
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::node::{
@@ -30,7 +30,7 @@ impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
         &self,
         device_name: DeviceName,
         vault_name: VaultName,
-    ) -> anyhow::Result<UserCredentials> {
+    ) -> anyhow::Result<UserCreds> {
         let creds_repo = PersistentCredentials {
             p_obj: self.p_obj.clone(),
         };
@@ -76,7 +76,7 @@ impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
 
 #[cfg(any(test, feature = "test-framework"))]
 pub mod test_action {
-    use crate::node::common::model::user::user_creds::UserCredentials;
+    use crate::node::common::model::user::user_creds::UserCreds;
     use crate::node::common::model::vault::vault::VaultStatus;
     use crate::node::db::actions::sign_up::claim::SignUpClaim;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
@@ -93,7 +93,7 @@ pub mod test_action {
         #[instrument(skip_all)]
         pub async fn sign_up(
             p_obj: Arc<PersistentObject<InMemKvLogEventRepo>>,
-            creds: &UserCredentials,
+            creds: &UserCreds,
         ) -> anyhow::Result<VaultStatus> {
             info!("SignUp action");
 
