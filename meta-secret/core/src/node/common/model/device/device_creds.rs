@@ -16,15 +16,11 @@ pub struct SecureDeviceCreds {
 impl SecureDeviceCreds {
     pub fn decrypt(self, sk: &TransportSk) -> Result<DeviceCreds> {
         let encrypted_secret_box = self.secret_box.secret_box;
-        let secret_box_json = encrypted_secret_box.decrypt(sk)?;
-        let secret_box_str = String::try_from(&secret_box_json.msg)?;
+        let secret_box_plain_text = encrypted_secret_box.decrypt(sk)?;
+        let secret_box_json_str = String::try_from(&secret_box_plain_text.msg)?;
 
-        let secret_box: SecretBox = serde_json::from_str(&secret_box_str)?;
-
-        let device_creds = DeviceCreds {
-            secret_box,
-            device: self.device,
-        };
+        let device_creds: DeviceCreds = serde_json::from_str(&secret_box_json_str)?;
+        
         Ok(device_creds)
     }
 }
@@ -137,5 +133,59 @@ pub mod fixture {
                 server_master_key: TransportDsaKeyPair::generate().sk(),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crypto::key_pair::{KeyPair, TransportDsaKeyPair};
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+
+    #[test]
+    fn test_secure_device_creds_build_and_decrypt() -> Result<()> {
+        // Use fixture data for consistency
+        let empty_registry = FixtureRegistry::empty();
+        let device_creds = empty_registry.state.device_creds.client.clone();
+        
+        // Generate a new key pair for the test - don't reuse fixture keys
+        let key_pair = TransportDsaKeyPair::generate();
+        let master_pk = key_pair.pk();
+        let master_sk = key_pair.sk();
+        
+        // Build (encrypt)
+        let secure_device_creds = SecureDeviceCreds::build(device_creds.clone(), master_pk)?;
+        
+        // Verify device data is preserved
+        assert_eq!(secure_device_creds.device, device_creds.device);
+        
+        // Decrypt
+        let decrypted_creds = secure_device_creds.decrypt(&master_sk)?;
+        
+        // Verify full equality works after fixed implementation
+        assert_eq!(decrypted_creds, device_creds);
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_secure_device_creds_decrypt_with_wrong_key() {
+        // Generate key pairs for test
+        let key_pair = TransportDsaKeyPair::generate();
+        let master_pk = key_pair.pk();
+        
+        let wrong_key_pair = TransportDsaKeyPair::generate();
+        let wrong_sk = wrong_key_pair.sk();
+        
+        // Use fixture data
+        let empty_registry = FixtureRegistry::empty();
+        let device_creds = empty_registry.state.device_creds.client.clone();
+        
+        // Create secure device credentials using first key
+        let secure_device_creds = SecureDeviceCreds::build(device_creds, master_pk).unwrap();
+        
+        // Attempt to decrypt with wrong key - should fail
+        let decrypt_result = secure_device_creds.decrypt(&wrong_sk);
+        assert!(decrypt_result.is_err());
     }
 }
