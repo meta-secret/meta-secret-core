@@ -92,7 +92,9 @@ impl DeviceCreds {
 
 #[cfg(any(test, feature = "test-framework"))]
 pub mod fixture {
+    use crate::crypto::key_pair::{KeyPair, TransportDsaKeyPair};
     use crate::crypto::keys::fixture::KeyManagerFixture;
+    use crate::crypto::keys::TransportSk;
     use crate::node::common::model::device::common::DeviceName;
     use crate::node::common::model::device::device_creds::{DeviceCreds, DeviceCredsBuilder};
 
@@ -101,6 +103,11 @@ pub mod fixture {
         pub client_b: DeviceCreds,
         pub vd: DeviceCreds,
         pub server: DeviceCreds,
+
+        pub client_master_key: TransportSk,
+        pub client_b_master_key: TransportSk,
+        pub vd_master_key: TransportSk,
+        pub server_master_key: TransportSk,
     }
 
     impl DeviceCredentialsFixture {
@@ -123,6 +130,10 @@ pub mod fixture {
                 client_b,
                 vd,
                 server,
+                client_master_key: TransportDsaKeyPair::generate().sk(),
+                client_b_master_key: TransportDsaKeyPair::generate().sk(),
+                vd_master_key: TransportDsaKeyPair::generate().sk(),
+                server_master_key: TransportDsaKeyPair::generate().sk()
             }
         }
     }

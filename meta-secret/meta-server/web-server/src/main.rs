@@ -51,7 +51,7 @@ async fn main() -> Result<()> {
         let repo = Arc::new(SqlIteRepo {
             conn_url: String::from("file:meta-secret.db"),
         });
-        Arc::new(ServerApp::new(repo.clone())?)
+        Arc::new(ServerApp::new(repo.clone(), ?????)?)
     };
 
     let data_transfer = server_app.get_data_transfer();

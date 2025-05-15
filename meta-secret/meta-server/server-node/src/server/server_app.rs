@@ -18,6 +18,8 @@ use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSha
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
 use tracing::{error, info, instrument};
+use meta_secret_core::crypto::key_pair::{KeyPair, TransportDsaKeyPair};
+use meta_secret_core::crypto::keys::TransportSk;
 
 pub struct MetaServerDataTransfer {
     pub dt: MpscDataTransfer<SyncRequest, DataSyncResponse>,
@@ -45,13 +47,17 @@ pub struct ServerApp<Repo: KvLogEventRepo> {
     p_obj: Arc<PersistentObject<Repo>>,
     creds_repo: Arc<PersistentCredentials<Repo>>,
     data_transfer: Arc<MetaServerDataTransfer>,
+    master_key: TransportSk,
 }
 
 impl<Repo: KvLogEventRepo> ServerApp<Repo> {
-    pub fn new(repo: Arc<Repo>) -> Result<Self> {
+    pub fn new(repo: Arc<Repo>, master_key: TransportSk) -> Result<Self> {
         let p_obj = Arc::new(PersistentObject::new(repo));
         let data_sync = Arc::new(ServerSyncGateway::from(p_obj.clone()));
-        let creds_repo = Arc::new(PersistentCredentials::from(p_obj.clone()));
+        let creds_repo = Arc::new(PersistentCredentials {
+            p_obj: p_obj.clone(),
+            master_key,
+        });
         let data_transfer = Arc::new(MetaServerDataTransfer::default());
 
         Ok(Self {

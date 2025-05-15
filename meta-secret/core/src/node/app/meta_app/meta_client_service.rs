@@ -10,7 +10,6 @@ use crate::node::app::sync::sync_gateway::SyncGateway;
 use crate::node::app::sync::sync_protocol::SyncProtocol;
 use crate::node::common::actor::ServiceState;
 use crate::node::common::data_transfer::MpscDataTransfer;
-use crate::node::common::model::device::device_creds::DeviceCreds;
 use crate::node::common::model::meta_pass::SecurePassInfo;
 use crate::node::common::model::secret::ClaimId;
 use crate::node::common::model::user::common::{UserData, UserDataOutsiderStatus};
@@ -29,13 +28,16 @@ use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::secret::MetaDistributor;
 use anyhow::Result;
 use log::error;
+use crate::crypto::keys::TransportSk;
+use crate::node::common::model::device::common::DeviceData;
 
 pub struct MetaClientService<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub data_transfer: Arc<MetaClientDataTransfer>,
     pub sync_gateway: Arc<SyncGateway<Repo, Sync>>,
     pub state_provider: Arc<MetaClientStateProvider>,
     pub p_obj: Arc<PersistentObject<Repo>>,
-    pub device_creds: Arc<DeviceCreds>,
+    pub device_data: DeviceData,
+    pub master_key: TransportSk,
 }
 
 pub struct MetaClientDataTransfer {
@@ -205,20 +207,23 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
     }
 
     async fn get_user_creds(&self, request: &GenericAppStateRequest) -> Result<UserCreds> {
-        let creds_repo = PersistentCredentials::from(self.p_obj.clone());
+        let creds_repo = PersistentCredentials {
+            p_obj: self.p_obj.clone(),
+            master_key: self.master_key.clone(),
+        };
 
         let user_creds = match &request {
             GenericAppStateRequest::GetState => {
                 bail!("Invalid state. GetState request!")
             }
             GenericAppStateRequest::GenerateUserCreds(vault_name) => {
-                let device_name = self.device_creds.device.device_name.clone();
+                let device_name = self.device_data.device_name.clone();
                 creds_repo
                     .get_or_generate_user_creds(device_name, vault_name.clone())
                     .await?
             }
             GenericAppStateRequest::SignUp(vault_name) => {
-                let device_name = self.device_creds.device.device_name.clone();
+                let device_name = self.device_data.device_name.clone();
                 creds_repo
                     .get_or_generate_user_creds(device_name, vault_name.clone())
                     .await?
@@ -230,7 +235,10 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
     }
 
     pub async fn find_user_creds(&self) -> Result<UserCreds> {
-        let creds_repo = PersistentCredentials::from(self.p_obj.clone());
+        let creds_repo = PersistentCredentials {
+            p_obj: self.p_obj.clone(),
+            master_key: self.master_key.clone(),
+        };
         let user_creds = {
             let maybe_user_creds = creds_repo.get_user_creds().await?;
 
@@ -253,11 +261,14 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
     }
 
     pub async fn get_app_state(&self) -> Result<ApplicationState> {
-        let creds_repo = PersistentCredentials::from(self.p_obj());
+        let creds_repo = PersistentCredentials {
+            p_obj: self.p_obj.clone(),
+            master_key: self.master_key.clone(),
+        };
         let maybe_user_creds = creds_repo.get_user_creds().await?;
 
         let app_state = match maybe_user_creds {
-            None => ApplicationState::Local(self.device_creds.device.clone()),
+            None => ApplicationState::Local(self.device_data.clone()),
             Some(user_creds) => {
                 self.sync_gateway.sync(user_creds.user()).await?;
 
@@ -435,7 +446,8 @@ pub mod fixture {
                 sync_gateway: sync_gateway.client_gw.clone(),
                 state_provider: state_provider.client.clone(),
                 p_obj: sync_gateway.client_gw.p_obj.clone(),
-                device_creds: Arc::new(base.empty.device_creds.client.clone()),
+                device_data: base.empty.device_creds.client.device.clone(),
+                master_key: base.p_creds.client_p_creds.master_key.clone()
             });
 
             let vd = Arc::new(MetaClientService {
@@ -443,7 +455,8 @@ pub mod fixture {
                 sync_gateway: sync_gateway.vd_gw.clone(),
                 state_provider: state_provider.vd.clone(),
                 p_obj: sync_gateway.vd_gw.p_obj.clone(),
-                device_creds: Arc::new(base.empty.device_creds.vd.clone()),
+                device_data: base.empty.device_creds.vd.device.clone(),
+                master_key: base.p_creds.vd_p_creds.master_key.clone()
             });
 
             Self {
