@@ -51,7 +51,8 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
 
     #[instrument(skip(self))]
     pub async fn save_device_creds(&self, device_creds: DeviceCreds) -> Result<()> {
-        let secure_creds = SecureDeviceCreds::try_from(device_creds.clone())?;
+        let master_pk = self.master_key.pk()?;
+        let secure_creds = SecureDeviceCreds::build(device_creds.clone(), master_pk)?;
         let creds_obj = DeviceCredsObject::from(secure_creds);
         self.p_obj.repo.save(creds_obj).await?;
         Ok(())
@@ -60,7 +61,8 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
     #[instrument(skip(self))]
     pub async fn save_user_creds(&self, user_creds: UserCreds) -> Result<ArtifactId> {
         // Create secure user credentials with the secure device credentials
-        let secure_user_creds = SecureUserCreds::try_from(user_creds.clone())?;
+        let master_pk = self.master_key.pk()?;
+        let secure_user_creds = SecureUserCreds::build(user_creds.clone(), master_pk)?;
         
         // Create a user credentials object and save it
         let creds_obj = UserCredsObject::from(secure_user_creds);
@@ -246,15 +248,18 @@ pub mod spec {
 
 #[cfg(test)]
 mod test {
+    use crate::node::db::repo::persistent_credentials::DeviceCredsObject;
+    use crate::crypto::key_pair::KeyPair;
     use crate::node::common::model::device::common::DeviceName;
     use crate::node::db::repo::persistent_credentials::spec::PersistentCredentialsSpec;
     use crate::node::db::descriptors::creds::DeviceCredsDescriptor;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_object::PersistentObject;
-    use crate::node::common::model::device::device_creds::DeviceCredsBuilder;
+    use crate::node::common::model::device::device_creds::{DeviceCredsBuilder, SecureDeviceCreds};
     use crate::node::db::repo::generic_db::SaveCommand;
     use std::sync::Arc;
-    
+    use crate::crypto::key_pair::TransportDsaKeyPair;
+
     #[tokio::test]
     async fn test_verify_device_creds() -> anyhow::Result<()> {
         // Create an in-memory repository
@@ -275,9 +280,11 @@ mod test {
         let device_creds = DeviceCredsBuilder::generate()
             .build(device_name.clone())
             .creds;
+        let master_sk = TransportDsaKeyPair::generate().sk();
+        let secure_device_creds = SecureDeviceCreds::build(device_creds, master_sk.pk()?)?;
         
         // Store the device credentials directly using the repository
-        let creds_obj = super::DeviceCredsObject::from(super::SecureDeviceCreds::try_from(device_creds)?);
+        let creds_obj = DeviceCredsObject::from(secure_device_creds);
         repo.save(creds_obj).await?;
         
         // Use the spec to verify device credentials were stored correctly

@@ -1,5 +1,5 @@
 use crate::crypto::encoding::base64::Base64Text;
-use crate::crypto::keys::{SecureSecretBox, KeyManager, OpenBox, SecretBox, TransportSk};
+use crate::crypto::keys::{KeyManager, OpenBox, SecretBox, SecureSecretBox, TransportPk, TransportSk};
 use crate::node::common::model::crypto::aead::AeadPlainText;
 use crate::node::common::model::crypto::channel::CommunicationChannel;
 use crate::node::common::model::device::common::{DeviceData, DeviceName};
@@ -18,22 +18,22 @@ impl SecureDeviceCreds {
         let encrypted_secret_box = self.secret_box.secret_box;
         let secret_box_json = encrypted_secret_box.decrypt(sk)?;
         let secret_box_str = String::try_from(&secret_box_json.msg)?;
-        
+
         let secret_box: SecretBox = serde_json::from_str(&secret_box_str)?;
-        
-        let device_creds = DeviceCreds { secret_box, device: self.device };
+
+        let device_creds = DeviceCreds {
+            secret_box,
+            device: self.device,
+        };
         Ok(device_creds)
     }
 }
 
-impl TryFrom<DeviceCreds> for SecureDeviceCreds {
-    type Error = anyhow::Error;
-
-    fn try_from(device_creds: DeviceCreds) -> Result<Self> {
+impl SecureDeviceCreds {
+    
+    pub fn build(device_creds: DeviceCreds, master_pk: TransportPk) -> Result<Self> {
         let device_creds_json = serde_json::to_string(&device_creds)?;
-        let channel =
-            CommunicationChannel::single_device(device_creds.secret_box.transport.pk.clone())
-                .to_channel();
+        let channel = CommunicationChannel::single_device(master_pk).to_channel();
 
         let plain_secret_box = AeadPlainText {
             msg: Base64Text::from(device_creds_json),
@@ -93,8 +93,8 @@ impl DeviceCreds {
 #[cfg(any(test, feature = "test-framework"))]
 pub mod fixture {
     use crate::crypto::key_pair::{KeyPair, TransportDsaKeyPair};
-    use crate::crypto::keys::fixture::KeyManagerFixture;
     use crate::crypto::keys::TransportSk;
+    use crate::crypto::keys::fixture::KeyManagerFixture;
     use crate::node::common::model::device::common::DeviceName;
     use crate::node::common::model::device::device_creds::{DeviceCreds, DeviceCredsBuilder};
 
@@ -130,10 +130,11 @@ pub mod fixture {
                 client_b,
                 vd,
                 server,
+
                 client_master_key: TransportDsaKeyPair::generate().sk(),
                 client_b_master_key: TransportDsaKeyPair::generate().sk(),
                 vd_master_key: TransportDsaKeyPair::generate().sk(),
-                server_master_key: TransportDsaKeyPair::generate().sk()
+                server_master_key: TransportDsaKeyPair::generate().sk(),
             }
         }
     }

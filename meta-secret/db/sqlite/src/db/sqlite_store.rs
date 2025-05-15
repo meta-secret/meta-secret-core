@@ -119,6 +119,7 @@ mod tests {
     use meta_secret_core::node::db::events::object_id::{ArtifactId, Next};
     use std::clone::Clone;
     use tempfile::tempdir;
+    use meta_secret_core::crypto::key_pair::{KeyPair, TransportDsaKeyPair};
     use meta_secret_core::node::db::descriptors::creds::DeviceCredsDescriptor;
     use meta_secret_core::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 
@@ -147,7 +148,9 @@ mod tests {
         let device_creds = DeviceCredsBuilder::generate()
             .build(DeviceName::client())
             .creds;
-        let secure_device_creds = SecureDeviceCreds::try_from(device_creds)?;
+        let master_pk = TransportDsaKeyPair::generate().sk().pk()?;
+        
+        let secure_device_creds = SecureDeviceCreds::build(device_creds, master_pk)?;
 
         let creds_obj = DeviceCredsObject::from(secure_device_creds);
         let test_event = creds_obj.to_generic();
@@ -187,7 +190,9 @@ mod tests {
         let device_creds = DeviceCredsBuilder::generate()
             .build(DeviceName::client())
             .creds;
-        let secure_device_creds = SecureDeviceCreds::try_from(device_creds)?;
+        let master_pk = TransportDsaKeyPair::generate().sk().pk()?;
+        
+        let secure_device_creds = SecureDeviceCreds::build(device_creds, master_pk)?;
 
         let creds_desc = DeviceCredsDescriptor;
         let initial_id = ArtifactId::from(creds_desc.clone());

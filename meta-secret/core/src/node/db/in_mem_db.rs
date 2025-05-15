@@ -86,6 +86,8 @@ impl InMemKvLogEventRepo {
 
 #[cfg(test)]
 mod tests {
+    use crate::crypto::key_pair::KeyPair;
+use crate::crypto::key_pair::TransportDsaKeyPair;
     use super::*;
     use crate::node::common::model::IdString;
     use crate::node::common::model::device::common::DeviceName;
@@ -110,7 +112,8 @@ mod tests {
         let device_creds = DeviceCredsBuilder::generate()
             .build(DeviceName::client())
             .creds;
-        let secure_device_creds = SecureDeviceCreds::try_from(device_creds.clone())?;
+        let master_pk = TransportDsaKeyPair::generate().sk().pk()?;
+        let secure_device_creds = SecureDeviceCreds::build(device_creds.clone(), master_pk)?;
         
         let creds_obj = DeviceCredsObject::from(secure_device_creds);
         let test_event = creds_obj.to_generic();
@@ -145,7 +148,8 @@ mod tests {
         let device_creds = DeviceCredsBuilder::generate()
             .build(DeviceName::client())
             .creds;
-        let secure_device_creds = SecureDeviceCreds::try_from(device_creds)?;
+        let master_pk = TransportDsaKeyPair::generate().sk().pk()?;
+        let secure_device_creds = SecureDeviceCreds::build(device_creds, master_pk)?;
         
         let creds_desc = DeviceCredsDescriptor;
         let initial_id = ArtifactId::from(creds_desc.clone());

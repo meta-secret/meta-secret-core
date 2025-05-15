@@ -5,10 +5,6 @@ use meta_secret_core::node::common::model::device::common::DeviceName;
 use meta_secret_core::node::db::descriptors::creds::DeviceCredsDescriptor;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use tracing::info;
-use std::sync::Arc;
-use meta_secret_core::crypto::key_pair::{KeyPair, TransportDsaKeyPair};
-use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
-use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
 
 pub struct InitDeviceCommand {
     base: BaseCommand,
@@ -87,7 +83,6 @@ pub mod tests {
         // Create an in-memory database context
         let db_context = create_in_memory_context().await;
 
-        // Define test parameters (similar to device-a in Taskfile.yml)
         let device_name = "device_a";
 
         // Create the command instance

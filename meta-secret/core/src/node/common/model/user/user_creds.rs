@@ -1,7 +1,9 @@
+use crate::crypto::keys::TransportPk;
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
 use crate::node::common::model::device::device_creds::{DeviceCreds, SecureDeviceCreds};
 use crate::node::common::model::user::common::{UserData, UserId};
 use crate::node::common::model::vault::vault::VaultName;
+use anyhow::Result;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -10,11 +12,10 @@ pub struct SecureUserCreds {
     pub device_creds: SecureDeviceCreds,
 }
 
-impl TryFrom<UserCreds> for SecureUserCreds {
-    type Error = anyhow::Error;
-
-    fn try_from(user_creds: UserCreds) -> Result<Self, Self::Error> {
-        let secure_device_creds = SecureDeviceCreds::try_from(user_creds.device_creds.clone())?;
+impl SecureUserCreds {
+    
+    pub fn build(user_creds: UserCreds, master_pk: TransportPk) -> Result<Self> {
+        let secure_device_creds = SecureDeviceCreds::build(user_creds.device_creds, master_pk)?;
 
         // Create secure user credentials with the secure device credentials
         Ok(SecureUserCreds {
