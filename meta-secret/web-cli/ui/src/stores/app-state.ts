@@ -1,5 +1,10 @@
 import { defineStore } from 'pinia';
-import init, { ApplicationStateInfo, WasmApplicationManager, WasmApplicationState } from 'meta-secret-web-cli';
+import init, {
+  ApplicationStateInfo,
+  MasterKeyManager,
+  WasmApplicationManager,
+  WasmApplicationState,
+} from 'meta-secret-web-cli';
 
 export const AppState = defineStore('app_state', {
   state: () => {

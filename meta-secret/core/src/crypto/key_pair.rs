@@ -1,9 +1,10 @@
+use std::str::FromStr;
 use age::secrecy::ExposeSecret;
 use age::x25519::Identity;
 use ed25519_dalek::{SecretKey, Signer, SigningKey};
 use rand::rngs::OsRng;
 use rand::TryRngCore;
-
+use wasm_bindgen::prelude::wasm_bindgen;
 use crate::crypto::encoding::base64::Base64Text;
 use crate::crypto::keys::{DsaPk, DsaSk, TransportPk, TransportSk};
 use crate::node::common::model::crypto::aead::{AeadCipherText, AeadPlainText};
@@ -68,6 +69,21 @@ impl KeyPair<DsaPk, DsaSk> for DsaKeyPair {
         DsaSk(raw_sk)
     }
 }
+#[wasm_bindgen]
+pub struct MasterKeyManager(TransportDsaKeyPair);
+#[wasm_bindgen]
+impl MasterKeyManager {
+    pub fn generate_sk() -> String {
+        let key_pair = TransportDsaKeyPair::generate();
+        key_pair.secret_key.to_string().expose_secret().to_string()
+    }
+    
+    pub fn from_sk(sk: String) -> TransportSk {
+        let raw_sk = Base64Text::from(sk);
+        TransportSk(raw_sk)
+    }
+}
+
 
 pub struct TransportDsaKeyPair {
     pub secret_key: Identity,
