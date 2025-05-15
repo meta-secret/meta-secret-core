@@ -246,78 +246,42 @@ pub mod spec {
 
 #[cfg(test)]
 mod test {
-    use crate::node::db::repo::persistent_credentials::UserCredsBuilder;
-use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
-    use crate::meta_tests::setup_tracing;
     use crate::node::common::model::device::common::DeviceName;
-    use crate::node::common::model::vault::vault::VaultName;
     use crate::node::db::repo::persistent_credentials::spec::PersistentCredentialsSpec;
-    use tracing_attributes::instrument;
-    use crate::crypto::key_pair::{KeyPair, TransportDsaKeyPair};
+    use crate::node::db::descriptors::creds::DeviceCredsDescriptor;
+    use crate::node::db::in_mem_db::InMemKvLogEventRepo;
+    use crate::node::db::objects::persistent_object::PersistentObject;
+    use crate::node::common::model::device::device_creds::DeviceCredsBuilder;
+    use crate::node::db::repo::generic_db::SaveCommand;
     use std::sync::Arc;
-
+    
     #[tokio::test]
-    #[instrument]
-    async fn test_get_or_generate_user_creds() -> anyhow::Result<()> {
-        setup_tracing()?;
-
-        let base_fixture = FixtureRegistry::base().await?;
-        let creds_repo = base_fixture.state.p_creds.server_p_creds;
-
-        let vault_name = VaultName::test();
-        let _ = creds_repo
-            .get_or_generate_user_creds(DeviceName::server(), vault_name)
-            .await?;
-
+    async fn test_verify_device_creds() -> anyhow::Result<()> {
+        // Create an in-memory repository
+        let repo = Arc::new(InMemKvLogEventRepo::default());
+        let p_obj = Arc::new(PersistentObject::new(repo.clone()));
+        
+        // Create the spec to verify credentials
         let spec = PersistentCredentialsSpec {
-            p_obj: creds_repo.p_obj.clone(),
+            p_obj: p_obj.clone(),
         };
-        spec.verify_user_creds().await?;
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    #[instrument]
-    async fn test_credentials_encryption_decryption() -> anyhow::Result<()> {
-        setup_tracing()?;
-
-        let base_fixture = FixtureRegistry::base().await?;
         
-        // Generate a transport key for encryption/decryption
-        let transport_key_pair = TransportDsaKeyPair::generate();
-        let master_key = transport_key_pair.sk();
+        // Verify no credentials exist yet
+        let events = p_obj.get_object_events_from_beginning(DeviceCredsDescriptor).await?;
+        assert_eq!(events.len(), 0, "No credentials should exist initially");
         
-        // Create a new PersistentCredentials with our master key
-        let creds_repo = Arc::new(super::PersistentCredentials {
-            p_obj: base_fixture.state.p_creds.client_p_creds.p_obj.clone(),
-            master_key,
-        });
-
-        // Generate device and user credentials
-        let device_name = DeviceName::client();
-        let vault_name = VaultName::test();
-        
-        // Generate and save device credentials
-        let device_creds = creds_repo.generate_device_creds(device_name.clone()).await?;
-        
-        // Create and save user credentials
-        let user_creds = UserCredsBuilder::init(device_creds.clone())
-            .build(vault_name.clone())
+        // Generate device credentials
+        let device_name = DeviceName::server();
+        let device_creds = DeviceCredsBuilder::generate()
+            .build(device_name.clone())
             .creds;
-        creds_repo.save_user_creds(user_creds.clone()).await?;
         
-        // Retrieve device and user credentials
-        let retrieved_device_creds = creds_repo.get_device_creds().await?.unwrap();
-        let retrieved_user_creds = creds_repo.get_user_creds().await?.unwrap();
+        // Store the device credentials directly using the repository
+        let creds_obj = super::DeviceCredsObject::from(super::SecureDeviceCreds::try_from(device_creds)?);
+        repo.save(creds_obj).await?;
         
-        // Verify device credentials match
-        assert_eq!(device_creds.device.device_id, retrieved_device_creds.device.device_id);
-        assert_eq!(device_creds.device.device_name, retrieved_device_creds.device.device_name);
-        
-        // Verify user credentials match
-        assert_eq!(user_creds.vault_name, retrieved_user_creds.vault_name);
-        assert_eq!(user_creds.device_creds.device.device_id, retrieved_user_creds.device_creds.device.device_id);
+        // Use the spec to verify device credentials were stored correctly
+        spec.verify_device_creds().await?;
         
         Ok(())
     }

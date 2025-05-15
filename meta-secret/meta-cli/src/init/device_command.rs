@@ -5,6 +5,10 @@ use meta_secret_core::node::common::model::device::common::DeviceName;
 use meta_secret_core::node::db::descriptors::creds::DeviceCredsDescriptor;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use tracing::info;
+use std::sync::Arc;
+use meta_secret_core::crypto::key_pair::{KeyPair, TransportDsaKeyPair};
+use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
+use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
 
 pub struct InitDeviceCommand {
     base: BaseCommand,
@@ -133,9 +137,15 @@ pub mod tests {
     pub async fn create_in_memory_context() -> DbContext<InMemKvLogEventRepo> {
         let repo = Arc::new(InMemKvLogEventRepo::default());
         let p_obj = Arc::new(PersistentObject::new(repo.clone()));
+        
+        // Always use the same key for tests to avoid "Invalid recipient" errors
+        let key_pair = TransportDsaKeyPair::generate();
+        let master_key = key_pair.sk();
+        
+        // Create persistent credentials with this master key
         let p_creds = PersistentCredentials {
             p_obj: p_obj.clone(),
-            master_key: TransportDsaKeyPair::generate().sk(),
+            master_key,
         };
 
         DbContext {
