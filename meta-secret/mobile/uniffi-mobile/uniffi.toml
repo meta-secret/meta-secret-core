@@ -1,11 +1,11 @@
 [bindings.swift]
-# Имя модуля Swift
 module_name = "MetaCore"
-# Имя FFI-модуля
 ffi_module_name = "MetaCoreFFI"
-# Генерировать неизменяемые записи (с let вместо var)
+
 generate_immutable_records = true
-# Генерировать соответствие протоколу Codable
 generate_codable_conformance = true
-# Генерировать соответствие протоколу CaseIterable для перечислений
-generate_case_iterable_conformance = true 
+generate_case_iterable_conformance = true
+
+[bindings.kotlin]
+package_name = "build.metasecret.rust.core"
+cdylib_name = "core"

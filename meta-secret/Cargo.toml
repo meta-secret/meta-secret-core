@@ -12,8 +12,6 @@ members = [
     "cli",
     "meta-cli",
     "tests",
-    "mobile/ios",
-    "mobile/android",
     "mobile/uniffi-mobile",
     "mobile/uniffi-bindgen"
 ]
