@@ -147,7 +147,7 @@ impl DbCleanUpCommand for ReDbRepo {
 mod tests {
     use super::*;
     use meta_secret_core::node::common::model::device::common::DeviceName;
-    use meta_secret_core::node::common::model::device::device_creds::DeviceCredsBuilder;
+    use meta_secret_core::node::common::model::device::device_creds::{DeviceCredsBuilder, SecureDeviceCreds};
     use meta_secret_core::node::db::descriptors::object_descriptor::{ObjectFqdn, ToObjectDescriptor};
     use meta_secret_core::node::db::events::local_event::DeviceCredsObject;
     use meta_secret_core::node::db::events::object_id::{ArtifactId, Next};
@@ -178,7 +178,8 @@ mod tests {
         let device_creds = DeviceCredsBuilder::generate()
             .build(DeviceName::client())
             .creds;
-        let creds_obj = DeviceCredsObject::from(device_creds);
+        let secure_device_creds = SecureDeviceCreds::try_from(device_creds)?;
+        let creds_obj = DeviceCredsObject::from(secure_device_creds);
         let test_event = creds_obj.to_generic();
 
         // Test save operation
@@ -211,6 +212,8 @@ mod tests {
         let device_creds = DeviceCredsBuilder::generate()
             .build(DeviceName::client())
             .creds;
+        let secure_device_creds = SecureDeviceCreds::try_from(device_creds.clone())?;
+        
         let creds_desc = DeviceCredsDescriptor;
         let initial_id = ArtifactId::from(creds_desc.clone());
         let mut id = initial_id.clone();
@@ -219,7 +222,7 @@ mod tests {
         for i in 1..=5 {
             let kv_event = KvLogEvent {
                 key: KvKey::artifact(creds_desc.clone().to_obj_desc(), id.clone()),
-                value: device_creds.clone(),
+                value: secure_device_creds.clone(),
             };
             
             let creds_obj = DeviceCredsObject(kv_event);
@@ -280,7 +283,9 @@ mod tests {
             let device_creds = DeviceCredsBuilder::generate()
                 .build(DeviceName::client())
                 .creds;
-            let creds_obj = DeviceCredsObject::from(device_creds);
+            let secure_device_creds = SecureDeviceCreds::try_from(device_creds.clone())?;
+            
+            let creds_obj = DeviceCredsObject::from(secure_device_creds);
             
             repo.save(creds_obj).await?;
             

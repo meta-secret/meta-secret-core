@@ -87,7 +87,6 @@ pub mod test_action {
     use std::sync::Arc;
     use tracing::info;
     use tracing_attributes::instrument;
-    use crate::crypto::keys::TransportSk;
 
     pub struct SignUpClaimTestAction {
         _sign_up: SignUpClaim<InMemKvLogEventRepo>,

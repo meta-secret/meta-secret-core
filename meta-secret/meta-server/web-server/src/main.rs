@@ -16,6 +16,9 @@ use tower_http::trace::TraceLayer;
 use tracing::{info, Level};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
+mod key_utils;
+use key_utils::load_or_create_master_key;
+
 #[derive(Clone)]
 pub struct MetaServerAppState {
     data_transfer: Arc<MetaServerDataTransfer>,
@@ -44,6 +47,11 @@ async fn main() -> Result<()> {
 
     info!("Starting Server...");
 
+    // Load or create a master key from a file
+    let master_key_path = "master_key.json";
+    let master_key = load_or_create_master_key(master_key_path)?;
+    info!("Master key loaded successfully");
+
     info!("Creating router...");
     let cors = CorsLayer::permissive();
 
@@ -51,7 +59,7 @@ async fn main() -> Result<()> {
         let repo = Arc::new(SqlIteRepo {
             conn_url: String::from("file:meta-secret.db"),
         });
-        Arc::new(ServerApp::new(repo.clone(), ?????)?)
+        Arc::new(ServerApp::new(repo.clone(), master_key)?)
     };
 
     let data_transfer = server_app.get_data_transfer();

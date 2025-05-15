@@ -146,7 +146,6 @@ pub mod fixture {
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::repo::persistent_credentials::PersistentCredentials;
     use std::sync::Arc;
-    use crate::crypto::key_pair::{KeyPair, TransportDsaKeyPair};
 
     pub struct PersistentCredentialsFixture {
         pub client_p_creds: Arc<PersistentCredentials<InMemKvLogEventRepo>>,
