@@ -397,13 +397,13 @@ pub struct MetaClientAccessProxy {
 
 pub struct MetaClientStateProvider {
     sender: Sender<ApplicationState>,
-    receiver: Receiver<ApplicationState>,
+    _receiver: Receiver<ApplicationState>,
 }
 
 impl MetaClientStateProvider {
     pub fn new() -> Self {
         let (sender, receiver) = flume::bounded(1);
-        Self { sender, receiver }
+        Self { sender, _receiver: receiver }
     }
 
     pub async fn push(&self, state: &ApplicationState) -> Result<()> {

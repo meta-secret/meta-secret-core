@@ -1,5 +1,5 @@
 use axum::extract::State;
-use axum::{routing::post, Json, Router};
+use axum::{Json, Router, routing::post};
 use http::{StatusCode, Uri};
 use serde_derive::Serialize;
 use std::sync::Arc;
@@ -8,16 +8,14 @@ use anyhow::Result;
 use axum::response::Html;
 use axum::routing::get;
 use meta_db_sqlite::db::sqlite_store::SqlIteRepo;
+use meta_secret_core::crypto::key_utils;
 use meta_secret_core::node::api::{DataSyncResponse, SyncRequest};
 use meta_server_node::server::server_app::{MetaServerDataTransfer, ServerApp};
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
-use tracing::{info, Level};
+use tracing::{Level, info};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
-
-mod key_utils;
-use key_utils::load_or_create_master_key;
 
 #[derive(Clone)]
 pub struct MetaServerAppState {
@@ -49,7 +47,7 @@ async fn main() -> Result<()> {
 
     // Load or create a master key from a file
     let master_key_path = "master_key.json";
-    let master_key = load_or_create_master_key(master_key_path)?;
+    let master_key = key_utils::load_or_create_master_key(master_key_path)?;
     info!("Master key loaded successfully");
 
     info!("Creating router...");

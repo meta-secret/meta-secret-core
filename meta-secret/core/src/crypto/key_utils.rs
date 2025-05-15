@@ -1,11 +1,12 @@
 use anyhow::Result;
-use meta_secret_core::crypto::key_pair::{KeyPair, TransportDsaKeyPair};
-use meta_secret_core::crypto::keys::TransportSk;
+use crate::crypto::key_pair::{KeyPair, TransportDsaKeyPair};
+use crate::crypto::keys::TransportSk;
 use std::fs;
 use std::path::Path;
 use tracing::info;
 use serde_json;
 
+/// Loads a master key from the specified file path or creates a new one if the file doesn't exist
 pub fn load_or_create_master_key(key_file_path: &str) -> Result<TransportSk> {
     if Path::new(key_file_path).exists() {
         // Read the key from file

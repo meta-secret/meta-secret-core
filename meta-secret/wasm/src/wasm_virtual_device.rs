@@ -1,4 +1,5 @@
 use crate::wasm_repo::WasmSyncProtocol;
+use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::node::app::meta_app::meta_client_service::{
     MetaClientAccessProxy, MetaClientDataTransfer, MetaClientService, MetaClientStateProvider,
 };
@@ -12,13 +13,14 @@ use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
 use std::sync::Arc;
-use tracing::{info, instrument, Instrument};
+use tracing::{Instrument, info, instrument};
 use wasm_bindgen_futures::spawn_local;
 
 #[instrument(name = "Vd", skip_all)]
 pub async fn virtual_device_setup<Repo: KvLogEventRepo>(
     device_repo: Arc<Repo>,
     sync_protocol: Arc<WasmSyncProtocol<Repo>>,
+    master_key: TransportSk,
 ) -> anyhow::Result<()> {
     info!("virtual device initialization");
 
@@ -26,6 +28,7 @@ pub async fn virtual_device_setup<Repo: KvLogEventRepo>(
 
     let creds_repo = PersistentCredentials {
         p_obj: persistent_object.clone(),
+        master_key: master_key.clone(),
     };
 
     let user_creds = creds_repo
@@ -41,7 +44,7 @@ pub async fn virtual_device_setup<Repo: KvLogEventRepo>(
         id: String::from("vd-gateway"),
         p_obj: persistent_object.clone(),
         sync: sync_protocol.clone(),
-        device_creds: device_creds.clone(),
+        master_key: master_key.clone(),
     });
 
     let state_provider = Arc::new(MetaClientStateProvider::new());
@@ -50,7 +53,8 @@ pub async fn virtual_device_setup<Repo: KvLogEventRepo>(
         sync_gateway: gateway.clone(),
         state_provider,
         p_obj: persistent_object.clone(),
-        device_creds: device_creds.clone(),
+        device_data: device_creds.device.clone(),
+        master_key: master_key.clone(),
     };
 
     spawn_local(async move {
@@ -62,7 +66,14 @@ pub async fn virtual_device_setup<Repo: KvLogEventRepo>(
     });
 
     let meta_client_access_proxy = Arc::new(MetaClientAccessProxy { dt: dt_meta_client });
-    let vd = VirtualDevice::init(persistent_object, meta_client_access_proxy, gateway).await?;
+    let vd = VirtualDevice::init(
+        persistent_object,
+        meta_client_access_proxy,
+        gateway,
+        master_key,
+    )
+    .await?;
+    
     let vd = Arc::new(vd);
     spawn_local(async move { vd.run().instrument(vd_span()).await.unwrap() });
 

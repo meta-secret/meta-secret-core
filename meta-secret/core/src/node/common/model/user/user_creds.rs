@@ -10,6 +10,20 @@ pub struct SecureUserCreds {
     pub device_creds: SecureDeviceCreds,
 }
 
+impl TryFrom<UserCreds> for SecureUserCreds {
+    type Error = anyhow::Error;
+
+    fn try_from(user_creds: UserCreds) -> Result<Self, Self::Error> {
+        let secure_device_creds = SecureDeviceCreds::try_from(user_creds.device_creds.clone())?;
+
+        // Create secure user credentials with the secure device credentials
+        Ok(SecureUserCreds {
+            vault_name: user_creds.vault_name.clone(),
+            device_creds: secure_device_creds,
+        })
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UserCreds {

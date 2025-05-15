@@ -1,5 +1,6 @@
 use anyhow::{bail, Result};
 use meta_db_redb::ReDbRepo;
+use meta_secret_core::crypto::key_utils::load_or_create_master_key;
 use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
 use meta_secret_core::node::app::meta_app::meta_client_service::{
     MetaClientDataTransfer, MetaClientService, MetaClientStateProvider,
@@ -24,13 +25,16 @@ pub struct DbContext<Repo: KvLogEventRepo> {
 pub struct BaseCommand {
     pub db_name: String,
     pub api_url: ApiUrl,
+    pub master_key_path: String,
 }
 
 impl BaseCommand {
     pub fn new(db_name: String) -> Self {
+        let master_key_path = format!("{}.key.json", &db_name);
         Self {
             db_name,
             api_url: ApiUrl::prod(),
+            master_key_path,
         }
     }
 
@@ -44,8 +48,13 @@ impl BaseCommand {
 
         let repo = Arc::new(ReDbRepo::open(db_path)?);
         let p_obj = Arc::new(PersistentObject::new(repo.clone()));
+        
+        // Load or create master key
+        let master_key = load_or_create_master_key(&self.master_key_path)?;
+        
         let p_creds = PersistentCredentials {
             p_obj: p_obj.clone(),
+            master_key,
         };
 
         Ok(DbContext {
@@ -67,8 +76,13 @@ impl BaseCommand {
         };
 
         let p_obj = Arc::new(PersistentObject::new(repo.clone()));
+        
+        // Load or create master key
+        let master_key = load_or_create_master_key(&self.master_key_path)?;
+        
         let p_creds = PersistentCredentials {
             p_obj: p_obj.clone(),
+            master_key,
         };
 
         Ok(DbContext {
@@ -132,7 +146,11 @@ impl BaseCommand {
             bail!("User credentials not found. Please run `meta-secret init-user` first.");
         };
 
-        let device_creds = Arc::new(user_creds.device_creds.clone());
+        // Get the DeviceData from the user's device credentials
+        let device_data = user_creds.device();
+        
+        // Get master key
+        let master_key = db_context.p_creds.master_key.clone();
 
         let sync_protocol = HttpSyncProtocol {
             api_url: self.api_url,
@@ -142,7 +160,7 @@ impl BaseCommand {
             id: "meta-cli".to_string(),
             p_obj: db_context.p_obj.clone(),
             sync: Arc::new(sync_protocol),
-            device_creds: device_creds.clone(),
+            master_key: master_key.clone(),
         });
 
         let state_provider = Arc::new(MetaClientStateProvider::new());
@@ -154,7 +172,8 @@ impl BaseCommand {
             sync_gateway,
             state_provider,
             p_obj: db_context.p_obj.clone(),
-            device_creds,
+            device_data,
+            master_key,
         })
     }
 }

@@ -59,14 +59,8 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
 
     #[instrument(skip(self))]
     pub async fn save_user_creds(&self, user_creds: UserCreds) -> Result<ArtifactId> {
-        // Convert device credentials to secure device credentials
-        let secure_device_creds = SecureDeviceCreds::try_from(user_creds.device_creds.clone())?;
-        
         // Create secure user credentials with the secure device credentials
-        let secure_user_creds = SecureUserCreds {
-            vault_name: user_creds.vault_name.clone(),
-            device_creds: secure_device_creds,
-        };
+        let secure_user_creds = SecureUserCreds::try_from(user_creds.clone())?;
         
         // Create a user credentials object and save it
         let creds_obj = UserCredsObject::from(secure_user_creds);
@@ -252,16 +246,15 @@ pub mod spec {
 
 #[cfg(test)]
 mod test {
-    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::node::db::repo::persistent_credentials::UserCredsBuilder;
+use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::meta_tests::setup_tracing;
     use crate::node::common::model::device::common::DeviceName;
     use crate::node::common::model::vault::vault::VaultName;
     use crate::node::db::repo::persistent_credentials::spec::PersistentCredentialsSpec;
     use tracing_attributes::instrument;
-    use crate::crypto::keys::TransportSk;
     use crate::crypto::key_pair::{KeyPair, TransportDsaKeyPair};
     use std::sync::Arc;
-    use crate::node::db::objects::persistent_object::PersistentObject;
 
     #[tokio::test]
     #[instrument]
@@ -309,7 +302,7 @@ mod test {
         let device_creds = creds_repo.generate_device_creds(device_name.clone()).await?;
         
         // Create and save user credentials
-        let user_creds = crate::node::common::model::user::user_creds::UserCredsBuilder::init(device_creds.clone())
+        let user_creds = UserCredsBuilder::init(device_creds.clone())
             .build(vault_name.clone())
             .creds;
         creds_repo.save_user_creds(user_creds.clone()).await?;

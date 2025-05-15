@@ -30,8 +30,7 @@ impl InfoCommandTrait for DefaultInfoCommand {
         // Try to get device credentials
         let maybe_device_creds = db_context.p_creds.get_device_creds().await?;
 
-        if let Some(device_creds_event) = maybe_device_creds {
-            let device_creds = device_creds_event.value();
+        if let Some(device_creds) = maybe_device_creds {
             context.insert(
                 "device",
                 &json!({

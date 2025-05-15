@@ -15,6 +15,7 @@ use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredenti
 use serde_json::json;
 use std::sync::Arc;
 use tracing::info;
+use meta_secret_core::crypto::key_pair::{KeyPair, TransportDsaKeyPair};
 
 fn sync_wrapper<F: Future>(future: F) -> F::Output {
     async_std::task::block_on(future)
@@ -41,11 +42,11 @@ pub async extern "C" fn sign_up(user_name: *const c_char) -> *mut c_char {
     let repo = Arc::new(InMemKvLogEventRepo::default());
     let p_obj = Arc::new(PersistentObject::new(repo.clone()));
 
-    // let device_creds = DeviceCredentials::generate(device_name.clone());
-    // let user_creds = UserCredentials::from(device_creds.clone(), vault_name.clone());
+    let master_key = TransportDsaKeyPair::generate().sk();
 
     let p_creds = PersistentCredentials {
         p_obj: p_obj.clone(),
+        master_key: master_key.clone()
     };
     let user_creds = p_creds
         .get_or_generate_user_creds(device_name.clone(), vault_name.clone())
@@ -60,7 +61,7 @@ pub async extern "C" fn sign_up(user_name: *const c_char) -> *mut c_char {
         id: "mobile_client".to_string(),
         p_obj: p_obj.clone(),
         sync: Arc::new(sync_protocol),
-        device_creds: Arc::new(user_creds.device_creds.clone()),
+        master_key,
     });
 
     client_gw.sync(user_creds.user()).await.unwrap();
