@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import RegistrationComponent from '@/components/vault/auth/Registration.vue';
 import VaultComponent from '@/components/vault/Vault.vue';
 import AlphaBadge from '@/components/common/AlphaBadge.vue';
 import { AppState } from '@/stores/app-state';
+import { useAuthStore } from '@/stores/auth';
 
 const router = useRouter();
 const jsAppState = AppState();
+const authStore = useAuthStore();
 const isInitialized = ref(false);
 const isCleaning = ref(false);
 const showSettings = ref(false);
@@ -43,10 +45,19 @@ function navigateToSettings() {
   router.push('/settings');
 }
 
-onMounted(async () => {
-  await jsAppState.appStateInit();
-  isInitialized.value = true;
-  
+// Monitor authentication state and initialize the app when auth is complete
+watch(() => authStore.isAuthenticated, async (isAuthenticated) => {
+  if (isAuthenticated && authStore.masterKey) {
+    try {
+      await jsAppState.appStateInit();
+      isInitialized.value = true;
+    } catch (error) {
+      console.error('Error initializing app state:', error);
+    }
+  }
+}, { immediate: true });
+
+onMounted(() => {
   // Add global click listener for closing the settings menu
   document.addEventListener('click', handleClickOutside);
 });
@@ -97,11 +108,13 @@ onMounted(async () => {
     </div>
   </div>
 
-  <div v-if="!isInitialized" class="text-center mt-8">
+  <!-- Show loading while authentication is complete but app isn't initialized yet -->
+  <div v-if="authStore.isAuthenticated && !isInitialized" class="text-center mt-8">
     <p class="text-gray-400">Loading Vault Information...</p>
   </div>
 
-  <div v-else-if="!jsAppState.isMember">
+  <!-- Only show registration or vault when authenticated and initialized -->
+  <div v-else-if="authStore.isAuthenticated && isInitialized && !jsAppState.isMember">
     <RegistrationComponent />
     
     <!-- Information Card -->
@@ -122,7 +135,7 @@ onMounted(async () => {
       </div>
     </div>
   </div>
-  <div v-else-if="jsAppState.isMember">
+  <div v-else-if="authStore.isAuthenticated && isInitialized && jsAppState.isMember">
     <VaultComponent />
   </div>
 </template>

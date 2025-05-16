@@ -1,11 +1,11 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { MasterKeyManager } from '../../pkg';
+import init, { MasterKeyManager } from 'meta-secret-web-cli';
 
 export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = ref(false);
 
-  const masterKey = ref(null);
+  const masterKey = ref<string | null>(null);
 
   const savedCredId = localStorage.getItem('credential_id');
   const hasRegisteredPasskey = ref(!!savedCredId);
@@ -20,6 +20,8 @@ export const useAuthStore = defineStore('auth', () => {
     if (!isWebAuthnSupported) {
       throw new Error('WebAuthn is not supported in this browser');
     }
+
+    await init();
 
     try {
       const challenge = new Uint8Array(32);
@@ -43,8 +45,8 @@ export const useAuthStore = defineStore('auth', () => {
           displayName: 'id0 Meta Human',
         },
         pubKeyCredParams: [
-          { type: 'public-key', alg: -7 }, // ES256
-          { type: 'public-key', alg: -257 }, // RS256
+          {type: 'public-key', alg: -7}, // ES256
+          {type: 'public-key', alg: -257}, // RS256
         ],
         authenticatorSelection: {
           authenticatorAttachment: 'platform', // Use built-in authenticator (TouchID, FaceID, Windows Hello)
@@ -70,6 +72,9 @@ export const useAuthStore = defineStore('auth', () => {
         // Mark that the user has registered a passkey
         hasRegisteredPasskey.value = true;
         localStorage.setItem('credential_id', credId);
+
+        // Set as authenticated since we just registered
+        isAuthenticated.value = true;
 
         return true;
       } else {

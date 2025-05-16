@@ -1,4 +1,3 @@
-use std::str::FromStr;
 use age::secrecy::ExposeSecret;
 use age::x25519::Identity;
 use ed25519_dalek::{SecretKey, Signer, SigningKey};
