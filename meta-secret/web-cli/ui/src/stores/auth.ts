@@ -39,6 +39,7 @@ export const useAuthStore = defineStore('auth', () => {
         },
         pubKeyCredParams: [
           { type: 'public-key', alg: -7 }, // ES256
+          { type: 'public-key', alg: -257 }, // RS256
         ],
         authenticatorSelection: {
           authenticatorAttachment: 'platform', // Use built-in authenticator (TouchID, FaceID, Windows Hello)
@@ -58,8 +59,7 @@ export const useAuthStore = defineStore('auth', () => {
         
         // Extract and store credential ID
         const publicKeyCredential = credential as PublicKeyCredential;
-        const credId = publicKeyCredential.id;
-
+        const credId = publicKeyCredential.id; // Already base64url encoded
 
         // Mark that the user has registered a passkey
         hasRegisteredPasskey.value = true;
@@ -90,9 +90,24 @@ export const useAuthStore = defineStore('auth', () => {
       
       // Get the stored credential ID
       const storedCredentialId = localStorage.getItem('credential_id');
+      
+      // Helper function to convert base64url to binary array
+      const base64urlToBuffer = (base64url: string): ArrayBuffer => {
+        // Convert base64url to base64 by replacing characters
+        const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+        // Decode base64 to binary string
+        const binaryString = atob(base64);
+        // Convert binary string to Uint8Array
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        return bytes.buffer;
+      };
+      
       const allowCredentials: PublicKeyCredentialDescriptor[] = storedCredentialId ? [{
         type: 'public-key' as const,
-        id: Uint8Array.from(atob(storedCredentialId), c => c.charCodeAt(0)),
+        id: storedCredentialId ? base64urlToBuffer(storedCredentialId) : new ArrayBuffer(0),
         transports: ['internal' as AuthenticatorTransport]
       }] : [];
       
@@ -120,21 +135,9 @@ export const useAuthStore = defineStore('auth', () => {
 
       return false;
     } catch (error) {
+      console.error('Authentication error:', error);
       throw error;
     }
-  }
-
-  /**
-   * Sign out the user
-   */
-  function signOut(): void {
-    isAuthenticated.value = false;
-    
-    // Optionally, also remove credential information when signing out
-    // Uncomment if you want to require re-registration after sign out
-    // hasRegisteredPasskey.value = false;
-    // localStorage.removeItem('credential_id');
-    // localStorage.removeItem('has_registered_passkey');
   }
 
   return {
