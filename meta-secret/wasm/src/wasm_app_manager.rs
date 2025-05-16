@@ -30,7 +30,7 @@ impl WasmApplicationManager {
         let app_manager =
             ApplicationManager::<WasmRepo, HttpSyncProtocol>::init(client_repo, master_key)
                 .await
-                .expect("Application state manager must be initialized");
+                .unwrap();
 
         WasmApplicationManager { app_manager }
     }

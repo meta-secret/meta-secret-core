@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref, computed, Ref, ComputedRef } from 'vue';
+import { ref, computed, Ref, ComputedRef, watch } from 'vue';
 
 type ThemeOption = 'light' | 'dark' | 'system';
 
@@ -10,8 +10,9 @@ export interface ThemeState {
 }
 
 export const useThemeStore = defineStore('theme', (): ThemeState => {
-  // Store theme state in pinia, default to system
-  const theme = ref<ThemeOption>('system');
+  // Load saved theme from localStorage, default to system
+  const savedTheme = localStorage.getItem('theme') as ThemeOption | null;
+  const theme = ref<ThemeOption>(savedTheme || 'system');
 
   // Computed property to determine if dark mode should be applied
   const isDarkMode = computed(() => {
@@ -35,6 +36,11 @@ export const useThemeStore = defineStore('theme', (): ThemeState => {
       }
     });
   }
+
+  // Watch theme changes and save to localStorage
+  watch(theme, (newTheme) => {
+    localStorage.setItem('theme', newTheme);
+  });
 
   // Change the theme
   function setTheme(newTheme: ThemeOption) {

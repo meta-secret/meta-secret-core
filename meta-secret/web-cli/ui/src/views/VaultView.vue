@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import RegistrationComponent from '@/components/vault/auth/Registration.vue';
 import VaultComponent from '@/components/vault/Vault.vue';
 import AlphaBadge from '@/components/common/AlphaBadge.vue';
-
 import { AppState } from '@/stores/app-state';
+import { useAuthStore } from '@/stores/auth';
 
 const router = useRouter();
 const jsAppState = AppState();
+const authStore = useAuthStore();
 const isInitialized = ref(false);
 const isCleaning = ref(false);
 const showSettings = ref(false);
@@ -23,24 +24,6 @@ async function cleanDatabase() {
   } finally {
     isCleaning.value = false;
     showSettings.value = false;
-  }
-}
-
-function toggleSettings() {
-  showSettings.value = !showSettings.value;
-  
-  if (showSettings.value) {
-    // Position the menu after Vue updates the DOM
-    setTimeout(() => {
-      const button = document.getElementById('settings-button');
-      const menu = document.getElementById('settings-menu');
-      if (button && menu) {
-        const buttonRect = button.getBoundingClientRect();
-        menu.style.position = 'fixed';
-        menu.style.top = (buttonRect.bottom + 5) + 'px';
-        menu.style.left = (buttonRect.left + buttonRect.width/2 - menu.offsetWidth/2) + 'px';
-      }
-    }, 0);
   }
 }
 
@@ -62,10 +45,19 @@ function navigateToSettings() {
   router.push('/settings');
 }
 
-onMounted(async () => {
-  await jsAppState.appStateInit();
-  isInitialized.value = true;
-  
+// Monitor authentication state and initialize the app when auth is complete
+watch(() => authStore.isAuthenticated, async (isAuthenticated) => {
+  if (isAuthenticated && authStore.masterKey) {
+    try {
+      await jsAppState.appStateInit();
+      isInitialized.value = true;
+    } catch (error) {
+      console.error('Error initializing app state:', error);
+    }
+  }
+}, { immediate: true });
+
+onMounted(() => {
   // Add global click listener for closing the settings menu
   document.addEventListener('click', handleClickOutside);
 });
@@ -116,11 +108,13 @@ onMounted(async () => {
     </div>
   </div>
 
-  <div v-if="!isInitialized" class="text-center mt-8">
+  <!-- Show loading while authentication is complete but app isn't initialized yet -->
+  <div v-if="authStore.isAuthenticated && !isInitialized" class="text-center mt-8">
     <p class="text-gray-400">Loading Vault Information...</p>
   </div>
 
-  <div v-else-if="!jsAppState.isMember">
+  <!-- Only show registration or vault when authenticated and initialized -->
+  <div v-else-if="authStore.isAuthenticated && isInitialized && !jsAppState.isMember">
     <RegistrationComponent />
     
     <!-- Information Card -->
@@ -141,7 +135,7 @@ onMounted(async () => {
       </div>
     </div>
   </div>
-  <div v-else-if="jsAppState.isMember">
+  <div v-else-if="authStore.isAuthenticated && isInitialized && jsAppState.isMember">
     <VaultComponent />
   </div>
 </template>
@@ -166,13 +160,6 @@ onMounted(async () => {
   @apply transition-colors duration-200 ease-in-out;
   width: 44px;
   height: 44px;
-}
-
-.cleanButton {
-  @apply ml-4 px-3 py-1 text-sm bg-white dark:bg-gray-800 rounded-md;
-  @apply text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700;
-  @apply hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-150;
-  @apply disabled:opacity-50 disabled:cursor-not-allowed flex items-center;
 }
 
 .settingsMenu {

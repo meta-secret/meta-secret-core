@@ -38,4 +38,4 @@ const progressStyle = computed(() => ({
 .progressBar {
   @apply rounded-full transition-all duration-200;
 }
-</style> 
+</style>
