@@ -1,11 +1,13 @@
 <script lang="ts">
 import NavBar from '@/components/NavBar.vue';
+import PasskeyAuth from '@/components/PasskeyAuth.vue';
 import { defineComponent, onMounted, ref, watch } from 'vue';
 import { useThemeStore } from './stores/theme';
 
 export default defineComponent({
   components: {
     NavBar,
+    PasskeyAuth
   },
   setup() {
     const themeStore = useThemeStore();
@@ -58,6 +60,9 @@ export default defineComponent({
     <div id="content">
       <router-view />
     </div>
+    
+    <!-- Passkey authentication modal -->
+    <PasskeyAuth />
   </div>
 </template>
 
