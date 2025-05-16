@@ -10,7 +10,6 @@ const isAuthenticating = ref(false);
 const isCreatingPasskey = ref(false);
 const authError = ref('');
 const registrationError = ref('');
-const username = ref('');
 const authSuccess = ref(false);
 const registrationSuccess = ref(false);
 const showRegistration = ref(false);
@@ -38,7 +37,7 @@ async function createPasskey() {
     registrationError.value = '';
     
     // Create the passkey credential
-    const success = await authStore.createPasskeyCredential(username.value || 'user');
+    const success = await authStore.createPasskeyCredential();
     
     if (success) {
       registrationSuccess.value = true;
@@ -186,19 +185,6 @@ async function authenticateWithPasskey() {
               <div v-if="registrationError" class="flex items-center justify-center mb-4 text-red-500">
                 <ExclamationCircleIcon class="h-5 w-5 mr-2" />
                 <span>{{ registrationError }}</span>
-              </div>
-              
-              <div class="mb-4 w-full">
-                <label for="username" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Username (optional)
-                </label>
-                <input
-                  id="username"
-                  v-model="username"
-                  type="text"
-                  placeholder="Enter a username"
-                  class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
-                />
               </div>
               
               <div class="flex space-x-3">

@@ -4,7 +4,9 @@ import { MasterKeyManager } from '../../pkg';
 
 export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = ref(false);
-  const hasRegisteredPasskey = ref(false);
+
+  const savedCredId = localStorage.getItem('credential_id');
+  const hasRegisteredPasskey = ref(!!savedCredId);
 
   // Check if device supports WebAuthn
   const isWebAuthnSupported = typeof window !== 'undefined' && typeof window.PublicKeyCredential !== 'undefined';
@@ -61,7 +63,6 @@ export const useAuthStore = defineStore('auth', () => {
 
         // Mark that the user has registered a passkey
         hasRegisteredPasskey.value = true;
-        localStorage.setItem('has_registered_passkey', 'true');
         localStorage.setItem('credential_id', credId);
         
         return true;
@@ -114,22 +115,11 @@ export const useAuthStore = defineStore('auth', () => {
 
         // Mark the user as authenticated
         isAuthenticated.value = true;
-        localStorage.setItem('auth_state', 'authenticated');
         return true;
       }
 
       return false;
     } catch (error) {
-      console.error('Error authenticating:', error);
-
-      // For demo purposes, fall back to mock authentication if WebAuthn fails
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('Falling back to mock authentication in development mode');
-        isAuthenticated.value = true;
-        localStorage.setItem('auth_state', 'authenticated');
-        return true;
-      }
-
       throw error;
     }
   }
@@ -139,7 +129,6 @@ export const useAuthStore = defineStore('auth', () => {
    */
   function signOut(): void {
     isAuthenticated.value = false;
-    localStorage.removeItem('auth_state');
     
     // Optionally, also remove credential information when signing out
     // Uncomment if you want to require re-registration after sign out
