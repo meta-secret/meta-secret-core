@@ -5,11 +5,10 @@ import { MasterKeyManager } from '../../pkg';
 export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = ref(false);
   const hasRegisteredPasskey = ref(false);
-  const userId = ref<string>('');
 
   // Check if device supports WebAuthn
   const isWebAuthnSupported = typeof window !== 'undefined' && typeof window.PublicKeyCredential !== 'undefined';
-
+  
   /**
    * Create a new passkey credential (registration)
    */
@@ -19,11 +18,6 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     try {
-      // Generate a random user ID if not already set
-      if (!userId.value) {
-        userId.value = crypto.randomUUID();
-      }
-
       const challenge = new Uint8Array(32);
       crypto.getRandomValues(challenge);
 
@@ -59,15 +53,21 @@ export const useAuthStore = defineStore('auth', () => {
 
       if (credential) {
         console.log('Credential created successfully:', credential);
+        
+        // Extract and store credential ID
+        const publicKeyCredential = credential as PublicKeyCredential;
+        const credId = publicKeyCredential.id;
+
+
         // Mark that the user has registered a passkey
         hasRegisteredPasskey.value = true;
         localStorage.setItem('has_registered_passkey', 'true');
-        localStorage.setItem('user_id', userId.value);
-
+        localStorage.setItem('credential_id', credId);
+        
         return true;
+      } else {
+        return false;
       }
-
-      return false;
     } catch (error) {
       console.error('Error creating credential:', error);
       throw error;
@@ -82,17 +82,25 @@ export const useAuthStore = defineStore('auth', () => {
     if (!isWebAuthnSupported) {
       throw new Error('WebAuthn is not supported in this browser');
     }
-
+    
     try {
-      // In a real app, this challenge would come from the server
       const challenge = new Uint8Array(32);
       crypto.getRandomValues(challenge);
-
+      
+      // Get the stored credential ID
+      const storedCredentialId = localStorage.getItem('credential_id');
+      const allowCredentials: PublicKeyCredentialDescriptor[] = storedCredentialId ? [{
+        type: 'public-key' as const,
+        id: Uint8Array.from(atob(storedCredentialId), c => c.charCodeAt(0)),
+        transports: ['internal' as AuthenticatorTransport]
+      }] : [];
+      
       // Create the credential request options
       const publicKeyCredentialRequestOptions: PublicKeyCredentialRequestOptions = {
         challenge,
         timeout: 60000, // 1 minute
         userVerification: 'required', // Require biometric verification
+        allowCredentials,
       };
 
       // Request the credential
@@ -132,30 +140,13 @@ export const useAuthStore = defineStore('auth', () => {
   function signOut(): void {
     isAuthenticated.value = false;
     localStorage.removeItem('auth_state');
+    
+    // Optionally, also remove credential information when signing out
+    // Uncomment if you want to require re-registration after sign out
+    // hasRegisteredPasskey.value = false;
+    // localStorage.removeItem('credential_id');
+    // localStorage.removeItem('has_registered_passkey');
   }
-
-  /**
-   * Check if user was previously authenticated
-   */
-  function checkPreviousAuth(): void {
-    const savedAuth = localStorage.getItem('auth_state');
-    if (savedAuth === 'authenticated') {
-      isAuthenticated.value = true;
-    }
-
-    const savedHasRegisteredPasskey = localStorage.getItem('has_registered_passkey');
-    if (savedHasRegisteredPasskey === 'true') {
-      hasRegisteredPasskey.value = true;
-    }
-
-    const savedUserId = localStorage.getItem('user_id');
-    if (savedUserId) {
-      userId.value = savedUserId;
-    }
-  }
-
-  // Initialize auth state from localStorage when store is created
-  checkPreviousAuth();
 
   return {
     isAuthenticated,
@@ -163,7 +154,5 @@ export const useAuthStore = defineStore('auth', () => {
     isWebAuthnSupported,
     authenticateWithPasskey,
     createPasskeyCredential,
-    signOut,
-    checkPreviousAuth,
   };
 });
