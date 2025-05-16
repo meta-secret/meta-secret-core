@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use age::armor::ArmoredReadError::Base64;
 use age::secrecy::ExposeSecret;
 use age::x25519::Identity;
 use ed25519_dalek::{SecretKey, Signer, SigningKey};
@@ -75,12 +75,15 @@ pub struct MasterKeyManager(TransportDsaKeyPair);
 impl MasterKeyManager {
     pub fn generate_sk() -> String {
         let key_pair = TransportDsaKeyPair::generate();
-        key_pair.secret_key.to_string().expose_secret().to_string()
+        let full_sk = key_pair.secret_key.to_string().expose_secret().to_string();
+        let sk = full_sk.strip_prefix("AGE-SECRET-KEY-").unwrap();
+        sk.to_string()
     }
-    
-    pub fn from_sk(sk: String) -> TransportSk {
-        let raw_sk = Base64Text::from(sk);
-        TransportSk(raw_sk)
+
+    pub fn from_pure_sk(sk: String) -> TransportSk {
+        let sk = Base64Text::from(sk);
+        let full_sk = format!("AGE-SECRET-KEY-{}", sk);
+        TransportSk(Base64Text::from(full_sk))
     }
 }
 
