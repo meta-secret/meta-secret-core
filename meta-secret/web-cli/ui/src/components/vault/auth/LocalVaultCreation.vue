@@ -20,7 +20,7 @@ const generateUserCreds = async () => {
   }
   // @ts-ignore - Method exists in Rust but TS definitions might be outdated
   await jsAppState.appManager.generate_user_creds(vaultName.value);
-  window.location.reload();
+  await jsAppState.appStateInit();
 };
 </script>
 

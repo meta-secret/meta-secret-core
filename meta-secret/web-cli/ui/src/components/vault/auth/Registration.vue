@@ -44,11 +44,6 @@ const signUp = async () => {
     signUpCompleted.value = true;
 
     jsAppState.updateStateWith(newState);
-
-    // Small delay to allow the user to see 100% before reload
-    setTimeout(() => {
-      window.location.reload();
-    }, 500);
   } catch (error) {
     signUpProcessing.value = false;
     signUpCompleted.value = false;
