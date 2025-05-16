@@ -12,7 +12,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   // Check if device supports WebAuthn
   const isWebAuthnSupported = typeof window !== 'undefined' && typeof window.PublicKeyCredential !== 'undefined';
-  
+
   /**
    * Create a new passkey credential (registration)
    */
@@ -26,7 +26,7 @@ export const useAuthStore = defineStore('auth', () => {
       crypto.getRandomValues(challenge);
 
       let generatedMasterKey = MasterKeyManager.generate_sk();
-      
+
       // Store masterKey for later use
       masterKey.value = generatedMasterKey;
 
@@ -62,15 +62,15 @@ export const useAuthStore = defineStore('auth', () => {
 
       if (credential) {
         console.log('Credential created successfully:', credential);
-        
+
         // Extract and store credential ID
         const publicKeyCredential = credential as PublicKeyCredential;
         const credId = publicKeyCredential.id; // Already base64url encoded
-        
+
         // Mark that the user has registered a passkey
         hasRegisteredPasskey.value = true;
         localStorage.setItem('credential_id', credId);
-        
+
         return true;
       } else {
         return false;
@@ -89,7 +89,8 @@ export const useAuthStore = defineStore('auth', () => {
     if (!isWebAuthnSupported) {
       throw new Error('WebAuthn is not supported in this browser');
     }
-    
+
+    let response: AuthenticatorAssertionResponse;
     try {
       const challenge = new Uint8Array(32);
       crypto.getRandomValues(challenge);
@@ -106,20 +107,28 @@ export const useAuthStore = defineStore('auth', () => {
         publicKey: publicKeyCredentialRequestOptions,
       });
 
-      if (credential) {
-        alert('Credential retrieved successfully: ' + credential.response.userHandle);
-        masterKey.value = credential.response.userHandle;
-
-        // Mark the user as authenticated
-        isAuthenticated.value = true;
-        return true;
+      if (!credential) {
+        return false;
       }
-
-      return false;
+      // Cast to PublicKeyCredential to access response property
+      const publicKeyCredential = credential as PublicKeyCredential;
+      response = publicKeyCredential.response as AuthenticatorAssertionResponse;
     } catch (error) {
       console.error('Authentication error:', error);
       throw error;
     }
+
+    // Properly decode the userHandle that was originally encoded with TextEncoder
+    if (response.userHandle) {
+      // Decode the userHandle using TextDecoder (counterpart to TextEncoder used during registration)
+      masterKey.value = new TextDecoder().decode(response.userHandle);
+    } else {
+      throw Error('Credential retrieved successfully but no user handle was returned');
+    }
+
+    // Mark the user as authenticated
+    isAuthenticated.value = true;
+    return true;
   }
 
   return {

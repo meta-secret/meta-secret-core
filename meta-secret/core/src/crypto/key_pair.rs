@@ -1,4 +1,4 @@
-use age::armor::ArmoredReadError::Base64;
+use std::str::FromStr;
 use age::secrecy::ExposeSecret;
 use age::x25519::Identity;
 use ed25519_dalek::{SecretKey, Signer, SigningKey};
@@ -81,7 +81,6 @@ impl MasterKeyManager {
     }
 
     pub fn from_pure_sk(sk: String) -> TransportSk {
-        let sk = Base64Text::from(sk);
         let full_sk = format!("AGE-SECRET-KEY-{}", sk);
         TransportSk(Base64Text::from(full_sk))
     }

@@ -4,7 +4,6 @@ import { useRouter } from 'vue-router';
 import RegistrationComponent from '@/components/vault/auth/Registration.vue';
 import VaultComponent from '@/components/vault/Vault.vue';
 import AlphaBadge from '@/components/common/AlphaBadge.vue';
-
 import { AppState } from '@/stores/app-state';
 
 const router = useRouter();
@@ -23,24 +22,6 @@ async function cleanDatabase() {
   } finally {
     isCleaning.value = false;
     showSettings.value = false;
-  }
-}
-
-function toggleSettings() {
-  showSettings.value = !showSettings.value;
-  
-  if (showSettings.value) {
-    // Position the menu after Vue updates the DOM
-    setTimeout(() => {
-      const button = document.getElementById('settings-button');
-      const menu = document.getElementById('settings-menu');
-      if (button && menu) {
-        const buttonRect = button.getBoundingClientRect();
-        menu.style.position = 'fixed';
-        menu.style.top = (buttonRect.bottom + 5) + 'px';
-        menu.style.left = (buttonRect.left + buttonRect.width/2 - menu.offsetWidth/2) + 'px';
-      }
-    }, 0);
   }
 }
 
@@ -166,13 +147,6 @@ onMounted(async () => {
   @apply transition-colors duration-200 ease-in-out;
   width: 44px;
   height: 44px;
-}
-
-.cleanButton {
-  @apply ml-4 px-3 py-1 text-sm bg-white dark:bg-gray-800 rounded-md;
-  @apply text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700;
-  @apply hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-150;
-  @apply disabled:opacity-50 disabled:cursor-not-allowed flex items-center;
 }
 
 .settingsMenu {

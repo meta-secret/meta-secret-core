@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue';
 import { useAuthStore } from '@/stores/auth';
 import { Dialog, DialogPanel, DialogTitle, TransitionChild, TransitionRoot } from '@headlessui/vue';
-import { CheckCircleIcon, FingerPrintIcon, ExclamationCircleIcon, KeyIcon } from '@heroicons/vue/24/solid';
+import { CheckCircleIcon, FingerPrintIcon, ExclamationCircleIcon} from '@heroicons/vue/24/solid';
 
 const authStore = useAuthStore();
 const isOpen = computed(() => !authStore.isAuthenticated);
@@ -11,7 +11,6 @@ const isCreatingPasskey = ref(false);
 const authError = ref('');
 const registrationError = ref('');
 const authSuccess = ref(false);
-const registrationSuccess = ref(false);
 
 // Check if WebAuthn is supported
 const isPasskeySupported = computed(() => authStore.isWebAuthnSupported);
