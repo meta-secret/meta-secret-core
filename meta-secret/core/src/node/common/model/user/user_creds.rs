@@ -1,16 +1,38 @@
+use crate::crypto::keys::TransportPk;
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
-use crate::node::common::model::device::device_creds::DeviceCreds;
+use crate::node::common::model::device::device_creds::{DeviceCreds, SecureDeviceCreds};
 use crate::node::common::model::user::common::{UserData, UserId};
 use crate::node::common::model::vault::vault::VaultName;
+use anyhow::Result;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct UserCredentials {
+pub struct SecureUserCreds {
+    pub vault_name: VaultName,
+    pub device_creds: SecureDeviceCreds,
+}
+
+impl SecureUserCreds {
+    
+    pub fn build(user_creds: UserCreds, master_pk: TransportPk) -> Result<Self> {
+        let secure_device_creds = SecureDeviceCreds::build(user_creds.device_creds, master_pk)?;
+
+        // Create secure user credentials with the secure device credentials
+        Ok(SecureUserCreds {
+            vault_name: user_creds.vault_name.clone(),
+            device_creds: secure_device_creds,
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserCreds {
     pub vault_name: VaultName,
     pub device_creds: DeviceCreds,
 }
 
-impl UserCredentials {
+impl UserCreds {
     pub fn device(&self) -> DeviceData {
         self.device_creds.device.clone()
     }
@@ -43,8 +65,8 @@ impl UserCredsBuilder<DeviceCreds> {
         UserCredsBuilder { creds }
     }
 
-    pub fn build(self, vault_name: VaultName) -> UserCredsBuilder<UserCredentials> {
-        let user_creds = UserCredentials {
+    pub fn build(self, vault_name: VaultName) -> UserCredsBuilder<UserCreds> {
+        let user_creds = UserCreds {
             vault_name,
             device_creds: self.creds,
         };
@@ -56,13 +78,13 @@ impl UserCredsBuilder<DeviceCreds> {
 pub mod fixture {
     use crate::node::common::model::device::common::DeviceName;
     use crate::node::common::model::device::device_creds::fixture::DeviceCredentialsFixture;
-    use crate::node::common::model::user::user_creds::{UserCredentials, UserCredsBuilder};
+    use crate::node::common::model::user::user_creds::{UserCreds, UserCredsBuilder};
     use crate::node::common::model::vault::vault::VaultName;
 
     pub struct UserCredentialsFixture {
-        pub client: UserCredentials,
-        pub vd: UserCredentials,
-        pub client_b: UserCredentials,
+        pub client: UserCreds,
+        pub vd: UserCreds,
+        pub client_b: UserCreds,
     }
 
     impl UserCredentialsFixture {

@@ -2,7 +2,7 @@ use crate::node::common::model::secret::{
     ClaimId, SecretDistributionData, SecretDistributionType, SsClaim, SsLogData,
 };
 use crate::node::common::model::user::common::{UserDataMember, UserMembership};
-use crate::node::common::model::user::user_creds::UserCredentials;
+use crate::node::common::model::user::user_creds::UserCreds;
 use crate::node::common::model::vault::vault::{VaultMember, VaultStatus};
 use crate::node::common::model::vault::vault_data::VaultData;
 use crate::node::db::actions::sign_up::join::{JoinAction, JoinActionUpdate};
@@ -28,7 +28,7 @@ use std::sync::Arc;
 /// 3. Secret orchestration
 pub struct MetaOrchestrator<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
-    pub user_creds: UserCredentials,
+    pub user_creds: UserCreds,
 }
 
 impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {

@@ -1,5 +1,5 @@
 use axum::extract::State;
-use axum::{routing::post, Json, Router};
+use axum::{Json, Router, routing::post};
 use http::{StatusCode, Uri};
 use serde_derive::Serialize;
 use std::sync::Arc;
@@ -8,12 +8,13 @@ use anyhow::Result;
 use axum::response::Html;
 use axum::routing::get;
 use meta_db_sqlite::db::sqlite_store::SqlIteRepo;
+use meta_secret_core::crypto::key_utils;
 use meta_secret_core::node::api::{DataSyncResponse, SyncRequest};
 use meta_server_node::server::server_app::{MetaServerDataTransfer, ServerApp};
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
-use tracing::{info, Level};
+use tracing::{Level, info};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
 #[derive(Clone)]
@@ -44,6 +45,11 @@ async fn main() -> Result<()> {
 
     info!("Starting Server...");
 
+    // Load or create a master key from a file
+    let master_key_path = "master_key.json";
+    let master_key = key_utils::load_or_create_master_key(master_key_path)?;
+    info!("Master key loaded successfully");
+
     info!("Creating router...");
     let cors = CorsLayer::permissive();
 
@@ -51,7 +57,7 @@ async fn main() -> Result<()> {
         let repo = Arc::new(SqlIteRepo {
             conn_url: String::from("file:meta-secret.db"),
         });
-        Arc::new(ServerApp::new(repo.clone())?)
+        Arc::new(ServerApp::new(repo.clone(), master_key)?)
     };
 
     let data_transfer = server_app.get_data_transfer();

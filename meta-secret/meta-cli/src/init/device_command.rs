@@ -76,13 +76,13 @@ pub mod tests {
     use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
     use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
     use std::sync::Arc;
+    use meta_secret_core::crypto::key_pair::{KeyPair, TransportDsaKeyPair};
 
     #[tokio::test]
     async fn test_init_device_command() -> Result<()> {
         // Create an in-memory database context
         let db_context = create_in_memory_context().await;
 
-        // Define test parameters (similar to device-a in Taskfile.yml)
         let device_name = "device_a";
 
         // Create the command instance
@@ -132,7 +132,16 @@ pub mod tests {
     pub async fn create_in_memory_context() -> DbContext<InMemKvLogEventRepo> {
         let repo = Arc::new(InMemKvLogEventRepo::default());
         let p_obj = Arc::new(PersistentObject::new(repo.clone()));
-        let p_creds = PersistentCredentials::from(p_obj.clone());
+        
+        // Always use the same key for tests to avoid "Invalid recipient" errors
+        let key_pair = TransportDsaKeyPair::generate();
+        let master_key = key_pair.sk();
+        
+        // Create persistent credentials with this master key
+        let p_creds = PersistentCredentials {
+            p_obj: p_obj.clone(),
+            master_key,
+        };
 
         DbContext {
             repo,

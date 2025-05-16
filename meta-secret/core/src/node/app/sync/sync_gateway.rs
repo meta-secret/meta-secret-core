@@ -9,7 +9,6 @@ use crate::node::api::{
 };
 use crate::node::app::sync::sync_protocol::SyncProtocol;
 use crate::node::common::model::device::common::DeviceId;
-use crate::node::common::model::device::device_creds::DeviceCreds;
 use crate::node::common::model::secret::{SecretDistributionType, SsDistributionStatus};
 use crate::node::common::model::user::common::{UserData, UserId};
 use crate::node::common::model::vault::vault::VaultStatus;
@@ -27,12 +26,13 @@ use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use anyhow::Result;
+use crate::crypto::keys::TransportSk;
 
 pub struct SyncGateway<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub id: String,
     pub p_obj: Arc<PersistentObject<Repo>>,
     pub sync: Arc<Sync>,
-    pub device_creds: Arc<DeviceCreds>,
+    pub master_key: TransportSk,
 }
 
 impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
@@ -43,6 +43,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         loop {
             let creds_repo = PersistentCredentials {
                 p_obj: self.p_obj.clone(),
+                master_key: self.master_key.clone()
             };
 
             let maybe_user_creds = creds_repo.get_user_creds().await.unwrap();
@@ -322,14 +323,14 @@ pub mod fixture {
                 id: "client_gw".to_string(),
                 p_obj: state.p_obj.client.clone(),
                 sync: server_sync.clone(),
-                device_creds: Arc::new(state.device_creds.client.clone()),
+                master_key: state.device_creds.client_master_key.clone(),
             });
 
             let vd_gw = Arc::new(SyncGateway {
                 id: "vd_gw".to_string(),
                 p_obj: state.p_obj.vd.clone(),
                 sync: server_sync,
-                device_creds: Arc::new(state.device_creds.vd.clone()),
+                master_key: state.device_creds.vd_master_key.clone(),
             });
 
             Self { client_gw, vd_gw }

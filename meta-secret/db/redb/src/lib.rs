@@ -147,13 +147,14 @@ impl DbCleanUpCommand for ReDbRepo {
 mod tests {
     use super::*;
     use meta_secret_core::node::common::model::device::common::DeviceName;
-    use meta_secret_core::node::common::model::device::device_creds::DeviceCredsBuilder;
+    use meta_secret_core::node::common::model::device::device_creds::{DeviceCredsBuilder, SecureDeviceCreds};
     use meta_secret_core::node::db::descriptors::object_descriptor::{ObjectFqdn, ToObjectDescriptor};
     use meta_secret_core::node::db::events::local_event::DeviceCredsObject;
     use meta_secret_core::node::db::events::object_id::{ArtifactId, Next};
     use meta_secret_core::node::db::descriptors::creds::DeviceCredsDescriptor;
     use meta_secret_core::node::db::events::kv_log_event::{KvKey, KvLogEvent};
     use tempfile::tempdir;
+    use meta_secret_core::crypto::key_pair::{KeyPair, TransportDsaKeyPair};
 
     fn create_test_db() -> (ReDbRepo, tempfile::TempDir) {
         // Create a temporary directory for the database file
@@ -178,7 +179,10 @@ mod tests {
         let device_creds = DeviceCredsBuilder::generate()
             .build(DeviceName::client())
             .creds;
-        let creds_obj = DeviceCredsObject::from(device_creds);
+        let master_pk = TransportDsaKeyPair::generate().sk().pk()?;
+        
+        let secure_device_creds = SecureDeviceCreds::build(device_creds, master_pk)?;
+        let creds_obj = DeviceCredsObject::from(secure_device_creds);
         let test_event = creds_obj.to_generic();
 
         // Test save operation
@@ -211,6 +215,10 @@ mod tests {
         let device_creds = DeviceCredsBuilder::generate()
             .build(DeviceName::client())
             .creds;
+        let master_pk = TransportDsaKeyPair::generate().sk().pk()?;
+        
+        let secure_device_creds = SecureDeviceCreds::build(device_creds.clone(), master_pk)?;
+        
         let creds_desc = DeviceCredsDescriptor;
         let initial_id = ArtifactId::from(creds_desc.clone());
         let mut id = initial_id.clone();
@@ -219,7 +227,7 @@ mod tests {
         for i in 1..=5 {
             let kv_event = KvLogEvent {
                 key: KvKey::artifact(creds_desc.clone().to_obj_desc(), id.clone()),
-                value: device_creds.clone(),
+                value: secure_device_creds.clone(),
             };
             
             let creds_obj = DeviceCredsObject(kv_event);
@@ -280,7 +288,11 @@ mod tests {
             let device_creds = DeviceCredsBuilder::generate()
                 .build(DeviceName::client())
                 .creds;
-            let creds_obj = DeviceCredsObject::from(device_creds);
+            let master_pk = TransportDsaKeyPair::generate().sk().pk()?;
+            
+            let secure_device_creds = SecureDeviceCreds::build(device_creds.clone(), master_pk)?;
+            
+            let creds_obj = DeviceCredsObject::from(secure_device_creds);
             
             repo.save(creds_obj).await?;
             

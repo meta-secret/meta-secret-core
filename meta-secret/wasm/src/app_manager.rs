@@ -4,6 +4,7 @@ use tracing::{info, instrument, Instrument};
 use wasm_bindgen_futures::spawn_local;
 
 use anyhow::Result;
+use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
 use meta_secret_core::node::app::meta_app::meta_client_service::{
     MetaClientDataTransfer, MetaClientService, MetaClientStateProvider,
@@ -31,6 +32,7 @@ pub struct ApplicationManager<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub meta_client_service: Arc<MetaClientService<Repo, Sync>>,
     pub server: Arc<Sync>,
     pub sync_gateway: Arc<SyncGateway<Repo, Sync>>,
+    pub master_key: TransportSk,
 }
 
 impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
@@ -38,6 +40,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
         server: Arc<Sync>,
         sync_gateway: Arc<SyncGateway<Repo, Sync>>,
         meta_client_service: Arc<MetaClientService<Repo, Sync>>,
+        master_key: TransportSk
     ) -> ApplicationManager<Repo, Sync> {
         info!("New. Application State Manager");
 
@@ -45,11 +48,13 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
             server,
             sync_gateway,
             meta_client_service,
+            master_key
         }
     }
 
     pub async fn init(
         client_repo: Arc<Repo>,
+        master_key: TransportSk
     ) -> Result<ApplicationManager<Repo, HttpSyncProtocol>> {
         info!("Initialize application state manager");
 
@@ -57,7 +62,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
             api_url: ApiUrl::prod(),
         });
 
-        let app_manager = Self::client_setup(client_repo, sync_protocol.clone()).await?;
+        let app_manager = Self::client_setup(client_repo, sync_protocol.clone(), master_key).await?;
 
         Ok(app_manager)
     }
@@ -190,6 +195,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
     pub async fn client_setup(
         client_repo: Arc<Repo>,
         sync_protocol: Arc<HttpSyncProtocol>,
+        master_key: TransportSk
     ) -> Result<ApplicationManager<Repo, HttpSyncProtocol>> {
         let p_obj = {
             let obj = PersistentObject::new(client_repo.clone());
@@ -197,7 +203,10 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
         };
 
         //Get or generate device credentials
-        let creds_repo = PersistentCredentials::from(p_obj.clone());
+        let creds_repo = PersistentCredentials {
+            p_obj: p_obj.clone(),
+            master_key: master_key.clone(),
+        };
         let device_creds = {
             let creds = creds_repo
                 .get_or_generate_device_creds(DeviceName::client())
@@ -209,7 +218,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
             id: String::from("client-gateway"),
             p_obj: p_obj.clone(),
             sync: sync_protocol.clone(),
-            device_creds: device_creds.clone(),
+            master_key: master_key.clone()
         });
 
         let state_provider = Arc::new(MetaClientStateProvider::new());
@@ -222,12 +231,13 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
                 sync_gateway: sync_gateway.clone(),
                 state_provider,
                 p_obj: p_obj.clone(),
-                device_creds: device_creds.clone(),
+                device_data: device_creds.device.clone(),
+                master_key: master_key.clone()
             })
         };
 
         let app_manager =
-            ApplicationManager::new(sync_protocol, sync_gateway, meta_client_service.clone());
+            ApplicationManager::new(sync_protocol, sync_gateway, meta_client_service.clone(), master_key);
 
         spawn_local(async move {
             meta_client_service

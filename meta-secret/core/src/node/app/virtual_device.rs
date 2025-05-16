@@ -6,17 +6,19 @@ use crate::node::app::orchestrator::MetaOrchestrator;
 use crate::node::app::sync::sync_gateway::SyncGateway;
 use crate::node::app::sync::sync_protocol::SyncProtocol;
 use crate::node::common::model::device::common::DeviceName;
-use crate::node::common::model::user::user_creds::UserCredentials;
+use crate::node::common::model::user::user_creds::UserCreds;
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::actions::sign_up::claim::SignUpClaim;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use anyhow::Result;
+use crate::crypto::keys::TransportSk;
 
 pub struct VirtualDevice<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     p_obj: Arc<PersistentObject<Repo>>,
     pub meta_client_proxy: Arc<MetaClientAccessProxy>,
     gateway: Arc<SyncGateway<Repo, Sync>>,
+    master_key: TransportSk,
 }
 
 impl<Repo: KvLogEventRepo, Sync: SyncProtocol> VirtualDevice<Repo, Sync> {
@@ -25,6 +27,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> VirtualDevice<Repo, Sync> {
         persistent_object: Arc<PersistentObject<Repo>>,
         meta_client_access_proxy: Arc<MetaClientAccessProxy>,
         gateway: Arc<SyncGateway<Repo, Sync>>,
+        master_key: TransportSk
     ) -> Result<VirtualDevice<Repo, Sync>> {
         info!("Initialize virtual device event handler");
 
@@ -32,6 +35,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> VirtualDevice<Repo, Sync> {
             p_obj: persistent_object,
             meta_client_proxy: meta_client_access_proxy.clone(),
             gateway,
+            master_key
         };
 
         Ok(virtual_device)
@@ -48,7 +52,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> VirtualDevice<Repo, Sync> {
             p_obj: self.p_obj(),
         };
         let user_creds = sign_up_claim
-            .prepare_sign_up(device_name, VaultName::test())
+            .prepare_sign_up(device_name, VaultName::test(), self.master_key.clone())
             .await?;
         self.gateway.sync(user_creds.user()).await?;
         sign_up_claim.sign_up(user_creds.user()).await?;
@@ -60,7 +64,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> VirtualDevice<Repo, Sync> {
         }
     }
 
-    async fn do_work(&self, user_creds: &UserCredentials) -> Result<()> {
+    async fn do_work(&self, user_creds: &UserCreds) -> Result<()> {
         self.gateway.sync(user_creds.user()).await?;
 
         let orchestrator = MetaOrchestrator {

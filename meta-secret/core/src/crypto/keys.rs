@@ -1,7 +1,7 @@
 use crate::crypto::encoding::base64::Base64Text;
 use crate::crypto::key_pair::{DsaKeyPair, KeyPair, TransportDsaKeyPair};
 use crate::crypto::utils::U64IdUrlEnc;
-use crate::node::common::model::crypto::aead::{AeadPlainText, EncryptedMessage};
+use crate::node::common::model::crypto::aead::{AeadCipherText, AeadPlainText, EncryptedMessage};
 use crate::node::common::model::crypto::channel::{CommunicationChannel, LoopbackChannel};
 use crate::node::common::model::device::common::DeviceId;
 use crate::secret::shared_secret::PlainText;
@@ -83,6 +83,13 @@ impl TransportSk {
             }
         }
     }
+}
+
+/// Encrypted secret box
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecureSecretBox {
+    pub secret_box: AeadCipherText
 }
 
 /// Serializable version of KeyManager

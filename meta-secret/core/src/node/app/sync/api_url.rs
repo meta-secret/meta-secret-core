@@ -4,7 +4,7 @@ use run_mode::ClientRunMode;
 pub struct ApiUrl {
     url: &'static str,
     port: u32,
-    run_mode: ClientRunMode,
+    _run_mode: ClientRunMode,
 }
 
 impl ApiUrl {
@@ -19,7 +19,7 @@ impl ApiUrl {
         ApiUrl {
             url: "https://localhost",
             port: 443,
-            run_mode: ClientRunMode::Dev,
+            _run_mode: ClientRunMode::Dev,
         }
     }
 
@@ -27,7 +27,7 @@ impl ApiUrl {
         ApiUrl {
             url: "https://api.meta-secret.org",
             port: 443,
-            run_mode: ClientRunMode::Prod,
+            _run_mode: ClientRunMode::Prod,
         }
     }
 }

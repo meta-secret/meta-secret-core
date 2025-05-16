@@ -1,6 +1,7 @@
 use crate::base_command::{BaseCommand, DbContext};
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use meta_secret_core::node::common::model::vault::vault::VaultName;
+use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 
 pub struct InitUserCommand {
     base: BaseCommand,
@@ -24,20 +25,13 @@ impl InitUserCommand {
     }
 
     // Generic method that works with any DbContext
-    pub async fn execute_with_context<
-        Repo: meta_secret_core::node::db::repo::generic_db::KvLogEventRepo,
-    >(
+    pub async fn execute_with_context<Repo: KvLogEventRepo>(
         &self,
         db_context: &DbContext<Repo>,
     ) -> Result<()> {
         // Get device credentials (or fail if they don't exist)
         self.base.ensure_device_creds(db_context).await?;
-        let device_creds = db_context
-            .p_creds
-            .get_device_creds()
-            .await?
-            .unwrap()
-            .value();
+        let device_creds = db_context.p_creds.get_device_creds().await?.unwrap();
 
         // Check if user credentials already exist
         let maybe_user_creds = db_context.p_creds.get_user_creds().await?;
@@ -66,8 +60,8 @@ impl InitUserCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::init::device_command::tests::create_in_memory_context;
     use crate::init::device_command::InitDeviceCommand;
+    use crate::init::device_command::tests::create_in_memory_context;
     use meta_secret_core::node::db::descriptors::creds::{
         DeviceCredsDescriptor, UserCredsDescriptor,
     };
@@ -76,12 +70,10 @@ mod tests {
     async fn test_init_user_command() -> Result<()> {
         // Create an in-memory database context
         let db_context = create_in_memory_context().await;
-
-        // Define test parameters (similar to device-a in Taskfile.yml)
+        
         let device_name = "device_a";
         let vault_name = VaultName::from("test_vault");
-
-        // First, execute the device command (as shown in Taskfile.yml: device init before user init)
+        
         let init_device_cmd =
             InitDeviceCommand::new("in_memory_db".to_string(), device_name.to_string());
 

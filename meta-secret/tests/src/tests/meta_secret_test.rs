@@ -17,7 +17,8 @@ pub mod fixture {
     impl ServerAppFixture {
         pub fn try_from(registry: &FixtureRegistry<BaseState>) -> anyhow::Result<Self> {
             let repo = registry.state.empty.p_obj.server.repo.clone();
-            let server_app = Arc::new(ServerApp::new(repo)?);
+            let master_key = registry.state.empty.device_creds.server_master_key.clone();
+            let server_app = Arc::new(ServerApp::new(repo, master_key)?);
             Ok(Self { server_app })
         }
     }

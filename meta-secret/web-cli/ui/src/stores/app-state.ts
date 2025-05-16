@@ -1,5 +1,11 @@
 import { defineStore } from 'pinia';
-import init, { ApplicationStateInfo, WasmApplicationManager, WasmApplicationState } from 'meta-secret-web-cli';
+import init, {
+  ApplicationStateInfo,
+  MasterKeyManager,
+  WasmApplicationManager,
+  WasmApplicationState,
+} from 'meta-secret-web-cli';
+import { useAuthStore } from '@/stores/auth';
 
 export const AppState = defineStore('app_state', {
   state: () => {
@@ -14,7 +20,7 @@ export const AppState = defineStore('app_state', {
   getters: {
     currentState: (state) => state.currState,
     passwords: (state) => {
-        return state.currState.as_vault().as_member().vault_data().secrets();
+      return state.currState.as_vault().as_member().vault_data().secrets();
     },
 
     // Helper methods for state comparisons
@@ -35,9 +41,11 @@ export const AppState = defineStore('app_state', {
   actions: {
     async appStateInit() {
       console.log('Js: App state, start initialization');
-
       await init();
-      const appManager = await WasmApplicationManager.init_wasm();
+
+      const authStore = useAuthStore();
+      const transportSk = MasterKeyManager.from_pure_sk(authStore.masterKey);
+      const appManager = await WasmApplicationManager.init_wasm(transportSk);
       console.log('Js: Initial App State!!!!');
 
       this.appManager = appManager;
@@ -68,7 +76,7 @@ export const AppState = defineStore('app_state', {
     getVaultName() {
       const currState = this.currState;
       if (!currState) return '';
-      
+
       const currStateInfo = currState.as_info();
       if (currStateInfo === ApplicationStateInfo.Local) {
         return '';

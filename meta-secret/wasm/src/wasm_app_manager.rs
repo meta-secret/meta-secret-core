@@ -1,18 +1,18 @@
 use std::sync::Arc;
 
-use tracing::info;
-use wasm_bindgen::prelude::wasm_bindgen;
-
 use crate::app_manager::ApplicationManager;
 use crate::configure;
 use crate::wasm_repo::WasmRepo;
+use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
+use meta_secret_core::node::common::model::WasmApplicationState;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::ClaimId;
 use meta_secret_core::node::common::model::user::common::UserData;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
-use meta_secret_core::node::common::model::WasmApplicationState;
 use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
+use tracing::info;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 #[wasm_bindgen]
 pub struct WasmApplicationManager {
@@ -21,15 +21,16 @@ pub struct WasmApplicationManager {
 
 #[wasm_bindgen]
 impl WasmApplicationManager {
-    pub async fn init_wasm() -> WasmApplicationManager {
+    pub async fn init_wasm(master_key: TransportSk) -> WasmApplicationManager {
         configure();
 
         info!("Init Wasm state manager");
 
         let client_repo = Arc::new(WasmRepo::default().await);
-        let app_manager = ApplicationManager::<WasmRepo, HttpSyncProtocol>::init(client_repo)
-            .await
-            .expect("Application state manager must be initialized");
+        let app_manager =
+            ApplicationManager::<WasmRepo, HttpSyncProtocol>::init(client_repo, master_key)
+                .await
+                .unwrap();
 
         WasmApplicationManager { app_manager }
     }
