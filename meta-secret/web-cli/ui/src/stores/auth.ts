@@ -25,7 +25,10 @@ export const useAuthStore = defineStore('auth', () => {
       const challenge = new Uint8Array(32);
       crypto.getRandomValues(challenge);
 
-      let masterKey = MasterKeyManager.generate_sk();
+      let generatedMasterKey = MasterKeyManager.generate_sk();
+      
+      // Store masterKey for later use
+      masterKey.value = generatedMasterKey;
 
       // Create the credential options
       const publicKeyCredentialCreationOptions: PublicKeyCredentialCreationOptions = {
@@ -35,7 +38,7 @@ export const useAuthStore = defineStore('auth', () => {
           id: window.location.hostname,
         },
         user: {
-          id: new TextEncoder().encode(masterKey),
+          id: new TextEncoder().encode(generatedMasterKey),
           name: 'id0',
           displayName: 'id0 Meta Human',
         },
@@ -46,6 +49,7 @@ export const useAuthStore = defineStore('auth', () => {
         authenticatorSelection: {
           authenticatorAttachment: 'platform', // Use built-in authenticator (TouchID, FaceID, Windows Hello)
           userVerification: 'required', // Require biometric verification
+          residentKey: 'required', // Make this a discoverable credential (resident key)
         },
         timeout: 60000, // 1 minute
         attestation: 'none',
@@ -62,7 +66,7 @@ export const useAuthStore = defineStore('auth', () => {
         // Extract and store credential ID
         const publicKeyCredential = credential as PublicKeyCredential;
         const credId = publicKeyCredential.id; // Already base64url encoded
-
+        
         // Mark that the user has registered a passkey
         hasRegisteredPasskey.value = true;
         localStorage.setItem('credential_id', credId);
@@ -89,36 +93,12 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const challenge = new Uint8Array(32);
       crypto.getRandomValues(challenge);
-      
-      // Get the stored credential ID
-      const storedCredentialId = localStorage.getItem('credential_id');
-      
-      // Helper function to convert base64url to binary array
-      const base64urlToBuffer = (base64url: string): ArrayBuffer => {
-        // Convert base64url to base64 by replacing characters
-        const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
-        // Decode base64 to binary string
-        const binaryString = atob(base64);
-        // Convert binary string to Uint8Array
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        return bytes.buffer;
-      };
-      
-      const allowCredentials: PublicKeyCredentialDescriptor[] = storedCredentialId ? [{
-        type: 'public-key' as const,
-        id: storedCredentialId ? base64urlToBuffer(storedCredentialId) : new ArrayBuffer(0),
-        transports: ['internal' as AuthenticatorTransport]
-      }] : [];
-      
+
       // Create the credential request options
       const publicKeyCredentialRequestOptions: PublicKeyCredentialRequestOptions = {
         challenge,
         timeout: 60000, // 1 minute
         userVerification: 'required', // Require biometric verification
-        allowCredentials,
       };
 
       // Request the credential
@@ -127,10 +107,11 @@ export const useAuthStore = defineStore('auth', () => {
       });
 
       if (credential) {
-        console.log('User authenticated successfully:', credential);
+        alert('Credential retrieved successfully: ' + credential.response.userHandle);
+        masterKey.value = credential.response.userHandle;
+
         // Mark the user as authenticated
         isAuthenticated.value = true;
-        masterKey.value = credential.user.id
         return true;
       }
 
@@ -147,5 +128,6 @@ export const useAuthStore = defineStore('auth', () => {
     isWebAuthnSupported,
     authenticateWithPasskey,
     createPasskeyCredential,
+    masterKey,
   };
 });
