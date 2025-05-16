@@ -1,10 +1,5 @@
 import { defineStore } from 'pinia';
-import init, {
-  ApplicationStateInfo,
-  MasterKeyManager,
-  WasmApplicationManager,
-  WasmApplicationState,
-} from 'meta-secret-web-cli';
+import init, { ApplicationStateInfo, WasmApplicationManager, WasmApplicationState } from 'meta-secret-web-cli';
 
 export const AppState = defineStore('app_state', {
   state: () => {
@@ -19,7 +14,7 @@ export const AppState = defineStore('app_state', {
   getters: {
     currentState: (state) => state.currState,
     passwords: (state) => {
-        return state.currState.as_vault().as_member().vault_data().secrets();
+      return state.currState.as_vault().as_member().vault_data().secrets();
     },
 
     // Helper methods for state comparisons
@@ -73,7 +68,7 @@ export const AppState = defineStore('app_state', {
     getVaultName() {
       const currState = this.currState;
       if (!currState) return '';
-      
+
       const currStateInfo = currState.as_info();
       if (currStateInfo === ApplicationStateInfo.Local) {
         return '';

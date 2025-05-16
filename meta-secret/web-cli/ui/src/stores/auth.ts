@@ -5,6 +5,8 @@ import { MasterKeyManager } from '../../pkg';
 export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = ref(false);
 
+  const masterKey = ref(null);
+
   const savedCredId = localStorage.getItem('credential_id');
   const hasRegisteredPasskey = ref(!!savedCredId);
 
@@ -126,10 +128,9 @@ export const useAuthStore = defineStore('auth', () => {
 
       if (credential) {
         console.log('User authenticated successfully:', credential);
-        // In a real app, you would send the credential to the server for verification
-
         // Mark the user as authenticated
         isAuthenticated.value = true;
+        masterKey.value = credential.user.id
         return true;
       }
 
