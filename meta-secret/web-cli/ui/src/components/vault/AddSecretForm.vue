@@ -16,6 +16,7 @@ const errorMessage = ref('');
 const DEBOUNCE_MS = 2000; // Prevent resubmissions within 2 seconds
 const progress = ref(0);
 const progressInterval = ref<number | null>(null);
+const secretType = ref('password'); // 'password' or 'note'
 
 watch(() => props.show, (val) => {
   if (!val) {
@@ -23,6 +24,7 @@ watch(() => props.show, (val) => {
     newPassDescription.value = '';
     isSubmitting.value = false;
     errorMessage.value = '';
+    secretType.value = 'password';
     resetProgress();
   }
 });
@@ -161,18 +163,57 @@ const handleClose = () => {
             />
           </div>
         </div>
+        
+        <!-- Secret Type Selector -->
         <div :class="$style.inputGroup">
-          <label :class="$style.inputLabel">Secret</label>
+          <label :class="$style.inputLabel">Secret Type</label>
+          <div :class="$style.radioGroup">
+            <label :class="$style.radioLabel">
+              <input 
+                type="radio" 
+                value="password" 
+                v-model="secretType"
+                :disabled="isSubmitting" 
+              />
+              <span :class="$style.radioText">Seed Phrase</span>
+            </label>
+            <label :class="$style.radioLabel">
+              <input 
+                type="radio" 
+                value="note" 
+                v-model="secretType"
+                :disabled="isSubmitting" 
+              />
+              <span :class="$style.radioText">Secret Note</span>
+            </label>
+          </div>
+        </div>
+        
+        <!-- Dynamic Secret Input based on type -->
+        <div :class="$style.inputGroup">
+          <label :class="$style.inputLabel">{{ secretType === 'password' ? 'Seed Phrase' : 'Secret Note' }}</label>
           <div :class="$style.inputWrapper">
+            <!-- Text input for seed phrase -->
             <input 
+              v-if="secretType === 'password'"
               type="password" 
               :class="$style.input" 
-              placeholder="top$ecret" 
+              placeholder="Enter your seed phrase" 
               v-model="newPassword"
               :disabled="isSubmitting" 
             />
+            <!-- Textarea for secret note -->
+            <textarea 
+              v-else
+              :class="[$style.input, $style.textarea]" 
+              placeholder="Enter your secret note" 
+              v-model="newPassword"
+              :disabled="isSubmitting" 
+              rows="4"
+            ></textarea>
           </div>
         </div>
+        
         <div v-if="errorMessage" :class="$style.errorMessage">
           {{ errorMessage }}
         </div>
@@ -209,6 +250,9 @@ const handleClose = () => {
   @apply bg-transparent text-gray-700 dark:text-gray-200;
   @apply placeholder-gray-400 dark:placeholder-gray-500;
   @apply focus:outline-none;
+}
+.textarea {
+  @apply resize-y min-h-[100px];
 }
 .buttonContainer {
   @apply flex justify-end mt-5;
@@ -247,5 +291,14 @@ const handleClose = () => {
 }
 .errorMessage {
   @apply text-red-500 text-sm mt-2 mb-3;
+}
+.radioGroup {
+  @apply flex space-x-6 mt-1;
+}
+.radioLabel {
+  @apply flex items-center cursor-pointer;
+}
+.radioText {
+  @apply ml-2 text-gray-700 dark:text-gray-300;
 }
 </style> 
