@@ -1,6 +1,4 @@
-use crate::node::db::events::generic_log_event::{
-    GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
-};
+use crate::node::db::events::generic_log_event::{GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent, VaultKvLogEvent};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::events::vault::vault_log_event::VaultActionEvent;
@@ -15,7 +13,7 @@ impl TryFrom<GenericKvLogEvent> for DeviceLogObject {
     type Error = anyhow::Error;
 
     fn try_from(event: GenericKvLogEvent) -> Result<Self, Self::Error> {
-        if let GenericKvLogEvent::DeviceLog(device_log) = event {
+        if let GenericKvLogEvent::Vault(VaultKvLogEvent::DeviceLog(device_log)) = event {
             Ok(device_log)
         } else {
             Err(anyhow!("Not a device log event"))
@@ -25,7 +23,7 @@ impl TryFrom<GenericKvLogEvent> for DeviceLogObject {
 
 impl ToGenericEvent for DeviceLogObject {
     fn to_generic(self) -> GenericKvLogEvent {
-        GenericKvLogEvent::DeviceLog(self)
+        GenericKvLogEvent::Vault(VaultKvLogEvent::DeviceLog(self))
     }
 }
 
