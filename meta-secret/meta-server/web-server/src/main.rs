@@ -16,6 +16,9 @@ use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::{Level, info};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
+use axum::extract::ws::{WebSocketUpgrade, WebSocket, Message};
+use axum::response::IntoResponse;
+use futures_util::{StreamExt, SinkExt};
 
 #[derive(Clone)]
 pub struct MetaServerAppState {
@@ -83,6 +86,7 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .route("/meta_request", post(meta_request))
         .route("/hi", get(hi))
+        .route("/ws", get(ws_handler))
         .with_state(app_state)
         .layer(cors)
         .layer(TraceLayer::new_for_http())
@@ -121,4 +125,29 @@ pub async fn meta_request(
     let response = state.data_transfer.send_request(msg_request).await.unwrap();
 
     Json(response)
+}
+
+// WebSocket echo handler
+async fn ws_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
+    ws.on_upgrade(handle_socket)
+}
+
+async fn handle_socket(mut socket: WebSocket) {
+    while let Some(Ok(msg)) = socket.next().await {
+        match msg {
+            Message::Text(text) => {
+                let _ = socket.send(Message::Text(text)).await;
+            }
+            Message::Binary(bin) => {
+                let _ = socket.send(Message::Binary(bin)).await;
+            }
+            Message::Ping(p) => {
+                let _ = socket.send(Message::Pong(p)).await;
+            }
+            Message::Close(_) => {
+                break;
+            }
+            _ => {}
+        }
+    }
 }
