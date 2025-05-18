@@ -21,7 +21,9 @@ serde_json.workspace = true
 serde_derive.workspace = true
 
 tokio.workspace = true
-axum.workspace = true
+axum = { workspace = true, features = ["ws"] }
 tower-http.workspace = true
 http.workspace = true
 async-std.workspace = true
+tokio-tungstenite = "0.26"
+futures-util = "0.3"
