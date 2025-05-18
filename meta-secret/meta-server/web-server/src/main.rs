@@ -160,6 +160,10 @@ async fn handle_socket(socket: WebSocket, notifier: broadcast::Sender<String>) {
     // Echo incoming messages as before
     while let Some(Ok(msg)) = ws_receiver.next().await {
         match msg {
+            Message::Text(text) => {
+                let mut sender = ws_sender.lock().await;
+                let _ = sender.send(Message::Text(text)).await;
+            }
             Message::Ping(p) => {
                 let mut sender = ws_sender.lock().await;
                 let _ = sender.send(Message::Pong(p)).await;
