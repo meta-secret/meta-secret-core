@@ -32,7 +32,7 @@ pub enum LocalKvLogEvent {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum VaultKvLogEvent {
-    DeviceLog(DeviceLogObject),
+    DeviceLog(Box<DeviceLogObject>),
     VaultLog(VaultLogObject),
     Vault(VaultObject),
     VaultStatus(VaultStatusObject),

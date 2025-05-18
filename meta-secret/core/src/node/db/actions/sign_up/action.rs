@@ -32,7 +32,7 @@ mod test {
     use crate::crypto::keys::fixture::KeyManagerFixture;
     use crate::node::common::model::device::device_creds::fixture::DeviceCredentialsFixture;
     use crate::node::common::model::user::common::{UserDataMember, UserMembership};
-    use crate::node::db::events::generic_log_event::GenericKvLogEvent;
+    use crate::node::db::events::generic_log_event::{GenericKvLogEvent, VaultKvLogEvent};
     use crate::{
         node::common::model::user::user_creds::fixture::UserCredentialsFixture,
         node::db::actions::sign_up::action::SignUpAction,
@@ -58,7 +58,7 @@ mod test {
 
         for (index, event) in events.iter().enumerate() {
             match event {
-                GenericKvLogEvent::VaultLog(obj) => {
+                GenericKvLogEvent::Vault(VaultKvLogEvent::VaultLog(obj)) => {
                     // Verify this is the first event (index 0)
                     assert_eq!(index, 0, "VaultLog should be the first event");
 
@@ -74,7 +74,7 @@ mod test {
                     );
                     vault_log_verified = true;
                 }
-                GenericKvLogEvent::Vault(obj) => {
+                GenericKvLogEvent::Vault(VaultKvLogEvent::Vault(obj)) => {
                     // Verify this is the second event (index 1)
                     assert_eq!(index, 1, "Vault should be the second event");
 

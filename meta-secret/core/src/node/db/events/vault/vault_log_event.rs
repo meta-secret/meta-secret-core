@@ -4,7 +4,7 @@ use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::descriptors::vault_descriptor::VaultLogDescriptor;
 use crate::node::db::events::error::LogEventCastError;
 use crate::node::db::events::generic_log_event::{
-    GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
+    GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent, VaultKvLogEvent,
 };
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::ArtifactId;
@@ -34,7 +34,7 @@ impl TryFrom<GenericKvLogEvent> for VaultLogObject {
     type Error = anyhow::Error;
 
     fn try_from(event: GenericKvLogEvent) -> Result<Self, Self::Error> {
-        if let GenericKvLogEvent::VaultLog(vault_log) = event {
+        if let GenericKvLogEvent::Vault(VaultKvLogEvent::VaultLog(vault_log)) = event {
             Ok(vault_log)
         } else {
             Err(anyhow!("Not a vault log event"))
@@ -44,7 +44,7 @@ impl TryFrom<GenericKvLogEvent> for VaultLogObject {
 
 impl ToGenericEvent for VaultLogObject {
     fn to_generic(self) -> GenericKvLogEvent {
-        GenericKvLogEvent::VaultLog(self)
+        GenericKvLogEvent::Vault(VaultKvLogEvent::VaultLog(self))
     }
 }
 
