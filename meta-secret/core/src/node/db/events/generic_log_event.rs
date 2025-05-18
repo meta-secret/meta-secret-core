@@ -13,11 +13,7 @@ use crate::node::db::events::vault::vault_status::VaultStatusObject;
 #[serde(rename_all = "camelCase")]
 pub enum GenericKvLogEvent {
     Local(LocalKvLogEvent),
-
-    DeviceLog(DeviceLogObject),
-    VaultLog(VaultLogObject),
-    Vault(VaultObject),
-    VaultStatus(VaultStatusObject),
+    Vault(VaultKvLogEvent),
 
     SsDeviceLog(SsDeviceLogObject),
     SsLog(SsLogObject),
@@ -40,10 +36,6 @@ pub enum VaultKvLogEvent {
     VaultLog(VaultLogObject),
     Vault(VaultObject),
     VaultStatus(VaultStatusObject),
-
-    SsDeviceLog(SsDeviceLogObject),
-    SsLog(SsLogObject),
-    SsWorkflow(SsWorkflowObject),
 }
 
 impl GenericKvLogEvent {
@@ -124,20 +116,24 @@ pub trait KeyExtractor {
 impl ObjIdExtractor for GenericKvLogEvent {
     fn obj_id(&self) -> ArtifactId {
         match self {
-            GenericKvLogEvent::Vault(obj) => obj.obj_id(),
-            GenericKvLogEvent::SsWorkflow(obj) => obj.obj_id(),
-            GenericKvLogEvent::DbError(event) => event.key.obj_id.clone(),
-            GenericKvLogEvent::DeviceLog(obj) => obj.obj_id(),
-            GenericKvLogEvent::VaultLog(obj) => obj.obj_id(),
-            GenericKvLogEvent::VaultStatus(obj) => obj.obj_id(),
-            GenericKvLogEvent::SsDeviceLog(obj) => obj.obj_id(),
-            GenericKvLogEvent::SsLog(obj) => obj.obj_id(),
             GenericKvLogEvent::Local(local) => {
                 match local {
                     LocalKvLogEvent::DeviceCreds(obj) => obj.obj_id(),
                     LocalKvLogEvent::UserCreds(obj) => obj.obj_id()
                 }
             }
+            GenericKvLogEvent::Vault(vault_kv) => {
+                match vault_kv {
+                    VaultKvLogEvent::DeviceLog(obj) => obj.obj_id(),
+                    VaultKvLogEvent::VaultLog(obj) => obj.obj_id(),
+                    VaultKvLogEvent::Vault(obj) => obj.obj_id(),
+                    VaultKvLogEvent::VaultStatus(obj) => obj.obj_id(),
+                }
+            },
+            GenericKvLogEvent::SsWorkflow(obj) => obj.obj_id(),
+            GenericKvLogEvent::DbError(event) => event.key.obj_id.clone(),
+            GenericKvLogEvent::SsDeviceLog(obj) => obj.obj_id(),
+            GenericKvLogEvent::SsLog(obj) => obj.obj_id(),
         }
     }
 }
@@ -145,18 +141,22 @@ impl ObjIdExtractor for GenericKvLogEvent {
 impl KeyExtractor for GenericKvLogEvent {
     fn key(&self) -> KvKey {
         match self {
-            GenericKvLogEvent::Vault(obj) => obj.key(),
             GenericKvLogEvent::SsWorkflow(obj) => obj.key(),
             GenericKvLogEvent::DbError(event) => event.key.clone(),
-            GenericKvLogEvent::DeviceLog(obj) => obj.key(),
-            GenericKvLogEvent::VaultLog(obj) => obj.key(),
-            GenericKvLogEvent::VaultStatus(obj) => obj.key(),
             GenericKvLogEvent::SsDeviceLog(obj) => obj.key(),
             GenericKvLogEvent::SsLog(obj) => obj.key(),
             GenericKvLogEvent::Local(local) => {
                 match local {
                     LocalKvLogEvent::DeviceCreds(obj) => obj.key(),
                     LocalKvLogEvent::UserCreds(obj) => obj.key()
+                }
+            },
+            GenericKvLogEvent::Vault(vault_kv) => {
+                match vault_kv {
+                    VaultKvLogEvent::DeviceLog(obj) => obj.key(),
+                    VaultKvLogEvent::VaultLog(obj) => obj.key(),
+                    VaultKvLogEvent::Vault(obj) => obj.key(),
+                    VaultKvLogEvent::VaultStatus(obj) => obj.key(),
                 }
             }
         }
