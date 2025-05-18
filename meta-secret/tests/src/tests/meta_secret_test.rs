@@ -49,7 +49,7 @@ mod test {
     use meta_secret_core::node::db::descriptors::shared_secret_descriptor::{
         SsDeviceLogDescriptor, SsWorkflowDescriptor,
     };
-    use meta_secret_core::node::db::events::generic_log_event::GenericKvLogEvent;
+    use meta_secret_core::node::db::events::generic_log_event::{GenericKvLogEvent, SsKvLogEvent};
     use meta_secret_core::node::db::events::shared_secret_event::SsWorkflowObject;
     use meta_secret_core::node::db::events::vault::vault_log_event::VaultActionRequestEvent;
     use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -570,7 +570,7 @@ mod test {
         let recovery_event = vd_db.iter().find(|event| {
             matches!(
                 event,
-                GenericKvLogEvent::SsWorkflow(SsWorkflowObject::Recovery(_))
+                GenericKvLogEvent::Ss(SsKvLogEvent::SsWorkflow(SsWorkflowObject::Recovery(_)))
             )
         });
         let recovery_event = recovery_event.unwrap();
