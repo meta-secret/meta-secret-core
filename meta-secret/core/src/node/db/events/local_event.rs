@@ -2,9 +2,7 @@ use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::device::device_creds::{SecureDeviceCreds};
 use crate::node::common::model::user::user_creds::{SecureUserCreds};
 use crate::node::db::descriptors::creds::{DeviceCredsDescriptor, UserCredsDescriptor};
-use crate::node::db::events::generic_log_event::{
-    GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
-};
+use crate::node::db::events::generic_log_event::{GenericKvLogEvent, KeyExtractor, LocalKvLogEvent, ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::ArtifactId;
 use anyhow::{anyhow, Error};
@@ -49,7 +47,7 @@ impl KeyExtractor for DeviceCredsObject {
 
 impl ToGenericEvent for DeviceCredsObject {
     fn to_generic(self) -> GenericKvLogEvent {
-        GenericKvLogEvent::DeviceCreds(self)
+        GenericKvLogEvent::Local(LocalKvLogEvent::DeviceCreds(self))
     }
 }
 
@@ -57,7 +55,7 @@ impl TryFrom<GenericKvLogEvent> for DeviceCredsObject {
     type Error = Error;
 
     fn try_from(event: GenericKvLogEvent) -> Result<Self, Self::Error> {
-        if let GenericKvLogEvent::DeviceCreds(device_creds) = event {
+        if let GenericKvLogEvent::Local(LocalKvLogEvent::DeviceCreds(device_creds)) = event {
             Ok(device_creds)
         } else {
             Err(anyhow!("Invalid device credentials event type"))
@@ -89,7 +87,7 @@ impl KeyExtractor for UserCredsObject {
 
 impl ToGenericEvent for UserCredsObject {
     fn to_generic(self) -> GenericKvLogEvent {
-        GenericKvLogEvent::UserCreds(self)
+        GenericKvLogEvent::Local(LocalKvLogEvent::UserCreds(self))
     }
 }
 
@@ -97,7 +95,7 @@ impl TryFrom<GenericKvLogEvent> for UserCredsObject {
     type Error = Error;
 
     fn try_from(event: GenericKvLogEvent) -> Result<Self, Self::Error> {
-        if let GenericKvLogEvent::UserCreds(user_creds) = event {
+        if let GenericKvLogEvent::Local(LocalKvLogEvent::UserCreds(user_creds)) = event {
             Ok(user_creds)
         } else {
             Err(anyhow!("Invalid user credentials event type"))
