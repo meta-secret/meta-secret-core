@@ -2,7 +2,7 @@ use std::cmp::PartialEq;
 use std::sync::Arc;
 
 use anyhow::Result;
-use anyhow::{bail, Ok};
+use anyhow::{Ok, bail};
 use derive_more::From;
 use meta_secret_core::node::api::{SsRequest, VaultRequest};
 use meta_secret_core::node::common::model::device::common::{DeviceData, DeviceId};
@@ -11,7 +11,7 @@ use meta_secret_core::node::common::model::vault::vault::VaultStatus;
 use meta_secret_core::node::db::actions::vault::vault_action::ServerVaultAction;
 use meta_secret_core::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
 use meta_secret_core::node::db::events::generic_log_event::{
-    GenericKvLogEvent, ObjIdExtractor, ToGenericEvent, VaultKvLogEvent, SsKvLogEvent,
+    GenericKvLogEvent, ObjIdExtractor, SsKvLogEvent, ToGenericEvent, VaultKvLogEvent,
 };
 use meta_secret_core::node::db::events::shared_secret_event::SsLogObject;
 use meta_secret_core::node::db::events::vault::device_log_event::DeviceLogObject;
@@ -99,17 +99,15 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         generic_event: GenericKvLogEvent,
     ) -> Result<()> {
         match generic_event.clone() {
-            GenericKvLogEvent::Vault(vault_event) => {
-                match vault_event {
-                    VaultKvLogEvent::DeviceLog(device_log_obj) => {
-                        self.handle_device_log_request(server_device, *device_log_obj)
-                            .await?;
-                    }
-                    _ => {
-                        bail!("Invalid vault event type: {:?}", generic_event);
-                    }
+            GenericKvLogEvent::Vault(vault_event) => match vault_event {
+                VaultKvLogEvent::DeviceLog(device_log_obj) => {
+                    self.handle_device_log_request(server_device, *device_log_obj)
+                        .await?;
                 }
-            }
+                _ => {
+                    bail!("Invalid vault event type: {:?}", generic_event);
+                }
+            },
             GenericKvLogEvent::Ss(ss_event) => {
                 match ss_event {
                     SsKvLogEvent::SsDeviceLog(ss_device_log_obj) => {
@@ -135,43 +133,38 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                         let maybe_ss_log_event = p_ss_log
                             .find_ss_log_tail_event(wf.vault_name.clone())
                             .await?;
-                        match maybe_ss_log_event {
-                            None => {
-                                bail!("No claim found for distribution: {:?}", wf)
-                            }
-                            Some(ss_event) => {
-                                let ss_log_data = ss_event.to_data();
-                                let maybe_claim = ss_log_data.claims.get(&wf.claim_id.id);
 
-                                match maybe_claim {
-                                    None => {
-                                        bail!("Invalid! No claim found for distribution: {:?}", wf)
-                                    }
-                                    Some(claim) => {
-                                        let device_id = match claim.distribution_type {
-                                            SecretDistributionType::Split => wf
-                                                .secret_message
-                                                .cipher_text()
-                                                .channel
-                                                .receiver()
-                                                .to_device_id(),
-                                            SecretDistributionType::Recover => wf
-                                                .secret_message
-                                                .cipher_text()
-                                                .channel
-                                                .sender()
-                                                .to_device_id(),
-                                        };
+                        let Some(ss_event) = maybe_ss_log_event else {
+                            bail!("No claim found for distribution: {:?}", wf)
+                        };
 
-                                        let new_ss_log_data = ss_log_data.sent(wf.claim_id.id, device_id);
-                                        let new_ss_log_event = p_ss_log
-                                            .create_new_ss_log_object(new_ss_log_data, wf.vault_name)
-                                            .await?;
-                                        self.p_obj.repo.save(new_ss_log_event).await?;
-                                    }
-                                }
-                            }
-                        }
+                        let ss_log_data = ss_event.to_data();
+                        let maybe_claim = ss_log_data.claims.get(&wf.claim_id.id);
+
+                        let Some(claim) = maybe_claim else {
+                            bail!("Invalid! No claim found for distribution: {:?}", wf)
+                        };
+
+                        let device_id = match claim.distribution_type {
+                            SecretDistributionType::Split => wf
+                                .secret_message
+                                .cipher_text()
+                                .channel
+                                .receiver()
+                                .to_device_id(),
+                            SecretDistributionType::Recover => wf
+                                .secret_message
+                                .cipher_text()
+                                .channel
+                                .sender()
+                                .to_device_id(),
+                        };
+
+                        let new_ss_log_data = ss_log_data.sent(wf.claim_id.id, device_id);
+                        let new_ss_log_event = p_ss_log
+                            .create_new_ss_log_object(new_ss_log_data, wf.vault_name)
+                            .await?;
+                        self.p_obj.repo.save(new_ss_log_event).await?;
                     }
                     SsKvLogEvent::SsLog(_) => {
                         bail!("Invalid SS event type: {:?}", generic_event);
