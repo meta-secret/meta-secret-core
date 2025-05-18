@@ -14,12 +14,16 @@ use crate::node::db::events::vault::vault_status::VaultStatusObject;
 pub enum GenericKvLogEvent {
     Local(LocalKvLogEvent),
     Vault(VaultKvLogEvent),
+    Ss(SsKvLogEvent),
+    DbError(KvLogEvent<ErrorMessage>),
+}
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SsKvLogEvent {
     SsDeviceLog(SsDeviceLogObject),
     SsLog(SsLogObject),
     SsWorkflow(SsWorkflowObject),
-
-    DbError(KvLogEvent<ErrorMessage>),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -130,10 +134,14 @@ impl ObjIdExtractor for GenericKvLogEvent {
                     VaultKvLogEvent::VaultStatus(obj) => obj.obj_id(),
                 }
             },
-            GenericKvLogEvent::SsWorkflow(obj) => obj.obj_id(),
+            GenericKvLogEvent::Ss(ss_kv) => {
+                match ss_kv {
+                    SsKvLogEvent::SsDeviceLog(obj) => obj.obj_id(),
+                    SsKvLogEvent::SsLog(obj) => obj.obj_id(),
+                    SsKvLogEvent::SsWorkflow(obj) => obj.obj_id(),
+                }
+            },
             GenericKvLogEvent::DbError(event) => event.key.obj_id.clone(),
-            GenericKvLogEvent::SsDeviceLog(obj) => obj.obj_id(),
-            GenericKvLogEvent::SsLog(obj) => obj.obj_id(),
         }
     }
 }
@@ -141,10 +149,7 @@ impl ObjIdExtractor for GenericKvLogEvent {
 impl KeyExtractor for GenericKvLogEvent {
     fn key(&self) -> KvKey {
         match self {
-            GenericKvLogEvent::SsWorkflow(obj) => obj.key(),
             GenericKvLogEvent::DbError(event) => event.key.clone(),
-            GenericKvLogEvent::SsDeviceLog(obj) => obj.key(),
-            GenericKvLogEvent::SsLog(obj) => obj.key(),
             GenericKvLogEvent::Local(local) => {
                 match local {
                     LocalKvLogEvent::DeviceCreds(obj) => obj.key(),
@@ -157,6 +162,13 @@ impl KeyExtractor for GenericKvLogEvent {
                     VaultKvLogEvent::VaultLog(obj) => obj.key(),
                     VaultKvLogEvent::Vault(obj) => obj.key(),
                     VaultKvLogEvent::VaultStatus(obj) => obj.key(),
+                }
+            },
+            GenericKvLogEvent::Ss(ss_kv) => {
+                match ss_kv {
+                    SsKvLogEvent::SsDeviceLog(obj) => obj.key(),
+                    SsKvLogEvent::SsLog(obj) => obj.key(),
+                    SsKvLogEvent::SsWorkflow(obj) => obj.key(),
                 }
             }
         }

@@ -1,7 +1,7 @@
 use crate::node::common::model::secret::{SecretDistributionData, SsClaim, SsLogData};
 use crate::node::db::events::error::LogEventCastError;
 use crate::node::db::events::generic_log_event::{
-    GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
+    GenericKvLogEvent, KeyExtractor, ObjIdExtractor, SsKvLogEvent, ToGenericEvent,
 };
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::ArtifactId;
@@ -41,7 +41,7 @@ impl TryFrom<GenericKvLogEvent> for SsWorkflowObject {
     type Error = anyhow::Error;
 
     fn try_from(event: GenericKvLogEvent) -> Result<Self, Self::Error> {
-        if let GenericKvLogEvent::SsWorkflow(ss_obj) = event {
+        if let GenericKvLogEvent::Ss(SsKvLogEvent::SsWorkflow(ss_obj)) = event {
             Ok(ss_obj)
         } else {
             bail!(LogEventCastError::InvalidSharedSecret(event))
@@ -63,7 +63,7 @@ impl TryFrom<GenericKvLogEvent> for SsDeviceLogObject {
     type Error = anyhow::Error;
 
     fn try_from(event: GenericKvLogEvent) -> Result<Self, Self::Error> {
-        if let GenericKvLogEvent::SsDeviceLog(ss_device_log) = event {
+        if let GenericKvLogEvent::Ss(SsKvLogEvent::SsDeviceLog(ss_device_log)) = event {
             Ok(ss_device_log)
         } else {
             bail!("Not a shared secret device log event")
@@ -79,7 +79,7 @@ impl ObjIdExtractor for SsDeviceLogObject {
 
 impl ToGenericEvent for SsDeviceLogObject {
     fn to_generic(self) -> GenericKvLogEvent {
-        GenericKvLogEvent::SsDeviceLog(self)
+        GenericKvLogEvent::Ss(SsKvLogEvent::SsDeviceLog(self))
     }
 }
 
@@ -100,7 +100,7 @@ impl ObjIdExtractor for SsWorkflowObject {
 
 impl ToGenericEvent for SsWorkflowObject {
     fn to_generic(self) -> GenericKvLogEvent {
-        GenericKvLogEvent::SsWorkflow(self)
+        GenericKvLogEvent::Ss(SsKvLogEvent::SsWorkflow(self))
     }
 }
 
@@ -112,7 +112,7 @@ impl TryFrom<GenericKvLogEvent> for SsLogObject {
     type Error = anyhow::Error;
 
     fn try_from(event: GenericKvLogEvent) -> Result<Self, Self::Error> {
-        if let GenericKvLogEvent::SsLog(ss_obj) = &event {
+        if let GenericKvLogEvent::Ss(SsKvLogEvent::SsLog(ss_obj)) = &event {
             Ok(ss_obj.clone())
         } else {
             bail!(LogEventCastError::InvalidSsLog(event))
@@ -137,7 +137,7 @@ impl SsLogObject {
 
 impl ToGenericEvent for SsLogObject {
     fn to_generic(self) -> GenericKvLogEvent {
-        GenericKvLogEvent::SsLog(self)
+        GenericKvLogEvent::Ss(SsKvLogEvent::SsLog(self))
     }
 }
 
