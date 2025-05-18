@@ -21,11 +21,12 @@ use axum::extract::ws::{WebSocketUpgrade, WebSocket, Message};
 use axum::response::IntoResponse;
 use futures_util::{StreamExt, SinkExt};
 use tokio::sync::broadcast;
+use serde_json;
 
 #[derive(Clone)]
 pub struct MetaServerAppState {
     data_transfer: Arc<MetaServerDataTransfer>,
-    notifier: broadcast::Sender<String>,
+    notifier: broadcast::Sender<DataSyncResponse>,
 }
 
 #[tokio::main]
@@ -83,14 +84,15 @@ async fn main() -> Result<()> {
         });
     });
 
-    let (notifier, _) = broadcast::channel::<String>(100);
+    let (notifier, _) = broadcast::channel::<DataSyncResponse>(100);
     let app_state = Arc::new(MetaServerAppState { data_transfer, notifier });
 
     info!("Creating router...");
     let app = Router::new()
         .route("/meta_request", post(meta_request))
         .route("/hi", get(hi))
-        .route("/ws", get(ws_handler))
+        .route("/ws_echo", get(ws_echo_handler))
+        .route("/ws_subscribe", get(ws_subscribe_handler))
         .with_state(app_state)
         .layer(cors)
         .layer(TraceLayer::new_for_http())
@@ -129,35 +131,19 @@ pub async fn meta_request(
     let response = state.data_transfer.send_request(msg_request).await.unwrap();
 
     // Notify all websocket subscribers about the state change
-    let _ = state.notifier.send("state_changed".to_string());
+    let _ = state.notifier.send(response.clone());
 
     Json(response)
 }
 
 // WebSocket echo handler
-async fn ws_handler(
-    ws: WebSocketUpgrade,
-    State(state): State<Arc<MetaServerAppState>>,
-) -> impl IntoResponse {
-    let notifier = state.notifier.clone();
-    ws.on_upgrade(move |socket| handle_socket(socket, notifier))
+async fn ws_echo_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
+    ws.on_upgrade(handle_echo_socket)
 }
 
-async fn handle_socket(socket: WebSocket, notifier: broadcast::Sender<String>) {
+async fn handle_echo_socket(socket: WebSocket) {
     let (ws_sender, mut ws_receiver) = socket.split();
     let ws_sender = Arc::new(Mutex::new(ws_sender));
-    let mut rx = notifier.subscribe();
-    let ws_sender_clone = ws_sender.clone();
-    // Spawn a task to forward broadcast messages to the websocket
-    let send_task = tokio::spawn(async move {
-        while let Ok(msg) = rx.recv().await {
-            let mut sender = ws_sender_clone.lock().await;
-            if sender.send(Message::Text(msg.into())).await.is_err() {
-                break;
-            }
-        }
-    });
-    // Echo incoming messages as before
     while let Some(Ok(msg)) = ws_receiver.next().await {
         match msg {
             Message::Text(text) => {
@@ -174,6 +160,44 @@ async fn handle_socket(socket: WebSocket, notifier: broadcast::Sender<String>) {
             _ => {}
         }
     }
-    // If the client disconnects, stop the send task
+}
+
+// WebSocket subscribe handler
+async fn ws_subscribe_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<Arc<MetaServerAppState>>,
+) -> impl IntoResponse {
+    let notifier = state.notifier.clone();
+    ws.on_upgrade(move |socket| handle_subscribe_socket(socket, notifier))
+}
+
+async fn handle_subscribe_socket(socket: WebSocket, notifier: broadcast::Sender<DataSyncResponse>) {
+    let (ws_sender, mut ws_receiver) = socket.split();
+    let ws_sender = Arc::new(Mutex::new(ws_sender));
+    let ws_sender_clone = ws_sender.clone();
+
+    let mut rx = notifier.subscribe();
+    let send_task = tokio::spawn(async move {
+        while let Ok(notification) = rx.recv().await {
+            let msg = serde_json::to_string(&notification).unwrap();
+            let mut sender = ws_sender_clone.lock().await;
+            if sender.send(Message::Text(msg.into())).await.is_err() {
+                break;
+            }
+        }
+    });
+    // Only handle ping/close from client
+    while let Some(Ok(msg)) = ws_receiver.next().await {
+        match msg {
+            Message::Ping(p) => {
+                let mut sender = ws_sender.lock().await;
+                let _ = sender.send(Message::Pong(p)).await;
+            }
+            Message::Close(_) => {
+                break;
+            }
+            _ => {}
+        }
+    }
     send_task.abort();
 }
