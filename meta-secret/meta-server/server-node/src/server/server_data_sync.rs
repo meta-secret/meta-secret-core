@@ -11,7 +11,7 @@ use meta_secret_core::node::common::model::vault::vault::VaultStatus;
 use meta_secret_core::node::db::actions::vault::vault_action::ServerVaultAction;
 use meta_secret_core::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
 use meta_secret_core::node::db::events::generic_log_event::{
-    GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
+    GenericKvLogEvent, ObjIdExtractor, ToGenericEvent, VaultKvLogEvent,
 };
 use meta_secret_core::node::db::events::shared_secret_event::SsLogObject;
 use meta_secret_core::node::db::events::vault::device_log_event::DeviceLogObject;
@@ -98,10 +98,17 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         server_device: DeviceData,
         generic_event: GenericKvLogEvent,
     ) -> Result<()> {
-        match generic_event {
-            GenericKvLogEvent::DeviceLog(device_log_obj) => {
-                self.handle_device_log_request(server_device, device_log_obj)
-                    .await?;
+        match generic_event.clone() {
+            GenericKvLogEvent::Vault(vault_event) => {
+                match vault_event {
+                    VaultKvLogEvent::DeviceLog(device_log_obj) => {
+                        self.handle_device_log_request(server_device, *device_log_obj)
+                            .await?;
+                    }
+                    _ => {
+                        bail!("Invalid vault event type: {:?}", generic_event);
+                    }
+                }
             }
             GenericKvLogEvent::SsDeviceLog(ss_device_log_obj) => {
                 info!(
@@ -164,22 +171,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                     }
                 }
             }
-            GenericKvLogEvent::Local(_) => {
-                bail!("Invalid event type: {:?}", generic_event);
-            }
-            GenericKvLogEvent::VaultLog(_) => {
-                bail!("Invalid event type: {:?}", generic_event);
-            }
-            GenericKvLogEvent::Vault(_) => {
-                bail!("Invalid event type: {:?}", generic_event);
-            }
-            GenericKvLogEvent::VaultStatus(_) => {
-                bail!("Invalid event type: {:?}", generic_event);
-            }
-            GenericKvLogEvent::SsLog(_) => {
-                bail!("Invalid event type: {:?}", generic_event);
-            }
-            GenericKvLogEvent::DbError(_) => {
+            _ => {
                 bail!("Invalid event type: {:?}", generic_event);
             }
         }

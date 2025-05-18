@@ -3,7 +3,7 @@ use crate::node::common::model::vault::vault::VaultStatus;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault_descriptor::VaultStatusDescriptor;
 use crate::node::db::events::generic_log_event::{
-    GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
+    GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent, VaultKvLogEvent,
 };
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::ArtifactId;
@@ -51,7 +51,7 @@ impl TryFrom<GenericKvLogEvent> for VaultStatusObject {
     type Error = anyhow::Error;
 
     fn try_from(event: GenericKvLogEvent) -> Result<Self, Self::Error> {
-        if let GenericKvLogEvent::VaultStatus(vault_status) = event {
+        if let GenericKvLogEvent::Vault(VaultKvLogEvent::VaultStatus(vault_status)) = event {
             Ok(vault_status)
         } else {
             Err(anyhow!("Not a vault status event"))
@@ -67,7 +67,7 @@ impl KeyExtractor for VaultStatusObject {
 
 impl ToGenericEvent for VaultStatusObject {
     fn to_generic(self) -> GenericKvLogEvent {
-        GenericKvLogEvent::VaultStatus(self)
+        GenericKvLogEvent::Vault(VaultKvLogEvent::VaultStatus(self))
     }
 }
 

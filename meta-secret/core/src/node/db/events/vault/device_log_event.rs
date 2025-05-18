@@ -14,7 +14,7 @@ impl TryFrom<GenericKvLogEvent> for DeviceLogObject {
 
     fn try_from(event: GenericKvLogEvent) -> Result<Self, Self::Error> {
         if let GenericKvLogEvent::Vault(VaultKvLogEvent::DeviceLog(device_log)) = event {
-            Ok(device_log)
+            Ok(*device_log)
         } else {
             Err(anyhow!("Not a device log event"))
         }
@@ -23,7 +23,7 @@ impl TryFrom<GenericKvLogEvent> for DeviceLogObject {
 
 impl ToGenericEvent for DeviceLogObject {
     fn to_generic(self) -> GenericKvLogEvent {
-        GenericKvLogEvent::Vault(VaultKvLogEvent::DeviceLog(self))
+        GenericKvLogEvent::Vault(VaultKvLogEvent::DeviceLog(Box::new(self)))
     }
 }
 
