@@ -26,7 +26,7 @@ fn sync_wrapper<F: Future>(future: F) -> F::Output {
     runtime.block_on(future)
 }
 
-#[unsafe(no_mangle)]
+#[no_mangle]
 pub extern "C" fn Java_sharedData_MetaSecretCoreServiceAndroid_00024NativeLib_sign_1up
 (mut env: JNIEnv, _: JClass, user_name: JString) -> jstring {
     let _ = tracing_subscriber::fmt()
@@ -149,13 +149,13 @@ pub extern "C" fn Java_sharedData_MetaSecretCoreServiceAndroid_00024NativeLib_si
     }
 }
 
-#[unsafe(no_mangle)]
+#[no_mangle]
 pub extern "C" fn Java_sharedData_MetaSecretCoreServiceAndroid_00024NativeLib_free_1string
 (_env: JNIEnv, _: JClass, _ptr: jstring) {
     info!("JNI free_string called");
 }
 
-#[unsafe(no_mangle)]
+#[no_mangle]
 pub extern "C" fn Java_sharedData_MetaSecretCoreServiceAndroid_00024NativeLib_get_1info
 (mut env: JNIEnv, _: JClass) -> jstring {
     let _ = tracing_subscriber::fmt()

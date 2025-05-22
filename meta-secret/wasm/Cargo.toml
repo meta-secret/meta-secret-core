@@ -8,6 +8,7 @@ edition = "2024"
 crate-type = ["cdylib", "rlib"]
 
 [features]
+mobile = []
 default = ["console_error_panic_hook"]
 
 [dependencies]

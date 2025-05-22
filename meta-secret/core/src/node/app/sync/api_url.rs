@@ -27,7 +27,7 @@ impl ApiUrl {
         ApiUrl {
             url,
             port,
-            run_mode: ClientRunMode::Dev,
+            _run_mode: ClientRunMode::Dev,
         }
     }
 
