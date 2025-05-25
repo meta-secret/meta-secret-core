@@ -63,3 +63,6 @@ hyper = { version = "1.6.0", default-features = false, features = ["http1", "htt
 # Sql
 diesel = { version = "2.2.8", features = ["sqlite"] }
 diesel_migrations = { version = "2.2.0" }
+
+# SQLite system dependency - force bundled for static compilation
+libsqlite3-sys = { version = "0.30.1", features = ["bundled"] }

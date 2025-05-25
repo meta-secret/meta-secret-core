@@ -25,9 +25,7 @@ tracing-attributes.workspace = true
 tokio = { version = "1.44.1", features = ["rt", "sync", "time"] }
 futures = "0.3.30"
 jni = "0.21.1"
+libsqlite3-sys.workspace = true
 
 [dev-dependencies]
 tokio = { version = "1.44.1", features = ["full"] }
-
-[target.'cfg(target_os = "android")'.lib]
-crate-type = ["cdylib"]

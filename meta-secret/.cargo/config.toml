@@ -1,0 +1,8 @@
+[env]
+SQLX_OFFLINE = "true"
+LIBSQLITE3_SYS_USE_PKG_CONFIG = "0"
+SQLITE3_STATIC = "1"
+SQLX_SQLITE_BUNDLED = "1"
+
+[build]
+rustflags = ["-C", "target-feature=+crt-static"] 
