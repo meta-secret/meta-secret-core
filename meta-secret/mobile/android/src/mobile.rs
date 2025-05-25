@@ -1,27 +1,12 @@
 use std::ffi::CString;
 use std::future::Future;
 use std::os::raw::c_char;
-use jni::JNIEnv;
-use jni::objects::{JClass, JString};
-use jni::sys::jstring;
-use serde_json::json;
 use std::sync::{Arc, Mutex};
 use once_cell::sync::Lazy;
-use tracing::info;
-use meta_secret_core::node::app::sync::api_url::ApiUrl;
-use meta_secret_core::node::app::sync::sync_gateway::SyncGateway;
-use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
-use meta_secret_core::node::common::model::device::common::DeviceName;
-use meta_secret_core::node::common::model::vault::vault::{VaultName, VaultStatus};
-use meta_secret_core::node::db::actions::sign_up::claim::SignUpClaim;
-use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
-use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
-use meta_secret_core::node::db::objects::persistent_vault::PersistentVault;
-use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
-use crate::android_app_manager::AndroidApplicationManager;
+use mobile_common::mobile_manager::MobileApplicationManager;
 
 // MARK: Helpers
-static APP_MANAGER: Lazy<Mutex<Option<Arc<AndroidApplicationManager>>>> =
+static APP_MANAGER: Lazy<Mutex<Option<Arc<MobileApplicationManager>>>> =
     Lazy::new(|| Mutex::new(None));
 
 fn sync_wrapper<F: Future>(future: F) -> F::Output {

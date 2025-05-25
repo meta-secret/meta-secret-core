@@ -1,2 +1,2 @@
 pub mod mobile;
-pub mod ios_app_manager;
+pub use mobile_common::mobile_manager::MobileApplicationManager;

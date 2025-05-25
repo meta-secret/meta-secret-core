@@ -1,5 +1,7 @@
 use std::sync::Arc;
 use tracing::info;
+use meta_db_sqlite::db::sqlite_migration::EmbeddedMigrationsTool;
+use meta_db_sqlite::db::sqlite_store::SqlIteRepo;
 use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
@@ -10,20 +12,17 @@ use meta_secret_core::node::common::model::WasmApplicationState;
 use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
 use meta_secret_wasm::app_manager::ApplicationManager;
 use meta_secret_wasm::configure;
-use meta_db_sqlite::db::sqlite_store::SqlIteRepo;
-use meta_db_sqlite::db::sqlite_migration::EmbeddedMigrationsTool;
 
-pub struct IosApplicationManager {
+pub struct MobileApplicationManager {
     app_manager: ApplicationManager<SqlIteRepo, HttpSyncProtocol>,
 }
 
-impl IosApplicationManager {
-    pub async fn init_ios(master_key: TransportSk) -> anyhow::Result<IosApplicationManager> {
+impl MobileApplicationManager {
+    pub async fn init(master_key: TransportSk, db_path: &str) -> anyhow::Result<MobileApplicationManager> {
         configure();
 
-        info!("Init iOS state manager");
+        info!("Init mobile state manager");
 
-        let db_path = "meta-secret.db";
         let conn_url = format!("file:{}", db_path);
 
         let migration_tool = EmbeddedMigrationsTool {
@@ -33,12 +32,23 @@ impl IosApplicationManager {
 
         let repo = SqlIteRepo { conn_url };
         let client_repo = Arc::new(repo);
-        
+
         let app_manager =
             ApplicationManager::<SqlIteRepo, HttpSyncProtocol>::init(client_repo, master_key)
                 .await?;
 
-        Ok(IosApplicationManager { app_manager })
+        Ok(MobileApplicationManager { app_manager })
+    }
+    
+    // Удобные методы инициализации для конкретных платформ с предопределенными путями к БД
+    pub async fn init_ios(master_key: TransportSk) -> anyhow::Result<MobileApplicationManager> {
+        let db_path = "meta-secret.db";
+        Self::init(master_key, db_path).await
+    }
+    
+    pub async fn init_android(master_key: TransportSk) -> anyhow::Result<MobileApplicationManager> {
+        let db_path = "meta-secret.db";
+        Self::init(master_key, db_path).await
     }
 
     pub async fn get_state(&self) -> WasmApplicationState {
@@ -91,4 +101,4 @@ impl IosApplicationManager {
     pub async fn find_claim_by_pass_id(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
         self.app_manager.find_claim_by_pass_id(pass_id).await
     }
-}
+} 

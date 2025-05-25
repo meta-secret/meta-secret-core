@@ -2,12 +2,12 @@ use std::ffi::{CString};
 use std::os::raw::c_char;
 use meta_secret_core::crypto::key_pair::MasterKeyManager;
 use once_cell::sync::Lazy;
-use crate::ios_app_manager::IosApplicationManager;
 use std::sync::{Arc, Mutex};
 use std::future::Future;
+use mobile_common::mobile_manager::MobileApplicationManager;
 
 // MARK: Helpers
-static APP_MANAGER: Lazy<Mutex<Option<Arc<IosApplicationManager>>>> =
+static APP_MANAGER: Lazy<Mutex<Option<Arc<MobileApplicationManager>>>> =
     Lazy::new(|| Mutex::new(None));
 
 fn sync_wrapper<F: Future>(future: F) -> F::Output {
@@ -54,7 +54,7 @@ pub extern "C" fn init(master_key_ptr: *const c_char) -> *mut c_char {
 
 async fn async_init(master_key: String) -> *mut c_char {
     let transport_sk = MasterKeyManager::from_pure_sk(master_key);
-    match IosApplicationManager::init_ios(transport_sk).await {
+    match MobileApplicationManager::init_ios(transport_sk).await {
         Ok(app_manager) => {
             let mut global = APP_MANAGER.lock().unwrap();
             *global = Some(Arc::new(app_manager));

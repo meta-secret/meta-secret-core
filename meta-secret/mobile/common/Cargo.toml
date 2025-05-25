@@ -1,0 +1,13 @@
+[package]
+name = "mobile-common"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+meta-secret-core = { path = "../../core", features = ["mobile"] }
+meta-secret-wasm = { path = "../../wasm", features = ["mobile"] }
+meta-db-sqlite = { path = "../../db/sqlite" }
+anyhow.workspace = true
+tracing.workspace = true
+tokio = { version = "1.44.1", features = ["rt", "sync", "time"] }
+async-trait = "0.1.88" 
