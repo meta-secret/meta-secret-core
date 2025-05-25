@@ -1,5 +1,7 @@
 use std::sync::Arc;
 use tracing::info;
+use meta_db_sqlite::db::sqlite_migration::EmbeddedMigrationsTool;
+use meta_db_sqlite::db::sqlite_store::SqlIteRepo;
 use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
@@ -10,15 +12,13 @@ use meta_secret_core::node::common::model::WasmApplicationState;
 use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
 use meta_secret_wasm::app_manager::ApplicationManager;
 use meta_secret_wasm::configure;
-use meta_db_sqlite::db::sqlite_store::SqlIteRepo;
-use meta_db_sqlite::db::sqlite_migration::EmbeddedMigrationsTool;
 
-pub struct IosApplicationManager {
+pub struct AndroidApplicationManager {
     app_manager: ApplicationManager<SqlIteRepo, HttpSyncProtocol>,
 }
 
-impl IosApplicationManager {
-    pub async fn init_ios(master_key: TransportSk) -> anyhow::Result<IosApplicationManager> {
+impl AndroidApplicationManager {
+    pub async fn init_ios(master_key: TransportSk) -> anyhow::Result<AndroidApplicationManager> {
         configure();
 
         info!("Init iOS state manager");
@@ -33,12 +33,12 @@ impl IosApplicationManager {
 
         let repo = SqlIteRepo { conn_url };
         let client_repo = Arc::new(repo);
-        
+
         let app_manager =
             ApplicationManager::<SqlIteRepo, HttpSyncProtocol>::init(client_repo, master_key)
                 .await?;
 
-        Ok(IosApplicationManager { app_manager })
+        Ok(AndroidApplicationManager { app_manager })
     }
 
     pub async fn get_state(&self) -> WasmApplicationState {
