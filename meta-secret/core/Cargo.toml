@@ -36,7 +36,7 @@ tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["fmt", "json", "env-filter"] }
 tracing-attributes.workspace = true
 
-reqwest = { workspace = true }
+reqwest.workspace = true
 
 ed25519-dalek.workspace = true
 rand.workspace = true
@@ -60,10 +60,6 @@ log = "0.4.26"
 
 uuid.workspace = true
 
-# Удалено в пользу curve25519-dalek и других примитивов через age
-# openssl-sys = { version = "0.9.107", features = ["vendored"] }
-
 [dev-dependencies]
 tokio = { version = "1.44.0", features = ["full"] }
 tempfile = "3.18.0"
-meta-server-node = { path = "../meta-server/server-node" }
