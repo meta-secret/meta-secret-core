@@ -63,4 +63,3 @@ uuid.workspace = true
 [dev-dependencies]
 tokio = { version = "1.44.0", features = ["full"] }
 tempfile = "3.18.0"
-meta-server-node = { path = "../meta-server/server-node" }

@@ -12,8 +12,8 @@ members = [
     "cli",
     "meta-cli",
     "tests",
-    "mobile/core-swift-lib",
-    "mobile/ios"
+    "mobile/ios",
+    "mobile/android"
 ]
 
 [workspace.dependencies]
@@ -54,11 +54,15 @@ uuid = { version = "1.3.0", features = ["v4", "js"] }
 
 # Networking
 axum = "0.8.1"
-reqwest = { version = "0.12.15", features = ["json"] }
+reqwest = { version = "0.12.15", features = ["json", "rustls-tls"], default-features = false }
 tokio = { version = "1.44.1", features = ["full"] }
 tower-http = { version = "0.6.2", features = ["cors", "trace"] }
 http = "1.3.1"
+hyper = { version = "1.6.0", default-features = false, features = ["http1", "http2"] }
 
 # Sql
 diesel = { version = "2.2.8", features = ["sqlite"] }
 diesel_migrations = { version = "2.2.0" }
+
+# SQLite system dependency - force bundled for static compilation
+libsqlite3-sys = { version = "0.30.1", features = ["bundled"] }

@@ -124,6 +124,24 @@ mod tests {
     use meta_secret_core::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 
     #[tokio::test]
+    async fn test_sqlite_repo_with_migrations_idempotent() -> anyhow::Result<()> {
+        // Create a temporary directory to store the database file
+        let temp_dir = tempdir()?;
+        let db_path = temp_dir.path().join("test_db.db");
+        let conn_url = format!("file:{}", db_path.to_string_lossy());
+
+        // Apply migrations directly before creating the repo
+        let migration_tool = EmbeddedMigrationsTool {
+            db_url: conn_url.clone(),
+        };
+        migration_tool.migrate();
+        migration_tool.migrate();
+        migration_tool.migrate();
+        migration_tool.migrate();
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_sqlite_repo_with_migrations() -> anyhow::Result<()> {
         // Create a temporary directory to store the database file
         let temp_dir = tempdir()?;
