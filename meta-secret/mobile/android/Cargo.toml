@@ -1,7 +1,7 @@
 [package]
 name = "mobile-android"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [lib]
 name = "mobile"
@@ -13,19 +13,11 @@ mobile_only = []
 
 [dependencies]
 meta-secret-core = { path = "../../core", features = ["mobile"] }
-meta-secret-wasm = { path = "../../wasm", features = ["mobile"] }
-meta-db-sqlite = { path = "../../db/sqlite" }
 mobile-common = { path = "../common" }
-anyhow.workspace = true
 once_cell = "1.21.1"
 serde_json.workspace = true
-tracing.workspace = true
-tracing-subscriber = { workspace = true, features = ["fmt"] }
-tracing-attributes.workspace = true
 tokio = { version = "1.44.1", features = ["rt", "sync", "time"] }
-futures = "0.3.30"
 jni = "0.21.1"
-libsqlite3-sys.workspace = true
 
 [dev-dependencies]
 tokio = { version = "1.44.1", features = ["full"] }

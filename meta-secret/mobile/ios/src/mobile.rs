@@ -4,19 +4,22 @@ use meta_secret_core::crypto::key_pair::MasterKeyManager;
 use once_cell::sync::Lazy;
 use std::sync::{Arc, Mutex};
 use std::future::Future;
+use serde_json::json;
 use mobile_common::mobile_manager::MobileApplicationManager;
 
 // MARK: Helpers
 static APP_MANAGER: Lazy<Mutex<Option<Arc<MobileApplicationManager>>>> =
     Lazy::new(|| Mutex::new(None));
 
-fn sync_wrapper<F: Future>(future: F) -> F::Output {
-    let rt = tokio::runtime::Builder::new_current_thread()
+static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| { 
+    tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .unwrap();
+        .unwrap()
+    });
 
-    rt.block_on(future)
+fn sync_wrapper<F: Future>(future: F) -> F::Output {
+    RUNTIME.block_on(future)
 }
 
 fn json_to_c_string(json: &str) -> *mut c_char {
@@ -43,7 +46,11 @@ pub extern "C" fn generate_master_key() -> *mut c_char {
 
 async fn async_generate_master_key() -> *mut c_char {
     let generated_master_key = MasterKeyManager::generate_sk();
-    json_to_c_string(&format!(r#"{{"success": true,"message":"{generated_master_key}"}}"#))
+    let response = json!({
+        "success": true,
+        "message": generated_master_key
+    });
+    json_to_c_string(&response.to_string())
 }
 
 #[unsafe(no_mangle)]
@@ -77,7 +84,7 @@ async fn async_get_state() -> *mut c_char {
     
     match &*app_manager_lock {
         Some(app_manager) => {
-            json_to_c_string(r#"{"success": true, "message": App manager is initialized}"#)
+            json_to_c_string(r#"{"success": true, "message": "App manager is initialized"}"#)
         },
         None => {
             json_to_c_string(r#"{"success": false, "message": "App manager not initialized"}"#)

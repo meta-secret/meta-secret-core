@@ -12,25 +12,34 @@ use serde_json::json;
 static APP_MANAGER: Lazy<Mutex<Option<Arc<MobileApplicationManager>>>> =
     Lazy::new(|| Mutex::new(None));
 
-fn sync_wrapper<F: Future>(future: F) -> F::Output {
-    let runtime = tokio::runtime::Builder::new_current_thread()
+static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
+    tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .unwrap();
-    
-    runtime.block_on(future)
+        .expect("Failed to create Tokio runtime")
+});
+
+fn sync_wrapper<F: Future>(future: F) -> F::Output { 
+    RUNTIME.block_on(future)
 }
 
 fn rust_to_java_string(env: &mut JNIEnv, rust_string: String) -> jstring {
-    env.new_string(rust_string)
-        .expect("Can't create Java String")
-        .into_raw()
+    match env.new_string(rust_string) {
+        Ok(jstr) => jstr.into_raw(),
+        Err(_) => {
+        // Return an error JSON string as fallback
+            let error_msg = r#"{"success":false,"message":"Failed to create Java string"}"#;
+            env.new_string(error_msg)
+                .unwrap_or_else(|_| env.new_string("").unwrap())
+                .into_raw()
+        }
+    }
 }
 
-fn java_to_rust_string(env: &mut JNIEnv, java_string: JString) -> String {
+fn java_to_rust_string(env: &mut JNIEnv, java_string: JString) -> Result<String, String> {
     env.get_string(&java_string)
-        .expect("Can't get String from Java")
-        .into()
+        .map(|s| s.into())
+        .map_err(|e| format!("Failed to convert Java string: {}", e))
 }
 
 // MARK: Generating / init
@@ -58,7 +67,15 @@ pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_init(
     _: JClass, 
     master_key_jstring: JString
 ) -> jstring {
-    let master_key = java_to_rust_string(&mut env, master_key_jstring);
+    let master_key = match java_to_rust_string(&mut env, master_key_jstring) {
+        Ok(key) => key,
+        Err(e) => {
+            return rust_to_java_string(&mut env, json!({
+                "success": false,
+                "message": e
+            }).to_string());
+        }
+    };
     
     let result = sync_wrapper(async move {
         let transport_sk = MasterKeyManager::from_pure_sk(master_key);

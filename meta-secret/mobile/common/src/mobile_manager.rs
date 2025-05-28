@@ -42,12 +42,14 @@ impl MobileApplicationManager {
     
     // Удобные методы инициализации для конкретных платформ с предопределенными путями к БД
     pub async fn init_ios(master_key: TransportSk) -> anyhow::Result<MobileApplicationManager> {
-        let db_path = "meta-secret.db";
+        // Use iOS app's Documents directory
+        let db_path = "Documents/meta-secret.db"; //TODO: Need to clarify
         Self::init(master_key, db_path).await
     }
     
     pub async fn init_android(master_key: TransportSk) -> anyhow::Result<MobileApplicationManager> {
-        let db_path = "meta-secret.db";
+        // Use Android app's internal storage
+        let db_path = "/data/data/com.metasecret.core/databases/meta-secret.db"; //TODO: Need to clarify
         Self::init(master_key, db_path).await
     }
 

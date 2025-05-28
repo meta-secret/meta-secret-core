@@ -8,6 +8,12 @@ if ! command -v cbindgen &> /dev/null; then
     cargo install cbindgen
 fi
 
+# Check if rustup is installed
+if ! command -v rustup &> /dev/null; then
+    echo "❌ rustup not found. Please install Rust toolchain first."
+    exit 1
+fi
+
 echo "Adding Android targets..."
 rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
 
@@ -34,10 +40,20 @@ if [ -z "$ANDROID_NDK_HOME" ]; then
     fi
 fi
 
-CLANG_AARCH64="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android29-clang"
-CLANG_ARMV7="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/armv7a-linux-androideabi29-clang" 
-CLANG_I686="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/i686-linux-android29-clang"
-CLANG_X86_64="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/x86_64-linux-android29-clang"
+# Detect host OS for NDK prebuilt path
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    NDK_PREBUILT="darwin-x86_64"
+elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    NDK_PREBUILT="linux-x86_64"
+else
+    echo "❌ Unsupported OS: $OSTYPE"
+    exit 1
+fi
+
+CLANG_AARCH64="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$NDK_PREBUILT/bin/aarch64-linux-android29-clang"
+CLANG_ARMV7="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$NDK_PREBUILT/bin/armv7a-linux-androideabi29-clang"
+CLANG_I686="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$NDK_PREBUILT/bin/i686-linux-android29-clang"
+CLANG_X86_64="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$NDK_PREBUILT/bin/x86_64-linux-android29-clang"
 
 if [ ! -f "$CLANG_AARCH64" ]; then
     echo "Searching for aarch64 clang..."
@@ -79,8 +95,8 @@ if [ ! -f "$CLANG_X86_64" ]; then
     echo "Found: $CLANG_X86_64"
 fi
 
-export PATH=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin:$PATH
-export AR_aarch64_linux_android="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar"
+export PATH=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$NDK_PREBUILT/bin:$PATH
+export AR_aarch64_linux_android="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$NDK_PREBUILT/bin/llvm-ar"
 export CC_aarch64_linux_android="$CLANG_AARCH64"
 export CXX_aarch64_linux_android="${CLANG_AARCH64}++"
 
@@ -120,6 +136,10 @@ cargo build --package mobile-android --target aarch64-linux-android --release --
 mkdir -p "$JNILIBS_DIR/arm64-v8a"
 echo "Creating shared library for arm64-v8a..."
 $CLANG_AARCH64 -shared -o "$JNILIBS_DIR/arm64-v8a/libmetasecret_mobile.so" -Wl,--whole-archive "${ROOT_DIR}/target/aarch64-linux-android/release/libmobile.a" -Wl,--no-whole-archive -lm
+if [ $? -ne 0 ]; then
+    echo "❌ Failed to create shared library for arm64-v8a"
+    exit 1
+fi
 echo "Done building for aarch64-linux-android"
 
 echo "Building for armv7-linux-androideabi (armeabi-v7a)..."
