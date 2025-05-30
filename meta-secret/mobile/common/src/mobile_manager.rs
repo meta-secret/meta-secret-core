@@ -12,13 +12,101 @@ use meta_secret_core::node::common::model::WasmApplicationState;
 use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
 use meta_secret_wasm::app_manager::ApplicationManager;
 use meta_secret_wasm::configure;
+use once_cell::sync::Lazy;
+use std::sync::Mutex;
+use std::future::Future;
+
+static GLOBAL_APP_MANAGER: Lazy<Mutex<Option<Arc<MobileApplicationManager>>>> =
+    Lazy::new(|| Mutex::new(None));
+
+static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to create Tokio runtime")
+});
 
 pub struct MobileApplicationManager {
     app_manager: ApplicationManager<SqlIteRepo, HttpSyncProtocol>,
 }
 
 impl MobileApplicationManager {
-    pub async fn init(master_key: TransportSk, db_path: &str) -> anyhow::Result<MobileApplicationManager> {
+    pub fn sync_wrapper<F: Future>(future: F) -> F::Output {
+        RUNTIME.block_on(future)
+    }
+
+    pub fn set_global_instance(manager: Arc<MobileApplicationManager>) {
+        let mut global = GLOBAL_APP_MANAGER.lock().unwrap();
+        *global = Some(manager);
+    }
+
+    pub fn get_global_instance() -> Option<Arc<MobileApplicationManager>> {
+        let global = GLOBAL_APP_MANAGER.lock().unwrap();
+        global.clone()
+    }
+
+    pub fn is_global_initialized() -> bool {
+        let global = GLOBAL_APP_MANAGER.lock().unwrap();
+        global.is_some()
+    }
+    
+    pub async fn init_ios(master_key: TransportSk) -> anyhow::Result<MobileApplicationManager> {
+        let db_path = "Library/Application Support/meta-secret.db";
+        Self::init(master_key, db_path).await
+    }
+    
+    pub async fn init_android(master_key: TransportSk) -> anyhow::Result<MobileApplicationManager> {
+        let db_path = "/data/data/com.metasecret.core/databases/meta-secret.db";
+        Self::init(master_key, db_path).await
+    }
+
+    pub async fn get_state(&self) -> WasmApplicationState {
+        let app_state = self.app_manager.get_state().await;
+        WasmApplicationState::from(app_state)
+    }
+
+    pub async fn sign_up(&self) -> WasmApplicationState {
+        let app_state = self.app_manager.sign_up().await.unwrap();
+        WasmApplicationState::from(app_state)
+    }
+
+    pub async fn cluster_distribution(&self, plain_pass_info: &PlainPassInfo) {
+        self.app_manager
+            .cluster_distribution(plain_pass_info.clone())
+            .await;
+    }
+
+    pub async fn recover(&self, meta_pass_id: &MetaPasswordId) {
+        self.app_manager.recover_js(meta_pass_id.clone()).await;
+    }
+
+    pub async fn accept_recover(&self, claim_id: ClaimId) {
+        match self.app_manager.accept_recover(claim_id).await {
+            Ok(res) => {res}
+            Err(e) => {panic!("{}", e)}
+        };
+    }
+
+    pub async fn show_recovered(&self, pass_id: &MetaPasswordId) -> String {
+        info!("Show recovered pass id: {:?}", pass_id);
+        self.app_manager
+            .show_recovered(pass_id.clone())
+            .await
+            .unwrap()
+            .text
+    }
+
+    pub async fn clean_up_database(&self) {
+        self.app_manager.clean_up_database().await
+    }
+
+    pub async fn find_claim_by_pass_id(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
+        self.app_manager.find_claim_by_pass_id(pass_id).await
+    }
+} 
+
+impl MobileApplicationManager {
+    async fn init(master_key: TransportSk, db_path: &str) -> anyhow::Result<MobileApplicationManager> {
         configure();
 
         info!("Init mobile state manager");
@@ -39,68 +127,4 @@ impl MobileApplicationManager {
 
         Ok(MobileApplicationManager { app_manager })
     }
-    
-    // Удобные методы инициализации для конкретных платформ с предопределенными путями к БД
-    pub async fn init_ios(master_key: TransportSk) -> anyhow::Result<MobileApplicationManager> {
-        // Use iOS app's Documents directory
-        let db_path = "Documents/meta-secret.db"; //TODO: Need to clarify
-        Self::init(master_key, db_path).await
-    }
-    
-    pub async fn init_android(master_key: TransportSk) -> anyhow::Result<MobileApplicationManager> {
-        // Use Android app's internal storage
-        let db_path = "/data/data/com.metasecret.core/databases/meta-secret.db"; //TODO: Need to clarify
-        Self::init(master_key, db_path).await
-    }
-
-    pub async fn get_state(&self) -> WasmApplicationState {
-        let app_state = self.app_manager.get_state().await;
-        WasmApplicationState::from(app_state)
-    }
-
-    pub async fn generate_user_creds(&self, vault_name: String) {
-        info!("Generate user credentials for vault: {}", vault_name);
-        self.app_manager
-            .generate_user_creds(VaultName::from(vault_name))
-            .await;
-    }
-
-    pub async fn sign_up(&self) -> WasmApplicationState {
-        let app_state = self.app_manager.sign_up().await.unwrap();
-        WasmApplicationState::from(app_state)
-    }
-
-    pub async fn update_membership(&self, candidate: UserData, upd: JoinActionUpdate) {
-        self.app_manager
-            .update_membership(candidate, upd)
-            .await
-            .unwrap()
-    }
-
-    pub async fn cluster_distribution(&self, plain_pass_info: &PlainPassInfo) {
-        self.app_manager
-            .cluster_distribution(plain_pass_info.clone())
-            .await;
-    }
-
-    pub async fn recover_js(&self, meta_pass_id: &MetaPasswordId) {
-        self.app_manager.recover_js(meta_pass_id.clone()).await;
-    }
-
-    pub async fn show_recovered(&self, pass_id: &MetaPasswordId) -> String {
-        info!("Show recovered pass id: {:?}", pass_id);
-        self.app_manager
-            .show_recovered(pass_id.clone())
-            .await
-            .unwrap()
-            .text
-    }
-
-    pub async fn clean_up_database(&self) {
-        self.app_manager.clean_up_database().await
-    }
-
-    pub async fn find_claim_by_pass_id(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
-        self.app_manager.find_claim_by_pass_id(pass_id).await
-    }
-} 
+}
