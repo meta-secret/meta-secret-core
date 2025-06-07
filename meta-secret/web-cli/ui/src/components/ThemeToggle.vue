@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
-import { useThemeStore } from '../stores/theme';
+import { useThemeStore } from '@/stores/theme';
 import { SunIcon, MoonIcon, ComputerDesktopIcon } from '@heroicons/vue/24/outline';
 
 const themeStore = useThemeStore();
@@ -85,41 +85,3 @@ onBeforeUnmount(() => {
     </div>
   </div>
 </template>
-
-<style module>
-.container {
-  @apply relative;
-}
-
-.themeButton {
-  @apply flex items-center text-gray-900 dark:text-gray-100;
-  @apply bg-gray-200 dark:bg-transparent;
-  @apply border border-gray-300 dark:border-transparent;
-  @apply hover:bg-gray-300 dark:hover:bg-gray-700;
-  @apply px-3 py-2 rounded-md text-sm font-medium;
-}
-
-.icon {
-  @apply h-5 w-5;
-}
-
-.dropdown {
-  @apply absolute right-0 z-10 mt-2 w-40 origin-top-right;
-  @apply rounded-md bg-white dark:bg-gray-800 shadow-lg;
-  @apply ring-1 ring-black ring-opacity-5 focus:outline-none;
-}
-
-.dropdownContent {
-  @apply py-1;
-}
-
-.menuItem {
-  @apply flex items-center px-4 py-2 text-sm;
-  @apply text-gray-700 dark:text-gray-200;
-  @apply hover:bg-gray-100 dark:hover:bg-gray-700;
-}
-
-.menuIcon {
-  @apply h-5 w-5 mr-2;
-}
-</style> 

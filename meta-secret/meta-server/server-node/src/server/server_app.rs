@@ -10,7 +10,7 @@ use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::model::device::common::DeviceName;
 use meta_secret_core::node::common::model::device::device_creds::DeviceCreds;
 use meta_secret_core::node::db::descriptors::shared_secret_descriptor::SsLogDescriptor;
-use meta_secret_core::node::db::events::generic_log_event::ToGenericEvent;
+use meta_secret_core::node::db::events::generic_log_event::{GenericKvLogEvent, ToGenericEvent};
 use meta_secret_core::node::db::events::object_id::Next;
 use meta_secret_core::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
@@ -201,6 +201,15 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                     self.data_sync
                         .handle_write(server_creds.device, event)
                         .await?;
+
+                    match event {
+                        GenericKvLogEvent::Local(_) => {
+                            bail!("Wrong event type: {:?}", event);
+                        }
+                        GenericKvLogEvent::Vault(_) => {}
+                        GenericKvLogEvent::Ss(_) => {}
+                        GenericKvLogEvent::DbError(_) => {}
+                    }
                     Ok(DataSyncResponse::Empty)
                 }
             },

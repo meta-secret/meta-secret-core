@@ -1,32 +1,42 @@
+mod handler;
+mod notification_service;
+
 use axum::extract::State;
 use axum::{Json, Router, routing::post};
 use http::{StatusCode, Uri};
 use serde_derive::Serialize;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+use crate::handler::ws_echo::ws_echo_handler;
+use crate::notification_service::NotificationServiceInterface;
 use anyhow::Result;
+use axum::body::Bytes;
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::response::Html;
+use axum::response::IntoResponse;
 use axum::routing::get;
+use flume::{Receiver, RecvError, Sender};
+use futures_util::stream::{SplitSink, SplitStream};
+use futures_util::{SinkExt, StreamExt};
 use meta_db_sqlite::db::sqlite_store::SqlIteRepo;
 use meta_secret_core::crypto::key_utils;
 use meta_secret_core::node::api::{DataSyncResponse, SyncRequest};
+use meta_secret_core::node::common::data_transfer::MpscServiceChannel;
+use meta_secret_core::node::common::model::user::common::UserId;
 use meta_server_node::server::server_app::{MetaServerDataTransfer, ServerApp};
+use notification_service::{NotificationRequest, NotificationService};
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::{Level, info};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
-use axum::extract::ws::{WebSocketUpgrade, WebSocket, Message};
-use axum::response::IntoResponse;
-use futures_util::{StreamExt, SinkExt};
-use tokio::sync::broadcast;
-use serde_json;
 
 #[derive(Clone)]
 pub struct MetaServerAppState {
     data_transfer: Arc<MetaServerDataTransfer>,
-    notifier: broadcast::Sender<DataSyncResponse>,
+    notification_service: Arc<NotificationServiceInterface>,
 }
 
 #[tokio::main]
@@ -84,8 +94,11 @@ async fn main() -> Result<()> {
         });
     });
 
-    let (notifier, _) = broadcast::channel::<DataSyncResponse>(100);
-    let app_state = Arc::new(MetaServerAppState { data_transfer, notifier });
+    let notification_service = Arc::new(NotificationService::run().await);
+    let app_state = Arc::new(MetaServerAppState {
+        data_transfer,
+        notification_service,
+    });
 
     info!("Creating router...");
     let app = Router::new()
@@ -122,6 +135,7 @@ async fn not_found_handler(uri: Uri) -> (StatusCode, Json<ErrorResponse>) {
     (StatusCode::NOT_FOUND, response)
 }
 
+// meta_request - only responsible for processing requests and notifying the service
 pub async fn meta_request(
     State(state): State<Arc<MetaServerAppState>>,
     Json(msg_request): Json<SyncRequest>,
@@ -130,74 +144,33 @@ pub async fn meta_request(
 
     let response = state.data_transfer.send_request(msg_request).await.unwrap();
 
-    // Notify all websocket subscribers about the state change
-    let _ = state.notifier.send(response.clone());
+    // Notify subscribers using the notification service
+    let event = NotificationRequest::Data(response.clone());
+    state.notification_service.update(event).await;
 
     Json(response)
 }
 
-// WebSocket echo handler
-async fn ws_echo_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
-    ws.on_upgrade(handle_echo_socket)
-}
-
-async fn handle_echo_socket(socket: WebSocket) {
-    let (ws_sender, mut ws_receiver) = socket.split();
-    let ws_sender = Arc::new(Mutex::new(ws_sender));
-    while let Some(Ok(msg)) = ws_receiver.next().await {
-        match msg {
-            Message::Text(text) => {
-                let mut sender = ws_sender.lock().await;
-                let _ = sender.send(Message::Text(text)).await;
-            }
-            Message::Ping(p) => {
-                let mut sender = ws_sender.lock().await;
-                let _ = sender.send(Message::Pong(p)).await;
-            }
-            Message::Close(_) => {
-                break;
-            }
-            _ => {}
-        }
-    }
-}
-
-// WebSocket subscribe handler
+// WebSocket subscribe handler - only responsible for subscription
 async fn ws_subscribe_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<MetaServerAppState>>,
+    Json(user_id): Json<UserId>,
 ) -> impl IntoResponse {
-    let notifier = state.notifier.clone();
-    ws.on_upgrade(move |socket| handle_subscribe_socket(socket, notifier))
+    let ntf_service = state.notification_service.clone();
+    ws.on_upgrade(move |socket| handle_subscription(socket, ntf_service, user_id))
 }
 
-async fn handle_subscribe_socket(socket: WebSocket, notifier: broadcast::Sender<DataSyncResponse>) {
-    let (ws_sender, mut ws_receiver) = socket.split();
-    let ws_sender = Arc::new(Mutex::new(ws_sender));
-    let ws_sender_clone = ws_sender.clone();
+async fn handle_subscription(
+    socket: WebSocket,
+    ntf_service: Arc<NotificationServiceInterface>,
+    user_id: UserId,
+) {
+    let (ws_sender, _) = socket.split();
 
-    let mut rx = notifier.subscribe();
-    let send_task = tokio::spawn(async move {
-        while let Ok(notification) = rx.recv().await {
-            let msg = serde_json::to_string(&notification).unwrap();
-            let mut sender = ws_sender_clone.lock().await;
-            if sender.send(Message::Text(msg.into())).await.is_err() {
-                break;
-            }
-        }
-    });
-    // Only handle ping/close from client
-    while let Some(Ok(msg)) = ws_receiver.next().await {
-        match msg {
-            Message::Ping(p) => {
-                let mut sender = ws_sender.lock().await;
-                let _ = sender.send(Message::Pong(p)).await;
-            }
-            Message::Close(_) => {
-                break;
-            }
-            _ => {}
-        }
-    }
-    send_task.abort();
+    let event = NotificationRequest::Subscription {
+        user_id: user_id.clone(),
+        sink: Arc::new(Mutex::new(ws_sender)),
+    };
+    ntf_service.update(event).await;
 }

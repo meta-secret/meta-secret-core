@@ -1,3 +1,4 @@
+use crate::node::common::model::user::common::UserId;
 use super::shared_secret_event::SsLogObject;
 use crate::node::db::events::error::ErrorMessage;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
@@ -40,6 +41,27 @@ pub enum VaultKvLogEvent {
     VaultLog(VaultLogObject),
     Vault(VaultObject),
     VaultStatus(VaultStatusObject),
+}
+
+impl VaultKvLogEvent {
+    pub fn user_id(&self) -> UserId {
+        match self {
+            VaultKvLogEvent::DeviceLog(obj) => obj.0.value.,
+            VaultKvLogEvent::VaultLog(obj) => obj.user_id(),
+            VaultKvLogEvent::Vault(obj) => obj.user_id(),
+            VaultKvLogEvent::VaultStatus(obj) => obj.user_id(),
+        }
+    }
+}
+
+impl SsKvLogEvent {
+    pub fn user_id(&self) -> UserId {
+        match self {
+            SsKvLogEvent::SsDeviceLog(obj) => obj.user_id(),
+            SsKvLogEvent::SsLog(obj) => obj.user_id(),
+            SsKvLogEvent::SsWorkflow(obj) => obj.user_id(),
+        }
+    }
 }
 
 impl GenericKvLogEvent {

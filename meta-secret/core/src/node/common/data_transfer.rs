@@ -7,13 +7,14 @@ pub struct MpscDataTransfer<Request, Response> {
     pub client_channel: MpscClientChannel<Response>,
 }
 
+#[derive(Clone)]
 pub struct MpscServiceChannel<Request> {
-    sender: Sender<Request>,
-    receiver: Receiver<Request>,
+    pub sender: Sender<Request>,
+    pub receiver: Receiver<Request>,
 }
 
 impl<Request> MpscServiceChannel<Request> {
-    fn new() -> MpscServiceChannel<Request> {
+    pub fn new() -> MpscServiceChannel<Request> {
         let (server_sender, server_receiver) = flume::bounded(10);
         MpscServiceChannel {
             sender: server_sender,
