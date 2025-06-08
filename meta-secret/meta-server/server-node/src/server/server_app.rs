@@ -197,9 +197,9 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
             },
             SyncRequest::Write(write_request) => match *write_request {
                 WriteSyncRequest::Event(event) => {
-                    info!("Received new event: {:?}", event);
+                    info!("Received new event: {:?}", &event);
                     self.data_sync
-                        .handle_write(server_creds.device, event)
+                        .handle_write(server_creds.device, event.clone())
                         .await?;
 
                     match event {

@@ -520,19 +520,19 @@ mod tests {
         let desc = VaultLogDescriptor::from(user.vault_name());
         let initial_log = VaultLogObject(KvLogEvent {
             key: KvKey::from(desc.clone()),
-            value: VaultActionEvents::default(),
+            value: VaultActionEvents::from(user.vault_name()),
         });
         p_obj.repo.save(initial_log).await?;
 
         // Test get_vault_log_artifact retrieves the log we just created
         let log_artifact = p_vault.get_vault_log_artifact(user.vault_name()).await?;
-        assert_eq!(log_artifact.0.value, VaultActionEvents::default());
+        assert_eq!(log_artifact.0.value, VaultActionEvents::from(user.vault_name()));
 
         // Test save_vault_log_events by creating a join request event
         let join_request = JoinClusterEvent {
             candidate: user.clone(),
         };
-        let new_events = VaultActionEvents::default()
+        let new_events = VaultActionEvents::from(user.vault_name())
             .request(VaultActionRequestEvent::JoinCluster(join_request));
         p_vault
             .save_vault_log_events(new_events.clone(), user.vault_name())
@@ -574,13 +574,13 @@ mod tests {
         let desc = VaultLogDescriptor::from(user.vault_name());
         let log_obj = VaultLogObject(KvLogEvent {
             key: KvKey::from(desc),
-            value: VaultActionEvents::default(),
+            value: VaultActionEvents::from(user.vault_name()),
         });
         p_obj.repo.save(log_obj).await?;
 
         let result = p_vault.vault_log(user.vault_name()).await?;
         assert!(result.is_some());
-        assert_eq!(result.unwrap().0.value, VaultActionEvents::default());
+        assert_eq!(result.unwrap().0.value, VaultActionEvents::from(user.vault_name()));
 
         Ok(())
     }

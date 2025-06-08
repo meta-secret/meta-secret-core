@@ -356,7 +356,7 @@ mod test {
 
         let update_membership_event = VaultActionEvent::Update(update_membership);
 
-        let events = VaultActionEvents::default()
+        let events = VaultActionEvents::from(vault_data.vault_name.clone())
             .apply_event(join_request_event)
             .apply_event(update_membership_event);
 
@@ -374,7 +374,7 @@ mod test {
         let vault_data = VaultData::from(UserDataMember::from(client_creds.user()));
 
         // Create empty events
-        let events = VaultActionEvents::default();
+        let events = VaultActionEvents::from(vault_data.vault_name.clone());
 
         // Create aggregate
         let aggregate = VaultAggregate::build_from(events, vault_data);
@@ -408,7 +408,7 @@ mod test {
         let update_event = VaultActionUpdateEvent::AddMetaPass(add_meta_pass);
 
         // Create events with both the request and the update
-        let events = VaultActionEvents::default()
+        let events = VaultActionEvents::from(vault_data.vault_name.clone())
             .request(request_event)
             .apply(update_event);
 
@@ -444,7 +444,7 @@ mod test {
         let update_event = VaultActionUpdateEvent::AddMetaPass(add_meta_pass);
 
         // Create events with the update
-        let events = VaultActionEvents::default().apply(update_event);
+        let events = VaultActionEvents::from(vault_data.vault_name.clone()).apply(update_event);
 
         // Create aggregate and process
         let aggregate = VaultAggregate::build_from(events, vault_data);
@@ -478,7 +478,7 @@ mod test {
         });
 
         // Create events with the request and update
-        let events = VaultActionEvents::default()
+        let events = VaultActionEvents::from(vault_data.vault_name.clone())
             .request(request_event)
             .apply(update_membership);
 
@@ -526,7 +526,7 @@ mod test {
             });
 
         // Create events with both requests and updates
-        let events = VaultActionEvents::default()
+        let events = VaultActionEvents::from(vault_data.vault_name.clone())
             .request(request_event_b)
             .apply(update_membership_b)
             .request(request_event_vd)

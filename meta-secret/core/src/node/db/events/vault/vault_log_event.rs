@@ -336,7 +336,7 @@ mod test {
         let event =
             VaultActionEvent::Request(VaultActionRequestEvent::JoinCluster(join_request.clone()));
 
-        let actions = VaultActionEvents::default().apply_event(event);
+        let actions = VaultActionEvents::from(client_creds.user().vault_name()).apply_event(event);
         assert_eq!(actions.requests.len(), 1);
 
         let update = VaultActionUpdateEvent::UpdateMembership(UpdateMembershipEvent {
