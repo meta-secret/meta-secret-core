@@ -1,4 +1,4 @@
-use crate::node::common::model::user::common::UserId;
+use crate::node::common::model::vault::vault::VaultName;
 use super::shared_secret_event::SsLogObject;
 use crate::node::db::events::error::ErrorMessage;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
@@ -44,22 +44,22 @@ pub enum VaultKvLogEvent {
 }
 
 impl VaultKvLogEvent {
-    pub fn user_id(&self) -> UserId {
+    pub fn vault_name(&self) -> VaultName {
         match self {
-            VaultKvLogEvent::DeviceLog(obj) => obj.0.value.,
-            VaultKvLogEvent::VaultLog(obj) => obj.user_id(),
-            VaultKvLogEvent::Vault(obj) => obj.user_id(),
-            VaultKvLogEvent::VaultStatus(obj) => obj.user_id(),
+            VaultKvLogEvent::DeviceLog(obj) => obj.0.value.vault_name(),
+            VaultKvLogEvent::VaultLog(obj) => obj.0.value.vault_name.clone(),
+            VaultKvLogEvent::Vault(obj) => obj.0.value.vault_name.clone(),
+            VaultKvLogEvent::VaultStatus(obj) => obj.0.value.user().vault_name(),
         }
     }
 }
 
 impl SsKvLogEvent {
-    pub fn user_id(&self) -> UserId {
+    pub fn vault_name(&self) -> VaultName {
         match self {
-            SsKvLogEvent::SsDeviceLog(obj) => obj.user_id(),
-            SsKvLogEvent::SsLog(obj) => obj.user_id(),
-            SsKvLogEvent::SsWorkflow(obj) => obj.user_id(),
+            SsKvLogEvent::SsDeviceLog(obj) => obj.0.value.vault_name.clone(),
+            SsKvLogEvent::SsLog(obj) => obj.0.value.vault_name.clone(),
+            SsKvLogEvent::SsWorkflow(obj) => obj.clone().to_distribution_data().vault_name.clone(),
         }
     }
 }

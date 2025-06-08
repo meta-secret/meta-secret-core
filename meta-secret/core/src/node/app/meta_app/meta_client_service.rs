@@ -4,12 +4,14 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, info, instrument};
 
+use crate::crypto::keys::TransportSk;
 use crate::node::app::meta_app::messaging::{GenericAppStateRequest, GenericAppStateResponse};
 use crate::node::app::orchestrator::MetaOrchestrator;
 use crate::node::app::sync::sync_gateway::SyncGateway;
 use crate::node::app::sync::sync_protocol::SyncProtocol;
 use crate::node::common::actor::ServiceState;
 use crate::node::common::data_transfer::MpscDataTransfer;
+use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::meta_pass::SecurePassInfo;
 use crate::node::common::model::secret::ClaimId;
 use crate::node::common::model::user::common::{UserData, UserDataOutsiderStatus};
@@ -28,8 +30,6 @@ use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::secret::MetaDistributor;
 use anyhow::Result;
 use log::error;
-use crate::crypto::keys::TransportSk;
-use crate::node::common::model::device::common::DeviceData;
 
 pub struct MetaClientService<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub data_transfer: Arc<MetaClientDataTransfer>,
@@ -283,23 +283,19 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                         ApplicationState::Vault(VaultFullInfo::Outsider(outsider))
                     }
                     VaultStatus::Member(member_user) => {
-                        let vault = p_vault
-                            .get_vault(member_user.user_data.vault_name())
-                            .await?;
+                        let vault_name = member_user.user_data.vault_name();
+                        let vault = p_vault.get_vault(vault_name.clone()).await?;
 
                         let ss_claims = {
                             let p_ss = PersistentSharedSecret::from(self.p_obj());
                             p_ss.get_ss_log_obj(user_creds.vault_name).await?
                         };
 
-                        let maybe_vault_log_event = {
-                            let vault_name = member_user.user_data.vault_name();
-                            p_vault.vault_log(vault_name).await?
-                        };
+                        let maybe_vault_log_event = p_vault.vault_log(vault_name.clone()).await?;
 
                         let vault_action_events = maybe_vault_log_event
                             .map(|obj| obj.0.value)
-                            .unwrap_or(VaultActionEvents::default());
+                            .unwrap_or(VaultActionEvents::from(vault_name));
 
                         let user_full_info = UserMemberFullInfo {
                             member: VaultMember {
@@ -403,7 +399,10 @@ pub struct MetaClientStateProvider {
 impl MetaClientStateProvider {
     pub fn new() -> Self {
         let (sender, receiver) = flume::bounded(1);
-        Self { sender, _receiver: receiver }
+        Self {
+            sender,
+            _receiver: receiver,
+        }
     }
 
     pub async fn push(&self, state: &ApplicationState) -> Result<()> {
@@ -447,7 +446,7 @@ pub mod fixture {
                 state_provider: state_provider.client.clone(),
                 p_obj: sync_gateway.client_gw.p_obj.clone(),
                 device_data: base.empty.device_creds.client.device.clone(),
-                master_key: base.p_creds.client_p_creds.master_key.clone()
+                master_key: base.p_creds.client_p_creds.master_key.clone(),
             });
 
             let vd = Arc::new(MetaClientService {
@@ -456,7 +455,7 @@ pub mod fixture {
                 state_provider: state_provider.vd.clone(),
                 p_obj: sync_gateway.vd_gw.p_obj.clone(),
                 device_data: base.empty.device_creds.vd.device.clone(),
-                master_key: base.p_creds.vd_p_creds.master_key.clone()
+                master_key: base.p_creds.vd_p_creds.master_key.clone(),
             });
 
             Self {

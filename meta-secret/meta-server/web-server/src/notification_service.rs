@@ -1,22 +1,19 @@
-use meta_secret_core::node::api::DataSyncResponse;
-use std::sync::Arc;
+use crate::notification_service::websocket::WebSocketManager;
 use axum::extract::ws::{Message, WebSocket};
 use flume::{Receiver, Sender};
 use futures_util::SinkExt;
 use futures_util::stream::SplitSink;
-use tokio::sync::Mutex;
+use meta_secret_core::node::api::DataSyncResponse;
 use meta_secret_core::node::common::model::user::common::UserId;
 use meta_secret_core::node::db::events::generic_log_event::GenericKvLogEvent;
-use crate::notification_service::websocket::WebSocketManager;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 type WsSink = Arc<Mutex<SplitSink<WebSocket, Message>>>;
 
 #[derive(Clone)]
 pub enum NotificationRequest {
-    Subscription {
-        user_id: UserId,
-        sink: WsSink,
-    },
+    Subscription { user_id: UserId, sink: WsSink },
     Data(DataSyncResponse),
 }
 
@@ -35,7 +32,7 @@ impl NotificationServiceInterface {
 
 struct NotificationServiceWorker {
     receiver: Receiver<NotificationRequest>,
-    socket_registry: WebSocketManager
+    socket_registry: WebSocketManager,
 }
 
 impl NotificationServiceWorker {
@@ -56,21 +53,15 @@ impl NotificationServiceWorker {
                         todo!("need user id/ user creds");
                     }
                     DataSyncResponse::Data(data) => {
-                        let maybe_user_id = data.0.iter().find_map(|evt| {
-                            match evt {
-                                GenericKvLogEvent::Local(_) => None,
-                                GenericKvLogEvent::Vault(vault_event) => {
-                                    Some(vault_event.user_id())
-                                }
-                                GenericKvLogEvent::Ss(ss_event) => {
-                                    Some(ss_event.user_id())
-                                }
-                                GenericKvLogEvent::DbError(_) => None
-                            }
+                        let maybe_vault_name = data.0.iter().find_map(|evt| match evt {
+                            GenericKvLogEvent::Local(_) => None,
+                            GenericKvLogEvent::Vault(vault_event) => Some(vault_event.vault_name()),
+                            GenericKvLogEvent::Ss(ss_event) => Some(ss_event.vault_name()),
+                            GenericKvLogEvent::DbError(_) => None,
                         });
 
-                        if let Some(user_id) = maybe_user_id {
-                            self.socket_registry.notify(user_id);
+                        if let Some(vault_name) = maybe_vault_name {
+                            self.socket_registry.notify(vault_name);
                         }
                     }
                     DataSyncResponse::ServerTailResponse(_) => {
@@ -96,22 +87,20 @@ impl NotificationService {
             };
             worker.run().await;
         });
-        
+
         task.await.unwrap();
 
-        NotificationServiceInterface {
-            sender,
-        }
+        NotificationServiceInterface { sender }
     }
 }
 
-
 mod websocket {
-    use std::collections::HashMap;
-    use axum::extract::ws::Message;
+    use crate::notification_service::WsSink;
+    use axum::extract::ws::{Message, Utf8Bytes};
     use futures_util::SinkExt;
     use meta_secret_core::node::common::model::user::common::UserId;
-    use crate::notification_service::WsSink;
+    use meta_secret_core::node::common::model::vault::vault::VaultName;
+    use std::collections::HashMap;
 
     pub struct WebSocketManager {
         /// user_id and all his WebSocket sinks
@@ -119,20 +108,18 @@ mod websocket {
     }
 
     impl WebSocketManager {
-        pub fn notify(&mut self, user_id: UserId) {
-            let mut sockets = self.user_sockets.get_mut(&user_id);
-            
-            for mut s in sockets {
-                s.retain(async |subscriber| {
+        pub fn notify(&mut self, vault_name: VaultName) {
+            for (user_id, mut sockets) in self.user_sockets {
+                if user_id.vault_name != vault_name {
+                    continue;
+                }
+                
+                sockets.retain(async |subscriber| {
                     let mut sender = subscriber.lock().await;
-                    let res = sender.send(Message::Text("q")).await;
+                    let res = sender.send(Message::Text(Utf8Bytes::from("update"))).await;
                     match res {
-                        Ok(_) => {
-                            true
-                        }
-                        Err(_) => {
-                            false
-                        }
+                        Ok(_) => true,
+                        Err(_) => false,
                     }
                 });
             }

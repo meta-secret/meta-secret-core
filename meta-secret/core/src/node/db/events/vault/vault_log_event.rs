@@ -23,9 +23,10 @@ pub struct VaultLogObject(pub KvLogEvent<VaultActionEvents>);
 
 impl VaultLogObject {
     pub fn create(owner: UserDataMember) -> Self {
+        let vault_name = owner.user_data.vault_name();
         Self(KvLogEvent {
-            key: KvKey::from(VaultLogDescriptor::from(owner.user_data.vault_name())),
-            value: VaultActionEvents::default(),
+            key: KvKey::from(VaultLogDescriptor::from(vault_name.clone())),
+            value: VaultActionEvents::from(vault_name),
         })
     }
 }
@@ -61,11 +62,22 @@ impl ObjIdExtractor for VaultLogObject {
 }
 
 /// Represents all pending events to apply to the VaultObject
-#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VaultActionEvents {
+    pub vault_name: VaultName,
     pub requests: HashSet<VaultActionRequestEvent>,
     pub updates: HashSet<VaultActionUpdateEvent>,
+}
+
+impl From<VaultName> for VaultActionEvents {
+    fn from(vault_name: VaultName) -> Self {
+        Self {
+            vault_name,
+            requests: HashSet::new(),
+            updates: HashSet::new(),
+        }
+    }
 }
 
 impl VaultActionEvents {
@@ -280,17 +292,22 @@ impl VaultActionEvent {
     }
 
     pub fn vault_name(&self) -> VaultName {
+        self.user().vault_name()
+    }
+    
+    pub fn user(&self) -> UserData {
         match self {
-            VaultActionEvent::Request(request) => {
-                let user = match request {
-                    VaultActionRequestEvent::JoinCluster(event) => &event.candidate,
-                    VaultActionRequestEvent::AddMetaPass(event) => &event.sender.user_data,
-                };
-                user.vault_name()
-            }
-            VaultActionEvent::Update(update) => update.vault_name(),
+            VaultActionEvent::Request(request) => match request {
+                VaultActionRequestEvent::JoinCluster(event) => event.candidate.clone(),
+                VaultActionRequestEvent::AddMetaPass(event) => event.sender.user_data.clone(),
+            },
+            VaultActionEvent::Update(update) => match update {
+                VaultActionUpdateEvent::UpdateMembership(event) => event.sender.user_data.clone(),
+                VaultActionUpdateEvent::AddMetaPass(event) => event.sender.user_data.clone(),
+                VaultActionUpdateEvent::AddToPending { candidate } => candidate.clone(),
+            },
             VaultActionEvent::Init(VaultActionInitEvent::CreateVault(event)) => {
-                event.owner.user_data.vault_name()
+                event.owner.user_data.clone()
             }
         }
     }

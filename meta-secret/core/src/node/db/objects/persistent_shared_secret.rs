@@ -178,12 +178,12 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
     }
 
     pub async fn get_ss_log_obj(&self, vault_name: VaultName) -> Result<SsLogData> {
-        let obj_desc = SsLogDescriptor::from(vault_name);
+        let obj_desc = SsLogDescriptor::from(vault_name.clone());
         let maybe_log_event = self.p_obj.find_tail_event(obj_desc).await?;
 
         let log_event = maybe_log_event
             .map(|ss_log_event| ss_log_event.to_data())
-            .unwrap_or_else(SsLogData::default);
+            .unwrap_or_else(|| SsLogData::from(vault_name));
 
         Ok(log_event)
     }

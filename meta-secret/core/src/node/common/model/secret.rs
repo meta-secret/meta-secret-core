@@ -1,9 +1,9 @@
 use crate::crypto::utils::Id48bit;
+use crate::node::common::model::IdString;
 use crate::node::common::model::crypto::aead::EncryptedMessage;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::vault::vault::VaultName;
-use crate::node::common::model::IdString;
 use derive_more::From;
 use std::collections::HashMap;
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -196,10 +196,20 @@ pub struct SecretDistributionData {
     pub secret_message: EncryptedMessage,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SsLogData {
+    pub vault_name: VaultName,
     pub claims: HashMap<ClaimId, SsClaim>,
+}
+
+impl From<VaultName> for SsLogData {
+    fn from(vault_name: VaultName) -> Self {
+        Self {
+            vault_name,
+            claims: HashMap::new(),
+        }
+    }
 }
 
 impl SsLogData {
@@ -269,9 +279,12 @@ impl SsLogData {
 
 impl SsLogData {
     pub fn new(claim: SsClaim) -> Self {
+        let vault_name = claim.vault_name.clone();
+
         let mut claims = HashMap::new();
         claims.insert(claim.id.clone(), claim);
-        Self { claims }
+
+        Self { vault_name, claims }
     }
 
     pub fn insert(mut self, claim: SsClaim) -> Self {
