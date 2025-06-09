@@ -60,7 +60,8 @@ pub struct ServerTailRequest {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum DataSyncResponse {
-    Empty,
+    // Response to writing request
+    Write(VaultName),
     Data(DataEventsResponse),
     ServerTailResponse(ServerTailResponse),
     Error { msg: String },

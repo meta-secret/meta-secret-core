@@ -1,3 +1,4 @@
+use anyhow::{bail, Result};
 use crate::node::common::model::vault::vault::VaultName;
 use super::shared_secret_event::SsLogObject;
 use crate::node::db::events::error::ErrorMessage;
@@ -65,45 +66,58 @@ impl SsKvLogEvent {
 }
 
 impl GenericKvLogEvent {
-    pub fn device_creds(self) -> anyhow::Result<DeviceCredsObject> {
+    pub fn vault_name(&self) -> Result<VaultName> {
+        match self {
+            GenericKvLogEvent::Local(_) => {
+                bail!("Wrong event type: {:?}", self);
+            }
+            GenericKvLogEvent::Vault(evt) => Ok(evt.vault_name()),
+            GenericKvLogEvent::Ss(evt) => Ok(evt.vault_name()),
+            GenericKvLogEvent::DbError(_) => {
+                bail!("Wrong event type: {:?}", self);
+            }
+        }
+    }
+    
+    pub fn device_creds(self) -> Result<DeviceCredsObject> {
         DeviceCredsObject::try_from(self)
     }
 
-    pub fn user_creds(self) -> anyhow::Result<UserCredsObject> {
+    pub fn user_creds(self) -> Result<UserCredsObject> {
         UserCredsObject::try_from(self)
     }
 
-    pub fn device_log(self) -> anyhow::Result<DeviceLogObject> {
+    pub fn device_log(self) -> Result<DeviceLogObject> {
         DeviceLogObject::try_from(self)
     }
 
-    pub fn vault_log(self) -> anyhow::Result<VaultLogObject> {
+    pub fn vault_log(self) -> Result<VaultLogObject> {
         VaultLogObject::try_from(self)
     }
 
-    pub fn vault(self) -> anyhow::Result<VaultObject> {
+    pub fn vault(self) -> Result<VaultObject> {
         VaultObject::try_from(self)
     }
 
-    pub fn vault_membership(self) -> anyhow::Result<VaultStatusObject> {
+    pub fn vault_membership(self) -> Result<VaultStatusObject> {
         VaultStatusObject::try_from(self)
     }
 
-    pub fn shared_secret(self) -> anyhow::Result<SsWorkflowObject> {
+    pub fn shared_secret(self) -> Result<SsWorkflowObject> {
         SsWorkflowObject::try_from(self)
     }
 
-    pub fn ss_device_log(self) -> anyhow::Result<SsDeviceLogObject> {
+    pub fn ss_device_log(self) -> Result<SsDeviceLogObject> {
         SsDeviceLogObject::try_from(self)
     }
 
-    pub fn ss_log(self) -> anyhow::Result<SsLogObject> {
+    pub fn ss_log(self) -> Result<SsLogObject> {
         SsLogObject::try_from(self)
     }
 }
 
 pub trait GenericKvLogEventConvertible: Sized {
-    fn try_from_event(event: GenericKvLogEvent) -> anyhow::Result<Self>;
+    fn try_from_event(event: GenericKvLogEvent) -> Result<Self>;
 }
 
 impl GenericKvLogEventConvertible for GenericKvLogEvent {
@@ -116,7 +130,7 @@ impl<T> GenericKvLogEventConvertible for T
 where
     T: TryFrom<GenericKvLogEvent, Error = anyhow::Error>,
 {
-    fn try_from_event(event: GenericKvLogEvent) -> anyhow::Result<Self> {
+    fn try_from_event(event: GenericKvLogEvent) -> Result<Self> {
         T::try_from(event)
     }
 }
