@@ -104,45 +104,37 @@ mod websocket {
     #[derive(Default)]
     pub struct WebSocketManager {
         /// user_id and all his WebSocket sinks
-        pub(crate) user_sockets: HashMap<UserId, Vec<WsSink>>,
+        pub user_sockets: HashMap<VaultName, Vec<WsSink>>,
     }
 
     impl WebSocketManager {
         pub async fn notify(&mut self, vault_name: VaultName) {
-            let user_ids: Vec<UserId> = self.user_sockets
-                .keys()
-                .filter(|user_id| user_id.vault_name == vault_name)
-                .cloned()
-                .collect();
-            
-            for user_id in user_ids {
-                if let Some(sockets) = self.user_sockets.get_mut(&user_id) {
-                    let mut valid_sockets = Vec::new();
-                    
-                    for socket in sockets.drain(..) {
-                        let is_socket_alive = {
-                            let mut sender = socket.lock().await;
-                            sender.send(Message::Text(Utf8Bytes::from("update"))).await.is_ok()
-                        };
-                        
-                        if is_socket_alive {
-                            valid_sockets.push(socket);
-                        }
-                        // Dead sockets are automatically dropped
+            if let Some(sockets) = self.user_sockets.get_mut(&vault_name) {
+                let mut valid_sockets = Vec::new();
+
+                for socket in sockets.drain(..) {
+                    let is_socket_alive = {
+                        let mut sender = socket.lock().await;
+                        sender.send(Message::Text(Utf8Bytes::from("update"))).await.is_ok()
+                    };
+
+                    if is_socket_alive {
+                        valid_sockets.push(socket);
                     }
-                    
-                    *sockets = valid_sockets;
+                    // Dead sockets are automatically dropped
                 }
+
+                *sockets = valid_sockets;
             }
         }
     }
 
     impl WebSocketManager {
         pub fn insert(&mut self, user_id: UserId, sink: WsSink) {
-            if let Some(user_sockets) = self.user_sockets.get_mut(&user_id) {
+            if let Some(user_sockets) = self.user_sockets.get_mut(&user_id.vault_name) {
                 user_sockets.push(sink);
             } else {
-                self.user_sockets.insert(user_id, vec![sink]);
+                self.user_sockets.insert(user_id.vault_name, vec![sink]);
             }
         }
     }

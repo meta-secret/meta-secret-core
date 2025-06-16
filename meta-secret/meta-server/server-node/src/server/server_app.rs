@@ -102,8 +102,6 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                     // Continue the loop even if there's an error
                 }
             }
-
-            async_std::task::sleep(std::time::Duration::from_millis(10)).await;
         }
     }
 

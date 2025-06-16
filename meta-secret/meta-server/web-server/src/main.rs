@@ -2,31 +2,27 @@ mod handler;
 mod notification_service;
 
 use axum::extract::State;
-use axum::{Json, Router, routing::post};
+use axum::{routing::post, Json, Router};
 use http::{StatusCode, Uri};
 use serde_derive::Serialize;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
-use crate::handler::ws_echo::ws_echo_handler;
+use crate::handler::ws::ws_echo_handler;
 use crate::notification_service::NotificationServiceInterface;
 use anyhow::Result;
-use axum::extract::ws::{WebSocket, WebSocketUpgrade};
 use axum::response::Html;
-use axum::response::IntoResponse;
 use axum::routing::get;
-use futures_util::{StreamExt};
 use meta_db_sqlite::db::sqlite_store::SqlIteRepo;
 use meta_secret_core::crypto::key_utils;
 use meta_secret_core::node::api::{DataSyncResponse, SyncRequest};
-use meta_secret_core::node::common::model::user::common::UserId;
 use meta_server_node::server::server_app::{MetaServerDataTransfer, ServerApp};
 use notification_service::{NotificationRequest, NotificationService};
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
-use tracing::{Level, info};
+use tracing::{info, Level};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
+use handler::ws;
 
 #[derive(Clone)]
 pub struct MetaServerAppState {
@@ -99,8 +95,10 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .route("/meta_request", post(meta_request))
         .route("/hi", get(hi))
+        
         .route("/ws_echo", get(ws_echo_handler))
-        .route("/ws_subscribe", get(ws_subscribe_handler))
+        .route("/ws_subscribe", get(ws::ws_subscribe_handler))
+        
         .with_state(app_state)
         .layer(cors)
         .layer(TraceLayer::new_for_http())
@@ -144,28 +142,4 @@ pub async fn meta_request(
     state.notification_service.update(event).await;
 
     Json(response)
-}
-
-// WebSocket subscribe handler - only responsible for subscription
-async fn ws_subscribe_handler(
-    ws: WebSocketUpgrade,
-    State(state): State<Arc<MetaServerAppState>>,
-    Json(user_id): Json<UserId>,
-) -> impl IntoResponse {
-    let ntf_service = state.notification_service.clone();
-    ws.on_upgrade(move |socket| handle_subscription(socket, ntf_service, user_id))
-}
-
-async fn handle_subscription(
-    socket: WebSocket,
-    ntf_service: Arc<NotificationServiceInterface>,
-    user_id: UserId,
-) {
-    let (ws_sender, _) = socket.split();
-
-    let event = NotificationRequest::Subscription {
-        user_id: user_id.clone(),
-        sink: Arc::new(Mutex::new(ws_sender)),
-    };
-    ntf_service.update(event).await;
 }

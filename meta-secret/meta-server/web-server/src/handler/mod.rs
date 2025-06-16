@@ -1,1 +1,1 @@
-pub mod ws_echo;
+pub mod ws;
