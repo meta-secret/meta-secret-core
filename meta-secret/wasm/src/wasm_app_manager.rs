@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use crate::app_manager::ApplicationManager;
 use crate::configure;
 use crate::wasm_repo::WasmRepo;
 use meta_secret_core::crypto::keys::TransportSk;
@@ -13,6 +12,7 @@ use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
 use tracing::info;
 use wasm_bindgen::prelude::wasm_bindgen;
+use meta_secret_common::app_manager::ApplicationManager;
 
 #[wasm_bindgen]
 pub struct WasmApplicationManager {
@@ -28,7 +28,11 @@ impl WasmApplicationManager {
 
         let client_repo = Arc::new(WasmRepo::default().await);
         let app_manager =
-            ApplicationManager::<WasmRepo, HttpSyncProtocol>::init(client_repo, master_key)
+            ApplicationManager::<WasmRepo, HttpSyncProtocol>::init(
+                client_repo, 
+                master_key,
+                true
+            )
                 .await
                 .unwrap();
 

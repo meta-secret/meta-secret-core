@@ -14,7 +14,7 @@ members = [
     "tests",
     "mobile/ios",
     "mobile/android"
-]
+, "common"]
 
 [workspace.dependencies]
 # Error handling

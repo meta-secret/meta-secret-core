@@ -7,11 +7,11 @@ use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::ClaimId;
 use meta_secret_core::node::common::model::WasmApplicationState;
-use meta_secret_wasm::app_manager::ApplicationManager;
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
 use std::future::Future;
 use std::path::PathBuf;
+use meta_secret_common::app_manager::ApplicationManager;
 
 static GLOBAL_APP_MANAGER: Lazy<Mutex<Option<Arc<MobileApplicationManager>>>> =
     Lazy::new(|| Mutex::new(None));
@@ -115,7 +115,7 @@ impl MobileApplicationManager {
         info!("Using database path: {}", db_path);
         
         match master_key.pk() {
-            Ok(pk) => info!("Master key valid. Public key available"),
+            Ok(_) => info!("Master key valid. Public key available"),
             Err(e) => {
                 info!("Invalid master key provided: {}", e);
                 return Err(anyhow::anyhow!("Invalid master key: {}", e));
@@ -156,7 +156,11 @@ impl MobileApplicationManager {
         let client_repo = Arc::new(repo);
 
         let app_manager =
-            ApplicationManager::<SqlIteRepo, HttpSyncProtocol>::init(client_repo, master_key)
+            ApplicationManager::<SqlIteRepo, HttpSyncProtocol>::init(
+                client_repo,
+                master_key,
+                false
+            )
                 .await?;
 
         Ok(MobileApplicationManager { app_manager })

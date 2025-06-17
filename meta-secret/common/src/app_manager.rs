@@ -1,6 +1,7 @@
 use anyhow::{bail, Context};
 use std::sync::Arc;
 use tracing::{info, instrument, Instrument};
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen_futures::spawn_local;
 
 use anyhow::Result;
@@ -27,6 +28,9 @@ use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
 use meta_secret_core::secret::shared_secret::PlainText;
+use std::marker::{Send, Sync};
+use std::thread;
+use wasm_bindgen_futures::spawn_local;
 
 pub struct ApplicationManager<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub meta_client_service: Arc<MetaClientService<Repo, Sync>>,
@@ -54,7 +58,8 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
 
     pub async fn init(
         client_repo: Arc<Repo>,
-        master_key: TransportSk
+        master_key: TransportSk,
+        wasm_platform: bool,
     ) -> Result<ApplicationManager<Repo, HttpSyncProtocol>> {
         info!("Initialize application state manager");
 
@@ -195,7 +200,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
     pub async fn client_setup(
         client_repo: Arc<Repo>,
         sync_protocol: Arc<HttpSyncProtocol>,
-        master_key: TransportSk
+        master_key: TransportSk,
     ) -> Result<ApplicationManager<Repo, HttpSyncProtocol>> {
         let p_obj = {
             let obj = PersistentObject::new(client_repo.clone());
@@ -239,14 +244,26 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
         let app_manager =
             ApplicationManager::new(sync_protocol, sync_gateway, meta_client_service.clone(), master_key);
 
-        spawn_local(async move {
+        #[cfg(target_arch = "wasm32")]
+        {
+            spawn_local(async move {
+                meta_client_service
+                    .run()
+                    .instrument(client_span())
+                    .await
+                    .with_context(|| "Meta client error")
+                    .unwrap();
+            });
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
             meta_client_service
                 .run()
                 .instrument(client_span())
                 .await
-                .with_context(|| "Meta client error")
-                .unwrap();
-        });
+                .with_context(|| "Meta client error")?;
+        }
 
         Ok(app_manager)
     }

@@ -6,7 +6,6 @@ use meta_secret_core::secret::shared_secret::{PlainText, SharedSecretEncryption,
 use tracing_subscriber::layer::SubscriberExt;
 use wasm_bindgen::prelude::*;
 
-pub mod app_manager;
 pub mod objects;
 pub mod utils;
 pub mod wasm_app_manager;
