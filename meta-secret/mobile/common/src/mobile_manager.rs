@@ -6,15 +6,12 @@ use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::ClaimId;
-use meta_secret_core::node::common::model::user::common::UserData;
-use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::common::model::WasmApplicationState;
-use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
 use meta_secret_wasm::app_manager::ApplicationManager;
-use meta_secret_wasm::configure;
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
 use std::future::Future;
+use std::path::PathBuf;
 
 static GLOBAL_APP_MANAGER: Lazy<Mutex<Option<Arc<MobileApplicationManager>>>> =
     Lazy::new(|| Mutex::new(None));
@@ -51,8 +48,15 @@ impl MobileApplicationManager {
     }
     
     pub async fn init_ios(master_key: TransportSk) -> anyhow::Result<MobileApplicationManager> {
-        let db_path = "Library/Application Support/meta-secret.db";
-        Self::init(master_key, db_path).await
+        let home_dir = std::env::var("HOME").expect("Unable to get HOME directory");
+        let db_path = PathBuf::from(home_dir)
+            .join("Documents")
+            .join("meta-secret.db")
+            .to_string_lossy()
+            .to_string();
+        info!("iOS database path: {}", db_path);
+        
+        Self::init(master_key, &db_path).await
     }
     
     pub async fn init_android(master_key: TransportSk) -> anyhow::Result<MobileApplicationManager> {
@@ -107,16 +111,46 @@ impl MobileApplicationManager {
 
 impl MobileApplicationManager {
     async fn init(master_key: TransportSk, db_path: &str) -> anyhow::Result<MobileApplicationManager> {
-        configure();
-
         info!("Init mobile state manager");
+        info!("Using database path: {}", db_path);
+        
+        match master_key.pk() {
+            Ok(pk) => info!("Master key valid. Public key available"),
+            Err(e) => {
+                info!("Invalid master key provided: {}", e);
+                return Err(anyhow::anyhow!("Invalid master key: {}", e));
+            }
+        }
+
+        if let Some(parent_dir) = std::path::Path::new(db_path).parent() {
+            std::fs::create_dir_all(parent_dir)
+                .map_err(|e| {
+                    info!("Failed to create database directory: {}", e);
+                    anyhow::anyhow!("Failed to create database directory: {}", e)
+                })?;
+        }
 
         let conn_url = format!("file:{}", db_path);
 
         let migration_tool = EmbeddedMigrationsTool {
             db_url: conn_url.clone(),
         };
-        migration_tool.migrate();
+        
+        match std::panic::catch_unwind(|| {
+            migration_tool.migrate();
+        }) {
+            Ok(_) => info!("Database migration successful"),
+            Err(e) => {
+                let err_msg = if let Some(s) = e.downcast_ref::<String>() {
+                    s.clone()
+                } else if let Some(s) = e.downcast_ref::<&str>() {
+                    s.to_string()
+                } else {
+                    "Unknown error during migration".to_string()
+                };
+                info!("Migration failed: {}", err_msg);
+            }
+        };
 
         let repo = SqlIteRepo { conn_url };
         let client_repo = Arc::new(repo);

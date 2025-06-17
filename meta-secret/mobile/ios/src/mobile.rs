@@ -43,19 +43,36 @@ pub extern "C" fn init(master_key_ptr: *const c_char) -> *mut c_char {
 }
 
 async fn async_init(master_key: String) -> *mut c_char {
+    let key_len = master_key.len();
+    let diagnostic_info = format!("Key length: {}", key_len);
+    
     let transport_sk = MasterKeyManager::from_pure_sk(master_key);
+    
+    let pk_result = match transport_sk.pk() {
+        Ok(_) => "Valid public key generated".to_string(),
+        Err(e) => format!("Invalid public key: {}", e),
+    };
+    
     let result = match MobileApplicationManager::init_ios(transport_sk).await {
         Ok(app_manager) => {
             MobileApplicationManager::set_global_instance(Arc::new(app_manager));
             json!({
-                    "success": true, 
-                    "message": "Android manager initialized successfully"
+                    "success": true,
+                    "message": "iOS manager initialized successfully",
+                    "debug_info": {
+                        "key_diagnostic": diagnostic_info,
+                        "pk_validation": pk_result
+                    }
                 }).to_string()
         },
         Err(e) => {
             json!({
                     "success": false, 
-                    "error": format!("{}", e)
+                    "error": format!("{}", e),
+                    "debug_info": {
+                        "key_diagnostic": diagnostic_info,
+                        "pk_validation": pk_result
+                    }
                 }).to_string()
         }
     };
