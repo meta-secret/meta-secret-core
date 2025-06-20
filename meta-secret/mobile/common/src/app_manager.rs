@@ -65,19 +65,14 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
 
         Ok(app_manager)
     }
-
-    // Метод для запуска сервиса в отдельном потоке
+    
     pub fn run_service(&self) -> Result<()> {
         let meta_client_service_clone = self.meta_client_service.clone();
         
-        // Запускаем в отдельном потоке, используя std::thread
         thread::spawn(move || {
-            // Создаем новый рантайм для выполнения асинхронного кода
             let rt = tokio::runtime::Runtime::new().unwrap();
             
-            // Запускаем асинхронный код в блокирующем режиме
             rt.block_on(async {
-                // Запускаем сервис
                 if let Err(e) = meta_client_service_clone
                     .run()
                     .instrument(client_span())
@@ -228,8 +223,7 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
             let obj = PersistentObject::new(client_repo.clone());
             Arc::new(obj)
         };
-
-        //Get or generate device credentials
+        
         let creds_repo = PersistentCredentials {
             p_obj: p_obj.clone(),
             master_key: master_key.clone(),
@@ -270,7 +264,6 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
             master_key
         );
         
-        // Запускаем сервис в отдельном потоке
         app_manager.run_service()?;
 
         Ok(app_manager)
