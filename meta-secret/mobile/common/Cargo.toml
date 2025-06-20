@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 meta-secret-core = { path = "../../core", features = ["mobile"] }
-meta-secret-wasm = { path = "../../wasm", features = ["mobile"] }
 meta-db-sqlite = { path = "../../db/sqlite" }
 anyhow.workspace = true
 tracing.workspace = true
