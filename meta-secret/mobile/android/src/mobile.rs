@@ -6,6 +6,7 @@ use jni::sys::jstring;
 use serde_json::json;
 use std::sync::Arc;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
+use meta_secret_core::node::common::model::vault::vault::VaultName;
 
 fn rust_to_java_string(env: &mut JNIEnv, rust_string: String) -> jstring {
     match env.new_string(rust_string) {
@@ -133,6 +134,55 @@ pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_signUp(
                     "success": false, 
                     "error": "SignUp is failed"
                 }).to_string()
+            }
+        }
+    });
+
+    rust_to_java_string(&mut env, result)
+}
+
+#[allow(non_snake_case)]
+#[unsafe(no_mangle)]
+pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_generate_user_creds(
+    mut env: JNIEnv,
+    _: JClass,
+    vault_name: JString
+) -> jstring {
+    let vault_name_string = match java_to_rust_string(&mut env, vault_name) {
+        Ok(res) => res,
+        Err(e) => {
+            return rust_to_java_string(&mut env, json!({
+                "success": false,
+                "error": e
+            }).to_string());
+        }
+    };
+    
+    let result = MobileApplicationManager::sync_wrapper(async {
+        match MobileApplicationManager::get_global_instance() {
+            Some(app_manager) => {
+                match app_manager.generate_user_creds(VaultName::from(vault_name_string)).await {
+                    Ok(app_state) => {
+                        json!({
+                        "success": true, 
+                        "message": { 
+                            "state": app_state 
+                        }
+                    }).to_string()
+                    }
+                    Err(e) => {
+                        json!({
+                        "success": false, 
+                        "error": format!("{}", e)
+                    }).to_string()
+                    }
+                }
+            },
+            None => {
+                json!({
+                "success": false, 
+                "error": "App manager is not initialized"
+            }).to_string()
             }
         }
     });

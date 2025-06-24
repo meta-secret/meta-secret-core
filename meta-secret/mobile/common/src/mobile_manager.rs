@@ -6,11 +6,12 @@ use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::ClaimId;
-use meta_secret_core::node::common::model::WasmApplicationState;
+use meta_secret_core::node::common::model::{ApplicationState, WasmApplicationState};
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
 use std::future::Future;
 use std::path::PathBuf;
+use meta_secret_core::node::common::model::vault::vault::VaultName;
 use crate::app_manager::ApplicationManager;
 
 static GLOBAL_APP_MANAGER: Lazy<Mutex<Option<Arc<MobileApplicationManager>>>> =
@@ -67,6 +68,14 @@ impl MobileApplicationManager {
     pub async fn get_state(&self) -> WasmApplicationState {
         let app_state = self.app_manager.get_state().await;
         WasmApplicationState::from(app_state)
+    }
+    
+    pub async fn generate_user_creds(&self, vault_name: VaultName) -> anyhow::Result<ApplicationState> {
+        info!("Generate user credentials for vault: {}", vault_name);
+        let app_state = self.app_manager
+            .generate_user_creds(vault_name)
+            .await?;
+        Ok(app_state)
     }
 
     pub async fn sign_up(&self) -> WasmApplicationState {

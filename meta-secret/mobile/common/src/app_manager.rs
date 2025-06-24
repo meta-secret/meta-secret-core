@@ -86,10 +86,11 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
         Ok(())
     }
 
-    pub async fn generate_user_creds(&self, vault_name: VaultName) {
+    pub async fn generate_user_creds(&self, vault_name: VaultName) -> Result<ApplicationState> {
         info!("Generate user credentials for vault: {}", vault_name);
         let creds = GenericAppStateRequest::GenerateUserCreds(vault_name);
-        self.meta_client_service.send_request(creds).await.unwrap();
+        let app_state = self.meta_client_service.send_request(creds).await?;
+        Ok(app_state)
     }
 
     #[instrument(skip(self))]
