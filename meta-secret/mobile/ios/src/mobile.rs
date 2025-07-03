@@ -98,10 +98,14 @@ pub extern "C" fn generate_user_creds(vault_name_ptr: *const c_char) -> *mut c_c
 }
 
 async fn async_generate_user_creds(vault_name: String) -> *mut c_char {
+    println!("🦀 Rust: async_generate_user_creds with {:?}", vault_name);
+    
     let result = match MobileApplicationManager::get_global_instance() {
         Some(app_manager) => {
             match app_manager.generate_user_creds(VaultName::from(vault_name)).await {
                 Ok(app_state) => {
+                    println!("🦀 Rust: Vault created with {:?}", app_state);
+                    
                     json!({
                         "success": true, 
                         "message": { 
@@ -151,6 +155,17 @@ async fn async_sign_up() -> *mut c_char {
                 }).to_string()
         }
     };
+
+    json_to_c_string(&result)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn clean_up_database() -> *mut c_char {
+    MobileApplicationManager::sync_wrapper(async_clean_up_database())
+}
+
+async fn async_clean_up_database() -> *mut c_char {
+    
 
     json_to_c_string(&result)
 }
