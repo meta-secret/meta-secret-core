@@ -4,7 +4,9 @@ use meta_secret_core::crypto::key_pair::MasterKeyManager;
 use serde_json::json;
 use mobile_common::mobile_manager::MobileApplicationManager;
 use std::sync::Arc;
+use meta_secret_core::node::common::model::user::common::UserData;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
+use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
 
 fn json_to_c_string(json: &str) -> *mut c_char {
     CString::new(json).unwrap().into_raw()
@@ -72,7 +74,7 @@ pub extern "C" fn get_state() -> *mut c_char {
 async fn async_get_state() -> *mut c_char {
     let result = match MobileApplicationManager::get_global_instance() {
         Some(app_manager) => {
-            let state = app_manager.get_state().await.as_info();
+            let state = app_manager.get_state().await;
             json!({
                     "success": true, 
                     "message": { 
@@ -98,14 +100,10 @@ pub extern "C" fn generate_user_creds(vault_name_ptr: *const c_char) -> *mut c_c
 }
 
 async fn async_generate_user_creds(vault_name: String) -> *mut c_char {
-    println!("🦀 Rust: async_generate_user_creds with {:?}", vault_name);
-    
     let result = match MobileApplicationManager::get_global_instance() {
         Some(app_manager) => {
             match app_manager.generate_user_creds(VaultName::from(vault_name)).await {
                 Ok(app_state) => {
-                    println!("🦀 Rust: Vault created with {:?}", app_state);
-                    
                     json!({
                         "success": true, 
                         "message": { 
@@ -140,7 +138,7 @@ pub extern "C" fn sign_up() -> *mut c_char {
 async fn async_sign_up() -> *mut c_char {
     let result = match MobileApplicationManager::get_global_instance() {
         Some(app_manager) => {
-            let state = app_manager.sign_up().await.as_info();
+            let state = app_manager.sign_up().await;
             json!({
                     "success": true, 
                     "message": { 
@@ -160,13 +158,59 @@ async fn async_sign_up() -> *mut c_char {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn update_membership(candidate_ptr: *const c_char, action_update_ptr: *const c_char) -> *mut c_char {
+    let candidate = c_str_to_string(candidate_ptr);
+    let action_update = c_str_to_string(action_update_ptr);
+    MobileApplicationManager::sync_wrapper(async_update_membership(candidate, action_update))
+}
+
+async fn async_update_membership(candidate: String, action_update: String) -> *mut c_char {
+    println!("🦀 Rust: candidate str {:?}", candidate);
+    println!("🦀 Rust: action_update str {:?}", action_update);
+    let candidate: UserData = serde_json::from_str(&candidate).unwrap();
+    println!("🦀 Rust: candidate {:?}", candidate);
+    let join_action_update: JoinActionUpdate = serde_json::from_str(&action_update).unwrap();
+    println!("🦀 Rust: action_update {:?}", action_update);
+    
+    let result = match MobileApplicationManager::get_global_instance() {
+        Some(app_manager) => {
+            app_manager.update_membership(candidate, join_action_update).await;
+            json!({
+                    "success": true
+                }).to_string()
+        },
+        None => {
+            json!({
+                    "success": false, 
+                    "error": "Update user join request is failed"
+                }).to_string()
+        }
+    };
+
+    json_to_c_string(&result)
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn clean_up_database() -> *mut c_char {
     MobileApplicationManager::sync_wrapper(async_clean_up_database())
 }
 
 async fn async_clean_up_database() -> *mut c_char {
+    let result = match MobileApplicationManager::get_global_instance() {
+        Some(app_manager) => {
+            let state = app_manager.clean_up_database().await;
+            json!({
+                    "success": true
+                }).to_string()
+        },
+        None => {
+            json!({
+                    "success": false, 
+                    "error": "Cleaning up database failed"
+                }).to_string()
+        }
+    };
     
-
     json_to_c_string(&result)
 }
 

@@ -6,12 +6,14 @@ use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::ClaimId;
-use meta_secret_core::node::common::model::{ApplicationState, WasmApplicationState};
+use meta_secret_core::node::common::model::{ApplicationState};
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
 use std::future::Future;
 use std::path::PathBuf;
+use meta_secret_core::node::common::model::user::common::UserData;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
+use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
 use crate::app_manager::ApplicationManager;
 
 static GLOBAL_APP_MANAGER: Lazy<Mutex<Option<Arc<MobileApplicationManager>>>> =
@@ -65,9 +67,9 @@ impl MobileApplicationManager {
         Self::init(master_key, db_path).await
     }
 
-    pub async fn get_state(&self) -> WasmApplicationState {
+    pub async fn get_state(&self) -> ApplicationState {
         let app_state = self.app_manager.get_state().await;
-        WasmApplicationState::from(app_state)
+        ApplicationState::from(app_state)
     }
     
     pub async fn generate_user_creds(&self, vault_name: VaultName) -> anyhow::Result<ApplicationState> {
@@ -78,9 +80,16 @@ impl MobileApplicationManager {
         Ok(app_state)
     }
 
-    pub async fn sign_up(&self) -> WasmApplicationState {
+    pub async fn sign_up(&self) -> ApplicationState {
         let app_state = self.app_manager.sign_up().await.unwrap();
-        WasmApplicationState::from(app_state)
+        ApplicationState::from(app_state)
+    }
+
+    pub async fn update_membership(&self, candidate: UserData, upd: JoinActionUpdate) {
+        self.app_manager
+            .update_membership(candidate, upd)
+            .await
+            .unwrap()
     }
 
     pub async fn cluster_distribution(&self, plain_pass_info: &PlainPassInfo) {

@@ -92,7 +92,7 @@ pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_getState(
     let result = MobileApplicationManager::sync_wrapper(async {
         match MobileApplicationManager::get_global_instance() {
             Some(app_manager) => {
-                let state = app_manager.get_state().await.as_info();
+                let state = app_manager.get_state().await;
                 json!({
                     "success": true, 
                     "message": { 
@@ -121,7 +121,7 @@ pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_signUp(
     let result = MobileApplicationManager::sync_wrapper(async {
         match MobileApplicationManager::get_global_instance() {
             Some(app_manager) => {
-                let state = app_manager.sign_up().await.as_info();
+                let state = app_manager.sign_up().await;
                 json!({
                     "success": true, 
                     "message": { 
