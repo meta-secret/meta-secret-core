@@ -138,13 +138,23 @@ pub extern "C" fn sign_up() -> *mut c_char {
 async fn async_sign_up() -> *mut c_char {
     let result = match MobileApplicationManager::get_global_instance() {
         Some(app_manager) => {
-            let state = app_manager.sign_up().await;
-            json!({
-                    "success": true, 
-                    "message": { 
-                        "state": state 
-                    }
-                }).to_string()
+            let state = match app_manager.sign_up().await {
+                Ok(state) => {
+                    json!({
+                        "success": true, 
+                        "message": { 
+                            "state": state 
+                        }
+                    }).to_string()
+                }
+                Err(e) => {
+                    json!({
+                        "success": false, 
+                        "error": format!("App manager is not initialized: {e}")
+                    }).to_string()
+                }
+            };
+            state
         },
         None => {
             json!({
@@ -167,9 +177,25 @@ pub extern "C" fn update_membership(candidate_ptr: *const c_char, action_update_
 async fn async_update_membership(candidate: String, action_update: String) -> *mut c_char {
     println!("🦀 Rust: candidate str {:?}", candidate);
     println!("🦀 Rust: action_update str {:?}", action_update);
-    let candidate: UserData = serde_json::from_str(&candidate).unwrap();
+    let candidate: UserData = match serde_json::from_str(&candidate) {
+        Ok(data) => data,
+        Err(e) => {
+            return json_to_c_string(&json!({
+                "success": false,
+                "error": format!("Failed to parse a candidate: {}", e)
+            }).to_string());
+        }
+    };
     println!("🦀 Rust: candidate {:?}", candidate);
-    let join_action_update: JoinActionUpdate = serde_json::from_str(&action_update).unwrap();
+    let join_action_update: JoinActionUpdate = match serde_json::from_str(&action_update) {
+        Ok(data) => data,
+        Err(e) => {
+            return json_to_c_string(&json!({
+                "success": false,
+                "error": format!("Failed to parse a candidate: {}", e)
+            }).to_string());
+        }
+    };
     println!("🦀 Rust: action_update {:?}", action_update);
     
     let result = match MobileApplicationManager::get_global_instance() {

@@ -124,13 +124,23 @@ pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_signUp(
     let result = MobileApplicationManager::sync_wrapper(async {
         match MobileApplicationManager::get_global_instance() {
             Some(app_manager) => {
-                let state = app_manager.sign_up().await;
-                json!({
-                    "success": true, 
-                    "message": { 
-                        "state": state 
+                let state = match app_manager.sign_up().await {
+                    Ok(state) => {
+                        json!({
+                            "success": true,
+                            "message": {
+                                "state": state
+                            }
+                        }).to_string()
                     }
-                }).to_string()
+                    Err(_) => {
+                        json!({
+                            "success": false,
+                            "error": "SignUp is failed"
+                        }).to_string()
+                    }
+                };
+                state
             },
             None => {
                 json!({
@@ -221,9 +231,25 @@ pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_update_membership(
         }
     };
 
-    let candidate: UserData = serde_json::from_str(&candidate).unwrap();
+    let candidate: UserData = match serde_json::from_str(&candidate) {
+        Ok(data) => data,
+        Err(e) => {
+            return rust_to_java_string(&mut env, json!({
+                "success": false,
+                "error": format!("Failed to parse candidate: {}", e)
+            }).to_string());
+        }
+    };
     println!("🦀 Rust: candidate {:?}", candidate);
-    let action_update: JoinActionUpdate = serde_json::from_str(&action_update).unwrap();
+    let action_update: JoinActionUpdate = match serde_json::from_str(&action_update) {
+        Ok(data) => data,
+        Err(e) => {
+            return rust_to_java_string(&mut env, json!({
+                "success": false,
+                "error": format!("Failed to parse action update: {}", e)
+            }).to_string());
+        }
+    };
     println!("🦀 Rust: action_update {:?}", action_update);
 
     let result = MobileApplicationManager::sync_wrapper(async {

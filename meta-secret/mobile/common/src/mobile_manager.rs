@@ -80,16 +80,17 @@ impl MobileApplicationManager {
         Ok(app_state)
     }
 
-    pub async fn sign_up(&self) -> ApplicationState {
-        let app_state = self.app_manager.sign_up().await.unwrap();
-        ApplicationState::from(app_state)
+    pub async fn sign_up(&self) -> anyhow::Result<ApplicationState> {
+        let app_state = self.app_manager.sign_up().await?;
+        Ok(ApplicationState::from(app_state))
     }
 
-    pub async fn update_membership(&self, candidate: UserData, upd: JoinActionUpdate) {
-        self.app_manager
-            .update_membership(candidate, upd)
-            .await
-            .unwrap()
+    pub async fn update_membership(&self, candidate: UserData, upd: JoinActionUpdate) -> anyhow::Result<()> {
+        Ok(
+            self.app_manager
+                .update_membership(candidate, upd)
+                .await?
+        )
     }
 
     pub async fn cluster_distribution(&self, plain_pass_info: &PlainPassInfo) {
