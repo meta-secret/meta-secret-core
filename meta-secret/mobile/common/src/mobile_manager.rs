@@ -11,6 +11,7 @@ use once_cell::sync::Lazy;
 use std::sync::Mutex;
 use std::future::Future;
 use std::path::PathBuf;
+use anyhow::{anyhow, bail};
 use meta_secret_core::node::common::model::user::common::UserData;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
@@ -67,9 +68,16 @@ impl MobileApplicationManager {
         Self::init(master_key, db_path).await
     }
 
-    pub async fn get_state(&self) -> ApplicationState {
-        let app_state = self.app_manager.get_state().await;
-        ApplicationState::from(app_state)
+    pub async fn get_state(&self) -> anyhow::Result<ApplicationState> {
+        let app_state = match self.app_manager.get_state().await {
+            Ok(state) => {
+                ApplicationState::from(state)
+            }
+            Err(e) => {
+                bail!("Unable to get state from mobile manager: {:?}", e);
+            }
+        };
+        Ok(app_state)
     }
     
     pub async fn generate_user_creds(&self, vault_name: VaultName) -> anyhow::Result<ApplicationState> {

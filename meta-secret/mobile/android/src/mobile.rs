@@ -95,13 +95,23 @@ pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_getState(
     let result = MobileApplicationManager::sync_wrapper(async {
         match MobileApplicationManager::get_global_instance() {
             Some(app_manager) => {
-                let state = app_manager.get_state().await;
-                json!({
-                    "success": true, 
-                    "message": { 
-                        "state": state 
+                let state = match app_manager.get_state().await {
+                    Ok(state) => {
+                        json!({
+                            "success": true,
+                            "message": {
+                                "state": state
+                            }
+                        }).to_string()
                     }
-                }).to_string()
+                    Err(e) => {
+                        json!({
+                            "success": false,
+                            "error": format!("App manager is not initialized {e}")
+                        }).to_string()
+                    }
+                };
+                state
             },
             None => {
                 json!({

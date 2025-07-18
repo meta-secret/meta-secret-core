@@ -96,7 +96,10 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
     #[instrument(skip(self))]
     pub async fn sign_up(&self) -> Result<ApplicationState> {
         info!("Sign Up");
-        match self.get_state().await {
+        
+        let state = self.get_state().await?;
+        
+        match state {
             ApplicationState::Local(_) => {
                 bail!("Sign up is not allowed in local state");
             }
@@ -116,9 +119,11 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
                         bail!("Sign up is not allowed in vault state");
                     }
                 };
+                
                 let sign_up = GenericAppStateRequest::SignUp(vault_name);
                 let new_state = self.meta_client_service.send_request(sign_up).await?;
                 info!("Sign Up. Completed");
+                
                 Ok(new_state)
             }
         }
@@ -140,12 +145,13 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
             .unwrap();
     }
 
-    pub async fn get_state(&self) -> ApplicationState {
+    pub async fn get_state(&self) -> Result<ApplicationState> {
         let request = GenericAppStateRequest::GetState;
-        self.meta_client_service
+        Ok(
+            self.meta_client_service
             .send_request(request)
-            .await
-            .unwrap()
+            .await?
+        )
     }
 
     pub async fn accept_recover(&self, claim_id: ClaimId) -> Result<()> {
@@ -165,7 +171,9 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
 
     pub async fn show_recovered(&self, pass_id: MetaPasswordId) -> Result<PlainText> {
         let user_creds = self.meta_client_service.find_user_creds().await?;
-        match &self.get_state().await {
+        let state = self.get_state().await?;
+
+        match state {
             ApplicationState::Local(_) => {
                 bail!("Show recovered is not allowed in local state");
             }
@@ -204,7 +212,12 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
     }
 
     pub async fn find_claim_by_pass_id(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
-        let ApplicationState::Vault(VaultFullInfo::Member(member)) = &self.get_state().await else {
+        let state = match self.get_state().await {
+            Ok(state) => state,
+            Err(_) => return None,
+        };
+        
+        let ApplicationState::Vault(VaultFullInfo::Member(member)) = state else {
             return None;
         };
 
