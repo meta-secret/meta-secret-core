@@ -143,10 +143,10 @@ pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_signUp(
                             }
                         }).to_string()
                     }
-                    Err(_) => {
+                    Err(e) => {
                         json!({
                             "success": false,
-                            "error": "SignUp is failed"
+                            "error": format!("SignUp is failed {e}")
                         }).to_string()
                     }
                 };
@@ -265,8 +265,20 @@ pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_update_membership(
     let result = MobileApplicationManager::sync_wrapper(async {
         match MobileApplicationManager::get_global_instance() {
             Some(app_manager) => {
-                app_manager.update_membership(candidate, action_update).await;
-                json!({ "success": true}).to_string()
+                let result = match app_manager.update_membership(candidate, action_update).await {
+                    Ok(_) => {
+                        json!({
+                            "success": true,
+                        }).to_string()
+                    }
+                    Err(e) => {
+                        json!({
+                            "success": false,
+                            "error": format!("Failed to parse action update: {}", e)
+                        }).to_string()
+                    }
+                };
+                result
             },
             None => {
                 json!({

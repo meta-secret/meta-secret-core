@@ -77,15 +77,15 @@ async fn async_get_state() -> *mut c_char {
             let state = match app_manager.get_state().await {
                 Ok(state) => {
                     json!({
-                        "success": true, 
-                        "message": { 
-                            "state": state 
+                        "success": true,
+                        "message": {
+                            "state": state
                         }
                     }).to_string()
                 }
                 Err(e) => {
                     json!({
-                    "success": false, 
+                    "success": false,
                     "error": format!("App manager is not initialized {e}")
                 }).to_string()
                 }
@@ -151,15 +151,15 @@ async fn async_sign_up() -> *mut c_char {
             let state = match app_manager.sign_up().await {
                 Ok(state) => {
                     json!({
-                        "success": true, 
-                        "message": { 
-                            "state": state 
+                        "success": true,
+                        "message": {
+                            "state": state
                         }
                     }).to_string()
                 }
                 Err(e) => {
                     json!({
-                        "success": false, 
+                        "success": false,
                         "error": format!("App manager is not initialized: {e}")
                     }).to_string()
                 }
@@ -210,16 +210,26 @@ async fn async_update_membership(candidate: String, action_update: String) -> *m
     
     let result = match MobileApplicationManager::get_global_instance() {
         Some(app_manager) => {
-            app_manager.update_membership(candidate, join_action_update).await;
-            json!({
-                    "success": true
-                }).to_string()
+            let res = match app_manager.update_membership(candidate, join_action_update).await {
+                Ok(_) => {
+                    json!({
+                        "success": true
+                    }).to_string()
+                }
+                Err(e) => {
+                    json!({
+                        "success": false,
+                        "error": format!("Update user join request is failed {e}")
+                    }).to_string()
+                }
+            };
+            res
         },
         None => {
             json!({
-                    "success": false, 
-                    "error": "Update user join request is failed"
-                }).to_string()
+                "success": false,
+                "error": "Update user join request is failed"
+            }).to_string()
         }
     };
 
