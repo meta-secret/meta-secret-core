@@ -6,11 +6,15 @@ use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::ClaimId;
-use meta_secret_core::node::common::model::WasmApplicationState;
+use meta_secret_core::node::common::model::{ApplicationState};
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
 use std::future::Future;
 use std::path::PathBuf;
+use anyhow::{anyhow, bail};
+use meta_secret_core::node::common::model::user::common::UserData;
+use meta_secret_core::node::common::model::vault::vault::VaultName;
+use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
 use crate::app_manager::ApplicationManager;
 
 static GLOBAL_APP_MANAGER: Lazy<Mutex<Option<Arc<MobileApplicationManager>>>> =
@@ -64,14 +68,37 @@ impl MobileApplicationManager {
         Self::init(master_key, db_path).await
     }
 
-    pub async fn get_state(&self) -> WasmApplicationState {
-        let app_state = self.app_manager.get_state().await;
-        WasmApplicationState::from(app_state)
+    pub async fn get_state(&self) -> anyhow::Result<ApplicationState> {
+        let app_state = match self.app_manager.get_state().await {
+            Ok(state) => {
+                ApplicationState::from(state)
+            }
+            Err(e) => {
+                bail!("Unable to get state from mobile manager: {:?}", e);
+            }
+        };
+        Ok(app_state)
+    }
+    
+    pub async fn generate_user_creds(&self, vault_name: VaultName) -> anyhow::Result<ApplicationState> {
+        info!("Generate user credentials for vault: {}", vault_name);
+        let app_state = self.app_manager
+            .generate_user_creds(vault_name)
+            .await?;
+        Ok(app_state)
     }
 
-    pub async fn sign_up(&self) -> WasmApplicationState {
-        let app_state = self.app_manager.sign_up().await.unwrap();
-        WasmApplicationState::from(app_state)
+    pub async fn sign_up(&self) -> anyhow::Result<ApplicationState> {
+        let app_state = self.app_manager.sign_up().await?;
+        Ok(ApplicationState::from(app_state))
+    }
+
+    pub async fn update_membership(&self, candidate: UserData, upd: JoinActionUpdate) -> anyhow::Result<()> {
+        Ok(
+            self.app_manager
+                .update_membership(candidate, upd)
+                .await?
+        )
     }
 
     pub async fn cluster_distribution(&self, plain_pass_info: &PlainPassInfo) {
