@@ -274,8 +274,8 @@ async fn async_split_secret(secret_id: String, secret_ptr: String) -> *mut c_cha
     println!("🦀 Mobile iOS API: split secret {:?}", secret_id);
     let result = match MobileApplicationManager::get_global_instance() {
         Some(app_manager) => {
-            let plan_pass_info = PlainPassInfo::new(secret_ptr, secret_id);
-            
+            let plan_pass_info = PlainPassInfo::new(secret_id, secret_ptr);
+
             app_manager.cluster_distribution(&plan_pass_info).await;
             json!({
                     "success": true
@@ -303,7 +303,7 @@ async fn async_find_claim_by(secret_id: String) -> *mut c_char {
     let result = match MobileApplicationManager::get_global_instance() {
         Some(app_manager) => {
             let meta_password_id = MetaPasswordId::build_from_str(&secret_id);
-            
+
             let res = match app_manager.find_claim_by_pass_id(&meta_password_id).await {
                 Some(claim) => {
                     json!({

@@ -323,10 +323,10 @@ pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_clean_up_database(
 pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_split(
     mut env: JNIEnv,
     _: JClass,
-    pass_id: JString,
-    pass: JString
+    secret_id: JString,
+    secret: JString
 ) -> jstring {
-    let pass_id = match java_to_rust_string(&mut env, pass_id) {
+    let pass_id = match java_to_rust_string(&mut env, secret_id) {
         Ok(pass_id) => pass_id,
         Err(e) => {
             return rust_to_java_string(&mut env, json!({
@@ -336,7 +336,7 @@ pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_split(
         }
     };
 
-    let pass = match java_to_rust_string(&mut env, pass) {
+    let pass = match java_to_rust_string(&mut env, secret) {
         Ok(pass) => pass,
         Err(e) => {
             return rust_to_java_string(&mut env, json!({
