@@ -4,6 +4,9 @@ use meta_secret_core::crypto::key_pair::MasterKeyManager;
 use serde_json::json;
 use mobile_common::mobile_manager::MobileApplicationManager;
 use std::sync::Arc;
+use meta_secret_core::crypto::utils::Id48bit;
+use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
+use meta_secret_core::node::common::model::secret::ClaimId;
 use meta_secret_core::node::common::model::user::common::UserData;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
@@ -185,8 +188,8 @@ pub extern "C" fn update_membership(candidate_ptr: *const c_char, action_update_
 }
 
 async fn async_update_membership(candidate: String, action_update: String) -> *mut c_char {
-    println!("🦀 Rust: candidate str {:?}", candidate);
-    println!("🦀 Rust: action_update str {:?}", action_update);
+    println!("🦀 Mobile iOS API: candidate str {:?}", candidate);
+    println!("🦀 Mobile iOS API: action_update str {:?}", action_update);
     let candidate: UserData = match serde_json::from_str(&candidate) {
         Ok(data) => data,
         Err(e) => {
@@ -196,7 +199,7 @@ async fn async_update_membership(candidate: String, action_update: String) -> *m
             }).to_string());
         }
     };
-    println!("🦀 Rust: candidate {:?}", candidate);
+    println!("🦀 Mobile iOS API: candidate {:?}", candidate);
     let join_action_update: JoinActionUpdate = match serde_json::from_str(&action_update) {
         Ok(data) => data,
         Err(e) => {
@@ -206,7 +209,7 @@ async fn async_update_membership(candidate: String, action_update: String) -> *m
             }).to_string());
         }
     };
-    println!("🦀 Rust: action_update {:?}", action_update);
+    println!("🦀 Mobile iOS API: action_update {:?}", action_update);
     
     let result = match MobileApplicationManager::get_global_instance() {
         Some(app_manager) => {
@@ -257,6 +260,163 @@ async fn async_clean_up_database() -> *mut c_char {
         }
     };
     
+    json_to_c_string(&result)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn split_secret(secret_id_ptr: *const c_char, secret_ptr: *const c_char) -> *mut c_char {
+    let secret_id = c_str_to_string(secret_id_ptr);
+    let secret = c_str_to_string(secret_ptr);
+    MobileApplicationManager::sync_wrapper(async_split_secret(secret_id, secret))
+}
+
+async fn async_split_secret(secret_id: String, secret_ptr: String) -> *mut c_char {
+    println!("🦀 Mobile iOS API: split secret {:?}", secret_id);
+    let result = match MobileApplicationManager::get_global_instance() {
+        Some(app_manager) => {
+            let plan_pass_info = PlainPassInfo::new(secret_ptr, secret_id);
+            
+            app_manager.cluster_distribution(&plan_pass_info).await;
+            json!({
+                    "success": true
+                }).to_string()
+        },
+        None => {
+            json!({
+                "success": false,
+                "error": "Secret split request is failed"
+            }).to_string()
+        }
+    };
+
+    json_to_c_string(&result)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn find_claim_by(secret_id_ptr: *const c_char) -> *mut c_char {
+    let secret_id = c_str_to_string(secret_id_ptr);
+    MobileApplicationManager::sync_wrapper(async_find_claim_by(secret_id))
+}
+
+async fn async_find_claim_by(secret_id: String) -> *mut c_char {
+    println!("🦀 Mobile iOS API: find claim by {:?}", secret_id);
+    let result = match MobileApplicationManager::get_global_instance() {
+        Some(app_manager) => {
+            let meta_password_id = MetaPasswordId::build_from_str(&secret_id);
+            
+            let res = match app_manager.find_claim_by_pass_id(&meta_password_id).await {
+                Some(claim) => {
+                    json!({
+                        "success": true,
+                        "message": {
+                            "claim": claim
+                        }
+                    }).to_string()
+                }
+                None => {
+                    json!({
+                        "success": false,
+                        "error": "Update find claim request is failed".to_string()
+                    }).to_string()
+                }
+            };
+            res
+        },
+        None => {
+            json!({
+                "success": false,
+                "error": "Find claim request is failed"
+            }).to_string()
+        }
+    };
+
+    json_to_c_string(&result)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn recover(secret_id_ptr: *const c_char) -> *mut c_char {
+    let secret_id = c_str_to_string(secret_id_ptr);
+    MobileApplicationManager::sync_wrapper(async_recover(secret_id))
+}
+
+async fn async_recover(secret_id: String) -> *mut c_char {
+    println!("🦀 Mobile iOS API: recover {:?}", secret_id);
+    let result = match MobileApplicationManager::get_global_instance() {
+        Some(app_manager) => {
+            let meta_password_id = MetaPasswordId::build_from_str(&secret_id);
+
+            app_manager.recover(&meta_password_id).await;
+            json!({
+                    "success": true
+                }).to_string()
+        },
+        None => {
+            json!({
+                "success": false,
+                "error": "Recover request is failed"
+            }).to_string()
+        }
+    };
+
+    json_to_c_string(&result)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn accept_recover(claim_id_ptr: *const c_char) -> *mut c_char {
+    let claim_id = c_str_to_string(claim_id_ptr);
+    MobileApplicationManager::sync_wrapper(async_accept_recover(claim_id))
+}
+
+async fn async_accept_recover(claim_id: String) -> *mut c_char {
+    println!("🦀 Mobile iOS API: accept recover claim {:?}", claim_id);
+    let result = match MobileApplicationManager::get_global_instance() {
+        Some(app_manager) => {
+            let meta_claim_id = ClaimId::from(Id48bit::from(claim_id));
+
+            app_manager.accept_recover(meta_claim_id).await;
+            json!({
+                    "success": true
+                }).to_string()
+        },
+        None => {
+            json!({
+                "success": false,
+                "error": "Accept recover request is failed"
+            }).to_string()
+        }
+    };
+
+    json_to_c_string(&result)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn show_recovered(secret_id_ptr: *const c_char) -> *mut c_char {
+    let secret_id = c_str_to_string(secret_id_ptr);
+    MobileApplicationManager::sync_wrapper(async_show_recovered(secret_id))
+}
+
+async fn async_show_recovered(secret_id: String) -> *mut c_char {
+    println!("🦀 Mobile iOS API: show recovered by pass id {:?}", secret_id);
+    let result = match MobileApplicationManager::get_global_instance() {
+        Some(app_manager) => {
+            let meta_password_id = MetaPasswordId::build_from_str(&secret_id);
+
+            let secret =  app_manager.show_recovered(&meta_password_id).await;
+            json!({
+                "success": true,
+                "message": {
+                    "secret": secret
+                }
+            }).to_string()
+        },
+        None => {
+            json!({
+                "success": false,
+                "error": "Show recovered request is failed"
+            }).to_string()
+        }
+    };
+
     json_to_c_string(&result)
 }
 
