@@ -41,7 +41,7 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
         meta_client_service: Arc<MetaClientService<Repo, SyncP>>,
         master_key: TransportSk
     ) -> ApplicationManager<Repo, SyncP> {
-        info!("New. Application State Manager");
+        println!("🦀Mobile App Manager: New. Application State Manager");
 
         ApplicationManager {
             server,
@@ -55,7 +55,7 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
         client_repo: Arc<Repo>,
         master_key: TransportSk
     ) -> Result<ApplicationManager<Repo, HttpSyncProtocol>> {
-        info!("Initialize application state manager");
+        println!("🦀Mobile App Manager: Initialize application state manager");
 
         let sync_protocol = Arc::new(HttpSyncProtocol {
             api_url: ApiUrl::prod(),
@@ -78,7 +78,7 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
                     .instrument(client_span())
                     .await 
                 {
-                    info!("Meta client service error: {:?}", e);
+                    println!("🦀❌ Mobile App Manager: Meta client service error: {:?}", e);
                 }
             });
         });
@@ -87,7 +87,7 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
     }
 
     pub async fn generate_user_creds(&self, vault_name: VaultName) -> Result<ApplicationState> {
-        info!("Generate user credentials for vault: {}", vault_name);
+        println!("🦀 Mobile App Manager: Generate user credentials for vault: {}", vault_name);
         let creds = GenericAppStateRequest::GenerateUserCreds(vault_name);
         let app_state = self.meta_client_service.send_request(creds).await?;
         Ok(app_state)
@@ -122,7 +122,7 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
                 
                 let sign_up = GenericAppStateRequest::SignUp(vault_name);
                 let new_state = self.meta_client_service.send_request(sign_up).await?;
-                info!("Sign Up. Completed");
+                println!("🦀 Mobile App Manager: Sign Up. Completed");
                 
                 Ok(new_state)
             }

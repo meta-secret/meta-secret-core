@@ -6,7 +6,9 @@ use jni::objects::{JClass, JString};
 use jni::sys::jstring;
 use serde_json::json;
 use std::sync::Arc;
+use meta_secret_core::crypto::utils::Id48bit;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
+use meta_secret_core::node::common::model::secret::ClaimId;
 use meta_secret_core::node::common::model::user::common::UserData;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
@@ -316,133 +318,227 @@ pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_clean_up_database(
     rust_to_java_string(&mut env, result)
 }
 
-// #[allow(non_snake_case)]
-// #[unsafe(no_mangle)]
-// pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_split(
-//     mut env: JNIEnv,
-//     _: JClass,
-//     pass_id: JString,
-//     pass: JString
-// ) -> jstring {
-//     let pass_id = match java_to_rust_string(&mut env, pass_id) {
-//         Ok(pass_id) => pass_id,
-//         Err(e) => {
-//             return rust_to_java_string(&mut env, json!({
-//                 "success": false,
-//                 "error": e
-//             }).to_string());
-//         }
-//     };
-//
-//     let pass = match java_to_rust_string(&mut env, pass) {
-//         Ok(pass) => pass,
-//         Err(e) => {
-//             return rust_to_java_string(&mut env, json!({
-//                 "success": false,
-//                 "error": e
-//             }).to_string());
-//         }
-//     };
-//
-//     let plain_pass_info = PlainPassInfo::new(pass_id, pass);
-//
-//     let result = MobileApplicationManager::sync_wrapper(async {
-//         match MobileApplicationManager::get_global_instance() {
-//             Some(app_manager) => {
-//                 app_manager.cluster_distribution(&plain_pass_info).await;
-//                 json!({
-//                     "success": true,
-//                 }).to_string()
-//             },
-//             None => {
-//                 json!({
-//                     "success": false,
-//                     "error": "Distribution is failed"
-//                 }).to_string()
-//             }
-//         }
-//     });
-//
-//     rust_to_java_string(&mut env, result)
-// }
-//
-// #[allow(non_snake_case)]
-// #[unsafe(no_mangle)]
-// pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_recover(
-//     mut env: JNIEnv,
-//     _: JClass,
-//     pass_id: JString,
-// ) -> jstring {
-//     let pass_id = match java_to_rust_string(&mut env, pass_id) {
-//         Ok(pass_id) => pass_id,
-//         Err(e) => {
-//             return rust_to_java_string(&mut env, json!({
-//                 "success": false,
-//                 "error": e
-//             }).to_string());
-//         }
-//     };
-//
-//     let meta_password_id = MetaPasswordId::build(pass_id);
-//
-//     let result = MobileApplicationManager::sync_wrapper(async {
-//         match MobileApplicationManager::get_global_instance() {
-//             Some(app_manager) => {
-//                 app_manager.recover(&meta_password_id).await;
-//                 json!({
-//                     "success": true,
-//                 }).to_string()
-//             },
-//             None => {
-//                 json!({
-//                     "success": false,
-//                     "error": "Recover request is failed"
-//                 }).to_string()
-//             }
-//         }
-//     });
-//
-//     rust_to_java_string(&mut env, result)
-// }
+#[allow(non_snake_case)]
+#[unsafe(no_mangle)]
+pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_split(
+    mut env: JNIEnv,
+    _: JClass,
+    secret_id: JString,
+    secret: JString
+) -> jstring {
+    let pass_id = match java_to_rust_string(&mut env, secret_id) {
+        Ok(pass_id) => pass_id,
+        Err(e) => {
+            return rust_to_java_string(&mut env, json!({
+                "success": false,
+                "error": e
+            }).to_string());
+        }
+    };
 
-// #[allow(non_snake_case)]
-// #[unsafe(no_mangle)]
-// pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_acceptRecover(
-//     mut env: JNIEnv,
-//     _: JClass,
-//     pass_id: JString,
-// ) -> jstring {
-//     let pass_id = match java_to_rust_string(&mut env, pass_id) {
-//         Ok(pass_id) => pass_id,
-//         Err(e) => {
-//             return rust_to_java_string(&mut env, json!({
-//                 "success": false,
-//                 "error": e
-//             }).to_string());
-//         }
-//     };
-// 
-//     let meta_password_id = MetaPasswordId::build(pass_id);
-// 
-//     let result = MobileApplicationManager::sync_wrapper(async {
-//         match MobileApplicationManager::get_global_instance() {
-//             Some(app_manager) => {
-//                 app_manager.recover(&meta_password_id).await;
-//                 json!({
-//                     "success": true,
-//                 }).to_string()
-//             },
-//             None => {
-//                 json!({
-//                     "success": false, 
-//                     "error": "Recover request is failed"
-//                 }).to_string()
-//             }
-//         }
-//     });
-// 
-//     rust_to_java_string(&mut env, result)
-// }
+    let pass = match java_to_rust_string(&mut env, secret) {
+        Ok(pass) => pass,
+        Err(e) => {
+            return rust_to_java_string(&mut env, json!({
+                "success": false,
+                "error": e
+            }).to_string());
+        }
+    };
+
+    let plain_pass_info = PlainPassInfo::new(pass_id, pass);
+
+    let result = MobileApplicationManager::sync_wrapper(async {
+        match MobileApplicationManager::get_global_instance() {
+            Some(app_manager) => {
+                app_manager.cluster_distribution(&plain_pass_info).await;
+                json!({
+                    "success": true,
+                }).to_string()
+            },
+            None => {
+                json!({
+                    "success": false,
+                    "error": "Distribution is failed"
+                }).to_string()
+            }
+        }
+    });
+
+    rust_to_java_string(&mut env, result)
+}
+
+#[allow(non_snake_case)]
+#[unsafe(no_mangle)]
+pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_find_claim_by_(
+    mut env: JNIEnv,
+    _: JClass,
+    secret_id: JString,
+) -> jstring {
+    let secret_id = match java_to_rust_string(&mut env, secret_id) {
+        Ok(key) => key,
+        Err(e) => {
+            return rust_to_java_string(&mut env, json!({
+                "success": false,
+                "error": e
+            }).to_string());
+        }
+    };
+
+    let result = MobileApplicationManager::sync_wrapper(async {
+        match MobileApplicationManager::get_global_instance() {
+            Some(app_manager) => {
+                let meta_password_id = MetaPasswordId::build_from_str(&secret_id);
+                let res = match app_manager.find_claim_by_pass_id(&meta_password_id).await {
+                    Some(claim) => {
+                        json!({
+                        "success": true,
+                        "message": {
+                            "claim": claim
+                        }
+                    }).to_string()
+                    }
+                    None => {
+                        json!({
+                        "success": false,
+                        "error": "Update find claim request is failed".to_string()
+                    }).to_string()
+                    }
+                };
+                res
+            },
+            None => {
+                json!({
+                    "success": false,
+                    "error": "App manager is not initialized"
+                }).to_string()
+            }
+        }
+    });
+
+    rust_to_java_string(&mut env, result)
+}
+
+
+#[allow(non_snake_case)]
+#[unsafe(no_mangle)]
+pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_recover(
+    mut env: JNIEnv,
+    _: JClass,
+    secret_id: JString,
+) -> jstring {
+    let secret_id = match java_to_rust_string(&mut env, secret_id) {
+        Ok(pass_id) => pass_id,
+        Err(e) => {
+            return rust_to_java_string(&mut env, json!({
+                "success": false,
+                "error": e
+            }).to_string());
+        }
+    };
+
+    let meta_password_id = MetaPasswordId::build(secret_id);
+
+    let result = MobileApplicationManager::sync_wrapper(async {
+        match MobileApplicationManager::get_global_instance() {
+            Some(app_manager) => {
+                app_manager.recover(&meta_password_id).await;
+                json!({
+                    "success": true,
+                }).to_string()
+            },
+            None => {
+                json!({
+                    "success": false,
+                    "error": "Recover request is failed"
+                }).to_string()
+            }
+        }
+    });
+
+    rust_to_java_string(&mut env, result)
+}
+
+#[allow(non_snake_case)]
+#[unsafe(no_mangle)]
+pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_acceptRecover(
+    mut env: JNIEnv,
+    _: JClass,
+    claim_id: JString,
+) -> jstring {
+    let claim_id = match java_to_rust_string(&mut env, claim_id) {
+        Ok(pass_id) => pass_id,
+        Err(e) => {
+            return rust_to_java_string(&mut env, json!({
+                "success": false,
+                "error": e
+            }).to_string());
+        }
+    };
+
+    let meta_claim_id = ClaimId::from(Id48bit::from(claim_id));
+
+    let result = MobileApplicationManager::sync_wrapper(async {
+        match MobileApplicationManager::get_global_instance() {
+            Some(app_manager) => {
+                app_manager.accept_recover(meta_claim_id).await;
+                json!({
+                    "success": true,
+                }).to_string()
+            },
+            None => {
+                json!({
+                    "success": false,
+                    "error": "Recover request is failed"
+                }).to_string()
+            }
+        }
+    });
+
+    rust_to_java_string(&mut env, result)
+}
+
+#[allow(non_snake_case)]
+#[unsafe(no_mangle)]
+pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_showRecovered(
+    mut env: JNIEnv,
+    _: JClass,
+    secret_id: JString,
+) -> jstring {
+    let secret_id = match java_to_rust_string(&mut env, secret_id) {
+        Ok(pass_id) => pass_id,
+        Err(e) => {
+            return rust_to_java_string(&mut env, json!({
+                "success": false,
+                "error": e
+            }).to_string());
+        }
+    };
+
+    let meta_password_id = MetaPasswordId::build_from_str(&secret_id);
+
+    let result = MobileApplicationManager::sync_wrapper(async {
+        match MobileApplicationManager::get_global_instance() {
+            Some(app_manager) => {
+                let secret =  app_manager.show_recovered(&meta_password_id).await;
+                json!({
+                    "success": true,
+                    "message": {
+                        "secret": secret
+                    }
+                }).to_string()
+            },
+            None => {
+                json!({
+                    "success": false,
+                    "error": "Recover request is failed"
+                }).to_string()
+            }
+        }
+    });
+
+    rust_to_java_string(&mut env, result)
+}
 
 #[cfg(test)]
 mod tests {
