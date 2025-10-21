@@ -58,7 +58,7 @@ impl MobileApplicationManager {
             .join("meta-secret.db")
             .to_string_lossy()
             .to_string();
-        info!("iOS database path: {}", db_path);
+        println!("🦀 iOS database path: {}", db_path);
         
         Self::init(master_key, &db_path).await
     }
@@ -138,13 +138,13 @@ impl MobileApplicationManager {
 
 impl MobileApplicationManager {
     async fn init(master_key: TransportSk, db_path: &str) -> anyhow::Result<MobileApplicationManager> {
-        info!("Init mobile state manager");
-        info!("Using database path: {}", db_path);
+        println!("🦀Init mobile state manager");
+        println!("🦀 Using database path: {}", db_path);
         
         match master_key.pk() {
             Ok(pk) => info!("Master key valid. Public key available"),
             Err(e) => {
-                info!("Invalid master key provided: {}", e);
+                println!("🦀 Invalid master key provided: {}", e);
                 return Err(anyhow::anyhow!("Invalid master key: {}", e));
             }
         }
@@ -152,7 +152,7 @@ impl MobileApplicationManager {
         if let Some(parent_dir) = std::path::Path::new(db_path).parent() {
             std::fs::create_dir_all(parent_dir)
                 .map_err(|e| {
-                    info!("Failed to create database directory: {}", e);
+                    println!("🦀 Failed to create database directory: {}", e);
                     anyhow::anyhow!("Failed to create database directory: {}", e)
                 })?;
         }
@@ -175,7 +175,7 @@ impl MobileApplicationManager {
                 } else {
                     "Unknown error during migration".to_string()
                 };
-                info!("Migration failed: {}", err_msg);
+                println!("🦀 Migration failed: {}", err_msg);
             }
         };
 

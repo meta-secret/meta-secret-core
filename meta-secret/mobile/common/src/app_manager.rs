@@ -146,6 +146,11 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
     }
 
     pub async fn get_state(&self) -> Result<ApplicationState> {
+        if let Ok(user_creds) = self.meta_client_service.find_user_creds().await {
+            println!("🦀Mobile App Manager: Sync DB");
+            self.sync_gateway.sync(user_creds.user()).await?;
+        }
+        
         let request = GenericAppStateRequest::GetState;
         Ok(
             self.meta_client_service

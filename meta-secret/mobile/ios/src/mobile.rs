@@ -49,6 +49,7 @@ pub extern "C" fn init(master_key_ptr: *const c_char) -> *mut c_char {
 }
 
 async fn async_init(master_key: String) -> *mut c_char {
+    println!("🦀 Mobile async_init ");
     let transport_sk = MasterKeyManager::from_pure_sk(master_key);
     
     let result = match MobileApplicationManager::init_ios(transport_sk).await {
