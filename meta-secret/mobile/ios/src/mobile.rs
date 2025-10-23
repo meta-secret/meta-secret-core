@@ -248,7 +248,7 @@ pub extern "C" fn clean_up_database() -> *mut c_char {
 async fn async_clean_up_database() -> *mut c_char {
     let result = match MobileApplicationManager::get_global_instance() {
         Some(app_manager) => {
-            let state = app_manager.clean_up_database().await;
+            app_manager.clean_up_database().await;
             json!({
                     "success": true
                 }).to_string()
@@ -272,10 +272,17 @@ pub extern "C" fn split_secret(secret_id_ptr: *const c_char, secret_ptr: *const 
 }
 
 async fn async_split_secret(secret_id: String, secret_ptr: String) -> *mut c_char {
-    println!("🦀 Mobile iOS API: split secret {:?}", secret_id);
+    println!("🦀 Mobile iOS API: split secret id {:?} and secret: {:?}", secret_id, secret_ptr);
     let result = match MobileApplicationManager::get_global_instance() {
         Some(app_manager) => {
-            let plan_pass_info = PlainPassInfo::new(secret_id, secret_ptr);
+            let meta_pass_id = MetaPasswordId::build_from_str(&secret_id);
+            println!("🦀 Mobile iOS API: split secret meta_pass_id {:?}", meta_pass_id);
+
+            let plan_pass_info = PlainPassInfo {
+                pass_id: meta_pass_id,
+                pass: secret_ptr,
+            };
+            println!("🦀 Mobile iOS API: split secret plan_pass_info {:?}", plan_pass_info);
 
             app_manager.cluster_distribution(&plan_pass_info).await;
             json!({
@@ -341,11 +348,11 @@ pub extern "C" fn recover(secret_id_ptr: *const c_char) -> *mut c_char {
 }
 
 async fn async_recover(secret_id: String) -> *mut c_char {
-    println!("🦀 Mobile iOS API: recover {:?}", secret_id);
+    println!("🦀 Mobile iOS API: recover secret_id {:?}", secret_id);
     let result = match MobileApplicationManager::get_global_instance() {
         Some(app_manager) => {
             let meta_password_id = MetaPasswordId::build_from_str(&secret_id);
-
+            println!("🦀 Mobile iOS API: recover meta_password_id {:?}", meta_password_id);
             app_manager.recover(&meta_password_id).await;
             json!({
                     "success": true
@@ -373,11 +380,22 @@ async fn async_accept_recover(claim_id: String) -> *mut c_char {
     let result = match MobileApplicationManager::get_global_instance() {
         Some(app_manager) => {
             let meta_claim_id = ClaimId::from(Id48bit::from(claim_id));
+            println!("🦀 Mobile iOS API: meta_claim_id {:?}", meta_claim_id);
 
-            app_manager.accept_recover(meta_claim_id).await;
-            json!({
-                    "success": true
-                }).to_string()
+            match app_manager.accept_recover_mobile(meta_claim_id).await {
+                Ok(_) => {
+                    json!({
+                        "success": true
+                    }).to_string()
+                }
+                Err(e) => {
+                    println!("🦀 Mobile iOS API: accept recover failed: {}", e);
+                    json!({
+                        "success": false,
+                        "error": format!("Accept recover failed: {}", e)
+                    }).to_string()
+                }
+            }
         },
         None => {
             json!({

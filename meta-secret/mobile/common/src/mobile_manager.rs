@@ -11,7 +11,7 @@ use once_cell::sync::Lazy;
 use std::sync::Mutex;
 use std::future::Future;
 use std::path::PathBuf;
-use anyhow::{anyhow, bail};
+use anyhow::{bail, Result};
 use meta_secret_core::node::common::model::user::common::UserData;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
@@ -111,6 +111,11 @@ impl MobileApplicationManager {
         self.app_manager.recover_js(meta_pass_id.clone()).await;
     }
 
+    pub async fn accept_recover_mobile(&self, claim_id: ClaimId) -> Result<()> {
+        println!("🦀Mobile App Manager: Accept recover mobile wrapper");
+        self.app_manager.accept_recover_mobile(claim_id).await
+    }
+
     pub async fn accept_recover(&self, claim_id: ClaimId) {
         match self.app_manager.accept_recover(claim_id).await {
             Ok(res) => {res}
@@ -142,7 +147,7 @@ impl MobileApplicationManager {
         println!("🦀 Using database path: {}", db_path);
         
         match master_key.pk() {
-            Ok(pk) => info!("Master key valid. Public key available"),
+            Ok(_pk) => info!("Master key valid. Public key available"),
             Err(e) => {
                 println!("🦀 Invalid master key provided: {}", e);
                 return Err(anyhow::anyhow!("Invalid master key: {}", e));
