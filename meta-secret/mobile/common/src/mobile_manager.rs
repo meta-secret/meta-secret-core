@@ -11,7 +11,7 @@ use once_cell::sync::Lazy;
 use std::sync::Mutex;
 use std::future::Future;
 use std::path::PathBuf;
-use anyhow::{anyhow, bail};
+use anyhow::{bail, Result};
 use meta_secret_core::node::common::model::user::common::UserData;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
@@ -58,7 +58,7 @@ impl MobileApplicationManager {
             .join("meta-secret.db")
             .to_string_lossy()
             .to_string();
-        info!("iOS database path: {}", db_path);
+        println!("🦀 iOS database path: {}", db_path);
         
         Self::init(master_key, &db_path).await
     }
@@ -111,6 +111,11 @@ impl MobileApplicationManager {
         self.app_manager.recover_js(meta_pass_id.clone()).await;
     }
 
+    pub async fn accept_recover_mobile(&self, claim_id: ClaimId) -> Result<()> {
+        println!("🦀Mobile App Manager: Accept recover mobile wrapper");
+        self.app_manager.accept_recover_mobile(claim_id).await
+    }
+
     pub async fn accept_recover(&self, claim_id: ClaimId) {
         match self.app_manager.accept_recover(claim_id).await {
             Ok(res) => {res}
@@ -139,12 +144,12 @@ impl MobileApplicationManager {
 impl MobileApplicationManager {
     async fn init(master_key: TransportSk, db_path: &str) -> anyhow::Result<MobileApplicationManager> {
         info!("Init mobile state manager");
-        info!("Using database path: {}", db_path);
+        info!("Using database path");
         
         match master_key.pk() {
-            Ok(pk) => info!("Master key valid. Public key available"),
+            Ok(_pk) => info!("Master key valid. Public key available"),
             Err(e) => {
-                info!("Invalid master key provided: {}", e);
+                tracing::error!("Invalid master key provided: {}", e);
                 return Err(anyhow::anyhow!("Invalid master key: {}", e));
             }
         }
@@ -152,9 +157,9 @@ impl MobileApplicationManager {
         if let Some(parent_dir) = std::path::Path::new(db_path).parent() {
             std::fs::create_dir_all(parent_dir)
                 .map_err(|e| {
-                    info!("Failed to create database directory: {}", e);
+                    tracing::error!("Failed to create database directory: {}", e);
                     anyhow::anyhow!("Failed to create database directory: {}", e)
-                })?;
+            })?;
         }
 
         let conn_url = format!("file:{}", db_path);
@@ -175,7 +180,8 @@ impl MobileApplicationManager {
                 } else {
                     "Unknown error during migration".to_string()
                 };
-                info!("Migration failed: {}", err_msg);
+                tracing::error!("Migration failed: {}", err_msg);
+                return Err(anyhow::anyhow!("Database migration failed: {}", err_msg));
             }
         };
 

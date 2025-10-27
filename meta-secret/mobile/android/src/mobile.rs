@@ -1,4 +1,3 @@
-use std::os::raw::c_char;
 use meta_secret_core::crypto::key_pair::MasterKeyManager;
 use mobile_common::mobile_manager::MobileApplicationManager;
 use jni::JNIEnv;
@@ -346,7 +345,13 @@ pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_split(
         }
     };
 
-    let plain_pass_info = PlainPassInfo::new(pass_id, pass);
+    let meta_pass_id = MetaPasswordId::build_from_str(&pass_id);
+    println!("🦀 Mobile Android API: split secret meta_pass_id {:?}", meta_pass_id);
+    
+    let plain_pass_info = PlainPassInfo {
+        pass_id: meta_pass_id,
+        pass,
+    };
 
     let result = MobileApplicationManager::sync_wrapper(async {
         match MobileApplicationManager::get_global_instance() {
@@ -437,7 +442,10 @@ pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_recover(
         }
     };
 
-    let meta_password_id = MetaPasswordId::build(secret_id);
+    println!("🦀 Mobile Android API: recover secret_id {:?}", secret_id);
+    
+    let meta_password_id = MetaPasswordId::build_from_str(&secret_id);
+    println!("🦀 Mobile Android API: recover meta_password_id {:?}", meta_password_id);
 
     let result = MobileApplicationManager::sync_wrapper(async {
         match MobileApplicationManager::get_global_instance() {
@@ -477,14 +485,25 @@ pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_acceptRecover(
     };
 
     let meta_claim_id = ClaimId::from(Id48bit::from(claim_id));
+    println!("🦀 Mobile Android API: meta_claim_id {:?}", meta_claim_id);
 
     let result = MobileApplicationManager::sync_wrapper(async {
         match MobileApplicationManager::get_global_instance() {
             Some(app_manager) => {
-                app_manager.accept_recover(meta_claim_id).await;
-                json!({
-                    "success": true,
-                }).to_string()
+                match app_manager.accept_recover_mobile(meta_claim_id).await {
+                    Ok(_) => {
+                        json!({
+                            "success": true,
+                        }).to_string()
+                    }
+                    Err(e) => {
+                        println!("🦀 Mobile Android API: accept recover failed: {}", e);
+                        json!({
+                            "success": false,
+                            "error": format!("Accept recover failed: {}", e)
+                        }).to_string()
+                    }
+                }
             },
             None => {
                 json!({

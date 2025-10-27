@@ -137,7 +137,30 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
             .unwrap();
     }
 
+    pub async fn find_meta_password_id_by_secret_id(&self, secret_id: &str) -> Result<Option<MetaPasswordId>> {
+        println!("🦀 Mobile App Manager: Find meta password id by secret id");
+        let state = self.get_state().await?;
+
+        let ApplicationState::Vault(vault_info) = state else {
+            return Ok(None);
+        };
+
+        let VaultFullInfo::Member(member) = vault_info else {
+            return Ok(None);
+        };
+
+        let found_secret = member.member.vault.secrets
+            .iter()
+            .find(|secret| secret.id.text.base64_str() == secret_id)
+            .cloned();
+
+        println!("🦀 Mobile App Manager: Looking for secret with id: {}, found: {:?}", secret_id, found_secret);
+
+        Ok(found_secret)
+    }
+
     pub async fn recover_js(&self, meta_pass_id: MetaPasswordId) {
+        println!("🦀 Mobile App Manager: recover_js");
         let request = GenericAppStateRequest::Recover(meta_pass_id);
         self.meta_client_service
             .send_request(request)
@@ -146,12 +169,88 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
     }
 
     pub async fn get_state(&self) -> Result<ApplicationState> {
+        if let Ok(user_creds) = self.meta_client_service.find_user_creds().await {
+            println!("🦀Mobile App Manager: Sync DB");
+            self.sync_gateway.sync(user_creds.user()).await?;
+        }
+        
         let request = GenericAppStateRequest::GetState;
         Ok(
             self.meta_client_service
             .send_request(request)
             .await?
         )
+    }
+
+    pub async fn accept_recover_mobile(&self, claim_id: ClaimId) -> Result<()> {
+        println!("🦀 Mobile App Manager: Accept recover mobile");
+        
+        // Force sync before checking claims to ensure we have latest distribution events
+        if let Ok(user_creds) = self.meta_client_service.find_user_creds().await {
+            println!("🦀 Mobile App Manager: Force sync before accept_recover");
+            self.sync_gateway.sync(user_creds.user()).await?;
+            println!("🦀 Mobile App Manager: Force sync completed");
+        }
+        
+        let state = self.get_state().await?;
+        let ApplicationState::Vault(vault_info) = state else {
+            bail!("Not in vault state");
+        };
+        let VaultFullInfo::Member(member) = vault_info else {
+            bail!("Not a member");
+        };
+        
+        let claim = member.ss_claims.claims
+            .get(&claim_id)
+            .ok_or_else(|| anyhow::anyhow!("Claim not found: {:?}", claim_id))?
+            .clone();
+        
+        println!("🦀 Mobile App Manager: Found claim with pass_id: {:?}", claim.dist_claim_id.pass_id);
+        
+        // Check if we have distribution events for this claim
+        let distribution_ids = claim.distribution_ids();
+        println!("🦀 Mobile App Manager: Looking for {} distribution events", distribution_ids.len());
+        
+        for dist_id in &distribution_ids {
+            println!("🦀 Mobile App Manager: Checking distribution ID: {:?}", dist_id);
+            
+            // Try to find the distribution event in local DB
+            let dist_key = meta_secret_core::node::db::events::kv_log_event::KvKey::from(
+                meta_secret_core::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor::Distribution(dist_id.clone())
+            );
+            
+            match self.sync_gateway.p_obj.repo.find_one(dist_key.obj_id.clone()).await {
+                Ok(Some(_)) => {
+                    println!("🦀 Mobile App Manager: ✅ Found distribution event for {:?}", dist_id);
+                }
+                Ok(None) => {
+                    println!("🦀 Mobile App Manager: ❌ No distribution event found for {:?}", dist_id);
+                }
+                Err(e) => {
+                    println!("🦀 Mobile App Manager: ❌ Error finding distribution event for {:?}: {:?}", dist_id, e);
+                }
+            }
+        }
+        
+        let claim_pass_id = &claim.dist_claim_id.pass_id;
+        let vault_secret = member.member.vault.secrets
+            .iter()
+            .find(|secret| {
+                secret.id.text.base64_str() == claim_pass_id.id.text.base64_str() ||
+                secret.id.text.base64_str() == claim_pass_id.name ||
+                secret.name == claim_pass_id.name
+            });
+        
+        if let Some(vault_secret) = vault_secret {
+            println!("🦀 Mobile App Manager: Found matching vault secret: {:?}", vault_secret);
+            if vault_secret.id.text.base64_str() != claim_pass_id.id.text.base64_str() {
+                println!("🦀 Mobile App Manager: Claim pass_id mismatch detected, but continuing with accept_recover");
+            }
+        } else {
+            println!("🦀 Mobile App Manager: No matching secret found in vault for claim");
+        }
+        
+        self.accept_recover(claim_id).await
     }
 
     pub async fn accept_recover(&self, claim_id: ClaimId) -> Result<()> {
