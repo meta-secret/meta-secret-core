@@ -344,17 +344,14 @@ pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_split(
             }).to_string());
         }
     };
-    
-    println!("🦀 Mobile Android API: split secret id {:?} and secret: {:?}", pass_id, pass);
-    
+
     let meta_pass_id = MetaPasswordId::build_from_str(&pass_id);
     println!("🦀 Mobile Android API: split secret meta_pass_id {:?}", meta_pass_id);
     
     let plain_pass_info = PlainPassInfo {
         pass_id: meta_pass_id,
-        pass: pass,
+        pass,
     };
-    println!("🦀 Mobile Android API: split secret plan_pass_info {:?}", plain_pass_info);
 
     let result = MobileApplicationManager::sync_wrapper(async {
         match MobileApplicationManager::get_global_instance() {

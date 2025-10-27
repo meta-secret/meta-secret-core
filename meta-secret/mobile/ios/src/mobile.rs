@@ -272,7 +272,6 @@ pub extern "C" fn split_secret(secret_id_ptr: *const c_char, secret_ptr: *const 
 }
 
 async fn async_split_secret(secret_id: String, secret_ptr: String) -> *mut c_char {
-    println!("🦀 Mobile iOS API: split secret id {:?} and secret: {:?}", secret_id, secret_ptr);
     let result = match MobileApplicationManager::get_global_instance() {
         Some(app_manager) => {
             let meta_pass_id = MetaPasswordId::build_from_str(&secret_id);
@@ -282,7 +281,6 @@ async fn async_split_secret(secret_id: String, secret_ptr: String) -> *mut c_cha
                 pass_id: meta_pass_id,
                 pass: secret_ptr,
             };
-            println!("🦀 Mobile iOS API: split secret plan_pass_info {:?}", plan_pass_info);
 
             app_manager.cluster_distribution(&plan_pass_info).await;
             json!({
