@@ -143,13 +143,13 @@ impl MobileApplicationManager {
 
 impl MobileApplicationManager {
     async fn init(master_key: TransportSk, db_path: &str) -> anyhow::Result<MobileApplicationManager> {
-        println!("🦀Init mobile state manager");
-        println!("🦀 Using database path: {}", db_path);
+        info!("Init mobile state manager");
+        info!("Using database path");
         
         match master_key.pk() {
             Ok(_pk) => info!("Master key valid. Public key available"),
             Err(e) => {
-                println!("🦀 Invalid master key provided: {}", e);
+                tracing::error!("Invalid master key provided: {}", e);
                 return Err(anyhow::anyhow!("Invalid master key: {}", e));
             }
         }
@@ -157,9 +157,9 @@ impl MobileApplicationManager {
         if let Some(parent_dir) = std::path::Path::new(db_path).parent() {
             std::fs::create_dir_all(parent_dir)
                 .map_err(|e| {
-                    println!("🦀 Failed to create database directory: {}", e);
+                    tracing::error!("Failed to create database directory: {}", e);
                     anyhow::anyhow!("Failed to create database directory: {}", e)
-                })?;
+            })?;
         }
 
         let conn_url = format!("file:{}", db_path);
@@ -180,7 +180,8 @@ impl MobileApplicationManager {
                 } else {
                     "Unknown error during migration".to_string()
                 };
-                println!("🦀 Migration failed: {}", err_msg);
+                tracing::error!("Migration failed: {}", err_msg);
+                return Err(anyhow::anyhow!("Database migration failed: {}", err_msg));
             }
         };
 
