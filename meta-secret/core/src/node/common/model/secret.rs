@@ -218,12 +218,9 @@ impl SsLogData {
 
             match claim.status.status() {
                 SsDistributionStatus::Pending => {
-                    claim_id = None;
-                    break;
+                    continue;
                 }
                 SsDistributionStatus::Sent => {
-                    //bail!("Claim is in sent state");
-                    // TODO There is a bug, that claim never changes state to delivered
                     claim_id = Some(claim.id.clone());
                     break;
                 }

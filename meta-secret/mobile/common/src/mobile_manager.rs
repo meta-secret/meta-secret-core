@@ -1,3 +1,4 @@
+use std::fmt::format;
 use std::sync::Arc;
 use tracing::info;
 use meta_db_sqlite::db::sqlite_migration::EmbeddedMigrationsTool;
@@ -51,11 +52,12 @@ impl MobileApplicationManager {
         global.is_some()
     }
     
-    pub async fn init_ios(master_key: TransportSk) -> anyhow::Result<MobileApplicationManager> {
+    pub async fn init_ios(master_key: TransportSk, raw_master_key: String) -> anyhow::Result<MobileApplicationManager> {
         let home_dir = std::env::var("HOME").expect("Unable to get HOME directory");
+        let db_name = format!("meta-secret-{raw_master_key}.db");
         let db_path = PathBuf::from(home_dir)
             .join("Documents")
-            .join("meta-secret.db")
+            .join(db_name)
             .to_string_lossy()
             .to_string();
         println!("🦀 iOS database path: {}", db_path);
@@ -63,9 +65,9 @@ impl MobileApplicationManager {
         Self::init(master_key, &db_path).await
     }
     
-    pub async fn init_android(master_key: TransportSk) -> anyhow::Result<MobileApplicationManager> {
-        let db_path = "/data/data/com.metasecret.core/databases/meta-secret.db";
-        Self::init(master_key, db_path).await
+    pub async fn init_android(master_key: TransportSk, raw_master_key: String) -> anyhow::Result<MobileApplicationManager> {
+        let db_path = format!("/data/data/com.metasecret.core/databases/meta-secret-{raw_master_key}.db");
+        Self::init(master_key, &db_path).await
     }
 
     pub async fn get_state(&self) -> anyhow::Result<ApplicationState> {

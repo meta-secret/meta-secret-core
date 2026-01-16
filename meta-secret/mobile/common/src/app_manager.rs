@@ -3,6 +3,7 @@ use std::sync::Arc;
 use tracing::{info, instrument, Instrument};
 use anyhow::Result;
 use meta_secret_core::crypto::keys::TransportSk;
+use meta_secret_core::node::api::{ReadSyncRequest, SsRecoveryCompletion, SyncRequest};
 use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
 use meta_secret_core::node::app::meta_app::meta_client_service::{
     MetaClientDataTransfer, MetaClientService, MetaClientStateProvider,
@@ -14,7 +15,7 @@ use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::meta_tracing::client_span;
 use meta_secret_core::node::common::model::device::common::DeviceName;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
-use meta_secret_core::node::common::model::secret::ClaimId;
+use meta_secret_core::node::common::model::secret::{ClaimId, SsDistributionId, SsRecoveryId};
 use meta_secret_core::node::common::model::user::common::{UserData, UserDataOutsiderStatus};
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
@@ -26,6 +27,7 @@ use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
 use meta_secret_core::secret::shared_secret::PlainText;
 use std::thread;
+use meta_secret_core::node::common::model::user::user_creds::UserCreds;
 
 pub struct ApplicationManager<Repo: KvLogEventRepo + Send + Sync, SyncP: SyncProtocol + Send + Sync> {
     pub meta_client_service: Arc<MetaClientService<Repo, SyncP>>,
@@ -170,10 +172,9 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
 
     pub async fn get_state(&self) -> Result<ApplicationState> {
         if let Ok(user_creds) = self.meta_client_service.find_user_creds().await {
-            println!("🦀Mobile App Manager: Sync DB");
             self.sync_gateway.sync(user_creds.user()).await?;
         }
-        
+
         let request = GenericAppStateRequest::GetState;
         Ok(
             self.meta_client_service
@@ -283,7 +284,14 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
                 VaultFullInfo::Outsider(_) => {
                     bail!("Show recovered is not allowed in outsider state");
                 }
-                VaultFullInfo::Member(_) => {
+                VaultFullInfo::Member(member) => {
+                    let vault_members_count = member.member.vault.members().len();
+                    
+                    if vault_members_count == 1 {
+                        println!("🦀 Mobile App Manager: Single device mode, showing local secret");
+                        return self.show_local_secret(user_creds, pass_id).await;
+                    }
+                    
                     let claim_id = self.find_claim_by_pass_id(&pass_id).await;
 
                     match claim_id {
@@ -296,14 +304,71 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
                             };
 
                             let pass = recovery_handler
-                                .recover(user_creds, claim_id, pass_id)
+                                .recover(user_creds.clone(), claim_id.clone(), pass_id.clone())
                                 .await?;
+                            
+                            // Send recovery completion to mark claim as Delivered
+                            if let Some(claim) = member.ss_claims.claims.get(&claim_id) {
+                                let vault_name = user_creds.vault_name.clone();
+                                let device_id = user_creds.device_id();
+                                
+                                let recovery_id = SsRecoveryId {
+                                    claim_id: claim.dist_claim_id.clone(),
+                                    sender: claim.sender.clone(),
+                                    distribution_id: SsDistributionId {
+                                        pass_id: pass_id.clone(),
+                                        receiver: device_id.clone(),
+                                    },
+                                };
+                                
+                                let completion = SsRecoveryCompletion {
+                                    vault_name,
+                                    recovery_id,
+                                };
+                                
+                                let sync_request = SyncRequest::Read(Box::from(
+                                    ReadSyncRequest::SsRecoveryCompletion(completion)
+                                ));
+                                
+                                if let Err(e) = self.server.send(sync_request).await {
+                                    println!("🦀 Mobile App Manager: ❌ Failed to send recovery completion: {}", e);
+                                } else {
+                                    println!("🦀 Mobile App Manager: ✅ Recovery completion sent successfully");
+                                }
+                            }
+                            
                             Ok(pass)
                         }
                     }
                 }
             },
         }
+    }
+    
+    async fn show_local_secret(&self, user_creds: UserCreds, pass_id: MetaPasswordId) -> Result<PlainText> {
+        use meta_secret_core::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
+        use meta_secret_core::secret::shared_secret::UserShareDto;
+        use meta_secret_core::recover_from_shares;
+        
+        let desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
+            pass_id: pass_id.clone(),
+            receiver: user_creds.device_id().clone(),
+        });
+        
+        let dist = self.sync_gateway.p_obj
+            .find_tail_event(desc)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Distribution not found for single device"))?
+            .to_distribution_data();
+        
+        let transport_sk = &user_creds.device_creds.secret_box.transport.sk;
+        let decrypted = dist.secret_message.cipher_text().decrypt(transport_sk)?;
+        let share = UserShareDto::try_from(&decrypted.msg)?;
+        
+        let plain_text = recover_from_shares(vec![share])?;
+        
+        println!("🦀 Mobile App Manager: ✅ Local secret recovered successfully");
+        Ok(plain_text)
     }
 
     pub async fn clean_up_database(&self) {
