@@ -742,7 +742,142 @@ We have:    Device → Commit Event → Replicate to Peers
 
 ---
 
-# Slide 16: Resources
+# Slide 16: Complete Application Data Flow
+
+```mermaid
+flowchart TB
+    subgraph PHASE1["1️⃣ DEVICE REGISTRATION & VAULT CREATION"]
+        direction LR
+        
+        subgraph DEV1_INIT["Device 1 Initialization"]
+            D1_KEY[🔐 Generate KeyPair<br/>TransportSk + TransportPk]
+            D1_BIO[🔒 Biometric Protection]
+            D1_KEY --> D1_BIO
+        end
+        
+        D1_BIO -->|"SignUpClaimAction<br/>+ TransportPk₁"| SERVER_CREATE
+        
+        subgraph SERVER_CREATE["Server Processing"]
+            SRV_VAULT[📁 Create Vault Record]
+            SRV_ADD[➕ Add PK₁ to Members]
+            SRV_LOG[📝 Write to VaultLog]
+            SRV_VAULT --> SRV_ADD --> SRV_LOG
+        end
+        
+        SERVER_CREATE -->|"Confirmation<br/>+ VaultId"| D1_STORE
+        
+        subgraph D1_STORE["Device 1 Storage"]
+            D1_COMMIT[📋 Commit Log]
+            D1_OBJ[🗃️ Object Storage]
+            D1_COMMIT --> D1_OBJ
+        end
+    end
+    
+    subgraph PHASE2["2️⃣ DEVICE JOIN PROTOCOL"]
+        direction LR
+        
+        subgraph DEV2_INIT["Device 2 Initialization"]
+            D2_KEY[🔐 Generate KeyPair<br/>TransportSk + TransportPk]
+            D2_CLAIM[📨 JoinClaimAction]
+            D2_KEY --> D2_CLAIM
+        end
+        
+        D2_CLAIM -->|"Join Request<br/>+ TransportPk₂"| SERVER_JOIN
+        
+        subgraph SERVER_JOIN["Server: Pending Requests"]
+            SRV_QUEUE[📥 Queue Join Request]
+            SRV_NOTIFY[📢 Notify Vault Members]
+            SRV_QUEUE --> SRV_NOTIFY
+        end
+        
+        SERVER_JOIN -->|"Sync Event"| D1_APPROVE
+        
+        subgraph D1_APPROVE["Device 1: Approval"]
+            D1_REVIEW[👁️ Review Request]
+            D1_ACCEPT[✅ Accept Member]
+            D1_REVIEW --> D1_ACCEPT
+        end
+        
+        D1_ACCEPT -->|"Approval Event"| SERVER_FINAL
+        
+        subgraph SERVER_FINAL["Server: Finalize"]
+            SRV_MEMBER[👥 Add PK₂ to Vault]
+            SRV_SYNC[🔄 Broadcast Update]
+            SRV_MEMBER --> SRV_SYNC
+        end
+        
+        SERVER_FINAL -->|"Membership Granted"| D2_MEMBER[✅ Device 2: Vault Member]
+    end
+    
+    subgraph PHASE3["3️⃣ SECRET SPLIT & DISTRIBUTION"]
+        direction LR
+        
+        USER_IN[👤 User Input] -->|Password| SPLIT_PROC
+        
+        subgraph SPLIT_PROC["Shamir Split Process"]
+            SSS_SPLIT[⚡ SSS Algorithm]
+            ENC1[🔐 Encrypt Share₁<br/>with PK₁]
+            ENC2[🔐 Encrypt Share₂<br/>with PK₂]
+            SSS_SPLIT --> ENC1
+            SSS_SPLIT --> ENC2
+        end
+        
+        ENC1 -->|"Store Locally"| D1_SECRET[(Device 1<br/>Share₁)]
+        ENC2 -->|"Via Server"| SRV_RELAY[(Server<br/>Relay Only)]
+        SRV_RELAY -->|"Deliver"| D2_SECRET[(Device 2<br/>Share₂)]
+    end
+    
+    subgraph PHASE4["4️⃣ SECRET RECOVERY"]
+        direction LR
+        
+        USER_REQ[👤 Recovery Request] --> D2_CLAIM_R[📨 Create SsClaim]
+        D2_CLAIM_R -->|"Broadcast"| SRV_BROADCAST[(Server)]
+        SRV_BROADCAST --> D1_RESPOND
+        
+        subgraph D1_RESPOND["Device 1 Response"]
+            D1_RECV[📥 Receive Claim]
+            D1_DEC[🔓 Decrypt Own Share]
+            D1_REENC[🔐 Re-encrypt for D2]
+            D1_RECV --> D1_DEC --> D1_REENC
+        end
+        
+        D1_REENC -->|"Via Server"| D2_COMBINE
+        
+        subgraph D2_COMBINE["Device 2 Reconstruction"]
+            D2_SHARES[📦 Collect K Shares]
+            D2_SSS[⚡ SSS Combine]
+            D2_PASS[🔑 Password Recovered]
+            D2_SHARES --> D2_SSS --> D2_PASS
+        end
+        
+        D2_PASS --> USER_OUT[👤 User]
+    end
+    
+    PHASE1 --> PHASE2 --> PHASE3 --> PHASE4
+    
+    style PHASE1 fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:3px
+    style PHASE2 fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:3px
+    style PHASE3 fill:#e65100,color:#fff,stroke:#bf360c,stroke-width:3px
+    style PHASE4 fill:#7b1fa2,color:#fff,stroke:#4a148c,stroke-width:3px
+    
+    style D1_SECRET fill:#43a047,color:#fff
+    style D2_SECRET fill:#43a047,color:#fff
+    style SRV_RELAY fill:#78909c,color:#fff
+```
+
+## Data Storage Summary
+
+| Data | Device | Server |
+|------|--------|--------|
+| Private Keys (TransportSk) | ✅ Own only, biometric protected | ❌ Never |
+| Public Keys (TransportPk) | ✅ All vault members | ✅ All vault members |
+| Vault State | ✅ Full replica | ✅ Full replica |
+| Commit Log | ✅ Full history | ✅ Public events only |
+| Encrypted Shares | ✅ Own share only | ❌ Relay only |
+
+---
+
+# Slide 17: Resources
 
 ## Learn More
 
