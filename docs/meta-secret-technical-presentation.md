@@ -33,9 +33,19 @@
 
 # Slide 3: The Paradox of Password Security
 
-## The Problem We All Face
+## The Problem in Crypto
 
-Password managers solve one problem but create another:
+The industry standard has a fatal flaw:
+- **Seed phrase** acts as the master password for your entire wallet
+- **Lost seed phrase** = lost Bitcoin/ETH forever (~$140B estimated lost)
+- **No recovery mechanism** exists by design
+
+## The Same Problem in Password Managers
+
+Traditional password managers solve the "too many passwords" problem, but create a new **Single Point of Failure**:
+
+- **Forget master password** → Lose access to EVERYTHING
+- **Master password compromised** → Attacker gets EVERYTHING
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -49,44 +59,9 @@ Password managers solve one problem but create another:
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### The Fundamental Dilemma
-
-| Scenario | Consequence |
-|----------|-------------|
-| Forget master password | **Lose access to EVERYTHING** |
-| Master password compromised | **Attacker gets EVERYTHING** |
-| Password manager service down | **No access to any passwords** |
-
-### Same Problem in Crypto
-
-- Seed phrase = master password for your entire wallet
-- Lost seed phrase = lost Bitcoin/ETH forever
-- No recovery mechanism by design
-
 ---
 
-# Slide 4: Why This Problem Matters
-
-## Real-World Impact
-
-### Password Manager Statistics
-- Average user has **100+ online accounts**
-- 65% of users reuse passwords across multiple sites
-- Password manager adoption growing, but **master password anxiety** is a top concern
-
-### Crypto Horror Stories
-- **$140 billion** in Bitcoin estimated permanently lost
-- James Howells: Lost hard drive with 7,500 BTC (~$500M today)
-- Stefan Thomas: Forgot password to IronKey with 7,002 BTC
-
-### The Core Tension
-
-> "The more secure we make the master password, the more likely we are to forget it.
-> The easier we make it to remember, the easier it is to compromise."
-
----
-
-# Slide 5: The Main Question
+# Slide 4: The Main Question
 
 ## Can We Eliminate the Single Point of Failure?
 
@@ -113,7 +88,7 @@ Password managers solve one problem but create another:
 
 ---
 
-# Slide 6: Shamir's Secret Sharing (SSS)
+# Slide 5: Shamir's Secret Sharing (SSS)
 
 ## The Cryptographic Foundation
 
@@ -156,7 +131,7 @@ Split a secret into **N shares** where any **K shares** can reconstruct it.
 
 ---
 
-# Slide 7: Why Decentralized?
+# Slide 6: Why Decentralized?
 
 ## Architectural Decision: No Trusted Server
 
@@ -206,7 +181,7 @@ Split a secret into **N shares** where any **K shares** can reconstruct it.
 
 ---
 
-# Slide 8: System Architecture
+# Slide 7: System Architecture
 
 ## Three Core Components
 
@@ -235,7 +210,7 @@ At the physical level, the database is partitioned and distributed across multip
 
 ---
 
-# Slide 9: Device Identity & Communication
+# Slide 8: Device Identity & Communication
 
 ## How Devices Discover and Trust Each Other
 
@@ -280,7 +255,7 @@ sequenceDiagram
 
 ---
 
-# Slide 10: The Split Workflow
+# Slide 9: The Split Workflow
 
 ## What Happens When You Save a Password
 
@@ -312,7 +287,7 @@ flowchart LR
 
 ---
 
-# Slide 11: The Recovery Workflow
+# Slide 10: The Recovery Workflow
 
 ## What Happens When You Need a Password
 
@@ -351,7 +326,7 @@ sequenceDiagram
 
 ---
 
-# Slide 12: Event Sourcing Architecture
+# Slide 11: Event Sourcing Architecture
 
 ## How Synchronization Works
 
@@ -413,7 +388,7 @@ flowchart TD
 
 ---
 
-# Slide 13: Resources
+# Slide 12: Resources
 
 ## Learn More
 
