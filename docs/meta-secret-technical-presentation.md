@@ -1,13 +1,13 @@
-<p style="text-align: center;">
+<p align="center">
   <img src="img/meta-secret-logo.png" alt="Meta Secret Logo" width="150" />
 </p>
 
-<h1 style="text-align: center;">Meta Secret</h1>
-<h3 style="text-align: center;">
+<h1 align="center">Meta Secret</h1>
+<h3 align="center">
     Solving the Master Password Problem with Distributed Cryptography
 </h3>
 
-<div style="text-align: center;">
+<div align="center">
     <i>Secure Password Management Without a Single Point of Failure</i>
 </div>
 
@@ -432,22 +432,22 @@ flowchart TD
 
 ---
 
-<h1 style="text-align: center;">
+<h1 align="center">
 Q&A
 ...
 <h1>
 
 ---
 
-<h1 style="text-align: center;">
+<h1 align="center">
     Thank You
 </h1>
 
-<p style="text-align: center;">
+<p align="center">
   <img src="img/meta-secret-logo.png" alt="Meta Secret Logo" width="120" />
 </p>
 
-<div style="text-align: center;">
+<div align="center">
   <a href="https://github.com/meta-secret/meta-secret-core">GitHub</a> · 
   <a href="https://apps.apple.com/app/metasecret/id1644286751">iOS App</a> · 
   <a href="https://meta-secret.github.io">Web App</a> · 
