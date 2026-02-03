@@ -228,12 +228,12 @@ flowchart TB
     
     style VAULT fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:4px
     style SPLIT fill:#e65100,color:#fff,stroke:#bf360c,stroke-width:3px
-    style LAYER1 fill:#fafafa,stroke:#424242,stroke-width:2px
-    style LAYER2 fill:#e3f2fd,stroke:#1976d2,stroke-width:3px
-    style LAYER3 fill:#fff3e0,stroke:#f57c00,stroke-width:3px
-    style SRV1 fill:#eceff1,stroke:#546e7a,stroke-width:2px
-    style SRV2 fill:#eceff1,stroke:#546e7a,stroke-width:2px
-    style SHARES fill:#ffb74d,color:#000
+    style LAYER1 fill:#fafafa,stroke:#424242,stroke-width:2px,color:#000
+    style LAYER2 fill:#1976d2,color:#fff,stroke:#0d47a1,stroke-width:3px
+    style LAYER3 fill:#f57c00,color:#fff,stroke:#e65100,stroke-width:3px
+    style SRV1 fill:#90a4ae,color:#fff,stroke:#546e7a,stroke-width:2px
+    style SRV2 fill:#90a4ae,color:#fff,stroke:#546e7a,stroke-width:2px
+    style SHARES fill:#ff9800,color:#fff,stroke:#e65100,stroke-width:2px
 ```
 
 ### Module Workflows
@@ -345,9 +345,9 @@ flowchart LR
     
     PUBLIC --> DEVID[DeviceId = Hash of Public Key]
     
-    style PRIVATE fill:#e57373,color:#fff,stroke:#c62828,stroke-width:3px
-    style PUBLIC fill:#64b5f6,color:#fff,stroke:#1976d2,stroke-width:3px
-    style KEYGEN fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    style PRIVATE fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:3px
+    style PUBLIC fill:#1976d2,color:#fff,stroke:#0d47a1,stroke-width:3px
+    style KEYGEN fill:#f57c00,color:#fff,stroke:#e65100,stroke-width:2px
 ```
 
 ## Vault Operations
@@ -366,10 +366,10 @@ flowchart TB
         S2 --> V2[(Update Vault<br/>Members: PK₁, PK₂)]
     end
     
-    style V1 fill:#42a5f5,color:#fff,stroke:#1565c0,stroke-width:3px
-    style V2 fill:#42a5f5,color:#fff,stroke:#1565c0,stroke-width:3px
-    style CREATE fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
-    style JOIN fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    style V1 fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:3px
+    style V2 fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:3px
+    style CREATE fill:#1976d2,color:#fff,stroke:#0d47a1,stroke-width:2px
+    style JOIN fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:2px
 ```
 
 ## Authentication Properties
@@ -587,12 +587,12 @@ flowchart TB
         NOTE2[Solution: Each device has full database<br/>Server only relays events]
     end
     
-    style TRAD fill:#ffebee,stroke:#c62828,stroke-width:2px
-    style LOCAL fill:#e8f5e9,stroke:#2e7d32,stroke-width:3px
-    style DB fill:#ef5350,color:#fff
-    style L1 fill:#66bb6a,color:#fff
-    style L2 fill:#66bb6a,color:#fff
-    style L3 fill:#66bb6a,color:#fff
+    style TRAD fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
+    style LOCAL fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:3px
+    style DB fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
+    style L1 fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:2px
+    style L2 fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:2px
+    style L3 fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:2px
 ```
 
 ### Why This Matters
@@ -650,16 +650,16 @@ flowchart LR
     
     LOG <--> SRVLOG
     
-    style LOG fill:#ff9800,color:#fff,stroke:#e65100,stroke-width:5px
-    style BUILD fill:#ffb74d,color:#000
-    style SRVLOG fill:#42a5f5,color:#fff,stroke:#1976d2,stroke-width:3px
-    style SRVSTORE fill:#90a4ae,color:#fff,stroke:#546e7a,stroke-width:2px
-    style VDEV fill:#66bb6a,color:#fff
-    style VSRV fill:#42a5f5,color:#fff
-    style ENC fill:#ef5350,color:#fff
-    style DEVICES fill:#e3f2fd,stroke:#1976d2,stroke-width:3px
-    style DB fill:#fff3e0,stroke:#f57c00,stroke-width:4px
-    style OBJSTORE fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style LOG fill:#e65100,color:#fff,stroke:#bf360c,stroke-width:5px
+    style BUILD fill:#ff9800,color:#fff,stroke:#e65100,stroke-width:2px
+    style SRVLOG fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:3px
+    style SRVSTORE fill:#546e7a,color:#fff,stroke:#37474f,stroke-width:2px
+    style VDEV fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:2px
+    style VSRV fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:2px
+    style ENC fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
+    style DEVICES fill:#1976d2,color:#fff,stroke:#0d47a1,stroke-width:3px
+    style DB fill:#f57c00,color:#fff,stroke:#e65100,stroke-width:4px
+    style OBJSTORE fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:2px
 ```
 
 ## Database Structure
