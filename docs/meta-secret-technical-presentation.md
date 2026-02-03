@@ -554,7 +554,194 @@ sequenceDiagram
 
 ---
 
-# Slide 13: Resources
+# Slide 13: Application Architecture - Local-First Design
+
+## Traditional vs. Decentralized Architecture
+
+```mermaid
+flowchart TB
+    subgraph TRAD["❌ Traditional Client-Server"]
+        direction TB
+        C1[Client 1] -->|Request| SRV[Server<br/>Has Database]
+        C2[Client 2] -->|Request| SRV
+        C3[Client 3] -->|Request| SRV
+        SRV -->|Response| C1
+        SRV -->|Response| C2
+        SRV -->|Response| C3
+        
+        SRV --> DB[(Centralized<br/>Database)]
+        
+        NOTE1[Problem: Single source of truth on server<br/>Clients are dumb, server has all logic]
+    end
+    
+    subgraph LOCAL["✅ Local-First (Meta Secret)"]
+        direction TB
+        D1[Device 1<br/>Has Full DB] <-->|Event Replication| BUS[Server = Event Bus]
+        D2[Device 2<br/>Has Full DB] <-->|Event Replication| BUS
+        D3[Device 3<br/>Has Full DB] <-->|Event Replication| BUS
+        
+        D1 -.-> L1[(Local DB)]
+        D2 -.-> L2[(Local DB)]
+        D3 -.-> L3[(Local DB)]
+        
+        NOTE2[Solution: Each device has full database<br/>Server only relays events]
+    end
+    
+    style TRAD fill:#ffebee,stroke:#c62828,stroke-width:2px
+    style LOCAL fill:#e8f5e9,stroke:#2e7d32,stroke-width:3px
+    style DB fill:#ef5350,color:#fff
+    style L1 fill:#66bb6a,color:#fff
+    style L2 fill:#66bb6a,color:#fff
+    style L3 fill:#66bb6a,color:#fff
+```
+
+### Why This Matters
+
+| Aspect | Traditional | Meta Secret (Local-First) |
+|--------|-------------|---------------------------|
+| **Data Location** | Server database | Each device has full copy |
+| **Communication** | Request/Response | Event replication |
+| **Server Role** | Business logic + storage | Event bus only |
+| **Offline Support** | Limited/None | Full functionality |
+| **Architecture** | Client-Server | Peer-to-Peer via relay |
+
+---
+
+# Slide 14: Event Sourcing Architecture
+
+## The Core Concept: Commit Log as Central Abstraction
+
+```mermaid
+flowchart TB
+    subgraph DEVICES["📱 Device Workflow"]
+        direction LR
+        USER[User Action] --> EVENT[Create Event]
+        EVENT --> CHECK{Event Type}
+        CHECK -->|Vault Event| VEVT[Vault Event]
+        CHECK -->|Secret Event| SEVT[Secret Event]
+        SEVT --> ENC[Encrypt with<br/>recipient keys]
+    end
+    
+    subgraph DB["🗄️ Database Structure"]
+        direction TB
+        
+        LOG[(Commit Log<br/>════════════════<br/>Event₁, Event₂, Event₃...Eventₙ<br/>════════════════<br/>Append-Only)]
+        
+        BUILD[Replay Events ↻]
+        
+        subgraph OBJSTORE["Object Storage"]
+            direction LR
+            VDEV[Devices:<br/>DeviceLog, VaultLog<br/>Vault, Secrets]
+            VSRV[Server:<br/>VaultLog<br/>Vault]
+        end
+        
+        LOG --> BUILD
+        BUILD --> OBJSTORE
+    end
+    
+    subgraph SERVER["☁️ Server"]
+        direction TB
+        SRV[Stores:<br/>Vault Events Only<br/>━━━━━━━<br/>Relays:<br/>Encrypted Events]
+    end
+    
+    VEVT -->|Append| LOG
+    ENC -->|Append| LOG
+    SRV -->|Append Vault Events| LOG
+    
+    LOG <-->|Replicate| SRV
+    
+    style LOG fill:#ff9800,color:#fff,stroke:#e65100,stroke-width:5px
+    style BUILD fill:#ffb74d,color:#000
+    style SRV fill:#90a4ae,color:#fff,stroke:#546e7a,stroke-width:2px
+    style VDEV fill:#66bb6a,color:#fff
+    style VSRV fill:#42a5f5,color:#fff
+    style ENC fill:#ef5350,color:#fff
+    style DEVICES fill:#e3f2fd,stroke:#1976d2,stroke-width:3px
+    style DB fill:#fff3e0,stroke:#f57c00,stroke-width:4px
+    style OBJSTORE fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+```
+
+## Database Structure
+
+```
+KV Storage (Base Layer)
+    ↓
+Event Store (Immutable Commit Log)
+    ↓
+Object Storage Abstraction
+    ├── DeviceLog (per-device events)
+    ├── VaultLog (vault membership changes)
+    ├── Vault (current vault state)
+    └── SsWorkflowObject (secret distribution/recovery)
+```
+
+### Event Sourcing Benefits
+
+| Challenge | Event Sourcing Solution |
+|-----------|------------------------|
+| **Conflict Resolution** | Events are append-only, no conflicts |
+| **Audit Trail** | Complete history of all changes |
+| **Offline Operation** | Store events locally, sync later |
+| **State Reconstruction** | Replay events to rebuild any state |
+| **Debugging** | Full event log for investigation |
+
+---
+
+# Slide 15: Inspiration - Local-First Software
+
+## Architectural Influences
+
+Meta Secret's architecture is inspired by the **[Local-First Software](https://lofi.so/)** movement and **CRDT** (Conflict-free Replicated Data Types) principles.
+
+### Key Principles Applied
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  LOCAL-FIRST PRINCIPLES                                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. Data ownership: Your data lives on your devices            │
+│     ✓ Each device has complete database                        │
+│                                                                 │
+│  2. Offline-first: Apps work without internet                  │
+│     ✓ Full functionality even when disconnected                │
+│                                                                 │
+│  3. Collaboration via sync: Not via server                     │
+│     ✓ Event replication between peers                          │
+│                                                                 │
+│  4. Long-term data preservation                                │
+│     ✓ Immutable commit log ensures no data loss                │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### CRDT Influence on Commit Log Design
+
+While Meta Secret doesn't use CRDTs directly, CRDT principles influenced the commit log architecture:
+
+- **Commutativity**: Events can be applied in any order
+- **Idempotency**: Same event applied twice = same result
+- **Causality Tracking**: Events maintain their relationships
+- **Conflict-Free**: Append-only log prevents write conflicts
+
+### The Result
+
+```
+Each device operates independently with:
+  ├─ Full commit log (event store)
+  ├─ Complete database (materialized view)
+  ├─ Encrypted events for privacy
+  └─ P2P replication (server = message bus)
+
+Instead of: Client → Server Request → Server Response
+We have:    Device → Commit Event → Replicate to Peers
+```
+
+**Reference**: Learn more at [lofi.so](https://lofi.so/)
+
+---
+
+# Slide 16: Resources
 
 ## Learn More
 
