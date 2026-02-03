@@ -70,7 +70,7 @@ Traditional password managers solve the "too many passwords" problem, but create
 1. **No master password** - Nothing to forget or compromise
 2. **No central authority** - No single server that holds all secrets
 3. **Self-sovereign** - User maintains complete control
-4. **Fault tolerant** - Recovery possible even with partial data loss
+4. **Fault-tolerant** - Recovery possible even with partial data loss
 5. **End-to-end encrypted** - No third party can read secrets
 
 ### The Key Insight
