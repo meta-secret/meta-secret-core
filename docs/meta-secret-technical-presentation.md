@@ -181,214 +181,380 @@ Split a secret into **N shares** where any **K shares** can reconstruct it.
 
 ---
 
-# Slide 7: System Architecture
+# Slide 7: Meta Secret Architecture - Two Core Modules
 
-## Three Core Components
+## System Overview: Two-Module Architecture
 
-<p align="center">
-  <img src="img/app/meta-secret-app.png" alt="Meta Secret Architecture" width="700" />
-</p>
+```mermaid
+flowchart TB
+    subgraph LAYER1["🔐 USER DEVICES (Client Side)"]
+        direction LR
+        D1["📱 Phone<br/>━━━━━━━<br/>🔑 Private Key"]
+        D2["💻 Laptop<br/>━━━━━━━<br/>🔑 Private Key"]
+        D3["📲 Tablet<br/>━━━━━━━<br/>🔑 Private Key"]
+    end
+    
+    subgraph LAYER2["MODULE 1: Passwordless Authentication"]
+        direction LR
+        
+        ACTIONS1["Operations:<br/>• Create Vault<br/>• Join Vault<br/>• Manage Members"]
+        
+        subgraph SRV1["☁️ Server"]
+            VAULT[("🗄️ VAULT<br/>═══════<br/>📋 Member List:<br/>PK₁ Phone<br/>PK₂ Laptop<br/>PK₃ Tablet")]
+        end
+        
+        ACTIONS1 --> VAULT
+    end
+    
+    subgraph LAYER3["MODULE 2: Secret Manager (SSS)"]
+        direction LR
+        
+        SPLIT["Operations:<br/>• Split Secret<br/>• Distribute Shares<br/>• Recover Secret"]
+        
+        SHARES["📦 Storage:<br/>━━━━━━━<br/>Share₁ → Phone<br/>Share₂ → Laptop<br/>Share₃ → Tablet"]
+        
+        subgraph SRV2["☁️ Server"]
+            RELAY["📨 Relay Only<br/>(Encrypted)"]
+        end
+        
+        SPLIT --> SHARES
+        SHARES -.->|transit| RELAY
+    end
+    
+    LAYER1 ==>|Public Keys| LAYER2
+    LAYER1 ==>|Encrypted Shares| LAYER3
+    
+    LAYER2 -.->|enables| LAYER3
+    
+    style VAULT fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:4px
+    style SPLIT fill:#e65100,color:#fff,stroke:#bf360c,stroke-width:3px
+    style LAYER1 fill:#fafafa,stroke:#424242,stroke-width:2px
+    style LAYER2 fill:#e3f2fd,stroke:#1976d2,stroke-width:3px
+    style LAYER3 fill:#fff3e0,stroke:#f57c00,stroke-width:3px
+    style SRV1 fill:#eceff1,stroke:#546e7a,stroke-width:2px
+    style SRV2 fill:#eceff1,stroke:#546e7a,stroke-width:2px
+    style SHARES fill:#ffb74d,color:#000
+```
 
-<p align="center"><em>At the logical level, the user interacts with a unified password database.<br/>
-At the physical level, the database is partitioned and distributed across multiple devices.</em></p>
+### Module Workflows
 
-### 1. Vault
-- Logical container for user's secrets
-- Defines membership (which devices belong)
-- Stores secret metadata (not the secrets themselves)
+<table>
+<tr>
+<td width="50%" valign="top">
 
-### 2. Devices
-- User's registered devices (phone, laptop, tablet)
-- Each device has unique cryptographic identity
-- Each holds encrypted shares of secrets
+**MODULE 1: Authentication Flow**
 
-### 3. Server
-- **Sync relay only** - no business logic
-- Cannot decrypt any data
-- Routes encrypted messages between devices
-- Maintains synchronization state
+```
+1. Device generates key pair
+   └─ Private key: stays on device
+   └─ Public key: sent to server
+
+2. First device creates vault
+   └─ Server stores: VaultID + PK₁
+
+3. Additional devices join
+   └─ Send: PublicKey
+   └─ Existing member approves
+   └─ Server adds to vault
+
+Result:
+✓ Vault on server has all public keys
+✓ Zero passwords
+✓ Devices authenticate via signatures
+```
+
+</td>
+<td width="50%" valign="top">
+
+**MODULE 2: Secret Distribution Flow**
+
+```
+1. User saves password on Device 1
+
+2. Shamir Secret Sharing
+   └─ Split into N shares (N=devices)
+   └─ Threshold K = ⌈N/2⌉
+
+3. Encrypt each share
+   └─ Use recipient's public key
+   └─ End-to-end encryption
+
+4. Distribute via server relay
+   └─ Each device stores its share
+
+Result:
+✓ Password split across all devices
+✓ Need K shares to recover
+✓ Server sees only encrypted blobs
+```
+
+</td>
+</tr>
+</table>
+
+### Server Role: Zero-Knowledge
+
+| What Server Stores | What Server CANNOT Do |
+|-------------------|----------------------|
+| ✅ Public keys (vault members) | ❌ Cannot decrypt shares |
+| ✅ Encrypted message blobs | ❌ Cannot impersonate devices |
+| ✅ Vault membership metadata | ❌ Cannot read passwords |
+| ✅ Device sync state | ❌ Cannot recover secrets alone |
+
+## Two Independent Problems, Two Independent Solutions
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                 │
+│  ❓ PROBLEM 1: Master Password                                  │
+│  💡 SOLUTION: Public Key Cryptography                           │
+│     • Each device = unique key pair                            │
+│     • Server stores public keys → builds "vault" (membership)   │
+│     • No password to remember or steal                          │
+│                                                                 │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ❓ PROBLEM 2: Single Point of Failure                          │
+│  💡 SOLUTION: Shamir's Secret Sharing                           │
+│     • Secrets split into N shares                              │
+│     • Any K shares can reconstruct                             │
+│     • Lose devices? Still recover if threshold met             │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Why Separate Modules?
+
+| Module | Solves | Technology | Server Role |
+|--------|--------|-----------|-------------|
+| **#1 Authentication** | "How to avoid passwords?" | X25519 PKI | Stores public keys |
+| **#2 Secret Manager** | "How to avoid single point of failure?" | Shamir's Secret Sharing | Relays encrypted blobs |
 
 ---
 
-# Slide 8: Device Identity & Communication
+# Slide 8: Module 1 - Device Identity & Vault Management
 
-## How Devices Discover and Trust Each Other
+## Device Initialization: Key Generation
 
-### Device Identity
-
-Each device generates a cryptographic identity on first run:
-
-```
-┌─────────────────────────────────────────────┐
-│              DEVICE IDENTITY                │
-│                                             │
-│  DeviceId ← derived from TransportPk        │
-│                                             │
-│  TransportPk (Public Key)                   │
-│    └─ Used for receiving encrypted shares   │
-│                                             │
-│  TransportSk (Secret Key)                   │
-│    └─ Never leaves the device               │
-└─────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    DEVICE[📱 Device First Launch] --> KEYGEN[Generate X25519<br/>Key Pair]
+    
+    KEYGEN --> PRIVATE[🔴 Private Key<br/>Stored in Device Keychain<br/>Never Leaves Device]
+    KEYGEN --> PUBLIC[🔵 Public Key<br/>Shared with Server]
+    
+    PUBLIC --> DEVID[DeviceId = Hash of Public Key]
+    
+    style PRIVATE fill:#e57373,color:#fff,stroke:#c62828,stroke-width:3px
+    style PUBLIC fill:#64b5f6,color:#fff,stroke:#1976d2,stroke-width:3px
+    style KEYGEN fill:#fff9c4,stroke:#f57f17,stroke-width:2px
 ```
 
-### Communication Flow
+## Vault Operations
+
+```mermaid
+flowchart TB
+    subgraph CREATE["Scenario 1: Create New Vault"]
+        D1[Device 1] -->|Send Public Key| S1[Server]
+        S1 --> V1[(New Vault<br/>Owner: PK₁)]
+    end
+    
+    subgraph JOIN["Scenario 2: Join Existing Vault"]
+        D2[Device 2] -->|Join Request + Public Key| S2[Server]
+        S2 -->|Notify| D1B[Device 1<br/>Vault Member]
+        D1B -->|Approve| S2
+        S2 --> V2[(Update Vault<br/>Members: PK₁, PK₂)]
+    end
+    
+    style V1 fill:#42a5f5,color:#fff,stroke:#1565c0,stroke-width:3px
+    style V2 fill:#42a5f5,color:#fff,stroke:#1565c0,stroke-width:3px
+    style CREATE fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    style JOIN fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+```
+
+## Authentication Properties
+
+| Aspect | Implementation | Benefit |
+|--------|---------------|---------|
+| **Key Algorithm** | X25519 (Curve25519) | Industry-standard, 128-bit security |
+| **Private Key** | Device keychain + biometric | Hardware-backed, never exposed |
+| **Authentication** | Public key cryptography | No password to forget/steal |
+| **Server Knowledge** | Public keys only | Cannot impersonate devices |
+
+---
+
+# Slide 9: Module 1 - Device Joining Flow
+
+## How Additional Devices Join the Vault
 
 ```mermaid
 sequenceDiagram
-    participant A as Device A
-    participant S as Server (Relay)
-    participant B as Device B
-
-    A->>A: Encrypt share with B's TransportPk
-    A->>S: Send encrypted blob
-    S->>S: Store & forward (cannot read)
-    S->>B: Deliver encrypted blob
-    B->>B: Decrypt with own TransportSk
+    participant D2 as Device 2 (New)
+    participant S as Server
+    participant D1 as Device 1 (Vault Member)
+    participant User as User
+    
+    D2->>D2: Generate key pair
+    D2->>S: Request to join vault
+    S->>S: Store join request
+    S->>D1: Notify of join request
+    
+    User->>D1: Approve Device 2
+    D1->>S: Approve Device 2 (add its PublicKey)
+    S->>S: Add Device2's PublicKey to vault
+    S->>D2: Approval confirmed
+    
+    Note over D2,D1: Both devices can now manage vault
 ```
 
-### Key Points
+### Vault Management
 
-- **End-to-end encryption**: Server sees only ciphertext
-- **Public key discovery**: Devices learn each other's keys via vault membership
-- **No direct P2P required**: Server handles NAT traversal
+Once in the vault, each member can:
+- View all vault members (device public keys)
+- Approve new device join requests
+- Add/remove secrets (triggers Module 2)
+- Sync vault state across devices
+
+### Security Property
+
+> Server stores **public keys only** - cannot impersonate devices or decrypt data
 
 ---
 
-# Slide 9: The Split Workflow
+# Slide 10: Module 2 - Secret Manager
 
-## What Happens When You Save a Password
+## How Secrets Are Split and Stored
+
+Module 2 uses **Shamir's Secret Sharing** to distribute secrets across vault members.
 
 <p align="center">
   <img src="img/app/secret-split.png" alt="Secret Split Flow" width="700" />
 </p>
 
-<p align="center"><em>The device splits the secret into multiple parts, encrypts each individually,<br/>
-and distributes them across your devices - one part retained locally.</em></p>
-
-### Step-by-Step Process
+### The Split Process
 
 ```mermaid
-flowchart LR
-    subgraph "Device 1 (Initiator)"
-        A[User enters secret] --> B[Split via SSS]
-        B --> C[Encrypt Share 1 for Device 1]
-        B --> D[Encrypt Share 2 for Device 2]
-        B --> E[Encrypt Share 3 for Device 3]
-    end
-    
-    C --> F[Store locally]
-    D --> G[Send via Server]
-    E --> H[Send via Server]
-    
-    G --> I[Device 2 stores]
-    H --> J[Device 3 stores]
+flowchart TD
+    A[User enters password on Device 1] --> B[SSS: Split into N shares]
+    B --> C{For each share}
+    C --> D[Encrypt with recipient's PublicKey]
+    D --> E{Is recipient Device 1?}
+    E -->|Yes| F[Store locally]
+    E -->|No| G[Send via Server]
+    G --> H[Recipient device stores encrypted share]
+    F --> I[Split complete]
+    H --> I
 ```
+
+### Key Points
+
+1. **N shares created** - one for each vault member (N = number of devices)
+2. **Threshold = majority** - need K shares to recover (e.g., 2 of 3)
+3. **End-to-end encryption** - each share encrypted for specific device
+4. **Server = relay only** - cannot decrypt any share
 
 ---
 
-# Slide 10: The Recovery Workflow
+# Slide 11: Module 2 - Secret Recovery
 
-## What Happens When You Need a Password
+## How Secrets Are Recovered
 
 <p align="center">
   <img src="img/app/secret-recovery.png" alt="Secret Recovery Flow" width="700" />
 </p>
 
-<p align="center"><em>Even if one device is unavailable, we can still successfully recover the secret.<br/>
-The requesting device gathers shares from available devices and reconstructs the password.</em></p>
-
-### Recovery Process
+### Recovery Workflow
 
 ```mermaid
 sequenceDiagram
-    participant U as User (Device 3)
+    participant User
+    participant D3 as Device 3 (Requesting)
+    participant S as Server
     participant D2 as Device 2
     participant D1 as Device 1 (offline)
 
-    U->>U: Request recovery of "Gmail password"
-    U->>D2: Request share (via server)
-    U->>D1: Request share (via server)
+    User->>D3: "Get my Gmail password"
+    D3->>D3: Check local share (have 1/3)
+    
+    D3->>S: Request shares from other devices
+    S->>D2: Forward request to Device 2
+    S->>D1: Forward request to Device 1
     
     Note over D1: Device offline - no response
     
-    D2->>U: Send encrypted share
-    U->>U: Decrypt share from D2
-    U->>U: Already have local share
-    U->>U: Threshold met (2 of 3)
-    U->>U: Combine shares → Original secret
-    U->>U: Display password to user
+    D2->>D2: Encrypt share for Device 3
+    D2->>S: Send encrypted share
+    S->>D3: Deliver share from Device 2
+    
+    D3->>D3: Decrypt share (now have 2/3)
+    D3->>D3: Threshold met! Combine shares
+    D3->>D3: SSS: Reconstruct original password
+    D3->>User: Display password
 ```
 
-### Key Insight
+### Fault Tolerance in Action
 
-> Even with one device offline/lost, recovery succeeds if threshold is met.
+- **Started with**: 3 shares distributed across 3 devices
+- **Device 1 offline**: Only 2 devices available
+- **Threshold = 2**: Success! Password recovered
+- **Key insight**: Can lose devices without losing access
 
 ---
 
-# Slide 11: Event Sourcing Architecture
+# Slide 12: How Modules Work Together
 
-## How Synchronization Works
+## The Complete Flow
 
-### Why Event Sourcing?
-
-| Challenge | Event Sourcing Solution |
-|-----------|------------------------|
-| Multiple devices update simultaneously | Events are append-only, no conflicts |
-| Devices go offline | Replay events to catch up |
-| Audit trail needed | Complete history preserved |
-| State reconstruction | Aggregate events to compute current state |
-
-### Database Architecture
+### Full User Journey: Adding a New Device
 
 ```mermaid
-flowchart TD
-    subgraph "meta_secret (vault: write)"
-        direction TB
+sequenceDiagram
+    participant U as User
+    participant D1 as Device 1 (Existing)
+    participant S as Server
+    participant D2 as Device 2 (New)
 
-        subgraph clients
-            client_a
-            client_b
-            client_c
-        end
-
-        subgraph server
-            subgraph server_db
-                device_log_a[(device_log_a)]
-                device_log_b[(device_log_b)]
-                device_log_c[(device_log_c)]
-
-                vault_log[(vault_log)]
-                vault[(vault)]
-            end
-
-            client_a--device_log_a-->server_app_writes
-            client_b--device_log_b-->server_app_writes
-            client_c--device_log_c-->server_app_writes
-
-            server_app_writes--save-->device_log_a
-            server_app_writes--save-->device_log_b
-            server_app_writes--save-->device_log_c
-
-            device_log_a--enqueue-->vault_log
-            device_log_b--enqueue-->vault_log
-            device_log_c--enqueue-->vault_log
-            vault_log--create/update-->vault
-        end
-    end
+    Note over D2: MODULE 1: Authentication
+    
+    D2->>D2: Generate key pair
+    D2->>S: Request to join vault
+    S->>D1: Join request notification
+    U->>D1: Approve Device 2
+    D1->>S: Add Device2's PublicKey to vault
+    S->>D2: Vault membership granted
+    
+    Note over D1,D2: MODULE 2: Secret Re-distribution
+    
+    D1->>D1: Re-split all secrets (2→3 shares)
+    D1->>D1: Encrypt new share for Device 2
+    D1->>S: Send shares for Device 2
+    S->>D2: Deliver encrypted shares
+    D2->>D2: Store encrypted shares locally
+    
+    Note over U,D2: Device 2 is fully operational
 ```
 
-### Event Types
+### System Properties
 
-| Event Type | Purpose |
-|------------|---------|
-| `VaultLogObject` | Vault membership changes, secret additions |
-| `DeviceLogObject` | Per-device events (isolated per device) |
-| `SsWorkflowObject` | Secret distribution & recovery events |
+```
+┌─────────────────────────────────────────────────────────────┐
+│                 WHAT MAKES THIS SECURE                       │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  Module 1 (Auth): No passwords to steal                    │
+│  Module 2 (Secrets): No single point of failure            │
+│                                                             │
+│  Server role: Relay + public key storage only              │
+│  Device role: Private keys + encrypted secret shares       │
+│                                                             │
+│  Result: True zero-knowledge architecture                  │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-# Slide 12: Resources
+# Slide 13: Resources
 
 ## Learn More
 
