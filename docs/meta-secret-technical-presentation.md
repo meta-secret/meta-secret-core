@@ -749,108 +749,153 @@ flowchart TB
     subgraph PHASE1["1️⃣ DEVICE REGISTRATION & VAULT CREATION"]
         direction LR
         
-        subgraph DEV1_INIT["Device 1 Initialization"]
-            D1_KEY[🔐 Generate KeyPair<br/>TransportSk + TransportPk]
-            D1_BIO[🔒 Biometric Protection]
-            D1_KEY --> D1_BIO
+        subgraph DEV1_INIT["Device 1: Key Generation"]
+            D1_KM[KeyManager::generate]
+            D1_KEYS["TransportSk (X25519)<br/>TransportPk (X25519)"]
+            D1_BOX[SecretBox: Holds Keys]
+            D1_OPEN[OpenBox: Public Data]
+            D1_BIO[🔒 SecureDeviceCreds<br/>Biometric + MasterKey]
+            D1_KM --> D1_KEYS --> D1_BOX --> D1_OPEN --> D1_BIO
         end
         
-        D1_BIO -->|"SignUpClaimAction<br/>+ TransportPk₁"| SERVER_CREATE
+        D1_BIO -->|"SignUpClaimTestAction::sign_up<br/>DeviceLogObject + UserData"| SYNC1
         
-        subgraph SERVER_CREATE["Server Processing"]
-            SRV_VAULT[📁 Create Vault Record]
-            SRV_ADD[➕ Add PK₁ to Members]
-            SRV_LOG[📝 Write to VaultLog]
-            SRV_VAULT --> SRV_ADD --> SRV_LOG
+        subgraph SYNC1["SyncGateway::sync"]
+            GW1_DEV[sync_device_log]
+            GW1_VAULT[sync_vault]
+            GW1_DEV --> GW1_VAULT
         end
         
-        SERVER_CREATE -->|"Confirmation<br/>+ VaultId"| D1_STORE
+        SYNC1 -->|"WriteSyncRequest::Event"| SERVER_CREATE
         
-        subgraph D1_STORE["Device 1 Storage"]
-            D1_COMMIT[📋 Commit Log]
-            D1_OBJ[🗃️ Object Storage]
-            D1_COMMIT --> D1_OBJ
+        subgraph SERVER_CREATE["ServerApp Processing"]
+            SRV_VAULT["Create VaultObject<br/>(VaultData: users, secrets)"]
+            SRV_LOG["Write VaultLogObject<br/>(VaultActionEvents)"]
+            SRV_STATUS["Set VaultStatusObject<br/>→ Member"]
+            SRV_VAULT --> SRV_LOG --> SRV_STATUS
+        end
+        
+        SERVER_CREATE -->|"DataEventsResponse"| D1_DB
+        
+        subgraph D1_DB["Device 1: KV Storage"]
+            D1_CREDS[DeviceCredsObject]
+            D1_USER[UserCredsObject]
+            D1_DLOG[DeviceLogObject]
+            D1_VLOG[VaultLogObject]
+            D1_VO[VaultObject]
         end
     end
     
     subgraph PHASE2["2️⃣ DEVICE JOIN PROTOCOL"]
         direction LR
         
-        subgraph DEV2_INIT["Device 2 Initialization"]
-            D2_KEY[🔐 Generate KeyPair<br/>TransportSk + TransportPk]
-            D2_CLAIM[📨 JoinClaimAction]
-            D2_KEY --> D2_CLAIM
+        subgraph DEV2_INIT["Device 2: Initialization"]
+            D2_GEN["KeyManager::generate<br/>New TransportSk/Pk₂"]
+            D2_CLAIM["SignUpClaimTestAction::sign_up<br/>Same VaultName"]
+            D2_GEN --> D2_CLAIM
         end
         
-        D2_CLAIM -->|"Join Request<br/>+ TransportPk₂"| SERVER_JOIN
+        D2_CLAIM -->|"DeviceLogObject<br/>JoinClusterEvent"| SERVER_JOIN
         
-        subgraph SERVER_JOIN["Server: Pending Requests"]
-            SRV_QUEUE[📥 Queue Join Request]
-            SRV_NOTIFY[📢 Notify Vault Members]
-            SRV_QUEUE --> SRV_NOTIFY
+        subgraph SERVER_JOIN["Server: VaultLogObject"]
+            SRV_REQ["VaultActionRequestEvent::<br/>JoinCluster(JoinClusterEvent)"]
+            SRV_PEND["status: Pending<br/>candidate: UserData₂"]
         end
         
-        SERVER_JOIN -->|"Sync Event"| D1_APPROVE
+        SERVER_JOIN -->|"SyncGateway::sync"| D1_REVIEW
         
-        subgraph D1_APPROVE["Device 1: Approval"]
-            D1_REVIEW[👁️ Review Request]
-            D1_ACCEPT[✅ Accept Member]
-            D1_REVIEW --> D1_ACCEPT
+        subgraph D1_REVIEW["Device 1: MetaOrchestrator"]
+            D1_GET["get_vault_log_event"]
+            D1_MATCH["Match JoinCluster"]
+            D1_UPD["update_membership<br/>(JoinActionUpdate::Accept)"]
+            D1_GET --> D1_MATCH --> D1_UPD
         end
         
-        D1_ACCEPT -->|"Approval Event"| SERVER_FINAL
+        D1_UPD -->|"JoinAction::update"| SERVER_FINAL
         
-        subgraph SERVER_FINAL["Server: Finalize"]
-            SRV_MEMBER[👥 Add PK₂ to Vault]
-            SRV_SYNC[🔄 Broadcast Update]
-            SRV_MEMBER --> SRV_SYNC
+        subgraph SERVER_FINAL["Server: Finalize Join"]
+            SRV_ADD["VaultData.users.push(UserData₂)"]
+            SRV_MEMBER["VaultStatusObject::Member<br/>for Device 2"]
+            SRV_ADD --> SRV_MEMBER
         end
         
-        SERVER_FINAL -->|"Membership Granted"| D2_MEMBER[✅ Device 2: Vault Member]
+        SERVER_FINAL -->|"Sync"| D2_DONE["✅ Device 2<br/>VaultStatus::Member"]
     end
     
     subgraph PHASE3["3️⃣ SECRET SPLIT & DISTRIBUTION"]
         direction LR
         
-        USER_IN[👤 User Input] -->|Password| SPLIT_PROC
+        USER_IN["👤 PlainPassInfo<br/>{pass_id, pass}"] -->|"GenericAppStateRequest::<br/>ClusterDistribution"| SPLIT_PROC
         
-        subgraph SPLIT_PROC["Shamir Split Process"]
-            SSS_SPLIT[⚡ SSS Algorithm]
-            ENC1[🔐 Encrypt Share₁<br/>with PK₁]
-            ENC2[🔐 Encrypt Share₂<br/>with PK₂]
-            SSS_SPLIT --> ENC1
-            SSS_SPLIT --> ENC2
+        subgraph SPLIT_PROC["MetaClientService::handle_client_request"]
+            SSS["SharedSecretEncryption::new<br/>sss::create_shares(data, N, K)"]
+            CLAIM["Create SsClaim<br/>distribution_type: Split"]
+            DIST["SsDistributionId per receiver"]
+            SSS --> CLAIM --> DIST
         end
         
-        ENC1 -->|"Store Locally"| D1_SECRET[(Device 1<br/>Share₁)]
-        ENC2 -->|"Via Server"| SRV_RELAY[(Server<br/>Relay Only)]
-        SRV_RELAY -->|"Deliver"| D2_SECRET[(Device 2<br/>Share₂)]
+        SPLIT_PROC --> ENCRYPT
+        
+        subgraph ENCRYPT["End-to-End Encryption"]
+            CH1["CommunicationChannel::build<br/>(sender_pk, receiver_pk)"]
+            ENC1["EncryptedMessage::CipherShare<br/>Age: X25519 + ChaCha20Poly1305"]
+            CH1 --> ENC1
+        end
+        
+        ENCRYPT --> STORE_DIST
+        
+        subgraph STORE_DIST["SsWorkflowObject::Distribution"]
+            D1_SHARE["Device 1: Own share<br/>encrypted with PK₁"]
+            D2_SHARE["Device 2: Share via server<br/>encrypted with PK₂"]
+        end
+        
+        STORE_DIST -->|"SyncGateway::sync_ss_log"| SRV_RELAY
+        
+        subgraph SRV_RELAY["Server: SsLogObject"]
+            SS_LOG["SsLogData.claims<br/>HashMap ClaimId → SsClaim"]
+            SS_STATUS["SsDistributionStatus::<br/>Pending → Sent → Delivered"]
+            SS_LOG --> SS_STATUS
+        end
+        
+        SRV_RELAY -->|"Relay encrypted blob"| D2_RECV["Device 2 stores<br/>SsWorkflowObject::Distribution"]
     end
     
     subgraph PHASE4["4️⃣ SECRET RECOVERY"]
         direction LR
         
-        USER_REQ[👤 Recovery Request] --> D2_CLAIM_R[📨 Create SsClaim]
-        D2_CLAIM_R -->|"Broadcast"| SRV_BROADCAST[(Server)]
-        SRV_BROADCAST --> D1_RESPOND
+        USER_REQ["👤 GenericAppStateRequest::<br/>Recover(pass_id)"] --> CREATE_CLAIM
         
-        subgraph D1_RESPOND["Device 1 Response"]
-            D1_RECV[📥 Receive Claim]
-            D1_DEC[🔓 Decrypt Own Share]
-            D1_REENC[🔐 Re-encrypt for D2]
-            D1_RECV --> D1_DEC --> D1_REENC
+        subgraph CREATE_CLAIM["Device 2: Create Recovery Claim"]
+            RC_CLAIM["SsClaim {<br/>  distribution_type: Recover,<br/>  sender: device_id₂,<br/>  receivers: [device_id₁]<br/>}"]
+            RC_LOG["SsDeviceLogObject"]
+            RC_CLAIM --> RC_LOG
         end
         
-        D1_REENC -->|"Via Server"| D2_COMBINE
+        CREATE_CLAIM -->|"Sync"| SRV_CLAIM["Server: SsLogObject<br/>stores recovery claim"]
         
-        subgraph D2_COMBINE["Device 2 Reconstruction"]
-            D2_SHARES[📦 Collect K Shares]
-            D2_SSS[⚡ SSS Combine]
-            D2_PASS[🔑 Password Recovered]
-            D2_SHARES --> D2_SSS --> D2_PASS
+        SRV_CLAIM -->|"Broadcast to members"| D1_HANDLE
+        
+        subgraph D1_HANDLE["Device 1: MetaOrchestrator::handle_recover"]
+            H_GET["get_ss_distribution_event_by_id"]
+            H_DEC["Decrypt share with own SK₁"]
+            H_REENC["secret_box.re_encrypt<br/>→ encrypt for claim sender PK₂"]
+            H_WF["Create SsWorkflowObject::Recovery"]
+            H_GET --> H_DEC --> H_REENC --> H_WF
         end
         
-        D2_PASS --> USER_OUT[👤 User]
+        D1_HANDLE -->|"Sync recovery event"| SRV_FWD["Server: Relay<br/>SsWorkflowObject::Recovery"]
+        
+        SRV_FWD --> D2_RECOVER
+        
+        subgraph D2_RECOVER["Device 2: RecoveryHandler::recover"]
+            R_COLLECT["Collect K recovery events"]
+            R_DEC["Decrypt each with own SK₂"]
+            R_COMBINE["SharedSecret::recover<br/>shamirsecretsharing::combine_shares"]
+            R_PLAIN["PlainText → Password"]
+            R_COLLECT --> R_DEC --> R_COMBINE --> R_PLAIN
+        end
+        
+        D2_RECOVER --> USER_OUT["🔑 Original Password"]
     end
     
     PHASE1 --> PHASE2 --> PHASE3 --> PHASE4
@@ -860,20 +905,33 @@ flowchart TB
     style PHASE3 fill:#e65100,color:#fff,stroke:#bf360c,stroke-width:3px
     style PHASE4 fill:#7b1fa2,color:#fff,stroke:#4a148c,stroke-width:3px
     
-    style D1_SECRET fill:#43a047,color:#fff
-    style D2_SECRET fill:#43a047,color:#fff
-    style SRV_RELAY fill:#78909c,color:#fff
+    style D2_RECV fill:#43a047,color:#fff
+    style USER_OUT fill:#43a047,color:#fff,stroke:#1b5e20,stroke-width:3px
 ```
 
-## Data Storage Summary
+## Database Objects (GenericKvLogEvent)
 
-| Data | Device | Server |
-|------|--------|--------|
-| Private Keys (TransportSk) | ✅ Own only, biometric protected | ❌ Never |
-| Public Keys (TransportPk) | ✅ All vault members | ✅ All vault members |
-| Vault State | ✅ Full replica | ✅ Full replica |
-| Commit Log | ✅ Full history | ✅ Public events only |
-| Encrypted Shares | ✅ Own share only | ❌ Relay only |
+| Object Type | Purpose | Device | Server |
+|-------------|---------|--------|--------|
+| `DeviceCredsObject` | Private keys (SecretBox) | ✅ Own only | ❌ |
+| `UserCredsObject` | User identity + vault name | ✅ | ❌ |
+| `DeviceLogObject` | Device events (sign-up, join) | ✅ | ✅ |
+| `VaultLogObject` | Vault actions (requests) | ✅ | ✅ |
+| `VaultObject` | Vault state (members, secrets) | ✅ | ✅ |
+| `VaultStatusObject` | User's vault membership | ✅ | ✅ |
+| `SsDeviceLogObject` | SS claims per device | ✅ | ✅ |
+| `SsLogObject` | All SS claims for vault | ✅ | ✅ |
+| `SsWorkflowObject::Distribution` | Encrypted secret shares | ✅ Own | ❌ Relay |
+| `SsWorkflowObject::Recovery` | Re-encrypted shares | ✅ | ❌ Relay |
+
+## Encryption Layers
+
+| Layer | Algorithm | Purpose |
+|-------|-----------|---------|
+| **Key Exchange** | X25519 (Curve25519 ECDH) | Derive shared secret |
+| **Symmetric Encryption** | ChaCha20-Poly1305 (Age) | Encrypt messages |
+| **Secret Splitting** | Shamir's Secret Sharing | K-of-N threshold |
+| **Device Protection** | Biometric + MasterKey | Protect TransportSk |
 
 ---
 
