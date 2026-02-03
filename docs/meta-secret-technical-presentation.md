@@ -612,47 +612,48 @@ flowchart TB
 ## The Core Concept: Commit Log as Central Abstraction
 
 ```mermaid
-flowchart TB
+flowchart LR
     subgraph DEVICES["📱 Device Workflow"]
-        direction LR
+        direction TB
         USER[User Action] --> EVENT[Create Event]
         EVENT --> CHECK{Event Type}
-        CHECK -->|Vault Event| VEVT[Vault Event]
-        CHECK -->|Secret Event| SEVT[Secret Event]
-        SEVT --> ENC[Encrypt with<br/>recipient keys]
+        CHECK -->|Vault| VEVT[Vault Event]
+        CHECK -->|Secret| SEVT[Secret Event]
+        SEVT --> ENC[Encrypt]
     end
     
     subgraph DB["🗄️ Database Structure"]
         direction TB
         
-        LOG[(Commit Log<br/>════════════════<br/>Event₁, Event₂, Event₃...Eventₙ<br/>════════════════<br/>Append-Only)]
+        LOG[(Commit Log<br/>═══════<br/>Event Stream<br/>═══════<br/>Append-Only)]
         
-        BUILD[Replay Events ↻]
+        LOG --> BUILD[Replay ↻]
         
         subgraph OBJSTORE["Object Storage"]
-            direction LR
-            VDEV[Devices:<br/>DeviceLog, VaultLog<br/>Vault, Secrets]
+            VDEV[Devices:<br/>DeviceLog<br/>VaultLog<br/>Vault<br/>Secrets]
             VSRV[Server:<br/>VaultLog<br/>Vault]
         end
         
-        LOG --> BUILD
         BUILD --> OBJSTORE
     end
     
     subgraph SERVER["☁️ Server"]
         direction TB
-        SRV[Stores:<br/>Vault Events Only<br/>━━━━━━━<br/>Relays:<br/>Encrypted Events]
+        SRVLOG[(Server<br/>Commit Log<br/>━━━━━━━<br/>Vault Events)]
+        SRVSTORE[Stores:<br/>VaultLog<br/>Vault State]
+        
+        SRVLOG --> SRVSTORE
     end
     
-    VEVT -->|Append| LOG
-    ENC -->|Append| LOG
-    SRV -->|Append Vault Events| LOG
+    VEVT --> LOG
+    ENC --> LOG
     
-    LOG <-->|Replicate| SRV
+    LOG <--> SRVLOG
     
     style LOG fill:#ff9800,color:#fff,stroke:#e65100,stroke-width:5px
     style BUILD fill:#ffb74d,color:#000
-    style SRV fill:#90a4ae,color:#fff,stroke:#546e7a,stroke-width:2px
+    style SRVLOG fill:#42a5f5,color:#fff,stroke:#1976d2,stroke-width:3px
+    style SRVSTORE fill:#90a4ae,color:#fff,stroke:#546e7a,stroke-width:2px
     style VDEV fill:#66bb6a,color:#fff
     style VSRV fill:#42a5f5,color:#fff
     style ENC fill:#ef5350,color:#fff
