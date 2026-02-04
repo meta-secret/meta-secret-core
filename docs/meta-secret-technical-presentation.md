@@ -187,7 +187,7 @@ Split a secret into **N shares** where any **K shares** can reconstruct it.
 
 ```mermaid
 flowchart TB
-    subgraph LAYER1["🔐 USER DEVICES (Client Side)"]
+    subgraph LAYER1["🔐 USER DEVICES"]
         direction LR
         D1["📱 Phone<br/>━━━━━━━<br/>🔑 Private Key"]
         D2["💻 Laptop<br/>━━━━━━━<br/>🔑 Private Key"]
@@ -332,7 +332,32 @@ Result:
 
 ---
 
-# Slide 8: Module 1 - Device Identity & Vault Management
+# Slide 8: Cross-Device Authentication
+
+## The Goal
+
+We want **passwordless authentication** - similar to Passkeys/WebAuthn - where your device *is* your identity.
+
+## Why Build Our Own?
+
+Passkeys solve the "no password" problem, but our architecture has additional requirements:
+
+| Requirement | Passkeys/WebAuthn | Meta Secret |
+|-------------|-------------------|-------------|
+| **Key usage** | Authentication only | Authentication + Encryption (Age/X25519) |
+| **Who controls keys?** | Platform (Apple/Google/Browser) | Application (we generate and manage) |
+| **Who approves new devices?** | Central server or cloud account | Existing vault members (decentralized) |
+| **Server role** | Full account management | Relay only - stores public keys, no business logic |
+
+**The core difference**: In passkeys, a central authority (Apple ID, Google Account) manages your device enrollment. In Meta Secret, your **devices form a trust network** - existing members vote to add new members.
+
+## Why This Matters
+
+1. **End-to-end encryption requires key control**: To encrypt secrets for specific devices, we need access to the raw key material. Passkeys don't expose private keys.
+
+2. **Decentralized trust model**: No single entity (not even our server) can add a device to your vault. Only existing members can approve new ones.
+
+3. **Server minimization**: The server is intentionally "dumb" - it relays messages and stores public keys. It cannot impersonate devices or access secrets.
 
 ## Device Initialization: Key Generation
 
