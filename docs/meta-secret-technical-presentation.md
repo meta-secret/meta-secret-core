@@ -334,22 +334,232 @@ Result:
 
 # Slide 8: Cross-Device Authentication
 
-## The Goal
+## The Goal: A Device Mesh Network
 
 We want **passwordless authentication** - similar to Passkeys/WebAuthn - where your device *is* your identity.
+
+But we go further: **your devices form a fully decentralized mesh network**.
+
+| Property | What it means |
+|----------|---------------|
+| **Local-First** | Each device has complete data. Works offline. No server dependency for core operations. |
+| **Decentralized** | No central authority. Devices trust each other directly. |
+| **Mesh Network** | Every device can communicate with every other device (via relay). |
 
 ## Why Build Our Own?
 
 Passkeys solve the "no password" problem, but our architecture has additional requirements:
 
-| Requirement | Passkeys/WebAuthn | Meta Secret |
-|-------------|-------------------|-------------|
+| Requirement | Passkeys/WebAuthn | Meta Secret (Device Mesh) |
+|-------------|-------------------|---------------------------|
 | **Key usage** | Authentication only | Authentication + Encryption (Age/X25519) |
 | **Who controls keys?** | Platform (Apple/Google/Browser) | Application (we generate and manage) |
-| **Who approves new devices?** | Central server or cloud account | Existing vault members (decentralized) |
-| **Server role** | Full account management | Relay only - stores public keys, no business logic |
+| **Who approves new devices?** | Central server or cloud account | Existing vault members (peer-to-peer) |
+| **Data location** | Cloud-synced | Local-first (each device has full copy) |
+| **Server role** | Full account management | Dumb relay - just passes messages |
 
-**The core difference**: In passkeys, a central authority (Apple ID, Google Account) manages your device enrollment. In Meta Secret, your **devices form a trust network** - existing members vote to add new members.
+**The core difference**: In passkeys, a central authority (Apple ID, Google Account) manages your device enrollment. In Meta Secret, your **devices form a mesh network** - completely local, fully decentralized, with peer-to-peer trust.
+
+## Centralized vs Device Mesh Network
+
+```mermaid
+flowchart LR
+    subgraph PASSKEY["☁️ Traditional: Cloud-Centric"]
+        direction TB
+        PA[📱 Phone] --> CLOUD[☁️ Apple/Google<br/>Cloud Account]
+        PB[💻 Laptop] --> CLOUD
+        PC[🖥️ Desktop] --> CLOUD
+        CLOUD -->|"Controls all<br/>device enrollment"| AUTH[🔐 Central<br/>Authority]
+    end
+    
+    subgraph METASECRET["🔗 Meta Secret: Device Mesh Network"]
+        direction TB
+        MA[📱 Phone<br/>Full Local DB] <-->|"P2P Trust"| MB[💻 Laptop<br/>Full Local DB]
+        MB <-->|"P2P Trust"| MC[🖥️ Desktop<br/>Full Local DB]
+        MA <-->|"P2P Trust"| MC
+        
+        MA -.->|"Relay only"| RELAY[📡 Dumb Relay<br/>No Business Logic]
+        MB -.-> RELAY
+        MC -.-> RELAY
+    end
+    
+    style CLOUD fill:#f44336,color:#fff,stroke:#c62828,stroke-width:3px
+    style AUTH fill:#d32f2f,color:#fff,stroke:#b71c1c,stroke-width:3px
+    style RELAY fill:#4caf50,color:#fff,stroke:#2e7d32,stroke-width:3px
+    style PASSKEY fill:#ffebee,stroke:#ef9a9a,stroke-width:2px
+    style METASECRET fill:#e8f5e9,stroke:#a5d6a7,stroke-width:2px
+```
+
+> **Local-First Architecture**: Each device maintains a complete local database. The server is just a message relay - if it goes down, your devices still have all your data.
+
+## How the Mesh Grows (Peer-to-Peer Onboarding)
+
+```mermaid
+flowchart LR
+    subgraph T1["Step 1: Genesis"]
+        D1A[📱 Device 1<br/>Creates Vault]
+        V1A[(Local Vault<br/>Members: 1)]
+        D1A --> V1A
+    end
+    
+    subgraph T2["Step 2: First Peer Joins"]
+        D1B[📱 Device 1] -->|"✅ P2P Approval"| D2B[💻 Device 2]
+        V2B[(Replicated<br/>Members: 2)]
+        D2B --> V2B
+    end
+    
+    subgraph T3["Step 3: Mesh Complete"]
+        D1C[📱 Device 1]
+        D2C[💻 Device 2]
+        D3C[🖥️ Device 3]
+        D1C <-->|"Mesh"| D2C
+        D2C <-->|"Mesh"| D3C
+        D1C <-->|"Mesh"| D3C
+        V3C[(Full Mesh<br/>3 Peers)]
+        D3C --> V3C
+    end
+    
+    T1 --> T2 --> T3
+    
+    style V1A fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:2px
+    style V2B fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:2px
+    style V3C fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:2px
+    style T1 fill:#e3f2fd,stroke:#64b5f6,stroke-width:2px
+    style T2 fill:#e3f2fd,stroke:#64b5f6,stroke-width:2px
+    style T3 fill:#e3f2fd,stroke:#64b5f6,stroke-width:2px
+```
+
+> **Fully decentralized onboarding**: No server, no cloud account, no central authority can add devices to your vault. Only existing mesh members can vote to admit new peers. Each device holds a complete local copy of the vault.
+
+## The "Dumb Relay" Server
+
+The server exists only to help devices find each other. It has **no business logic** and **cannot access your data**.
+
+```mermaid
+flowchart TB
+    subgraph VISIBLE["✅ Server Sees (Just Metadata)"]
+        direction LR
+        PK1[🔵 Public Key 1]
+        PK2[🔵 Public Key 2]
+        PK3[🔵 Public Key 3]
+        VAULT[📁 Vault Membership<br/>List of Public Keys]
+        BLOB[📦 Encrypted Blobs<br/>Opaque Ciphertext]
+    end
+    
+    subgraph INVISIBLE["🚫 Server Cannot See (Your Data)"]
+        direction LR
+        SK[🔴 Private Keys]
+        PASS[🔑 Your Passwords]
+        SEED[🌱 Seed Phrases]
+        PLAIN[📄 Plaintext Data]
+    end
+    
+    style VISIBLE fill:#e8f5e9,stroke:#4caf50,stroke-width:3px
+    style INVISIBLE fill:#ffebee,stroke:#f44336,stroke-width:3px
+    style SK fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
+    style PASS fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
+    style SEED fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
+    style PLAIN fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
+```
+
+> **If the server disappears tomorrow**, your devices still have all your data. The mesh network is self-sufficient.
+
+## Centralized vs Decentralized Trust
+
+```mermaid
+flowchart LR
+    subgraph PASSKEY["Traditional Passkeys"]
+        direction TB
+        PA[📱 Phone] --> CLOUD[☁️ Apple/Google<br/>Cloud Account]
+        PB[💻 Laptop] --> CLOUD
+        PC[🖥️ Desktop] --> CLOUD
+        CLOUD -->|"Controls all<br/>device enrollment"| AUTH[🔐 Central<br/>Authority]
+    end
+    
+    subgraph METASECRET["Meta Secret"]
+        direction TB
+        MA[📱 Phone] <-->|"Approves"| MB[💻 Laptop]
+        MB <-->|"Approves"| MC[🖥️ Desktop]
+        MA <-->|"Approves"| MC
+        
+        MA -.->|"Public keys only"| RELAY[📡 Server<br/>Relay]
+        MB -.-> RELAY
+        MC -.-> RELAY
+    end
+    
+    style CLOUD fill:#f44336,color:#fff,stroke:#c62828,stroke-width:3px
+    style AUTH fill:#d32f2f,color:#fff,stroke:#b71c1c,stroke-width:3px
+    style RELAY fill:#4caf50,color:#fff,stroke:#2e7d32,stroke-width:3px
+    style PASSKEY fill:#ffebee,stroke:#ef9a9a,stroke-width:2px
+    style METASECRET fill:#e8f5e9,stroke:#a5d6a7,stroke-width:2px
+```
+
+## How Your Vault Grows (Trust Network)
+
+```mermaid
+flowchart LR
+    subgraph T1["Step 1: Genesis"]
+        D1A[📱 Device 1<br/>Creates Vault]
+        V1A[(Vault<br/>Members: 1)]
+        D1A --> V1A
+    end
+    
+    subgraph T2["Step 2: First Join"]
+        D1B[📱 Device 1] -->|"✅ Approves"| D2B[💻 Device 2]
+        V2B[(Vault<br/>Members: 2)]
+        D2B --> V2B
+    end
+    
+    subgraph T3["Step 3: Network Grows"]
+        D1C[📱 Device 1]
+        D2C[💻 Device 2]
+        D3C[🖥️ Device 3]
+        D1C -->|"✅"| D3C
+        D2C -->|"✅"| D3C
+        V3C[(Vault<br/>Members: 3)]
+        D3C --> V3C
+    end
+    
+    T1 --> T2 --> T3
+    
+    style V1A fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:2px
+    style V2B fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:2px
+    style V3C fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:2px
+    style T1 fill:#e3f2fd,stroke:#64b5f6,stroke-width:2px
+    style T2 fill:#e3f2fd,stroke:#64b5f6,stroke-width:2px
+    style T3 fill:#e3f2fd,stroke:#64b5f6,stroke-width:2px
+```
+
+> **No central authority can add devices to your vault** - only your existing devices can vote to admit new members.
+
+## What the Server Sees
+
+```mermaid
+flowchart TB
+    subgraph VISIBLE["✅ Server Can See (Public Data)"]
+        direction LR
+        PK1[🔵 Public Key 1]
+        PK2[🔵 Public Key 2]
+        PK3[🔵 Public Key 3]
+        VAULT[📁 Vault Membership<br/>List of Public Keys]
+        BLOB[📦 Encrypted Blobs<br/>Unreadable Ciphertext]
+    end
+    
+    subgraph INVISIBLE["🚫 Server Cannot See (Private Data)"]
+        direction LR
+        SK[🔴 Private Keys]
+        PASS[🔑 Your Passwords]
+        SEED[🌱 Seed Phrases]
+        PLAIN[📄 Plaintext Data]
+    end
+    
+    style VISIBLE fill:#e8f5e9,stroke:#4caf50,stroke-width:3px
+    style INVISIBLE fill:#ffebee,stroke:#f44336,stroke-width:3px
+    style SK fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
+    style PASS fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
+    style SEED fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
+    style PLAIN fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
+```
 
 ## Why This Matters
 
