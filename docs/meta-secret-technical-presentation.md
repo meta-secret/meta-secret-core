@@ -911,6 +911,99 @@ Object Storage Abstraction
     └── SsWorkflowObject (secret distribution/recovery)
 ```
 
+## Layered Architecture (Full Stack)
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    STATE MACHINE / DOMAIN LOGIC                      │
+│                                                                      │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐ │
+│  │ SignUpClaim │  │ JoinAction  │  │ MetaOrchest │  │ RecoveryAct │ │
+│  │             │  │             │  │   rator     │  │    ion      │ │
+│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘ │
+│                                                                      │
+│  • Centralized business logic code                                   │
+│  • Works on distributed replicated state                             │
+│  • Pattern matching for state transitions                            │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │ reads/derives state from
+                               ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                         OBJECT STORE                                 │
+│                    (Materialized Views)                              │
+│                                                                      │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌─────────────┐ │
+│  │ VaultObject  │ │ VaultLog     │ │ DeviceLog    │ │ SsWorkflow  │ │
+│  │              │ │   Object     │ │   Object     │ │   Object    │ │
+│  └──────────────┘ └──────────────┘ └──────────────┘ └─────────────┘ │
+│                                                                      │
+│  • Typed wrappers around KvLogEvent<T>                               │
+│  • Built by replaying events from commit log                         │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │ built from events in
+                               ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                          COMMIT LOG                                  │
+│                      (GenericKvLogEvent)                             │
+│                                                                      │
+│  ┌────────────────────────────────────────────────────────────────┐ │
+│  │  Event 1  │  Event 2  │  Event 3  │  Event 4  │  ...  │  Tail  │ │
+│  └────────────────────────────────────────────────────────────────┘ │
+│                                                                      │
+│  Event Types: DeviceLog, VaultLog, Vault, SsDeviceLog, SsWorkflow   │
+│                                                                      │
+│  • Immutable, append-only log                                        │
+│  • Events replicate between devices via server                       │
+│  • Source of truth for all state                                     │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │ persisted to
+                               ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                          KV STORAGE                                  │
+│                           (ReDB)                                     │
+│                                                                      │
+│     Key (KvKey)              │    Value (Serialized Event)          │
+│     ─────────────────────────┼───────────────────────────────       │
+│     vault:myVault:log:001    │    { VaultLog: {...} }               │
+│     device:xyz:log:003       │    { DeviceLog: {...} }              │
+│     ss:claim:abc:004         │    { SsWorkflow: {...} }             │
+│                                                                      │
+│  • Simple key-value persistence                                      │
+│  • Maximum flexibility for schema evolution                          │
+│  • Each device has local copy                                        │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Data Flow
+
+```
+READ PATH (Bottom → Top):                 WRITE PATH (Top → Bottom):
+                                          
+    ┌─────────────────┐                       ┌─────────────────┐
+    │  State Machine  │                       │  State Machine  │
+    └────────┬────────┘                       └────────┬────────┘
+             │ reads                                   │ emits event
+             ▼                                         ▼
+    ┌─────────────────┐                       ┌─────────────────┐
+    │  Object Store   │                       │  Object Store   │
+    └────────┬────────┘                       └────────┬────────┘
+             │ replays                                 │ appends
+             ▼                                         ▼
+    ┌─────────────────┐                       ┌─────────────────┐
+    │  Commit Log     │                       │  Commit Log     │
+    └────────┬────────┘                       └────────┬────────┘
+             │ loads                                   │ persists
+             ▼                                         ▼
+    ┌─────────────────┐                       ┌─────────────────┐
+    │  KV Storage     │                       │  KV Storage     │
+    └─────────────────┘                       └────────┬────────┘
+                                                       │ replicates
+                                                       ▼
+                                              ┌─────────────────┐
+                                              │  Other Devices  │
+                                              └─────────────────┘
+```
+
 ### Event Sourcing Benefits
 
 | Challenge | Event Sourcing Solution |
