@@ -176,45 +176,7 @@ Result:
 </tr>
 </table>
 
----
-
-## 🔧 Technical Architecture
-
-### Shamir's Secret Sharing (SSS)
-
-#### 🧮 The Cryptographic Foundation
-
-Invented by **Adi Shamir** in 1979 (the "S" in RSA)
-
-**Core Concept**: Split a secret into **N shares** where any **K shares** can reconstruct it.
-
-#### Example: Password "123"
-
-```
-Original Password: "123" (contains digits: 1, 2, 3)
-
-        SPLIT (3 shares, need 2)
-               │
-   ┌───────────┼───────────┐
-   ▼           ▼           ▼
-Share A     Share B     Share C
- [1,2]       [1,3]       [2,3]
-
-Each share has only PARTIAL information
-```
-
-#### Recovery: Any 2 Shares → Original Secret
-
-| Combination | Result | Status |
-|-------------|--------|---------|
-| Share A + Share B | {1,2,3} → "123" | ✅ |
-| Share A + Share C | {1,2,3} → "123" | ✅ |
-| Share B + Share C | {1,2,3} → "123" | ✅ |
-| Share A alone | {1,2,?} → ??? | ❌ Could be 123, 124, 125... |
-
-> **🔒 Key property**: 1 share reveals nothing. You need the threshold to recover.
-
----
+<br><br>
 
 ### Two Core Modules
 
@@ -268,6 +230,46 @@ flowchart TB
     style SRV2 fill:#90a4ae,color:#fff,stroke:#546e7a,stroke-width:2px
     style SHARES fill:#ff9800,color:#fff,stroke:#e65100,stroke-width:2px
 ```
+
+---
+
+## 🔧 Technical Architecture
+
+### Shamir's Secret Sharing (SSS)
+
+#### 🧮 The Cryptographic Foundation
+
+Invented by **Adi Shamir** in 1979 (the "S" in RSA)
+
+**Core Concept**: Split a secret into **N shares** where any **K shares** can reconstruct it.
+
+#### Example: Password "123"
+
+```
+Original Password: "123" (contains digits: 1, 2, 3)
+
+        SPLIT (3 shares, need 2)
+               │
+   ┌───────────┼───────────┐
+   ▼           ▼           ▼
+Share A     Share B     Share C
+ [1,2]       [1,3]       [2,3]
+
+Each share has only PARTIAL information
+```
+
+#### Recovery: Any 2 Shares → Original Secret
+
+| Combination | Result | Status |
+|-------------|--------|---------|
+| Share A + Share B | {1,2,3} → "123" | ✅ |
+| Share A + Share C | {1,2,3} → "123" | ✅ |
+| Share B + Share C | {1,2,3} → "123" | ✅ |
+| Share A alone | {1,2,?} → ??? | ❌ Could be 123, 124, 125... |
+
+> **🔒 Key property**: 1 share reveals nothing. You need the threshold to recover.
+
+---
 
 #### Server Role: Zero-Knowledge
 
