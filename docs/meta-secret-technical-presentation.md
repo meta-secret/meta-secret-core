@@ -176,8 +176,6 @@ Result:
 </tr>
 </table>
 
-<br><br>
-
 ### Two Core Modules
 
 ```mermaid
@@ -234,93 +232,9 @@ flowchart TB
 ---
 
 ## 🔧 Technical Architecture
-
-### Shamir's Secret Sharing (SSS)
-
-#### 🧮 The Cryptographic Foundation
-
-Invented by **Adi Shamir** in 1979 (the "S" in RSA)
-
-**Core Concept**: Split a secret into **N shares** where any **K shares** can reconstruct it.
-
-#### Example: Password "123"
-
-```
-Original Password: "123" (contains digits: 1, 2, 3)
-
-        SPLIT (3 shares, need 2)
-               │
-   ┌───────────┼───────────┐
-   ▼           ▼           ▼
-Share A     Share B     Share C
- [1,2]       [1,3]       [2,3]
-
-Each share has only PARTIAL information
-```
-
-#### Recovery: Any 2 Shares → Original Secret
-
-| Combination | Result | Status |
-|-------------|--------|---------|
-| Share A + Share B | {1,2,3} → "123" | ✅ |
-| Share A + Share C | {1,2,3} → "123" | ✅ |
-| Share B + Share C | {1,2,3} → "123" | ✅ |
-| Share A alone | {1,2,?} → ??? | ❌ Could be 123, 124, 125... |
-
-> **🔒 Key property**: 1 share reveals nothing. You need the threshold to recover.
-
----
-
-#### Server Role: Zero-Knowledge
-
-| What Server Stores | What Server CANNOT Do |
-|-------------------|----------------------|
-| ✅ Public keys (vault members) | ❌ Cannot decrypt shares |
-| ✅ Encrypted message blobs | ❌ Cannot impersonate devices |
-| ✅ Vault membership metadata | ❌ Cannot read passwords |
-| ✅ Device sync state | ❌ Cannot recover secrets alone |
-
----
+<br>
 
 ### Module 1: Device Identity & Vault Management
-
-#### Device Initialization: Key Generation
-
-```mermaid
-flowchart LR
-    DEVICE[📱 Device First Launch] --> KEYGEN[Generate X25519<br/>Key Pair]
-    
-    KEYGEN --> PRIVATE[🔴 Private Key<br/>Stored in Device Keychain<br/>Never Leaves Device]
-    KEYGEN --> PUBLIC[🔵 Public Key<br/>Shared with Server]
-    
-    PUBLIC --> DEVID[DeviceId = Hash of Public Key]
-    
-    style PRIVATE fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:3px
-    style PUBLIC fill:#1976d2,color:#fff,stroke:#0d47a1,stroke-width:3px
-    style KEYGEN fill:#f57c00,color:#fff,stroke:#e65100,stroke-width:2px
-```
-
-#### Vault Operations
-
-```mermaid
-flowchart TB
-    subgraph CREATE["Scenario 1: Create New Vault"]
-        D1[Device 1] -->|Send Public Key| S1[Server]
-        S1 --> V1[(New Vault<br/>Owner: PK₁)]
-    end
-    
-    subgraph JOIN["Scenario 2: Join Existing Vault"]
-        D2[Device 2] -->|Join Request + Public Key| S2[Server]
-        S2 -->|Notify| D1B[Device 1<br/>Vault Member]
-        D1B -->|Approve| S2
-        S2 --> V2[(Update Vault<br/>Members: PK₁, PK₂)]
-    end
-    
-    style V1 fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:3px
-    style V2 fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:3px
-    style CREATE fill:#1976d2,color:#fff,stroke:#0d47a1,stroke-width:2px
-    style JOIN fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:2px
-```
 
 #### Why Build Our Own Auth (vs Passkeys)?
 
@@ -378,6 +292,94 @@ flowchart LR
 ```
 
 > **Core Difference**: In Passkeys, a central authority (Apple ID, Google Account) manages device enrollment. In Meta Secret, devices form a **peer-to-peer trust network** - completely decentralized.
+
+
+---
+
+### Shamir's Secret Sharing (SSS)
+
+#### 🧮 The Cryptographic Foundation
+
+Invented by **Adi Shamir** in 1979 (the "S" in RSA)
+
+**Core Concept**: Split a secret into **N shares** where any **K shares** can reconstruct it.
+
+#### Example: Password "123"
+
+```
+Original Password: "123" (contains digits: 1, 2, 3)
+
+        SPLIT (3 shares, need 2)
+               │
+   ┌───────────┼───────────┐
+   ▼           ▼           ▼
+Share A     Share B     Share C
+ [1,2]       [1,3]       [2,3]
+
+Each share has only PARTIAL information
+```
+
+#### Recovery: Any 2 Shares → Original Secret
+
+| Combination | Result | Status |
+|-------------|--------|---------|
+| Share A + Share B | {1,2,3} → "123" | ✅ |
+| Share A + Share C | {1,2,3} → "123" | ✅ |
+| Share B + Share C | {1,2,3} → "123" | ✅ |
+| Share A alone | {1,2,?} → ??? | ❌ Could be 123, 124, 125... |
+
+> **🔒 Key property**: 1 share reveals nothing. You need the threshold to recover.
+
+---
+
+#### Server Role: Zero-Knowledge
+
+| What Server Stores | What Server CANNOT Do |
+|-------------------|----------------------|
+| ✅ Public keys (vault members) | ❌ Cannot decrypt shares |
+| ✅ Encrypted message blobs | ❌ Cannot impersonate devices |
+| ✅ Vault membership metadata | ❌ Cannot read passwords |
+| ✅ Device sync state | ❌ Cannot recover secrets alone |
+
+---
+
+#### Device Initialization: Key Generation
+
+```mermaid
+flowchart LR
+    DEVICE[📱 Device First Launch] --> KEYGEN[Generate X25519<br/>Key Pair]
+    
+    KEYGEN --> PRIVATE[🔴 Private Key<br/>Stored in Device Keychain<br/>Never Leaves Device]
+    KEYGEN --> PUBLIC[🔵 Public Key<br/>Shared with Server]
+    
+    PUBLIC --> DEVID[DeviceId = Hash of Public Key]
+    
+    style PRIVATE fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:3px
+    style PUBLIC fill:#1976d2,color:#fff,stroke:#0d47a1,stroke-width:3px
+    style KEYGEN fill:#f57c00,color:#fff,stroke:#e65100,stroke-width:2px
+```
+
+#### Vault Operations
+
+```mermaid
+flowchart TB
+    subgraph CREATE["Scenario 1: Create New Vault"]
+        D1[Device 1] -->|Send Public Key| S1[Server]
+        S1 --> V1[(New Vault<br/>Owner: PK₁)]
+    end
+    
+    subgraph JOIN["Scenario 2: Join Existing Vault"]
+        D2[Device 2] -->|Join Request + Public Key| S2[Server]
+        S2 -->|Notify| D1B[Device 1<br/>Vault Member]
+        D1B -->|Approve| S2
+        S2 --> V2[(Update Vault<br/>Members: PK₁, PK₂)]
+    end
+    
+    style V1 fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:3px
+    style V2 fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:3px
+    style CREATE fill:#1976d2,color:#fff,stroke:#0d47a1,stroke-width:2px
+    style JOIN fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:2px
+```
 
 ---
 
