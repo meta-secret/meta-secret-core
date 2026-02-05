@@ -273,18 +273,24 @@ flowchart LR
     
     subgraph METASECRET["🔗 Meta Secret (Device Mesh)"]
         direction TB
-        MA[📱 Phone] <-->|"P2P Approval"| MB[💻 Laptop]
-        MB <-->|"P2P Approval"| MC[🖥️ Desktop]
-        MA <-->|"P2P Approval"| MC
         
-        MA -.->|"Public keys only"| RELAY[📡 Server<br/>Relay]
-        MB -.-> RELAY
-        MC -.-> RELAY
+        subgraph DEVICES["Device Mesh"]
+            MA[📱 Phone]
+            MB[💻 Laptop]
+            MC[🖥️ Desktop]
+        end
+        
+        MA -.->|"P2P Approval"| MB
+        MB -.->|"P2P Approval"| MC
+        MA -.->|"P2P Approval"| MC
+        
+        DEVICES -.->|"Public keys only"| RELAY[📡 Server<br/>Relay]
         
         style RELAY fill:#4caf50,color:#fff,stroke:#2e7d32,stroke-width:3px
         style MA fill:#1976d2,color:#fff,stroke:#0d47a1,stroke-width:2px
         style MB fill:#1976d2,color:#fff,stroke:#0d47a1,stroke-width:2px
         style MC fill:#1976d2,color:#fff,stroke:#0d47a1,stroke-width:2px
+        style DEVICES fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
     end
     
     style PASSKEY fill:#ffebee,stroke:#ef9a9a,stroke-width:2px
