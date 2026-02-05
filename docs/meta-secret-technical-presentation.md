@@ -335,17 +335,6 @@ flowchart RL
 
 ---
 
-#### Authentication Properties
-
-| Aspect | Implementation | Benefit |
-|--------|---------------|---------|
-| **Key Algorithm** | X25519 (Curve25519) | Industry-standard, 128-bit security |
-| **Private Key** | Device keychain + biometric | Hardware-backed, never exposed |
-| **Authentication** | Public key cryptography | No password to forget/steal |
-| **Server Knowledge** | Public keys only | Cannot impersonate devices |
-
----
-
 #### Device Joining Flow
 
 ```mermaid
