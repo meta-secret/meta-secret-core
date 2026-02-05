@@ -248,7 +248,7 @@ We want **passwordless authentication** - similar to Passkeys/WebAuthn - where y
 | **Who controls keys?** | Platform (Apple/Google/Browser) | Application (we generate and manage) |
 | **Who approves new devices?** | Central server or cloud account | Existing vault members (peer-to-peer) |
 | **Data location** | Cloud-synced | Local-first (each device has full copy) |
-| **Server role** | Full account management | Dumb relay - just passes messages |
+| **Server role** | Full account management | Simple relay - just passes messages |
 
 **Why This Matters:**
 
@@ -256,7 +256,7 @@ We want **passwordless authentication** - similar to Passkeys/WebAuthn - where y
 
 2. **Decentralized trust model**: No single entity (not even our server) can add a device to your vault. Only existing members can approve new ones.
 
-3. **Server minimization**: The server is intentionally "dumb" - it relays messages and stores public keys. It cannot impersonate devices or access secrets.
+3. **Server minimization**: The server is intentionally "simple" - it relays messages and stores public keys. It cannot impersonate devices or access secrets.
 
 ```mermaid
 flowchart LR
@@ -548,7 +548,7 @@ flowchart TB
         
         SRV --> DB[(Centralized<br/>Database)]
         
-        NOTE1[Problem: Single source of truth on server<br/>Clients are dumb, server has all logic]
+        NOTE1[Problem: Single source of truth on server<br/>Clients are simple, server has all logic]
     end
     
     subgraph LOCAL["✅ Local-First (Meta Secret)"]
