@@ -1,189 +1,203 @@
-<p align="center">
-  <img src="img/meta-secret-logo.png" alt="Meta Secret Logo" width="150" />
-</p>
-
-<h1 align="center">Meta Secret</h1>
-<h3 align="center">
-    Solving the Master Password Problem with Distributed Cryptography
-</h3>
-
 <div align="center">
-    <i>Secure Password Management Without a Single Point of Failure</i>
+  
+<img src="img/meta-secret-logo.png" alt="Meta Secret Logo" width="200" />
+  
+# Meta Secret
+### Technical Presentation
+  
+**Solving the Master Password Problem with Distributed Cryptography**
+  
+*Secure Password Management Without a Single Point of Failure*
+  
+[![GitHub](https://img.shields.io/badge/GitHub-meta--secret-blue?logo=github)](https://github.com/meta-secret/meta-secret-core)
+[![iOS App](https://img.shields.io/badge/iOS-App%20Store-black?logo=apple)](https://apps.apple.com/app/metasecret/id1644286751)
+[![Web App](https://img.shields.io/badge/Web-id0.app-green)](https://id0.app)
+[![Website](https://img.shields.io/badge/Website-meta--secret.org-orange)](https://meta-secret.org)
+  
 </div>
 
 ---
 
-# Slide 2: The Vision
+## 📑 Table of Contents
+
+- [🎯 The Vision](#-the-vision)
+- [❌ The Problem](#-the-problem)
+  - [The Paradox of Password Security](#the-paradox-of-password-security)
+  - [Can We Eliminate the Single Point of Failure?](#can-we-eliminate-the-single-point-of-failure)
+- [✅ The Solution](#-the-solution)
+  - [Shamir's Secret Sharing](#shamirs-secret-sharing-sss)
+  - [Why Decentralized?](#why-decentralized)
+- [🔧 Technical Architecture](#-technical-architecture)
+  - [Two Core Modules](#two-core-modules)
+  - [Module 1: Device Identity & Vault Management](#module-1-device-identity--vault-management)
+  - [Module 2: Secret Manager](#module-2-secret-manager)
+- [🏗️ Application Architecture](#️-application-architecture)
+  - [Local-First Design](#local-first-design)
+  - [Event Sourcing](#event-sourcing-architecture)
+- [📚 Resources](#-resources)
+
+---
+
+## 🎯 The Vision
 
 <p align="center">
-  <img src="img/meta-secret-logo-grok-1.0.4.jpeg" alt="Meta Secret - Distributed Vaults" width="700" />
+  <img src="img/meta-secret-logo-grok-1.0.4.jpeg" alt="Meta Secret - Distributed Vaults" width="800" />
 </p>
 
 <p align="center"><em>Your secrets, distributed across multiple secure vaults - no single point of failure</em></p>
 
-> **The Core Idea**: Instead of one master password protecting one vault, 
-> Meta Secret distributes your secrets across multiple "vaults" (your devices).
-> Opening any single vault reveals nothing - you need a threshold of vaults working together.
+> **💡 The Core Idea**: Instead of one master password protecting one vault, Meta Secret distributes your secrets across multiple "vaults" (your devices). Opening any single vault reveals nothing - you need a threshold of vaults working together.
 
 ---
 
-# Section 1: The Problem
+## ❌ The Problem
 
----
+### The Paradox of Password Security
 
-# Slide 3: The Paradox of Password Security
-
-## The Problem in Crypto
+#### 🔐 The Problem in Crypto
 
 The industry standard has a fatal flaw:
+
 - **Seed phrase** acts as the master password for your entire wallet
 - **Lost seed phrase** = lost Bitcoin/ETH forever (~$140B estimated lost)
 - **No recovery mechanism** exists by design
 
-## The Same Problem in Password Managers
+#### 🔑 The Same Problem in Password Managers
 
 Traditional password managers solve the "too many passwords" problem, but create a new **Single Point of Failure**:
 
-- **Forget master password** → Lose access to EVERYTHING
-- **Master password compromised** → Attacker gets EVERYTHING
+| Risk | Consequence |
+|------|-------------|
+| **Forget master password** | → Lose access to EVERYTHING |
+| **Master password compromised** | → Attacker gets EVERYTHING |
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                   TRADITIONAL APPROACH                      │
-│                                                             │
-│    [Password 1]  ─┐                                         │
-│    [Password 2]  ─┼──▶  [Master Password]  ──▶  [Access]    │
-│    [Password 3]  ─┤          ⚠️                             │
-│    [Password N]  ─┘     SINGLE POINT                        │
-│                         OF FAILURE                          │
-└─────────────────────────────────────────────────────────────┘
+Traditional Approach:
+  [Password 1]  ─┐
+  [Password 2]  ─┼──▶  [Master Password]  ──▶  [Access]
+  [Password 3]  ─┤          ⚠️ SINGLE POINT OF FAILURE
+  [Password N]  ─┘
 ```
 
 ---
 
-# Slide 4: The Main Question
+### Can We Eliminate the Single Point of Failure?
 
-## Can We Eliminate the Single Point of Failure?
+#### Requirements for a Solution
 
-### Requirements for a Solution
+| # | Requirement | Description |
+|---|-------------|-------------|
+| 1️⃣ | **No master password** | Nothing to forget or compromise |
+| 2️⃣ | **No central authority** | No single server holds all secrets |
+| 3️⃣ | **Self-sovereign** | User maintains complete control |
+| 4️⃣ | **Fault-tolerant** | Recovery possible with partial data loss |
+| 5️⃣ | **End-to-end encrypted** | No third party can read secrets |
 
-1. **No master password** - Nothing to forget or compromise
-2. **No central authority** - No single server that holds all secrets
-3. **Self-sovereign** - User maintains complete control
-4. **Fault-tolerant** - Recovery possible even with partial data loss
-5. **End-to-end encrypted** - No third party can read secrets
+#### 💡 The Key Insight
 
-### The Key Insight
+> Split a secret so that:
+> - ❌ No single piece reveals anything
+> - ✅ Multiple pieces reconstruct the original
+> - 💪 Losing some pieces doesn't matter
 
-> What if we could split a secret so that:
-> - No single piece reveals anything
-> - Multiple pieces can reconstruct the original
-> - Losing some pieces doesn't matter
-
-**This is exactly what Meta Secret does.**
-
----
-
-# Section 2: The Solution Approach
+<div align="center">
+<b>This is exactly what Meta Secret does.</b>
+</div>
 
 ---
 
-# Slide 5: Shamir's Secret Sharing (SSS)
+## ✅ The Solution
 
-## The Cryptographic Foundation
+### Shamir's Secret Sharing (SSS)
+
+#### 🧮 The Cryptographic Foundation
 
 Invented by **Adi Shamir** in 1979 (the "S" in RSA)
 
-### The Core Concept
+**Core Concept**: Split a secret into **N shares** where any **K shares** can reconstruct it.
 
-Split a secret into **N shares** where any **K shares** can reconstruct it.
-
-### Concrete Example: Password "123"
+#### Example: Password "123"
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    SPLITTING THE SECRET                              │
-│                                                                      │
-│     Original Password: "123"  (contains digits: 1, 2, 3)            │
-│                                                                      │
-│                         SPLIT (3 shares, need 2)                     │
-│                              │                                       │
-│              ┌───────────────┼───────────────┐                      │
-│              ▼               ▼               ▼                       │
-│         Share A          Share B         Share C                     │
-│          [1,2]            [1,3]           [2,3]                      │
-│                                                                      │
-│     Each share has only PARTIAL information                         │
-└─────────────────────────────────────────────────────────────────────┘
+Original Password: "123" (contains digits: 1, 2, 3)
+
+        SPLIT (3 shares, need 2)
+               │
+   ┌───────────┼───────────┐
+   ▼           ▼           ▼
+Share A     Share B     Share C
+ [1,2]       [1,3]       [2,3]
+
+Each share has only PARTIAL information
 ```
 
-### Recovery: Any 2 Shares → Original Secret
+#### Recovery: Any 2 Shares → Original Secret
 
-```
-   [1,2] + [1,3]  =  {1,2,3}  →  "123" ✓
-   [1,2] + [2,3]  =  {1,2,3}  →  "123" ✓
-   [1,3] + [2,3]  =  {1,2,3}  →  "123" ✓
-   
-   [1,2] alone    =  {1,2,?}  →  ???   ✗  (could be 123, 124, 125...)
-```
+| Combination | Result | Status |
+|-------------|--------|---------|
+| Share A + Share B | {1,2,3} → "123" | ✅ |
+| Share A + Share C | {1,2,3} → "123" | ✅ |
+| Share B + Share C | {1,2,3} → "123" | ✅ |
+| Share A alone | {1,2,?} → ??? | ❌ Could be 123, 124, 125... |
 
-> **Key property**: 1 share reveals nothing. You need the threshold to recover.
+> **🔒 Key property**: 1 share reveals nothing. You need the threshold to recover.
 
 ---
 
-# Slide 6: Why Decentralized?
+### Why Decentralized?
 
-## Architectural Decision: No Trusted Server
+#### Architectural Decision: No Trusted Server
 
-### Option A: Store Shares on Server ❌
+<table>
+<tr>
+<th width="50%">❌ Centralized (Server Storage)</th>
+<th width="50%">✅ Decentralized (User Devices)</th>
+</tr>
+<tr>
+<td>
 
 ```
-┌──────────────────────────────────────┐
-│           CENTRALIZED                │
-│                                      │
-│  [Device] ──▶ [Server stores all] ◀──│
-│                    │                 │
-│               Trust the server?      │
-│               Server compromised?    │
-│               Server goes down?      │
-└──────────────────────────────────────┘
+      ┌─────────────┐
+      │   SERVER    │
+      │ stores all  │
+      └─────────────┘
+           ▲ ▼
+      ┌────┴────┐
+    Device  Device
 ```
 
 **Problems:**
-- Server becomes new single point of failure
+- Server = single point of failure
 - Must trust server operator
 - Regulatory/compliance issues
 
-### Option B: User's Own Devices ✅
+</td>
+<td>
 
 ```
-┌──────────────────────────────────────┐
-│          DECENTRALIZED               │
-│                                      │
-│  [Phone] ◀───▶ [Laptop]             │
-│      ▲             ▲                 │
-│      └─────────────┘                 │
-│           │                          │
-│      [Tablet]                        │
-│                                      │
-│    Server = Dumb Relay Only          │
-└──────────────────────────────────────┘
+   [Phone] ◀───▶ [Laptop]
+      ▲             ▲
+      └─────────────┘
+           │
+      [Tablet]
+           ▼
+   Server = Relay Only
 ```
 
 **Benefits:**
-- No single point of compromise
-- User controls the trust boundary
-- Works offline (sync when connected)
+- ✅ No single point of compromise
+- ✅ User controls trust boundary
+- ✅ Works offline
+
+</td>
+</tr>
+</table>
 
 ---
 
-# Section 3: Technical Deep Dive
+## 🔧 Technical Architecture
 
----
-
-# Slide 7: Meta Secret Architecture - Two Core Modules
-
-## System Overview: Two-Module Architecture
+### Two Core Modules
 
 ```mermaid
 flowchart TB
@@ -236,63 +250,63 @@ flowchart TB
     style SHARES fill:#ff9800,color:#fff,stroke:#e65100,stroke-width:2px
 ```
 
-### Module Workflows
+#### Module Workflows
 
 <table>
 <tr>
-<td width="50%" valign="top">
-
-**MODULE 1: Authentication Flow**
+<th width="50%">MODULE 1: Authentication Flow</th>
+<th width="50%">MODULE 2: Secret Distribution Flow</th>
+</tr>
+<tr>
+<td valign="top">
 
 ```
-1. Device generates key pair
+1️⃣ Device generates key pair
    └─ Private key: stays on device
    └─ Public key: sent to server
 
-2. First device creates vault
+2️⃣ First device creates vault
    └─ Server stores: VaultID + PK₁
 
-3. Additional devices join
+3️⃣ Additional devices join
    └─ Send: PublicKey
    └─ Existing member approves
    └─ Server adds to vault
 
 Result:
-✓ Vault on server has all public keys
-✓ Zero passwords
-✓ Devices authenticate via signatures
+✅ Vault on server has all public keys
+✅ Zero passwords
+✅ Devices authenticate via signatures
 ```
 
 </td>
-<td width="50%" valign="top">
-
-**MODULE 2: Secret Distribution Flow**
+<td valign="top">
 
 ```
-1. User saves password on Device 1
+1️⃣ User saves password on Device 1
 
-2. Shamir Secret Sharing
+2️⃣ Shamir Secret Sharing
    └─ Split into N shares (N=devices)
    └─ Threshold K = ⌈N/2⌉
 
-3. Encrypt each share
+3️⃣ Encrypt each share
    └─ Use recipient's public key
    └─ End-to-end encryption
 
-4. Distribute via server relay
+4️⃣ Distribute via server relay
    └─ Each device stores its share
 
 Result:
-✓ Password split across all devices
-✓ Need K shares to recover
-✓ Server sees only encrypted blobs
+✅ Password split across all devices
+✅ Need K shares to recover
+✅ Server sees only encrypted blobs
 ```
 
 </td>
 </tr>
 </table>
 
-### Server Role: Zero-Knowledge
+#### Server Role: Zero-Knowledge
 
 | What Server Stores | What Server CANNOT Do |
 |-------------------|----------------------|
@@ -301,29 +315,38 @@ Result:
 | ✅ Vault membership metadata | ❌ Cannot read passwords |
 | ✅ Device sync state | ❌ Cannot recover secrets alone |
 
-## Two Independent Problems, Two Independent Solutions
+---
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                                                                 │
-│  ❓ PROBLEM 1: Master Password                                  │
-│  💡 SOLUTION: Public Key Cryptography                           │
-│     • Each device = unique key pair                            │
-│     • Server stores public keys → builds "vault" (membership)   │
-│     • No password to remember or steal                          │
-│                                                                 │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ❓ PROBLEM 2: Single Point of Failure                          │
-│  💡 SOLUTION: Shamir's Secret Sharing                           │
-│     • Secrets split into N shares                              │
-│     • Any K shares can reconstruct                             │
-│     • Lose devices? Still recover if threshold met             │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
+### Two Independent Problems, Two Independent Solutions
 
-### Why Separate Modules?
+<table>
+<tr>
+<td width="50%" align="center">
+
+**❓ PROBLEM 1: Master Password**
+
+**💡 SOLUTION: Public Key Cryptography**
+
+- Each device = unique key pair
+- Server stores public keys → builds "vault"
+- No password to remember or steal
+
+</td>
+<td width="50%" align="center">
+
+**❓ PROBLEM 2: Single Point of Failure**
+
+**💡 SOLUTION: Shamir's Secret Sharing**
+
+- Secrets split into N shares
+- Any K shares can reconstruct
+- Lose devices? Still recover if threshold met
+
+</td>
+</tr>
+</table>
+
+#### Why Separate Modules?
 
 | Module | Solves | Technology | Server Role |
 |--------|--------|-----------|-------------|
@@ -332,146 +355,9 @@ Result:
 
 ---
 
-# Slide 8: Cross-Device Authentication
+### Module 1: Device Identity & Vault Management
 
-## The Goal: A Device Mesh Network
-
-We want **passwordless authentication** - similar to Passkeys/WebAuthn - where your device *is* your identity.
-
-But we go further: **your devices form a fully decentralized mesh network**.
-
-| Property | What it means |
-|----------|---------------|
-| **Local-First** | Each device has complete data. Works offline. No server dependency for core operations. |
-| **Decentralized** | No central authority. Devices trust each other directly. |
-| **Mesh Network** | Every device can communicate with every other device (via relay). |
-
-## Why Build Our Own?
-
-Passkeys solve the "no password" problem, but our architecture has additional requirements:
-
-| Requirement | Passkeys/WebAuthn | Meta Secret (Device Mesh) |
-|-------------|-------------------|---------------------------|
-| **Key usage** | Authentication only | Authentication + Encryption (Age/X25519) |
-| **Who controls keys?** | Platform (Apple/Google/Browser) | Application (we generate and manage) |
-| **Who approves new devices?** | Central server or cloud account | Existing vault members (peer-to-peer) |
-| **Data location** | Cloud-synced | Local-first (each device has full copy) |
-| **Server role** | Full account management | Dumb relay - just passes messages |
-
-**The core difference**: In passkeys, a central authority (Apple ID, Google Account) manages your device enrollment. In Meta Secret, your **devices form a mesh network** - completely local, fully decentralized, with peer-to-peer trust.
-
-## Centralized vs Decentralized Trust
-
-```mermaid
-flowchart LR
-    subgraph PASSKEY["Traditional Passkeys"]
-        direction TB
-        PA[📱 Phone] --> CLOUD[☁️ Apple/Google<br/>Cloud Account]
-        PB[💻 Laptop] --> CLOUD
-        PC[🖥️ Desktop] --> CLOUD
-        CLOUD -->|"Controls all<br/>device enrollment"| AUTH[🔐 Central<br/>Authority]
-    end
-    
-    subgraph METASECRET["Meta Secret"]
-        direction TB
-        MA[📱 Phone] <-->|"Approves"| MB[💻 Laptop]
-        MB <-->|"Approves"| MC[🖥️ Desktop]
-        MA <-->|"Approves"| MC
-        
-        MA -.->|"Public keys only"| RELAY[📡 Server<br/>Relay]
-        MB -.-> RELAY
-        MC -.-> RELAY
-    end
-    
-    style CLOUD fill:#f44336,color:#fff,stroke:#c62828,stroke-width:3px
-    style AUTH fill:#d32f2f,color:#fff,stroke:#b71c1c,stroke-width:3px
-    style RELAY fill:#4caf50,color:#fff,stroke:#2e7d32,stroke-width:3px
-    style PASSKEY fill:#ffebee,color:#333,stroke:#ef9a9a,stroke-width:2px
-    style METASECRET fill:#e8f5e9,color:#1b5e20,stroke:#2e7d32,stroke-width:2px
-    style MA fill:#37474f,color:#fff,stroke:#263238,stroke-width:2px
-    style MB fill:#37474f,color:#fff,stroke:#263238,stroke-width:2px
-    style MC fill:#37474f,color:#fff,stroke:#263238,stroke-width:2px
-    style PA fill:#37474f,color:#fff,stroke:#263238,stroke-width:2px
-    style PB fill:#37474f,color:#fff,stroke:#263238,stroke-width:2px
-    style PC fill:#37474f,color:#fff,stroke:#263238,stroke-width:2px
-```
-
-## How Your Vault Grows (Trust Network)
-
-```mermaid
-flowchart LR
-    subgraph T1["Step 1: Genesis"]
-        D1A[📱 Device 1<br/>Creates Vault]
-        V1A[(Vault<br/>Members: 1)]
-        D1A --> V1A
-    end
-    
-    subgraph T2["Step 2: First Join"]
-        D1B[📱 Device 1] -->|"✅ Approves"| D2B[💻 Device 2]
-        V2B[(Vault<br/>Members: 2)]
-        D2B --> V2B
-    end
-    
-    subgraph T3["Step 3: Network Grows"]
-        D1C[📱 Device 1]
-        D2C[💻 Device 2]
-        D3C[🖥️ Device 3]
-        D1C -->|"✅"| D3C
-        D2C -->|"✅"| D3C
-        V3C[(Vault<br/>Members: 3)]
-        D3C --> V3C
-    end
-    
-    T1 --> T2 --> T3
-    
-    style V1A fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:2px
-    style V2B fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:2px
-    style V3C fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:2px
-    style T1 fill:#e3f2fd,color:#0d47a1,stroke:#64b5f6,stroke-width:2px
-    style T2 fill:#e3f2fd,color:#0d47a1,stroke:#64b5f6,stroke-width:2px
-    style T3 fill:#e3f2fd,color:#0d47a1,stroke:#64b5f6,stroke-width:2px
-```
-
-> **No central authority can add devices to your vault** - only your existing devices can vote to admit new members.
-
-## What the Server Sees
-
-```mermaid
-flowchart TB
-    subgraph VISIBLE["✅ Server Can See (Public Data)"]
-        direction LR
-        PK1[🔵 Public Key 1]
-        PK2[🔵 Public Key 2]
-        PK3[🔵 Public Key 3]
-        VAULT[📁 Vault Membership<br/>List of Public Keys]
-        BLOB[📦 Encrypted Blobs<br/>Unreadable Ciphertext]
-    end
-    
-    subgraph INVISIBLE["🚫 Server Cannot See (Private Data)"]
-        direction LR
-        SK[🔴 Private Keys]
-        PASS[🔑 Your Passwords]
-        SEED[🌱 Seed Phrases]
-        PLAIN[📄 Plaintext Data]
-    end
-    
-    style VISIBLE fill:#e8f5e9,color:#1b5e20,stroke:#4caf50,stroke-width:3px
-    style INVISIBLE fill:#ffebee,color:#c62828,stroke:#f44336,stroke-width:3px
-    style SK fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
-    style PASS fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
-    style SEED fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
-    style PLAIN fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
-```
-
-## Why This Matters
-
-1. **End-to-end encryption requires key control**: To encrypt secrets for specific devices, we need access to the raw key material. Passkeys don't expose private keys.
-
-2. **Decentralized trust model**: No single entity (not even our server) can add a device to your vault. Only existing members can approve new ones.
-
-3. **Server minimization**: The server is intentionally "dumb" - it relays messages and stores public keys. It cannot impersonate devices or access secrets.
-
-## Device Initialization: Key Generation
+#### Device Initialization: Key Generation
 
 ```mermaid
 flowchart LR
@@ -487,7 +373,7 @@ flowchart LR
     style KEYGEN fill:#f57c00,color:#fff,stroke:#e65100,stroke-width:2px
 ```
 
-## Vault Operations
+#### Vault Operations
 
 ```mermaid
 flowchart TB
@@ -509,7 +395,7 @@ flowchart TB
     style JOIN fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:2px
 ```
 
-## Authentication Properties
+#### Authentication Properties
 
 | Aspect | Implementation | Benefit |
 |--------|---------------|---------|
@@ -520,9 +406,7 @@ flowchart TB
 
 ---
 
-# Slide 9: Module 1 - Device Joining Flow
-
-## How Additional Devices Join the Vault
+#### Device Joining Flow
 
 ```mermaid
 sequenceDiagram
@@ -544,31 +428,23 @@ sequenceDiagram
     Note over D2,D1: Both devices can now manage vault
 ```
 
-### Vault Management
-
-Once in the vault, each member can:
+**Vault Management**: Once in the vault, each member can:
 - View all vault members (device public keys)
 - Approve new device join requests
 - Add/remove secrets (triggers Module 2)
 - Sync vault state across devices
 
-### Security Property
-
-> Server stores **public keys only** - cannot impersonate devices or decrypt data
+> **🔒 Security Property**: Server stores public keys only - cannot impersonate devices or decrypt data
 
 ---
 
-# Slide 10: Module 2 - Secret Manager
+### Module 2: Secret Manager
 
-## How Secrets Are Split and Stored
-
-Module 2 uses **Shamir's Secret Sharing** to distribute secrets across vault members.
+#### How Secrets Are Split and Stored
 
 <p align="center">
-  <img src="img/app/secret-split.png" alt="Secret Split Flow" width="700" />
+  <img src="img/app/secret-split.png" alt="Secret Split Flow" width="800" />
 </p>
-
-### The Split Process
 
 ```mermaid
 flowchart TD
@@ -583,7 +459,7 @@ flowchart TD
     H --> I
 ```
 
-### Key Points
+**Key Points:**
 
 1. **N shares created** - one for each vault member (N = number of devices)
 2. **Threshold = majority** - need K shares to recover (e.g., 2 of 3)
@@ -592,15 +468,11 @@ flowchart TD
 
 ---
 
-# Slide 11: Module 2 - Secret Recovery
-
-## How Secrets Are Recovered
+#### Secret Recovery
 
 <p align="center">
-  <img src="img/app/secret-recovery.png" alt="Secret Recovery Flow" width="700" />
+  <img src="img/app/secret-recovery.png" alt="Secret Recovery Flow" width="800" />
 </p>
-
-### Recovery Workflow
 
 ```mermaid
 sequenceDiagram
@@ -629,7 +501,7 @@ sequenceDiagram
     D3->>User: Display password
 ```
 
-### Fault Tolerance in Action
+**Fault Tolerance in Action:**
 
 - **Started with**: 3 shares distributed across 3 devices
 - **Device 1 offline**: Only 2 devices available
@@ -638,11 +510,7 @@ sequenceDiagram
 
 ---
 
-# Slide 12: How Modules Work Together
-
-## The Complete Flow
-
-### Full User Journey: Adding a New Device
+#### Complete Flow: Adding a New Device
 
 ```mermaid
 sequenceDiagram
@@ -671,29 +539,13 @@ sequenceDiagram
     Note over U,D2: Device 2 is fully operational
 ```
 
-### System Properties
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                 WHAT MAKES THIS SECURE                       │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  Module 1 (Auth): No passwords to steal                    │
-│  Module 2 (Secrets): No single point of failure            │
-│                                                             │
-│  Server role: Relay + public key storage only              │
-│  Device role: Private keys + encrypted secret shares       │
-│                                                             │
-│  Result: True zero-knowledge architecture                  │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
-
 ---
 
-# Slide 13: Application Architecture - Local-First Design
+## 🏗️ Application Architecture
 
-## Traditional vs. Decentralized Architecture
+### Local-First Design
+
+#### Traditional vs. Decentralized Architecture
 
 ```mermaid
 flowchart TB
@@ -732,7 +584,7 @@ flowchart TB
     style L3 fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:2px
 ```
 
-### Why This Matters
+#### Why This Matters
 
 | Aspect | Traditional | Meta Secret (Local-First) |
 |--------|-------------|---------------------------|
@@ -744,9 +596,9 @@ flowchart TB
 
 ---
 
-# Slide 14: Event Sourcing Architecture
+### Event Sourcing Architecture
 
-## The Core Concept: Commit Log as Central Abstraction
+#### The Core Concept: Commit Log as Central Abstraction
 
 ```mermaid
 flowchart LR
@@ -799,7 +651,7 @@ flowchart LR
     style OBJSTORE fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:2px
 ```
 
-## Database Structure
+#### Database Structure
 
 ```
 KV Storage (Base Layer)
@@ -813,100 +665,7 @@ Object Storage Abstraction
     └── SsWorkflowObject (secret distribution/recovery)
 ```
 
-## Layered Architecture (Full Stack)
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    STATE MACHINE / DOMAIN LOGIC                      │
-│                                                                      │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐ │
-│  │ SignUpClaim │  │ JoinAction  │  │ MetaOrchest │  │ RecoveryAct │ │
-│  │             │  │             │  │   rator     │  │    ion      │ │
-│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘ │
-│                                                                      │
-│  • Centralized business logic code                                   │
-│  • Works on distributed replicated state                             │
-│  • Pattern matching for state transitions                            │
-└──────────────────────────────┬──────────────────────────────────────┘
-                               │ reads/derives state from
-                               ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                         OBJECT STORE                                 │
-│                    (Materialized Views)                              │
-│                                                                      │
-│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌─────────────┐ │
-│  │ VaultObject  │ │ VaultLog     │ │ DeviceLog    │ │ SsWorkflow  │ │
-│  │              │ │   Object     │ │   Object     │ │   Object    │ │
-│  └──────────────┘ └──────────────┘ └──────────────┘ └─────────────┘ │
-│                                                                      │
-│  • Typed wrappers around KvLogEvent<T>                               │
-│  • Built by replaying events from commit log                         │
-└──────────────────────────────┬──────────────────────────────────────┘
-                               │ built from events in
-                               ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                          COMMIT LOG                                  │
-│                      (GenericKvLogEvent)                             │
-│                                                                      │
-│  ┌────────────────────────────────────────────────────────────────┐ │
-│  │  Event 1  │  Event 2  │  Event 3  │  Event 4  │  ...  │  Tail  │ │
-│  └────────────────────────────────────────────────────────────────┘ │
-│                                                                      │
-│  Event Types: DeviceLog, VaultLog, Vault, SsDeviceLog, SsWorkflow   │
-│                                                                      │
-│  • Immutable, append-only log                                        │
-│  • Events replicate between devices via server                       │
-│  • Source of truth for all state                                     │
-└──────────────────────────────┬──────────────────────────────────────┘
-                               │ persisted to
-                               ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                          KV STORAGE                                  │
-│                           (ReDB)                                     │
-│                                                                      │
-│     Key (KvKey)              │    Value (Serialized Event)          │
-│     ─────────────────────────┼───────────────────────────────       │
-│     vault:myVault:log:001    │    { VaultLog: {...} }               │
-│     device:xyz:log:003       │    { DeviceLog: {...} }              │
-│     ss:claim:abc:004         │    { SsWorkflow: {...} }             │
-│                                                                      │
-│  • Simple key-value persistence                                      │
-│  • Maximum flexibility for schema evolution                          │
-│  • Each device has local copy                                        │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-### Data Flow
-
-```
-READ PATH (Bottom → Top):                 WRITE PATH (Top → Bottom):
-                                          
-    ┌─────────────────┐                       ┌─────────────────┐
-    │  State Machine  │                       │  State Machine  │
-    └────────┬────────┘                       └────────┬────────┘
-             │ reads                                   │ emits event
-             ▼                                         ▼
-    ┌─────────────────┐                       ┌─────────────────┐
-    │  Object Store   │                       │  Object Store   │
-    └────────┬────────┘                       └────────┬────────┘
-             │ replays                                 │ appends
-             ▼                                         ▼
-    ┌─────────────────┐                       ┌─────────────────┐
-    │  Commit Log     │                       │  Commit Log     │
-    └────────┬────────┘                       └────────┬────────┘
-             │ loads                                   │ persists
-             ▼                                         ▼
-    ┌─────────────────┐                       ┌─────────────────┐
-    │  KV Storage     │                       │  KV Storage     │
-    └─────────────────┘                       └────────┬────────┘
-                                                       │ replicates
-                                                       ▼
-                                              ┌─────────────────┐
-                                              │  Other Devices  │
-                                              └─────────────────┘
-```
-
-### Event Sourcing Benefits
+#### Event Sourcing Benefits
 
 | Challenge | Event Sourcing Solution |
 |-----------|------------------------|
@@ -918,35 +677,34 @@ READ PATH (Bottom → Top):                 WRITE PATH (Top → Bottom):
 
 ---
 
-# Slide 15: Inspiration - Local-First Software
-
-## Architectural Influences
+### Inspiration: Local-First Software
 
 Meta Secret's architecture is inspired by the **[Local-First Software](https://lofi.so/)** movement and **CRDT** (Conflict-free Replicated Data Types) principles.
 
-### Key Principles Applied
+#### Key Principles Applied
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  LOCAL-FIRST PRINCIPLES                                         │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  1. Data ownership: Your data lives on your devices            │
-│     ✓ Each device has complete database                        │
-│                                                                 │
-│  2. Offline-first: Apps work without internet                  │
-│     ✓ Full functionality even when disconnected                │
-│                                                                 │
-│  3. Collaboration via sync: Not via server                     │
-│     ✓ Event replication between peers                          │
-│                                                                 │
-│  4. Long-term data preservation                                │
-│     ✓ Immutable commit log ensures no data loss                │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
+<table>
+<tr>
+<td width="50%" valign="top">
 
-### CRDT Influence on Commit Log Design
+**📝 LOCAL-FIRST PRINCIPLES**
+
+1. **Data ownership**: Your data lives on your devices
+   - ✅ Each device has complete database
+
+2. **Offline-first**: Apps work without internet
+   - ✅ Full functionality even when disconnected
+
+3. **Collaboration via sync**: Not via server
+   - ✅ Event replication between peers
+
+4. **Long-term data preservation**
+   - ✅ Immutable commit log ensures no data loss
+
+</td>
+<td width="50%" valign="top">
+
+**🔄 CRDT INFLUENCE**
 
 While Meta Secret doesn't use CRDTs directly, CRDT principles influenced the commit log architecture:
 
@@ -955,7 +713,11 @@ While Meta Secret doesn't use CRDTs directly, CRDT principles influenced the com
 - **Causality Tracking**: Events maintain their relationships
 - **Conflict-Free**: Append-only log prevents write conflicts
 
-### The Result
+</td>
+</tr>
+</table>
+
+#### The Result
 
 ```
 Each device operates independently with:
@@ -972,175 +734,34 @@ We have:    Device → Commit Event → Replicate to Peers
 
 ---
 
-# Slide 15: TypeState Pattern - Domain-Driven State Evolution
+## 📚 Resources
 
-## The Pattern: Ownership-Based State Transitions
-
-Meta Secret uses a **TypeState-inspired pattern** for safe state evolution. The key principle:
-- **Consume** the current state (ownership transfer)
-- **Return** a new evolved state
-- **Prevent** access to old/invalid states
-
-This is enforced by Rust's ownership system: `fn method(mut self) -> Self`
-
-## Diagram 1: Domain Event Flow
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         DOMAIN EVENT FLOW                                    │
-│                    TypeState: Event Accumulation                             │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│   Device 2 (new)                              Device 1 (member)              │
-│        │                                            │                        │
-│        │ wants to join vault                        │                        │
-│        │                                            │                        │
-│        ▼                                            │                        │
-│   ┌─────────────┐                                   │                        │
-│   │ JoinCluster │ ─────── request sent ───────────▶ │                        │
-│   │  {D2}       │                                   │                        │
-│   └─────────────┘                                   │                        │
-│                                                     │                        │
-│                                                     ▼                        │
-│                                              ┌──────────────┐                │
-│                           ◀── approval ───── │UpdateMember- │                │
-│                                              │ship {D2→     │                │
-│                                              │    Member}   │                │
-│                                              └──────────────┘                │
-│                                                                              │
-│   ═══════════════════════════════════════════════════════════════════════   │
-│                                                                              │
-│   VaultActionEvents (TypeState accumulation)                                 │
-│   ──────────────────────────────────────────                                 │
-│                                                                              │
-│   Step 1                      Step 2                      Step 3             │
-│   .request()                  .apply()                    .complete()        │
-│        │                           │                           │             │
-│        ▼                           ▼                           ▼             │
-│   ┌──────────────┐           ┌──────────────┐           ┌──────────────┐    │
-│   │requests:[D2] │    ───▶   │requests:[]   │    ───▶   │requests:[]   │    │
-│   │updates: []   │           │updates: [D2] │           │updates: []   │    │
-│   └──────────────┘           └──────────────┘           └──────────────┘    │
-│    Request added              Request matched             Ready for next    │
-│                               Update queued               batch             │
-│                                     │                                        │
-│                                     │                                        │
-│                                     ▼                                        │
-│                          ┌────────────────────┐                              │
-│                          │  VaultAggregate    │                              │
-│                          │  (see Diagram 2)   │                              │
-│                          └────────────────────┘                              │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-## Diagram 2: State Materialization
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                      STATE MATERIALIZATION                                   │
-│                 TypeState: VaultAggregate Evolution                          │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│   Input: events + current vault                                              │
-│                                                                              │
-│   VaultAggregate::build_from(events, vault)                                  │
-│        │                                                                     │
-│        ▼                                                                     │
-│   ┌─────────────────────────────────────────┐                                │
-│   │  events: { updates: [D2→Member] }       │                                │
-│   │  vault:  { members: [D1] }              │  Initial                       │
-│   └─────────────────────┬───────────────────┘                                │
-│                         │                                                    │
-│                         │ .synchronize()                                     │
-│                         │                                                    │
-│                         │    ┌──────────────────────────────────┐            │
-│                         │    │  Domain Rules Applied:           │            │
-│                         ├───▶│  ✓ Is sender (D1) a member? YES  │            │
-│                         │    │  ✓ Apply: D2 becomes Member      │            │
-│                         │    └──────────────────────────────────┘            │
-│                         │                                                    │
-│                         ▼                                                    │
-│   ┌─────────────────────────────────────────┐                                │
-│   │  events: { updates: [D2→Member] }       │                                │
-│   │  vault:  { members: [D1, D2] }          │  Synchronized                  │
-│   └─────────────────────┬───────────────────┘                                │
-│                         │                                                    │
-│                         │ .complete()                                        │
-│                         │                                                    │
-│                         ▼                                                    │
-│   ┌─────────────────────────────────────────┐                                │
-│   │  events: { updates: [] }                │                                │
-│   │  vault:  { members: [D1, D2] }          │  Final State                   │
-│   └─────────────────────────────────────────┘                                │
-│                                                                              │
-│   ─────────────────────────────────────────────────────────────────────────  │
-│                                                                              │
-│   TypeState Guarantee:                                                       │
-│   Each arrow = ownership transfer (self → Self)                              │
-│   Old state consumed, cannot be reused                                       │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-## Domain Actions Reference
-
-| Action | Event | Transition |
-|--------|-------|------------|
-| **Create Vault** | `CreateVault` | NotExists → Member |
-| **Request Join** | `JoinCluster` | NonMember → Pending |
-| **Approve Join** | `UpdateMembership` | Pending → Member |
-| **Decline Join** | `UpdateMembership` | Pending → Declined |
-| **Add Password** | `AddMetaPass` | Vault.secrets += new |
-
-## Why TypeState?
-
-| Principle | Implementation |
-|-----------|----------------|
-| **Ownership Transfer** | `fn method(mut self) -> Self` - caller gives up old state |
-| **State Invalidation** | Rust's ownership ensures old state can't be reused |
-| **Safe Transitions** | Each method validates before evolving |
-| **Chainable API** | `.request().apply().complete()` - fluent state evolution |
-
----
-
-# Slide 17: Resources
-
-## Learn More
-
-### Links
-
-- **GitHub**: [github.com/meta-secret/meta-secret-core](https://github.com/meta-secret/meta-secret-core)
-- **iOS App**: [App Store](https://apps.apple.com/app/metasecret/id1644286751)
-- **Web App**: [id0.app](https://id0.app)
-- **Website**: [meta-secret.org](https://meta-secret.org)
-
-### Technical References
-
-- Shamir, Adi. "How to share a secret." Communications of the ACM 22.11 (1979): 612-613.
-- Age encryption: [github.com/FiloSottile/age](https://github.com/FiloSottile/age)
-- SSS Rust implementation: [github.com/dsprenkels/sss-rs](https://github.com/dsprenkels/sss-rs)
-
----
-
-<h1 align="center">
-Q&A
-...
-<h1>
-
----
-
-<h1 align="center">
-    Thank You
-</h1>
-
-<p align="center">
-  <img src="img/meta-secret-logo.png" alt="Meta Secret Logo" width="120" />
-</p>
+### 🔗 Links
 
 <div align="center">
-  <a href="https://github.com/meta-secret/meta-secret-core">GitHub</a> · 
-  <a href="https://apps.apple.com/app/metasecret/id1644286751">iOS App</a> · 
-  <a href="https://meta-secret.github.io">Web App</a> · 
-  <a href="https://meta-secret.org">Website</a>
+
+[![GitHub](https://img.shields.io/badge/GitHub-meta--secret--core-blue?style=for-the-badge&logo=github)](https://github.com/meta-secret/meta-secret-core)
+[![iOS App](https://img.shields.io/badge/iOS-App%20Store-black?style=for-the-badge&logo=apple)](https://apps.apple.com/app/metasecret/id1644286751)
+[![Web App](https://img.shields.io/badge/Web-id0.app-green?style=for-the-badge)](https://id0.app)
+[![Website](https://img.shields.io/badge/Website-meta--secret.org-orange?style=for-the-badge)](https://meta-secret.org)
+
+</div>
+
+### 📖 Technical References
+
+- **Shamir's Secret Sharing**: Shamir, Adi. "How to share a secret." *Communications of the ACM* 22.11 (1979): 612-613.
+- **Age Encryption**: [github.com/FiloSottile/age](https://github.com/FiloSottile/age)
+- **SSS Rust Implementation**: [github.com/dsprenkels/sss-rs](https://github.com/dsprenkels/sss-rs)
+- **Local-First Software**: [lofi.so](https://lofi.so/)
+
+---
+
+<div align="center">
+
+<img src="img/meta-secret-logo.png" alt="Meta Secret Logo" width="150" />
+
+### Thank You
+
+*Questions? Open an issue on [GitHub](https://github.com/meta-secret/meta-secret-core/issues)*
+
 </div>
