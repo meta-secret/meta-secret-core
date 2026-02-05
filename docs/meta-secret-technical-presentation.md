@@ -149,70 +149,48 @@ Each share has only PARTIAL information
 #### Architectural Decision: No Trusted Server
 
 ```mermaid
-flowchart TB
-    subgraph CENT["❌ CENTRALIZED APPROACH (Traditional)"]
-        direction TB
+flowchart LR
+    subgraph CENTRAL["❌ CENTRALIZED"]
+        D1[📱 Device] --> S1[☁️ Server<br/>Stores ALL Shares]
+        D2[💻 Device] --> S1
+        D3[📲 Device] --> S1
         
-        D1C[📱 Device 1] -->|"Upload shares<br/>Trust required"| SERVER
-        D2C[💻 Device 2] -->|"Upload shares<br/>Trust required"| SERVER
-        D3C[📲 Device 3] -->|"Upload shares<br/>Trust required"| SERVER
+        S1 --> RISK["⚠️ Single Point<br/>of Failure"]
         
-        SERVER["☁️ CENTRAL SERVER<br/>━━━━━━━━━━━━━<br/>Stores ALL shares<br/>🔴 SINGLE POINT OF FAILURE"]
-        
-        SERVER -->|"⚠️ Server compromised<br/>→ ALL secrets exposed"| RISK1[🚨 Risk]
-        SERVER -->|"⚠️ Server goes down<br/>→ No access"| RISK2[🚨 Risk]
-        SERVER -->|"⚠️ Must trust operator<br/>→ Privacy concern"| RISK3[🚨 Risk]
-        
-        style SERVER fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:4px
-        style RISK1 fill:#d32f2f,color:#fff
-        style RISK2 fill:#d32f2f,color:#fff
-        style RISK3 fill:#d32f2f,color:#fff
+        style S1 fill:#e57373,color:#000,stroke:#c62828,stroke-width:3px
+        style RISK fill:#ef5350,color:#fff,stroke:#c62828,stroke-width:2px
     end
     
-    subgraph DECENT["✅ DECENTRALIZED APPROACH (Meta Secret)"]
-        direction TB
+    subgraph DECENTRAL["✅ DECENTRALIZED (Meta Secret)"]
+        P1[📱 Phone<br/>Share 1] <--> R[☁️ Server<br/>Relay Only]
+        P2[💻 Laptop<br/>Share 2] <--> R
+        P3[📲 Tablet<br/>Share 3] <--> R
         
-        D1D[📱 Phone<br/>Has Share 1]
-        D2D[💻 Laptop<br/>Has Share 2]
-        D3D[📲 Tablet<br/>Has Share 3]
+        P1 <-.-> P2
+        P2 <-.-> P3
+        P3 <-.-> P1
         
-        RELAY["☁️ SERVER (Relay Only)<br/>━━━━━━━━━━━━━<br/>• No shares stored<br/>• Only encrypted transit<br/>• Zero knowledge<br/>🟢 NOT A SINGLE POINT OF FAILURE"]
+        R --> OK["✅ No Single Point<br/>of Failure"]
         
-        D1D <-->|"Encrypted<br/>messages only"| RELAY
-        D2D <-->|"Encrypted<br/>messages only"| RELAY
-        D3D <-->|"Encrypted<br/>messages only"| RELAY
-        
-        D1D <-.->|"Direct P2P<br/>(when possible)"| D2D
-        D2D <-.->|"Direct P2P<br/>(when possible)"| D3D
-        D3D <-.->|"Direct P2P<br/>(when possible)"| D1D
-        
-        RELAY -.->|"✅ Server compromised<br/>→ No secrets exposed"| BEN1[✨ Benefit]
-        RELAY -.->|"✅ Server offline<br/>→ Devices work locally"| BEN2[✨ Benefit]
-        RELAY -.->|"✅ Zero knowledge<br/>→ Privacy guaranteed"| BEN3[✨ Benefit]
-        
-        style RELAY fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:4px
-        style D1D fill:#1976d2,color:#fff,stroke:#0d47a1,stroke-width:2px
-        style D2D fill:#1976d2,color:#fff,stroke:#0d47a1,stroke-width:2px
-        style D3D fill:#1976d2,color:#fff,stroke:#0d47a1,stroke-width:2px
-        style BEN1 fill:#4caf50,color:#fff
-        style BEN2 fill:#4caf50,color:#fff
-        style BEN3 fill:#4caf50,color:#fff
+        style R fill:#81c784,color:#000,stroke:#388e3c,stroke-width:3px
+        style OK fill:#66bb6a,color:#fff,stroke:#388e3c,stroke-width:2px
+        style P1 fill:#64b5f6,color:#000,stroke:#1976d2,stroke-width:2px
+        style P2 fill:#64b5f6,color:#000,stroke:#1976d2,stroke-width:2px
+        style P3 fill:#64b5f6,color:#000,stroke:#1976d2,stroke-width:2px
     end
     
-    style CENT fill:#ffebee,stroke:#c62828,stroke-width:3px,color:#000
-    style DECENT fill:#e8f5e9,stroke:#2e7d32,stroke-width:3px,color:#000
+    style CENTRAL fill:#ffebee,stroke:#c62828,stroke-width:2px
+    style DECENTRAL fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
 ```
 
-#### Comparison Summary
+**Key Differences:**
 
-| Aspect | ❌ Centralized | ✅ Decentralized (Meta Secret) |
-|--------|----------------|-------------------------------|
-| **Data Storage** | Server holds all shares | Each device holds one share |
-| **Trust Model** | Must trust server operator | Trust distributed across your devices |
-| **Single Point of Failure** | Yes - server compromise = total loss | No - need multiple device compromises |
-| **Privacy** | Server can potentially access secrets | Zero-knowledge - server cannot decrypt |
-| **Availability** | Depends on server uptime | Works offline, syncs when online |
-| **Regulatory Risk** | Subject to jurisdiction | User-sovereign |
+| Aspect | ❌ Centralized | ✅ Meta Secret |
+|--------|----------------|---------------|
+| **Server Role** | Stores all shares | Relay only (encrypted) |
+| **Single Point of Failure** | Yes | No |
+| **Privacy** | Must trust server | Zero-knowledge |
+| **Offline** | No access | Works locally |
 
 ---
 
