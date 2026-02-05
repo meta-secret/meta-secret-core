@@ -176,8 +176,9 @@ Result:
 </tr>
 </table>
 
-
 ---
+
+## 🔧 Technical Architecture
 
 ### Shamir's Secret Sharing (SSS)
 
@@ -214,8 +215,6 @@ Each share has only PARTIAL information
 > **🔒 Key property**: 1 share reveals nothing. You need the threshold to recover.
 
 ---
-
-## 🔧 Technical Architecture
 
 ### Two Core Modules
 
@@ -320,6 +319,65 @@ flowchart TB
     style CREATE fill:#1976d2,color:#fff,stroke:#0d47a1,stroke-width:2px
     style JOIN fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:2px
 ```
+
+#### Why Build Our Own Auth (vs Passkeys)?
+
+We want **passwordless authentication** - similar to Passkeys/WebAuthn - where your device *is* your identity. But Meta Secret has additional requirements that standard Passkeys don't support:
+
+**Comparison with Passkeys/WebAuthn:**
+
+| Requirement | Passkeys/WebAuthn | Meta Secret |
+|-------------|-------------------|-------------|
+| **Key usage** | Authentication only | Authentication + Encryption (Age/X25519) |
+| **Who controls keys?** | Platform (Apple/Google/Browser) | Application (we generate and manage) |
+| **Who approves new devices?** | Central server or cloud account | Existing vault members (peer-to-peer) |
+| **Data location** | Cloud-synced | Local-first (each device has full copy) |
+| **Server role** | Full account management | Dumb relay - just passes messages |
+
+**Why This Matters:**
+
+1. **End-to-end encryption requires key control**: To encrypt secrets for specific devices, we need access to the raw key material. Passkeys don't expose private keys.
+
+2. **Decentralized trust model**: No single entity (not even our server) can add a device to your vault. Only existing members can approve new ones.
+
+3. **Server minimization**: The server is intentionally "dumb" - it relays messages and stores public keys. It cannot impersonate devices or access secrets.
+
+```mermaid
+flowchart LR
+    subgraph PASSKEY["☁️ Passkeys (Cloud-Centric)"]
+        direction TB
+        PA[📱 Phone] --> CLOUD[☁️ Apple/Google<br/>Cloud Account]
+        PB[💻 Laptop] --> CLOUD
+        PC[🖥️ Desktop] --> CLOUD
+        CLOUD -->|"Controls device<br/>enrollment"| AUTH[🔐 Central<br/>Authority]
+        
+        style CLOUD fill:#f44336,color:#fff,stroke:#c62828,stroke-width:3px
+        style AUTH fill:#d32f2f,color:#fff,stroke:#b71c1c,stroke-width:2px
+    end
+    
+    subgraph METASECRET["🔗 Meta Secret (Device Mesh)"]
+        direction TB
+        MA[📱 Phone] <-->|"P2P Approval"| MB[💻 Laptop]
+        MB <-->|"P2P Approval"| MC[🖥️ Desktop]
+        MA <-->|"P2P Approval"| MC
+        
+        MA -.->|"Public keys only"| RELAY[📡 Server<br/>Relay]
+        MB -.-> RELAY
+        MC -.-> RELAY
+        
+        style RELAY fill:#4caf50,color:#fff,stroke:#2e7d32,stroke-width:3px
+        style MA fill:#1976d2,color:#fff,stroke:#0d47a1,stroke-width:2px
+        style MB fill:#1976d2,color:#fff,stroke:#0d47a1,stroke-width:2px
+        style MC fill:#1976d2,color:#fff,stroke:#0d47a1,stroke-width:2px
+    end
+    
+    style PASSKEY fill:#ffebee,stroke:#ef9a9a,stroke-width:2px
+    style METASECRET fill:#e8f5e9,stroke:#a5d6a7,stroke-width:2px
+```
+
+> **Core Difference**: In Passkeys, a central authority (Apple ID, Google Account) manages device enrollment. In Meta Secret, devices form a **peer-to-peer trust network** - completely decentralized.
+
+---
 
 #### Authentication Properties
 
