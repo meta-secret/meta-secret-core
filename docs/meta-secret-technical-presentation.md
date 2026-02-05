@@ -23,8 +23,8 @@
 - [🎯 The Vision](#-the-vision)
 - [❌ The Problem](#-the-problem)
   - [The Paradox of Password Security](#the-paradox-of-password-security)
-  - [Can We Eliminate the Single Point of Failure?](#can-we-eliminate-the-single-point-of-failure)
 - [✅ The Solution](#-the-solution)
+  - [The Two-Part Solution](#the-two-part-solution)
   - [Shamir's Secret Sharing](#shamirs-secret-sharing-sss)
   - [Why Decentralized?](#why-decentralized)
 - [🔧 Technical Architecture](#-technical-architecture)
@@ -81,20 +81,6 @@ Traditional Approach:
 
 ---
 
-### Can We Eliminate the Single Point of Failure?
-
-#### Requirements for a Solution
-
-| # | Requirement | Description |
-|---|-------------|-------------|
-| 1️⃣ | **No master password** | Nothing to forget or compromise |
-| 2️⃣ | **No central authority** | No single server holds all secrets |
-| 3️⃣ | **Self-sovereign** | User maintains complete control |
-| 4️⃣ | **Fault-tolerant** | Recovery possible with partial data loss |
-| 5️⃣ | **End-to-end encrypted** | No third party can read secrets |
-
----
-
 ## ✅ The Solution
 
 ### The Two-Part Solution
@@ -133,6 +119,63 @@ flowchart TB
   - Each device stores one encrypted share
   - Need threshold of devices to recover
 - **Result**: Lose devices? Still recover if threshold met
+
+#### Module Workflows
+
+<table>
+<tr>
+<th width="50%">MODULE 1: Authentication Flow</th>
+<th width="50%">MODULE 2: Secret Distribution Flow</th>
+</tr>
+<tr>
+<td valign="top">
+
+```
+1️⃣ Device generates key pair
+   └─ Private key: stays on device
+   └─ Public key: sent to server
+
+2️⃣ First device creates vault
+   └─ Server stores: VaultID + PK₁
+
+3️⃣ Additional devices join
+   └─ Send: PublicKey
+   └─ Existing member approves
+   └─ Server adds to vault
+
+Result:
+✅ Vault on server has all public keys
+✅ Zero passwords
+✅ Devices authenticate via signatures
+```
+
+</td>
+<td valign="top">
+
+```
+1️⃣ User saves password on Device 1
+
+2️⃣ Shamir Secret Sharing
+   └─ Split into N shares (N=devices)
+   └─ Threshold K = ⌈N/2⌉
+
+3️⃣ Encrypt each share
+   └─ Use recipient's public key
+   └─ End-to-end encryption
+
+4️⃣ Distribute via server relay
+   └─ Each device stores its share
+
+Result:
+✅ Password split across all devices
+✅ Need K shares to recover
+✅ Server sees only encrypted blobs
+```
+
+</td>
+</tr>
+</table>
+
 
 ---
 
@@ -227,62 +270,6 @@ flowchart TB
     style SHARES fill:#ff9800,color:#fff,stroke:#e65100,stroke-width:2px
 ```
 
-#### Module Workflows
-
-<table>
-<tr>
-<th width="50%">MODULE 1: Authentication Flow</th>
-<th width="50%">MODULE 2: Secret Distribution Flow</th>
-</tr>
-<tr>
-<td valign="top">
-
-```
-1️⃣ Device generates key pair
-   └─ Private key: stays on device
-   └─ Public key: sent to server
-
-2️⃣ First device creates vault
-   └─ Server stores: VaultID + PK₁
-
-3️⃣ Additional devices join
-   └─ Send: PublicKey
-   └─ Existing member approves
-   └─ Server adds to vault
-
-Result:
-✅ Vault on server has all public keys
-✅ Zero passwords
-✅ Devices authenticate via signatures
-```
-
-</td>
-<td valign="top">
-
-```
-1️⃣ User saves password on Device 1
-
-2️⃣ Shamir Secret Sharing
-   └─ Split into N shares (N=devices)
-   └─ Threshold K = ⌈N/2⌉
-
-3️⃣ Encrypt each share
-   └─ Use recipient's public key
-   └─ End-to-end encryption
-
-4️⃣ Distribute via server relay
-   └─ Each device stores its share
-
-Result:
-✅ Password split across all devices
-✅ Need K shares to recover
-✅ Server sees only encrypted blobs
-```
-
-</td>
-</tr>
-</table>
-
 #### Server Role: Zero-Knowledge
 
 | What Server Stores | What Server CANNOT Do |
@@ -291,44 +278,6 @@ Result:
 | ✅ Encrypted message blobs | ❌ Cannot impersonate devices |
 | ✅ Vault membership metadata | ❌ Cannot read passwords |
 | ✅ Device sync state | ❌ Cannot recover secrets alone |
-
----
-
-### Two Independent Problems, Two Independent Solutions
-
-<table>
-<tr>
-<td width="50%" align="center">
-
-**❓ PROBLEM 1: Master Password**
-
-**💡 SOLUTION: Public Key Cryptography**
-
-- Each device = unique key pair
-- Server stores public keys → builds "vault"
-- No password to remember or steal
-
-</td>
-<td width="50%" align="center">
-
-**❓ PROBLEM 2: Single Point of Failure**
-
-**💡 SOLUTION: Shamir's Secret Sharing**
-
-- Secrets split into N shares
-- Any K shares can reconstruct
-- Lose devices? Still recover if threshold met
-
-</td>
-</tr>
-</table>
-
-#### Why Separate Modules?
-
-| Module | Solves | Technology | Server Role |
-|--------|--------|-----------|-------------|
-| **#1 Authentication** | "How to avoid passwords?" | X25519 PKI | Stores public keys |
-| **#2 Secret Manager** | "How to avoid single point of failure?" | Shamir's Secret Sharing | Relays encrypted blobs |
 
 ---
 
