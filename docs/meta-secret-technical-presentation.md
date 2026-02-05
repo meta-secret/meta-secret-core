@@ -1,6 +1,6 @@
 <div align="center">
   
-<img src="img/meta-secret-logo.png" alt="Meta Secret Logo" width="400" />
+<img src="img/meta-secret-logo.png" alt="Meta Secret Logo" width="150" style="border-radius: 50%;" />
   
 # Meta Secret
 ### Technical Presentation
@@ -41,7 +41,7 @@
 ## 🎯 The Vision
 
 <p align="center">
-  <img src="img/meta-secret-logo-grok-1.0.4.jpeg" alt="Meta Secret - Distributed Vaults" width="1024" />
+  <img src="img/meta-secret-logo-grok-1.0.4.jpeg" alt="Meta Secret - Distributed Vaults" width="800" />
 </p>
 
 <p align="center"><em>Your secrets, distributed across multiple secure vaults - no single point of failure</em></p>
