@@ -373,6 +373,8 @@ sequenceDiagram
 
 ---
 
+## Module 2: Secret Manager
+
 ### Shamir's Secret Sharing (SSS)
 
 #### 🧮 The Cryptographic Foundation
@@ -419,9 +421,6 @@ Each share has only PARTIAL information
 | ✅ Device sync state | ❌ Cannot recover secrets alone |
 
 
----
-
-### Module 2: Secret Manager
 
 #### How Secrets Are Split and Stored
 
