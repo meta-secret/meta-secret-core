@@ -41,7 +41,7 @@
 ## 🎯 The Vision
 
 <p align="center">
-  <img src="img/meta-secret-logo-grok-1.0.4.jpeg" alt="Meta Secret - Distributed Vaults" width="800" />
+  <img src="img/meta-secret-logo-grok-1.0.4.jpeg" alt="Meta Secret - Distributed Vaults" width="1024" />
 </p>
 
 <p align="center"><em>Your secrets, distributed across multiple secure vaults - no single point of failure</em></p>
@@ -50,7 +50,7 @@
 
 ---
 
-## ❌ The Problem
+## The Problem
 
 ### The Paradox of Password Security
 
@@ -92,17 +92,6 @@ Traditional Approach:
 | 3️⃣ | **Self-sovereign** | User maintains complete control |
 | 4️⃣ | **Fault-tolerant** | Recovery possible with partial data loss |
 | 5️⃣ | **End-to-end encrypted** | No third party can read secrets |
-
-#### 💡 The Key Insight
-
-> Split a secret so that:
-> - ❌ No single piece reveals anything
-> - ✅ Multiple pieces reconstruct the original
-> - 💪 Losing some pieces doesn't matter
-
-<div align="center">
-<b>This is exactly what Meta Secret does.</b>
-</div>
 
 ---
 
