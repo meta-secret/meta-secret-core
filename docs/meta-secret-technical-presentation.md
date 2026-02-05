@@ -701,10 +701,13 @@ Instead of: Client → Server Request → Server Response
 We have:    Device → Commit Event → Replicate to Peers
 ```
 
-#### Database Structure (Vault Write Path)
+#### Database Structure (Vault)
+
+```mermaid
+
 flowchart TD
-subgraph "meta_secret (vault: write)"
-direction TB
+    subgraph "meta_secret (vault: write)"
+        direction TB
 
         subgraph clients
             client_a
@@ -745,7 +748,7 @@ direction TB
             vault--update_status-->vault_status_c
         end
     end
-
+```
 ---
 
 ## 📚 Resources
