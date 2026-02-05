@@ -97,6 +97,45 @@ Traditional Approach:
 
 ## ✅ The Solution
 
+### The Two-Part Solution
+
+Meta Secret solves both problems using two complementary cryptographic technologies:
+
+```mermaid
+flowchart TB
+    PROBLEM1["❌ PROBLEM 1<br/>Master Password<br/>━━━━━━━━━━━<br/>Single password controls everything"] --> SOLUTION1["✅ SOLUTION 1<br/>Public Key Cryptography<br/>━━━━━━━━━━━<br/>Each device has unique key pair<br/>No passwords needed"]
+    
+    PROBLEM2["❌ PROBLEM 2<br/>Single Point of Failure<br/>━━━━━━━━━━━<br/>Lose/compromise one vault = lose all"] --> SOLUTION2["✅ SOLUTION 2<br/>Shamir's Secret Sharing<br/>━━━━━━━━━━━<br/>Split secrets across devices<br/>Need multiple devices to recover"]
+    
+    SOLUTION1 --> RESULT["🎯 META SECRET<br/>━━━━━━━━━━━<br/>Passwordless + Distributed<br/>No master password<br/>No single point of failure"]
+    SOLUTION2 --> RESULT
+    
+    style PROBLEM1 fill:#ffcdd2,color:#000,stroke:#c62828,stroke-width:2px
+    style PROBLEM2 fill:#ffcdd2,color:#000,stroke:#c62828,stroke-width:2px
+    style SOLUTION1 fill:#c5e1a5,color:#000,stroke:#558b2f,stroke-width:2px
+    style SOLUTION2 fill:#c5e1a5,color:#000,stroke:#558b2f,stroke-width:2px
+    style RESULT fill:#81c784,color:#fff,stroke:#2e7d32,stroke-width:3px
+```
+
+#### 🔑 Technology 1: Public Key Cryptography (Decentralized Authentication)
+
+- **Purpose**: Eliminate master passwords
+- **How it works**: Each device generates a unique cryptographic key pair
+  - **Private key** stays on device (secured by biometrics)
+  - **Public key** shared with server to build "vault membership"
+- **Result**: Zero passwords to remember or steal
+
+#### 🔐 Technology 2: Shamir's Secret Sharing (Distributed Secret Storage)
+
+- **Purpose**: Eliminate single point of failure
+- **How it works**: Split each secret into N pieces (shares)
+  - Any K shares can reconstruct the original
+  - Each device stores one encrypted share
+  - Need threshold of devices to recover
+- **Result**: Lose devices? Still recover if threshold met
+
+---
+
 ### Shamir's Secret Sharing (SSS)
 
 #### 🧮 The Cryptographic Foundation
