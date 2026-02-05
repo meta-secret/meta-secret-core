@@ -1070,6 +1070,138 @@ We have:    Device → Commit Event → Replicate to Peers
 
 ---
 
+# Slide 15: TypeState Pattern - Domain-Driven State Evolution
+
+## The Pattern: Ownership-Based State Transitions
+
+Meta Secret uses a **TypeState-inspired pattern** for safe state evolution. The key principle:
+- **Consume** the current state (ownership transfer)
+- **Return** a new evolved state
+- **Prevent** access to old/invalid states
+
+This is enforced by Rust's ownership system: `fn method(mut self) -> Self`
+
+## Diagram 1: Domain Event Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         DOMAIN EVENT FLOW                                    │
+│                    TypeState: Event Accumulation                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   Device 2 (new)                              Device 1 (member)              │
+│        │                                            │                        │
+│        │ wants to join vault                        │                        │
+│        │                                            │                        │
+│        ▼                                            │                        │
+│   ┌─────────────┐                                   │                        │
+│   │ JoinCluster │ ─────── request sent ───────────▶ │                        │
+│   │  {D2}       │                                   │                        │
+│   └─────────────┘                                   │                        │
+│                                                     │                        │
+│                                                     ▼                        │
+│                                              ┌──────────────┐                │
+│                           ◀── approval ───── │UpdateMember- │                │
+│                                              │ship {D2→     │                │
+│                                              │    Member}   │                │
+│                                              └──────────────┘                │
+│                                                                              │
+│   ═══════════════════════════════════════════════════════════════════════   │
+│                                                                              │
+│   VaultActionEvents (TypeState accumulation)                                 │
+│   ──────────────────────────────────────────                                 │
+│                                                                              │
+│   Step 1                      Step 2                      Step 3             │
+│   .request()                  .apply()                    .complete()        │
+│        │                           │                           │             │
+│        ▼                           ▼                           ▼             │
+│   ┌──────────────┐           ┌──────────────┐           ┌──────────────┐    │
+│   │requests:[D2] │    ───▶   │requests:[]   │    ───▶   │requests:[]   │    │
+│   │updates: []   │           │updates: [D2] │           │updates: []   │    │
+│   └──────────────┘           └──────────────┘           └──────────────┘    │
+│    Request added              Request matched             Ready for next    │
+│                               Update queued               batch             │
+│                                     │                                        │
+│                                     │                                        │
+│                                     ▼                                        │
+│                          ┌────────────────────┐                              │
+│                          │  VaultAggregate    │                              │
+│                          │  (see Diagram 2)   │                              │
+│                          └────────────────────┘                              │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+## Diagram 2: State Materialization
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      STATE MATERIALIZATION                                   │
+│                 TypeState: VaultAggregate Evolution                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   Input: events + current vault                                              │
+│                                                                              │
+│   VaultAggregate::build_from(events, vault)                                  │
+│        │                                                                     │
+│        ▼                                                                     │
+│   ┌─────────────────────────────────────────┐                                │
+│   │  events: { updates: [D2→Member] }       │                                │
+│   │  vault:  { members: [D1] }              │  Initial                       │
+│   └─────────────────────┬───────────────────┘                                │
+│                         │                                                    │
+│                         │ .synchronize()                                     │
+│                         │                                                    │
+│                         │    ┌──────────────────────────────────┐            │
+│                         │    │  Domain Rules Applied:           │            │
+│                         ├───▶│  ✓ Is sender (D1) a member? YES  │            │
+│                         │    │  ✓ Apply: D2 becomes Member      │            │
+│                         │    └──────────────────────────────────┘            │
+│                         │                                                    │
+│                         ▼                                                    │
+│   ┌─────────────────────────────────────────┐                                │
+│   │  events: { updates: [D2→Member] }       │                                │
+│   │  vault:  { members: [D1, D2] }          │  Synchronized                  │
+│   └─────────────────────┬───────────────────┘                                │
+│                         │                                                    │
+│                         │ .complete()                                        │
+│                         │                                                    │
+│                         ▼                                                    │
+│   ┌─────────────────────────────────────────┐                                │
+│   │  events: { updates: [] }                │                                │
+│   │  vault:  { members: [D1, D2] }          │  Final State                   │
+│   └─────────────────────────────────────────┘                                │
+│                                                                              │
+│   ─────────────────────────────────────────────────────────────────────────  │
+│                                                                              │
+│   TypeState Guarantee:                                                       │
+│   Each arrow = ownership transfer (self → Self)                              │
+│   Old state consumed, cannot be reused                                       │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+## Domain Actions Reference
+
+| Action | Event | Transition |
+|--------|-------|------------|
+| **Create Vault** | `CreateVault` | NotExists → Member |
+| **Request Join** | `JoinCluster` | NonMember → Pending |
+| **Approve Join** | `UpdateMembership` | Pending → Member |
+| **Decline Join** | `UpdateMembership` | Pending → Declined |
+| **Add Password** | `AddMetaPass` | Vault.secrets += new |
+
+## Why TypeState?
+
+| Principle | Implementation |
+|-----------|----------------|
+| **Ownership Transfer** | `fn method(mut self) -> Self` - caller gives up old state |
+| **State Invalidation** | Rust's ownership ensures old state can't be reused |
+| **Safe Transitions** | Each method validates before evolving |
+| **Chainable API** | `.request().apply().complete()` - fluent state evolution |
+
+---
+
 # Slide 17: Resources
 
 ## Learn More
