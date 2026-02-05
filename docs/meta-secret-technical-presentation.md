@@ -290,11 +290,11 @@ flowchart LR
         style MA fill:#64b5f6,color:#000,stroke:#1976d2,stroke-width:2px
         style MB fill:#64b5f6,color:#000,stroke:#1976d2,stroke-width:2px
         style MC fill:#64b5f6,color:#000,stroke:#1976d2,stroke-width:2px
-        style DEVICES fill:#e3f2fd,stroke:#64b5f6,stroke-width:2px
+        style DEVICES fill:#e3f2fd,stroke:#64b5f6,stroke-width:2px,color:#000
     end
     
-    style PASSKEY fill:#ffebee,stroke:#ef9a9a,stroke-width:2px
-    style METASECRET fill:#e8f5e9,stroke:#a5d6a7,stroke-width:2px
+    style PASSKEY fill:#ffebee,stroke:#ef9a9a,stroke-width:2px,color:#000
+    style METASECRET fill:#e8f5e9,stroke:#a5d6a7,stroke-width:2px,color:#000
 ```
 
 > **Core Difference**: In Passkeys, a central authority (Apple ID, Google Account) manages device enrollment. In Meta Secret, devices form a **peer-to-peer trust network** - completely decentralized.
@@ -548,7 +548,7 @@ flowchart TB
         
         style SRV fill:#e57373,color:#000,stroke:#c62828,stroke-width:3px
         style DB fill:#ef5350,color:#000,stroke:#c62828,stroke-width:3px
-        style CLIENTS1 fill:#ffcdd2,stroke:#e57373,stroke-width:2px
+        style CLIENTS1 fill:#ffcdd2,stroke:#e57373,stroke-width:2px,color:#000
     end
     
     subgraph LOCAL["✅ Local-First (Meta Secret)"]
@@ -571,11 +571,11 @@ flowchart TB
         style D1 fill:#64b5f6,color:#000,stroke:#1976d2,stroke-width:2px
         style D2 fill:#64b5f6,color:#000,stroke:#1976d2,stroke-width:2px
         style D3 fill:#64b5f6,color:#000,stroke:#1976d2,stroke-width:2px
-        style DEVICES fill:#e3f2fd,stroke:#64b5f6,stroke-width:2px
+        style DEVICES fill:#e3f2fd,stroke:#64b5f6,stroke-width:2px,color:#000
     end
     
-    style TRAD fill:#ffebee,stroke:#ef9a9a,stroke-width:3px
-    style LOCAL fill:#e8f5e9,stroke:#a5d6a7,stroke-width:3px
+    style TRAD fill:#ffebee,stroke:#ef9a9a,stroke-width:3px,color:#000
+    style LOCAL fill:#e8f5e9,stroke:#a5d6a7,stroke-width:3px,color:#000
 ```
 
 #### Why This Matters
