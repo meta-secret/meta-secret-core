@@ -386,8 +386,14 @@ flowchart LR
     style CLOUD fill:#f44336,color:#fff,stroke:#c62828,stroke-width:3px
     style AUTH fill:#d32f2f,color:#fff,stroke:#b71c1c,stroke-width:3px
     style RELAY fill:#4caf50,color:#fff,stroke:#2e7d32,stroke-width:3px
-    style PASSKEY fill:#ffebee,stroke:#ef9a9a,stroke-width:2px
-    style METASECRET fill:#e8f5e9,stroke:#a5d6a7,stroke-width:2px
+    style PASSKEY fill:#ffebee,color:#333,stroke:#ef9a9a,stroke-width:2px
+    style METASECRET fill:#e8f5e9,color:#1b5e20,stroke:#2e7d32,stroke-width:2px
+    style MA fill:#37474f,color:#fff,stroke:#263238,stroke-width:2px
+    style MB fill:#37474f,color:#fff,stroke:#263238,stroke-width:2px
+    style MC fill:#37474f,color:#fff,stroke:#263238,stroke-width:2px
+    style PA fill:#37474f,color:#fff,stroke:#263238,stroke-width:2px
+    style PB fill:#37474f,color:#fff,stroke:#263238,stroke-width:2px
+    style PC fill:#37474f,color:#fff,stroke:#263238,stroke-width:2px
 ```
 
 > **Local-First Architecture**: Each device maintains a complete local database. The server is just a message relay - if it goes down, your devices still have all your data.
@@ -424,9 +430,9 @@ flowchart LR
     style V1A fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:2px
     style V2B fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:2px
     style V3C fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:2px
-    style T1 fill:#e3f2fd,stroke:#64b5f6,stroke-width:2px
-    style T2 fill:#e3f2fd,stroke:#64b5f6,stroke-width:2px
-    style T3 fill:#e3f2fd,stroke:#64b5f6,stroke-width:2px
+    style T1 fill:#e3f2fd,color:#0d47a1,stroke:#64b5f6,stroke-width:2px
+    style T2 fill:#e3f2fd,color:#0d47a1,stroke:#64b5f6,stroke-width:2px
+    style T3 fill:#e3f2fd,color:#0d47a1,stroke:#64b5f6,stroke-width:2px
 ```
 
 > **Fully decentralized onboarding**: No server, no cloud account, no central authority can add devices to your vault. Only existing mesh members can vote to admit new peers. Each device holds a complete local copy of the vault.
@@ -454,8 +460,8 @@ flowchart TB
         PLAIN[📄 Plaintext Data]
     end
     
-    style VISIBLE fill:#e8f5e9,stroke:#4caf50,stroke-width:3px
-    style INVISIBLE fill:#ffebee,stroke:#f44336,stroke-width:3px
+    style VISIBLE fill:#e8f5e9,color:#1b5e20,stroke:#4caf50,stroke-width:3px
+    style INVISIBLE fill:#ffebee,color:#c62828,stroke:#f44336,stroke-width:3px
     style SK fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
     style PASS fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
     style SEED fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
@@ -490,8 +496,14 @@ flowchart LR
     style CLOUD fill:#f44336,color:#fff,stroke:#c62828,stroke-width:3px
     style AUTH fill:#d32f2f,color:#fff,stroke:#b71c1c,stroke-width:3px
     style RELAY fill:#4caf50,color:#fff,stroke:#2e7d32,stroke-width:3px
-    style PASSKEY fill:#ffebee,stroke:#ef9a9a,stroke-width:2px
-    style METASECRET fill:#e8f5e9,stroke:#a5d6a7,stroke-width:2px
+    style PASSKEY fill:#ffebee,color:#333,stroke:#ef9a9a,stroke-width:2px
+    style METASECRET fill:#e8f5e9,color:#1b5e20,stroke:#2e7d32,stroke-width:2px
+    style MA fill:#37474f,color:#fff,stroke:#263238,stroke-width:2px
+    style MB fill:#37474f,color:#fff,stroke:#263238,stroke-width:2px
+    style MC fill:#37474f,color:#fff,stroke:#263238,stroke-width:2px
+    style PA fill:#37474f,color:#fff,stroke:#263238,stroke-width:2px
+    style PB fill:#37474f,color:#fff,stroke:#263238,stroke-width:2px
+    style PC fill:#37474f,color:#fff,stroke:#263238,stroke-width:2px
 ```
 
 ## How Your Vault Grows (Trust Network)
@@ -525,9 +537,9 @@ flowchart LR
     style V1A fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:2px
     style V2B fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:2px
     style V3C fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:2px
-    style T1 fill:#e3f2fd,stroke:#64b5f6,stroke-width:2px
-    style T2 fill:#e3f2fd,stroke:#64b5f6,stroke-width:2px
-    style T3 fill:#e3f2fd,stroke:#64b5f6,stroke-width:2px
+    style T1 fill:#e3f2fd,color:#0d47a1,stroke:#64b5f6,stroke-width:2px
+    style T2 fill:#e3f2fd,color:#0d47a1,stroke:#64b5f6,stroke-width:2px
+    style T3 fill:#e3f2fd,color:#0d47a1,stroke:#64b5f6,stroke-width:2px
 ```
 
 > **No central authority can add devices to your vault** - only your existing devices can vote to admit new members.
@@ -553,8 +565,8 @@ flowchart TB
         PLAIN[📄 Plaintext Data]
     end
     
-    style VISIBLE fill:#e8f5e9,stroke:#4caf50,stroke-width:3px
-    style INVISIBLE fill:#ffebee,stroke:#f44336,stroke-width:3px
+    style VISIBLE fill:#e8f5e9,color:#1b5e20,stroke:#4caf50,stroke-width:3px
+    style INVISIBLE fill:#ffebee,color:#c62828,stroke:#f44336,stroke-width:3px
     style SK fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
     style PASS fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
     style SEED fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
