@@ -530,40 +530,46 @@ sequenceDiagram
 #### Traditional vs. Decentralized Architecture
 
 ```mermaid
-flowchart TB
+flowchart LR
     subgraph TRAD["❌ Traditional Client-Server"]
         direction TB
-        C1[Client 1] -->|Request| SRV[Server<br/>Has Database]
-        C2[Client 2] -->|Request| SRV
-        C3[Client 3] -->|Request| SRV
-        SRV -->|Response| C1
-        SRV -->|Response| C2
-        SRV -->|Response| C3
         
-        SRV --> DB[(Centralized<br/>Database)]
+        subgraph CLIENTS1["Clients (Thin)"]
+            C1[📱 Client 1]
+            C2[💻 Client 2]
+            C3[🖥️ Client 3]
+        end
         
-        NOTE1[Problem: Single source of truth on server<br/>Clients are simple, server has all logic]
+        CLIENTS1 -->|Request| SRV[☁️ Server<br/>━━━━━━━━<br/>Business Logic<br/>+ Storage]
+        SRV -->|Response| CLIENTS1
+        
+        SRV --> DB[(🗄️ Centralized<br/>Database<br/>━━━━━━━━<br/>Single Source<br/>of Truth)]
+        
+        style SRV fill:#e57373,color:#000,stroke:#c62828,stroke-width:3px
+        style DB fill:#ef5350,color:#fff,stroke:#c62828,stroke-width:3px
+        style CLIENTS1 fill:#ffcdd2,stroke:#e57373,stroke-width:2px
     end
     
     subgraph LOCAL["✅ Local-First (Meta Secret)"]
         direction TB
-        D1[Device 1<br/>Has Full DB] <-->|Event Replication| BUS[Server = Event Bus]
-        D2[Device 2<br/>Has Full DB] <-->|Event Replication| BUS
-        D3[Device 3<br/>Has Full DB] <-->|Event Replication| BUS
         
-        D1 -.-> L1[(Local DB)]
-        D2 -.-> L2[(Local DB)]
-        D3 -.-> L3[(Local DB)]
+        subgraph DEVICES["Devices (Full Node)"]
+            D1["📱 Device 1<br/>━━━━━━━━<br/>🗄️ Full DB"]
+            D2["💻 Device 2<br/>━━━━━━━━<br/>🗄️ Full DB"]
+            D3["🖥️ Device 3<br/>━━━━━━━━<br/>🗄️ Full DB"]
+        end
         
-        NOTE2[Solution: Each device has full database<br/>Server only relays events]
+        DEVICES <-->|Event<br/>Replication| BUS[☁️ Server<br/>━━━━━━━━<br/>Event Bus<br/>Only]
+        
+        style BUS fill:#81c784,color:#000,stroke:#388e3c,stroke-width:3px
+        style D1 fill:#a5d6a7,color:#000,stroke:#66bb6a,stroke-width:2px
+        style D2 fill:#a5d6a7,color:#000,stroke:#66bb6a,stroke-width:2px
+        style D3 fill:#a5d6a7,color:#000,stroke:#66bb6a,stroke-width:2px
+        style DEVICES fill:#c8e6c9,stroke:#81c784,stroke-width:2px
     end
     
-    style TRAD fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
-    style LOCAL fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:3px
-    style DB fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:2px
-    style L1 fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:2px
-    style L2 fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:2px
-    style L3 fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:2px
+    style TRAD fill:#ffebee,stroke:#ef9a9a,stroke-width:3px
+    style LOCAL fill:#e8f5e9,stroke:#a5d6a7,stroke-width:3px
 ```
 
 #### Why This Matters
