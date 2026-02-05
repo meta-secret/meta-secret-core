@@ -312,17 +312,19 @@ flowchart LR
 #### Vault Operations
 
 ```mermaid
-flowchart LR
-    subgraph CREATE["Scenario 1: Create New Vault"]
-        D1[Device 1] -->|Send Public Key| S1[Server]
-        S1 --> V1[(New Vault<br/>Owner: PK₁)]
-    end
-    
+flowchart RL
     subgraph JOIN["Scenario 2: Join Existing Vault"]
+        direction LR
         D2[Device 2] -->|Join Request + Public Key| S2[Server]
         S2 -->|Notify| D1B[Device 1<br/>Vault Member]
         D1B -->|Approve| S2
         S2 --> V2[(Update Vault<br/>Members: PK₁, PK₂)]
+    end
+
+    subgraph CREATE["Scenario 1: Create New Vault"]
+        direction LR
+        D1[Device 1] -->|Send Public Key| S1[Server]
+        S1 --> V1[(New Vault<br/>Owner: PK₁)]
     end
     
     style V1 fill:#1565c0,color:#fff,stroke:#0d47a1,stroke-width:3px
