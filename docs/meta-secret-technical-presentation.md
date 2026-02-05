@@ -1,6 +1,6 @@
 <div align="center">
   
-<img src="img/meta-secret-logo.png" alt="Meta Secret Logo" width="200" />
+<img src="img/meta-secret-logo.png" alt="Meta Secret Logo" width="400" />
   
 # Meta Secret
 ### Technical Presentation
