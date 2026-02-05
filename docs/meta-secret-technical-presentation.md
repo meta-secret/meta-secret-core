@@ -100,7 +100,7 @@ flowchart TB
     style PROBLEM2 fill:#ffcdd2,color:#000,stroke:#c62828,stroke-width:2px
     style SOLUTION1 fill:#c5e1a5,color:#000,stroke:#558b2f,stroke-width:2px
     style SOLUTION2 fill:#c5e1a5,color:#000,stroke:#558b2f,stroke-width:2px
-    style RESULT fill:#81c784,color:#fff,stroke:#2e7d32,stroke-width:3px
+    style RESULT fill:#81c784,color:#000,stroke:#2e7d32,stroke-width:3px
 ```
 
 #### 🔑 Technology 1: Public Key Cryptography (Decentralized Authentication)
@@ -219,13 +219,13 @@ flowchart TB
     
     LAYER2 -.->|enables| LAYER3
     
-    style VAULT fill:#42a5f5,color:#fff,stroke:#1976d2,stroke-width:4px
-    style SPLIT fill:#66bb6a,color:#fff,stroke:#388e3c,stroke-width:3px
+    style VAULT fill:#42a5f5,color:#000,stroke:#1976d2,stroke-width:4px
+    style SPLIT fill:#66bb6a,color:#000,stroke:#388e3c,stroke-width:3px
     style LAYER1 fill:#e3f2fd,stroke:#64b5f6,stroke-width:2px,color:#000
     style LAYER2 fill:#64b5f6,color:#000,stroke:#1976d2,stroke-width:3px
     style LAYER3 fill:#81c784,color:#000,stroke:#388e3c,stroke-width:3px
-    style SRV1 fill:#90a4ae,color:#fff,stroke:#546e7a,stroke-width:2px
-    style SRV2 fill:#90a4ae,color:#fff,stroke:#546e7a,stroke-width:2px
+    style SRV1 fill:#90a4ae,color:#000,stroke:#546e7a,stroke-width:2px
+    style SRV2 fill:#90a4ae,color:#000,stroke:#546e7a,stroke-width:2px
     style SHARES fill:#a5d6a7,color:#000,stroke:#66bb6a,stroke-width:2px
 ```
 
@@ -267,7 +267,7 @@ flowchart LR
         PC[🖥️ Desktop] --> CLOUD
         CLOUD -->|"Controls device<br/>enrollment"| AUTH[🔐 Central<br/>Authority]
         
-        style CLOUD fill:#ef5350,color:#fff,stroke:#c62828,stroke-width:3px
+        style CLOUD fill:#ef5350,color:#000,stroke:#c62828,stroke-width:3px
         style AUTH fill:#e57373,color:#000,stroke:#c62828,stroke-width:2px
     end
     
@@ -310,8 +310,8 @@ flowchart LR
     
     PUBLIC --> DEVID[DeviceId = Hash of Public Key]
     
-    style PRIVATE fill:#ef5350,color:#fff,stroke:#c62828,stroke-width:3px
-    style PUBLIC fill:#64b5f6,color:#fff,stroke:#1976d2,stroke-width:3px
+    style PRIVATE fill:#ef5350,color:#000,stroke:#c62828,stroke-width:3px
+    style PUBLIC fill:#64b5f6,color:#000,stroke:#1976d2,stroke-width:3px
     style KEYGEN fill:#81c784,color:#000,stroke:#388e3c,stroke-width:2px
 ```
 
@@ -333,8 +333,8 @@ flowchart RL
         S1 --> V1[(New Vault<br/>Owner: PK₁)]
     end
     
-    style V1 fill:#42a5f5,color:#fff,stroke:#1976d2,stroke-width:3px
-    style V2 fill:#42a5f5,color:#fff,stroke:#1976d2,stroke-width:3px
+    style V1 fill:#42a5f5,color:#000,stroke:#1976d2,stroke-width:3px
+    style V2 fill:#42a5f5,color:#000,stroke:#1976d2,stroke-width:3px
     style CREATE fill:#64b5f6,color:#000,stroke:#1976d2,stroke-width:2px
     style JOIN fill:#81c784,color:#000,stroke:#388e3c,stroke-width:2px
 ```
@@ -547,7 +547,7 @@ flowchart TB
         SRV --> DB[(🗄️ Centralized<br/>Database<br/>━━━━━━━━<br/>Single Source<br/>of Truth)]
         
         style SRV fill:#e57373,color:#000,stroke:#c62828,stroke-width:3px
-        style DB fill:#ef5350,color:#fff,stroke:#c62828,stroke-width:3px
+        style DB fill:#ef5350,color:#000,stroke:#c62828,stroke-width:3px
         style CLIENTS1 fill:#ffcdd2,stroke:#e57373,stroke-width:2px
     end
     
@@ -633,13 +633,13 @@ flowchart LR
     
     LOG <--> SRVLOG
     
-    style LOG fill:#42a5f5,color:#fff,stroke:#1976d2,stroke-width:5px
+    style LOG fill:#42a5f5,color:#000,stroke:#1976d2,stroke-width:5px
     style BUILD fill:#64b5f6,color:#000,stroke:#1976d2,stroke-width:2px
-    style SRVLOG fill:#90a4ae,color:#fff,stroke:#546e7a,stroke-width:3px
-    style SRVSTORE fill:#78909c,color:#fff,stroke:#546e7a,stroke-width:2px
+    style SRVLOG fill:#90a4ae,color:#000,stroke:#546e7a,stroke-width:3px
+    style SRVSTORE fill:#78909c,color:#000,stroke:#546e7a,stroke-width:2px
     style VDEV fill:#81c784,color:#000,stroke:#388e3c,stroke-width:2px
-    style VSRV fill:#90a4ae,color:#fff,stroke:#546e7a,stroke-width:2px
-    style ENC fill:#ef5350,color:#fff,stroke:#c62828,stroke-width:2px
+    style VSRV fill:#90a4ae,color:#000,stroke:#546e7a,stroke-width:2px
+    style ENC fill:#ef5350,color:#000,stroke:#c62828,stroke-width:2px
     style DEVICES fill:#64b5f6,color:#000,stroke:#1976d2,stroke-width:3px
     style DB fill:#81c784,color:#000,stroke:#388e3c,stroke-width:4px
     style OBJSTORE fill:#a5d6a7,color:#000,stroke:#66bb6a,stroke-width:2px
