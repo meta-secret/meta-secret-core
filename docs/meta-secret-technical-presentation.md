@@ -535,6 +535,7 @@ flowchart LR
         direction TB
         
         subgraph CLIENTS1["Clients (Thin)"]
+            direction TB
             C1[📱 Client 1]
             C2[💻 Client 2]
             C3[🖥️ Client 3]
@@ -554,10 +555,15 @@ flowchart LR
         direction TB
         
         subgraph DEVICES["Devices (Full Node)"]
+            direction TB
             D1["📱 Device 1<br/>━━━━━━━━<br/>🗄️ Full DB"]
             D2["💻 Device 2<br/>━━━━━━━━<br/>🗄️ Full DB"]
             D3["🖥️ Device 3<br/>━━━━━━━━<br/>🗄️ Full DB"]
         end
+        
+        D1 -.->|P2P| D2
+        D2 -.->|P2P| D3
+        D1 -.->|P2P| D3
         
         DEVICES <-->|Event<br/>Replication| BUS[☁️ Server<br/>━━━━━━━━<br/>Event Bus<br/>Only]
         
