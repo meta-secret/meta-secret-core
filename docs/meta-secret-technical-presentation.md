@@ -181,13 +181,13 @@ Result:
 ```mermaid
 flowchart TB
     subgraph LAYER1["🔐 USER DEVICES"]
-        direction LR
+        direction TB
         D1["📱 Phone<br/>━━━━━━━<br/>🔑 Private Key"]
         D2["💻 Laptop<br/>━━━━━━━<br/>🔑 Private Key"]
         D3["📲 Tablet<br/>━━━━━━━<br/>🔑 Private Key"]
     end
     
-    subgraph LAYER2["MODULE 1: Passwordless Authentication"]
+    subgraph LAYER2["Passwordless Auth"]
         direction LR
         
         ACTIONS1["Operations:<br/>• Create Vault<br/>• Join Vault<br/>• Manage Members"]
@@ -199,7 +199,7 @@ flowchart TB
         ACTIONS1 --> VAULT
     end
     
-    subgraph LAYER3["MODULE 2: Secret Manager (SSS)"]
+    subgraph LAYER3["Secret Manager (SSS)"]
         direction LR
         
         SPLIT["Operations:<br/>• Split Secret<br/>• Distribute Shares<br/>• Recover Secret"]
