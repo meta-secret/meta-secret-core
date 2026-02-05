@@ -133,56 +133,6 @@ Each share has only PARTIAL information
 
 ---
 
-### Why Decentralized?
-
-#### Architectural Decision: No Trusted Server
-
-```mermaid
-flowchart LR
-    subgraph CENTRAL["❌ CENTRALIZED"]
-        D1[📱 Device] --> S1[☁️ Server<br/>Stores ALL Shares]
-        D2[💻 Device] --> S1
-        D3[📲 Device] --> S1
-        
-        S1 --> RISK["⚠️ Single Point<br/>of Failure"]
-        
-        style S1 fill:#e57373,color:#000,stroke:#c62828,stroke-width:3px
-        style RISK fill:#ef5350,color:#fff,stroke:#c62828,stroke-width:2px
-    end
-    
-    subgraph DECENTRAL["✅ DECENTRALIZED (Meta Secret)"]
-        P1[📱 Phone<br/>Share 1] <--> R[☁️ Server<br/>Relay Only]
-        P2[💻 Laptop<br/>Share 2] <--> R
-        P3[📲 Tablet<br/>Share 3] <--> R
-        
-        P1 <-.-> P2
-        P2 <-.-> P3
-        P3 <-.-> P1
-        
-        R --> OK["✅ No Single Point<br/>of Failure"]
-        
-        style R fill:#81c784,color:#000,stroke:#388e3c,stroke-width:3px
-        style OK fill:#66bb6a,color:#fff,stroke:#388e3c,stroke-width:2px
-        style P1 fill:#64b5f6,color:#000,stroke:#1976d2,stroke-width:2px
-        style P2 fill:#64b5f6,color:#000,stroke:#1976d2,stroke-width:2px
-        style P3 fill:#64b5f6,color:#000,stroke:#1976d2,stroke-width:2px
-    end
-    
-    style CENTRAL fill:#ffebee,stroke:#c62828,stroke-width:2px
-    style DECENTRAL fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
-```
-
-**Key Differences:**
-
-| Aspect | ❌ Centralized | ✅ Meta Secret |
-|--------|----------------|---------------|
-| **Server Role** | Stores all shares | Relay only (encrypted) |
-| **Single Point of Failure** | Yes | No |
-| **Privacy** | Must trust server | Zero-knowledge |
-| **Offline** | No access | Works locally |
-
----
-
 ## 🔧 Technical Architecture
 
 ### Two Core Modules
