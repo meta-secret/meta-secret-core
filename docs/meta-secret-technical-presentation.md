@@ -148,50 +148,71 @@ Each share has only PARTIAL information
 
 #### Architectural Decision: No Trusted Server
 
-<table>
-<tr>
-<th width="50%">❌ Centralized (Server Storage)</th>
-<th width="50%">✅ Decentralized (User Devices)</th>
-</tr>
-<tr>
-<td>
-
+```mermaid
+flowchart TB
+    subgraph CENT["❌ CENTRALIZED APPROACH (Traditional)"]
+        direction TB
+        
+        D1C[📱 Device 1] -->|"Upload shares<br/>Trust required"| SERVER
+        D2C[💻 Device 2] -->|"Upload shares<br/>Trust required"| SERVER
+        D3C[📲 Device 3] -->|"Upload shares<br/>Trust required"| SERVER
+        
+        SERVER["☁️ CENTRAL SERVER<br/>━━━━━━━━━━━━━<br/>Stores ALL shares<br/>🔴 SINGLE POINT OF FAILURE"]
+        
+        SERVER -->|"⚠️ Server compromised<br/>→ ALL secrets exposed"| RISK1[🚨 Risk]
+        SERVER -->|"⚠️ Server goes down<br/>→ No access"| RISK2[🚨 Risk]
+        SERVER -->|"⚠️ Must trust operator<br/>→ Privacy concern"| RISK3[🚨 Risk]
+        
+        style SERVER fill:#c62828,color:#fff,stroke:#b71c1c,stroke-width:4px
+        style RISK1 fill:#d32f2f,color:#fff
+        style RISK2 fill:#d32f2f,color:#fff
+        style RISK3 fill:#d32f2f,color:#fff
+    end
+    
+    subgraph DECENT["✅ DECENTRALIZED APPROACH (Meta Secret)"]
+        direction TB
+        
+        D1D[📱 Phone<br/>Has Share 1]
+        D2D[💻 Laptop<br/>Has Share 2]
+        D3D[📲 Tablet<br/>Has Share 3]
+        
+        RELAY["☁️ SERVER (Relay Only)<br/>━━━━━━━━━━━━━<br/>• No shares stored<br/>• Only encrypted transit<br/>• Zero knowledge<br/>🟢 NOT A SINGLE POINT OF FAILURE"]
+        
+        D1D <-->|"Encrypted<br/>messages only"| RELAY
+        D2D <-->|"Encrypted<br/>messages only"| RELAY
+        D3D <-->|"Encrypted<br/>messages only"| RELAY
+        
+        D1D <-.->|"Direct P2P<br/>(when possible)"| D2D
+        D2D <-.->|"Direct P2P<br/>(when possible)"| D3D
+        D3D <-.->|"Direct P2P<br/>(when possible)"| D1D
+        
+        RELAY -.->|"✅ Server compromised<br/>→ No secrets exposed"| BEN1[✨ Benefit]
+        RELAY -.->|"✅ Server offline<br/>→ Devices work locally"| BEN2[✨ Benefit]
+        RELAY -.->|"✅ Zero knowledge<br/>→ Privacy guaranteed"| BEN3[✨ Benefit]
+        
+        style RELAY fill:#2e7d32,color:#fff,stroke:#1b5e20,stroke-width:4px
+        style D1D fill:#1976d2,color:#fff,stroke:#0d47a1,stroke-width:2px
+        style D2D fill:#1976d2,color:#fff,stroke:#0d47a1,stroke-width:2px
+        style D3D fill:#1976d2,color:#fff,stroke:#0d47a1,stroke-width:2px
+        style BEN1 fill:#4caf50,color:#fff
+        style BEN2 fill:#4caf50,color:#fff
+        style BEN3 fill:#4caf50,color:#fff
+    end
+    
+    style CENT fill:#ffebee,stroke:#c62828,stroke-width:3px,color:#000
+    style DECENT fill:#e8f5e9,stroke:#2e7d32,stroke-width:3px,color:#000
 ```
-      ┌─────────────┐
-      │   SERVER    │
-      │ stores all  │
-      └─────────────┘
-           ▲ ▼
-      ┌────┴────┐
-    Device  Device
-```
 
-**Problems:**
-- Server = single point of failure
-- Must trust server operator
-- Regulatory/compliance issues
+#### Comparison Summary
 
-</td>
-<td>
-
-```
-   [Phone] ◀───▶ [Laptop]
-      ▲             ▲
-      └─────────────┘
-           │
-      [Tablet]
-           ▼
-   Server = Relay Only
-```
-
-**Benefits:**
-- ✅ No single point of compromise
-- ✅ User controls trust boundary
-- ✅ Works offline
-
-</td>
-</tr>
-</table>
+| Aspect | ❌ Centralized | ✅ Decentralized (Meta Secret) |
+|--------|----------------|-------------------------------|
+| **Data Storage** | Server holds all shares | Each device holds one share |
+| **Trust Model** | Must trust server operator | Trust distributed across your devices |
+| **Single Point of Failure** | Yes - server compromise = total loss | No - need multiple device compromises |
+| **Privacy** | Server can potentially access secrets | Zero-knowledge - server cannot decrypt |
+| **Availability** | Depends on server uptime | Works offline, syncs when online |
+| **Regulatory Risk** | Subject to jurisdiction | User-sovereign |
 
 ---
 
