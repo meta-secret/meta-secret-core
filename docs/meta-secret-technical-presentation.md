@@ -293,56 +293,6 @@ flowchart LR
 
 > **Core Difference**: In Passkeys, a central authority (Apple ID, Google Account) manages device enrollment. In Meta Secret, devices form a **peer-to-peer trust network** - completely decentralized.
 
-
----
-
-### Shamir's Secret Sharing (SSS)
-
-#### 🧮 The Cryptographic Foundation
-
-Invented by **Adi Shamir** in 1979 (the "S" in RSA)
-
-**Core Concept**: Split a secret into **N shares** where any **K shares** can reconstruct it.
-
-#### Example: Password "123"
-
-```
-Original Password: "123" (contains digits: 1, 2, 3)
-
-        SPLIT (3 shares, need 2)
-               │
-   ┌───────────┼───────────┐
-   ▼           ▼           ▼
-Share A     Share B     Share C
- [1,2]       [1,3]       [2,3]
-
-Each share has only PARTIAL information
-```
-
-#### Recovery: Any 2 Shares → Original Secret
-
-| Combination | Result | Status |
-|-------------|--------|---------|
-| Share A + Share B | {1,2,3} → "123" | ✅ |
-| Share A + Share C | {1,2,3} → "123" | ✅ |
-| Share B + Share C | {1,2,3} → "123" | ✅ |
-| Share A alone | {1,2,?} → ??? | ❌ Could be 123, 124, 125... |
-
-> **🔒 Key property**: 1 share reveals nothing. You need the threshold to recover.
-
----
-
-#### Server Role: Zero-Knowledge
-
-| What Server Stores | What Server CANNOT Do |
-|-------------------|----------------------|
-| ✅ Public keys (vault members) | ❌ Cannot decrypt shares |
-| ✅ Encrypted message blobs | ❌ Cannot impersonate devices |
-| ✅ Vault membership metadata | ❌ Cannot read passwords |
-| ✅ Device sync state | ❌ Cannot recover secrets alone |
-
----
-
 #### Device Initialization: Key Generation
 
 ```mermaid
@@ -362,7 +312,7 @@ flowchart LR
 #### Vault Operations
 
 ```mermaid
-flowchart TB
+flowchart LR
     subgraph CREATE["Scenario 1: Create New Vault"]
         D1[Device 1] -->|Send Public Key| S1[Server]
         S1 --> V1[(New Vault<br/>Owner: PK₁)]
@@ -423,6 +373,54 @@ sequenceDiagram
 - Sync vault state across devices
 
 > **🔒 Security Property**: Server stores public keys only - cannot impersonate devices or decrypt data
+
+---
+
+### Shamir's Secret Sharing (SSS)
+
+#### 🧮 The Cryptographic Foundation
+
+Invented by **Adi Shamir** in 1979 (the "S" in RSA)
+
+**Core Concept**: Split a secret into **N shares** where any **K shares** can reconstruct it.
+
+#### Example: Password "123"
+
+```
+Original Password: "123" (contains digits: 1, 2, 3)
+
+        SPLIT (3 shares, need 2)
+               │
+   ┌───────────┼───────────┐
+   ▼           ▼           ▼
+Share A     Share B     Share C
+ [1,2]       [1,3]       [2,3]
+
+Each share has only PARTIAL information
+```
+
+#### Recovery: Any 2 Shares → Original Secret
+
+| Combination | Result | Status |
+|-------------|--------|---------|
+| Share A + Share B | {1,2,3} → "123" | ✅ |
+| Share A + Share C | {1,2,3} → "123" | ✅ |
+| Share B + Share C | {1,2,3} → "123" | ✅ |
+| Share A alone | {1,2,?} → ??? | ❌ Could be 123, 124, 125... |
+
+> **🔒 Key property**: 1 share reveals nothing. You need the threshold to recover.
+
+---
+
+#### Server Role: Zero-Knowledge
+
+| What Server Stores | What Server CANNOT Do |
+|-------------------|----------------------|
+| ✅ Public keys (vault members) | ❌ Cannot decrypt shares |
+| ✅ Encrypted message blobs | ❌ Cannot impersonate devices |
+| ✅ Vault membership metadata | ❌ Cannot read passwords |
+| ✅ Device sync state | ❌ Cannot recover secrets alone |
+
 
 ---
 
