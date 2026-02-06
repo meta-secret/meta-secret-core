@@ -759,6 +759,105 @@ flowchart TD
         end
     end
 ```
+
+---
+
+### Unit Testing: The Hidden Benefit of Local-First
+
+Because the **entire state lives on the client** and the **server is a transparent relay**, complex distributed logic can be tested with simple unit tests - no Docker containers, no network mocking, no test servers needed.
+
+#### Why Local-First Makes Testing Easy
+
+```mermaid
+flowchart LR
+    subgraph TRADITIONAL["❌ Traditional Distributed Testing"]
+        direction TB
+        T1[Unit Test] --> T2[Start Test Server]
+        T2 --> T3[Set up Test Database]
+        T3 --> T4[Mock Network Calls]
+        T4 --> T5[Run Test]
+        T5 --> T6[Teardown]
+        
+        style T2 fill:#e57373,color:#000,stroke:#c62828,stroke-width:2px
+        style T3 fill:#e57373,color:#000,stroke:#c62828,stroke-width:2px
+        style T4 fill:#e57373,color:#000,stroke:#c62828,stroke-width:2px
+    end
+    
+    subgraph METASECRET["✅ Meta Secret Testing"]
+        direction TB
+        M1[Unit Test] --> M2[Create In-Memory DB]
+        M2 --> M3[Run Full Flow]
+        M3 --> M4[Assert Results]
+        
+        style M2 fill:#81c784,color:#000,stroke:#388e3c,stroke-width:2px
+        style M3 fill:#81c784,color:#000,stroke:#388e3c,stroke-width:2px
+        style M4 fill:#81c784,color:#000,stroke:#388e3c,stroke-width:2px
+    end
+    
+    style TRADITIONAL fill:#ffebee,stroke:#ef9a9a,stroke-width:2px,color:#000
+    style METASECRET fill:#e8f5e9,stroke:#a5d6a7,stroke-width:2px,color:#000
+```
+
+#### Key Insight
+
+| Traditional Testing | Meta Secret Testing |
+|---------------------|---------------------|
+| Need real/mock servers | In-memory database (`InMemKvLogEventRepo`) |
+| Network round-trips | Direct function calls |
+| Complex test infrastructure | Simple Rust unit tests |
+| Flaky due to network | Deterministic and fast |
+| Hard to test edge cases | Full control over state |
+
+#### Real Example: Testing the Full Distributed Flow
+
+The entire **sign up → join vault → split secret → recover secret** flow is tested as a regular Rust unit test:
+
+```rust
+// Full sign-up and device join flow - tested as a simple unit test!
+#[tokio::test]
+async fn test_sign_up_and_join_two_devices() -> Result<()> {
+    let spec = ServerAppSignUpSpec::build().await?;
+    spec.sign_up_and_second_devices_joins().await?;
+    Ok(())
+}
+
+// Secret splitting across devices - no real network needed
+#[tokio::test]
+async fn test_secret_split() -> Result<()> {
+    let spec = ServerAppSignUpSpec::build().await?;
+    let split = SplitSpec { spec };
+
+    split.spec.sign_up_and_second_devices_joins().await?;
+    split.split().await?;
+
+    Ok(())
+}
+
+// Full recovery flow: split → request recovery → reconstruct password
+#[tokio::test]
+async fn test_recover() -> Result<()> {
+    // ... setup sign up + join + split ...
+
+    // Request recovery from another device
+    let recover = GenericAppStateRequest::Recover(pass_id);
+    vd_client_service.handle_client_request(vd_app_state, recover).await?;
+
+    // Sync events between devices (via in-memory gateway)
+    split.spec.client_gw_sync().await?;
+    split.spec.vd_gw_sync().await?;
+
+    // Recover the original password from shares
+    let pass = recovery_handler.recover(user_creds, claim_id, pass_id).await?;
+
+    // The original password is fully reconstructed!
+    assert_eq!("2bee|~", pass.text);
+
+    Ok(())
+}
+```
+
+> **The entire distributed system** - multiple devices, server relay, Shamir's Secret Sharing, encryption, recovery - all tested in a single process with in-memory storage. This is only possible because the architecture is truly local-first.
+
 ---
 
 ## 📚 Resources
