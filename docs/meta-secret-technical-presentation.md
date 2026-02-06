@@ -590,6 +590,47 @@ flowchart TB
 
 ### Event Sourcing Architecture
 
+#### Why Event Sourcing? The Architectural Journey
+
+Meta Secret's core requirement is clear: **secrets must stay on user's devices**. No server should ever store or have access to them. This single constraint drives the entire architecture:
+
+**1. Secrets must be local → logic moves to the device**
+Since the server cannot see or process secrets, all the encryption, splitting, and recovery logic must run on the device itself. The server becomes nothing more than a message relay.
+
+**2. No central database for secrets**
+In a traditional password manager, the server owns the database. But Meta Secret's server **cannot store secrets** - so where does the data live? On each device, in its own local database.
+
+**3. Local databases must stay in sync**
+Each device holds its own share of secrets and vault state. When a user adds a new password or a new device joins the vault, all devices need to know about it:
+
+- Traditional REST API (request/response) **no longer works** - there's no central source of truth to query
+- What *does* work in distributed systems: **commit log + state machine replication** - the same principle behind Kafka, Raft, and database replication
+
+**4. Commit Log + State Machine Replication = Meta Secret's Architecture**
+
+```mermaid
+flowchart TB
+    A["1️⃣ Secrets must stay local<br/>(security requirement)"] --> B["2️⃣ Server can't store secrets<br/>(no central database)"]
+    B --> C["3️⃣ Each device has its own DB<br/>(vault state + secret shares)"]
+    C --> D["3.1 Devices must stay in sync"]
+    D --> E["3.2 REST API won't work<br/>(no central source of truth)"]
+    D --> F["3.3 Commit Log + State Machine<br/>Replication works"]
+    E --> G["4️⃣ Event Sourcing Architecture<br/>━━━━━━━━━━━━━<br/>Decentralized Local-First<br/>Secret Manager"]
+    F --> G
+    
+    style A fill:#64b5f6,color:#000,stroke:#1976d2,stroke-width:2px
+    style B fill:#64b5f6,color:#000,stroke:#1976d2,stroke-width:2px
+    style C fill:#64b5f6,color:#000,stroke:#1976d2,stroke-width:2px
+    style D fill:#64b5f6,color:#000,stroke:#1976d2,stroke-width:2px
+    style E fill:#ef5350,color:#000,stroke:#c62828,stroke-width:2px
+    style F fill:#81c784,color:#000,stroke:#388e3c,stroke-width:2px
+    style G fill:#66bb6a,color:#000,stroke:#388e3c,stroke-width:3px
+```
+
+> Each device maintains an **append-only commit log** of vault events and encrypted secret shares. Events are replicated between devices via the server relay. Each device replays the log to build its current state - vault membership, secret distribution status, and recovery workflows.
+
+---
+
 #### The Core Concept: Commit Log as Central Abstraction
 
 ```mermaid
@@ -669,9 +710,10 @@ Object Storage Abstraction
 
 ---
 
-### Inspiration: Local-First Software
+### Local-First Software
 
-Meta Secret's architecture is respects the **[Local-First Software](https://lofi.so/)** movement and **CRDT** (Conflict-free Replicated Data Types) principles.
+Meta Secret's architecture respects the **[Local-First Software](https://lofi.so/)** 
+and **CRDT** (Conflict-free Replicated Data Types) principles.
 
 #### Key Principles Applied
 
