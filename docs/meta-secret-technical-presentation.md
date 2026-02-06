@@ -771,7 +771,7 @@ Because the **entire state lives on the client** and the **server is a transpare
 ```mermaid
 flowchart LR
     subgraph TRADITIONAL["❌ Traditional Distributed Testing"]
-        direction TB
+        direction LR
         T1[Unit Test] --> T2[Start Test Server]
         T2 --> T3[Set up Test Database]
         T3 --> T4[Mock Network Calls]
@@ -784,7 +784,7 @@ flowchart LR
     end
     
     subgraph METASECRET["✅ Meta Secret Testing"]
-        direction TB
+        direction LR
         M1[Unit Test] --> M2[Create In-Memory DB]
         M2 --> M3[Run Full Flow]
         M3 --> M4[Assert Results]
