@@ -25,15 +25,13 @@
   - [The Paradox of Password Security](#the-paradox-of-password-security)
 - [✅ The Solution](#-the-solution)
   - [The Two-Part Solution](#the-two-part-solution)
-  - [Shamir's Secret Sharing](#shamirs-secret-sharing-sss)
-  - [Why Decentralized?](#why-decentralized)
-- [🔧 Technical Architecture](#-technical-architecture)
   - [Two Core Modules](#two-core-modules)
+- [🔧 Technical Architecture](#-technical-architecture)
   - [Module 1: Device Identity & Vault Management](#module-1-device-identity--vault-management)
   - [Module 2: Secret Manager](#module-2-secret-manager)
 - [🏗️ Application Architecture](#️-application-architecture)
   - [Local-First Design](#local-first-design)
-  - [Event Sourcing](#event-sourcing-architecture)
+  - [Event Sourcing Architecture](#event-sourcing-architecture)
 - [📚 Resources](#-resources)
 
 ---
@@ -50,7 +48,7 @@
 
 ---
 
-## The Problem
+## ❌ The Problem
 
 ### The Paradox of Password Security
 
@@ -373,11 +371,11 @@ sequenceDiagram
 
 ---
 
-## Module 2: Secret Manager
+### Module 2: Secret Management
 
-### Shamir's Secret Sharing (SSS)
+#### How Secrets Are Split and Stored
 
-#### 🧮 The Cryptographic Foundation
+Module 2 uses **Shamir's Secret Sharing** to distribute secrets across vault members.
 
 Invented by **Adi Shamir** in 1979 (the "S" in RSA)
 
