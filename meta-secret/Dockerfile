@@ -37,7 +37,8 @@ RUN cargo install diesel_cli --no-default-features --features sqlite
 ENV BASE_DIR="/meta-secret-build"
 WORKDIR ${BASE_DIR}
 
-COPY --from=chef-planner /recipe.json .
+# Use committed recipe.json (regenerate with: make generate-recipe)
+COPY recipe.json .
 RUN cargo chef cook --release --recipe-path recipe.json
 
 # --- Prepare DB: run diesel migrations ---

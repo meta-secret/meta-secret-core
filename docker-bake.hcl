@@ -24,8 +24,11 @@ target "meta-server-image" {
   dockerfile = "Dockerfile"
   target     = "meta-server"
   tags       = ["${REGISTRY}/meta-secret-server:latest"]
-  cache-from = ["type=registry,ref=${REGISTRY}/meta-secret-server:cache"]
-  cache-to   = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-server:cache,mode=max"] : []
+  cache-from = [
+    "type=registry,ref=${REGISTRY}/meta-secret-server:cache",
+    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
+  ]
+  cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-server:cache,mode=max"] : []
 }
 
 target "web-image" {
@@ -33,8 +36,11 @@ target "web-image" {
   dockerfile = "Dockerfile"
   target     = "web"
   tags       = ["${REGISTRY}/meta-secret-web:latest"]
-  cache-from = ["type=registry,ref=${REGISTRY}/meta-secret-web:cache"]
-  cache-to   = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-web:cache,mode=max"] : []
+  cache-from = [
+    "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
+    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
+  ]
+  cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-web:cache,mode=max"] : []
 }
 
 target "web-local" {
@@ -58,8 +64,11 @@ target "test" {
   dockerfile = "Dockerfile"
   target     = "test-runner"
   output     = ["type=cacheonly"]
-  cache-from = ["type=registry,ref=${REGISTRY}/meta-secret-core:cache"]
-  cache-to   = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-core:cache,mode=max"] : []
+  cache-from = [
+    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
+    "type=registry,ref=${REGISTRY}/meta-secret-server:cache",
+  ]
+  cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-core:cache,mode=max"] : []
 }
 
 target "generate-recipe" {
