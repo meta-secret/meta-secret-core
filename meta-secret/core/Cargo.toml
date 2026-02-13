@@ -53,13 +53,13 @@ serde-big-array = "0.5.1"
 
 qrcode-generator = "5.0.0"
 rqrr = "0.9.0"
-image = "0.25.5"
+image = "0.25.9"
 
-wasm-bindgen = "0.2.99"
-log = "0.4.26"
+wasm-bindgen = "0.2.108"
+log = "0.4.29"
 
 uuid.workspace = true
 
 [dev-dependencies]
-tokio = { version = "1.44.0", features = ["full"] }
-tempfile = "3.18.0"
+tokio = { version = "1.49.0", features = ["full"] }
+tempfile = "3.25.0"
