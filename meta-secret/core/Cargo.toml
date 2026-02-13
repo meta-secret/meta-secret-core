@@ -52,7 +52,7 @@ secrecy = "0.10.3"
 serde-big-array = "0.5.1"
 
 qrcode-generator = "5.0.0"
-rqrr = "0.9.0"
+rqrr = "0.10.1"
 image = "0.25.9"
 
 wasm-bindgen = "0.2.108"
