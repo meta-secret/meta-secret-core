@@ -88,6 +88,7 @@ COPY . .
 RUN rm -f .cargo/config.toml
 
 WORKDIR /meta-secret-build/wasm
+ENV RUSTC_WRAPPER=""
 RUN wasm-pack build --target web
 
 # Minimal stage to extract just the wasm pkg
