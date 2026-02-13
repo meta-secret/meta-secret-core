@@ -15,10 +15,10 @@ serde.workspace = true
 serde_json.workspace = true
 serde_derive.workspace = true
 
-redb = "2.5.0"
+redb = "2.6.3"
 tracing.workspace = true
 
 [dev-dependencies]
-tempfile = "3.20.0"
+tempfile = "3.25.0"
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 

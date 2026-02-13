@@ -11,7 +11,7 @@ thiserror.workspace = true
 anyhow.workspace = true
 secrecy = "0.10.3"
 
-clap = { version = "4.5.37", features = ["derive"] }
+clap = { version = "4.5.58", features = ["derive"] }
 dialoguer = "0.11.0"
 strum = "0.26"
 strum_macros = "0.26"
