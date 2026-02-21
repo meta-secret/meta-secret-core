@@ -213,6 +213,14 @@ pub struct SecretDistributionData {
     pub secret_message: EncryptedMessage,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SsDeclineData {
+    pub vault_name: VaultName,
+    pub claim_id: ClaimId,
+    pub receiver_id: DeviceId,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SsLogData {

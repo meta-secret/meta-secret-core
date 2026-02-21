@@ -16,6 +16,7 @@ pub enum SsWorkflowDescriptor {
     Recovery(SsRecoveryId),
     /// Allows devices distributing their shares (split operation)
     Distribution(SsDistributionId),
+    Decline(SsRecoveryId),
 }
 
 #[derive(Clone, Debug, PartialEq, From, Serialize, Deserialize)]
@@ -31,6 +32,7 @@ impl ObjectType for SsWorkflowDescriptor {
         let obj_type = match self {
             SsWorkflowDescriptor::Distribution(_) => "SsDistribution",
             SsWorkflowDescriptor::Recovery(_) => "SsRecovery",
+            SsWorkflowDescriptor::Decline(_) => "SsDecline",
         };
 
         String::from(obj_type)
@@ -60,6 +62,7 @@ impl IdString for SsWorkflowDescriptor {
         match self {
             SsWorkflowDescriptor::Distribution(event_id) => event_id.id_str(),
             SsWorkflowDescriptor::Recovery(db_id) => db_id.id_str(),
+            SsWorkflowDescriptor::Decline(db_id) => db_id.id_str(),
         }
     }
 }

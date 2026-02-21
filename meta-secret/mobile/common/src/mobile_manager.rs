@@ -1,4 +1,3 @@
-use std::fmt::format;
 use std::sync::Arc;
 use tracing::info;
 use meta_db_sqlite::db::sqlite_migration::EmbeddedMigrationsTool;
@@ -121,6 +120,10 @@ impl MobileApplicationManager {
     pub async fn decline_recover_mobile(&self, claim_id: ClaimId) -> Result<()> {
         println!("🦀Mobile App Manager: Decline recover mobile wrapper");
         self.app_manager.decline_recover_mobile(claim_id).await
+    }
+
+    pub async fn send_decline_completion(&self, claim_id: ClaimId) -> Result<()> {
+        self.app_manager.send_decline_completion(claim_id).await
     }
 
     pub async fn accept_recover(&self, claim_id: ClaimId) {

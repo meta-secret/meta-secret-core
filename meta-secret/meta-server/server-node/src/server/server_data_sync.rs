@@ -13,13 +13,13 @@ use meta_secret_core::node::db::descriptors::shared_secret_descriptor::SsWorkflo
 use meta_secret_core::node::db::events::generic_log_event::{
     GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
 };
-use meta_secret_core::node::db::events::shared_secret_event::SsLogObject;
+use meta_secret_core::node::db::events::shared_secret_event::{SsLogObject, SsWorkflowObject};
 use meta_secret_core::node::db::events::vault::device_log_event::DeviceLogObject;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use meta_secret_core::node::db::objects::persistent_vault::PersistentVault;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
-use tracing::{info, instrument};
+use tracing::{debug, info, instrument};
 
 #[derive(From)]
 pub struct ServerSyncGateway<Repo: KvLogEventRepo> {
@@ -119,49 +119,69 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             GenericKvLogEvent::SsWorkflow(ss_object) => {
                 self.p_obj.repo.save(ss_object.clone()).await?;
 
-                //don't forget to update claim state?
-                let wf = ss_object.to_distribution_data();
-
-                let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
-                let maybe_ss_log_event = p_ss_log
-                    .find_ss_log_tail_event(wf.vault_name.clone())
-                    .await?;
-                match maybe_ss_log_event {
-                    None => {
-                        bail!("No claim found for distribution: {:?}", wf)
-                    }
-                    Some(ss_event) => {
-                        let ss_log_data = ss_event.to_data();
-                        let maybe_claim = ss_log_data.claims.get(&wf.claim_id.id);
-
-                        match maybe_claim {
+                if let SsWorkflowObject::Decline(decline_event) = &ss_object {
+                    let decline_data = decline_event.value.clone();
+                    let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
+                    let maybe_ss_log_event = p_ss_log
+                        .find_ss_log_tail_event(decline_data.vault_name.clone())
+                        .await?;
+                    let Some(ss_event) = maybe_ss_log_event else {
+                        bail!("No claim found for decline: {:?}", decline_data)
+                    };
+                    let ss_log_data = ss_event.to_data();
+                    let new_ss_log_data =
+                        ss_log_data.decline(decline_data.claim_id, decline_data.receiver_id);
+                    let new_ss_log_event = p_ss_log
+                        .create_new_ss_log_object(
+                            new_ss_log_data,
+                            decline_data.vault_name,
+                        )
+                        .await?;
+                    self.p_obj.repo.save(new_ss_log_event).await?;
+                } else {
+                    let wf = ss_object.to_distribution_data();
+                        let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
+                        let maybe_ss_log_event = p_ss_log
+                            .find_ss_log_tail_event(wf.vault_name.clone())
+                            .await?;
+                        match maybe_ss_log_event {
                             None => {
-                                bail!("Invalid! No claim found for distribution: {:?}", wf)
+                                bail!("No claim found for distribution: {:?}", wf)
                             }
-                            Some(claim) => {
-                                let device_id = match claim.distribution_type {
-                                    SecretDistributionType::Split => wf
-                                        .secret_message
-                                        .cipher_text()
-                                        .channel
-                                        .receiver()
-                                        .to_device_id(),
-                                    SecretDistributionType::Recover => wf
-                                        .secret_message
-                                        .cipher_text()
-                                        .channel
-                                        .sender()
-                                        .to_device_id(),
-                                };
+                            Some(ss_event) => {
+                                let ss_log_data = ss_event.to_data();
+                                let maybe_claim = ss_log_data.claims.get(&wf.claim_id.id);
 
-                                let new_ss_log_data = ss_log_data.sent(wf.claim_id.id, device_id);
-                                let new_ss_log_event = p_ss_log
-                                    .create_new_ss_log_object(new_ss_log_data, wf.vault_name)
-                                    .await?;
-                                self.p_obj.repo.save(new_ss_log_event).await?;
+                                match maybe_claim {
+                                    None => {
+                                        bail!("Invalid! No claim found for distribution: {:?}", wf)
+                                    }
+                                    Some(claim) => {
+                                        let device_id = match claim.distribution_type {
+                                            SecretDistributionType::Split => wf
+                                                .secret_message
+                                                .cipher_text()
+                                                .channel
+                                                .receiver()
+                                                .to_device_id(),
+                                            SecretDistributionType::Recover => wf
+                                                .secret_message
+                                                .cipher_text()
+                                                .channel
+                                                .sender()
+                                                .to_device_id(),
+                                        };
+
+                                        let new_ss_log_data =
+                                            ss_log_data.sent(wf.claim_id.id, device_id);
+                                        let new_ss_log_event = p_ss_log
+                                            .create_new_ss_log_object(new_ss_log_data, wf.vault_name)
+                                            .await?;
+                                        self.p_obj.repo.save(new_ss_log_event).await?;
+                                    }
+                                }
                             }
                         }
-                    }
                 }
             }
             GenericKvLogEvent::DeviceCreds(_) => {
@@ -221,10 +241,12 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             .find_object_events::<SsLogObject>(request.ss_log.clone())
             .await?;
 
+        debug!(
+            ss_log_events_count = ss_log_events.len(),
+            "ss_replication: events from find_object_events for request.ss_log"
+        );
         let maybe_latest_ss_log_state = ss_log_events.last();
         let Some(latest_ss_log_state) = maybe_latest_ss_log_state else {
-            // Return empty result if there are no new events in the db
-            // (no latest element, means - empty collection of events)
             return Ok(vec![]);
         };
 
@@ -307,6 +329,10 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             commit_log.push(new_ss_log_obj.to_generic());
         }
 
+        debug!(
+            commit_log_len = commit_log.len(),
+            "ss_replication: returning commit_log to client"
+        );
         Ok(commit_log)
     }
 }

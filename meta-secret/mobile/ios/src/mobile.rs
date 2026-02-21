@@ -492,6 +492,37 @@ async fn async_decline_recover(claim_id: String) -> *mut c_char {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn send_decline_completion(claim_id_ptr: *const c_char) -> *mut c_char {
+    let claim_id = c_str_to_string(claim_id_ptr);
+    MobileApplicationManager::sync_wrapper(async_send_decline_completion(claim_id))
+}
+
+async fn async_send_decline_completion(claim_id: String) -> *mut c_char {
+    let ts = log_timestamp::log_timestamp_utc();
+    println!("[{ts}] 🦀 Mobile iOS API: send_decline_completion claim {:?}", claim_id);
+    let result = match MobileApplicationManager::get_global_instance() {
+        Some(app_manager) => {
+            let meta_claim_id = ClaimId::from(Id48bit::from(claim_id));
+            match app_manager.send_decline_completion(meta_claim_id).await {
+                Ok(_) => json!({ "success": true }).to_string(),
+                Err(e) => {
+                    println!("🦀 Mobile iOS API: send_decline_completion failed: {}", e);
+                    json!({
+                        "success": false,
+                        "error": format!("Send decline completion failed: {}", e)
+                    }).to_string()
+                }
+            }
+        },
+        None => json!({
+            "success": false,
+            "error": "Send decline completion failed"
+        }).to_string(),
+    };
+    json_to_c_string(&result)
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn show_recovered(secret_id_ptr: *const c_char) -> *mut c_char {
     let ts = log_timestamp::log_timestamp_utc();
     println!("[{ts}] 🦀 Mobile iOS API: show_recovered for {:?}", secret_id_ptr);

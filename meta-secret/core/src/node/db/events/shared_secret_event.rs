@@ -1,4 +1,4 @@
-use crate::node::common::model::secret::{SecretDistributionData, SsClaim, SsLogData};
+use crate::node::common::model::secret::{SecretDistributionData, SsClaim, SsDeclineData, SsLogData};
 use crate::node::db::events::error::LogEventCastError;
 use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
@@ -10,13 +10,9 @@ use anyhow::{bail, Ok};
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SsWorkflowObject {
-    // Contains encrypted secret share for the receiver device
-    // (will be deleted after sending to the receiver).
-    // This is for SecretDistributionType::Recover
     Recovery(KvLogEvent<SecretDistributionData>),
-    // This is a secret share that device keeps for a password (means - Split)
-    // We don't use split, because when a share on a target device, split - is confusing
     Distribution(KvLogEvent<SecretDistributionData>),
+    Decline(KvLogEvent<SsDeclineData>),
 }
 
 impl KeyExtractor for SsWorkflowObject {
@@ -24,6 +20,7 @@ impl KeyExtractor for SsWorkflowObject {
         match self {
             SsWorkflowObject::Distribution(event) => event.key.clone(),
             SsWorkflowObject::Recovery(event) => event.key.clone(),
+            SsWorkflowObject::Decline(event) => event.key.clone(),
         }
     }
 }
@@ -33,6 +30,7 @@ impl SsWorkflowObject {
         match self {
             SsWorkflowObject::Recovery(claim) => claim.value,
             SsWorkflowObject::Distribution(dist) => dist.value,
+            SsWorkflowObject::Decline(_) => panic!("Decline has no distribution data"),
         }
     }
 }
@@ -94,6 +92,7 @@ impl ObjIdExtractor for SsWorkflowObject {
         match self {
             SsWorkflowObject::Distribution(event) => event.key.obj_id.clone(),
             SsWorkflowObject::Recovery(event) => event.key.obj_id.clone(),
+            SsWorkflowObject::Decline(event) => event.key.obj_id.clone(),
         }
     }
 }

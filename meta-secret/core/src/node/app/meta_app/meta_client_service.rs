@@ -87,7 +87,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
 
         match &request {
             GenericAppStateRequest::GetState => {
-                //skip - nothing to do
+                return self.get_app_state().await;
             }
             GenericAppStateRequest::GenerateUserCreds(_) => {
                 self.get_user_creds(&request).await?;

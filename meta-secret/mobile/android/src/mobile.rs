@@ -611,6 +611,44 @@ pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_declineRecover(
     rust_to_java_string(&mut env, result)
 }
 
+#[allow(non_snake_case)]
+#[unsafe(no_mangle)]
+pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_sendDeclineCompletion(
+    mut env: JNIEnv,
+    _: JClass,
+    claim_id: JString,
+) -> jstring {
+    let claim_id = match java_to_rust_string(&mut env, claim_id) {
+        Ok(id) => id,
+        Err(e) => {
+            return rust_to_java_string(&mut env, json!({
+                "success": false,
+                "error": e
+            }).to_string());
+        }
+    };
+    let meta_claim_id = ClaimId::from(Id48bit::from(claim_id));
+    let result = MobileApplicationManager::sync_wrapper(async {
+        match MobileApplicationManager::get_global_instance() {
+            Some(app_manager) => match app_manager.send_decline_completion(meta_claim_id).await {
+                Ok(_) => json!({ "success": true }).to_string(),
+                Err(e) => {
+                    println!("🦀 Mobile Android API: send_decline_completion failed: {}", e);
+                    json!({
+                        "success": false,
+                        "error": format!("Send decline completion failed: {}", e)
+                    }).to_string()
+                }
+            },
+            None => json!({
+                "success": false,
+                "error": "Send decline completion failed"
+            }).to_string(),
+        }
+    });
+    rust_to_java_string(&mut env, result)
+}
+
 #[cfg(test)]
 mod tests {
    
