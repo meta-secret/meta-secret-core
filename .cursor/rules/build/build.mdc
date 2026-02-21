@@ -1,33 +1,50 @@
 ---
 description: Build System
-globs: meta-secret/Earthfile
+globs: docker-bake.hcl,meta-secret/Dockerfile,Makefile
 alwaysApply: false
 ---
 
 ### Build system:
- - there are two two main components in meta-secret:
+ - there are two main components in meta-secret:
    1. [web-cli](mdc:meta-secret/web-cli) - the web client
      1.1. ui - web-ui application
    2. [meta-secret application](mdc:meta-secret/core/src/node) - client and server applications
  - this project uses cargo to build rust code (application code)
- - this project uses earthly as a build system:
-    1. main build file is [Earthfile](mdc:Earthfile)
-    2. after updates in Cargo.toml files, run `earthly +generate-cargo-chef-recipe` to update the recipe.json file
-      which caches all rust dependencies
+ - this project uses docker buildx bake as a build system:
+    1. main build config is [docker-bake.hcl](mdc:docker-bake.hcl) (targets, cache, tags)
+    2. all builds: [meta-secret/Dockerfile](mdc:meta-secret/Dockerfile) (single multi-stage file)
+    3. registry cache per target is configured in docker-bake.hcl
+    4. [Makefile](mdc:Makefile) provides short aliases for all bake targets
+    5. after updates in Cargo.toml files, run `make generate-recipe` to update the recipe.json file
 
 ### Build actions:
 
 #### Run meta-secret tests:
-   cd meta-secret && earthly +test
+   make test
 
-#### Build web-ui:
-   cd meta-secret && earthly +web-build
+#### Build all images (meta-server + web):
+   make build
 
-#### Run web-ui:
-   cd meta-secret && earthly +web-build && earthly +web-run
+#### Build and push all images:
+   make push
+
+#### Build meta-secret server image:
+   make meta-server
+
+#### Build web image:
+   make web
+
+#### Export web-cli dist locally:
+   make web-local
+
+#### Export wasm pkg locally:
+   make wasm-local
 
 #### Update cargo chef recipe:
-   cd meta-secret && earthly +generate-cargo-chef-recipe
+   make generate-recipe
 
-#### Build meta-secret server:
-    cd meta-secret && earthly +build-meta-server-image
+#### Run web-ui locally:
+   make web-run
+
+#### Run taskomatic:
+   make taskomatic-run

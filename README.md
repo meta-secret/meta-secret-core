@@ -123,34 +123,29 @@ If you would like to extract data from QR's
 
 ## Infrastructure Build
 
-### Using Earthly for builds
+The project uses `docker buildx bake` as its build system. All build targets are defined in `docker-bake.hcl`.
 
-The project uses Earthly for its build system. When building components that require API keys (like the AI-assisted development tools), you can provide them in several ways:
+### Build commands
 
-1. **Using a .env file** (simplest approach):
-   ```bash
-   # Copy the example file
-   cp infra/.env.example infra/.env
-   
-   # Edit the .env file with your API key
-   # Then run the build
-   earthly +build-taskomatic-ai
-   ```
+```bash
+# Build and push all images (meta-server + web)
+docker buildx bake --push default
 
-2. **Using command line arguments**:
-   ```bash
-   earthly +build-taskomatic-ai --ANTHROPIC_API_KEY="your_api_key_here"
-   ```
+# Build meta-server image
+docker buildx bake meta-server-image
 
-3. **Using environment variables**:
-   ```bash
-   export ANTHROPIC_API_KEY="your_api_key_here"
-   earthly +build-taskomatic-ai
-   ```
+# Build web image
+docker buildx bake web-image
 
-Earthly will automatically pick up the API key from any of these sources. Command line arguments take precedence over environment variables and .env file values.
+# Run tests
+docker buildx bake test
 
-**Note**: Never commit API keys or credentials to version control. The .env file is included in .gitignore.
+# Export web-cli dist locally
+docker buildx bake web-local
+
+# Build taskomatic-ai
+docker buildx bake taskomatic-ai
+```
 
 <br>
 
@@ -189,10 +184,8 @@ docker run -it --rm \
 
 ## Building the image
 
-To build the image yourself:
-
 ```bash
-earthly +build-taskomatic-ai
+docker buildx bake taskomatic-ai
 ```
 
 ## Issues and improvements

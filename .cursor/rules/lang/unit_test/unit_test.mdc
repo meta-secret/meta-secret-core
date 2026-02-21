@@ -4,7 +4,7 @@ globs: meta-secret/**/*.rs
 alwaysApply: false
 ---
 
-- we use rust version 1.86.0
+- we use rust version 1.93.0
 - write unit tests in the file that is open right now
 - don't create a new file for unit tests
 - the common pre created code for unit tests is in [fixture_util.rs](mdc:meta-secret/core/src/meta_tests/fixture_util.rs)

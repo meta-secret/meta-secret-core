@@ -5,16 +5,10 @@ RUN apt update && apt install -y \
     curl wget git bash-completion libsqlite3-dev
 
 #################### Installation ####################
-#Earthly
-ENV EARTHLY_VERSION="v0.8.15"
-ENV EARTHLY_RELEASE="https://github.com/earthly/earthly/releases/download/${EARTHLY_VERSION}/earthly-linux-amd64"
-RUN wget ${EARTHLY_RELEASE} -O /usr/local/bin/earthly \
-      && chmod +x /usr/local/bin/earthly \
-      && /usr/local/bin/earthly bootstrap --with-autocomplete
 
 #Rust
 ENV PATH="/root/.cargo/bin:${PATH}"
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.86.0
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.93.0
 RUN curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 RUN rustup target add x86_64-unknown-linux-gnu
 

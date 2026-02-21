@@ -8,7 +8,7 @@ use meta_secret_core::node::db::events::object_id::ArtifactId;
 use meta_secret_core::node::db::repo::generic_db::{
     DbCleanUpCommand, DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand,
 };
-use redb::{Database, TableDefinition};
+use redb::{Database, ReadableDatabase, TableDefinition};
 use std::path::Path;
 use tracing::{error, instrument};
 
@@ -83,7 +83,7 @@ impl FindOneQuery for ReDbRepo {
 
         match table.get(key.clone().id_str())? {
             Some(value) => {
-                let data = value.value();
+                let data: Vec<u8> = value.value();
                 let event: GenericKvLogEvent = serde_json::from_slice(data.as_slice())?;
                 Ok(Some(event))
             }

@@ -11,14 +11,13 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - uses: earthly/actions-setup@v1
-        with:
-          version: v0.8.15
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -27,13 +26,8 @@ jobs:
           password: ${{ secrets.META_SECRET_SERVER_DOCKER_PAT }}
 
       - name: Build Web UI
-        working-directory: meta-secret
-        run: |
-          earthly \
-            --ci \
-            --remote-cache=cypherkitty/meta-secret-core:cache \
-            +web-build-local
-        
+        run: make web-local
+
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:

@@ -14,10 +14,10 @@ mobile_only = []
 [dependencies]
 meta-secret-core = { path = "../../core", features = ["mobile"] }
 mobile-common = { path = "../common" }
-once_cell = "1.21.1"
+once_cell = "1.21.3"
 serde_json.workspace = true
-tokio = { version = "1.44.1", features = ["rt", "sync", "time"] }
+tokio = { version = "1.49.0", features = ["rt", "sync", "time"] }
 jni = "0.21.1"
 
 [dev-dependencies]
-tokio = { version = "1.44.1", features = ["full"] }
+tokio = { version = "1.49.0", features = ["full"] }
