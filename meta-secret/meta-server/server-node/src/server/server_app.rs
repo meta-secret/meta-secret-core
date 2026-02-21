@@ -150,9 +150,11 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                         }
                         Some(ss_log_event) => {
                             let ss_log_data = ss_log_event.to_data();
-                            let updated_ss_log_data = ss_log_data.complete(
+                            let updated_ss_log_data = ss_log_data.complete_with_receiver_status(
                                 recovery_completion.recovery_id.claim_id.id,
                                 recovery_completion.recovery_id.sender,
+                                recovery_completion.recovery_id.distribution_id.receiver,
+                                recovery_completion.receiver_status,
                             );
 
                             let p_ss = PersistentSharedSecret::from(self.p_obj.clone());

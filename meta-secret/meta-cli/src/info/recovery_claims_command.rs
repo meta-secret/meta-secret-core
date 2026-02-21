@@ -49,6 +49,7 @@ impl InfoCommandTrait for RecoveryClaimsInfoCommand {
                                 SsDistributionStatus::Pending => "Pending",
                                 SsDistributionStatus::Sent => "Sent",
                                 SsDistributionStatus::Delivered => "Delivered",
+                                SsDistributionStatus::Declined => "Declined",
                             });
 
                         receivers.push(json!({

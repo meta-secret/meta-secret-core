@@ -124,6 +124,8 @@ pub enum SsDistributionStatus {
     Sent,
     /// The receiver device has received the secret
     Delivered,
+    /// The receiver device has declined the recovery request
+    Declined,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -144,6 +146,13 @@ impl SsDistributionCompositeStatus {
         self
     }
 
+    pub fn decline(mut self, device_id: DeviceId) -> Self {
+        println!("🦀 Insert decline for device_id: {:?}", device_id);
+        self.statuses
+            .insert(device_id, SsDistributionStatus::Declined);
+        self
+    }
+
     pub fn get(&self, device_id: &DeviceId) -> Option<&SsDistributionStatus> {
         self.statuses.get(device_id)
     }
@@ -159,10 +168,18 @@ impl SsDistributionCompositeStatus {
             .values()
             .any(|dist_status| matches!(dist_status, SsDistributionStatus::Sent));
 
+        let is_declined = self
+            .statuses
+            .values()
+            .any(|dist_status| matches!(dist_status, SsDistributionStatus::Declined));
+
+
         if is_pending {
             SsDistributionStatus::Pending
         } else if is_sent {
             SsDistributionStatus::Sent
+        } else if is_declined {
+            return SsDistributionStatus::Declined
         } else {
             SsDistributionStatus::Delivered
         }
@@ -203,7 +220,7 @@ pub struct SsLogData {
 }
 
 impl SsLogData {
-    pub fn find_recovery_claim(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
+    pub fn find_recovery_claim_id(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
         let mut claim_id = None;
         for (_, claim) in self.claims.iter() {
             let SecretDistributionType::Recover = claim.distribution_type else {
@@ -218,20 +235,67 @@ impl SsLogData {
 
             match claim.status.status() {
                 SsDistributionStatus::Pending => {
+                    println!("🦀 Founded claim status: Pending");
                     continue;
                 }
                 SsDistributionStatus::Sent => {
+                    println!("🦀 Founded claim status: Sent");
                     claim_id = Some(claim.id.clone());
                     break;
                 }
                 SsDistributionStatus::Delivered => {
+                    println!("🦀 Founded claim status: Delivered");
                     claim_id = Some(claim.id.clone());
                     break;
+                }
+                SsDistributionStatus::Declined => {
+                    println!("🦀 Founded claim status: Declined");
+                    continue;
                 }
             }
         }
 
         claim_id
+    }
+
+    pub fn find_recovery_claim(&self, pass_id: &MetaPasswordId) -> Option<SsClaim> {
+        let mut result_claim = None;
+        for (_, claim) in self.claims.iter() {
+            let SecretDistributionType::Recover = claim.distribution_type else {
+                continue;
+            };
+
+            let claim_pass_id = &claim.dist_claim_id.pass_id;
+
+            if !pass_id.eq(claim_pass_id) {
+                continue;
+            }
+
+            match claim.status.status() {
+                SsDistributionStatus::Pending => {
+                    println!("🦀 Founded claim status: Pending");
+                    result_claim = Some(claim.clone());
+                    break;
+                }
+                SsDistributionStatus::Sent => {
+                    println!("🦀 Founded claim status: Sent");
+                    result_claim= Some(claim.clone());
+                    break;
+                }
+                SsDistributionStatus::Delivered => {
+                    println!("🦀 Founded claim status: Delivered");
+                    result_claim = Some(claim.clone());
+                    break;
+                }
+                SsDistributionStatus::Declined => {
+                    println!("🦀 Founded claim status: Declined");
+                    result_claim = Some(claim.clone());
+                    break;
+                }
+            }
+        }
+
+        result_claim
     }
 }
 
@@ -258,6 +322,43 @@ impl SsLogData {
                 // Insert the updated claim back into the hashmap
                 self.claims.insert(claim_id, claim);
             }
+        }
+
+        self
+    }
+
+    /// Complete recovery with specific receiver status (Sent for accept, Declined for decline)
+    pub fn complete_with_receiver_status(
+        mut self, 
+        claim_id: ClaimId, 
+        sender_id: DeviceId, 
+        receiver_id: DeviceId,
+        receiver_status: SsDistributionStatus,
+    ) -> Self {
+        let maybe_claim = self.claims.remove(&claim_id);
+
+        if let Some(mut claim) = maybe_claim {
+            // Set receiver status (Sent or Declined)
+            claim.status.statuses.insert(receiver_id, receiver_status);
+            // Set sender status to Delivered
+            claim.status = claim.status.complete(sender_id);
+
+            if claim.status.status() != SsDistributionStatus::Delivered {
+                // Insert the updated claim back into the hashmap
+                self.claims.insert(claim_id, claim);
+            }
+        }
+
+        self
+    }
+
+    pub fn decline(mut self, claim_id: ClaimId, device_id: DeviceId) -> Self {
+        let maybe_claim = self.claims.remove(&claim_id);
+
+        if let Some(mut claim) = maybe_claim {
+            claim.status = claim.status.decline(device_id);
+            // Keep the claim with Declined status so the sender can see the rejection
+            self.claims.insert(claim_id, claim);
         }
 
         self

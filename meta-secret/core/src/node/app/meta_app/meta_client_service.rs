@@ -355,6 +355,34 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         }
     }
 
+    pub async fn decline_recover(&self, claim_id: ClaimId) -> Result<()> {
+        println!("🦀 Meta Client Service: decline claim_id: {:?}", claim_id);
+        match &self.get_app_state().await? {
+            ApplicationState::Local(_) => {
+                bail!("Invalid state. Local App State")
+            }
+            ApplicationState::Vault(vault_info) => match vault_info {
+                VaultFullInfo::NotExists(_) => {
+                    bail!("Invalid state. Vault doesn't exist")
+                }
+                VaultFullInfo::Outsider(_) => {
+                    bail!("Invalid state. User is outsider")
+                }
+                VaultFullInfo::Member(_) => {
+                    let user_creds = self.find_user_creds().await?;
+
+                    let orchestrator = MetaOrchestrator {
+                        p_obj: self.sync_gateway.p_obj.clone(),
+                        user_creds,
+                    };
+
+                    orchestrator.decline_recover(claim_id).await?;
+                    Ok(())
+                }
+            },
+        }
+    }
+
     pub async fn update_membership(
         &self,
         join_request: JoinClusterEvent,

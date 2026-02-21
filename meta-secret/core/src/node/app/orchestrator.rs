@@ -90,6 +90,29 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
         Ok(())
     }
 
+    pub async fn decline_recover(&self, claim_id: ClaimId) -> Result<()> {
+        println!("🦀 Orchestrator: decline claim_id: {:?}", claim_id);
+        let local_device_id = self.user_creds.device_id().clone();
+
+        let ss_log_data = self.get_ss_log_data().await?;
+
+        let Some(claim) = ss_log_data.claims.get(&claim_id) else {
+            bail!("Claim not found: {:?}", claim_id);
+        };
+
+        let mut updated_claim = claim.clone();
+        println!("🦀 Orchestrator: local_device_id: {:?}", local_device_id);
+        updated_claim.status = updated_claim.status.decline(local_device_id);
+        println!("🦀 Orchestrator: updated_claim status: {:?}", updated_claim.status);
+
+        let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
+        p_ss.save_ss_log_event(updated_claim).await?;
+
+        debug!("Declined recovery request for claim: {:?}", claim_id);
+
+        Ok(())
+    }
+
     pub async fn update_membership(
         &self,
         join_request: JoinClusterEvent,

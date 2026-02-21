@@ -188,7 +188,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
             return None;
         };
 
-        member.ss_claims.find_recovery_claim(pass_id)
+        member.ss_claims.find_recovery_claim_id(pass_id)
     }
 
     #[instrument(name = "MetaClientService", skip_all)]
