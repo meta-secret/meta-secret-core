@@ -173,16 +173,26 @@ impl SsDistributionCompositeStatus {
             .values()
             .any(|dist_status| matches!(dist_status, SsDistributionStatus::Declined));
 
-
-        if is_pending {
-            SsDistributionStatus::Pending
-        } else if is_sent {
+        // TODO: k-of-N — replace with count(Sent) + count(Delivered) >= threshold
+        if is_sent {
             SsDistributionStatus::Sent
+        } else if is_pending {
+            SsDistributionStatus::Pending
         } else if is_declined {
-            return SsDistributionStatus::Declined
+            SsDistributionStatus::Declined
         } else {
             SsDistributionStatus::Delivered
         }
+    }
+
+    pub fn decline_remaining_pending(mut self) -> Self {
+        // TODO: k-of-N — call only when count(Sent) >= threshold instead of any(Sent)
+        for status in self.statuses.values_mut() {
+            if matches!(status, SsDistributionStatus::Pending) {
+                *status = SsDistributionStatus::Declined;
+            }
+        }
+        self
     }
 }
 
@@ -313,7 +323,18 @@ impl SsLogData {
 
         if let Some(mut claim) = maybe_claim {
             claim.status = claim.status.sent(device_id);
-            // Insert the updated claim back into the hashmap
+            self.claims.insert(claim_id, claim);
+        }
+
+        self
+    }
+
+    pub fn decline_remaining_pending(mut self, claim_id: ClaimId) -> Self {
+        let maybe_claim = self.claims.remove(&claim_id);
+
+        if let Some(mut claim) = maybe_claim {
+            // TODO: k-of-N — call only when count(Sent) >= threshold
+            claim.status = claim.status.decline_remaining_pending();
             self.claims.insert(claim_id, claim);
         }
 
