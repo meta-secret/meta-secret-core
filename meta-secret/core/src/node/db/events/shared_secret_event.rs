@@ -26,11 +26,11 @@ impl KeyExtractor for SsWorkflowObject {
 }
 
 impl SsWorkflowObject {
-    pub fn to_distribution_data(self) -> SecretDistributionData {
+    pub fn to_distribution_data(self) -> Result<SecretDistributionData, anyhow::Error> {
         match self {
-            SsWorkflowObject::Recovery(claim) => claim.value,
-            SsWorkflowObject::Distribution(dist) => dist.value,
-            SsWorkflowObject::Decline(_) => panic!("Decline has no distribution data"),
+            SsWorkflowObject::Recovery(claim) => Ok(claim.value),
+            SsWorkflowObject::Distribution(dist) => Ok(dist.value),
+            SsWorkflowObject::Decline(_) => bail!("Decline has no distribution data"),
         }
     }
 }

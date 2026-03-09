@@ -433,7 +433,7 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
             .find_tail_event(desc)
             .await?
             .ok_or_else(|| anyhow::anyhow!("Distribution not found for single device"))?
-            .to_distribution_data();
+            .to_distribution_data()?;
         
         let transport_sk = &user_creds.device_creds.secret_box.transport.sk;
         let decrypted = dist.secret_message.cipher_text().decrypt(transport_sk)?;

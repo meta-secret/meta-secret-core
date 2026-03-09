@@ -139,7 +139,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                         .await?;
                     self.p_obj.repo.save(new_ss_log_event).await?;
                 } else {
-                    let wf = ss_object.to_distribution_data();
+                    let wf = ss_object.to_distribution_data()?;
                         let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
                         let maybe_ss_log_event = p_ss_log
                             .find_ss_log_tail_event(wf.vault_name.clone())
