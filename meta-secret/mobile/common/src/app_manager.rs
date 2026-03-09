@@ -15,7 +15,7 @@ use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::meta_tracing::client_span;
 use meta_secret_core::node::common::model::device::common::DeviceName;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
-use meta_secret_core::node::common::model::secret::{ClaimId, SsClaim, SsDistributionId, SsDistributionStatus, SsRecoveryId};
+use meta_secret_core::node::common::model::secret::{ClaimId, SecretDistributionType, SsClaim, SsDistributionId, SsDistributionStatus, SsRecoveryId};
 use meta_secret_core::node::common::model::user::common::{UserData, UserDataOutsiderStatus};
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
@@ -29,6 +29,44 @@ use meta_secret_core::secret::shared_secret::PlainText;
 use std::thread;
 use meta_secret_core::node::common::model::user::user_creds::UserCreds;
 use crate::log_timestamp;
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum RecoveryStage {
+    Stale,
+    OneSent,
+    Waiting,
+    InProgress,
+}
+
+fn recovery_stage_from_claim(claim: &SsClaim) -> RecoveryStage {
+    let has_pending = claim
+        .status
+        .statuses
+        .values()
+        .any(|s| matches!(s, SsDistributionStatus::Pending));
+    let has_sent = claim
+        .status
+        .statuses
+        .values()
+        .any(|s| matches!(s, SsDistributionStatus::Sent));
+    match (has_pending, has_sent) {
+        (true, true) => RecoveryStage::InProgress,
+        (true, false) => RecoveryStage::Waiting,
+        (false, true) => RecoveryStage::OneSent,
+        (false, false) => RecoveryStage::Stale,
+    }
+}
+
+fn claim_selection_key(
+    claim: &SsClaim,
+    my_device_id: &meta_secret_core::node::common::model::device::common::DeviceId,
+) -> (bool, RecoveryStage, String) {
+    let sender_status = claim.status.get(my_device_id);
+    let is_active = sender_status != Some(&SsDistributionStatus::Delivered);
+    let stage = recovery_stage_from_claim(claim);
+    let tie_breaker = claim.id.0.text.clone();
+    (is_active, stage, tie_breaker)
+}
 
 pub struct ApplicationManager<Repo: KvLogEventRepo + Send + Sync, SyncP: SyncProtocol + Send + Sync> {
     pub meta_client_service: Arc<MetaClientService<Repo, SyncP>>,
@@ -412,6 +450,10 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
     }
 
     pub async fn find_claim_id_by_pass_id(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
+        let user_creds = match self.meta_client_service.find_user_creds().await {
+            Ok(user_creds) => user_creds,
+            Err(_) => return None,
+        };
         let state = match self.get_state().await {
             Ok(state) => state,
             Err(_) => return None,
@@ -421,10 +463,26 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
             return None;
         };
         println!("🦀 Find claim id by pass id. State is Member");
-        member.ss_claims.find_recovery_claim_id(pass_id)
+        let my_device_id = user_creds.device_id();
+        let selected = member
+            .ss_claims
+            .claims
+            .values()
+            .filter(|claim| {
+                matches!(claim.distribution_type, SecretDistributionType::Recover)
+                    && claim.dist_claim_id.pass_id.eq(pass_id)
+                    && claim.sender.eq(my_device_id)
+            })
+            .max_by_key(|claim| claim_selection_key(claim, my_device_id));
+
+        selected.map(|claim| claim.id.clone())
     }
 
     pub async fn find_claim_by_pass_id(&self, pass_id: &MetaPasswordId) -> Option<SsClaim> {
+        let user_creds = match self.meta_client_service.find_user_creds().await {
+            Ok(user_creds) => user_creds,
+            Err(_) => return None,
+        };
         let state = match self.get_state().await {
             Ok(state) => state,
             Err(_) => return None,
@@ -434,7 +492,18 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
             return None;
         };
         println!("🦀 Find claim by pass id. State is Member");
-        member.ss_claims.find_recovery_claim(pass_id)
+        let my_device_id = user_creds.device_id();
+        member
+            .ss_claims
+            .claims
+            .values()
+            .filter(|claim| {
+                matches!(claim.distribution_type, SecretDistributionType::Recover)
+                    && claim.dist_claim_id.pass_id.eq(pass_id)
+                    && claim.sender.eq(my_device_id)
+            })
+            .max_by_key(|claim| claim_selection_key(claim, my_device_id))
+            .cloned()
     }
 
     #[instrument(name = "MetaClientService", skip_all)]

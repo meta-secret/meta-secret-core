@@ -534,14 +534,22 @@ async fn async_show_recovered(secret_id: String) -> *mut c_char {
     let result = match MobileApplicationManager::get_global_instance() {
         Some(app_manager) => {
             let meta_password_id = MetaPasswordId::build_from_str(&secret_id);
-
-            let secret = app_manager.show_recovered(&meta_password_id).await;
-            json!({
-                "success": true,
-                "message": {
-                    "secret": secret
+            match app_manager.show_recovered(&meta_password_id).await {
+                Ok(secret) => {
+                    json!({
+                        "success": true,
+                        "message": {
+                            "secret": secret
+                        }
+                    }).to_string()
                 }
-            }).to_string()
+                Err(e) => {
+                    json!({
+                        "success": false,
+                        "error": format!("{}", e)
+                    }).to_string()
+                }
+            }
         },
         None => {
             json!({

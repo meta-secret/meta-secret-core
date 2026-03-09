@@ -133,12 +133,9 @@ impl MobileApplicationManager {
         };
     }
 
-    pub async fn show_recovered(&self, pass_id: &MetaPasswordId) -> String {
-        self.app_manager
-            .show_recovered(pass_id.clone())
-            .await
-            .unwrap()
-            .text
+    pub async fn show_recovered(&self, pass_id: &MetaPasswordId) -> Result<String> {
+        let plain_text = self.app_manager.show_recovered(pass_id.clone()).await?;
+        Ok(plain_text.text)
     }
 
     pub async fn clean_up_database(&self) {

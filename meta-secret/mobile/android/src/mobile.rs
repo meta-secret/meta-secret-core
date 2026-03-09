@@ -541,13 +541,22 @@ pub extern "C" fn Java_com_metasecret_core_MetaSecretNative_showRecovered(
     let result = MobileApplicationManager::sync_wrapper(async {
         match MobileApplicationManager::get_global_instance() {
             Some(app_manager) => {
-                let secret =  app_manager.show_recovered(&meta_password_id).await;
-                json!({
-                    "success": true,
-                    "message": {
-                        "secret": secret
+                match app_manager.show_recovered(&meta_password_id).await {
+                    Ok(secret) => {
+                        json!({
+                            "success": true,
+                            "message": {
+                                "secret": secret
+                            }
+                        }).to_string()
                     }
-                }).to_string()
+                    Err(e) => {
+                        json!({
+                            "success": false,
+                            "error": format!("{}", e)
+                        }).to_string()
+                    }
+                }
             },
             None => {
                 json!({
