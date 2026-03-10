@@ -41,7 +41,6 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
 
     pub async fn get_recoveries(&self, ss_claim: SsClaim) -> Result<Vec<SsWorkflowObject>> {
         let mut events = vec![];
-        // Synchronize claims (recovery requests)
         for claim_id in ss_claim.recovery_db_ids() {
             let claim_id_desc = SsWorkflowDescriptor::Recovery(claim_id);
             let tail_event = self.p_obj.find_tail_event(claim_id_desc).await?;
@@ -49,7 +48,18 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
                 events.push(event);
             }
         }
+        Ok(events)
+    }
 
+    pub async fn get_declines(&self, ss_claim: SsClaim) -> Result<Vec<SsWorkflowObject>> {
+        let mut events = vec![];
+        for recovery_id in ss_claim.recovery_db_ids() {
+            let desc = SsWorkflowDescriptor::Decline(recovery_id);
+            let tail_event = self.p_obj.find_tail_event(desc).await?;
+            if let Some(event) = tail_event {
+                events.push(event);
+            }
+        }
         Ok(events)
     }
 

@@ -135,6 +135,7 @@ impl InfoCommandTrait for DefaultInfoCommand {
                                         SsDistributionStatus::Pending => "Pending",
                                         SsDistributionStatus::Sent => "Sent",
                                         SsDistributionStatus::Delivered => "Delivered",
+                                        SsDistributionStatus::Declined => "Declined",
                                     });
 
                             receivers.push(json!({

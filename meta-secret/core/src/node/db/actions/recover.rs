@@ -96,13 +96,13 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
             .find_tail_event(desc)
             .await?
             .unwrap()
-            .to_distribution_data();
+            .to_distribution_data()?;
 
         // Extract all SecretDistributionData objects from recoveries and dists
         let recovery_data: Vec<SecretDistributionData> = recoveries
             .into_iter()
             .map(|r| r.to_distribution_data())
-            .collect();
+            .collect::<Result<Vec<_>, _>>()?;
 
         let distribution_data = vec![dist];
 

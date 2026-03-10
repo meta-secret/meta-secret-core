@@ -1,5 +1,5 @@
 use crate::node::common::model::secret::{
-    ClaimId, SecretDistributionData, SecretDistributionType, SsClaim, SsLogData,
+    ClaimId, SecretDistributionData, SecretDistributionType, SsClaim, SsDeclineData, SsLogData,
 };
 use crate::node::common::model::user::common::{UserDataMember, UserMembership};
 use crate::node::common::model::user::user_creds::UserCreds;
@@ -90,6 +90,47 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
         Ok(())
     }
 
+    pub async fn decline_recover(&self, claim_id: ClaimId) -> Result<()> {
+        println!("🦀 Orchestrator: decline claim_id: {:?}", claim_id);
+        let local_device_id = self.user_creds.device_id().clone();
+
+        let ss_log_data = self.get_ss_log_data().await?;
+
+        let Some(claim) = ss_log_data.claims.get(&claim_id) else {
+            bail!("Claim not found: {:?}", claim_id);
+        };
+
+        let mut updated_claim = claim.clone();
+        println!("🦀 Orchestrator: local_device_id: {:?}", local_device_id);
+        updated_claim.status = updated_claim.status.decline(local_device_id.clone());
+        println!("🦀 Orchestrator: updated_claim status: {:?}", updated_claim.status);
+
+        let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
+        p_ss.save_ss_log_event(updated_claim).await?;
+
+        for recovery_db_id in claim.recovery_db_ids() {
+            if recovery_db_id.distribution_id.receiver.eq(&local_device_id) {
+                let decline_data = SsDeclineData {
+                    vault_name: claim.vault_name.clone(),
+                    claim_id: claim.id.clone(),
+                    receiver_id: local_device_id.clone(),
+                };
+                let key =
+                    KvKey::from(SsWorkflowDescriptor::Decline(recovery_db_id.clone()));
+                let decline_wf = SsWorkflowObject::Decline(KvLogEvent {
+                    key,
+                    value: decline_data,
+                });
+                self.p_obj.repo.save(decline_wf).await?;
+                break;
+            }
+        }
+
+        debug!("Declined recovery request for claim: {:?}", claim_id);
+
+        Ok(())
+    }
+
     pub async fn update_membership(
         &self,
         join_request: JoinClusterEvent,
@@ -167,7 +208,8 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
         Ok(ss_log_data)
     }
 
-    /// The device has to send recovery request to the claims' sender
+    /// When the receiver accepts, re-encrypts its share for the claim sender and saves
+    /// the recovery workflow locally. Sync will push it to the server so the sender can pull and decrypt.
     async fn handle_recover(&self, vault: VaultData, claim: SsClaim) -> Result<()> {
         let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
 

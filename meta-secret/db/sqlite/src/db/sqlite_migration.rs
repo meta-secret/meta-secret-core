@@ -1,4 +1,4 @@
-use diesel::{Connection, SqliteConnection};
+use diesel::{Connection, RunQueryDsl, SqliteConnection};
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use meta_secret_core::crypto::utils::UuidUrlEnc;
 use meta_secret_core::node::common::model::IdString;
@@ -12,6 +12,7 @@ pub struct EmbeddedMigrationsTool {
 impl EmbeddedMigrationsTool {
     pub fn migrate(&self) {
         let conn = &mut SqliteConnection::establish(self.db_url.as_str()).unwrap();
+        diesel::sql_query("PRAGMA busy_timeout = 5000").execute(conn).unwrap();
         conn.run_pending_migrations(MIGRATIONS).unwrap();
     }
 }

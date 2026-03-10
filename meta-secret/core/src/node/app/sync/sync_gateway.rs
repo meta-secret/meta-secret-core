@@ -178,6 +178,10 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         let DataEventsResponse(data_sync_events) =
             self.sync.send(ss_sync_request).await?.to_data()?;
 
+        debug!(
+            ss_events_count = data_sync_events.len(),
+            "sync_ss_log: events received from server"
+        );
         for new_event in data_sync_events {
             debug!(
                 "id: {:?}. Sync gateway. New ss event from server: {:?}",
@@ -230,6 +234,25 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                             };
                             self.sync.send(request).await?;
                             self.p_obj.repo.delete(obj_id).await;
+                        }
+
+                        if claim.status.status() == SsDistributionStatus::Declined {
+                            let decline_events = p_ss.get_declines(claim.clone()).await?;
+                            for wf_event in decline_events {
+                                let obj_id = wf_event.obj_id();
+                                let request = {
+                                    let event = WriteSyncRequest::Event(wf_event.to_generic());
+                                    SyncRequest::Write(Box::from(event))
+                                };
+                                match self.sync.send(request).await {
+                                    Ok(_) => {
+                                        self.p_obj.repo.delete(obj_id).await;
+                                    }
+                                    Err(e) => {
+                                        debug!("Failed to push Decline workflow, will retry: {:?}", e);
+                                    }
+                                }
+                            }
                         }
                     }
                 };

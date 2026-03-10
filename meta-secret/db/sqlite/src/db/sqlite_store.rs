@@ -31,12 +31,18 @@ pub enum SqliteDbError {
     },
 }
 
+fn establish_connection(conn_url: &str) -> anyhow::Result<SqliteConnection> {
+    let mut conn = SqliteConnection::establish(conn_url)?;
+    diesel::sql_query("PRAGMA busy_timeout = 5000").execute(&mut conn)?;
+    Ok(conn)
+}
+
 impl KvLogEventRepo for SqlIteRepo {}
 
 #[async_trait(? Send)]
 impl SaveCommand for SqlIteRepo {
     async fn save<T: ToGenericEvent>(&self, value: T) -> anyhow::Result<ArtifactId> {
-        let mut conn = SqliteConnection::establish(self.conn_url.as_str())?;
+        let mut conn = establish_connection(self.conn_url.as_str())?;
 
         let generic_value = value.to_generic();
         diesel::insert_into(schema_log::table)
@@ -49,7 +55,7 @@ impl SaveCommand for SqlIteRepo {
 #[async_trait(? Send)]
 impl FindOneQuery for SqlIteRepo {
     async fn find_one(&self, key: ArtifactId) -> anyhow::Result<Option<GenericKvLogEvent>> {
-        let mut conn = SqliteConnection::establish(self.conn_url.as_str())?;
+        let mut conn = establish_connection(self.conn_url.as_str())?;
 
         let maybe_db_event = dsl::db_commit_log
             .filter(dsl::key_id.eq(key.id_str()))
@@ -74,7 +80,7 @@ impl FindOneQuery for SqlIteRepo {
 #[async_trait(? Send)]
 impl DeleteCommand for SqlIteRepo {
     async fn delete(&self, key: ArtifactId) {
-        let mut conn = SqliteConnection::establish(self.conn_url.as_str()).unwrap();
+        let mut conn = establish_connection(self.conn_url.as_str()).unwrap();
 
         let event = dsl::db_commit_log.filter(dsl::key_id.eq(key.id_str()));
 
@@ -88,7 +94,7 @@ impl DeleteCommand for SqlIteRepo {
 impl DbCleanUpCommand for SqlIteRepo {
     #[instrument(skip_all)]
     async fn db_clean_up(&self) {
-        let mut conn = match SqliteConnection::establish(self.conn_url.as_str()) {
+        let mut conn = match establish_connection(self.conn_url.as_str()) {
             Ok(conn) => conn,
             Err(err) => {
                 error!("Failed to establish SQLite connection: {:?}", err);

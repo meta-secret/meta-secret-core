@@ -1,4 +1,4 @@
-use crate::node::common::model::secret::SsRecoveryId;
+use crate::node::common::model::secret::{SsDistributionStatus, SsRecoveryId};
 use crate::node::common::model::user::common::UserData;
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
@@ -35,6 +35,13 @@ pub enum SyncRequest {
 pub struct SsRecoveryCompletion {
     pub vault_name: VaultName,
     pub recovery_id: SsRecoveryId,
+    /// Status to set for receiver (Sent for accept, Declined for decline)
+    #[serde(default = "default_receiver_status")]
+    pub receiver_status: SsDistributionStatus,
+}
+
+fn default_receiver_status() -> SsDistributionStatus {
+    SsDistributionStatus::Sent
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

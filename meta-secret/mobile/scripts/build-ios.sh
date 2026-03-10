@@ -1,6 +1,7 @@
 #!/bin/bash
 set -e
 
+export IPHONEOS_DEPLOYMENT_TARGET=16.0
 cd "$(dirname "$0")/.."
 
 if ! command -v cbindgen &> /dev/null; then

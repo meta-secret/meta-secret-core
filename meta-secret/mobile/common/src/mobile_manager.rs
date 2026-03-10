@@ -5,7 +5,7 @@ use meta_db_sqlite::db::sqlite_store::SqlIteRepo;
 use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
-use meta_secret_core::node::common::model::secret::ClaimId;
+use meta_secret_core::node::common::model::secret::{ClaimId, SsClaim};
 use meta_secret_core::node::common::model::{ApplicationState};
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
@@ -51,11 +51,12 @@ impl MobileApplicationManager {
         global.is_some()
     }
     
-    pub async fn init_ios(master_key: TransportSk) -> anyhow::Result<MobileApplicationManager> {
+    pub async fn init_ios(master_key: TransportSk, raw_master_key: String) -> anyhow::Result<MobileApplicationManager> {
         let home_dir = std::env::var("HOME").expect("Unable to get HOME directory");
+        let db_name = format!("meta-secret-{raw_master_key}.db");
         let db_path = PathBuf::from(home_dir)
             .join("Documents")
-            .join("meta-secret.db")
+            .join(db_name)
             .to_string_lossy()
             .to_string();
         println!("🦀 iOS database path: {}", db_path);
@@ -63,9 +64,9 @@ impl MobileApplicationManager {
         Self::init(master_key, &db_path).await
     }
     
-    pub async fn init_android(master_key: TransportSk) -> anyhow::Result<MobileApplicationManager> {
-        let db_path = "/data/data/com.metasecret.core/databases/meta-secret.db";
-        Self::init(master_key, db_path).await
+    pub async fn init_android(master_key: TransportSk, raw_master_key: String) -> anyhow::Result<MobileApplicationManager> {
+        let db_path = format!("/data/data/com.metasecret.core/databases/meta-secret-{raw_master_key}.db");
+        Self::init(master_key, &db_path).await
     }
 
     pub async fn get_state(&self) -> anyhow::Result<ApplicationState> {
@@ -116,6 +117,15 @@ impl MobileApplicationManager {
         self.app_manager.accept_recover_mobile(claim_id).await
     }
 
+    pub async fn decline_recover_mobile(&self, claim_id: ClaimId) -> Result<()> {
+        println!("🦀Mobile App Manager: Decline recover mobile wrapper");
+        self.app_manager.decline_recover_mobile(claim_id).await
+    }
+
+    pub async fn send_decline_completion(&self, claim_id: ClaimId) -> Result<()> {
+        self.app_manager.send_decline_completion(claim_id).await
+    }
+
     pub async fn accept_recover(&self, claim_id: ClaimId) {
         match self.app_manager.accept_recover(claim_id).await {
             Ok(res) => {res}
@@ -123,20 +133,20 @@ impl MobileApplicationManager {
         };
     }
 
-    pub async fn show_recovered(&self, pass_id: &MetaPasswordId) -> String {
-        info!("Show recovered pass id: {:?}", pass_id);
-        self.app_manager
-            .show_recovered(pass_id.clone())
-            .await
-            .unwrap()
-            .text
+    pub async fn show_recovered(&self, pass_id: &MetaPasswordId) -> Result<String> {
+        let plain_text = self.app_manager.show_recovered(pass_id.clone()).await?;
+        Ok(plain_text.text)
     }
 
     pub async fn clean_up_database(&self) {
         self.app_manager.clean_up_database().await
     }
 
-    pub async fn find_claim_by_pass_id(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
+    pub async fn find_claim_id_by_pass_id(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
+        self.app_manager.find_claim_id_by_pass_id(pass_id).await
+    }
+
+    pub async fn find_claim_by_pass_id(&self, pass_id: &MetaPasswordId) -> Option<SsClaim> {
         self.app_manager.find_claim_by_pass_id(pass_id).await
     }
 } 
