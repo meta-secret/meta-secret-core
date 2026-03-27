@@ -72,6 +72,79 @@ sequenceDiagram
     MetaSecret ->> User: show password
 ```
 
+## AI-assisted development
+
+This repository defines a **phased workflow** (plan → implement → test → verify → review → release) with **human approval** between phases. Canonical rules live in markdown at the **repository root**; agents and skills mirror the same discipline. **Cargo workspace root:** `meta-secret/` (see [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md)).
+
+### Read first (everyone)
+
+| Document | Purpose |
+|----------|---------|
+| [CLAUDE.md](CLAUDE.md) | How AI tools should behave in this repo (short index). |
+| [WORKFLOW.md](WORKFLOW.md) | Full pipeline: agents, approvals, optional steps, skills table. |
+| [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) | Workspace layout, crates, build/test commands, link to mobile consumer. |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Crates, crypto boundary, server vs client, FFI. |
+| [SECURITY.md](SECURITY.md) | Keys, logging, crypto hygiene. |
+| [CODE_STYLE.md](CODE_STYLE.md) | Rust conventions. |
+
+Skills live under [`.claude/skills/`](.claude/skills/). Subagent prompts: [`.cursor/agents/`](.cursor/agents/) and [`.claude/agents/`](.claude/agents/).
+
+---
+
+### Claude Code
+
+1. Open **this repo** in Claude Code so it loads [`.claude/`](.claude/).
+2. **Slash commands:** [`.claude/commands/`](.claude/commands/).
+
+**Start a full delivery chain**
+
+| Command | When |
+|---------|------|
+| `/workflow-from-issue` | GitLab issue number or URL (`glab` available). |
+| `/workflow-from-prompt` | Free-text feature/bug description only. |
+
+**Run a single phase**
+
+| Command | Phase |
+|---------|--------|
+| `/only-issue-coordinator` | GitLab issue summary |
+| `/only-planner` | Plan only (`feature-planner`) |
+| `/only-implementer` | Implement approved plan |
+| `/only-test-author` | Add/update tests |
+| `/only-test-verifier` | Run tests / interpret report |
+| `/only-debug-rca` | Debug / root cause |
+| `/only-reviewer` | Code review (read-only) |
+| `/only-release-notes` | MR / changelog text |
+| `/only-release-manager` | Branch, commit, push (only after explicit ok) |
+| `/only-workflow-pattern-capture` | Optional: 0–2 process improvements |
+
+3. After each phase, **approve** the artifact before the next step. Run phases from the **main** session (no nested subagents).
+
+4. **Build/test hints:** from `meta-secret/`, `cargo test`, `cargo clippy`; project-wide Docker: `docker buildx bake test` (see [Infrastructure Build](#infrastructure-build) below).
+
+---
+
+### Cursor
+
+Cursor does **not** load `.claude/commands/` as slash commands. Use **Agent** chat; parity: [`.cursor/commands/README.md`](.cursor/commands/README.md).
+
+1. **Rules:** [`.cursor/rules/`](.cursor/rules/) — `ai-project-context.mdc` pulls the root markdown documents.
+2. **Invoke a phase:** `/feature-planner` or “Use the **feature-planner** subagent: …” — see [`.cursor/agents/`](.cursor/agents/).
+3. **Skills:** ask Agent to read `SKILL.md` under [`.claude/skills/<name>/`](.claude/skills/) when needed.
+4. **Pipeline:** [WORKFLOW.md](WORKFLOW.md). **FFI changes:** coordinate with **meta-secret-compose**.
+
+---
+
+### Optional: pattern capture
+
+When triggers in [WORKFLOW.md](WORKFLOW.md) apply, run **`workflow-pattern-capture`** with skill **`workflow-pattern-capture`** (0–2 suggestions or **No changes recommended**).
+
+---
+
+### Historical note
+
+Older references may point to `docs/ai-skills.md`. Current entry points are this section and [WORKFLOW.md](WORKFLOW.md).
+
 ## Web Application
 Meta Secret Web Cli is available on https://meta-secret.github.io
 

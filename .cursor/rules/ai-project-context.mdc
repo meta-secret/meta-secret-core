@@ -1,0 +1,18 @@
+---
+description: Canonical meta-secret-core project docs for Cursor Agent (Always Apply)
+globs:
+alwaysApply: true
+---
+
+# AI project context
+
+Follow the project markdown at the repository root. They are the single source of truth for workspace context, architecture, security, and code style.
+
+@CLAUDE.md
+@WORKFLOW.md
+@PROJECT_CONTEXT.md
+@ARCHITECTURE.md
+@SECURITY.md
+@CODE_STYLE.md
+
+When guidance in rules overlaps these files, prefer the markdown documents unless a scoped rule explicitly narrows behavior for specific paths (for example under `.cursor/rules/build/`).

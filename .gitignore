@@ -28,6 +28,9 @@ meta-secret/web-cli/ui/pkg
 
 infra/.env
 infra/.secret
+
+# Claude Code local settings (developer-specific allowlists, not for repo)
+.claude/settings.local.json
 /infra/k8s/meta-secret-server/build/
 /infra/k8s/Taskfile.yml
 /infra/k3d/Taskfile.yml
