@@ -3,11 +3,6 @@ set -e
 
 cd "$(dirname "$0")/.."
 
-if ! command -v cbindgen &> /dev/null; then
-    echo "Installing cbindgen..."
-    cargo install cbindgen
-fi
-
 # Check if rustup is installed
 if ! command -v rustup &> /dev/null; then
     echo "❌ rustup not found. Please install Rust toolchain first."
@@ -95,20 +90,22 @@ if [ ! -f "$CLANG_X86_64" ]; then
     echo "Found: $CLANG_X86_64"
 fi
 
+LLVM_AR="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$NDK_PREBUILT/bin/llvm-ar"
+
 export PATH=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$NDK_PREBUILT/bin:$PATH
-export AR_aarch64_linux_android="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$NDK_PREBUILT/bin/llvm-ar"
+export AR_aarch64_linux_android="$LLVM_AR"
 export CC_aarch64_linux_android="$CLANG_AARCH64"
 export CXX_aarch64_linux_android="${CLANG_AARCH64}++"
 
-export AR_armv7_linux_androideabi="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar"
+export AR_armv7_linux_androideabi="$LLVM_AR"
 export CC_armv7_linux_androideabi="$CLANG_ARMV7"
 export CXX_armv7_linux_androideabi="${CLANG_ARMV7}++"
 
-export AR_i686_linux_android="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar"
+export AR_i686_linux_android="$LLVM_AR"
 export CC_i686_linux_android="$CLANG_I686"
 export CXX_i686_linux_android="${CLANG_I686}++"
 
-export AR_x86_64_linux_android="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar"
+export AR_x86_64_linux_android="$LLVM_AR"
 export CC_x86_64_linux_android="$CLANG_X86_64"
 export CXX_x86_64_linux_android="${CLANG_X86_64}++"
 
@@ -121,51 +118,24 @@ ROOT_DIR="$(cd .. && pwd)"
 JNILIBS_DIR="${ROOT_DIR}/target/android/jniLibs"
 mkdir -p "$JNILIBS_DIR"
 
-echo "🛠 Building for Android targets..."
+echo "🛠 Building mobile-uniffi for Android targets..."
 
-cd android
+cd "$ROOT_DIR"
 
-HEADER_FILE="${ROOT_DIR}/target/android/metasecret-mobile.h"
-echo "📄 Generating header file: $HEADER_FILE"
-mkdir -p "$(dirname "$HEADER_FILE")"
-cbindgen --crate mobile-android --output "$HEADER_FILE" --lang c
+copy_so() {
+    local triple="$1"
+    local abi="$2"
+    echo "Building for $triple ($abi)..."
+    cargo build --package mobile-uniffi --target "$triple" --release
+    mkdir -p "$JNILIBS_DIR/$abi"
+    cp "${ROOT_DIR}/target/${triple}/release/libmetasecret_mobile.so" "$JNILIBS_DIR/$abi/libmetasecret_mobile.so"
+    echo "Done: $abi"
+}
 
-echo "Building for aarch64-linux-android (arm64-v8a)..."
-cargo build --package mobile-android --target aarch64-linux-android --release --features mobile_only
-
-mkdir -p "$JNILIBS_DIR/arm64-v8a"
-echo "Creating shared library for arm64-v8a..."
-$CLANG_AARCH64 -shared -o "$JNILIBS_DIR/arm64-v8a/libmetasecret_mobile.so" -Wl,--whole-archive "${ROOT_DIR}/target/aarch64-linux-android/release/libmobile.a" -Wl,--no-whole-archive -lm
-if [ $? -ne 0 ]; then
-    echo "❌ Failed to create shared library for arm64-v8a"
-    exit 1
-fi
-echo "Done building for aarch64-linux-android"
-
-echo "Building for armv7-linux-androideabi (armeabi-v7a)..."
-cargo build --package mobile-android --target armv7-linux-androideabi --release --features mobile_only
-
-mkdir -p "$JNILIBS_DIR/armeabi-v7a"
-echo "Creating shared library for armeabi-v7a..."
-$CLANG_ARMV7 -shared -o "$JNILIBS_DIR/armeabi-v7a/libmetasecret_mobile.so" -Wl,--whole-archive "${ROOT_DIR}/target/armv7-linux-androideabi/release/libmobile.a" -Wl,--no-whole-archive -lm
-echo "Done building for armv7-linux-androideabi"
-
-echo "Building for i686-linux-android (x86)..."
-cargo build --package mobile-android --target i686-linux-android --release --features mobile_only
-
-mkdir -p "$JNILIBS_DIR/x86"
-echo "Creating shared library for x86..."
-$CLANG_I686 -shared -o "$JNILIBS_DIR/x86/libmetasecret_mobile.so" -Wl,--whole-archive "${ROOT_DIR}/target/i686-linux-android/release/libmobile.a" -Wl,--no-whole-archive -lm
-echo "Done building for i686-linux-android"
-
-echo "Building for x86_64-linux-android (x86_64)..."
-cargo build --package mobile-android --target x86_64-linux-android --release --features mobile_only
-
-mkdir -p "$JNILIBS_DIR/x86_64"
-echo "Creating shared library for x86_64..."
-$CLANG_X86_64 -shared -o "$JNILIBS_DIR/x86_64/libmetasecret_mobile.so" -Wl,--whole-archive "${ROOT_DIR}/target/x86_64-linux-android/release/libmobile.a" -Wl,--no-whole-archive -lm
-echo "Done building for x86_64-linux-android"
+copy_so aarch64-linux-android arm64-v8a
+copy_so armv7-linux-androideabi armeabi-v7a
+copy_so i686-linux-android x86
+copy_so x86_64-linux-android x86_64
 
 echo "✅ Done!"
 echo "Shared libraries are in: $JNILIBS_DIR/*"
-echo "Header file is in: $HEADER_FILE"

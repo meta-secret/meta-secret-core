@@ -13,7 +13,7 @@ Meta Secret core is organized as a **Cargo workspace** of crates. The **`meta-se
 | `meta-db-sqlite` (and related) | Persistence adapters—no business rules that belong in core only |
 | `wasm` | Browser/WASM entrypoints—thin over core |
 | `cli` / `meta-cli` | User-facing CLI |
-| `mobile/ios`, `mobile/android` | Static libraries for FFI; keep FFI boundary thin |
+| `mobile/uniffi` | Single mobile library (`metasecret_mobile`); UniFFI + `mobile-common` |
 
 ## Boundaries
 

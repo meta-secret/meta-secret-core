@@ -1,0 +1,18 @@
+namespace mobile_uniffi {
+    string generate_master_key();
+    string init_ios(string master_key);
+    string init_android(string master_key);
+    string get_state();
+    string generate_user_creds(string vault_name);
+    string sign_up();
+    string update_membership(string candidate, string action_update);
+    string clean_up_database();
+    string split_secret(string secret_id, string secret);
+    string find_claim_by(string secret_id);
+    string find_claim_id_by(string secret_id);
+    string recover(string secret_id);
+    string accept_recover(string claim_id);
+    string decline_recover(string claim_id);
+    string send_decline_completion(string claim_id);
+    string show_recovered(string secret_id);
+};
