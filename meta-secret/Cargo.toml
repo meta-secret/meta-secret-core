@@ -12,8 +12,8 @@ members = [
     "cli",
     "meta-cli",
     "tests",
-    "mobile/ios",
-    "mobile/android"
+    "mobile/uniffi",
+    "mobile/uniffi-bindgen-runner"
 ]
 
 [workspace.dependencies]

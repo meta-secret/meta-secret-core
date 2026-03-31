@@ -15,7 +15,8 @@ Rust **Cargo workspace** root: **`meta-secret/`** (not the git repository root).
 | `meta-secret/meta-server/` | HTTP server and server-node |
 | `meta-secret/wasm/` | WASM build |
 | `meta-secret/cli/`, `meta-secret/meta-cli/` | CLI binaries |
-| `meta-secret/mobile/ios`, `meta-secret/mobile/android` | Mobile static library targets for FFI |
+| `meta-secret/mobile/uniffi` | UniFFI crate (library `metasecret_mobile`); Kotlin/Swift via `cargo run -p uniffi-bindgen-runner --bin uniffi-bindgen` |
+| `meta-secret/mobile/uniffi-bindgen-runner` | Workspace package exposing the `uniffi-bindgen` binary |
 | `meta-secret/db/sqlite`, `meta-secret/db/redb` | Database adapters |
 | `infra/` | Infrastructure (e.g. Docker/K8s-related assets—see repo layout) |
 
@@ -34,6 +35,8 @@ Project-wide Docker builds/tests (see root [README.md](README.md) and [`.cursor/
 ```bash
 docker buildx bake test
 ```
+
+Mobile: `meta-secret/mobile/scripts/build-mobile.sh [ios|android|all]` (wraps `build-ios.sh` / `build-android.sh`).
 
 Use the **narrowest** command that proves the fix.
 

@@ -1,0 +1,15 @@
+[package]
+name = "mobile-uniffi"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["lib", "cdylib", "staticlib"]
+name = "metasecret_mobile"
+
+[dependencies]
+mobile-common = { path = "../common" }
+uniffi = { version = "0.28.3", default-features = false }
+
+[build-dependencies]
+uniffi_build = { version = "0.28.3", features = ["builtin-bindgen"] }
