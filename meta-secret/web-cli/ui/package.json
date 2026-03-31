@@ -4,10 +4,10 @@
   "scripts": {
     "dev": "vite --host",
     "build": "vue-tsc --noEmit && vite build",
-    "preview": "vite preview --port 5050",
+    "preview": "vite preview --port 5050 --host 127.0.0.1",
     "test:unit": "vitest --environment jsdom",
-    "test:e2e": "start-server-and-test preview http://127.0.0.1:5050/ 'cypress open'",
-    "test:e2e:ci": "start-server-and-test preview http://127.0.0.1:5050/ 'cypress run'",
+    "test:e2e": "env -u ELECTRON_RUN_AS_NODE start-server-and-test preview http://127.0.0.1:5050/ 'cypress open'",
+    "test:e2e:ci": "npm run build && env -u ELECTRON_RUN_AS_NODE start-server-and-test preview http://127.0.0.1:5050/ 'cypress run'",
     "typecheck": "vue-tsc --noEmit -p tsconfig.vitest.json --composite false",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix --ignore-path .gitignore",
     "postbuild": "cp dist/index.html dist/404.html"
