@@ -29,7 +29,7 @@ Follow:
 2. Mirror existing test patterns in the repo (`#[test]`, `tokio::test` if async, temp dirs, etc.).
 3. Keep tests deterministic; avoid real network unless the project already uses it for that case.
 
-## Handoff
+## Next steps
 
 After adding tests, recommend running **`test-verifier`** (or the narrowest `cargo test -p …`) to confirm green builds.
 

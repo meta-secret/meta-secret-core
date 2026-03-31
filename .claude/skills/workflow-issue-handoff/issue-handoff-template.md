@@ -1,4 +1,4 @@
-# Issue handoff template
+# Issue Summary template
 
 ## Metadata
 

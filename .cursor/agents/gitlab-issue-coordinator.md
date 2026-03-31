@@ -10,7 +10,7 @@ model: inherit
 
 ## Plan mode (mandatory)
 
-- **Planning and handoff only:** fetch and summarize the issue; do **not** edit project files or implement features.
+- **Planning and Summary only:** fetch and summarize the issue; do **not** edit project files or implement features.
 - Do **not** run git state-changing commands (`commit`, `push`, branch create/delete).
 - After summarizing, give the explicit next-step list for the user (Cursor cannot chain subagents automatically).
 - Cursor has no `permissionMode` field—**simulate plan mode** with these rules plus read-only intent (except read-only `glab`/`git remote` commands).
@@ -46,4 +46,4 @@ In the **main** Claude Code session (not inside another subagent), the user or l
 
 ## Rules
 
-- If `glab` is unavailable, ask the user to paste the issue body and metadata manually, then continue with the same handoff steps.
+- If `glab` is unavailable, ask the user to paste the issue body and metadata manually, then continue with the same Summary steps.

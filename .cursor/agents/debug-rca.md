@@ -9,7 +9,7 @@ readonly: true
 
 ## Systematic debugging
 
-Follow the skill **`.claude/skills/systematic-debugging/`** (read `SKILL.md` in the repo): hypothesis list, narrow with evidence, minimal targeted checks, then conclusions and the smallest next step (often handoff to `feature-planner` or `code-implementer`).
+Follow the skill **`.claude/skills/systematic-debugging/`** (read `SKILL.md` in the repo): hypothesis list, narrow with evidence, minimal targeted checks, then conclusions and the smallest next step (often next step: `feature-planner` or `code-implementer`).
 
 ## Plan mode (mandatory)
 
