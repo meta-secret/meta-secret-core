@@ -29,12 +29,15 @@ meta-secret/web-cli/ui/pkg
 infra/.env
 infra/.secret
 
+# Local ReDB databases and master key files (meta-secret CLI, any cwd)
+**/*.redb
+**/*.redb.key.json
+
 # Claude Code local settings (developer-specific allowlists, not for repo)
 .claude/settings.local.json
 /infra/k8s/meta-secret-server/build/
 /infra/k8s/Taskfile.yml
 /infra/k3d/Taskfile.yml
-/meta-secret/meta-cli/meta-secret.redb
 /appp/
 /meta-secret/meta-cli/example/a
 /meta-secret/meta-cli/example/b

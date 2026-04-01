@@ -1,2 +1,6 @@
+# Same as .cargo/config.toml [env] RUST_MIN_STACK: Docker test stage strips .cargo/config.toml.
+[env]
+RUST_MIN_STACK = "3145728"
+
 [profile.ci.junit]
 path = "junit.xml"
