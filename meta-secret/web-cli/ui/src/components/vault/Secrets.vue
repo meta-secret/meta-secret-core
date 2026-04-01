@@ -19,7 +19,7 @@ const showAddForm = ref(false);
 const passwords = computed(() => appState.passwords);
 
 const recover = async (metaPassId: MetaPasswordId) => {
-  const id = metaPassId.id();
+  const id = metaPassId.id_str();
   loadingRecovery.value = id; // Set loading state for this specific secret
   try {
     await appManager.recover_js(metaPassId);
@@ -30,7 +30,7 @@ const recover = async (metaPassId: MetaPasswordId) => {
 };
 
 const showRecovered = async (metaPassId: MetaPasswordId) => {
-  const id = metaPassId.id();
+  const id = metaPassId.id_str();
   if (currentSecretId.value === id) {
     currentSecret.value = null;
     currentSecretId.value = null;
@@ -47,7 +47,7 @@ const showRecovered = async (metaPassId: MetaPasswordId) => {
 
 const copyToClipboard = async (metaPassId: MetaPasswordId) => {
   try {
-    const id = metaPassId.id();
+    const id = metaPassId.id_str();
     loadingCopy.value = id; // Set loading state
     const secretText = await appManager.show_recovered(metaPassId);
     await navigator.clipboard.writeText(secretText);
@@ -93,48 +93,48 @@ const handleSecretAdded = () => {
     <div v-if="passwords.length === 0" :class="$style.emptyState">No secrets added yet</div>
 
     <ul v-else :class="$style.secretsList">
-      <li v-for="secret in passwords" :key="secret.id()" :class="$style.secretListItem">
+      <li v-for="secret in passwords" :key="secret.id_str()" :class="$style.secretListItem">
         <div :class="$style.secretHeader">
           <div :class="$style.secretInfo">
             <div :class="$style.secretName">
               {{ secret.name }}
             </div>
-            <div :class="$style.secretId">ID: {{ secret.id() }}</div>
+            <div :class="$style.secretId">ID: {{ secret.id_str() }}</div>
           </div>
           <div :class="$style.secretActions">
             <div v-if="isRecovered(secret)" :class="$style.buttonGroup">
               <button 
-                :class="loadingShow === secret.id() ? [$style.showButton, $style.loading] : $style.showButton" 
+                :class="loadingShow === secret.id_str() ? [$style.showButton, $style.loading] : $style.showButton" 
                 @click="showRecovered(secret)"
-                :disabled="loadingShow === secret.id()"
+                :disabled="loadingShow === secret.id_str()"
               >
-                <span v-if="loadingShow === secret.id()" :class="$style.spinner"></span>
-                {{ currentSecretId === secret.id() ? 'Hide' : (loadingShow === secret.id() ? 'Loading...' : 'Show') }}
+                <span v-if="loadingShow === secret.id_str()" :class="$style.spinner"></span>
+                {{ currentSecretId === secret.id_str() ? 'Hide' : (loadingShow === secret.id_str() ? 'Loading...' : 'Show') }}
               </button>
               <button 
-                :class="loadingCopy === secret.id() || copySuccess === secret.id() ? [$style.copyButton, copySuccess === secret.id() ? $style.success : $style.loading] : $style.copyButton" 
+                :class="loadingCopy === secret.id_str() || copySuccess === secret.id_str() ? [$style.copyButton, copySuccess === secret.id_str() ? $style.success : $style.loading] : $style.copyButton" 
                 @click="copyToClipboard(secret)"
-                :disabled="loadingCopy === secret.id()"
+                :disabled="loadingCopy === secret.id_str()"
               >
-                <span v-if="loadingCopy === secret.id()" :class="$style.spinner"></span>
-                {{ copySuccess === secret.id() ? 'Copied!' : (loadingCopy === secret.id() ? 'Copying...' : 'Copy') }}
+                <span v-if="loadingCopy === secret.id_str()" :class="$style.spinner"></span>
+                {{ copySuccess === secret.id_str() ? 'Copied!' : (loadingCopy === secret.id_str() ? 'Copying...' : 'Copy') }}
               </button>
             </div>
             <div v-else>
               <button 
-                :class="loadingRecovery === secret.id() ? [$style.recoveryButton, $style.loading] : $style.recoveryButton" 
+                :class="loadingRecovery === secret.id_str() ? [$style.recoveryButton, $style.loading] : $style.recoveryButton" 
                 @click="recover(secret)" 
-                :disabled="loadingRecovery === secret.id()"
+                :disabled="loadingRecovery === secret.id_str()"
               >
-                <span v-if="loadingRecovery === secret.id()" :class="$style.spinner"></span>
-                <span>{{ loadingRecovery === secret.id() ? 'Processing...' : 'Recovery Request' }}</span>
+                <span v-if="loadingRecovery === secret.id_str()" :class="$style.spinner"></span>
+                <span>{{ loadingRecovery === secret.id_str() ? 'Processing...' : 'Recovery Request' }}</span>
               </button>
             </div>
           </div>
         </div>
 
         <!-- Improved secret display -->
-        <div v-if="currentSecretId === secret.id() && currentSecret" :class="$style.secretContainer">
+        <div v-if="currentSecretId === secret.id_str() && currentSecret" :class="$style.secretContainer">
           <div :class="$style.secretContent">
             <span :class="$style.secretLabel">Secret:</span>
             <span :class="$style.secretValue">{{ currentSecret }}</span>

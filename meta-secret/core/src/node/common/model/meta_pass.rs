@@ -52,7 +52,8 @@ impl SecurePassInfo {
 
 #[wasm_bindgen]
 impl MetaPasswordId {
-    pub fn id(&self) -> String {
+    /// Base64 id string (not named `id` — conflicts with wasm field `id` in JS).
+    pub fn id_str(&self) -> String {
         self.id.text.base64_str()
     }
 
@@ -93,11 +94,11 @@ mod tests {
         assert_eq!(password_id.name, name);
 
         // Verify an id was generated
-        assert!(!password_id.id().is_empty());
+        assert!(!password_id.id_str().is_empty());
 
         // Verify the id is deterministic (same name produces same id)
         let password_id2 = MetaPasswordId::build(name);
-        assert_eq!(password_id.id(), password_id2.id());
+        assert_eq!(password_id.id_str(), password_id2.id_str());
     }
 
     #[test]
@@ -106,7 +107,7 @@ mod tests {
         let password_id2 = MetaPasswordId::build(String::from("Password 2"));
 
         // Different names should produce different ids
-        assert_ne!(password_id1.id(), password_id2.id());
+        assert_ne!(password_id1.id_str(), password_id2.id_str());
     }
 
     #[test]
@@ -116,7 +117,7 @@ mod tests {
 
         // Cloning should produce an equal object
         assert_eq!(original, cloned);
-        assert_eq!(original.id(), cloned.id());
+        assert_eq!(original.id_str(), cloned.id_str());
         assert_eq!(original.name, cloned.name);
     }
 
