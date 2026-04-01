@@ -1,6 +1,6 @@
-use anyhow::{bail, Context};
+use anyhow::bail;
 use std::sync::Arc;
-use tracing::{info, instrument, Instrument};
+use tracing::{error, info, instrument, Instrument};
 use wasm_bindgen_futures::spawn_local;
 
 use anyhow::Result;
@@ -240,12 +240,12 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
             ApplicationManager::new(sync_protocol, sync_gateway, meta_client_service.clone(), master_key);
 
         spawn_local(async move {
-            meta_client_service
-                .run()
-                .instrument(client_span())
-                .await
-                .with_context(|| "Meta client error")
-                .unwrap();
+            if let Err(e) = meta_client_service.run().instrument(client_span()).await {
+                error!(
+                    error = %e,
+                    "Meta client background task failed"
+                );
+            }
         });
 
         Ok(app_manager)

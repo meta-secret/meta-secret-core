@@ -8,9 +8,11 @@ Arguments: optional scope (crate, test filter). Example: `/only-test-verifier -p
 
 Delegate to subagent **test-verifier** with input: `$ARGUMENTS`
 
+**Default coverage:** when `$ARGUMENTS` is empty or does not narrow Rust crates, the verifier should run (1) the default **`cargo test`** bundle including **`meta-secret-tests`** and **`meta-secret-wasm`** (see **[`.claude/agents/test-verifier.md`](../agents/test-verifier.md)** — “Default scope”), and (2) **web-cli** npm: **`npm run test:unit`** and **`npm run test:e2e:ci`** from **`meta-secret/web-cli/ui`** (WASM **`pkg/`** may be required first). Server, DB, and mobile FFI crates are **skipped** by default for Cargo. If the user passes only **`-p …`**, run that Cargo subset and **skip** web-cli unless they ask for it. Optional full workspace: plain **`cargo test`** from **`meta-secret/`**.
+
 ## Session mode
 
-- **Use Agent mode** (or any mode that allows **Bash**) — running **`cargo test`** / **`docker buildx bake test`** requires command execution, not Plan-only.
+- **Use Agent mode** (or any mode that allows **Bash**) — running **`cargo test`**, **`npm`** in **`web-cli/ui`**, and **`docker buildx bake test`** requires command execution, not Plan-only.
 - This phase is **verification**: run tests and report pass/fail; it is **not** the same as writing tests (**test-author**).
 
 ## Presentation (required)

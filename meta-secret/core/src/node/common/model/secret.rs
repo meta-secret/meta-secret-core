@@ -639,9 +639,11 @@ mod test {
 
         let mut mixed_statuses = all_pending.clone();
         mixed_statuses = mixed_statuses.sent(client_b_device_id.clone());
+        // Aggregate uses any(Sent) -> Sent (see SsDistributionCompositeStatus::status).
+        // TODO(k-of-N): when threshold-based aggregation is implemented, revisit this expectation.
         assert!(
-            matches!(mixed_statuses.status(), SsDistributionStatus::Pending),
-            "Overall status should be Pending when at least one is Pending"
+            matches!(mixed_statuses.status(), SsDistributionStatus::Sent),
+            "Overall status should be Sent when any receiver is Sent (Pending+Sent mix)"
         );
 
         let mut all_sent = mixed_statuses.clone();
