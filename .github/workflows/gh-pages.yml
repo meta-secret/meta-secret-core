@@ -38,11 +38,8 @@ jobs:
           commit_message: ${{ github.event.inputs.deploy_message }}
 
       - name: Deploy web-cli (cloudflare pages)
-        uses: cloudflare/pages-action@1
+        uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUD_FLARE_PAGES_TOKEN }}
           accountId: ${{ secrets.CLOUD_FLARE_ACCOUNT_ID }}
-          projectName: meta-secret-web-cli
-          directory: meta-secret/web-cli/ui/dist
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
-          wranglerVersion: 2
+          command: pages deploy meta-secret/web-cli/ui/dist --project-name=meta-secret-web-cli
