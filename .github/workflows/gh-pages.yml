@@ -42,4 +42,4 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUD_FLARE_PAGES_TOKEN }}
           accountId: ${{ secrets.CLOUD_FLARE_ACCOUNT_ID }}
-          command: pages deploy meta-secret/web-cli/ui/dist --project-name=meta-secret-web-cli
+          command: pages deploy meta-secret/web-cli/ui/dist --project-name=id0
