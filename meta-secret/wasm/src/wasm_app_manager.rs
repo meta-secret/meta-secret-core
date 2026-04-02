@@ -11,8 +11,8 @@ use meta_secret_core::node::common::model::secret::ClaimId;
 use meta_secret_core::node::common::model::user::common::UserData;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
-use tracing::info;
-use wasm_bindgen::prelude::wasm_bindgen;
+use tracing::{error, info};
+use wasm_bindgen::prelude::{wasm_bindgen, JsError, JsValue};
 
 #[wasm_bindgen]
 pub struct WasmApplicationManager {
@@ -69,13 +69,15 @@ impl WasmApplicationManager {
         self.app_manager.recover_js(meta_pass_id.clone()).await;
     }
 
-    pub async fn show_recovered(&self, pass_id: &MetaPasswordId) -> String {
+    pub async fn show_recovered(&self, pass_id: &MetaPasswordId) -> Result<String, JsValue> {
         info!("Show recovered pass id: {:?}", pass_id);
-        self.app_manager
-            .show_recovered(pass_id.clone())
-            .await
-            .unwrap()
-            .text
+        match self.app_manager.show_recovered(pass_id.clone()).await {
+            Ok(plain) => Ok(plain.text),
+            Err(e) => {
+                error!(error = %e, "show_recovered failed");
+                Err(JsError::new(&e.to_string()).into())
+            }
+        }
     }
 
     pub async fn clean_up_database(&self) {

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue';
+import { ref, computed } from 'vue';
 import { MetaPasswordId, PlainPassInfo } from 'meta-secret-web-cli';
 import { AppState } from '@/stores/app-state';
+import { vaultSecrets } from '@/locales/en';
 import AddSecretForm from './AddSecretForm.vue';
 
 const appState = AppState();
@@ -11,6 +12,8 @@ const appManager = appState.appManager as any;
 const currentSecret = ref<any>(null);
 const currentSecretId = ref<any>(null);
 const copySuccess = ref<string | null>(null);
+const showRecoveredError = ref<string | null>(null);
+const copySecretError = ref<string | null>(null);
 const loadingRecovery = ref<string | null>(null); // Track which secret is being recovered
 const loadingShow = ref<string | null>(null); // Track which secret is being shown
 const loadingCopy = ref<string | null>(null); // Track which secret is being copied
@@ -34,20 +37,28 @@ const showRecovered = async (metaPassId: MetaPasswordId) => {
   if (currentSecretId.value === id) {
     currentSecret.value = null;
     currentSecretId.value = null;
+    showRecoveredError.value = null;
     return;
   }
+  showRecoveredError.value = null;
   loadingShow.value = id; // Set loading state
   try {
     currentSecret.value = await appManager.show_recovered(metaPassId);
     currentSecretId.value = id;
+  } catch (e) {
+    console.error('show_recovered failed', e);
+    showRecoveredError.value = vaultSecrets.errorShowRecovered;
+    currentSecret.value = null;
+    currentSecretId.value = null;
   } finally {
     loadingShow.value = null; // Clear loading state
   }
 };
 
 const copyToClipboard = async (metaPassId: MetaPasswordId) => {
+  const id = metaPassId.id_str();
+  copySecretError.value = null;
   try {
-    const id = metaPassId.id_str();
     loadingCopy.value = id; // Set loading state
     const secretText = await appManager.show_recovered(metaPassId);
     await navigator.clipboard.writeText(secretText);
@@ -59,6 +70,7 @@ const copyToClipboard = async (metaPassId: MetaPasswordId) => {
     }, 5000);
   } catch (err) {
     console.error('Failed to copy: ', err);
+    copySecretError.value = vaultSecrets.errorCopySecret;
   } finally {
     loadingCopy.value = null; // Clear loading state
   }
@@ -92,7 +104,16 @@ const handleSecretAdded = () => {
 
     <div v-if="passwords.length === 0" :class="$style.emptyState">No secrets added yet</div>
 
-    <ul v-else :class="$style.secretsList">
+    <template v-else>
+      <div
+        v-if="showRecoveredError || copySecretError"
+        :class="$style.inlineError"
+        role="alert"
+      >
+        {{ showRecoveredError || copySecretError }}
+      </div>
+
+      <ul :class="$style.secretsList">
       <li v-for="secret in passwords" :key="secret.id_str()" :class="$style.secretListItem">
         <div :class="$style.secretHeader">
           <div :class="$style.secretInfo">
@@ -142,6 +163,7 @@ const handleSecretAdded = () => {
         </div>
       </li>
     </ul>
+    </template>
   </div>
 
   <div :class="$style.spacerLarge" />
@@ -187,6 +209,12 @@ const handleSecretAdded = () => {
 
 .emptyState {
   @apply py-6 text-center text-gray-500 dark:text-gray-400 italic;
+}
+
+.inlineError {
+  @apply mx-4 mt-3 mb-1 px-3 py-2 rounded-md text-sm;
+  @apply bg-red-50 text-red-800 border border-red-200;
+  @apply dark:bg-red-950/40 dark:text-red-200 dark:border-red-800;
 }
 
 .secretListItem {
