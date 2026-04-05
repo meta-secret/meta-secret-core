@@ -8,7 +8,7 @@ This document describes the **multi-phase delivery pipeline** for **meta-secret-
 
 | Role | Subagent name (invoke by name) | Purpose |
 |------|----------------------------------|---------|
-| GitHub issue fetch + Summary | `workflow-from-issue` command (invokes `github-issue-coordinator` when run with MetaSecret context) | Load issue via `gh`, summarize, list next steps |
+| GitHub issue fetch + Summary | `only-issue-coordinator` command + `github-issue-coordinator` agent ([`.claude/agents/github-issue-coordinator.md`](.claude/agents/github-issue-coordinator.md)) | Load issue via `gh`, summarize, list next steps |
 | Plan only | `feature-planner` | Structured plan, no code |
 | Implement | `code-implementer` | Rust changes per approved plan |
 | Tests | `test-author` | Add/update tests |
@@ -25,8 +25,8 @@ Files: [`.cursor/agents/`](.cursor/agents/) and [`.claude/agents/`](.claude/agen
 
 | Entry | First phase | Artifact before your approval |
 |-------|-------------|--------------------------------|
-| **GitHub issue** (number or URL) | `/workflow-from-issue <n>` → **Summary** approval → **`/only-planner`** or `feature-planner` (your next step) | Issue summary (title, description, acceptance) |
-| **Manual prompt** (feature or bug description) | Skip coordinator; go to `feature-planner` with a **task brief** (use skill `workflow-manual-task-brief`) | Task brief + plan |
+| **GitHub issue** (number or URL) | `/only-issue-coordinator <n|URL>` (or MetaSecret **`/core-only-issue-coordinator`**) → **Summary** approval → **`/only-planner`** or `feature-planner` (your next step) | Issue summary (title, description, acceptance) |
+| **Manual prompt** (feature or bug description) | `/only-from-prompt` (or MetaSecret **`/core-only-from-prompt`**) or use skill `workflow-manual-task-brief` then `feature-planner` | Task brief + plan |
 
 After the first approved plan, the pipeline is identical.
 

@@ -6,7 +6,7 @@ This file guides Claude Code (claude.ai/code) in **meta-secret-core**. **Canonic
 
 | Document | Contents |
 |---|---|
-| [WORKFLOW.md](WORKFLOW.md) | Agent phases, GitLab vs manual entry, approval gates, subagents |
+| [WORKFLOW.md](WORKFLOW.md) | Agent phases, GitHub vs manual entry, approval gates, subagents |
 | [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) | Workspace layout, crates, build/test commands, link to mobile consumer |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Crates, crypto boundary, server vs client, FFI/UniFFI |
 | [SECURITY.md](SECURITY.md) | Keys, logging, crypto handling, operational hygiene |
@@ -41,7 +41,7 @@ This file guides Claude Code (claude.ai/code) in **meta-secret-core**. **Canonic
 
 ## AI workflow
 
-Follow [WORKFLOW.md](WORKFLOW.md). Slash commands: [`.claude/commands/`](.claude/commands/). Cursor parity: [`.cursor/commands/README.md`](.cursor/commands/README.md).
+Follow [WORKFLOW.md](WORKFLOW.md). Slash command catalog (`/help`): [`.claude/commands/README.md`](.claude/commands/README.md) (`/only-issue-coordinator`, `/only-from-prompt`, `/only-*`). Command files: [`.claude/commands/`](.claude/commands/). Cursor parity: [`.cursor/commands/README.md`](.cursor/commands/README.md).
 
 **Agent output:** When this repo sits under the MetaSecret parent workspace, follow [Agent output conventions](../CLAUDE.md#agent-output-conventions) in the root `CLAUDE.md`. Otherwise use the same norms (emojis in replies; `##`/`###` headings, **bold**, blockquotes; optional HTML color where the UI supports it).
 

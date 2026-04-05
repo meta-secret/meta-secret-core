@@ -100,14 +100,14 @@ Skills live under [`.claude/skills/`](.claude/skills/). Subagent prompts: [`.cur
 
 | Command | When |
 |---------|------|
-| `/workflow-from-issue` | GitLab issue number or URL (`glab` available). |
-| `/workflow-from-prompt` | Free-text feature/bug description only. |
+| `/only-issue-coordinator` | GitHub issue number or URL (`gh` available). |
+| `/only-from-prompt` | Free-text feature/bug description only. |
 
 **Run a single phase**
 
 | Command | Phase |
 |---------|--------|
-| `/only-issue-coordinator` | GitLab issue summary |
+| `/only-issue-coordinator` | GitHub issue summary |
 | `/only-planner` | Plan only (`feature-planner`) |
 | `/only-implementer` | Implement approved plan |
 | `/only-test-author` | Add/update tests |

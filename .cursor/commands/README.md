@@ -5,8 +5,8 @@ Cursor does not use the same `/slash` command files as Claude Code. Use this tab
 | Intent | What to type |
 |--------|----------------|
 | Workflow overview | Open [WORKFLOW.md](../../WORKFLOW.md) or ask Agent to follow it |
-| From GitLab issue | Ask Agent to run the **gitlab-issue-coordinator** subagent with the issue ref, then approve before planning |
-| From manual prompt | Ask Agent to apply **workflow-manual-task-brief** skill, then **feature-planner** |
+| From GitHub issue | Ask Agent to run the **github-issue-coordinator** subagent with the issue ref, then approve before planning |
+| From manual prompt | Ask Agent to follow **`only-from-prompt`** (or apply **workflow-manual-task-brief** skill, then **feature-planner**) |
 | Plan only | `/feature-planner` or: “Use the **feature-planner** subagent: …” |
 | Implement only | “Use the **code-implementer** subagent: …” |
 | Tests only | “Use the **test-author** subagent: …” |

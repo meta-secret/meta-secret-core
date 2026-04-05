@@ -12,7 +12,7 @@ Rust **Cargo workspace** root: **`meta-secret/`** (not the git repository root).
 |------|------|
 | `meta-secret/Cargo.toml` | Workspace manifest (`members`: core, db, server, wasm, cli, mobile, tests, …) |
 | `meta-secret/core/` | `meta-secret-core` library—crypto, node logic, shared types |
-| `meta-secret/meta-server/` | HTTP server and server-node |
+| `meta-secret/meta-server/` | HTTP server (`POST /meta_request`), WebSocket push (`GET /meta_ws` — JSON [`DataSyncResponse`](meta-secret/core/src/node/api.rs)), server-node |
 | `meta-secret/wasm/` | WASM build |
 | `meta-secret/cli/`, `meta-secret/meta-cli/` | CLI binaries |
 | `meta-secret/mobile/uniffi` | UniFFI crate (library `metasecret_mobile`); Kotlin/Swift via `cargo run -p uniffi-bindgen-runner --bin uniffi-bindgen` |

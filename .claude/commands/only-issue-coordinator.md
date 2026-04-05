@@ -1,12 +1,12 @@
 ---
-description: Run gitlab-issue-coordinator only — Plan mode, formatted Summary, next-step hints (GitLab / glab).
+description: Run github-issue-coordinator only — Plan mode, formatted Summary, next-step hints (GitHub / gh).
 ---
 
 # Only issue coordinator
 
-Arguments: GitLab issue number or URL. Example: `/only-issue-coordinator 12`
+Arguments: GitHub issue number or URL. Example: `/only-issue-coordinator 81`
 
-Delegate to subagent **gitlab-issue-coordinator** with input: `$ARGUMENTS`
+Delegate to subagent **github-issue-coordinator** with input: `$ARGUMENTS`
 
 Use skill **workflow-issue-handoff** to format the **Summary** for the planner.
 
@@ -17,11 +17,10 @@ Use skill **workflow-issue-handoff** to format the **Summary** for the planner.
 
 ## Presentation (required)
 
-When presenting the GitLab issue Summary:
+When presenting the GitHub issue Summary:
 
-1. Use **Markdown** with **emoji section labels** (same spirit as `workflow-from-issue`: ticket, memo, checkmark, warning as appropriate).
+1. Use **Markdown** with **emoji section labels** (ticket, memo, checkmark, warning as appropriate).
 2. **Bold** issue id and title; bullets for labels and acceptance.
-3. Clarify if the tracker is **GitLab** (`glab`) vs **GitHub** (use **`workflow-from-issue`** / **`github-issue-coordinator`** for GitHub).
 
 ## Next steps — pick a command
 
