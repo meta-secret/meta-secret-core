@@ -21,8 +21,12 @@ static GLOBAL_APP_MANAGER: Lazy<Mutex<Option<Arc<MobileApplicationManager>>>> =
     Lazy::new(|| Mutex::new(None));
 
 static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
-    tokio::runtime::Builder::new_current_thread()
+    // Multi-thread runtime: Kotlin Native calls FFI from worker threads (e.g. Dispatchers.IO).
+    // current_thread + block_on from another thread aborts (panic across FFI).
+    tokio::runtime::Builder::new_multi_thread()
         .enable_all()
+        .worker_threads(4)
+        .thread_name("meta-secret-mobile")
         .build()
         .expect("Failed to create Tokio runtime")
 });
