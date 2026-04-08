@@ -8,7 +8,7 @@ Arguments: optional scope (crate, test filter). Example: `/only-test-verifier -p
 
 Delegate to subagent **test-verifier** with input: `$ARGUMENTS`
 
-**Default coverage:** when `$ARGUMENTS` is empty or does not narrow Rust crates, the verifier should run (1) the default **`cargo test`** bundle including **`meta-secret-tests`** and **`meta-secret-wasm`** (see **[`.claude/agents/test-verifier.md`](../agents/test-verifier.md)** — “Default scope”), and (2) **web-cli** npm: **`npm run test:unit`** and **`npm run test:e2e:ci`** from **`meta-secret/web-cli/ui`** (WASM **`pkg/`** may be required first). Server, DB, and mobile FFI crates are **skipped** by default for Cargo. If the user passes only **`-p …`**, run that Cargo subset and **skip** web-cli unless they ask for it. Optional full workspace: plain **`cargo test`** from **`meta-secret/`**.
+**Default coverage:** when `$ARGUMENTS` is empty or does not narrow Rust crates, the verifier should run (1) the default **`cargo test`** bundle including **`meta-secret-tests`**, **`meta-secret-wasm`**, **`meta-server-node`**, and **`meta-server`** (see **[`.claude/agents/test-verifier.md`](../agents/test-verifier.md)** — “Default scope”), and (2) **web-cli** npm: **`npm run test:unit`** and **`npm run test:e2e:ci`** from **`meta-secret/web-cli/ui`** (WASM **`pkg/`** may be required first). **DB** (`db/sqlite`, `db/redb`) and **mobile FFI** crates remain **skipped** by default for Cargo. If the user passes only **`-p …`**, run that Cargo subset and **skip** web-cli unless they ask for it. Optional full workspace: plain **`cargo test`** from **`meta-secret/`**.
 
 ## Session mode
 

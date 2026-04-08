@@ -15,4 +15,7 @@ namespace mobile_uniffi {
     string decline_recover(string claim_id);
     string send_decline_completion(string claim_id);
     string show_recovered(string secret_id);
+    string meta_ws_start();
+    string meta_ws_stop();
+    boolean meta_ws_wait_next_event(u32 timeout_ms);
 };

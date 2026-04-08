@@ -263,3 +263,24 @@ async fn async_show_recovered(secret_id: String) -> String {
         None => json!({"success": false, "error": "Show recovered request is failed"}).to_string(),
     }
 }
+
+pub fn meta_ws_start() -> String {
+    match MobileApplicationManager::get_global_instance() {
+        Some(app_manager) => match app_manager.meta_ws_start_listener() {
+            Ok(()) => json!({"success": true}).to_string(),
+            Err(e) => json!({"success": false, "error": format!("{}", e)}).to_string(),
+        },
+        None => json!({"success": false, "error": "App manager is not initialized"}).to_string(),
+    }
+}
+
+pub fn meta_ws_stop() -> String {
+    match crate::meta_ws::meta_ws_stop() {
+        Ok(()) => json!({"success": true}).to_string(),
+        Err(e) => json!({"success": false, "error": format!("{}", e)}).to_string(),
+    }
+}
+
+pub fn meta_ws_wait_next_event(timeout_ms: u32) -> bool {
+    crate::meta_ws::meta_ws_wait_next_event(timeout_ms)
+}

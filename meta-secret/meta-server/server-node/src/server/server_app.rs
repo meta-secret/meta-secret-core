@@ -19,15 +19,22 @@ use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
 use tracing::{error, info, instrument};
 use meta_secret_core::crypto::keys::TransportSk;
+use tokio::sync::broadcast;
+
+/// Capacity for WebSocket fan-out; lagging subscribers may drop messages.
+const SYNC_BROADCAST_CAP: usize = 256;
 
 pub struct MetaServerDataTransfer {
     pub dt: MpscDataTransfer<SyncRequest, DataSyncResponse>,
+    sync_broadcast: broadcast::Sender<DataSyncResponse>,
 }
 
 impl Default for MetaServerDataTransfer {
     fn default() -> Self {
+        let (tx, _rx) = broadcast::channel(SYNC_BROADCAST_CAP);
         Self {
             dt: MpscDataTransfer::new(),
+            sync_broadcast: tx,
         }
     }
 }
@@ -38,6 +45,16 @@ impl MetaServerDataTransfer {
             .send_to_service_and_get(request)
             .await
             .map_err(|e| anyhow::anyhow!("Failed to get response: {:?}", e))
+    }
+
+    /// Subscribe to [`DataSyncResponse`] events for all completed sync operations (for `/meta_ws`).
+    pub fn subscribe_sync_events(&self) -> broadcast::Receiver<DataSyncResponse> {
+        self.sync_broadcast.subscribe()
+    }
+
+    /// Fan-out to WebSocket subscribers (best-effort).
+    pub fn broadcast_sync_event(&self, resp: DataSyncResponse) {
+        let _ = self.sync_broadcast.send(resp);
     }
 }
 
@@ -82,6 +99,7 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                     let response = self.handle_client_request(request).await;
                     match response {
                         Ok(resp) => {
+                            self.data_transfer.broadcast_sync_event(resp.clone());
                             self.data_transfer.dt.send_to_client(resp).await;
                         }
                         Err(e) => {
@@ -89,6 +107,7 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                                 msg: format!("Error processing client request: {:?}", e),
                             };
                             error!("Error processing request: {:?}", e);
+                            self.data_transfer.broadcast_sync_event(resp.clone());
                             self.data_transfer.dt.send_to_client(resp).await;
                         }
                     }
@@ -98,6 +117,7 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                     let resp = DataSyncResponse::Error {
                         msg: format!("Error receiving message: {:?}", e),
                     };
+                    self.data_transfer.broadcast_sync_event(resp.clone());
                     self.data_transfer.dt.send_to_client(resp).await;
                     // Continue the loop even if there's an error
                 }
@@ -213,5 +233,44 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
         self.creds_repo
             .get_or_generate_device_creds(DeviceName::server())
             .await
+    }
+}
+
+#[cfg(test)]
+mod meta_server_data_transfer_tests {
+    use super::MetaServerDataTransfer;
+    use meta_secret_core::node::api::DataSyncResponse;
+    use tokio::sync::broadcast::error::RecvError;
+    use tokio::time::{timeout, Duration};
+
+    #[tokio::test]
+    async fn broadcast_reaches_subscribers() {
+        let dt = MetaServerDataTransfer::default();
+        let mut rx1 = dt.subscribe_sync_events();
+        let mut rx2 = dt.subscribe_sync_events();
+        let payload = DataSyncResponse::Empty;
+        dt.broadcast_sync_event(payload.clone());
+
+        let got1 = timeout(Duration::from_secs(1), rx1.recv())
+            .await
+            .expect("timeout rx1")
+            .expect("recv rx1");
+        assert_eq!(got1, payload);
+
+        let got2 = timeout(Duration::from_secs(1), rx2.recv())
+            .await
+            .expect("timeout rx2")
+            .expect("recv rx2");
+        assert_eq!(got2, payload);
+    }
+
+    #[tokio::test]
+    async fn closed_broadcast_returns_closed_error() {
+        let dt = MetaServerDataTransfer::default();
+        let rx = dt.subscribe_sync_events();
+        drop(dt);
+        let mut rx = rx;
+        let err = rx.recv().await.unwrap_err();
+        assert!(matches!(err, RecvError::Closed));
     }
 }

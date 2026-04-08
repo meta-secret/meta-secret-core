@@ -17,6 +17,11 @@ Respect constraints from `PROJECT_CONTEXT.md`, `ARCHITECTURE.md`, and `CLAUDE.md
 1. Identify which **crates** or modules changed (`meta-secret-core`, `meta-server`, etc.).
 2. Run the **narrowest** commands that cover the change, for example:
    - `cargo test -p meta-secret-core` (adjust package name)
+   - **Server-only** (if you intentionally narrow to HTTP/WebSocket crates): from **`meta-secret/`**:
+     ```bash
+     cargo test -p meta-server-node -p meta-server
+     ```
+     (`meta-secret-core` is already covered when you run the default bundle below.)
    - `docker buildx bake test` when the failure is Docker/CI-specific (per project docs)
 3. If the user named a specific test filter, prefer running that.
 4. Report: commands run, pass/fail counts, relevant failure excerpts.
@@ -27,12 +32,13 @@ When the user does **not** pass a narrower scope (no `-p` / filter in `$ARGUMENT
 
 1. **Recommended default (one command):** from **`meta-secret/`** run:
    ```bash
-   cargo test -p meta-secret-core -p meta-secret-cli -p meta-cli -p meta-secret-tests -p meta-secret-wasm
+   cargo test -p meta-secret-core -p meta-secret-cli -p meta-cli -p meta-secret-tests -p meta-secret-wasm -p meta-server-node -p meta-server
    ```
    - **`meta-secret-tests`** — integration-style tests ([`meta-secret/tests/Cargo.toml`](../../meta-secret/tests/Cargo.toml)), e.g. `test_sign_up_and_join_two_devices`.
    - **`meta-secret-wasm`** — WASM / web-oriented crate tests; may require **`wasm32-unknown-unknown`** and other tooling per [`PROJECT_CONTEXT.md`](../../PROJECT_CONTEXT.md) / crate docs.
+   - **`meta-server-node`** / **`meta-server`** — server sync + HTTP/WebSocket (`/meta_ws`); extends the former default so **issue #97** server paths stay covered without a second Cargo invocation.
 
-   **Excluded from this default** (run only if the user narrows scope or asks for a full sweep): `meta-server`, `db/sqlite`, `db/redb`, `mobile/uniffi`, `uniffi-bindgen-runner`.
+   **Still excluded from this default** (run only if the user narrows scope or asks for a full sweep): `db/sqlite`, `db/redb`, `mobile/uniffi`, `uniffi-bindgen-runner`.
 
 2. **Full workspace parity:** from **`meta-secret/`** run **`cargo test`** (all workspace members). Use when the user asks for a full sweep or release-style verification.
 

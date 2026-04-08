@@ -1,12 +1,13 @@
+mod meta_ws;
+
 use axum::extract::State;
-use axum::{Json, Router, routing::post};
+use axum::{Json, Router, routing::{get, post}};
 use http::{StatusCode, Uri};
 use serde_derive::Serialize;
 use std::sync::Arc;
 
 use anyhow::Result;
 use axum::response::Html;
-use axum::routing::get;
 use meta_db_sqlite::db::sqlite_store::SqlIteRepo;
 use meta_secret_core::crypto::key_utils;
 use meta_secret_core::node::api::{DataSyncResponse, SyncRequest};
@@ -14,12 +15,13 @@ use meta_server_node::server::server_app::{MetaServerDataTransfer, ServerApp};
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
-use tracing::{Level, info};
+use tracing::{Level, info, warn};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
 #[derive(Clone)]
 pub struct MetaServerAppState {
-    data_transfer: Arc<MetaServerDataTransfer>,
+    pub data_transfer: Arc<MetaServerDataTransfer>,
+    pub meta_ws_origin: meta_ws::MetaWsOriginConfig,
 }
 
 #[tokio::main]
@@ -31,21 +33,15 @@ async fn main() -> Result<()> {
         .add_directive("tower=info".parse()?)
         .add_directive("sqlx=info".parse()?);
 
-    // a builder for `FmtSubscriber`.
     let subscriber = FmtSubscriber::builder()
-        // Use a more compact, abbreviated log format
         .compact()
-        // all spans/events with a level higher than TRACE (e.g, debug, info, warn, etc.)
-        // will be written to stdout.
         .with_max_level(Level::DEBUG)
         .with_env_filter(filter)
-        // completes the builder.
         .finish();
     tracing::subscriber::set_global_default(subscriber)?;
 
     info!("Starting Server...");
 
-    // Load or create a master key from a file
     let master_key_path = "master_key.json";
     let master_key = key_utils::load_or_create_master_key(master_key_path)?;
     info!("Master key loaded successfully");
@@ -63,7 +59,6 @@ async fn main() -> Result<()> {
     let data_transfer = server_app.get_data_transfer();
     let server_app_clone = server_app.clone();
 
-    // Create a separate runtime for the server app
     std::thread::spawn(move || {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -77,11 +72,29 @@ async fn main() -> Result<()> {
         });
     });
 
-    let app_state = Arc::new(MetaServerAppState { data_transfer });
+    let meta_ws_origin = meta_ws::meta_ws_origin_config_from_env();
+    if meta_ws_origin.allowed_origins.is_empty() {
+        warn!(
+            "META_WS_ALLOWED_ORIGINS is unset or empty: /meta_ws accepts any Origin (development). \
+             Set META_WS_ALLOWED_ORIGINS to a comma-separated allowlist for browser clients."
+        );
+    } else {
+        info!(
+            "META_WS_ALLOWED_ORIGINS: {} entries; META_WS_ALLOW_NO_ORIGIN={}",
+            meta_ws_origin.allowed_origins.len(),
+            meta_ws_origin.allow_no_origin
+        );
+    }
+
+    let app_state = Arc::new(MetaServerAppState {
+        data_transfer,
+        meta_ws_origin,
+    });
 
     info!("Creating router...");
     let app = Router::new()
         .route("/meta_request", post(meta_request))
+        .route("/meta_ws", get(meta_ws::meta_ws_handler))
         .route("/hi", get(hi))
         .with_state(app_state)
         .layer(cors)

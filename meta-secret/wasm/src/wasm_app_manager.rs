@@ -4,6 +4,7 @@ use crate::app_manager::ApplicationManager;
 use crate::configure;
 use crate::wasm_repo::WasmRepo;
 use meta_secret_core::crypto::keys::TransportSk;
+use meta_secret_core::node::api::DataSyncResponse;
 use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
 use meta_secret_core::node::common::model::WasmApplicationState;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
@@ -86,5 +87,17 @@ impl WasmApplicationManager {
 
     pub async fn find_claim_by_pass_id(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
         self.app_manager.find_claim_by_pass_id(pass_id).await
+    }
+
+    /// Apply a JSON [`DataSyncResponse`] from `/meta_ws` (browser WebSocket) to local storage.
+    pub async fn apply_meta_ws_payload(&self, json: &str) -> Result<(), JsValue> {
+        let resp: DataSyncResponse = serde_json::from_str(json).map_err(|e| {
+            JsValue::from(JsError::new(&format!("invalid DataSyncResponse JSON: {e}")))
+        })?;
+        self.app_manager
+            .sync_gateway
+            .apply_data_sync_response(resp)
+            .await
+            .map_err(|e| JsError::new(&e.to_string()).into())
     }
 }

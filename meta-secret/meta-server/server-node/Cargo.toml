@@ -25,6 +25,7 @@ tracing-attributes.workspace = true
 
 flume.workspace = true
 async-std = { version = "1.13.2" }
+tokio = { workspace = true, features = ["sync"] }
 
 [dev-dependencies]
 meta-secret-core = { path = "../../core", features = ["test-framework"] }

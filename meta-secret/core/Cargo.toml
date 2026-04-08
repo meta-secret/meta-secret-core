@@ -37,6 +37,7 @@ tracing-subscriber = { workspace = true, features = ["fmt", "json", "env-filter"
 tracing-attributes.workspace = true
 
 reqwest.workspace = true
+rustls.workspace = true
 
 ed25519-dalek.workspace = true
 rand.workspace = true

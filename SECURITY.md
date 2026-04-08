@@ -20,3 +20,9 @@
 ## Reporting
 
 - Use the project’s normal issue tracker for security-sensitive reports as documented by maintainers.
+
+## Meta server HTTP and WebSocket
+
+- **`POST /meta_request`** and **`GET /meta_ws`** are part of the same sync surface. Neither implements application-level bearer tokens in the reference server; deploy behind a trusted network, VPN, or reverse proxy as needed.
+- **`/meta_ws` Origin policy:** set **`META_WS_ALLOWED_ORIGINS`** to a comma-separated list of allowed `Origin` values (e.g. `http://127.0.0.1:5173,https://app.example.com`). When unset or empty, the server **does not** enforce Origin (development default). Browsers send `Origin` on WebSocket upgrades; many **native** clients omit it. Use **`META_WS_ALLOW_NO_ORIGIN`** (`true`/`false`, default `true`) to control whether connections **without** an `Origin` header are accepted when an allowlist is configured. For strict browser-only deployments, set allowlist and `META_WS_ALLOW_NO_ORIGIN=false` (note: native FFI clients may need a different deployment or policy).
+

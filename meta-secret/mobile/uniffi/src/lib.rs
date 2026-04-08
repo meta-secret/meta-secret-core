@@ -67,3 +67,15 @@ pub fn send_decline_completion(claim_id: String) -> String {
 pub fn show_recovered(secret_id: String) -> String {
     json_api::show_recovered(secret_id)
 }
+
+pub fn meta_ws_start() -> String {
+    json_api::meta_ws_start()
+}
+
+pub fn meta_ws_stop() -> String {
+    json_api::meta_ws_stop()
+}
+
+pub fn meta_ws_wait_next_event(timeout_ms: u32) -> bool {
+    json_api::meta_ws_wait_next_event(timeout_ms)
+}

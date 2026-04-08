@@ -7,6 +7,10 @@ import init, {
 } from 'meta-secret-web-cli';
 import { useAuthStore } from '@/stores/auth';
 
+let metaWsOnlineListenerRegistered = false;
+
+const MAX_META_WS_BACKOFF_MS = 30_000;
+
 export const AppState = defineStore('app_state', {
   state: () => {
     console.log('App state. Init');
@@ -14,6 +18,9 @@ export const AppState = defineStore('app_state', {
     return {
       appManager: WasmApplicationManager,
       currState: WasmApplicationState,
+      metaWs: null as WebSocket | null,
+      metaWsReconnectTimer: null as ReturnType<typeof setTimeout> | null,
+      metaWsBackoffMs: 1000,
     };
   },
 
@@ -50,6 +57,8 @@ export const AppState = defineStore('app_state', {
 
       this.appManager = appManager;
       await this.updateState();
+      this.registerMetaWsOnlineListener();
+      this.attachMetaWs();
 
       // Temporary disabled: reactive app state!
       /*const subscribe = async (appManager: WasmApplicationManager) => {
@@ -61,6 +70,70 @@ export const AppState = defineStore('app_state', {
       };
 
       subscribe(appManager).then(() => console.log('Finished subscribing'));*/
+    },
+
+    clearMetaWsReconnectTimer() {
+      if (this.metaWsReconnectTimer != null) {
+        clearTimeout(this.metaWsReconnectTimer);
+        this.metaWsReconnectTimer = null;
+      }
+    },
+
+    registerMetaWsOnlineListener() {
+      if (metaWsOnlineListenerRegistered || typeof window === 'undefined') {
+        return;
+      }
+      metaWsOnlineListenerRegistered = true;
+      window.addEventListener('online', () => {
+        this.metaWsBackoffMs = 1000;
+        this.clearMetaWsReconnectTimer();
+        if (this.metaWs) {
+          this.metaWs.close();
+        }
+      });
+    },
+
+    attachMetaWs() {
+      this.clearMetaWsReconnectTimer();
+      this.metaWsBackoffMs = 1000;
+      this.openMetaWsSocket();
+    },
+
+    openMetaWsSocket() {
+      if (this.metaWs) {
+        return;
+      }
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/meta_ws`;
+      const ws = new WebSocket(wsUrl);
+      const scheduleReconnect = () => {
+        this.metaWs = null;
+        const delay = Math.min(this.metaWsBackoffMs, MAX_META_WS_BACKOFF_MS);
+        this.metaWsBackoffMs = Math.min(this.metaWsBackoffMs * 2, MAX_META_WS_BACKOFF_MS);
+        this.clearMetaWsReconnectTimer();
+        this.metaWsReconnectTimer = setTimeout(() => {
+          this.metaWsReconnectTimer = null;
+          this.openMetaWsSocket();
+        }, delay);
+      };
+      ws.onopen = () => {
+        this.metaWsBackoffMs = 1000;
+      };
+      ws.onmessage = async (ev: MessageEvent) => {
+        if (typeof ev.data !== 'string') {
+          return;
+        }
+        await this.appManager.apply_meta_ws_payload(ev.data);
+        await this.updateState();
+      };
+      ws.onerror = () => {
+        console.warn('meta_ws: connection error');
+        ws.close();
+      };
+      ws.onclose = () => {
+        scheduleReconnect();
+      };
+      this.metaWs = ws;
     },
 
     async updateState() {

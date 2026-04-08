@@ -4,8 +4,8 @@ use std::time::Duration;
 use tracing::{debug, error, info, instrument};
 
 use crate::node::api::{
-    DataEventsResponse, ReadSyncRequest, ServerTailRequest, ServerTailResponse, SsRequest,
-    SyncRequest, VaultRequest, WriteSyncRequest,
+    DataEventsResponse, DataSyncResponse, ReadSyncRequest, ServerTailRequest, ServerTailResponse,
+    SsRequest, SyncRequest, VaultRequest, WriteSyncRequest,
 };
 use crate::node::app::sync::sync_protocol::SyncProtocol;
 use crate::node::common::model::device::common::DeviceId;
@@ -36,6 +36,36 @@ pub struct SyncGateway<Repo: KvLogEventRepo, Sync: SyncProtocol> {
 }
 
 impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
+    /// Apply a server-pushed [`DataSyncResponse`] (e.g. from `/meta_ws`) to local storage.
+    #[instrument(skip_all)]
+    pub async fn apply_data_sync_response(&self, resp: DataSyncResponse) -> Result<()> {
+        match resp {
+            DataSyncResponse::Data(DataEventsResponse(events)) => {
+                for new_event in events {
+                    debug!(
+                        "id: {:?}. Sync gateway. Push event from server: {:?}",
+                        self.id, new_event
+                    );
+                    self.p_obj.repo.save(new_event).await?;
+                }
+            }
+            DataSyncResponse::Empty => {}
+            DataSyncResponse::ServerTailResponse(_) => {
+                debug!(
+                    "id: {:?}. Sync gateway. Push ServerTailResponse (no local apply)",
+                    self.id
+                );
+            }
+            DataSyncResponse::Error { msg } => {
+                debug!(
+                    "id: {:?}. Sync gateway. Push error from server: {}",
+                    self.id, msg
+                );
+            }
+        }
+        Ok(())
+    }
+
     #[instrument(skip_all)]
     pub async fn run(&self) {
         info!("Run sync gateway");
@@ -358,5 +388,62 @@ pub mod fixture {
 
             Self { client_gw, vd_gw }
         }
+    }
+}
+
+#[cfg(test)]
+mod apply_data_sync_tests {
+    use super::fixture::SyncGatewayFixture;
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::node::api::{DataEventsResponse, DataSyncResponse, ServerTailResponse};
+    use crate::node::app::sync::api_url::ApiUrl;
+    use crate::node::app::sync::sync_protocol::HttpSyncProtocol;
+    use std::sync::Arc;
+
+    fn client_fixture() -> SyncGatewayFixture<HttpSyncProtocol> {
+        let reg = FixtureRegistry::empty();
+        let sync = Arc::new(HttpSyncProtocol {
+            api_url: ApiUrl::custom_dev("http://127.0.0.1", 9),
+        });
+        SyncGatewayFixture::from(&reg.state, sync)
+    }
+
+    #[tokio::test]
+    async fn apply_empty_ok() {
+        let gw = client_fixture().client_gw;
+        gw.apply_data_sync_response(DataSyncResponse::Empty)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn apply_error_variant_ok_without_repo_write() {
+        let gw = client_fixture().client_gw;
+        gw.apply_data_sync_response(DataSyncResponse::Error {
+            msg: "push error".to_string(),
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn apply_server_tail_ok_without_repo_write() {
+        let gw = client_fixture().client_gw;
+        gw.apply_data_sync_response(DataSyncResponse::ServerTailResponse(
+            ServerTailResponse {
+                device_log_tail: None,
+                ss_device_log_tail: None,
+            },
+        ))
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn apply_data_empty_vec_ok() {
+        let gw = client_fixture().client_gw;
+        gw.apply_data_sync_response(DataSyncResponse::Data(DataEventsResponse(vec![])))
+            .await
+            .unwrap();
     }
 }

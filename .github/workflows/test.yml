@@ -9,8 +9,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  cargo-check-mobile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cargo check mobile stack (UniFFI + mobile-common)
+        working-directory: meta-secret
+        run: cargo check -p mobile-uniffi
+
   test:
     runs-on: ubuntu-latest
+    needs: cargo-check-mobile
 
     env:
       FORCE_COLOR: 1

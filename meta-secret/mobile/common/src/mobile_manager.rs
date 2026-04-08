@@ -16,6 +16,7 @@ use meta_secret_core::node::common::model::user::common::UserData;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
 use crate::app_manager::ApplicationManager;
+use crate::meta_ws;
 
 static GLOBAL_APP_MANAGER: Lazy<Mutex<Option<Arc<MobileApplicationManager>>>> =
     Lazy::new(|| Mutex::new(None));
@@ -152,6 +153,11 @@ impl MobileApplicationManager {
 
     pub async fn find_claim_by_pass_id(&self, pass_id: &MetaPasswordId) -> Option<SsClaim> {
         self.app_manager.find_claim_by_pass_id(pass_id).await
+    }
+
+    pub fn meta_ws_start_listener(&self) -> anyhow::Result<()> {
+        let base = self.app_manager.server.api_url.get_url();
+        meta_ws::meta_ws_start(base, self.app_manager.sync_gateway.clone())
     }
 } 
 
