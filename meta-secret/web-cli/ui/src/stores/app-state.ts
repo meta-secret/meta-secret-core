@@ -10,6 +10,8 @@ import { useAuthStore } from '@/stores/auth';
 let metaWsOnlineListenerRegistered = false;
 
 const MAX_META_WS_BACKOFF_MS = 30_000;
+/** Coalesce rapid WebSocket pushes into one UI/state refresh (avoids GetState spam). */
+const META_WS_UPDATE_STATE_DEBOUNCE_MS = 250;
 
 /** Same-origin `/meta_ws` is only valid when the UI and API share a host; static GitHub Pages must use the real API host. */
 function metaWsUrlFromHttpApiBase(apiBase: string): string {
@@ -48,6 +50,7 @@ export const AppState = defineStore('app_state', {
       currState: WasmApplicationState,
       metaWs: null as WebSocket | null,
       metaWsReconnectTimer: null as ReturnType<typeof setTimeout> | null,
+      metaWsUpdateStateTimer: null as ReturnType<typeof setTimeout> | null,
       metaWsBackoffMs: 1000,
     };
   },
@@ -107,6 +110,21 @@ export const AppState = defineStore('app_state', {
       }
     },
 
+    clearMetaWsUpdateStateDebounce() {
+      if (this.metaWsUpdateStateTimer != null) {
+        clearTimeout(this.metaWsUpdateStateTimer);
+        this.metaWsUpdateStateTimer = null;
+      }
+    },
+
+    scheduleMetaWsUpdateState() {
+      this.clearMetaWsUpdateStateDebounce();
+      this.metaWsUpdateStateTimer = setTimeout(() => {
+        this.metaWsUpdateStateTimer = null;
+        void this.updateState();
+      }, META_WS_UPDATE_STATE_DEBOUNCE_MS);
+    },
+
     registerMetaWsOnlineListener() {
       if (metaWsOnlineListenerRegistered || typeof window === 'undefined') {
         return;
@@ -123,6 +141,7 @@ export const AppState = defineStore('app_state', {
 
     attachMetaWs() {
       this.clearMetaWsReconnectTimer();
+      this.clearMetaWsUpdateStateDebounce();
       this.metaWsBackoffMs = 1000;
       this.openMetaWsSocket();
     },
@@ -151,7 +170,7 @@ export const AppState = defineStore('app_state', {
           return;
         }
         await this.appManager.apply_meta_ws_payload(ev.data);
-        await this.updateState();
+        this.scheduleMetaWsUpdateState();
       };
       ws.onerror = () => {
         console.warn('meta_ws: connection error');

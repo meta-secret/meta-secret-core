@@ -15,6 +15,18 @@ pub struct HttpSyncProtocol {
     pub api_url: ApiUrl,
 }
 
+/// Browser clients (CORS, TLS, mobile networks) often exceed a short desktop timeout.
+fn meta_request_timeout() -> Duration {
+    #[cfg(target_arch = "wasm32")]
+    {
+        Duration::from_secs(60)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        Duration::from_secs(15)
+    }
+}
+
 impl SyncProtocol for HttpSyncProtocol {
     async fn send(&self, request: SyncRequest) -> Result<DataSyncResponse> {
         let client = Client::new();
@@ -24,7 +36,7 @@ impl SyncProtocol for HttpSyncProtocol {
 
         let response = client
             .post(url.clone())
-            .timeout(Duration::from_secs(15))
+            .timeout(meta_request_timeout())
             .header("Content-Type", "application/json")
             .header("Access-Control-Allow-Origin", url)
             .json(&request)
