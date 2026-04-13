@@ -36,9 +36,6 @@ tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["fmt", "json", "env-filter"] }
 tracing-attributes.workspace = true
 
-reqwest.workspace = true
-rustls.workspace = true
-
 ed25519-dalek.workspace = true
 rand.workspace = true
 getrandom.workspace = true
@@ -60,6 +57,13 @@ wasm-bindgen = "0.2.108"
 log = "0.4.29"
 
 uuid.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reqwest.workspace = true
+rustls.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+reqwest = { version = "0.13.2", default-features = false, features = ["json"] }
 
 [dev-dependencies]
 tokio = { version = "1.49.0", features = ["full"] }
