@@ -81,6 +81,11 @@ CMD ["./meta-server"]
 # --- WASM Builder: build wasm package ---
 FROM builder AS wasm-builder
 
+# cc-rs (e.g. ring/rustls) expects a C compiler; wasm-pack build fails with "failed to find tool clang" without it
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    clang \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN rustup target add wasm32-unknown-unknown
 
 WORKDIR /meta-secret-build
