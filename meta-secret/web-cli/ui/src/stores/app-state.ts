@@ -11,6 +11,34 @@ let metaWsOnlineListenerRegistered = false;
 
 const MAX_META_WS_BACKOFF_MS = 30_000;
 
+/** Same-origin `/meta_ws` is only valid when the UI and API share a host; static GitHub Pages must use the real API host. */
+function metaWsUrlFromHttpApiBase(apiBase: string): string {
+  const trimmed = apiBase.trim().replace(/\/$/, '');
+  if (trimmed.startsWith('https://')) {
+    return `${trimmed.replace(/^https:\/\//, 'wss://')}/meta_ws`;
+  }
+  if (trimmed.startsWith('http://')) {
+    return `${trimmed.replace(/^http:\/\//, 'ws://')}/meta_ws`;
+  }
+  return `ws://${trimmed.replace(/^\//, '')}/meta_ws`;
+}
+
+function resolveMetaWsUrl(): string {
+  const explicit = import.meta.env.VITE_META_WS_URL;
+  if (typeof explicit === 'string' && explicit.length > 0) {
+    return explicit;
+  }
+  const apiBase = import.meta.env.VITE_API_HTTP_BASE;
+  if (typeof apiBase === 'string' && apiBase.length > 0) {
+    return metaWsUrlFromHttpApiBase(apiBase);
+  }
+  if (typeof window !== 'undefined' && window.location.hostname === 'meta-secret.github.io') {
+    return 'wss://api.meta-secret.org:443/meta_ws';
+  }
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}/meta_ws`;
+}
+
 export const AppState = defineStore('app_state', {
   state: () => {
     console.log('App state. Init');
@@ -103,8 +131,7 @@ export const AppState = defineStore('app_state', {
       if (this.metaWs) {
         return;
       }
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/meta_ws`;
+      const wsUrl = resolveMetaWsUrl();
       const ws = new WebSocket(wsUrl);
       const scheduleReconnect = () => {
         this.metaWs = null;
