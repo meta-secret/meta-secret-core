@@ -402,9 +402,10 @@ mod apply_data_sync_tests {
 
     fn client_fixture() -> SyncGatewayFixture<HttpSyncProtocol> {
         let reg = FixtureRegistry::empty();
-        let sync = Arc::new(HttpSyncProtocol {
-            api_url: ApiUrl::custom_dev("http://127.0.0.1", 9),
-        });
+        let sync = Arc::new(HttpSyncProtocol::new(ApiUrl::custom_dev(
+            "http://127.0.0.1",
+            9,
+        )));
         SyncGatewayFixture::from(&reg.state, sync)
     }
 

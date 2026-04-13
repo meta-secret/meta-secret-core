@@ -1,6 +1,7 @@
 use crate::node::api::{DataSyncResponse, SyncRequest};
 use crate::node::app::sync::api_url::ApiUrl;
 use anyhow::Result;
+use async_std::sync::Mutex;
 use reqwest::Client;
 use std::time::Duration;
 #[cfg(not(target_arch = "wasm32"))]
@@ -13,6 +14,17 @@ pub trait SyncProtocol {
 
 pub struct HttpSyncProtocol {
     pub api_url: ApiUrl,
+    /// One in-flight HTTP sync at a time; concurrent browser fetches can abort body reads (AbortError).
+    send_mutex: Mutex<()>,
+}
+
+impl HttpSyncProtocol {
+    pub fn new(api_url: ApiUrl) -> Self {
+        Self {
+            api_url,
+            send_mutex: Mutex::new(()),
+        }
+    }
 }
 
 /// Browser clients (CORS, TLS, mobile networks) often exceed a short desktop timeout.
@@ -29,6 +41,8 @@ fn meta_request_timeout() -> Duration {
 
 impl SyncProtocol for HttpSyncProtocol {
     async fn send(&self, request: SyncRequest) -> Result<DataSyncResponse> {
+        let _send_guard = self.send_mutex.lock().await;
+
         let client = Client::new();
         let url = self.api_url.get_url() + "/meta_request";
         #[cfg(not(target_arch = "wasm32"))]
@@ -38,7 +52,6 @@ impl SyncProtocol for HttpSyncProtocol {
             .post(url.clone())
             .timeout(meta_request_timeout())
             .header("Content-Type", "application/json")
-            .header("Access-Control-Allow-Origin", url)
             .json(&request)
             .send()
             .await?;

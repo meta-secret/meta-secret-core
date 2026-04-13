@@ -99,9 +99,7 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
     ) -> Result<ApplicationManager<Repo, HttpSyncProtocol>> {
         println!("🦀Mobile App Manager: Initialize application state manager");
 
-        let sync_protocol = Arc::new(HttpSyncProtocol {
-            api_url: ApiUrl::prod(),
-        });
+        let sync_protocol = Arc::new(HttpSyncProtocol::new(ApiUrl::prod()));
 
         let app_manager = Self::client_setup(client_repo, sync_protocol.clone(), master_key).await?;
 

@@ -152,9 +152,7 @@ impl BaseCommand {
         // Get master key
         let master_key = db_context.p_creds.master_key.clone();
 
-        let sync_protocol = HttpSyncProtocol {
-            api_url: self.api_url,
-        };
+        let sync_protocol = HttpSyncProtocol::new(self.api_url);
 
         let sync_gateway = Arc::new(SyncGateway {
             id: "meta-cli".to_string(),
