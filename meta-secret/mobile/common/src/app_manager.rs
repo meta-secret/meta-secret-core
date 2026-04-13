@@ -1,5 +1,6 @@
 use anyhow::{bail};
 use std::sync::Arc;
+use std::time::Instant;
 use tracing::{info, instrument, Instrument};
 use anyhow::Result;
 use meta_secret_core::crypto::keys::TransportSk;
@@ -210,15 +211,18 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
     }
 
     pub async fn get_state(&self) -> Result<ApplicationState> {
-        if let Ok(user_creds) = self.meta_client_service.find_user_creds().await {
-            self.sync_gateway.sync(user_creds.user()).await?;
-        }
-
+        let get_state_started_at = Instant::now();
         let request = GenericAppStateRequest::GetState;
-        Ok(
-            self.meta_client_service
+        let state = self
+            .meta_client_service
             .send_request(request)
-            .await?
+            .await?;
+        info!(
+            get_state_elapsed_ms = get_state_started_at.elapsed().as_millis(),
+            "mobile_app_manager: get_state completed"
+        );
+        Ok(
+            state
         )
     }
 

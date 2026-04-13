@@ -6,6 +6,7 @@ use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPass
 use meta_secret_core::node::common::model::secret::ClaimId;
 use meta_secret_core::node::common::model::user::common::UserData;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
+use meta_secret_core::node::app::sync::ensure_rustls_ring_crypto_provider;
 use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
 use serde_json::json;
 use std::sync::Arc;
@@ -27,6 +28,7 @@ pub fn init_ios(master_key: String) -> String {
 }
 
 async fn async_init_ios(master_key: String) -> String {
+    ensure_rustls_ring_crypto_provider();
     let transport_sk = MasterKeyManager::from_pure_sk(master_key.clone());
     match MobileApplicationManager::init_ios(transport_sk, master_key).await {
         Ok(app_manager) => {
@@ -42,6 +44,7 @@ pub fn init_android(master_key: String) -> String {
 }
 
 async fn async_init_android(master_key: String) -> String {
+    ensure_rustls_ring_crypto_provider();
     let transport_sk = MasterKeyManager::from_pure_sk(master_key.clone());
     match MobileApplicationManager::init_android(transport_sk, master_key).await {
         Ok(app_manager) => {

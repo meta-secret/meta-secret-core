@@ -32,6 +32,17 @@ static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
         .expect("Failed to create Tokio runtime")
 });
 
+pub static SYNC_GATEWAY_OP_LOCK: Lazy<tokio::sync::Mutex<()>> =
+    Lazy::new(|| tokio::sync::Mutex::new(()));
+
+pub async fn with_sync_gateway_lock<F, T>(future: F) -> T
+where
+    F: Future<Output = T>,
+{
+    let _guard = SYNC_GATEWAY_OP_LOCK.lock().await;
+    future.await
+}
+
 pub struct MobileApplicationManager {
     app_manager: ApplicationManager<SqlIteRepo, HttpSyncProtocol>,
 }
@@ -75,7 +86,7 @@ impl MobileApplicationManager {
     }
 
     pub async fn get_state(&self) -> anyhow::Result<ApplicationState> {
-        let app_state = match self.app_manager.get_state().await {
+        let app_state = match with_sync_gateway_lock(self.app_manager.get_state()).await {
             Ok(state) => {
                 ApplicationState::from(state)
             }

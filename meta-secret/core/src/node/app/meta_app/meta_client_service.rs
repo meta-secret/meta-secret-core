@@ -1,7 +1,7 @@
 use anyhow::bail;
 use flume::{Receiver, Sender};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tracing::{debug, info, instrument};
 
 use crate::node::app::meta_app::messaging::{GenericAppStateRequest, GenericAppStateResponse};
@@ -261,6 +261,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
     }
 
     pub async fn get_app_state(&self) -> Result<ApplicationState> {
+        let get_state_started_at = Instant::now();
         let creds_repo = PersistentCredentials {
             p_obj: self.p_obj.clone(),
             master_key: self.master_key.clone(),
@@ -270,7 +271,12 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         let app_state = match maybe_user_creds {
             None => ApplicationState::Local(self.device_data.clone()),
             Some(user_creds) => {
+                let sync_started_at = Instant::now();
                 self.sync_gateway.sync(user_creds.user()).await?;
+                debug!(
+                    sync_elapsed_ms = sync_started_at.elapsed().as_millis(),
+                    "meta_client_service: sync before get_app_state completed"
+                );
 
                 let p_vault = PersistentVault::from(self.p_obj());
                 let vault_status = p_vault.find(user_creds.user()).await?;
@@ -314,6 +320,10 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                 }
             }
         };
+        debug!(
+            get_state_elapsed_ms = get_state_started_at.elapsed().as_millis(),
+            "meta_client_service: get_app_state completed"
+        );
         Ok(app_state)
     }
 

@@ -14,6 +14,7 @@ use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{debug, warn};
+use crate::mobile_manager::with_sync_gateway_lock;
 
 struct MetaWsRuntime {
     stop: Arc<AtomicBool>,
@@ -120,7 +121,9 @@ async fn run_meta_ws_loop(
                     match next {
                         Some(Ok(Message::Text(t))) => {
                             match serde_json::from_str::<DataSyncResponse>(&t) {
-                                Ok(resp) => match gateway.apply_data_sync_response(resp).await {
+                                Ok(resp) => match with_sync_gateway_lock(
+                                    gateway.apply_data_sync_response(resp)
+                                ).await {
                                     Ok(()) => {
                                         let _ = notify_tx.send(());
                                     }
@@ -152,6 +155,7 @@ async fn run_meta_ws_loop(
                     return;
                 }
                 warn!(target: "meta_secret_ws", "ws connect failed: {}, retrying", e);
+                eprintln!("[meta_secret_ws] ws connect failed: {}, retrying", e);
                 tokio::time::sleep(Duration::from_secs(5)).await;
             }
         }

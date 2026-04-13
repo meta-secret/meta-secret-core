@@ -32,6 +32,7 @@ use crate::secret::split_command::SplitCommand;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use dialoguer::Password;
+use meta_secret_core::node::app::sync::ensure_rustls_ring_crypto_provider;
 use meta_secret_core::node::common::model::meta_pass::PlainPassInfo;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use std::io::{self, IsTerminal, Read};
@@ -168,6 +169,8 @@ async fn main() -> Result<()> {
         .with_test_writer()
         .finish();
     tracing::subscriber::set_global_default(subscriber)?;
+
+    ensure_rustls_ring_crypto_provider();
 
     let args = CmdLine::parse();
 
