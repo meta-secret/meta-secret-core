@@ -9,6 +9,9 @@ import { useAuthStore } from '@/stores/auth';
 
 let metaWsOnlineListenerRegistered = false;
 
+/** Ensures a single WASM init + background client even if multiple views call appStateInit(). */
+let appStateInitSingleton: Promise<void> | null = null;
+
 const MAX_META_WS_BACKOFF_MS = 30_000;
 /** Coalesce rapid WebSocket pushes into one UI/state refresh (avoids GetState spam). */
 const META_WS_UPDATE_STATE_DEBOUNCE_MS = 250;
@@ -78,21 +81,25 @@ export const AppState = defineStore('app_state', {
 
   actions: {
     async appStateInit() {
-      console.log('Js: App state, start initialization');
-      await init();
+      if (appStateInitSingleton !== null) {
+        return appStateInitSingleton;
+      }
+      const run = (async () => {
+        console.log('Js: App state, start initialization');
+        await init();
 
-      const authStore = useAuthStore();
-      const transportSk = MasterKeyManager.from_pure_sk(authStore.masterKey);
-      const appManager = await WasmApplicationManager.init_wasm(transportSk);
-      console.log('Js: Initial App State!!!!');
+        const authStore = useAuthStore();
+        const transportSk = MasterKeyManager.from_pure_sk(authStore.masterKey);
+        const appManager = await WasmApplicationManager.init_wasm(transportSk);
+        console.log('Js: Initial App State!!!!');
 
-      this.appManager = appManager;
-      await this.updateState();
-      this.registerMetaWsOnlineListener();
-      this.attachMetaWs();
+        this.appManager = appManager;
+        await this.updateState();
+        this.registerMetaWsOnlineListener();
+        this.attachMetaWs();
 
-      // Temporary disabled: reactive app state!
-      /*const subscribe = async (appManager: WasmApplicationManager) => {
+        // Temporary disabled: reactive app state!
+        /*const subscribe = async (appManager: WasmApplicationManager) => {
         const state = await appManager.get_state();
         console.log('Js: Updated State: ', state);
         this.metaSecretAppState = state;
@@ -101,6 +108,12 @@ export const AppState = defineStore('app_state', {
       };
 
       subscribe(appManager).then(() => console.log('Finished subscribing'));*/
+      })();
+      appStateInitSingleton = run.catch((err) => {
+        appStateInitSingleton = null;
+        throw err;
+      });
+      return appStateInitSingleton;
     },
 
     clearMetaWsReconnectTimer() {
