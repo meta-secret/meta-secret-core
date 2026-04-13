@@ -14,7 +14,6 @@ pub mod wasm_repo;
 mod wasm_virtual_device;
 
 use tracing_subscriber::fmt::format::Pretty;
-use tracing_subscriber::fmt::time::UtcTime;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_web::{performance_layer, MakeWebConsoleWriter};
 
@@ -48,9 +47,11 @@ pub fn configure() {
             return;
         }
         
+        // Wall-clock timestamps need either `time` with `wasm-bindgen` or JS; tracing-web recommends
+        // `without_time()` because `std::time` is unavailable in wasm32-unknown-unknown.
         let fmt_layer = tracing_subscriber::fmt::layer()
             .with_ansi(false) // Only partially supported across browsers
-            .with_timer(UtcTime::rfc_3339()) // std::time is not available in browsers, see note below
+            .without_time()
             .pretty()
             .with_writer(MakeWebConsoleWriter::new()); // write events to the console
         let perf_layer = performance_layer().with_details_from_fields(Pretty::default());

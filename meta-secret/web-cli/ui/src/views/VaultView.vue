@@ -19,7 +19,12 @@ async function cleanDatabase() {
   if (!confirm('Are you sure you want to delete all vault data and start over? This action cannot be undone.')) return;
   isCleaning.value = true;
   try {
-    await (jsAppState.appManager as any).clean_up_database();
+    let manager = jsAppState.appManager as any;
+    if (typeof manager?.clean_up_database !== 'function') {
+      await jsAppState.appStateInit();
+      manager = jsAppState.appManager as any;
+    }
+    await manager.clean_up_database();
     await jsAppState.appStateInit();
   } finally {
     isCleaning.value = false;

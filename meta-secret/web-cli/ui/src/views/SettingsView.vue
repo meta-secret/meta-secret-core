@@ -14,7 +14,12 @@ async function cleanDatabase() {
   
   isCleaning.value = true;
   try {
-    await (jsAppState.appManager as any).clean_up_database();
+    let manager = jsAppState.appManager as any;
+    if (typeof manager?.clean_up_database !== 'function') {
+      await jsAppState.appStateInit();
+      manager = jsAppState.appManager as any;
+    }
+    await manager.clean_up_database();
     await jsAppState.appStateInit();
     // Navigate back to home after cleaning
     await router.push('/');
