@@ -11,5 +11,9 @@ name = "metasecret_mobile"
 mobile-common = { path = "../common" }
 uniffi = { version = "0.28.3", default-features = false }
 
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21.1"
+rustls-platform-verifier = "0.6.2"
+
 [build-dependencies]
 uniffi_build = { version = "0.28.3", features = ["builtin-bindgen"] }

@@ -4,6 +4,13 @@ use mobile_common::json_api;
 
 uniffi::include_scaffolding!("mobile_uniffi");
 
+#[cfg(target_os = "android")]
+use jni::objects::{JClass, JObject};
+#[cfg(target_os = "android")]
+use jni::sys::jboolean;
+#[cfg(target_os = "android")]
+use jni::JNIEnv;
+
 pub fn generate_master_key() -> String {
     json_api::generate_master_key()
 }
@@ -66,4 +73,23 @@ pub fn send_decline_completion(claim_id: String) -> String {
 
 pub fn show_recovered(secret_id: String) -> String {
     json_api::show_recovered(secret_id)
+}
+
+/// Android-only bootstrap for rustls platform verifier.
+///
+/// Must be called from app startup before any network-backed state fetch.
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_com_metasecret_core_MetaSecretNative_initRustlsPlatformVerifier(
+    mut env: JNIEnv,
+    _class: JClass,
+    context: JObject,
+) -> jboolean {
+    match rustls_platform_verifier::android::init_with_env(&mut env, context) {
+        Ok(()) => 1,
+        Err(err) => {
+            eprintln!("Failed to initialize rustls-platform-verifier: {err}");
+            0
+        }
+    }
 }
