@@ -3,18 +3,8 @@ set -e
 
 cd "$(dirname "$0")/.."
 
-# Check if rustup is installed
-if ! command -v rustup &> /dev/null; then
-    echo "❌ rustup not found. Please install Rust toolchain first."
-    exit 1
-fi
-
-echo "Adding Android targets..."
-rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
-
 if [ -z "$ANDROID_NDK_HOME" ]; then
-    echo "ANDROID_NDK_HOME not set. Searching..."
-
+    echo "Searching for Android NDK..."
     POSSIBLE_NDKS=(
         "$HOME/Library/Android/sdk/ndk"
         "$HOME/Android/Sdk/ndk"
@@ -22,18 +12,23 @@ if [ -z "$ANDROID_NDK_HOME" ]; then
 
     for path in "${POSSIBLE_NDKS[@]}"; do
         if [ -d "$path" ]; then
-            latest_ndk=$(ls -d "$path"/* | sort -V | tail -n 1)
-            export ANDROID_NDK_HOME="$latest_ndk"
-            echo "Found NDK at: $ANDROID_NDK_HOME"
-            break
+            latest_ndk=$(ls -d "$path"/* 2>/dev/null | sort -V | tail -n 1)
+            if [ -n "$latest_ndk" ]; then
+                export ANDROID_NDK_HOME="$latest_ndk"
+                echo "Found NDK at: $ANDROID_NDK_HOME"
+                break
+            fi
         fi
     done
 
     if [ -z "$ANDROID_NDK_HOME" ]; then
-        echo "❌ NDK not found. Please install it or set ANDROID_NDK_HOME."
+        echo "❌ NDK not found. Set ANDROID_NDK_HOME or install Android NDK"
         exit 1
     fi
 fi
+
+echo "🔨 Installing Rust Android targets..."
+rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
 
 # Detect host OS for NDK prebuilt path
 if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -45,97 +40,83 @@ else
     exit 1
 fi
 
-CLANG_AARCH64="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$NDK_PREBUILT/bin/aarch64-linux-android29-clang"
-CLANG_ARMV7="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$NDK_PREBUILT/bin/armv7a-linux-androideabi29-clang"
-CLANG_I686="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$NDK_PREBUILT/bin/i686-linux-android29-clang"
-CLANG_X86_64="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$NDK_PREBUILT/bin/x86_64-linux-android29-clang"
-
-if [ ! -f "$CLANG_AARCH64" ]; then
-    echo "Searching for aarch64 clang..."
-    CLANG_AARCH64=$(find "$ANDROID_NDK_HOME" -name "aarch64-linux-android*-clang" | head -n 1)
-    if [ -z "$CLANG_AARCH64" ]; then
-        echo "❌ Could not find aarch64-linux-android clang. Please check your NDK installation."
-        exit 1
-    fi
-    echo "Found: $CLANG_AARCH64"
-fi
-
-if [ ! -f "$CLANG_ARMV7" ]; then
-    echo "Searching for armv7 clang..."
-    CLANG_ARMV7=$(find "$ANDROID_NDK_HOME" -name "armv7a-linux-androideabi*-clang" | head -n 1)
-    if [ -z "$CLANG_ARMV7" ]; then
-        echo "❌ Could not find armv7a-linux-androideabi clang. Please check your NDK installation."
-        exit 1
-    fi
-    echo "Found: $CLANG_ARMV7"
-fi
-
-if [ ! -f "$CLANG_I686" ]; then
-    echo "Searching for i686 clang..."
-    CLANG_I686=$(find "$ANDROID_NDK_HOME" -name "i686-linux-android*-clang" | head -n 1)
-    if [ -z "$CLANG_I686" ]; then
-        echo "❌ Could not find i686-linux-android clang. Please check your NDK installation."
-        exit 1
-    fi
-    echo "Found: $CLANG_I686"
-fi
-
-if [ ! -f "$CLANG_X86_64" ]; then
-    echo "Searching for x86_64 clang..."
-    CLANG_X86_64=$(find "$ANDROID_NDK_HOME" -name "x86_64-linux-android*-clang" | head -n 1)
-    if [ -z "$CLANG_X86_64" ]; then
-        echo "❌ Could not find x86_64-linux-android clang. Please check your NDK installation."
-        exit 1
-    fi
-    echo "Found: $CLANG_X86_64"
-fi
-
+# Setup NDK toolchain
 LLVM_AR="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$NDK_PREBUILT/bin/llvm-ar"
-
 export PATH=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$NDK_PREBUILT/bin:$PATH
+
+# Find clang compilers in llvm/prebuilt
+LLVM_BIN_DIR="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$NDK_PREBUILT/bin"
+
+# Find latest API level clang (NDK has versioned clang: aarch64-linux-android34-clang, etc)
+find_clang() {
+    local pattern="$1"
+    # Find all matching clang versions and pick the latest one
+    local clang=$(ls -1 "$LLVM_BIN_DIR"/${pattern}*-clang 2>/dev/null | sort -V | tail -n 1)
+    echo "$clang"
+}
+
+CLANG_AARCH64=$(find_clang "aarch64-linux-android")
+CLANG_ARMV7=$(find_clang "armv7a-linux-androideabi")
+CLANG_X86_64=$(find_clang "x86_64-linux-android")
+
+# Verify compilers exist
+if [ -z "$CLANG_AARCH64" ] || [ -z "$CLANG_ARMV7" ] || [ -z "$CLANG_X86_64" ]; then
+    echo "❌ Could not find clang compilers in: $LLVM_BIN_DIR"
+    echo "   Available: $(ls "$LLVM_BIN_DIR"/*-clang 2>/dev/null | head -3)"
+    exit 1
+fi
+
+# Set up environment variables
 export AR_aarch64_linux_android="$LLVM_AR"
 export CC_aarch64_linux_android="$CLANG_AARCH64"
-export CXX_aarch64_linux_android="${CLANG_AARCH64}++"
-
 export AR_armv7_linux_androideabi="$LLVM_AR"
 export CC_armv7_linux_androideabi="$CLANG_ARMV7"
-export CXX_armv7_linux_androideabi="${CLANG_ARMV7}++"
-
-export AR_i686_linux_android="$LLVM_AR"
-export CC_i686_linux_android="$CLANG_I686"
-export CXX_i686_linux_android="${CLANG_I686}++"
-
 export AR_x86_64_linux_android="$LLVM_AR"
 export CC_x86_64_linux_android="$CLANG_X86_64"
-export CXX_x86_64_linux_android="${CLANG_X86_64}++"
 
 export CARGO_BUILD_RUSTFLAGS="-C target-feature=+crt-static"
-export CARGO_HTTP_CHECK_REVOKE=false
-export CARGO_TERM_PROGRESS_WHEN=never
 
 ROOT_DIR="$(cd .. && pwd)"
 
-JNILIBS_DIR="${ROOT_DIR}/target/android/jniLibs"
-mkdir -p "$JNILIBS_DIR"
+echo "🤖 Compiling for Android arm64-v8a (aarch64)..."
+cargo build --package mobile-uniffi --target aarch64-linux-android --release
 
-echo "🛠 Building mobile-uniffi for Android targets..."
+echo "🤖 Compiling for Android armeabi-v7a (armv7)..."
+cargo build --package mobile-uniffi --target armv7-linux-androideabi --release
 
-cd "$ROOT_DIR"
+echo "🤖 Compiling for Android x86_64..."
+cargo build --package mobile-uniffi --target x86_64-linux-android --release
 
-copy_so() {
+# Convert .a to .so and copy to compose project
+COMPOSE_JNILIBS="${ROOT_DIR}/../../meta-secret-compose/composeApp/src/androidMain/jniLibs"
+
+build_so() {
     local triple="$1"
     local abi="$2"
-    echo "Building for $triple ($abi)..."
-    cargo build --package mobile-uniffi --target "$triple" --release
-    mkdir -p "$JNILIBS_DIR/$abi"
-    cp "${ROOT_DIR}/target/${triple}/release/libmetasecret_mobile.so" "$JNILIBS_DIR/$abi/libmetasecret_mobile.so"
-    echo "Done: $abi"
+    local clang="$3"
+
+    local static_lib="${ROOT_DIR}/target/${triple}/release/libmetasecret_mobile.a"
+    local so_dir="${COMPOSE_JNILIBS}/${abi}"
+    local so_file="${so_dir}/libmetasecret_mobile.so"
+
+    mkdir -p "$so_dir"
+
+    echo "  Creating $abi .so..."
+    "$clang" -shared \
+      -o "$so_file" \
+      -Wl,--whole-archive "$static_lib" \
+      -Wl,--no-whole-archive \
+      -lm
 }
 
-copy_so aarch64-linux-android arm64-v8a
-copy_so armv7-linux-androideabi armeabi-v7a
-copy_so i686-linux-android x86
-copy_so x86_64-linux-android x86_64
+echo ""
+echo "📦 Creating .so files for compose project..."
+build_so "aarch64-linux-android" "arm64-v8a" "$CLANG_AARCH64"
+build_so "armv7-linux-androideabi" "armeabi-v7a" "$CLANG_ARMV7"
+build_so "x86_64-linux-android" "x86_64" "$CLANG_X86_64"
 
-echo "✅ Done!"
-echo "Shared libraries are in: $JNILIBS_DIR/*"
+echo ""
+echo "✅ Android libraries ready:"
+echo "   📦 arm64-v8a:   ${COMPOSE_JNILIBS}/arm64-v8a/libmetasecret_mobile.so"
+echo "   📦 armeabi-v7a: ${COMPOSE_JNILIBS}/armeabi-v7a/libmetasecret_mobile.so"
+echo "   📦 x86_64:      ${COMPOSE_JNILIBS}/x86_64/libmetasecret_mobile.so"

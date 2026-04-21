@@ -16,6 +16,7 @@ use meta_secret_core::node::common::model::user::common::UserData;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
 use crate::app_manager::ApplicationManager;
+use std::fs;
 
 static GLOBAL_APP_MANAGER: Lazy<Mutex<Option<Arc<MobileApplicationManager>>>> =
     Lazy::new(|| Mutex::new(None));
@@ -30,6 +31,36 @@ static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
         .build()
         .expect("Failed to create Tokio runtime")
 });
+
+/// Resolve Android package name with priority:
+/// 1. METASECRET_ANDROID_DB_DIR environment variable
+/// 2. Extract from /proc/self/cmdline
+/// 3. Fallback: metasecret.project.com
+fn resolve_android_package() -> String {
+    // Priority 1: Check environment variable
+    if let Ok(db_dir) = std::env::var("METASECRET_ANDROID_DB_DIR") {
+        info!("Android package resolved from METASECRET_ANDROID_DB_DIR: {}", db_dir);
+        return db_dir;
+    }
+
+    // Priority 2: Extract package from /proc/self/cmdline
+    if let Ok(cmdline) = fs::read("/proc/self/cmdline") {
+        // cmdline format: "package.name\0arg1\0arg2\0..."
+        if let Ok(cmd_str) = String::from_utf8(cmdline) {
+            if let Some(package) = cmd_str.split('\0').next() {
+                if !package.is_empty() && package.contains('.') {
+                    info!("Android package resolved from /proc/self/cmdline: {}", package);
+                    return package.to_string();
+                }
+            }
+        }
+    }
+
+    // Fallback
+    let fallback = "metasecret.project.com".to_string();
+    info!("Android package resolved to fallback: {}", fallback);
+    fallback
+}
 
 pub struct MobileApplicationManager {
     app_manager: ApplicationManager<SqlIteRepo, HttpSyncProtocol>,
@@ -69,7 +100,9 @@ impl MobileApplicationManager {
     }
     
     pub async fn init_android(master_key: TransportSk, raw_master_key: String) -> anyhow::Result<MobileApplicationManager> {
-        let db_path = format!("/data/data/com.metasecret.core/databases/meta-secret-{raw_master_key}.db");
+        let package = resolve_android_package();
+        let db_path = format!("/data/data/{}/databases/meta-secret-{}.db", package, raw_master_key);
+        info!("Resolved Android database path: {}", db_path);
         Self::init(master_key, &db_path).await
     }
 
