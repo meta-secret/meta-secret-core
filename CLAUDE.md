@@ -6,7 +6,7 @@ This file guides Claude Code (claude.ai/code) in **meta-secret-core**. **Canonic
 
 | Document | Contents |
 |---|---|
-| [WORKFLOW.md](WORKFLOW.md) | Agent phases, GitLab vs manual entry, approval gates, subagents |
+| [WORKFLOW.md](WORKFLOW.md) | Agent phases, GitHub/manual entry, approval gates, subagents |
 | [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) | Workspace layout, crates, build/test commands, link to mobile consumer |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Crates, crypto boundary, server vs client, FFI/UniFFI |
 | [SECURITY.md](SECURITY.md) | Keys, logging, crypto handling, operational hygiene |
@@ -50,10 +50,10 @@ Follow [WORKFLOW.md](WORKFLOW.md).
 - **Skills:** [`.ai/skills/`](.ai/skills/) (reusable workflows)
 - **Rules:** [`.ai/rules/`](.ai/rules/) (Cursor + Codex CLI)
 
-Symlinks from `.claude/`, `.cursor/`, and `.codex/` point to `.ai/`:
-- `.claude/agents → .ai/agents`
-- `.cursor/rules → .ai/rules`
-- `.codex/agents → .ai/agents` (etc.)
+IDE entry files in `.claude/`, `.cursor/`, and `.codex/` bootstrap orchestration and point to `.ai/` as canonical source:
+- `.claude/ORCHESTRATE.md`
+- `.cursor/WORKFLOW.md`
+- `.codex/ORCHESTRATE.md`
 
 👉 **See [`.ai/ARCHITECTURE.md`](.ai/ARCHITECTURE.md)** for complete AI structure and IDE integration details.
 
@@ -63,8 +63,8 @@ Symlinks from `.claude/`, `.cursor/`, and `.codex/` point to `.ai/`:
 
 | IDE | Support | Where |
 |-----|---------|-------|
-| **Claude Code** | Slash commands | `/help` → lists all commands |
-| **Cursor** | Agents + Rules | Via `.cursor/agents` + `.cursor/rules` (symlinks) |
-| **OpenAI Codex CLI** | Agents + Commands + Rules | Via `.codex/` (symlinks) |
+| **Claude Code** | Workflow bootstrap | Via `.claude/INDEX.md` + `.claude/ORCHESTRATE.md` |
+| **Cursor** | Workflow bootstrap + entry rule | Via `.cursor/WORKFLOW.md` + `.cursor/rules/00-entry.mdc` |
+| **OpenAI Codex CLI** | Workflow bootstrap | Via `.codex/INDEX.md` + `.codex/ORCHESTRATE.md` |
 
-Rules under [`.ai/rules/`](.ai/rules/) apply to Cursor and Codex. When using Cursor, rules auto-load from symlinks.
+Rules under [`.ai/rules/`](.ai/rules/) remain the canonical source for policy and stage behavior.

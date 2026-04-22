@@ -1,0 +1,30 @@
+---
+description: meta-secret-core entry point
+alwaysApply: true
+---
+
+# Cursor Entry
+
+For `run issue ...`, do not use duplicated local stage scripts.
+
+Use:
+- `.ai/WORKFLOW.md` as orchestration source
+- `.ai/PIPELINE.md` for stage details
+- `.ai/agents/` for stage behaviors
+
+Workflow stages:
+1. Issue Intake
+2. Planning
+3. Implementation
+4. Build (no tests, max 10 min)
+5. Code Review
+6. Test Authoring
+7. Test Run
+8. Branch + Commit + PR
+
+Required logs per stage:
+- `Start stage <n>: <name>`
+- `Stage <n>: <name> completed`
+
+Artifacts:
+- `.ai/artifacts/run/MS-<run-id>-<stage>-<name>.md`
