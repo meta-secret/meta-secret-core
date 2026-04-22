@@ -39,13 +39,34 @@ export const AppState = defineStore('app_state', {
   },
 
   actions: {
+    resolveWebDeviceInfo() {
+      const ua = navigator.userAgent.toLowerCase();
+      const platform = navigator.platform || 'Web';
+      const browser =
+        ua.includes('edg') ? 'Edge' :
+        ua.includes('opr') || ua.includes('opera') ? 'Opera' :
+        ua.includes('firefox') ? 'Firefox' :
+        ua.includes('safari') && !ua.includes('chrome') ? 'Safari' :
+        ua.includes('chrome') ? 'Chrome' :
+        'Browser';
+      const isTablet = /ipad|tablet|android(?!.*mobile)/i.test(navigator.userAgent);
+      const deviceType = isTablet ? 'Tablet' : 'Web';
+      const deviceName = `${browser} on ${platform}`.trim();
+      return { deviceName, deviceType };
+    },
+
     async appStateInit() {
       console.log('Js: App state, start initialization');
       await init();
 
       const authStore = useAuthStore();
       const transportSk = MasterKeyManager.from_pure_sk(authStore.masterKey);
-      const appManager = await WasmApplicationManager.init_wasm(transportSk);
+      const { deviceName, deviceType } = this.resolveWebDeviceInfo();
+      const appManager = await WasmApplicationManager.init_wasm_with_device(
+        transportSk,
+        deviceName,
+        deviceType,
+      );
       console.log('Js: Initial App State!!!!');
 
       this.appManager = appManager;

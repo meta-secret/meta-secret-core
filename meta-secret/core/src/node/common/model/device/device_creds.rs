@@ -2,7 +2,7 @@ use crate::crypto::encoding::base64::Base64Text;
 use crate::crypto::keys::{KeyManager, OpenBox, SecretBox, SecureSecretBox, TransportPk, TransportSk};
 use crate::node::common::model::crypto::aead::AeadPlainText;
 use crate::node::common::model::crypto::channel::CommunicationChannel;
-use crate::node::common::model::device::common::{DeviceData, DeviceName};
+use crate::node::common::model::device::common::{DeviceData, DeviceName, DeviceType};
 use anyhow::Result;
 
 /// Contains full information about device (private keys and device id)
@@ -73,6 +73,18 @@ impl DeviceCredsBuilder<KeyManager> {
     pub fn build(self, device_name: DeviceName) -> DeviceCredsBuilder<DeviceCreds> {
         let secret_box = SecretBox::from(&self.creds);
         let device = DeviceData::from(device_name, OpenBox::from(&secret_box));
+        let creds = DeviceCreds { secret_box, device };
+
+        DeviceCredsBuilder { creds }
+    }
+
+    pub fn build_with_type(
+        self,
+        device_name: DeviceName,
+        device_type: DeviceType,
+    ) -> DeviceCredsBuilder<DeviceCreds> {
+        let secret_box = SecretBox::from(&self.creds);
+        let device = DeviceData::from_with_type(device_name, device_type, OpenBox::from(&secret_box));
         let creds = DeviceCreds { secret_box, device };
 
         DeviceCredsBuilder { creds }

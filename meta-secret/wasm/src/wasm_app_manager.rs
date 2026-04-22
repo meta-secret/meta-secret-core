@@ -5,6 +5,7 @@ use crate::configure;
 use crate::wasm_repo::WasmRepo;
 use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
+use meta_secret_core::node::common::model::device::common::{DeviceName, DeviceType};
 use meta_secret_core::node::common::model::WasmApplicationState;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::ClaimId;
@@ -22,15 +23,27 @@ pub struct WasmApplicationManager {
 #[wasm_bindgen]
 impl WasmApplicationManager {
     pub async fn init_wasm(master_key: TransportSk) -> WasmApplicationManager {
+        Self::init_wasm_with_device(master_key, "web_device".to_string(), "Web".to_string()).await
+    }
+
+    pub async fn init_wasm_with_device(
+        master_key: TransportSk,
+        device_name: String,
+        device_type: String,
+    ) -> WasmApplicationManager {
         configure();
 
         info!("Init Wasm state manager");
 
         let client_repo = Arc::new(WasmRepo::default().await);
-        let app_manager =
-            ApplicationManager::<WasmRepo, HttpSyncProtocol>::init(client_repo, master_key)
-                .await
-                .unwrap();
+        let app_manager = ApplicationManager::<WasmRepo, HttpSyncProtocol>::init_with_device(
+            client_repo,
+            master_key,
+            DeviceName::from(device_name),
+            DeviceType::from(device_type),
+        )
+        .await
+        .unwrap();
 
         WasmApplicationManager { app_manager }
     }
