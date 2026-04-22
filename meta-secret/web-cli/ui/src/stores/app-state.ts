@@ -39,6 +39,47 @@ export const AppState = defineStore('app_state', {
   },
 
   actions: {
+    async clearIndexedDbByName(dbName: string) {
+      await new Promise<void>((resolve, reject) => {
+        const request = indexedDB.deleteDatabase(dbName);
+
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+        request.onblocked = () => resolve();
+      });
+    },
+
+    async clearAllMetaSecretIndexedDb() {
+      const dbNames = [
+        'meta-secret',
+        'meta-secret-server',
+        'meta-secret-v-device',
+        'meta-secret-v-device-2',
+      ];
+
+      for (const dbName of dbNames) {
+        try {
+          await this.clearIndexedDbByName(dbName);
+        } catch (error) {
+          console.warn(`Failed to delete IndexedDB ${dbName}:`, error);
+        }
+      }
+    },
+
+    shouldResetDbOnInitError(error: unknown) {
+      const text = String(error);
+      return text.includes('missing field `deviceType`') || text.includes('missing field deviceType');
+    },
+
+    async cleanDatabase() {
+      const manager: any = this.appManager as any;
+      if (manager && typeof manager.clean_up_database === 'function') {
+        await manager.clean_up_database();
+      } else {
+        await this.clearAllMetaSecretIndexedDb();
+      }
+    },
+
     resolveWebDeviceInfo() {
       const ua = navigator.userAgent.toLowerCase();
       const platform = navigator.platform || 'Web';
@@ -62,11 +103,26 @@ export const AppState = defineStore('app_state', {
       const authStore = useAuthStore();
       const transportSk = MasterKeyManager.from_pure_sk(authStore.masterKey);
       const { deviceName, deviceType } = this.resolveWebDeviceInfo();
-      const appManager = await WasmApplicationManager.init_wasm_with_device(
-        transportSk,
-        deviceName,
-        deviceType,
-      );
+      let appManager;
+      try {
+        appManager = await WasmApplicationManager.init_wasm_with_device(
+          transportSk,
+          deviceName,
+          deviceType,
+        );
+      } catch (error) {
+        if (this.shouldResetDbOnInitError(error)) {
+          console.warn('Detected legacy IndexedDB data without deviceType. Cleaning DB and retrying init.');
+          await this.clearAllMetaSecretIndexedDb();
+          appManager = await WasmApplicationManager.init_wasm_with_device(
+            transportSk,
+            deviceName,
+            deviceType,
+          );
+        } else {
+          throw error;
+        }
+      }
       console.log('Js: Initial App State!!!!');
 
       this.appManager = appManager;
