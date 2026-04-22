@@ -1,0 +1,15 @@
+---
+description: Core domain architecture/style/security constraints
+globs: meta-secret/core/**/*.rs
+alwaysApply: false
+---
+
+# Core Domain Rules
+
+Apply these rules when editing `meta-secret/core`.
+
+- Keep crypto and secret-sharing logic in core; do not move it to CLI/web/mobile adapters.
+- Avoid transport/framework concerns (HTTP/UI/CLI formatting) in core modules.
+- Use typed errors at public boundaries instead of string-based failures.
+- Do not log key material, shares, or decrypted secret payloads.
+- For behavior changes, add focused tests in the same module or crate tests.

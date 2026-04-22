@@ -30,7 +30,7 @@ cargo test -p meta-secret-core
 cargo build --release -p meta-server
 ```
 
-Project-wide Docker builds/tests (see root [README.md](README.md) and [`.cursor/rules/build/`](.cursor/rules/build/)):
+Project-wide Docker builds/tests (see root [README.md](README.md) and [`.ai/rules/build/`](.ai/rules/build/)):
 
 ```bash
 docker buildx bake test

@@ -1,0 +1,15 @@
+---
+description: Mobile library domain architecture/style/security constraints
+globs: meta-secret/mobile/**/*.rs,meta-secret/mobile/**/*.udl
+alwaysApply: false
+---
+
+# Mobile Lib Domain Rules
+
+Apply these rules when editing `meta-secret/mobile`.
+
+- Keep UniFFI/mobile bridge thin; business and crypto logic remains in core.
+- Treat `.udl` changes as public contract changes requiring compatibility review.
+- Prefer additive API changes; avoid breaking field/type renames without migration.
+- Never leak secret data through FFI logs or debug-only paths.
+- Convert panics to controlled error responses across FFI boundaries.

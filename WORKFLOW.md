@@ -19,7 +19,7 @@ This document describes the **multi-phase delivery pipeline** for **meta-secret-
 | Release / MR | `release-manager` | Branch from `main`, commit/push only after explicit user ok |
 | Pattern → skill/command (optional) | `workflow-pattern-capture` | 0–2 durable suggestions or “no change”; not every MR |
 
-Files: [`.cursor/agents/`](.cursor/agents/) and [`.claude/agents/`](.claude/agents/) (same prompts; frontmatter may differ).
+Files: [`.ai/agents/`](.ai/agents/) with IDE entrypoints in `.claude/`, `.cursor/`, and `.codex/`.
 
 ## Two entry points (same pipeline after planning)
 
@@ -46,7 +46,7 @@ After the first approved plan, the pipeline is identical.
 
 **If green:** `code-reviewer` → if must-fix items → back to **Plan** → **Implement** (and tests as needed).
 
-**If review ok:** `release-notes` (draft MR body) → approve → `release-manager` (branch from `main`, **commit and push only after explicit “ok”**, MR via `glab` when available).
+**If review ok:** `release-notes` (draft MR body) → approve → `release-manager` (branch from `main`, **commit and push only after explicit “ok”**, MR via `gh` when available).
 
 **Optional — pattern capture (not every MR):** when a **trigger** applies—large feature, **new** error class, **same** review correction **three or more** times, or **toolchain/stack** change—run **`workflow-pattern-capture`** (skill **`workflow-pattern-capture`**) after `code-reviewer` or after `release-notes`. Output is **0–2** concrete proposals (skill, command, Cursor rule, or justified Claude hook) **or** **No changes recommended**. Skip for trivial fixes.
 
@@ -58,23 +58,27 @@ After **every** phase, require a clear **artifact** (summary, plan, diff, test r
 
 You can invoke **any** subagent alone with a direct prompt (logs, files, partial context):
 
-- **Claude Code:** delegate to the named subagent or use slash commands under [`.claude/commands/`](.claude/commands/) (`/only-planner`, `/only-implementer`, etc.).
-- **Cursor:** in Agent chat, use `/subagent-name` or natural language (“use the feature-planner subagent to …”). See [`.cursor/commands/README.md`](.cursor/commands/README.md) for parity.
+- **Claude Code / Codex CLI:** use workflow entries and phase docs under [`.ai/commands/`](.ai/commands/) (`workflow-from-issue`, `only-planner`, etc.).
+- **Cursor:** use workflow bootstrap in [`.cursor/WORKFLOW.md`](.cursor/WORKFLOW.md), which delegates to [`.ai/WORKFLOW.md`](.ai/WORKFLOW.md).
 
 ## Skills (templates)
 
 | Skill folder | Use |
 |--------------|-----|
-| `workflow-issue-handoff` | Build **Summary** after `gh issue view` (or `glab issue view`) |
+| `workflow-issue-handoff` | Build **Summary** after `gh issue view` |
 | `workflow-manual-task-brief` | Structure a manual task before planning |
 | `workflow-plan-output` | Plan shape; aligns with `write-implementation-plan` |
 | `workflow-mr-body` | MR title/body checklist |
 | `systematic-debugging` | Loaded by `debug-rca` (Claude) or read explicitly |
 | `workflow-pattern-capture` | Optional: repeating patterns → skill/command/rule/hook; cap 0–2 |
 | `architecture-guardian` | Layer/boundary checks for agents |
+| `core-guardian` | Rules for `meta-secret/core` (architecture/style/security) |
+| `cli-guardian` | Rules for `cli` and `meta-cli` layers |
+| `web-guardian` | Rules for `web-cli/ui` layer |
+| `mobile-lib-guardian` | Rules for `mobile/uniffi` and mobile-common FFI layer |
 | `write-implementation-plan` | Deeper plan template |
 
-Paths: [`.claude/skills/`](.claude/skills/).
+Paths: [`.ai/skills/`](.ai/skills/).
 
 ## Tool limits
 
