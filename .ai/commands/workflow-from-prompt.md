@@ -1,5 +1,5 @@
 ---
-description: Start delivery from a manual feature/bug description — task brief then plan; no GitLab issue required.
+description: Start delivery from a manual feature/bug description — task brief then plan; no GitHub issue required.
 ---
 
 # Workflow from prompt

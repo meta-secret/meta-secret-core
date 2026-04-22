@@ -1,6 +1,6 @@
 ---
 name: workflow-issue-handoff
-description: Format a GitHub (or GitLab) issue Summary for the feature-planner and later phases after gh issue view.
+description: Format a GitHub issue Summary for the feature-planner and later phases after gh issue view.
 ---
 
 # Workflow — issue Summary
@@ -12,11 +12,6 @@ Use after fetching an issue. Produce a single structured block the user can appr
 **Primary (GitHub):**
 ```
 gh issue view <n> --repo <owner/repo>
-```
-
-**Secondary (GitLab, if applicable):**
-```
-glab issue view <n>
 ```
 
 ## Read first

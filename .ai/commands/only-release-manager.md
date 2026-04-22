@@ -18,7 +18,7 @@ Reminder: **never** commit or push without explicit user approval in this sessio
 
 ## Session mode
 
-- **Use Agent mode** — git branch/commit/push and optional `glab` / `gh` PR require **git write** and shell.
+- **Use Agent mode** — git branch/commit/push and `gh` PR actions require **git write** and shell.
 - **Mandatory pauses:** follow the **release-manager** agent: **stop before `git commit`** and **again before `git push`** for explicit **“ok”** from the user.
 
 ## Presentation (required)

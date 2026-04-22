@@ -1,111 +1,42 @@
 # AI Automation — meta-secret-core
 
-🤖 Unified AI agents, commands, and rules for **Claude Code**, **Cursor**, and **OpenAI Codex CLI**.
+Automated issue-to-PR workflow shared by Claude Code, Cursor, and Codex CLI.
 
----
+## Start
 
-## 🎯 Quick Start
+- `run issue 123`
+- `run issue "my custom task"`
+- `run issue 123 --from stage-4`
 
-### In Claude Code
+## Workflow
 
-```bash
-/help                    # List all commands
-/only-planner <task>     # Create implementation plan
-```
+Defined in `.ai/WORKFLOW.md` and `.ai/PIPELINE.md`.
 
-### In Cursor
+8 stages:
+1. Issue Intake
+2. Planning
+3. Implementation
+4. Build (no tests, timeout 10 min)
+5. Code Review
+6. Test Authoring
+7. Test Run
+8. Branch + Commit + PR
 
-- Agents auto-discovered from `agents/`
-- Rules auto-discovered from `rules/`
-- Use in custom rules or inline chat
+## Required Stage Logs
 
-### OpenAI Codex CLI
+- `Start stage <n>: <name>`
+- `Stage <n>: <name> completed`
 
-```bash
-codex --agent code-reviewer
-codex --command only-implementer
-codex --rule code-style
-```
+## Artifacts
 
----
+- Location: `.ai/artifacts/run/`
+- Naming: `MS-<run-id>-<stage>-<name>.md`
+- Templates: `.ai/artifacts/*-template.md`
 
-## 📂 What's Here
+## Retry Policy
 
-| Folder | Purpose |
-|--------|---------|
-| **agents/** | AI personas (planner, implementer, reviewer, etc.) |
-| **commands/** | Slash commands for Claude Code and Codex CLI |
-| **skills/** | Reusable workflows (planning, debugging, release) |
-| **rules/** | Coding standards and principles for Cursor & Codex |
+On failed Build/Review/Test-Run:
+- return to Stage 2 with failed artifact as input
+- max retries: 2
 
----
-
-## 🔗 How It Works
-
-All three IDEs use **symlinks** pointing to `.ai/`:
-
-```
-.claude/agents ──┐
-.cursor/agents ──├──→ .ai/agents  (single source)
-.codex/agents ──┘
-
-.claude/commands ──┐
-.codex/commands ──├──→ .ai/commands
-```
-
-**Edit once, works everywhere.** ✅
-
----
-
-## 📖 Full Documentation
-
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for:
-- Complete folder structure
-- IDE integration details
-- How to add new agents/commands/rules
-- Symlink verification
-
----
-
-## 🚀 Common Tasks
-
-### Run a planning session
-```bash
-/only-planner "add encryption to storage module"
-```
-
-### Review code changes
-```bash
-/only-reviewer   # Then upload diff
-```
-
-### Write tests
-```bash
-/only-test-author  # Generate test cases
-```
-
-### Debug a failing test
-```bash
-/only-debug-rca "test failure logs here"
-```
-
-### Prepare release
-```bash
-/only-release-notes   # Draft notes
-/only-release-manager # Create branch & PR
-```
-
----
-
-## 📚 Resources
-
-- **Commands catalog:** `commands/README.md`
-- **Agents guide:** Each agent has `.md` file in `agents/`
-- **Skills reference:** Check `skills/*/SKILL.md`
-- **Coding rules:** `rules/RULES.md`
-
----
-
-✅ **IDE Support:** Claude Code • Cursor • OpenAI Codex CLI  
-🔄 **Status:** All symlinks verified  
-📅 **Last sync:** 2026-04-18
+Last updated: 2026-04-22

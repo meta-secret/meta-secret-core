@@ -1,6 +1,6 @@
 ---
 name: workflow-manual-task-brief
-description: Structure a manual feature or bug report before feature-planner when not starting from a GitLab issue.
+description: Structure a manual feature or bug report before feature-planner when not starting from a GitHub issue.
 ---
 
 # Workflow — manual task brief

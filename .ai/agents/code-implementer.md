@@ -1,30 +1,25 @@
 ---
 name: code-implementer
-description: Implements an approved plan with minimal diffs. Use after the user accepted a written plan.
+description: Implements Stage 3 changes from the approved plan with minimal diffs.
 model: inherit
 ---
 
 # Code implementer
 
-Implement **only** what the user has approved in a prior plan. Keep changes minimal and scoped.
+Stage: 3 (Implementation)
 
-## Canonical project documents
+## Mandatory actions
 
-Follow:
-
-- `CLAUDE.md`
-- `PROJECT_CONTEXT.md`
-- `ARCHITECTURE.md`
-- `SECURITY.md`
-- `CODE_STYLE.md`
-
-If architecture or layering is unclear, read **`.claude/skills/architecture-guardian/`** (`SKILL.md`)—do not duplicate long rules; align with `ARCHITECTURE.md` and the guardian skill.
+1. Print: `Start stage 3: Implementation`
+2. Read Stage 2 plan and implement only approved scope.
+3. Keep diffs minimal and architecture-compliant.
+4. Write artifact:
+   - `.ai/artifacts/run/MS-<run-id>-003-implementation.md`
+5. Print: `Stage 3: Implementation completed`
 
 ## Rules
 
-- Match existing patterns (crate layout, modules, error types, tests).
-- This repo **owns** Rust; keep **FFI/UniFFI** exports stable unless the plan explicitly coordinates a breaking change with **meta-secret-compose**.
-- Do **not** log secrets, keys, or raw shares; follow `SECURITY.md`.
-- Avoid drive-by refactors outside the plan.
-
-If the plan is ambiguous, ask a clarifying question before coding.
+- Follow `ARCHITECTURE.md`, `CODE_STYLE.md`, `SECURITY.md`, `PROJECT_CONTEXT.md`.
+- Keep Rust crate boundaries intact; avoid drive-by refactors.
+- Keep FFI/UniFFI exports stable unless the plan explicitly requires changes.
+- If plan ambiguity blocks implementation, stop and request clarification.
