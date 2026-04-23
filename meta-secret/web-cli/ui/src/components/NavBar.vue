@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/vue';
-import { Bars3Icon, XMarkIcon, ChevronDownIcon } from '@heroicons/vue/24/outline';
+import { Bars3Icon, XMarkIcon, ChevronDownIcon, Cog6ToothIcon } from '@heroicons/vue/24/outline';
 import { ref, onMounted, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
@@ -94,6 +94,9 @@ onBeforeUnmount(() => {
 
       <div class="right-slot">
         <span class="alpha-badge">alpha</span>
+        <button class="settings-btn" aria-label="Settings" @click="router.push('/settings')">
+          <Cog6ToothIcon class="settings-icon" aria-hidden="true" />
+        </button>
       </div>
 
       <div class="mobile-menu-button">
@@ -238,6 +241,7 @@ onBeforeUnmount(() => {
   margin-left: auto;
   display: flex;
   align-items: center;
+  gap: 10px;
 }
 
 .alpha-badge {
@@ -249,6 +253,29 @@ onBeforeUnmount(() => {
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.settings-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid #1a2840;
+  background: #111e30;
+  color: #4a6080;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.settings-btn:hover {
+  color: #ffffff;
+  border-color: #2563eb55;
+}
+
+.settings-icon {
+  width: 18px;
+  height: 18px;
 }
 
 .mobile-menu-button {
