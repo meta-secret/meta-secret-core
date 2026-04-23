@@ -23,6 +23,9 @@ Use this skill for edits under `meta-secret/core/` and adjacent shared Rust mode
 
 - Follow workspace rustfmt and existing module naming.
 - Prefer typed errors and explicit enums at crate boundaries.
+- Prefer top-level `use` imports over long fully-qualified `crate::...` paths inside code.
+- Keep short unit tests for private/local behavior in the same file, but move long join/sync/recovery scenarios to `meta-secret/tests/...`.
+- If tests stay in the same file, keep `#[cfg(test)] mod tests` strictly at the end of the file.
 - Add comments only for invariants and non-obvious constraints.
 
 ## Security rules
@@ -30,6 +33,8 @@ Use this skill for edits under `meta-secret/core/` and adjacent shared Rust mode
 - Never log secrets, key bytes, shares, or decrypted payloads.
 - Crypto changes require minimal diff plus focused tests.
 - Do not weaken validation paths for convenience.
+- Temporary threshold policy: fixed `K=2` for `N>=2`.
+- TODO: migrate threshold strategy to `K=N-1` after protocol hardening.
 
 ## Verify before finish
 

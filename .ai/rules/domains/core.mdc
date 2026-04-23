@@ -10,6 +10,11 @@ Apply these rules when editing `meta-secret/core`.
 
 - Keep crypto and secret-sharing logic in core; do not move it to CLI/web/mobile adapters.
 - Avoid transport/framework concerns (HTTP/UI/CLI formatting) in core modules.
+- Avoid long fully-qualified `crate::...` paths in code bodies; prefer top-level `use` imports and short type/module names.
 - Use typed errors at public boundaries instead of string-based failures.
 - Do not log key material, shares, or decrypted secret payloads.
 - For behavior changes, add focused tests in the same module or crate tests.
+- Keep small local/private unit tests in the same file; move long multi-step scenarios to `meta-secret/tests/...`.
+- If a source file contains `#[cfg(test)] mod tests`, place that test module at the end of the file.
+- Current temporary policy: keep secret-sharing threshold at `K=2` for `N>=2`.
+- TODO policy target: migrate to `K=N-1` with secure resharing protocol.

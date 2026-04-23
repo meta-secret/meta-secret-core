@@ -321,12 +321,12 @@ mod test {
 
         let vault_data = vault_data.update_membership(vd_membership);
         let cfg = vault_data.sss_cfg();
-        assert_eq!(cfg.threshold, 1);
+        assert_eq!(cfg.threshold, 2);
         assert_eq!(cfg.number_of_shares, 2);
 
         let vault_data = vault_data.update_membership(client_b_membership);
         let cfg = vault_data.sss_cfg();
-        assert_eq!(cfg.threshold, 1);
+        assert_eq!(cfg.threshold, 2);
         assert_eq!(cfg.number_of_shares, 2);
 
         assert_eq!(2, vault_data.members().len());
