@@ -1,90 +1,18 @@
-<script setup>
+<script setup lang="ts">
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/vue';
 import { Bars3Icon, XMarkIcon, ChevronDownIcon } from '@heroicons/vue/24/outline';
-import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue';
-import { useRouter } from 'vue-router';
-import ThemeToggle from './ThemeToggle.vue';
-import { useThemeStore } from '../stores/theme';
+import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 
+const route = useRoute();
 const router = useRouter();
 const dropdownOpen = ref(false);
-const dropdownRef = ref(null);
-const themeStore = useThemeStore();
-
-// Store media query references for cleanup
-const darkModeMediaQuery = ref(null);
-const darkModeMediaQueryHandler = ref(null);
-const reducedMotionMediaQuery = ref(null);
-const reducedMotionMediaQueryHandler = ref(null);
-
-// Use the theme store's theme value directly
-const currentTheme = computed(() => themeStore.theme);
-
-// Compute dark mode based on theme value and system preference
-const isDarkMode = computed(() => {
-  const theme = currentTheme.value;
-  if (typeof window !== 'undefined') {
-    if (theme === 'dark') return true;
-    if (theme === 'light') return false;
-    // System preference
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
-  }
-  return false;
-});
-
-// Compute if reduced motion is preferred
-const prefersReducedMotion = computed(() => {
-  if (typeof window !== 'undefined') {
-    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  }
-  return false;
-});
-
-// Function to apply theme transition with reduced motion check
-const applyThemeTransition = () => {
-  if (typeof window !== 'undefined' && !prefersReducedMotion.value) {
-    document.documentElement.classList.add('theme-transition');
-    setTimeout(() => {
-      document.documentElement.classList.remove('theme-transition');
-    }, 100);
-  } else {
-    // For users who prefer reduced motion, just change the theme without transition
-    document.documentElement.classList.remove('theme-transition');
-  }
-};
-
-// Force re-evaluation when theme changes
-watch(() => themeStore.theme, () => {
-  console.log('Theme changed in navbar to:', themeStore.theme);
-  applyThemeTransition();
-});
-
-// Set up media queries
-onMounted(() => {
-  if (typeof window !== 'undefined') {
-    // Set up media query for dark mode
-    darkModeMediaQuery.value = window.matchMedia('(prefers-color-scheme: dark)');
-    darkModeMediaQueryHandler.value = () => {
-      if (currentTheme.value === 'system') {
-        applyThemeTransition();
-      }
-    };
-    darkModeMediaQuery.value.addEventListener('change', darkModeMediaQueryHandler.value);
-    
-    // Set up media query for reduced motion preference
-    reducedMotionMediaQuery.value = window.matchMedia('(prefers-reduced-motion: reduce)');
-    reducedMotionMediaQueryHandler.value = () => {
-      // Update UI when reduced motion preference changes
-      applyThemeTransition();
-    };
-    reducedMotionMediaQuery.value.addEventListener('change', reducedMotionMediaQueryHandler.value);
-  }
-});
+const dropdownRef = ref<HTMLElement | null>(null);
 
 const navigation = [
-  { name: 'Home', href: '/', current: false },
-  { name: 'GitHub', href: 'https://github.com/meta-secret', current: false },
-  { name: 'Contact', href: '/contact', current: false },
+  { name: 'Home', href: '/' },
+  { name: 'GitHub', href: 'https://github.com/meta-secret', external: true },
+  { name: 'Contact', href: '/contact' },
 ];
 
 const toolsMenu = [
@@ -94,6 +22,16 @@ const toolsMenu = [
   { name: 'Download', href: 'https://github.com/meta-secret/meta-secret-node/releases', external: true },
 ];
 
+const isActive = (href: string) => !href.startsWith('http') && route.path === href;
+
+const openLink = (path: string, external?: boolean) => {
+  if (external) {
+    window.open(path, '_blank');
+    return;
+  }
+  router.push(path);
+};
+
 const toggleDropdown = () => {
   dropdownOpen.value = !dropdownOpen.value;
 };
@@ -102,17 +40,8 @@ const closeDropdown = () => {
   dropdownOpen.value = false;
 };
 
-const handleItemClick = (path, isExternal) => {
-  closeDropdown();
-  if (isExternal) {
-    window.open(path, '_blank');
-  } else {
-    router.push(path);
-  }
-};
-
-const handleClickOutside = (event) => {
-  if (dropdownRef.value && !dropdownRef.value.contains(event.target)) {
+const handleClickOutside = (event: MouseEvent) => {
+  if (dropdownRef.value && !dropdownRef.value.contains(event.target as Node)) {
     closeDropdown();
   }
 };
@@ -123,344 +52,278 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside);
-  
-  // Clean up the media query listeners
-  if (darkModeMediaQuery.value && darkModeMediaQueryHandler.value) {
-    darkModeMediaQuery.value.removeEventListener('change', darkModeMediaQueryHandler.value);
-  }
-  
-  if (reducedMotionMediaQuery.value && reducedMotionMediaQueryHandler.value) {
-    reducedMotionMediaQuery.value.removeEventListener('change', reducedMotionMediaQueryHandler.value);
-  }
 });
 </script>
 
 <template>
-  <div :class="$style.navContainer">
-    <Disclosure as="nav" 
-      :class="[$style.navbar, isDarkMode ? 'dark-navbar' : 'light-navbar']" 
-      v-slot="{ open }">
-      <div :class="$style.navInner">
-        <div :class="$style.navFlex">
-          <!-- Logo -->
-          <div :class="$style.logoContainer">
-            <img :class="$style.logo" src="/logo.png" alt="Workflow" />
-            <div :class="$style.logoText">
-              <RouterLink 
-                :class="[$style.brandLink, isDarkMode ? $style.darkBrand : $style.lightBrand]" 
-                to="/">
-                Meta Secret
-              </RouterLink>
-            </div>
-          </div>
+  <Disclosure as="nav" class="top-nav" v-slot="{ open }">
+    <div class="nav-inner">
+      <div class="logo-block" @click="router.push('/')">
+        <img class="logo" src="/logo.png" alt="Meta Secret" />
+        <span class="brand">Meta Secret</span>
+      </div>
 
-          <!-- Desktop Menu (centered) -->
-          <div :class="$style.desktopMenu">
-            <div :class="$style.menuItems">
-              <a
-                v-for="item in navigation"
-                :key="item.name"
-                :href="item.href"
-                :class="[
-                  item.current ? $style.activeNavItem : $style.navItem,
-                  isDarkMode ? $style.darkNavItem : $style.lightNavItem
-                ]"
-                :aria-current="item.current ? 'page' : undefined"
-                >{{ item.name }}</a
-              >
+      <div class="desktop-menu">
+        <button
+          v-for="item in navigation"
+          :key="item.name"
+          class="nav-link"
+          :class="{ active: isActive(item.href) }"
+          @click="openLink(item.href, (item as any).external)"
+        >
+          {{ item.name }}
+        </button>
 
-              <!-- Custom Tools dropdown menu -->
-              <div :class="$style.dropdown" ref="dropdownRef">
-                <button
-                  type="button"
-                  @click.stop="toggleDropdown"
-                  :class="[$style.dropdownButton, isDarkMode ? $style.darkNavItem : $style.lightNavItem]"
-                >
-                  Tools
-                  <ChevronDownIcon :class="$style.chevronIcon" aria-hidden="true" />
-                </button>
-
-                <div
-                  v-if="dropdownOpen"
-                  :class="$style.dropdownMenu"
-                >
-                  <div :class="$style.dropdownMenuInner">
-                    <a
-                      v-for="item in toolsMenu"
-                      :key="item.name"
-                      @click.prevent="handleItemClick(item.href, item.external)"
-                      href="#"
-                      :class="$style.dropdownItem"
-                    >
-                      {{ item.name }}
-                    </a>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Theme Toggle -->
-          <ThemeToggle />
-          
-          <!-- Mobile menu button -->
-          <div :class="$style.mobileMenuButton">
-            <DisclosureButton
-              :class="$style.disclosureBtn"
+        <div class="dropdown" ref="dropdownRef">
+          <button class="nav-link" @click.stop="toggleDropdown">
+            Tools
+            <ChevronDownIcon class="chevron" aria-hidden="true" />
+          </button>
+          <div v-if="dropdownOpen" class="dropdown-menu">
+            <button
+              v-for="item in toolsMenu"
+              :key="item.name"
+              class="dropdown-item"
+              @click="closeDropdown(); openLink(item.href, item.external)"
             >
-              <span :class="$style.srOnly">Open main menu</span>
-              <Bars3Icon v-if="!open" :class="$style.menuIcon" aria-hidden="true" />
-              <XMarkIcon v-else :class="$style.menuIcon" aria-hidden="true" />
-            </DisclosureButton>
+              {{ item.name }}
+            </button>
           </div>
         </div>
       </div>
 
-      <DisclosurePanel :class="$style.mobilePanel">
-        <div :class="$style.mobileMenuItems">
-          <DisclosureButton
-            v-for="item in navigation"
-            :key="item.name"
-            as="a"
-            :href="item.href"
-            :class="[
-              item.current ? $style.activeMobileItem : $style.mobileNavItem,
-            ]"
-            :aria-current="item.current ? 'page' : undefined"
-            >{{ item.name }}
-          </DisclosureButton>
+      <div class="right-slot">
+        <span class="alpha-badge">alpha</span>
+      </div>
 
-          <!-- Tools items in mobile menu -->
-          <div :class="$style.mobileGroupLabel">Tools:</div>
-          <DisclosureButton
-            v-for="item in toolsMenu"
-            :key="item.name"
-            as="button"
-            @click="handleItemClick(item.href, item.external)"
-            :class="$style.mobileToolItem"
-            >{{ item.name }}
-          </DisclosureButton>
-        </div>
-      </DisclosurePanel>
-    </Disclosure>
-  </div>
+      <div class="mobile-menu-button">
+        <DisclosureButton class="disclosure-btn">
+          <Bars3Icon v-if="!open" class="menu-icon" aria-hidden="true" />
+          <XMarkIcon v-else class="menu-icon" aria-hidden="true" />
+        </DisclosureButton>
+      </div>
+    </div>
+
+    <DisclosurePanel class="mobile-panel">
+      <div class="mobile-links">
+        <button
+          v-for="item in navigation"
+          :key="item.name"
+          class="mobile-link"
+          :class="{ active: isActive(item.href) }"
+          @click="openLink(item.href, (item as any).external)"
+        >
+          {{ item.name }}
+        </button>
+
+        <div class="mobile-group">Tools</div>
+        <button
+          v-for="item in toolsMenu"
+          :key="item.name"
+          class="mobile-link"
+          @click="openLink(item.href, item.external)"
+        >
+          {{ item.name }}
+        </button>
+      </div>
+    </DisclosurePanel>
+  </Disclosure>
 </template>
 
-<style module>
-.navContainer {
-  @apply min-h-full;
+<style scoped>
+.top-nav {
+  height: 60px;
+  background: #0a1320;
+  border-bottom: 1px solid #1a2840;
+  position: sticky;
+  top: 0;
+  z-index: 120;
 }
 
-.navbar {
-  @apply transition-colors duration-300;
+.nav-inner {
+  max-width: 1150px;
+  height: 100%;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
 }
 
-.navInner {
-  @apply max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 transition-colors duration-300;
-}
-
-.navFlex {
-  @apply flex items-center h-16 transition-colors duration-300;
-  @apply justify-center gap-3;
-}
-
-.logoContainer {
-  @apply flex items-center flex-shrink-0;
+.logo-block {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
 }
 
 .logo {
-  @apply h-8 w-8;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
 }
 
-.logoText {
-  @apply px-2;
+.brand {
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 800;
 }
 
-/* Brand link styles - separated for light and dark */
-.brandLink {
-  @apply font-medium;
+.desktop-menu {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
 }
 
-/* Update brand transitions to respect motion preferences */
-@media (prefers-reduced-motion: no-preference) {
-  .brandLink {
-    @apply transition-colors duration-300;
-  }
+.nav-link {
+  border: none;
+  background: transparent;
+  color: #4a6080;
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
-.lightBrand {
-  @apply text-gray-900;
-}
-
-.darkBrand {
-  @apply text-white;
-}
-
-.desktopMenu {
-  @apply hidden md:block;
-}
-
-.menuItems {
-  @apply flex items-baseline space-x-1;
-}
-
-/* Navigation Item styles - light mode */
-.lightNavItem {
-  @apply text-gray-700 hover:bg-gray-100 hover:text-gray-900;
-}
-
-/* Navigation Item styles - dark mode */
-.darkNavItem {
-  @apply text-gray-300 hover:bg-gray-700 hover:text-white;
-}
-
-.activeNavItem {
-  @apply bg-gray-200 rounded-md text-sm font-medium px-3 py-2;
-}
-
-.navItem {
-  @apply rounded-md text-sm font-medium px-3 py-2;
-}
-
-/* Add motion preference check for navItem transitions */
-@media (prefers-reduced-motion: no-preference) {
-  .navItem {
-    @apply transition-colors duration-300;
-  }
+.nav-link:hover,
+.nav-link.active {
+  color: #ffffff;
+  background: #111e30;
 }
 
 .dropdown {
-  @apply relative inline-block text-left;
+  position: relative;
 }
 
-.dropdownButton {
-  @apply rounded-md text-sm font-medium px-3 py-2 flex items-center;
+.chevron {
+  width: 14px;
+  height: 14px;
 }
 
-/* Add motion preference check for dropdownButton transitions */
-@media (prefers-reduced-motion: no-preference) {
-  .dropdownButton {
-    @apply transition-colors duration-300;
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 180px;
+  background: #0d1726;
+  border: 1px solid #1a2840;
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 24px 40px rgba(0, 0, 0, 0.4);
+}
+
+.dropdown-item {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: #8aaacf;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.dropdown-item:hover {
+  color: #ffffff;
+  background: #111e30;
+}
+
+.right-slot {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+}
+
+.alpha-badge {
+  background: #c0392b;
+  color: #ffffff;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mobile-menu-button {
+  margin-left: auto;
+  display: flex;
+}
+
+.disclosure-btn {
+  border: none;
+  background: transparent;
+  color: #8aaacf;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+.disclosure-btn:hover {
+  color: #ffffff;
+  background: #111e30;
+}
+
+.menu-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.mobile-panel {
+  border-top: 1px solid #1a2840;
+  background: #0a1320;
+}
+
+.mobile-links {
+  padding: 10px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mobile-group {
+  color: #3a5070;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 10px 12px 4px;
+  font-weight: 700;
+}
+
+.mobile-link {
+  border: none;
+  background: transparent;
+  color: #8aaacf;
+  text-align: left;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.mobile-link.active,
+.mobile-link:hover {
+  color: #ffffff;
+  background: #111e30;
+}
+
+@media (min-width: 768px) {
+  .desktop-menu {
+    display: flex;
   }
-}
 
-.chevronIcon {
-  @apply ml-1 h-4 w-4;
-}
-
-.dropdownMenu {
-  @apply absolute z-10 mt-2 w-36 rounded-md shadow-lg;
-  @apply bg-white dark:bg-gray-800;
-  @apply ring-1 ring-black ring-opacity-5 focus:outline-none;
-}
-
-.dropdownMenuInner {
-  @apply py-1;
-}
-
-.dropdownItem {
-  @apply block px-4 py-2 text-sm;
-  @apply text-gray-700 dark:text-gray-200;
-  @apply hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-white;
-  @apply cursor-pointer;
-}
-
-.mobileMenuButton {
-  @apply -mr-2 flex md:hidden;
-}
-
-.disclosureBtn {
-  @apply inline-flex items-center justify-center p-2 rounded-md;
-  @apply text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700;
-  @apply focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white;
-}
-
-.srOnly {
-  @apply sr-only;
-}
-
-.menuIcon {
-  @apply block h-6 w-6;
-}
-
-.mobilePanel {
-  @apply md:hidden;
-}
-
-.mobileMenuItems {
-  @apply px-2 pt-2 pb-3 space-y-1;
-}
-
-.activeMobileItem {
-  @apply bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white block px-3 py-2 rounded-md text-base font-medium;
-}
-
-.mobileNavItem {
-  @apply text-gray-700 dark:text-gray-300 hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-white;
-  @apply block px-3 py-2 rounded-md text-base font-medium;
-}
-
-.mobileGroupLabel {
-  @apply text-gray-500 dark:text-gray-400 px-3 py-2 text-sm font-medium;
-}
-
-.mobileToolItem {
-  @apply text-gray-700 dark:text-gray-300 hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-white w-full text-left;
-  @apply block px-3 py-2 rounded-md text-base font-medium;
-}
-</style>
-
-<style>
-/* Global styles for light/dark mode */
-.light-navbar {
-  background-color: white !important;
-  color: #111827 !important;
-}
-
-.dark-navbar {
-  background-color: #111827 !important;
-  color: white !important;
-}
-
-/* Reset any browser cached styles */
-html.dark .navbar *,
-.dark .navbar * {
-  color: inherit;
-}
-
-/* Theme toggle transitions - only apply when user hasn't specified reduced motion preference */
-@media (prefers-reduced-motion: no-preference) {
-  .theme-transition * {
-    transition: background-color 0.3s ease, color 0.3s ease !important;
-  }
-
-  .navbar {
-    transition-property: background-color, color;
-    transition-duration: 0.3s;
-    transition-timing-function: ease;
-  }
-
-  .navInner,
-  .navFlex {
-    transition-property: background-color, color;
-    transition-duration: 0.3s;
-    transition-timing-function: ease;
-  }
-}
-
-/* Override transitions for users who prefer reduced motion */
-@media (prefers-reduced-motion: reduce) {
-  .theme-transition * {
-    transition: none !important;
-  }
-  
-  /* Apply to all transition elements */
-  .navbar,
-  .navInner,
-  .navFlex,
-  .navItem,
-  .dropdownButton {
-    transition: none !important;
+  .mobile-menu-button,
+  .mobile-panel {
+    display: none;
   }
 }
 </style>

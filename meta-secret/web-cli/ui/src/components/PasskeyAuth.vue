@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { useAuthStore } from '@/stores/auth';
-import { Dialog, DialogPanel, DialogTitle, TransitionChild, TransitionRoot } from '@headlessui/vue';
-import { CheckCircleIcon, FingerPrintIcon, ExclamationCircleIcon} from '@heroicons/vue/24/solid';
+import { Dialog, DialogPanel, TransitionChild, TransitionRoot } from '@headlessui/vue';
 
 const authStore = useAuthStore();
 const isOpen = computed(() => !authStore.isAuthenticated);
@@ -12,66 +11,47 @@ const authError = ref('');
 const registrationError = ref('');
 const authSuccess = ref(false);
 
-// Check if WebAuthn is supported
 const isPasskeySupported = computed(() => authStore.isWebAuthnSupported);
 const hasRegisteredPasskey = computed(() => authStore.hasRegisteredPasskey);
 
-// Register a new passkey
 async function createPasskey() {
   if (!isPasskeySupported.value) {
     registrationError.value = 'Your browser does not support passkeys';
     return;
   }
-  
+
   try {
     isCreatingPasskey.value = true;
     registrationError.value = '';
-    
-    // Create the passkey credential
     const success = await authStore.createPasskeyCredential();
-    
     if (success) {
-      // Immediately try to authenticate after successful passkey creation
       await authenticateWithPasskey();
     } else {
       registrationError.value = 'Failed to create passkey';
     }
   } catch (error) {
-    if (error instanceof Error) {
-      registrationError.value = error.message;
-    } else {
-      registrationError.value = 'Failed to create passkey';
-    }
+    registrationError.value = error instanceof Error ? error.message : 'Failed to create passkey';
   } finally {
     isCreatingPasskey.value = false;
   }
 }
 
-// Authenticate with passkey
 async function authenticateWithPasskey() {
   try {
     isAuthenticating.value = true;
     authError.value = '';
-    
-    // Try to authenticate with WebAuthn
-    try {
-      const success = await authStore.authenticateWithPasskey();
-      
-      if (success) {
-        authSuccess.value = true;
-        setTimeout(() => {
-          authSuccess.value = false;
-        }, 1500);
-      } else {
-        authError.value = 'Authentication failed';
-      }
-    } catch (error) {
-      if (error instanceof Error) {
-        authError.value = error.message;
-      } else {
-        authError.value = 'Authentication failed';
-      }
+    const success = await authStore.authenticateWithPasskey();
+
+    if (success) {
+      authSuccess.value = true;
+      setTimeout(() => {
+        authSuccess.value = false;
+      }, 1400);
+    } else {
+      authError.value = 'Authentication failed';
     }
+  } catch (error) {
+    authError.value = error instanceof Error ? error.message : 'Authentication failed';
   } finally {
     isAuthenticating.value = false;
   }
@@ -80,10 +60,10 @@ async function authenticateWithPasskey() {
 
 <template>
   <TransitionRoot appear :show="isOpen" as="template">
-    <Dialog as="div" class="relative z-50" @close="() => {}">
-      <div class="fixed inset-0 bg-black/30" aria-hidden="true" />
-      
-      <div class="fixed inset-0 flex items-center justify-center p-4">
+    <Dialog as="div" class="auth-dialog" @close="() => {}">
+      <div class="auth-backdrop" aria-hidden="true" />
+
+      <div class="auth-center">
         <TransitionChild
           as="template"
           enter="ease-out duration-300"
@@ -93,71 +73,155 @@ async function authenticateWithPasskey() {
           leave-from="opacity-100 scale-100"
           leave-to="opacity-0 scale-95"
         >
-          <DialogPanel
-            class="w-full max-w-md transform overflow-hidden rounded-2xl bg-white dark:bg-gray-800 p-6 text-left align-middle shadow-xl transition-all"
-          >
-            <DialogTitle as="h3" class="text-lg font-medium leading-6 text-gray-900 dark:text-white text-center">
-              Meta-Secret Vault Authentication
-            </DialogTitle>
-            
-            <div class="mt-6 flex flex-col items-center">
-              <div class="mb-6 p-4 bg-blue-50 dark:bg-blue-900/30 rounded-full">
-                <FingerPrintIcon class="h-16 w-16 text-blue-600 dark:text-blue-400" aria-hidden="true" />
-              </div>
-              
-              <p v-if="!hasRegisteredPasskey" class="text-center text-sm text-gray-500 dark:text-gray-400 mb-6">
-                Create a passkey to access your secure vault using your device's biometrics
-              </p>
-              <p v-else class="text-center text-sm text-gray-500 dark:text-gray-400 mb-6">
-                Please authenticate using your device biometrics to access your secure vault
-              </p>
-              
-              <div v-if="authSuccess" class="flex items-center justify-center mb-4 text-green-500">
-                <CheckCircleIcon class="h-5 w-5 mr-2" />
-                <span>Authentication successful</span>
-              </div>
-              
-              <div v-if="authError" class="flex items-center justify-center mb-4 text-red-500">
-                <ExclamationCircleIcon class="h-5 w-5 mr-2" />
-                <span>{{ authError }}</span>
-              </div>
-              
-              <div v-if="registrationError" class="flex items-center justify-center mb-4 text-red-500">
-                <ExclamationCircleIcon class="h-5 w-5 mr-2" />
-                <span>{{ registrationError }}</span>
-              </div>
-              
-              <button
-                v-if="hasRegisteredPasskey"
-                type="button"
-                class="inline-flex justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                :disabled="isAuthenticating"
-                @click="authenticateWithPasskey"
-              >
-                <span v-if="isAuthenticating">Authenticating...</span>
-                <span v-else>Authenticate with Passkey</span>
-              </button>
-              
-              <button
-                v-if="!hasRegisteredPasskey"
-                type="button"
-                class="inline-flex justify-center rounded-md border border-transparent bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                :disabled="isCreatingPasskey || !isPasskeySupported"
-                @click="createPasskey"
-              >
-                <span v-if="isCreatingPasskey">Creating Passkey...</span>
-                <span v-else>Create Passkey</span>
-              </button>
-              
-              <div v-if="!isPasskeySupported" class="mt-4 text-center">
-                <p class="text-sm text-red-500 dark:text-red-400">
-                  Your browser does not support passkeys. Please use a modern browser with WebAuthn support.
-                </p>
-              </div>
+          <DialogPanel class="auth-card">
+            <div class="finger-wrap">
+              <svg width="44" height="44" viewBox="0 0 48 48" fill="none">
+                <path d="M24 44C14 40 8 31 8 22C8 13 15 6 24 6C33 6 40 13 40 22" stroke="#3b7eff" stroke-width="2.5" stroke-linecap="round" />
+                <path d="M14 34C11 30 10 26 10 22C10 15 16 10 24 10C32 10 38 15 38 22C38 26 36 30 33 33" stroke="#3b7eff" stroke-width="2.5" stroke-linecap="round" />
+                <path d="M18 38C16 35 15 32 15 28C15 21 19 17 24 17C29 17 33 21 33 28C33 32 31 35 29 37" stroke="#3b7eff" stroke-width="2.5" stroke-linecap="round" />
+                <path d="M22 40C21 38 20 35 20 32C20 28 22 25 24 25C26 25 28 28 28 32C28 36 26 39 24 42" stroke="#3b7eff" stroke-width="2.5" stroke-linecap="round" />
+              </svg>
             </div>
+
+            <h2 class="auth-title">Vault Authentication</h2>
+            <p class="auth-text">
+              <template v-if="!hasRegisteredPasskey">
+                Create a passkey to access your secure vault using your device biometrics
+              </template>
+              <template v-else>
+                Please authenticate using your device biometrics to access your secure vault
+              </template>
+            </p>
+
+            <p v-if="authSuccess" class="ok-msg">Authentication successful</p>
+            <p v-if="authError" class="err-msg">{{ authError }}</p>
+            <p v-if="registrationError" class="err-msg">{{ registrationError }}</p>
+
+            <button
+              v-if="hasRegisteredPasskey"
+              class="btn-primary"
+              :disabled="isAuthenticating"
+              @click="authenticateWithPasskey"
+            >
+              <span v-if="isAuthenticating">Authenticating...</span>
+              <span v-else>Authenticate with Passkey</span>
+            </button>
+
+            <button
+              v-else
+              class="btn-primary"
+              :disabled="isCreatingPasskey || !isPasskeySupported"
+              @click="createPasskey"
+            >
+              <span v-if="isCreatingPasskey">Creating Passkey...</span>
+              <span v-else>Create Passkey</span>
+            </button>
+
+            <p v-if="!isPasskeySupported" class="err-msg support">
+              Your browser does not support passkeys. Please use a modern browser with WebAuthn support.
+            </p>
           </DialogPanel>
         </TransitionChild>
       </div>
     </Dialog>
   </TransitionRoot>
 </template>
+
+<style scoped>
+.auth-dialog {
+  position: relative;
+  z-index: 220;
+}
+
+.auth-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(6px);
+}
+
+.auth-center {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 440px;
+  background: #0d1726;
+  border: 1px solid #1a2840;
+  border-radius: 24px;
+  padding: 48px 40px;
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 14px;
+}
+
+.finger-wrap {
+  width: 80px;
+  height: 80px;
+  border-radius: 999px;
+  background: #1a2e4a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 6px;
+}
+
+.auth-title {
+  font-size: 20px;
+  line-height: 1.2;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.auth-text {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #4a6080;
+  max-width: 320px;
+}
+
+.ok-msg {
+  color: #34d399;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.err-msg {
+  color: #f87171;
+  font-size: 13px;
+}
+
+.err-msg.support {
+  margin-top: 4px;
+}
+
+.btn-primary {
+  width: 100%;
+  height: 46px;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.btn-primary:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+</style>
