@@ -10,7 +10,7 @@ const jsAppState = AppState();
 const signUpProcessing = ref(false);
 const signUpCompleted = ref(false);
 const isCleaning = ref(false);
-const vaultName = ref(jsAppState.getVaultName());
+const vaultName = ref('');
 const hasSubmittedVaultName = ref(false);
 const isCheckingVaultName = ref(false);
 
@@ -88,6 +88,7 @@ const updateVaultName = (event: Event) => {
 
 const generateUserCreds = async () => {
   if (signUpProcessing.value || isCheckingVaultName.value) return;
+  if (!vaultName.value.trim()) return;
   hasSubmittedVaultName.value = true;
   isCheckingVaultName.value = true;
   // @ts-ignore - Method exists in Rust but TS definitions may be outdated
@@ -125,6 +126,8 @@ const cleanDatabase = async () => {
   try {
     await jsAppState.cleanDatabase();
     await jsAppState.appStateInit();
+    hasSubmittedVaultName.value = false;
+    vaultName.value = '';
     await router.push('/');
   } finally {
     isCleaning.value = false;
@@ -151,34 +154,32 @@ const progressMessage = computed(() => {
 <template>
   <div class="setup-screen">
     <div class="setup-card">
-      <template v-if="jsAppState.isLocal || jsAppState.isVaultNotExists || (jsAppState.isOutsider && isNonMember)">
-        <label class="field-label">Enter vault name</label>
-        <div class="input-row">
-          <div class="input-wrap">
-            <span class="at-char">@</span>
-            <input
-              class="input-field"
-              placeholder="vault name"
-              :value="vaultName"
-              :disabled="signUpProcessing"
-              @input="updateVaultName"
-            />
-          </div>
-          <button class="btn-primary" :disabled="signUpProcessing || isCleaning || isCheckingVaultName" @click="generateUserCreds">
-            <span v-if="isCheckingVaultName">Checking...</span>
-            <span v-else>Set Vault Name</span>
-          </button>
+      <label class="field-label">Enter vault name</label>
+      <div class="input-row">
+        <div class="input-wrap">
+          <span class="at-char">@</span>
+          <input
+            class="input-field"
+            placeholder="vault name"
+            :value="vaultName"
+            :disabled="signUpProcessing"
+            @input="updateVaultName"
+          />
         </div>
-      </template>
+        <button class="btn-primary" :disabled="signUpProcessing || isCleaning || isCheckingVaultName || !vaultName.trim()" @click="generateUserCreds">
+          <span v-if="isCheckingVaultName">Checking...</span>
+          <span v-else>Set Vault Name</span>
+        </button>
+      </div>
 
-      <template v-if="hasSubmittedVaultName && jsAppState.isVaultNotExists">
+      <template v-if="hasSubmittedVaultName && !isCheckingVaultName && jsAppState.isVaultNotExists">
         <div class="status-row">
           <span class="status-text">Vault name is free!</span>
           <button class="btn-primary compact" :disabled="signUpProcessing" @click="signUp">Create</button>
         </div>
       </template>
 
-      <template v-if="hasSubmittedVaultName && jsAppState.isOutsider && isNonMember">
+      <template v-if="hasSubmittedVaultName && !isCheckingVaultName && jsAppState.isOutsider && isNonMember">
         <div class="status-row split">
           <span class="status-text">Vault already exists, would you like to join?</span>
           <div class="btn-group">
@@ -191,7 +192,7 @@ const progressMessage = computed(() => {
         </div>
       </template>
 
-      <template v-if="jsAppState.isOutsider && isPending">
+      <template v-if="hasSubmittedVaultName && !isCheckingVaultName && jsAppState.isOutsider && isPending">
         <div class="status-block pending">
           <div class="status-title">Your request to join this vault is pending approval.</div>
           <button class="btn-secondary compact" :disabled="isCleaning || signUpProcessing" @click="cleanDatabase">
@@ -201,7 +202,7 @@ const progressMessage = computed(() => {
         </div>
       </template>
 
-      <template v-if="jsAppState.isOutsider && isDeclined">
+      <template v-if="hasSubmittedVaultName && !isCheckingVaultName && jsAppState.isOutsider && isDeclined">
         <div class="status-block declined">
           <div class="status-title">Your request to join this vault was declined.</div>
           <button class="btn-secondary compact" :disabled="isCleaning || signUpProcessing" @click="cleanDatabase">
@@ -211,7 +212,7 @@ const progressMessage = computed(() => {
         </div>
       </template>
 
-      <template v-if="jsAppState.isOutsider && outsiderStatus === null">
+      <template v-if="hasSubmittedVaultName && !isCheckingVaultName && jsAppState.isOutsider && outsiderStatus === null">
         <div class="status-block declined">
           <div class="status-title">Status is unknown. Please reset and try again.</div>
           <button class="btn-secondary compact" :disabled="isCleaning || signUpProcessing" @click="cleanDatabase">
