@@ -139,7 +139,7 @@ const progressMessage = computed(() => {
 <template>
   <div class="setup-screen">
     <div class="setup-card">
-      <template v-if="jsAppState.isLocal">
+      <template v-if="jsAppState.isLocal || jsAppState.isVaultNotExists || (jsAppState.isOutsider && isNonMember)">
         <label class="field-label">Enter vault name</label>
         <div class="input-row">
           <div class="input-wrap">
@@ -152,7 +152,7 @@ const progressMessage = computed(() => {
               @input="updateVaultName"
             />
           </div>
-          <button class="btn-primary" :disabled="signUpProcessing" @click="generateUserCreds">
+          <button class="btn-primary" :disabled="signUpProcessing || isCleaning" @click="generateUserCreds">
             Set Vault Name
           </button>
         </div>
