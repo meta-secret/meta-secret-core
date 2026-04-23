@@ -91,12 +91,7 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
             pass_id,
             receiver: user_creds.device_id().clone(),
         });
-        let dist = self
-            .p_obj
-            .find_tail_event(desc)
-            .await?
-            .unwrap()
-            .to_distribution_data()?;
+        let maybe_dist = self.p_obj.find_tail_event(desc).await?;
 
         // Extract all SecretDistributionData objects from recoveries and dists
         let recovery_data: Vec<SecretDistributionData> = recoveries
@@ -104,7 +99,15 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
             .map(|r| r.to_distribution_data())
             .collect::<Result<Vec<_>, _>>()?;
 
-        let distribution_data = vec![dist];
+        let distribution_data: Vec<SecretDistributionData> = maybe_dist
+            .map(|dist| dist.to_distribution_data())
+            .transpose()?
+            .into_iter()
+            .collect();
+
+        if recovery_data.is_empty() && distribution_data.is_empty() {
+            bail!("No recovery shares found for selected claim");
+        }
 
         // Decrypt the secret shares using the transport key
         let transport_sk = &user_creds.device_creds.secret_box.transport.sk;
