@@ -4,6 +4,7 @@ use meta_db_sqlite::db::sqlite_migration::EmbeddedMigrationsTool;
 use meta_db_sqlite::db::sqlite_store::SqlIteRepo;
 use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
+use meta_secret_core::node::common::model::device::common::{DeviceName, DeviceType};
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::{ClaimId, SsClaim};
 use meta_secret_core::node::common::model::{ApplicationState};
@@ -87,6 +88,21 @@ impl MobileApplicationManager {
     }
     
     pub async fn init_ios(master_key: TransportSk, raw_master_key: String) -> anyhow::Result<MobileApplicationManager> {
+        Self::init_ios_with_device(
+            master_key,
+            raw_master_key,
+            DeviceName::from("ios_device"),
+            DeviceType::iphone(),
+        )
+        .await
+    }
+
+    pub async fn init_ios_with_device(
+        master_key: TransportSk,
+        raw_master_key: String,
+        device_name: DeviceName,
+        device_type: DeviceType,
+    ) -> anyhow::Result<MobileApplicationManager> {
         let home_dir = std::env::var("HOME").expect("Unable to get HOME directory");
         let db_name = format!("meta-secret-{raw_master_key}.db");
         let db_path = PathBuf::from(home_dir)
@@ -96,14 +112,41 @@ impl MobileApplicationManager {
             .to_string();
         println!("🦀 iOS database path: {}", db_path);
         
-        Self::init(master_key, &db_path).await
+        Self::init(
+            master_key,
+            &db_path,
+            device_name,
+            device_type,
+        )
+        .await
     }
     
     pub async fn init_android(master_key: TransportSk, raw_master_key: String) -> anyhow::Result<MobileApplicationManager> {
+        Self::init_android_with_device(
+            master_key,
+            raw_master_key,
+            DeviceName::from("android_device"),
+            DeviceType::android(),
+        )
+        .await
+    }
+
+    pub async fn init_android_with_device(
+        master_key: TransportSk,
+        raw_master_key: String,
+        device_name: DeviceName,
+        device_type: DeviceType,
+    ) -> anyhow::Result<MobileApplicationManager> {
         let package = resolve_android_package();
         let db_path = format!("/data/data/{}/databases/meta-secret-{}.db", package, raw_master_key);
         info!("Resolved Android database path: {}", db_path);
-        Self::init(master_key, &db_path).await
+        Self::init(
+            master_key,
+            &db_path,
+            device_name,
+            device_type,
+        )
+        .await
     }
 
     pub async fn get_state(&self) -> anyhow::Result<ApplicationState> {
@@ -189,7 +232,12 @@ impl MobileApplicationManager {
 } 
 
 impl MobileApplicationManager {
-    async fn init(master_key: TransportSk, db_path: &str) -> anyhow::Result<MobileApplicationManager> {
+    async fn init(
+        master_key: TransportSk,
+        db_path: &str,
+        device_name: DeviceName,
+        device_type: DeviceType,
+    ) -> anyhow::Result<MobileApplicationManager> {
         info!("Init mobile state manager");
         info!("Using database path");
         
@@ -235,9 +283,16 @@ impl MobileApplicationManager {
         let repo = SqlIteRepo { conn_url };
         let client_repo = Arc::new(repo);
 
-        let app_manager =
-            ApplicationManager::<SqlIteRepo, HttpSyncProtocol>::init(client_repo, master_key)
-                .await?;
+        let app_manager = ApplicationManager::<SqlIteRepo, HttpSyncProtocol>::client_setup(
+            client_repo,
+            Arc::new(HttpSyncProtocol {
+                api_url: meta_secret_core::node::app::sync::api_url::ApiUrl::prod(),
+            }),
+            master_key,
+            device_name,
+            device_type,
+        )
+        .await?;
 
         Ok(MobileApplicationManager { app_manager })
     }

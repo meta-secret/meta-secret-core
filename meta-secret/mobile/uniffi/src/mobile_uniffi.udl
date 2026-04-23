@@ -2,6 +2,8 @@ namespace mobile_uniffi {
     string generate_master_key();
     string init_ios(string master_key);
     string init_android(string master_key);
+    string init_ios_with_device(string master_key, string device_name, string device_type);
+    string init_android_with_device(string master_key, string device_name, string device_type);
     string get_state();
     string generate_user_creds(string vault_name);
     string sign_up();

@@ -4,6 +4,7 @@ use meta_secret_core::crypto::key_pair::MasterKeyManager;
 use meta_secret_core::crypto::utils::Id48bit;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::ClaimId;
+use meta_secret_core::node::common::model::device::common::{DeviceName, DeviceType};
 use meta_secret_core::node::common::model::user::common::UserData;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
@@ -37,6 +38,28 @@ async fn async_init_ios(master_key: String) -> String {
     }
 }
 
+pub fn init_ios_with_device(master_key: String, device_name: String, device_type: String) -> String {
+    MobileApplicationManager::sync_wrapper(async_init_ios_with_device(master_key, device_name, device_type))
+}
+
+async fn async_init_ios_with_device(master_key: String, device_name: String, device_type: String) -> String {
+    let transport_sk = MasterKeyManager::from_pure_sk(master_key.clone());
+    let resolved_device_name = DeviceName::from(device_name);
+    let resolved_device_type = DeviceType::from(device_type);
+    match MobileApplicationManager::init_ios_with_device(
+        transport_sk,
+        master_key,
+        resolved_device_name,
+        resolved_device_type,
+    ).await {
+        Ok(app_manager) => {
+            MobileApplicationManager::set_global_instance(Arc::new(app_manager));
+            json!({"success": true, "message": "iOS manager initialized successfully"}).to_string()
+        }
+        Err(e) => json!({"success": false, "error": format!("{}", e)}).to_string(),
+    }
+}
+
 pub fn init_android(master_key: String) -> String {
     MobileApplicationManager::sync_wrapper(async_init_android(master_key))
 }
@@ -44,6 +67,28 @@ pub fn init_android(master_key: String) -> String {
 async fn async_init_android(master_key: String) -> String {
     let transport_sk = MasterKeyManager::from_pure_sk(master_key.clone());
     match MobileApplicationManager::init_android(transport_sk, master_key).await {
+        Ok(app_manager) => {
+            MobileApplicationManager::set_global_instance(Arc::new(app_manager));
+            json!({"success": true, "message": "Android manager initialized successfully"}).to_string()
+        }
+        Err(e) => json!({"success": false, "error": format!("{}", e)}).to_string(),
+    }
+}
+
+pub fn init_android_with_device(master_key: String, device_name: String, device_type: String) -> String {
+    MobileApplicationManager::sync_wrapper(async_init_android_with_device(master_key, device_name, device_type))
+}
+
+async fn async_init_android_with_device(master_key: String, device_name: String, device_type: String) -> String {
+    let transport_sk = MasterKeyManager::from_pure_sk(master_key.clone());
+    let resolved_device_name = DeviceName::from(device_name);
+    let resolved_device_type = DeviceType::from(device_type);
+    match MobileApplicationManager::init_android_with_device(
+        transport_sk,
+        master_key,
+        resolved_device_name,
+        resolved_device_type,
+    ).await {
         Ok(app_manager) => {
             MobileApplicationManager::set_global_instance(Arc::new(app_manager));
             json!({"success": true, "message": "Android manager initialized successfully"}).to_string()

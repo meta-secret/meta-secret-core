@@ -218,14 +218,16 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
             }
             GenericAppStateRequest::GenerateUserCreds(vault_name) => {
                 let device_name = self.device_data.device_name.clone();
+                let device_type = self.device_data.device_type.clone();
                 creds_repo
-                    .get_or_generate_user_creds(device_name, vault_name.clone())
+                    .get_or_generate_user_creds_with_type(device_name, device_type, vault_name.clone())
                     .await?
             }
             GenericAppStateRequest::SignUp(vault_name) => {
                 let device_name = self.device_data.device_name.clone();
+                let device_type = self.device_data.device_type.clone();
                 creds_repo
-                    .get_or_generate_user_creds(device_name, vault_name.clone())
+                    .get_or_generate_user_creds_with_type(device_name, device_type, vault_name.clone())
                     .await?
             }
             GenericAppStateRequest::ClusterDistribution(_) => self.find_user_creds().await?,

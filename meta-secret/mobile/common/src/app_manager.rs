@@ -13,7 +13,7 @@ use meta_secret_core::node::app::sync::sync_gateway::SyncGateway;
 use meta_secret_core::node::app::sync::sync_protocol::{HttpSyncProtocol, SyncProtocol};
 use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::meta_tracing::client_span;
-use meta_secret_core::node::common::model::device::common::DeviceName;
+use meta_secret_core::node::common::model::device::common::{DeviceName, DeviceType};
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::{ClaimId, SecretDistributionType, SsClaim, SsDistributionId, SsDistributionStatus, SsRecoveryId};
 use meta_secret_core::node::common::model::user::common::{UserData, UserDataOutsiderStatus};
@@ -102,7 +102,14 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
             api_url: ApiUrl::prod(),
         });
 
-        let app_manager = Self::client_setup(client_repo, sync_protocol.clone(), master_key).await?;
+        let app_manager = Self::client_setup(
+            client_repo,
+            sync_protocol.clone(),
+            master_key,
+            DeviceName::client(),
+            DeviceType::other(),
+        )
+        .await?;
 
         Ok(app_manager)
     }
@@ -510,7 +517,9 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
     pub async fn client_setup(
         client_repo: Arc<Repo>,
         sync_protocol: Arc<HttpSyncProtocol>,
-        master_key: TransportSk
+        master_key: TransportSk,
+        device_name: DeviceName,
+        device_type: DeviceType,
     ) -> Result<ApplicationManager<Repo, HttpSyncProtocol>>
     where
         HttpSyncProtocol: Send + Sync + 'static
@@ -526,7 +535,7 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
         };
         let device_creds = {
             let creds = creds_repo
-                .get_or_generate_device_creds(DeviceName::client())
+                .get_or_generate_device_creds_with_type(device_name, device_type)
                 .await?;
             Arc::new(creds)
         };

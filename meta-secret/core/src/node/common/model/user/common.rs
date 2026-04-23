@@ -161,7 +161,7 @@ mod tests {
     use crate::crypto::encoding::base64::Base64Text;
     use crate::crypto::keys::OpenBox;
     use crate::crypto::utils::U64IdUrlEnc;
-    use crate::node::common::model::device::common::{DeviceData, DeviceId, DeviceName};
+    use crate::node::common::model::device::common::{DeviceData, DeviceId, DeviceName, DeviceType};
     use crate::node::common::model::vault::vault::VaultName;
 
     fn create_test_device_id() -> DeviceId {
@@ -188,6 +188,7 @@ mod tests {
         DeviceData {
             device_id,
             device_name,
+            device_type: DeviceType::other(),
             keys: open_box,
         }
     }

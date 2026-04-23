@@ -1,7 +1,7 @@
 use crate::base_command::{BaseCommand, DbContext};
 use anyhow::bail;
 use anyhow::Result;
-use meta_secret_core::node::common::model::device::common::DeviceName;
+use meta_secret_core::node::common::model::device::common::{DeviceName, DeviceType};
 use meta_secret_core::node::db::descriptors::creds::DeviceCredsDescriptor;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use tracing::info;
@@ -51,7 +51,7 @@ impl InitDeviceCommand {
         let device_name = DeviceName::from(self.device_name.clone());
         let device_creds = db_context
             .p_creds
-            .get_or_generate_device_creds(device_name)
+            .get_or_generate_device_creds_with_type(device_name, DeviceType::cli())
             .await?;
 
         println!("Meta Secret Initialization:");
