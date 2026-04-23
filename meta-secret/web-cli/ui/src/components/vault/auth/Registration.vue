@@ -11,6 +11,8 @@ const signUpProcessing = ref(false);
 const signUpCompleted = ref(false);
 const isCleaning = ref(false);
 const vaultName = ref(jsAppState.getVaultName());
+const hasSubmittedVaultName = ref(false);
+const isCheckingVaultName = ref(false);
 
 const progress = ref(0);
 const progressInterval = ref<number | null>(null);
@@ -81,13 +83,23 @@ onBeforeUnmount(() => {
 const updateVaultName = (event: Event) => {
   const input = event.target as HTMLInputElement;
   vaultName.value = input.value;
+  hasSubmittedVaultName.value = false;
 };
 
 const generateUserCreds = async () => {
-  if (signUpProcessing.value) return;
+  if (signUpProcessing.value || isCheckingVaultName.value) return;
+  hasSubmittedVaultName.value = true;
+  isCheckingVaultName.value = true;
   // @ts-ignore - Method exists in Rust but TS definitions may be outdated
-  await jsAppState.appManager.generate_user_creds(vaultName.value);
-  await jsAppState.appStateInit();
+  try {
+    await jsAppState.appManager.generate_user_creds(vaultName.value);
+    await jsAppState.appStateInit();
+  } catch (error) {
+    hasSubmittedVaultName.value = false;
+    throw error;
+  } finally {
+    isCheckingVaultName.value = false;
+  }
 };
 
 const signUp = async () => {
@@ -152,20 +164,21 @@ const progressMessage = computed(() => {
               @input="updateVaultName"
             />
           </div>
-          <button class="btn-primary" :disabled="signUpProcessing || isCleaning" @click="generateUserCreds">
-            Set Vault Name
+          <button class="btn-primary" :disabled="signUpProcessing || isCleaning || isCheckingVaultName" @click="generateUserCreds">
+            <span v-if="isCheckingVaultName">Checking...</span>
+            <span v-else>Set Vault Name</span>
           </button>
         </div>
       </template>
 
-      <template v-if="jsAppState.isVaultNotExists">
+      <template v-if="hasSubmittedVaultName && jsAppState.isVaultNotExists">
         <div class="status-row">
           <span class="status-text">Vault name is free!</span>
           <button class="btn-primary compact" :disabled="signUpProcessing" @click="signUp">Create</button>
         </div>
       </template>
 
-      <template v-if="jsAppState.isOutsider && isNonMember">
+      <template v-if="hasSubmittedVaultName && jsAppState.isOutsider && isNonMember">
         <div class="status-row split">
           <span class="status-text">Vault already exists, would you like to join?</span>
           <div class="btn-group">
