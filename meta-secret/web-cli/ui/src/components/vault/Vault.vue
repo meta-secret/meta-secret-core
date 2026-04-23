@@ -128,7 +128,7 @@ const toggleDeviceId = () => {
 .tab-wrap {
   margin: 16px auto 0;
   width: 100%;
-  max-width: 1240px;
+  max-width: 900px;
   display: flex;
   background: #0d1726;
   border: 1px solid #1a2840;
@@ -139,7 +139,7 @@ const toggleDeviceId = () => {
 
 .tab-btn {
   flex: 1;
-  height: 52px;
+  height: 42px;
   border-radius: 10px;
   font-size: 15px;
   font-weight: 600;
@@ -169,8 +169,8 @@ const toggleDeviceId = () => {
   }
 
   .tab-btn {
-    height: 44px;
-    font-size: 28px;
+    height: 40px;
+    font-size: 15px;
   }
 }
 </style>
