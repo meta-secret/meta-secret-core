@@ -17,6 +17,7 @@ const appManager = appState.appManager as any;
 
 const secretType = ref<SecretType>('password');
 const wordCount = ref<12 | 24>(12);
+const description = ref('');
 const passwordSecret = ref('');
 const seedWords = ref<string[]>(Array.from({ length: 24 }, () => ''));
 const isSubmitting = ref(false);
@@ -34,6 +35,7 @@ const submitLabel = computed(() => (
 const resetState = () => {
   secretType.value = 'password';
   wordCount.value = 12;
+  description.value = '';
   passwordSecret.value = '';
   seedWords.value = Array.from({ length: 24 }, () => '');
   isSubmitting.value = false;
@@ -76,6 +78,11 @@ const pasteSeedPhrase = async () => {
 };
 
 const validate = () => {
+  if (!description.value.trim()) {
+    formError.value = vaultSecrets.addSecretValidationNameRequired;
+    return false;
+  }
+
   if (secretType.value === 'password') {
     if (!passwordSecret.value.trim()) {
       formError.value = vaultSecrets.addSecretValidationPasswordRequired;
@@ -92,24 +99,18 @@ const validate = () => {
   return true;
 };
 
-const buildPassId = () => {
-  const existingNames = new Set(
-    (appState.passwords || []).map((secret: any) => String(secret.name || '').toLowerCase()),
-  );
-  const base = secretType.value === 'seed' ? 'seed' : 'secret';
-  let index = 1;
-  while (existingNames.has(`${base}${index}`)) {
-    index += 1;
-  }
-  return `${base}${index}`;
-};
+const canSubmit = computed(() => {
+  if (!description.value.trim()) return false;
+  if (secretType.value === 'password') return !!passwordSecret.value.trim();
+  return activeWords.value.every((word) => !!word.trim());
+});
 
 const submit = async () => {
   if (isSubmitting.value) return;
   formError.value = null;
   if (!validate()) return;
 
-  const passId = buildPassId();
+  const passId = description.value.trim();
   const secretPayload = secretType.value === 'password'
     ? passwordSecret.value.trim()
     : activeWords.value.map((word) => word.trim()).join(' ');
@@ -139,6 +140,14 @@ const submit = async () => {
       </div>
 
       <div class="content" :class="{ compact24: isCompact24 }">
+        <label class="label">{{ vaultSecrets.addSecretDescriptionLabel }}</label>
+        <input
+          v-model="description"
+          class="text-input"
+          :placeholder="vaultSecrets.addSecretDescriptionPlaceholder"
+          autocomplete="off"
+        />
+
         <label class="label">{{ vaultSecrets.addSecretTypeLabel }}</label>
         <div class="segmented">
           <button
@@ -203,7 +212,7 @@ const submit = async () => {
 
       <div class="actions">
         <button class="btn-secondary" :disabled="isSubmitting" @click="close">{{ vaultSecrets.addSecretCancel }}</button>
-        <button class="btn-primary" :disabled="isSubmitting" @click="submit">{{ submitLabel }}</button>
+        <button class="btn-primary" :disabled="isSubmitting || !canSubmit" @click="submit">{{ submitLabel }}</button>
       </div>
     </div>
   </div>
@@ -224,13 +233,13 @@ const submit = async () => {
 
 .modal {
   width: 100%;
-  max-width: 860px;
+  max-width: 760px;
   max-height: 90vh;
   background: #0d1726;
   border: 1px solid #1e3050;
-  border-radius: 28px;
+  border-radius: 22px;
   box-shadow: 0 32px 80px rgba(0, 0, 0, 0.6);
-  padding: 28px 30px;
+  padding: 22px 22px;
   display: flex;
   flex-direction: column;
 }
@@ -239,7 +248,7 @@ const submit = async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .title {
@@ -288,19 +297,19 @@ const submit = async () => {
 
 .label {
   color: #4a6080;
-  font-size: 18px;
+  font-size: 14px;
   font-weight: 600;
 }
 
 .text-input {
   width: 100%;
-  height: 58px;
+  height: 48px;
   background: #111e30;
   border: 1px solid #1e3050;
-  border-radius: 16px;
-  padding: 0 18px;
+  border-radius: 12px;
+  padding: 0 14px;
   color: #ffffff;
-  font-size: 18px;
+  font-size: 15px;
   outline: none;
 }
 
@@ -310,20 +319,20 @@ const submit = async () => {
 
 .segmented {
   background: #080f1c;
-  border-radius: 16px;
-  padding: 5px;
+  border-radius: 12px;
+  padding: 4px;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 4px;
 }
 
 .segment-btn {
-  height: 58px;
+  height: 48px;
   border: none;
-  border-radius: 13px;
+  border-radius: 10px;
   background: transparent;
   color: #4a6080;
-  font-size: 20px;
+  font-size: 14px;
   font-weight: 700;
   cursor: pointer;
 }
@@ -345,13 +354,13 @@ const submit = async () => {
 }
 
 .count-btn {
-  width: 76px;
-  height: 48px;
-  border-radius: 14px;
+  width: 58px;
+  height: 40px;
+  border-radius: 11px;
   border: 1px solid #1e3050;
   background: #111e30;
   color: #4a6080;
-  font-size: 20px;
+  font-size: 14px;
   font-weight: 700;
   cursor: pointer;
 }
@@ -365,9 +374,9 @@ const submit = async () => {
 .paste-block {
   width: 100%;
   border: 1px solid #1a2840;
-  border-radius: 14px;
+  border-radius: 12px;
   background: #080f1c;
-  padding: 14px 16px;
+  padding: 10px 12px;
   color: inherit;
   display: flex;
   align-items: center;
@@ -377,13 +386,13 @@ const submit = async () => {
 }
 
 .paste-icon {
-  font-size: 20px;
+  font-size: 16px;
 }
 
 .paste-title {
   display: block;
   color: #8aaacf;
-  font-size: 18px;
+  font-size: 14px;
   font-weight: 700;
 }
 
@@ -391,7 +400,7 @@ const submit = async () => {
   display: block;
   margin-top: 2px;
   color: #3a5070;
-  font-size: 16px;
+  font-size: 12px;
 }
 
 .seed-grid {
@@ -405,13 +414,13 @@ const submit = async () => {
 }
 
 .seed-cell {
-  height: 52px;
+  height: 40px;
   border: 1px solid #1a2840;
-  border-radius: 12px;
+  border-radius: 10px;
   background: #111e30;
   display: flex;
   align-items: center;
-  padding: 0 10px;
+  padding: 0 8px;
   gap: 8px;
 }
 
@@ -420,29 +429,29 @@ const submit = async () => {
 }
 
 .seed-grid.compact24 .seed-cell {
-  height: 44px;
+  height: 38px;
   padding: 0 8px;
 }
 
 .seed-grid.compact24 .seed-index {
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .seed-grid.compact24 .seed-input {
-  font-size: 16px;
+  font-size: 13px;
 }
 
 .content.compact24 .text-input {
-  height: 52px;
+  height: 44px;
 }
 
 .content.compact24 .label {
-  font-size: 17px;
+  font-size: 13px;
 }
 
 .seed-index {
   color: #3a5070;
-  font-size: 16px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -452,7 +461,7 @@ const submit = async () => {
   background: transparent;
   outline: none;
   color: #ffffff;
-  font-size: 18px;
+  font-size: 14px;
 }
 
 .seed-input::placeholder {
@@ -470,7 +479,7 @@ const submit = async () => {
 }
 
 .actions {
-  margin-top: 18px;
+  margin-top: 12px;
   display: flex;
   justify-content: flex-end;
   gap: 12px;
@@ -479,11 +488,11 @@ const submit = async () => {
 
 .btn-secondary,
 .btn-primary {
-  min-width: 184px;
-  height: 58px;
-  border-radius: 18px;
+  min-width: 156px;
+  height: 48px;
+  border-radius: 12px;
   border: none;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   cursor: pointer;
 }
