@@ -17,7 +17,6 @@ const appManager = appState.appManager as any;
 
 const secretType = ref<SecretType>('password');
 const wordCount = ref<12 | 24>(12);
-const description = ref('');
 const passwordSecret = ref('');
 const seedWords = ref<string[]>(Array.from({ length: 24 }, () => ''));
 const isSubmitting = ref(false);
@@ -25,11 +24,16 @@ const formError = ref<string | null>(null);
 
 const activeWords = computed(() => seedWords.value.slice(0, wordCount.value));
 const isCompact24 = computed(() => secretType.value === 'seed' && wordCount.value === 24);
+const modalTitle = computed(() => (
+  secretType.value === 'seed' ? vaultSecrets.addSeedPhraseTitle : vaultSecrets.addSecretTitle
+));
+const submitLabel = computed(() => (
+  secretType.value === 'seed' ? vaultSecrets.addSeedPhraseSubmit : vaultSecrets.addSecretSubmit
+));
 
 const resetState = () => {
   secretType.value = 'password';
   wordCount.value = 12;
-  description.value = '';
   passwordSecret.value = '';
   seedWords.value = Array.from({ length: 24 }, () => '');
   isSubmitting.value = false;
@@ -72,11 +76,6 @@ const pasteSeedPhrase = async () => {
 };
 
 const validate = () => {
-  if (!description.value.trim()) {
-    formError.value = vaultSecrets.addSecretValidationNameRequired;
-    return false;
-  }
-
   if (secretType.value === 'password') {
     if (!passwordSecret.value.trim()) {
       formError.value = vaultSecrets.addSecretValidationPasswordRequired;
@@ -93,12 +92,24 @@ const validate = () => {
   return true;
 };
 
+const buildPassId = () => {
+  const existingNames = new Set(
+    (appState.passwords || []).map((secret: any) => String(secret.name || '').toLowerCase()),
+  );
+  const base = secretType.value === 'seed' ? 'seed' : 'secret';
+  let index = 1;
+  while (existingNames.has(`${base}${index}`)) {
+    index += 1;
+  }
+  return `${base}${index}`;
+};
+
 const submit = async () => {
   if (isSubmitting.value) return;
   formError.value = null;
   if (!validate()) return;
 
-  const passId = description.value.trim();
+  const passId = buildPassId();
   const secretPayload = secretType.value === 'password'
     ? passwordSecret.value.trim()
     : activeWords.value.map((word) => word.trim()).join(' ');
@@ -123,19 +134,11 @@ const submit = async () => {
   <div v-if="show" class="overlay" @click="close">
     <div class="modal" @click.stop>
       <div class="header">
-        <h2 class="title">{{ vaultSecrets.addSecretTitle }}</h2>
+        <h2 class="title">{{ modalTitle }}</h2>
         <button class="close-btn" @click="close">×</button>
       </div>
 
       <div class="content" :class="{ compact24: isCompact24 }">
-        <label class="label">{{ vaultSecrets.addSecretDescriptionLabel }}</label>
-        <input
-          v-model="description"
-          class="text-input"
-          :placeholder="vaultSecrets.addSecretDescriptionPlaceholder"
-          autocomplete="off"
-        />
-
         <label class="label">{{ vaultSecrets.addSecretTypeLabel }}</label>
         <div class="segmented">
           <button
@@ -200,7 +203,7 @@ const submit = async () => {
 
       <div class="actions">
         <button class="btn-secondary" :disabled="isSubmitting" @click="close">{{ vaultSecrets.addSecretCancel }}</button>
-        <button class="btn-primary" :disabled="isSubmitting" @click="submit">{{ vaultSecrets.addSecretSubmit }}</button>
+        <button class="btn-primary" :disabled="isSubmitting" @click="submit">{{ submitLabel }}</button>
       </div>
     </div>
   </div>
@@ -242,7 +245,7 @@ const submit = async () => {
 .title {
   margin: 0;
   color: #ffffff;
-  font-size: 44px;
+  font-size: 17px;
   font-weight: 800;
 }
 
@@ -504,7 +507,7 @@ const submit = async () => {
 
 @media (max-width: 1100px) {
   .title {
-    font-size: 34px;
+    font-size: 17px;
   }
 
   .label,
