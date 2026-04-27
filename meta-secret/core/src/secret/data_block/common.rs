@@ -18,23 +18,21 @@ pub struct SharedSecretConfig {
 
 impl SharedSecretConfig {
     pub fn calculate(num_shares: usize) -> Self {
+        // TODO(security): migrate policy to K = N - 1 after resharing protocol hardening.
+        // Temporary product policy: fixed K=2 for any N>=2.
         match num_shares {
-            1 | 2 => SharedSecretConfig {
-                number_of_shares: num_shares,
+            0 => SharedSecretConfig {
+                number_of_shares: 0,
+                threshold: 0,
+            },
+            1 => SharedSecretConfig {
+                number_of_shares: 1,
                 threshold: 1,
             },
-            n if n % 2 == 0 => {
-                let half = num_shares / 2;
-                SharedSecretConfig {
-                    number_of_shares: num_shares,
-                    threshold: half,
-                }
-            }
             _ => {
-                let quorum = (num_shares / 2) + 1;
                 SharedSecretConfig {
                     number_of_shares: num_shares,
-                    threshold: quorum,
+                    threshold: 2,
                 }
             }
         }
@@ -69,13 +67,17 @@ mod tests {
     use super::*;
     #[test]
     fn test_calculation() {
+        let cfg = SharedSecretConfig::calculate(0);
+        assert_eq!(cfg.number_of_shares, 0);
+        assert_eq!(cfg.threshold, 0);
+
         let cfg = SharedSecretConfig::calculate(1);
         assert_eq!(cfg.number_of_shares, 1);
         assert_eq!(cfg.threshold, 1);
 
         let cfg = SharedSecretConfig::calculate(2);
         assert_eq!(cfg.number_of_shares, 2);
-        assert_eq!(cfg.threshold, 1);
+        assert_eq!(cfg.threshold, 2);
 
         let cfg = SharedSecretConfig::calculate(3);
         assert_eq!(cfg.number_of_shares, 3);
@@ -87,6 +89,6 @@ mod tests {
 
         let cfg = SharedSecretConfig::calculate(5);
         assert_eq!(cfg.number_of_shares, 5);
-        assert_eq!(cfg.threshold, 3);
+        assert_eq!(cfg.threshold, 2);
     }
 }

@@ -1,5 +1,5 @@
-use std::sync::Arc;
-use tracing::info;
+use crate::app_manager::ApplicationManager;
+use anyhow::{bail, Result};
 use meta_db_sqlite::db::sqlite_migration::EmbeddedMigrationsTool;
 use meta_db_sqlite::db::sqlite_store::SqlIteRepo;
 use meta_secret_core::crypto::keys::TransportSk;
@@ -7,17 +7,17 @@ use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
 use meta_secret_core::node::common::model::device::common::{DeviceName, DeviceType};
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::{ClaimId, SsClaim};
-use meta_secret_core::node::common::model::{ApplicationState};
-use once_cell::sync::Lazy;
-use std::sync::Mutex;
-use std::future::Future;
-use std::path::PathBuf;
-use anyhow::{bail, Result};
 use meta_secret_core::node::common::model::user::common::UserData;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
+use meta_secret_core::node::common::model::ApplicationState;
 use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
-use crate::app_manager::ApplicationManager;
+use once_cell::sync::Lazy;
 use std::fs;
+use std::future::Future;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::Mutex;
+use tracing::info;
 
 static GLOBAL_APP_MANAGER: Lazy<Mutex<Option<Arc<MobileApplicationManager>>>> =
     Lazy::new(|| Mutex::new(None));
@@ -40,7 +40,10 @@ static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
 fn resolve_android_package() -> String {
     // Priority 1: Check environment variable
     if let Ok(db_dir) = std::env::var("METASECRET_ANDROID_DB_DIR") {
-        info!("Android package resolved from METASECRET_ANDROID_DB_DIR: {}", db_dir);
+        info!(
+            "Android package resolved from METASECRET_ANDROID_DB_DIR: {}",
+            db_dir
+        );
         return db_dir;
     }
 
@@ -50,7 +53,10 @@ fn resolve_android_package() -> String {
         if let Ok(cmd_str) = String::from_utf8(cmdline) {
             if let Some(package) = cmd_str.split('\0').next() {
                 if !package.is_empty() && package.contains('.') {
-                    info!("Android package resolved from /proc/self/cmdline: {}", package);
+                    info!(
+                        "Android package resolved from /proc/self/cmdline: {}",
+                        package
+                    );
                     return package.to_string();
                 }
             }
@@ -86,8 +92,11 @@ impl MobileApplicationManager {
         let global = GLOBAL_APP_MANAGER.lock().unwrap();
         global.is_some()
     }
-    
-    pub async fn init_ios(master_key: TransportSk, raw_master_key: String) -> anyhow::Result<MobileApplicationManager> {
+
+    pub async fn init_ios(
+        master_key: TransportSk,
+        raw_master_key: String,
+    ) -> anyhow::Result<MobileApplicationManager> {
         Self::init_ios_with_device(
             master_key,
             raw_master_key,
@@ -111,17 +120,14 @@ impl MobileApplicationManager {
             .to_string_lossy()
             .to_string();
         println!("🦀 iOS database path: {}", db_path);
-        
-        Self::init(
-            master_key,
-            &db_path,
-            device_name,
-            device_type,
-        )
-        .await
+
+        Self::init(master_key, &db_path, device_name, device_type).await
     }
-    
-    pub async fn init_android(master_key: TransportSk, raw_master_key: String) -> anyhow::Result<MobileApplicationManager> {
+
+    pub async fn init_android(
+        master_key: TransportSk,
+        raw_master_key: String,
+    ) -> anyhow::Result<MobileApplicationManager> {
         Self::init_android_with_device(
             master_key,
             raw_master_key,
@@ -138,34 +144,30 @@ impl MobileApplicationManager {
         device_type: DeviceType,
     ) -> anyhow::Result<MobileApplicationManager> {
         let package = resolve_android_package();
-        let db_path = format!("/data/data/{}/databases/meta-secret-{}.db", package, raw_master_key);
+        let db_path = format!(
+            "/data/data/{}/databases/meta-secret-{}.db",
+            package, raw_master_key
+        );
         info!("Resolved Android database path: {}", db_path);
-        Self::init(
-            master_key,
-            &db_path,
-            device_name,
-            device_type,
-        )
-        .await
+        Self::init(master_key, &db_path, device_name, device_type).await
     }
 
     pub async fn get_state(&self) -> anyhow::Result<ApplicationState> {
         let app_state = match self.app_manager.get_state().await {
-            Ok(state) => {
-                ApplicationState::from(state)
-            }
+            Ok(state) => ApplicationState::from(state),
             Err(e) => {
                 bail!("Unable to get state from mobile manager: {:?}", e);
             }
         };
         Ok(app_state)
     }
-    
-    pub async fn generate_user_creds(&self, vault_name: VaultName) -> anyhow::Result<ApplicationState> {
+
+    pub async fn generate_user_creds(
+        &self,
+        vault_name: VaultName,
+    ) -> anyhow::Result<ApplicationState> {
         info!("Generate user credentials for vault: {}", vault_name);
-        let app_state = self.app_manager
-            .generate_user_creds(vault_name)
-            .await?;
+        let app_state = self.app_manager.generate_user_creds(vault_name).await?;
         Ok(app_state)
     }
 
@@ -174,12 +176,12 @@ impl MobileApplicationManager {
         Ok(ApplicationState::from(app_state))
     }
 
-    pub async fn update_membership(&self, candidate: UserData, upd: JoinActionUpdate) -> anyhow::Result<()> {
-        Ok(
-            self.app_manager
-                .update_membership(candidate, upd)
-                .await?
-        )
+    pub async fn update_membership(
+        &self,
+        candidate: UserData,
+        upd: JoinActionUpdate,
+    ) -> anyhow::Result<()> {
+        Ok(self.app_manager.update_membership(candidate, upd).await?)
     }
 
     pub async fn cluster_distribution(&self, plain_pass_info: &PlainPassInfo) {
@@ -208,8 +210,10 @@ impl MobileApplicationManager {
 
     pub async fn accept_recover(&self, claim_id: ClaimId) {
         match self.app_manager.accept_recover(claim_id).await {
-            Ok(res) => {res}
-            Err(e) => {panic!("{}", e)}
+            Ok(res) => res,
+            Err(e) => {
+                panic!("{}", e)
+            }
         };
     }
 
@@ -229,7 +233,7 @@ impl MobileApplicationManager {
     pub async fn find_claim_by_pass_id(&self, pass_id: &MetaPasswordId) -> Option<SsClaim> {
         self.app_manager.find_claim_by_pass_id(pass_id).await
     }
-} 
+}
 
 impl MobileApplicationManager {
     async fn init(
@@ -240,7 +244,7 @@ impl MobileApplicationManager {
     ) -> anyhow::Result<MobileApplicationManager> {
         info!("Init mobile state manager");
         info!("Using database path");
-        
+
         match master_key.pk() {
             Ok(_pk) => info!("Master key valid. Public key available"),
             Err(e) => {
@@ -250,10 +254,9 @@ impl MobileApplicationManager {
         }
 
         if let Some(parent_dir) = std::path::Path::new(db_path).parent() {
-            std::fs::create_dir_all(parent_dir)
-                .map_err(|e| {
-                    tracing::error!("Failed to create database directory: {}", e);
-                    anyhow::anyhow!("Failed to create database directory: {}", e)
+            std::fs::create_dir_all(parent_dir).map_err(|e| {
+                tracing::error!("Failed to create database directory: {}", e);
+                anyhow::anyhow!("Failed to create database directory: {}", e)
             })?;
         }
 
@@ -262,7 +265,7 @@ impl MobileApplicationManager {
         let migration_tool = EmbeddedMigrationsTool {
             db_url: conn_url.clone(),
         };
-        
+
         match std::panic::catch_unwind(|| {
             migration_tool.migrate();
         }) {

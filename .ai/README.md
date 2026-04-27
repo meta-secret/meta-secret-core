@@ -22,6 +22,19 @@ Defined in `.ai/WORKFLOW.md` and `.ai/PIPELINE.md`.
 7. Test Run
 8. Branch + Commit + PR
 
+## Domain Skills and Rules
+
+- Domain skills:
+  - `.ai/skills/core-guardian/`
+  - `.ai/skills/cli-guardian/`
+  - `.ai/skills/web-guardian/`
+  - `.ai/skills/mobile-lib-guardian/`
+- Path-scoped rules:
+  - `.ai/rules/domains/core.mdc`
+  - `.ai/rules/domains/cli.mdc`
+  - `.ai/rules/domains/web.mdc`
+  - `.ai/rules/domains/mobile-lib.mdc`
+
 ## Required Stage Logs
 
 - `Start stage <n>: <name>`

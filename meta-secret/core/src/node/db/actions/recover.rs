@@ -91,12 +91,7 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
             pass_id,
             receiver: user_creds.device_id().clone(),
         });
-        let dist = self
-            .p_obj
-            .find_tail_event(desc)
-            .await?
-            .unwrap()
-            .to_distribution_data()?;
+        let maybe_dist = self.p_obj.find_tail_event(desc).await?;
 
         // Extract all SecretDistributionData objects from recoveries and dists
         let recovery_data: Vec<SecretDistributionData> = recoveries
@@ -104,7 +99,15 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
             .map(|r| r.to_distribution_data())
             .collect::<Result<Vec<_>, _>>()?;
 
-        let distribution_data = vec![dist];
+        let distribution_data: Vec<SecretDistributionData> = maybe_dist
+            .map(|dist| dist.to_distribution_data())
+            .transpose()?
+            .into_iter()
+            .collect();
+
+        if recovery_data.is_empty() && distribution_data.is_empty() {
+            bail!("No recovery shares found for selected claim");
+        }
 
         // Decrypt the secret shares using the transport key
         let transport_sk = &user_creds.device_creds.secret_box.transport.sk;
@@ -130,5 +133,115 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
         let plain_text = recover_from_shares(user_shares)?;
 
         Ok(plain_text)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RecoveryHandler;
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::node::common::model::crypto::aead::EncryptedMessage;
+    use crate::node::common::model::meta_pass::MetaPasswordId;
+    use crate::node::common::model::secret::{SecretDistributionData, SsDistributionId};
+    use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
+    use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
+    use crate::node::db::events::shared_secret_event::SsWorkflowObject;
+    use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
+    use crate::node::db::repo::generic_db::SaveCommand;
+    use crate::secret::data_block::common::SharedSecretConfig;
+    use crate::secret::shared_secret::{PlainText, SharedSecretEncryption};
+    use anyhow::Result;
+
+    #[tokio::test]
+    async fn recover_works_without_local_distribution_when_recovery_shares_exist() -> Result<()> {
+        let fixture = FixtureRegistry::empty();
+        let user_creds = fixture.state.user_creds.client.clone();
+        let p_obj = fixture.state.p_obj.client.clone();
+        let p_ss = PersistentSharedSecret::from(p_obj.clone());
+        let vault_member = fixture.state.vault_data.client_vault_member.clone();
+
+        let pass_id = MetaPasswordId::build_from_str("recover_without_local_distribution");
+        let claim = vault_member.create_recovery_claim(pass_id.clone());
+        p_ss.save_ss_log_event(claim.clone()).await?;
+
+        let local_distribution_desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
+            pass_id: pass_id.clone(),
+            receiver: user_creds.device_id().clone(),
+        });
+        let local_distribution = p_obj.find_tail_event(local_distribution_desc).await?;
+        assert!(
+            local_distribution.is_none(),
+            "Test precondition: local distribution share must be absent"
+        );
+
+        let cfg = SharedSecretConfig {
+            number_of_shares: 2,
+            threshold: 2,
+        };
+        let shared_secret = SharedSecretEncryption::new(cfg, PlainText::from("2bee|~"))?;
+        let sender_pk = user_creds.device_creds.device.keys.transport_pk();
+        let sender_km = user_creds.device_creds.key_manager()?;
+
+        for (share_index, recovery_id) in claim.recovery_db_ids().into_iter().enumerate() {
+            let share_json = shared_secret.get_share(share_index).as_json()?;
+            let encrypted = sender_km
+                .transport
+                .encrypt_string(PlainText::from(share_json), &sender_pk)?;
+
+            let wf_event = SsWorkflowObject::Recovery(KvLogEvent {
+                key: KvKey::from(SsWorkflowDescriptor::Recovery(recovery_id.clone())),
+                value: SecretDistributionData {
+                    vault_name: user_creds.vault_name.clone(),
+                    claim_id: recovery_id.claim_id,
+                    secret_message: EncryptedMessage::CipherShare { share: encrypted },
+                },
+            });
+
+            p_obj.repo.save(wf_event).await?;
+        }
+
+        let recovery = RecoveryHandler { p_obj };
+        let plain = recovery
+            .recover(user_creds, claim.id, pass_id)
+            .await?;
+
+        assert_eq!(plain.text, "2bee|~");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn recover_fails_when_no_recovery_and_no_local_distribution() -> Result<()> {
+        let fixture = FixtureRegistry::empty();
+        let user_creds = fixture.state.user_creds.client.clone();
+        let p_obj = fixture.state.p_obj.client.clone();
+        let p_ss = PersistentSharedSecret::from(p_obj.clone());
+        let vault_member = fixture.state.vault_data.client_vault_member.clone();
+
+        let pass_id = MetaPasswordId::build_from_str("recover_without_any_shares");
+        let claim = vault_member.create_recovery_claim(pass_id.clone());
+        p_ss.save_ss_log_event(claim.clone()).await?;
+
+        let local_distribution_desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
+            pass_id: pass_id.clone(),
+            receiver: user_creds.device_id().clone(),
+        });
+        let local_distribution = p_obj.find_tail_event(local_distribution_desc).await?;
+        assert!(
+            local_distribution.is_none(),
+            "Test precondition: local distribution share must be absent"
+        );
+
+        let recovery = RecoveryHandler { p_obj };
+        let err = recovery
+            .recover(user_creds, claim.id, pass_id)
+            .await
+            .expect_err("Recover must fail when no shares are available");
+
+        assert!(
+            err.to_string().contains("No recovery shares found for selected claim"),
+            "Unexpected error: {err}"
+        );
+
+        Ok(())
     }
 }

@@ -4,7 +4,7 @@ Single source of truth for automation in this repo.
 
 ## Start Here
 
-1. `AGENTS.md`
+1. `.ai/README.md`
 2. `.ai/WORKFLOW.md`
 3. `.ai/PIPELINE.md`
 

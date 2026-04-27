@@ -1,0 +1,15 @@
+---
+description: Web domain architecture/style/security constraints
+globs: meta-secret/web-cli/ui/**/*.vue,meta-secret/web-cli/ui/**/*.ts,meta-secret/web-cli/ui/**/*.js
+alwaysApply: false
+---
+
+# Web Domain Rules
+
+Apply these rules when editing `meta-secret/web-cli/ui`.
+
+- Keep Vue components/UI state in web; keep crypto and core business logic out of UI.
+- Use Composition API and explicit TS types for cross-module boundaries.
+- Avoid noisy debug logging; remove `console.log` from committed code.
+- Do not persist decrypted secrets in long-lived browser storage.
+- Validate/sanitize user-controlled input before rendering or routing.

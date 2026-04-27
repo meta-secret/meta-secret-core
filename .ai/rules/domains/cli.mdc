@@ -1,0 +1,15 @@
+---
+description: CLI domain architecture/style/security constraints
+globs: meta-secret/cli/**/*.rs,meta-secret/meta-cli/**/*.rs
+alwaysApply: false
+---
+
+# CLI Domain Rules
+
+Apply these rules when editing `meta-secret/cli` or `meta-secret/meta-cli`.
+
+- Keep CLI as adapter/orchestrator; domain rules belong to `meta-secret/core`.
+- Preserve stable machine-readable output contracts for scripted usage.
+- Prefer explicit command modules and predictable exit behavior.
+- Never print raw secrets by default; redact sensitive values in errors and logs.
+- Validate user input paths and input formats before invoking core flows.
