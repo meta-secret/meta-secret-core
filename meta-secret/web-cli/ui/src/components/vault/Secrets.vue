@@ -165,15 +165,25 @@ const waitingDeviceCount = computed(() => {
   const count = maybeVaultData.users().length;
   return count > 0 ? count : 1;
 });
+
+const currentDeviceCount = computed(() => {
+  const maybeVaultData = (appState.currState as any).as_vault?.()?.as_member?.()?.vault_data?.();
+  if (!maybeVaultData || typeof maybeVaultData.users !== 'function') return 0;
+  return maybeVaultData.users().length;
+});
+
+const requiredDevicesToSafety = computed(() => 3 - currentDeviceCount.value);
+
+const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 0);
 </script>
 
 <template>
   <div :class="$style.mainContent">
-    <div :class="$style.warningBanner">
+    <div v-if="shouldShowDevicesWarning" :class="$style.warningBanner">
       <span :class="$style.warningIcon">⚠</span>
       <span>
-        You need to add 2 device(s) to keep your secrets safe
-        <span :class="$style.warningAction">+Add</span>
+        {{ vaultSecrets.warningPrefix }} {{ requiredDevicesToSafety }} {{ vaultSecrets.warningMiddle }}
+        <span :class="$style.warningAction">{{ vaultSecrets.warningAdd }}</span>
       </span>
     </div>
 
@@ -257,7 +267,7 @@ const waitingDeviceCount = computed(() => {
         <button :class="$style.btnPrimary" :disabled="copyInProgress" @click="copyRevealedValue">
           {{
             copySucceeded
-              ? 'Copied!'
+              ? vaultSecrets.copied
               : (revealModalState === 'revealedSeed' ? vaultSecrets.copyPhrase : vaultSecrets.copySecret)
           }}
         </button>
