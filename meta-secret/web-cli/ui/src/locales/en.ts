@@ -2,7 +2,7 @@
  * UI strings (English). Keep user-visible copy here; do not hardcode in components.
  */
 export const vaultSecrets = {
-  title: 'Your Secrets',
+  title: 'Secrets',
   addSecret: '+ Add Secret',
   emptyState: 'No secrets added yet',
   show: 'Show',

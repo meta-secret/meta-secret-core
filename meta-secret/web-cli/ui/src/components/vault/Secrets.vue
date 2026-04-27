@@ -179,38 +179,40 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
 
 <template>
   <div :class="$style.mainContent">
-    <div v-if="shouldShowDevicesWarning" :class="$style.warningBanner">
-      <span :class="$style.warningIcon">⚠</span>
-      <span>
-        {{ vaultSecrets.warningPrefix }} {{ requiredDevicesToSafety }} {{ vaultSecrets.warningMiddle }}
-        <span :class="$style.warningAction">{{ vaultSecrets.warningAdd }}</span>
-      </span>
-    </div>
-
-    <div :class="$style.secretsCard">
-      <div :class="$style.secretsHeader">
-        <h3 :class="$style.secretsTitle">{{ vaultSecrets.title }}</h3>
-        <button :class="$style.addSecretButton" @click="toggleAddForm">
-          {{ vaultSecrets.addSecret }}
-        </button>
+    <div :class="$style.pageWide">
+      <div v-if="shouldShowDevicesWarning" :class="$style.warningBanner">
+        <span :class="$style.warningIcon">⚠</span>
+        <span>
+          {{ vaultSecrets.warningPrefix }} {{ requiredDevicesToSafety }} {{ vaultSecrets.warningMiddle }}
+          <span :class="$style.warningAction">{{ vaultSecrets.warningAdd }}</span>
+        </span>
       </div>
 
-      <div v-if="passwords.length === 0" :class="$style.emptyState">{{ vaultSecrets.emptyState }}</div>
+      <div :class="$style.secretsCard">
+        <div :class="$style.secretsHeader">
+          <h3 :class="$style.secretsTitle">{{ vaultSecrets.title }}</h3>
+          <button :class="$style.addSecretButton" @click="toggleAddForm">
+            {{ vaultSecrets.addSecret }}
+          </button>
+        </div>
 
-      <div v-else>
-        <div v-if="flowError" :class="$style.inlineError" role="alert">{{ flowError }}</div>
-        <ul :class="$style.secretsList">
-          <li v-for="secret in passwords" :key="secret.id_str()" :class="$style.secretRow">
-            <div :class="$style.secretName">{{ secret.name }}</div>
-            <button
-              :class="$style.showButton"
-              :disabled="flowInProgressId !== null"
-              @click="startRevealFlow(secret)"
-            >
-              {{ flowInProgressId === secret.id_str() ? vaultSecrets.showLoading : vaultSecrets.show }}
-            </button>
-          </li>
-        </ul>
+        <div v-if="passwords.length === 0" :class="$style.emptyState">{{ vaultSecrets.emptyState }}</div>
+
+        <div v-else>
+          <div v-if="flowError" :class="$style.inlineError" role="alert">{{ flowError }}</div>
+          <ul :class="$style.secretsList">
+            <li v-for="secret in passwords" :key="secret.id_str()" :class="$style.secretRow">
+              <div :class="$style.secretName">{{ secret.name }}</div>
+              <button
+                :class="$style.showButton"
+                :disabled="flowInProgressId !== null"
+                @click="startRevealFlow(secret)"
+              >
+                {{ flowInProgressId === secret.id_str() ? vaultSecrets.showLoading : vaultSecrets.show }}
+              </button>
+            </li>
+          </ul>
+        </div>
       </div>
     </div>
 
@@ -278,7 +280,14 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
 
 <style module>
 .mainContent {
-  padding: 22px 24px 48px;
+  padding: 48px 24px;
+  display: flex;
+  justify-content: center;
+}
+
+.pageWide {
+  width: 100%;
+  max-width: 1240px;
 }
 
 .warningBanner {
@@ -320,7 +329,7 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
 }
 
 .secretsTitle {
-  font-size: 34px;
+  font-size: 17px;
   font-weight: 700;
   color: #ffffff;
 }
@@ -373,7 +382,7 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
 
 .secretName {
   color: #ffffff;
-  font-size: 32px;
+  font-size: 15px;
   font-weight: 700;
   flex: 1;
 }

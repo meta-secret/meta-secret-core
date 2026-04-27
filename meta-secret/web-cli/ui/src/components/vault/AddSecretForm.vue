@@ -24,6 +24,7 @@ const isSubmitting = ref(false);
 const formError = ref<string | null>(null);
 
 const activeWords = computed(() => seedWords.value.slice(0, wordCount.value));
+const isCompact24 = computed(() => secretType.value === 'seed' && wordCount.value === 24);
 
 const resetState = () => {
   secretType.value = 'password';
@@ -126,7 +127,7 @@ const submit = async () => {
         <button class="close-btn" @click="close">×</button>
       </div>
 
-      <div class="content">
+      <div class="content" :class="{ compact24: isCompact24 }">
         <label class="label">{{ vaultSecrets.addSecretDescriptionLabel }}</label>
         <input
           v-model="description"
@@ -180,7 +181,7 @@ const submit = async () => {
             </span>
           </button>
 
-          <div class="seed-grid" :class="{ compact: wordCount === 12 }">
+          <div class="seed-grid" :class="{ compact: wordCount === 12, compact24: isCompact24 }">
             <div v-for="(_, idx) in activeWords" :key="idx" class="seed-cell">
               <span class="seed-index">{{ idx + 1 }}.</span>
               <input
@@ -221,11 +222,14 @@ const submit = async () => {
 .modal {
   width: 100%;
   max-width: 860px;
+  max-height: 90vh;
   background: #0d1726;
   border: 1px solid #1e3050;
   border-radius: 28px;
   box-shadow: 0 32px 80px rgba(0, 0, 0, 0.6);
   padding: 28px 30px;
+  display: flex;
+  flex-direction: column;
 }
 
 .header {
@@ -238,7 +242,7 @@ const submit = async () => {
 .title {
   margin: 0;
   color: #ffffff;
-  font-size: 46px;
+  font-size: 44px;
   font-weight: 800;
 }
 
@@ -261,6 +265,22 @@ const submit = async () => {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  overflow-y: auto;
+  padding-right: 4px;
+  min-height: 0;
+}
+
+.content.compact24 {
+  gap: 10px;
+}
+
+.content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.content::-webkit-scrollbar-thumb {
+  background: #1e3050;
+  border-radius: 6px;
 }
 
 .label {
@@ -328,7 +348,7 @@ const submit = async () => {
   border: 1px solid #1e3050;
   background: #111e30;
   color: #4a6080;
-  font-size: 38px;
+  font-size: 20px;
   font-weight: 700;
   cursor: pointer;
 }
@@ -392,6 +412,31 @@ const submit = async () => {
   gap: 8px;
 }
 
+.seed-grid.compact24 {
+  gap: 8px;
+}
+
+.seed-grid.compact24 .seed-cell {
+  height: 44px;
+  padding: 0 8px;
+}
+
+.seed-grid.compact24 .seed-index {
+  font-size: 14px;
+}
+
+.seed-grid.compact24 .seed-input {
+  font-size: 16px;
+}
+
+.content.compact24 .text-input {
+  height: 52px;
+}
+
+.content.compact24 .label {
+  font-size: 17px;
+}
+
 .seed-index {
   color: #3a5070;
   font-size: 16px;
@@ -426,15 +471,16 @@ const submit = async () => {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+  flex-shrink: 0;
 }
 
 .btn-secondary,
 .btn-primary {
-  min-width: 192px;
-  height: 76px;
+  min-width: 184px;
+  height: 58px;
   border-radius: 18px;
   border: none;
-  font-size: 42px;
+  font-size: 15px;
   font-weight: 700;
   cursor: pointer;
 }
@@ -458,7 +504,7 @@ const submit = async () => {
 
 @media (max-width: 1100px) {
   .title {
-    font-size: 32px;
+    font-size: 34px;
   }
 
   .label,
@@ -470,16 +516,16 @@ const submit = async () => {
   }
 
   .count-btn {
-    font-size: 28px;
+    font-size: 18px;
     width: 68px;
     height: 44px;
   }
 
   .btn-secondary,
   .btn-primary {
-    height: 56px;
+    height: 52px;
     min-width: 156px;
-    font-size: 28px;
+    font-size: 14px;
   }
 }
 </style>
