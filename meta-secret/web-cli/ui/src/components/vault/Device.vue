@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import {
   DeviceData,
   JoinActionUpdate,
@@ -8,6 +8,7 @@ import {
   WasmUserMembership,
 } from 'meta-secret-web-cli';
 import { AppState } from '@/stores/app-state';
+import { vaultDevices } from '@/locales/en';
 
 const props = defineProps<{ membership: WasmUserMembership }>();
 
@@ -61,6 +62,8 @@ const typeLabel = computed(() => {
   return mapping[normalizedType.value] || 'Other';
 });
 
+const vaultName = computed(() => appState.getVaultName() || vaultDevices.fallbackVaultName);
+
 const isMember = computed(() => props.membership.is_member());
 const isPending = computed(() => {
   if (!props.membership.is_outsider()) return false;
@@ -70,6 +73,18 @@ const isDeclined = computed(() => {
   if (!props.membership.is_outsider()) return false;
   return props.membership.as_outsider().status === UserDataOutsiderStatus.Declined;
 });
+const isJoinConfirmOpen = ref(false);
+const isSubmitting = ref(false);
+
+const openJoinConfirm = () => {
+  if (!isPending.value || isSubmitting.value) return;
+  isJoinConfirmOpen.value = true;
+};
+
+const closeJoinConfirm = () => {
+  if (isSubmitting.value) return;
+  isJoinConfirmOpen.value = false;
+};
 
 const accept = async () => {
   await appManager.update_membership(user.value, JoinActionUpdate.Accept);
@@ -80,10 +95,40 @@ const decline = async () => {
   await appManager.update_membership(user.value, JoinActionUpdate.Decline);
   await appState.updateState();
 };
+
+const handleAccept = async () => {
+  if (isSubmitting.value) return;
+  isSubmitting.value = true;
+  try {
+    await accept();
+    isJoinConfirmOpen.value = false;
+  } finally {
+    isSubmitting.value = false;
+  }
+};
+
+const handleDecline = async () => {
+  if (isSubmitting.value) return;
+  isSubmitting.value = true;
+  try {
+    await decline();
+    isJoinConfirmOpen.value = false;
+  } finally {
+    isSubmitting.value = false;
+  }
+};
 </script>
 
 <template>
-  <div class="device-row" :class="{ declined: isDeclined }">
+  <div
+    class="device-row"
+    :class="{ declined: isDeclined, clickable: isPending }"
+    :role="isPending ? 'button' : undefined"
+    :tabindex="isPending ? 0 : undefined"
+    @click="openJoinConfirm"
+    @keydown.enter.prevent="openJoinConfirm"
+    @keydown.space.prevent="openJoinConfirm"
+  >
     <div class="device-icon-box">
       <svg v-if="normalizedType === 'iphone'" width="22" height="22" viewBox="0 0 60 59" fill="none">
         <rect x="14" y="5" width="32" height="50" rx="6" fill="#1a2e4a" stroke="#3b7eff" stroke-width="2"/>
@@ -128,13 +173,31 @@ const decline = async () => {
       <div class="device-model">{{ typeLabel }}</div>
     </div>
 
-    <span v-if="isMember && isCurrent" class="badge-current">Current</span>
-    <span v-else-if="isMember" class="badge-member">Member</span>
-    <span v-if="isDeclined" class="badge-declined">Declined</span>
+    <span v-if="isMember && isCurrent" class="badge-current">{{ vaultDevices.statusCurrent }}</span>
+    <span v-else-if="isMember" class="badge-member">{{ vaultDevices.statusMember }}</span>
+    <span v-if="isPending" class="badge-pending">{{ vaultDevices.statusPending }}</span>
+    <span v-if="isDeclined" class="badge-declined">{{ vaultDevices.statusDeclined }}</span>
+  </div>
 
-    <div v-if="isPending" class="action-buttons">
-      <button class="accept-btn" @click="accept">Accept</button>
-      <button class="decline-btn" @click="decline">Decline</button>
+  <div v-if="isJoinConfirmOpen" class="confirm-overlay" @click="closeJoinConfirm">
+    <div class="confirm-dialog" @click.stop>
+      <div class="confirm-icon-box">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+          <path d="M12 3L4 7v5c0 5.25 3.5 10.15 8 11.5C16.5 22.15 20 17.25 20 12V7L12 3z" fill="#1a3a8f" stroke="#60a5fa" stroke-width="1.5" stroke-linejoin="round"/>
+          <circle cx="12" cy="12" r="2.5" fill="#60a5fa"/>
+        </svg>
+      </div>
+      <div class="confirm-title">
+        {{ vaultDevices.confirmJoinPrefix }}
+        <span class="accent-device">{{ typeLabel }}</span>
+        {{ vaultDevices.confirmJoinMiddle }}
+        <span class="accent-vault">{{ vaultName }}</span>?
+      </div>
+      <div class="confirm-subtitle">{{ typeLabel }}</div>
+      <div class="confirm-actions">
+        <button class="btn-decline" :disabled="isSubmitting" @click="handleDecline">{{ vaultDevices.actionDecline }}</button>
+        <button class="btn-accept" :disabled="isSubmitting" @click="handleAccept">{{ vaultDevices.actionAccept }}</button>
+      </div>
     </div>
   </div>
 </template>
@@ -146,6 +209,15 @@ const decline = async () => {
   display: flex;
   align-items: center;
   gap: 14px;
+}
+
+.device-row.clickable {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.device-row.clickable:hover {
+  background: #101f33;
 }
 
 .device-row.declined {
@@ -213,29 +285,104 @@ const decline = async () => {
   padding: 3px 12px;
 }
 
-.action-buttons {
-  display: flex;
-  gap: 8px;
+.badge-pending {
+  background: #1a2e4a;
+  border: 1px solid #2e5da3;
+  color: #91bdff;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 20px;
+  padding: 3px 12px;
 }
 
-.accept-btn,
-.decline-btn {
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 24px;
+}
+
+.confirm-dialog {
+  background: #0d1726;
+  border: 1px solid #1e3050;
+  border-radius: 20px;
+  padding: 28px;
+  width: 100%;
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  text-align: center;
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.6);
+}
+
+.confirm-icon-box {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: #1a2e4a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.confirm-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #ffffff;
+  line-height: 1.35;
+}
+
+.accent-device {
+  color: #60a5fa;
+}
+
+.accent-vault {
+  color: #2563eb;
+}
+
+.confirm-subtitle {
+  font-size: 13px;
+  color: #4a6080;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+.btn-decline,
+.btn-accept {
+  flex: 1;
   border: none;
-  border-radius: 10px;
-  height: 32px;
-  padding: 0 14px;
-  font-size: 12px;
-  font-weight: 600;
+  border-radius: 12px;
+  height: 46px;
+  font-size: 15px;
+  font-weight: 700;
   cursor: pointer;
 }
 
-.accept-btn {
-  background: #1f9f55;
+.btn-decline {
+  background: #111e30;
+  color: #8aaacf;
+  border: 1px solid #1e3050;
+}
+
+.btn-accept {
+  background: #2563eb;
   color: #ffffff;
 }
 
-.decline-btn {
-  background: #c0392b;
-  color: #ffffff;
+.btn-decline:disabled,
+.btn-accept:disabled {
+  opacity: 0.65;
+  cursor: wait;
 }
 </style>
