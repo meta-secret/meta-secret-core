@@ -266,9 +266,9 @@ const handleDecline = async () => {
 }
 
 .badge-current {
-  background: #2a1a05;
-  border: 1px solid #7a4410;
-  color: #f59e42;
+  background: #1a2e4a;
+  border: 1px solid #2563eb;
+  color: #60a5fa;
   font-size: 11px;
   font-weight: 700;
   border-radius: 20px;
