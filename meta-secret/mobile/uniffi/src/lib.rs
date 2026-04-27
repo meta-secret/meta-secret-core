@@ -23,6 +23,14 @@ pub fn init_android(master_key: String) -> String {
     json_api::init_android(master_key)
 }
 
+pub fn init_ios_with_device(master_key: String, device_name: String, device_type: String) -> String {
+    json_api::init_ios_with_device(master_key, device_name, device_type)
+}
+
+pub fn init_android_with_device(master_key: String, device_name: String, device_type: String) -> String {
+    json_api::init_android_with_device(master_key, device_name, device_type)
+}
+
 pub fn get_state() -> String {
     json_api::get_state()
 }

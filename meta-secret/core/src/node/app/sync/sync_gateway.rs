@@ -210,13 +210,14 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
 
                         for wf_event in wf_events {
                             if claim.sender.eq(&user.device.device_id) {
-                                let obj_id = wf_event.obj_id();
+                                // Keep local split distributions so sender can perform future
+                                // redistributions for new members under current K=2 policy.
+                                // TODO(security): revisit retention strategy when migrating to K=N-1 resharing.
                                 let request = {
                                     let event = WriteSyncRequest::Event(wf_event.to_generic());
                                     SyncRequest::Write(Box::from(event))
                                 };
                                 self.sync.send(request).await?;
-                                self.p_obj.repo.delete(obj_id).await;
                             }
                         }
                     }
