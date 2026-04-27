@@ -27,8 +27,8 @@ impl SsClaimVerifierForTestRecovery {
 
 #[cfg(test)]
 pub mod fixture {
-    use meta_secret_core::meta_tests::fixture_util::fixture::states::BaseState;
     use meta_secret_core::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use meta_secret_core::meta_tests::fixture_util::fixture::states::BaseState;
     use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
     use meta_server_node::server::server_app::ServerApp;
     use std::sync::Arc;
@@ -49,12 +49,12 @@ pub mod fixture {
 
 #[cfg(test)]
 mod test {
-    use crate::fixture::{ExtendedFixtureRegistry, ExtendedFixtureState};
     use super::SsClaimVerifierForTestRecovery;
-    use anyhow::bail;
+    use crate::fixture::{ExtendedFixtureRegistry, ExtendedFixtureState};
     use anyhow::Result;
-    use meta_secret_core::meta_tests::fixture_util::fixture::states::EmptyState;
+    use anyhow::bail;
     use meta_secret_core::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use meta_secret_core::meta_tests::fixture_util::fixture::states::EmptyState;
     use meta_secret_core::meta_tests::spec::test_spec::TestSpec;
     use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
     use meta_secret_core::node::app::orchestrator::MetaOrchestrator;
@@ -62,14 +62,22 @@ mod test {
     use meta_secret_core::node::common::meta_tracing::{client_span, server_span, vd_span};
     use meta_secret_core::node::common::model::crypto::aead::EncryptedMessage;
     use meta_secret_core::node::common::model::device::common::DeviceName;
-    use meta_secret_core::node::common::model::device::device_creds::{DeviceCreds, DeviceCredsBuilder};
-    use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo, SecurePassInfo};
+    use meta_secret_core::node::common::model::device::device_creds::{
+        DeviceCreds, DeviceCredsBuilder,
+    };
+    use meta_secret_core::node::common::model::meta_pass::{
+        MetaPasswordId, PlainPassInfo, SecurePassInfo,
+    };
     use meta_secret_core::node::common::model::secret::{
         ClaimId, SecretDistributionType, SsClaim, SsDistributionId, SsDistributionStatus,
     };
-    use meta_secret_core::node::common::model::user::common::{UserData, UserDataMember, UserMembership};
+    use meta_secret_core::node::common::model::user::common::{
+        UserData, UserDataMember, UserMembership,
+    };
     use meta_secret_core::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
-    use meta_secret_core::node::common::model::vault::vault::{VaultMember, VaultName, VaultStatus};
+    use meta_secret_core::node::common::model::vault::vault::{
+        VaultMember, VaultName, VaultStatus,
+    };
     use meta_secret_core::node::common::model::vault::vault_data::VaultData;
     use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
     use meta_secret_core::node::db::actions::recover::RecoveryHandler;
@@ -81,14 +89,16 @@ mod test {
     };
     use meta_secret_core::node::db::events::generic_log_event::GenericKvLogEvent;
     use meta_secret_core::node::db::events::shared_secret_event::SsWorkflowObject;
-    use meta_secret_core::node::db::events::vault::vault_log_event::{JoinClusterEvent, VaultActionRequestEvent};
+    use meta_secret_core::node::db::events::vault::vault_log_event::{
+        JoinClusterEvent, VaultActionRequestEvent,
+    };
     use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
     use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
     use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
     use meta_secret_core::recover_from_shares;
     use meta_secret_core::secret::MetaDistributor;
     use meta_secret_core::secret::shared_secret::UserShareDto;
-    use tracing::{info, Instrument};
+    use tracing::{Instrument, info};
 
     struct ServerAppSignUpSpec {
         registry: FixtureRegistry<ExtendedFixtureState>,
@@ -394,10 +404,7 @@ mod test {
         receiver: meta_secret_core::node::common::model::device::common::DeviceId,
         sk: &meta_secret_core::crypto::keys::TransportSk,
     ) -> Result<UserShareDto> {
-        let dist_desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
-            pass_id,
-            receiver,
-        });
+        let dist_desc = SsWorkflowDescriptor::Distribution(SsDistributionId { pass_id, receiver });
         let event = p_obj
             .find_tail_event(dist_desc)
             .await?
@@ -417,7 +424,11 @@ mod test {
     )> {
         let registry = FixtureRegistry::empty();
         let client_user_creds = registry.state.user_creds.client.clone();
-        let client_member = registry.state.vault_data.client_membership.user_data_member();
+        let client_member = registry
+            .state
+            .vault_data
+            .client_membership
+            .user_data_member();
         let single_member_vault = VaultData::from(client_member.clone());
 
         let vault_member = VaultMember {
@@ -543,7 +554,13 @@ mod test {
         spec.vd_gw_sync().await?;
         spec.client_gw_sync().await?;
 
-        let client_state = spec.registry.state.client.client_service.get_app_state().await?;
+        let client_state = spec
+            .registry
+            .state
+            .client
+            .client_service
+            .get_app_state()
+            .await?;
         let ApplicationState::Vault(VaultFullInfo::Member(client_member)) = client_state else {
             bail!("Client has to be vault member");
         };
@@ -581,7 +598,13 @@ mod test {
         client_b_gw.sync(client_b_user.clone()).await?;
         spec.client_gw_sync().await?;
 
-        let client_state = spec.registry.state.client.client_service.get_app_state().await?;
+        let client_state = spec
+            .registry
+            .state
+            .client
+            .client_service
+            .get_app_state()
+            .await?;
         let ApplicationState::Vault(VaultFullInfo::Member(client_member)) = client_state else {
             bail!("Client has to be vault member");
         };
@@ -663,11 +686,10 @@ mod test {
             .p_ss
             .get_ss_log_obj(vault_name.clone())
             .await?;
-        let client_b_ss_log = PersistentSharedSecret::from(
-            spec.registry.state.base.empty.p_obj.client_b.clone(),
-        )
-        .get_ss_log_obj(vault_name.clone())
-        .await?;
+        let client_b_ss_log =
+            PersistentSharedSecret::from(spec.registry.state.base.empty.p_obj.client_b.clone())
+                .get_ss_log_obj(vault_name.clone())
+                .await?;
         let server_ss_log = spec
             .registry
             .state
@@ -715,7 +737,11 @@ mod test {
             prepare_single_device_secret_for_redistribution().await?;
 
         let d2 = registry.state.vault_data.vd_membership.user_data_member();
-        let d3 = registry.state.vault_data.client_b_membership.user_data_member();
+        let d3 = registry
+            .state
+            .vault_data
+            .client_b_membership
+            .user_data_member();
         let (d4, d4_creds) =
             generate_member_for_vault(registry.state.user_creds.client.user().vault_name.clone());
         let (d5, d5_creds) =

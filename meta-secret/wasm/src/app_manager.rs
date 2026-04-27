@@ -1,31 +1,28 @@
-use anyhow::bail;
+use anyhow::{Result, bail};
 use std::sync::Arc;
-use tracing::{error, info, instrument, Instrument};
+use tracing::{Instrument, error, info, instrument};
 use wasm_bindgen_futures::spawn_local;
 
-use anyhow::Result;
 use meta_secret_core::crypto::keys::TransportSk;
-use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
-use meta_secret_core::node::app::meta_app::meta_client_service::{
-    MetaClientDataTransfer, MetaClientService, MetaClientStateProvider,
+use meta_secret_core::node::app::app_manager_shared::{
+    build_client_components, find_recovery_claim_id_from_state, recover_plain_text,
+    resolve_signup_vault_name,
 };
+use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
+use meta_secret_core::node::app::meta_app::meta_client_service::MetaClientService;
 use meta_secret_core::node::app::sync::api_url::ApiUrl;
 use meta_secret_core::node::app::sync::sync_gateway::SyncGateway;
 use meta_secret_core::node::app::sync::sync_protocol::{HttpSyncProtocol, SyncProtocol};
-use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::meta_tracing::client_span;
 use meta_secret_core::node::common::model::device::common::{DeviceName, DeviceType};
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::ClaimId;
-use meta_secret_core::node::common::model::user::common::{UserData, UserDataOutsiderStatus};
+use meta_secret_core::node::common::model::user::common::UserData;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
-use meta_secret_core::node::db::actions::recover::RecoveryHandler;
 use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
 use meta_secret_core::node::db::events::vault::vault_log_event::JoinClusterEvent;
-use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
-use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
 use meta_secret_core::secret::shared_secret::PlainText;
 
 pub struct ApplicationManager<Repo: KvLogEventRepo, Sync: SyncProtocol> {
@@ -40,7 +37,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
         server: Arc<Sync>,
         sync_gateway: Arc<SyncGateway<Repo, Sync>>,
         meta_client_service: Arc<MetaClientService<Repo, Sync>>,
-        master_key: TransportSk
+        master_key: TransportSk,
     ) -> ApplicationManager<Repo, Sync> {
         info!("New. Application State Manager");
 
@@ -48,13 +45,13 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
             server,
             sync_gateway,
             meta_client_service,
-            master_key
+            master_key,
         }
     }
 
     pub async fn init(
         client_repo: Arc<Repo>,
-        master_key: TransportSk
+        master_key: TransportSk,
     ) -> Result<ApplicationManager<Repo, HttpSyncProtocol>> {
         Self::init_with_device(
             client_repo,
@@ -77,16 +74,14 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
             api_url: ApiUrl::prod(),
         });
 
-        let app_manager = Self::client_setup(
+        Self::client_setup(
             client_repo,
-            sync_protocol.clone(),
+            sync_protocol,
             master_key,
             device_name,
             device_type,
         )
-        .await?;
-
-        Ok(app_manager)
+        .await
     }
 
     pub async fn generate_user_creds(&self, vault_name: VaultName) {
@@ -98,32 +93,12 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
     #[instrument(skip(self))]
     pub async fn sign_up(&self) -> Result<ApplicationState> {
         info!("Sign Up");
-        match self.get_state().await {
-            ApplicationState::Local(_) => {
-                bail!("Sign up is not allowed in local state");
-            }
-            ApplicationState::Vault(vault_info) => {
-                let vault_name = match vault_info {
-                    VaultFullInfo::NotExists(user) => user.vault_name,
-                    VaultFullInfo::Outsider(outsider) => match outsider.status {
-                        UserDataOutsiderStatus::NonMember => outsider.user_data.vault_name,
-                        UserDataOutsiderStatus::Pending => {
-                            bail!("Sign up is not allowed in pending state");
-                        }
-                        UserDataOutsiderStatus::Declined => {
-                            bail!("Sign up is not allowed in declined state");
-                        }
-                    },
-                    VaultFullInfo::Member(_) => {
-                        bail!("Sign up is not allowed in vault state");
-                    }
-                };
-                let sign_up = GenericAppStateRequest::SignUp(vault_name);
-                let new_state = self.meta_client_service.send_request(sign_up).await?;
-                info!("Sign Up. Completed");
-                Ok(new_state)
-            }
-        }
+        let state = self.get_state().await;
+        let vault_name = resolve_signup_vault_name(&state)?;
+        let sign_up = GenericAppStateRequest::SignUp(vault_name);
+        let new_state = self.meta_client_service.send_request(sign_up).await?;
+        info!("Sign Up. Completed");
+        Ok(new_state)
     }
 
     pub async fn cluster_distribution(&self, plain_pass_info: PlainPassInfo) {
@@ -180,20 +155,16 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
                 }
                 VaultFullInfo::Member(_) => {
                     let claim_id = self.find_claim_by_pass_id(&pass_id).await;
-
                     match claim_id {
-                        None => {
-                            bail!("Claim id not found");
-                        }
+                        None => bail!("Claim id not found"),
                         Some(claim_id) => {
-                            let recovery_handler = RecoveryHandler {
-                                p_obj: self.sync_gateway.p_obj.clone(),
-                            };
-
-                            let pass = recovery_handler
-                                .recover(user_creds, claim_id, pass_id)
-                                .await?;
-                            Ok(pass)
+                            recover_plain_text(
+                                self.sync_gateway.as_ref(),
+                                user_creds,
+                                claim_id,
+                                pass_id,
+                            )
+                            .await
                         }
                     }
                 }
@@ -206,11 +177,8 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
     }
 
     pub async fn find_claim_by_pass_id(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
-        let ApplicationState::Vault(VaultFullInfo::Member(member)) = &self.get_state().await else {
-            return None;
-        };
-
-        member.ss_claims.find_recovery_claim_id(pass_id)
+        let state = self.get_state().await;
+        find_recovery_claim_id_from_state(&state, pass_id)
     }
 
     #[instrument(name = "MetaClientService", skip_all)]
@@ -221,54 +189,25 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
         device_name: DeviceName,
         device_type: DeviceType,
     ) -> Result<ApplicationManager<Repo, HttpSyncProtocol>> {
-        let p_obj = {
-            let obj = PersistentObject::new(client_repo.clone());
-            Arc::new(obj)
-        };
+        let (sync_gateway, meta_client_service) = build_client_components(
+            client_repo,
+            sync_protocol.clone(),
+            master_key.clone(),
+            device_name,
+            device_type,
+        )
+        .await?;
 
-        //Get or generate device credentials
-        let creds_repo = PersistentCredentials {
-            p_obj: p_obj.clone(),
-            master_key: master_key.clone(),
-        };
-        let device_creds = {
-            let creds = creds_repo
-                .get_or_generate_device_creds_with_type(device_name, device_type)
-                .await?;
-            Arc::new(creds)
-        };
-
-        let sync_gateway = Arc::new(SyncGateway {
-            id: String::from("client-gateway"),
-            p_obj: p_obj.clone(),
-            sync: sync_protocol.clone(),
-            master_key: master_key.clone()
-        });
-
-        let state_provider = Arc::new(MetaClientStateProvider::new());
-
-        let meta_client_service = {
-            Arc::new(MetaClientService {
-                data_transfer: Arc::new(MetaClientDataTransfer {
-                    dt: MpscDataTransfer::new(),
-                }),
-                sync_gateway: sync_gateway.clone(),
-                state_provider,
-                p_obj: p_obj.clone(),
-                device_data: device_creds.device.clone(),
-                master_key: master_key.clone()
-            })
-        };
-
-        let app_manager =
-            ApplicationManager::new(sync_protocol, sync_gateway, meta_client_service.clone(), master_key);
+        let app_manager = ApplicationManager::new(
+            sync_protocol,
+            sync_gateway,
+            meta_client_service.clone(),
+            master_key,
+        );
 
         spawn_local(async move {
             if let Err(e) = meta_client_service.run().instrument(client_span()).await {
-                error!(
-                    error = %e,
-                    "Meta client background task failed"
-                );
+                error!(error = %e, "Meta client background task failed");
             }
         });
 
