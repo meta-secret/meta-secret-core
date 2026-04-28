@@ -2,7 +2,9 @@ use crate::cli_format::CliOutputFormat;
 use crate::info::info_command_base::{InfoCommandBase, InfoCommandTrait};
 use crate::template_manager::TemplateManager;
 use anyhow::Result;
+use meta_db_redb::CRATE_PKG_VERSION as DB_PKG_VERSION;
 use meta_secret_core::node::common::model::secret::SsDistributionStatus;
+use meta_server_node::CRATE_PKG_VERSION as SERVER_PKG_VERSION;
 use meta_secret_core::node::common::model::user::common::UserMembership;
 use meta_secret_core::node::common::model::{ApplicationState, IdString, VaultFullInfo};
 use meta_secret_core::node::db::events::vault::vault_log_event::VaultActionRequestEvent;
@@ -26,6 +28,15 @@ impl InfoCommandTrait for DefaultInfoCommand {
     async fn execute(&self) -> Result<()> {
         let db_context = self.base.base().open_existing_db().await?;
         let mut context = Context::new();
+        context.insert(
+            "versions",
+            &json!({
+                "cli": env!("CARGO_PKG_VERSION"),
+                "core": meta_secret_core::CRATE_PKG_VERSION,
+                "server": SERVER_PKG_VERSION,
+                "db": DB_PKG_VERSION,
+            }),
+        );
 
         // Try to get device credentials
         let maybe_device_creds = db_context.p_creds.get_device_creds().await?;

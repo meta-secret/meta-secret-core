@@ -1,12 +1,22 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import {
+  component_core_version,
+  component_db_version,
+  component_server_version,
+} from 'meta-secret-web-cli';
 import { AppState } from '@/stores/app-state';
-import { vaultTechnicalInfo } from '@/locales/en';
+import { vaultComponentVersions, vaultTechnicalInfo } from '@/locales/en';
 
 const appState = AppState();
 const vaultName = computed(() => appState.getVaultName());
 const deviceId = computed(() => (appState.currState as any).device_id().wasm_id_str());
 const showDeviceId = ref(false);
+
+const webUiVersion = __WEB_UI_VERSION__;
+const coreVersion = computed(() => component_core_version());
+const serverVersion = computed(() => component_server_version());
+const dbVersion = computed(() => component_db_version());
 
 const toggleDeviceId = () => {
   showDeviceId.value = !showDeviceId.value;
@@ -34,6 +44,25 @@ const toggleDeviceId = () => {
       <div class="device-id-row">
         <span class="device-id-label">{{ vaultTechnicalInfo.labelDeviceId }}</span>
         <span class="device-id-value">{{ deviceId }}</span>
+      </div>
+      <div class="versions-block">
+        <div class="device-id-title">{{ vaultComponentVersions.sectionTitle }}</div>
+        <div class="device-id-row">
+          <span class="device-id-label">{{ vaultComponentVersions.labelWebUi }}</span>
+          <span class="device-id-value">{{ webUiVersion }}</span>
+        </div>
+        <div class="device-id-row">
+          <span class="device-id-label">{{ vaultComponentVersions.labelCore }}</span>
+          <span class="device-id-value">{{ coreVersion }}</span>
+        </div>
+        <div class="device-id-row">
+          <span class="device-id-label">{{ vaultComponentVersions.labelServer }}</span>
+          <span class="device-id-value">{{ serverVersion }}</span>
+        </div>
+        <div class="device-id-row">
+          <span class="device-id-label">{{ vaultComponentVersions.labelDb }}</span>
+          <span class="device-id-value">{{ dbVersion }}</span>
+        </div>
       </div>
     </div>
 
@@ -112,6 +141,14 @@ const toggleDeviceId = () => {
 
 .device-id-container {
   margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.versions-block {
+  margin-top: 12px;
   display: flex;
   flex-direction: column;
   align-items: center;

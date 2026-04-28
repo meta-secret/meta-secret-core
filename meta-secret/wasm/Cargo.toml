@@ -1,6 +1,6 @@
 [package]
 name = "meta-secret-wasm"
-version = "0.1.0"
+version = "2.0.0"
 authors = ["cypherkitty <bynull@meta-secret.org>"]
 edition = "2024"
 
@@ -14,6 +14,7 @@ default = ["console_error_panic_hook"]
 [dependencies]
 meta-secret-core = { path = "../core" }
 meta-server-node = { path = "../meta-server/server-node" }
+meta-db-redb = { path = "../db/redb" }
 secrecy = "0.10.3"
 
 anyhow.workspace = true

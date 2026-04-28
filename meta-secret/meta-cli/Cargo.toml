@@ -1,11 +1,12 @@
 [package]
 name = "meta-cli"
-version = "1.1.0"
+version = "2.0.0"
 edition = "2024"
 
 [dependencies]
 meta-secret-core = { path = "../core" }
 meta-db-redb = { path = "../db/redb" }
+meta-server-node = { path = "../meta-server/server-node" }
 
 thiserror.workspace = true
 anyhow.workspace = true
