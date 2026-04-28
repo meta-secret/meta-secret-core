@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import { AppState } from '@/stores/app-state';
 import Device from '@/components/vault/Device.vue';
 import { UserDataOutsiderStatus } from 'meta-secret-web-cli';
+import { vaultSecrets } from '@/locales/en';
 
 const appState = AppState();
 const users = computed(() => (appState.currState as any).as_vault().as_member().vault_data().users());
@@ -16,11 +17,23 @@ const pendingDevices = computed(() => users.value.filter((membership: any) => {
   if (!membership.is_outsider()) return false;
   return membership.as_outsider().status === UserDataOutsiderStatus.Pending;
 }));
+
+const currentDeviceCount = computed(() => users.value.length);
+const requiredDevicesToSafety = computed(() => 3 - currentDeviceCount.value);
+const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 0);
 </script>
 
 <template>
   <div class="main-content">
     <div class="page-wide">
+      <div v-if="shouldShowDevicesWarning" class="warning-banner">
+        <span class="warning-icon">⚠</span>
+        <span>
+          {{ vaultSecrets.warningPrefix }} {{ requiredDevicesToSafety }} {{ vaultSecrets.warningMiddle }}
+          <span class="warning-action">{{ vaultSecrets.warningAdd }}</span>
+        </span>
+      </div>
+
       <div class="card">
         <div class="card-header">
           <div>
@@ -33,21 +46,18 @@ const pendingDevices = computed(() => users.value.filter((membership: any) => {
 
         <template v-else>
           <div v-if="memberDevices.length > 0">
-            <div class="section-header">Members</div>
             <div v-for="membership in memberDevices" :key="membership.user_data().device.device_id.wasm_id_str()">
               <Device :membership="membership" />
             </div>
           </div>
 
           <div v-if="pendingDevices.length > 0">
-            <div class="section-header">Pending Requests</div>
             <div v-for="membership in pendingDevices" :key="membership.user_data().device.device_id.wasm_id_str()">
               <Device :membership="membership" />
             </div>
           </div>
 
           <div v-if="declinedDevices.length > 0">
-            <div class="section-header">Declined Devices</div>
             <div v-for="membership in declinedDevices" :key="membership.user_data().device.device_id.wasm_id_str()">
               <Device :membership="membership" />
             </div>
@@ -68,6 +78,29 @@ const pendingDevices = computed(() => users.value.filter((membership: any) => {
 .page-wide {
   width: 100%;
   max-width: 1240px;
+}
+
+.warning-banner {
+  background: #1a2518;
+  border: 1px solid #2a3a1e;
+  border-radius: 12px;
+  padding: 12px 16px;
+  color: #8aaa70;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.warning-icon {
+  color: #e6b44a;
+}
+
+.warning-action {
+  color: #3b7eff;
+  font-weight: 700;
+  margin-left: 4px;
 }
 
 .card {
@@ -94,16 +127,6 @@ const pendingDevices = computed(() => users.value.filter((membership: any) => {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #3a5070;
-}
-
-.section-header {
-  padding: 8px 20px 6px;
-  border-bottom: 1px solid #1a2840;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #3a5070;
 }
@@ -136,8 +159,5 @@ const pendingDevices = computed(() => users.value.filter((membership: any) => {
     font-size: 10px;
   }
 
-  .section-header {
-    padding: 8px 16px;
-  }
 }
 </style>

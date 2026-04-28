@@ -190,10 +190,11 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
 
       <div :class="$style.secretsCard">
         <div :class="$style.secretsHeader">
-          <h3 :class="$style.secretsTitle">{{ vaultSecrets.title }}</h3>
-          <button :class="$style.addSecretButton" @click="toggleAddForm">
-            {{ vaultSecrets.addSecret }}
-          </button>
+          <div>
+            <h3 :class="$style.secretsTitle">{{ vaultSecrets.title }}</h3>
+            <div :class="$style.sectionSub">{{ vaultSecrets.subtitle }}</div>
+          </div>
+          <button :class="$style.addSecretButton" @click="toggleAddForm">{{ vaultSecrets.addSecret }}</button>
         </div>
 
         <div v-if="passwords.length === 0" :class="$style.emptyState">{{ vaultSecrets.emptyState }}</div>
@@ -330,8 +331,18 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
 
 .secretsTitle {
   font-size: 17px;
+  line-height: 1.2;
   font-weight: 700;
   color: #ffffff;
+}
+
+.sectionSub {
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #3a5070;
 }
 
 .addSecretButton {

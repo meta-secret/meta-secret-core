@@ -441,14 +441,6 @@ const submit = async () => {
   font-size: 13px;
 }
 
-.content.compact24 .text-input {
-  height: 44px;
-}
-
-.content.compact24 .label {
-  font-size: 13px;
-}
-
 .seed-index {
   color: #3a5070;
   font-size: 13px;

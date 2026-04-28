@@ -3,6 +3,7 @@
  */
 export const vaultSecrets = {
   title: 'Secrets',
+  subtitle: 'Detailed information about your secrets',
   addSecret: '+ Add Secret',
   emptyState: 'No secrets added yet',
   show: 'Show',
@@ -22,7 +23,7 @@ export const vaultSecrets = {
   addSecretTitle: 'Add New Secret',
   addSeedPhraseTitle: 'Add New Seed Phrase',
   addSecretDescriptionLabel: 'Description',
-  addSecretDescriptionPlaceholder: 'my meta secret',
+  addSecretDescriptionPlaceholder: 'Secret name',
   addSecretTypeLabel: 'Secret Type',
   addSecretTypePassword: 'Password',
   addSecretTypeSeedPhrase: 'Seed Phrase',
