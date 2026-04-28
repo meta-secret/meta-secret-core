@@ -1,4 +1,9 @@
 meta_secret_info:
+  versions:
+    cli: "{{ versions.cli }}"
+    core: "{{ versions.core }}"
+    server: "{{ versions.server }}"
+    db: "{{ versions.db }}"
   {%- if device %}
   device:
     id: {{ device.id }}

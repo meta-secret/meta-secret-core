@@ -10,7 +10,7 @@ Stage: 8 (Branch + Commit + PR)
 
 ## Mandatory actions
 
-1. Print: `Start stage 8: Branch + Commit + PR`
+1. Print: `🚀 Start stage 8: Branch + Commit + PR`
 2. Determine branch policy:
    - if current branch is `main` and input includes GitHub issue ref, create `{Prefix}/kuklin/MS-{issueNumber}`
    - if explicit branch name is given, use it
@@ -20,7 +20,7 @@ Stage: 8 (Branch + Commit + PR)
 6. Open PR to `main` using `gh pr create` when available.
 7. Write artifact:
    - `.ai/artifacts/run/MS-<run-id>-008-pr.md`
-8. Print: `Stage 8: Branch + Commit + PR completed`
+8. Print: `✅ Stage 8: Branch + Commit + PR completed`
 
 ## Rules
 

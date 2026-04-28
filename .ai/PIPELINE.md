@@ -80,9 +80,9 @@ Retry path:
 
 ## Stage Log Contract
 
-Each stage must print:
-- `Start stage <n>: <name>`
-- `Stage <n>: <name> completed`
+Each stage must print (see start-emoji table in `.ai/WORKFLOW.md`):
+- Start: stage-specific emoji + `Start stage <n>: <name>`
+- End: `✅ Stage <n>: <name> completed`
 
 ## Failure Markers
 
@@ -91,4 +91,4 @@ Each stage must print:
 - `**FAIL**`
 - `FAIL`
 
-Last updated: 2026-04-22
+Last updated: 2026-04-28

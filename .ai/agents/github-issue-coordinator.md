@@ -16,13 +16,13 @@ Stage: 1 (Issue Intake)
 
 ## Mandatory actions
 
-1. Print: `Start stage 1: Issue Intake`
+1. Print: `📋 Start stage 1: Issue Intake`
 2. If issue input:
    - load issue via `gh issue view <id-or-url> --json title,body,number,labels,state`
 3. Write artifact using template:
    - `.ai/artifacts/issue-analysis-template.md`
    - output file: `.ai/artifacts/run/MS-<run-id>-001-understanding.md`
-4. Print: `Stage 1: Issue Intake completed`
+4. Print: `✅ Stage 1: Issue Intake completed`
 
 ## Rules
 

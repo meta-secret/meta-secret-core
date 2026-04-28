@@ -12,6 +12,9 @@ use redb::{Database, ReadableDatabase, TableDefinition};
 use std::path::Path;
 use tracing::{error, instrument};
 
+/// Compile-time package version of this crate (`Cargo.toml` / `VERSIONS.md`).
+pub const CRATE_PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 const TABLE_NAME: &str = "meta-secret-db";
 type KeyType = String;
 type ValueType = Vec<u8>;

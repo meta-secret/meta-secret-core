@@ -1,4 +1,10 @@
 {
+  "versions": {
+    "cli": "{{ versions.cli }}",
+    "core": "{{ versions.core }}",
+    "server": "{{ versions.server }}",
+    "db": "{{ versions.db }}"
+  },
 {%- if device or user or app_state %}
   {%- if device %}
   "device": {
@@ -6,13 +12,11 @@
     "name": "{{ device.name }}"
   }{%- if user or app_state %},{% endif %}
   {%- endif %}
-  
   {%- if user %}
   "user": {
     "vault_name": "{{ user.vault_name }}"
   }{%- if app_state %},{% endif %}
   {%- endif %}
-  
   {%- if app_state %}
   "app_state": {
     "status": "{{ app_state.status }}"
@@ -85,9 +89,7 @@
   }
   {%- endif %}
 {%- else %}
-{
   "status": "not_initialized",
   "message": "Not initialized. Run the 'meta-secret init-device' command first."
-}
 {%- endif %}
 }

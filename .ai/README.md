@@ -37,8 +37,8 @@ Defined in `.ai/WORKFLOW.md` and `.ai/PIPELINE.md`.
 
 ## Required Stage Logs
 
-- `Start stage <n>: <name>`
-- `Stage <n>: <name> completed`
+- Start: one emoji per stage (see table in `.ai/WORKFLOW.md`), then `Start stage <n>: <name>`
+- End: `✅ Stage <n>: <name> completed`
 
 ## Artifacts
 
@@ -52,4 +52,4 @@ On failed Build/Review/Test-Run:
 - return to Stage 2 with failed artifact as input
 - max retries: 2
 
-Last updated: 2026-04-22
+Last updated: 2026-04-28

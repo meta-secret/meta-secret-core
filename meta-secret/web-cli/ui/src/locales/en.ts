@@ -2,7 +2,71 @@
  * UI strings (English). Keep user-visible copy here; do not hardcode in components.
  */
 export const vaultSecrets = {
+  title: 'Secrets',
+  subtitle: 'Detailed information about your secrets',
+  addSecret: '+ Add Secret',
+  emptyState: 'No secrets added yet',
+  show: 'Show',
+  showLoading: 'Loading...',
+  waitingTitle: 'Secret is encrypted',
+  waitingSubtitle: "Requesting recovery shares to decrypt and reveal the content",
+  waitingDevicesSuffix: 'device',
+  waitingDevicesSuffixPlural: 'devices',
+  warningPrefix: 'You need to add',
+  warningMiddle: 'device(s) to keep your secrets safe',
+  warningAdd: '+Add',
+  close: 'Close',
+  copied: 'Copied!',
+  copySecret: 'Copy secret',
+  copyPhrase: 'Copy phrase',
+  secretLabel: 'Secret:',
+  addSecretTitle: 'Add New Secret',
+  addSeedPhraseTitle: 'Add New Seed Phrase',
+  addSecretDescriptionLabel: 'Description',
+  addSecretDescriptionPlaceholder: 'Secret name',
+  addSecretTypeLabel: 'Secret Type',
+  addSecretTypePassword: 'Password',
+  addSecretTypeSeedPhrase: 'Seed Phrase',
+  addSecretValueLabel: 'Secret',
+  addSecretValuePlaceholder: 'Enter your secret',
+  addSecretWordCountLabel: 'Word count',
+  addSecretPasteTitle: 'Paste seed phrase',
+  addSecretPasteHint: 'Copy phrase and click here to fill words automatically',
+  addSecretWordPlaceholder: '...',
+  addSecretCancel: 'Cancel',
+  addSecretSubmit: 'Add Secret',
+  addSeedPhraseSubmit: 'Add Seed Phrase',
+  addSecretValidationNameRequired: 'Description is required.',
+  addSecretValidationPasswordRequired: 'Secret is required for password mode.',
+  addSecretValidationSeedRequired: 'All seed words must be filled.',
+  addSecretSubmitError: 'Could not add secret. Please try again.',
   errorShowRecovered:
     'Could not display the recovered secret. Shares may be incomplete or corrupted.',
   errorCopySecret: 'Could not copy the secret.',
+  errorRecoveryTimeout: 'Recovery took too long. Please try again.',
+} as const;
+
+export const vaultDevices = {
+  statusCurrent: 'Current',
+  statusMember: 'Member',
+  statusPending: 'Pending',
+  statusDeclined: 'Declined',
+  actionAccept: 'Accept',
+  actionDecline: 'Decline',
+  confirmJoinPrefix: 'Are you sure you want to join',
+  confirmJoinMiddle: 'to your vault',
+  fallbackVaultName: 'Vault',
+} as const;
+
+export const vaultTechnicalInfo = {
+  title: 'Technical Information',
+  labelDeviceId: 'Device Id:',
+} as const;
+
+export const vaultComponentVersions = {
+  sectionTitle: 'Component versions',
+  labelWebUi: 'Web UI:',
+  labelCore: 'Core:',
+  labelServer: 'Server:',
+  labelDb: 'DB:',
 } as const;

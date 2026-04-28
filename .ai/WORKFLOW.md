@@ -16,14 +16,26 @@ Single source of truth for `run issue <id>` / `run issue "<text>"` across Claude
 
 ## Required Stage Logs
 
-Every stage must print these exact lines:
+**Finish (every stage):** `✅ Stage <n>: <name> completed`
 
-- Start: `Start stage <n>: <name>`
-- End: `Stage <n>: <name> completed`
+**Start:** exactly one leading emoji per stage (table below), then one ASCII space, then `Start stage <n>: <name>`.
 
-Example:
-- `Start stage 4: Build`
-- `Stage 4: Build completed`
+| Stage | Name | Start line begins with |
+|------:|------|------------------------|
+| 1 | Issue Intake | `📋 ` |
+| 2 | Planning | `🗺️ ` |
+| 3 | Implementation | `🛠️ ` |
+| 4 | Build | `🏗️ ` |
+| 5 | Code Review | `🔍 ` |
+| 6 | Test Authoring | `🧪 ` |
+| 7 | Test Run | `▶️ ` |
+| 8 | Branch + Commit + PR | `🚀 ` |
+
+After the start emoji there must be exactly one ASCII space before `Start stage`. Substrings `Start stage` and `completed` remain grep-friendly for tooling.
+
+Examples:
+- `🏗️ Start stage 4: Build`
+- `✅ Stage 4: Build completed`
 
 ## 8-Stage Pipeline
 
@@ -167,4 +179,4 @@ Pipeline must stop if artifact contains any marker:
 
 All entry points must delegate orchestration logic to this file to avoid duplication.
 
-Last updated: 2026-04-22
+Last updated: 2026-04-28

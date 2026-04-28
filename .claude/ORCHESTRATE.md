@@ -14,12 +14,12 @@ Use this file only as Claude bootstrap for `/run issue ...`.
 - Execute end-to-end automatically.
 - Do not duplicate stage logic here.
 - Respect retry policy (max 2) from `.ai/WORKFLOW.md`.
-- For each stage print exact log lines:
-  - `Start stage <n>: <name>`
-  - `Stage <n>: <name> completed`
+- For each stage print exact log lines (start emoji per stage — table in `.ai/WORKFLOW.md`):
+  - `<stage-start-emoji> Start stage <n>: <name>`
+  - `✅ Stage <n>: <name> completed`
 
 ## Artifacts
 
 - Write all artifacts to `.ai/artifacts/run/` using workflow naming.
 
-Last updated: 2026-04-22
+Last updated: 2026-04-28
