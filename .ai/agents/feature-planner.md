@@ -23,7 +23,7 @@ Stage: 2 (Planning)
    - choose exactly one: `patch` | `minor` | `major`
    - add concise rationale
    - list concrete version target files to update
-   - if only one side (web or server) is bumped, add explicit exclusion reason
+   - use unified target file: `meta-secret/VERSION`
    - write machine-readable decision to `.ai/artifacts/run/version-decision.json`
 5. Write artifact using template:
    - `.ai/artifacts/implementation-plan-template.md`

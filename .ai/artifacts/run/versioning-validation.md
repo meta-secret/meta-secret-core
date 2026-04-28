@@ -15,14 +15,14 @@ Validation target:
   - `VERSION_DECISION_FILE=.ai/artifacts/run/version-decision.json`
 - Expected: fail (`target_version_files` points to a version file that was not changed in diff)
 - Actual: fail with
-  - `ERROR: meta-secret/web-cli/ui/package.json is listed in target_version_files but not changed.`
+  - `ERROR: code changed, but version file was not updated. Update meta-secret/VERSION.`
 
 ## Scenario 2: minor with valid bump (must pass)
 
 - Expected behavior:
   - `bump_type=minor`
-  - listed target version files are changed in PR diff
-  - each target version satisfies minor rule:
+  - `meta-secret/VERSION` is changed in PR diff
+  - unified version satisfies minor rule:
     - major unchanged
     - minor increased
 - Verifier status:

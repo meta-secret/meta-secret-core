@@ -5,13 +5,15 @@ import { vaultTechnicalInfo } from '@/locales/en';
 
 declare const __APP_VERSION__: string;
 declare const __APP_COMMIT__: string;
+declare const __SERVER_VERSION__: string;
+declare const __SERVER_COMMIT__: string;
 
 const appState = AppState();
 const vaultName = computed(() => appState.getVaultName());
 const deviceId = computed(() => (appState.currState as any).device_id().wasm_id_str());
 const showDeviceId = ref(false);
-const serverVersion = ref(vaultTechnicalInfo.unknown);
-const serverCommit = ref(vaultTechnicalInfo.unknown);
+const serverVersion = ref(__SERVER_VERSION__ || vaultTechnicalInfo.unknown);
+const serverCommit = ref(__SERVER_COMMIT__ || vaultTechnicalInfo.unknown);
 
 const appVersion = __APP_VERSION__ || vaultTechnicalInfo.unknown;
 const appCommit = __APP_COMMIT__ || vaultTechnicalInfo.unknown;
@@ -21,11 +23,11 @@ const loadServerVersion = async () => {
     const response = await fetch('/version');
     if (!response.ok) return;
     const payload = await response.json() as { serverVersion?: string; serverCommit?: string };
-    serverVersion.value = payload.serverVersion || vaultTechnicalInfo.unknown;
-    serverCommit.value = payload.serverCommit || vaultTechnicalInfo.unknown;
+    serverVersion.value = payload.serverVersion || serverVersion.value || vaultTechnicalInfo.unknown;
+    serverCommit.value = payload.serverCommit || serverCommit.value || vaultTechnicalInfo.unknown;
   } catch {
-    serverVersion.value = vaultTechnicalInfo.unknown;
-    serverCommit.value = vaultTechnicalInfo.unknown;
+    serverVersion.value = serverVersion.value || vaultTechnicalInfo.unknown;
+    serverCommit.value = serverCommit.value || vaultTechnicalInfo.unknown;
   }
 };
 

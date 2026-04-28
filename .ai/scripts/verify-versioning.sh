@@ -4,8 +4,7 @@ set -euo pipefail
 BASE_SHA="${BASE_SHA:-}"
 HEAD_SHA="${HEAD_SHA:-HEAD}"
 VERSION_DECISION_FILE="${VERSION_DECISION_FILE:-.ai/artifacts/run/version-decision.json}"
-WEB_VERSION_FILE="meta-secret/web-cli/ui/package.json"
-SERVER_VERSION_FILE="meta-secret/meta-server/web-server/Cargo.toml"
+UNIFIED_VERSION_FILE="meta-secret/VERSION"
 
 if [[ -z "${BASE_SHA}" ]]; then
   echo "ERROR: BASE_SHA is required."
@@ -30,24 +29,20 @@ contains_file() {
 
 web_code_changed=false
 server_code_changed=false
-web_version_changed=false
-server_version_changed=false
+unified_version_changed=false
 
 while IFS= read -r file; do
   [[ -z "${file}" ]] && continue
-  if [[ "${file}" == "meta-secret/web-cli/ui/"* ]] && [[ "${file}" != "${WEB_VERSION_FILE}" ]]; then
+  if [[ "${file}" == "meta-secret/web-cli/ui/"* ]] && [[ "${file}" != "${UNIFIED_VERSION_FILE}" ]]; then
     web_code_changed=true
   fi
-  if [[ "${file}" == "meta-secret/meta-server/web-server/"* ]] && [[ "${file}" != "${SERVER_VERSION_FILE}" ]]; then
+  if [[ "${file}" == "meta-secret/meta-server/web-server/"* ]] && [[ "${file}" != "${UNIFIED_VERSION_FILE}" ]]; then
     server_code_changed=true
   fi
 done <<< "${CHANGED_TEXT}"
 
-if contains_file "${WEB_VERSION_FILE}"; then
-  web_version_changed=true
-fi
-if contains_file "${SERVER_VERSION_FILE}"; then
-  server_version_changed=true
+if contains_file "${UNIFIED_VERSION_FILE}"; then
+  unified_version_changed=true
 fi
 
 DECISION=()
@@ -94,47 +89,33 @@ if [[ -z "${BUMP_RATIONALE}" ]]; then
   exit 1
 fi
 
-target_has_web=false
-target_has_server=false
-if printf "%s" "${TARGETS_PIPE}" | grep -Eq "(^|\\|)${WEB_VERSION_FILE}(\\||$)"; then
-  target_has_web=true
-fi
-if printf "%s" "${TARGETS_PIPE}" | grep -Eq "(^|\\|)${SERVER_VERSION_FILE}(\\||$)"; then
-  target_has_server=true
+target_has_unified=false
+if printf "%s" "${TARGETS_PIPE}" | grep -Eq "(^|\\|)${UNIFIED_VERSION_FILE}(\\||$)"; then
+  target_has_unified=true
 fi
 
-if [[ "${target_has_web}" == false && "${target_has_server}" == false ]]; then
-  echo "ERROR: target_version_files must include at least one version file."
+if [[ "${target_has_unified}" == false ]]; then
+  echo "ERROR: target_version_files must include ${UNIFIED_VERSION_FILE}."
   exit 1
 fi
 
-if [[ "${web_code_changed}" == true && "${server_code_changed}" == true ]]; then
-  if [[ "${target_has_web}" == false || "${target_has_server}" == false ]]; then
-    echo "ERROR: both web and server code changed, both version targets are required."
-    exit 1
-  fi
-fi
-
-if [[ "${target_has_web}" == true && "${web_version_changed}" == false ]]; then
-  echo "ERROR: ${WEB_VERSION_FILE} is listed in target_version_files but not changed."
-  exit 1
-fi
-if [[ "${target_has_server}" == true && "${server_version_changed}" == false ]]; then
-  echo "ERROR: ${SERVER_VERSION_FILE} is listed in target_version_files but not changed."
+if [[ ("${web_code_changed}" == true || "${server_code_changed}" == true) && "${unified_version_changed}" == false ]]; then
+  echo "ERROR: code changed, but version file was not updated. Update ${UNIFIED_VERSION_FILE}."
   exit 1
 fi
 
-if [[ "${target_has_web}" == false && "${web_version_changed}" == true ]]; then
-  echo "ERROR: ${WEB_VERSION_FILE} changed but not listed in target_version_files."
-  exit 1
-fi
-if [[ "${target_has_server}" == false && "${server_version_changed}" == true ]]; then
-  echo "ERROR: ${SERVER_VERSION_FILE} changed but not listed in target_version_files."
+if [[ "${target_has_unified}" == true && "${unified_version_changed}" == false ]]; then
+  echo "ERROR: ${UNIFIED_VERSION_FILE} is listed in target_version_files but not changed."
   exit 1
 fi
 
-if [[ ("${target_has_web}" == false || "${target_has_server}" == false) && -z "${EXCLUSION_REASON}" ]]; then
-  echo "ERROR: single_target_exclusion_reason is required when only one target is bumped."
+if [[ "${target_has_unified}" == false && "${unified_version_changed}" == true ]]; then
+  echo "ERROR: ${UNIFIED_VERSION_FILE} changed but not listed in target_version_files."
+  exit 1
+fi
+
+if [[ "${EXCLUSION_REASON}" != "" ]]; then
+  echo "ERROR: single_target_exclusion_reason is not used with unified versioning. Remove this field."
   exit 1
 fi
 
@@ -175,36 +156,24 @@ if not ok:
 PY
 }
 
-extract_json_version() {
+extract_text_version() {
   local ref="$1"
   local path="$2"
-  git show "${ref}:${path}" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("version",""))'
+  if git cat-file -e "${ref}:${path}" 2>/dev/null; then
+    git show "${ref}:${path}" | tr -d '[:space:]'
+  else
+    echo "0.0.0"
+  fi
 }
 
-extract_toml_version() {
-  local ref="$1"
-  local path="$2"
-  git show "${ref}:${path}" | python3 -c 'import re,sys; text=sys.stdin.read(); m=re.search(r"^\s*version\s*=\s*\"([^\"]+)\"", text, re.MULTILINE); print(m.group(1) if m else "")'
-}
-
-if [[ "${web_version_changed}" == true ]]; then
-  web_old="$(extract_json_version "${BASE_SHA}" "${WEB_VERSION_FILE}")"
-  web_new="$(extract_json_version "${HEAD_SHA}" "${WEB_VERSION_FILE}")"
-  if [[ -z "${web_old}" || -z "${web_new}" ]]; then
-    echo "ERROR: Cannot read version from ${WEB_VERSION_FILE}."
+if [[ "${unified_version_changed}" == true ]]; then
+  unified_old="$(extract_text_version "${BASE_SHA}" "${UNIFIED_VERSION_FILE}")"
+  unified_new="$(extract_text_version "${HEAD_SHA}" "${UNIFIED_VERSION_FILE}")"
+  if [[ -z "${unified_old}" || -z "${unified_new}" ]]; then
+    echo "ERROR: Cannot read version from ${UNIFIED_VERSION_FILE}."
     exit 1
   fi
-  check_semver_increment "${WEB_VERSION_FILE}" "${BUMP_TYPE}" "${web_old}" "${web_new}"
-fi
-
-if [[ "${server_version_changed}" == true ]]; then
-  server_old="$(extract_toml_version "${BASE_SHA}" "${SERVER_VERSION_FILE}")"
-  server_new="$(extract_toml_version "${HEAD_SHA}" "${SERVER_VERSION_FILE}")"
-  if [[ -z "${server_old}" || -z "${server_new}" ]]; then
-    echo "ERROR: Cannot read version from ${SERVER_VERSION_FILE}."
-    exit 1
-  fi
-  check_semver_increment "${SERVER_VERSION_FILE}" "${BUMP_TYPE}" "${server_old}" "${server_new}"
+  check_semver_increment "${UNIFIED_VERSION_FILE}" "${BUMP_TYPE}" "${unified_old}" "${unified_new}"
 fi
 
 if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
@@ -214,8 +183,8 @@ if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     echo "- bump_type: ${BUMP_TYPE}"
     echo "- web_code_changed: ${web_code_changed}"
     echo "- server_code_changed: ${server_code_changed}"
-    echo "- web_version_changed: ${web_version_changed}"
-    echo "- server_version_changed: ${server_version_changed}"
+    echo "- unified_version_changed: ${unified_version_changed}"
+    echo "- unified_version_file: ${UNIFIED_VERSION_FILE}"
     echo "- decision_file: ${VERSION_DECISION_FILE}"
   } >> "${GITHUB_STEP_SUMMARY}"
 fi

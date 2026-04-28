@@ -1,8 +1,7 @@
 {
   "bump_type": "patch",
-  "bump_rationale": "PR includes web and server changes; apply patch bump for both version targets.",
+  "bump_rationale": "Patch release for unified application version.",
   "target_version_files": [
-    "meta-secret/web-cli/ui/package.json",
-    "meta-secret/meta-server/web-server/Cargo.toml"
+    "meta-secret/VERSION"
   ]
 }

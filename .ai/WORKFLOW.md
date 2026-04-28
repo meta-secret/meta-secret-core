@@ -53,13 +53,11 @@ Bump policy:
 
 Default version targets:
 
-- Web app: `meta-secret/web-cli/ui/package.json`
-- Server: `meta-secret/meta-server/web-server/Cargo.toml`
+- Unified app/server version file: `meta-secret/VERSION`
 
 Consistency rule:
 
-- If both web and server are changed for one user-visible feature, both version targets must be updated in the same run.
-- For server-only or web-only changes, Stage 2 must explicitly justify the single-target bump in artifact notes.
+- Any user-visible web/server change must bump `meta-secret/VERSION` in the same run.
 
 ## Stage Specs
 
@@ -171,7 +169,7 @@ Pipeline must fail and return to Stage 2 if any condition is true:
 - `bump_type` exists but declared `target_version_files` were not updated
 - version files were updated but `bump_type` is missing
 - observed change category conflicts with declared `bump_type`
-  - Example: breaking change declared as `patch`
+  - Example: breaking change declared as `patch` for `meta-secret/VERSION`
 
 On this failure:
 

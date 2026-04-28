@@ -85,13 +85,11 @@ Detailed stage contract for `.ai/WORKFLOW.md`.
 
 Default version targets:
 
-- `meta-secret/web-cli/ui/package.json`
-- `meta-secret/meta-server/web-server/Cargo.toml`
+- `meta-secret/VERSION`
 
 Consistency rule:
 
-- If both web and server are changed for one user-visible feature, both files must be bumped in the same run.
-- If only one side is bumped, Stage 2 artifact must explain why the other side is excluded.
+- Any user-visible web/server change must bump `meta-secret/VERSION`.
 
 ## Pre-Stage-8 Version Gate
 
