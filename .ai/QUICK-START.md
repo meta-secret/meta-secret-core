@@ -31,7 +31,7 @@
 
 ## Mandatory stage logs
 
-- `Start stage <n>: <name>`
-- `Stage <n>: <name> completed`
+- Start: emoji per stage (table in `.ai/WORKFLOW.md`) + `Start stage <n>: <name>`
+- `✅ Stage <n>: <name> completed`
 
-Last updated: 2026-04-22
+Last updated: 2026-04-28

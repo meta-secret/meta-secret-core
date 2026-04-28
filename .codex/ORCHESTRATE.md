@@ -13,12 +13,12 @@ Use this file only as Codex-specific bootstrap.
 
 - Keep pipeline automatic; do not ask for confirmation between stages.
 - Respect retry policy from `.ai/WORKFLOW.md` (max 2).
-- For each stage print exact log lines:
-  - `Start stage <n>: <name>`
-  - `Stage <n>: <name> completed`
+- For each stage print exact log lines (start emoji per stage — table in `.ai/WORKFLOW.md`):
+  - `<stage-start-emoji> Start stage <n>: <name>`
+  - `✅ Stage <n>: <name> completed`
 
 ## Artifacts
 
 - Write all artifacts to `.ai/artifacts/run/` with naming defined in `.ai/WORKFLOW.md`.
 
-Last updated: 2026-04-22
+Last updated: 2026-04-28

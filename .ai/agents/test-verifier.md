@@ -10,7 +10,7 @@ Stage: 7 (Test Run)
 
 ## Mandatory actions
 
-1. Print: `Start stage 7: Test Run`
+1. Print: `▶️ Start stage 7: Test Run`
 2. Run tests (preferred):
    - from `meta-secret/`: `cargo test -p meta-secret-core -p meta-secret-cli -p meta-cli -p meta-secret-tests -p meta-secret-wasm`
 3. Write report using template:
@@ -19,7 +19,7 @@ Stage: 7 (Test Run)
 4. Set explicit status:
    - `Status: PASSED` or `Status: FAILED`
    - `Return to Planning: YES/NO`
-5. Print: `Stage 7: Test Run completed`
+5. Print: `✅ Stage 7: Test Run completed`
 
 ## Rules
 
