@@ -539,13 +539,14 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
 .revealedSecretBox {
   background: #080f1c;
   border: 1px solid #1a2840;
-  border-radius: 14px;
-  padding: 18px 22px;
+  border-radius: 12px;
+  min-height: 48px;
+  padding: 0 14px;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   color: #ffffff;
-  font-size: 38px;
+  font-size: 15px;
   font-weight: 700;
   overflow-wrap: anywhere;
 }
@@ -553,12 +554,14 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
 .revealedSecretLabel {
   color: #4a6080;
   font-family: ui-monospace, Menlo, Monaco, 'Cascadia Mono', 'Segoe UI Mono', 'Roboto Mono', 'Oxygen Mono', 'Ubuntu Monospace', 'Source Code Pro', 'Fira Mono', 'Droid Sans Mono', 'Courier New', monospace;
-  font-size: 44px;
+  font-size: 15px;
   font-weight: 700;
 }
 
 .revealedSecretValue {
   color: #91bdff;
+  font-size: 15px;
+  font-weight: 700;
   word-break: break-word;
 }
 
