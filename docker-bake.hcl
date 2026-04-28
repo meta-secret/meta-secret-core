@@ -7,14 +7,6 @@ variable "PUSH_CACHE" {
   default = ""
 }
 
-variable "APP_VERSION" {
-  default = "0.0.0"
-}
-
-variable "APP_COMMIT" {
-  default = "unknown"
-}
-
 // ============================================================
 // Groups
 // ============================================================
@@ -49,10 +41,6 @@ target "web-image" {
     "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
   ]
   cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-web:cache,mode=max"] : []
-  args = {
-    APP_VERSION = "${APP_VERSION}"
-    APP_COMMIT  = "${APP_COMMIT}"
-  }
 }
 
 target "web-local" {
@@ -61,10 +49,6 @@ target "web-local" {
   target     = "web-output"
   output     = ["type=local,dest=meta-secret/web-cli/ui/dist"]
   cache-from = ["type=registry,ref=${REGISTRY}/meta-secret-web:cache"]
-  args = {
-    APP_VERSION = "${APP_VERSION}"
-    APP_COMMIT  = "${APP_COMMIT}"
-  }
 }
 
 target "wasm-local" {

@@ -1,7 +1,0 @@
-{
-  "bump_type": "patch",
-  "bump_rationale": "Patch release for unified application version.",
-  "target_version_files": [
-    "meta-secret/VERSION"
-  ]
-}

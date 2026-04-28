@@ -36,14 +36,6 @@ Save as: `.ai/artifacts/run/MS-<run-id>-002-planning.md`
 
 -
 
-## Versioning Decision (Required)
-
-- bump_type: `patch` | `minor` | `major`
-- bump_rationale:
-- target_version_files:
-  - `meta-secret/VERSION`
-- machine_readable_decision_file: `.ai/artifacts/run/version-decision.json`
-
 ## FFI/Contract Impact
 
 - Breaking change risk: YES / NO

@@ -26,8 +26,6 @@ jobs:
           password: ${{ secrets.META_SECRET_SERVER_DOCKER_PAT }}
 
       - name: Build Web UI
-        env:
-          APP_COMMIT: ${{ github.sha }}
         run: make web-local
 
       - name: Deploy to GitHub Pages

@@ -61,7 +61,4 @@ export const vaultDevices = {
 export const vaultTechnicalInfo = {
   title: 'Technical Information',
   labelDeviceId: 'Device Id:',
-  labelAppVersion: 'App Version:',
-  labelAppCommit: 'App Commit:',
-  unknown: 'unknown',
 } as const;

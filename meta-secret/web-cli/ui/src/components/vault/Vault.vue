@@ -3,16 +3,10 @@ import { computed, ref } from 'vue';
 import { AppState } from '@/stores/app-state';
 import { vaultTechnicalInfo } from '@/locales/en';
 
-declare const __APP_VERSION__: string;
-declare const __APP_COMMIT__: string;
-
 const appState = AppState();
 const vaultName = computed(() => appState.getVaultName());
 const deviceId = computed(() => (appState.currState as any).device_id().wasm_id_str());
 const showDeviceId = ref(false);
-
-const appVersion = __APP_VERSION__ || vaultTechnicalInfo.unknown;
-const appCommit = __APP_COMMIT__ || vaultTechnicalInfo.unknown;
 
 const toggleDeviceId = () => {
   showDeviceId.value = !showDeviceId.value;
@@ -40,14 +34,6 @@ const toggleDeviceId = () => {
       <div class="device-id-row">
         <span class="device-id-label">{{ vaultTechnicalInfo.labelDeviceId }}</span>
         <span class="device-id-value">{{ deviceId }}</span>
-      </div>
-      <div class="device-id-row">
-        <span class="device-id-label">{{ vaultTechnicalInfo.labelAppVersion }}</span>
-        <span class="device-id-value">{{ appVersion }}</span>
-      </div>
-      <div class="device-id-row">
-        <span class="device-id-label">{{ vaultTechnicalInfo.labelAppCommit }}</span>
-        <span class="device-id-value">{{ appCommit }}</span>
       </div>
     </div>
 
