@@ -1,0 +1,28 @@
+name: PR Versioning Check
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  versioning-check:
+    name: versioning-check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run SemVer verifier
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          VERSION_DECISION_FILE: .ai/artifacts/run/version-decision.json
+        run: |
+          chmod +x .ai/scripts/verify-versioning.sh
+          .ai/scripts/verify-versioning.sh

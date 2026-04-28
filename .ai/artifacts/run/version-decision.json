@@ -1,0 +1,8 @@
+{
+  "bump_type": "patch",
+  "bump_rationale": "Describe why this change requires patch/minor/major.",
+  "target_version_files": [
+    "meta-secret/web-cli/ui/package.json"
+  ],
+  "single_target_exclusion_reason": "Provide reason when only one target is bumped."
+}

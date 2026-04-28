@@ -24,6 +24,7 @@ Stage: 2 (Planning)
    - add concise rationale
    - list concrete version target files to update
    - if only one side (web or server) is bumped, add explicit exclusion reason
+   - write machine-readable decision to `.ai/artifacts/run/version-decision.json`
 5. Write artifact using template:
    - `.ai/artifacts/implementation-plan-template.md`
    - output file: `.ai/artifacts/run/MS-<run-id>-002-planning.md`

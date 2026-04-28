@@ -44,6 +44,7 @@ Save as: `.ai/artifacts/run/MS-<run-id>-002-planning.md`
   - `meta-secret/web-cli/ui/package.json` (if applicable)
   - `meta-secret/meta-server/web-server/Cargo.toml` (if applicable)
 - single_target_exclusion_reason: (required when only one target is bumped)
+- machine_readable_decision_file: `.ai/artifacts/run/version-decision.json`
 
 ## FFI/Contract Impact
 

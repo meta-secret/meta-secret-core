@@ -26,6 +26,7 @@ Detailed stage contract for `.ai/WORKFLOW.md`.
   - `bump_type`: `patch` | `minor` | `major`
   - `bump_rationale`: short justification for selected bump type
   - `target_version_files`: concrete files that must be version-bumped
+  - `.ai/artifacts/run/version-decision.json` with the same values in machine-readable format
 
 ## Stage 3: Implementation
 
@@ -99,6 +100,12 @@ Fail the pipeline and return to Stage 2 when:
 - `bump_type` exists but listed version target files are unchanged
 - version file changed but `bump_type` is missing
 - declared bump type is inconsistent with detected change category
+
+Gate implementation:
+
+- verifier script: `.ai/scripts/verify-versioning.sh`
+- PR check workflow: `.github/workflows/pr-versioning.yml`
+- decision source: `.ai/artifacts/run/version-decision.json`
 
 ## Retry Rules
 

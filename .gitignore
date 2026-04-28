@@ -45,4 +45,7 @@ infra/.secret
 /infra/Taskfile.yml
 
 # AI
-.ai/artifacts/run
+.ai/artifacts/run/*
+!.ai/artifacts/run/
+!.ai/artifacts/run/version-decision.json
+!.ai/artifacts/run/versioning-validation.md

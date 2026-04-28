@@ -43,6 +43,7 @@ Stage 2 planning artifact must include explicit SemVer decision:
 - `bump_type`: `patch` | `minor` | `major`
 - `bump_rationale`: short reason
 - `target_version_files`: exact files to update
+- machine-readable decision file: `.ai/artifacts/run/version-decision.json`
 
 Bump policy:
 
@@ -157,6 +158,7 @@ Required behavior:
 - Commit and push with explicit user approvals
 - Open PR to `main`
 - Before commit/PR, enforce versioning gate using Stage 2 bump decision and actual diff
+- Enforce gate using `.ai/scripts/verify-versioning.sh` and CI workflow `.github/workflows/pr-versioning.yml`
 - Include version audit in Stage 8 artifact:
   - per component old/new version
   - reason for bump
@@ -176,6 +178,14 @@ On this failure:
 - Mark artifact with `Status: FAILED`
 - Mark `Return to Planning: YES`
 - Re-run from Stage 2 according to retry policy
+
+## CI Enforcement
+
+Each pull request to `main` must run required check:
+
+- workflow: `.github/workflows/pr-versioning.yml`
+- verifier: `.ai/scripts/verify-versioning.sh`
+- decision input: `.ai/artifacts/run/version-decision.json`
 
 ## Automatic Recovery Loops
 
