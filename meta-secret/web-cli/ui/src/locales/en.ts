@@ -57,3 +57,13 @@ export const vaultDevices = {
   confirmJoinMiddle: 'to your vault',
   fallbackVaultName: 'Vault',
 } as const;
+
+export const vaultTechnicalInfo = {
+  title: 'Technical Information',
+  labelDeviceId: 'Device Id:',
+  labelAppVersion: 'App Version:',
+  labelAppCommit: 'App Commit:',
+  labelServerVersion: 'Server Version:',
+  labelServerCommit: 'Server Commit:',
+  unknown: 'unknown',
+} as const;

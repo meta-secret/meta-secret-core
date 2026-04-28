@@ -36,6 +36,15 @@ Save as: `.ai/artifacts/run/MS-<run-id>-002-planning.md`
 
 -
 
+## Versioning Decision (Required)
+
+- bump_type: `patch` | `minor` | `major`
+- bump_rationale:
+- target_version_files:
+  - `meta-secret/web-cli/ui/package.json` (if applicable)
+  - `meta-secret/meta-server/web-server/Cargo.toml` (if applicable)
+- single_target_exclusion_reason: (required when only one target is bumped)
+
 ## FFI/Contract Impact
 
 - Breaking change risk: YES / NO

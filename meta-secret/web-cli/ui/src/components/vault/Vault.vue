@@ -1,14 +1,39 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { AppState } from '@/stores/app-state';
+import { vaultTechnicalInfo } from '@/locales/en';
+
+declare const __APP_VERSION__: string;
+declare const __APP_COMMIT__: string;
 
 const appState = AppState();
 const vaultName = computed(() => appState.getVaultName());
 const deviceId = computed(() => (appState.currState as any).device_id().wasm_id_str());
 const showDeviceId = ref(false);
+const serverVersion = ref(vaultTechnicalInfo.unknown);
+const serverCommit = ref(vaultTechnicalInfo.unknown);
+
+const appVersion = __APP_VERSION__ || vaultTechnicalInfo.unknown;
+const appCommit = __APP_COMMIT__ || vaultTechnicalInfo.unknown;
+
+const loadServerVersion = async () => {
+  try {
+    const response = await fetch('/version');
+    if (!response.ok) return;
+    const payload = await response.json() as { serverVersion?: string; serverCommit?: string };
+    serverVersion.value = payload.serverVersion || vaultTechnicalInfo.unknown;
+    serverCommit.value = payload.serverCommit || vaultTechnicalInfo.unknown;
+  } catch {
+    serverVersion.value = vaultTechnicalInfo.unknown;
+    serverCommit.value = vaultTechnicalInfo.unknown;
+  }
+};
 
 const toggleDeviceId = () => {
   showDeviceId.value = !showDeviceId.value;
+  if (showDeviceId.value) {
+    void loadServerVersion();
+  }
 };
 </script>
 
@@ -29,8 +54,27 @@ const toggleDeviceId = () => {
     </div>
 
     <div v-if="showDeviceId" class="device-id-container">
-      <span class="device-id-label">Device Id:</span>
-      <span class="device-id-value">{{ deviceId }}</span>
+      <div class="device-id-title">{{ vaultTechnicalInfo.title }}</div>
+      <div class="device-id-row">
+        <span class="device-id-label">{{ vaultTechnicalInfo.labelDeviceId }}</span>
+        <span class="device-id-value">{{ deviceId }}</span>
+      </div>
+      <div class="device-id-row">
+        <span class="device-id-label">{{ vaultTechnicalInfo.labelAppVersion }}</span>
+        <span class="device-id-value">{{ appVersion }}</span>
+      </div>
+      <div class="device-id-row">
+        <span class="device-id-label">{{ vaultTechnicalInfo.labelAppCommit }}</span>
+        <span class="device-id-value">{{ appCommit }}</span>
+      </div>
+      <div class="device-id-row">
+        <span class="device-id-label">{{ vaultTechnicalInfo.labelServerVersion }}</span>
+        <span class="device-id-value">{{ serverVersion }}</span>
+      </div>
+      <div class="device-id-row">
+        <span class="device-id-label">{{ vaultTechnicalInfo.labelServerCommit }}</span>
+        <span class="device-id-value">{{ serverCommit }}</span>
+      </div>
     </div>
 
     <div class="tab-wrap">
@@ -109,7 +153,21 @@ const toggleDeviceId = () => {
 .device-id-container {
   margin-top: 10px;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.device-id-title {
+  font-size: 11px;
+  color: #4a6080;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 2px;
+}
+
+.device-id-row {
+  display: flex;
   align-items: center;
   gap: 6px;
 }

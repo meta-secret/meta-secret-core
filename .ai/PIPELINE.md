@@ -23,6 +23,9 @@ Detailed stage contract for `.ai/WORKFLOW.md`.
   - File-level execution plan
   - Risks and edge cases
   - Retry fix section when retrying
+  - `bump_type`: `patch` | `minor` | `major`
+  - `bump_rationale`: short justification for selected bump type
+  - `target_version_files`: concrete files that must be version-bumped
 
 ## Stage 3: Implementation
 
@@ -65,6 +68,37 @@ Detailed stage contract for `.ai/WORKFLOW.md`.
 
 - Agent: `release-manager`
 - Output: `MS-<run-id>-008-pr.md`
+- Must include:
+  - Version gate check based on Stage 2 bump decision and git diff
+  - Version audit block:
+    - web old/new version (if applicable)
+    - server old/new version (if applicable)
+    - reason for bump
+    - policy compliance confirmation
+
+## SemVer Policy
+
+- `patch`: bugfix/refactor without public contract changes
+- `minor`: backward-compatible new functionality
+- `major`: breaking API/FFI/protocol/storage/public behavior changes
+
+Default version targets:
+
+- `meta-secret/web-cli/ui/package.json`
+- `meta-secret/meta-server/web-server/Cargo.toml`
+
+Consistency rule:
+
+- If both web and server are changed for one user-visible feature, both files must be bumped in the same run.
+- If only one side is bumped, Stage 2 artifact must explain why the other side is excluded.
+
+## Pre-Stage-8 Version Gate
+
+Fail the pipeline and return to Stage 2 when:
+
+- `bump_type` exists but listed version target files are unchanged
+- version file changed but `bump_type` is missing
+- declared bump type is inconsistent with detected change category
 
 ## Retry Rules
 

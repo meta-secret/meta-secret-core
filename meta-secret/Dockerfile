@@ -57,6 +57,8 @@ RUN diesel migration run
 
 # --- Meta Server Builder: compile meta-server binary ---
 FROM builder AS meta-server-builder
+ARG SERVER_COMMIT=unknown
+ENV SERVER_COMMIT=${SERVER_COMMIT}
 
 WORKDIR /meta-secret-build
 COPY . .
@@ -109,6 +111,10 @@ RUN cargo nextest run --profile ci
 
 # --- Web Build: Vue.js + WASM ---
 FROM node:23.9.0-bookworm AS web-build
+ARG APP_VERSION=0.0.0
+ARG APP_COMMIT=unknown
+ENV APP_VERSION=${APP_VERSION}
+ENV APP_COMMIT=${APP_COMMIT}
 
 WORKDIR /meta-secret/web-cli/ui
 

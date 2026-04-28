@@ -36,6 +36,30 @@ Example:
 7. Stage 7: Test Run
 8. Stage 8: Branch + Commit + PR
 
+## Versioning Contract (SemVer)
+
+Stage 2 planning artifact must include explicit SemVer decision:
+
+- `bump_type`: `patch` | `minor` | `major`
+- `bump_rationale`: short reason
+- `target_version_files`: exact files to update
+
+Bump policy:
+
+- `patch`: bugfix/refactor with no public contract change
+- `minor`: backward-compatible feature addition
+- `major`: breaking changes in API/FFI/protocol/storage/public behavior
+
+Default version targets:
+
+- Web app: `meta-secret/web-cli/ui/package.json`
+- Server: `meta-secret/meta-server/web-server/Cargo.toml`
+
+Consistency rule:
+
+- If both web and server are changed for one user-visible feature, both version targets must be updated in the same run.
+- For server-only or web-only changes, Stage 2 must explicitly justify the single-target bump in artifact notes.
+
 ## Stage Specs
 
 ### Stage 1: Issue Intake
@@ -132,6 +156,26 @@ Required behavior:
 - Create branch: `{Prefix}/kuklin/MS-{issueNumber}` for numeric issues (see release-manager policy)
 - Commit and push with explicit user approvals
 - Open PR to `main`
+- Before commit/PR, enforce versioning gate using Stage 2 bump decision and actual diff
+- Include version audit in Stage 8 artifact:
+  - per component old/new version
+  - reason for bump
+  - policy compliance confirmation
+
+## Pre-Stage-8 Version Gate
+
+Pipeline must fail and return to Stage 2 if any condition is true:
+
+- `bump_type` exists but declared `target_version_files` were not updated
+- version files were updated but `bump_type` is missing
+- observed change category conflicts with declared `bump_type`
+  - Example: breaking change declared as `patch`
+
+On this failure:
+
+- Mark artifact with `Status: FAILED`
+- Mark `Return to Planning: YES`
+- Re-run from Stage 2 according to retry policy
 
 ## Automatic Recovery Loops
 
