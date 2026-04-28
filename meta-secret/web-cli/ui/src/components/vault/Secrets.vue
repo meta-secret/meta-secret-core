@@ -491,7 +491,7 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
 .encryptedSubtitle {
   margin-top: 6px;
   color: #3a5070;
-  font-size: 14px;
+  font-size: 11px;
   text-align: center;
   line-height: 1.4;
 }
@@ -533,7 +533,7 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
 .devicesCount {
   margin-top: 14px;
   color: #4a6080;
-  font-size: 14px;
+  font-size: 11px;
 }
 
 .revealedSecretBox {
@@ -588,8 +588,8 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
 
 .seedWord {
   color: #ffffff;
-  font-size: 32px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
 }
 
 .modalActions {
@@ -601,13 +601,13 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
 
 .btnSecondary,
 .btnPrimary {
-  border-radius: 18px;
-  height: 86px;
-  font-size: 44px;
+  border-radius: 12px;
+  height: 48px;
+  font-size: 15px;
   font-weight: 700;
   border: none;
   cursor: pointer;
-  padding: 0 36px;
+  padding: 0 24px;
 }
 
 .btnSecondary {
