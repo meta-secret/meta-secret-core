@@ -25,7 +25,7 @@ CHANGED_TEXT="$(printf "%s\n" "${CHANGED_FILES[@]-}")"
 
 contains_file() {
   local target="$1"
-  printf "%s\n" "${CHANGED_FILES[@]-}" | rg -q "^${target}$"
+  printf "%s\n" "${CHANGED_FILES[@]-}" | grep -Eq "^${target}$"
 }
 
 web_code_changed=false
@@ -96,10 +96,10 @@ fi
 
 target_has_web=false
 target_has_server=false
-if printf "%s" "${TARGETS_PIPE}" | rg -q "(^|\|)${WEB_VERSION_FILE}(\||$)"; then
+if printf "%s" "${TARGETS_PIPE}" | grep -Eq "(^|\\|)${WEB_VERSION_FILE}(\\||$)"; then
   target_has_web=true
 fi
-if printf "%s" "${TARGETS_PIPE}" | rg -q "(^|\|)${SERVER_VERSION_FILE}(\||$)"; then
+if printf "%s" "${TARGETS_PIPE}" | grep -Eq "(^|\\|)${SERVER_VERSION_FILE}(\\||$)"; then
   target_has_server=true
 fi
 
