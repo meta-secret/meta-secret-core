@@ -57,8 +57,6 @@ RUN diesel migration run
 
 # --- Meta Server Builder: compile meta-server binary ---
 FROM builder AS meta-server-builder
-ARG SERVER_COMMIT=unknown
-ENV SERVER_COMMIT=${SERVER_COMMIT}
 
 WORKDIR /meta-secret-build
 COPY . .

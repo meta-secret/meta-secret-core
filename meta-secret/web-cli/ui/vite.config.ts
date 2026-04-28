@@ -13,8 +13,6 @@ const packageVersion = JSON.parse(readFileSync(packageJsonPath, 'utf-8')).versio
 const unifiedVersion = readFileSync(unifiedVersionPath, 'utf-8').trim() || packageVersion;
 const appVersion = process.env.APP_VERSION || unifiedVersion;
 const appCommit = process.env.APP_COMMIT || 'unknown';
-const serverVersion = process.env.SERVER_VERSION || unifiedVersion;
-const serverCommit = process.env.SERVER_COMMIT || appCommit;
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -22,8 +20,6 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
     __APP_COMMIT__: JSON.stringify(appCommit),
-    __SERVER_VERSION__: JSON.stringify(serverVersion),
-    __SERVER_COMMIT__: JSON.stringify(serverCommit),
   },
   resolve: {
     alias: {

@@ -15,10 +15,6 @@ variable "APP_COMMIT" {
   default = "unknown"
 }
 
-variable "SERVER_COMMIT" {
-  default = "unknown"
-}
-
 // ============================================================
 // Groups
 // ============================================================
@@ -41,9 +37,6 @@ target "meta-server-image" {
     "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
   ]
   cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-server:cache,mode=max"] : []
-  args = {
-    SERVER_COMMIT = "${SERVER_COMMIT}"
-  }
 }
 
 target "web-image" {

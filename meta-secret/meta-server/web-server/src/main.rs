@@ -17,12 +17,6 @@ use tower_http::trace::TraceLayer;
 use tracing::{Level, info};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
-const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
-const SERVER_COMMIT: &str = match option_env!("SERVER_COMMIT") {
-    Some(value) => value,
-    None => "unknown",
-};
-
 #[derive(Clone)]
 pub struct MetaServerAppState {
     data_transfer: Arc<MetaServerDataTransfer>,
@@ -89,7 +83,6 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .route("/meta_request", post(meta_request))
         .route("/hi", get(hi))
-        .route("/version", get(version))
         .with_state(app_state)
         .layer(cors)
         .layer(TraceLayer::new_for_http())
@@ -105,21 +98,6 @@ async fn main() -> Result<()> {
 
 async fn hi() -> Html<&'static str> {
     Html("<h1>Hello, World!</h1>")
-}
-
-#[derive(Serialize)]
-struct VersionResponse {
-    #[serde(rename = "serverVersion")]
-    server_version: String,
-    #[serde(rename = "serverCommit")]
-    server_commit: String,
-}
-
-async fn version() -> Json<VersionResponse> {
-    Json(VersionResponse {
-        server_version: SERVER_VERSION.to_string(),
-        server_commit: SERVER_COMMIT.to_string(),
-    })
 }
 
 #[derive(Serialize)]
