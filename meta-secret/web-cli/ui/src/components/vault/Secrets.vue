@@ -429,11 +429,11 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
 .modalBox {
   width: 100%;
   max-width: 760px;
-  border-radius: 26px;
+  border-radius: 22px;
   border: 1px solid #1e3050;
   background: #0d1726;
   box-shadow: 0 32px 80px rgba(0, 0, 0, 0.6);
-  padding: 34px;
+  padding: 24px;
 }
 
 .modalHeader {
@@ -441,19 +441,19 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
   justify-content: space-between;
   align-items: center;
   color: #ffffff;
-  font-size: 44px;
+  font-size: 17px;
   font-weight: 800;
-  margin-bottom: 24px;
+  margin-bottom: 14px;
 }
 
 .closeXButton {
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
   border-radius: 10px;
   border: 1px solid transparent;
   background: transparent;
   color: #4a6080;
-  font-size: 30px;
+  font-size: 24px;
   cursor: pointer;
 }
 
@@ -464,16 +464,16 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
 .encryptedCard {
   background: #080f1c;
   border: 1px solid #1a2840;
-  border-radius: 18px;
-  padding: 36px 28px;
+  border-radius: 14px;
+  padding: 24px 20px;
   display: flex;
   flex-direction: column;
   align-items: center;
 }
 
 .lockCircle {
-  width: 80px;
-  height: 80px;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
   background: #1a2e4a;
   display: flex;
@@ -482,35 +482,35 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
 }
 
 .encryptedTitle {
-  margin-top: 14px;
+  margin-top: 10px;
   color: #ffffff;
-  font-size: 34px;
+  font-size: 17px;
   font-weight: 700;
 }
 
 .encryptedSubtitle {
-  margin-top: 8px;
+  margin-top: 6px;
   color: #3a5070;
-  font-size: 24px;
+  font-size: 14px;
   text-align: center;
   line-height: 1.4;
 }
 
 .placeholderLines {
-  margin-top: 18px;
+  margin-top: 12px;
   width: 100%;
-  max-width: 540px;
+  max-width: 500px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .placeholderLineOne,
 .placeholderLineTwo,
 .placeholderLineThree,
 .placeholderLineFour {
-  height: 14px;
-  border-radius: 8px;
+  height: 10px;
+  border-radius: 6px;
   background: #1a2840;
 }
 
@@ -531,9 +531,9 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
 }
 
 .devicesCount {
-  margin-top: 18px;
+  margin-top: 14px;
   color: #4a6080;
-  font-size: 28px;
+  font-size: 14px;
 }
 
 .revealedSecretBox {
