@@ -30,7 +30,6 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
         <span class="warning-icon">⚠</span>
         <span>
           {{ vaultSecrets.warningPrefix }} {{ requiredDevicesToSafety }} {{ vaultSecrets.warningMiddle }}
-          <span class="warning-action">{{ vaultSecrets.warningAdd }}</span>
         </span>
       </div>
 
@@ -95,12 +94,6 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
 
 .warning-icon {
   color: #e6b44a;
-}
-
-.warning-action {
-  color: #3b7eff;
-  font-weight: 700;
-  margin-left: 4px;
 }
 
 .card {

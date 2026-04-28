@@ -140,13 +140,15 @@ const submit = async () => {
       </div>
 
       <div class="content" :class="{ compact24: isCompact24 }">
-        <label class="label">{{ vaultSecrets.addSecretDescriptionLabel }}</label>
-        <input
-          v-model="description"
-          class="text-input"
-          :placeholder="vaultSecrets.addSecretDescriptionPlaceholder"
-          autocomplete="off"
-        />
+        <div class="description-block">
+          <label class="label">{{ vaultSecrets.addSecretDescriptionLabel }}</label>
+          <input
+            v-model="description"
+            class="text-input"
+            :placeholder="vaultSecrets.addSecretDescriptionPlaceholder"
+            autocomplete="off"
+          />
+        </div>
 
         <label class="label">{{ vaultSecrets.addSecretTypeLabel }}</label>
         <div class="segmented">
@@ -299,6 +301,12 @@ const submit = async () => {
   color: #4a6080;
   font-size: 14px;
   font-weight: 600;
+}
+
+.description-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .text-input {
