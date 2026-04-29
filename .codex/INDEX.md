@@ -19,9 +19,9 @@ Workflow stages:
 7. Test Run
 8. Branch + Commit + PR
 
-Required stage logs:
-- `Start stage <n>: <name>`
-- `Stage <n>: <name> completed`
+Required stage logs (start emoji per stage — `.ai/WORKFLOW.md`):
+- `<stage-start-emoji> Start stage <n>: <name>`
+- `✅ Stage <n>: <name> completed`
 
 Artifacts:
 - `.ai/artifacts/run/MS-<run-id>-<stage>-<name>.md`

@@ -16,13 +16,13 @@ Stage: 2 (Planning)
 
 ## Mandatory actions
 
-1. Print: `Start stage 2: Planning`
+1. Print: `🗺️ Start stage 2: Planning`
 2. Read Stage 1 artifact and architecture/style/security rules.
 3. If retry input exists, create a dedicated "Fix Plan From Failures" section.
 4. Write artifact using template:
    - `.ai/artifacts/implementation-plan-template.md`
    - output file: `.ai/artifacts/run/MS-<run-id>-002-planning.md`
-5. Print: `Stage 2: Planning completed`
+5. Print: `✅ Stage 2: Planning completed`
 
 ## Rules
 

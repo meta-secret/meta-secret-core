@@ -23,8 +23,8 @@ Workflow stages:
 8. Branch + Commit + PR
 
 Required logs per stage:
-- `Start stage <n>: <name>`
-- `Stage <n>: <name> completed`
+- Start: stage-specific emoji + `Start stage <n>: <name>` (table in `.ai/WORKFLOW.md`)
+- End: `✅ Stage <n>: <name> completed`
 
 Artifacts:
 - `.ai/artifacts/run/MS-<run-id>-<stage>-<name>.md`

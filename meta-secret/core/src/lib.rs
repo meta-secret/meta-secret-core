@@ -28,6 +28,9 @@ pub mod node;
 pub mod secret;
 pub type CoreResult<T> = Result<T, CoreError>;
 
+/// Compile-time package version of this crate (`Cargo.toml` / `VERSIONS.md`).
+pub const CRATE_PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 #[derive(Debug, thiserror::Error)]
 pub enum RecoveryOperationError {
     #[error(transparent)]
@@ -336,5 +339,13 @@ mod tests {
             },
             _ => panic!("Expected RecoveryError error, got: {:?}", result),
         }
+    }
+
+    #[test]
+    fn crate_pkg_version_is_set() {
+        assert!(
+            !CRATE_PKG_VERSION.is_empty(),
+            "CRATE_PKG_VERSION must be non-empty"
+        );
     }
 }

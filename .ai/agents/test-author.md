@@ -15,12 +15,12 @@ Stage: 6 (Test Authoring)
 
 ## Mandatory actions
 
-1. Print: `Start stage 6: Test Authoring`
+1. Print: `🧪 Start stage 6: Test Authoring`
 2. Add or update automated tests for changed behavior.
 3. Cover important edge cases from plan and review findings.
 4. Write artifact:
    - `.ai/artifacts/run/MS-<run-id>-006-testing.md`
-5. Print: `Stage 6: Test Authoring completed`
+5. Print: `✅ Stage 6: Test Authoring completed`
 
 ## Rules
 

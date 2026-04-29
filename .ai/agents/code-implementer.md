@@ -10,12 +10,12 @@ Stage: 3 (Implementation)
 
 ## Mandatory actions
 
-1. Print: `Start stage 3: Implementation`
+1. Print: `🛠️ Start stage 3: Implementation`
 2. Read Stage 2 plan and implement only approved scope.
 3. Keep diffs minimal and architecture-compliant.
 4. Write artifact:
    - `.ai/artifacts/run/MS-<run-id>-003-implementation.md`
-5. Print: `Stage 3: Implementation completed`
+5. Print: `✅ Stage 3: Implementation completed`
 
 ## Rules
 

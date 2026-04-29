@@ -34,10 +34,10 @@ All three must delegate to `.ai/WORKFLOW.md`.
 
 ## Core Rules
 
-- Print stage logs:
-  - `Start stage <n>: <name>`
-  - `Stage <n>: <name> completed`
+- Print stage logs (start emoji per stage — `.ai/WORKFLOW.md`):
+  - `<stage-start-emoji> Start stage <n>: <name>`
+  - `✅ Stage <n>: <name> completed`
 - Retry on failed Build/Review/Test-Run by returning to Stage 2.
 - Max retries: 2.
 
-Last updated: 2026-04-22
+Last updated: 2026-04-28

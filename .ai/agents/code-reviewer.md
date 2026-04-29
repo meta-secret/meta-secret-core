@@ -11,7 +11,7 @@ Stage: 5 (Code Review)
 
 ## Mandatory actions
 
-1. Print: `Start stage 5: Code Review`
+1. Print: `🔍 Start stage 5: Code Review`
 2. Review current diff against:
    - architecture rules
    - code style rules
@@ -23,7 +23,7 @@ Stage: 5 (Code Review)
 4. Set explicit status:
    - `Status: PASSED` or `Status: FAILED`
    - `Return to Planning: YES/NO`
-5. Print: `Stage 5: Code Review completed`
+5. Print: `✅ Stage 5: Code Review completed`
 
 ## Rules
 

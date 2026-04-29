@@ -9,12 +9,12 @@ Claude executes `run issue ...` using `.ai/WORKFLOW.md` as the source of truth.
 3. Use agents from `.ai/agents/`.
 4. Keep flow automatic, including retry loops.
 5. Respect retry limits (max 2).
-6. Emit required stage logs:
-   - `Start stage <n>: <name>`
-   - `Stage <n>: <name> completed`
+6. Emit required stage logs (start emoji per stage — `.ai/WORKFLOW.md`):
+   - `<stage-start-emoji> Start stage <n>: <name>`
+   - `✅ Stage <n>: <name> completed`
 
 ## Artifacts
 
 Write all stage artifacts to `.ai/artifacts/run/` with naming from `.ai/WORKFLOW.md`.
 
-Last updated: 2026-04-22
+Last updated: 2026-04-28
