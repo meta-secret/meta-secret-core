@@ -150,6 +150,46 @@ impl From<&str> for DeviceType {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[wasm_bindgen]
+pub enum DeviceUiCategory {
+    Android,
+    Iphone,
+    Tablet,
+    Desktop,
+    Cli,
+    Web,
+    Other,
+}
+
+pub fn device_ui_category(device_type: &DeviceType) -> DeviceUiCategory {
+    let value = device_type.as_str().to_lowercase();
+    if value.contains("android") {
+        return DeviceUiCategory::Android;
+    }
+    if value.contains("iphone") || value.contains("ios") {
+        return DeviceUiCategory::Iphone;
+    }
+    if value.contains("tablet") || value.contains("ipad") {
+        return DeviceUiCategory::Tablet;
+    }
+    if value.contains("desktop")
+        || value.contains("laptop")
+        || value.contains("mac")
+        || value.contains("windows")
+    {
+        return DeviceUiCategory::Desktop;
+    }
+    if value.contains("cli") || value.contains("terminal") {
+        return DeviceUiCategory::Cli;
+    }
+    if value.contains("web") || value.contains("browser") {
+        return DeviceUiCategory::Web;
+    }
+    DeviceUiCategory::Other
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(getter_with_clone)]
@@ -176,9 +216,16 @@ impl DeviceData {
     }
 }
 
+#[wasm_bindgen]
+impl DeviceData {
+    pub fn ui_category(&self) -> DeviceUiCategory {
+        device_ui_category(&self.device_type)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{DeviceData, DeviceType};
+    use super::{device_ui_category, DeviceData, DeviceType, DeviceUiCategory};
     use serde_json::json;
 
     #[test]
@@ -209,5 +256,43 @@ mod tests {
 
         let parsed = serde_json::from_value::<DeviceData>(payload);
         assert!(parsed.is_err());
+    }
+
+    #[test]
+    fn device_ui_category_matches_stable_type_strings() {
+        assert_eq!(
+            device_ui_category(&DeviceType::android()),
+            DeviceUiCategory::Android
+        );
+        assert_eq!(
+            device_ui_category(&DeviceType::iphone()),
+            DeviceUiCategory::Iphone
+        );
+        assert_eq!(
+            device_ui_category(&DeviceType::tablet()),
+            DeviceUiCategory::Tablet
+        );
+        assert_eq!(
+            device_ui_category(&DeviceType::desktop()),
+            DeviceUiCategory::Desktop
+        );
+        assert_eq!(device_ui_category(&DeviceType::cli()), DeviceUiCategory::Cli);
+        assert_eq!(device_ui_category(&DeviceType::web()), DeviceUiCategory::Web);
+        assert_eq!(
+            device_ui_category(&DeviceType::other()),
+            DeviceUiCategory::Other
+        );
+    }
+
+    #[test]
+    fn device_ui_category_heuristic_substrings() {
+        assert_eq!(
+            device_ui_category(&DeviceType::from("My Android 15")),
+            DeviceUiCategory::Android
+        );
+        assert_eq!(
+            device_ui_category(&DeviceType::from("Foo")),
+            DeviceUiCategory::Other
+        );
     }
 }
