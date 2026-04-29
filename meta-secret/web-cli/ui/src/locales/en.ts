@@ -70,3 +70,11 @@ export const vaultTechnicalInfo = {
   title: 'Technical Information',
   labelDeviceId: 'Device Id:',
 } as const;
+
+export const vaultComponentVersions = {
+  sectionTitle: 'Component versions',
+  labelWebUi: 'Web UI',
+  labelCore: 'Core',
+  labelServer: 'Server',
+  labelDb: 'Database',
+} as const;
