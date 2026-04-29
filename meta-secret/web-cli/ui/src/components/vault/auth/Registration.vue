@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { AppState } from '@/stores/app-state';
+import { hydrateVaultNameDraft } from '@/components/vault/auth/registrationVaultDraft';
 import { UserDataOutsiderStatus } from 'meta-secret-web-cli';
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
 const router = useRouter();
@@ -17,17 +18,17 @@ const isCheckingVaultName = ref(false);
 const progress = ref(0);
 const progressInterval = ref<number | null>(null);
 
-const outsiderStatus = computed<number | null>(() => {
+const outsiderStatus = computed<UserDataOutsiderStatus | undefined>(() => {
   try {
     if (jsAppState.currState && jsAppState.isOutsider) {
       const vaultState = jsAppState.currState.as_vault();
       if (vaultState.is_outsider()) {
-        return Number(vaultState.as_outsider().status);
+        return vaultState.as_outsider().status as UserDataOutsiderStatus;
       }
     }
-    return null;
+    return undefined;
   } catch {
-    return null;
+    return undefined;
   }
 });
 
@@ -80,6 +81,10 @@ onBeforeUnmount(() => {
   stopProgressSimulation();
 });
 
+onMounted(() => {
+  hydrateVaultNameDraft(jsAppState.getVaultName(), vaultName, hasSubmittedVaultName);
+});
+
 const updateVaultName = (event: Event) => {
   const input = event.target as HTMLInputElement;
   vaultName.value = input.value;
@@ -95,6 +100,7 @@ const generateUserCreds = async () => {
   try {
     await jsAppState.appManager.generate_user_creds(vaultName.value);
     await jsAppState.appStateInit();
+    hydrateVaultNameDraft(jsAppState.getVaultName(), vaultName, hasSubmittedVaultName);
   } catch (error) {
     hasSubmittedVaultName.value = false;
     throw error;
@@ -212,7 +218,7 @@ const progressMessage = computed(() => {
         </div>
       </template>
 
-      <template v-if="hasSubmittedVaultName && !isCheckingVaultName && jsAppState.isOutsider && outsiderStatus === null">
+      <template v-if="hasSubmittedVaultName && !isCheckingVaultName && jsAppState.isOutsider && outsiderStatus === undefined">
         <div class="status-block declined">
           <div class="status-title">Status is unknown. Please reset and try again.</div>
           <button class="btn-secondary compact" :disabled="isCleaning || signUpProcessing" @click="cleanDatabase">

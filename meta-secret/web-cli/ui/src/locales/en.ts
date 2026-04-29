@@ -56,6 +56,14 @@ export const vaultDevices = {
   confirmJoinPrefix: 'Are you sure you want to join',
   confirmJoinMiddle: 'to your vault',
   fallbackVaultName: 'Vault',
+  deviceCategoryAndroid: 'Android',
+  deviceCategoryIphone: 'iPhone',
+  deviceCategoryTablet: 'Tablet',
+  deviceCategoryDesktop: 'Laptop',
+  deviceCategoryCli: 'CLI',
+  deviceCategoryWeb: 'Web',
+  deviceCategoryOther: 'Other',
+  deviceCategoryUnavailable: 'Unknown device',
 } as const;
 
 export const vaultTechnicalInfo = {
@@ -65,8 +73,8 @@ export const vaultTechnicalInfo = {
 
 export const vaultComponentVersions = {
   sectionTitle: 'Component versions',
-  labelWebUi: 'Web UI:',
-  labelCore: 'Core:',
-  labelServer: 'Server:',
-  labelDb: 'DB:',
+  labelWebUi: 'Web UI',
+  labelCore: 'Core',
+  labelServer: 'Server',
+  labelDb: 'Database',
 } as const;

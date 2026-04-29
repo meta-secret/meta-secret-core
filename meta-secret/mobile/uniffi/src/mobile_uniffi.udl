@@ -17,4 +17,5 @@ namespace mobile_uniffi {
     string decline_recover(string claim_id);
     string send_decline_completion(string claim_id);
     string show_recovered(string secret_id);
+    i32 device_ui_category_discriminant(string device_type);
 };
