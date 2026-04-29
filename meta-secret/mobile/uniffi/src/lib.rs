@@ -1,8 +1,27 @@
 //! UniFFI facade over `mobile_common::json_api` (JSON string payloads).
 
+use meta_secret_core::node::common::model::device::common::{
+    device_ui_category, DeviceType, DeviceUiCategory as CoreDeviceUiCategory,
+};
 use mobile_common::json_api;
 
 uniffi::include_scaffolding!("mobile_uniffi");
+
+fn core_device_ui_to_discriminant(value: CoreDeviceUiCategory) -> i32 {
+    match value {
+        CoreDeviceUiCategory::Android => 0,
+        CoreDeviceUiCategory::Iphone => 1,
+        CoreDeviceUiCategory::Tablet => 2,
+        CoreDeviceUiCategory::Desktop => 3,
+        CoreDeviceUiCategory::Cli => 4,
+        CoreDeviceUiCategory::Web => 5,
+        CoreDeviceUiCategory::Other => 6,
+    }
+}
+
+pub fn device_ui_category_discriminant(device_type: String) -> i32 {
+    core_device_ui_to_discriminant(device_ui_category(&DeviceType::from(device_type)))
+}
 
 #[cfg(target_os = "android")]
 use jni::objects::{JClass, JObject};
@@ -81,6 +100,19 @@ pub fn send_decline_completion(claim_id: String) -> String {
 
 pub fn show_recovered(secret_id: String) -> String {
     json_api::show_recovered(secret_id)
+}
+
+#[cfg(test)]
+mod device_ui_category_ffi_tests {
+    use super::device_ui_category_discriminant;
+
+    #[test]
+    fn discriminant_matches_wasm_ts_order() {
+        assert_eq!(device_ui_category_discriminant("Android".to_string()), 0);
+        assert_eq!(device_ui_category_discriminant("Web".to_string()), 5);
+        assert_eq!(device_ui_category_discriminant("my android phone".to_string()), 0);
+        assert_eq!(device_ui_category_discriminant("unknown-thing".to_string()), 6);
+    }
 }
 
 /// Android-only bootstrap for rustls platform verifier.

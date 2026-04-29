@@ -9,6 +9,7 @@ name = "metasecret_mobile"
 
 [dependencies]
 mobile-common = { path = "../common" }
+meta-secret-core = { path = "../../core", features = ["mobile"] }
 uniffi = { version = "0.28.3", default-features = false }
 
 [target.'cfg(target_os = "android")'.dependencies]
