@@ -215,51 +215,9 @@ docker buildx bake test
 
 # Export web-cli dist locally
 docker buildx bake web-local
-
-# Build taskomatic-ai
-docker buildx bake taskomatic-ai
 ```
 
 <br>
-
-# Taskomatic AI Docker Image
-
-This Docker image contains the [aider](https://github.com/paul-gauthier/aider) AI coding assistant configured to use Claude 3.5 Haiku.
-
-## Requirements
-
-- Docker installed
-- An Anthropic API key
-
-## Usage
-
-Run the container with your Anthropic API key as an environment variable:
-
-```bash
-docker run -it --rm \
-  -e ANTHROPIC_API_KEY=your-api-key-here \
-  -v $(pwd):/workspace \
-  localhost/taskomatic-ai:latest
-```
-
-### Additional options
-
-The container is pre-configured with Claude 3.5 Haiku, but you can pass additional arguments to aider:
-
-```bash
-# Run with a directory mounted and specific files to edit
-docker run -it --rm \
-  -e ANTHROPIC_API_KEY=your-api-key-here \
-  -v $(pwd):/workspace \
-  -w /workspace \
-  localhost/taskomatic-ai:latest your_file.py another_file.js
-```
-
-## Building the image
-
-```bash
-docker buildx bake taskomatic-ai
-```
 
 ## Issues and improvements
 

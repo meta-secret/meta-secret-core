@@ -1,0 +1,21 @@
+version: '3'
+tasks:
+  default:
+    cmds:
+    - task -l
+    silent: true
+  create_cluster:
+    desc: Create a k3d cluster with the specified config
+    cmds:
+    - echo Creating k3d cluster meta-secret with config k3d-config-prod.yaml
+    - k3d cluster create --config k3d-config-prod.yaml
+  delete_cluster:
+    desc: Delete the k3d cluster
+    cmds:
+    - echo Deleting k3d cluster meta-secret
+    - k3d cluster delete meta-secret || true
+  get_kubeconfig:
+    desc: Get kubeconfig for the k3d cluster
+    cmds:
+    - echo Getting kubeconfig for the k3d cluster meta-secret
+    - k3d kubeconfig get meta-secret

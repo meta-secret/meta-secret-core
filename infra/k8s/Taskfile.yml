@@ -1,0 +1,16 @@
+version: '3'
+tasks:
+  default:
+    cmds:
+    - task -l
+    silent: true
+  deploy_meta_server:
+    desc: Deploy meta-secret server
+    cmds:
+    - task: generate_meta_server_deployment_yaml
+    - kubectl apply -f meta-secret-server/build/meta-server.yaml
+  generate_meta_server_deployment_yaml:
+    desc: Deploy meta-secret server
+    cmds:
+    - mkdir -p meta-secret-server/build
+    - kcl meta-secret-server/main.k -D imageName=cypherkitty/meta-secret-server:latest > meta-secret-server/build/meta-server.yaml
