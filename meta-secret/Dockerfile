@@ -31,6 +31,7 @@ RUN ARCH=$(uname -m) && \
     && chmod +x /usr/local/bin/sccache
 
 RUN cargo install cargo-chef --locked
+RUN cargo install cargo-nextest --locked
 RUN cargo install wasm-pack --version 0.13.1 --locked
 RUN cargo install diesel_cli --no-default-features --features sqlite
 
@@ -99,8 +100,6 @@ COPY --from=wasm-builder /meta-secret-build/wasm/pkg/ /
 FROM builder AS test-runner
 
 WORKDIR /meta-secret-build
-
-RUN cargo install --locked cargo-nextest
 
 COPY . .
 RUN rm -f .cargo/config.toml
