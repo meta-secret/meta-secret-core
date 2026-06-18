@@ -13,21 +13,15 @@ When the `tests` GitHub Actions workflow fails, a Cursor cloud agent automatical
 4. The agent reads the logs, edits the source, and opens a fix PR against the failing branch.
 5. The fix PR re-triggers the `tests` workflow to verify.
 
-## File layout
+## Key files
 
-```
-.github/
-  workflows/
-    cursor-fix.yml          ← GitHub Actions trigger + orchestration
-  scripts/
-    package.json            ← Bun project; pins @cursor/sdk
-    bun.lock                ← deterministic installs
-    cursor-fix.ts           ← entrypoint: validate env → fetchCIContext → buildPrompt → runFixAgent
-    lib/
-      fetch-logs.ts         ← reads /tmp/failure_logs.txt + env vars → CIContext
-      build-prompt.ts       ← builds the agent prompt from CIContext
-      run-agent.ts          ← Cursor SDK invocation, cloud runtime, error handling
-```
+| File | Role |
+|------|------|
+| `.github/workflows/cursor-fix.yml` | GitHub Actions trigger + orchestration |
+| `.github/scripts/cursor-fix.ts` | Entrypoint: validate env → fetchCIContext → buildPrompt → runFixAgent |
+| `.github/scripts/lib/fetch-logs.ts` | Reads `/tmp/failure_logs.txt` + env vars → `CIContext` |
+| `.github/scripts/lib/build-prompt.ts` | Builds the agent prompt from `CIContext` |
+| `.github/scripts/lib/run-agent.ts` | Cursor SDK invocation, cloud runtime, error handling |
 
 ## Key design decisions
 
