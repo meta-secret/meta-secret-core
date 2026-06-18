@@ -26,13 +26,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
 
       - name: Install Cursor SDK
-        run: npm install @cursor/sdk
+        run: bun add @cursor/sdk
 
       - name: Fetch failure logs
         id: logs
@@ -55,4 +53,4 @@ jobs:
           FAILURE_LOGS: ${{ env.FAILURE_LOGS }}
         run: |
           export FAILURE_LOGS="$(cat /tmp/failure_logs.txt)"
-          node .github/scripts/cursor-fix.mjs
+          bun .github/scripts/cursor-fix.mjs
