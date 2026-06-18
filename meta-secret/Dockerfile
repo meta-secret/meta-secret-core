@@ -102,8 +102,6 @@ FROM builder AS test-runner
 WORKDIR /meta-secret-build
 
 COPY . .
-RUN rm -f .cargo/config.toml
-
 RUN cargo nextest run --profile ci
 
 # --- Web Build: Vue.js + WASM ---
