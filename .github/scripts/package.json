@@ -1,0 +1,12 @@
+{
+  "name": "cursor-fix",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "fix": "bun run cursor-fix.ts"
+  },
+  "dependencies": {
+    "@cursor/sdk": "latest"
+  }
+}

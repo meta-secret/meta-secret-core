@@ -29,28 +29,23 @@ jobs:
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Install Cursor SDK
-        run: bun add @cursor/sdk
+      - name: Install dependencies
+        run: bun install
+        working-directory: .github/scripts
 
       - name: Fetch failure logs
         id: logs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          LOGS=$(gh run view ${{ github.event.workflow_run.id }} \
+          gh run view ${{ github.event.workflow_run.id }} \
             --log-failed \
             --repo ${{ github.repository }} \
-            2>&1 | tail -300)
-
-          # Write to a file to avoid shell quoting issues with special characters
-          echo "$LOGS" > /tmp/failure_logs.txt
+            2>&1 | tail -300 > /tmp/failure_logs.txt
           echo "branch=${{ github.event.workflow_run.head_branch }}" >> $GITHUB_OUTPUT
 
       - name: Run Cursor fix agent
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
           HEAD_BRANCH: ${{ steps.logs.outputs.branch }}
-          FAILURE_LOGS: ${{ env.FAILURE_LOGS }}
-        run: |
-          export FAILURE_LOGS="$(cat /tmp/failure_logs.txt)"
-          bun .github/scripts/cursor-fix.mjs
+        run: bun run .github/scripts/cursor-fix.ts

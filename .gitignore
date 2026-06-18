@@ -19,6 +19,7 @@ meta-secret/wasm/Cargo.lock
 meta-secret/wasm/bin/
 meta-secret/wasm/wasm-pack.log
 
+.github/scripts/node_modules
 meta-secret/web-cli/ui/node_modules
 meta-secret/web-cli/ui/dist
 meta-secret/web-cli/ui/pkg
