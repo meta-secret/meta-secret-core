@@ -23,9 +23,6 @@ When the `tests` GitHub Actions workflow fails, a Cursor cloud agent automatical
 
 ## Key design decisions
 
-- **Cloud runtime, not local** — the cloud agent has no Rust toolchain; it reasons from
-  logs only. The next CI run on the fix PR validates the change. Use local runtime only if
-  you can provision a runner with Rust + Docker.
 - **`autoCreatePR: true`** — Cursor opens the fix PR directly; no shell `gh` call needed.
 - **`skipReviewerRequest: true`** — suppresses review requests in CI; keeps notifications quiet.
 - **Bun** — native TypeScript, fast installs via `bun.lock`, no build step.
@@ -43,11 +40,3 @@ When the `tests` GitHub Actions workflow fails, a Cursor cloud agent automatical
 - Switch agent model or runtime options → `lib/run-agent.ts`
 - Add Slack/notification on fix PR opened → new `lib/notify.ts`, call from `cursor-fix.ts`
 - Add retry logic → wrap `runFixAgent` in `cursor-fix.ts`
-
-## Limitations
-
-- The cloud agent cannot run `cargo test` or `docker buildx bake test` to verify its fix
-  before opening the PR — verification happens on the fix PR's CI run.
-- If the failure requires context beyond the log output (e.g. runtime data, env-specific
-  secrets), the agent may not have enough signal to produce a correct fix.
-- One fix attempt per failure event; no automatic re-trigger if the fix PR also fails.
