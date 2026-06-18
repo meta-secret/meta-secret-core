@@ -31,7 +31,7 @@ RUN ARCH=$(uname -m) && \
     && chmod +x /usr/local/bin/sccache
 
 RUN cargo install cargo-chef --locked
-RUN cargo install cargo-nextest --locked
+RUN curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C /usr/local/bin
 RUN cargo install wasm-pack --version 0.13.1 --locked
 RUN cargo install diesel_cli --no-default-features --features sqlite
 
