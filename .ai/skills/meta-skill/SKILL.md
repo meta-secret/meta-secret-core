@@ -1,5 +1,5 @@
 ---
-name: write-skill
+name: meta-skill
 description: >-
   Write or update project skills and rules markdown files (.ai/skills/, .ai/rules/, .cursor/rules/).
   Use when creating a new SKILL.md or rule, updating an existing one, or when the user asks to
