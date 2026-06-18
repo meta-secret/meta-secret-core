@@ -85,6 +85,20 @@ Paths: [`.ai/skills/`](.ai/skills/).
 - **Cursor:** subagents do not nest; run phases sequentially.
 - **Claude Code:** subagents do not spawn subagents; chain from the **main** session or run one phase per command.
 
+## CI auto-fix
+
+When the **tests** GitHub Actions workflow fails, a separate **Cursor Auto-Fix** workflow triggers automatically. It:
+
+1. Fetches the failure logs via `gh run view --log-failed`.
+2. Launches a **Cursor cloud agent** (via `@cursor/sdk`) with the failure context.
+3. The agent analyses the root cause, edits the source, and opens a fix PR against the failing branch.
+
+The fix PR then re-runs the `tests` workflow to verify. This loop can repeat.
+
+Implementation: `.github/workflows/cursor-fix.yml` + `.github/scripts/` (Bun TypeScript project).
+
+Required secret: `CURSOR_API_KEY` (team service-account key, Cursor account must have GitHub access).
+
 ## Cross-repo note
 
 If the change **exports or changes FFI/UniFFI**, call out **meta-secret-compose** impact in the plan and release notes.

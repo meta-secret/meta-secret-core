@@ -16,6 +16,9 @@ alwaysApply: false
     3. registry cache per target is configured in docker-bake.hcl
     4. [Makefile](mdc:Makefile) provides short aliases for all bake targets
     5. after updates in Cargo.toml files, run `make generate-recipe` to update the recipe.json file
+ - infra task automation uses go-task directly: [infra/Taskfile.yml](mdc:infra/Taskfile.yml) (and k3d/, k8s/ sub-Taskfiles)
+   - Taskfiles are plain YAML source of truth (not generated from KCL)
+   - KCL is still used inside the `taskomatic` container only for rendering K8s manifests at deploy time
 
 ### Build actions:
 
@@ -46,5 +49,10 @@ alwaysApply: false
 #### Run web-ui locally:
    make web-run
 
-#### Run taskomatic:
+#### Run k3d/k8s automation (cluster + deploy):
    make taskomatic-run
+
+### CI auto-fix:
+ - When the `tests` workflow fails, the `cursor-fix` workflow automatically triggers
+ - It fetches failure logs and launches a Cursor cloud agent (via `@cursor/sdk`) to analyse the failure and open a fix PR
+ - Script: [.github/scripts/cursor-fix.ts](mdc:.github/scripts/cursor-fix.ts) (Bun TypeScript project under `.github/scripts/`)

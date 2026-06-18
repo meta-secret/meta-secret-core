@@ -220,6 +220,18 @@ docker buildx bake web-local
 
 <br>
 
+## CI Auto-Fix
+
+When the `tests` workflow fails, a **Cursor Auto-Fix** workflow triggers automatically:
+
+1. Fetches the failure logs from the failed run.
+2. Launches a [Cursor cloud agent](https://cursor.com/docs/sdk/typescript) (`@cursor/sdk`) with the logs as context.
+3. The agent analyses the root cause, edits the source, and opens a fix PR.
+4. The fix PR re-runs the tests to verify.
+
+Implementation: `.github/workflows/cursor-fix.yml` + `.github/scripts/` (Bun TypeScript).  
+Required secret: `CURSOR_API_KEY` — see [cursor.com/dashboard/integrations](https://cursor.com/dashboard/integrations).
+
 ## Issues and improvements
 
 If you encounter any issues or have suggestions for improvements, please report them to the project maintainers.

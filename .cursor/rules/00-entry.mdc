@@ -28,3 +28,10 @@ Required logs per stage:
 
 Artifacts:
 - `.ai/artifacts/run/MS-<run-id>-<stage>-<name>.md`
+
+## CI Auto-Fix (separate from pipeline)
+
+When the `tests` workflow fails, `.github/workflows/cursor-fix.yml` fires automatically.
+It uses `@cursor/sdk` (Bun TypeScript in `.github/scripts/`) to launch a Cursor cloud agent
+that analyses failure logs and opens a fix PR. This is independent of `run issue ...`.
+Skill: `.ai/skills/ci-auto-fix/SKILL.md`
