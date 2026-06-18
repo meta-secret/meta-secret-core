@@ -7,7 +7,6 @@ ARG RUST_VERSION=1.96.0
 # --- Chef Planner: generate cargo-chef recipe ---
 FROM lukemathwalker/cargo-chef:latest-rust-${RUST_VERSION}-bookworm AS chef-planner
 COPY . .
-RUN rm -f .cargo/config.toml
 RUN cargo chef prepare --recipe-path recipe.json
 
 # Minimal stage to extract just the recipe file
@@ -30,7 +29,7 @@ RUN ARCH=$(uname -m) && \
     && mv ${SCCACHE_ARTIFACT}/sccache /usr/local/bin/sccache \
     && chmod +x /usr/local/bin/sccache
 
-RUN cargo install cargo-chef --locked
+COPY --from=chef-planner /usr/local/cargo/bin/cargo-chef /usr/local/cargo/bin/cargo-chef
 RUN curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C /usr/local/bin
 RUN cargo install wasm-pack --version 0.13.1 --locked
 RUN cargo install diesel_cli --no-default-features --features sqlite
