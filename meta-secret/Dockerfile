@@ -2,7 +2,7 @@
 # Multi-stage Dockerfile for meta-secret builds
 # ============================================================
 
-ARG RUST_VERSION=1.93.0
+ARG RUST_VERSION=1.96.0
 
 # --- Chef Planner: generate cargo-chef recipe ---
 FROM lukemathwalker/cargo-chef:latest-rust-${RUST_VERSION}-bookworm AS chef-planner
