@@ -43,3 +43,4 @@ infra/.secret
 
 # AI
 .ai/artifacts/run
+.github/scripts/bun.lock
