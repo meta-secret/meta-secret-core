@@ -15,13 +15,11 @@ When the `tests` GitHub Actions workflow fails, a Cursor cloud agent automatical
 
 ## Key files
 
-| File | Role |
-|------|------|
-| `.github/workflows/cursor-fix.yml` | GitHub Actions trigger + orchestration |
-| `.github/scripts/cursor-fix.ts` | Entrypoint: validate env → fetchCIContext → buildPrompt → runFixAgent |
-| `.github/scripts/lib/fetch-logs.ts` | Reads `/tmp/failure_logs.txt` + env vars → `CIContext` |
-| `.github/scripts/lib/build-prompt.ts` | Builds the agent prompt from `CIContext` |
-| `.github/scripts/lib/run-agent.ts` | Cursor SDK invocation, cloud runtime, error handling |
+- `.github/workflows/cursor-fix.yml` — GitHub Actions trigger + orchestration
+- `.github/scripts/cursor-fix.ts` — entrypoint: validate env → fetchCIContext → buildPrompt → runFixAgent
+- `.github/scripts/lib/fetch-logs.ts` — reads `/tmp/failure_logs.txt` + env vars → `CIContext`
+- `.github/scripts/lib/build-prompt.ts` — builds the agent prompt from `CIContext`
+- `.github/scripts/lib/run-agent.ts` — Cursor SDK invocation, cloud runtime, error handling
 
 ## Key design decisions
 
@@ -35,20 +33,16 @@ When the `tests` GitHub Actions workflow fails, a Cursor cloud agent automatical
 
 ## Required GitHub secret
 
-| Secret | Description |
-|--------|-------------|
-| `CURSOR_API_KEY` | Cursor API key. Get it at [cursor.com/dashboard/integrations](https://cursor.com/dashboard/integrations). The account must have GitHub access granted so the cloud agent can push and open PRs. |
+- `CURSOR_API_KEY` — Cursor API key from [cursor.com/dashboard/integrations](https://cursor.com/dashboard/integrations). The account must have GitHub access granted so the cloud agent can push and open PRs.
 
 ## Extending this pattern
 
-| Goal | Where to change |
-|------|----------------|
-| Change which CI workflow triggers the fix | `on.workflow_run.workflows` in `cursor-fix.yml` |
-| Tune the agent prompt | `lib/build-prompt.ts` |
-| Change log capture (lines, format) | `lib/fetch-logs.ts` |
-| Switch agent model or runtime options | `lib/run-agent.ts` |
-| Add Slack/notification on fix PR opened | new `lib/notify.ts`, call from `cursor-fix.ts` |
-| Add retry logic | wrap `runFixAgent` in `cursor-fix.ts` |
+- Change which CI workflow triggers the fix → `on.workflow_run.workflows` in `cursor-fix.yml`
+- Tune the agent prompt → `lib/build-prompt.ts`
+- Change log capture (lines, format) → `lib/fetch-logs.ts`
+- Switch agent model or runtime options → `lib/run-agent.ts`
+- Add Slack/notification on fix PR opened → new `lib/notify.ts`, call from `cursor-fix.ts`
+- Add retry logic → wrap `runFixAgent` in `cursor-fix.ts`
 
 ## Limitations
 
