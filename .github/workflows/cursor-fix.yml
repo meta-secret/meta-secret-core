@@ -1,0 +1,51 @@
+# Runs after the "tests" workflow fails.
+# Fetches the failure logs, then launches a Cursor cloud agent that analyses
+# the failures and opens a fix PR against the same branch.
+#
+# Required GitHub secrets:
+#   CURSOR_API_KEY  - Cursor API key (team service-account or personal).
+#                     Create at https://cursor.com/dashboard/integrations
+#                     The Cursor account must have GitHub access granted so the
+#                     cloud agent can push branches and open PRs.
+
+name: "Cursor Auto-Fix"
+
+on:
+  workflow_run:
+    workflows: ["tests"]
+    types: [completed]
+
+jobs:
+  cursor-fix:
+    if: github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+        working-directory: .github/scripts
+
+      - name: Fetch failure logs
+        id: logs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh run view ${{ github.event.workflow_run.id }} \
+            --log-failed \
+            --repo ${{ github.repository }} \
+            2>&1 | tail -300 > /tmp/failure_logs.txt
+          echo "branch=${{ github.event.workflow_run.head_branch }}" >> $GITHUB_OUTPUT
+
+      - name: Run Cursor fix agent
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          HEAD_BRANCH: ${{ steps.logs.outputs.branch }}
+        run: bun run .github/scripts/cursor-fix.ts

@@ -89,13 +89,6 @@ target "taskomatic" {
   tags       = ["localhost/taskomatic:latest"]
 }
 
-target "taskomatic-ai" {
-  context    = "infra"
-  dockerfile = "Dockerfile.taskomatic"
-  target     = "taskomatic-ai"
-  tags       = ["localhost/taskomatic-ai:latest"]
-}
-
 target "sops" {
   context    = "infra"
   dockerfile = "Dockerfile.sops"

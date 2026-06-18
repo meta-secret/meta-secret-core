@@ -42,9 +42,6 @@ taskomatic-run: taskomatic
 		--workdir /taskomatic \
 		localhost/taskomatic:latest
 
-taskomatic-ai:
-	docker buildx bake --load taskomatic-ai
-
 sops:
 	docker buildx bake --load sops
 

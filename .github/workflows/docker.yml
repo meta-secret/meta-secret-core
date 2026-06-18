@@ -1,4 +1,10 @@
-name: "Docker"
+# Builds and pushes production Docker images on push to main (and on manual trigger).
+# Uses docker buildx bake (see docker-bake.hcl) to produce:
+#   - cypherkitty/meta-secret-server:latest
+#   - cypherkitty/meta-secret-web:latest
+# Also writes layer cache back to the registry for faster subsequent builds.
+
+name: "Docker Images"
 
 on:
   workflow_dispatch:

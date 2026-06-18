@@ -171,6 +171,19 @@ Pipeline must stop if artifact contains any marker:
 - `FAIL`
 - `❌`
 
+## CI Auto-Fix (Cursor SDK)
+
+This is a **separate, automated loop** that runs outside the 8-stage pipeline:
+
+- Trigger: `tests` GitHub Actions workflow completes with `failure`
+- Workflow: `.github/workflows/cursor-fix.yml`
+- Script: `.github/scripts/cursor-fix.ts` (Bun TypeScript, `@cursor/sdk`)
+- Behaviour: fetches failure logs → launches Cursor cloud agent → agent opens fix PR against the failing branch → fix PR re-runs tests
+- This loop is independent of the manual `run issue ...` pipeline
+- Skill: `.ai/skills/ci-auto-fix/SKILL.md`
+
+Required GitHub secret: `CURSOR_API_KEY`.
+
 ## IDE Entry Points
 
 - Claude Code: `.claude/ORCHESTRATE.md`
@@ -179,4 +192,4 @@ Pipeline must stop if artifact contains any marker:
 
 All entry points must delegate orchestration logic to this file to avoid duplication.
 
-Last updated: 2026-04-28
+Last updated: 2026-06-18

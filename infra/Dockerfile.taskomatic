@@ -1,5 +1,7 @@
 # ============================================================
 # Taskomatic: k3d/kubectl/kcl/go-task automation image
+# Taskfiles are maintained directly as YAML (no longer generated from KCL).
+# KCL is still installed for generating Kubernetes manifests on deploy.
 # ============================================================
 
 FROM debian:bookworm AS taskomatic
@@ -9,7 +11,7 @@ RUN apt update && apt install -y build-essential curl wget gnupg2 ca-certificate
 # Install k3d
 RUN wget -q -O - https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
 
-# Install kcl
+# Install kcl (used for generating K8s manifests at deploy time)
 RUN wget -q https://kcl-lang.io/script/install-cli.sh -O - | /bin/bash
 
 # Install go-task runner (https://taskfile.dev)
@@ -23,32 +25,12 @@ RUN curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key | gpg --d
 ENV TASKOMATIC_DIR=/taskomatic
 WORKDIR ${TASKOMATIC_DIR}
 
-COPY Taskfile.k Taskfile.k
+# Copy pre-defined Taskfiles (no longer generated from KCL)
+COPY Taskfile.yml Taskfile.yml
 COPY k3d k3d
 COPY k8s k8s
-
-WORKDIR ${TASKOMATIC_DIR}
-RUN kcl Taskfile.k > Taskfile.yml
-
-WORKDIR ${TASKOMATIC_DIR}/k3d
-RUN kcl Taskfile.k > Taskfile.yml
-
-WORKDIR ${TASKOMATIC_DIR}/k8s
-RUN kcl Taskfile.k > Taskfile.yml
 
 WORKDIR ${TASKOMATIC_DIR}
 
 ENTRYPOINT ["task"]
 CMD ["--list"]
-
-# --- Taskomatic AI: adds aider-chat ---
-FROM taskomatic AS taskomatic-ai
-
-ENV TASKOMATIC_DIR=/taskomatic
-WORKDIR ${TASKOMATIC_DIR}/ai
-
-COPY ./.aider.conf.yml .
-COPY ./.env .
-
-RUN pip install aider-chat
-RUN aider --help

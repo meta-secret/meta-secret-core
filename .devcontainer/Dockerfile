@@ -8,7 +8,7 @@ RUN apt update && apt install -y \
 
 #Rust
 ENV PATH="/root/.cargo/bin:${PATH}"
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.93.0
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.96.0
 RUN curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 RUN rustup target add x86_64-unknown-linux-gnu
 

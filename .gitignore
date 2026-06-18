@@ -19,12 +19,12 @@ meta-secret/wasm/Cargo.lock
 meta-secret/wasm/bin/
 meta-secret/wasm/wasm-pack.log
 
+.github/scripts/node_modules
 meta-secret/web-cli/ui/node_modules
 meta-secret/web-cli/ui/dist
 meta-secret/web-cli/ui/pkg
 
 .vscode
-.aider*
 
 infra/.env
 infra/.secret
@@ -36,13 +36,11 @@ infra/.secret
 # Claude Code local settings (developer-specific allowlists, not for repo)
 .claude/settings.local.json
 /infra/k8s/meta-secret-server/build/
-/infra/k8s/Taskfile.yml
-/infra/k3d/Taskfile.yml
 /appp/
 /meta-secret/meta-cli/example/a
 /meta-secret/meta-cli/example/b
 /meta-secret/meta-cli/example/c
-/infra/Taskfile.yml
 
 # AI
 .ai/artifacts/run
+.github/scripts/bun.lock

@@ -52,4 +52,15 @@ On failed Build/Review/Test-Run:
 - return to Stage 2 with failed artifact as input
 - max retries: 2
 
-Last updated: 2026-04-28
+## CI Auto-Fix
+
+When the `tests` CI workflow fails, the `cursor-fix` GitHub Actions workflow fires automatically:
+1. Fetches `gh run view --log-failed` output
+2. Runs a Cursor cloud agent (`@cursor/sdk`) with the failure logs as context
+3. Agent edits source and opens a fix PR against the failing branch
+
+Files: `.github/workflows/cursor-fix.yml`, `.github/scripts/` (Bun TypeScript).  
+Required secret: `CURSOR_API_KEY`.  
+Skill: `.ai/skills/ci-auto-fix/SKILL.md`
+
+Last updated: 2026-06-18
