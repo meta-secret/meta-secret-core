@@ -2,10 +2,33 @@ use anyhow::Result;
 use meta_secret_core::node::common::model::device::common::DeviceId;
 use meta_secret_core::node::common::model::secret::{SecretDistributionType, SsClaim};
 
+#[allow(dead_code)]
+struct SsClaimVerifierForTestRecovery {
+    sender: DeviceId,
+    receiver: DeviceId,
+}
+
+impl SsClaimVerifierForTestRecovery {
+    #[allow(dead_code)]
+    pub fn verify(&self, claim: SsClaim) -> Result<()> {
+        // Verify the claim properties
+        assert_eq!(claim.sender, self.sender);
+        assert_eq!(claim.distribution_type, SecretDistributionType::Recover);
+        assert_eq!(claim.receivers.len(), 1);
+        assert_eq!(claim.receivers[0], self.receiver);
+
+        // Verify that the recovery database IDs are present
+        let claim_ids = claim.recovery_db_ids();
+        assert_eq!(1, claim_ids.len());
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 pub mod fixture {
-    use meta_secret_core::meta_tests::fixture_util::fixture::states::BaseState;
     use meta_secret_core::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use meta_secret_core::meta_tests::fixture_util::fixture::states::BaseState;
     use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
     use meta_server_node::server::server_app::ServerApp;
     use std::sync::Arc;
@@ -26,21 +49,36 @@ pub mod fixture {
 
 #[cfg(test)]
 mod test {
+    use super::SsClaimVerifierForTestRecovery;
     use crate::fixture::{ExtendedFixtureRegistry, ExtendedFixtureState};
-    use crate::tests::meta_secret_test::SsClaimVerifierForTestRecovery;
-    use anyhow::bail;
     use anyhow::Result;
-    use meta_secret_core::meta_tests::fixture_util::fixture::states::EmptyState;
+    use anyhow::bail;
     use meta_secret_core::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use meta_secret_core::meta_tests::fixture_util::fixture::states::EmptyState;
     use meta_secret_core::meta_tests::spec::test_spec::TestSpec;
     use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
+    use meta_secret_core::node::app::orchestrator::MetaOrchestrator;
+    use meta_secret_core::node::app::sync::sync_gateway::SyncGateway;
     use meta_secret_core::node::common::meta_tracing::{client_span, server_span, vd_span};
     use meta_secret_core::node::common::model::crypto::aead::EncryptedMessage;
-    use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
-    use meta_secret_core::node::common::model::secret::{SsDistributionId, SsDistributionStatus};
-    use meta_secret_core::node::common::model::user::common::UserData;
+    use meta_secret_core::node::common::model::device::common::DeviceName;
+    use meta_secret_core::node::common::model::device::device_creds::{
+        DeviceCreds, DeviceCredsBuilder,
+    };
+    use meta_secret_core::node::common::model::meta_pass::{
+        MetaPasswordId, PlainPassInfo, SecurePassInfo,
+    };
+    use meta_secret_core::node::common::model::secret::{
+        ClaimId, SecretDistributionType, SsClaim, SsDistributionId, SsDistributionStatus,
+    };
+    use meta_secret_core::node::common::model::user::common::{
+        UserData, UserDataMember, UserMembership,
+    };
     use meta_secret_core::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
-    use meta_secret_core::node::common::model::vault::vault::VaultStatus;
+    use meta_secret_core::node::common::model::vault::vault::{
+        VaultMember, VaultName, VaultStatus,
+    };
+    use meta_secret_core::node::common::model::vault::vault_data::VaultData;
     use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
     use meta_secret_core::node::db::actions::recover::RecoveryHandler;
     use meta_secret_core::node::db::actions::sign_up::claim::spec::SignUpClaimSpec;
@@ -51,9 +89,16 @@ mod test {
     };
     use meta_secret_core::node::db::events::generic_log_event::GenericKvLogEvent;
     use meta_secret_core::node::db::events::shared_secret_event::SsWorkflowObject;
-    use meta_secret_core::node::db::events::vault::vault_log_event::VaultActionRequestEvent;
+    use meta_secret_core::node::db::events::vault::vault_log_event::{
+        JoinClusterEvent, VaultActionRequestEvent,
+    };
+    use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
+    use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
     use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
-    use tracing::{info, Instrument};
+    use meta_secret_core::recover_from_shares;
+    use meta_secret_core::secret::MetaDistributor;
+    use meta_secret_core::secret::shared_secret::UserShareDto;
+    use tracing::{Instrument, info};
 
     struct ServerAppSignUpSpec {
         registry: FixtureRegistry<ExtendedFixtureState>,
@@ -353,6 +398,81 @@ mod test {
         }
     }
 
+    async fn read_share_from_node(
+        p_obj: std::sync::Arc<PersistentObject<InMemKvLogEventRepo>>,
+        pass_id: MetaPasswordId,
+        receiver: meta_secret_core::node::common::model::device::common::DeviceId,
+        sk: &meta_secret_core::crypto::keys::TransportSk,
+    ) -> Result<UserShareDto> {
+        let dist_desc = SsWorkflowDescriptor::Distribution(SsDistributionId { pass_id, receiver });
+        let event = p_obj
+            .find_tail_event(dist_desc)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Distribution event not found"))?;
+        let SsWorkflowObject::Distribution(dist) = event else {
+            bail!("Expected split distribution event");
+        };
+        let decrypted = dist.value.secret_message.cipher_text().decrypt(sk)?;
+        Ok(UserShareDto::try_from(&decrypted.msg)?)
+    }
+
+    async fn prepare_single_device_secret_for_redistribution() -> Result<(
+        FixtureRegistry<EmptyState>,
+        MetaOrchestrator<InMemKvLogEventRepo>,
+        VaultData,
+        MetaPasswordId,
+    )> {
+        let registry = FixtureRegistry::empty();
+        let client_user_creds = registry.state.user_creds.client.clone();
+        let client_member = registry
+            .state
+            .vault_data
+            .client_membership
+            .user_data_member();
+        let single_member_vault = VaultData::from(client_member.clone());
+
+        let vault_member = VaultMember {
+            member: client_member,
+            vault: single_member_vault.clone(),
+        };
+
+        let pass_info = PlainPassInfo::new("late_join_secret".to_string(), "2bee|~".to_string());
+        let secure_pass = SecurePassInfo::from(pass_info);
+        let pass_id = secure_pass.pass_id.clone();
+
+        let distributor = MetaDistributor {
+            p_obj: registry.state.p_obj.client.clone(),
+            user_creds: std::sync::Arc::new(client_user_creds.clone()),
+            vault_member: vault_member.clone(),
+        };
+        distributor
+            .distribute(vault_member.clone(), secure_pass)
+            .await?;
+
+        // In this integration test we do not run server sync, so seed ss_log explicitly.
+        let p_ss = PersistentSharedSecret::from(registry.state.p_obj.client.clone());
+        let seeded_claim = vault_member.create_split_claim(pass_id.clone());
+        p_ss.save_ss_log_event(seeded_claim).await?;
+
+        let orchestrator = MetaOrchestrator {
+            p_obj: registry.state.p_obj.client.clone(),
+            user_creds: client_user_creds,
+        };
+
+        Ok((registry, orchestrator, single_member_vault, pass_id))
+    }
+
+    fn generate_member_for_vault(vault: VaultName) -> (UserDataMember, DeviceCreds) {
+        let extra_creds = DeviceCredsBuilder::generate()
+            .build(DeviceName::generate())
+            .creds;
+        let user = UserData {
+            vault_name: vault,
+            device: extra_creds.device.clone(),
+        };
+        (UserDataMember { user_data: user }, extra_creds)
+    }
+
     #[tokio::test]
     async fn test_sign_up_and_join_two_devices() -> Result<()> {
         let spec = ServerAppSignUpSpec::build().await?;
@@ -367,6 +487,363 @@ mod test {
 
         split.spec.sign_up_and_second_devices_joins().await?;
         split.split().await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_e2e_redistribution_recalculates_shares_after_late_joins() -> Result<()> {
+        let spec = ServerAppSignUpSpec::build().await?;
+        spec.init_server().await?;
+        spec.verify_server_device_creds().await?;
+        spec.client_gw_sync().await?;
+
+        let client_user = spec.user_creds().client.user();
+        let vd_user = spec.user_creds().vd.user();
+        let client_b_user = spec.user_creds().client_b.user();
+
+        let client_b_gw = std::sync::Arc::new(SyncGateway {
+            id: "client_b_gw".to_string(),
+            p_obj: spec.registry.state.base.empty.p_obj.client_b.clone(),
+            sync: spec.registry.state.sync.sync_protocol.clone(),
+            master_key: spec
+                .registry
+                .state
+                .base
+                .empty
+                .device_creds
+                .client_b_master_key
+                .clone(),
+        });
+
+        // D1 creates vault and secret before any joins.
+        SignUpClaimTestAction::sign_up(
+            spec.registry.state.client.p_obj.clone(),
+            &spec.user_creds().client,
+        )
+        .instrument(client_span())
+        .await?;
+        spec.client_gw_sync().await?;
+
+        let pass_id = MetaPasswordId::build_from_str("late_join_secret_k2");
+        let dist_request = GenericAppStateRequest::ClusterDistribution(PlainPassInfo {
+            pass_id: pass_id.clone(),
+            pass: "2bee|~".to_string(),
+        });
+        let app_state = spec
+            .registry
+            .state
+            .client
+            .client_service
+            .build_service_state()
+            .await?
+            .app_state;
+        spec.registry
+            .state
+            .client
+            .client_service
+            .handle_client_request(app_state, dist_request)
+            .await?;
+        spec.client_gw_sync().await?;
+
+        // D2 joins, D1 accepts.
+        spec.vd_gw_sync().await?;
+        SignUpClaimTestAction::sign_up(spec.registry.state.vd.p_obj.clone(), &spec.user_creds().vd)
+            .instrument(vd_span())
+            .await?;
+        spec.vd_gw_sync().await?;
+        spec.client_gw_sync().await?;
+
+        let client_state = spec
+            .registry
+            .state
+            .client
+            .client_service
+            .get_app_state()
+            .await?;
+        let ApplicationState::Vault(VaultFullInfo::Member(client_member)) = client_state else {
+            bail!("Client has to be vault member");
+        };
+        let join_d2 = client_member
+            .vault_events
+            .requests
+            .iter()
+            .find_map(|request| match request {
+                VaultActionRequestEvent::JoinCluster(join)
+                    if join.candidate.device.device_id == vd_user.device.device_id =>
+                {
+                    Some(join.clone())
+                }
+                _ => None,
+            })
+            .ok_or_else(|| anyhow::anyhow!("Join request for D2 not found"))?;
+        spec.registry
+            .state
+            .client
+            .orchestrator
+            .update_membership(join_d2, JoinActionUpdate::Accept)
+            .await?;
+        spec.client_gw_sync().await?;
+        spec.vd_gw_sync().await?;
+
+        // D3 joins, D1 accepts.
+        client_b_gw.sync(client_b_user.clone()).await?;
+        client_b_gw.sync(client_b_user.clone()).await?;
+        SignUpClaimTestAction::sign_up(
+            spec.registry.state.base.empty.p_obj.client_b.clone(),
+            &spec.user_creds().client_b,
+        )
+        .await?;
+        client_b_gw.sync(client_b_user.clone()).await?;
+        client_b_gw.sync(client_b_user.clone()).await?;
+        spec.client_gw_sync().await?;
+
+        let client_state = spec
+            .registry
+            .state
+            .client
+            .client_service
+            .get_app_state()
+            .await?;
+        let ApplicationState::Vault(VaultFullInfo::Member(client_member)) = client_state else {
+            bail!("Client has to be vault member");
+        };
+        let join_d3 = client_member
+            .vault_events
+            .requests
+            .iter()
+            .find_map(|request| match request {
+                VaultActionRequestEvent::JoinCluster(join)
+                    if join.candidate.device.device_id == client_b_user.device.device_id =>
+                {
+                    Some(join.clone())
+                }
+                _ => None,
+            })
+            .ok_or_else(|| anyhow::anyhow!("Join request for D3 not found"))?;
+        spec.registry
+            .state
+            .client
+            .orchestrator
+            .update_membership(join_d3, JoinActionUpdate::Accept)
+            .await?;
+
+        // Capture recalculated D2/D3 shares right after redistribution (before sender-side sync cleanup).
+        let share_d2 = read_share_from_node(
+            spec.registry.state.client.p_obj.clone(),
+            pass_id.clone(),
+            vd_user.device.device_id.clone(),
+            &spec
+                .user_creds()
+                .client
+                .device_creds
+                .secret_box
+                .transport
+                .sk,
+        )
+        .await?;
+        let share_d3 = read_share_from_node(
+            spec.registry.state.client.p_obj.clone(),
+            pass_id.clone(),
+            client_b_user.device.device_id.clone(),
+            &spec
+                .user_creds()
+                .client
+                .device_creds
+                .secret_box
+                .transport
+                .sk,
+        )
+        .await?;
+
+        // Sync all nodes until convergence.
+        for _ in 0..8 {
+            spec.client_gw_sync().await?;
+            spec.vd_gw_sync().await?;
+            client_b_gw.sync(client_b_user.clone()).await?;
+            client_b_gw.sync(client_b_user.clone()).await?;
+        }
+        for _ in 0..3 {
+            spec.vd_gw_sync().await?;
+            client_b_gw.sync(client_b_user.clone()).await?;
+            client_b_gw.sync(client_b_user.clone()).await?;
+            spec.client_gw_sync().await?;
+        }
+
+        // Consistency: all nodes have split claim with D2+D3 receivers in Delivered state.
+        let vault_name = client_user.vault_name.clone();
+        let client_ss_log = spec
+            .registry
+            .state
+            .client
+            .p_ss
+            .get_ss_log_obj(vault_name.clone())
+            .await?;
+        let vd_ss_log = spec
+            .registry
+            .state
+            .vd
+            .p_ss
+            .get_ss_log_obj(vault_name.clone())
+            .await?;
+        let client_b_ss_log =
+            PersistentSharedSecret::from(spec.registry.state.base.empty.p_obj.client_b.clone())
+                .get_ss_log_obj(vault_name.clone())
+                .await?;
+        let server_ss_log = spec
+            .registry
+            .state
+            .server_node
+            .p_ss
+            .get_ss_log_obj(vault_name.clone())
+            .await?;
+
+        let find_split_claim = |claims: &std::collections::HashMap<ClaimId, SsClaim>| {
+            claims
+                .values()
+                .find(|claim| {
+                    claim.distribution_type == SecretDistributionType::Split
+                        && claim.dist_claim_id.pass_id == pass_id
+                        && claim.sender == client_user.device.device_id
+                })
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("Split claim for pass not found"))
+        };
+
+        let claim_client = find_split_claim(&client_ss_log.claims)?;
+        let claim_vd = find_split_claim(&vd_ss_log.claims)?;
+        let claim_client_b = find_split_claim(&client_b_ss_log.claims)?;
+        let claim_server = find_split_claim(&server_ss_log.claims)?;
+
+        for claim in [&claim_client, &claim_vd, &claim_client_b, &claim_server] {
+            assert_eq!(claim.dist_claim_id.pass_id, pass_id);
+            assert_eq!(claim.distribution_type, SecretDistributionType::Split);
+        }
+
+        // K=2 validation: any two redistributed shares recover secret, one share does not.
+        let recovered = recover_from_shares(vec![share_d2.clone(), share_d3.clone()])?;
+        assert_eq!(recovered.text, "2bee|~");
+        assert!(
+            recover_from_shares(vec![share_d2]).is_err(),
+            "One share must be insufficient after K=2 redistribution"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_e2e_redistribution_join_d4_d5_with_fixed_k2() -> Result<()> {
+        let (registry, orchestrator, single_member_vault, pass_id) =
+            prepare_single_device_secret_for_redistribution().await?;
+
+        let d2 = registry.state.vault_data.vd_membership.user_data_member();
+        let d3 = registry
+            .state
+            .vault_data
+            .client_b_membership
+            .user_data_member();
+        let (d4, d4_creds) =
+            generate_member_for_vault(registry.state.user_creds.client.user().vault_name.clone());
+        let (d5, d5_creds) =
+            generate_member_for_vault(registry.state.user_creds.client.user().vault_name.clone());
+
+        let vault_d2 = single_member_vault
+            .clone()
+            .update_membership(UserMembership::Member(d2.clone()))
+            .add_secret(pass_id.clone());
+        orchestrator
+            .redistribute_existing_secrets_for_test(
+                &vault_d2,
+                &JoinClusterEvent {
+                    candidate: d2.user().clone(),
+                },
+            )
+            .await?;
+
+        let vault_d3 = vault_d2
+            .clone()
+            .update_membership(UserMembership::Member(d3.clone()))
+            .add_secret(pass_id.clone());
+        orchestrator
+            .redistribute_existing_secrets_for_test(
+                &vault_d3,
+                &JoinClusterEvent {
+                    candidate: d3.user().clone(),
+                },
+            )
+            .await?;
+
+        let vault_d4 = vault_d3
+            .clone()
+            .update_membership(UserMembership::Member(d4.clone()))
+            .add_secret(pass_id.clone());
+        orchestrator
+            .redistribute_existing_secrets_for_test(
+                &vault_d4,
+                &JoinClusterEvent {
+                    candidate: d4.user().clone(),
+                },
+            )
+            .await?;
+
+        let vault_d5 = vault_d4
+            .clone()
+            .update_membership(UserMembership::Member(d5.clone()))
+            .add_secret(pass_id.clone());
+        orchestrator
+            .redistribute_existing_secrets_for_test(
+                &vault_d5,
+                &JoinClusterEvent {
+                    candidate: d5.user().clone(),
+                },
+            )
+            .await?;
+
+        let d4_event = orchestrator
+            .p_obj
+            .find_tail_event(SsWorkflowDescriptor::Distribution(SsDistributionId {
+                pass_id: pass_id.clone(),
+                receiver: d4.user().device.device_id.clone(),
+            }))
+            .await?;
+        assert!(d4_event.is_some(), "D4 distribution must exist");
+
+        let d5_event = orchestrator
+            .p_obj
+            .find_tail_event(SsWorkflowDescriptor::Distribution(SsDistributionId {
+                pass_id: pass_id.clone(),
+                receiver: d5.user().device.device_id.clone(),
+            }))
+            .await?;
+        assert!(d5_event.is_some(), "D5 distribution must exist");
+
+        let Some(SsWorkflowObject::Distribution(d4_dist)) = d4_event else {
+            panic!("Expected distribution for D4");
+        };
+        let Some(SsWorkflowObject::Distribution(d5_dist)) = d5_event else {
+            panic!("Expected distribution for D5");
+        };
+
+        let d4_plain = d4_dist
+            .value
+            .secret_message
+            .cipher_text()
+            .decrypt(&d4_creds.secret_box.transport.sk)?;
+        let d5_plain = d5_dist
+            .value
+            .secret_message
+            .cipher_text()
+            .decrypt(&d5_creds.secret_box.transport.sk)?;
+
+        let d4_share = UserShareDto::try_from(&d4_plain.msg)?;
+        let d5_share = UserShareDto::try_from(&d5_plain.msg)?;
+
+        let recovered = recover_from_shares(vec![d4_share.clone(), d5_share.clone()])?;
+        assert_eq!(recovered.text, "2bee|~");
+        assert!(
+            recover_from_shares(vec![d4_share]).is_err(),
+            "Single share must not recover secret for fixed K=2"
+        );
 
         Ok(())
     }
@@ -595,29 +1072,6 @@ mod test {
 
         //let app_state_after_recover_json = serde_json::to_string_pretty(&app_state_after_recover)?;
         //println!("{}", app_state_after_recover_json);
-
-        Ok(())
-    }
-}
-
-#[allow(dead_code)]
-struct SsClaimVerifierForTestRecovery {
-    sender: DeviceId,
-    receiver: DeviceId,
-}
-
-impl SsClaimVerifierForTestRecovery {
-    #[allow(dead_code)]
-    pub fn verify(&self, claim: SsClaim) -> Result<()> {
-        // Verify the claim properties
-        assert_eq!(claim.sender, self.sender);
-        assert_eq!(claim.distribution_type, SecretDistributionType::Recover);
-        assert_eq!(claim.receivers.len(), 1);
-        assert_eq!(claim.receivers[0], self.receiver);
-
-        // Verify that the recovery database IDs are present
-        let claim_ids = claim.recovery_db_ids();
-        assert_eq!(1, claim_ids.len());
 
         Ok(())
     }

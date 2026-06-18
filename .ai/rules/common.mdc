@@ -1,0 +1,19 @@
+---
+description: Common cross-project rules
+globs:
+alwaysApply: true
+---
+
+# Common Rules
+
+- Keep changes scoped to the user request; avoid unrelated refactors.
+- Prefer minimal comments; document only non-obvious invariants or security constraints.
+- Preserve architecture boundaries from `ARCHITECTURE.md` and security constraints from `SECURITY.md`.
+
+# Project Structure
+
+- `meta-secret/`: main Rust workspace (core, cli, meta-cli, wasm, mobile, db, server, tests).
+- `meta-secret/core/`: shared domain and crypto-centric logic.
+- `meta-secret/web-cli/ui/`: web client.
+- `meta-secret/mobile/`: mobile Rust library and UniFFI bridge.
+- `infra/`: deployment and infrastructure assets.

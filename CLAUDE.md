@@ -6,7 +6,7 @@ This file guides Claude Code (claude.ai/code) in **meta-secret-core**. **Canonic
 
 | Document | Contents |
 |---|---|
-| [WORKFLOW.md](WORKFLOW.md) | Agent phases, GitLab vs manual entry, approval gates, subagents |
+| [WORKFLOW.md](WORKFLOW.md) | Agent phases, GitHub/manual entry, approval gates, subagents |
 | [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) | Workspace layout, crates, build/test commands, link to mobile consumer |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Crates, crypto boundary, server vs client, FFI/UniFFI |
 | [SECURITY.md](SECURITY.md) | Keys, logging, crypto handling, operational hygiene |
@@ -41,8 +41,30 @@ This file guides Claude Code (claude.ai/code) in **meta-secret-core**. **Canonic
 
 ## AI workflow
 
-Follow [WORKFLOW.md](WORKFLOW.md). Slash commands: [`.claude/commands/`](.claude/commands/). Cursor parity: [`.cursor/commands/README.md`](.cursor/commands/README.md).
+Follow [WORKFLOW.md](WORKFLOW.md). 
 
-## Cursor
+**Unified AI structure:** All AI automation lives in [`.ai/`](.ai/) — **single source of truth** for Claude Code, Cursor, and OpenAI Codex CLI.
 
-Rules under [`.cursor/rules/`](.cursor/rules/) apply. **Always Apply** rule [`.cursor/rules/ai-project-context.mdc`](.cursor/rules/ai-project-context.mdc) pulls in the same root markdown documents.
+- **Agents:** [`.ai/agents/`](.ai/agents/)
+- **Commands:** [`.ai/commands/`](.ai/commands/) (slash commands for Claude Code + Codex CLI)
+- **Skills:** [`.ai/skills/`](.ai/skills/) (reusable workflows)
+- **Rules:** [`.ai/rules/`](.ai/rules/) (Cursor + Codex CLI)
+
+IDE entry files in `.claude/`, `.cursor/`, and `.codex/` bootstrap orchestration and point to `.ai/` as canonical source:
+- `.claude/ORCHESTRATE.md`
+- `.cursor/WORKFLOW.md`
+- `.codex/ORCHESTRATE.md`
+
+👉 **See [`.ai/ARCHITECTURE.md`](.ai/ARCHITECTURE.md)** for complete AI structure and IDE integration details.
+
+**Agent output:** When this repo sits under the MetaSecret parent workspace, follow [Agent output conventions](../CLAUDE.md#agent-output-conventions) in the root `CLAUDE.md`. Otherwise use the same norms (emojis in replies; `##`/`###` headings, **bold**, blockquotes; optional HTML color where the UI supports it).
+
+## IDE Support
+
+| IDE | Support | Where |
+|-----|---------|-------|
+| **Claude Code** | Workflow bootstrap | Via `.claude/INDEX.md` + `.claude/ORCHESTRATE.md` |
+| **Cursor** | Workflow bootstrap + entry rule | Via `.cursor/WORKFLOW.md` + `.cursor/rules/00-entry.mdc` |
+| **OpenAI Codex CLI** | Workflow bootstrap | Via `.codex/INDEX.md` + `.codex/ORCHESTRATE.md` |
+
+Rules under [`.ai/rules/`](.ai/rules/) remain the canonical source for policy and stage behavior.

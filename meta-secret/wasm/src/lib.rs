@@ -94,3 +94,18 @@ pub fn restore_password(shares_json: JsValue) -> Result<JsValue, JsValue> {
     let plain_text = recover_from_shares(user_shares).map_err(JsError::from)?;
     Ok(JsValue::from_str(plain_text.text.as_str()))
 }
+
+#[wasm_bindgen]
+pub fn component_core_version() -> String {
+    meta_secret_core::CRATE_PKG_VERSION.to_string()
+}
+
+#[wasm_bindgen]
+pub fn component_server_version() -> String {
+    meta_server_node::CRATE_PKG_VERSION.to_string()
+}
+
+#[wasm_bindgen]
+pub fn component_db_version() -> String {
+    meta_db_redb::CRATE_PKG_VERSION.to_string()
+}

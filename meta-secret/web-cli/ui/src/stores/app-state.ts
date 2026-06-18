@@ -39,13 +39,90 @@ export const AppState = defineStore('app_state', {
   },
 
   actions: {
+    async clearIndexedDbByName(dbName: string) {
+      await new Promise<void>((resolve, reject) => {
+        const request = indexedDB.deleteDatabase(dbName);
+
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+        request.onblocked = () => resolve();
+      });
+    },
+
+    async clearAllMetaSecretIndexedDb() {
+      const dbNames = [
+        'meta-secret',
+        'meta-secret-server',
+        'meta-secret-v-device',
+        'meta-secret-v-device-2',
+      ];
+
+      for (const dbName of dbNames) {
+        try {
+          await this.clearIndexedDbByName(dbName);
+        } catch (error) {
+          console.warn(`Failed to delete IndexedDB ${dbName}:`, error);
+        }
+      }
+    },
+
+    shouldResetDbOnInitError(error: unknown) {
+      const text = String(error);
+      return text.includes('missing field `deviceType`') || text.includes('missing field deviceType');
+    },
+
+    async cleanDatabase() {
+      const manager: any = this.appManager as any;
+      if (manager && typeof manager.clean_up_database === 'function') {
+        await manager.clean_up_database();
+      } else {
+        await this.clearAllMetaSecretIndexedDb();
+      }
+    },
+
+    resolveWebDeviceInfo() {
+      const ua = navigator.userAgent.toLowerCase();
+      const platform = navigator.platform || 'Web';
+      const browser =
+        ua.includes('edg') ? 'Edge' :
+        ua.includes('opr') || ua.includes('opera') ? 'Opera' :
+        ua.includes('firefox') ? 'Firefox' :
+        ua.includes('safari') && !ua.includes('chrome') ? 'Safari' :
+        ua.includes('chrome') ? 'Chrome' :
+        'Browser';
+      const isTablet = /ipad|tablet|android(?!.*mobile)/i.test(navigator.userAgent);
+      const deviceType = isTablet ? 'Tablet' : 'Web';
+      const deviceName = `${browser} on ${platform}`.trim();
+      return { deviceName, deviceType };
+    },
+
     async appStateInit() {
       console.log('Js: App state, start initialization');
       await init();
 
       const authStore = useAuthStore();
       const transportSk = MasterKeyManager.from_pure_sk(authStore.masterKey);
-      const appManager = await WasmApplicationManager.init_wasm(transportSk);
+      const { deviceName, deviceType } = this.resolveWebDeviceInfo();
+      let appManager;
+      try {
+        appManager = await WasmApplicationManager.init_wasm_with_device(
+          transportSk,
+          deviceName,
+          deviceType,
+        );
+      } catch (error) {
+        if (this.shouldResetDbOnInitError(error)) {
+          console.warn('Detected legacy IndexedDB data without deviceType. Cleaning DB and retrying init.');
+          await this.clearAllMetaSecretIndexedDb();
+          appManager = await WasmApplicationManager.init_wasm_with_device(
+            transportSk,
+            deviceName,
+            deviceType,
+          );
+        } else {
+          throw error;
+        }
+      }
       console.log('Js: Initial App State!!!!');
 
       this.appManager = appManager;

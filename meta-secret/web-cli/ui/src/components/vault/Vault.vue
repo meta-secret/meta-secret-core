@@ -1,11 +1,22 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
+import {
+  component_core_version,
+  component_db_version,
+  component_server_version,
+} from 'meta-secret-web-cli';
 import { AppState } from '@/stores/app-state';
+import { vaultComponentVersions, vaultTechnicalInfo } from '@/locales/en';
 
 const appState = AppState();
-const vaultName = ref(appState.getVaultName());
-const deviceId = (appState.currState as any).device_id().wasm_id_str();
+const vaultName = computed(() => appState.getVaultName());
+const deviceId = computed(() => (appState.currState as any).device_id().wasm_id_str());
 const showDeviceId = ref(false);
+
+const webUiVersion = __WEB_UI_VERSION__;
+const coreVersion = computed(() => component_core_version());
+const serverVersion = computed(() => component_server_version());
+const dbVersion = computed(() => component_db_version());
 
 const toggleDeviceId = () => {
   showDeviceId.value = !showDeviceId.value;
@@ -13,142 +24,208 @@ const toggleDeviceId = () => {
 </script>
 
 <template>
-  <div :class="$style.headerContainer">
-    <div :class="$style.vaultBadge">
-      <div :class="$style.vaultLabel">Vault Name</div>
-      <div :class="$style.vaultSeparator"></div>
-      <div :class="$style.vaultName">{{ vaultName }}</div>
-      <button :class="$style.infoButton" @click="toggleDeviceId" title="Show Technical Information">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"></circle>
-          <line x1="12" y1="16" x2="12" y2="12"></line>
-          <line x1="12" y1="8" x2="12.01" y2="8"></line>
+  <div class="vault-shell">
+    <div class="vault-pill-wrap">
+      <div class="vault-pill">
+        <span class="vault-name-label">Vault Name</span>
+        <div class="vault-separator"></div>
+        <span class="vault-name-value">{{ vaultName }}</span>
+      </div>
+      <button class="vault-info-btn" title="Show Technical Information" @click="toggleDeviceId">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="9" stroke="#4a6080" stroke-width="2" />
+          <path d="M12 8v1M12 11v5" stroke="#4a6080" stroke-width="2" stroke-linecap="round"/>
         </svg>
       </button>
     </div>
-    <div v-if="showDeviceId" :class="$style.deviceIdContainer">
-      <span :class="$style.deviceIdLabel">Device Id:</span>
-      <span :class="$style.deviceIdValue">{{ deviceId }}</span>
+
+    <div v-if="showDeviceId" class="device-id-container">
+      <div class="device-id-title">{{ vaultTechnicalInfo.title }}</div>
+      <div class="device-id-row">
+        <span class="device-id-label">{{ vaultTechnicalInfo.labelDeviceId }}</span>
+        <span class="device-id-value">{{ deviceId }}</span>
+      </div>
+      <div class="versions-block">
+        <div class="device-id-title">{{ vaultComponentVersions.sectionTitle }}</div>
+        <div class="device-id-row">
+          <span class="device-id-label">{{ vaultComponentVersions.labelWebUi }}</span>
+          <span class="device-id-value">{{ webUiVersion }}</span>
+        </div>
+        <div class="device-id-row">
+          <span class="device-id-label">{{ vaultComponentVersions.labelCore }}</span>
+          <span class="device-id-value">{{ coreVersion }}</span>
+        </div>
+        <div class="device-id-row">
+          <span class="device-id-label">{{ vaultComponentVersions.labelServer }}</span>
+          <span class="device-id-value">{{ serverVersion }}</span>
+        </div>
+        <div class="device-id-row">
+          <span class="device-id-label">{{ vaultComponentVersions.labelDb }}</span>
+          <span class="device-id-value">{{ dbVersion }}</span>
+        </div>
+      </div>
     </div>
-  </div>
 
-  <div :class="$style.navContainer">
-    <div :class="$style.navWrapper">
-      <RouterLink
-        :class="[$style.navLink, $route.path.includes('/secrets') ? $style.activeLink : '']"
-        to="/secrets"
-        >Secrets
+    <div class="tab-wrap">
+      <RouterLink :class="['tab-btn', $route.path.includes('/secrets') ? 'active' : 'inactive']" to="/secrets">
+        Secrets
       </RouterLink>
-
-      <RouterLink
-        :class="[$style.navLink, $route.path.includes('/devices') ? $style.activeLink : '']"
-        to="/devices"
-        >Devices
+      <RouterLink :class="['tab-btn', $route.path.includes('/devices') ? 'active' : 'inactive']" to="/devices">
+        Devices
       </RouterLink>
     </div>
-  </div>
 
-  <div>
     <RouterView />
   </div>
 </template>
 
-<style module>
-.headerContainer {
-  @apply container mx-auto flex flex-col items-center max-w-md pt-3 pb-4;
-  position: relative;
+<style scoped>
+.vault-shell {
+  padding: 24px 24px 0;
 }
 
-.vaultBadge {
-  @apply flex items-center gap-1;
-  @apply px-4 py-2 rounded-full shadow-lg;
-  @apply transition-all duration-300 hover:shadow-orange-900/20;
-  @apply backdrop-blur-sm;
-  @apply bg-white/90 border border-slate-300;
-  box-shadow: 0 0 15px rgba(234, 88, 12, 0.2), inset 0 0 10px rgba(255, 255, 255, 0.3);
+.vault-pill-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
 }
 
-:global(.dark) .vaultBadge {
-  @apply bg-slate-800/90 border-slate-700;
-  box-shadow: 0 0 15px rgba(234, 88, 12, 0.2), inset 0 0 10px rgba(0, 0, 0, 0.3);
+.vault-pill {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #0d1726;
+  border: 1px solid #1e3050;
+  border-radius: 50px;
+  padding: 10px 24px;
+  width: fit-content;
+  box-shadow: 0 0 0 1px #2563eb22 inset;
 }
 
-.vaultLabel {
-  @apply text-sm text-slate-400 dark:text-slate-400 font-medium uppercase tracking-wider;
-  @apply py-0.5;
+.vault-name-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #3a5070;
+  text-transform: uppercase;
 }
 
-.vaultSeparator {
-  @apply w-0.5 h-6 mx-2 bg-gradient-to-b from-slate-700 via-orange-500 to-slate-700 rounded-full;
+.vault-separator {
+  width: 1px;
+  height: 18px;
+  background: #1e3050;
 }
 
-.vaultName {
-  @apply text-xl font-bold bg-gradient-to-r from-orange-500 to-amber-500 bg-clip-text text-transparent;
-  @apply py-0.5 px-2;
-  text-shadow: 0 0 10px rgba(234, 88, 12, 0.3);
+.vault-name-value {
+  font-size: 16px;
+  font-weight: 800;
+  color: #2563eb;
 }
 
-.infoButton {
-  @apply text-slate-400 hover:text-orange-400 transition-all duration-300;
-  @apply w-7 h-7 flex items-center justify-center rounded-full ml-1;
-  @apply hover:bg-slate-700/50 hover:scale-110;
+.vault-info-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid #1a2840;
+  background: #111e30;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
 }
 
-.deviceIdContainer {
-  @apply mt-2 text-xs text-center py-2 px-4 rounded-lg;
-  @apply backdrop-blur-sm;
-  @apply animate-fadeIn;
-  @apply bg-white/90 border border-slate-300/50 shadow-md shadow-black/10;
+.vault-info-btn:hover {
+  border-color: #2563eb44;
 }
 
-:global(.dark) .deviceIdContainer {
-  @apply bg-slate-800/80 border-slate-700/50 shadow-black/30;
+.device-id-container {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
 }
 
-.deviceIdLabel {
-  @apply mr-1 font-medium;
-  @apply text-slate-600;
+.versions-block {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
 }
 
-:global(.dark) .deviceIdLabel {
-  @apply text-slate-300;
+.device-id-title {
+  font-size: 11px;
+  color: #4a6080;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 2px;
 }
 
-.deviceIdValue {
-  @apply font-mono text-orange-300 font-medium;
+.device-id-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.navContainer {
-  @apply container mx-auto px-4 py-2;
+.device-id-label {
+  font-size: 12px;
+  color: #4a6080;
 }
 
-.navWrapper {
-  @apply flex mx-auto max-w-md rounded-lg overflow-hidden shadow;
+.device-id-value {
+  font-size: 12px;
+  color: #8aaacf;
+  font-family: monospace;
 }
 
-.navLink {
-  @apply w-1/2 text-center py-3 px-6 font-medium transition-colors;
-  @apply bg-slate-200 text-slate-800 hover:bg-slate-300;
+.tab-wrap {
+  margin: 16px auto 0;
+  width: 100%;
+  max-width: 900px;
+  display: flex;
+  background: #0d1726;
+  border: 1px solid #1a2840;
+  border-radius: 14px;
+  padding: 5px;
+  gap: 4px;
 }
 
-:global(.dark) .navLink {
-  @apply bg-gray-700 text-white hover:bg-gray-600;
+.tab-btn {
+  flex: 1;
+  height: 42px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
 }
 
-.activeLink {
-  @apply bg-orange-500 text-white hover:bg-orange-500;
+.tab-btn.active {
+  background: #2563eb;
+  color: #ffffff;
 }
 
-:global(.dark) .activeLink {
-  @apply bg-orange-600 hover:bg-orange-600;
+.tab-btn.inactive {
+  background: transparent;
+  color: #4a6080;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(-5px); }
-  to { opacity: 1; transform: translateY(0); }
+.tab-btn.inactive:hover {
+  color: #8aaacf;
 }
 
-.animate-fadeIn {
-  animation: fadeIn 0.2s ease-out forwards;
+@media (max-width: 900px) {
+  .vault-shell {
+    padding: 20px 16px 0;
+  }
+
+  .tab-btn {
+    height: 40px;
+    font-size: 15px;
+  }
 }
 </style>

@@ -1,6 +1,6 @@
 {
   "name": "meta-secret-ui-vue",
-  "version": "0.0.0",
+  "version": "2.0.0",
   "scripts": {
     "dev": "vite --host",
     "build": "vue-tsc --noEmit && vite build",

@@ -87,27 +87,28 @@ This repository defines a **phased workflow** (plan → implement → test → v
 | [SECURITY.md](SECURITY.md) | Keys, logging, crypto hygiene. |
 | [CODE_STYLE.md](CODE_STYLE.md) | Rust conventions. |
 
-Skills live under [`.claude/skills/`](.claude/skills/). Subagent prompts: [`.cursor/agents/`](.cursor/agents/) and [`.claude/agents/`](.claude/agents/).
+Skills live under [`.ai/skills/`](.ai/skills/). Subagent prompts live under [`.ai/agents/`](.ai/agents/).
+Domain map for web/cli/core/mobile lib: [docs/ai-domain-standards.md](docs/ai-domain-standards.md).
 
 ---
 
 ### Claude Code
 
 1. Open **this repo** in Claude Code so it loads [`.claude/`](.claude/).
-2. **Slash commands:** [`.claude/commands/`](.claude/commands/).
+2. Use workflow command specs in [`.ai/commands/`](.ai/commands/) (invoked through Claude entrypoints).
 
 **Start a full delivery chain**
 
 | Command | When |
 |---------|------|
-| `/workflow-from-issue` | GitLab issue number or URL (`glab` available). |
+| `/workflow-from-issue` | GitHub issue number or URL (`gh` available). |
 | `/workflow-from-prompt` | Free-text feature/bug description only. |
 
 **Run a single phase**
 
 | Command | Phase |
 |---------|--------|
-| `/only-issue-coordinator` | GitLab issue summary |
+| `/only-issue-coordinator` | GitHub issue summary |
 | `/only-planner` | Plan only (`feature-planner`) |
 | `/only-implementer` | Implement approved plan |
 | `/only-test-author` | Add/update tests |
@@ -126,11 +127,11 @@ Skills live under [`.claude/skills/`](.claude/skills/). Subagent prompts: [`.cur
 
 ### Cursor
 
-Cursor does **not** load `.claude/commands/` as slash commands. Use **Agent** chat; parity: [`.cursor/commands/README.md`](.cursor/commands/README.md).
+Cursor does **not** load Claude slash command folders directly. Use **Agent** chat; parity: [`.cursor/commands/README.md`](.cursor/commands/README.md).
 
-1. **Rules:** [`.cursor/rules/`](.cursor/rules/) — `ai-project-context.mdc` pulls the root markdown documents.
-2. **Invoke a phase:** `/feature-planner` or “Use the **feature-planner** subagent: …” — see [`.cursor/agents/`](.cursor/agents/).
-3. **Skills:** ask Agent to read `SKILL.md` under [`.claude/skills/<name>/`](.claude/skills/) when needed.
+1. **Rules:** [`.ai/rules/`](.ai/rules/) — `ai-project-context.mdc` pulls the root markdown documents.
+2. **Invoke a phase:** use workflow entrypoints from [`.ai/commands/`](.ai/commands/).
+3. **Skills:** ask Agent to read `SKILL.md` under [`.ai/skills/<name>/`](.ai/skills/) when needed.
 4. **Pipeline:** [WORKFLOW.md](WORKFLOW.md). **FFI changes:** coordinate with **meta-secret-compose**.
 
 ---

@@ -1,128 +1,156 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { AppState } from '@/stores/app-state';
 import Device from '@/components/vault/Device.vue';
 import { UserDataOutsiderStatus } from 'meta-secret-web-cli';
+import { vaultSecrets } from '@/locales/en';
 
 const appState = AppState();
-// Use type assertion to avoid TypeScript error
-const users = (appState.currState as any).as_vault().as_member().vault_data().users();
+const users = computed(() => (appState.currState as any).as_vault().as_member().vault_data().users());
 
-// Group devices by status
-const memberDevices = users.filter(membership => membership.is_member());
-const declinedDevices = users.filter(membership => {
-  if (membership.is_outsider()) {
-    const outsider = membership.as_outsider();
-    return outsider.status === UserDataOutsiderStatus.Declined;
-  }
-  return false;
-});
-const pendingDevices = users.filter(membership => {
-  if (membership.is_outsider()) {
-    const outsider = membership.as_outsider();
-    return outsider.status === UserDataOutsiderStatus.Pending;
-  } else {
-    return false;
-  }
-});
+const memberDevices = computed(() => users.value.filter((membership: any) => membership.is_member()));
+const declinedDevices = computed(() => users.value.filter((membership: any) => {
+  if (!membership.is_outsider()) return false;
+  return membership.as_outsider().status === UserDataOutsiderStatus.Declined;
+}));
+const pendingDevices = computed(() => users.value.filter((membership: any) => {
+  if (!membership.is_outsider()) return false;
+  return membership.as_outsider().status === UserDataOutsiderStatus.Pending;
+}));
+
+const currentDeviceCount = computed(() => users.value.length);
+const requiredDevicesToSafety = computed(() => 3 - currentDeviceCount.value);
+const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 0);
 </script>
 
 <template>
-  <div :class="$style.spacer" />
-
-  <!-- Main devices container -->
-  <div :class="$style.devicesContainer">
-    <h3 :class="$style.devicesTitle">Devices</h3>
-    <p :class="$style.devicesDescription">Detailed information about user devices</p>
-
-    <div v-if="users.length === 0" :class="$style.emptyState">No devices connected yet</div>
-
-    <div v-else>
-      <!-- Member devices section -->
-      <div v-if="memberDevices.length > 0">
-        <div :class="$style.sectionHeader">Members</div>
-        <ul :class="$style.devicesList">
-          <li
-            v-for="membership in memberDevices"
-            :key="membership.user_data().device.device_id.wasm_id_str()"
-            :class="$style.deviceListItem"
-          >
-            <Device :membership="membership"/>
-          </li>
-        </ul>
+  <div class="main-content">
+    <div class="page-wide">
+      <div v-if="shouldShowDevicesWarning" class="warning-banner">
+        <span class="warning-icon">⚠</span>
+        <span>
+          {{ vaultSecrets.warningPrefix }} {{ requiredDevicesToSafety }} {{ vaultSecrets.warningMiddle }}
+        </span>
       </div>
 
-      <!-- Pending devices section -->
-      <div v-if="pendingDevices.length > 0">
-        <div :class="$style.sectionHeader">Pending Requests</div>
-        <ul :class="$style.devicesList">
-          <li
-            v-for="membership in pendingDevices"
-            :key="membership.user_data().device.device_id.wasm_id_str()"
-            :class="$style.deviceListItem"
-          >
-            <Device :membership="membership"/>
-          </li>
-        </ul>
-      </div>
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Devices</div>
+            <div class="section-sub">Detailed information about user devices</div>
+          </div>
+        </div>
 
-      <!-- Declined devices section -->
-      <div v-if="declinedDevices.length > 0">
-        <div :class="$style.sectionHeader">Declined Devices</div>
-        <ul :class="$style.devicesList">
-          <li
-            v-for="membership in declinedDevices"
-            :key="membership.user_data().device.device_id.wasm_id_str()"
-            :class="[$style.deviceListItem, $style.declinedListItem]"
-          >
-            <Device :membership="membership"/>
-          </li>
-        </ul>
+        <div v-if="users.length === 0" class="empty-state">No devices connected yet</div>
+
+        <template v-else>
+          <div v-if="memberDevices.length > 0">
+            <div v-for="membership in memberDevices" :key="membership.user_data().device.device_id.wasm_id_str()">
+              <Device :membership="membership" />
+            </div>
+          </div>
+
+          <div v-if="pendingDevices.length > 0">
+            <div v-for="membership in pendingDevices" :key="membership.user_data().device.device_id.wasm_id_str()">
+              <Device :membership="membership" />
+            </div>
+          </div>
+
+          <div v-if="declinedDevices.length > 0">
+            <div v-for="membership in declinedDevices" :key="membership.user_data().device.device_id.wasm_id_str()">
+              <Device :membership="membership" />
+            </div>
+          </div>
+        </template>
       </div>
     </div>
   </div>
 </template>
 
-<style module>
-.spacer {
-  @apply py-3;
+<style scoped>
+.main-content {
+  padding: 48px 24px;
+  display: flex;
+  justify-content: center;
 }
 
-.devicesList {
-  @apply w-full flex flex-col;
+.page-wide {
+  width: 100%;
+  max-width: 1240px;
 }
 
-.devicesContainer {
-  @apply container max-w-md mx-auto rounded-lg overflow-hidden;
-  @apply bg-white dark:bg-gray-850;
-  @apply border border-gray-200 dark:border-gray-700 shadow-md;
+.warning-banner {
+  background: #1a2518;
+  border: 1px solid #2a3a1e;
+  border-radius: 12px;
+  padding: 12px 16px;
+  color: #8aaa70;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 
-.devicesTitle {
-  @apply text-lg font-medium text-gray-800 dark:text-gray-200 px-4 pt-4 pb-1;
+.warning-icon {
+  color: #e6b44a;
 }
 
-.devicesDescription {
-  @apply max-w-2xl text-sm text-gray-500 dark:text-gray-300 px-4 pb-3;
-  @apply border-b border-gray-200 dark:border-gray-700;
+.card {
+  background: #0d1726;
+  border: 1px solid #1a2840;
+  border-radius: 16px;
+  overflow: hidden;
 }
 
-.emptyState {
-  @apply py-6 text-center text-gray-500 dark:text-gray-400 italic;
+.card-header {
+  padding: 18px 20px;
+  border-bottom: 1px solid #1a2840;
 }
 
-.deviceListItem {
-  @apply flex flex-col w-full transition-colors duration-200;
-  @apply border-b border-gray-200 dark:border-gray-700 last:border-b-0;
-  @apply hover:bg-orange-50 dark:hover:bg-gray-700;
+.card-title {
+  font-size: 17px;
+  line-height: 1.2;
+  font-weight: 700;
+  color: #ffffff;
 }
 
-.declinedListItem {
-  @apply bg-gray-50 dark:bg-gray-800;
+.section-sub {
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #3a5070;
 }
 
-.sectionHeader {
-  @apply text-base font-bold text-gray-700 dark:text-gray-200 px-4 py-3 bg-gray-50 dark:bg-gray-800;
-  @apply border-t border-b border-gray-200 dark:border-gray-700;
-  @apply uppercase tracking-wide;
+.empty-state {
+  padding: 30px;
+  color: #8aaacf;
+  font-size: 14px;
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  .main-content {
+    padding: 24px 16px;
+  }
+
+  .card {
+    border-radius: 14px;
+  }
+
+  .card-header {
+    padding: 16px;
+  }
+
+  .card-title {
+    font-size: 16px;
+  }
+
+  .section-sub {
+    font-size: 10px;
+  }
+
 }
 </style>

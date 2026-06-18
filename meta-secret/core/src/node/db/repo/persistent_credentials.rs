@@ -1,5 +1,5 @@
 use crate::crypto::keys::{TransportSk};
-use crate::node::common::model::device::common::DeviceName;
+use crate::node::common::model::device::common::{DeviceName, DeviceType};
 use crate::node::common::model::device::device_creds::{
     DeviceCreds, DeviceCredsBuilder, SecureDeviceCreds,
 };
@@ -40,11 +40,27 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
         &self,
         device_name: DeviceName,
     ) -> Result<DeviceCreds> {
+        self.get_or_generate_device_creds_with_type(device_name, DeviceType::other())
+            .await
+    }
+
+    #[instrument(skip(self))]
+    pub async fn get_or_generate_device_creds_with_type(
+        &self,
+        device_name: DeviceName,
+        device_type: DeviceType,
+    ) -> Result<DeviceCreds> {
         let maybe_device_creds = self.get_device_creds().await?;
 
         let device_creds = match maybe_device_creds {
-            None => self.generate_device_creds(device_name).await?,
-            Some(creds) => creds,
+            None => self.generate_device_creds(device_name, device_type).await?,
+            Some(mut creds) => {
+                if creds.device.device_type != device_type {
+                    creds.device.device_type = device_type;
+                    self.save_device_creds(creds.clone()).await?;
+                }
+                creds
+            }
         };
         Ok(device_creds)
     }
@@ -96,8 +112,14 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
     }
 
     #[instrument(skip(self))]
-    async fn generate_device_creds(&self, device_name: DeviceName) -> Result<DeviceCreds> {
-        let device_creds = DeviceCredsBuilder::generate().build(device_name).creds;
+    async fn generate_device_creds(
+        &self,
+        device_name: DeviceName,
+        device_type: DeviceType,
+    ) -> Result<DeviceCreds> {
+        let device_creds = DeviceCredsBuilder::generate()
+            .build_with_type(device_name, device_type)
+            .creds;
         info!(
             "Device credentials has been generated: {:?}",
             &device_creds.device
@@ -113,7 +135,28 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
         device_name: DeviceName,
         vault_name: VaultName,
     ) -> Result<UserCreds> {
-        let device_creds = self.get_or_generate_device_creds(device_name.clone()).await?;
+        // Backward-compatible path for callers that do not provide device type explicitly.
+        // If device creds already exist, preserve their type instead of downgrading to "Other".
+        let fallback_device_type = self
+            .get_device_creds()
+            .await?
+            .map(|creds| creds.device.device_type)
+            .unwrap_or_else(DeviceType::other);
+
+        self.get_or_generate_user_creds_with_type(device_name, fallback_device_type, vault_name)
+            .await
+    }
+
+    #[instrument(skip_all)]
+    pub async fn get_or_generate_user_creds_with_type(
+        &self,
+        device_name: DeviceName,
+        device_type: DeviceType,
+        vault_name: VaultName,
+    ) -> Result<UserCreds> {
+        let device_creds = self
+            .get_or_generate_device_creds_with_type(device_name.clone(), device_type.clone())
+            .await?;
 
         let maybe_user_creds = self.get_user_creds().await?;
 
@@ -125,7 +168,13 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
                 self.save_user_creds(user_creds.clone()).await?;
                 user_creds
             }
-            Some(creds) => creds,
+            Some(mut creds) => {
+                if creds.device_creds.device.device_type != device_type {
+                    creds.device_creds.device.device_type = device_type;
+                    self.save_user_creds(creds.clone()).await?;
+                }
+                creds
+            }
         };
 
         if !user_creds.device_creds.device.device_id.eq(&device_creds.device.device_id) {

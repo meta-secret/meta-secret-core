@@ -2,6 +2,8 @@ namespace mobile_uniffi {
     string generate_master_key();
     string init_ios(string master_key);
     string init_android(string master_key);
+    string init_ios_with_device(string master_key, string device_name, string device_type);
+    string init_android_with_device(string master_key, string device_name, string device_type);
     string get_state();
     string generate_user_creds(string vault_name);
     string sign_up();
@@ -15,4 +17,5 @@ namespace mobile_uniffi {
     string decline_recover(string claim_id);
     string send_decline_completion(string claim_id);
     string show_recovered(string secret_id);
+    i32 device_ui_category_discriminant(string device_type);
 };

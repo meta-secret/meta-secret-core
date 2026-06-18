@@ -93,20 +93,206 @@ impl DeviceName {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(transparent)]
+#[wasm_bindgen(getter_with_clone)]
+pub struct DeviceType(String);
+
+#[wasm_bindgen]
+impl DeviceType {
+    pub fn android() -> Self {
+        DeviceType::from("Android")
+    }
+
+    pub fn iphone() -> Self {
+        DeviceType::from("iPhone")
+    }
+
+    pub fn tablet() -> Self {
+        DeviceType::from("Tablet")
+    }
+
+    pub fn web() -> Self {
+        DeviceType::from("Web")
+    }
+
+    pub fn cli() -> Self {
+        DeviceType::from("CLI")
+    }
+
+    pub fn desktop() -> Self {
+        DeviceType::from("Desktop")
+    }
+
+    pub fn other() -> Self {
+        DeviceType::from("Other")
+    }
+
+    pub fn as_str(&self) -> String {
+        self.0.clone()
+    }
+}
+
+impl Default for DeviceType {
+    fn default() -> Self {
+        DeviceType::other()
+    }
+}
+
+impl From<String> for DeviceType {
+    fn from(device_type: String) -> Self {
+        DeviceType(device_type)
+    }
+}
+
+impl From<&str> for DeviceType {
+    fn from(device_type: &str) -> Self {
+        DeviceType(String::from(device_type))
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[wasm_bindgen]
+pub enum DeviceUiCategory {
+    Android,
+    Iphone,
+    Tablet,
+    Desktop,
+    Cli,
+    Web,
+    Other,
+}
+
+pub fn device_ui_category(device_type: &DeviceType) -> DeviceUiCategory {
+    let value = device_type.as_str().to_lowercase();
+    if value.contains("android") {
+        return DeviceUiCategory::Android;
+    }
+    if value.contains("iphone") || value.contains("ios") {
+        return DeviceUiCategory::Iphone;
+    }
+    if value.contains("tablet") || value.contains("ipad") {
+        return DeviceUiCategory::Tablet;
+    }
+    if value.contains("desktop")
+        || value.contains("laptop")
+        || value.contains("mac")
+        || value.contains("windows")
+    {
+        return DeviceUiCategory::Desktop;
+    }
+    if value.contains("cli") || value.contains("terminal") {
+        return DeviceUiCategory::Cli;
+    }
+    if value.contains("web") || value.contains("browser") {
+        return DeviceUiCategory::Web;
+    }
+    DeviceUiCategory::Other
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 #[wasm_bindgen(getter_with_clone)]
 pub struct DeviceData {
     pub device_id: DeviceId,
     pub device_name: DeviceName,
+    pub device_type: DeviceType,
     pub keys: OpenBox,
 }
 
 /// Contains only public information about device
 impl DeviceData {
-    pub fn from(device_name: DeviceName, open_box: OpenBox) -> Self {
+    pub fn from_with_type(device_name: DeviceName, device_type: DeviceType, open_box: OpenBox) -> Self {
         Self {
             device_name,
+            device_type,
             device_id: DeviceId::from(&open_box),
             keys: open_box,
         }
+    }
+
+    pub fn from(device_name: DeviceName, open_box: OpenBox) -> Self {
+        Self::from_with_type(device_name, DeviceType::other(), open_box)
+    }
+}
+
+#[wasm_bindgen]
+impl DeviceData {
+    pub fn ui_category(&self) -> DeviceUiCategory {
+        device_ui_category(&self.device_type)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{device_ui_category, DeviceData, DeviceType, DeviceUiCategory};
+    use serde_json::json;
+
+    #[test]
+    fn device_type_default_is_other() {
+        assert_eq!(DeviceType::default().as_str(), "Other");
+    }
+
+    #[test]
+    fn device_type_named_constructors_are_stable() {
+        assert_eq!(DeviceType::android().as_str(), "Android");
+        assert_eq!(DeviceType::iphone().as_str(), "iPhone");
+        assert_eq!(DeviceType::tablet().as_str(), "Tablet");
+        assert_eq!(DeviceType::web().as_str(), "Web");
+        assert_eq!(DeviceType::cli().as_str(), "CLI");
+        assert_eq!(DeviceType::desktop().as_str(), "Desktop");
+    }
+
+    #[test]
+    fn device_data_requires_device_type_in_json() {
+        let payload = json!({
+            "deviceId": "abc",
+            "deviceName": "test-device",
+            "keys": {
+                "dsaPk": "dsa",
+                "transportPk": "transport"
+            }
+        });
+
+        let parsed = serde_json::from_value::<DeviceData>(payload);
+        assert!(parsed.is_err());
+    }
+
+    #[test]
+    fn device_ui_category_matches_stable_type_strings() {
+        assert_eq!(
+            device_ui_category(&DeviceType::android()),
+            DeviceUiCategory::Android
+        );
+        assert_eq!(
+            device_ui_category(&DeviceType::iphone()),
+            DeviceUiCategory::Iphone
+        );
+        assert_eq!(
+            device_ui_category(&DeviceType::tablet()),
+            DeviceUiCategory::Tablet
+        );
+        assert_eq!(
+            device_ui_category(&DeviceType::desktop()),
+            DeviceUiCategory::Desktop
+        );
+        assert_eq!(device_ui_category(&DeviceType::cli()), DeviceUiCategory::Cli);
+        assert_eq!(device_ui_category(&DeviceType::web()), DeviceUiCategory::Web);
+        assert_eq!(
+            device_ui_category(&DeviceType::other()),
+            DeviceUiCategory::Other
+        );
+    }
+
+    #[test]
+    fn device_ui_category_heuristic_substrings() {
+        assert_eq!(
+            device_ui_category(&DeviceType::from("My Android 15")),
+            DeviceUiCategory::Android
+        );
+        assert_eq!(
+            device_ui_category(&DeviceType::from("Foo")),
+            DeviceUiCategory::Other
+        );
     }
 }

@@ -40,17 +40,23 @@ impl InitUserCommand {
         }
 
         let device_name = device_creds.device.device_name.clone();
+        let device_type = device_creds.device.device_type.clone();
 
         // Generate user credentials
         let user_creds = db_context
             .p_creds
-            .get_or_generate_user_creds(device_name.clone(), self.vault_name.clone())
+            .get_or_generate_user_creds_with_type(
+                device_name.clone(),
+                device_type.clone(),
+                self.vault_name.clone(),
+            )
             .await?;
 
         // Print information about user credentials
         println!("User credentials for vault successfully configured");
         println!("Device ID: {}", device_creds.device.device_id);
         println!("Device Name: {:?}", device_name);
+        println!("Device Type: {:?}", device_type.as_str());
         println!("Vault Name: {}", user_creds.vault_name.0);
 
         Ok(())

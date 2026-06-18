@@ -35,4 +35,4 @@ Meta Secret core is organized as a **Cargo workspace** of crates. The **`meta-se
 ## Further reading
 
 - [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) — paths and commands.
-- `.claude/skills/architecture-guardian/SKILL.md` — short checklist for agents (align with this file).
+- [`.ai/skills/architecture-guardian/SKILL.md`](.ai/skills/architecture-guardian/SKILL.md) — short checklist for agents (align with this file).
