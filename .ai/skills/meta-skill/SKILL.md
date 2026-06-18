@@ -12,9 +12,10 @@ disable-model-invocation: true
 ## Non-negotiables
 
 **No directory structure trees** (no ASCII trees with `├──`, `└──`, `  scripts/`, etc.).
-Replace with inline file references or a plain list.
 
 **No tables.** Use lists, nested lists, or definition-style text instead.
+
+**No file listings.** Don't enumerate every file in the codebase. Explain what the thing does at a general level; let the reader find the files themselves.
 
 **No** — do not write:
 ```
@@ -23,11 +24,7 @@ Replace with inline file references or a plain list.
 | fetch-logs.ts | Does X |
 ```
 
-**Yes** — write instead:
-- `fetch-logs.ts` — does X
-- `build-prompt.ts` — does Y
-
-Or inline: "Logs are read by `lib/fetch-logs.ts`; the prompt is built in `lib/build-prompt.ts`."
+**Yes** — write instead: "Failure logs are fetched and trimmed before being passed to the agent."
 
 ## Structure
 

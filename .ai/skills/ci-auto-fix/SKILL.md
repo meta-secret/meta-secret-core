@@ -5,28 +5,19 @@ Use this skill when working on or extending the automated CI failure recovery lo
 
 ## What it is
 
-When the `tests` GitHub Actions workflow fails, a Cursor cloud agent automatically:
+When the `tests` GitHub Actions workflow fails, a Cursor cloud agent automatically
+fetches the failure logs, analyses the root cause, edits the source, and opens a fix PR
+against the failing branch. The fix PR re-triggers the tests to verify.
 
-1. Fetches `gh run view --log-failed` output from the failed run.
-2. Builds a structured prompt from the failure logs (`.github/scripts/lib/build-prompt.ts`).
-3. Launches a Cursor cloud agent via `@cursor/sdk` with `autoCreatePR: true`.
-4. The agent reads the logs, edits the source, and opens a fix PR against the failing branch.
-5. The fix PR re-triggers the `tests` workflow to verify.
-
-## Key files
-
-- `.github/workflows/cursor-fix.yml` — GitHub Actions trigger + orchestration
-- `.github/scripts/cursor-fix.ts` — entrypoint: validate env → fetchCIContext → buildPrompt → runFixAgent
-- `.github/scripts/lib/fetch-logs.ts` — reads `/tmp/failure_logs.txt` + env vars → `CIContext`
-- `.github/scripts/lib/build-prompt.ts` — builds the agent prompt from `CIContext`
-- `.github/scripts/lib/run-agent.ts` — Cursor SDK invocation, cloud runtime, error handling
+The implementation lives in `.github/scripts/` — a Bun TypeScript project that uses
+`@cursor/sdk` with `autoCreatePR: true`.
 
 ## Key design decisions
 
 - **`autoCreatePR: true`** — Cursor opens the fix PR directly; no shell `gh` call needed.
 - **`skipReviewerRequest: true`** — suppresses review requests in CI; keeps notifications quiet.
 - **Bun** — native TypeScript, fast installs via `bun.lock`, no build step.
-- **Log truncation** — `fetch-logs.ts` caps at 8 000 chars to stay within prompt limits.
+- **Log truncation** — failure logs are capped to stay within prompt limits.
 
 ## Required GitHub secret
 
@@ -34,9 +25,7 @@ When the `tests` GitHub Actions workflow fails, a Cursor cloud agent automatical
 
 ## Extending this pattern
 
-- Change which CI workflow triggers the fix → `on.workflow_run.workflows` in `cursor-fix.yml`
-- Tune the agent prompt → `lib/build-prompt.ts`
-- Change log capture (lines, format) → `lib/fetch-logs.ts`
-- Switch agent model or runtime options → `lib/run-agent.ts`
-- Add Slack/notification on fix PR opened → new `lib/notify.ts`, call from `cursor-fix.ts`
-- Add retry logic → wrap `runFixAgent` in `cursor-fix.ts`
+- Change which CI workflow triggers the fix → edit `on.workflow_run.workflows` in the workflow file
+- Tune what the agent is asked to do → edit the prompt builder
+- Change how logs are captured → edit the log fetcher
+- Add notifications or retry logic → add new modules and wire them into the entrypoint
