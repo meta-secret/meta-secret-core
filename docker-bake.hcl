@@ -1,5 +1,5 @@
 variable "REGISTRY" {
-  default = "ghcr.io/meta-secret"
+  default = "ghcr.io/meta-secret/meta-secret-core"
 }
 
 // Set PUSH_CACHE=1 to enable writing cache to registry (CI only)
