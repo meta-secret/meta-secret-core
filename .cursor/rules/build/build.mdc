@@ -1,0 +1,26 @@
+---
+description: Build system — always use task commands, never raw docker buildx bake
+globs: docker-bake.hcl,meta-secret/Dockerfile,Taskfile.yml,meta-secret/**/*.toml
+alwaysApply: true
+---
+
+### Build system
+
+- build config: `docker-bake.hcl` (targets, cache, tags)
+- all stages: `meta-secret/Dockerfile` (single multi-stage file)
+- **always run builds via `task <target>`, never via `docker buildx bake` directly**
+- after updating any `Cargo.toml`, run `task generate-recipe` to update `recipe.json`
+
+### Task commands
+
+| Action | Command |
+|---|---|
+| Run tests | `task test` |
+| Build all images | `task build` |
+| Build + push | `task push` |
+| Build meta-server | `task meta-server` |
+| Build web image | `task web` |
+| Export web dist locally | `task web-local` |
+| Export wasm pkg locally | `task wasm-local` |
+| Update cargo chef recipe | `task generate-recipe` |
+| Run web-ui locally | `task web-run` |
