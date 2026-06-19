@@ -25,8 +25,7 @@ RUN ARCH=$(uname -m) && \
 RUN ARCH=$(uname -m) && \
     NEXTEST_ARCH=$([ "$ARCH" = "aarch64" ] && echo "linux-arm" || echo "linux") && \
     curl -LsSf https://get.nexte.st/latest/${NEXTEST_ARCH} | tar zxf - -C /usr/local/bin
-RUN cargo install wasm-pack --version 0.13.1 --locked
-RUN cargo install diesel_cli --no-default-features --features sqlite
+RUN curl https://wasm-bindgen.github.io/wasm-pack/installer/init.sh -sSf | sh
 
 ENV BASE_DIR="/meta-secret-build"
 WORKDIR ${BASE_DIR}
@@ -41,6 +40,8 @@ RUN rm -rf target
 
 # --- Prepare DB: run diesel migrations ---
 FROM builder AS prepare-db
+
+RUN cargo install diesel_cli --no-default-features --features sqlite
 
 WORKDIR /meta-secret-build
 RUN mkdir -p db
