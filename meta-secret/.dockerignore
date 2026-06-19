@@ -1,4 +1,6 @@
 target/
 docs/
+.cargo/
+!wasm/.cargo/
 Dockerfile*
 *.md
