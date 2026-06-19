@@ -59,6 +59,20 @@ target "wasm-local" {
   cache-from = ["type=registry,ref=${REGISTRY}/meta-secret-web:cache"]
 }
 
+// Builds only the dep layers (builder-debug) and pushes them to cache.
+// Run this before the test target so cache is always populated even if tests fail.
+target "warm-cache" {
+  context    = "meta-secret"
+  dockerfile = "Dockerfile"
+  target     = "builder-debug"
+  output     = ["type=cacheonly"]
+  cache-from = [
+    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
+    "type=registry,ref=${REGISTRY}/meta-secret-server:cache",
+  ]
+  cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-core:cache,mode=max"] : []
+}
+
 target "test" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
@@ -68,7 +82,7 @@ target "test" {
     "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
     "type=registry,ref=${REGISTRY}/meta-secret-server:cache",
   ]
-  cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-core:cache,mode=max"] : []
+  cache-to = []
 }
 
 target "generate-recipe" {
