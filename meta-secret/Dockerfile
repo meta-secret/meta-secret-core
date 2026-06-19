@@ -22,12 +22,22 @@ RUN ARCH=$(uname -m) && \
     && mv sccache-${SCCACHE_VERSION}-${ARCH}-unknown-linux-musl/sccache /usr/local/bin/sccache \
     && chmod +x /usr/local/bin/sccache
 
-RUN curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C /usr/local/bin
+RUN ARCH=$(uname -m) && \
+    NEXTEST_ARCH=$([ "$ARCH" = "aarch64" ] && echo "linux-arm" || echo "linux") && \
+    curl -LsSf https://get.nexte.st/latest/${NEXTEST_ARCH} | tar zxf - -C /usr/local/bin
 RUN cargo install wasm-pack --version 0.13.1 --locked
 RUN cargo install diesel_cli --no-default-features --features sqlite
 
 ENV BASE_DIR="/meta-secret-build"
 WORKDIR ${BASE_DIR}
+
+# Pre-warm sccache: compile all deps with full source, then discard target/.
+# sccache artifacts stay in /sccache-cache and are inherited by all derived stages.
+# This layer is invalidated only when Cargo.lock changes (dep versions change).
+COPY . .
+RUN cargo build 2>/dev/null || true
+RUN cargo build --release 2>/dev/null || true
+RUN rm -rf target
 
 # --- Prepare DB: run diesel migrations ---
 FROM builder AS prepare-db
