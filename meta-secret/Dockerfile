@@ -20,9 +20,7 @@ RUN rustup component add rustfmt
 
 COPY --from=chef-planner /usr/local/cargo/bin/cargo-chef /usr/local/cargo/bin/cargo-chef
 
-RUN ARCH=$(uname -m) && \
-    NEXTEST_ARCH=$([ "$ARCH" = "aarch64" ] && echo "linux-arm" || echo "linux") && \
-    curl -LsSf https://get.nexte.st/latest/${NEXTEST_ARCH} | tar zxf - -C /usr/local/bin
+RUN curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C /usr/local/bin
 
 RUN curl https://wasm-bindgen.github.io/wasm-pack/installer/init.sh -sSf | sh
 
@@ -44,7 +42,9 @@ RUN cargo chef cook --jobs $(nproc) --release --recipe-path recipe.json
 # --- Prepare DB: run diesel migrations ---
 FROM builder-release AS prepare-db
 
-RUN cargo install diesel_cli --no-default-features --features sqlite
+ARG DIESEL_VERSION=2.3.9
+RUN curl -LsSf "https://github.com/diesel-rs/diesel/releases/download/v${DIESEL_VERSION}/diesel_cli-x86_64-unknown-linux-gnu.tar.xz" | \
+    tar xJ -C /usr/local/bin diesel
 
 WORKDIR /meta-secret-build
 RUN mkdir -p db
