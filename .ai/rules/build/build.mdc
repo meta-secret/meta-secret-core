@@ -1,6 +1,6 @@
 ---
 description: Build System
-globs: docker-bake.hcl,meta-secret/Dockerfile,Makefile
+globs: docker-bake.hcl,meta-secret/Dockerfile,Taskfile.yml
 alwaysApply: false
 ---
 
@@ -14,8 +14,8 @@ alwaysApply: false
     1. main build config is [docker-bake.hcl](mdc:docker-bake.hcl) (targets, cache, tags)
     2. all builds: [meta-secret/Dockerfile](mdc:meta-secret/Dockerfile) (single multi-stage file)
     3. registry cache per target is configured in docker-bake.hcl
-    4. [Makefile](mdc:Makefile) provides short aliases for all bake targets
-    5. after updates in Cargo.toml files, run `make generate-recipe` to update the recipe.json file
+    4. [Taskfile.yml](mdc:Taskfile.yml) provides short aliases for all bake targets
+    5. after updates in Cargo.toml files, run `task generate-recipe` to update the recipe.json file
  - infra task automation uses go-task directly: [infra/Taskfile.yml](mdc:infra/Taskfile.yml) (and k3d/, k8s/ sub-Taskfiles)
    - Taskfiles are plain YAML source of truth (not generated from KCL)
    - KCL is still used inside the `taskomatic` container only for rendering K8s manifests at deploy time
@@ -23,34 +23,34 @@ alwaysApply: false
 ### Build actions:
 
 #### Run meta-secret tests:
-   make test
+   task test
 
 #### Build all images (meta-server + web):
-   make build
+   task build
 
 #### Build and push all images:
-   make push
+   task push
 
 #### Build meta-secret server image:
-   make meta-server
+   task meta-server
 
 #### Build web image:
-   make web
+   task web
 
 #### Export web-cli dist locally:
-   make web-local
+   task web-local
 
 #### Export wasm pkg locally:
-   make wasm-local
+   task wasm-local
 
 #### Update cargo chef recipe:
-   make generate-recipe
+   task generate-recipe
 
 #### Run web-ui locally:
-   make web-run
+   task web-run
 
 #### Run k3d/k8s automation (cluster + deploy):
-   make taskomatic-run
+   task taskomatic-run
 
 ### CI auto-fix:
  - When the `tests` workflow fails, the `cursor-fix` workflow automatically triggers

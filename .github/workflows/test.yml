@@ -19,6 +19,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Task
+        uses: go-task/setup-task@v2
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -32,4 +35,4 @@ jobs:
         run: docker buildx bake warm-cache
 
       - name: Run tests
-        run: make test
+        run: task test

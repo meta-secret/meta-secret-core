@@ -1,0 +1,100 @@
+version: "3"
+
+tasks:
+  default:
+    cmds:
+      - task -l
+    silent: true
+
+  # ============================================================
+  # Docker Bake
+  # ============================================================
+
+  build:
+    desc: Build and load default images (meta-server, web)
+    cmds:
+      - docker buildx bake --load default
+
+  push:
+    desc: Build and push default images to registry
+    cmds:
+      - docker buildx bake --push default
+
+  warm-cache:
+    desc: Compile deps + source, push layers to registry cache (CI)
+    cmds:
+      - docker buildx bake warm-cache
+
+  test:
+    desc: Run tests inside Docker
+    cmds:
+      - docker buildx bake test
+
+  meta-server:
+    desc: Build and load meta-server image
+    cmds:
+      - docker buildx bake --load meta-server-image
+
+  web:
+    desc: Build and load web image
+    cmds:
+      - docker buildx bake --load web-image
+
+  web-local:
+    desc: Build web and extract dist to meta-secret/web-cli/ui/dist
+    cmds:
+      - docker buildx bake web-local
+
+  wasm-local:
+    desc: Build WASM and extract pkg to meta-secret/web-cli/ui/pkg
+    cmds:
+      - docker buildx bake wasm-local
+
+  generate-recipe:
+    desc: Regenerate meta-secret/recipe.json via cargo-chef
+    cmds:
+      - docker buildx bake generate-recipe
+
+  web-run:
+    desc: Build web image and run dev server on :5173
+    cmds:
+      - task: web
+      - docker run --rm -p 5173:5173 cypherkitty/meta-secret-web:latest npm run dev -- --host 0.0.0.0
+
+  taskomatic:
+    desc: Build and load taskomatic image
+    cmds:
+      - docker buildx bake --load taskomatic
+
+  taskomatic-run:
+    desc: Build and run taskomatic container
+    cmds:
+      - task: taskomatic
+      - docker run --rm
+          -v /var/run/docker.sock:/var/run/docker.sock
+          -v $HOME/.kube:/root/.kube
+          -v $HOME/.config/k3d:/root/.config/k3d
+          --name taskomatic
+          --workdir /taskomatic
+          localhost/taskomatic:latest
+
+  sops:
+    desc: Build and load sops image
+    cmds:
+      - docker buildx bake --load sops
+
+  # ============================================================
+  # Local dev
+  # ============================================================
+
+  wasm-test:
+    desc: Run WASM tests in Firefox
+    dir: meta-secret/wasm
+    cmds:
+      - wasm-pack test --firefox
+
+  wasm-test-headless:
+    desc: Run WASM tests headless in Firefox
+    dir: meta-secret/wasm
+    cmds:
+      - wasm-pack test --headless --firefox
