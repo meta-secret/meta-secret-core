@@ -1,7 +1,7 @@
 [package]
 name = "meta-secret-core"
 version = "2.0.0"
-edition = "2024"
+edition.workspace = true
 license = "Apache-2.0"
 description = "Meta Secret Core Module"
 homepage = "https://github.com/meta-secret/meta-secret-core"
@@ -53,13 +53,13 @@ serde-big-array = "0.5.1"
 
 qrcode-generator = "5.0.0"
 rqrr = "0.10.1"
-image = "0.25.9"
+image = "0.25.10"
 
-wasm-bindgen = "0.2.108"
-log = "0.4.29"
+wasm-bindgen = "0.2.125"
+log = "0.4.32"
 
 uuid.workspace = true
 
 [dev-dependencies]
-tokio = { version = "1.49.0", features = ["full"] }
-tempfile = "3.25.0"
+tokio.workspace = true
+tempfile = "3.27.0"

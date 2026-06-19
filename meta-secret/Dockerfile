@@ -13,36 +13,38 @@ RUN cargo chef prepare --recipe-path recipe.json
 FROM scratch AS recipe-output
 COPY --from=chef-planner /recipe.json /recipe.json
 
-# --- Builder: base image with all Rust tooling + cached deps ---
-FROM rust:${RUST_VERSION}-bookworm AS builder
+# --- Builder Base: Rust tooling only, no dep pre-compilation ---
+FROM rust:${RUST_VERSION}-bookworm AS builder-base
 
 RUN rustup component add rustfmt
 
-# Install sccache (architecture-aware)
-ENV SCCACHE_VERSION="v0.10.0"
-ENV RUSTC_WRAPPER=sccache
-
-RUN ARCH=$(uname -m) && \
-    SCCACHE_ARTIFACT="sccache-${SCCACHE_VERSION}-${ARCH}-unknown-linux-musl" && \
-    wget https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/${SCCACHE_ARTIFACT}.tar.gz \
-    && tar xzf ${SCCACHE_ARTIFACT}.tar.gz \
-    && mv ${SCCACHE_ARTIFACT}/sccache /usr/local/bin/sccache \
-    && chmod +x /usr/local/bin/sccache
-
 COPY --from=chef-planner /usr/local/cargo/bin/cargo-chef /usr/local/cargo/bin/cargo-chef
+
 RUN curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C /usr/local/bin
-RUN cargo install wasm-pack --version 0.13.1 --locked
-RUN cargo install diesel_cli --no-default-features --features sqlite
+
+RUN curl https://wasm-bindgen.github.io/wasm-pack/installer/init.sh -sSf | sh
 
 ENV BASE_DIR="/meta-secret-build"
 WORKDIR ${BASE_DIR}
 
-# Use committed recipe.json (regenerate with: make generate-recipe)
+# --- Builder Debug: pre-compiled deps in debug mode (for tests) ---
+FROM builder-base AS builder-debug
+
+COPY recipe.json .
+RUN cargo chef cook --recipe-path recipe.json
+
+# --- Builder Release: pre-compiled deps in release mode (for server and wasm) ---
+FROM builder-base AS builder-release
+
 COPY recipe.json .
 RUN cargo chef cook --release --recipe-path recipe.json
 
 # --- Prepare DB: run diesel migrations ---
-FROM builder AS prepare-db
+FROM builder-release AS prepare-db
+
+ARG DIESEL_VERSION=2.3.9
+RUN curl -LsSf "https://github.com/diesel-rs/diesel/releases/download/v${DIESEL_VERSION}/diesel_cli-x86_64-unknown-linux-gnu.tar.xz" | \
+    tar xJ -C /usr/local/bin diesel
 
 WORKDIR /meta-secret-build
 RUN mkdir -p db
@@ -56,11 +58,10 @@ ENV DATABASE_URL=build/meta-secret.db
 RUN diesel migration run
 
 # --- Meta Server Builder: compile meta-server binary ---
-FROM builder AS meta-server-builder
+FROM builder-release AS meta-server-builder
 
 WORKDIR /meta-secret-build
 COPY . .
-RUN rm -f .cargo/config.toml
 
 WORKDIR /meta-secret-build/meta-server/web-server
 RUN cargo build --release
@@ -79,36 +80,37 @@ EXPOSE 3000
 CMD ["./meta-server"]
 
 # --- WASM Builder: build wasm package ---
-FROM builder AS wasm-builder
+FROM builder-release AS wasm-builder
 
 RUN rustup target add wasm32-unknown-unknown
 
 WORKDIR /meta-secret-build
 COPY . .
-RUN rm -f .cargo/config.toml
 
 WORKDIR /meta-secret-build/wasm
-ENV RUSTC_WRAPPER=""
 RUN wasm-pack build --target web
 
 # Minimal stage to extract just the wasm pkg
 FROM scratch AS wasm-output
 COPY --from=wasm-builder /meta-secret-build/wasm/pkg/ /
 
-# --- Test Runner: run tests with cargo-nextest ---
-FROM builder AS test-runner
+# --- Test Compiler: compile test binaries only (no execution) ---
+FROM builder-debug AS test-compiler
 
 WORKDIR /meta-secret-build
-
 COPY . .
-RUN cargo nextest run --profile ci
+RUN cargo nextest run --no-run --profile ci
+
+# --- Test Runner: execute pre-compiled tests ---
+FROM test-compiler AS test-runner
+# RUST_MIN_STACK: split/redistribution tests have deep async stacks that overflow the 2MiB default
+RUN RUST_MIN_STACK=8388608 cargo nextest run --profile ci
 
 # --- Web Build: Vue.js + WASM ---
 FROM node:23.9.0-bookworm AS web-build
 
 WORKDIR /meta-secret/web-cli/ui
 
-# Cache npm dependencies
 COPY web-cli/ui/package.json .
 RUN npm install && npm install --dev
 

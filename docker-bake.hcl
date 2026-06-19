@@ -59,6 +59,20 @@ target "wasm-local" {
   cache-from = ["type=registry,ref=${REGISTRY}/meta-secret-web:cache"]
 }
 
+// Compiles deps (cargo-chef) + project source (nextest --no-run) and pushes to cache.
+// Run before the test target so compilation is always cached even if tests fail.
+target "warm-cache" {
+  context    = "meta-secret"
+  dockerfile = "Dockerfile"
+  target     = "test-compiler"
+  output     = ["type=cacheonly"]
+  cache-from = [
+    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
+    "type=registry,ref=${REGISTRY}/meta-secret-server:cache",
+  ]
+  cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-core:cache,mode=max"] : []
+}
+
 target "test" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
@@ -68,7 +82,7 @@ target "test" {
     "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
     "type=registry,ref=${REGISTRY}/meta-secret-server:cache",
   ]
-  cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-core:cache,mode=max"] : []
+  cache-to = []
 }
 
 target "generate-recipe" {

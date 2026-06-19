@@ -28,5 +28,8 @@ jobs:
           username: cypherkitty
           password: ${{ secrets.META_SECRET_SERVER_DOCKER_PAT }}
 
+      - name: Warm dependency cache
+        run: docker buildx bake warm-cache
+
       - name: Run tests
         run: make test

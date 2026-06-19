@@ -1,13 +1,10 @@
 [package]
 name = "meta-secret-tests"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
 
 [features]
 test-framework = []
-
-[profile.dev]
-overflow-checks = true
 
 [dependencies]
 meta-secret-core = { path = "../core", features = ["test-framework"] }

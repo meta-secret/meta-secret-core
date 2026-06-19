@@ -1,7 +1,7 @@
 [package]
 name = "uniffi-bindgen-runner"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 publish = false
 
 [[bin]]
@@ -9,4 +9,4 @@ name = "uniffi-bindgen"
 path = "src/main.rs"
 
 [dependencies]
-uniffi = { version = "0.28.3", features = ["cli"] }
+uniffi = { version = "0.31.2", features = ["cli"] }

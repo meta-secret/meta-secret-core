@@ -9,6 +9,9 @@ build:
 push:
 	docker buildx bake --push default
 
+warm-cache:
+	docker buildx bake warm-cache
+
 test:
 	docker buildx bake test
 
@@ -23,6 +26,7 @@ web-local:
 
 wasm-local:
 	docker buildx bake wasm-local
+
 
 generate-recipe:
 	docker buildx bake generate-recipe
