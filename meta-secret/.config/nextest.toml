@@ -1,7 +1,2 @@
-# Same as .cargo/config.toml [env] RUST_MIN_STACK: Docker test stage strips .cargo/config.toml.
-# 8MiB: redistribution/split tests have deep async call chains that overflow the 3MiB default.
-[env]
-RUST_MIN_STACK = "8388608"
-
 [profile.ci.junit]
 path = "junit.xml"

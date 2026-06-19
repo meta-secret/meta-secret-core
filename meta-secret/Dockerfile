@@ -103,7 +103,8 @@ RUN cargo nextest run --no-run --profile ci
 
 # --- Test Runner: execute pre-compiled tests ---
 FROM test-compiler AS test-runner
-RUN cargo nextest run --profile ci
+# RUST_MIN_STACK: split/redistribution tests have deep async stacks that overflow the 2MiB default
+RUN RUST_MIN_STACK=8388608 cargo nextest run --profile ci
 
 # --- Web Build: Vue.js + WASM ---
 FROM node:23.9.0-bookworm AS web-build

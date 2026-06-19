@@ -9,6 +9,9 @@ build:
 push:
 	docker buildx bake --push default
 
+warm-cache:
+	docker buildx bake warm-cache
+
 test:
 	docker buildx bake test
 
