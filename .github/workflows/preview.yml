@@ -96,7 +96,7 @@ jobs:
 
       - name: Install Playwright
         working-directory: meta-secret/web-cli/ui
-        run: npm ci && npx playwright install --with-deps chromium
+        run: npm install --legacy-peer-deps && npx playwright install --with-deps chromium
 
       - name: Run smoke tests
         working-directory: meta-secret/web-cli/ui
