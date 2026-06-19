@@ -59,12 +59,12 @@ target "wasm-local" {
   cache-from = ["type=registry,ref=${REGISTRY}/meta-secret-web:cache"]
 }
 
-// Builds only the dep layers (builder-debug) and pushes them to cache.
-// Run this before the test target so cache is always populated even if tests fail.
+// Compiles deps (cargo-chef) + project source (nextest --no-run) and pushes to cache.
+// Run before the test target so compilation is always cached even if tests fail.
 target "warm-cache" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
-  target     = "builder-debug"
+  target     = "test-compiler"
   output     = ["type=cacheonly"]
   cache-from = [
     "type=registry,ref=${REGISTRY}/meta-secret-core:cache",

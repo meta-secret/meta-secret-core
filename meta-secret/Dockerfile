@@ -94,11 +94,15 @@ RUN wasm-pack build --target web
 FROM scratch AS wasm-output
 COPY --from=wasm-builder /meta-secret-build/wasm/pkg/ /
 
-# --- Test Runner: run tests with cargo-nextest ---
-FROM builder-debug AS test-runner
+# --- Test Compiler: compile test binaries only (no execution) ---
+FROM builder-debug AS test-compiler
 
 WORKDIR /meta-secret-build
 COPY . .
+RUN cargo nextest run --no-run --profile ci
+
+# --- Test Runner: execute pre-compiled tests ---
+FROM test-compiler AS test-runner
 RUN cargo nextest run --profile ci
 
 # --- Web Build: Vue.js + WASM ---

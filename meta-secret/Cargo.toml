@@ -16,6 +16,12 @@ members = [
     "mobile/uniffi-bindgen-runner"
 ]
 
+[workspace.package]
+edition = "2024"
+
+[profile.dev]
+overflow-checks = true
+
 [workspace.dependencies]
 # Error handling
 thiserror = "2.0.18"
