@@ -120,7 +120,7 @@ WORKDIR /meta-secret/web-cli
 COPY web-cli/ .
 
 WORKDIR /meta-secret/web-cli/ui
-RUN rm -f package-lock.json && npm install && npm run lint:check && npm run build
+RUN rm -f package-lock.json && npm install && npm run lint:check && npm run typecheck && npm run build
 
 # Final web image
 FROM web-build AS web
