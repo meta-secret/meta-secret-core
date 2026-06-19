@@ -101,7 +101,7 @@ FROM builder AS test-runner
 WORKDIR /meta-secret-build
 
 COPY . .
-RUN cargo nextest run --profile ci
+RUN cargo nextest run --release --profile ci
 
 # --- Web Build: Vue.js + WASM ---
 FROM node:23.9.0-bookworm AS web-build
