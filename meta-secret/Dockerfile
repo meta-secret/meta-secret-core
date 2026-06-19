@@ -4,21 +4,24 @@
 
 ARG RUST_VERSION=1.96.0
 
-# --- Chef Planner: generate cargo-chef recipe ---
-FROM lukemathwalker/cargo-chef:latest-rust-${RUST_VERSION}-bookworm AS chef-planner
-COPY . .
-RUN cargo chef prepare --recipe-path recipe.json
-
-# Minimal stage to extract just the recipe file
-FROM scratch AS recipe-output
-COPY --from=chef-planner /recipe.json /recipe.json
-
-# --- Builder Base: Rust tooling only, no dep pre-compilation ---
-FROM rust:${RUST_VERSION}-bookworm AS builder-base
+# --- Builder: Rust tooling + sccache for dep caching ---
+FROM rust:${RUST_VERSION}-bookworm AS builder
 
 RUN rustup component add rustfmt
 
-COPY --from=chef-planner /usr/local/cargo/bin/cargo-chef /usr/local/cargo/bin/cargo-chef
+# sccache caches compiled crates in /sccache-cache inside the image layer.
+# Each RUN step starts a fresh daemon but reads the same on-disk cache,
+# giving 100% cache hits on unchanged deps across stages.
+ENV SCCACHE_VERSION="v0.15.0"
+ENV SCCACHE_DIR="/sccache-cache"
+ENV RUSTC_WRAPPER=sccache
+
+RUN ARCH=$(uname -m) && \
+    wget -q https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/sccache-${SCCACHE_VERSION}-${ARCH}-unknown-linux-musl.tar.gz \
+    && tar xzf sccache-${SCCACHE_VERSION}-${ARCH}-unknown-linux-musl.tar.gz \
+    && mv sccache-${SCCACHE_VERSION}-${ARCH}-unknown-linux-musl/sccache /usr/local/bin/sccache \
+    && chmod +x /usr/local/bin/sccache
+
 RUN curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C /usr/local/bin
 RUN cargo install wasm-pack --version 0.13.1 --locked
 RUN cargo install diesel_cli --no-default-features --features sqlite
@@ -26,20 +29,8 @@ RUN cargo install diesel_cli --no-default-features --features sqlite
 ENV BASE_DIR="/meta-secret-build"
 WORKDIR ${BASE_DIR}
 
-# --- Builder Debug: pre-compiled deps in debug mode (for tests) ---
-FROM builder-base AS builder-debug
-
-COPY recipe.json .
-RUN cargo chef cook --recipe-path recipe.json
-
-# --- Builder Release: pre-compiled deps in release mode (for server and wasm) ---
-FROM builder-base AS builder-release
-
-COPY recipe.json .
-RUN cargo chef cook --release --recipe-path recipe.json
-
 # --- Prepare DB: run diesel migrations ---
-FROM builder-release AS prepare-db
+FROM builder AS prepare-db
 
 WORKDIR /meta-secret-build
 RUN mkdir -p db
@@ -53,11 +44,10 @@ ENV DATABASE_URL=build/meta-secret.db
 RUN diesel migration run
 
 # --- Meta Server Builder: compile meta-server binary ---
-FROM builder-release AS meta-server-builder
+FROM builder AS meta-server-builder
 
 WORKDIR /meta-secret-build
 COPY . .
-RUN rm -f .cargo/config.toml
 
 WORKDIR /meta-secret-build/meta-server/web-server
 RUN cargo build --release
@@ -76,15 +66,15 @@ EXPOSE 3000
 CMD ["./meta-server"]
 
 # --- WASM Builder: build wasm package ---
-FROM builder-release AS wasm-builder
+FROM builder AS wasm-builder
 
 RUN rustup target add wasm32-unknown-unknown
 
 WORKDIR /meta-secret-build
 COPY . .
-RUN rm -f .cargo/config.toml
 
 WORKDIR /meta-secret-build/wasm
+ENV RUSTC_WRAPPER=""
 RUN wasm-pack build --target web
 
 # Minimal stage to extract just the wasm pkg
@@ -92,10 +82,9 @@ FROM scratch AS wasm-output
 COPY --from=wasm-builder /meta-secret-build/wasm/pkg/ /
 
 # --- Test Runner: run tests with cargo-nextest ---
-FROM builder-debug AS test-runner
+FROM builder AS test-runner
 
 WORKDIR /meta-secret-build
-
 COPY . .
 RUN cargo nextest run --profile ci
 
@@ -104,7 +93,6 @@ FROM node:23.9.0-bookworm AS web-build
 
 WORKDIR /meta-secret/web-cli/ui
 
-# Cache npm dependencies
 COPY web-cli/ui/package.json .
 RUN npm install && npm install --dev
 

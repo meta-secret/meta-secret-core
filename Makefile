@@ -24,8 +24,6 @@ web-local:
 wasm-local:
 	docker buildx bake wasm-local
 
-generate-recipe:
-	docker buildx bake generate-recipe
 
 web-run: web
 	docker run --rm -p 5173:5173 cypherkitty/meta-secret-web:latest npm run dev -- --host 0.0.0.0
