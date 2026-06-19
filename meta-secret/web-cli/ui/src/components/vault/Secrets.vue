@@ -42,9 +42,10 @@ const isRecovered = (metaPassId: MetaPasswordId) => {
 
 const isFlowTokenActive = (token: number) => token === flowToken.value;
 
-const sleep = (ms: number) => new Promise((resolve) => {
-  setTimeout(resolve, ms);
-});
+const sleep = (ms: number) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 
 const clearRevealData = () => {
   revealedSecret.value = '';
@@ -139,9 +140,7 @@ const startRevealFlow = async (secret: any) => {
 
 const copyRevealedValue = async () => {
   if (copyInProgress.value) return;
-  const valueToCopy = revealModalState.value === 'revealedSeed'
-    ? revealedWords.value.join(' ')
-    : revealedSecret.value;
+  const valueToCopy = revealModalState.value === 'revealedSeed' ? revealedWords.value.join(' ') : revealedSecret.value;
   if (!valueToCopy) return;
 
   copyInProgress.value = true;
@@ -182,9 +181,7 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
     <div :class="$style.pageWide">
       <div v-if="shouldShowDevicesWarning" :class="$style.warningBanner">
         <span :class="$style.warningIcon">⚠</span>
-        <span>
-          {{ vaultSecrets.warningPrefix }} {{ requiredDevicesToSafety }} {{ vaultSecrets.warningMiddle }}
-        </span>
+        <span> {{ vaultSecrets.warningPrefix }} {{ requiredDevicesToSafety }} {{ vaultSecrets.warningMiddle }} </span>
       </div>
 
       <div :class="$style.secretsCard">
@@ -203,11 +200,7 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
           <ul :class="$style.secretsList">
             <li v-for="secret in passwords" :key="secret.id_str()" :class="$style.secretRow">
               <div :class="$style.secretName">{{ secret.name }}</div>
-              <button
-                :class="$style.showButton"
-                :disabled="flowInProgressId !== null"
-                @click="startRevealFlow(secret)"
-              >
+              <button :class="$style.showButton" :disabled="flowInProgressId !== null" @click="startRevealFlow(secret)">
                 {{ flowInProgressId === secret.id_str() ? vaultSecrets.showLoading : vaultSecrets.show }}
               </button>
             </li>
@@ -229,9 +222,9 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
       <div v-if="revealModalState === 'waiting'" :class="$style.encryptedCard">
         <div :class="$style.lockCircle">
           <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
-            <rect x="5" y="11" width="14" height="11" rx="3" stroke="#3b7eff" stroke-width="2"/>
-            <path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="#3b7eff" stroke-width="2" stroke-linecap="round"/>
-            <circle cx="12" cy="16" r="1.5" fill="#3b7eff"/>
+            <rect x="5" y="11" width="14" height="11" rx="3" stroke="#3b7eff" stroke-width="2" />
+            <path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="#3b7eff" stroke-width="2" stroke-linecap="round" />
+            <circle cx="12" cy="16" r="1.5" fill="#3b7eff" />
           </svg>
         </div>
         <div :class="$style.encryptedTitle">{{ vaultSecrets.waitingTitle }}</div>
@@ -270,7 +263,9 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
           {{
             copySucceeded
               ? vaultSecrets.copied
-              : (revealModalState === 'revealedSeed' ? vaultSecrets.copyPhrase : vaultSecrets.copySecret)
+              : revealModalState === 'revealedSeed'
+                ? vaultSecrets.copyPhrase
+                : vaultSecrets.copySecret
           }}
         </button>
       </div>
@@ -553,7 +548,9 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
 
 .revealedSecretLabel {
   color: #4a6080;
-  font-family: ui-monospace, Menlo, Monaco, 'Cascadia Mono', 'Segoe UI Mono', 'Roboto Mono', 'Oxygen Mono', 'Ubuntu Monospace', 'Source Code Pro', 'Fira Mono', 'Droid Sans Mono', 'Courier New', monospace;
+  font-family:
+    ui-monospace, Menlo, Monaco, 'Cascadia Mono', 'Segoe UI Mono', 'Roboto Mono', 'Oxygen Mono', 'Ubuntu Monospace',
+    'Source Code Pro', 'Fira Mono', 'Droid Sans Mono', 'Courier New', monospace;
   font-size: 15px;
   font-weight: 700;
 }

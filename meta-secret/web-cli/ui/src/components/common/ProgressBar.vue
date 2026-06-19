@@ -1,26 +1,25 @@
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue';
 
 const props = defineProps({
   progress: {
     type: Number,
-    default: 0
+    default: 0,
   },
   color: {
     type: String,
-    default: 'green'
+    default: 'green',
   },
   height: {
     type: String,
-    default: '3px'
-  }
+    default: '3px',
+  },
 });
 
 const progressStyle = computed(() => ({
   width: `${Math.min(props.progress, 100)}%`,
   height: props.height,
-  backgroundColor: props.color === 'green' ? '#22c55e' : 
-                   props.color === 'yellow' ? '#eab308' : props.color
+  backgroundColor: props.color === 'green' ? '#22c55e' : props.color === 'yellow' ? '#eab308' : props.color,
 }));
 </script>
 

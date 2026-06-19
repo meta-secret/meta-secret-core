@@ -89,8 +89,8 @@ const router = createRouter({
 // Navigation guard for authentication
 router.beforeEach((to, from, next) => {
   const authStore = useAuthStore();
-  const requiresAuth = to.matched.some(record => record.meta.requiresAuth);
-  
+  const requiresAuth = to.matched.some((record) => record.meta.requiresAuth);
+
   if (requiresAuth && !authStore.isAuthenticated) {
     // If the route requires authentication and the user is not authenticated,
     // allow navigation but the auth modal will show due to the isAuthenticated state

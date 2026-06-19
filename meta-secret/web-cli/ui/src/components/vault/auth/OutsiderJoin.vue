@@ -1,11 +1,11 @@
-<script setup>
+<script setup lang="ts">
 import { AppState } from '@/stores/app-state';
 import { computed, onMounted, ref } from 'vue';
 import { UserDataOutsiderStatus } from 'meta-secret-web-cli';
 import { useRouter } from 'vue-router';
 
 defineProps({
-  signUpProcessing: Boolean
+  signUpProcessing: Boolean,
 });
 
 const emit = defineEmits(['join']);
@@ -35,7 +35,12 @@ const outsiderStatus = computed(() => {
 // Important: UserDataOutsiderStatus enum values are: NonMember = 0, Pending = 1, Declined = 2
 const isNonMember = computed(() => {
   const status = Number(outsiderStatus.value);
-  console.log('NonMember check:', status, UserDataOutsiderStatus.NonMember, status === UserDataOutsiderStatus.NonMember);
+  console.log(
+    'NonMember check:',
+    status,
+    UserDataOutsiderStatus.NonMember,
+    status === UserDataOutsiderStatus.NonMember,
+  );
   return status === UserDataOutsiderStatus.NonMember;
 });
 
@@ -62,7 +67,7 @@ const joinVault = () => {
 
 async function cleanDatabase() {
   if (isCleaning.value) return;
-  
+
   isCleaning.value = true;
   try {
     await jsAppState.cleanDatabase();
@@ -83,15 +88,17 @@ async function cleanDatabase() {
         <div :class="$style.statusContent">
           <label :class="$style.statusLabel">Vault already exists, would you like to join?</label>
           <div :class="$style.buttonGroup">
-            <button :class="$style.secondaryButton" @click="cleanDatabase" :disabled="isCleaning">
+            <button :class="$style.secondaryButton" :disabled="isCleaning" @click="cleanDatabase">
               <span v-if="isCleaning">Cleaning...</span>
               <span v-else>Reset</span>
             </button>
-            <button :class="$style.actionButton" @click="joinVault" :disabled="signUpProcessing || isCleaning">Join</button>
+            <button :class="$style.actionButton" :disabled="signUpProcessing || isCleaning" @click="joinVault">
+              Join
+            </button>
           </div>
         </div>
       </div>
-      
+
       <!-- Pending: Show pending status -->
       <div v-else-if="isPending" :class="$style.statusContainer">
         <div :class="$style.pendingStatus">
@@ -99,13 +106,13 @@ async function cleanDatabase() {
           <label :class="$style.statusLabel">Your request to join this vault is pending approval.</label>
         </div>
         <div :class="$style.buttonContainer">
-          <button :class="$style.secondaryButton" @click="cleanDatabase" :disabled="isCleaning">
+          <button :class="$style.secondaryButton" :disabled="isCleaning" @click="cleanDatabase">
             <span v-if="isCleaning">Cleaning...</span>
             <span v-else>Reset & Start Over</span>
           </button>
         </div>
       </div>
-      
+
       <!-- Declined: Show declined status -->
       <div v-else-if="isDeclined" :class="$style.statusContainer">
         <div :class="$style.declinedStatus">
@@ -113,20 +120,20 @@ async function cleanDatabase() {
           <label :class="$style.statusLabel">Your request to join this vault was declined.</label>
         </div>
         <div :class="$style.buttonContainer">
-          <button :class="$style.secondaryButton" @click="cleanDatabase" :disabled="isCleaning">
+          <button :class="$style.secondaryButton" :disabled="isCleaning" @click="cleanDatabase">
             <span v-if="isCleaning">Cleaning...</span>
             <span v-else>Reset & Create New</span>
           </button>
         </div>
       </div>
-      
+
       <!-- Fallback for unexpected states -->
       <div v-else :class="$style.statusContainer">
         <div :class="$style.statusContent">
           <label :class="$style.statusLabel">
             Status: {{ outsiderStatus !== null ? outsiderStatus : 'Unknown' }}
           </label>
-          <button :class="$style.secondaryButton" @click="cleanDatabase" :disabled="isCleaning">
+          <button :class="$style.secondaryButton" :disabled="isCleaning" @click="cleanDatabase">
             <span v-if="isCleaning">Cleaning...</span>
             <span v-else>Reset & Create New</span>
           </button>
@@ -181,11 +188,13 @@ async function cleanDatabase() {
   @apply mt-3 flex justify-end;
 }
 
-.actionButton:disabled, .secondaryButton:disabled {
+.actionButton:disabled,
+.secondaryButton:disabled {
   @apply bg-gray-500 cursor-not-allowed;
 }
 
-.pendingStatus, .declinedStatus {
+.pendingStatus,
+.declinedStatus {
   @apply flex items-center w-full;
 }
 
@@ -200,4 +209,4 @@ async function cleanDatabase() {
 .declinedStatus .statusLabel {
   @apply text-red-400;
 }
-</style> 
+</style>

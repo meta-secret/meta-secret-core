@@ -20,7 +20,7 @@ export const useThemeStore = defineStore('theme', (): ThemeState => {
       // Default to false during SSR
       return false;
     }
-    
+
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     return theme.value === 'dark' || (theme.value === 'system' && mediaQuery.matches);
   });

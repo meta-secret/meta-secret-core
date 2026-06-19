@@ -1,6 +1,7 @@
 {
   "name": "meta-secret-ui-vue",
   "version": "2.0.0",
+  "type": "module",
   "scripts": {
     "dev": "vite --host",
     "build": "vue-tsc --noEmit && vite build",
@@ -9,7 +10,8 @@
     "test:e2e": "env -u ELECTRON_RUN_AS_NODE start-server-and-test preview http://127.0.0.1:5050/ 'cypress open'",
     "test:e2e:ci": "npm run build && env -u ELECTRON_RUN_AS_NODE start-server-and-test preview http://127.0.0.1:5050/ 'cypress run'",
     "typecheck": "vue-tsc --noEmit -p tsconfig.vitest.json --composite false",
-    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix --ignore-path .gitignore",
+    "lint": "eslint . --fix",
+    "lint:check": "eslint .",
     "postbuild": "cp dist/index.html dist/404.html"
   },
   "dependencies": {
@@ -26,20 +28,20 @@
     "wasm-pack": "0.13.1"
   },
   "devDependencies": {
-    "@rushstack/eslint-patch": "1.11.0",
+    "@eslint/js": "^9.39.4",
     "@types/jsdom": "21.1.7",
     "@types/node": "22.15.3",
     "@vitejs/plugin-vue": "5.2.3",
     "@vitejs/plugin-vue-jsx": "4.1.2",
-    "@vue/eslint-config-prettier": "10.2.0",
-    "@vue/eslint-config-typescript": "11.0.3",
+    "@vue/eslint-config-prettier": "^10.2.0",
+    "@vue/eslint-config-typescript": "^14.8.0",
     "@vue/test-utils": "2.4.6",
     "@vue/tsconfig": "0.7.0",
     "autoprefixer": "10.4.21",
     "cypress": "14.3.2",
-    "eslint": "8.57.0",
+    "eslint": "^9.39.4",
     "eslint-plugin-cypress": "3.6.0",
-    "eslint-plugin-vue": "9.33.0",
+    "eslint-plugin-vue": "^10.9.2",
     "jsdom": "26.1.0",
     "postcss": "8.5.3",
     "prettier": "3.5.3",
@@ -47,6 +49,7 @@
     "start-server-and-test": "2.0.11",
     "tailwindcss": "3.4.10",
     "typescript": "5.8.3",
+    "typescript-eslint": "^8.61.1",
     "vite": "6.3.4",
     "vite-plugin-wasm": "3.4.1",
     "vite-plugin-wasm-pack": "0.1.12",

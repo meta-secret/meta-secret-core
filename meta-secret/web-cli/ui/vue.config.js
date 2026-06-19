@@ -1,8 +1,8 @@
 module.exports = {
-    configureWebpack: {
-        experiments: {
-            asyncWebAssembly: true,
-            importAsync: true
-        }
-    }
-}
+  configureWebpack: {
+    experiments: {
+      asyncWebAssembly: true,
+      importAsync: true,
+    },
+  },
+};

@@ -1,4 +1,4 @@
-<script lang="js">
+<script lang="ts">
 import init, { restore_password } from 'meta-secret-web-cli';
 import QrScanner from 'qr-scanner';
 
@@ -50,13 +50,13 @@ export default {
 
     openFile(event) {
       const input = event.target;
-      
+
       // Clear existing images first
       const imagesElement = document.getElementById('qrImages');
       imagesElement.innerHTML = '';
       this.imagesLoaded = 0;
       this.error = '';
-      
+
       if (!input.files || input.files.length === 0) {
         return;
       }
@@ -70,7 +70,7 @@ export default {
           // Minimal styling to avoid scanner issues
           outputImg.className = 'qr-image';
           outputImg.src = dataURL;
-          
+
           // Wait for image to load
           outputImg.onload = () => {
             this.imagesLoaded++;
@@ -90,9 +90,7 @@ export default {
   <div class="recover-password-container">
     <div class="header">
       <h1>Password Recovery</h1>
-      <p class="description">
-        Upload your QR code shares to retrieve your password.
-      </p>
+      <p class="description">Upload your QR code shares to retrieve your password.</p>
     </div>
 
     <div class="form-container">
@@ -100,12 +98,12 @@ export default {
         <label for="file-upload">Your QR Codes</label>
         <div class="file-upload-wrapper">
           <input
-            class="input-field file-input"
             id="file-upload"
+            class="input-field file-input"
             type="file"
             accept="image/*"
-            @change="openFile"
             multiple
+            @change="openFile"
           />
           <div class="file-upload-label">Upload QR code images</div>
         </div>
@@ -123,18 +121,13 @@ export default {
         {{ error }}
       </div>
 
-      <div class="form-group result-container" v-if="recoveredPassword">
+      <div v-if="recoveredPassword" class="form-group result-container">
         <label for="passwordBox">Your Password:</label>
-        <input 
-          class="input-field" 
-          id="passwordBox" 
-          v-model="recoveredPassword" 
-          readonly
-        />
+        <input id="passwordBox" v-model="recoveredPassword" class="input-field" readonly />
       </div>
     </div>
 
-    <div class="qr-preview-container" id="qrImages"></div>
+    <div id="qrImages" class="qr-preview-container"></div>
   </div>
 </template>
 
@@ -143,7 +136,11 @@ export default {
   max-width: 800px;
   margin: 0 auto;
   padding: 2rem;
-  font-family: 'Inter var', system-ui, -apple-system, sans-serif;
+  font-family:
+    'Inter var',
+    system-ui,
+    -apple-system,
+    sans-serif;
 }
 
 .header {
@@ -171,7 +168,9 @@ export default {
   backdrop-filter: blur(10px);
   border-radius: 0.75rem;
   padding: 2rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.1);
   margin-bottom: 2rem;
 }
@@ -305,7 +304,7 @@ export default {
 
 /* Minimal styling for QR images to prevent scanning issues */
 .qr-image {
-  display: inline-block; 
+  display: inline-block;
   margin: 8px;
 }
 
@@ -313,7 +312,7 @@ export default {
   .recover-password-container {
     padding: 1rem;
   }
-  
+
   .form-container {
     padding: 1.5rem;
   }
@@ -326,20 +325,20 @@ export default {
     -webkit-background-clip: text;
     background-clip: text;
   }
-  
+
   .description {
     color: #9ca3af;
   }
-  
+
   .form-container {
     background-color: rgba(30, 41, 59, 0.5);
     border-color: rgba(55, 65, 81, 0.5);
   }
-  
+
   .form-group label {
     color: #e5e7eb;
   }
-  
+
   .input-field {
     background-color: #1f2937;
     border-color: #374151;
@@ -351,22 +350,22 @@ export default {
     border-color: #374151;
     color: #9ca3af;
   }
-  
+
   .file-upload-label:hover {
     background-color: #111827;
     border-color: #4b5563;
   }
-  
+
   .input-field:focus {
     border-color: #60a5fa;
   }
-  
+
   .recover-button {
     background: linear-gradient(90deg, #3b82f6, #8b5cf6);
   }
-  
+
   .result-container {
     border-top-color: #374151;
   }
 }
-</style> 
+</style>

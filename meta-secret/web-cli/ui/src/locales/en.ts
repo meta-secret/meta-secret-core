@@ -9,7 +9,7 @@ export const vaultSecrets = {
   show: 'Show',
   showLoading: 'Loading...',
   waitingTitle: 'Secret is encrypted',
-  waitingSubtitle: "Requesting recovery shares to decrypt and reveal the content",
+  waitingSubtitle: 'Requesting recovery shares to decrypt and reveal the content',
   waitingDevicesSuffix: 'device',
   waitingDevicesSuffixPlural: 'devices',
   warningPrefix: 'You need to add',
@@ -40,8 +40,7 @@ export const vaultSecrets = {
   addSecretValidationPasswordRequired: 'Secret is required for password mode.',
   addSecretValidationSeedRequired: 'All seed words must be filled.',
   addSecretSubmitError: 'Could not add secret. Please try again.',
-  errorShowRecovered:
-    'Could not display the recovered secret. Shares may be incomplete or corrupted.',
+  errorShowRecovered: 'Could not display the recovered secret. Shares may be incomplete or corrupted.',
   errorCopySecret: 'Could not copy the secret.',
   errorRecoveryTimeout: 'Recovery took too long. Please try again.',
 } as const;

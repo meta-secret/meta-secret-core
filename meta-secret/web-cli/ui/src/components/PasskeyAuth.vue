@@ -76,10 +76,30 @@ async function authenticateWithPasskey() {
           <DialogPanel class="auth-card">
             <div class="finger-wrap">
               <svg width="44" height="44" viewBox="0 0 48 48" fill="none">
-                <path d="M24 44C14 40 8 31 8 22C8 13 15 6 24 6C33 6 40 13 40 22" stroke="#3b7eff" stroke-width="2.5" stroke-linecap="round" />
-                <path d="M14 34C11 30 10 26 10 22C10 15 16 10 24 10C32 10 38 15 38 22C38 26 36 30 33 33" stroke="#3b7eff" stroke-width="2.5" stroke-linecap="round" />
-                <path d="M18 38C16 35 15 32 15 28C15 21 19 17 24 17C29 17 33 21 33 28C33 32 31 35 29 37" stroke="#3b7eff" stroke-width="2.5" stroke-linecap="round" />
-                <path d="M22 40C21 38 20 35 20 32C20 28 22 25 24 25C26 25 28 28 28 32C28 36 26 39 24 42" stroke="#3b7eff" stroke-width="2.5" stroke-linecap="round" />
+                <path
+                  d="M24 44C14 40 8 31 8 22C8 13 15 6 24 6C33 6 40 13 40 22"
+                  stroke="#3b7eff"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                />
+                <path
+                  d="M14 34C11 30 10 26 10 22C10 15 16 10 24 10C32 10 38 15 38 22C38 26 36 30 33 33"
+                  stroke="#3b7eff"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                />
+                <path
+                  d="M18 38C16 35 15 32 15 28C15 21 19 17 24 17C29 17 33 21 33 28C33 32 31 35 29 37"
+                  stroke="#3b7eff"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                />
+                <path
+                  d="M22 40C21 38 20 35 20 32C20 28 22 25 24 25C26 25 28 28 28 32C28 36 26 39 24 42"
+                  stroke="#3b7eff"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                />
               </svg>
             </div>
 
@@ -88,9 +108,7 @@ async function authenticateWithPasskey() {
               <template v-if="!hasRegisteredPasskey">
                 Create a passkey to access your secure vault using your device biometrics
               </template>
-              <template v-else>
-                Please authenticate using your device biometrics to access your secure vault
-              </template>
+              <template v-else> Please authenticate using your device biometrics to access your secure vault </template>
             </p>
 
             <p v-if="authSuccess" class="ok-msg">Authentication successful</p>

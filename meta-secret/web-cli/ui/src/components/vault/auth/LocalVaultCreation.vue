@@ -1,9 +1,9 @@
-<script setup>
+<script setup lang="ts">
 import { AppState } from '@/stores/app-state';
 import { ref } from 'vue';
 
 const props = defineProps({
-  signUpProcessing: Boolean
+  signUpProcessing: Boolean,
 });
 
 const jsAppState = AppState();
@@ -33,16 +33,18 @@ const generateUserCreds = async () => {
     <div :class="$style.inputWrapper">
       <div :class="$style.inputContainer">
         <span :class="$style.atSymbol">@</span>
-        <input 
-          :class="$style.vaultNameInput" 
-          type="text" 
-          placeholder="vault name" 
-          :value="vaultName" 
+        <input
+          :class="$style.vaultNameInput"
+          type="text"
+          placeholder="vault name"
+          :value="vaultName"
+          :disabled="signUpProcessing"
           @input="updateVaultName"
-          :disabled="signUpProcessing" 
         />
       </div>
-      <button :class="$style.actionButton" @click="generateUserCreds" :disabled="signUpProcessing">Set Vault Name</button>
+      <button :class="$style.actionButton" :disabled="signUpProcessing" @click="generateUserCreds">
+        Set Vault Name
+      </button>
     </div>
 
     <div v-if="vaultName" :class="$style.vaultInfoMessage">
@@ -105,4 +107,4 @@ const generateUserCreds = async () => {
 .vaultNameHighlight {
   @apply font-bold text-orange-400;
 }
-</style> 
+</style>

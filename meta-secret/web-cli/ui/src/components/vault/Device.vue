@@ -35,11 +35,7 @@ const deviceDisplay = computed(() => {
 });
 
 const typeLabel = computed(() =>
-  deviceCategoryLabel(
-    deviceDisplay.value.category,
-    deviceDisplay.value.unavailable,
-    vaultDevices,
-  ),
+  deviceCategoryLabel(deviceDisplay.value.category, deviceDisplay.value.unavailable, vaultDevices),
 );
 
 const currentDeviceId = computed(() => {
@@ -121,41 +117,89 @@ const handleDecline = async () => {
     @keydown.space.prevent="openJoinConfirm"
   >
     <div class="device-icon-box">
-      <svg v-if="deviceDisplay.category === DeviceUiCategory.Iphone" width="22" height="22" viewBox="0 0 60 59" fill="none">
-        <rect x="14" y="5" width="32" height="50" rx="6" fill="#1a2e4a" stroke="#3b7eff" stroke-width="2"/>
-        <rect x="24" y="-1" width="13" height="11" rx="2" fill="#91BDFF" opacity="0.7"/>
+      <svg
+        v-if="deviceDisplay.category === DeviceUiCategory.Iphone"
+        width="22"
+        height="22"
+        viewBox="0 0 60 59"
+        fill="none"
+      >
+        <rect x="14" y="5" width="32" height="50" rx="6" fill="#1a2e4a" stroke="#3b7eff" stroke-width="2" />
+        <rect x="24" y="-1" width="13" height="11" rx="2" fill="#91BDFF" opacity="0.7" />
       </svg>
-      <svg v-else-if="deviceDisplay.category === DeviceUiCategory.Android" width="22" height="22" viewBox="0 0 60 59" fill="none">
-        <rect x="14" y="5" width="32" height="50" rx="6" fill="#1a2e4a" stroke="#3b7eff" stroke-width="2"/>
-        <circle cx="30" cy="10" r="2.2" fill="#91BDFF"/>
-        <circle cx="23" cy="50" r="2" fill="#91BDFF"/>
-        <circle cx="30" cy="50" r="2" fill="#91BDFF"/>
-        <circle cx="37" cy="50" r="2" fill="#91BDFF"/>
+      <svg
+        v-else-if="deviceDisplay.category === DeviceUiCategory.Android"
+        width="22"
+        height="22"
+        viewBox="0 0 60 59"
+        fill="none"
+      >
+        <rect x="14" y="5" width="32" height="50" rx="6" fill="#1a2e4a" stroke="#3b7eff" stroke-width="2" />
+        <circle cx="30" cy="10" r="2.2" fill="#91BDFF" />
+        <circle cx="23" cy="50" r="2" fill="#91BDFF" />
+        <circle cx="30" cy="50" r="2" fill="#91BDFF" />
+        <circle cx="37" cy="50" r="2" fill="#91BDFF" />
       </svg>
-      <svg v-else-if="deviceDisplay.category === DeviceUiCategory.Tablet" width="18" height="22" viewBox="0 0 42 50" fill="none">
-        <rect x="1" y="1" width="40" height="48" rx="5" fill="#1a2e4a" stroke="#3b7eff" stroke-width="2"/>
+      <svg
+        v-else-if="deviceDisplay.category === DeviceUiCategory.Tablet"
+        width="18"
+        height="22"
+        viewBox="0 0 42 50"
+        fill="none"
+      >
+        <rect x="1" y="1" width="40" height="48" rx="5" fill="#1a2e4a" stroke="#3b7eff" stroke-width="2" />
       </svg>
-      <svg v-else-if="deviceDisplay.category === DeviceUiCategory.Desktop" width="32" height="22" viewBox="0 0 54 36" fill="none">
-        <rect x="5.5" y="1.5" width="44" height="33" rx="3.3" fill="#1a2e4a" stroke="#3b7eff" stroke-width="2.2"/>
-        <path d="M0 31.2H54V33.4C54 34.6 53 35.6 51.8 35.6H4.4C2 35.6 0 33.7 0 31.2Z" fill="#91BDFF"/>
+      <svg
+        v-else-if="deviceDisplay.category === DeviceUiCategory.Desktop"
+        width="32"
+        height="22"
+        viewBox="0 0 54 36"
+        fill="none"
+      >
+        <rect x="5.5" y="1.5" width="44" height="33" rx="3.3" fill="#1a2e4a" stroke="#3b7eff" stroke-width="2.2" />
+        <path d="M0 31.2H54V33.4C54 34.6 53 35.6 51.8 35.6H4.4C2 35.6 0 33.7 0 31.2Z" fill="#91BDFF" />
       </svg>
-      <svg v-else-if="deviceDisplay.category === DeviceUiCategory.Web" width="22" height="22" viewBox="0 0 54 54" fill="none">
-        <circle cx="27" cy="27" r="24" fill="#1a2e4a" stroke="#3b7eff" stroke-width="2"/>
-        <line x1="3" y1="16" x2="51" y2="16" stroke="#91BDFF" stroke-width="1.6"/>
-        <line x1="3" y1="27" x2="51" y2="27" stroke="#91BDFF" stroke-width="1.6"/>
-        <line x1="3" y1="38" x2="51" y2="38" stroke="#91BDFF" stroke-width="1.6"/>
-        <line x1="27" y1="3" x2="27" y2="51" stroke="#91BDFF" stroke-width="1.6"/>
+      <svg
+        v-else-if="deviceDisplay.category === DeviceUiCategory.Web"
+        width="22"
+        height="22"
+        viewBox="0 0 54 54"
+        fill="none"
+      >
+        <circle cx="27" cy="27" r="24" fill="#1a2e4a" stroke="#3b7eff" stroke-width="2" />
+        <line x1="3" y1="16" x2="51" y2="16" stroke="#91BDFF" stroke-width="1.6" />
+        <line x1="3" y1="27" x2="51" y2="27" stroke="#91BDFF" stroke-width="1.6" />
+        <line x1="3" y1="38" x2="51" y2="38" stroke="#91BDFF" stroke-width="1.6" />
+        <line x1="27" y1="3" x2="27" y2="51" stroke="#91BDFF" stroke-width="1.6" />
       </svg>
-      <svg v-else-if="deviceDisplay.category === DeviceUiCategory.Cli" width="30" height="22" viewBox="0 0 58 44" fill="none">
-        <rect x="1" y="1" width="56" height="42" rx="3" fill="#1a2e4a" stroke="#3b7eff" stroke-width="2"/>
-        <polyline points="8,22 14,28 8,34" stroke="#91BDFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-        <line x1="17" y1="28" x2="33" y2="28" stroke="#91BDFF" stroke-width="2.2" stroke-linecap="round"/>
+      <svg
+        v-else-if="deviceDisplay.category === DeviceUiCategory.Cli"
+        width="30"
+        height="22"
+        viewBox="0 0 58 44"
+        fill="none"
+      >
+        <rect x="1" y="1" width="56" height="42" rx="3" fill="#1a2e4a" stroke="#3b7eff" stroke-width="2" />
+        <polyline
+          points="8,22 14,28 8,34"
+          stroke="#91BDFF"
+          stroke-width="2.2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          fill="none"
+        />
+        <line x1="17" y1="28" x2="33" y2="28" stroke="#91BDFF" stroke-width="2.2" stroke-linecap="round" />
       </svg>
       <svg v-else width="22" height="22" viewBox="0 0 56 56" fill="none">
-        <path d="M23 26 A5 5 0 0 0 33 26" stroke="#91BDFF" stroke-width="2.2" stroke-linecap="round" fill="none"/>
-        <path d="M18 26 A10 10 0 0 0 38 26" stroke="#91BDFF" stroke-width="2.2" stroke-linecap="round" fill="none"/>
-        <path d="M13 26 A15 15 0 0 0 43 26" stroke="#91BDFF" stroke-width="2.2" stroke-linecap="round" fill="none"/>
-        <path d="M8 28H48A4 4 0 0 1 52 32V50A4 4 0 0 1 48 54H8A4 4 0 0 1 4 50V32A4 4 0 0 1 8 28Z" fill="#1a2e4a" stroke="#3b7eff" stroke-width="2"/>
+        <path d="M23 26 A5 5 0 0 0 33 26" stroke="#91BDFF" stroke-width="2.2" stroke-linecap="round" fill="none" />
+        <path d="M18 26 A10 10 0 0 0 38 26" stroke="#91BDFF" stroke-width="2.2" stroke-linecap="round" fill="none" />
+        <path d="M13 26 A15 15 0 0 0 43 26" stroke="#91BDFF" stroke-width="2.2" stroke-linecap="round" fill="none" />
+        <path
+          d="M8 28H48A4 4 0 0 1 52 32V50A4 4 0 0 1 48 54H8A4 4 0 0 1 4 50V32A4 4 0 0 1 8 28Z"
+          fill="#1a2e4a"
+          stroke="#3b7eff"
+          stroke-width="2"
+        />
       </svg>
     </div>
 
@@ -174,20 +218,31 @@ const handleDecline = async () => {
     <div class="confirm-dialog" @click.stop>
       <div class="confirm-icon-box">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-          <path d="M12 3L4 7v5c0 5.25 3.5 10.15 8 11.5C16.5 22.15 20 17.25 20 12V7L12 3z" fill="#1a3a8f" stroke="#60a5fa" stroke-width="1.5" stroke-linejoin="round"/>
-          <circle cx="12" cy="12" r="2.5" fill="#60a5fa"/>
+          <path
+            d="M12 3L4 7v5c0 5.25 3.5 10.15 8 11.5C16.5 22.15 20 17.25 20 12V7L12 3z"
+            fill="#1a3a8f"
+            stroke="#60a5fa"
+            stroke-width="1.5"
+            stroke-linejoin="round"
+          />
+          <circle cx="12" cy="12" r="2.5" fill="#60a5fa" />
         </svg>
       </div>
       <div class="confirm-title">
         {{ vaultDevices.confirmJoinPrefix }}
         <span class="accent-device">{{ typeLabel }}</span>
         {{ vaultDevices.confirmJoinMiddle }}
-        <span class="accent-vault">{{ vaultName }}</span>?
+        <span class="accent-vault">{{ vaultName }}</span
+        >?
       </div>
       <div class="confirm-subtitle">{{ typeLabel }}</div>
       <div class="confirm-actions">
-        <button class="btn-decline" :disabled="isSubmitting" @click="handleDecline">{{ vaultDevices.actionDecline }}</button>
-        <button class="btn-accept" :disabled="isSubmitting" @click="handleAccept">{{ vaultDevices.actionAccept }}</button>
+        <button class="btn-decline" :disabled="isSubmitting" @click="handleDecline">
+          {{ vaultDevices.actionDecline }}
+        </button>
+        <button class="btn-accept" :disabled="isSubmitting" @click="handleAccept">
+          {{ vaultDevices.actionAccept }}
+        </button>
       </div>
     </div>
   </div>

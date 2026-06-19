@@ -56,7 +56,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <Disclosure as="nav" class="top-nav" v-slot="{ open }">
+  <Disclosure v-slot="{ open }" as="nav" class="top-nav">
     <div class="nav-inner">
       <div class="logo-block" @click="router.push('/')">
         <img class="logo" src="/logo.png" alt="Meta Secret" />
@@ -74,7 +74,7 @@ onBeforeUnmount(() => {
           {{ item.name }}
         </button>
 
-        <div class="dropdown" ref="dropdownRef">
+        <div ref="dropdownRef" class="dropdown">
           <button class="nav-link" @click.stop="toggleDropdown">
             Tools
             <ChevronDownIcon class="chevron" aria-hidden="true" />
@@ -84,7 +84,10 @@ onBeforeUnmount(() => {
               v-for="item in toolsMenu"
               :key="item.name"
               class="dropdown-item"
-              @click="closeDropdown(); openLink(item.href, item.external)"
+              @click="
+                closeDropdown();
+                openLink(item.href, item.external);
+              "
             >
               {{ item.name }}
             </button>

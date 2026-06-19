@@ -11,7 +11,7 @@ const showConfirmation = ref(false);
 
 async function cleanDatabase() {
   if (isCleaning.value) return;
-  
+
   isCleaning.value = true;
   try {
     await jsAppState.cleanDatabase();
@@ -38,9 +38,9 @@ function toggleConfirmation() {
     <div class="relative">
       <AlphaBadge />
     </div>
-    
+
     <header :class="$style.settingsHeader">
-      <button @click="goBack" :class="$style.backButton">
+      <button :class="$style.backButton" @click="goBack">
         <span :class="$style.backIcon">←</span>
         <span>Back</span>
       </button>
@@ -50,49 +50,51 @@ function toggleConfirmation() {
     <div :class="$style.settingsContent">
       <section :class="$style.settingsSection">
         <h2 :class="$style.sectionTitle">Data Management</h2>
-        
+
         <div :class="$style.sectionCard">
           <div :class="$style.cardHeader">
             <div :class="[$style.cardIcon, $style.danger]">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" :class="$style.icon">
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                :class="$style.icon"
+              >
+                <path
+                  d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
+                ></path>
                 <line x1="12" y1="9" x2="12" y2="13"></line>
                 <line x1="12" y1="17" x2="12.01" y2="17"></line>
               </svg>
             </div>
             <h3 :class="$style.cardTitle">Clean Database</h3>
           </div>
-          
+
           <div :class="$style.cardContent">
             <p :class="$style.cardDescription">
-              Delete all vault data and start fresh. This action removes all secrets,
-              vault configurations, and resets the application to its initial state.
+              Delete all vault data and start fresh. This action removes all secrets, vault configurations, and resets
+              the application to its initial state.
             </p>
-            
+
             <div v-if="!showConfirmation" :class="$style.cardActions">
-              <button 
-                :class="[$style.actionButton, $style.danger]"
-                @click="toggleConfirmation"
-              >
-                Clean Database
-              </button>
+              <button :class="[$style.actionButton, $style.danger]" @click="toggleConfirmation">Clean Database</button>
             </div>
-            
+
             <div v-else :class="$style.confirmationBox">
               <p :class="$style.confirmationText">Are you sure? This action cannot be undone.</p>
               <div :class="$style.confirmationActions">
-                <button 
+                <button
                   :class="[$style.actionButton, $style.secondary]"
-                  @click="toggleConfirmation"
                   :disabled="isCleaning"
+                  @click="toggleConfirmation"
                 >
                   Cancel
                 </button>
-                <button 
-                  :class="[$style.actionButton, $style.danger]"
-                  :disabled="isCleaning"
-                  @click="cleanDatabase"
-                >
+                <button :class="[$style.actionButton, $style.danger]" :disabled="isCleaning" @click="cleanDatabase">
                   <span v-if="isCleaning">Cleaning...</span>
                   <span v-else>Yes, Clean Database</span>
                 </button>
@@ -333,11 +335,17 @@ function toggleConfirmation() {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(-5px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .animate-fadeIn {
   animation: fadeIn 0.2s ease-out forwards;
 }
-</style> 
+</style>

@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import { AppState } from '@/stores/app-state';
 import { ref } from 'vue';
 
@@ -26,4 +26,4 @@ const vaultName = ref(jsAppState.getVaultName());
 .highlight {
   @apply font-bold text-orange-400;
 }
-</style> 
+</style>

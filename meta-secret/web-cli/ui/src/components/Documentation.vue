@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 import { defineComponent } from 'vue';
 
 export default defineComponent({});
@@ -13,7 +13,10 @@ export default defineComponent({});
     <div :class="$style.contentBox">
       <p :class="$style.sectionTitle">Split Password:</p>
       <ul :class="$style.list">
-        <li>Go to "Split" page - <RouterLink :class="$style.navLink" to="/split">click on "Split" button on this page</RouterLink></li>
+        <li>
+          Go to "Split" page -
+          <RouterLink :class="$style.navLink" to="/split">click on "Split" button on this page</RouterLink>
+        </li>
         <li>Type your password and notes</li>
         <li>Click on "split" button, which generates qr codes (password shares)</li>
         <li>Save qr codes on you computer: right click on each qr code and then click "Save Image As..."</li>
@@ -39,8 +42,9 @@ export default defineComponent({});
       <p :class="$style.sectionTitle">Security Aspect:</p>
       <ul :class="$style.list">
         <li>
-          <p>This site is a simple HTML page that run only on your local computer, so it's completely secure to use
-            it</p>
+          <p>
+            This site is a simple HTML page that run only on your local computer, so it's completely secure to use it
+          </p>
           <p>There is no any other 3-rd parties involved</p>
         </li>
         <li>
