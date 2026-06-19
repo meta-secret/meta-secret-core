@@ -1,7 +1,7 @@
 [package]
 name = "mobile-uniffi"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 
 [lib]
 crate-type = ["lib", "cdylib", "staticlib"]
@@ -10,11 +10,11 @@ name = "metasecret_mobile"
 [dependencies]
 mobile-common = { path = "../common" }
 meta-secret-core = { path = "../../core", features = ["mobile"] }
-uniffi = { version = "0.28.3", default-features = false }
+uniffi = { version = "0.31.2", default-features = false }
 
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.21.1"
 rustls-platform-verifier = "0.6.2"
 
 [build-dependencies]
-uniffi_build = { version = "0.28.3", features = ["builtin-bindgen"] }
+uniffi_build = { version = "0.31.2", features = ["builtin-bindgen"] }

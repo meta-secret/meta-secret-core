@@ -125,7 +125,7 @@
       },
       {
         "relative_path": "mobile/uniffi/Cargo.toml",
-        "contents": "[package]\nname = \"mobile-uniffi\"\nedition = \"2021\"\nversion = \"0.0.1\"\nbuild = \"build.rs\"\n\n[dependencies.meta-secret-core]\npath = \"../../core\"\nfeatures = [\"mobile\"]\n\n[dependencies.mobile-common]\npath = \"../common\"\n\n[dependencies.uniffi]\nversion = \"0.28.3\"\ndefault-features = false\n\n[build-dependencies.uniffi_build]\nversion = \"0.28.3\"\nfeatures = [\"builtin-bindgen\"]\n\n[target.'cfg(target_os = \"android\")'.dependencies]\njni = \"0.21.1\"\nrustls-platform-verifier = \"0.6.2\"\n\n[target.'cfg(target_os = \"android\")'.dev-dependencies]\n\n[target.'cfg(target_os = \"android\")'.build-dependencies]\n\n[lib]\npath = \"src/lib.rs\"\nname = \"metasecret_mobile\"\nrequired-features = []\ncrate-type = [\"lib\", \"cdylib\", \"staticlib\"]\n",
+        "contents": "[package]\nname = \"mobile-uniffi\"\nversion = \"0.0.1\"\nbuild = \"build.rs\"\n\n[package.edition]\nworkspace = true\n\n[dependencies.meta-secret-core]\npath = \"../../core\"\nfeatures = [\"mobile\"]\n\n[dependencies.mobile-common]\npath = \"../common\"\n\n[dependencies.uniffi]\nversion = \"0.31.2\"\ndefault-features = false\n\n[build-dependencies.uniffi_build]\nversion = \"0.31.2\"\nfeatures = [\"builtin-bindgen\"]\n\n[target.'cfg(target_os = \"android\")'.dependencies]\njni = \"0.21.1\"\nrustls-platform-verifier = \"0.6.2\"\n\n[target.'cfg(target_os = \"android\")'.dev-dependencies]\n\n[target.'cfg(target_os = \"android\")'.build-dependencies]\n\n[lib]\npath = \"src/lib.rs\"\nname = \"metasecret_mobile\"\nrequired-features = []\ncrate-type = [\"lib\", \"cdylib\", \"staticlib\"]\n",
         "targets": [
           {
             "path": "build.rs",
@@ -145,7 +145,7 @@
       },
       {
         "relative_path": "mobile/uniffi-bindgen-runner/Cargo.toml",
-        "contents": "[package]\nname = \"uniffi-bindgen-runner\"\nversion = \"0.0.1\"\npublish = false\n\n[package.edition]\nworkspace = true\n\n[dependencies.uniffi]\nversion = \"0.28.3\"\nfeatures = [\"cli\"]\n\n[[bin]]\npath = \"src/main.rs\"\nname = \"uniffi-bindgen\"\nrequired-features = []\n",
+        "contents": "[package]\nname = \"uniffi-bindgen-runner\"\nversion = \"0.0.1\"\npublish = false\n\n[package.edition]\nworkspace = true\n\n[dependencies.uniffi]\nversion = \"0.31.2\"\nfeatures = [\"cli\"]\n\n[[bin]]\npath = \"src/main.rs\"\nname = \"uniffi-bindgen\"\nrequired-features = []\n",
         "targets": [
           {
             "path": "src/main.rs",
