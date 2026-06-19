@@ -4,42 +4,45 @@
 
 ARG RUST_VERSION=1.96.0
 
-# --- Builder: Rust tooling + sccache for dep caching ---
-FROM rust:${RUST_VERSION}-bookworm AS builder
+# --- Chef Planner: generate cargo-chef recipe ---
+FROM lukemathwalker/cargo-chef:latest-rust-${RUST_VERSION}-bookworm AS chef-planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+# Minimal stage to extract just the recipe file
+FROM scratch AS recipe-output
+COPY --from=chef-planner /recipe.json /recipe.json
+
+# --- Builder Base: Rust tooling only, no dep pre-compilation ---
+FROM rust:${RUST_VERSION}-bookworm AS builder-base
 
 RUN rustup component add rustfmt
 
-# sccache caches compiled crates in /sccache-cache inside the image layer.
-# Each RUN step starts a fresh daemon but reads the same on-disk cache,
-# giving 100% cache hits on unchanged deps across stages.
-ENV SCCACHE_VERSION="v0.15.0"
-ENV SCCACHE_DIR="/sccache-cache"
-ENV RUSTC_WRAPPER=sccache
-
-RUN ARCH=$(uname -m) && \
-    wget -q https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/sccache-${SCCACHE_VERSION}-${ARCH}-unknown-linux-musl.tar.gz \
-    && tar xzf sccache-${SCCACHE_VERSION}-${ARCH}-unknown-linux-musl.tar.gz \
-    && mv sccache-${SCCACHE_VERSION}-${ARCH}-unknown-linux-musl/sccache /usr/local/bin/sccache \
-    && chmod +x /usr/local/bin/sccache
+COPY --from=chef-planner /usr/local/cargo/bin/cargo-chef /usr/local/cargo/bin/cargo-chef
 
 RUN ARCH=$(uname -m) && \
     NEXTEST_ARCH=$([ "$ARCH" = "aarch64" ] && echo "linux-arm" || echo "linux") && \
     curl -LsSf https://get.nexte.st/latest/${NEXTEST_ARCH} | tar zxf - -C /usr/local/bin
+
 RUN curl https://wasm-bindgen.github.io/wasm-pack/installer/init.sh -sSf | sh
 
 ENV BASE_DIR="/meta-secret-build"
 WORKDIR ${BASE_DIR}
 
-# Pre-warm sccache: compile all deps with full source, then discard target/.
-# sccache artifacts stay in /sccache-cache and are inherited by all derived stages.
-# This layer is invalidated only when Cargo.lock changes (dep versions change).
-COPY . .
-RUN cargo build 2>/dev/null || true
-RUN cargo build --release 2>/dev/null || true
-RUN rm -rf target
+# --- Builder Debug: pre-compiled deps in debug mode (for tests) ---
+FROM builder-base AS builder-debug
+
+COPY recipe.json .
+RUN cargo chef cook --recipe-path recipe.json
+
+# --- Builder Release: pre-compiled deps in release mode (for server and wasm) ---
+FROM builder-base AS builder-release
+
+COPY recipe.json .
+RUN cargo chef cook --release --recipe-path recipe.json
 
 # --- Prepare DB: run diesel migrations ---
-FROM builder AS prepare-db
+FROM builder-release AS prepare-db
 
 RUN cargo install diesel_cli --no-default-features --features sqlite
 
@@ -55,7 +58,7 @@ ENV DATABASE_URL=build/meta-secret.db
 RUN diesel migration run
 
 # --- Meta Server Builder: compile meta-server binary ---
-FROM builder AS meta-server-builder
+FROM builder-release AS meta-server-builder
 
 WORKDIR /meta-secret-build
 COPY . .
@@ -77,7 +80,7 @@ EXPOSE 3000
 CMD ["./meta-server"]
 
 # --- WASM Builder: build wasm package ---
-FROM builder AS wasm-builder
+FROM builder-release AS wasm-builder
 
 RUN rustup target add wasm32-unknown-unknown
 
@@ -85,7 +88,6 @@ WORKDIR /meta-secret-build
 COPY . .
 
 WORKDIR /meta-secret-build/wasm
-ENV RUSTC_WRAPPER=""
 RUN wasm-pack build --target web
 
 # Minimal stage to extract just the wasm pkg
@@ -93,7 +95,7 @@ FROM scratch AS wasm-output
 COPY --from=wasm-builder /meta-secret-build/wasm/pkg/ /
 
 # --- Test Runner: run tests with cargo-nextest ---
-FROM builder AS test-runner
+FROM builder-debug AS test-runner
 
 WORKDIR /meta-secret-build
 COPY . .

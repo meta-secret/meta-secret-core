@@ -71,6 +71,13 @@ target "test" {
   cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-core:cache,mode=max"] : []
 }
 
+target "generate-recipe" {
+  context    = "meta-secret"
+  dockerfile = "Dockerfile"
+  target     = "recipe-output"
+  output     = ["type=local,dest=meta-secret"]
+}
+
 // ============================================================
 // Infra builds
 // ============================================================
