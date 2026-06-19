@@ -13,12 +13,11 @@ RUN cargo chef prepare --recipe-path recipe.json
 FROM scratch AS recipe-output
 COPY --from=chef-planner /recipe.json /recipe.json
 
-# --- Builder: base image with all Rust tooling + cached deps ---
-FROM rust:${RUST_VERSION}-bookworm AS builder
+# --- Builder Base: Rust tooling only, no dep pre-compilation ---
+FROM rust:${RUST_VERSION}-bookworm AS builder-base
 
 RUN rustup component add rustfmt
 
-# Install sccache (architecture-aware)
 ENV SCCACHE_VERSION="v0.10.0"
 ENV RUSTC_WRAPPER=sccache
 
@@ -37,12 +36,20 @@ RUN cargo install diesel_cli --no-default-features --features sqlite
 ENV BASE_DIR="/meta-secret-build"
 WORKDIR ${BASE_DIR}
 
-# Use committed recipe.json (regenerate with: make generate-recipe)
+# --- Builder Debug: pre-compiled deps in debug mode (for tests) ---
+FROM builder-base AS builder-debug
+
 COPY recipe.json .
 RUN cargo chef cook --recipe-path recipe.json
 
+# --- Builder Release: pre-compiled deps in release mode (for server and wasm) ---
+FROM builder-base AS builder-release
+
+COPY recipe.json .
+RUN cargo chef cook --release --recipe-path recipe.json
+
 # --- Prepare DB: run diesel migrations ---
-FROM builder AS prepare-db
+FROM builder-release AS prepare-db
 
 WORKDIR /meta-secret-build
 RUN mkdir -p db
@@ -56,7 +63,7 @@ ENV DATABASE_URL=build/meta-secret.db
 RUN diesel migration run
 
 # --- Meta Server Builder: compile meta-server binary ---
-FROM builder AS meta-server-builder
+FROM builder-release AS meta-server-builder
 
 WORKDIR /meta-secret-build
 COPY . .
@@ -79,7 +86,7 @@ EXPOSE 3000
 CMD ["./meta-server"]
 
 # --- WASM Builder: build wasm package ---
-FROM builder AS wasm-builder
+FROM builder-release AS wasm-builder
 
 RUN rustup target add wasm32-unknown-unknown
 
@@ -96,7 +103,7 @@ FROM scratch AS wasm-output
 COPY --from=wasm-builder /meta-secret-build/wasm/pkg/ /
 
 # --- Test Runner: run tests with cargo-nextest ---
-FROM builder AS test-runner
+FROM builder-debug AS test-runner
 
 WORKDIR /meta-secret-build
 
