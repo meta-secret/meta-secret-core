@@ -19,8 +19,11 @@ jobs:
 
     permissions:
       contents: read
-      packages: read
+      packages: write
       pull-requests: write
+
+    env:
+      PUSH_CACHE: 1
 
     outputs:
       preview-url: ${{ steps.deploy.outputs.deployment-url }}

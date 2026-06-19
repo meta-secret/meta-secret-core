@@ -48,7 +48,11 @@ target "web-local" {
   dockerfile = "Dockerfile"
   target     = "web-output"
   output     = ["type=local,dest=meta-secret/web-cli/ui/dist"]
-  cache-from = ["type=registry,ref=${REGISTRY}/meta-secret-web:cache"]
+  cache-from = [
+    "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
+    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
+  ]
+  cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-web:cache,mode=max"] : []
 }
 
 target "wasm-local" {
@@ -56,7 +60,11 @@ target "wasm-local" {
   dockerfile = "Dockerfile"
   target     = "wasm-output"
   output     = ["type=local,dest=meta-secret/web-cli/ui/pkg"]
-  cache-from = ["type=registry,ref=${REGISTRY}/meta-secret-web:cache"]
+  cache-from = [
+    "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
+    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
+  ]
+  cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-web:cache,mode=max"] : []
 }
 
 // Compiles deps (cargo-chef) + project source (nextest --no-run) and pushes to cache.
