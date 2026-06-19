@@ -12,21 +12,29 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+      packages: write
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Install Task
+        uses: go-task/setup-task@v2
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to Docker Hub
+      - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          username: cypherkitty
-          password: ${{ secrets.META_SECRET_SERVER_DOCKER_PAT }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Web UI
-        run: make web-local
+        run: task web-local
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
