@@ -31,13 +31,13 @@ WORKDIR ${BASE_DIR}
 FROM builder-base AS builder-debug
 
 COPY recipe.json .
-RUN cargo chef cook --jobs $(nproc) --recipe-path recipe.json
+RUN cargo chef cook --recipe-path recipe.json
 
 # --- Builder Release: pre-compiled deps in release mode (for server and wasm) ---
 FROM builder-base AS builder-release
 
 COPY recipe.json .
-RUN cargo chef cook --jobs $(nproc) --release --recipe-path recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
 
 # --- Prepare DB: run diesel migrations ---
 FROM builder-release AS prepare-db
