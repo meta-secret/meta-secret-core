@@ -1,4 +1,4 @@
-<script lang="js">
+<script lang="ts">
 import QRCodeStyling from 'qr-code-styling';
 
 import init, { split } from 'meta-secret-web-cli';
@@ -179,19 +179,17 @@ export default {
   <div class="split-password-container">
     <div class="header">
       <h1>Create Password Shares</h1>
-      <p class="description">
-        Enter your password and optional notes to create secure QR code shares.
-      </p>
+      <p class="description">Enter your password and optional notes to create secure QR code shares.</p>
     </div>
 
     <div class="form-container">
       <div class="form-group">
         <label for="note1">Label 1</label>
         <input
-          class="input-field"
-          type="text"
           id="note1"
           v-model="note1"
+          class="input-field"
+          type="text"
           placeholder="Short label for your QR code (optional)"
           maxlength="10"
         />
@@ -200,10 +198,10 @@ export default {
       <div class="form-group">
         <label for="note2">Label 2</label>
         <input
-          class="input-field"
-          type="text"
           id="note2"
           v-model="note2"
+          class="input-field"
+          type="text"
           placeholder="Additional label for your QR code (optional)"
           maxlength="10"
         />
@@ -211,13 +209,7 @@ export default {
 
       <div class="form-group">
         <label for="password">Your Password</label>
-        <input
-          class="input-field"
-          type="text"
-          id="password"
-          v-model="password"
-          placeholder="Enter your password"
-        />
+        <input id="password" v-model="password" class="input-field" type="text" placeholder="Enter your password" />
       </div>
 
       <button class="split-button" @click="splitPassword">
@@ -226,7 +218,7 @@ export default {
       </button>
     </div>
 
-    <div class="qr-container" id="qr-images"></div>
+    <div id="qr-images" class="qr-container"></div>
   </div>
 </template>
 
@@ -235,7 +227,11 @@ export default {
   max-width: 800px;
   margin: 0 auto;
   padding: 2rem;
-  font-family: 'Inter var', system-ui, -apple-system, sans-serif;
+  font-family:
+    'Inter var',
+    system-ui,
+    -apple-system,
+    sans-serif;
 }
 
 .header {
@@ -263,7 +259,9 @@ export default {
   backdrop-filter: blur(10px);
   border-radius: 0.75rem;
   padding: 2rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.1);
   margin-bottom: 2rem;
 }
@@ -346,7 +344,9 @@ export default {
   background-color: white;
   border-radius: 0.75rem;
   padding: 1.5rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
   transition: transform 0.2s;
   display: flex;
   flex-direction: column;
@@ -355,7 +355,9 @@ export default {
 
 .qr-canvas-container:hover {
   transform: translateY(-5px);
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  box-shadow:
+    0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
 
 .download-button {
@@ -379,11 +381,11 @@ export default {
   .split-password-container {
     padding: 1rem;
   }
-  
+
   .form-container {
     padding: 1.5rem;
   }
-  
+
   .qr-container {
     gap: 1rem;
   }
@@ -396,41 +398,41 @@ export default {
     -webkit-background-clip: text;
     background-clip: text;
   }
-  
+
   .description {
     color: #9ca3af;
   }
-  
+
   .form-container {
     background-color: rgba(30, 41, 59, 0.5);
     border-color: rgba(55, 65, 81, 0.5);
   }
-  
+
   .form-group label {
     color: #e5e7eb;
   }
-  
+
   .input-field {
     background-color: #1f2937;
     border-color: #374151;
     color: #f9fafb;
   }
-  
+
   .input-field:focus {
     border-color: #60a5fa;
   }
-  
+
   .input-field::placeholder {
     color: #6b7280;
   }
-  
+
   .split-button {
     background: linear-gradient(90deg, #3b82f6, #8b5cf6);
   }
-  
+
   .qr-canvas-container {
     background-color: #1f2937;
     border: 1px solid #374151;
   }
 }
-</style> 
+</style>

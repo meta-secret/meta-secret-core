@@ -107,7 +107,7 @@ FROM test-compiler AS test-runner
 RUN RUST_MIN_STACK=8388608 cargo nextest run --profile ci
 
 # --- Web Build: Vue.js + WASM ---
-FROM node:23.9.0-bookworm AS web-build
+FROM node:24-bookworm-slim AS web-build
 
 WORKDIR /meta-secret/web-cli/ui
 
@@ -120,7 +120,7 @@ WORKDIR /meta-secret/web-cli
 COPY web-cli/ .
 
 WORKDIR /meta-secret/web-cli/ui
-RUN rm -f package-lock.json && npm install && npm run build
+RUN rm -f package-lock.json && npm install && npm run lint:check && npm run build
 
 # Final web image
 FROM web-build AS web

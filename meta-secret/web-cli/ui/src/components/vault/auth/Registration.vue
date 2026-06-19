@@ -172,7 +172,11 @@ const progressMessage = computed(() => {
             @input="updateVaultName"
           />
         </div>
-        <button class="btn-primary" :disabled="signUpProcessing || isCleaning || isCheckingVaultName || !vaultName.trim()" @click="generateUserCreds">
+        <button
+          class="btn-primary"
+          :disabled="signUpProcessing || isCleaning || isCheckingVaultName || !vaultName.trim()"
+          @click="generateUserCreds"
+        >
           <span v-if="isCheckingVaultName">Checking...</span>
           <span v-else>Set Vault Name</span>
         </button>
@@ -218,7 +222,9 @@ const progressMessage = computed(() => {
         </div>
       </template>
 
-      <template v-if="hasSubmittedVaultName && !isCheckingVaultName && jsAppState.isOutsider && outsiderStatus === undefined">
+      <template
+        v-if="hasSubmittedVaultName && !isCheckingVaultName && jsAppState.isOutsider && outsiderStatus === undefined"
+      >
         <div class="status-block declined">
           <div class="status-title">Status is unknown. Please reset and try again.</div>
           <button class="btn-secondary compact" :disabled="isCleaning || signUpProcessing" @click="cleanDatabase">

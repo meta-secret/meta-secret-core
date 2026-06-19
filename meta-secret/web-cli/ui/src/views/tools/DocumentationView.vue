@@ -17,4 +17,4 @@ import Documentation from '@/components/Documentation.vue';
       </div>
     </div>
   </div>
-</template> 
+</template>

@@ -50,3 +50,5 @@ wasm-bindgen-test = "0.3.75"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 meta-secret-core = { path = "../core" }
+# getrandom 0.2 (pulled in by transitive deps) requires the "js" feature on wasm32-unknown-unknown
+getrandom = { version = "0.2", features = ["js"] }

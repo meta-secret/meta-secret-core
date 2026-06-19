@@ -1,4 +1,4 @@
-<script setup>
+<script setup lang="ts">
 import { ref, watch, onBeforeUnmount } from 'vue';
 
 const props = defineProps({
@@ -6,12 +6,12 @@ const props = defineProps({
   completed: Boolean,
   title: {
     type: String,
-    default: 'Creating Vault...'
+    default: 'Creating Vault...',
   },
   message: {
     type: String,
-    default: "Please don't close this page. Vault creation is in progress..."
-  }
+    default: "Please don't close this page. Vault creation is in progress...",
+  },
 });
 
 const progress = ref(0);
@@ -28,10 +28,10 @@ const stopProgressSimulation = () => {
 const startProgressSimulation = () => {
   // Reset progress
   progress.value = 0;
-  
+
   // Clear any existing interval
   stopProgressSimulation();
-  
+
   // Simulate progress with intervals (since we don't have actual progress feedback)
   progressInterval.value = setInterval(() => {
     // Never reach 100% until actual completion
@@ -47,21 +47,29 @@ const completeProgress = () => {
 };
 
 // Add the watcher after functions are defined
-watch(() => props.isActive, (isActive) => {
-  if (isActive) {
-    startProgressSimulation();
-  } else {
-    stopProgressSimulation();
-    progress.value = 0;
-  }
-}, { immediate: true });
+watch(
+  () => props.isActive,
+  (isActive) => {
+    if (isActive) {
+      startProgressSimulation();
+    } else {
+      stopProgressSimulation();
+      progress.value = 0;
+    }
+  },
+  { immediate: true },
+);
 
 // Watch for completed prop
-watch(() => props.completed, (completed) => {
-  if (completed && props.isActive) {
-    completeProgress();
-  }
-}, { immediate: true });
+watch(
+  () => props.completed,
+  (completed) => {
+    if (completed && props.isActive) {
+      completeProgress();
+    }
+  },
+  { immediate: true },
+);
 
 onBeforeUnmount(() => {
   stopProgressSimulation();
@@ -69,7 +77,7 @@ onBeforeUnmount(() => {
 
 // Expose methods to parent component
 defineExpose({
-  completeProgress
+  completeProgress,
 });
 </script>
 
@@ -81,11 +89,11 @@ defineExpose({
         <span :class="$style.warningTitle">{{ title }}</span>
       </div>
       <p :class="$style.warningMessage">{{ message }}</p>
-      
+
       <div :class="$style.progressBarContainer">
         <div :class="$style.progressBar" :style="{ width: `${Math.min(progress, 100)}%` }"></div>
       </div>
-      
+
       <p :class="$style.progressText">{{ Math.floor(progress) }}%</p>
     </div>
   </div>

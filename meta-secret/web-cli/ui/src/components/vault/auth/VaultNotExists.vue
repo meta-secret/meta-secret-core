@@ -1,8 +1,8 @@
-<script setup>
+<script setup lang="ts">
 import { AppState } from '@/stores/app-state';
 
 defineProps({
-  signUpProcessing: Boolean
+  signUpProcessing: Boolean,
 });
 
 const emit = defineEmits(['create']);
@@ -19,7 +19,7 @@ const createVault = () => {
     <div :class="$style.statusContainer">
       <div :class="$style.statusContent">
         <label :class="$style.statusLabel">Vault name is free!</label>
-        <button :class="$style.actionButton" @click="createVault" :disabled="signUpProcessing">Create</button>
+        <button :class="$style.actionButton" :disabled="signUpProcessing" @click="createVault">Create</button>
       </div>
     </div>
   </div>

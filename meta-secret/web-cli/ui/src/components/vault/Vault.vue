@@ -1,10 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import {
-  component_core_version,
-  component_db_version,
-  component_server_version,
-} from 'meta-secret-web-cli';
+import { component_core_version, component_db_version, component_server_version } from 'meta-secret-web-cli';
 import { AppState } from '@/stores/app-state';
 import { vaultComponentVersions, vaultTechnicalInfo } from '@/locales/en';
 
@@ -34,7 +30,7 @@ const toggleDeviceId = () => {
       <button class="vault-info-btn" title="Show Technical Information" @click="toggleDeviceId">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
           <circle cx="12" cy="12" r="9" stroke="#4a6080" stroke-width="2" />
-          <path d="M12 8v1M12 11v5" stroke="#4a6080" stroke-width="2" stroke-linecap="round"/>
+          <path d="M12 8v1M12 11v5" stroke="#4a6080" stroke-width="2" stroke-linecap="round" />
         </svg>
       </button>
     </div>

@@ -6,7 +6,7 @@ import { defineComponent } from 'vue';
 export default defineComponent({
   components: {
     NavBar,
-    PasskeyAuth
+    PasskeyAuth,
   },
 });
 </script>

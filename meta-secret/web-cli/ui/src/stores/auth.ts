@@ -27,7 +27,7 @@ export const useAuthStore = defineStore('auth', () => {
       const challenge = new Uint8Array(32);
       crypto.getRandomValues(challenge);
 
-      let generatedMasterKey = MasterKeyManager.generate_sk();
+      const generatedMasterKey = MasterKeyManager.generate_sk();
 
       // Store masterKey for later use
       masterKey.value = generatedMasterKey;
@@ -45,8 +45,8 @@ export const useAuthStore = defineStore('auth', () => {
           displayName: 'id0 Meta Human',
         },
         pubKeyCredParams: [
-          {type: 'public-key', alg: -7}, // ES256
-          {type: 'public-key', alg: -257}, // RS256
+          { type: 'public-key', alg: -7 }, // ES256
+          { type: 'public-key', alg: -257 }, // RS256
         ],
         authenticatorSelection: {
           authenticatorAttachment: 'platform', // Use built-in authenticator (TouchID, FaceID, Windows Hello)

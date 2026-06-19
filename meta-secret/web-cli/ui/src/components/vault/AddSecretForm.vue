@@ -25,12 +25,12 @@ const formError = ref<string | null>(null);
 
 const activeWords = computed(() => seedWords.value.slice(0, wordCount.value));
 const isCompact24 = computed(() => secretType.value === 'seed' && wordCount.value === 24);
-const modalTitle = computed(() => (
-  secretType.value === 'seed' ? vaultSecrets.addSeedPhraseTitle : vaultSecrets.addSecretTitle
-));
-const submitLabel = computed(() => (
-  secretType.value === 'seed' ? vaultSecrets.addSeedPhraseSubmit : vaultSecrets.addSecretSubmit
-));
+const modalTitle = computed(() =>
+  secretType.value === 'seed' ? vaultSecrets.addSeedPhraseTitle : vaultSecrets.addSecretTitle,
+);
+const submitLabel = computed(() =>
+  secretType.value === 'seed' ? vaultSecrets.addSeedPhraseSubmit : vaultSecrets.addSecretSubmit,
+);
 
 const resetState = () => {
   secretType.value = 'password';
@@ -48,11 +48,14 @@ const close = () => {
   emit('close');
 };
 
-watch(() => props.show, (isOpen) => {
-  if (!isOpen) {
-    resetState();
-  }
-});
+watch(
+  () => props.show,
+  (isOpen) => {
+    if (!isOpen) {
+      resetState();
+    }
+  },
+);
 
 const setWordCount = (count: 12 | 24) => {
   wordCount.value = count;
@@ -111,9 +114,10 @@ const submit = async () => {
   if (!validate()) return;
 
   const passId = description.value.trim();
-  const secretPayload = secretType.value === 'password'
-    ? passwordSecret.value.trim()
-    : activeWords.value.map((word) => word.trim()).join(' ');
+  const secretPayload =
+    secretType.value === 'password'
+      ? passwordSecret.value.trim()
+      : activeWords.value.map((word) => word.trim()).join(' ');
 
   isSubmitting.value = true;
   try {
@@ -152,18 +156,10 @@ const submit = async () => {
 
         <label class="label">{{ vaultSecrets.addSecretTypeLabel }}</label>
         <div class="segmented">
-          <button
-            class="segment-btn"
-            :class="{ active: secretType === 'password' }"
-            @click="secretType = 'password'"
-          >
+          <button class="segment-btn" :class="{ active: secretType === 'password' }" @click="secretType = 'password'">
             🔑 {{ vaultSecrets.addSecretTypePassword }}
           </button>
-          <button
-            class="segment-btn"
-            :class="{ active: secretType === 'seed' }"
-            @click="secretType = 'seed'"
-          >
+          <button class="segment-btn" :class="{ active: secretType === 'seed' }" @click="secretType = 'seed'">
             🌱 {{ vaultSecrets.addSecretTypeSeedPhrase }}
           </button>
         </div>
@@ -213,7 +209,9 @@ const submit = async () => {
       </div>
 
       <div class="actions">
-        <button class="btn-secondary" :disabled="isSubmitting" @click="close">{{ vaultSecrets.addSecretCancel }}</button>
+        <button class="btn-secondary" :disabled="isSubmitting" @click="close">
+          {{ vaultSecrets.addSecretCancel }}
+        </button>
         <button class="btn-primary" :disabled="isSubmitting || !canSubmit" @click="submit">{{ submitLabel }}</button>
       </div>
     </div>

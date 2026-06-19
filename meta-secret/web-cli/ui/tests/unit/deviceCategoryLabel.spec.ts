@@ -15,32 +15,16 @@ const testMessages = {
 
 describe('deviceCategoryLabel', () => {
   it('returns unavailable message when flag is set', () => {
-    expect(
-      deviceCategoryLabel(DeviceUiCategory.Android, true, testMessages),
-    ).toBe('MSG_UNAVAILABLE');
+    expect(deviceCategoryLabel(DeviceUiCategory.Android, true, testMessages)).toBe('MSG_UNAVAILABLE');
   });
 
   it('maps each DeviceUiCategory to the matching message key', () => {
-    expect(
-      deviceCategoryLabel(DeviceUiCategory.Android, false, testMessages),
-    ).toBe('MSG_ANDROID');
-    expect(deviceCategoryLabel(DeviceUiCategory.Iphone, false, testMessages)).toBe(
-      'MSG_IPHONE',
-    );
-    expect(deviceCategoryLabel(DeviceUiCategory.Tablet, false, testMessages)).toBe(
-      'MSG_TABLET',
-    );
-    expect(
-      deviceCategoryLabel(DeviceUiCategory.Desktop, false, testMessages),
-    ).toBe('MSG_DESKTOP');
-    expect(deviceCategoryLabel(DeviceUiCategory.Cli, false, testMessages)).toBe(
-      'MSG_CLI',
-    );
-    expect(deviceCategoryLabel(DeviceUiCategory.Web, false, testMessages)).toBe(
-      'MSG_WEB',
-    );
-    expect(deviceCategoryLabel(DeviceUiCategory.Other, false, testMessages)).toBe(
-      'MSG_OTHER',
-    );
+    expect(deviceCategoryLabel(DeviceUiCategory.Android, false, testMessages)).toBe('MSG_ANDROID');
+    expect(deviceCategoryLabel(DeviceUiCategory.Iphone, false, testMessages)).toBe('MSG_IPHONE');
+    expect(deviceCategoryLabel(DeviceUiCategory.Tablet, false, testMessages)).toBe('MSG_TABLET');
+    expect(deviceCategoryLabel(DeviceUiCategory.Desktop, false, testMessages)).toBe('MSG_DESKTOP');
+    expect(deviceCategoryLabel(DeviceUiCategory.Cli, false, testMessages)).toBe('MSG_CLI');
+    expect(deviceCategoryLabel(DeviceUiCategory.Web, false, testMessages)).toBe('MSG_WEB');
+    expect(deviceCategoryLabel(DeviceUiCategory.Other, false, testMessages)).toBe('MSG_OTHER');
   });
 });

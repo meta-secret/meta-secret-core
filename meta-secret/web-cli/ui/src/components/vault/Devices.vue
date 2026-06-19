@@ -9,14 +9,18 @@ const appState = AppState();
 const users = computed(() => (appState.currState as any).as_vault().as_member().vault_data().users());
 
 const memberDevices = computed(() => users.value.filter((membership: any) => membership.is_member()));
-const declinedDevices = computed(() => users.value.filter((membership: any) => {
-  if (!membership.is_outsider()) return false;
-  return membership.as_outsider().status === UserDataOutsiderStatus.Declined;
-}));
-const pendingDevices = computed(() => users.value.filter((membership: any) => {
-  if (!membership.is_outsider()) return false;
-  return membership.as_outsider().status === UserDataOutsiderStatus.Pending;
-}));
+const declinedDevices = computed(() =>
+  users.value.filter((membership: any) => {
+    if (!membership.is_outsider()) return false;
+    return membership.as_outsider().status === UserDataOutsiderStatus.Declined;
+  }),
+);
+const pendingDevices = computed(() =>
+  users.value.filter((membership: any) => {
+    if (!membership.is_outsider()) return false;
+    return membership.as_outsider().status === UserDataOutsiderStatus.Pending;
+  }),
+);
 
 const currentDeviceCount = computed(() => users.value.length);
 const requiredDevicesToSafety = computed(() => 3 - currentDeviceCount.value);
@@ -28,9 +32,7 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
     <div class="page-wide">
       <div v-if="shouldShowDevicesWarning" class="warning-banner">
         <span class="warning-icon">⚠</span>
-        <span>
-          {{ vaultSecrets.warningPrefix }} {{ requiredDevicesToSafety }} {{ vaultSecrets.warningMiddle }}
-        </span>
+        <span> {{ vaultSecrets.warningPrefix }} {{ requiredDevicesToSafety }} {{ vaultSecrets.warningMiddle }} </span>
       </div>
 
       <div class="card">
@@ -151,6 +153,5 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
   .section-sub {
     font-size: 10px;
   }
-
 }
 </style>

@@ -50,12 +50,7 @@ export const AppState = defineStore('app_state', {
     },
 
     async clearAllMetaSecretIndexedDb() {
-      const dbNames = [
-        'meta-secret',
-        'meta-secret-server',
-        'meta-secret-v-device',
-        'meta-secret-v-device-2',
-      ];
+      const dbNames = ['meta-secret', 'meta-secret-server', 'meta-secret-v-device', 'meta-secret-v-device-2'];
 
       for (const dbName of dbNames) {
         try {
@@ -83,13 +78,17 @@ export const AppState = defineStore('app_state', {
     resolveWebDeviceInfo() {
       const ua = navigator.userAgent.toLowerCase();
       const platform = navigator.platform || 'Web';
-      const browser =
-        ua.includes('edg') ? 'Edge' :
-        ua.includes('opr') || ua.includes('opera') ? 'Opera' :
-        ua.includes('firefox') ? 'Firefox' :
-        ua.includes('safari') && !ua.includes('chrome') ? 'Safari' :
-        ua.includes('chrome') ? 'Chrome' :
-        'Browser';
+      const browser = ua.includes('edg')
+        ? 'Edge'
+        : ua.includes('opr') || ua.includes('opera')
+          ? 'Opera'
+          : ua.includes('firefox')
+            ? 'Firefox'
+            : ua.includes('safari') && !ua.includes('chrome')
+              ? 'Safari'
+              : ua.includes('chrome')
+                ? 'Chrome'
+                : 'Browser';
       const isTablet = /ipad|tablet|android(?!.*mobile)/i.test(navigator.userAgent);
       const deviceType = isTablet ? 'Tablet' : 'Web';
       const deviceName = `${browser} on ${platform}`.trim();
@@ -105,20 +104,12 @@ export const AppState = defineStore('app_state', {
       const { deviceName, deviceType } = this.resolveWebDeviceInfo();
       let appManager;
       try {
-        appManager = await WasmApplicationManager.init_wasm_with_device(
-          transportSk,
-          deviceName,
-          deviceType,
-        );
+        appManager = await WasmApplicationManager.init_wasm_with_device(transportSk, deviceName, deviceType);
       } catch (error) {
         if (this.shouldResetDbOnInitError(error)) {
           console.warn('Detected legacy IndexedDB data without deviceType. Cleaning DB and retrying init.');
           await this.clearAllMetaSecretIndexedDb();
-          appManager = await WasmApplicationManager.init_wasm_with_device(
-            transportSk,
-            deviceName,
-            deviceType,
-          );
+          appManager = await WasmApplicationManager.init_wasm_with_device(transportSk, deviceName, deviceType);
         } else {
           throw error;
         }
