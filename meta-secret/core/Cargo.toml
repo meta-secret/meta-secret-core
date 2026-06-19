@@ -47,19 +47,19 @@ hex.workspace = true
 #https://github.com/dsprenkels/sss-rs
 shamirsecretsharing.workspace = true
 age.workspace = true
-secrecy = "=0.10.3"
+secrecy = "0.10.3"
 
-serde-big-array = "=0.5.1"
+serde-big-array = "0.5.1"
 
-qrcode-generator = "=5.0.0"
-rqrr = "=0.10.1"
-image = "=0.25.10"
+qrcode-generator = "5.0.0"
+rqrr = "0.10.1"
+image = "0.25.10"
 
-wasm-bindgen = "=0.2.125"
-log = "=0.4.32"
+wasm-bindgen = "0.2.125"
+log = "0.4.32"
 
 uuid.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
-tempfile = "=3.27.0"
+tempfile = "3.27.0"
