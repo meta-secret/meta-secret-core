@@ -9,7 +9,7 @@ meta-secret-core = { path = "../core" }
 thiserror.workspace = true
 anyhow.workspace = true
 
-clap = { version = "4.5.58", features = ["derive"] }
+clap = { version = "=4.6.1", features = ["derive"] }
 
 serde.workspace = true
 serde_yaml.workspace = true
