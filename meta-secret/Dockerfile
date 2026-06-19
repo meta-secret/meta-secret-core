@@ -18,16 +18,6 @@ FROM rust:${RUST_VERSION}-bookworm AS builder-base
 
 RUN rustup component add rustfmt
 
-ENV SCCACHE_VERSION="v0.10.0"
-ENV RUSTC_WRAPPER=sccache
-
-RUN ARCH=$(uname -m) && \
-    SCCACHE_ARTIFACT="sccache-${SCCACHE_VERSION}-${ARCH}-unknown-linux-musl" && \
-    wget https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/${SCCACHE_ARTIFACT}.tar.gz \
-    && tar xzf ${SCCACHE_ARTIFACT}.tar.gz \
-    && mv ${SCCACHE_ARTIFACT}/sccache /usr/local/bin/sccache \
-    && chmod +x /usr/local/bin/sccache
-
 COPY --from=chef-planner /usr/local/cargo/bin/cargo-chef /usr/local/cargo/bin/cargo-chef
 RUN curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C /usr/local/bin
 RUN cargo install wasm-pack --version 0.13.1 --locked
@@ -95,7 +85,6 @@ COPY . .
 RUN rm -f .cargo/config.toml
 
 WORKDIR /meta-secret-build/wasm
-ENV RUSTC_WRAPPER=""
 RUN wasm-pack build --target web
 
 # Minimal stage to extract just the wasm pkg
