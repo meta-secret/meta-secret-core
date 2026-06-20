@@ -83,10 +83,6 @@ CMD ["./meta-server"]
 # --- Builder WASM: pre-compile deps for wasm32-unknown-unknown target ---
 FROM builder-base AS builder-wasm
 
-ARG WASM_BINDGEN_VERSION=0.2.125
-RUN curl -LsSf "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/${WASM_BINDGEN_VERSION}/wasm-bindgen-${WASM_BINDGEN_VERSION}-x86_64-unknown-linux-musl.tar.gz" | \
-    tar xz -C /usr/local/bin --strip-components=1 "wasm-bindgen-${WASM_BINDGEN_VERSION}-x86_64-unknown-linux-musl/wasm-bindgen"
-
 RUN rustup target add wasm32-unknown-unknown
 
 # Shared with local wasm/.cargo/config.toml; workspace config ensures chef + cargo agree.
@@ -100,6 +96,10 @@ RUN cargo chef cook --release --target wasm32-unknown-unknown --recipe-path reci
 
 # --- WASM Builder: build wasm package (deps already cached in builder-wasm) ---
 FROM builder-wasm AS wasm-builder
+
+ARG WASM_BINDGEN_VERSION=0.2.125
+RUN curl -LsSf "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/${WASM_BINDGEN_VERSION}/wasm-bindgen-${WASM_BINDGEN_VERSION}-x86_64-unknown-linux-musl.tar.gz" | \
+    tar xz -C /usr/local/bin --strip-components=1 "wasm-bindgen-${WASM_BINDGEN_VERSION}-x86_64-unknown-linux-musl/wasm-bindgen"
 
 WORKDIR /meta-secret-build
 COPY . .

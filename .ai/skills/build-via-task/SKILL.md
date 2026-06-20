@@ -31,8 +31,8 @@ Run `task -l` from repo root for the full list.
 | Goal | Command |
 |------|---------|
 | CI-equivalent tests | `task test` |
-| Warm Rust test cache (CI) | `task warm-cache` |
-| Warm WASM dep cache (CI) | `task warm-cache-wasm` |
+| Warm Rust test cache (CI) | `task warm-cache` (host + wasm32 deps) |
+| Warm WASM dep cache only (CI) | `task warm-cache-wasm` |
 | Build web dist locally | `task web-local` |
 | Build WASM pkg locally | `task wasm-local` |
 | Build web Docker image | `task web` |

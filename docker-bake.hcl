@@ -67,6 +67,11 @@ target "wasm-local" {
   cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-web:cache,mode=max"] : []
 }
 
+// Warms host (test-compiler) and wasm32 (builder-wasm) dep layers into registry cache.
+group "warm-cache-all" {
+  targets = ["warm-cache", "warm-cache-wasm"]
+}
+
 // Compiles deps (cargo-chef) + project source (nextest --no-run) and pushes to cache.
 // Run before the test target so compilation is always cached even if tests fail.
 target "warm-cache" {
