@@ -31,7 +31,7 @@ WORKDIR ${BASE_DIR}
 FROM builder-base AS builder-debug
 
 COPY recipe.json .
-RUN cargo chef cook --recipe-path recipe.json
+RUN cargo chef cook --tests --recipe-path recipe.json
 
 # --- Builder Release: pre-compiled deps in release mode (for server and wasm) ---
 FROM builder-base AS builder-release
