@@ -66,12 +66,12 @@ export const vaultDevices = {
 } as const;
 
 export const vaultTechnicalInfo = {
-  title: 'Technical Information',
-  labelDeviceId: 'Device Id:',
+  title: 'Technical details',
+  labelDeviceId: 'Device ID',
 } as const;
 
 export const vaultComponentVersions = {
-  sectionTitle: 'Component versions',
+  sectionTitle: 'Stack versions',
   labelWebUi: 'Web UI',
   labelCore: 'Core',
   labelServer: 'Server',
