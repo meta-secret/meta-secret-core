@@ -34,9 +34,9 @@ tasks:
       - docker buildx bake warm-cache-wasm
 
   test:
-    desc: Run tests inside Docker
+    desc: Warm host test deps and run tests in one bake session
     cmds:
-      - docker buildx bake test
+      - docker buildx bake test-ci
 
   meta-server:
     desc: Build and load meta-server image

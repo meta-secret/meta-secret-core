@@ -92,6 +92,11 @@ target "warm-cache" {
   cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-core:cache,mode=max"] : []
 }
 
+// Single bake session: host chef cook + test-runner reuses test-compiler locally.
+group "test-ci" {
+  targets = ["warm-cache", "test"]
+}
+
 target "test" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"

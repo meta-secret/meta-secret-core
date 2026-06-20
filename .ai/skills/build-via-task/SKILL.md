@@ -30,8 +30,8 @@ Run `task -l` from repo root for the full list.
 
 | Goal | Command |
 |------|---------|
-| CI-equivalent tests | `task test` |
-| Warm Rust test cache (CI) | `task warm-cache` (host test deps only) |
+| CI-equivalent tests | `task test` (single bake: host warm-cache + test-runner) |
+| Warm Rust test cache only | `task warm-cache` |
 | Warm WASM dep cache only | `task warm-cache-wasm` |
 | Build web dist locally | `task web-local` (single bake: wasm chef cook + web) |
 | Build WASM pkg locally | `task wasm-local` (single bake: wasm chef cook + pkg) |
