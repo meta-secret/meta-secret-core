@@ -33,9 +33,10 @@ Run `task -l` from repo root for the full list.
 | CI-equivalent tests | `task test` (warm-cache, then test-run — cache pushed before tests) |
 | Warm Rust test cache only | `task warm-cache` |
 | Run tests only (after warm-cache) | `task test-run` |
-| Warm WASM dep cache only | `task warm-cache-wasm` |
-| Build web dist locally | `task web-local` (single bake: wasm chef cook + web) |
-| Build WASM pkg locally | `task wasm-local` (single bake: wasm chef cook + pkg) |
+| Warm WASM cache only | `task warm-cache-wasm` |
+| Build web dist locally | `task web-local` (warm-cache-wasm, then web-build-local) |
+| Build web dist only (after warm-cache-wasm) | `task web-build-local` |
+| Build WASM pkg locally | `task wasm-local` (warm-cache-wasm, then wasm-pkg-local) |
 | Build web Docker image | `task web` |
 | Build meta-server image | `task meta-server` |
 | Build all default images | `task build` |

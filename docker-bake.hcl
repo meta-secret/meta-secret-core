@@ -46,6 +46,7 @@ target "web-image" {
   cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-web:cache,mode=max"] : []
 }
 
+// Build web dist after warm-cache-wasm (separate bake — cache already pushed).
 target "web-local" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
@@ -53,35 +54,26 @@ target "web-local" {
   contexts = {
     webcli = "meta-secret/web-cli"
   }
+  depends_on = ["warm-cache-wasm"]
   output     = ["type=local,dest=meta-secret/web-cli/ui/dist"]
   cache-from = [
     "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
     "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
   ]
-  cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-web:cache,mode=max"] : []
-}
-
-// Single bake session: chef-cook wasm deps once, then web-output reuses builder-wasm locally.
-// Registry cache alone is unreliable across separate GHA runners/jobs.
-group "web-preview" {
-  targets = ["warm-cache-wasm", "web-local"]
+  // Cache export is owned by warm-cache-wasm (runs in a separate bake before this target).
 }
 
 target "wasm-local" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
   target     = "wasm-output"
+  depends_on = ["warm-cache-wasm"]
   output     = ["type=local,dest=meta-secret/web-cli/ui/pkg"]
   cache-from = [
     "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
     "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
   ]
-  cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-web:cache,mode=max"] : []
-}
-
-// Same-session reuse as web-preview (chef cook once, then wasm-output).
-group "wasm-pkg" {
-  targets = ["warm-cache-wasm", "wasm-local"]
+  // Cache export is owned by warm-cache-wasm (runs in a separate bake before this target).
 }
 
 // Compiles test binaries and pushes registry cache. Run alone before `test` so a
@@ -111,12 +103,12 @@ target "test" {
   // Cache export is owned by warm-cache (runs in a separate bake before this target).
 }
 
-// Warms the wasm32 dep cache without doing a full web build.
-// Run once to populate meta-secret-web:cache with wasm deps.
+// Compiles WASM (chef cook + bindgen) into layers and pushes registry cache.
+// Run alone before web-local so a failing web build does not skip cache export.
 target "warm-cache-wasm" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
-  target     = "builder-wasm"
+  target     = "wasm-builder"
   output     = ["type=cacheonly"]
   cache-from = [
     "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
