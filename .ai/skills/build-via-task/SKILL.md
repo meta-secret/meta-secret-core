@@ -30,7 +30,7 @@ Run `task -l` from repo root for the full list.
 
 | Goal | Command |
 |------|---------|
-| CI-equivalent tests | `task test` (one bake: warm-cache → test-runner) |
+| CI-equivalent tests | `task test` (test-ci group: warm-cache exports cache, then test-runner) |
 | Warm Rust test cache only | `task warm-cache` |
 | Run tests only (same bake as test) | `task test-run` |
 | Warm WASM deps only | `task warm-cache-wasm` |

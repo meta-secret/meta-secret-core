@@ -3,8 +3,8 @@
 # Preview URL pattern: https://pr-<number>.id0.pages.dev
 # One workflow + one concurrency group → new push cancels the entire previous pipeline.
 #
-# Test: one bake (warm-cache → test-runner via depends_on). Deploy: warm-cache-wasm
-# then web-build-local. deploy-preview needs test so cache-to exports do not race.
+# Test: test-ci group lists warm-cache so cache-to export runs. Deploy: sequential
+# wasm warm + web build; deploy needs test to avoid parallel cache-to races.
 
 name: CI
 

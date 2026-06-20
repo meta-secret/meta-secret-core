@@ -15,6 +15,11 @@ group "default" {
   targets = ["meta-server-image", "web-image"]
 }
 
+// List warm-cache explicitly so cache-to export runs before test (depends_on orders build).
+group "test-ci" {
+  targets = ["warm-cache", "test"]
+}
+
 // ============================================================
 // Meta-Secret builds (meta-secret/Dockerfile)
 // ============================================================
