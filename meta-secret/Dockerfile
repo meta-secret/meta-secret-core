@@ -81,9 +81,18 @@ EXPOSE 3000
 CMD ["./meta-server"]
 
 # --- Builder WASM: pre-compile deps for wasm32-unknown-unknown target ---
-FROM builder-release AS builder-wasm
+FROM builder-base AS builder-wasm
+
+ARG WASM_BINDGEN_VERSION=0.2.125
+RUN cargo install wasm-bindgen-cli --version ${WASM_BINDGEN_VERSION} --locked
 
 RUN rustup target add wasm32-unknown-unknown
+
+# Shared with local wasm/.cargo/config.toml; workspace config ensures chef + cargo agree.
+RUN mkdir -p .cargo && printf '%s\n' \
+    '[target.wasm32-unknown-unknown]' \
+    'rustflags = ["--cfg=getrandom_backend=\"wasm_js\""]' \
+    > .cargo/config.toml
 
 COPY recipe.json .
 RUN cargo chef cook --release --target wasm32-unknown-unknown --recipe-path recipe.json -p meta-secret-wasm
@@ -94,8 +103,11 @@ FROM builder-wasm AS wasm-builder
 WORKDIR /meta-secret-build
 COPY . .
 
-WORKDIR /meta-secret-build/wasm
-RUN wasm-pack build --target web
+# cargo from workspace root reuses chef-cached deps; wasm-pack cd's into wasm/ and rebuilds all deps.
+RUN cargo build --release --target wasm32-unknown-unknown -p meta-secret-wasm \
+    && mkdir -p wasm/pkg \
+    && wasm-bindgen target/wasm32-unknown-unknown/release/meta_secret_wasm.wasm \
+        --out-dir wasm/pkg --target web --out-name meta_secret_wasm
 
 # Minimal stage to extract just the wasm pkg
 FROM scratch AS wasm-output
