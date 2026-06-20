@@ -4,3 +4,5 @@ docs/
 !wasm/.cargo/
 Dockerfile*
 *.md
+**/node_modules
+**/dist

@@ -130,13 +130,14 @@ RUN RUST_MIN_STACK=8388608 cargo nextest run --profile ci
 # --- Web Build: Vue.js + WASM ---
 FROM oven/bun:1.2-debian AS web-build
 
-WORKDIR /meta-secret/web-cli
-COPY web-cli/ .
-
-COPY --from=wasm-builder /meta-secret-build/wasm/pkg /meta-secret/web-cli/ui/pkg
-
 WORKDIR /meta-secret/web-cli/ui
-RUN bun install --frozen-lockfile && bun run lint:check && bun run build
+
+COPY web-cli/ui/package.json web-cli/ui/bun.lock ./
+COPY --from=wasm-builder /meta-secret-build/wasm/pkg ./pkg
+RUN bun install --frozen-lockfile
+
+COPY web-cli/ui/ .
+RUN bun run lint:check && bun run build
 
 # Final web image
 FROM web-build AS web
