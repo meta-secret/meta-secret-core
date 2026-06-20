@@ -35,12 +35,9 @@ const sections = [
           <CardContent class="pt-4">
             <p class="mb-2 text-sm font-semibold uppercase tracking-widest text-muted-foreground">Contents</p>
             <nav class="flex flex-col gap-1">
-              <a
-                v-for="s in sections"
-                :key="s.id"
-                :href="`#${s.id}`"
-                class="text-sm text-primary hover:underline"
-              >{{ s.label }}</a>
+              <a v-for="s in sections" :key="s.id" :href="`#${s.id}`" class="text-sm text-primary hover:underline">{{
+                s.label
+              }}</a>
             </nav>
           </CardContent>
         </Card>
@@ -52,9 +49,19 @@ const sections = [
           <CardHeader><CardTitle>Overview</CardTitle></CardHeader>
           <Separator />
           <CardContent class="pt-4 text-sm leading-relaxed text-muted-foreground space-y-3">
-            <p>Meta Secret is a decentralized password manager that uses advanced encryption and decentralized storage to securely store and manage user data.</p>
-            <p>Unlike traditional password managers, Meta Secret does not rely on a master password. Instead, it uses biometric authentication and secret sharing techniques to provide secure access to your confidential information.</p>
-            <p>With its decentralized and open-source infrastructure, Meta Secret eliminates single points of failure and provides increased security and privacy for users.</p>
+            <p>
+              Meta Secret is a decentralized password manager that uses advanced encryption and decentralized storage to
+              securely store and manage user data.
+            </p>
+            <p>
+              Unlike traditional password managers, Meta Secret does not rely on a master password. Instead, it uses
+              biometric authentication and secret sharing techniques to provide secure access to your confidential
+              information.
+            </p>
+            <p>
+              With its decentralized and open-source infrastructure, Meta Secret eliminates single points of failure and
+              provides increased security and privacy for users.
+            </p>
           </CardContent>
         </Card>
 
@@ -69,7 +76,10 @@ const sections = [
               <li>Fragments are distributed and stored across multiple devices</li>
               <li>No single device has enough information to recover the password on its own</li>
             </ol>
-            <p>To recover a password, Meta Secret gathers enough fragments from your devices and reconstructs the original secret.</p>
+            <p>
+              To recover a password, Meta Secret gathers enough fragments from your devices and reconstructs the
+              original secret.
+            </p>
           </CardContent>
         </Card>
 
@@ -77,7 +87,11 @@ const sections = [
           <CardHeader><CardTitle>Application Structure</CardTitle></CardHeader>
           <Separator />
           <CardContent class="pt-4">
-            <img src="https://github.com/meta-secret/meta-secret-core/raw/main/docs/img/app/meta-secret-app.png" alt="Application Structure" class="mx-auto max-w-full rounded border" />
+            <img
+              src="https://github.com/meta-secret/meta-secret-core/raw/main/docs/img/app/meta-secret-app.png"
+              alt="Application Structure"
+              class="mx-auto max-w-full rounded border"
+            />
           </CardContent>
         </Card>
 
@@ -85,8 +99,15 @@ const sections = [
           <CardHeader><CardTitle>Password Split Process</CardTitle></CardHeader>
           <Separator />
           <CardContent class="pt-4 text-sm leading-relaxed text-muted-foreground space-y-3">
-            <p>When you enter a password, Meta Secret splits it into multiple encrypted fragments and distributes them across your devices.</p>
-            <img src="https://github.com/meta-secret/meta-secret-core/raw/main/docs/img/app/secret-split.png" alt="Password Split Process" class="mx-auto max-w-full rounded border" />
+            <p>
+              When you enter a password, Meta Secret splits it into multiple encrypted fragments and distributes them
+              across your devices.
+            </p>
+            <img
+              src="https://github.com/meta-secret/meta-secret-core/raw/main/docs/img/app/secret-split.png"
+              alt="Password Split Process"
+              class="mx-auto max-w-full rounded border"
+            />
           </CardContent>
         </Card>
 
@@ -94,8 +115,15 @@ const sections = [
           <CardHeader><CardTitle>Password Recovery Process</CardTitle></CardHeader>
           <Separator />
           <CardContent class="pt-4 text-sm leading-relaxed text-muted-foreground space-y-3">
-            <p>To recover your password, Meta Secret retrieves fragments from your devices and reconstructs the original password. Even if one device is lost, the password can still be recovered from the remaining devices.</p>
-            <img src="https://github.com/meta-secret/meta-secret-core/raw/main/docs/img/app/secret-recovery.png" alt="Password Recovery Process" class="mx-auto max-w-full rounded border" />
+            <p>
+              To recover your password, Meta Secret retrieves fragments from your devices and reconstructs the original
+              password. Even if one device is lost, the password can still be recovered from the remaining devices.
+            </p>
+            <img
+              src="https://github.com/meta-secret/meta-secret-core/raw/main/docs/img/app/secret-recovery.png"
+              alt="Password Recovery Process"
+              class="mx-auto max-w-full rounded border"
+            />
           </CardContent>
         </Card>
 
@@ -130,10 +158,17 @@ const sections = [
           <Separator />
           <CardContent class="pt-4 text-sm leading-relaxed text-muted-foreground">
             <ul class="ml-5 list-disc space-y-2">
-              <li><strong>Local Processing</strong>: All operations are performed locally — no data sent to external servers</li>
+              <li>
+                <strong>Local Processing</strong>: All operations are performed locally — no data sent to external
+                servers
+              </li>
               <li><strong>No Single Point of Failure</strong>: Data is distributed across multiple devices</li>
-              <li><strong>Cryptographic Security</strong>: Uses advanced algorithms for splitting and encrypting data</li>
-              <li><strong>Partial Data Redundancy</strong>: Passwords can still be recovered even if one device is lost</li>
+              <li>
+                <strong>Cryptographic Security</strong>: Uses advanced algorithms for splitting and encrypting data
+              </li>
+              <li>
+                <strong>Partial Data Redundancy</strong>: Passwords can still be recovered even if one device is lost
+              </li>
               <li><strong>Open Source</strong>: Code is open source for security verification and community review</li>
               <li><strong>Fragment Security</strong>: Individual fragments are useless without the others</li>
             </ul>

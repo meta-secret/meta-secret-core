@@ -56,18 +56,29 @@ const startProgressSimulation = () => {
   }, 200);
 };
 
-watch(() => signUpProcessing.value, (active) => {
-  if (active) { startProgressSimulation(); return; }
-  stopProgressSimulation();
-  progress.value = 0;
-}, { immediate: true });
-
-watch(() => signUpCompleted.value, (completed) => {
-  if (completed && signUpProcessing.value) {
+watch(
+  () => signUpProcessing.value,
+  (active) => {
+    if (active) {
+      startProgressSimulation();
+      return;
+    }
     stopProgressSimulation();
-    progress.value = 100;
-  }
-}, { immediate: true });
+    progress.value = 0;
+  },
+  { immediate: true },
+);
+
+watch(
+  () => signUpCompleted.value,
+  (completed) => {
+    if (completed && signUpProcessing.value) {
+      stopProgressSimulation();
+      progress.value = 100;
+    }
+  },
+  { immediate: true },
+);
 
 onBeforeUnmount(() => stopProgressSimulation());
 
@@ -84,7 +95,7 @@ const generateUserCreds = async () => {
   hasSubmittedVaultName.value = true;
   isCheckingVaultName.value = true;
   try {
-    // @ts-ignore - Method exists in Rust but TS definitions may be outdated
+    // @ts-expect-error Method exists in Rust but TS definitions may be outdated
     await jsAppState.appManager.generate_user_creds(vaultName.value);
     await jsAppState.appStateInit();
     hydrateVaultNameDraft(jsAppState.getVaultName(), vaultName, hasSubmittedVaultName);
@@ -101,7 +112,7 @@ const signUp = async () => {
   signUpProcessing.value = true;
   signUpCompleted.value = false;
   try {
-    // @ts-ignore
+    // @ts-expect-error Method exists in Rust but TS definitions may be outdated
     const newState = await jsAppState.appManager.sign_up();
     signUpCompleted.value = true;
     jsAppState.updateStateWith(newState);
@@ -132,7 +143,8 @@ const progressTitle = computed(() => {
 });
 
 const progressMessage = computed(() => {
-  if (jsAppState.isOutsider) return "Please don't close this page. Your request to join the vault is being processed...";
+  if (jsAppState.isOutsider)
+    return "Please don't close this page. Your request to join the vault is being processed...";
   if (jsAppState.isVaultNotExists) return "Please don't close this page. Vault creation is in progress...";
   return "Please don't close this page. Operation in progress...";
 });
@@ -147,12 +159,7 @@ const progressMessage = computed(() => {
         <div class="flex gap-2">
           <div class="relative flex-1">
             <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">@</span>
-            <Input
-              v-model="vaultName"
-              placeholder="vault name"
-              class="pl-7"
-              :disabled="signUpProcessing"
-            />
+            <Input v-model="vaultName" placeholder="vault name" class="pl-7" :disabled="signUpProcessing" />
           </div>
           <Button
             :disabled="signUpProcessing || isCleaning || isCheckingVaultName || !vaultName.trim()"
@@ -172,7 +179,9 @@ const progressMessage = computed(() => {
 
         <!-- Vault exists — join -->
         <template v-if="hasSubmittedVaultName && !isCheckingVaultName && jsAppState.isOutsider && isNonMember">
-          <div class="flex flex-col gap-3 rounded-lg border bg-muted/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div
+            class="flex flex-col gap-3 rounded-lg border bg-muted/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+          >
             <span class="text-sm text-muted-foreground">Vault already exists, would you like to join?</span>
             <div class="flex gap-2">
               <Button variant="outline" size="sm" :disabled="isCleaning || signUpProcessing" @click="cleanDatabase">
@@ -208,7 +217,9 @@ const progressMessage = computed(() => {
         </template>
 
         <!-- Unknown status -->
-        <template v-if="hasSubmittedVaultName && !isCheckingVaultName && jsAppState.isOutsider && outsiderStatus === undefined">
+        <template
+          v-if="hasSubmittedVaultName && !isCheckingVaultName && jsAppState.isOutsider && outsiderStatus === undefined"
+        >
           <Alert variant="destructive">
             <AlertDescription class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <span>Status is unknown. Please reset and try again.</span>

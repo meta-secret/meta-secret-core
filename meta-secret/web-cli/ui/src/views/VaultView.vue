@@ -27,7 +27,10 @@ watch(
 </script>
 
 <template>
-  <div v-if="authStore.isAuthenticated && !isInitialized" class="flex min-h-[calc(100vh-3.5rem)] items-center justify-center p-6">
+  <div
+    v-if="authStore.isAuthenticated && !isInitialized"
+    class="flex min-h-[calc(100vh-3.5rem)] items-center justify-center p-6"
+  >
     <div class="w-full max-w-md space-y-3">
       <Skeleton class="h-4 w-48 mx-auto" />
       <Skeleton class="h-2 w-64 mx-auto" />

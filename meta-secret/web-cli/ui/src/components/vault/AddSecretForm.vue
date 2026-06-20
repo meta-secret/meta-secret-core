@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Clipboard } from 'lucide-vue-next';
+import { getAppManager } from '@/utils/wasmBridge';
 
 type SecretType = 'password' | 'seed';
 
@@ -16,7 +17,7 @@ const props = defineProps<{ show: boolean }>();
 const emit = defineEmits<{ (event: 'added'): void; (event: 'close'): void }>();
 
 const appState = AppState();
-const appManager = appState.appManager as any;
+const appManager = getAppManager();
 
 const secretType = ref<SecretType>('password');
 const wordCount = ref<12 | 24>(12);
@@ -50,9 +51,16 @@ const close = () => {
   emit('close');
 };
 
-watch(() => props.show, (isOpen) => { if (!isOpen) resetState(); });
+watch(
+  () => props.show,
+  (isOpen) => {
+    if (!isOpen) resetState();
+  },
+);
 
-const setSeedWord = (index: number, value: string) => { seedWords.value[index] = value.trim(); };
+const setSeedWord = (index: number, value: string) => {
+  seedWords.value[index] = value.trim();
+};
 
 const pasteSeedPhrase = async () => {
   try {
@@ -61,7 +69,9 @@ const pasteSeedPhrase = async () => {
     const words = text.trim().split(/\s+/).filter(Boolean);
     seedWords.value = Array.from({ length: 24 }, (_, i) => words[i] || '');
     if (words.length === 12 || words.length === 24) wordCount.value = words.length;
-  } catch { /* clipboard denied */ }
+  } catch {
+    /* clipboard denied */
+  }
 };
 
 const canSubmit = computed(() => {
@@ -73,19 +83,22 @@ const canSubmit = computed(() => {
 const submit = async () => {
   if (isSubmitting.value) return;
   formError.value = null;
-  if (!description.value.trim()) { formError.value = vaultSecrets.addSecretValidationNameRequired; return; }
+  if (!description.value.trim()) {
+    formError.value = vaultSecrets.addSecretValidationNameRequired;
+    return;
+  }
   if (secretType.value === 'password' && !passwordSecret.value.trim()) {
-    formError.value = vaultSecrets.addSecretValidationPasswordRequired; return;
+    formError.value = vaultSecrets.addSecretValidationPasswordRequired;
+    return;
   }
   if (secretType.value === 'seed' && activeWords.value.some((w) => !w.trim())) {
-    formError.value = vaultSecrets.addSecretValidationSeedRequired; return;
+    formError.value = vaultSecrets.addSecretValidationSeedRequired;
+    return;
   }
 
   const passId = description.value.trim();
   const secretPayload =
-    secretType.value === 'password'
-      ? passwordSecret.value.trim()
-      : activeWords.value.map((w) => w.trim()).join(' ');
+    secretType.value === 'password' ? passwordSecret.value.trim() : activeWords.value.map((w) => w.trim()).join(' ');
 
   isSubmitting.value = true;
   try {
@@ -103,7 +116,14 @@ const submit = async () => {
 </script>
 
 <template>
-  <Dialog :open="show" @update:open="(v) => { if (!v) close(); }">
+  <Dialog
+    :open="show"
+    @update:open="
+      (v) => {
+        if (!v) close();
+      }
+    "
+  >
     <DialogContent class="max-w-2xl">
       <DialogHeader>
         <DialogTitle>{{ modalTitle }}</DialogTitle>
@@ -154,12 +174,16 @@ const submit = async () => {
                 class="rounded-md px-4 py-1 text-sm font-bold transition-colors"
                 :class="wordCount === 12 ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'"
                 @click="wordCount = 12"
-              >12</button>
+              >
+                12
+              </button>
               <button
                 class="rounded-md px-4 py-1 text-sm font-bold transition-colors"
                 :class="wordCount === 24 ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'"
                 @click="wordCount = 24"
-              >24</button>
+              >
+                24
+              </button>
             </div>
           </div>
 

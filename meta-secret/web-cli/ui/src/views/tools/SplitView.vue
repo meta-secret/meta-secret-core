@@ -24,11 +24,11 @@ export default {
         this.sharesProcessing(shares, qrImages);
       });
     },
-    sharesProcessing(shares: any[], qrImages: HTMLElement) {
+    sharesProcessing(shares: Record<string, unknown>[], qrImages: HTMLElement) {
       shares.forEach((share) => {
-        const shareId = share['share_id'];
+        const shareId = share['share_id'] as number;
         const shareIdText = `Share ${shareId} of ${shares.length}`;
-        const textImage = this.textToImage(this.note1, this.note2, shareIdText, shareId);
+        const textImage = this.textToImage(this.note1, this.note2, shareIdText);
         const qrCodeStyling = this.generateQrCodeStyling(JSON.stringify(share), textImage);
 
         const canvasDiv = document.createElement('div');
@@ -44,9 +44,10 @@ export default {
         canvasDiv.appendChild(downloadBtn);
       });
     },
-    textToImage(line1: string, line2: string, line3: string, id: number) {
+    textToImage(line1: string, line2: string, line3: string) {
       const canvas = document.createElement('canvas');
-      canvas.width = 300; canvas.height = 300;
+      canvas.width = 300;
+      canvas.height = 300;
       const ctx = canvas.getContext('2d')!;
       ctx.font = '70px Arial';
       ctx.fillText(line1, 15, 75);
@@ -56,7 +57,11 @@ export default {
     },
     generateQrCodeStyling(share: string, textImage: string) {
       return new QRCodeStyling({
-        width: 300, height: 300, type: 'svg' as any, data: share, margin: 3,
+        width: 300,
+        height: 300,
+        type: 'svg' as const,
+        data: share,
+        margin: 3,
         qrOptions: { typeNumber: 0, mode: 'Byte', errorCorrectionLevel: 'H' },
         imageOptions: { hideBackgroundDots: true, imageSize: 0.2, margin: 1 },
         dotsOptions: { type: 'dots', color: '#000000' },
@@ -103,7 +108,7 @@ export default {
   background: white;
   border-radius: 0.75rem;
   padding: 1.5rem;
-  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -119,5 +124,7 @@ export default {
   font-size: 0.875rem;
   cursor: pointer;
 }
-.download-button:hover { opacity: 0.9; }
+.download-button:hover {
+  opacity: 0.9;
+}
 </style>

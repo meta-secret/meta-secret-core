@@ -60,8 +60,8 @@ async function cleanDatabase() {
         </CardHeader>
         <CardContent class="pt-4">
           <p class="text-sm text-muted-foreground">
-            Delete all vault data and start fresh. This action removes all secrets, vault configurations,
-            and resets the application to its initial state.
+            Delete all vault data and start fresh. This action removes all secrets, vault configurations, and resets the
+            application to its initial state.
           </p>
           <div class="mt-4 flex justify-end">
             <AlertDialog>
@@ -72,7 +72,8 @@ async function cleanDatabase() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    This action cannot be undone. All vault data, secrets, and configurations will be permanently deleted.
+                    This action cannot be undone. All vault data, secrets, and configurations will be permanently
+                    deleted.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>

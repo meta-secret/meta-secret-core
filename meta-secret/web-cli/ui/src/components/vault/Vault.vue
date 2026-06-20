@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue';
 import { component_core_version, component_db_version, component_server_version } from 'meta-secret-web-cli';
 import { AppState } from '@/stores/app-state';
+import { getDeviceId } from '@/utils/wasmBridge';
 import { vaultComponentVersions, vaultTechnicalInfo } from '@/locales/en';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -9,7 +10,7 @@ import { Info } from 'lucide-vue-next';
 
 const appState = AppState();
 const vaultName = computed(() => appState.getVaultName());
-const deviceId = computed(() => (appState.currState as any).device_id().wasm_id_str());
+const deviceId = computed(() => getDeviceId(appState.currState));
 const showDeviceId = ref(false);
 
 const webUiVersion = __WEB_UI_VERSION__;

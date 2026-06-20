@@ -7,9 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
     <Card class="w-full max-w-sm text-center">
       <CardContent class="pt-6">
         <h1 class="mb-2 text-xl font-bold">Contact</h1>
-        <a href="mailto:contact@meta-secret.org" class="text-primary hover:underline">
-          contact@meta-secret.org
-        </a>
+        <a href="mailto:contact@meta-secret.org" class="text-primary hover:underline"> contact@meta-secret.org </a>
       </CardContent>
     </Card>
   </div>

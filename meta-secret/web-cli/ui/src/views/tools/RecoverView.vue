@@ -20,12 +20,18 @@ export default {
   methods: {
     recoverPassword() {
       this.error = '';
-      if (this.imagesLoaded === 0) { this.error = 'Please upload at least one QR code image.'; return; }
+      if (this.imagesLoaded === 0) {
+        this.error = 'Please upload at least one QR code image.';
+        return;
+      }
       init().then(() => {
         const imagesElement = document.getElementById('qrImages')!;
         const qrCodes = imagesElement.getElementsByTagName('img');
-        if (qrCodes.length === 0) { this.error = 'Could not find any QR codes.'; return; }
-        const asyncShares: Promise<any>[] = [];
+        if (qrCodes.length === 0) {
+          this.error = 'Could not find any QR codes.';
+          return;
+        }
+        const asyncShares: Promise<{ data: string }>[] = [];
         Array.from(qrCodes).forEach((qr) => {
           asyncShares.push(QrScanner.scanImage(qr, { returnDetailedScanResult: true }));
         });
@@ -34,7 +40,9 @@ export default {
             const shares = qrShares.map((s) => JSON.parse(s.data));
             this.recoveredPassword = restore_password(shares) as string;
           })
-          .catch((err) => { this.error = 'Unable to process QR codes: ' + err; });
+          .catch((err) => {
+            this.error = 'Unable to process QR codes: ' + err;
+          });
       });
     },
     openFile(event: Event) {
@@ -50,7 +58,9 @@ export default {
           const img = document.createElement('img');
           img.className = 'qr-image';
           img.src = reader.result as string;
-          img.onload = () => { this.imagesLoaded++; };
+          img.onload = () => {
+            this.imagesLoaded++;
+          };
           imagesElement.appendChild(img);
         };
         reader.readAsDataURL(file);
@@ -98,5 +108,8 @@ export default {
 </template>
 
 <style>
-.qr-image { display: inline-block; margin: 8px; }
+.qr-image {
+  display: inline-block;
+  margin: 8px;
+}
 </style>

@@ -31,4 +31,29 @@ export default [
       '@typescript-eslint/no-namespace': 'warn',
     },
   },
+
+  {
+    name: 'app/shadcn-ui',
+    files: ['src/components/ui/**'],
+    rules: {
+      'vue/require-default-prop': 'off',
+    },
+  },
+
+  {
+    name: 'app/env-types',
+    files: ['env.d.ts'],
+    rules: {
+      '@typescript-eslint/no-empty-object-type': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
+    },
+  },
+
+  {
+    name: 'app/cypress',
+    files: ['cypress/**', 'cypress.config.ts'],
+    rules: {
+      '@typescript-eslint/no-namespace': 'off',
+    },
+  },
 ];

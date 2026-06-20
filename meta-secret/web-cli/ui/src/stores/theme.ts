@@ -18,8 +18,7 @@ export const useThemeStore = defineStore('theme', (): ThemeState => {
   const savedTheme = localStorage.getItem('theme') as ThemeOption | null;
   const theme = ref<ThemeOption>(savedTheme || 'dark');
 
-  const mediaQuery =
-    typeof window !== 'undefined' ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  const mediaQuery = typeof window !== 'undefined' ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 
   const isDarkMode = computed(() => {
     if (!mediaQuery) return false;

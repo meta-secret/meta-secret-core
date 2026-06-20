@@ -4,29 +4,23 @@ import { MetaPasswordId } from 'meta-secret-web-cli';
 import { AppState } from '@/stores/app-state';
 import { vaultSecrets } from '@/locales/en';
 import AddSecretForm from './AddSecretForm.vue';
+import { getAppManager, getMemberVaultData, getMemberVaultState } from '@/utils/wasmBridge';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import { Separator } from '@/components/ui/separator';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Lock } from 'lucide-vue-next';
 
 type RevealModalState = 'closed' | 'waiting' | 'revealedText' | 'revealedSeed';
 
 const appState = AppState();
-const appManager = appState.appManager as any;
+const appManager = getAppManager();
 
 const showAddForm = ref(false);
 const passwords = computed(() => appState.passwords);
 
-const activeSecret = ref<any | null>(null);
+const activeSecret = ref<MetaPasswordId | null>(null);
 const activeSecretId = ref<string | null>(null);
 const revealedSecret = ref('');
 const revealedWords = ref<string[]>([]);
@@ -41,7 +35,7 @@ const FLOW_MAX_ATTEMPTS = 15;
 const FLOW_POLL_DELAY_MS = 800;
 
 const isRecovered = (metaPassId: MetaPasswordId) => {
-  const claim = (appState.currState as any).as_vault?.()?.as_member?.()?.find_recovery_claim(metaPassId);
+  const claim = getMemberVaultState(appState.currState)?.find_recovery_claim(metaPassId);
   return claim !== undefined;
 };
 
@@ -95,7 +89,7 @@ const waitForRecoveredClaim = async (metaPassId: MetaPasswordId, token: number) 
   throw new Error(vaultSecrets.errorRecoveryTimeout);
 };
 
-const startRevealFlow = async (secret: any) => {
+const startRevealFlow = async (secret: MetaPasswordId) => {
   const secretId = secret.id_str();
   if (flowInProgressId.value === secretId || (flowInProgressId.value && flowInProgressId.value !== secretId)) return;
 
@@ -135,7 +129,9 @@ const copyRevealedValue = async () => {
   try {
     await navigator.clipboard.writeText(value);
     copySucceeded.value = true;
-    setTimeout(() => { copySucceeded.value = false; }, 2000);
+    setTimeout(() => {
+      copySucceeded.value = false;
+    }, 2000);
   } catch {
     flowError.value = vaultSecrets.errorCopySecret;
   } finally {
@@ -144,14 +140,14 @@ const copyRevealedValue = async () => {
 };
 
 const waitingDeviceCount = computed(() => {
-  const data = (appState.currState as any).as_vault?.()?.as_member?.()?.vault_data?.();
+  const data = getMemberVaultData(appState.currState);
   if (!data || typeof data.users !== 'function') return 1;
   const n = data.users().length;
   return n > 0 ? n : 1;
 });
 
 const requiredDevicesToSafety = computed(() => {
-  const data = (appState.currState as any).as_vault?.()?.as_member?.()?.vault_data?.();
+  const data = getMemberVaultData(appState.currState);
   const n = data && typeof data.users === 'function' ? data.users().length : 0;
   return 3 - n;
 });
@@ -186,18 +182,9 @@ const revealModalOpen = computed(() => revealModalState.value !== 'closed');
         </p>
 
         <ul v-else class="divide-y">
-          <li
-            v-for="secret in passwords"
-            :key="secret.id_str()"
-            class="flex items-center justify-between px-5 py-4"
-          >
+          <li v-for="secret in passwords" :key="secret.id_str()" class="flex items-center justify-between px-5 py-4">
             <span class="font-semibold">{{ secret.name }}</span>
-            <Button
-              variant="outline"
-              size="sm"
-              :disabled="flowInProgressId !== null"
-              @click="startRevealFlow(secret)"
-            >
+            <Button variant="outline" size="sm" :disabled="flowInProgressId !== null" @click="startRevealFlow(secret)">
               {{ flowInProgressId === secret.id_str() ? vaultSecrets.showLoading : vaultSecrets.show }}
             </Button>
           </li>
@@ -209,14 +196,24 @@ const revealModalOpen = computed(() => revealModalState.value !== 'closed');
   </div>
 
   <!-- Reveal modal -->
-  <Dialog :open="revealModalOpen" @update:open="(v) => { if (!v) closeAllSecretModals(); }">
+  <Dialog
+    :open="revealModalOpen"
+    @update:open="
+      (v) => {
+        if (!v) closeAllSecretModals();
+      }
+    "
+  >
     <DialogContent class="max-w-2xl">
       <DialogHeader>
         <DialogTitle>{{ activeSecret?.name || '' }}</DialogTitle>
       </DialogHeader>
 
       <!-- Waiting state -->
-      <div v-if="revealModalState === 'waiting'" class="flex flex-col items-center gap-4 rounded-lg border bg-muted/30 p-6">
+      <div
+        v-if="revealModalState === 'waiting'"
+        class="flex flex-col items-center gap-4 rounded-lg border bg-muted/30 p-6"
+      >
         <div class="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
           <Lock class="h-7 w-7 text-primary" />
         </div>

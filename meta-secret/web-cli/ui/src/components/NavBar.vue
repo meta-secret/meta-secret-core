@@ -9,25 +9,21 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
 
 const router = useRouter();
 const route = useRoute();
 
-const navigation = [
+type NavItem = { name: string; href: string; external?: boolean };
+
+const navigation: NavItem[] = [
   { name: 'Home', href: '/' },
   { name: 'GitHub', href: 'https://github.com/meta-secret', external: true },
   { name: 'Contact', href: '/contact' },
 ];
 
-const toolsMenu = [
+const toolsMenu: NavItem[] = [
   { name: 'Split', href: '/tools/split' },
   { name: 'Recover', href: '/tools/recover' },
   { name: 'Documentation', href: '/tools/docs' },
@@ -37,7 +33,10 @@ const toolsMenu = [
 const isActive = (href: string) => !href.startsWith('http') && route.path === href;
 
 const openLink = (href: string, external?: boolean) => {
-  if (external) { window.open(href, '_blank'); return; }
+  if (external) {
+    window.open(href, '_blank');
+    return;
+  }
   router.push(href);
 };
 </script>
@@ -59,7 +58,7 @@ const openLink = (href: string, external?: boolean) => {
           variant="ghost"
           size="sm"
           :class="isActive(item.href) ? 'bg-accent' : ''"
-          @click="openLink(item.href, (item as any).external)"
+          @click="openLink(item.href, item.external)"
         >
           {{ item.name }}
         </Button>
@@ -71,11 +70,7 @@ const openLink = (href: string, external?: boolean) => {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
-            <DropdownMenuItem
-              v-for="item in toolsMenu"
-              :key="item.name"
-              @click="openLink(item.href, (item as any).external)"
-            >
+            <DropdownMenuItem v-for="item in toolsMenu" :key="item.name" @click="openLink(item.href, item.external)">
               {{ item.name }}
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -110,7 +105,7 @@ const openLink = (href: string, external?: boolean) => {
                 variant="ghost"
                 class="justify-start"
                 :class="isActive(item.href) ? 'bg-accent' : ''"
-                @click="openLink(item.href, (item as any).external)"
+                @click="openLink(item.href, item.external)"
               >
                 {{ item.name }}
               </Button>
@@ -121,7 +116,7 @@ const openLink = (href: string, external?: boolean) => {
                 :key="item.name"
                 variant="ghost"
                 class="justify-start"
-                @click="openLink(item.href, (item as any).external)"
+                @click="openLink(item.href, item.external)"
               >
                 {{ item.name }}
               </Button>

@@ -67,8 +67,10 @@ export const AppState = defineStore('app_state', {
     },
 
     async cleanDatabase() {
-      const manager: any = this.appManager as any;
-      if (manager && typeof manager.clean_up_database === 'function') {
+      const manager = this.appManager as WasmApplicationManager & {
+        clean_up_database?: () => Promise<void>;
+      };
+      if (typeof manager.clean_up_database === 'function') {
         await manager.clean_up_database();
       } else {
         await this.clearAllMetaSecretIndexedDb();

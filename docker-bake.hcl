@@ -114,6 +114,17 @@ target "generate-recipe" {
   output     = ["type=local,dest=meta-secret"]
 }
 
+target "playwright" {
+  context    = "meta-secret"
+  dockerfile = "Dockerfile"
+  target     = "playwright"
+  tags       = ["${REGISTRY}/playwright:latest"]
+  cache-from = [
+    "type=registry,ref=${REGISTRY}/playwright:cache",
+  ]
+  cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/playwright:cache,mode=max"] : []
+}
+
 // ============================================================
 // Infra builds
 // ============================================================

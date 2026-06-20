@@ -25,4 +25,5 @@ alwaysApply: true
 | Update cargo chef recipe | `task generate-recipe` |
 | Run web-ui locally | `task web-run` |
 | Warm WASM dep cache | `task warm-cache-wasm` |
+| Run Playwright smoke tests | `task playwright-test` (set `PLAYWRIGHT_BASE_URL`) |
 | Add shadcn-vue component | `cd meta-secret/web-cli/ui && npx shadcn-vue@latest add <name>` |
