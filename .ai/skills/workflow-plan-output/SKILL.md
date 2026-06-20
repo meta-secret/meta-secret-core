@@ -20,7 +20,7 @@ The **feature-planner** subagent owns the planning phase. Plans must be architec
 2. Crates and files touched (paths under `meta-secret/`)
 3. Ordered steps
 4. Risks
-5. Verification commands (`cargo` / `docker buildx bake` hints as appropriate)
+5. Verification commands: **`task …`** from repo root for Docker/CI parity (see [`.ai/skills/build-via-task/SKILL.md`](../skills/build-via-task/SKILL.md)); narrow `cargo` from `meta-secret/` when appropriate
 6. Explicit **wait for user approval** before implementation
 
 Do not duplicate full templates here—use `write-implementation-plan/plan-template.md` for the question list.

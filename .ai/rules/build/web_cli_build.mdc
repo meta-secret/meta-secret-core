@@ -34,6 +34,8 @@ npm run dev
 
 ### Build via Docker
 
+Read [`.ai/skills/build-via-task/SKILL.md`](../../skills/build-via-task/SKILL.md) first — **always** use `task` from repo root, never raw `docker buildx`.
+
 ```bash
 task web-local   # builds and extracts dist/ locally
 task web         # builds the web Docker image

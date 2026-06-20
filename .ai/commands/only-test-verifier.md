@@ -8,11 +8,11 @@ Arguments: optional scope (crate, test filter). Example: `/only-test-verifier -p
 
 Delegate to subagent **test-verifier** with input: `$ARGUMENTS`
 
-**Default coverage:** when `$ARGUMENTS` is empty or does not narrow Rust crates, the verifier should run (1) the default **`cargo test`** bundle including **`meta-secret-tests`** and **`meta-secret-wasm`** (see **[`.claude/agents/test-verifier.md`](../agents/test-verifier.md)** — “Default scope”), and (2) **web-cli** npm: **`npm run test:unit`** and **`npm run test:e2e:ci`** from **`meta-secret/web-cli/ui`** (WASM **`pkg/`** may be required first). Server, DB, and mobile FFI crates are **skipped** by default for Cargo. If the user passes only **`-p …`**, run that Cargo subset and **skip** web-cli unless they ask for it. Optional full workspace: plain **`cargo test`** from **`meta-secret/`**.
+**Default coverage:** when `$ARGUMENTS` is empty, run **`task test`** from **repository root** (CI parity — see [`.ai/skills/build-via-task/SKILL.md`](../../skills/build-via-task/SKILL.md) and [`.ai/agents/test-verifier.md`](../agents/test-verifier.md)). Optional narrow local check: `cargo test -p …` from `meta-secret/` when `$ARGUMENTS` narrows crates. For web-cli-only changes, add **`npm run test:unit`** / **`npm run test:e2e:ci`** in **`meta-secret/web-cli/ui`** (WASM **`pkg/`** may require **`task wasm-local`** first).
 
 ## Session mode
 
-- **Use Agent mode** (or any mode that allows **Bash**) — running **`cargo test`**, **`npm`** in **`web-cli/ui`**, and **`docker buildx bake test`** requires command execution, not Plan-only.
+- **Use Agent mode** (or any mode that allows **Bash**) — running **`task test`**, **`npm`** in **`web-cli/ui`**, and other **`task`** build targets requires command execution, not Plan-only. Read [`.ai/skills/build-via-task/SKILL.md`](../../skills/build-via-task/SKILL.md) first.
 - This phase is **verification**: run tests and report pass/fail; it is **not** the same as writing tests (**test-author**).
 
 ## Presentation (required)

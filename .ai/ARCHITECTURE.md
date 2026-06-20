@@ -40,7 +40,7 @@ This is intentionally different from compose (no UI/design review split), becaus
 ## Language and Architecture Adaptation
 
 - Primary stack: Rust workspace in `meta-secret/`
-- Build/test contract: Cargo-centric (`cargo build`, `cargo test`)
+- Build/test contract: **`task`** from repo root for CI parity (see [`.ai/skills/build-via-task/SKILL.md`](skills/build-via-task/SKILL.md)); narrow `cargo build` / `cargo test` from `meta-secret/` for single-crate iteration
 - FFI contract: UniFFI surface must be treated as compatibility boundary
 - Cross-repo constraint: FFI/API changes must call out impact on `meta-secret-compose`
 

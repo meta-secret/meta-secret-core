@@ -14,16 +14,20 @@ Save as: `.ai/artifacts/run/MS-<run-id>-004-build.md`
 
 | Step | Status | Notes |
 |------|--------|------|
-| Cargo compile | PASSED / FAILED | |
-| Link / artifacts | PASSED / FAILED | |
+| Task target(s) | PASSED / FAILED | e.g. `task web-local`, `task wasm-local` |
+| Artifacts | PASSED / FAILED | dist/, pkg/, images as applicable |
 
 ## Command
 
-`(cd meta-secret && cargo build --workspace)`
+Record exact command(s) from repository root, e.g.:
+
+`(task web-local)`
+
+See [`.ai/skills/build-via-task/SKILL.md`](../skills/build-via-task/SKILL.md) for target mapping.
 
 ## Errors
 
-| Crate/Target | Error |
+| Target | Error |
 |--------|------|
 |        |      |
 

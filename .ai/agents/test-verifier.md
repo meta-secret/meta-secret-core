@@ -11,9 +11,11 @@ Stage: 7 (Test Run)
 ## Mandatory actions
 
 1. Print: `▶️ Start stage 7: Test Run`
-2. Run tests (preferred):
-   - from `meta-secret/`: `cargo test -p meta-secret-core -p meta-secret-cli -p meta-cli -p meta-secret-tests -p meta-secret-wasm`
-3. Write report using template:
+2. Read [`.ai/skills/build-via-task/SKILL.md`](../skills/build-via-task/SKILL.md).
+3. Run tests (CI parity, from **repository root**):
+   - `task test`
+   - Optional narrow local check: `cargo test -p …` from `meta-secret/` (document if used)
+4. Write report using template:
    - `.ai/artifacts/test-report-template.md`
    - output: `.ai/artifacts/run/MS-<run-id>-007-test-run.md`
 4. Set explicit status:

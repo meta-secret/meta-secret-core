@@ -32,6 +32,10 @@ All three must delegate to `.ai/WORKFLOW.md`.
 - Naming: `MS-<run-id>-<stage-number>-<stage-name>.md`
 - Templates: `.ai/artifacts/*-template.md`
 
+## Skills
+
+- **Build / test / Docker:** [`.ai/skills/build-via-task/SKILL.md`](skills/build-via-task/SKILL.md) — mandatory before `task` or verification commands
+
 ## Core Rules
 
 - Print stage logs (start emoji per stage — `.ai/WORKFLOW.md`):

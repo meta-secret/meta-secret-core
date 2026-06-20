@@ -14,8 +14,8 @@
 
 ## Testing
 
-- [ ] `cargo test` / `cargo test -p …` (list commands)
-- [ ] `docker buildx bake test` (if CI/Docker relevant)
+- [ ] `task test` from repo root (CI parity; see `.ai/skills/build-via-task/SKILL.md`)
+- [ ] Narrow `cargo test -p …` / `npm run …` if used for local iteration (list commands)
 
 ## Checklist
 

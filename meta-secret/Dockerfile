@@ -84,7 +84,8 @@ CMD ["./meta-server"]
 FROM builder-base AS builder-wasm
 
 ARG WASM_BINDGEN_VERSION=0.2.125
-RUN cargo install wasm-bindgen-cli --version ${WASM_BINDGEN_VERSION} --locked
+RUN curl -LsSf "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/${WASM_BINDGEN_VERSION}/wasm-bindgen-${WASM_BINDGEN_VERSION}-x86_64-unknown-linux-musl.tar.gz" | \
+    tar xz -C /usr/local/bin --strip-components=1 "wasm-bindgen-${WASM_BINDGEN_VERSION}-x86_64-unknown-linux-musl/wasm-bindgen"
 
 RUN rustup target add wasm32-unknown-unknown
 

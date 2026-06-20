@@ -30,11 +30,16 @@ cargo test -p meta-secret-core
 cargo build --release -p meta-server
 ```
 
-Project-wide Docker builds/tests (see root [README.md](README.md) and [`.ai/rules/build/`](.ai/rules/build/)):
+Project-wide Docker builds/tests (from **repository root**; see [README.md](README.md) and [`.ai/skills/build-via-task/SKILL.md`](.ai/skills/build-via-task/SKILL.md)):
 
 ```bash
-docker buildx bake test
+task test          # CI-equivalent tests
+task web-local     # web-cli dist (includes WASM via Docker)
+task wasm-local    # WASM pkg only
+task generate-recipe   # after Cargo.toml changes
 ```
+
+**Do not** run `docker buildx bake` directly — use `task` targets. List all: `task -l`.
 
 Mobile: `meta-secret/mobile/scripts/build-mobile.sh [ios|android|all]` (wraps `build-ios.sh` / `build-android.sh`).
 

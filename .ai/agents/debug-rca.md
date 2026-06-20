@@ -36,7 +36,7 @@ Align with `ARCHITECTURE.md`, `CODE_STYLE.md`, and `PROJECT_CONTEXT.md` (Cargo w
 ## Rules
 
 - Do not apply production edits in this agent unless the user explicitly overrides; hand off to `code-implementer`.
-- Prefer reproducible steps and narrow `cargo` / `docker buildx bake` commands over broad refactors.
+- Prefer reproducible steps: narrow `cargo` from `meta-secret/` or **`task`** from repo root (see [`.ai/skills/build-via-task/SKILL.md`](../skills/build-via-task/SKILL.md)). Never `docker buildx` directly.
 
 ## Output
 

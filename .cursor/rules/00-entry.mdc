@@ -35,3 +35,8 @@ When the `tests` workflow fails, `.github/workflows/cursor-fix.yml` fires automa
 It uses `@cursor/sdk` (Bun TypeScript in `.github/scripts/`) to launch a Cursor cloud agent
 that analyses failure logs and opens a fix PR. This is independent of `run issue ...`.
 Skill: `.ai/skills/ci-auto-fix/SKILL.md`
+
+## Builds and verification
+
+Before any build or CI-parity test command, read **`.ai/skills/build-via-task/SKILL.md`**.  
+Use `task <target>` from repo root — never raw `docker buildx`.

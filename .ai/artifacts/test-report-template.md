@@ -14,7 +14,11 @@ Save as: `.ai/artifacts/run/MS-<run-id>-007-test-run.md`
 
 ## Command
 
-`(cd meta-secret && cargo test -p meta-secret-core -p meta-secret-cli -p meta-cli -p meta-secret-tests -p meta-secret-wasm)`
+`(task test)` from repository root (CI parity).
+
+Optional narrow local check: `(cd meta-secret && cargo test -p …)` — document if used instead of or before `task test`.
+
+See [`.ai/skills/build-via-task/SKILL.md`](../skills/build-via-task/SKILL.md).
 
 ## Test Results
 

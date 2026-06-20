@@ -1,5 +1,8 @@
 version: "3"
 
+# Agent/CI entry point for Docker builds — see .ai/skills/build-via-task/SKILL.md
+# Never run docker buildx bake|build directly; use: task <target>
+
 tasks:
   default:
     cmds:

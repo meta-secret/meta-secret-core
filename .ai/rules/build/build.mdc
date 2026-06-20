@@ -1,58 +1,48 @@
 ---
-description: Build System
-globs: docker-bake.hcl,meta-secret/Dockerfile,Taskfile.yml
-alwaysApply: false
+description: Build system — always use task commands; never raw docker buildx
+globs: docker-bake.hcl,meta-secret/Dockerfile,Taskfile.yml,meta-secret/**/*.toml
+alwaysApply: true
 ---
 
-### Build system:
- - there are two main components in meta-secret:
-   1. [web-cli](mdc:meta-secret/web-cli) - the web client
-     1.1. ui - web-ui application
-   2. [meta-secret application](mdc:meta-secret/core/src/node) - client and server applications
- - this project uses cargo to build rust code (application code)
- - this project uses docker buildx bake as a build system:
-    1. main build config is [docker-bake.hcl](mdc:docker-bake.hcl) (targets, cache, tags)
-    2. all builds: [meta-secret/Dockerfile](mdc:meta-secret/Dockerfile) (single multi-stage file)
-    3. registry cache per target is configured in docker-bake.hcl
-    4. [Taskfile.yml](mdc:Taskfile.yml) provides short aliases for all bake targets
-    5. after updates in Cargo.toml files, run `task generate-recipe` to update the recipe.json file
- - infra task automation uses go-task directly: [infra/Taskfile.yml](mdc:infra/Taskfile.yml) (and k3d/, k8s/ sub-Taskfiles)
-   - Taskfiles are plain YAML source of truth (not generated from KCL)
-   - KCL is still used inside the `taskomatic` container only for rendering K8s manifests at deploy time
+### Build entry point (mandatory)
 
-### Build actions:
+All Docker-based builds and CI-parity verification use **Taskfile** from the repository root:
 
-#### Run meta-secret tests:
-   task test
+```bash
+task <target>    # ✅ always this
+```
 
-#### Build all images (meta-server + web):
-   task build
+**Never** run `docker buildx bake`, `docker buildx build`, or `docker build` directly in agent shells.  
+Implementation detail lives in `docker-bake.hcl` + `meta-secret/Dockerfile`; **Taskfile.yml is the only entry point.**
 
-#### Build and push all images:
-   task push
+**Skill:** [`.ai/skills/build-via-task/SKILL.md`](../../skills/build-via-task/SKILL.md) — mapping table, exceptions, pre-command checklist.
 
-#### Build meta-secret server image:
-   task meta-server
+### Exceptions
 
-#### Build web image:
-   task web
+| Context | Allowed |
+|---------|---------|
+| Single-crate Rust | `cargo test/build -p …` from `meta-secret/` |
+| web-cli UI only (no Docker/WASM) | `npm run …` in `meta-secret/web-cli/ui/` |
+| Adding a new build target | Edit `Taskfile.yml` first, then `task <target>` |
 
-#### Export web-cli dist locally:
-   task web-local
+After any `Cargo.toml` change: `task generate-recipe`.
 
-#### Export wasm pkg locally:
-   task wasm-local
+### Task commands
 
-#### Update cargo chef recipe:
-   task generate-recipe
+| Action | Command |
+|---|---|
+| Run tests (CI parity) | `task test` |
+| Warm Rust test cache | `task warm-cache` |
+| Warm WASM dep cache | `task warm-cache-wasm` |
+| Build all images | `task build` |
+| Build + push | `task push` |
+| Build meta-server | `task meta-server` |
+| Build web image | `task web` |
+| Export web dist locally | `task web-local` |
+| Export wasm pkg locally | `task wasm-local` |
+| Update cargo chef recipe | `task generate-recipe` |
+| Run web-ui locally | `task web-run` |
+| Playwright smoke tests | `PLAYWRIGHT_BASE_URL=… task playwright-test` |
+| Add shadcn-vue component | `cd meta-secret/web-cli/ui && npx shadcn-vue@latest add <name>` |
 
-#### Run web-ui locally:
-   task web-run
-
-#### Run k3d/k8s automation (cluster + deploy):
-   task taskomatic-run
-
-### CI auto-fix:
- - When the `tests` workflow fails, the `cursor-fix` workflow automatically triggers
- - It fetches failure logs and launches a Cursor cloud agent (via `@cursor/sdk`) to analyse the failure and open a fix PR
- - Script: [.github/scripts/cursor-fix.ts](mdc:.github/scripts/cursor-fix.ts) (Bun TypeScript project under `.github/scripts/`)
+List all targets: `task -l` from repo root.
