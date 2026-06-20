@@ -85,7 +85,7 @@ FROM builder-release AS builder-wasm
 RUN rustup target add wasm32-unknown-unknown
 
 COPY recipe.json .
-RUN cargo chef cook --release --target wasm32-unknown-unknown --recipe-path recipe.json
+RUN cargo chef cook --release --target wasm32-unknown-unknown --recipe-path recipe.json -p meta-secret-wasm
 
 # --- WASM Builder: build wasm package (deps already cached in builder-wasm) ---
 FROM builder-wasm AS wasm-builder
