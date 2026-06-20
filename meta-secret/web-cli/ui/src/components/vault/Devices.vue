@@ -23,7 +23,7 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
 </script>
 
 <template>
-  <div class="mx-auto max-w-6xl px-4 py-10 md:px-6">
+  <div class="py-5">
     <Alert v-if="shouldShowDevicesWarning" class="mb-4">
       <AlertDescription>
         ⚠ {{ vaultSecrets.warningPrefix }} {{ requiredDevicesToSafety }} {{ vaultSecrets.warningMiddle }}
@@ -32,10 +32,7 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
 
     <Card>
       <CardHeader class="border-b pb-4">
-        <CardTitle>Devices</CardTitle>
-        <p class="mt-0.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-          Detailed information about user devices
-        </p>
+        <CardTitle class="text-base">Devices</CardTitle>
       </CardHeader>
 
       <CardContent class="p-0">

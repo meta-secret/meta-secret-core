@@ -161,7 +161,7 @@ const revealModalOpen = computed(() => revealModalState.value !== 'closed');
 </script>
 
 <template>
-  <div class="mx-auto max-w-6xl px-4 py-10 md:px-6">
+  <div class="py-5">
     <Alert v-if="shouldShowDevicesWarning" class="mb-4">
       <AlertDescription>
         ⚠ {{ vaultSecrets.warningPrefix }} {{ requiredDevicesToSafety }} {{ vaultSecrets.warningMiddle }}
@@ -170,13 +170,8 @@ const revealModalOpen = computed(() => revealModalState.value !== 'closed');
 
     <Card>
       <CardHeader class="flex flex-row items-center justify-between border-b pb-4">
-        <div>
-          <CardTitle>{{ vaultSecrets.title }}</CardTitle>
-          <p class="mt-0.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-            {{ vaultSecrets.subtitle }}
-          </p>
-        </div>
-        <Button @click="showAddForm = true">{{ vaultSecrets.addSecret }}</Button>
+        <CardTitle class="text-base">{{ vaultSecrets.title }}</CardTitle>
+        <Button size="sm" @click="showAddForm = true">{{ vaultSecrets.addSecret }}</Button>
       </CardHeader>
 
       <CardContent class="p-0">

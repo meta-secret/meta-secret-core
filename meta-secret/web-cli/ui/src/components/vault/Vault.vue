@@ -19,15 +19,21 @@ const dbVersion = computed(() => component_db_version());
 </script>
 
 <template>
-  <div class="px-4 pt-6 pb-0 md:px-6">
+  <div class="mx-auto max-w-2xl px-4 pt-6">
     <!-- Vault pill + info toggle -->
     <div class="flex items-center justify-center gap-2">
       <div class="flex items-center gap-3 rounded-full border bg-card px-6 py-2.5 shadow-sm">
         <span class="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Vault Name</span>
         <Separator orientation="vertical" class="h-4" />
-        <span class="text-base font-bold text-primary">{{ vaultName }}</span>
+        <span class="font-bold text-foreground">{{ vaultName }}</span>
       </div>
-      <Button variant="ghost" size="icon" class="h-8 w-8" :title="vaultTechnicalInfo.title" @click="showDeviceId = !showDeviceId">
+      <Button
+        variant="ghost"
+        size="icon"
+        class="h-8 w-8"
+        :title="vaultTechnicalInfo.title"
+        @click="showDeviceId = !showDeviceId"
+      >
         <Info class="h-4 w-4 text-muted-foreground" />
       </Button>
     </div>
@@ -41,34 +47,42 @@ const dbVersion = computed(() => component_db_version());
       </div>
       <Separator class="my-1 w-48" />
       <span class="font-semibold uppercase tracking-widest">{{ vaultComponentVersions.sectionTitle }}</span>
-      <div v-for="[label, val] in [
-        [vaultComponentVersions.labelWebUi, webUiVersion],
-        [vaultComponentVersions.labelCore, coreVersion],
-        [vaultComponentVersions.labelServer, serverVersion],
-        [vaultComponentVersions.labelDb, dbVersion],
-      ]" :key="label" class="flex gap-2">
+      <div
+        v-for="[label, val] in [
+          [vaultComponentVersions.labelWebUi, webUiVersion],
+          [vaultComponentVersions.labelCore, coreVersion],
+          [vaultComponentVersions.labelServer, serverVersion],
+          [vaultComponentVersions.labelDb, dbVersion],
+        ]"
+        :key="label"
+        class="flex gap-2"
+      >
         <span>{{ label }}</span>
         <code class="font-mono">{{ val }}</code>
       </div>
     </div>
 
-    <!-- Router tabs -->
-    <div class="mx-auto mt-4 flex max-w-4xl rounded-xl border bg-card p-1 gap-1">
+    <!-- Tab bar -->
+    <div class="mt-4 flex rounded-xl border bg-muted p-1 gap-1">
       <RouterLink
         to="/secrets"
-        class="flex flex-1 items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors"
-        :class="$route.path.includes('/secrets') || $route.path === '/'
-          ? 'bg-primary text-primary-foreground'
-          : 'text-muted-foreground hover:text-foreground'"
+        class="flex flex-1 items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold transition-all"
+        :class="
+          $route.path.includes('/secrets') || $route.path === '/'
+            ? 'bg-background text-foreground shadow-sm'
+            : 'text-muted-foreground hover:text-foreground'
+        "
       >
         Secrets
       </RouterLink>
       <RouterLink
         to="/devices"
-        class="flex flex-1 items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors"
-        :class="$route.path.includes('/devices')
-          ? 'bg-primary text-primary-foreground'
-          : 'text-muted-foreground hover:text-foreground'"
+        class="flex flex-1 items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold transition-all"
+        :class="
+          $route.path.includes('/devices')
+            ? 'bg-background text-foreground shadow-sm'
+            : 'text-muted-foreground hover:text-foreground'
+        "
       >
         Devices
       </RouterLink>
