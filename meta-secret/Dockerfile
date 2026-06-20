@@ -32,6 +32,9 @@ WORKDIR ${BASE_DIR}
 
 # Incremental compiles for dev/test profile; cache mounts below persist target/ across builds.
 ENV CARGO_INCREMENTAL=1
+# crates.io HTTP/2 flakes in CI (curl error 16); disable multiplexing and retry downloads.
+ENV CARGO_HTTP_MULTIPLEXING=false
+ENV CARGO_NET_RETRY=10
 
 # --- Builder Debug: pre-compiled deps in debug mode (for tests) ---
 FROM builder-base AS builder-debug
