@@ -89,6 +89,7 @@ target "test" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
   target     = "test-runner"
+  depends_on = ["warm-cache"]
   output     = ["type=cacheonly"]
   cache-from = [
     "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
@@ -105,10 +106,11 @@ target "warm-cache-wasm" {
   target     = "builder-wasm"
   output     = ["type=cacheonly"]
   cache-from = [
-    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
     "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
+    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
   ]
-  cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-core:cache,mode=max"] : []
+  // Separate ref from host tests — parallel cache-to on meta-secret-core:cache races manifests.
+  cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-web:cache,mode=max"] : []
 }
 
 target "generate-recipe" {

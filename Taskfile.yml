@@ -29,15 +29,14 @@ tasks:
       - docker buildx bake warm-cache
 
   test-run:
-    desc: Run tests after warm-cache (CI step 2)
+    desc: Run tests after warm-cache (single bake via depends_on)
     cmds:
       - docker buildx bake test
 
   test:
-    desc: Warm test compile cache then run tests (two bakes, same buildx session)
+    desc: Compile tests, push cache, run tests (one bake — warm-cache then test-runner)
     cmds:
-      - task: warm-cache
-      - task: test-run
+      - docker buildx bake test
 
   warm-cache-wasm:
     desc: Compile wasm32 deps and push registry cache (deploy step 1)
