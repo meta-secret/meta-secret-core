@@ -1,0 +1,8 @@
+{
+  "name": "meta-secret-web-cli",
+  "type": "module",
+  "version": "2.0.0",
+  "main": "meta_secret_wasm.js",
+  "types": "meta_secret_wasm.d.ts",
+  "sideEffects": ["./snippets/*"]
+}

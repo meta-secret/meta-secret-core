@@ -108,7 +108,8 @@ COPY . .
 RUN cargo build --release --target wasm32-unknown-unknown -p meta-secret-wasm \
     && mkdir -p wasm/pkg \
     && wasm-bindgen target/wasm32-unknown-unknown/release/meta_secret_wasm.wasm \
-        --out-dir wasm/pkg --target web --out-name meta_secret_wasm
+        --out-dir wasm/pkg --target web --out-name meta_secret_wasm \
+    && cp wasm/pkg.package.json wasm/pkg/package.json
 
 # Minimal stage to extract just the wasm pkg
 FROM scratch AS wasm-output
@@ -129,15 +130,10 @@ RUN RUST_MIN_STACK=8388608 cargo nextest run --profile ci
 # --- Web Build: Vue.js + WASM ---
 FROM node:24-bookworm-slim AS web-build
 
-WORKDIR /meta-secret/web-cli/ui
-
-COPY web-cli/ui/package.json .
-RUN npm install && npm install --dev
-
-COPY --from=wasm-builder /meta-secret-build/wasm/pkg ./pkg
-
 WORKDIR /meta-secret/web-cli
 COPY web-cli/ .
+
+COPY --from=wasm-builder /meta-secret-build/wasm/pkg /meta-secret/web-cli/ui/pkg
 
 WORKDIR /meta-secret/web-cli/ui
 RUN rm -f package-lock.json && npm install && npm run lint:check && npm run build
