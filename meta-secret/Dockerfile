@@ -30,8 +30,8 @@ RUN curl https://wasm-bindgen.github.io/wasm-pack/installer/init.sh -sSf | sh
 ENV BASE_DIR="/meta-secret-build"
 WORKDIR ${BASE_DIR}
 
-# Incremental compiles for dev/test profile; cache mounts below persist target/ across builds.
-ENV CARGO_INCREMENTAL=1
+# Registry cache-to exports image layers only — not BuildKit cache mounts. Keep compiles in layers.
+ENV CARGO_INCREMENTAL=0
 # crates.io HTTP/2 flakes in CI (curl error 16); disable multiplexing and retry downloads.
 ENV CARGO_HTTP_MULTIPLEXING=false
 ENV CARGO_NET_RETRY=10
@@ -40,19 +40,13 @@ ENV CARGO_NET_RETRY=10
 FROM builder-base AS builder-debug
 
 COPY recipe.json .
-RUN --mount=type=cache,target=/meta-secret-build/target,id=ms-target-debug \
-    --mount=type=cache,target=/usr/local/cargo/registry,id=ms-cargo-registry \
-    --mount=type=cache,target=/usr/local/cargo/git,id=ms-cargo-git \
-    cargo chef cook --tests --recipe-path recipe.json
+RUN cargo chef cook --tests --recipe-path recipe.json
 
 # --- Builder Release: pre-compiled deps in release mode (for server and wasm) ---
 FROM builder-base AS builder-release
 
 COPY recipe.json .
-RUN --mount=type=cache,target=/meta-secret-build/target,id=ms-target-release \
-    --mount=type=cache,target=/usr/local/cargo/registry,id=ms-cargo-registry \
-    --mount=type=cache,target=/usr/local/cargo/git,id=ms-cargo-git \
-    cargo chef cook --release --recipe-path recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
 
 # --- Prepare DB: run diesel migrations ---
 FROM builder-release AS prepare-db
@@ -79,10 +73,7 @@ WORKDIR /meta-secret-build
 COPY . .
 
 WORKDIR /meta-secret-build/meta-server/web-server
-RUN --mount=type=cache,target=/meta-secret-build/target,id=ms-target-release \
-    --mount=type=cache,target=/usr/local/cargo/registry,id=ms-cargo-registry \
-    --mount=type=cache,target=/usr/local/cargo/git,id=ms-cargo-git \
-    cargo build --release
+RUN cargo build --release
 
 # --- Meta Server: final runtime image ---
 FROM debian:bookworm AS meta-server
@@ -109,10 +100,7 @@ RUN mkdir -p .cargo && printf '%s\n' \
     > .cargo/config.toml
 
 COPY recipe.json .
-RUN --mount=type=cache,target=/meta-secret-build/target,id=ms-target-wasm32 \
-    --mount=type=cache,target=/usr/local/cargo/registry,id=ms-cargo-registry \
-    --mount=type=cache,target=/usr/local/cargo/git,id=ms-cargo-git \
-    cargo chef cook --release --target wasm32-unknown-unknown --recipe-path recipe.json -p meta-secret-wasm
+RUN cargo chef cook --release --target wasm32-unknown-unknown --recipe-path recipe.json -p meta-secret-wasm
 
 # --- WASM Builder: build wasm package (deps already cached in builder-wasm) ---
 FROM builder-wasm AS wasm-builder
@@ -125,10 +113,7 @@ WORKDIR /meta-secret-build
 COPY . .
 
 # cargo from workspace root reuses chef-cached deps; wasm-pack cd's into wasm/ and rebuilds all deps.
-RUN --mount=type=cache,target=/meta-secret-build/target,id=ms-target-wasm32 \
-    --mount=type=cache,target=/usr/local/cargo/registry,id=ms-cargo-registry \
-    --mount=type=cache,target=/usr/local/cargo/git,id=ms-cargo-git \
-    cargo build --release --target wasm32-unknown-unknown -p meta-secret-wasm \
+RUN cargo build --release --target wasm32-unknown-unknown -p meta-secret-wasm \
     && mkdir -p wasm/pkg \
     && wasm-bindgen target/wasm32-unknown-unknown/release/meta_secret_wasm.wasm \
         --out-dir wasm/pkg --target web --out-name meta_secret_wasm \
@@ -143,18 +128,12 @@ FROM builder-debug AS test-compiler
 
 WORKDIR /meta-secret-build
 COPY . .
-RUN --mount=type=cache,target=/meta-secret-build/target,id=ms-target-debug \
-    --mount=type=cache,target=/usr/local/cargo/registry,id=ms-cargo-registry \
-    --mount=type=cache,target=/usr/local/cargo/git,id=ms-cargo-git \
-    cargo nextest run --no-run --profile ci
+RUN cargo nextest run --no-run --profile ci
 
 # --- Test Runner: execute pre-compiled tests ---
 FROM test-compiler AS test-runner
 # RUST_MIN_STACK: split/redistribution tests have deep async stacks that overflow the 2MiB default
-RUN --mount=type=cache,target=/meta-secret-build/target,id=ms-target-debug \
-    --mount=type=cache,target=/usr/local/cargo/registry,id=ms-cargo-registry \
-    --mount=type=cache,target=/usr/local/cargo/git,id=ms-cargo-git \
-    RUST_MIN_STACK=8388608 cargo nextest run --profile ci
+RUN RUST_MIN_STACK=8388608 cargo nextest run --profile ci --no-build
 
 # --- Web Build: Vue.js + WASM ---
 # web-cli comes from the `webcli` bake context (see docker-bake.hcl), not the Rust context.
