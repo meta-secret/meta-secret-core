@@ -4,6 +4,7 @@ import RegistrationComponent from '@/components/vault/auth/Registration.vue';
 import VaultComponent from '@/components/vault/Vault.vue';
 import { AppState } from '@/stores/app-state';
 import { useAuthStore } from '@/stores/auth';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const jsAppState = AppState();
 const authStore = useAuthStore();
@@ -26,30 +27,13 @@ watch(
 </script>
 
 <template>
-  <div v-if="authStore.isAuthenticated && !isInitialized" class="loading-wrap">
-    <p class="loading-text">Loading Vault Information...</p>
+  <div v-if="authStore.isAuthenticated && !isInitialized" class="flex min-h-[calc(100vh-3.5rem)] items-center justify-center p-6">
+    <div class="w-full max-w-md space-y-3">
+      <Skeleton class="h-4 w-48 mx-auto" />
+      <Skeleton class="h-2 w-64 mx-auto" />
+    </div>
   </div>
 
-  <div v-else-if="authStore.isAuthenticated && isInitialized && !jsAppState.isMember">
-    <RegistrationComponent />
-  </div>
-
-  <div v-else-if="authStore.isAuthenticated && isInitialized && jsAppState.isMember">
-    <VaultComponent />
-  </div>
+  <RegistrationComponent v-else-if="authStore.isAuthenticated && isInitialized && !jsAppState.isMember" />
+  <VaultComponent v-else-if="authStore.isAuthenticated && isInitialized && jsAppState.isMember" />
 </template>
-
-<style scoped>
-.loading-wrap {
-  min-height: calc(100vh - 60px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-}
-
-.loading-text {
-  color: #8aaacf;
-  font-size: 15px;
-}
-</style>

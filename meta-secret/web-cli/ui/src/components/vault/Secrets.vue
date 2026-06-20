@@ -4,6 +4,19 @@ import { MetaPasswordId } from 'meta-secret-web-cli';
 import { AppState } from '@/stores/app-state';
 import { vaultSecrets } from '@/locales/en';
 import AddSecretForm from './AddSecretForm.vue';
+import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Separator } from '@/components/ui/separator';
+import { Lock } from 'lucide-vue-next';
 
 type RevealModalState = 'closed' | 'waiting' | 'revealedText' | 'revealedSeed';
 
@@ -27,25 +40,13 @@ const flowToken = ref(0);
 const FLOW_MAX_ATTEMPTS = 15;
 const FLOW_POLL_DELAY_MS = 800;
 
-const toggleAddForm = () => {
-  showAddForm.value = !showAddForm.value;
-};
-
-const handleSecretAdded = () => {
-  showAddForm.value = false;
-};
-
 const isRecovered = (metaPassId: MetaPasswordId) => {
-  const maybeCompletedClaim = (appState.currState as any).as_vault?.()?.as_member?.()?.find_recovery_claim(metaPassId);
-  return maybeCompletedClaim !== undefined;
+  const claim = (appState.currState as any).as_vault?.()?.as_member?.()?.find_recovery_claim(metaPassId);
+  return claim !== undefined;
 };
 
 const isFlowTokenActive = (token: number) => token === flowToken.value;
-
-const sleep = (ms: number) =>
-  new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const clearRevealData = () => {
   revealedSecret.value = '';
@@ -65,9 +66,7 @@ const closeAllSecretModals = () => {
 
 const parseSecretType = (secretValue: string) => {
   const words = secretValue.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 12 || words.length === 24) {
-    return { type: 'seed' as const, words };
-  }
+  if (words.length === 12 || words.length === 24) return { type: 'seed' as const, words };
   return { type: 'text' as const, words: [] };
 };
 
@@ -86,23 +85,19 @@ const openRevealedModal = (secretValue: string) => {
 
 const waitForRecoveredClaim = async (metaPassId: MetaPasswordId, token: number) => {
   if (isRecovered(metaPassId)) return true;
-
-  for (let i = 0; i < FLOW_MAX_ATTEMPTS; i += 1) {
+  for (let i = 0; i < FLOW_MAX_ATTEMPTS; i++) {
     if (!isFlowTokenActive(token) || revealModalState.value !== 'waiting') return false;
     await sleep(FLOW_POLL_DELAY_MS);
     if (!isFlowTokenActive(token) || revealModalState.value !== 'waiting') return false;
     await appState.updateState();
     if (isRecovered(metaPassId)) return true;
   }
-
   throw new Error(vaultSecrets.errorRecoveryTimeout);
 };
 
 const startRevealFlow = async (secret: any) => {
   const secretId = secret.id_str();
-
-  if (flowInProgressId.value && flowInProgressId.value !== secretId) return;
-  if (flowInProgressId.value === secretId) return;
+  if (flowInProgressId.value === secretId || (flowInProgressId.value && flowInProgressId.value !== secretId)) return;
 
   const token = flowToken.value + 1;
   flowToken.value = token;
@@ -118,40 +113,30 @@ const startRevealFlow = async (secret: any) => {
     if (!isFlowTokenActive(token)) return;
     await appState.updateState();
     if (!isFlowTokenActive(token)) return;
-
     await waitForRecoveredClaim(secret, token);
     if (!isFlowTokenActive(token)) return;
-
     const secretText = await appManager.show_recovered(secret);
     if (!isFlowTokenActive(token)) return;
-
     openRevealedModal(secretText);
   } catch (e) {
-    console.error('Secrets reveal flow failed', e);
     if (!isFlowTokenActive(token)) return;
     flowError.value = e instanceof Error ? e.message : vaultSecrets.errorShowRecovered;
     revealModalState.value = 'closed';
   } finally {
-    if (isFlowTokenActive(token)) {
-      flowInProgressId.value = null;
-    }
+    if (isFlowTokenActive(token)) flowInProgressId.value = null;
   }
 };
 
 const copyRevealedValue = async () => {
   if (copyInProgress.value) return;
-  const valueToCopy = revealModalState.value === 'revealedSeed' ? revealedWords.value.join(' ') : revealedSecret.value;
-  if (!valueToCopy) return;
-
+  const value = revealModalState.value === 'revealedSeed' ? revealedWords.value.join(' ') : revealedSecret.value;
+  if (!value) return;
   copyInProgress.value = true;
   try {
-    await navigator.clipboard.writeText(valueToCopy);
+    await navigator.clipboard.writeText(value);
     copySucceeded.value = true;
-    setTimeout(() => {
-      copySucceeded.value = false;
-    }, 2000);
-  } catch (e) {
-    console.error('Failed to copy revealed secret', e);
+    setTimeout(() => { copySucceeded.value = false; }, 2000);
+  } catch {
     flowError.value = vaultSecrets.errorCopySecret;
   } finally {
     copyInProgress.value = false;
@@ -159,107 +144,126 @@ const copyRevealedValue = async () => {
 };
 
 const waitingDeviceCount = computed(() => {
-  const maybeVaultData = (appState.currState as any).as_vault?.()?.as_member?.()?.vault_data?.();
-  if (!maybeVaultData || typeof maybeVaultData.users !== 'function') return 1;
-  const count = maybeVaultData.users().length;
-  return count > 0 ? count : 1;
+  const data = (appState.currState as any).as_vault?.()?.as_member?.()?.vault_data?.();
+  if (!data || typeof data.users !== 'function') return 1;
+  const n = data.users().length;
+  return n > 0 ? n : 1;
 });
 
-const currentDeviceCount = computed(() => {
-  const maybeVaultData = (appState.currState as any).as_vault?.()?.as_member?.()?.vault_data?.();
-  if (!maybeVaultData || typeof maybeVaultData.users !== 'function') return 0;
-  return maybeVaultData.users().length;
+const requiredDevicesToSafety = computed(() => {
+  const data = (appState.currState as any).as_vault?.()?.as_member?.()?.vault_data?.();
+  const n = data && typeof data.users === 'function' ? data.users().length : 0;
+  return 3 - n;
 });
-
-const requiredDevicesToSafety = computed(() => 3 - currentDeviceCount.value);
 
 const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 0);
+const revealModalOpen = computed(() => revealModalState.value !== 'closed');
 </script>
 
 <template>
-  <div :class="$style.mainContent">
-    <div :class="$style.pageWide">
-      <div v-if="shouldShowDevicesWarning" :class="$style.warningBanner">
-        <span :class="$style.warningIcon">⚠</span>
-        <span> {{ vaultSecrets.warningPrefix }} {{ requiredDevicesToSafety }} {{ vaultSecrets.warningMiddle }} </span>
-      </div>
+  <div class="mx-auto max-w-6xl px-4 py-10 md:px-6">
+    <Alert v-if="shouldShowDevicesWarning" class="mb-4">
+      <AlertDescription>
+        ⚠ {{ vaultSecrets.warningPrefix }} {{ requiredDevicesToSafety }} {{ vaultSecrets.warningMiddle }}
+      </AlertDescription>
+    </Alert>
 
-      <div :class="$style.secretsCard">
-        <div :class="$style.secretsHeader">
-          <div>
-            <h3 :class="$style.secretsTitle">{{ vaultSecrets.title }}</h3>
-            <div :class="$style.sectionSub">{{ vaultSecrets.subtitle }}</div>
-          </div>
-          <button :class="$style.addSecretButton" @click="toggleAddForm">{{ vaultSecrets.addSecret }}</button>
+    <Card>
+      <CardHeader class="flex flex-row items-center justify-between border-b pb-4">
+        <div>
+          <CardTitle>{{ vaultSecrets.title }}</CardTitle>
+          <p class="mt-0.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+            {{ vaultSecrets.subtitle }}
+          </p>
+        </div>
+        <Button @click="showAddForm = true">{{ vaultSecrets.addSecret }}</Button>
+      </CardHeader>
+
+      <CardContent class="p-0">
+        <div v-if="flowError" class="p-4">
+          <Alert variant="destructive">
+            <AlertDescription>{{ flowError }}</AlertDescription>
+          </Alert>
         </div>
 
-        <div v-if="passwords.length === 0" :class="$style.emptyState">{{ vaultSecrets.emptyState }}</div>
+        <p v-if="passwords.length === 0" class="py-8 text-center text-sm text-muted-foreground">
+          {{ vaultSecrets.emptyState }}
+        </p>
 
-        <div v-else>
-          <div v-if="flowError" :class="$style.inlineError" role="alert">{{ flowError }}</div>
-          <ul :class="$style.secretsList">
-            <li v-for="secret in passwords" :key="secret.id_str()" :class="$style.secretRow">
-              <div :class="$style.secretName">{{ secret.name }}</div>
-              <button :class="$style.showButton" :disabled="flowInProgressId !== null" @click="startRevealFlow(secret)">
-                {{ flowInProgressId === secret.id_str() ? vaultSecrets.showLoading : vaultSecrets.show }}
-              </button>
-            </li>
-          </ul>
-        </div>
-      </div>
-    </div>
+        <ul v-else class="divide-y">
+          <li
+            v-for="secret in passwords"
+            :key="secret.id_str()"
+            class="flex items-center justify-between px-5 py-4"
+          >
+            <span class="font-semibold">{{ secret.name }}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              :disabled="flowInProgressId !== null"
+              @click="startRevealFlow(secret)"
+            >
+              {{ flowInProgressId === secret.id_str() ? vaultSecrets.showLoading : vaultSecrets.show }}
+            </Button>
+          </li>
+        </ul>
+      </CardContent>
+    </Card>
 
-    <AddSecretForm :show="showAddForm" @added="handleSecretAdded" @close="toggleAddForm" />
+    <AddSecretForm :show="showAddForm" @added="showAddForm = false" @close="showAddForm = false" />
   </div>
 
-  <div v-if="revealModalState !== 'closed'" :class="$style.modalOverlay" @click="closeAllSecretModals">
-    <div :class="$style.modalBox" @click.stop>
-      <div :class="$style.modalHeader">
-        <span>{{ activeSecret?.name || '' }}</span>
-        <button :class="$style.closeXButton" @click="closeAllSecretModals">×</button>
-      </div>
+  <!-- Reveal modal -->
+  <Dialog :open="revealModalOpen" @update:open="(v) => { if (!v) closeAllSecretModals(); }">
+    <DialogContent class="max-w-2xl">
+      <DialogHeader>
+        <DialogTitle>{{ activeSecret?.name || '' }}</DialogTitle>
+      </DialogHeader>
 
-      <div v-if="revealModalState === 'waiting'" :class="$style.encryptedCard">
-        <div :class="$style.lockCircle">
-          <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
-            <rect x="5" y="11" width="14" height="11" rx="3" stroke="#3b7eff" stroke-width="2" />
-            <path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="#3b7eff" stroke-width="2" stroke-linecap="round" />
-            <circle cx="12" cy="16" r="1.5" fill="#3b7eff" />
-          </svg>
+      <!-- Waiting state -->
+      <div v-if="revealModalState === 'waiting'" class="flex flex-col items-center gap-4 rounded-lg border bg-muted/30 p-6">
+        <div class="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+          <Lock class="h-7 w-7 text-primary" />
         </div>
-        <div :class="$style.encryptedTitle">{{ vaultSecrets.waitingTitle }}</div>
-        <div :class="$style.encryptedSubtitle">{{ vaultSecrets.waitingSubtitle }}</div>
-        <div :class="$style.placeholderLines">
-          <div :class="$style.placeholderLineOne"></div>
-          <div :class="$style.placeholderLineTwo"></div>
-          <div :class="$style.placeholderLineThree"></div>
-          <div :class="$style.placeholderLineFour"></div>
+        <p class="text-base font-semibold">{{ vaultSecrets.waitingTitle }}</p>
+        <p class="text-xs text-muted-foreground">{{ vaultSecrets.waitingSubtitle }}</p>
+        <div class="w-full max-w-sm space-y-2">
+          <Skeleton class="h-2.5 w-[88%]" />
+          <Skeleton class="h-2.5 w-[66%]" />
+          <Skeleton class="h-2.5 w-[82%]" />
+          <Skeleton class="h-2.5 w-[59%]" />
         </div>
-        <div :class="$style.devicesCount">
+        <p class="text-xs text-muted-foreground">
           {{ waitingDeviceCount }}
           {{ waitingDeviceCount === 1 ? vaultSecrets.waitingDevicesSuffix : vaultSecrets.waitingDevicesSuffixPlural }}
-        </div>
+        </p>
       </div>
 
+      <!-- Revealed text -->
       <template v-else-if="revealModalState === 'revealedText'">
-        <div :class="$style.revealedSecretBox">
-          <span :class="$style.revealedSecretLabel">{{ vaultSecrets.secretLabel }}</span>
-          <span :class="$style.revealedSecretValue">{{ revealedSecret }}</span>
+        <div class="flex items-center gap-3 rounded-lg border bg-muted/30 px-4 py-3">
+          <span class="font-mono text-sm text-muted-foreground">{{ vaultSecrets.secretLabel }}</span>
+          <span class="break-all font-semibold text-primary">{{ revealedSecret }}</span>
         </div>
       </template>
 
+      <!-- Revealed seed -->
       <template v-else-if="revealModalState === 'revealedSeed'">
-        <div :class="$style.seedGrid">
-          <div v-for="(word, index) in revealedWords" :key="`${index}-${word}`" :class="$style.seedCell">
-            <span :class="$style.seedIndex">{{ index + 1 }}</span>
-            <span :class="$style.seedWord">{{ word }}</span>
+        <div class="grid grid-cols-3 gap-2">
+          <div
+            v-for="(word, index) in revealedWords"
+            :key="`${index}-${word}`"
+            class="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2"
+          >
+            <span class="min-w-[1.5rem] text-xs font-bold text-muted-foreground">{{ index + 1 }}</span>
+            <span class="font-semibold">{{ word }}</span>
           </div>
         </div>
       </template>
 
-      <div v-if="revealModalState !== 'waiting'" :class="$style.modalActions">
-        <button :class="$style.btnSecondary" @click="closeAllSecretModals">{{ vaultSecrets.close }}</button>
-        <button :class="$style.btnPrimary" :disabled="copyInProgress" @click="copyRevealedValue">
+      <DialogFooter v-if="revealModalState !== 'waiting'">
+        <Button variant="outline" @click="closeAllSecretModals">{{ vaultSecrets.close }}</Button>
+        <Button :disabled="copyInProgress" @click="copyRevealedValue">
           {{
             copySucceeded
               ? vaultSecrets.copied
@@ -267,362 +271,8 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
                 ? vaultSecrets.copyPhrase
                 : vaultSecrets.copySecret
           }}
-        </button>
-      </div>
-    </div>
-  </div>
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
 </template>
-
-<style module>
-.mainContent {
-  padding: 48px 24px;
-  display: flex;
-  justify-content: center;
-}
-
-.pageWide {
-  width: 100%;
-  max-width: 1240px;
-}
-
-.warningBanner {
-  background: #1a2518;
-  border: 1px solid #2a3a1e;
-  border-radius: 12px;
-  padding: 12px 16px;
-  color: #8aaa70;
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
-}
-
-.warningIcon {
-  color: #e6b44a;
-}
-
-.secretsCard {
-  background: #0d1726;
-  border: 1px solid #1a2840;
-  border-radius: 16px;
-  overflow: hidden;
-}
-
-.secretsHeader {
-  padding: 18px 20px;
-  border-bottom: 1px solid #1a2840;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.secretsTitle {
-  font-size: 17px;
-  line-height: 1.2;
-  font-weight: 700;
-  color: #ffffff;
-}
-
-.sectionSub {
-  margin-top: 2px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #3a5070;
-}
-
-.addSecretButton {
-  background: #2563eb;
-  color: #ffffff;
-  border: none;
-  border-radius: 12px;
-  height: 46px;
-  padding: 0 24px;
-  font-size: 15px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.emptyState {
-  padding: 30px;
-  color: #8aaacf;
-  font-size: 14px;
-  text-align: center;
-}
-
-.inlineError {
-  margin: 14px 20px 0;
-  background: #3a1820;
-  border: 1px solid #a3213d;
-  color: #fca5a5;
-  border-radius: 10px;
-  padding: 10px 12px;
-  font-size: 13px;
-}
-
-.secretsList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.secretRow {
-  padding: 16px 20px;
-  border-bottom: 1px solid #1a2840;
-  display: flex;
-  align-items: center;
-}
-
-.secretRow:last-child {
-  border-bottom: none;
-}
-
-.secretName {
-  color: #ffffff;
-  font-size: 15px;
-  font-weight: 700;
-  flex: 1;
-}
-
-.showButton {
-  background: transparent;
-  border: 1px solid #1a2840;
-  color: #8aaacf;
-  border-radius: 10px;
-  height: 38px;
-  min-width: 72px;
-  padding: 0 16px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.showButton:hover:not(:disabled) {
-  border-color: #2563eb55;
-  color: #ffffff;
-}
-
-.showButton:disabled {
-  opacity: 0.65;
-  cursor: wait;
-}
-
-.modalOverlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.68);
-  backdrop-filter: blur(8px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 230;
-  padding: 24px;
-}
-
-.modalBox {
-  width: 100%;
-  max-width: 760px;
-  border-radius: 22px;
-  border: 1px solid #1e3050;
-  background: #0d1726;
-  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.6);
-  padding: 24px;
-}
-
-.modalHeader {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  color: #ffffff;
-  font-size: 17px;
-  font-weight: 800;
-  margin-bottom: 14px;
-}
-
-.closeXButton {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: #4a6080;
-  font-size: 24px;
-  cursor: pointer;
-}
-
-.closeXButton:hover {
-  border-color: #1e3050;
-}
-
-.encryptedCard {
-  background: #080f1c;
-  border: 1px solid #1a2840;
-  border-radius: 14px;
-  padding: 24px 20px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.lockCircle {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  background: #1a2e4a;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.encryptedTitle {
-  margin-top: 10px;
-  color: #ffffff;
-  font-size: 17px;
-  font-weight: 700;
-}
-
-.encryptedSubtitle {
-  margin-top: 6px;
-  color: #3a5070;
-  font-size: 11px;
-  text-align: center;
-  line-height: 1.4;
-}
-
-.placeholderLines {
-  margin-top: 12px;
-  width: 100%;
-  max-width: 500px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.placeholderLineOne,
-.placeholderLineTwo,
-.placeholderLineThree,
-.placeholderLineFour {
-  height: 10px;
-  border-radius: 6px;
-  background: #1a2840;
-}
-
-.placeholderLineOne {
-  width: 88%;
-}
-
-.placeholderLineTwo {
-  width: 66%;
-}
-
-.placeholderLineThree {
-  width: 82%;
-}
-
-.placeholderLineFour {
-  width: 59%;
-}
-
-.devicesCount {
-  margin-top: 14px;
-  color: #4a6080;
-  font-size: 11px;
-}
-
-.revealedSecretBox {
-  background: #080f1c;
-  border: 1px solid #1a2840;
-  border-radius: 12px;
-  min-height: 48px;
-  padding: 0 14px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: #ffffff;
-  font-size: 15px;
-  font-weight: 700;
-  overflow-wrap: anywhere;
-}
-
-.revealedSecretLabel {
-  color: #4a6080;
-  font-family:
-    ui-monospace, Menlo, Monaco, 'Cascadia Mono', 'Segoe UI Mono', 'Roboto Mono', 'Oxygen Mono', 'Ubuntu Monospace',
-    'Source Code Pro', 'Fira Mono', 'Droid Sans Mono', 'Courier New', monospace;
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.revealedSecretValue {
-  color: #91bdff;
-  font-size: 15px;
-  font-weight: 700;
-  word-break: break-word;
-}
-
-.seedGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.seedCell {
-  border: 1px solid #1a2840;
-  border-radius: 12px;
-  background: #111e30;
-  min-height: 46px;
-  padding: 8px 10px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.seedIndex {
-  color: #3a5070;
-  font-size: 12px;
-  font-weight: 700;
-  min-width: 20px;
-}
-
-.seedWord {
-  color: #ffffff;
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.modalActions {
-  margin-top: 18px;
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-}
-
-.btnSecondary,
-.btnPrimary {
-  border-radius: 12px;
-  height: 48px;
-  font-size: 15px;
-  font-weight: 700;
-  border: none;
-  cursor: pointer;
-  padding: 0 24px;
-}
-
-.btnSecondary {
-  background: #111e30;
-  border: 1px solid #1e3050;
-  color: #8aaacf;
-}
-
-.btnPrimary {
-  background: #2563eb;
-  color: #ffffff;
-}
-
-.btnPrimary:disabled {
-  opacity: 0.65;
-  cursor: wait;
-}
-</style>

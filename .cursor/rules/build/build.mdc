@@ -24,3 +24,4 @@ alwaysApply: true
 | Export wasm pkg locally | `task wasm-local` |
 | Update cargo chef recipe | `task generate-recipe` |
 | Run web-ui locally | `task web-run` |
+| Add shadcn-vue component | `cd meta-secret/web-cli/ui && npx shadcn-vue@latest add <name>` |

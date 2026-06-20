@@ -2,350 +2,94 @@
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { AppState } from '@/stores/app-state';
-import AlphaBadge from '@/components/common/AlphaBadge.vue';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { Separator } from '@/components/ui/separator';
+import { ArrowLeft, TriangleAlert } from 'lucide-vue-next';
 
 const router = useRouter();
 const jsAppState = AppState();
 const isCleaning = ref(false);
-const showConfirmation = ref(false);
 
 async function cleanDatabase() {
   if (isCleaning.value) return;
-
   isCleaning.value = true;
   try {
     await jsAppState.cleanDatabase();
     await jsAppState.appStateInit();
-    // Navigate back to home after cleaning
     await router.push('/');
   } finally {
     isCleaning.value = false;
-    showConfirmation.value = false;
   }
-}
-
-function goBack() {
-  router.push('/');
-}
-
-function toggleConfirmation() {
-  showConfirmation.value = !showConfirmation.value;
 }
 </script>
 
 <template>
-  <div class="container mx-auto max-w-md px-4">
-    <div class="relative">
-      <AlphaBadge />
+  <div class="mx-auto max-w-lg px-4 py-8">
+    <div class="mb-6 flex items-center gap-3">
+      <Button variant="ghost" size="icon" @click="router.push('/')">
+        <ArrowLeft class="h-4 w-4" />
+      </Button>
+      <h1 class="flex-1 text-center text-2xl font-bold">Settings</h1>
+      <Badge variant="destructive" class="text-[10px] uppercase tracking-widest">Alpha</Badge>
     </div>
 
-    <header :class="$style.settingsHeader">
-      <button :class="$style.backButton" @click="goBack">
-        <span :class="$style.backIcon">←</span>
-        <span>Back</span>
-      </button>
-      <h1 :class="$style.settingsTitle">Settings</h1>
-    </header>
+    <Separator class="mb-6" />
 
-    <div :class="$style.settingsContent">
-      <section :class="$style.settingsSection">
-        <h2 :class="$style.sectionTitle">Data Management</h2>
+    <section class="space-y-4">
+      <h2 class="text-sm font-semibold uppercase tracking-widest text-muted-foreground">Data Management</h2>
 
-        <div :class="$style.sectionCard">
-          <div :class="$style.cardHeader">
-            <div :class="[$style.cardIcon, $style.danger]">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                :class="$style.icon"
-              >
-                <path
-                  d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
-                ></path>
-                <line x1="12" y1="9" x2="12" y2="13"></line>
-                <line x1="12" y1="17" x2="12.01" y2="17"></line>
-              </svg>
-            </div>
-            <h3 :class="$style.cardTitle">Clean Database</h3>
+      <Card>
+        <CardHeader class="flex flex-row items-center gap-3 border-b pb-4">
+          <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
+            <TriangleAlert class="h-5 w-5" />
           </div>
-
-          <div :class="$style.cardContent">
-            <p :class="$style.cardDescription">
-              Delete all vault data and start fresh. This action removes all secrets, vault configurations, and resets
-              the application to its initial state.
-            </p>
-
-            <div v-if="!showConfirmation" :class="$style.cardActions">
-              <button :class="[$style.actionButton, $style.danger]" @click="toggleConfirmation">Clean Database</button>
-            </div>
-
-            <div v-else :class="$style.confirmationBox">
-              <p :class="$style.confirmationText">Are you sure? This action cannot be undone.</p>
-              <div :class="$style.confirmationActions">
-                <button
-                  :class="[$style.actionButton, $style.secondary]"
-                  :disabled="isCleaning"
-                  @click="toggleConfirmation"
-                >
-                  Cancel
-                </button>
-                <button :class="[$style.actionButton, $style.danger]" :disabled="isCleaning" @click="cleanDatabase">
-                  <span v-if="isCleaning">Cleaning...</span>
-                  <span v-else>Yes, Clean Database</span>
-                </button>
-              </div>
-            </div>
+          <CardTitle class="text-base">Clean Database</CardTitle>
+        </CardHeader>
+        <CardContent class="pt-4">
+          <p class="text-sm text-muted-foreground">
+            Delete all vault data and start fresh. This action removes all secrets, vault configurations,
+            and resets the application to its initial state.
+          </p>
+          <div class="mt-4 flex justify-end">
+            <AlertDialog>
+              <AlertDialogTrigger as-child>
+                <Button variant="destructive">Clean Database</Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action cannot be undone. All vault data, secrets, and configurations will be permanently deleted.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    :disabled="isCleaning"
+                    @click="cleanDatabase"
+                  >
+                    {{ isCleaning ? 'Cleaning...' : 'Yes, Clean Database' }}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
-        </div>
-      </section>
-    </div>
+        </CardContent>
+      </Card>
+    </section>
   </div>
 </template>
-
-<style module>
-.settingsHeader {
-  display: flex;
-  align-items: center;
-  margin: 2rem 0;
-  position: relative;
-}
-
-.backButton {
-  display: flex;
-  align-items: center;
-  background: none;
-  border: none;
-  color: #4b5563;
-  font-size: 0.875rem;
-  cursor: pointer;
-  padding: 0.5rem 0;
-  position: absolute;
-  left: 0;
-}
-
-.backButton:hover {
-  color: #1f2937;
-}
-
-:global(.dark) .backButton {
-  color: #9ca3af;
-}
-
-:global(.dark) .backButton:hover {
-  color: #f3f4f6;
-}
-
-.backIcon {
-  margin-right: 0.25rem;
-  font-size: 1.25rem;
-}
-
-.settingsTitle {
-  text-align: center;
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: #111827;
-  flex-grow: 1;
-}
-
-:global(.dark) .settingsTitle {
-  color: #f9fafb;
-}
-
-.settingsContent {
-  display: flex;
-  flex-direction: column;
-  gap: 2rem;
-}
-
-.settingsSection {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.sectionTitle {
-  font-size: 1.125rem;
-  font-weight: 600;
-  color: #4b5563;
-  border-bottom: 1px solid #e5e7eb;
-  padding-bottom: 0.5rem;
-  margin-bottom: 0.5rem;
-}
-
-:global(.dark) .sectionTitle {
-  color: #9ca3af;
-  border-bottom-color: #374151;
-}
-
-.sectionCard {
-  background-color: white;
-  border-radius: 0.75rem;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-  border: 1px solid #e5e7eb;
-  overflow: hidden;
-  transition: all 0.2s ease;
-}
-
-:global(.dark) .sectionCard {
-  background-color: #1f2937;
-  border-color: #374151;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
-}
-
-.cardHeader {
-  display: flex;
-  align-items: center;
-  padding: 1.25rem 1.5rem;
-  border-bottom: 1px solid #f3f4f6;
-  gap: 1rem;
-}
-
-:global(.dark) .cardHeader {
-  border-bottom-color: #374151;
-}
-
-.cardIcon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: 0.5rem;
-}
-
-.cardIcon.danger {
-  background-color: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-}
-
-.icon {
-  width: 1.5rem;
-  height: 1.5rem;
-}
-
-.cardTitle {
-  font-size: 1.125rem;
-  font-weight: 600;
-  color: #111827;
-  margin: 0;
-}
-
-:global(.dark) .cardTitle {
-  color: #f3f4f6;
-}
-
-.cardContent {
-  padding: 1.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-.cardDescription {
-  font-size: 0.875rem;
-  color: #6b7280;
-  line-height: 1.5;
-  margin: 0;
-}
-
-:global(.dark) .cardDescription {
-  color: #9ca3af;
-}
-
-.cardActions {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.actionButton {
-  padding: 0.625rem 1.25rem;
-  font-weight: 500;
-  font-size: 0.875rem;
-  border: none;
-  border-radius: 0.375rem;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.actionButton.danger {
-  background-color: #ef4444;
-  color: white;
-}
-
-.actionButton.danger:hover:not(:disabled) {
-  background-color: #dc2626;
-}
-
-.actionButton.secondary {
-  background-color: #f3f4f6;
-  color: #4b5563;
-}
-
-.actionButton.secondary:hover:not(:disabled) {
-  background-color: #e5e7eb;
-}
-
-:global(.dark) .actionButton.secondary {
-  background-color: #374151;
-  color: #d1d5db;
-}
-
-:global(.dark) .actionButton.secondary:hover:not(:disabled) {
-  background-color: #4b5563;
-}
-
-.actionButton:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.confirmationBox {
-  background-color: #fff1f2;
-  border: 1px solid #fecdd3;
-  border-radius: 0.5rem;
-  padding: 1rem;
-}
-
-:global(.dark) .confirmationBox {
-  background-color: rgba(239, 68, 68, 0.1);
-  border-color: rgba(239, 68, 68, 0.3);
-}
-
-.confirmationText {
-  color: #be123c;
-  font-size: 0.875rem;
-  font-weight: 500;
-  margin: 0 0 1rem 0;
-}
-
-:global(.dark) .confirmationText {
-  color: #fca5a5;
-}
-
-.confirmationActions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.75rem;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(-5px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.animate-fadeIn {
-  animation: fadeIn 0.2s ease-out forwards;
-}
-</style>

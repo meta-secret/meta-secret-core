@@ -20,11 +20,10 @@ export default [
   {
     name: 'app/custom-rules',
     rules: {
-      // Vue single-word component names are used throughout the existing codebase
       'vue/multi-word-component-names': 'off',
-      // Require lang="ts" on <script> blocks
       'vue/block-lang': ['error', { script: { lang: 'ts' } }],
-      // Relax any/unused-vars to warn instead of error for gradual adoption
+      // shadcn-vue components (Button, Input, Label, etc.) share names with HTML elements
+      'vue/no-reserved-component-names': 'off',
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': 'warn',
       '@typescript-eslint/no-empty-object-type': 'warn',

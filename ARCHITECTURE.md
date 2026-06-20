@@ -32,6 +32,18 @@ Meta Secret core is organized as a **Cargo workspace** of crates. The **`meta-se
 - Unit tests live beside code or under crate `tests/` per Rust conventions.
 - Integration tests that need several crates belong in the `tests` workspace member or the relevant crate.
 
+## Web CLI (`meta-secret/web-cli/ui`)
+
+The web front-end is a Vue 3 SPA separate from the Rust workspace:
+
+- **Framework:** Vue 3 + Vue Router 5 + Pinia
+- **UI library:** shadcn-vue (reka-nova style, Tailwind v4 CSS variables)
+  - Components live in `src/components/ui/` and are added via `npx shadcn-vue@latest add <name>`
+  - Icons: `lucide-vue-next`
+- **Styling:** Tailwind v4 via `@tailwindcss/vite`. Dark mode toggled by `.dark` class on `<html>` (managed by `useThemeStore`)
+- **WASM bridge:** `vite-plugin-wasm` loads the `meta-secret-web-cli` package built from `meta-secret/wasm/`; all crypto stays behind the WASM boundary
+- **Build:** `task web-local` (extracts dist) / `task web` (Docker image)
+
 ## Further reading
 
 - [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) — paths and commands.
