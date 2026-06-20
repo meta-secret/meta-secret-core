@@ -14,6 +14,8 @@ Delegate to subagent **release-manager** with input: `$ARGUMENTS`
 
 See **[`.claude/agents/release-manager.md`](../agents/release-manager.md)** for the full branch naming rule (`{Task|Feature|Bug}/kuklin/MS-{N}` when on `main`), commit message from diff, and pauses.
 
+When a PR already exists or the user asks to **update title and description**, read [`.ai/skills/workflow-mr-body/SKILL.md`](../skills/workflow-mr-body/SKILL.md) and run **`gh pr edit`** (full branch scope via `git log main..HEAD` / `git diff main...HEAD`).
+
 Reminder: **never** commit or push without explicit user approval in this session.
 
 ## Session mode

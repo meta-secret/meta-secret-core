@@ -1,5 +1,7 @@
 # Merge request template
 
+Use for **`gh pr create`** and **`gh pr edit`**. Base content on **full branch** scope (`git log main..HEAD`, `git diff main...HEAD`), not just the latest commit.
+
 ## Title
 
 `(<scope>) Short imperative description`

@@ -35,6 +35,7 @@ All three must delegate to `.ai/WORKFLOW.md`.
 ## Skills
 
 - **Build / test / Docker:** [`.ai/skills/build-via-task/SKILL.md`](skills/build-via-task/SKILL.md) — mandatory before `task` or verification commands
+- **PR title & description:** [`.ai/skills/workflow-mr-body/SKILL.md`](skills/workflow-mr-body/SKILL.md) — full branch scope; `gh pr create` / **`gh pr edit`**
 
 ## Core Rules
 

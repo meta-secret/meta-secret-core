@@ -68,6 +68,7 @@ Forbidden: `docker buildx bake`, `docker buildx build`, `docker build` (use `tas
 ## Stage 8: Branch + Commit + PR
 
 - Agent: `release-manager`
+- Skill: `.ai/skills/workflow-mr-body/SKILL.md` — full-branch title/body; `gh pr create` or **`gh pr edit`**
 - Output: `MS-<run-id>-008-pr.md`
 
 ## Retry Rules

@@ -145,12 +145,14 @@ Required behavior:
 ### Stage 8: Branch + Commit + PR
 
 Agent: `release-manager`
+Skill: [`.ai/skills/workflow-mr-body/SKILL.md`](skills/workflow-mr-body/SKILL.md)
 Output: `.ai/artifacts/run/MS-<run-id>-008-pr.md`
 
 Required behavior:
 - Create branch: `{Prefix}/kuklin/MS-{issueNumber}` for numeric issues (see release-manager policy)
 - Commit and push with explicit user approvals
-- Open PR to `main`
+- Open PR to `main`, or **`gh pr edit`** title/body when PR exists or branch scope grew
+- PR title and description must summarize **full branch** (`git log main..HEAD`, not stale first-commit text)
 
 ## Automatic Recovery Loops
 
