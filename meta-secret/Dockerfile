@@ -150,6 +150,9 @@ COPY --from=wasm-builder /meta-secret-build/wasm/pkg/package.json ./pkg/package.
 RUN bun install
 
 COPY --from=wasm-builder /meta-secret-build/wasm/pkg ./pkg
+# Refresh file:./pkg link after real wasm artifacts replace the stub directory.
+RUN bun install
+
 COPY --from=webcli ui/ .
 RUN bun run lint:check && bun run build
 
