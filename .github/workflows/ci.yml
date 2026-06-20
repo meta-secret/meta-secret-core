@@ -3,8 +3,8 @@
 # Preview URL pattern: https://pr-<number>.id0.pages.dev
 # One workflow + one concurrency group → new push cancels the entire previous pipeline.
 #
-# Deploy: warm-cache-wasm then web-build-local (sequential bakes on one buildx — local
-# layer reuse + registry export). Avoids web-preview parallel race on builder-wasm.
+# Test: warm-cache then test-run. Deploy: warm-cache-wasm then web-build-local.
+# Sequential bakes on one buildx — no parallel race on chef cook / test-compiler layers.
 
 name: CI
 
@@ -44,8 +44,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Compile tests and push cache
+        run: task warm-cache
+
       - name: Run tests
-        run: task test
+        run: task test-run
 
   deploy-preview:
     if: github.event_name == 'pull_request'

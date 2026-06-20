@@ -15,11 +15,6 @@ group "default" {
   targets = ["meta-server-image", "web-image"]
 }
 
-// Single bake session: warm-cache completes and exports registry cache before test runs.
-group "test-ci" {
-  targets = ["warm-cache", "test"]
-}
-
 // ============================================================
 // Meta-Secret builds (meta-secret/Dockerfile)
 // ============================================================
@@ -77,7 +72,7 @@ target "wasm-local" {
   ]
 }
 
-// Compiles test binaries and pushes registry cache (first target in test-ci group).
+// Compiles test binaries and pushes registry cache. Run alone before `test` (see Taskfile / CI).
 target "warm-cache" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
