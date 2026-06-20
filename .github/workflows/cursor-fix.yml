@@ -1,4 +1,4 @@
-# Runs after the "tests" workflow fails.
+# Runs after the "CI" workflow fails.
 # Fetches the failure logs, then launches a Cursor cloud agent that analyses
 # the failures and opens a fix PR against the same branch.
 #
@@ -12,7 +12,7 @@ name: "Cursor Auto-Fix"
 
 on:
   workflow_run:
-    workflows: ["tests"]
+    workflows: ["CI"]
     types: [completed]
 
 jobs:
