@@ -20,15 +20,6 @@ group "test-ci" {
   targets = ["warm-cache", "test"]
 }
 
-// Single bake session: warm-cache-wasm completes and exports before web-local runs.
-group "web-preview" {
-  targets = ["warm-cache-wasm", "web-local"]
-}
-
-group "wasm-pkg" {
-  targets = ["warm-cache-wasm", "wasm-local"]
-}
-
 // ============================================================
 // Meta-Secret builds (meta-secret/Dockerfile)
 // ============================================================
@@ -60,6 +51,7 @@ target "web-image" {
   cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-web:cache,mode=max"] : []
 }
 
+// Second step of web-local / wasm-local — no depends_on (warm-* runs in a prior bake).
 target "web-local" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
@@ -69,8 +61,8 @@ target "web-local" {
   }
   output     = ["type=local,dest=meta-secret/web-cli/ui/dist"]
   cache-from = [
-    "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
     "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
+    "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
   ]
 }
 
@@ -80,8 +72,8 @@ target "wasm-local" {
   target     = "wasm-output"
   output     = ["type=local,dest=meta-secret/web-cli/ui/pkg"]
   cache-from = [
-    "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
     "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
+    "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
   ]
 }
 
@@ -109,17 +101,19 @@ target "test" {
   ]
 }
 
-// Compiles WASM into layers and pushes registry cache (first target in web-preview group).
+// wasm32 chef-cook deps only — final layer of this target is builder-wasm chef cook.
+// Exported to meta-secret-core:cache (same ref as host tests) for reliable cross-run hits.
+// Run alone before web-local / wasm-local (see Taskfile + CI deploy steps).
 target "warm-cache-wasm" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
-  target     = "wasm-builder"
+  target     = "builder-wasm"
   output     = ["type=cacheonly"]
   cache-from = [
-    "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
     "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
+    "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
   ]
-  cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-web:cache,mode=max"] : []
+  cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-core:cache,mode=max"] : []
 }
 
 target "generate-recipe" {

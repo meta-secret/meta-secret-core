@@ -3,8 +3,8 @@
 # Preview URL pattern: https://pr-<number>.id0.pages.dev
 # One workflow + one concurrency group → new push cancels the entire previous pipeline.
 #
-# One bake session per job so BuildKit reuses compiled layers locally (warm-cache → test,
-# warm-cache-wasm → web-local). Registry cache-to on warm-* targets persists across runs.
+# Deploy: warm-cache-wasm then web-build-local (sequential bakes on one buildx — local
+# layer reuse + registry export). Avoids web-preview parallel race on builder-wasm.
 
 name: CI
 
@@ -75,8 +75,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Compile WASM and push cache
+        run: task warm-cache-wasm
+
       - name: Build web-cli
-        run: task web-local
+        run: task web-build-local
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2

@@ -34,19 +34,31 @@ tasks:
       - docker buildx bake test-ci
 
   warm-cache-wasm:
-    desc: Pre-compile WASM deps only, push to registry cache
+    desc: Compile wasm32 deps and push registry cache (deploy step 1)
     cmds:
       - docker buildx bake warm-cache-wasm
 
-  web-local:
-    desc: Build web dist (WASM compile + web in one bake session)
+  web-build-local:
+    desc: Build web dist after warm-cache-wasm (deploy step 2)
     cmds:
-      - docker buildx bake web-preview
+      - docker buildx bake web-local
+
+  web-local:
+    desc: Warm wasm deps then build web dist (two bakes, same buildx session)
+    cmds:
+      - task: warm-cache-wasm
+      - task: web-build-local
+
+  wasm-pkg-local:
+    desc: Extract wasm pkg after warm-cache-wasm
+    cmds:
+      - docker buildx bake wasm-local
 
   wasm-local:
-    desc: Build WASM pkg (chef cook + pkg in one bake session)
+    desc: Warm wasm deps then extract pkg (two bakes)
     cmds:
-      - docker buildx bake wasm-pkg
+      - task: warm-cache-wasm
+      - task: wasm-pkg-local
 
   meta-server:
     desc: Build and load meta-server image
