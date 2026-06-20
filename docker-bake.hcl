@@ -93,6 +93,20 @@ target "test" {
   cache-to = []
 }
 
+// Warms the wasm32 dep cache without doing a full web build.
+// Run once to populate meta-secret-web:cache with wasm deps.
+target "warm-cache-wasm" {
+  context    = "meta-secret"
+  dockerfile = "Dockerfile"
+  target     = "builder-wasm"
+  output     = ["type=cacheonly"]
+  cache-from = [
+    "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
+    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
+  ]
+  cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-web:cache,mode=max"] : []
+}
+
 target "generate-recipe" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"

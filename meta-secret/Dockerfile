@@ -79,10 +79,16 @@ COPY --from=prepare-db /meta-secret-build/db/sqlite/build/meta-secret.db ./meta-
 EXPOSE 3000
 CMD ["./meta-server"]
 
-# --- WASM Builder: build wasm package ---
-FROM builder-release AS wasm-builder
+# --- Builder WASM: pre-compile deps for wasm32-unknown-unknown target ---
+FROM builder-release AS builder-wasm
 
 RUN rustup target add wasm32-unknown-unknown
+
+COPY recipe.json .
+RUN cargo chef cook --release --target wasm32-unknown-unknown --recipe-path recipe.json
+
+# --- WASM Builder: build wasm package (deps already cached in builder-wasm) ---
+FROM builder-wasm AS wasm-builder
 
 WORKDIR /meta-secret-build
 COPY . .

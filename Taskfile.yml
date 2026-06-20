@@ -21,9 +21,14 @@ tasks:
       - docker buildx bake --push default
 
   warm-cache:
-    desc: Compile deps + source, push layers to registry cache (CI)
+    desc: Compile Rust deps + source, push to registry cache (CI)
     cmds:
       - docker buildx bake warm-cache
+
+  warm-cache-wasm:
+    desc: Pre-compile wasm32 deps, push to registry cache (CI)
+    cmds:
+      - docker buildx bake warm-cache-wasm
 
   test:
     desc: Run tests inside Docker
