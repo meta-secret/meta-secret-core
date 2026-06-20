@@ -106,7 +106,7 @@ target "test" {
     "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
     "type=registry,ref=${REGISTRY}/meta-secret-server:cache",
   ]
-  cache-to = []
+  cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-core:cache,mode=max"] : []
 }
 
 // Warms the wasm32 dep cache without doing a full web build.
