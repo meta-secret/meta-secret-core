@@ -44,26 +44,19 @@ tasks:
       - docker buildx bake warm-cache-wasm
 
   web-build-local:
-    desc: Build web dist after warm-cache-wasm (deploy step 2)
+    desc: Build web dist only (prefer task web-local / bake web-preview)
     cmds:
       - docker buildx bake web-local
 
   web-local:
-    desc: Warm wasm deps then build web dist (two bakes, same buildx session)
+    desc: Warm wasm deps, export cache, build web dist (one bake, sequential)
     cmds:
-      - task: warm-cache-wasm
-      - task: web-build-local
-
-  wasm-pkg-local:
-    desc: Extract wasm pkg after warm-cache-wasm
-    cmds:
-      - docker buildx bake wasm-local
+      - docker buildx bake web-preview
 
   wasm-local:
-    desc: Warm wasm deps then extract pkg (two bakes)
+    desc: Warm wasm deps then extract pkg (one bake)
     cmds:
-      - task: warm-cache-wasm
-      - task: wasm-pkg-local
+      - docker buildx bake wasm-pkg
 
   meta-server:
     desc: Build and load meta-server image

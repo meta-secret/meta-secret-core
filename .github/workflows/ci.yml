@@ -3,8 +3,8 @@
 # Preview URL pattern: https://pr-<number>.id0.pages.dev
 # One workflow + one concurrency group → new push cancels the entire previous pipeline.
 #
-# Test: test-ci group lists warm-cache so cache-to export runs. Deploy: sequential
-# wasm warm + web build; deploy needs test to avoid parallel cache-to races.
+# test-ci / web-preview groups list warm-* targets so cache-to export runs.
+# deploy-preview needs test (sequential jobs). GHA + registry cache in docker-bake.hcl.
 
 name: CI
 
@@ -76,11 +76,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Compile WASM and push cache
-        run: task warm-cache-wasm
-
       - name: Build web-cli
-        run: task web-build-local
+        run: task web-local
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2

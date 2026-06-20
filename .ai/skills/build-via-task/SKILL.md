@@ -34,9 +34,8 @@ Run `task -l` from repo root for the full list.
 | Warm Rust test cache only | `task warm-cache` |
 | Run tests only (same bake as test) | `task test-run` |
 | Warm WASM deps only | `task warm-cache-wasm` |
-| Build web dist locally | `task web-local` (warm-cache-wasm, then web-build-local) |
-| Build web dist only (after warm-cache-wasm) | `task web-build-local` |
-| Build WASM pkg locally | `task wasm-local` (warm-cache-wasm, then wasm-pkg-local) |
+| Build web dist locally | `task web-local` (web-preview group: warm-cache-wasm → web) |
+| Build WASM pkg locally | `task wasm-local` (wasm-pkg group) |
 | Build web Docker image | `task web` |
 | Build meta-server image | `task meta-server` |
 | Build all default images | `task build` |

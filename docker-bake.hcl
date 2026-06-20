@@ -20,6 +20,15 @@ group "test-ci" {
   targets = ["warm-cache", "test"]
 }
 
+// List warm-cache-wasm explicitly so cache-to export runs before web-local.
+group "web-preview" {
+  targets = ["warm-cache-wasm", "web-local"]
+}
+
+group "wasm-pkg" {
+  targets = ["warm-cache-wasm", "wasm-local"]
+}
+
 // ============================================================
 // Meta-Secret builds (meta-secret/Dockerfile)
 // ============================================================
@@ -51,7 +60,6 @@ target "web-image" {
   cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-web:cache,mode=max"] : []
 }
 
-// Second step of web-local / wasm-local — no depends_on (warm-* runs in a prior bake).
 target "web-local" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
@@ -59,10 +67,15 @@ target "web-local" {
   contexts = {
     webcli = "meta-secret/web-cli"
   }
+  depends_on = ["warm-cache-wasm"]
   output     = ["type=local,dest=meta-secret/web-cli/ui/dist"]
-  cache-from = [
-    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
+  cache-from = PUSH_CACHE != "" ? [
+    "type=gha,scope=meta-secret-wasm",
     "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
+    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
+  ] : [
+    "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
+    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
   ]
 }
 
@@ -70,24 +83,36 @@ target "wasm-local" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
   target     = "wasm-output"
+  depends_on = ["warm-cache-wasm"]
   output     = ["type=local,dest=meta-secret/web-cli/ui/pkg"]
-  cache-from = [
-    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
+  cache-from = PUSH_CACHE != "" ? [
+    "type=gha,scope=meta-secret-wasm",
     "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
+    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
+  ] : [
+    "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
+    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
   ]
 }
 
-// Compiles test binaries and pushes registry cache. Run alone before `test` (see Taskfile / CI).
+// Compiles test binaries and pushes registry cache (listed in test-ci group).
 target "warm-cache" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
   target     = "test-compiler"
   output     = ["type=cacheonly"]
-  cache-from = [
+  cache-from = PUSH_CACHE != "" ? [
+    "type=gha,scope=meta-secret-test",
+    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
+    "type=registry,ref=${REGISTRY}/meta-secret-server:cache",
+  ] : [
     "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
     "type=registry,ref=${REGISTRY}/meta-secret-server:cache",
   ]
-  cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-core:cache,mode=max"] : []
+  cache-to = PUSH_CACHE != "" ? [
+    "type=gha,scope=meta-secret-test,mode=max",
+    "type=registry,ref=${REGISTRY}/meta-secret-core:cache,mode=max",
+  ] : []
 }
 
 target "test" {
@@ -96,26 +121,34 @@ target "test" {
   target     = "test-runner"
   depends_on = ["warm-cache"]
   output     = ["type=cacheonly"]
-  cache-from = [
+  cache-from = PUSH_CACHE != "" ? [
+    "type=gha,scope=meta-secret-test",
+    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
+    "type=registry,ref=${REGISTRY}/meta-secret-server:cache",
+  ] : [
     "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
     "type=registry,ref=${REGISTRY}/meta-secret-server:cache",
   ]
 }
 
-// wasm32 chef-cook deps only — final layer of this target is builder-wasm chef cook.
-// Exported to meta-secret-core:cache (same ref as host tests) for reliable cross-run hits.
-// Run alone before web-local / wasm-local (see Taskfile + CI deploy steps).
+// wasm32 chef-cook deps — final layer is builder-wasm chef cook (listed in web-preview group).
 target "warm-cache-wasm" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
   target     = "builder-wasm"
   output     = ["type=cacheonly"]
-  cache-from = [
+  cache-from = PUSH_CACHE != "" ? [
+    "type=gha,scope=meta-secret-wasm",
+    "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
+    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
+  ] : [
     "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
     "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
   ]
-  // Separate ref from host tests — parallel cache-to on meta-secret-core:cache races manifests.
-  cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-web:cache,mode=max"] : []
+  cache-to = PUSH_CACHE != "" ? [
+    "type=gha,scope=meta-secret-wasm,mode=max",
+    "type=registry,ref=${REGISTRY}/meta-secret-web:cache,mode=max",
+  ] : []
 }
 
 target "generate-recipe" {
