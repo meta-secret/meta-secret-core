@@ -55,6 +55,12 @@ target "web-local" {
   cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-web:cache,mode=max"] : []
 }
 
+// Single bake session: chef-cook wasm deps once, then web-output reuses builder-wasm locally.
+// Registry cache alone is unreliable across separate GHA runners/jobs.
+group "web-preview" {
+  targets = ["warm-cache-wasm", "web-local"]
+}
+
 target "wasm-local" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
@@ -67,12 +73,12 @@ target "wasm-local" {
   cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-web:cache,mode=max"] : []
 }
 
-// Warms host (test-compiler) and wasm32 (builder-wasm) dep layers into registry cache.
-group "warm-cache-all" {
-  targets = ["warm-cache", "warm-cache-wasm"]
+// Same-session reuse as web-preview (chef cook once, then wasm-output).
+group "wasm-pkg" {
+  targets = ["warm-cache-wasm", "wasm-local"]
 }
 
-// Compiles deps (cargo-chef) + project source (nextest --no-run) and pushes to cache.
+// Warms host test-compiler dep layers into registry cache (CI test job).
 // Run before the test target so compilation is always cached even if tests fail.
 target "warm-cache" {
   context    = "meta-secret"

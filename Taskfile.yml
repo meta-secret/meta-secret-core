@@ -24,12 +24,12 @@ tasks:
       - docker buildx bake --push default
 
   warm-cache:
-    desc: Compile Rust host + wasm32 deps, push to registry cache (CI)
+    desc: Compile Rust host test deps, push to registry cache (CI)
     cmds:
-      - docker buildx bake warm-cache-all
+      - docker buildx bake warm-cache
 
   warm-cache-wasm:
-    desc: Pre-compile wasm32 deps, push to registry cache (CI)
+    desc: Pre-compile wasm32 deps only, push to registry cache
     cmds:
       - docker buildx bake warm-cache-wasm
 
@@ -49,14 +49,14 @@ tasks:
       - docker buildx bake --load web-image
 
   web-local:
-    desc: Build web and extract dist to meta-secret/web-cli/ui/dist
+    desc: Build web and extract dist (wasm chef cook + web in one bake session)
     cmds:
-      - docker buildx bake web-local
+      - docker buildx bake web-preview
 
   wasm-local:
-    desc: Build WASM and extract pkg to meta-secret/web-cli/ui/pkg
+    desc: Build WASM and extract pkg (wasm chef cook + pkg in one bake session)
     cmds:
-      - docker buildx bake wasm-local
+      - docker buildx bake wasm-pkg
 
   playwright-test:
     desc: Run Playwright smoke tests in Docker (set PLAYWRIGHT_BASE_URL)

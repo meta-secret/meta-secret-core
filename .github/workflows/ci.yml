@@ -40,7 +40,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Warm host + wasm dependency cache
+      - name: Warm host test dependency cache
         run: task warm-cache
 
   test:
@@ -76,7 +76,6 @@ jobs:
 
   deploy-preview:
     if: github.event_name == 'pull_request'
-    needs: warm-cache
     runs-on: ubuntu-latest
 
     permissions:
