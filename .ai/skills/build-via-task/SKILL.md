@@ -19,7 +19,7 @@ Use this skill **before running any build, test, or Docker verification command*
 | Context | Allowed command |
 |---------|-----------------|
 | Narrow Rust edit in one crate | `cargo test -p …`, `cargo build -p …` from `meta-secret/` |
-| web-cli UI only (no Docker/WASM) | `npm run lint:check`, `npm run build` in `meta-secret/web-cli/ui/` |
+| web-cli UI only (no Docker/WASM) | `bun run lint:check`, `bun run build` in `meta-secret/web-cli/ui/` |
 | Adding a missing task | Edit `Taskfile.yml` first, then run the new `task` target |
 
 If CI parity matters (Dockerfile, bake, WASM, web dist), **use `task`**, not `cargo`/`npm` alone.
@@ -53,7 +53,7 @@ Pick the **narrowest** task that covers your edit:
 | `meta-secret/**/Cargo.toml` (workspace deps) | `task generate-recipe` then `task test` or `task warm-cache` |
 | `meta-secret/wasm/**` | `task wasm-local` |
 | `meta-secret/web-cli/**` (full stack incl. WASM in Docker) | `task web-local` |
-| `meta-secret/web-cli/ui/**` (UI only, no Docker) | `npm run lint:check && npm run build` in `web-cli/ui` |
+| `meta-secret/web-cli/ui/**` (UI only, no Docker) | `bun run lint:check && bun run build` in `web-cli/ui` |
 | Server / core Rust | `task test` or narrow `cargo test -p …` then `task test` before PR |
 
 ## Missing task?
@@ -75,5 +75,5 @@ Before any shell command that builds or tests:
 
 1. Does it match `docker buildx` or `docker build`? → **Stop.** Use `task` or add a task.
 2. Is this Docker/CI parity? → **`task …`**
-3. Is it UI-only in `web-cli/ui`? → **`npm run …`** OK
+3. Is it UI-only in `web-cli/ui`? → **`bun run …`** OK
 4. Is it a single-crate Rust check? → **`cargo …`** OK, then confirm with `task test` before PR

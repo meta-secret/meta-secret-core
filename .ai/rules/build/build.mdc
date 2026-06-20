@@ -22,7 +22,7 @@ Implementation detail lives in `docker-bake.hcl` + `meta-secret/Dockerfile`; **T
 | Context | Allowed |
 |---------|---------|
 | Single-crate Rust | `cargo test/build -p …` from `meta-secret/` |
-| web-cli UI only (no Docker/WASM) | `npm run …` in `meta-secret/web-cli/ui/` |
+| web-cli UI only (no Docker/WASM) | `bun run …` in `meta-secret/web-cli/ui/` |
 | Adding a new build target | Edit `Taskfile.yml` first, then `task <target>` |
 
 After any `Cargo.toml` change: `task generate-recipe`.

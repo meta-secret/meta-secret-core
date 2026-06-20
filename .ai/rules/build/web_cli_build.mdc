@@ -29,8 +29,11 @@ npx shadcn-vue@latest add <component-name>
 
 ```bash
 cd meta-secret/web-cli/ui
-npm run dev
+bun install
+bun run dev
 ```
+
+Lockfile: `bun.lock` (Docker/CI use `bun install --frozen-lockfile`).
 
 ### Build via Docker
 

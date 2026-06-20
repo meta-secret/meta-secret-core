@@ -75,7 +75,7 @@ tasks:
     desc: Build web image and run dev server on :5173
     cmds:
       - task: web
-      - docker run --rm -p 5173:5173 cypherkitty/meta-secret-web:latest npm run dev -- --host 0.0.0.0
+      - docker run --rm -p 5173:5173 cypherkitty/meta-secret-web:latest bun run dev -- --host 0.0.0.0
 
   taskomatic:
     desc: Build and load taskomatic image
