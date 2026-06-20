@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.4
+
 # ============================================================
 # Multi-stage Dockerfile for meta-secret builds
 # ============================================================
@@ -117,10 +119,7 @@ RUN curl -LsSf "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/$
     tar xz -C /usr/local/bin --strip-components=1 "wasm-bindgen-${WASM_BINDGEN_VERSION}-x86_64-unknown-linux-musl/wasm-bindgen"
 
 WORKDIR /meta-secret-build
-# Workspace members only — web-cli is not a Cargo crate; omitting it avoids invalidating
-# Rust layers when UI sources change.
-COPY Cargo.toml recipe.json ./
-COPY core db meta-server wasm cli meta-cli tests mobile .config ./
+COPY . .
 
 # cargo from workspace root reuses chef-cached deps; wasm-pack cd's into wasm/ and rebuilds all deps.
 RUN --mount=type=cache,target=/meta-secret-build/target,id=ms-target-wasm32 \
@@ -140,8 +139,7 @@ COPY --from=wasm-builder /meta-secret-build/wasm/pkg/ /
 FROM builder-debug AS test-compiler
 
 WORKDIR /meta-secret-build
-COPY Cargo.toml recipe.json ./
-COPY core db meta-server wasm cli meta-cli tests mobile .config ./
+COPY . .
 RUN --mount=type=cache,target=/meta-secret-build/target,id=ms-target-debug \
     --mount=type=cache,target=/usr/local/cargo/registry,id=ms-cargo-registry \
     --mount=type=cache,target=/usr/local/cargo/git,id=ms-cargo-git \
@@ -156,15 +154,16 @@ RUN --mount=type=cache,target=/meta-secret-build/target,id=ms-target-debug \
     RUST_MIN_STACK=8388608 cargo nextest run --profile ci
 
 # --- Web Build: Vue.js + WASM ---
+# web-cli comes from the `webcli` bake context (see docker-bake.hcl), not the Rust context.
 FROM oven/bun:1.2-debian AS web-build
 
 WORKDIR /meta-secret/web-cli/ui
 
-COPY web-cli/ui/package.json web-cli/ui/bun.lock ./
+COPY --from=webcli ui/package.json ui/bun.lock ./
 COPY --from=wasm-builder /meta-secret-build/wasm/pkg ./pkg
 RUN bun install --frozen-lockfile
 
-COPY web-cli/ui/ .
+COPY --from=webcli ui/ .
 RUN bun run lint:check && bun run build
 
 # Final web image
@@ -180,10 +179,10 @@ FROM mcr.microsoft.com/playwright:v${PLAYWRIGHT_VERSION}-noble AS playwright
 
 WORKDIR /app
 
-COPY web-cli/ui/package.json ./
+COPY --from=webcli ui/package.json ./
 RUN npm install --legacy-peer-deps @playwright/test@${PLAYWRIGHT_VERSION}
 
-COPY web-cli/ui/playwright.config.ts ./
-COPY web-cli/ui/tests/e2e ./tests/e2e
+COPY --from=webcli ui/playwright.config.ts ./
+COPY --from=webcli ui/tests/e2e ./tests/e2e
 
 ENTRYPOINT ["npx", "playwright", "test"]

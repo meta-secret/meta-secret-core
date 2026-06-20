@@ -35,6 +35,9 @@ target "web-image" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
   target     = "web"
+  contexts = {
+    webcli = "meta-secret/web-cli"
+  }
   tags       = ["${REGISTRY}/meta-secret-web:latest"]
   cache-from = [
     "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
@@ -47,6 +50,9 @@ target "web-local" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
   target     = "web-output"
+  contexts = {
+    webcli = "meta-secret/web-cli"
+  }
   output     = ["type=local,dest=meta-secret/web-cli/ui/dist"]
   cache-from = [
     "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
@@ -134,6 +140,9 @@ target "playwright" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
   target     = "playwright"
+  contexts = {
+    webcli = "meta-secret/web-cli"
+  }
   tags       = ["${REGISTRY}/playwright:latest"]
   cache-from = [
     "type=registry,ref=${REGISTRY}/playwright:cache",
