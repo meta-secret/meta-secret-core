@@ -75,10 +75,9 @@ onMounted(() => {
   hydrateVaultNameDraft(jsAppState.getVaultName(), vaultName, hasSubmittedVaultName);
 });
 
-const updateVaultName = (event: Event) => {
-  vaultName.value = (event.target as HTMLInputElement).value;
+watch(vaultName, () => {
   hasSubmittedVaultName.value = false;
-};
+});
 
 const generateUserCreds = async () => {
   if (signUpProcessing.value || isCheckingVaultName.value || !vaultName.value.trim()) return;
@@ -149,11 +148,10 @@ const progressMessage = computed(() => {
           <div class="relative flex-1">
             <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">@</span>
             <Input
+              v-model="vaultName"
               placeholder="vault name"
               class="pl-7"
-              :value="vaultName"
               :disabled="signUpProcessing"
-              @input="updateVaultName"
             />
           </div>
           <Button
