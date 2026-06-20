@@ -24,19 +24,25 @@ tasks:
       - docker buildx bake --push default
 
   warm-cache:
-    desc: Compile Rust host test deps, push to registry cache (CI)
+    desc: Compile test binaries and push registry cache (CI step 1)
     cmds:
       - docker buildx bake warm-cache
+
+  test-run:
+    desc: Run tests after warm-cache (CI step 2; no cache export on failure)
+    cmds:
+      - docker buildx bake test
+
+  test:
+    desc: Push compile cache first, then run tests (two bake sessions)
+    cmds:
+      - task: warm-cache
+      - task: test-run
 
   warm-cache-wasm:
     desc: Pre-compile wasm32 deps only, push to registry cache
     cmds:
       - docker buildx bake warm-cache-wasm
-
-  test:
-    desc: Warm host test deps and run tests in one bake session
-    cmds:
-      - docker buildx bake test-ci
 
   meta-server:
     desc: Build and load meta-server image

@@ -84,8 +84,8 @@ group "wasm-pkg" {
   targets = ["warm-cache-wasm", "wasm-local"]
 }
 
-// Warms host test-compiler dep layers into registry cache (CI test job).
-// Run before the test target so compilation is always cached even if tests fail.
+// Compiles test binaries and pushes registry cache. Run alone before `test` so a
+// failing test run does not skip cache export (see Taskfile `test` / CI job steps).
 target "warm-cache" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
@@ -98,21 +98,17 @@ target "warm-cache" {
   cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-core:cache,mode=max"] : []
 }
 
-// Single bake session: host chef cook + test-runner reuses test-compiler locally.
-group "test-ci" {
-  targets = ["warm-cache", "test"]
-}
-
 target "test" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
   target     = "test-runner"
+  depends_on = ["warm-cache"]
   output     = ["type=cacheonly"]
   cache-from = [
     "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
     "type=registry,ref=${REGISTRY}/meta-secret-server:cache",
   ]
-  cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-core:cache,mode=max"] : []
+  // Cache export is owned by warm-cache (runs in a separate bake before this target).
 }
 
 // Warms the wasm32 dep cache without doing a full web build.

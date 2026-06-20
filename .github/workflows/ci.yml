@@ -4,7 +4,9 @@
 # One workflow + one concurrency group → new push cancels the entire previous pipeline.
 #
 # Each job keeps related steps on one runner so BuildKit reuses layers within a bake
-# session (no cross-VM registry round-trip for warm-cache → test or deploy → playwright).
+# session (no cross-VM registry round-trip for warm-cache-wasm → web-local or playwright).
+# Test job: warm-cache and test-run are separate bakes so registry cache is pushed
+# after compile even when test-run fails.
 
 name: CI
 
@@ -44,8 +46,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Compile tests and push cache
+        run: task warm-cache
+
       - name: Run tests
-        run: task test
+        run: task test-run
 
   deploy-preview:
     if: github.event_name == 'pull_request'
