@@ -3,9 +3,8 @@
 # Preview URL pattern: https://pr-<number>.id0.pages.dev
 # One workflow + one concurrency group → new push cancels the entire previous pipeline.
 #
-# Each job uses separate bakes so registry cache is pushed after compile even when
-# a later step fails (test-run, web-build-local, playwright).
-# Test job: warm-cache → test-run. Deploy job: warm-cache-wasm → web-build-local.
+# One bake session per job so BuildKit reuses compiled layers locally (warm-cache → test,
+# warm-cache-wasm → web-local). Registry cache-to on warm-* targets persists across runs.
 
 name: CI
 
@@ -45,11 +44,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Compile tests and push cache
-        run: task warm-cache
-
       - name: Run tests
-        run: task test-run
+        run: task test
 
   deploy-preview:
     if: github.event_name == 'pull_request'
@@ -79,11 +75,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Compile WASM and push cache
-        run: task warm-cache-wasm
-
       - name: Build web-cli
-        run: task web-build-local
+        run: task web-local
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2

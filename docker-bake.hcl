@@ -15,6 +15,20 @@ group "default" {
   targets = ["meta-server-image", "web-image"]
 }
 
+// Single bake session: warm-cache completes and exports registry cache before test runs.
+group "test-ci" {
+  targets = ["warm-cache", "test"]
+}
+
+// Single bake session: warm-cache-wasm completes and exports before web-local runs.
+group "web-preview" {
+  targets = ["warm-cache-wasm", "web-local"]
+}
+
+group "wasm-pkg" {
+  targets = ["warm-cache-wasm", "wasm-local"]
+}
+
 // ============================================================
 // Meta-Secret builds (meta-secret/Dockerfile)
 // ============================================================
@@ -46,7 +60,6 @@ target "web-image" {
   cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-web:cache,mode=max"] : []
 }
 
-// Build web dist after warm-cache-wasm (separate bake — cache already pushed).
 target "web-local" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
@@ -54,30 +67,25 @@ target "web-local" {
   contexts = {
     webcli = "meta-secret/web-cli"
   }
-  depends_on = ["warm-cache-wasm"]
   output     = ["type=local,dest=meta-secret/web-cli/ui/dist"]
   cache-from = [
     "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
     "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
   ]
-  // Cache export is owned by warm-cache-wasm (runs in a separate bake before this target).
 }
 
 target "wasm-local" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
   target     = "wasm-output"
-  depends_on = ["warm-cache-wasm"]
   output     = ["type=local,dest=meta-secret/web-cli/ui/pkg"]
   cache-from = [
     "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
     "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
   ]
-  // Cache export is owned by warm-cache-wasm (runs in a separate bake before this target).
 }
 
-// Compiles test binaries and pushes registry cache. Run alone before `test` so a
-// failing test run does not skip cache export (see Taskfile `test` / CI job steps).
+// Compiles test binaries and pushes registry cache (first target in test-ci group).
 target "warm-cache" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
@@ -94,17 +102,14 @@ target "test" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
   target     = "test-runner"
-  depends_on = ["warm-cache"]
   output     = ["type=cacheonly"]
   cache-from = [
     "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
     "type=registry,ref=${REGISTRY}/meta-secret-server:cache",
   ]
-  // Cache export is owned by warm-cache (runs in a separate bake before this target).
 }
 
-// Compiles WASM (chef cook + bindgen) into layers and pushes registry cache.
-// Run alone before web-local so a failing web build does not skip cache export.
+// Compiles WASM into layers and pushes registry cache (first target in web-preview group).
 target "warm-cache-wasm" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"

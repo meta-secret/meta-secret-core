@@ -28,43 +28,25 @@ tasks:
     cmds:
       - docker buildx bake warm-cache
 
-  test-run:
-    desc: Run tests after warm-cache (CI step 2; no cache export on failure)
-    cmds:
-      - docker buildx bake test
-
   test:
-    desc: Push compile cache first, then run tests (two bake sessions)
+    desc: Compile tests, push cache, then run tests (single bake session)
     cmds:
-      - task: warm-cache
-      - task: test-run
+      - docker buildx bake test-ci
 
   warm-cache-wasm:
-    desc: Compile WASM and push registry cache (CI deploy step 1)
+    desc: Pre-compile WASM deps only, push to registry cache
     cmds:
       - docker buildx bake warm-cache-wasm
 
-  web-build-local:
-    desc: Build web dist after warm-cache-wasm (CI deploy step 2)
-    cmds:
-      - docker buildx bake web-local
-
   web-local:
-    desc: Push WASM cache first, then build web dist (two bake sessions)
+    desc: Build web dist (WASM compile + web in one bake session)
     cmds:
-      - task: warm-cache-wasm
-      - task: web-build-local
-
-  wasm-pkg-local:
-    desc: Extract wasm pkg after warm-cache-wasm
-    cmds:
-      - docker buildx bake wasm-local
+      - docker buildx bake web-preview
 
   wasm-local:
-    desc: Push WASM cache first, then extract pkg (two bake sessions)
+    desc: Build WASM pkg (chef cook + pkg in one bake session)
     cmds:
-      - task: warm-cache-wasm
-      - task: wasm-pkg-local
+      - docker buildx bake wasm-pkg
 
   meta-server:
     desc: Build and load meta-server image
