@@ -20,13 +20,13 @@ group "test-ci" {
   targets = ["warm-cache", "test"]
 }
 
-// List warm-cache-wasm explicitly so cache-to export runs before web-local.
+// Single target in group so cache-to runs without a duplicate warm-cache-wasm build.
 group "web-preview" {
-  targets = ["warm-cache-wasm", "web-local"]
+  targets = ["web-local"]
 }
 
 group "wasm-pkg" {
-  targets = ["warm-cache-wasm", "wasm-local"]
+  targets = ["wasm-local"]
 }
 
 // ============================================================
@@ -67,7 +67,6 @@ target "web-local" {
   contexts = {
     webcli = "meta-secret/web-cli"
   }
-  depends_on = ["warm-cache-wasm"]
   output     = ["type=local,dest=meta-secret/web-cli/ui/dist"]
   cache-from = PUSH_CACHE != "" ? [
     "type=gha,scope=meta-secret-wasm",
@@ -77,13 +76,16 @@ target "web-local" {
     "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
     "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
   ]
+  cache-to = PUSH_CACHE != "" ? [
+    "type=gha,scope=meta-secret-wasm,mode=max",
+    "type=registry,ref=${REGISTRY}/meta-secret-web:cache,mode=max",
+  ] : []
 }
 
 target "wasm-local" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
   target     = "wasm-output"
-  depends_on = ["warm-cache-wasm"]
   output     = ["type=local,dest=meta-secret/web-cli/ui/pkg"]
   cache-from = PUSH_CACHE != "" ? [
     "type=gha,scope=meta-secret-wasm",
@@ -93,6 +95,10 @@ target "wasm-local" {
     "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
     "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
   ]
+  cache-to = PUSH_CACHE != "" ? [
+    "type=gha,scope=meta-secret-wasm,mode=max",
+    "type=registry,ref=${REGISTRY}/meta-secret-web:cache,mode=max",
+  ] : []
 }
 
 // Compiles test binaries and pushes registry cache (listed in test-ci group).
@@ -131,7 +137,7 @@ target "test" {
   ]
 }
 
-// wasm32 chef-cook deps — final layer is builder-wasm chef cook (listed in web-preview group).
+// wasm32 chef-cook deps only (task warm-cache-wasm); CI uses web-local/wasm-local cache-to.
 target "warm-cache-wasm" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
