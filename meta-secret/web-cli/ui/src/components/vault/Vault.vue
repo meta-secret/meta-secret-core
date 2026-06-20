@@ -57,10 +57,7 @@ const versionRows = computed(() => [
       leave-from-class="opacity-100 translate-y-0 scale-100"
       leave-to-class="opacity-0 -translate-y-1 scale-[0.98]"
     >
-      <Card
-        v-if="showDeviceId"
-        class="mx-auto mt-3 max-w-md border-muted/60 bg-card/80 shadow-sm backdrop-blur-sm"
-      >
+      <Card v-if="showDeviceId" class="mx-auto mt-3 max-w-md border-muted/60 bg-card/80 shadow-sm backdrop-blur-sm">
         <CardHeader class="pb-3">
           <CardTitle class="flex items-center gap-2 text-sm font-medium">
             <LayoutPanelLeft class="h-4 w-4 text-muted-foreground" />
@@ -70,7 +67,9 @@ const versionRows = computed(() => [
         <CardContent class="space-y-4 pt-0">
           <div class="space-y-1.5">
             <p class="text-xs text-muted-foreground">{{ vaultTechnicalInfo.labelDeviceId.replace(':', '') }}</p>
-            <p class="rounded-lg border bg-muted/40 px-3 py-2 font-mono text-xs leading-relaxed break-all text-foreground">
+            <p
+              class="rounded-lg border bg-muted/40 px-3 py-2 font-mono text-xs leading-relaxed break-all text-foreground"
+            >
               {{ deviceId }}
             </p>
           </div>

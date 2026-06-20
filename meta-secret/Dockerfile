@@ -31,12 +31,13 @@ ENV BASE_DIR="/meta-secret-build"
 WORKDIR ${BASE_DIR}
 
 # Registry cache-to exports image layers only — not BuildKit cache mounts. Keep compiles in layers.
+# CI pushes builder-debug:cache / builder-wasm:cache deps images (see docker-bake.hcl).
 ENV CARGO_INCREMENTAL=0
 # crates.io HTTP/2 flakes in CI (curl error 16); disable multiplexing and retry downloads.
 ENV CARGO_HTTP_MULTIPLEXING=false
 ENV CARGO_NET_RETRY=10
 
-# --- Builder Debug: pre-compiled deps in debug mode (for tests) ---
+# --- Builder Debug: pre-compiled deps in debug mode (for tests); pushed as builder-debug:cache in CI ---
 FROM builder-base AS builder-debug
 
 COPY recipe.json .
@@ -88,7 +89,7 @@ COPY --from=prepare-db /meta-secret-build/db/sqlite/build/meta-secret.db ./meta-
 EXPOSE 3000
 CMD ["./meta-server"]
 
-# --- Builder WASM: pre-compile deps for wasm32-unknown-unknown target ---
+# --- Builder WASM: pre-compile deps for wasm32; pushed as builder-wasm:cache in CI ---
 FROM builder-base AS builder-wasm
 
 RUN rustup target add wasm32-unknown-unknown
@@ -141,10 +142,14 @@ FROM oven/bun:1.2-debian AS web-build
 
 WORKDIR /meta-secret/web-cli/ui
 
-COPY --from=webcli ui/package.json ui/bun.lock ./
-COPY --from=wasm-builder /meta-secret-build/wasm/pkg ./pkg
-RUN bun install --frozen-lockfile
+COPY --from=webcli ui/package.json ./
+# file:./pkg must exist for bun install; copy only package.json first so Rust/WASM
+# rebuilds do not invalidate the node_modules layer (full pkg copied after install).
+RUN mkdir -p pkg
+COPY --from=wasm-builder /meta-secret-build/wasm/pkg/package.json ./pkg/package.json
+RUN bun install
 
+COPY --from=wasm-builder /meta-secret-build/wasm/pkg ./pkg
 COPY --from=webcli ui/ .
 RUN bun run lint:check && bun run build
 

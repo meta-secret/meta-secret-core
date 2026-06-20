@@ -24,24 +24,30 @@ tasks:
       - docker buildx bake --push default
 
   warm-cache:
-    desc: Compile test binaries and push registry cache (CI step 1)
+    desc: Build and push builder-debug:cache deps image (CI)
     cmds:
-      - docker buildx bake warm-cache
+      - task: bake-push
+        vars:
+          TARGET: builder-debug-cache
 
   test-run:
-    desc: Run tests (use after warm-cache, or bake test-ci)
+    desc: Run tests (after builder-debug-cache, or bake test-ci)
     cmds:
       - docker buildx bake test
 
   test:
-    desc: Compile tests, export cache, run tests (one bake, sequential)
+    desc: Push deps image, compile and run tests (one bake; --push in CI)
     cmds:
-      - docker buildx bake test-ci
+      - task: bake-push
+        vars:
+          TARGET: test-ci
 
   warm-cache-wasm:
-    desc: Compile wasm32 deps and push registry cache (deploy step 1)
+    desc: Build and push builder-wasm:cache deps image (CI)
     cmds:
-      - docker buildx bake warm-cache-wasm
+      - task: bake-push
+        vars:
+          TARGET: builder-wasm-cache
 
   web-build-local:
     desc: Build web dist only (prefer task web-local / bake web-preview)
@@ -49,14 +55,30 @@ tasks:
       - docker buildx bake web-local
 
   web-local:
-    desc: Warm wasm deps, export cache, build web dist (one bake, sequential)
+    desc: Push wasm deps image, build web dist (one bake; --push in CI)
     cmds:
-      - docker buildx bake web-preview
+      - task: bake-push
+        vars:
+          TARGET: web-preview
 
   wasm-local:
-    desc: Warm wasm deps then extract pkg (one bake)
+    desc: Push wasm deps image, extract pkg (one bake; --push in CI)
     cmds:
-      - docker buildx bake wasm-pkg
+      - task: bake-push
+        vars:
+          TARGET: wasm-pkg
+
+  bake-push:
+    internal: true
+    vars:
+      TARGET: '{{.TARGET}}'
+    cmds:
+      - |
+        if [ -n "${PUSH_CACHE:-}" ]; then
+          docker buildx bake --push {{.TARGET}}
+        else
+          docker buildx bake {{.TARGET}}
+        fi
 
   meta-server:
     desc: Build and load meta-server image
@@ -74,7 +96,7 @@ tasks:
       PLAYWRIGHT_BASE_URL: '{{.PLAYWRIGHT_BASE_URL}}'
     cmds:
       - docker buildx bake playwright --load
-      - docker run --rm -e PLAYWRIGHT_BASE_URL={{.PLAYWRIGHT_BASE_URL}} ghcr.io/meta-secret/meta-secret-core/playwright:latest
+      - docker run --rm --network host -e PLAYWRIGHT_BASE_URL={{.PLAYWRIGHT_BASE_URL}} ghcr.io/meta-secret/meta-secret-core/playwright:latest
 
   generate-recipe:
     desc: Regenerate meta-secret/recipe.json via cargo-chef

@@ -33,7 +33,7 @@ bun install
 bun run dev
 ```
 
-Lockfile: `bun.lock` (Docker/CI use `bun install --frozen-lockfile`).
+Lockfile: `bun.lock` is optional locally (gitignored); Docker/CI run `bun install` from `package.json`.
 
 ### Build via Docker
 

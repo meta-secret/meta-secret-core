@@ -2,7 +2,7 @@ variable "REGISTRY" {
   default = "ghcr.io/meta-secret/meta-secret-core"
 }
 
-// Set PUSH_CACHE=1 to enable writing cache to registry (CI only)
+// Set PUSH_CACHE=1 in CI to push deps images (builder-*:cache tags).
 variable "PUSH_CACHE" {
   default = ""
 }
@@ -15,18 +15,17 @@ group "default" {
   targets = ["meta-server-image", "web-image"]
 }
 
-// List warm-cache explicitly so cache-to export runs before test (depends_on orders build).
+// Push builder-debug:cache, then compile/run tests (same bake, --push in CI).
 group "test-ci" {
-  targets = ["warm-cache", "test"]
+  targets = ["builder-debug-cache", "test"]
 }
 
-// Single target in group so cache-to runs without a duplicate warm-cache-wasm build.
 group "web-preview" {
-  targets = ["web-local"]
+  targets = ["builder-wasm-cache", "web-local"]
 }
 
 group "wasm-pkg" {
-  targets = ["wasm-local"]
+  targets = ["builder-wasm-cache", "wasm-local"]
 }
 
 // ============================================================
@@ -40,7 +39,7 @@ target "meta-server-image" {
   tags       = ["${REGISTRY}/meta-secret-server:latest"]
   cache-from = [
     "type=registry,ref=${REGISTRY}/meta-secret-server:cache",
-    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
+    "type=registry,ref=${REGISTRY}/builder-debug:cache",
   ]
   cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-server:cache,mode=max"] : []
 }
@@ -55,7 +54,7 @@ target "web-image" {
   tags       = ["${REGISTRY}/meta-secret-web:latest"]
   cache-from = [
     "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
-    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
+    "type=registry,ref=${REGISTRY}/builder-wasm:cache",
   ]
   cache-to = PUSH_CACHE != "" ? ["type=registry,ref=${REGISTRY}/meta-secret-web:cache,mode=max"] : []
 }
@@ -67,94 +66,72 @@ target "web-local" {
   contexts = {
     webcli = "meta-secret/web-cli"
   }
+  depends_on = ["builder-wasm-cache"]
   output     = ["type=local,dest=meta-secret/web-cli/ui/dist"]
   cache-from = PUSH_CACHE != "" ? [
     "type=gha,scope=meta-secret-wasm",
-    "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
-    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
+    "type=registry,ref=${REGISTRY}/builder-wasm:cache",
   ] : [
-    "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
-    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
+    "type=registry,ref=${REGISTRY}/builder-wasm:cache",
   ]
-  cache-to = PUSH_CACHE != "" ? [
-    "type=gha,scope=meta-secret-wasm,mode=max",
-    "type=registry,ref=${REGISTRY}/meta-secret-web:cache,mode=max",
-  ] : []
 }
 
 target "wasm-local" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
   target     = "wasm-output"
+  depends_on = ["builder-wasm-cache"]
   output     = ["type=local,dest=meta-secret/web-cli/ui/pkg"]
   cache-from = PUSH_CACHE != "" ? [
     "type=gha,scope=meta-secret-wasm",
-    "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
-    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
+    "type=registry,ref=${REGISTRY}/builder-wasm:cache",
   ] : [
-    "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
-    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
+    "type=registry,ref=${REGISTRY}/builder-wasm:cache",
   ]
-  cache-to = PUSH_CACHE != "" ? [
-    "type=gha,scope=meta-secret-wasm,mode=max",
-    "type=registry,ref=${REGISTRY}/meta-secret-web:cache,mode=max",
-  ] : []
 }
 
-// Compiles test binaries and pushes registry cache (listed in test-ci group).
-target "warm-cache" {
+// Pre-compiled debug deps (cargo chef cook --tests). Pushed as a rolling :cache tag in CI.
+target "builder-debug-cache" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
-  target     = "test-compiler"
-  output     = ["type=cacheonly"]
+  target     = "builder-debug"
+  tags       = ["${REGISTRY}/builder-debug:cache"]
+  output     = PUSH_CACHE != "" ? ["type=registry"] : ["type=cacheonly"]
   cache-from = PUSH_CACHE != "" ? [
     "type=gha,scope=meta-secret-test",
-    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
-    "type=registry,ref=${REGISTRY}/meta-secret-server:cache",
+    "type=registry,ref=${REGISTRY}/builder-debug:cache",
   ] : [
-    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
-    "type=registry,ref=${REGISTRY}/meta-secret-server:cache",
+    "type=registry,ref=${REGISTRY}/builder-debug:cache",
   ]
-  cache-to = PUSH_CACHE != "" ? [
-    "type=gha,scope=meta-secret-test,mode=max",
-    "type=registry,ref=${REGISTRY}/meta-secret-core:cache,mode=max",
-  ] : []
 }
 
 target "test" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
   target     = "test-runner"
-  depends_on = ["warm-cache"]
+  depends_on = ["builder-debug-cache"]
   output     = ["type=cacheonly"]
   cache-from = PUSH_CACHE != "" ? [
     "type=gha,scope=meta-secret-test",
-    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
-    "type=registry,ref=${REGISTRY}/meta-secret-server:cache",
+    "type=registry,ref=${REGISTRY}/builder-debug:cache",
   ] : [
-    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
-    "type=registry,ref=${REGISTRY}/meta-secret-server:cache",
+    "type=registry,ref=${REGISTRY}/builder-debug:cache",
   ]
 }
 
-// wasm32 chef-cook deps only (task warm-cache-wasm); CI uses web-local/wasm-local cache-to.
-target "warm-cache-wasm" {
+// Pre-compiled wasm32 deps (cargo chef cook). Pushed as a rolling :cache tag in CI.
+target "builder-wasm-cache" {
   context    = "meta-secret"
   dockerfile = "Dockerfile"
   target     = "builder-wasm"
-  output     = ["type=cacheonly"]
+  tags       = ["${REGISTRY}/builder-wasm:cache"]
+  output     = PUSH_CACHE != "" ? ["type=registry"] : ["type=cacheonly"]
   cache-from = PUSH_CACHE != "" ? [
     "type=gha,scope=meta-secret-wasm",
-    "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
-    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
+    "type=registry,ref=${REGISTRY}/builder-wasm:cache",
   ] : [
-    "type=registry,ref=${REGISTRY}/meta-secret-web:cache",
-    "type=registry,ref=${REGISTRY}/meta-secret-core:cache",
+    "type=registry,ref=${REGISTRY}/builder-wasm:cache",
   ]
-  cache-to = PUSH_CACHE != "" ? [
-    "type=gha,scope=meta-secret-wasm,mode=max",
-    "type=registry,ref=${REGISTRY}/meta-secret-web:cache,mode=max",
-  ] : []
 }
 
 target "generate-recipe" {

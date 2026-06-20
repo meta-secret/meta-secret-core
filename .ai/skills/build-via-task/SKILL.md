@@ -30,11 +30,11 @@ Run `task -l` from repo root for the full list.
 
 | Goal | Command |
 |------|---------|
-| CI-equivalent tests | `task test` (test-ci group: warm-cache exports cache, then test-runner) |
-| Warm Rust test cache only | `task warm-cache` |
+| CI-equivalent tests | `task test` (test-ci: push `builder-debug:cache`, then test-runner) |
+| Push Rust test deps image | `task warm-cache` → `builder-debug:cache` |
 | Run tests only (same bake as test) | `task test-run` |
-| Warm WASM deps only | `task warm-cache-wasm` |
-| Build web dist locally | `task web-local` (web-preview group, exports cache via web-local) |
+| Push WASM deps image | `task warm-cache-wasm` → `builder-wasm:cache` |
+| Build web dist locally | `task web-local` (web-preview: push `builder-wasm:cache`, then web build) |
 | Build WASM pkg locally | `task wasm-local` (wasm-pkg group) |
 | Build web Docker image | `task web` |
 | Build meta-server image | `task meta-server` |

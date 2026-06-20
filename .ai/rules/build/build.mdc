@@ -32,8 +32,8 @@ After any `Cargo.toml` change: `task generate-recipe`.
 | Action | Command |
 |---|---|
 | Run tests (CI parity) | `task test` |
-| Warm Rust test cache | `task warm-cache` |
-| Warm WASM dep cache | `task warm-cache-wasm` |
+| Warm Rust test deps image | `task warm-cache` |
+| Warm WASM deps image | `task warm-cache-wasm` |
 | Build all images | `task build` |
 | Build + push | `task push` |
 | Build meta-server | `task meta-server` |

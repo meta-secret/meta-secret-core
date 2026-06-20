@@ -205,8 +205,8 @@ task -l              # list all targets
 
 # Common targets
 task test            # run tests in Docker (CI parity)
-task warm-cache        # warm Rust test cache (CI)
-task warm-cache-wasm   # warm WASM dep cache (CI)
+task warm-cache        # push builder-debug:cache deps image (CI)
+task warm-cache-wasm   # push builder-wasm:cache deps image (CI)
 task build             # build default images locally
 task push              # build and push to registry
 task meta-server       # meta-server image
