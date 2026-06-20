@@ -63,19 +63,10 @@ jobs:
 
       - name: Comment preview URL on PR
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PREVIEW_URL: ${{ steps.deploy.outputs.deployment-url }}
-        run: |
-          body="### Preview deployed
-
-          ${PREVIEW_URL}"
-          existing="$(gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
-            --jq '.[] | select(.body | startswith("### Preview deployed")) | .id' | head -1)"
-          if [ -n "$existing" ]; then
-            gh api -X PATCH "repos/${{ github.repository }}/issues/comments/${existing}" -f body="$body"
-          else
-            gh pr comment "${{ github.event.pull_request.number }}" --body "$body"
-          fi
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: bun run .github/scripts/comment-preview-url.ts
 
   playwright:
     needs: deploy-preview
