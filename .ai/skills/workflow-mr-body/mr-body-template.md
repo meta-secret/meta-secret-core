@@ -1,5 +1,7 @@
 # Merge request template
 
+Use for **`gh pr create`** and **`gh pr edit`**. Base content on **full branch** scope (`git log main..HEAD`, `git diff main...HEAD`), not just the latest commit.
+
 ## Title
 
 `(<scope>) Short imperative description`
@@ -14,8 +16,8 @@
 
 ## Testing
 
-- [ ] `cargo test` / `cargo test -p …` (list commands)
-- [ ] `docker buildx bake test` (if CI/Docker relevant)
+- [ ] `task test` from repo root (CI parity; see `.ai/skills/build-via-task/SKILL.md`)
+- [ ] Narrow `cargo test -p …` / `npm run …` if used for local iteration (list commands)
 
 ## Checklist
 

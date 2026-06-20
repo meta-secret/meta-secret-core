@@ -16,6 +16,8 @@ permissionMode: plan
 
 Produce **human-readable** notes for a PR or release. Do **not** run git, create branches, or push.
 
+Use skill [`.ai/skills/workflow-mr-body/SKILL.md`](../skills/workflow-mr-body/SKILL.md) for structure and scope rules (full branch, not first commit only).
+
 ## Inputs
 
 Use what the user provides: diff summary, commit list, issue title, or file list.
@@ -26,9 +28,9 @@ Stay consistent with product context in `PROJECT_CONTEXT.md` and security wordin
 
 ## Output
 
-1. **Title suggestion** (optional)
-2. **Summary** — user-visible changes
+1. **Title suggestion** — reflects **all commits/themes** on the branch (see workflow-mr-body skill)
+2. **Summary** — user-visible changes (group by theme when branch is multi-part)
 3. **Technical notes** — migration or risk (if any)
-4. **Testing done** — placeholder checklist for the author to fill
+4. **Testing done** — checklist; prefer `task …` commands where CI-relevant
 
-Do not invent shipped behavior that is not evidenced by the provided changes.
+Do not invent shipped behavior that is not evidenced by the provided changes. **release-manager** applies the draft via `gh pr create` or **`gh pr edit`** when updating an existing PR.

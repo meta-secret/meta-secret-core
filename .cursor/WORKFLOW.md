@@ -14,6 +14,7 @@ Use this file as Cursor bootstrap for `run issue ...`.
 - Keep flow automatic from stage to stage.
 - Do not maintain duplicated stage prompts in this file.
 - Respect retry policy (max 2) from `.ai/WORKFLOW.md`.
+- **Build/test:** read [`.ai/skills/build-via-task/SKILL.md`](../.ai/skills/build-via-task/SKILL.md) — use `task` from repo root, never raw `docker buildx`.
 - For each stage print exact log lines (start emoji per stage — table in `.ai/WORKFLOW.md`):
   - `<stage-start-emoji> Start stage <n>: <name>`
   - `✅ Stage <n>: <name> completed`

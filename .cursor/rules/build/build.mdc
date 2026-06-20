@@ -1,21 +1,28 @@
 ---
-description: Build system — always use task commands, never raw docker buildx bake
+description: Build system — always use task commands, never raw docker buildx
 globs: docker-bake.hcl,meta-secret/Dockerfile,Taskfile.yml,meta-secret/**/*.toml
 alwaysApply: true
 ---
 
-### Build system
+### Build entry point (mandatory)
 
 - build config: `docker-bake.hcl` (targets, cache, tags)
 - all stages: `meta-secret/Dockerfile` (single multi-stage file)
-- **always run builds via `task <target>`, never via `docker buildx bake` directly**
-- after updating any `Cargo.toml`, run `task generate-recipe` to update `recipe.json`
+- **always run builds via `task <target>` from repo root — never `docker buildx bake`, `docker buildx build`, or `docker build`**
+- after updating any `Cargo.toml`, run `task generate-recipe`
+- read `.ai/skills/build-via-task/SKILL.md` before any build/test shell command
+
+### Pre-command gate
+
+If your next command matches `docker buildx` or `docker build` → **stop** and use `task` (or add a task to `Taskfile.yml` first).
 
 ### Task commands
 
 | Action | Command |
 |---|---|
 | Run tests | `task test` |
+| Warm Rust test deps image | `task warm-cache` |
+| Warm WASM deps image | `task warm-cache-wasm` |
 | Build all images | `task build` |
 | Build + push | `task push` |
 | Build meta-server | `task meta-server` |
@@ -24,3 +31,7 @@ alwaysApply: true
 | Export wasm pkg locally | `task wasm-local` |
 | Update cargo chef recipe | `task generate-recipe` |
 | Run web-ui locally | `task web-run` |
+| Playwright smoke tests | `PLAYWRIGHT_BASE_URL=… task playwright-test` |
+| Add shadcn-vue component | `cd meta-secret/web-cli/ui && npx shadcn-vue@latest add <name>` |
+
+Full list: `task -l`

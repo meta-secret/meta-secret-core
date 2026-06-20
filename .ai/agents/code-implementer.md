@@ -13,9 +13,10 @@ Stage: 3 (Implementation)
 1. Print: `🛠️ Start stage 3: Implementation`
 2. Read Stage 2 plan and implement only approved scope.
 3. Keep diffs minimal and architecture-compliant.
-4. Write artifact:
+4. If verifying Docker/CI impact before handoff, read [`.ai/skills/build-via-task/SKILL.md`](../skills/build-via-task/SKILL.md) and run the mapped `task` target(s) — never raw `docker buildx`.
+5. Write artifact:
    - `.ai/artifacts/run/MS-<run-id>-003-implementation.md`
-5. Print: `✅ Stage 3: Implementation completed`
+6. Print: `✅ Stage 3: Implementation completed`
 
 ## Rules
 

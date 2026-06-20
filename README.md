@@ -121,7 +121,7 @@ Domain map for web/cli/core/mobile lib: [docs/ai-domain-standards.md](docs/ai-do
 
 3. After each phase, **approve** the artifact before the next step. Run phases from the **main** session (no nested subagents).
 
-4. **Build/test hints:** from `meta-secret/`, `cargo test`, `cargo clippy`; project-wide Docker: `docker buildx bake test` (see [Infrastructure Build](#infrastructure-build) below).
+4. **Build/test hints:** from `meta-secret/`, `cargo test`, `cargo clippy`; project-wide Docker/CI: **`task test`**, **`task web-local`**, etc. (see [Infrastructure Build](#infrastructure-build) and [`.ai/skills/build-via-task/SKILL.md`](.ai/skills/build-via-task/SKILL.md)).
 
 ---
 
@@ -197,26 +197,28 @@ If you would like to extract data from QR's
 
 ## Infrastructure Build
 
-The project uses `docker buildx bake` as its build system. All build targets are defined in `docker-bake.hcl`.
-
-### Build commands
+Docker builds are defined in `docker-bake.hcl` and `meta-secret/Dockerfile`.  
+**Invoke them only via Taskfile** from the repository root ([`Taskfile.yml`](Taskfile.yml)):
 
 ```bash
-# Build and push all images (meta-server + web)
-docker buildx bake --push default
+task -l              # list all targets
 
-# Build meta-server image
-docker buildx bake meta-server-image
-
-# Build web image
-docker buildx bake web-image
-
-# Run tests
-docker buildx bake test
-
-# Export web-cli dist locally
-docker buildx bake web-local
+# Common targets
+task test            # run tests in Docker (CI parity)
+task warm-cache        # push builder-debug:cache deps image (CI)
+task warm-cache-wasm   # push builder-wasm:cache deps image (CI)
+task build             # build default images locally
+task push              # build and push to registry
+task meta-server       # meta-server image
+task web               # web image
+task web-local         # export web-cli dist to meta-secret/web-cli/ui/dist
+task wasm-local        # export WASM pkg to meta-secret/web-cli/ui/pkg
+task generate-recipe   # regenerate meta-secret/recipe.json (after Cargo.toml edits)
+task playwright-test   # Playwright smoke tests (set PLAYWRIGHT_BASE_URL)
 ```
+
+Agents: read [`.ai/skills/build-via-task/SKILL.md`](.ai/skills/build-via-task/SKILL.md) before any build command.  
+Do **not** run `docker buildx bake` or `docker buildx build` directly.
 
 <br>
 

@@ -33,7 +33,7 @@ This file guides Claude Code (claude.ai/code) in **meta-secret-core**. **Canonic
 
 ## Default repair workflow
 
-1. Run the narrowest `cargo` or `docker buildx bake` target that reproduces the issue (see [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md)).
+1. Run the narrowest **`task`** or **`cargo`** target that reproduces the issue (see [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) and [`.ai/skills/build-via-task/SKILL.md`](.ai/skills/build-via-task/SKILL.md)).
 2. Classify the error (compile, test, runtime, infra).
 3. Propose a minimal fix plan.
 4. Wait for user confirmation when appropriate.

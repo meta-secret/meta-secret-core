@@ -8,7 +8,9 @@ Arguments: diff summary, commit list, or topic. Example: `/only-release-notes Su
 
 Delegate to subagent **release-notes** with input: `$ARGUMENTS`
 
-Use skill **workflow-mr-body** for MR templates. See [WORKFLOW.md](../WORKFLOW.md).
+Use skill **workflow-mr-body** for MR templates and **`gh pr edit`** when updating an existing PR. See [WORKFLOW.md](../WORKFLOW.md).
+
+When the user asks to update PR title/description (with or without new commits), draft from **full branch** scope and apply via **`gh pr edit`** — do not only rewrite the first-commit summary.
 
 ## Session mode
 

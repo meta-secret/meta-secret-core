@@ -45,9 +45,12 @@ jobs:
           publish_dir: meta-secret/web-cli/ui/dist
           commit_message: ${{ github.event.inputs.deploy_message }}
 
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
       - name: Deploy web-cli (cloudflare pages)
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUD_FLARE_PAGES_TOKEN }}
-          accountId: ${{ secrets.CLOUD_FLARE_ACCOUNT_ID }}
-          command: pages deploy meta-secret/web-cli/ui/dist --project-name=id0
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUD_FLARE_PAGES_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUD_FLARE_ACCOUNT_ID }}
+        run: |
+          bunx wrangler pages deploy meta-secret/web-cli/ui/dist --project-name=id0

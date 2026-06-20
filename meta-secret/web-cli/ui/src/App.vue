@@ -1,29 +1,20 @@
-<script lang="ts">
+<script setup lang="ts">
 import NavBar from '@/components/NavBar.vue';
 import PasskeyAuth from '@/components/PasskeyAuth.vue';
-import { defineComponent } from 'vue';
+import { useThemeStore } from '@/stores/theme';
+import { Toaster } from '@/components/ui/sonner';
 
-export default defineComponent({
-  components: {
-    NavBar,
-    PasskeyAuth,
-  },
-});
+// Initialise theme store on mount — applies .dark to <html> immediately
+useThemeStore();
 </script>
 
 <template>
-  <div id="app" class="app-shell">
+  <div class="min-h-screen bg-background text-foreground">
     <NavBar />
     <div id="content">
       <router-view />
     </div>
     <PasskeyAuth />
+    <Toaster />
   </div>
 </template>
-
-<style>
-.app-shell {
-  min-height: 100vh;
-  background: #080f1c;
-}
-</style>

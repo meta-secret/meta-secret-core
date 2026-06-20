@@ -29,8 +29,8 @@ MetaSecret parent workspace: if your editor root is the **MetaSecret** folder, u
 | `/only-test-author` | Add or update automated tests. |
 | `/only-test-verifier` | Run verification tests and report pass/fail. |
 | `/only-debug-rca` | Root-cause analysis from logs/failures. |
-| `/only-release-notes` | Draft PR/release notes text. |
-| `/only-release-manager` | Branch, commit, push, open PR (with explicit approvals). |
+| `/only-release-notes` | Draft PR/release notes; **`gh pr edit`** when updating title/body (see workflow-mr-body skill). |
+| `/only-release-manager` | Branch, commit, push, open/update PR via `gh pr create` / **`gh pr edit`** (with explicit approvals). |
 | `/only-issue-coordinator` | Fetch GitHub issue and format Summary for planner handoff. |
 | `/only-workflow-pattern-capture` | Propose workflow improvements from repeated patterns. |
 

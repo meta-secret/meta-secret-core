@@ -4,3 +4,8 @@ docs/
 !wasm/.cargo/
 Dockerfile*
 *.md
+**/node_modules
+**/dist
+
+# Not a Cargo workspace member — supplied via the `webcli` bake context for web/playwright targets.
+web-cli/

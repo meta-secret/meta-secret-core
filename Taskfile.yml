@@ -1,5 +1,8 @@
 version: "3"
 
+# Agent/CI entry point for Docker builds — see .ai/skills/build-via-task/SKILL.md
+# Never run docker buildx bake|build directly; use: task <target>
+
 tasks:
   default:
     cmds:
@@ -21,14 +24,61 @@ tasks:
       - docker buildx bake --push default
 
   warm-cache:
-    desc: Compile deps + source, push layers to registry cache (CI)
+    desc: Build and push builder-debug:cache deps image (CI)
     cmds:
-      - docker buildx bake warm-cache
+      - task: bake-push
+        vars:
+          TARGET: builder-debug-cache
 
-  test:
-    desc: Run tests inside Docker
+  test-run:
+    desc: Run tests (after builder-debug-cache, or bake test-ci)
     cmds:
       - docker buildx bake test
+
+  test:
+    desc: Push deps image, compile and run tests (one bake; --push in CI)
+    cmds:
+      - task: bake-push
+        vars:
+          TARGET: test-ci
+
+  warm-cache-wasm:
+    desc: Build and push builder-wasm:cache deps image (CI)
+    cmds:
+      - task: bake-push
+        vars:
+          TARGET: builder-wasm-cache
+
+  web-build-local:
+    desc: Build web dist only (prefer task web-local / bake web-preview)
+    cmds:
+      - docker buildx bake web-local
+
+  web-local:
+    desc: Push wasm deps image, build web dist (one bake; --push in CI)
+    cmds:
+      - task: bake-push
+        vars:
+          TARGET: web-preview
+
+  wasm-local:
+    desc: Push wasm deps image, extract pkg (one bake; --push in CI)
+    cmds:
+      - task: bake-push
+        vars:
+          TARGET: wasm-pkg
+
+  bake-push:
+    internal: true
+    vars:
+      TARGET: '{{.TARGET}}'
+    cmds:
+      - |
+        if [ -n "${PUSH_CACHE:-}" ]; then
+          docker buildx bake --push {{.TARGET}}
+        else
+          docker buildx bake {{.TARGET}}
+        fi
 
   meta-server:
     desc: Build and load meta-server image
@@ -40,15 +90,13 @@ tasks:
     cmds:
       - docker buildx bake --load web-image
 
-  web-local:
-    desc: Build web and extract dist to meta-secret/web-cli/ui/dist
+  playwright-test:
+    desc: Run Playwright smoke tests in Docker (set PLAYWRIGHT_BASE_URL)
+    env:
+      PLAYWRIGHT_BASE_URL: '{{.PLAYWRIGHT_BASE_URL}}'
     cmds:
-      - docker buildx bake web-local
-
-  wasm-local:
-    desc: Build WASM and extract pkg to meta-secret/web-cli/ui/pkg
-    cmds:
-      - docker buildx bake wasm-local
+      - docker buildx bake playwright --load
+      - docker run --rm --network host -e PLAYWRIGHT_BASE_URL={{.PLAYWRIGHT_BASE_URL}} ghcr.io/meta-secret/meta-secret-core/playwright:latest
 
   generate-recipe:
     desc: Regenerate meta-secret/recipe.json via cargo-chef
@@ -59,7 +107,7 @@ tasks:
     desc: Build web image and run dev server on :5173
     cmds:
       - task: web
-      - docker run --rm -p 5173:5173 cypherkitty/meta-secret-web:latest npm run dev -- --host 0.0.0.0
+      - docker run --rm -p 5173:5173 cypherkitty/meta-secret-web:latest bun run dev -- --host 0.0.0.0
 
   taskomatic:
     desc: Build and load taskomatic image

@@ -34,11 +34,14 @@ Detailed stage contract for `.ai/WORKFLOW.md`.
 
 ## Stage 4: Build (no tests)
 
-- Command: from `meta-secret/` run `cargo build --workspace`
+- Skill: `.ai/skills/build-via-task/SKILL.md` (mandatory)
+- Command: from **repository root**, run the narrowest `task` target(s) for the change (e.g. `task web-local`, `task wasm-local`, `task test`)
 - Timeout: 600 seconds
 - Output: `MS-<run-id>-004-build.md`
 - Template: `build-report-template.md`
 - Pass condition: `Status: PASSED`
+
+Forbidden: `docker buildx bake`, `docker buildx build`, `docker build` (use `task` or add a task first).
 
 ## Stage 5: Code Review
 
@@ -56,7 +59,8 @@ Detailed stage contract for `.ai/WORKFLOW.md`.
 ## Stage 7: Test Run
 
 - Agent: `test-verifier`
-- Command: from `meta-secret/` run `cargo test -p meta-secret-core -p meta-secret-cli -p meta-cli -p meta-secret-tests -p meta-secret-wasm`
+- Skill: `.ai/skills/build-via-task/SKILL.md`
+- Command: from **repository root**: `task test` (CI parity)
 - Output: `MS-<run-id>-007-test-run.md`
 - Template: `test-report-template.md`
 - Pass condition: `Status: PASSED`
@@ -64,6 +68,7 @@ Detailed stage contract for `.ai/WORKFLOW.md`.
 ## Stage 8: Branch + Commit + PR
 
 - Agent: `release-manager`
+- Skill: `.ai/skills/workflow-mr-body/SKILL.md` — full-branch title/body; `gh pr create` or **`gh pr edit`**
 - Output: `MS-<run-id>-008-pr.md`
 
 ## Retry Rules

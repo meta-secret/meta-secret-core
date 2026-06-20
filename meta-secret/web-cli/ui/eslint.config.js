@@ -20,16 +20,40 @@ export default [
   {
     name: 'app/custom-rules',
     rules: {
-      // Vue single-word component names are used throughout the existing codebase
       'vue/multi-word-component-names': 'off',
-      // Require lang="ts" on <script> blocks
       'vue/block-lang': ['error', { script: { lang: 'ts' } }],
-      // Relax any/unused-vars to warn instead of error for gradual adoption
+      // shadcn-vue components (Button, Input, Label, etc.) share names with HTML elements
+      'vue/no-reserved-component-names': 'off',
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': 'warn',
       '@typescript-eslint/no-empty-object-type': 'warn',
       '@typescript-eslint/ban-ts-comment': 'warn',
       '@typescript-eslint/no-namespace': 'warn',
+    },
+  },
+
+  {
+    name: 'app/shadcn-ui',
+    files: ['src/components/ui/**'],
+    rules: {
+      'vue/require-default-prop': 'off',
+    },
+  },
+
+  {
+    name: 'app/env-types',
+    files: ['env.d.ts'],
+    rules: {
+      '@typescript-eslint/no-empty-object-type': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
+    },
+  },
+
+  {
+    name: 'app/cypress',
+    files: ['cypress/**', 'cypress.config.ts'],
+    rules: {
+      '@typescript-eslint/no-namespace': 'off',
     },
   },
 ];

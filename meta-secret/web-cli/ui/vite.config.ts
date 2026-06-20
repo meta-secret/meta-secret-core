@@ -20,4 +20,13 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  build: {
+    rolldownOptions: {
+      onLog(level, log, defaultHandler) {
+        // @vueuse/core@14.3.0 — remove when vueuse ships fixed PURE annotations (vueuse#5387)
+        if (log.code === 'INVALID_ANNOTATION') return;
+        defaultHandler(level, log);
+      },
+    },
+  },
 });

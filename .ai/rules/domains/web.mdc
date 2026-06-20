@@ -8,9 +8,27 @@ alwaysApply: false
 
 Apply these rules when editing `meta-secret/web-cli/ui`.
 
-- Keep Vue components/UI state in web; keep crypto and core business logic out of UI.
-- Prefer **Tailwind CSS** (`class`, `@apply` in scoped/module styles) for new layout and visuals in `web-cli/ui`; avoid large blocks of bespoke raw CSS unless there is a concrete reason (e.g. complex SVG-only styling).
-- Use Composition API and explicit TS types for cross-module boundaries.
-- Avoid noisy debug logging; remove `console.log` from committed code.
+## UI / Component Library
+
+- The project uses **shadcn-vue** (reka-nova style, neutral base, Tailwind v4).
+- Always use shadcn-vue primitives from `@/components/ui/` for UI elements (Button, Input, Dialog, Card, Badge, Alert, etc.).
+- To add a new shadcn-vue component run: `npx shadcn-vue@latest add <component>` in `meta-secret/web-cli/ui/`.
+- Do NOT write bespoke CSS for layout, spacing, or colour — use Tailwind utility classes. The only exception is minimal non-utility CSS for third-party SVG or QR canvas containers.
+- Icons: use `lucide-vue-next` only. Import individual icons as named exports.
+
+## Vue Conventions
+
+- Always use Composition API (`<script setup lang="ts">`). Avoid Options API except in legacy `SplitView.vue` / `RecoverView.vue` which use third-party DOM manipulation.
+- No `console.log` in committed code.
+- Avoid CSS Modules (`<style module>`) — prefer Tailwind utilities directly on elements.
+
+## Dark Mode
+
+- Dark mode is applied by toggling the `.dark` class on `<html>` via `useThemeStore`.
+- The default theme is `dark`. Use shadcn CSS variables (`bg-background`, `text-foreground`, etc.) — never hardcode hex colours.
+
+## Security
+
+- Keep crypto and core business logic out of UI. The WASM bindings are the only allowed crypto boundary.
 - Do not persist decrypted secrets in long-lived browser storage.
 - Validate/sanitize user-controlled input before rendering or routing.

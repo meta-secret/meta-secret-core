@@ -87,8 +87,13 @@ Required behavior:
 
 ### Stage 4: Build (no tests)
 
-Command:
-- from `meta-secret/`: `cargo build --workspace`
+Skill: [`.ai/skills/build-via-task/SKILL.md`](skills/build-via-task/SKILL.md) — **read before running any build command**.
+
+Command (from **repository root**):
+- Run the narrowest `task` target for the change, e.g. `task web-local`, `task wasm-local`, `task test`
+- Record exact command(s) in the build report
+
+Forbidden: `docker buildx bake`, `docker buildx build`, `docker build`
 
 Timeout:
 - hard limit 10 minutes (600 seconds)
@@ -126,9 +131,11 @@ Required behavior:
 ### Stage 7: Test Run
 
 Agent: `test-verifier`
+Skill: [`.ai/skills/build-via-task/SKILL.md`](skills/build-via-task/SKILL.md)
 Template: `.ai/artifacts/test-report-template.md`
-Command suggestion:
-- from `meta-secret/`: `cargo test -p meta-secret-core -p meta-secret-cli -p meta-cli -p meta-secret-tests -p meta-secret-wasm`
+Command (from **repository root**):
+- `task test` — CI parity (preferred before PR)
+- Optional narrow local check: `cargo test -p …` from `meta-secret/`
 Output: `.ai/artifacts/run/MS-<run-id>-007-test-run.md`
 
 Required behavior:
@@ -138,12 +145,14 @@ Required behavior:
 ### Stage 8: Branch + Commit + PR
 
 Agent: `release-manager`
+Skill: [`.ai/skills/workflow-mr-body/SKILL.md`](skills/workflow-mr-body/SKILL.md)
 Output: `.ai/artifacts/run/MS-<run-id>-008-pr.md`
 
 Required behavior:
 - Create branch: `{Prefix}/kuklin/MS-{issueNumber}` for numeric issues (see release-manager policy)
 - Commit and push with explicit user approvals
-- Open PR to `main`
+- Open PR to `main`, or **`gh pr edit`** title/body when PR exists or branch scope grew
+- PR title and description must summarize **full branch** (`git log main..HEAD`, not stale first-commit text)
 
 ## Automatic Recovery Loops
 

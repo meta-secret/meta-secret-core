@@ -1,8 +1,11 @@
+# syntax=docker/dockerfile:1.4
+
 # ============================================================
 # Multi-stage Dockerfile for meta-secret builds
 # ============================================================
 
 ARG RUST_VERSION=1.96.0
+ARG PLAYWRIGHT_VERSION=1.61.0
 
 # --- Chef Planner: generate cargo-chef recipe ---
 FROM lukemathwalker/cargo-chef:latest-rust-${RUST_VERSION}-bookworm AS chef-planner
@@ -27,11 +30,18 @@ RUN curl https://wasm-bindgen.github.io/wasm-pack/installer/init.sh -sSf | sh
 ENV BASE_DIR="/meta-secret-build"
 WORKDIR ${BASE_DIR}
 
-# --- Builder Debug: pre-compiled deps in debug mode (for tests) ---
+# Registry cache-to exports image layers only — not BuildKit cache mounts. Keep compiles in layers.
+# CI pushes builder-debug:cache / builder-wasm:cache deps images (see docker-bake.hcl).
+ENV CARGO_INCREMENTAL=0
+# crates.io HTTP/2 flakes in CI (curl error 16); disable multiplexing and retry downloads.
+ENV CARGO_HTTP_MULTIPLEXING=false
+ENV CARGO_NET_RETRY=10
+
+# --- Builder Debug: pre-compiled deps in debug mode (for tests); pushed as builder-debug:cache in CI ---
 FROM builder-base AS builder-debug
 
 COPY recipe.json .
-RUN cargo chef cook --recipe-path recipe.json
+RUN cargo chef cook --tests --recipe-path recipe.json
 
 # --- Builder Release: pre-compiled deps in release mode (for server and wasm) ---
 FROM builder-base AS builder-release
@@ -79,16 +89,36 @@ COPY --from=prepare-db /meta-secret-build/db/sqlite/build/meta-secret.db ./meta-
 EXPOSE 3000
 CMD ["./meta-server"]
 
-# --- WASM Builder: build wasm package ---
-FROM builder-release AS wasm-builder
+# --- Builder WASM: pre-compile deps for wasm32; pushed as builder-wasm:cache in CI ---
+FROM builder-base AS builder-wasm
 
 RUN rustup target add wasm32-unknown-unknown
+
+# Shared with local wasm/.cargo/config.toml; workspace config ensures chef + cargo agree.
+RUN mkdir -p .cargo && printf '%s\n' \
+    '[target.wasm32-unknown-unknown]' \
+    'rustflags = ["--cfg=getrandom_backend=\"wasm_js\""]' \
+    > .cargo/config.toml
+
+COPY recipe.json .
+RUN cargo chef cook --release --target wasm32-unknown-unknown --recipe-path recipe.json -p meta-secret-wasm
+
+# --- WASM Builder: build wasm package (deps already cached in builder-wasm) ---
+FROM builder-wasm AS wasm-builder
+
+ARG WASM_BINDGEN_VERSION=0.2.125
+RUN curl -LsSf "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/${WASM_BINDGEN_VERSION}/wasm-bindgen-${WASM_BINDGEN_VERSION}-x86_64-unknown-linux-musl.tar.gz" | \
+    tar xz -C /usr/local/bin --strip-components=1 "wasm-bindgen-${WASM_BINDGEN_VERSION}-x86_64-unknown-linux-musl/wasm-bindgen"
 
 WORKDIR /meta-secret-build
 COPY . .
 
-WORKDIR /meta-secret-build/wasm
-RUN wasm-pack build --target web
+# cargo from workspace root reuses chef-cached deps; wasm-pack cd's into wasm/ and rebuilds all deps.
+RUN cargo build --release --target wasm32-unknown-unknown -p meta-secret-wasm \
+    && mkdir -p wasm/pkg \
+    && wasm-bindgen target/wasm32-unknown-unknown/release/meta_secret_wasm.wasm \
+        --out-dir wasm/pkg --target web --out-name meta_secret_wasm \
+    && cp wasm/pkg.package.json wasm/pkg/package.json
 
 # Minimal stage to extract just the wasm pkg
 FROM scratch AS wasm-output
@@ -107,20 +137,24 @@ FROM test-compiler AS test-runner
 RUN RUST_MIN_STACK=8388608 cargo nextest run --profile ci
 
 # --- Web Build: Vue.js + WASM ---
-FROM node:24-bookworm-slim AS web-build
+# web-cli comes from the `webcli` bake context (see docker-bake.hcl), not the Rust context.
+FROM oven/bun:1.2-debian AS web-build
 
 WORKDIR /meta-secret/web-cli/ui
 
-COPY web-cli/ui/package.json .
-RUN npm install && npm install --dev
+COPY --from=webcli ui/package.json ./
+# file:./pkg must exist for bun install; copy only package.json first so Rust/WASM
+# rebuilds do not invalidate the node_modules layer (full pkg copied after install).
+RUN mkdir -p pkg
+COPY --from=wasm-builder /meta-secret-build/wasm/pkg/package.json ./pkg/package.json
+RUN bun install
 
 COPY --from=wasm-builder /meta-secret-build/wasm/pkg ./pkg
+# Refresh file:./pkg link after real wasm artifacts replace the stub directory.
+RUN bun install
 
-WORKDIR /meta-secret/web-cli
-COPY web-cli/ .
-
-WORKDIR /meta-secret/web-cli/ui
-RUN rm -f package-lock.json && npm install && npm run lint:check && npm run build
+COPY --from=webcli ui/ .
+RUN bun run lint:check && bun run build
 
 # Final web image
 FROM web-build AS web
@@ -129,3 +163,16 @@ EXPOSE 5173
 # Minimal stage to extract just the dist output
 FROM scratch AS web-output
 COPY --from=web-build /meta-secret/web-cli/ui/dist/ /
+
+# --- Playwright: smoke test runner (browsers pre-installed in base image) ---
+FROM mcr.microsoft.com/playwright:v${PLAYWRIGHT_VERSION}-noble AS playwright
+
+WORKDIR /app
+
+COPY --from=webcli ui/package.json ./
+RUN npm install --legacy-peer-deps @playwright/test@${PLAYWRIGHT_VERSION}
+
+COPY --from=webcli ui/playwright.config.ts ./
+COPY --from=webcli ui/tests/e2e ./tests/e2e
+
+ENTRYPOINT ["npx", "playwright", "test"]

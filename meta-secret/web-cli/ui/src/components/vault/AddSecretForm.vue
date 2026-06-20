@@ -3,17 +3,21 @@ import { computed, ref, watch } from 'vue';
 import { PlainPassInfo } from 'meta-secret-web-cli';
 import { AppState } from '@/stores/app-state';
 import { vaultSecrets } from '@/locales/en';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Clipboard } from 'lucide-vue-next';
+import { getAppManager } from '@/utils/wasmBridge';
 
 type SecretType = 'password' | 'seed';
 
 const props = defineProps<{ show: boolean }>();
-const emit = defineEmits<{
-  (event: 'added'): void;
-  (event: 'close'): void;
-}>();
+const emit = defineEmits<{ (event: 'added'): void; (event: 'close'): void }>();
 
 const appState = AppState();
-const appManager = appState.appManager as any;
+const appManager = getAppManager();
 
 const secretType = ref<SecretType>('password');
 const wordCount = ref<12 | 24>(12);
@@ -24,7 +28,6 @@ const isSubmitting = ref(false);
 const formError = ref<string | null>(null);
 
 const activeWords = computed(() => seedWords.value.slice(0, wordCount.value));
-const isCompact24 = computed(() => secretType.value === 'seed' && wordCount.value === 24);
 const modalTitle = computed(() =>
   secretType.value === 'seed' ? vaultSecrets.addSeedPhraseTitle : vaultSecrets.addSecretTitle,
 );
@@ -51,15 +54,9 @@ const close = () => {
 watch(
   () => props.show,
   (isOpen) => {
-    if (!isOpen) {
-      resetState();
-    }
+    if (!isOpen) resetState();
   },
 );
-
-const setWordCount = (count: 12 | 24) => {
-  wordCount.value = count;
-};
 
 const setSeedWord = (index: number, value: string) => {
   seedWords.value[index] = value.trim();
@@ -70,54 +67,38 @@ const pasteSeedPhrase = async () => {
     const text = await navigator.clipboard.readText();
     if (!text) return;
     const words = text.trim().split(/\s+/).filter(Boolean);
-    const nextWords = Array.from({ length: 24 }, (_, index) => words[index] || '');
-    seedWords.value = nextWords;
-    if (words.length === 12 || words.length === 24) {
-      wordCount.value = words.length;
-    }
-  } catch (e) {
-    console.error('Failed to read clipboard seed phrase', e);
+    seedWords.value = Array.from({ length: 24 }, (_, i) => words[i] || '');
+    if (words.length === 12 || words.length === 24) wordCount.value = words.length;
+  } catch {
+    /* clipboard denied */
   }
-};
-
-const validate = () => {
-  if (!description.value.trim()) {
-    formError.value = vaultSecrets.addSecretValidationNameRequired;
-    return false;
-  }
-
-  if (secretType.value === 'password') {
-    if (!passwordSecret.value.trim()) {
-      formError.value = vaultSecrets.addSecretValidationPasswordRequired;
-      return false;
-    }
-    return true;
-  }
-
-  const hasEmptyWord = activeWords.value.some((word) => !word.trim());
-  if (hasEmptyWord) {
-    formError.value = vaultSecrets.addSecretValidationSeedRequired;
-    return false;
-  }
-  return true;
 };
 
 const canSubmit = computed(() => {
   if (!description.value.trim()) return false;
   if (secretType.value === 'password') return !!passwordSecret.value.trim();
-  return activeWords.value.every((word) => !!word.trim());
+  return activeWords.value.every((w) => !!w.trim());
 });
 
 const submit = async () => {
   if (isSubmitting.value) return;
   formError.value = null;
-  if (!validate()) return;
+  if (!description.value.trim()) {
+    formError.value = vaultSecrets.addSecretValidationNameRequired;
+    return;
+  }
+  if (secretType.value === 'password' && !passwordSecret.value.trim()) {
+    formError.value = vaultSecrets.addSecretValidationPasswordRequired;
+    return;
+  }
+  if (secretType.value === 'seed' && activeWords.value.some((w) => !w.trim())) {
+    formError.value = vaultSecrets.addSecretValidationSeedRequired;
+    return;
+  }
 
   const passId = description.value.trim();
   const secretPayload =
-    secretType.value === 'password'
-      ? passwordSecret.value.trim()
-      : activeWords.value.map((word) => word.trim()).join(' ');
+    secretType.value === 'password' ? passwordSecret.value.trim() : activeWords.value.map((w) => w.trim()).join(' ');
 
   isSubmitting.value = true;
   try {
@@ -126,8 +107,7 @@ const submit = async () => {
     await appState.updateState();
     resetState();
     emit('added');
-  } catch (e) {
-    console.error('Failed to add secret', e);
+  } catch {
     formError.value = vaultSecrets.addSecretSubmitError;
   } finally {
     isSubmitting.value = false;
@@ -136,66 +116,94 @@ const submit = async () => {
 </script>
 
 <template>
-  <div v-if="show" class="overlay" @click="close">
-    <div class="modal" @click.stop>
-      <div class="header">
-        <h2 class="title">{{ modalTitle }}</h2>
-        <button class="close-btn" @click="close">×</button>
-      </div>
+  <Dialog
+    :open="show"
+    @update:open="
+      (v) => {
+        if (!v) close();
+      }
+    "
+  >
+    <DialogContent class="max-w-2xl">
+      <DialogHeader>
+        <DialogTitle>{{ modalTitle }}</DialogTitle>
+      </DialogHeader>
 
-      <div class="content" :class="{ compact24: isCompact24 }">
-        <div class="description-block">
-          <label class="label">{{ vaultSecrets.addSecretDescriptionLabel }}</label>
-          <input
-            v-model="description"
-            class="text-input"
-            :placeholder="vaultSecrets.addSecretDescriptionPlaceholder"
-            autocomplete="off"
-          />
+      <div class="flex max-h-[60vh] flex-col gap-4 overflow-y-auto pr-1">
+        <!-- Name -->
+        <div class="space-y-1.5">
+          <Label>{{ vaultSecrets.addSecretDescriptionLabel }}</Label>
+          <Input v-model="description" :placeholder="vaultSecrets.addSecretDescriptionPlaceholder" autocomplete="off" />
         </div>
 
-        <label class="label">{{ vaultSecrets.addSecretTypeLabel }}</label>
-        <div class="segmented">
-          <button class="segment-btn" :class="{ active: secretType === 'password' }" @click="secretType = 'password'">
-            🔑 {{ vaultSecrets.addSecretTypePassword }}
-          </button>
-          <button class="segment-btn" :class="{ active: secretType === 'seed' }" @click="secretType = 'seed'">
-            🌱 {{ vaultSecrets.addSecretTypeSeedPhrase }}
-          </button>
+        <!-- Type toggle -->
+        <div class="space-y-1.5">
+          <Label>{{ vaultSecrets.addSecretTypeLabel }}</Label>
+          <div class="grid grid-cols-2 gap-1 rounded-xl border bg-muted p-1">
+            <button
+              class="rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors"
+              :class="secretType === 'password' ? 'bg-background shadow-sm' : 'text-muted-foreground'"
+              @click="secretType = 'password'"
+            >
+              🔑 {{ vaultSecrets.addSecretTypePassword }}
+            </button>
+            <button
+              class="rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors"
+              :class="secretType === 'seed' ? 'bg-background shadow-sm' : 'text-muted-foreground'"
+              @click="secretType = 'seed'"
+            >
+              🌱 {{ vaultSecrets.addSecretTypeSeedPhrase }}
+            </button>
+          </div>
         </div>
 
+        <!-- Password input -->
         <template v-if="secretType === 'password'">
-          <label class="label">{{ vaultSecrets.addSecretValueLabel }}</label>
-          <input
-            v-model="passwordSecret"
-            class="text-input"
-            :placeholder="vaultSecrets.addSecretValuePlaceholder"
-            autocomplete="off"
-          />
+          <div class="space-y-1.5">
+            <Label>{{ vaultSecrets.addSecretValueLabel }}</Label>
+            <Input v-model="passwordSecret" :placeholder="vaultSecrets.addSecretValuePlaceholder" autocomplete="off" />
+          </div>
         </template>
 
+        <!-- Seed phrase -->
         <template v-else>
-          <div class="count-row">
-            <label class="label">{{ vaultSecrets.addSecretWordCountLabel }}</label>
-            <div class="count-buttons">
-              <button class="count-btn" :class="{ active: wordCount === 12 }" @click="setWordCount(12)">12</button>
-              <button class="count-btn" :class="{ active: wordCount === 24 }" @click="setWordCount(24)">24</button>
+          <div class="flex items-center justify-between">
+            <Label>{{ vaultSecrets.addSecretWordCountLabel }}</Label>
+            <div class="flex gap-1 rounded-lg border p-0.5">
+              <button
+                class="rounded-md px-4 py-1 text-sm font-bold transition-colors"
+                :class="wordCount === 12 ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'"
+                @click="wordCount = 12"
+              >
+                12
+              </button>
+              <button
+                class="rounded-md px-4 py-1 text-sm font-bold transition-colors"
+                :class="wordCount === 24 ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'"
+                @click="wordCount = 24"
+              >
+                24
+              </button>
             </div>
           </div>
 
-          <button class="paste-block" @click="pasteSeedPhrase">
-            <span class="paste-icon">📋</span>
+          <Button variant="outline" class="justify-start gap-2" @click="pasteSeedPhrase">
+            <Clipboard class="h-4 w-4" />
             <span>
-              <span class="paste-title">{{ vaultSecrets.addSecretPasteTitle }}</span>
-              <span class="paste-hint">{{ vaultSecrets.addSecretPasteHint }}</span>
+              <span class="block">{{ vaultSecrets.addSecretPasteTitle }}</span>
+              <span class="block text-xs font-normal text-muted-foreground">{{ vaultSecrets.addSecretPasteHint }}</span>
             </span>
-          </button>
+          </Button>
 
-          <div class="seed-grid" :class="{ compact: wordCount === 12, compact24: isCompact24 }">
-            <div v-for="(_, idx) in activeWords" :key="idx" class="seed-cell">
-              <span class="seed-index">{{ idx + 1 }}.</span>
+          <div class="grid grid-cols-3 gap-2">
+            <div
+              v-for="(_, idx) in activeWords"
+              :key="idx"
+              class="flex items-center gap-1.5 rounded-lg border bg-muted/30 px-2 py-1.5"
+            >
+              <span class="min-w-[1.25rem] text-xs font-bold text-muted-foreground">{{ idx + 1 }}.</span>
               <input
-                class="seed-input"
+                class="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground/50"
                 :value="seedWords[idx]"
                 :placeholder="vaultSecrets.addSecretWordPlaceholder"
                 autocomplete="off"
@@ -205,337 +213,15 @@ const submit = async () => {
           </div>
         </template>
 
-        <div v-if="formError" class="error">{{ formError }}</div>
+        <Alert v-if="formError" variant="destructive">
+          <AlertDescription>{{ formError }}</AlertDescription>
+        </Alert>
       </div>
 
-      <div class="actions">
-        <button class="btn-secondary" :disabled="isSubmitting" @click="close">
-          {{ vaultSecrets.addSecretCancel }}
-        </button>
-        <button class="btn-primary" :disabled="isSubmitting || !canSubmit" @click="submit">{{ submitLabel }}</button>
-      </div>
-    </div>
-  </div>
+      <DialogFooter>
+        <Button variant="outline" :disabled="isSubmitting" @click="close">{{ vaultSecrets.addSecretCancel }}</Button>
+        <Button :disabled="isSubmitting || !canSubmit" @click="submit">{{ submitLabel }}</Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
 </template>
-
-<style scoped>
-.overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(8px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 250;
-  padding: 24px;
-}
-
-.modal {
-  width: 100%;
-  max-width: 760px;
-  max-height: 90vh;
-  background: #0d1726;
-  border: 1px solid #1e3050;
-  border-radius: 22px;
-  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.6);
-  padding: 22px 22px;
-  display: flex;
-  flex-direction: column;
-}
-
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.title {
-  margin: 0;
-  color: #ffffff;
-  font-size: 17px;
-  font-weight: 800;
-}
-
-.close-btn {
-  width: 40px;
-  height: 40px;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  background: transparent;
-  color: #4a6080;
-  font-size: 30px;
-  cursor: pointer;
-}
-
-.close-btn:hover {
-  border-color: #1e3050;
-}
-
-.content {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  overflow-y: auto;
-  padding-right: 4px;
-  min-height: 0;
-}
-
-.content.compact24 {
-  gap: 10px;
-}
-
-.content::-webkit-scrollbar {
-  width: 8px;
-}
-
-.content::-webkit-scrollbar-thumb {
-  background: #1e3050;
-  border-radius: 6px;
-}
-
-.label {
-  color: #4a6080;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.description-block {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.text-input {
-  width: 100%;
-  height: 48px;
-  background: #111e30;
-  border: 1px solid #1e3050;
-  border-radius: 12px;
-  padding: 0 14px;
-  color: #ffffff;
-  font-size: 15px;
-  outline: none;
-}
-
-.text-input::placeholder {
-  color: #3a5070;
-}
-
-.segmented {
-  background: #080f1c;
-  border-radius: 12px;
-  padding: 4px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-}
-
-.segment-btn {
-  height: 48px;
-  border: none;
-  border-radius: 10px;
-  background: transparent;
-  color: #4a6080;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.segment-btn.active {
-  background: #2563eb;
-  color: #ffffff;
-}
-
-.count-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.count-buttons {
-  display: flex;
-  gap: 8px;
-}
-
-.count-btn {
-  width: 58px;
-  height: 40px;
-  border-radius: 11px;
-  border: 1px solid #1e3050;
-  background: #111e30;
-  color: #4a6080;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.count-btn.active {
-  background: #2563eb;
-  border-color: #2563eb;
-  color: #ffffff;
-}
-
-.paste-block {
-  width: 100%;
-  border: 1px solid #1a2840;
-  border-radius: 12px;
-  background: #080f1c;
-  padding: 10px 12px;
-  color: inherit;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-  text-align: left;
-}
-
-.paste-icon {
-  font-size: 16px;
-}
-
-.paste-title {
-  display: block;
-  color: #8aaacf;
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.paste-hint {
-  display: block;
-  margin-top: 2px;
-  color: #3a5070;
-  font-size: 12px;
-}
-
-.seed-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.seed-grid.compact {
-  margin-bottom: 8px;
-}
-
-.seed-cell {
-  height: 40px;
-  border: 1px solid #1a2840;
-  border-radius: 10px;
-  background: #111e30;
-  display: flex;
-  align-items: center;
-  padding: 0 8px;
-  gap: 8px;
-}
-
-.seed-grid.compact24 {
-  gap: 8px;
-}
-
-.seed-grid.compact24 .seed-cell {
-  height: 38px;
-  padding: 0 8px;
-}
-
-.seed-grid.compact24 .seed-index {
-  font-size: 12px;
-}
-
-.seed-grid.compact24 .seed-input {
-  font-size: 13px;
-}
-
-.seed-index {
-  color: #3a5070;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.seed-input {
-  width: 100%;
-  border: none;
-  background: transparent;
-  outline: none;
-  color: #ffffff;
-  font-size: 14px;
-}
-
-.seed-input::placeholder {
-  color: #3a5070;
-}
-
-.error {
-  margin-top: 4px;
-  color: #fca5a5;
-  background: #3a1820;
-  border: 1px solid #a3213d;
-  border-radius: 10px;
-  padding: 10px 12px;
-  font-size: 14px;
-}
-
-.actions {
-  margin-top: 12px;
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  flex-shrink: 0;
-}
-
-.btn-secondary,
-.btn-primary {
-  min-width: 156px;
-  height: 48px;
-  border-radius: 12px;
-  border: none;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.btn-secondary {
-  background: #111e30;
-  border: 1px solid #1e3050;
-  color: #8aaacf;
-}
-
-.btn-primary {
-  background: #2563eb;
-  color: #ffffff;
-}
-
-.btn-secondary:disabled,
-.btn-primary:disabled {
-  opacity: 0.7;
-  cursor: wait;
-}
-
-@media (max-width: 1100px) {
-  .title {
-    font-size: 17px;
-  }
-
-  .label,
-  .text-input,
-  .paste-title,
-  .seed-input,
-  .segment-btn {
-    font-size: 16px;
-  }
-
-  .count-btn {
-    font-size: 18px;
-    width: 68px;
-    height: 44px;
-  }
-
-  .btn-secondary,
-  .btn-primary {
-    height: 52px;
-    min-width: 156px;
-    font-size: 14px;
-  }
-}
-</style>

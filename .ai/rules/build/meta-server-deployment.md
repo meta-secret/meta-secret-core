@@ -1,49 +1,30 @@
-## Deployment Automation
+# Meta-server deployment (Taskfile)
 
-### This is a deployment automation guide
-Let's go through and deploy meta-secret server on kubernetes
+All commands from **repository root**. See [`.ai/skills/build-via-task/SKILL.md`](../../skills/build-via-task/SKILL.md).
 
-#### Docker Image
-Before anything else, we need to rebuild the docker image for the meta-secret server.
+## Build and push meta-server image
+
 ```bash
-docker buildx bake --push meta-server-image
+task meta-server   # local load
+task push          # build + push default images (includes meta-server)
 ```
 
-#### Cluster Deployment
-- Create a new cluster:
-```bash
-docker buildx bake taskomatic && docker run --rm \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v $HOME/.kube:/root/.kube \
-  -v $HOME/.config/k3d:/root/.config/k3d \
-  --workdir /taskomatic \
-  localhost/taskomatic:latest k3d:delete_cluster
+For meta-server image only via bake target `meta-server-image`, add a dedicated task if needed — do not run `docker buildx bake` directly.
 
-docker buildx bake taskomatic && docker run --rm \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v $HOME/.kube:/root/.kube \
-  -v $HOME/.config/k3d:/root/.config/k3d \
-  --workdir /taskomatic \
-  localhost/taskomatic:latest k3d:create_cluster
+## Taskomatic (k3d/k8s)
+
+```bash
+task taskomatic-run
 ```
 
-- Deploy meta-secret server:
+Or manually after `task taskomatic`:
+
 ```bash
 docker run --rm \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v $HOME/.kube:/root/.kube \
   -v $HOME/.config/k3d:/root/.config/k3d \
+  --name taskomatic \
   --workdir /taskomatic \
-  localhost/taskomatic:latest k8s:deploy_meta_server
-sleep 1
-```
-
-- Verify the deployment:
-```bash
-kubectl get pods
-```
-
-- Verify meta-secret-server pod status:
-```bash
-kubectl describe pod meta-secret-server-0
+  localhost/taskomatic:latest
 ```
