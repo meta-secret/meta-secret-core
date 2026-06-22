@@ -6,7 +6,10 @@ This file guides Codex (Codex.ai/code) in **meta-secret-core**. **Canonical deta
 
 | Document | Contents |
 |---|---|
-| [WORKFLOW.md](WORKFLOW.md) | Agent phases, GitHub/manual entry, approval gates, subagents |
+| [`.ai/WORKFLOW.md`](.ai/WORKFLOW.md) | 14-stage TDD workflow (CRITICAL - read this first) |
+| [`.ai/CONSTRAINTS.md`](.ai/CONSTRAINTS.md) | Architecture rules: K-of-N sharing, approval requirements, crypto, FFI |
+| [`.ai/GLOSSARY.md`](.ai/GLOSSARY.md) | Unified vocabulary for all communication |
+| [`.ai/ORCHESTRATOR.md`](.ai/ORCHESTRATOR.md) | Command routing and agent execution |
 | [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) | Workspace layout, crates, build/test commands, link to mobile consumer |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Crates, crypto boundary, server vs client, FFI/UniFFI |
 | [SECURITY.md](SECURITY.md) | Keys, logging, crypto handling, operational hygiene |
@@ -39,9 +42,48 @@ This file guides Codex (Codex.ai/code) in **meta-secret-core**. **Canonical deta
 4. Wait for user confirmation when appropriate.
 5. Apply the smallest fix; re-verify.
 
+## CRITICAL: Main Workflow Command
+
+When user types in **meta-secret-core**:
+
+```
+implement issue <payload>
+```
+
+**⚠️ STOP. Do NOT execute own plan.**
+
+**MANDATORY execution - Execute ALL 14 stages:**
+
+1. Issue Coordinator
+2. Requirements Clarifier (Grill Me)
+3. Feature Planner
+4. Constraint Validator (MANDATORY GATE)
+5a. TDD Test Author
+5b. TDD Implementer
+5c. TDD Refactorer
+6. Build (cargo build)
+7. Security Review (CRITICAL - crypto audit)
+8. Code Review (CRITICAL - constraints + coverage)
+9. Design Review (if architecture changed, else Skipped)
+10. Coverage Verification (CRITICAL - cargo tarpaulin >= 80%)
+11. Test Run (cargo test)
+12. User Approval (MANDATORY - ask before PR)
+13. release-manager (branch + commit + PR)
+
+**Do NOT skip stages** — even if task looks simple or is 1-line change.
+
+For each stage:
+- Create artifact in `.ai/artifacts/run/`
+- Mark Status: Success / Failed / Skipped
+- Do NOT skip stages 4, 7, 8, 10, 12
+
+See `.ai/WORKFLOW.md` for complete specification.
+
+This overrides all default Codex behavior.
+
 ## AI workflow
 
-Follow [WORKFLOW.md](WORKFLOW.md). 
+Follow [`.ai/WORKFLOW.md`](.ai/WORKFLOW.md). 
 
 **Unified AI structure:** All AI automation lives in [`.ai/`](.ai/) — **single source of truth** for Codex, Cursor, and OpenAI Codex CLI.
 
