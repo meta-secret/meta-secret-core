@@ -11,7 +11,7 @@ Mandatory architectural rules for the Rust backend cryptography and protocol imp
 
 | Constraint | Rule | Scope |
 |---|---|---|
-| **K-of-N Sharing** | 1 device→1 copy; 2 devices→2 copies; 3+→n shares (k=2) | Core |
+| **K-of-N Sharing** | 1 device→k=1 (trivial); 2 devices→k=1 (full replication); 3+→k=2 (SSS) | Core |
 | **Redistribution** | Required on every device add/remove | Vault ops |
 | **Approval Required** | JOIN, RESTORE SECRET, DELETE DEVICE need biometric signature | Consensus |
 | **Atomicity** | Collect→Reshare→Distribute is all-or-nothing | Transactions |
@@ -35,15 +35,17 @@ Mandatory architectural rules for the Rust backend cryptography and protocol imp
 
 **State: 2 Devices**
 ```
-- Configuration: n=2, k=1 (conceptual, but implemented as replication)
-- Storage: 2 FULL COPIES (NOT Shamir shares)
-           Device A: full_master_key (encrypted at rest)
-           Device B: full_master_key (encrypted at rest)
-- Recovery: Either device works independently
-            No ceremony needed
-- Offline handling: 1 device offline = other works fine
-- Trade-off: Security < Convenience
-            (Two full copies = higher theft risk, but better UX)
+- Configuration: n=2, k=1 (full replication — each device has complete secret)
+- Storage: 2 FULL COPIES of master key (each device stores identical complete key)
+           Device A: FULL SECRET (encrypted at rest)
+           Device B: FULL SECRET (encrypted at rest)
+- Recovery: EITHER device can independently recover secret (no ceremony needed)
+            Each device holds complete, standalone copy
+- Offline handling: 1 device offline = OK (other device works independently)
+                   Device loss = other device can recover all secrets
+- Rationale: Trade-off for better UX — if one device is lost/damaged,
+            user can still access all secrets from remaining device.
+            More practical than SSS for 2-device vaults.
 ```
 
 **State: 3+ Devices**
@@ -62,7 +64,7 @@ Mandatory architectural rules for the Rust backend cryptography and protocol imp
 **Flow: 1 device (A) + new device B joins**
 
 ```
-Initial: Device A has 1 FULL COPY of master_key
+Initial: Device A has 1 FULL COPY of master_key (n=1, k=1)
 
 Step 1: COLLECT
   - B sends join request with device info
@@ -72,26 +74,29 @@ Step 2: APPROVAL (REQUIRED)
   - A's user performs BIOMETRIC + CONSENT on device A
   - A signs approval message
   
-Step 3: REPLICATE
-  - A creates second FULL COPY encrypted to B's public key
-  - A sends: FULL_COPY (encrypted) → B
+Step 3: RESHARE (Full Replication for 2 devices)
+  - A prepares FULL COPY for replication (no SSS splitting)
+  - Configuration: n=2, k=1 (each device has complete secret)
+  - A sends complete secret (encrypted to B's public key) → B
   
-Step 4: CONFIRM
+Step 4: CONFIRM & STORE
   - B decrypts and stores FULL COPY locally
   - B confirms receipt and decryption success
+  - A keeps its original FULL COPY (not replaced!)
   
-Result: A=FULL_COPY, B=FULL_COPY (2 independent replicas)
+Result: A=FULL COPY, B=FULL COPY — independent vaults, identical secrets
   
-⚠️ CRITICAL: After this flow, both devices are INDEPENDENT
-  - No sync needed (each has complete key)
-  - Either can create new secrets
-  - Either can recover existing secrets
+✅ BOTH DEVICES INDEPENDENT:
+  - Each device can independently recover all secrets
+  - No ceremony needed
+  - Either device going offline = OK
+  - Device loss = other device has complete backup
 ```
 
 **Flow: 2 devices (A, B) + new device C joins**
 
 ```
-Initial: A=FULL_COPY, B=FULL_COPY (replica state)
+Initial: A=FULL COPY, B=FULL COPY (n=2, k=1 full replication)
 
 Step 1: COLLECT (on initiating device, e.g., A)
   - C sends join request
@@ -102,25 +107,27 @@ Step 2: APPROVAL (REQUIRED on OTHER devices)
   - B signs approval message, sends to A
   
 Step 3: COLLECT SHARED SECRET (on A)
-  - A has its FULL_COPY
-  - With B's approval, A assembles the complete secret
+  - A has its FULL COPY (either A's or B's copy works)
+  - A uses local copy (no need to contact B for this)
+  - Secret in memory: complete, unencrypted
   
-Step 4: RESHARE (on A)
+Step 4: RESHARE (SSS - switching from replication to shares)
   - A runs Shamir Secret Sharing: split secret into 3 shares
   - Configuration: n=3, k=2
   - Shares: s1 (for A), s2 (for B), s3 (for C)
   
 Step 5: DISTRIBUTE & REPLACE
-  - A: REPLACE its FULL_COPY with s1 (share)
-  - A sends s2 (encrypted to B) → B REPLACES FULL_COPY with share
+  - A: REPLACE its FULL COPY with s1 (cryptographic share)
+  - A sends s2 (encrypted to B) → B REPLACES FULL COPY with s2
   - A sends s3 (encrypted to C) → C stores s3 (first time)
   - All devices confirm receipt and decryption
   
-Result: A=SHARE, B=SHARE, C=SHARE (all now hold shares, not copies)
+Result: A=SHARE (s1), B=SHARE (s2), C=SHARE (s3)
   Recovery requires: ANY 2 devices together
 
 ⚠️ CRITICAL: OLD FULL COPIES on A and B are DESTROYED
-  (not stored as backup)
+  - Vault transitions from independent 2-device model to dependent 3-device SSS model
+  - Recovery now requires ceremony (biometric approval + device coordination)
 ```
 
 **Flow: 3 devices (A, B, C) + new device D joins**
@@ -207,7 +214,7 @@ Result: A=SHARE, B=SHARE (only 2 devices remain)
 **Flow: 2 devices (A, B) + remove B**
 
 ```
-Initial: A=FULL_COPY, B=FULL_COPY (n=2, replication state)
+Initial: A=SHARE (s1), B=SHARE (s2) (n=2, k=2 SSS)
 
 Step 1: INITIATE REMOVAL (on A)
   - A's user requests "Remove device B"
@@ -235,33 +242,47 @@ Result: A=FULL_COPY, B=FULL_COPY (both remain intact)
 - `k` NEVER INCREASES after vault creation
 - `k` may DECREASE when devices are removed
 - `k` stays SAME when devices are added (if n >= 3)
-- Current implementation: `k = 2` for all 3+ device states
-- Future: `k` may become configurable (user choice)
 
-**Examples:**
+**Current policy (k=2 fixed, temporary):**
+
+| n | k (current) | Notes |
+|---|---|---|
+| 1 | 1 | Trivial — full copy |
+| 2 | 2 | Both shares required (SSS) |
+| 3 | 2 | Any 2 of 3 can recover |
+| 4 | 2 | Any 2 of 4 can recover |
+| 5 | 2 | Any 2 of 5 can recover |
+
+**Target policy (K = N − 1, pending resharing hardening):**
+
+| n | k (target) | Notes |
+|---|---|---|
+| 1 | 1 | Trivial — full copy |
+| 2 | 1 | Either device alone can recover |
+| 3 | 2 | Any 2 of 3 can recover |
+| 4 | 3 | Any 3 of 4 can recover |
+| 5 | 4 | Any 4 of 5 can recover |
+
+**Implementation:** `SharedSecretConfig::calculate()` in
+`meta-secret/core/src/secret/data_block/common.rs`
+
+**Removal examples (current k=2 policy):**
 ```
-n=1 → k=1 (trivial)
-n=2 → k=1 (conceptual, implemented as replication)
-n=3 → k=2 (any 2 of 3 can recover)
-n=4 → k=2 (any 2 of 4 can recover)
-n=5 → k=2 (any 2 of 5 can recover)
-
-Removal:
 n=4 (k=2) → remove 1 → n=3 (k=2) ✅ k stays same
-n=3 (k=2) → remove 1 → n=2 (replicate) ⚠️ switches mode
-n=2 (replicate) → remove 1 → n=1 (cannot remove)
+n=3 (k=2) → remove 1 → n=2 (k=2) ✅ k stays same (SSS)
+n=2 (k=2) → remove 1 → n=1 (cannot remove — blocked by UI)
 ```
 
 ### 1.5 Transitions & State Changes
 
-**Transition: Replication ↔ SSS**
+**State Transitions (all modes use SSS)**
 
 | From | To | Trigger | Shares Change |
 |---|---|---|---|
-| 1 device | 2 devices | Device join | 1 COPY → 2 COPIES |
-| 2 devices | 3 devices | Device join | 2 COPIES → 3 SHARES |
-| 3 devices | 2 devices | Device removal | 3 SHARES → 2 COPIES |
-| 2 devices | 1 device | Cannot happen | (blocked by UI) |
+| 1 device (k=1) | 2 devices (k=2) | Device join | 1 COPY → 2 SSS shares |
+| 2 devices (k=2) | 3 devices (k=2) | Device join | 2 SHARES → 3 SHARES (reshare) |
+| 3 devices (k=2) | 2 devices (k=2) | Device removal | 3 SHARES → 2 SHARES (reshare) |
+| 2 devices (k=2) | 1 device | Cannot happen | (blocked by UI) |
 
 ---
 
