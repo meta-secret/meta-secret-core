@@ -68,3 +68,26 @@ IDE entry files in `.Codex/`, `.cursor/`, and `.codex/` bootstrap orchestration 
 | **OpenAI Codex CLI** | Workflow bootstrap | Via `.codex/INDEX.md` + `.codex/ORCHESTRATE.md` |
 
 Rules under [`.ai/rules/`](.ai/rules/) remain the canonical source for policy and stage behavior.
+
+## Cursor Cloud specific instructions
+
+Durable, non-obvious notes for working in the Cursor Cloud VM. Tooling already provisioned in the VM snapshot (no need to reinstall): Rust `1.96.0` (pinned by `rust-toolchain.toml`), the `wasm32-unknown-unknown` target, `wasm-pack`, `bun` (at `~/.bun/bin`), and the `diesel` CLI. `task`/Docker are **not** installed — the `task` targets wrap `docker buildx` for CI parity and do not run here, so iterate locally with `cargo`/`bun` instead.
+
+### Rust workspace (root is `meta-secret/`, not the repo root)
+- **Always pass `--target x86_64-unknown-linux-gnu`** to `cargo build/test/clippy`. `.cargo/config.toml` sets `rustflags = ["-C", "target-feature=+crt-static"]` globally; with no explicit `--target`, cargo applies it to host proc-macros and the build fails with `cannot produce proc-macro ... the target ... does not support these crate types`. An explicit `--target` scopes the rustflags to the target only (this is what the Dockerfile does).
+- Build: `cargo build --target x86_64-unknown-linux-gnu` (run from `meta-secret/`).
+- Test: `cargo test --target x86_64-unknown-linux-gnu`.
+- Lint: `cargo clippy --target x86_64-unknown-linux-gnu` (warnings only on a clean tree).
+
+### meta-server (HTTP sync server, port 3000)
+- The binary requires a **migrated** SQLite DB named `meta-secret.db` in its working directory; `web-server/src/main.rs` does **not** run migrations. Without it the HTTP listener starts but the background sync task panics: `no such table: db_commit_log`.
+- Create the DB once (mirrors `meta-secret/Dockerfile`): from `meta-secret/db/sqlite`, run `DATABASE_URL=<run-dir>/meta-secret.db diesel migration run`.
+- Run: `cargo run -p meta-server --target x86_64-unknown-linux-gnu` from the run dir (auto-creates `master_key.json` + device credentials in `db_commit_log`). Endpoints: `GET /hi`, `POST /meta_request`.
+
+### CLI split/recover (offline core functionality)
+- `meta-secret-cli` reads `config.yaml` (`number_of_shares` / `threshold`) from CWD and writes/reads shares under `secrets/`. `split --secret <s>` creates `secrets/shared-secret-{n}.json` + `.png`; `restore --from json|qr` recovers from any `threshold` shares.
+
+### Web UI (`meta-secret/web-cli/ui`, Vite dev on :5173)
+- Consumes the WASM core via the `file:./pkg` dependency, so build the WASM pkg **before** `bun install`: `cd meta-secret/wasm && wasm-pack build --target web`, then copy per `wasm/Makefile` `local_build` (`cp -r pkg ../web-cli/ui/ && cp pkg.package.json ../web-cli/ui/pkg/package.json`). `pkg/` and `node_modules/` are gitignored and persist in the snapshot.
+- Install/run: `bun install`, then `bun run dev --host`. Lint: `bun run lint:check` (eslint). Note: a newer `bun` rewrites `bun.lock` (adds `configVersion`) — don't commit that incidental change.
+- The app gates the whole UI behind a WebAuthn passkey modal (`PasskeyAuth.vue`, shown whenever not authenticated). In headless/cloud Chrome (no biometrics), enable a DevTools **WebAuthn virtual authenticator** first (Cmd Menu → "Show WebAuthn" → enable virtual authenticator env; ctap2 / internal / resident keys + user verification), then click "Create Passkey". The `/tools/split` and `/tools/recover` pages run fully offline via WASM (split renders QR-code shares; recover uploads QR images).
