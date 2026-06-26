@@ -111,7 +111,7 @@ impl SaveCommand for WasmRepo {
         let store = tx.store(store_name).unwrap();
 
         let js_value = serde_wasm_bindgen::to_value(&generic_event).unwrap();
-        let id_str = key.id_str();
+        let id_str = key.clone().id_str();
         let obj_id_js = serde_wasm_bindgen::to_value(id_str.as_str()).unwrap();
 
         let op_result = store.add(&js_value, Some(&obj_id_js)).await;
