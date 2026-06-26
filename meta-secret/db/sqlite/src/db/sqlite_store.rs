@@ -42,13 +42,18 @@ impl KvLogEventRepo for SqlIteRepo {}
 #[async_trait(? Send)]
 impl SaveCommand for SqlIteRepo {
     async fn save<T: ToGenericEvent>(&self, value: T) -> anyhow::Result<ArtifactId> {
-        let mut conn = establish_connection(self.conn_url.as_str())?;
-
         let generic_value = value.to_generic();
+        let key = generic_value.obj_id();
+
+        if self.find_one(key.clone()).await?.is_some() {
+            return Ok(key);
+        }
+
+        let mut conn = establish_connection(self.conn_url.as_str())?;
         diesel::insert_into(schema_log::table)
             .values(&NewDbLogEvent::from(&generic_value))
             .execute(&mut conn)?;
-        Ok(generic_value.obj_id())
+        Ok(key)
     }
 }
 

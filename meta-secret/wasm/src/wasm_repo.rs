@@ -95,12 +95,10 @@ impl SaveCommand for WasmRepo {
     #[instrument(skip_all)]
     async fn save<T: ToGenericEvent>(&self, event: T) -> Result<ArtifactId> {
         let generic_event = event.to_generic();
-        let maybe_key = self.get_key(generic_event.obj_id()).await?;
-        if maybe_key.is_some() {
-            bail!(
-                "Wrong behaviour. Event already exists: {:?}",
-                &generic_event
-            );
+        let key = generic_event.obj_id();
+
+        if self.find_one(key.clone()).await?.is_some() {
+            return Ok(key);
         };
 
         let store_name = self.store_name.as_str();
@@ -113,7 +111,7 @@ impl SaveCommand for WasmRepo {
         let store = tx.store(store_name).unwrap();
 
         let js_value = serde_wasm_bindgen::to_value(&generic_event).unwrap();
-        let id_str = generic_event.obj_id().id_str();
+        let id_str = key.id_str();
         let obj_id_js = serde_wasm_bindgen::to_value(id_str.as_str()).unwrap();
 
         let op_result = store.add(&js_value, Some(&obj_id_js)).await;
@@ -126,7 +124,7 @@ impl SaveCommand for WasmRepo {
         // Waits for the transaction to complete
         tx.done().await.unwrap();
 
-        Ok(generic_event.obj_id())
+        Ok(key)
     }
 }
 

@@ -65,6 +65,10 @@ impl SaveCommand for ReDbRepo {
         let generic_value = value.to_generic();
         let key = generic_value.obj_id();
 
+        if self.find_one(key.clone()).await?.is_some() {
+            return Ok(key);
+        }
+
         let serialized = serde_json::to_vec(&generic_value)?;
 
         let write_txn = self.db.begin_write()?;
