@@ -54,7 +54,7 @@ FROM builder-release AS prepare-db
 
 ARG DIESEL_VERSION=2.3.9
 RUN curl -LsSf "https://github.com/diesel-rs/diesel/releases/download/v${DIESEL_VERSION}/diesel_cli-x86_64-unknown-linux-gnu.tar.xz" | \
-    tar xJ -C /usr/local/bin diesel
+    tar xJ -C /usr/local/bin
 
 WORKDIR /meta-secret-build
 RUN mkdir -p db
