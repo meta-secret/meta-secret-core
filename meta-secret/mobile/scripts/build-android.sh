@@ -77,6 +77,9 @@ export CC_x86_64_linux_android="$CLANG_X86_64"
 export CARGO_BUILD_RUSTFLAGS="-C target-feature=+crt-static"
 
 ROOT_DIR="$(cd .. && pwd)"
+COMPOSE_ROOT="${ROOT_DIR}/../../meta-secret-compose"
+UNIFFI_CRATE_DIR="${ROOT_DIR}/uniffi"
+ANDROID_BINDINGS_DIR="${COMPOSE_ROOT}/composeApp/src/androidMain/kotlin/com/metasecret/core/uniffi"
 
 echo "🤖 Compiling for Android arm64-v8a (aarch64)..."
 cargo build --package mobile-uniffi --target aarch64-linux-android --release
@@ -87,8 +90,16 @@ cargo build --package mobile-uniffi --target armv7-linux-androideabi --release
 echo "🤖 Compiling for Android x86_64..."
 cargo build --package mobile-uniffi --target x86_64-linux-android --release
 
+# Generate Kotlin UniFFI bindings for the Android consumer.
+mkdir -p "$ANDROID_BINDINGS_DIR"
+cargo run -p uniffi-bindgen-runner --bin uniffi-bindgen -- \
+  generate "$UNIFFI_CRATE_DIR/src/mobile_uniffi.udl" \
+  --language kotlin \
+  --no-format \
+  --out-dir "$ANDROID_BINDINGS_DIR"
+
 # Convert .a to .so and copy to compose project
-COMPOSE_JNILIBS="${ROOT_DIR}/../../meta-secret-compose/composeApp/src/androidMain/jniLibs"
+COMPOSE_JNILIBS="${COMPOSE_ROOT}/composeApp/src/androidMain/jniLibs"
 
 build_so() {
     local triple="$1"
@@ -120,3 +131,4 @@ echo "✅ Android libraries ready:"
 echo "   📦 arm64-v8a:   ${COMPOSE_JNILIBS}/arm64-v8a/libmetasecret_mobile.so"
 echo "   📦 armeabi-v7a: ${COMPOSE_JNILIBS}/armeabi-v7a/libmetasecret_mobile.so"
 echo "   📦 x86_64:      ${COMPOSE_JNILIBS}/x86_64/libmetasecret_mobile.so"
+echo "   🔗 UniFFI:      ${ANDROID_BINDINGS_DIR}/uniffi/mobile_uniffi/mobile_uniffi.kt"
