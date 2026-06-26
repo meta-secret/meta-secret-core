@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 ROOT_DIR="$(cd .. && pwd)"
 OUT_DIR="${ROOT_DIR}/target/ios"
 COMPOSE_ROOT="${ROOT_DIR}/../../meta-secret-compose"
-UNIFFI_CRATE_DIR="${ROOT_DIR}/uniffi"
+UNIFFI_CRATE_DIR="${ROOT_DIR}/mobile/uniffi"
 IOS_BINDINGS_DIR="${COMPOSE_ROOT}/iosApp/iosApp/UniffiGenerated"
 mkdir -p "${OUT_DIR}"
 

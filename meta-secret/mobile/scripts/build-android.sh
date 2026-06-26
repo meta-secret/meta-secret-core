@@ -78,7 +78,7 @@ export CARGO_BUILD_RUSTFLAGS="-C target-feature=+crt-static"
 
 ROOT_DIR="$(cd .. && pwd)"
 COMPOSE_ROOT="${ROOT_DIR}/../../meta-secret-compose"
-UNIFFI_CRATE_DIR="${ROOT_DIR}/uniffi"
+UNIFFI_CRATE_DIR="${ROOT_DIR}/mobile/uniffi"
 ANDROID_BINDINGS_DIR="${COMPOSE_ROOT}/composeApp/src/androidMain/kotlin/com/metasecret/core/uniffi"
 
 echo "🤖 Compiling for Android arm64-v8a (aarch64)..."
