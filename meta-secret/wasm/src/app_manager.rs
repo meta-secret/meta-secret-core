@@ -17,13 +17,18 @@ use meta_secret_core::node::common::meta_tracing::client_span;
 use meta_secret_core::node::common::model::device::common::{DeviceName, DeviceType};
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::ClaimId;
+use meta_secret_core::node::common::model::secret::SsDistributionId;
 use meta_secret_core::node::common::model::user::common::UserData;
+use meta_secret_core::node::common::model::user::user_creds::UserCreds;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
+use meta_secret_core::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
 use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
 use meta_secret_core::node::db::events::vault::vault_log_event::JoinClusterEvent;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use meta_secret_core::secret::shared_secret::PlainText;
+use meta_secret_core::secret::shared_secret::UserShareDto;
+use meta_secret_core::recover_from_shares;
 
 pub struct ApplicationManager<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub meta_client_service: Arc<MetaClientService<Repo, Sync>>,
@@ -153,7 +158,13 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
                 VaultFullInfo::Outsider(_) => {
                     bail!("Show recovered is not allowed in outsider state");
                 }
-                VaultFullInfo::Member(_) => {
+                VaultFullInfo::Member(member) => {
+                    let vault_members_count = member.member.vault.members().len();
+
+                    if vault_members_count <= 2 {
+                        return self.show_local_secret(user_creds, pass_id).await;
+                    }
+
                     let claim_id = self.find_claim_by_pass_id(&pass_id).await;
                     match claim_id {
                         None => bail!("Claim id not found"),
@@ -170,6 +181,31 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
                 }
             },
         }
+    }
+
+    async fn show_local_secret(
+        &self,
+        user_creds: UserCreds,
+        pass_id: MetaPasswordId,
+    ) -> Result<PlainText> {
+        let desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
+            pass_id: pass_id.clone(),
+            receiver: user_creds.device_id().clone(),
+        });
+
+        let dist = self
+            .sync_gateway
+            .p_obj
+            .find_tail_event(desc)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Distribution not found for single device"))?
+            .to_distribution_data()?;
+
+        let transport_sk = &user_creds.device_creds.secret_box.transport.sk;
+        let decrypted = dist.secret_message.cipher_text().decrypt(transport_sk)?;
+        let share = UserShareDto::try_from(&decrypted.msg)?;
+
+        Ok(recover_from_shares(vec![share])?)
     }
 
     pub async fn clean_up_database(&self) {
