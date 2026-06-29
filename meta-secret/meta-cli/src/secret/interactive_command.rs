@@ -3,19 +3,19 @@ use crate::cli_format::CliOutputFormat;
 use crate::secret::accept_all_recovery_requests_command::AcceptAllRecoveryRequestsCommand;
 use crate::secret::accept_recovery_request_command::AcceptRecoveryRequestCommand;
 use crate::secret::recovery_request_command::RecoveryRequestCommand;
-use crate::secret::show_secret_command::ShowSecretCommand;
+use crate::secret::show_local_secret_command::ShowLocalSecretCommand;
 use crate::secret::split_command::SplitCommand;
 use anyhow::Result;
+use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
 use dialoguer::{theme::ColorfulTheme, Input, Password, Select};
 use meta_secret_core::node::common::model::meta_pass::PlainPassInfo;
-use strum::IntoEnumIterator;
-use strum_macros::{Display, EnumIter};
+use strum_macros::Display;
 
-#[derive(Debug, Clone, Copy, Display, EnumIter)]
+#[derive(Debug, Clone, Copy, Display)]
 pub enum SecretOption {
     #[strum(to_string = "Split Secret")]
     SplitSecret,
-    #[strum(to_string = "Request Recovery")]
+    #[strum(to_string = "Recover Secret")]
     RequestRecovery,
     #[strum(to_string = "Show Secret")]
     ShowSecret,
@@ -30,8 +30,17 @@ pub enum SecretOption {
 pub struct SecretOptionSelector;
 
 impl SecretOptionSelector {
-    pub fn select() -> Result<SecretOption> {
-        let options: Vec<SecretOption> = SecretOption::iter().collect();
+    pub fn select(show_secret: bool) -> Result<SecretOption> {
+        let mut options = vec![SecretOption::SplitSecret];
+        if show_secret {
+            options.push(SecretOption::ShowSecret);
+        } else {
+            options.push(SecretOption::RequestRecovery);
+        }
+        options.push(SecretOption::AcceptRecoveryRequest);
+        options.push(SecretOption::AcceptAllRecoveryRequests);
+        options.push(SecretOption::Back);
+
         let items: Vec<String> = options.iter().map(|o| o.to_string()).collect();
 
         let selection = Select::with_theme(&ColorfulTheme::default())
@@ -56,7 +65,8 @@ impl SecretInteractiveCommand {
     }
 
     pub async fn execute(&self) -> Result<()> {
-        let option = SecretOptionSelector::select()?;
+        let show_secret = self.should_show_local_secret().await?;
+        let option = SecretOptionSelector::select(show_secret)?;
 
         match option {
             SecretOption::SplitSecret => {
@@ -75,7 +85,7 @@ impl SecretInteractiveCommand {
                 split_cmd.execute(plain_pass).await?
             }
             SecretOption::RequestRecovery => {
-                // Request Recovery
+                // Recover Secret
                 let pass_name = Input::<String>::new()
                     .with_prompt("Enter password name to recover")
                     .interact()?;
@@ -85,13 +95,15 @@ impl SecretInteractiveCommand {
             }
             SecretOption::ShowSecret => {
                 // Show Secret
-                let claim_id = Input::<String>::new()
-                    .with_prompt("Enter claim ID")
+                let pass_name = Input::<String>::new()
+                    .with_prompt("Enter password name to show")
                     .interact()?;
 
-                let show_command =
-                    ShowSecretCommand::new(self.base.db_name.clone(), CliOutputFormat::default());
-                show_command.execute(claim_id).await?
+                let show_command = ShowLocalSecretCommand::new(
+                    self.base.db_name.clone(),
+                    CliOutputFormat::default(),
+                );
+                show_command.execute(pass_name).await?
             }
             SecretOption::AcceptRecoveryRequest => {
                 // Accept Recovery Request
@@ -117,6 +129,20 @@ impl SecretInteractiveCommand {
 
         Ok(())
     }
+
+    async fn should_show_local_secret(&self) -> Result<bool> {
+        let db_context = self.base.open_existing_db().await?;
+        self.base.ensure_user_creds(&db_context).await?;
+
+        let client = self.base.create_client_service(&db_context).await?;
+        let app_state = client.get_app_state().await?;
+
+        let ApplicationState::Vault(VaultFullInfo::Member(member_info)) = app_state else {
+            return Ok(false);
+        };
+
+        Ok(member_info.member.vault.members().len() <= 2)
+    }
 }
 
 #[cfg(test)]
@@ -125,30 +151,29 @@ mod tests {
 
     #[test]
     fn test_secret_option_order_matches_selection_indices() {
-        // Collect all SecretOption variants in order
-        let options: Vec<SecretOption> = SecretOption::iter().collect();
+        // Collect all SecretOption variants in local-show mode order
+        let options: Vec<SecretOption> = vec![
+            SecretOption::SplitSecret,
+            SecretOption::ShowSecret,
+            SecretOption::AcceptRecoveryRequest,
+            SecretOption::AcceptAllRecoveryRequests,
+            SecretOption::Back,
+        ];
 
         // Verify the order matches expected indices
-        assert_eq!(options.len(), 6);
+        assert_eq!(options.len(), 5);
         assert!(matches!(options[0], SecretOption::SplitSecret));
-        assert!(matches!(options[1], SecretOption::RequestRecovery));
-        assert!(matches!(options[2], SecretOption::ShowSecret));
-        assert!(matches!(options[3], SecretOption::AcceptRecoveryRequest));
-        assert!(matches!(
-            options[4],
-            SecretOption::AcceptAllRecoveryRequests
-        ));
-        assert!(matches!(options[5], SecretOption::Back));
+        assert!(matches!(options[1], SecretOption::ShowSecret));
+        assert!(matches!(options[2], SecretOption::AcceptRecoveryRequest));
+        assert!(matches!(options[3], SecretOption::AcceptAllRecoveryRequests));
+        assert!(matches!(options[4], SecretOption::Back));
     }
 
     #[test]
     fn test_secret_option_display_strings() {
         // Verify the Display implementation produces the correct strings
         assert_eq!(SecretOption::SplitSecret.to_string(), "Split Secret");
-        assert_eq!(
-            SecretOption::RequestRecovery.to_string(),
-            "Request Recovery"
-        );
+        assert_eq!(SecretOption::RequestRecovery.to_string(), "Recover Secret");
         assert_eq!(SecretOption::ShowSecret.to_string(), "Show Secret");
         assert_eq!(
             SecretOption::AcceptRecoveryRequest.to_string(),

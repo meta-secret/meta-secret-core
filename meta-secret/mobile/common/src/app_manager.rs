@@ -376,8 +376,8 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
                 VaultFullInfo::Member(member) => {
                     let vault_members_count = member.member.vault.members().len();
 
-                    if vault_members_count == 1 {
-                        println!("🦀 Mobile App Manager: Single device mode, showing local secret");
+                    if vault_members_count <= 2 {
+                        println!("🦀 Mobile App Manager: Replicated vault mode, showing local secret");
                         return self.show_local_secret(user_creds, pass_id).await;
                     }
 

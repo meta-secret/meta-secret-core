@@ -8,6 +8,7 @@ export const vaultSecrets = {
   emptyState: 'No secrets added yet',
   show: 'Show',
   showLoading: 'Loading...',
+  recover: 'Recover',
   waitingTitle: 'Secret is encrypted',
   waitingSubtitle: 'Requesting recovery shares to decrypt and reveal the content',
   waitingDevicesSuffix: 'device',

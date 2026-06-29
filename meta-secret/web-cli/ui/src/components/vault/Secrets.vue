@@ -41,6 +41,12 @@ const isRecovered = (metaPassId: MetaPasswordId) => {
 
 const isFlowTokenActive = (token: number) => token === flowToken.value;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const getVaultDeviceCount = () => {
+  const data = getMemberVaultData(appState.currState);
+  if (!data || typeof data.users !== 'function') return 1;
+  return data.users().length || 1;
+};
+const actionButtonLabel = computed(() => (getVaultDeviceCount() <= 2 ? vaultSecrets.show : vaultSecrets.recover));
 
 const clearRevealData = () => {
   revealedSecret.value = '';
@@ -99,10 +105,21 @@ const startRevealFlow = async (secret: MetaPasswordId) => {
   activeSecret.value = secret;
   activeSecretId.value = secretId;
   clearRevealData();
-  revealModalState.value = 'waiting';
   flowInProgressId.value = secretId;
 
   try {
+    await appState.updateState();
+    if (!isFlowTokenActive(token)) return;
+    const deviceCount = getVaultDeviceCount();
+
+    if (deviceCount <= 2) {
+      const secretText = await appManager.show_recovered(secret);
+      if (!isFlowTokenActive(token)) return;
+      openRevealedModal(secretText);
+      return;
+    }
+
+    revealModalState.value = 'waiting';
     await appManager.recover_js(secret);
     if (!isFlowTokenActive(token)) return;
     await appState.updateState();
@@ -185,7 +202,7 @@ const revealModalOpen = computed(() => revealModalState.value !== 'closed');
           <li v-for="secret in passwords" :key="secret.id_str()" class="flex items-center justify-between px-5 py-4">
             <span class="font-semibold">{{ secret.name }}</span>
             <Button variant="outline" size="sm" :disabled="flowInProgressId !== null" @click="startRevealFlow(secret)">
-              {{ flowInProgressId === secret.id_str() ? vaultSecrets.showLoading : vaultSecrets.show }}
+              {{ flowInProgressId === secret.id_str() ? vaultSecrets.showLoading : actionButtonLabel }}
             </Button>
           </li>
         </ul>
