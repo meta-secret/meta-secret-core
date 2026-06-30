@@ -59,6 +59,7 @@ mod test {
     use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
     use meta_secret_core::node::app::orchestrator::MetaOrchestrator;
     use meta_secret_core::node::app::sync::sync_gateway::SyncGateway;
+    use meta_secret_core::node::api::{DataSyncResponse, ReadSyncRequest, SsRequest, SyncRequest};
     use meta_secret_core::node::common::meta_tracing::{client_span, server_span, vd_span};
     use meta_secret_core::node::common::model::crypto::aead::EncryptedMessage;
     use meta_secret_core::node::common::model::device::common::DeviceName;
@@ -85,9 +86,10 @@ mod test {
     use meta_secret_core::node::db::actions::sign_up::claim::test_action::SignUpClaimTestAction;
     use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
     use meta_secret_core::node::db::descriptors::shared_secret_descriptor::{
-        SsDeviceLogDescriptor, SsWorkflowDescriptor,
+        SsDeviceLogDescriptor, SsLogDescriptor, SsWorkflowDescriptor,
     };
-    use meta_secret_core::node::db::events::generic_log_event::GenericKvLogEvent;
+    use meta_secret_core::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor};
+    use meta_secret_core::node::db::events::object_id::ArtifactId;
     use meta_secret_core::node::db::events::shared_secret_event::SsWorkflowObject;
     use meta_secret_core::node::db::events::vault::vault_log_event::{
         JoinClusterEvent, VaultActionRequestEvent,
@@ -726,6 +728,91 @@ mod test {
         assert!(
             recover_from_shares(vec![share_d2]).is_err(),
             "One share must be insufficient after K=2 redistribution"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_ss_replication_delivers_receiver_share_without_new_ss_log_events() -> Result<()> {
+        let registry = FixtureRegistry::base().await?;
+        let server_app_fixture = super::fixture::ServerAppFixture::try_from(&registry)?;
+
+        let client_user_creds = registry.state.empty.user_creds.client.clone();
+        let receiver_user_creds = registry.state.empty.user_creds.vd.clone();
+
+        let client_member = registry.state.empty.vault_data.client_membership.user_data_member();
+        let receiver_member = registry.state.empty.vault_data.vd_membership.user_data_member();
+        let vault_data = VaultData::from(client_member.clone())
+            .update_membership(UserMembership::Member(receiver_member.clone()));
+        let vault_member = VaultMember {
+            member: client_member,
+            vault: vault_data.clone(),
+        };
+
+        let pass_info = PlainPassInfo::new(
+            "receiver_share_without_ss_log_delta".to_string(),
+            "2bee|~".to_string(),
+        );
+        let secure_pass = SecurePassInfo::from(pass_info);
+        let pass_id = secure_pass.pass_id.clone();
+
+        let distributor = MetaDistributor {
+            p_obj: registry.state.empty.p_obj.server.clone(),
+            user_creds: std::sync::Arc::new(client_user_creds.clone()),
+            vault_member: vault_member.clone(),
+        };
+        distributor
+            .distribute(vault_member.clone(), secure_pass)
+            .await?;
+
+        let p_ss = PersistentSharedSecret::from(registry.state.empty.p_obj.server.clone());
+        let seeded_split_claim = vault_member.create_split_claim(pass_id.clone());
+        p_ss.save_ss_log_event(seeded_split_claim).await?;
+
+        let server_p_obj = registry.state.empty.p_obj.server.clone();
+        let receiver_dist_desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
+            pass_id: pass_id.clone(),
+            receiver: receiver_user_creds.device_id().clone(),
+        });
+        assert!(
+            server_p_obj
+                .find_tail_event(receiver_dist_desc.clone())
+                .await?
+                .is_some(),
+            "Receiver distribution must exist on server before replication"
+        );
+
+        let ss_log_free_id = server_p_obj
+            .find_free_id_by_obj_desc(SsLogDescriptor::from(vault_data.vault_name.clone()))
+            .await?;
+
+        let response = server_app_fixture.server_app.handle_client_request(
+            SyncRequest::Read(Box::from(ReadSyncRequest::SsRequest(SsRequest {
+                sender: receiver_user_creds.user(),
+                ss_log: ss_log_free_id,
+            }))),
+        )
+        .await?;
+
+        let DataSyncResponse::Data(data_response) = response else {
+            bail!("Server must return data response for ss replication");
+        };
+
+        assert!(
+            data_response
+                .0
+                .iter()
+                .any(|event| event.obj_id() == ArtifactId::from(receiver_dist_desc.clone())),
+            "Response must contain the receiver distribution event"
+        );
+
+        assert!(
+            server_p_obj
+                .find_tail_event(receiver_dist_desc)
+                .await?
+                .is_none(),
+            "Receiver distribution must be deleted after replication"
         );
 
         Ok(())

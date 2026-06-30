@@ -9,7 +9,9 @@ use meta_secret_core::node::common::model::device::common::{DeviceData, DeviceId
 use meta_secret_core::node::common::model::secret::SecretDistributionType;
 use meta_secret_core::node::common::model::vault::vault::VaultStatus;
 use meta_secret_core::node::db::actions::vault::vault_action::ServerVaultAction;
-use meta_secret_core::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
+use meta_secret_core::node::db::descriptors::shared_secret_descriptor::{
+    SsLogDescriptor, SsWorkflowDescriptor,
+};
 use meta_secret_core::node::db::events::generic_log_event::{
     GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
 };
@@ -249,12 +251,19 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             .p_obj
             .find_object_events::<SsLogObject>(request.ss_log.clone())
             .await?;
+        let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
 
         debug!(
             ss_log_events_count = ss_log_events.len(),
             "ss_replication: events from find_object_events for request.ss_log"
         );
-        let maybe_latest_ss_log_state = ss_log_events.last();
+        let maybe_latest_ss_log_state = match ss_log_events.last() {
+            Some(latest_ss_log_state) => Some(latest_ss_log_state.clone()),
+            None => self
+                .p_obj
+                .find_tail_event(SsLogDescriptor::from(request.sender.vault_name.clone()))
+                .await?,
+        };
         let Some(latest_ss_log_state) = maybe_latest_ss_log_state else {
             return Ok(vec![]);
         };
@@ -327,7 +336,6 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         }
 
         if updated_state {
-            let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
             let new_ss_log_obj = p_ss
                 .create_new_ss_log_object(updated_ss_log_data, request.sender.vault_name.clone())
                 .await?;
