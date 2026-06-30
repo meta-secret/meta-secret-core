@@ -18,7 +18,7 @@ use crate::node::db::descriptors::shared_secret_descriptor::{
 use crate::node::db::descriptors::vault_descriptor::DeviceLogDescriptor;
 use crate::node::db::events::generic_log_event::{ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::object_id::ArtifactId;
-use crate::node::db::events::shared_secret_event::SsDeviceLogObject;
+use crate::node::db::events::shared_secret_event::{SsDeviceLogObject, SsLogObject};
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -193,7 +193,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         // Send claims
         let maybe_ss_log = self
             .p_obj
-            .find_tail_event(SsLogDescriptor::from(vault_name))
+            .find_tail_event(SsLogDescriptor::from(vault_name.clone()))
             .await?;
 
         if let Some(ss_log) = maybe_ss_log {
@@ -257,6 +257,46 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                         }
                     }
                 };
+            }
+        }
+
+        // Supplemental: upload Split distributions from our own ss_device_log.
+        // Guards against stale ss_log contamination: when the local ss_log tail has a
+        // claim whose sender != us (downloaded from another device), the block above
+        // skips our distributions entirely. Reading our own ss_device_log is ground truth.
+        {
+            let own_claims: Vec<SsDeviceLogObject> = self
+                .p_obj
+                .get_object_events_from_beginning(SsDeviceLogDescriptor::from(
+                    user.device.device_id.clone(),
+                ))
+                .await?;
+
+            let current_claims = self
+                .p_obj
+                .find_tail_event(SsLogDescriptor::from(vault_name))
+                .await?
+                .map(|e: SsLogObject| e.to_data().claims)
+                .unwrap_or_default();
+
+            for raw_event in own_claims {
+                let claim = raw_event.to_distribution_request();
+                if claim.distribution_type != SecretDistributionType::Split {
+                    continue;
+                }
+                match current_claims.get(&claim.id) {
+                    None => continue,
+                    Some(c) if c.status.status() == SsDistributionStatus::Delivered => continue,
+                    _ => {}
+                }
+                let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
+                let wf_events = p_ss.get_distributions(claim).await?;
+                for wf_event in wf_events {
+                    let request = SyncRequest::Write(Box::from(WriteSyncRequest::Event(
+                        wf_event.to_generic(),
+                    )));
+                    self.sync.send(request).await?;
+                }
             }
         }
 
