@@ -321,12 +321,13 @@ mod test {
 
         let vault_data = vault_data.update_membership(vd_membership);
         let cfg = vault_data.sss_cfg();
-        assert_eq!(cfg.threshold, 2);
+        assert_eq!(cfg.threshold, 1); // K=1 for 2 devices: full replication
         assert_eq!(cfg.number_of_shares, 2);
 
         let vault_data = vault_data.update_membership(client_b_membership);
         let cfg = vault_data.sss_cfg();
-        assert_eq!(cfg.threshold, 2);
+        // client_b is an Outsider, so only D1+D2 count as members → K=1 still
+        assert_eq!(cfg.threshold, 1);
         assert_eq!(cfg.number_of_shares, 2);
 
         assert_eq!(2, vault_data.members().len());

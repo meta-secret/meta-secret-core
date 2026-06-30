@@ -11,6 +11,7 @@ use crate::node::common::model::vault::vault_data::VaultData;
 use crate::node::db::actions::sign_up::join::{JoinAction, JoinActionUpdate};
 use crate::node::db::descriptors::shared_secret_descriptor::SsDeviceLogDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
+use crate::node::db::events::generic_log_event::ObjIdExtractor;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::shared_secret_event::{SsDeviceLogObject, SsWorkflowObject};
 use crate::node::db::events::vault::vault_log_event::{
@@ -386,6 +387,9 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                         secret_message: EncryptedMessage::CipherShare { share: encrypted },
                     },
                 });
+                // Delete any stale distribution before saving the new one so all members'
+                // shares always come from the same polynomial after redistribution.
+                self.p_obj.repo.delete(wf.obj_id()).await;
                 self.p_obj.repo.save(wf).await?;
             }
 
