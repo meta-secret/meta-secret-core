@@ -251,8 +251,6 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             .p_obj
             .find_object_events::<SsLogObject>(request.ss_log.clone())
             .await?;
-        let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
-
         debug!(
             ss_log_events_count = ss_log_events.len(),
             "ss_replication: events from find_object_events for request.ss_log"
@@ -315,7 +313,6 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                 if let Some(dist_event) = dist_obj {
                     let ss_dist_obj_id = dist_event.obj_id();
                     commit_log.push(dist_event.to_generic());
-                    self.p_obj.repo.delete(ss_dist_obj_id).await;
 
                     match claim.distribution_type {
                         SecretDistributionType::Split => {
@@ -331,10 +328,12 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                     }
 
                     updated_state = true;
+                    self.p_obj.repo.delete(ss_dist_obj_id).await;
                 }
             }
         }
 
+        let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
         if updated_state {
             let new_ss_log_obj = p_ss
                 .create_new_ss_log_object(updated_ss_log_data, request.sender.vault_name.clone())

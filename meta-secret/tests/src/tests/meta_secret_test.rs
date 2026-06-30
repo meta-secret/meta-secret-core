@@ -734,7 +734,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_ss_replication_delivers_receiver_share_without_new_ss_log_events() -> Result<()> {
+    async fn test_ss_replication_delivers_receiver_share_and_clears_server_copy() -> Result<()> {
         let registry = FixtureRegistry::base().await?;
         let server_app_fixture = super::fixture::ServerAppFixture::try_from(&registry)?;
 
@@ -790,7 +790,7 @@ mod test {
         let response = server_app_fixture.server_app.handle_client_request(
             SyncRequest::Read(Box::from(ReadSyncRequest::SsRequest(SsRequest {
                 sender: receiver_user_creds.user(),
-                ss_log: ss_log_free_id,
+                ss_log: ss_log_free_id.clone(),
             }))),
         )
         .await?;
@@ -809,10 +809,10 @@ mod test {
 
         assert!(
             server_p_obj
-                .find_tail_event(receiver_dist_desc)
+                .find_tail_event(receiver_dist_desc.clone())
                 .await?
                 .is_none(),
-            "Receiver distribution must be deleted after replication"
+            "Receiver distribution must be cleared from server after delivery"
         );
 
         Ok(())
