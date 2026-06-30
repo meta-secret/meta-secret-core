@@ -396,6 +396,9 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                 .status
                 .statuses
                 .insert(joined_device_id.clone(), SsDistributionStatus::Pending);
+            // Persist the updated claim in the device log too so the next sync
+            // sends the new receiver list to the server.
+            p_ss.save_claim_in_ss_device_log(split_claim.clone()).await?;
             p_ss.save_ss_log_event(split_claim.clone()).await?;
             ss_log_data.claims.insert(split_claim.id.clone(), split_claim);
         }
@@ -516,6 +519,7 @@ mod tests {
     use crate::node::common::model::secret::SsDistributionId;
     use crate::node::common::model::vault::vault_data::VaultData;
     use crate::node::db::events::shared_secret_event::SsWorkflowObject;
+    use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::secret::MetaDistributor;
     use anyhow::Result;
@@ -607,6 +611,32 @@ mod tests {
         assert!(
             share_json.contains("share_id"),
             "Redistributed payload must contain a valid share"
+        );
+
+        let p_ss = PersistentSharedSecret::from(orchestrator.p_obj.clone());
+        let device_log_event = p_ss
+            .find_ss_device_log_tail_event(
+                registry
+                    .state
+                    .vault_data
+                    .client_membership
+                    .user_data_member()
+                    .user()
+                    .device
+                    .device_id
+                    .clone(),
+            )
+            .await?;
+        let Some(device_log_event) = device_log_event else {
+            panic!("Expected updated device log claim");
+        };
+        let updated_claim = device_log_event.to_distribution_request();
+        assert!(
+            updated_claim
+                .receivers
+                .iter()
+                .any(|device_id| device_id == &joined_member.user().device.device_id),
+            "Updated claim must include the newly joined receiver"
         );
 
         Ok(())

@@ -494,6 +494,75 @@ mod test {
     }
 
     #[tokio::test]
+    async fn test_two_device_recovery_uses_local_distribution_after_join() -> Result<()> {
+        let spec = ServerAppSignUpSpec::build().await?;
+        spec.sign_up_and_second_devices_joins().await?;
+
+        let split = SplitSpec { spec };
+        split.split().await?;
+
+        for _ in 0..3 {
+            split.spec.client_gw_sync().await?;
+            split.vd_gw_sync().await?;
+        }
+
+        let vd_user_creds = split.spec.user_creds().vd.clone();
+        let vd_client_service = split.spec.registry.state.vd.client_service.clone();
+        let vd_app_state = vd_client_service.build_service_state().await?.app_state;
+
+        let ApplicationState::Vault(VaultFullInfo::Member(vd_member_info)) = &vd_app_state else {
+            bail!("VD has to be a vault member");
+        };
+
+        let pass_id = vd_member_info
+            .member
+            .vault
+            .secrets
+            .iter()
+            .next()
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("Secret must exist on VD after split"))?;
+
+        let local_dist_desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
+            pass_id: pass_id.clone(),
+            receiver: vd_user_creds.user().device.device_id.clone(),
+        });
+        assert!(
+            split
+                .spec
+                .registry
+                .state
+                .vd
+                .p_obj
+                .find_tail_event(local_dist_desc.clone())
+                .await?
+                .is_some(),
+            "VD must have a local distribution event after join"
+        );
+
+        let dist = split
+            .spec
+            .registry
+            .state
+            .vd
+            .p_obj
+            .find_tail_event(local_dist_desc)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("VD must have a local distribution event after join"))?
+            .to_distribution_data()?;
+
+        let decrypted = dist
+            .secret_message
+            .cipher_text()
+            .decrypt(&vd_user_creds.device_creds.secret_box.transport.sk)?;
+        let share = UserShareDto::try_from(&decrypted.msg)?;
+        let recovered = recover_from_shares(vec![share])?;
+
+        assert_eq!(recovered.text, "2bee|~");
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_e2e_redistribution_recalculates_shares_after_late_joins() -> Result<()> {
         let spec = ServerAppSignUpSpec::build().await?;
         spec.init_server().await?;
