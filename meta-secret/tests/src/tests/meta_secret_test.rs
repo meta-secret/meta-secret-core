@@ -1004,6 +1004,137 @@ mod test {
         Ok(())
     }
 
+    /// Regression test for the production bug: D1 creates secret as single device,
+    /// D2 joins later → redistribution must deliver D2's share via server so D2 can show the secret.
+    #[tokio::test]
+    async fn test_single_device_secret_then_late_join_d2_receives_distribution() -> Result<()> {
+        let spec = ServerAppSignUpSpec::build().await?;
+        spec.init_server().await?;
+        spec.verify_server_device_creds().await?;
+
+        // D1 signs up and creates vault as single device
+        spec.client_gw_sync().await?;
+        SignUpClaimTestAction::sign_up(
+            spec.registry.state.client.p_obj.clone(),
+            &spec.user_creds().client,
+        )
+        .instrument(client_span())
+        .await?;
+        spec.client_gw_sync().await?;
+
+        // D1 creates the secret (single-device vault — no K-of-N, full local copy)
+        let pass_id = MetaPasswordId::build_from_str("single_device_then_join");
+        let dist_request = GenericAppStateRequest::ClusterDistribution(PlainPassInfo {
+            pass_id: pass_id.clone(),
+            pass: "secret_value_42".to_string(),
+        });
+        let app_state = spec
+            .registry
+            .state
+            .client
+            .client_service
+            .build_service_state()
+            .await?
+            .app_state;
+        spec.registry
+            .state
+            .client
+            .client_service
+            .handle_client_request(app_state, dist_request)
+            .await?;
+        // D1 syncs the distribution + claim to server
+        spec.client_gw_sync().await?;
+
+        // D2 (vd) joins the vault
+        spec.vd_gw_sync().await?;
+        SignUpClaimTestAction::sign_up(spec.registry.state.vd.p_obj.clone(), &spec.user_creds().vd)
+            .instrument(vd_span())
+            .await?;
+        spec.vd_gw_sync().await?;
+        spec.client_gw_sync().await?;
+
+        // D1 finds and accepts D2's join request → redistribution runs
+        let client_state = spec
+            .registry
+            .state
+            .client
+            .client_service
+            .get_app_state()
+            .await?;
+        let ApplicationState::Vault(VaultFullInfo::Member(client_member)) = client_state else {
+            bail!("Client must be a vault member");
+        };
+        let join_d2 = client_member
+            .vault_events
+            .requests
+            .iter()
+            .find_map(|req| match req {
+                VaultActionRequestEvent::JoinCluster(join)
+                    if join.candidate.device.device_id
+                        == spec.registry.state.vd.device_id() =>
+                {
+                    Some(join.clone())
+                }
+                _ => None,
+            })
+            .ok_or_else(|| anyhow::anyhow!("Join request for D2 not found"))?;
+
+        spec.registry
+            .state
+            .client
+            .orchestrator
+            .update_membership(join_d2, JoinActionUpdate::Accept)
+            .await?;
+
+        // D1 syncs: uploads updated ss_device_log (receivers=[D2]) then uploads D2's distribution
+        for _ in 0..3 {
+            spec.client_gw_sync().await?;
+        }
+
+        // D2 syncs: server runs ss_replication → delivers D2's distribution
+        for _ in 0..3 {
+            spec.vd_gw_sync().await?;
+        }
+
+        // Assert: D2 must have the distribution locally (this is what show_local_secret() needs)
+        let vd_dist_desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
+            pass_id: pass_id.clone(),
+            receiver: spec.registry.state.vd.device_id(),
+        });
+
+        assert!(
+            spec.registry
+                .state
+                .vd
+                .p_obj
+                .find_tail_event(vd_dist_desc.clone())
+                .await?
+                .is_some(),
+            "D2 must have the distribution locally after redistribution and sync"
+        );
+
+        // Assert: D2 can decrypt the share and recover the secret
+        let dist_event = spec
+            .registry
+            .state
+            .vd
+            .p_obj
+            .find_tail_event(vd_dist_desc)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("D2 distribution not found"))?
+            .to_distribution_data()?;
+
+        let decrypted = dist_event
+            .secret_message
+            .cipher_text()
+            .decrypt(&spec.user_creds().vd.device_creds.secret_box.transport.sk)?;
+        let share = UserShareDto::try_from(&decrypted.msg)?;
+        let recovered = recover_from_shares(vec![share])?;
+        assert_eq!(recovered.text, "secret_value_42");
+
+        Ok(())
+    }
+
     #[tokio::test]
     #[allow(dead_code, unused_variables)]
     #[ignore]

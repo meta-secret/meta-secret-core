@@ -249,6 +249,10 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                     });
             }
             let Some(mut split_claim) = split_claim else {
+                debug!(
+                    "redistribute_existing_secrets: no sender claim found for pass {:?}, skipping",
+                    pass_id
+                );
                 continue;
             };
 

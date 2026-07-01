@@ -6,7 +6,7 @@ use anyhow::{bail, Ok};
 use derive_more::From;
 use meta_secret_core::node::api::{SsRequest, VaultRequest};
 use meta_secret_core::node::common::model::device::common::{DeviceData, DeviceId};
-use meta_secret_core::node::common::model::secret::SecretDistributionType;
+use meta_secret_core::node::common::model::secret::{SecretDistributionType, SsDistributionId};
 use meta_secret_core::node::common::model::vault::vault::VaultStatus;
 use meta_secret_core::node::db::actions::vault::vault_action::ServerVaultAction;
 use meta_secret_core::node::db::descriptors::shared_secret_descriptor::{
@@ -276,59 +276,50 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         let mut updated_state = false;
 
         for (_, claim) in ss_log_data.claims.iter() {
-            // Distribute shares
-            for dist_id in claim.recovery_db_ids() {
-                if claim.sender.eq(&server_device) {
-                    bail!("Invalid state. Server can't manage encrypted shares");
-                };
+            if claim.sender.eq(&server_device) {
+                bail!("Invalid state. Server can't manage encrypted shares");
+            };
 
-                let request_sender_device = request.sender.device.device_id.clone();
+            let request_sender_device = request.sender.device.device_id.clone();
 
-                let for_delivery = match claim.distribution_type {
-                    SecretDistributionType::Split => {
-                        // If the device is a receiver of the share (vise versa to recovery)
-                        dist_id.distribution_id.receiver.eq(&request_sender_device)
+            match claim.distribution_type {
+                SecretDistributionType::Split => {
+                    // Directly look up the distribution by (pass_id, requesting_device).
+                    // Bypasses claim.receivers, which may be stale/empty when distributions
+                    // arrive at the server before the ss_log is updated with the full receiver list.
+                    let dist_id = SsDistributionId {
+                        pass_id: claim.dist_claim_id.pass_id.clone(),
+                        receiver: request_sender_device.clone(),
+                    };
+                    let desc = SsWorkflowDescriptor::Distribution(dist_id);
+                    let dist_obj = self.p_obj.find_tail_event(desc).await?;
+
+                    if let Some(dist_event) = dist_obj {
+                        let ss_dist_obj_id = dist_event.obj_id();
+                        commit_log.push(dist_event.to_generic());
+                        updated_ss_log_data = updated_ss_log_data
+                            .complete(claim.id.clone(), request_sender_device.clone());
+                        updated_state = true;
+                        self.p_obj.repo.delete(ss_dist_obj_id).await;
                     }
-                    SecretDistributionType::Recover => {
-                        // The device that sent recovery claim request is a receiver of the share
-                        dist_id.sender.eq(&request_sender_device)
-                    }
-                };
-
-                if !for_delivery {
-                    continue;
                 }
-
-                let desc = match claim.distribution_type {
-                    SecretDistributionType::Split => {
-                        SsWorkflowDescriptor::Distribution(dist_id.distribution_id.clone())
-                    }
-                    SecretDistributionType::Recover => {
-                        SsWorkflowDescriptor::Recovery(dist_id.clone())
-                    }
-                };
-
-                let dist_obj = self.p_obj.find_tail_event(desc).await?;
-
-                if let Some(dist_event) = dist_obj {
-                    let ss_dist_obj_id = dist_event.obj_id();
-                    commit_log.push(dist_event.to_generic());
-
-                    match claim.distribution_type {
-                        SecretDistributionType::Split => {
-                            let claim_id = dist_id.claim_id.id;
-                            updated_ss_log_data = updated_ss_log_data
-                                .complete(claim_id, dist_id.distribution_id.receiver);
+                SecretDistributionType::Recover => {
+                    for dist_id in claim.recovery_db_ids() {
+                        if !dist_id.sender.eq(&request_sender_device) {
+                            continue;
                         }
-                        SecretDistributionType::Recover => {
+                        let desc = SsWorkflowDescriptor::Recovery(dist_id.clone());
+                        let dist_obj = self.p_obj.find_tail_event(desc).await?;
+                        if let Some(dist_event) = dist_obj {
+                            let ss_dist_obj_id = dist_event.obj_id();
+                            commit_log.push(dist_event.to_generic());
                             //skip: we can't complete the claim, otherwise we won't know
                             //on the sender device that the claim exists.
                             //Completion event needs to be sent by the recovery claim creator
+                            updated_state = true;
+                            self.p_obj.repo.delete(ss_dist_obj_id).await;
                         }
                     }
-
-                    updated_state = true;
-                    self.p_obj.repo.delete(ss_dist_obj_id).await;
                 }
             }
         }
