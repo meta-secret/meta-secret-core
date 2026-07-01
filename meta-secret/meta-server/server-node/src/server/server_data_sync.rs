@@ -106,20 +106,35 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                     .await?;
             }
             GenericKvLogEvent::SsDeviceLog(ss_device_log_obj) => {
+                let claim_preview = ss_device_log_obj.clone().to_distribution_request();
                 info!(
-                    "Shared Secret Device Log message processing: {:?}",
-                    &ss_device_log_obj
+                    claim_id = ?claim_preview.id,
+                    claim_sender = ?claim_preview.sender,
+                    pass_id_name = %claim_preview.dist_claim_id.pass_id.name,
+                    receivers_count = claim_preview.receivers.len(),
+                    receivers = ?claim_preview.receivers,
+                    dist_type = ?claim_preview.distribution_type,
+                    "SsDeviceLog received"
                 );
 
                 self.p_obj.repo.save(ss_device_log_obj.clone()).await?;
 
-                let ss_claim = ss_device_log_obj.to_distribution_request();
-
                 let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
-                p_ss_log.save_ss_log_event(ss_claim).await?;
+                p_ss_log.save_ss_log_event(claim_preview).await?;
             }
             GenericKvLogEvent::SsWorkflow(ss_object) => {
+                let saved_obj_id = ss_object.obj_id();
+                info!(
+                    obj_id = ?saved_obj_id,
+                    variant = match &ss_object {
+                        SsWorkflowObject::Distribution(_) => "Distribution",
+                        SsWorkflowObject::Recovery(_) => "Recovery",
+                        SsWorkflowObject::Decline(_) => "Decline",
+                    },
+                    "SsWorkflow received and saving to server DB"
+                );
                 self.p_obj.repo.save(ss_object.clone()).await?;
+                info!(obj_id = ?saved_obj_id, "SsWorkflow saved to server DB");
 
                 if let SsWorkflowObject::Decline(decline_event) = &ss_object {
                     let decline_data = decline_event.value.clone();
@@ -275,12 +290,27 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         let mut updated_ss_log_data = ss_log_data.clone();
         let mut updated_state = false;
 
+        info!(
+            claims_count = ss_log_data.claims.len(),
+            request_sender = ?request.sender.device.device_id,
+            "ss_replication: iterating claims"
+        );
+
         for (_, claim) in ss_log_data.claims.iter() {
             if claim.sender.eq(&server_device) {
                 bail!("Invalid state. Server can't manage encrypted shares");
             };
 
             let request_sender_device = request.sender.device.device_id.clone();
+
+            info!(
+                claim_id = ?claim.id,
+                claim_sender = ?claim.sender,
+                dist_type = ?claim.distribution_type,
+                pass_id_name = %claim.dist_claim_id.pass_id.name,
+                receivers_count = claim.receivers.len(),
+                "ss_replication: processing claim"
+            );
 
             match claim.distribution_type {
                 SecretDistributionType::Split => {
@@ -291,8 +321,17 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                         pass_id: claim.dist_claim_id.pass_id.clone(),
                         receiver: request_sender_device.clone(),
                     };
-                    let desc = SsWorkflowDescriptor::Distribution(dist_id);
+                    info!(
+                        dist_id = ?dist_id,
+                        "ss_replication: Split — looking up distribution"
+                    );
+                    let desc = SsWorkflowDescriptor::Distribution(dist_id.clone());
                     let dist_obj = self.p_obj.find_tail_event(desc).await?;
+                    info!(
+                        found = dist_obj.is_some(),
+                        dist_id = ?dist_id,
+                        "ss_replication: Split — find_tail_event result"
+                    );
 
                     if let Some(dist_event) = dist_obj {
                         let ss_dist_obj_id = dist_event.obj_id();
