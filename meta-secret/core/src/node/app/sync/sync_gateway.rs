@@ -284,10 +284,12 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                 if claim.distribution_type != SecretDistributionType::Split {
                     continue;
                 }
-                match current_claims.get(&claim.id) {
-                    None => continue,
-                    Some(c) if c.status.status() == SsDistributionStatus::Delivered => continue,
-                    _ => {}
+                // Skip only if explicitly Delivered in ss_log. If not found (ss_log may be
+                // contaminated with another device's claim), still attempt upload.
+                if let Some(c) = current_claims.get(&claim.id) {
+                    if c.status.status() == SsDistributionStatus::Delivered {
+                        continue;
+                    }
                 }
                 let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
                 let wf_events = p_ss.get_distributions(claim).await?;
