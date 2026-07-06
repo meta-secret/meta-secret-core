@@ -26,7 +26,7 @@ use crate::secret::split2;
 use crate::secret::shared_secret::{PlainText, UserShareDto};
 use anyhow::bail;
 use anyhow::Result;
-use log::debug;
+use tracing::debug;
 use std::collections::HashSet;
 use std::sync::Arc;
 

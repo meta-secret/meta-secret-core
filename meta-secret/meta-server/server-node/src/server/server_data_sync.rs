@@ -21,7 +21,7 @@ use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use meta_secret_core::node::db::objects::persistent_vault::PersistentVault;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
-use tracing::{debug, info, instrument};
+use tracing::{debug, instrument};
 
 #[derive(From)]
 pub struct ServerSyncGateway<Repo: KvLogEventRepo> {
@@ -107,12 +107,11 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             }
             GenericKvLogEvent::SsDeviceLog(ss_device_log_obj) => {
                 let claim_preview = ss_device_log_obj.clone().to_distribution_request();
-                info!(
+                debug!(
                     claim_id = ?claim_preview.id,
                     claim_sender = ?claim_preview.sender,
                     pass_id_name = %claim_preview.dist_claim_id.pass_id.name,
                     receivers_count = claim_preview.receivers.len(),
-                    receivers = ?claim_preview.receivers,
                     dist_type = ?claim_preview.distribution_type,
                     "SsDeviceLog received"
                 );
@@ -123,18 +122,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                 p_ss_log.save_ss_log_event(claim_preview).await?;
             }
             GenericKvLogEvent::SsWorkflow(ss_object) => {
-                let saved_obj_id = ss_object.obj_id();
-                info!(
-                    obj_id = ?saved_obj_id,
-                    variant = match &ss_object {
-                        SsWorkflowObject::Distribution(_) => "Distribution",
-                        SsWorkflowObject::Recovery(_) => "Recovery",
-                        SsWorkflowObject::Decline(_) => "Decline",
-                    },
-                    "SsWorkflow received and saving to server DB"
-                );
                 self.p_obj.repo.save(ss_object.clone()).await?;
-                info!(obj_id = ?saved_obj_id, "SsWorkflow saved to server DB");
 
                 if let SsWorkflowObject::Decline(decline_event) = &ss_object {
                     let decline_data = decline_event.value.clone();
@@ -290,7 +278,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         let mut updated_ss_log_data = ss_log_data.clone();
         let mut updated_state = false;
 
-        info!(
+        debug!(
             claims_count = ss_log_data.claims.len(),
             request_sender = ?request.sender.device.device_id,
             "ss_replication: iterating claims"
@@ -303,12 +291,10 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
             let request_sender_device = request.sender.device.device_id.clone();
 
-            info!(
+            debug!(
                 claim_id = ?claim.id,
-                claim_sender = ?claim.sender,
                 dist_type = ?claim.distribution_type,
                 pass_id_name = %claim.dist_claim_id.pass_id.name,
-                receivers_count = claim.receivers.len(),
                 "ss_replication: processing claim"
             );
 
@@ -321,13 +307,9 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                         pass_id: claim.dist_claim_id.pass_id.clone(),
                         receiver: request_sender_device.clone(),
                     };
-                    info!(
-                        dist_id = ?dist_id,
-                        "ss_replication: Split — looking up distribution"
-                    );
                     let desc = SsWorkflowDescriptor::Distribution(dist_id.clone());
                     let dist_obj = self.p_obj.find_tail_event(desc).await?;
-                    info!(
+                    debug!(
                         found = dist_obj.is_some(),
                         dist_id = ?dist_id,
                         "ss_replication: Split — find_tail_event result"

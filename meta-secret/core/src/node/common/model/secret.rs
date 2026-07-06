@@ -370,10 +370,9 @@ impl SsLogData {
             // Set sender status to Delivered
             claim.status = claim.status.complete(sender_id);
 
-            if claim.status.status() != SsDistributionStatus::Delivered {
-                // Insert the updated claim back into the hashmap
-                self.claims.insert(claim_id, claim);
-            }
+            // Always re-insert: keep claim even when fully Delivered so future redistributions
+            // and recovery operations can find the distribution history.
+            self.claims.insert(claim_id, claim);
         }
 
         self
