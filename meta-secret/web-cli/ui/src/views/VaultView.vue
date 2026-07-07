@@ -5,10 +5,14 @@ import VaultComponent from '@/components/vault/Vault.vue';
 import { AppState } from '@/stores/app-state';
 import { useAuthStore } from '@/stores/auth';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useRoute } from 'vue-router';
+import { useStatePolling } from '@/utils/statePolling';
 
 const jsAppState = AppState();
 const authStore = useAuthStore();
+const route = useRoute();
 const isInitialized = ref(false);
+const statePoller = useStatePolling(() => jsAppState.updateState());
 
 watch(
   () => authStore.isAuthenticated,
@@ -20,9 +24,33 @@ watch(
       } catch (error) {
         console.error('Error initializing app state:', error);
       }
+    } else {
+      statePoller.stop();
+      isInitialized.value = false;
     }
   },
   { immediate: true },
+);
+
+watch(
+  () => isInitialized.value,
+  (initialized) => {
+    if (authStore.isAuthenticated && initialized) {
+      statePoller.start();
+      return;
+    }
+    statePoller.stop();
+  },
+  { immediate: true },
+);
+
+watch(
+  () => route.path,
+  () => {
+    if (authStore.isAuthenticated && isInitialized.value) {
+      void statePoller.refreshNow();
+    }
+  },
 );
 </script>
 

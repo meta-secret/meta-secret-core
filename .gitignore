@@ -4,6 +4,7 @@
 
 meta-secret/target
 meta-secret/Cargo.lock
+meta-secret/tarpaulin-report.html
 
 meta-secret/meta-server-serverless/.idea/
 meta-secret/meta-server-serverless/node_modules/
