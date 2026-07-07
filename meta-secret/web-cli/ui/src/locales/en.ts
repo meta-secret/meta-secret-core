@@ -44,6 +44,11 @@ export const vaultSecrets = {
   errorShowRecovered: 'Could not display the recovered secret. Shares may be incomplete or corrupted.',
   errorCopySecret: 'Could not copy the secret.',
   errorRecoveryTimeout: 'Recovery took too long. Please try again.',
+  recoveryRequestTitle: 'Recover secret?',
+  recoveryRequestApprove: 'Approve',
+  recoveryRequestDecline: 'Decline',
+  recoveryRequestAuthError: 'Could not verify biometrics for this recovery request.',
+  recoveryRequestSubmitError: 'Could not submit the recovery response. Please try again.',
 } as const;
 
 export const vaultDevices = {

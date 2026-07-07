@@ -22,13 +22,13 @@ use meta_secret_core::node::common::model::user::common::UserData;
 use meta_secret_core::node::common::model::user::user_creds::UserCreds;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
-use meta_secret_core::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
 use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
+use meta_secret_core::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
 use meta_secret_core::node::db::events::vault::vault_log_event::JoinClusterEvent;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
+use meta_secret_core::recover_from_shares;
 use meta_secret_core::secret::shared_secret::PlainText;
 use meta_secret_core::secret::shared_secret::UserShareDto;
-use meta_secret_core::recover_from_shares;
 
 pub struct ApplicationManager<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub meta_client_service: Arc<MetaClientService<Repo, Sync>>,
@@ -132,6 +132,10 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
 
     pub async fn accept_recover(&self, claim_id: ClaimId) -> Result<()> {
         self.meta_client_service.accept_recover(claim_id).await
+    }
+
+    pub async fn decline_recover(&self, claim_id: ClaimId) -> Result<()> {
+        self.meta_client_service.decline_recover(claim_id).await
     }
 
     pub async fn update_membership(

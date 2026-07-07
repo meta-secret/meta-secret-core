@@ -5,15 +5,15 @@ use crate::configure;
 use crate::wasm_repo::WasmRepo;
 use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
-use meta_secret_core::node::common::model::device::common::{DeviceName, DeviceType};
 use meta_secret_core::node::common::model::WasmApplicationState;
+use meta_secret_core::node::common::model::device::common::{DeviceName, DeviceType};
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::ClaimId;
 use meta_secret_core::node::common::model::user::common::UserData;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
 use tracing::{error, info};
-use wasm_bindgen::prelude::{wasm_bindgen, JsError, JsValue};
+use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
 #[wasm_bindgen]
 pub struct WasmApplicationManager {
@@ -80,6 +80,26 @@ impl WasmApplicationManager {
 
     pub async fn recover_js(&self, meta_pass_id: &MetaPasswordId) {
         self.app_manager.recover_js(meta_pass_id.clone()).await;
+    }
+
+    pub async fn accept_recover(&self, claim_id: &ClaimId) -> Result<(), JsValue> {
+        match self.app_manager.accept_recover(claim_id.clone()).await {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                error!(error = %e, "accept_recover failed");
+                Err(JsError::new(&e.to_string()).into())
+            }
+        }
+    }
+
+    pub async fn decline_recover(&self, claim_id: &ClaimId) -> Result<(), JsValue> {
+        match self.app_manager.decline_recover(claim_id.clone()).await {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                error!(error = %e, "decline_recover failed");
+                Err(JsError::new(&e.to_string()).into())
+            }
+        }
     }
 
     pub async fn show_recovered(&self, pass_id: &MetaPasswordId) -> Result<String, JsValue> {

@@ -1,6 +1,8 @@
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
 use crate::node::common::model::meta_pass::MetaPasswordId;
-use crate::node::common::model::secret::{ClaimId, SsLogData};
+use crate::node::common::model::secret::{
+    ClaimId, SecretDistributionType, SsDistributionStatus, SsLogData,
+};
 use crate::node::common::model::user::common::{UserData, UserDataOutsider};
 use crate::node::common::model::vault::vault::VaultMember;
 use crate::node::common::model::vault::vault_data::WasmVaultData;
@@ -175,12 +177,37 @@ impl WasmUserMemberFullInfo {
     pub fn find_recovery_claim(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
         self.0.ss_claims.find_recovery_claim_id(pass_id)
     }
+
+    pub fn find_pending_incoming_recovery_claim(
+        &self,
+        pass_id: &MetaPasswordId,
+    ) -> Option<ClaimId> {
+        let local_device_id = self.0.member.member.user_data.device.device_id.clone();
+        let claim = self.0.ss_claims.find_recovery_claim(pass_id)?;
+
+        if !matches!(claim.distribution_type, SecretDistributionType::Recover) {
+            return None;
+        }
+
+        if claim.sender.eq(&local_device_id) {
+            return None;
+        }
+
+        if !matches!(
+            claim.status.get(&local_device_id),
+            Some(SsDistributionStatus::Pending)
+        ) {
+            return None;
+        }
+
+        Some(claim.id)
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::node::common::model::meta_pass::MetaPasswordId;
     use crate::node::common::model::IdString;
+    use crate::node::common::model::meta_pass::MetaPasswordId;
 
     #[test]
     fn meta_password_id() {
