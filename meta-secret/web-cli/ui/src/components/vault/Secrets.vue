@@ -125,28 +125,39 @@ const closeRecoveryDialog = () => {
 };
 
 const submitRecoveryResponse = async (action: RecoveryAction) => {
-  if (recoveryActionInProgress.value || !recoveryDialogClaim.value) return;
+  console.log('[Recovery] submitRecoveryResponse called', { action, claim: recoveryDialogClaim.value, inProgress: recoveryActionInProgress.value });
+  if (recoveryActionInProgress.value || !recoveryDialogClaim.value) {
+    console.warn('[Recovery] early return — inProgress:', recoveryActionInProgress.value, 'claim:', recoveryDialogClaim.value);
+    return;
+  }
   recoveryActionInProgress.value = action;
   flowError.value = null;
 
   try {
+    console.log('[Recovery] calling authenticateWithPasskey...');
     const authenticated = await authStore.authenticateWithPasskey();
+    console.log('[Recovery] authenticateWithPasskey result:', authenticated);
     if (!authenticated) throw new Error(vaultSecrets.recoveryRequestAuthError);
 
     const recoveryAppManager = appManager as RecoveryAwareApplicationManager;
     if (action === 'approve') {
+      console.log('[Recovery] calling accept_recover, claimId:', recoveryDialogClaim.value);
       if (typeof recoveryAppManager.accept_recover !== 'function')
         throw new Error(vaultSecrets.recoveryRequestSubmitError);
       await recoveryAppManager.accept_recover(recoveryDialogClaim.value);
+      console.log('[Recovery] accept_recover done');
     } else {
+      console.log('[Recovery] calling decline_recover, claimId:', recoveryDialogClaim.value);
       if (typeof recoveryAppManager.decline_recover !== 'function')
         throw new Error(vaultSecrets.recoveryRequestSubmitError);
       await recoveryAppManager.decline_recover(recoveryDialogClaim.value);
+      console.log('[Recovery] decline_recover done');
     }
 
     await appState.updateState();
     resetRecoveryDialog();
   } catch (e) {
+    console.error('[Recovery] error:', e);
     flowError.value = e instanceof Error && e.message ? e.message : vaultSecrets.recoveryRequestSubmitError;
   } finally {
     recoveryActionInProgress.value = null;
@@ -338,18 +349,19 @@ const revealModalOpen = computed(() => revealModalState.value !== 'closed');
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel
+        <Button
+          variant="outline"
           :disabled="recoveryActionInProgress !== null"
-          @click.prevent="submitRecoveryResponse('decline')"
+          @click="submitRecoveryResponse('decline')"
         >
           {{ recoveryActionInProgress === 'decline' ? vaultSecrets.showLoading : vaultSecrets.recoveryRequestDecline }}
-        </AlertDialogCancel>
-        <AlertDialogAction
+        </Button>
+        <Button
           :disabled="recoveryActionInProgress !== null"
-          @click.prevent="submitRecoveryResponse('approve')"
+          @click="submitRecoveryResponse('approve')"
         >
           {{ recoveryActionInProgress === 'approve' ? vaultSecrets.showLoading : vaultSecrets.recoveryRequestApprove }}
-        </AlertDialogAction>
+        </Button>
       </AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>
