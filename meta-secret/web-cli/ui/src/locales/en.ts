@@ -44,6 +44,7 @@ export const vaultSecrets = {
   errorShowRecovered: 'Could not display the recovered secret. Shares may be incomplete or corrupted.',
   errorCopySecret: 'Could not copy the secret.',
   errorRecoveryTimeout: 'Recovery took too long. Please try again.',
+  errorRecoveryDeclined: 'Recovery was declined by all devices.',
   recoveryRequestTitle: 'Recover secret?',
   recoveryRequestApprove: 'Approve',
   recoveryRequestDecline: 'Decline',

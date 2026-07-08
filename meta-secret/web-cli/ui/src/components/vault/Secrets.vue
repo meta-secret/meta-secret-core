@@ -28,6 +28,7 @@ type RevealModalState = 'closed' | 'waiting' | 'revealedText' | 'revealedSeed';
 type RecoveryAction = 'approve' | 'decline';
 type RecoveryAwareMemberState = ReturnType<typeof getMemberVaultState> & {
   find_pending_incoming_recovery_claim?: (metaPassId: MetaPasswordId) => ClaimId | undefined;
+  recovery_client_status?: (metaPassId: MetaPasswordId) => string | undefined;
 };
 type RecoveryAwareApplicationManager = WasmApplicationManager & {
   accept_recover?: (claimId: ClaimId) => Promise<void>;
@@ -72,6 +73,12 @@ const getPendingIncomingRecoveryClaim = (metaPassId: MetaPasswordId) => {
 
 const hasPendingIncomingRecoveryRequest = (metaPassId: MetaPasswordId) =>
   shouldShowRecoveryRequestIcon(getPendingIncomingRecoveryClaim(metaPassId));
+
+const getRecoveryClientStatus = (metaPassId: MetaPasswordId): string | undefined => {
+  const memberState = getMemberVaultState(appState.currState) as RecoveryAwareMemberState | undefined;
+  if (!memberState || typeof memberState.recovery_client_status !== 'function') return undefined;
+  return memberState.recovery_client_status(metaPassId);
+};
 
 const isFlowTokenActive = (token: number) => token === flowToken.value;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -173,6 +180,8 @@ const waitForRecoveredClaim = async (metaPassId: MetaPasswordId, token: number) 
     if (!isFlowTokenActive(token) || revealModalState.value !== 'waiting') return false;
     await appState.updateState();
     if (isRecovered(metaPassId)) return true;
+    const status = getRecoveryClientStatus(metaPassId);
+    if (status === 'declined') throw new Error(vaultSecrets.errorRecoveryDeclined);
   }
   throw new Error(vaultSecrets.errorRecoveryTimeout);
 };

@@ -1,7 +1,7 @@
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
 use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::secret::{
-    ClaimId, SecretDistributionType, SsDistributionStatus, SsLogData,
+    ClaimId, RecoveryClientStatus, SecretDistributionType, SsLogData,
 };
 use crate::node::common::model::user::common::{UserData, UserDataOutsider};
 use crate::node::common::model::vault::vault::VaultMember;
@@ -175,32 +175,43 @@ impl WasmUserMemberFullInfo {
     }
 
     pub fn find_recovery_claim(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
-        self.0.ss_claims.find_recovery_claim_id(pass_id)
+        self.0.ss_claims.claims.values()
+            .find(|claim| {
+                matches!(claim.distribution_type, SecretDistributionType::Recover)
+                    && claim.dist_claim_id.pass_id == *pass_id
+                    && matches!(claim.client_status, Some(RecoveryClientStatus::Accepted))
+            })
+            .map(|claim| claim.id.clone())
     }
 
     pub fn find_pending_incoming_recovery_claim(
         &self,
         pass_id: &MetaPasswordId,
     ) -> Option<ClaimId> {
-        let local_device_id = self.0.member.member.user_data.device.device_id.clone();
-        let claim = self.0.ss_claims.find_recovery_claim(pass_id)?;
+        self.0.ss_claims.claims.values()
+            .find(|claim| {
+                matches!(claim.distribution_type, SecretDistributionType::Recover)
+                    && claim.dist_claim_id.pass_id == *pass_id
+                    && matches!(claim.client_status, Some(RecoveryClientStatus::NeedApprove))
+            })
+            .map(|claim| claim.id.clone())
+    }
 
-        if !matches!(claim.distribution_type, SecretDistributionType::Recover) {
-            return None;
-        }
-
-        if claim.sender.eq(&local_device_id) {
-            return None;
-        }
-
-        if !matches!(
-            claim.status.get(&local_device_id),
-            Some(SsDistributionStatus::Pending)
-        ) {
-            return None;
-        }
-
-        Some(claim.id)
+    pub fn recovery_client_status(&self, pass_id: &MetaPasswordId) -> Option<String> {
+        self.0.ss_claims.claims.values()
+            .find(|claim| {
+                matches!(claim.distribution_type, SecretDistributionType::Recover)
+                    && claim.dist_claim_id.pass_id == *pass_id
+            })
+            .and_then(|claim| {
+                claim.client_status.as_ref().map(|s| match s {
+                    RecoveryClientStatus::Pending => "pending",
+                    RecoveryClientStatus::NeedApprove => "needApprove",
+                    RecoveryClientStatus::Accepted => "accepted",
+                    RecoveryClientStatus::Declined => "declined",
+                    RecoveryClientStatus::Done => "done",
+                }.to_string())
+            })
     }
 }
 

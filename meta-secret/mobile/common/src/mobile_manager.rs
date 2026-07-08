@@ -17,7 +17,7 @@ use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
-use tracing::info;
+use tracing::{info, warn};
 
 static GLOBAL_APP_MANAGER: Lazy<Mutex<Option<Arc<MobileApplicationManager>>>> =
     Lazy::new(|| Mutex::new(None));
@@ -153,12 +153,23 @@ impl MobileApplicationManager {
     }
 
     pub async fn get_state(&self) -> anyhow::Result<ApplicationState> {
+        info!("get_state: fetching application state");
         let app_state = match self.app_manager.get_state().await {
             Ok(state) => ApplicationState::from(state),
             Err(e) => {
                 bail!("Unable to get state from mobile manager: {:?}", e);
             }
         };
+        if let ApplicationState::Vault(meta_secret_core::node::common::model::VaultFullInfo::Member(ref m)) = app_state {
+            for (id, claim) in &m.ss_claims.claims {
+                info!(
+                    claim_id = ?id,
+                    distribution_type = ?claim.distribution_type,
+                    client_status = ?claim.client_status,
+                    "get_state: ss_claim"
+                );
+            }
+        }
         Ok(app_state)
     }
 
@@ -195,13 +206,23 @@ impl MobileApplicationManager {
     }
 
     pub async fn accept_recover_mobile(&self, claim_id: ClaimId) -> Result<()> {
-        println!("🦀Mobile App Manager: Accept recover mobile wrapper");
-        self.app_manager.accept_recover_mobile(claim_id).await
+        info!(claim_id = ?claim_id, "accept_recover_mobile: accepting recovery request");
+        let result = self.app_manager.accept_recover_mobile(claim_id.clone()).await;
+        match &result {
+            Ok(_) => info!(claim_id = ?claim_id, "accept_recover_mobile: success"),
+            Err(e) => warn!(claim_id = ?claim_id, error = %e, "accept_recover_mobile: failed"),
+        }
+        result
     }
 
     pub async fn decline_recover_mobile(&self, claim_id: ClaimId) -> Result<()> {
-        println!("🦀Mobile App Manager: Decline recover mobile wrapper");
-        self.app_manager.decline_recover_mobile(claim_id).await
+        info!(claim_id = ?claim_id, "decline_recover_mobile: declining recovery request");
+        let result = self.app_manager.decline_recover_mobile(claim_id.clone()).await;
+        match &result {
+            Ok(_) => info!(claim_id = ?claim_id, "decline_recover_mobile: success"),
+            Err(e) => warn!(claim_id = ?claim_id, error = %e, "decline_recover_mobile: failed"),
+        }
+        result
     }
 
     pub async fn send_decline_completion(&self, claim_id: ClaimId) -> Result<()> {
@@ -231,7 +252,18 @@ impl MobileApplicationManager {
     }
 
     pub async fn find_claim_by_pass_id(&self, pass_id: &MetaPasswordId) -> Option<SsClaim> {
-        self.app_manager.find_claim_by_pass_id(pass_id).await
+        let result = self.app_manager.find_claim_by_pass_id(pass_id).await;
+        match &result {
+            Some(claim) => info!(
+                pass_id = %pass_id.name,
+                claim_id = ?claim.id,
+                distribution_type = ?claim.distribution_type,
+                client_status = ?claim.client_status,
+                "find_claim_by_pass_id: found"
+            ),
+            None => warn!(pass_id = %pass_id.name, "find_claim_by_pass_id: not found"),
+        }
+        result
     }
 }
 
