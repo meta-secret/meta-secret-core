@@ -40,14 +40,24 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
                 bail!("Outsider status: {:?}", outsider)
             }
             VaultStatus::Member(member) => {
+                let sender_device_id = user_creds.device_id();
+                let vault_name = user_creds.vault_name.clone();
+
+                let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
+
+                // Deduplication: ignore if an active claim already exists for (sender, pass_id).
+                let ss_log = p_ss.get_ss_log_obj(vault_name).await?
+                    .with_client_status(sender_device_id);
+                if ss_log.has_active_recovery_claim(sender_device_id, &pass_id) {
+                    return Ok(());
+                }
+
                 let vault_member = vault_repo
                     .get_vault(member.user().vault_name())
                     .await?
                     .to_data()
                     .to_vault_member(member)?;
                 let claim = vault_member.create_recovery_claim(pass_id);
-
-                let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
                 p_ss.save_claim_in_ss_device_log(claim).await?;
             }
         }

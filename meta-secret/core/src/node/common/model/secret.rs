@@ -130,7 +130,13 @@ impl SsClaim {
             .status
             .statuses
             .values()
-            .filter(|s| matches!(s, SsDistributionStatus::Sent | SsDistributionStatus::Delivered))
+            .filter(|s| matches!(s, SsDistributionStatus::Sent))
+            .count();
+        let num_delivered = self
+            .status
+            .statuses
+            .values()
+            .filter(|s| matches!(s, SsDistributionStatus::Delivered))
             .count();
         let num_declined = self
             .status
@@ -144,13 +150,17 @@ impl SsClaim {
             is_sender,
             is_receiver,
             num_sent,
+            num_delivered,
             num_declined,
             total,
             "compute_client_status: evaluating claim"
         );
 
         let result = if is_sender {
-            if num_sent >= 1 {
+            if num_delivered >= 1 {
+                // Sender retrieved the secret — claim is finished
+                Some(RecoveryClientStatus::Done)
+            } else if num_sent >= 1 {
                 Some(RecoveryClientStatus::Accepted)
             } else if num_declined >= total {
                 Some(RecoveryClientStatus::Declined)
@@ -195,7 +205,7 @@ pub enum RecoveryClientStatus {
     NeedApprove,  // receiver: show 'Allow recovery?' alert
     Accepted,     // sender: call showRecovered()
     Declined,     // sender: show 'recovery declined' notification
-    Done,         // receiver: dismiss all alerts/loaders
+    Done,         // sender: secret retrieved (Delivered); receiver: dismiss alerts/loaders
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -481,6 +491,21 @@ impl SsLogData {
         let computed = self.claims.values().filter(|c| c.client_status.is_some()).count();
         debug!(total, computed, "with_client_status: populated client_status for Recover claims");
         self
+    }
+
+    /// Returns true if there is already an active recovery claim for the given sender and secret.
+    /// Active = not Declined and not Done (i.e. Pending, NeedApprove, or Accepted).
+    /// Must be called after `with_client_status()` so `client_status` is populated.
+    pub fn has_active_recovery_claim(&self, sender: &DeviceId, pass_id: &MetaPasswordId) -> bool {
+        self.claims.values().any(|claim| {
+            matches!(claim.distribution_type, SecretDistributionType::Recover)
+                && &claim.sender == sender
+                && claim.dist_claim_id.pass_id == *pass_id
+                && !matches!(
+                    claim.client_status,
+                    Some(RecoveryClientStatus::Declined) | Some(RecoveryClientStatus::Done)
+                )
+        })
     }
 }
 
@@ -971,7 +996,7 @@ mod test {
     }
 
     #[test]
-    fn test_compute_client_status_sender_accepted_when_one_delivered() {
+    fn test_compute_client_status_sender_done_when_one_delivered() {
         let registry = FixtureRegistry::empty();
         let sender = registry.state.device_creds.client.device.device_id;
         let recv_a = registry.state.device_creds.client_b.device.device_id;
@@ -994,12 +1019,12 @@ mod test {
             status: SsDistributionCompositeStatus::from(vec![recv_a.clone(), recv_b.clone()]),
             client_status: None,
         };
-        // One receiver delivered → also counts as approved
+        // Delivered means sender retrieved the secret — claim is finished
         claim.status = claim.status.complete(recv_a.clone());
 
         assert_eq!(
             claim.compute_client_status(&sender),
-            Some(RecoveryClientStatus::Accepted)
+            Some(RecoveryClientStatus::Done)
         );
     }
 
@@ -1213,5 +1238,117 @@ mod test {
                 }
             }
         }
+    }
+
+    fn make_pass_id(name: &str) -> MetaPasswordId {
+        MetaPasswordId {
+            id: U64IdUrlEnc::from(name.to_string()),
+            name: name.to_string(),
+        }
+    }
+
+    #[test]
+    fn test_has_active_recovery_claim_pending_is_active() {
+        let registry = FixtureRegistry::empty();
+        let sender = registry.state.device_creds.client.device.device_id;
+        let recv = registry.state.device_creds.client_b.device.device_id;
+        let pass_id = make_pass_id("secret1");
+
+        let (mut claim, _) = make_recover_claim(sender.clone(), vec![recv]);
+        claim.dist_claim_id.pass_id = pass_id.clone();
+
+        let log = SsLogData::new(claim).with_client_status(&sender);
+
+        assert!(log.has_active_recovery_claim(&sender, &pass_id));
+    }
+
+    #[test]
+    fn test_has_active_recovery_claim_accepted_is_active() {
+        let registry = FixtureRegistry::empty();
+        let sender = registry.state.device_creds.client.device.device_id;
+        let recv = registry.state.device_creds.client_b.device.device_id;
+        let pass_id = make_pass_id("secret1");
+
+        let (mut claim, claim_id) = make_recover_claim(sender.clone(), vec![recv.clone()]);
+        claim.dist_claim_id.pass_id = pass_id.clone();
+
+        // Receiver approved (Sent) → sender sees Accepted
+        let log = SsLogData::new(claim).sent(claim_id, recv);
+        let log = log.with_client_status(&sender);
+
+        assert!(log.has_active_recovery_claim(&sender, &pass_id));
+    }
+
+    #[test]
+    fn test_has_active_recovery_claim_done_is_not_active() {
+        let registry = FixtureRegistry::empty();
+        let sender = registry.state.device_creds.client.device.device_id;
+        let recv = registry.state.device_creds.client_b.device.device_id;
+        let pass_id = make_pass_id("secret1");
+
+        let (mut claim, claim_id) = make_recover_claim(sender.clone(), vec![recv.clone()]);
+        claim.dist_claim_id.pass_id = pass_id.clone();
+
+        // Sender retrieved secret (Delivered) → Done
+        let log = SsLogData::new(claim).complete(claim_id, recv);
+        let log = log.with_client_status(&sender);
+
+        assert!(!log.has_active_recovery_claim(&sender, &pass_id));
+    }
+
+    #[test]
+    fn test_has_active_recovery_claim_declined_is_not_active() {
+        let registry = FixtureRegistry::empty();
+        let sender = registry.state.device_creds.client.device.device_id;
+        let recv_a = registry.state.device_creds.client_b.device.device_id;
+        let recv_b = registry.state.device_creds.vd.device.device_id;
+        let pass_id = make_pass_id("secret1");
+
+        let (mut claim, claim_id) =
+            make_recover_claim(sender.clone(), vec![recv_a.clone(), recv_b.clone()]);
+        claim.dist_claim_id.pass_id = pass_id.clone();
+
+        // All declined → Declined
+        let log = SsLogData::new(claim)
+            .decline(claim_id.clone(), recv_a)
+            .decline(claim_id, recv_b);
+        let log = log.with_client_status(&sender);
+
+        assert!(!log.has_active_recovery_claim(&sender, &pass_id));
+    }
+
+    #[test]
+    fn test_has_active_recovery_claim_different_pass_id_is_ignored() {
+        let registry = FixtureRegistry::empty();
+        let sender = registry.state.device_creds.client.device.device_id;
+        let recv = registry.state.device_creds.client_b.device.device_id;
+        let pass_id = make_pass_id("secret1");
+        let other_pass_id = make_pass_id("secret2");
+
+        let (mut claim, _) = make_recover_claim(sender.clone(), vec![recv]);
+        claim.dist_claim_id.pass_id = pass_id.clone();
+
+        let log = SsLogData::new(claim).with_client_status(&sender);
+
+        // Active claim exists for secret1, but not for secret2
+        assert!(log.has_active_recovery_claim(&sender, &pass_id));
+        assert!(!log.has_active_recovery_claim(&sender, &other_pass_id));
+    }
+
+    #[test]
+    fn test_has_active_recovery_claim_different_sender_is_ignored() {
+        let registry = FixtureRegistry::empty();
+        let sender = registry.state.device_creds.client.device.device_id;
+        let other_sender = registry.state.device_creds.vd.device.device_id;
+        let recv = registry.state.device_creds.client_b.device.device_id;
+        let pass_id = make_pass_id("secret1");
+
+        let (mut claim, _) = make_recover_claim(sender.clone(), vec![recv]);
+        claim.dist_claim_id.pass_id = pass_id.clone();
+
+        let log = SsLogData::new(claim).with_client_status(&sender);
+
+        assert!(log.has_active_recovery_claim(&sender, &pass_id));
+        assert!(!log.has_active_recovery_claim(&other_sender, &pass_id));
     }
 }
