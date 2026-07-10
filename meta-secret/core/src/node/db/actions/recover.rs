@@ -1,5 +1,5 @@
 use crate::node::common::model::meta_pass::MetaPasswordId;
-use crate::node::common::model::secret::{ClaimId, SecretDistributionData, SsDistributionId};
+use crate::node::common::model::secret::{ClaimId, SecretDistributionData, SsDistributionId, SsDistributionStatus};
 use crate::node::common::model::user::user_creds::UserCreds;
 use crate::node::common::model::vault::vault::VaultStatus;
 use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
@@ -142,7 +142,41 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
         // Recover the secret using the collected shares
         let plain_text = recover_from_shares(user_shares)?;
 
+        // Mark the claim as Delivered so compute_client_status returns Done for the sender.
+        // The server intentionally skips this transition for Recovery claims (see
+        // server_data_sync.rs — "Completion event needs to be sent by the recovery claim creator").
+        self.mark_claim_delivered(&user_creds, &claim_id).await?;
+
         Ok(plain_text)
+    }
+
+    async fn mark_claim_delivered(
+        &self,
+        user_creds: &UserCreds,
+        claim_id: &ClaimId,
+    ) -> anyhow::Result<()> {
+        let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
+        let ss_log_data = p_ss.get_ss_log_obj(user_creds.vault_name.clone()).await?;
+
+        let Some(claim) = ss_log_data.claims.get(claim_id) else {
+            return Ok(());
+        };
+
+        // Find any receiver whose share was already sent to us (Sent = we received the share).
+        let receiver_to_mark = claim
+            .status
+            .statuses
+            .iter()
+            .find(|(_, s)| matches!(s, SsDistributionStatus::Sent))
+            .map(|(id, _)| id.clone());
+
+        if let Some(receiver_id) = receiver_to_mark {
+            let mut updated_claim = claim.clone();
+            updated_claim.status = updated_claim.status.complete(receiver_id);
+            p_ss.save_ss_log_event(updated_claim).await?;
+        }
+
+        Ok(())
     }
 }
 

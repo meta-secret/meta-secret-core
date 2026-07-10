@@ -1272,7 +1272,7 @@ mod test {
         let (mut claim, claim_id) = make_recover_claim(sender.clone(), vec![recv.clone()]);
         claim.dist_claim_id.pass_id = pass_id.clone();
 
-        // Receiver approved (Sent) → sender sees Accepted
+        // Receiver approved (Sent) → sender sees Accepted → still active until secret is read (Done)
         let log = SsLogData::new(claim).sent(claim_id, recv);
         let log = log.with_client_status(&sender);
 
