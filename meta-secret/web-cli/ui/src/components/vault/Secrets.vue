@@ -57,7 +57,6 @@ const recoveryDialogSecret = ref<MetaPasswordId | null>(null);
 const recoveryDialogClaim = ref<ClaimId | null>(null);
 const recoveryActionInProgress = ref<RecoveryAction | null>(null);
 
-const FLOW_MAX_ATTEMPTS = 15;
 const FLOW_POLL_DELAY_MS = 800;
 
 const isRecovered = (metaPassId: MetaPasswordId) => {
@@ -185,7 +184,7 @@ const openRevealedModal = (secretValue: string) => {
 
 const waitForRecoveredClaim = async (metaPassId: MetaPasswordId, token: number) => {
   if (isRecovered(metaPassId)) return true;
-  for (let i = 0; i < FLOW_MAX_ATTEMPTS; i++) {
+  while (true) {
     if (!isFlowTokenActive(token) || revealModalState.value !== 'waiting') return false;
     await sleep(FLOW_POLL_DELAY_MS);
     if (!isFlowTokenActive(token) || revealModalState.value !== 'waiting') return false;
@@ -194,7 +193,6 @@ const waitForRecoveredClaim = async (metaPassId: MetaPasswordId, token: number) 
     const status = getRecoveryClientStatus(metaPassId);
     if (status === 'declined') throw new Error(vaultSecrets.errorRecoveryDeclined);
   }
-  throw new Error(vaultSecrets.errorRecoveryTimeout);
 };
 
 const startRevealFlow = async (secret: MetaPasswordId) => {
