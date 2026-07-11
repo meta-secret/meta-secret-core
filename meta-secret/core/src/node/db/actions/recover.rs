@@ -1,5 +1,5 @@
 use crate::node::common::model::meta_pass::MetaPasswordId;
-use crate::node::common::model::secret::{ClaimId, SecretDistributionData, SsDistributionId, SsDistributionStatus};
+use crate::node::common::model::secret::{ClaimId, SecretDistributionData, SecretDistributionType, SsDistributionId, SsDistributionStatus};
 use crate::node::common::model::user::user_creds::UserCreds;
 use crate::node::common::model::vault::vault::VaultStatus;
 use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
@@ -158,22 +158,38 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
         let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
         let ss_log_data = p_ss.get_ss_log_obj(user_creds.vault_name.clone()).await?;
 
-        let Some(claim) = ss_log_data.claims.get(claim_id) else {
+        let Some(current_claim) = ss_log_data.claims.get(claim_id) else {
             return Ok(());
         };
+        let pass_id = current_claim.dist_claim_id.pass_id.clone();
 
-        // Find any receiver whose share was already sent to us (Sent = we received the share).
-        let receiver_to_mark = claim
-            .status
-            .statuses
-            .iter()
-            .find(|(_, s)| matches!(s, SsDistributionStatus::Sent))
-            .map(|(id, _)| id.clone());
+        // Sweep ALL Recover claims for this pass_id and mark any stale Sent receiver as Done.
+        // This handles claims from previous sessions that were never transitioned to Done
+        // (e.g., approved before mark_claim_delivered was deployed), which would otherwise
+        // block new claim creation and cause wrong claim selection on subsequent recoveries.
+        let claims_to_update: Vec<_> = ss_log_data
+            .claims
+            .values()
+            .filter(|c| {
+                c.distribution_type == SecretDistributionType::Recover
+                    && c.dist_claim_id.pass_id == pass_id
+            })
+            .cloned()
+            .collect();
 
-        if let Some(receiver_id) = receiver_to_mark {
-            let mut updated_claim = claim.clone();
-            updated_claim.status = updated_claim.status.complete(receiver_id);
-            p_ss.save_ss_log_event(updated_claim).await?;
+        for claim in claims_to_update {
+            let receiver_to_mark = claim
+                .status
+                .statuses
+                .iter()
+                .find(|(_, s)| matches!(s, SsDistributionStatus::Sent))
+                .map(|(id, _)| id.clone());
+
+            if let Some(receiver_id) = receiver_to_mark {
+                let mut updated_claim = claim.clone();
+                updated_claim.status = updated_claim.status.complete(receiver_id);
+                p_ss.save_ss_log_event(updated_claim).await?;
+            }
         }
 
         Ok(())
