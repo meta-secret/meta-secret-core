@@ -13,6 +13,7 @@ use crate::PlainText;
 use anyhow::bail;
 use derive_more::From;
 use std::sync::Arc;
+use tracing::{info, warn};
 use tracing_attributes::instrument;
 
 #[derive(From)]
@@ -61,6 +62,7 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
                 // Marking stale claims Done here breaks the cycle: dedup passes, a fresh
                 // claim is created, iOS approves it, and show_recovered gets valid data.
                 {
+                    info!("🔍 [recovery_request v2] sweep stale Accepted claims for pass_id={:?}", pass_id);
                     let ss_log_data = p_ss.get_ss_log_obj(vault_name.clone()).await?;
                     let stale: Vec<_> = ss_log_data
                         .claims
@@ -77,6 +79,8 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
                         .cloned()
                         .collect();
 
+                    info!("🔍 [recovery_request v2] found {} stale claim(s) to retire", stale.len());
+
                     for claim in stale {
                         if let Some(receiver_id) = claim
                             .status
@@ -85,6 +89,7 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
                             .find(|(_, s)| matches!(s, SsDistributionStatus::Sent))
                             .map(|(id, _)| id.clone())
                         {
+                            warn!("♻️ [recovery_request v2] retiring stale claim {:?}", claim.id);
                             let mut updated = claim.clone();
                             updated.status = updated.status.complete(receiver_id);
                             p_ss.save_ss_log_event(updated).await?;
@@ -127,6 +132,8 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
         claim_id: ClaimId,
         pass_id: MetaPasswordId,
     ) -> anyhow::Result<PlainText> {
+        info!("🔑 [recover v2] claim_id={:?} pass_id={:?}", claim_id, pass_id);
+
         // Create PersistentSharedSecret to access shared secret data
         let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
 
@@ -141,8 +148,11 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
             .ok_or_else(|| anyhow::anyhow!("Claim not found for recovery ID"))?
             .clone();
 
+        info!("🔑 [recover v2] claim statuses: {:?}", claim.status.statuses);
+
         // Get recoveries and distributions from the claim
         let recoveries = p_ss.get_recoveries(claim.clone()).await?;
+        info!("🔑 [recover v2] recovery shares count: {}", recoveries.len());
 
         let desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
             pass_id,
