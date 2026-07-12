@@ -45,6 +45,53 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
 
                 let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
 
+                // Retire stale Accepted claims before the dedup check.
+                //
+                // A claim with a Sent receiver is "Accepted" in compute_client_status.
+                // If such a claim lingers (e.g. mark_claim_delivered never ran because
+                // show_recovered crashed), two things go wrong on the next Recover click:
+                //
+                // 1. has_active_recovery_claim blocks new claim creation.
+                // 2. waitForRecoveredClaim (Vue) calls isRecovered → find_recovery_claim
+                //    returns the stale claim → returns true immediately without waiting
+                //    for iOS to approve the new claim.
+                // 3. show_recovered picks the stale claim (non-deterministic HashMap) →
+                //    its recovery data is absent → only 1 share → "Invalid share".
+                //
+                // Marking stale claims Done here breaks the cycle: dedup passes, a fresh
+                // claim is created, iOS approves it, and show_recovered gets valid data.
+                {
+                    let ss_log_data = p_ss.get_ss_log_obj(vault_name.clone()).await?;
+                    let stale: Vec<_> = ss_log_data
+                        .claims
+                        .values()
+                        .filter(|c| {
+                            c.distribution_type == SecretDistributionType::Recover
+                                && &c.sender == sender_device_id
+                                && c.dist_claim_id.pass_id == pass_id
+                                && c.status
+                                    .statuses
+                                    .values()
+                                    .any(|s| matches!(s, SsDistributionStatus::Sent))
+                        })
+                        .cloned()
+                        .collect();
+
+                    for claim in stale {
+                        if let Some(receiver_id) = claim
+                            .status
+                            .statuses
+                            .iter()
+                            .find(|(_, s)| matches!(s, SsDistributionStatus::Sent))
+                            .map(|(id, _)| id.clone())
+                        {
+                            let mut updated = claim.clone();
+                            updated.status = updated.status.complete(receiver_id);
+                            p_ss.save_ss_log_event(updated).await?;
+                        }
+                    }
+                }
+
                 // Deduplication: ignore if an active claim already exists for (sender, pass_id).
                 let ss_log = p_ss.get_ss_log_obj(vault_name).await?
                     .with_client_status(sender_device_id);
