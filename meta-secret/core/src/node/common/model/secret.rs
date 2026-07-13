@@ -319,41 +319,25 @@ pub struct SsLogData {
 
 impl SsLogData {
     pub fn find_recovery_claim_id(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
-        let mut claim_id = None;
+        // Use client_status (populated by with_client_status()) to select only active claims.
+        // This avoids the HashMap non-determinism bug: when multiple claims exist for the same
+        // pass_id (e.g. a stale retired claim and a fresh active one), only Pending/Accepted
+        // claims are candidates. Done and Declined claims are terminal and must be skipped.
         for (_, claim) in self.claims.iter() {
             let SecretDistributionType::Recover = claim.distribution_type else {
                 continue;
             };
-
-            let claim_pass_id = &claim.dist_claim_id.pass_id;
-
-            if !pass_id.eq(claim_pass_id) {
+            if !pass_id.eq(&claim.dist_claim_id.pass_id) {
                 continue;
             }
-
-            match claim.status.status() {
-                SsDistributionStatus::Pending => {
-                    println!("🦀 Founded claim status: Pending");
-                    continue;
+            match claim.client_status {
+                Some(RecoveryClientStatus::Pending) | Some(RecoveryClientStatus::Accepted) => {
+                    return Some(claim.id.clone());
                 }
-                SsDistributionStatus::Sent => {
-                    println!("🦀 Founded claim status: Sent");
-                    claim_id = Some(claim.id.clone());
-                    break;
-                }
-                SsDistributionStatus::Delivered => {
-                    println!("🦀 Founded claim status: Delivered");
-                    claim_id = Some(claim.id.clone());
-                    break;
-                }
-                SsDistributionStatus::Declined => {
-                    println!("🦀 Founded claim status: Declined");
-                    continue;
-                }
+                _ => continue,
             }
         }
-
-        claim_id
+        None
     }
 
     pub fn find_recovery_claim(&self, pass_id: &MetaPasswordId) -> Option<SsClaim> {
@@ -1333,6 +1317,81 @@ mod test {
         // Active claim exists for secret1, but not for secret2
         assert!(log.has_active_recovery_claim(&sender, &pass_id));
         assert!(!log.has_active_recovery_claim(&sender, &other_pass_id));
+    }
+
+    #[test]
+    fn test_find_recovery_claim_id_returns_accepted_claim() {
+        let registry = FixtureRegistry::empty();
+        let sender = registry.state.device_creds.client.device.device_id;
+        let recv = registry.state.device_creds.client_b.device.device_id;
+        let pass_id = make_pass_id("secret1");
+
+        let (mut claim, claim_id) = make_recover_claim(sender.clone(), vec![recv.clone()]);
+        claim.dist_claim_id.pass_id = pass_id.clone();
+
+        let log = SsLogData::new(claim).sent(claim_id, recv).with_client_status(&sender);
+
+        let found = log.find_recovery_claim_id(&pass_id);
+        assert!(found.is_some(), "Should find the Accepted (Sent) claim");
+    }
+
+    #[test]
+    fn test_find_recovery_claim_id_skips_done_claim_prefers_accepted() {
+        let registry = FixtureRegistry::empty();
+        let sender = registry.state.device_creds.client.device.device_id;
+        let recv_a = registry.state.device_creds.client_b.device.device_id;
+        let recv_b = registry.state.device_creds.vd.device.device_id;
+        let pass_id = make_pass_id("secret1");
+
+        // Claim #1: Done (Delivered) — stale from previous session
+        let (mut claim1, claim_id1) = make_recover_claim(sender.clone(), vec![recv_a.clone()]);
+        claim1.dist_claim_id.pass_id = pass_id.clone();
+        let log = SsLogData::new(claim1).complete(claim_id1, recv_a.clone());
+
+        // Claim #2: Accepted (Sent) — active
+        let (mut claim2, claim_id2) = make_recover_claim(sender.clone(), vec![recv_b.clone()]);
+        claim2.dist_claim_id.pass_id = pass_id.clone();
+        let log = log.insert(claim2).sent(claim_id2.clone(), recv_b.clone()).with_client_status(&sender);
+
+        let found = log.find_recovery_claim_id(&pass_id);
+        assert_eq!(found, Some(claim_id2), "Must return active claim, not the Done one");
+    }
+
+    #[test]
+    fn test_find_recovery_claim_id_returns_none_when_all_done() {
+        let registry = FixtureRegistry::empty();
+        let sender = registry.state.device_creds.client.device.device_id;
+        let recv = registry.state.device_creds.client_b.device.device_id;
+        let pass_id = make_pass_id("secret1");
+
+        let (mut claim, claim_id) = make_recover_claim(sender.clone(), vec![recv.clone()]);
+        claim.dist_claim_id.pass_id = pass_id.clone();
+        let log = SsLogData::new(claim).complete(claim_id, recv).with_client_status(&sender);
+
+        let found = log.find_recovery_claim_id(&pass_id);
+        assert!(found.is_none(), "All Done → no active claim to recover from");
+    }
+
+    #[test]
+    fn test_find_recovery_claim_id_skips_declined_claim_prefers_pending() {
+        let registry = FixtureRegistry::empty();
+        let sender = registry.state.device_creds.client.device.device_id;
+        let recv_a = registry.state.device_creds.client_b.device.device_id;
+        let recv_b = registry.state.device_creds.vd.device.device_id;
+        let pass_id = make_pass_id("secret1");
+
+        // Claim #1: Declined — stale claim retired by stale sweep (now using decline())
+        let (mut claim1, claim_id1) = make_recover_claim(sender.clone(), vec![recv_a.clone()]);
+        claim1.dist_claim_id.pass_id = pass_id.clone();
+        let log = SsLogData::new(claim1).decline(claim_id1, recv_a.clone());
+
+        // Claim #2: Pending — fresh claim just created
+        let (mut claim2, claim_id2) = make_recover_claim(sender.clone(), vec![recv_b.clone()]);
+        claim2.dist_claim_id.pass_id = pass_id.clone();
+        let log = log.insert(claim2).with_client_status(&sender);
+
+        let found = log.find_recovery_claim_id(&pass_id);
+        assert_eq!(found, Some(claim_id2), "Must return Pending claim, not the Declined stale one");
     }
 
     #[test]

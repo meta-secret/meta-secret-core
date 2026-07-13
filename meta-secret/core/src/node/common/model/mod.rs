@@ -198,20 +198,31 @@ impl WasmUserMemberFullInfo {
     }
 
     pub fn recovery_client_status(&self, pass_id: &MetaPasswordId) -> Option<String> {
-        self.0.ss_claims.claims.values()
-            .find(|claim| {
+        // Prefer active (Pending/Accepted) claims over terminal (Done/Declined) ones.
+        // When a stale claim exists alongside a fresh claim for the same pass_id, the active
+        // claim's status is what the UI cares about — returning "declined" from a stale claim
+        // would incorrectly abort the ongoing recovery flow.
+        let claims: Vec<_> = self.0.ss_claims.claims.values()
+            .filter(|claim| {
                 matches!(claim.distribution_type, SecretDistributionType::Recover)
                     && claim.dist_claim_id.pass_id == *pass_id
             })
-            .and_then(|claim| {
-                claim.client_status.as_ref().map(|s| match s {
-                    RecoveryClientStatus::Pending => "pending",
-                    RecoveryClientStatus::NeedApprove => "needApprove",
-                    RecoveryClientStatus::Accepted => "accepted",
-                    RecoveryClientStatus::Declined => "declined",
-                    RecoveryClientStatus::Done => "done",
-                }.to_string())
-            })
+            .collect();
+
+        let best = claims.iter()
+            .find(|c| matches!(c.client_status,
+                Some(RecoveryClientStatus::Pending) | Some(RecoveryClientStatus::Accepted)))
+            .or_else(|| claims.first());
+
+        best.and_then(|claim| {
+            claim.client_status.as_ref().map(|s| match s {
+                RecoveryClientStatus::Pending => "pending",
+                RecoveryClientStatus::NeedApprove => "needApprove",
+                RecoveryClientStatus::Accepted => "accepted",
+                RecoveryClientStatus::Declined => "declined",
+                RecoveryClientStatus::Done => "done",
+            }.to_string())
+        })
     }
 }
 

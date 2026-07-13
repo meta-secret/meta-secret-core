@@ -82,18 +82,23 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
                     info!("🔍 [recovery_request v2] found {} stale claim(s) to retire", stale.len());
 
                     for claim in stale {
-                        if let Some(receiver_id) = claim
+                        warn!("♻️ [recovery_request v2] retiring stale claim {:?}", claim.id);
+                        let mut updated = claim.clone();
+                        // Decline all Sent receivers to retire the stale claim.
+                        // Using decline() rather than complete() avoids a fake Delivered status that
+                        // would make compute_client_status return Done for the sender before
+                        // show_recovered() has run — which triggers the wrong claim to be selected.
+                        let sent_receivers: Vec<_> = updated
                             .status
                             .statuses
                             .iter()
-                            .find(|(_, s)| matches!(s, SsDistributionStatus::Sent))
+                            .filter(|(_, s)| matches!(s, SsDistributionStatus::Sent))
                             .map(|(id, _)| id.clone())
-                        {
-                            warn!("♻️ [recovery_request v2] retiring stale claim {:?}", claim.id);
-                            let mut updated = claim.clone();
-                            updated.status = updated.status.complete(receiver_id);
-                            p_ss.save_ss_log_event(updated).await?;
+                            .collect();
+                        for receiver_id in sent_receivers {
+                            updated.status = updated.status.decline(receiver_id);
                         }
+                        p_ss.save_ss_log_event(updated).await?;
                     }
                 }
 
@@ -255,11 +260,14 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
 
 #[cfg(test)]
 mod tests {
-    use super::RecoveryHandler;
+    use super::{RecoveryAction, RecoveryHandler};
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::common::model::crypto::aead::EncryptedMessage;
     use crate::node::common::model::meta_pass::MetaPasswordId;
-    use crate::node::common::model::secret::{SecretDistributionData, SsDistributionId};
+    use crate::node::common::model::secret::{
+        RecoveryClientStatus, SecretDistributionData, SecretDistributionType, SsDistributionId,
+        SsDistributionStatus,
+    };
     use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
     use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
     use crate::node::db::events::shared_secret_event::SsWorkflowObject;
@@ -268,6 +276,73 @@ mod tests {
     use crate::secret::data_block::common::SharedSecretConfig;
     use crate::secret::shared_secret::{PlainText, SharedSecretEncryption};
     use anyhow::Result;
+
+    /// Stale sweep must decline (not complete) Sent receivers so the sender does NOT see Done
+    /// prematurely. Using decline() instead of complete() ensures the sender stays in a state
+    /// that blocks new claim creation (Sent is active, Declined is terminal). Without this,
+    /// stale sweep would fake a Delivered status prematurely.
+    #[test]
+    fn stale_sweep_declines_sent_receiver_not_completes() {
+        use crate::node::common::model::secret::{SsClaimId, SsClaim};
+        use crate::crypto::utils::Id48bit;
+
+        let registry = FixtureRegistry::empty();
+        let sender = registry.state.device_creds.client.device.device_id.clone();
+        let recv_a = registry.state.device_creds.client_b.device.device_id.clone();
+        let pass_id = MetaPasswordId::build_from_str("stale_sweep_test");
+
+        // Create a claim with Sent receiver (simulates previous recovery attempt)
+        let claim_id = crate::node::common::model::secret::ClaimId::from(Id48bit::generate());
+        let mut claim = SsClaim {
+            id: claim_id.clone(),
+            dist_claim_id: SsClaimId {
+                id: claim_id.clone(),
+                pass_id: pass_id.clone(),
+            },
+            vault_name: crate::node::common::model::vault::vault::VaultName::test(),
+            sender: sender.clone(),
+            distribution_type: SecretDistributionType::Recover,
+            receivers: vec![recv_a.clone()],
+            status: crate::node::common::model::secret::SsDistributionCompositeStatus::from(vec![recv_a.clone()]),
+            client_status: None,
+        };
+        claim.status = claim.status.sent(recv_a.clone());
+
+        // Simulate stale sweep with correct logic (decline, not complete)
+        let mut retired = claim.clone();
+        let sent_receivers: Vec<_> = retired
+            .status
+            .statuses
+            .iter()
+            .filter(|(_, s)| matches!(s, SsDistributionStatus::Sent))
+            .map(|(id, _)| id.clone())
+            .collect();
+        for receiver_id in sent_receivers {
+            retired.status = retired.status.decline(receiver_id);
+        }
+
+        // Verify the result: receiver must be Declined, not Delivered
+        let recv_status = retired.status.statuses.get(&recv_a).unwrap();
+        assert!(
+            matches!(recv_status, SsDistributionStatus::Declined),
+            "Stale sweep must Decline the Sent receiver. Got: {:?}",
+            recv_status
+        );
+
+        // Sender must NOT see Done — Declined is terminal but not Done
+        let log = crate::node::common::model::secret::SsLogData::new(retired)
+            .with_client_status(&sender);
+        let client_status = log
+            .claims
+            .get(&claim_id)
+            .and_then(|c| c.client_status.as_ref());
+
+        assert!(
+            !matches!(client_status, Some(RecoveryClientStatus::Done)),
+            "Sender must NOT see Done after declining stale claim. Got: {:?}",
+            client_status
+        );
+    }
 
     #[tokio::test]
     async fn recover_works_without_local_distribution_when_recovery_shares_exist() -> Result<()> {
