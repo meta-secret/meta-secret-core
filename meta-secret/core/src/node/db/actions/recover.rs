@@ -177,6 +177,13 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
             .into_iter()
             .collect();
 
+        info!(
+            "🔑 [recover v2] own local share found: {}, distribution_data count: {}, recovery_data count: {}",
+            distribution_data.len() > 0,
+            distribution_data.len(),
+            recovery_data.len()
+        );
+
         if recovery_data.is_empty() && distribution_data.is_empty() {
             bail!("No recovery shares found for selected claim");
         }
