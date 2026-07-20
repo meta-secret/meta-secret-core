@@ -470,7 +470,14 @@ impl SsLogData {
     pub fn with_client_status(mut self, current_device: &DeviceId) -> Self {
         let total = self.claims.len();
         for claim in self.claims.values_mut() {
+            let previous_client_status = claim.client_status.clone();
             claim.client_status = claim.compute_client_status(current_device);
+            debug!(
+                claim_id = ?claim.id,
+                ?previous_client_status,
+                client_status = ?claim.client_status,
+                "recovery claim clientStatus transition"
+            );
         }
         let computed = self.claims.values().filter(|c| c.client_status.is_some()).count();
         debug!(total, computed, "with_client_status: populated client_status for Recover claims");

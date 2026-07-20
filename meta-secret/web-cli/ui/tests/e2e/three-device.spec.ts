@@ -199,7 +199,7 @@ test('Three Device (Web + Android + iOS) - vault create, join, approve, secret s
   // ===== PHASE 4: Poll for Pending device from Android =====
   console.log('\n✅ Phase 4: Web - Poll for Pending device from Android');
 
-  console.log('⏳ Waiting for Pending device (app polls every 5s)...');
+  console.log('⏳ Waiting for Pending device (app refreshes after socket invalidation)...');
   const pendingBadge = page.getByText('Pending');
   await expect(pendingBadge).toBeVisible({ timeout: 90000 });
   console.log('✅ Pending device appeared (Android joined)!');

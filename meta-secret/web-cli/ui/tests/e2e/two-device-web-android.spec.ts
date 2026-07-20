@@ -205,9 +205,9 @@ test('Two Device (Web + Android) - vault create, join, approve, secret sync', as
   // ===== PHASE 4: Poll for Pending device on web side =====
   console.log('\n✅ Phase 4: Web - Poll for Pending device from Android');
 
-  // Wait for Pending device to appear (app auto-updates via socket polling)
+  // Wait for Pending device to appear (app auto-updates via socket invalidation)
   // No need to reload - the app will update UI automatically
-  console.log('⏳ Waiting for Pending device (app polls every 5s)...');
+  console.log('⏳ Waiting for Pending device (app refreshes after socket invalidation)...');
   const pendingBadge = page.getByText('Pending');
   await expect(pendingBadge).toBeVisible({ timeout: 90000 }); // Wait up to 90 seconds
   console.log('✅ Pending device appeared!');
