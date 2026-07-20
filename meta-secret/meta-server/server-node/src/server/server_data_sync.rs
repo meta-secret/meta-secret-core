@@ -9,7 +9,9 @@ use anyhow::Result;
 use anyhow::{Ok, bail};
 use meta_secret_core::node::api::{SsRequest, VaultRequest};
 use meta_secret_core::node::common::model::device::common::{DeviceData, DeviceId};
-use meta_secret_core::node::common::model::secret::{SecretDistributionType, SsDistributionId};
+use meta_secret_core::node::common::model::secret::{
+    SecretDistributionType, SsDistributionId, SsDistributionStatus,
+};
 use meta_secret_core::node::common::model::vault::vault::VaultStatus;
 use meta_secret_core::node::db::actions::vault::vault_action::ServerVaultAction;
 use meta_secret_core::node::db::descriptors::shared_secret_descriptor::{
@@ -149,9 +151,8 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                 self.publish_invalidation(vault_name, StateInvalidationScope::SsClaims);
             }
             GenericKvLogEvent::SsWorkflow(ss_object) => {
-                self.p_obj.repo.save(ss_object.clone()).await?;
-
                 if let SsWorkflowObject::Decline(decline_event) = &ss_object {
+                    self.p_obj.repo.save(ss_object.clone()).await?;
                     let decline_data = decline_event.value.clone();
                     let vault_name = decline_data.vault_name.clone();
                     let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
@@ -170,6 +171,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                     self.p_obj.repo.save(new_ss_log_event).await?;
                     self.publish_invalidation(vault_name, StateInvalidationScope::SsClaims);
                 } else {
+                    let ss_object_to_save = ss_object.clone();
                     let wf = ss_object.to_distribution_data()?;
                     let vault_name = wf.vault_name.clone();
                     let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
@@ -206,6 +208,24 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                                     };
 
                                     let claim_id = wf.claim_id.id.clone();
+                                    if distribution_type == SecretDistributionType::Split
+                                        && matches!(
+                                            claim.status.get(&device_id),
+                                            Some(
+                                                SsDistributionStatus::Sent
+                                                    | SsDistributionStatus::Delivered
+                                            )
+                                        )
+                                    {
+                                        debug!(
+                                            claim_id = ?claim_id,
+                                            receiver = ?device_id,
+                                            "duplicate split distribution workflow ignored"
+                                        );
+                                        return Ok(());
+                                    }
+
+                                    self.p_obj.repo.save(ss_object_to_save).await?;
                                     let new_ss_log_data =
                                         ss_log_data.sent(wf.claim_id.id, device_id);
                                     // TODO: k-of-N — call only when count(Sent) >= threshold

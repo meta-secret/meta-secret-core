@@ -3,13 +3,14 @@ use std::time::Duration;
 
 use tracing::{debug, error, info, instrument};
 
+use crate::crypto::keys::TransportSk;
 use crate::node::api::{
     DataEventsResponse, ReadSyncRequest, ServerTailRequest, ServerTailResponse, SsRequest,
     SyncRequest, VaultRequest, WriteSyncRequest,
 };
 use crate::node::app::sync::sync_protocol::SyncProtocol;
 use crate::node::common::model::device::common::DeviceId;
-use crate::node::common::model::secret::{SecretDistributionType, SsDistributionStatus};
+use crate::node::common::model::secret::{SecretDistributionType, SsClaim, SsDistributionStatus};
 use crate::node::common::model::user::common::{UserData, UserId};
 use crate::node::common::model::vault::vault::VaultStatus;
 use crate::node::db::descriptors::shared_secret_descriptor::{
@@ -18,7 +19,9 @@ use crate::node::db::descriptors::shared_secret_descriptor::{
 use crate::node::db::descriptors::vault_descriptor::DeviceLogDescriptor;
 use crate::node::db::events::generic_log_event::{ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::object_id::ArtifactId;
-use crate::node::db::events::shared_secret_event::{SsDeviceLogObject, SsLogObject};
+use crate::node::db::events::shared_secret_event::{
+    SsDeviceLogObject, SsLogObject, SsWorkflowObject,
+};
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -26,7 +29,6 @@ use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use anyhow::Result;
-use crate::crypto::keys::TransportSk;
 
 pub struct SyncGateway<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub id: String,
@@ -36,6 +38,41 @@ pub struct SyncGateway<Repo: KvLogEventRepo, Sync: SyncProtocol> {
 }
 
 impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
+    fn has_pending_split_receiver(claim: &SsClaim) -> bool {
+        claim
+            .status
+            .statuses
+            .values()
+            .any(|status| matches!(status, SsDistributionStatus::Pending))
+    }
+
+    fn split_workflow_receiver(wf_event: &SsWorkflowObject) -> Option<DeviceId> {
+        let SsWorkflowObject::Distribution(event) = wf_event else {
+            return None;
+        };
+
+        Some(
+            event
+                .value
+                .secret_message
+                .cipher_text()
+                .channel
+                .receiver()
+                .to_device_id(),
+        )
+    }
+
+    fn split_workflow_has_pending_receiver(claim: &SsClaim, wf_event: &SsWorkflowObject) -> bool {
+        let Some(receiver) = Self::split_workflow_receiver(wf_event) else {
+            return false;
+        };
+
+        matches!(
+            claim.status.get(&receiver),
+            Some(SsDistributionStatus::Pending)
+        )
+    }
+
     #[instrument(skip_all)]
     pub async fn run(&self) {
         info!("Run sync gateway");
@@ -43,7 +80,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         loop {
             let creds_repo = PersistentCredentials {
                 p_obj: self.p_obj.clone(),
-                master_key: self.master_key.clone()
+                master_key: self.master_key.clone(),
             };
 
             let maybe_user_creds = creds_repo.get_user_creds().await.unwrap();
@@ -206,19 +243,29 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                 let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
                 match claim.distribution_type {
                     SecretDistributionType::Split => {
+                        if !claim.sender.eq(&user.device.device_id)
+                            || !Self::has_pending_split_receiver(&claim)
+                        {
+                            continue;
+                        }
+
                         let wf_events = p_ss.get_distributions(claim.clone()).await?;
 
                         for wf_event in wf_events {
-                            if claim.sender.eq(&user.device.device_id) {
-                                // Keep local split distributions so sender can perform future
-                                // redistributions for new members under current K=2 policy.
-                                // TODO(security): revisit retention strategy when migrating to K=N-1 resharing.
-                                let request = {
-                                    let event = WriteSyncRequest::Event(wf_event.to_generic());
-                                    SyncRequest::Write(Box::from(event))
-                                };
-                                self.sync.send(request).await?;
+                            // Sent means the server already has this distribution. Only Pending
+                            // receivers need an upload from the sender.
+                            if !Self::split_workflow_has_pending_receiver(&claim, &wf_event) {
+                                continue;
                             }
+
+                            // Keep local split distributions so sender can perform future
+                            // redistributions for new members under current K=2 policy.
+                            // TODO(security): revisit retention strategy when migrating to K=N-1 resharing.
+                            let request = {
+                                let event = WriteSyncRequest::Event(wf_event.to_generic());
+                                SyncRequest::Write(Box::from(event))
+                            };
+                            self.sync.send(request).await?;
                         }
                     }
                     SecretDistributionType::Recover => {
@@ -250,7 +297,10 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                                         self.p_obj.repo.delete(obj_id).await;
                                     }
                                     Err(e) => {
-                                        debug!("Failed to push Decline workflow, will retry: {:?}", e);
+                                        debug!(
+                                            "Failed to push Decline workflow, will retry: {:?}",
+                                            e
+                                        );
                                     }
                                 }
                             }
@@ -284,16 +334,23 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                 if claim.distribution_type != SecretDistributionType::Split {
                     continue;
                 }
-                // Skip only if explicitly Delivered in ss_log. If not found (ss_log may be
-                // contaminated with another device's claim), still attempt upload.
-                if let Some(c) = current_claims.get(&claim.id) {
-                    if c.status.status() == SsDistributionStatus::Delivered {
+                let current_claim = current_claims.get(&claim.id).cloned();
+                // If not found (ss_log may be contaminated with another device's claim), still
+                // attempt upload. If found, upload only while a receiver is still Pending.
+                if let Some(c) = current_claim.as_ref() {
+                    if !Self::has_pending_split_receiver(c) {
                         continue;
                     }
                 }
                 let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
                 let wf_events = p_ss.get_distributions(claim).await?;
                 for wf_event in wf_events {
+                    if let Some(c) = current_claim.as_ref() {
+                        if !Self::split_workflow_has_pending_receiver(c, &wf_event) {
+                            continue;
+                        }
+                    }
+
                     let request = SyncRequest::Write(Box::from(WriteSyncRequest::Event(
                         wf_event.to_generic(),
                     )));
