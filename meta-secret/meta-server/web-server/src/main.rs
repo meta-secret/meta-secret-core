@@ -1,5 +1,5 @@
 use axum::extract::{Query, State};
-use axum::response::sse::{Event, Sse};
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::{Json, Router, routing::post};
 use futures_util::stream::{self, Stream};
 use http::{StatusCode, Uri};
@@ -8,6 +8,7 @@ use meta_server_node::server::state_invalidation::{StateInvalidation, StateInval
 use serde_derive::{Deserialize, Serialize};
 use std::convert::Infallible;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::broadcast;
 
 use anyhow::Result;
@@ -175,7 +176,11 @@ async fn state_events(
         }
     });
 
-    Sse::new(stream)
+    Sse::new(stream).keep_alive(
+        KeepAlive::new()
+            .interval(Duration::from_secs(15))
+            .text("ping"),
+    )
 }
 
 async fn hi() -> Html<&'static str> {
