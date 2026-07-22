@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { ClaimId, MetaPasswordId, WasmApplicationManager } from 'meta-secret-web-cli';
 import { AppState } from '@/stores/app-state';
 import { useAuthStore } from '@/stores/auth';
@@ -57,8 +57,6 @@ const recoveryDialogSecret = ref<MetaPasswordId | null>(null);
 const recoveryDialogClaim = ref<ClaimId | null>(null);
 const recoveryActionInProgress = ref<RecoveryAction | null>(null);
 
-const FLOW_POLL_DELAY_MS = 800;
-
 const isRecovered = (metaPassId: MetaPasswordId) => {
   const claim = getMemberVaultState(appState.currState)?.find_recovery_claim(metaPassId);
   return claim !== undefined;
@@ -80,7 +78,6 @@ const getRecoveryClientStatus = (metaPassId: MetaPasswordId): string | undefined
 };
 
 const isFlowTokenActive = (token: number) => token === flowToken.value;
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const getVaultDeviceCount = () => {
   const data = getMemberVaultData(appState.currState);
   if (!data || typeof data.users !== 'function') return 1;
@@ -183,16 +180,35 @@ const openRevealedModal = (secretValue: string) => {
 };
 
 const waitForRecoveredClaim = async (metaPassId: MetaPasswordId, token: number) => {
-  if (isRecovered(metaPassId)) return true;
-  while (true) {
+  const resolveFromCurrentState = () => {
     if (!isFlowTokenActive(token) || revealModalState.value !== 'waiting') return false;
-    await sleep(FLOW_POLL_DELAY_MS);
-    if (!isFlowTokenActive(token) || revealModalState.value !== 'waiting') return false;
-    await appState.updateState();
     if (isRecovered(metaPassId)) return true;
+
     const status = getRecoveryClientStatus(metaPassId);
+    if (status === 'accepted' || status === 'done') return true;
     if (status === 'declined') throw new Error(vaultSecrets.errorRecoveryDeclined);
-  }
+    return undefined;
+  };
+
+  const immediateResult = resolveFromCurrentState();
+  if (immediateResult !== undefined) return immediateResult;
+
+  return new Promise<boolean>((resolve, reject) => {
+    const stop = watch(
+      () => [appState.currState, flowToken.value, revealModalState.value] as const,
+      () => {
+        try {
+          const result = resolveFromCurrentState();
+          if (result === undefined) return;
+          stop();
+          resolve(result);
+        } catch (error) {
+          stop();
+          reject(error);
+        }
+      },
+    );
+  });
 };
 
 const startRevealFlow = async (secret: MetaPasswordId) => {
