@@ -198,6 +198,12 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
         for data in recovery_data {
             let decrypted = data.secret_message.cipher_text().decrypt(transport_sk)?;
             let share = UserShareDto::try_from(&decrypted.msg)?;
+            if let Some(block) = share.share_blocks.first() {
+                info!(
+                    "🔑 [recover v2] recovery share diag: share_id={}, blocks={}, threshold={}, number_of_shares={}",
+                    share.share_id, share.share_blocks.len(), block.config.threshold, block.config.number_of_shares
+                );
+            }
             user_shares.push(share);
         }
 
@@ -205,6 +211,12 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
         for data in distribution_data {
             let decrypted = data.secret_message.cipher_text().decrypt(transport_sk)?;
             let share = UserShareDto::try_from(&decrypted.msg)?;
+            if let Some(block) = share.share_blocks.first() {
+                info!(
+                    "🔑 [recover v2] own distribution share diag: share_id={}, blocks={}, threshold={}, number_of_shares={}",
+                    share.share_id, share.share_blocks.len(), block.config.threshold, block.config.number_of_shares
+                );
+            }
             user_shares.push(share);
         }
 
