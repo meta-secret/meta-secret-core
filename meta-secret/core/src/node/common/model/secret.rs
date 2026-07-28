@@ -319,10 +319,11 @@ pub struct SsLogData {
 
 impl SsLogData {
     pub fn find_recovery_claim_id(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
-        // Use client_status (populated by with_client_status()) to select only active claims.
+        // Use client_status (populated by with_client_status()) to select only ready claims.
         // This avoids the HashMap non-determinism bug: when multiple claims exist for the same
-        // pass_id (e.g. a stale retired claim and a fresh active one), only Pending/Accepted
-        // claims are candidates. Done and Declined claims are terminal and must be skipped.
+        // pass_id (e.g. a stale retired claim and a fresh active one), only Accepted claims are
+        // candidates. Pending claims are active, but their recovery shares are not available yet.
+        // Done and Declined claims are terminal and must be skipped.
         for (_, claim) in self.claims.iter() {
             let SecretDistributionType::Recover = claim.distribution_type else {
                 continue;
@@ -331,9 +332,7 @@ impl SsLogData {
                 continue;
             }
             match claim.client_status {
-                Some(RecoveryClientStatus::Pending) | Some(RecoveryClientStatus::Accepted) => {
-                    return Some(claim.id.clone());
-                }
+                Some(RecoveryClientStatus::Accepted) => return Some(claim.id.clone()),
                 _ => continue,
             }
         }
@@ -1380,7 +1379,7 @@ mod test {
     }
 
     #[test]
-    fn test_find_recovery_claim_id_skips_declined_claim_prefers_pending() {
+    fn test_find_recovery_claim_id_skips_declined_and_pending_claims() {
         let registry = FixtureRegistry::empty();
         let sender = registry.state.device_creds.client.device.device_id;
         let recv_a = registry.state.device_creds.client_b.device.device_id;
@@ -1393,12 +1392,15 @@ mod test {
         let log = SsLogData::new(claim1).decline(claim_id1, recv_a.clone());
 
         // Claim #2: Pending — fresh claim just created
-        let (mut claim2, claim_id2) = make_recover_claim(sender.clone(), vec![recv_b.clone()]);
+        let (mut claim2, _) = make_recover_claim(sender.clone(), vec![recv_b.clone()]);
         claim2.dist_claim_id.pass_id = pass_id.clone();
         let log = log.insert(claim2).with_client_status(&sender);
 
         let found = log.find_recovery_claim_id(&pass_id);
-        assert_eq!(found, Some(claim_id2), "Must return Pending claim, not the Declined stale one");
+        assert_eq!(
+            found, None,
+            "Pending claim is active but not ready for show_recovered"
+        );
     }
 
     #[test]
