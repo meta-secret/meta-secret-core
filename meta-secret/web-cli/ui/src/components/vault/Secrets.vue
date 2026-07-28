@@ -185,7 +185,7 @@ const waitForRecoveredClaim = async (metaPassId: MetaPasswordId, token: number) 
     if (isRecovered(metaPassId)) return true;
 
     const status = getRecoveryClientStatus(metaPassId);
-    if (status === 'accepted' || status === 'done') return true;
+    if (status === 'accepted') return true;
     if (status === 'declined') throw new Error(vaultSecrets.errorRecoveryDeclined);
     return undefined;
   };

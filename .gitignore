@@ -44,5 +44,5 @@ infra/.secret
 /meta-secret/meta-cli/example/c
 
 # AI
-.ai/artifacts/run
+.ai/artifacts/
 .github/scripts/bun.lock
