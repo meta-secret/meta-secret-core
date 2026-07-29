@@ -17,7 +17,9 @@ use crate::node::db::descriptors::shared_secret_descriptor::{
     SsDeviceLogDescriptor, SsLogDescriptor,
 };
 use crate::node::db::descriptors::vault_descriptor::DeviceLogDescriptor;
-use crate::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor, ToGenericEvent};
+use crate::node::db::events::generic_log_event::{
+    GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
+};
 use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::events::shared_secret_event::{
     SsDeviceLogObject, SsLogObject, SsWorkflowObject,
@@ -224,13 +226,22 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                 "id: {:?}. Sync gateway. New ss event from server: {:?}",
                 self.id, new_event
             );
-            // Distribution objects are stored under a fixed key per (pass_id, receiver)
-            // and are intentionally re-issued with fresh content on redistribution (see
-            // redistribute_existing_secrets). repo.save() no-ops if a key already exists,
-            // so a stale local copy from a previous split would otherwise never be
-            // overwritten by the refreshed share pulled down here.
-            if let GenericKvLogEvent::SsWorkflow(SsWorkflowObject::Distribution(_)) = &new_event {
-                self.p_obj.repo.delete(new_event.obj_id()).await;
+            match &new_event {
+                // Distribution objects are stored under a fixed key per (pass_id, receiver)
+                // and are intentionally re-issued with fresh content on redistribution (see
+                // redistribute_existing_secrets). repo.save() no-ops if a key already exists,
+                // so a stale local copy from a previous split would otherwise never be
+                // overwritten by the refreshed share pulled down here.
+                GenericKvLogEvent::SsWorkflow(SsWorkflowObject::Distribution(_)) => {
+                    self.p_obj.repo.delete(new_event.obj_id()).await;
+                }
+                // SsLog is server-canonical. Local recovery cleanup can allocate the same seq id
+                // before the server response arrives; replace the local collision so the client
+                // observes the approved claim from the server.
+                GenericKvLogEvent::SsLog(_) => {
+                    self.p_obj.repo.delete(new_event.obj_id()).await;
+                }
+                _ => {}
             }
             self.p_obj.repo.save(new_event).await?;
         }

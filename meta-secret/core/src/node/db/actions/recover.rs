@@ -18,9 +18,29 @@ use std::sync::Arc;
 use tracing::{info, warn};
 use tracing_attributes::instrument;
 
+use crate::node::common::model::device::common::DeviceId;
+
 #[derive(From)]
 pub struct RecoveryAction<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
+}
+
+fn is_stale_recovery_claim(
+    claim: &crate::node::common::model::secret::SsClaim,
+    sender_device_id: &DeviceId,
+    pass_id: &MetaPasswordId,
+) -> bool {
+    let sender_done =
+        claim.status.statuses.get(sender_device_id) == Some(&SsDistributionStatus::Delivered);
+    claim.distribution_type == SecretDistributionType::Recover
+        && &claim.sender == sender_device_id
+        && claim.dist_claim_id.pass_id == *pass_id
+        && !sender_done
+        && claim
+            .status
+            .statuses
+            .values()
+            .any(|s| matches!(s, SsDistributionStatus::Sent))
 }
 
 impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
@@ -73,15 +93,7 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
                     let stale: Vec<_> = ss_log_data
                         .claims
                         .values()
-                        .filter(|c| {
-                            c.distribution_type == SecretDistributionType::Recover
-                                && &c.sender == sender_device_id
-                                && c.dist_claim_id.pass_id == pass_id
-                                && c.status
-                                    .statuses
-                                    .values()
-                                    .any(|s| matches!(s, SsDistributionStatus::Sent))
-                        })
+                        .filter(|c| is_stale_recovery_claim(c, sender_device_id, &pass_id))
                         .cloned()
                         .collect();
 
@@ -284,7 +296,7 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
 
 #[cfg(test)]
 mod tests {
-    use super::RecoveryHandler;
+    use super::{RecoveryHandler, is_stale_recovery_claim};
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::common::model::crypto::aead::EncryptedMessage;
     use crate::node::common::model::meta_pass::MetaPasswordId;
@@ -373,6 +385,47 @@ mod tests {
             !matches!(client_status, Some(RecoveryClientStatus::Done)),
             "Sender must NOT see Done after declining stale claim. Got: {:?}",
             client_status
+        );
+    }
+
+    #[test]
+    fn stale_sweep_skips_done_claims() {
+        use crate::crypto::utils::Id48bit;
+        use crate::node::common::model::secret::{
+            ClaimId, SsClaim, SsClaimId, SsDistributionCompositeStatus,
+        };
+
+        let registry = FixtureRegistry::empty();
+        let sender = registry.state.device_creds.client.device.device_id.clone();
+        let recv_a = registry
+            .state
+            .device_creds
+            .client_b
+            .device
+            .device_id
+            .clone();
+        let pass_id = MetaPasswordId::build_from_str("done_claim_not_stale");
+
+        let claim_id = ClaimId::from(Id48bit::generate());
+        let mut claim = SsClaim {
+            id: claim_id.clone(),
+            dist_claim_id: SsClaimId {
+                id: claim_id,
+                pass_id: pass_id.clone(),
+            },
+            vault_name: crate::node::common::model::vault::vault::VaultName::test(),
+            sender: sender.clone(),
+            distribution_type: SecretDistributionType::Recover,
+            receivers: vec![recv_a.clone()],
+            status: SsDistributionCompositeStatus::from(vec![recv_a.clone()]),
+            client_status: None,
+        };
+        claim.status = claim.status.sent(recv_a);
+        claim.status = claim.status.complete(sender.clone());
+
+        assert!(
+            !is_stale_recovery_claim(&claim, &sender, &pass_id),
+            "Done recovery claims must not be retired by stale sweep"
         );
     }
 
