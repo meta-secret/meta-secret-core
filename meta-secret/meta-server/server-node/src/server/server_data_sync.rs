@@ -228,13 +228,6 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                                     self.p_obj.repo.save(ss_object_to_save).await?;
                                     let new_ss_log_data =
                                         ss_log_data.sent(wf.claim_id.id, device_id);
-                                    // TODO: k-of-N — call only when count(Sent) >= threshold
-                                    let new_ss_log_data = match distribution_type {
-                                        SecretDistributionType::Recover => {
-                                            new_ss_log_data.decline_remaining_pending(claim_id)
-                                        }
-                                        SecretDistributionType::Split => new_ss_log_data,
-                                    };
                                     let new_ss_log_event = p_ss_log
                                         .create_new_ss_log_object(new_ss_log_data, wf.vault_name)
                                         .await?;
