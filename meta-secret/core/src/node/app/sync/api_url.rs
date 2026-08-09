@@ -1,3 +1,4 @@
+use crate::node::app::sync::environment::{SELECTED_SERVER_ENVIRONMENT, ServerEnvironment};
 use run_mode::ClientRunMode;
 
 #[derive(Copy, Clone, Debug)]
@@ -8,6 +9,17 @@ pub struct ApiUrl {
 }
 
 impl ApiUrl {
+    pub fn selected() -> Self {
+        ApiUrl::for_environment(SELECTED_SERVER_ENVIRONMENT)
+    }
+
+    pub fn for_environment(environment: ServerEnvironment) -> Self {
+        match environment {
+            ServerEnvironment::Local => ApiUrl::local(),
+            ServerEnvironment::Remote => ApiUrl::prod(),
+        }
+    }
+
     pub fn get(run_mode: ClientRunMode) -> Self {
         match run_mode {
             ClientRunMode::Dev => ApiUrl::dev(),
@@ -22,7 +34,15 @@ impl ApiUrl {
             _run_mode: ClientRunMode::Dev,
         }
     }
-    
+
+    pub fn local() -> Self {
+        ApiUrl {
+            url: local_server_url(),
+            port: 3000,
+            _run_mode: ClientRunMode::Dev,
+        }
+    }
+
     pub fn custom_dev(url: &'static str, port: u32) -> Self {
         ApiUrl {
             url,
@@ -40,6 +60,16 @@ impl ApiUrl {
     }
 }
 
+#[cfg(target_os = "android")]
+fn local_server_url() -> &'static str {
+    "http://10.0.2.2"
+}
+
+#[cfg(not(target_os = "android"))]
+fn local_server_url() -> &'static str {
+    "http://127.0.0.1"
+}
+
 impl ApiUrl {
     pub fn get_url(&self) -> String {
         format!("{}:{}", self.url, self.port)
@@ -47,7 +77,7 @@ impl ApiUrl {
 }
 
 pub mod run_mode {
-    use anyhow::{bail, Result};
+    use anyhow::{Result, bail};
     use wasm_bindgen::prelude::wasm_bindgen;
 
     pub const DEV: &str = "dev";

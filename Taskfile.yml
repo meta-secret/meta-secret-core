@@ -135,6 +135,11 @@ tasks:
   # Local dev
   # ============================================================
 
+  set-env:
+    desc: "Switch MetaSecret clients between local and remote servers (usage: task set-env -- local|remote)"
+    cmds:
+      - ./scripts/set-meta-secret-env.sh {{.CLI_ARGS}}
+
   wasm-test:
     desc: Run WASM tests in Firefox
     dir: meta-secret/wasm
