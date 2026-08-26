@@ -12,6 +12,7 @@ use meta_secret_core::node::app::app_manager_shared::{
 use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
 use meta_secret_core::node::app::meta_app::meta_client_service::MetaClientService;
 use meta_secret_core::node::app::sync::api_url::ApiUrl;
+use meta_secret_core::node::app::sync::environment::ServerEnvironment;
 use meta_secret_core::node::app::sync::sync_gateway::SyncGateway;
 use meta_secret_core::node::app::sync::sync_protocol::{HttpSyncProtocol, SyncProtocol};
 use meta_secret_core::node::common::meta_tracing::client_span;
@@ -75,10 +76,27 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
         device_name: DeviceName,
         device_type: DeviceType,
     ) -> Result<ApplicationManager<Repo, HttpSyncProtocol>> {
+        Self::init_with_device_for_environment(
+            client_repo,
+            master_key,
+            device_name,
+            device_type,
+            ServerEnvironment::Remote,
+        )
+        .await
+    }
+
+    pub async fn init_with_device_for_environment(
+        client_repo: Arc<Repo>,
+        master_key: TransportSk,
+        device_name: DeviceName,
+        device_type: DeviceType,
+        environment: ServerEnvironment,
+    ) -> Result<ApplicationManager<Repo, HttpSyncProtocol>> {
         info!("Initialize application state manager");
 
         let sync_protocol = Arc::new(HttpSyncProtocol {
-            api_url: ApiUrl::prod(),
+            api_url: ApiUrl::for_environment(environment),
         });
 
         Self::client_setup(

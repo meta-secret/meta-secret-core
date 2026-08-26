@@ -1,6 +1,6 @@
 use crate::log_timestamp;
-use anyhow::bail;
 use anyhow::Result;
+use anyhow::bail;
 use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::node::api::{ReadSyncRequest, SsRecoveryCompletion, SyncRequest};
 use meta_secret_core::node::app::app_manager_shared::{
@@ -29,8 +29,7 @@ use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use meta_secret_core::secret::shared_secret::PlainText;
 use std::sync::Arc;
 use std::thread;
-use tracing::{info, instrument, Instrument};
-
+use tracing::{Instrument, info, instrument};
 
 pub struct ApplicationManager<Repo: KvLogEventRepo + Send + Sync, SyncP: SyncProtocol + Send + Sync>
 {
@@ -66,7 +65,7 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
         println!("🦀Mobile App Manager: Initialize application state manager");
 
         let sync_protocol = Arc::new(HttpSyncProtocol {
-            api_url: ApiUrl::prod(),
+            api_url: ApiUrl::selected(),
         });
 
         let app_manager = Self::client_setup(
@@ -342,7 +341,9 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
                     let vault_members_count = member.member.vault.members().len();
 
                     if vault_members_count <= 2 {
-                        println!("🦀 Mobile App Manager: Replicated vault mode, showing local secret");
+                        println!(
+                            "🦀 Mobile App Manager: Replicated vault mode, showing local secret"
+                        );
                         return self.show_local_secret(user_creds, pass_id).await;
                     }
 
@@ -363,7 +364,9 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
 
                             // Send recovery completion to mark claim as Delivered
                             let ts = log_timestamp::log_timestamp_utc();
-                            println!("[{ts}] 🦀 App Manager: Send recovery completion to mark claim as Delivered");
+                            println!(
+                                "[{ts}] 🦀 App Manager: Send recovery completion to mark claim as Delivered"
+                            );
                             if let Some(claim) = member.ss_claims.claims.get(&claim_id) {
                                 let vault_name = user_creds.vault_name.clone();
                                 let device_id = user_creds.device_id();
@@ -388,9 +391,14 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
                                 ));
 
                                 if let Err(e) = self.server.send(sync_request).await {
-                                    println!("🦀 Mobile App Manager: ❌ Failed to send recovery completion: {}", e);
+                                    println!(
+                                        "🦀 Mobile App Manager: ❌ Failed to send recovery completion: {}",
+                                        e
+                                    );
                                 } else {
-                                    println!("🦀 Mobile App Manager: ✅ Recovery completion sent successfully");
+                                    println!(
+                                        "🦀 Mobile App Manager: ✅ Recovery completion sent successfully"
+                                    );
                                 }
                             }
 

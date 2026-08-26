@@ -1,3 +1,5 @@
+import { resolveMetaSecretStateEventsBaseUrl } from '@/config/metaSecretEnvironment';
+
 export type StateInvalidationScope = 'vault' | 'devices' | 'ss_claims' | 'all';
 
 export type StateInvalidationEvent = {
@@ -26,11 +28,7 @@ export const STATE_INVALIDATION_DEBOUNCE_MS = 150;
 
 export function resolveStateEventsUrl(vaultName: string) {
   const configuredUrl = import.meta.env.VITE_STATE_EVENTS_URL as string | undefined;
-  const baseUrl =
-    configuredUrl ||
-    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-      ? 'http://localhost:3000/state-events'
-      : 'https://api.meta-secret.org/state-events');
+  const baseUrl = configuredUrl || resolveMetaSecretStateEventsBaseUrl();
   const url = new URL(baseUrl);
   url.searchParams.set('vaultName', vaultName);
   return url.toString();

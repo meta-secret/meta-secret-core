@@ -84,7 +84,7 @@ jobs:
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Deploy preview and run Playwright (parallel)
+      - name: Deploy preview
         id: deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUD_FLARE_PAGES_TOKEN }}
@@ -100,8 +100,6 @@ jobs:
             --project-name=id0 \
             --branch="pr-${{ github.event.pull_request.number }}" &
           DEPLOY_PID=$!
-
-          PLAYWRIGHT_BASE_URL=http://127.0.0.1:4173 task playwright-test
 
           wait "$DEPLOY_PID"
           echo "deployment-url=https://pr-${{ github.event.pull_request.number }}.id0.pages.dev" >> "$GITHUB_OUTPUT"

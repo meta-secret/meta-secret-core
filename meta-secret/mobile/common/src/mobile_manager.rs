@@ -1,15 +1,16 @@
 use crate::app_manager::ApplicationManager;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use meta_db_sqlite::db::sqlite_migration::EmbeddedMigrationsTool;
 use meta_db_sqlite::db::sqlite_store::SqlIteRepo;
 use meta_secret_core::crypto::keys::TransportSk;
+use meta_secret_core::node::app::sync::api_url::ApiUrl;
 use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
+use meta_secret_core::node::common::model::ApplicationState;
 use meta_secret_core::node::common::model::device::common::{DeviceName, DeviceType};
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::{ClaimId, SsClaim};
 use meta_secret_core::node::common::model::user::common::UserData;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
-use meta_secret_core::node::common::model::ApplicationState;
 use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
 use once_cell::sync::Lazy;
 use std::fs;
@@ -18,6 +19,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 use tracing::{info, warn};
+use meta_secret_core::node::common::model::VaultFullInfo::Member;
 
 static GLOBAL_APP_MANAGER: Lazy<Mutex<Option<Arc<MobileApplicationManager>>>> =
     Lazy::new(|| Mutex::new(None));
@@ -160,7 +162,7 @@ impl MobileApplicationManager {
                 bail!("Unable to get state from mobile manager: {:?}", e);
             }
         };
-        if let ApplicationState::Vault(meta_secret_core::node::common::model::VaultFullInfo::Member(ref m)) = app_state {
+        if let ApplicationState::Vault(Member(ref m)) = app_state {
             for (id, claim) in &m.ss_claims.claims {
                 info!(
                     claim_id = ?id,
@@ -207,7 +209,10 @@ impl MobileApplicationManager {
 
     pub async fn accept_recover_mobile(&self, claim_id: ClaimId) -> Result<()> {
         info!(claim_id = ?claim_id, "accept_recover_mobile: accepting recovery request");
-        let result = self.app_manager.accept_recover_mobile(claim_id.clone()).await;
+        let result = self
+            .app_manager
+            .accept_recover_mobile(claim_id.clone())
+            .await;
         match &result {
             Ok(_) => info!(claim_id = ?claim_id, "accept_recover_mobile: success"),
             Err(e) => warn!(claim_id = ?claim_id, error = %e, "accept_recover_mobile: failed"),
@@ -217,7 +222,10 @@ impl MobileApplicationManager {
 
     pub async fn decline_recover_mobile(&self, claim_id: ClaimId) -> Result<()> {
         info!(claim_id = ?claim_id, "decline_recover_mobile: declining recovery request");
-        let result = self.app_manager.decline_recover_mobile(claim_id.clone()).await;
+        let result = self
+            .app_manager
+            .decline_recover_mobile(claim_id.clone())
+            .await;
         match &result {
             Ok(_) => info!(claim_id = ?claim_id, "decline_recover_mobile: success"),
             Err(e) => warn!(claim_id = ?claim_id, error = %e, "decline_recover_mobile: failed"),
@@ -321,7 +329,7 @@ impl MobileApplicationManager {
         let app_manager = ApplicationManager::<SqlIteRepo, HttpSyncProtocol>::client_setup(
             client_repo,
             Arc::new(HttpSyncProtocol {
-                api_url: meta_secret_core::node::app::sync::api_url::ApiUrl::prod(),
+                api_url: ApiUrl::selected(),
             }),
             master_key,
             device_name,
