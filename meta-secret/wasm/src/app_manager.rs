@@ -4,6 +4,7 @@ use tracing::{Instrument, error, info, instrument};
 use wasm_bindgen_futures::spawn_local;
 
 use meta_secret_core::crypto::keys::TransportSk;
+use meta_secret_core::node::api::{ReadSyncRequest, SsRecoveryCompletion, SyncRequest};
 use meta_secret_core::node::app::app_manager_shared::{
     build_client_components, find_recovery_claim_id_from_state, recover_plain_text,
     resolve_signup_vault_name,
@@ -11,13 +12,15 @@ use meta_secret_core::node::app::app_manager_shared::{
 use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
 use meta_secret_core::node::app::meta_app::meta_client_service::MetaClientService;
 use meta_secret_core::node::app::sync::api_url::ApiUrl;
+use meta_secret_core::node::app::sync::environment::ServerEnvironment;
 use meta_secret_core::node::app::sync::sync_gateway::SyncGateway;
 use meta_secret_core::node::app::sync::sync_protocol::{HttpSyncProtocol, SyncProtocol};
 use meta_secret_core::node::common::meta_tracing::client_span;
 use meta_secret_core::node::common::model::device::common::{DeviceName, DeviceType};
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
-use meta_secret_core::node::common::model::secret::ClaimId;
-use meta_secret_core::node::common::model::secret::SsDistributionId;
+use meta_secret_core::node::common::model::secret::{
+    ClaimId, SsDistributionId, SsDistributionStatus, SsRecoveryId,
+};
 use meta_secret_core::node::common::model::user::common::UserData;
 use meta_secret_core::node::common::model::user::user_creds::UserCreds;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
@@ -73,10 +76,27 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
         device_name: DeviceName,
         device_type: DeviceType,
     ) -> Result<ApplicationManager<Repo, HttpSyncProtocol>> {
+        Self::init_with_device_for_environment(
+            client_repo,
+            master_key,
+            device_name,
+            device_type,
+            ServerEnvironment::Remote,
+        )
+        .await
+    }
+
+    pub async fn init_with_device_for_environment(
+        client_repo: Arc<Repo>,
+        master_key: TransportSk,
+        device_name: DeviceName,
+        device_type: DeviceType,
+        environment: ServerEnvironment,
+    ) -> Result<ApplicationManager<Repo, HttpSyncProtocol>> {
         info!("Initialize application state manager");
 
         let sync_protocol = Arc::new(HttpSyncProtocol {
-            api_url: ApiUrl::prod(),
+            api_url: ApiUrl::for_environment(environment),
         });
 
         Self::client_setup(
@@ -173,13 +193,36 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
                     match claim_id {
                         None => bail!("Claim id not found"),
                         Some(claim_id) => {
-                            recover_plain_text(
+                            let plain_text = recover_plain_text(
                                 self.sync_gateway.as_ref(),
-                                user_creds,
-                                claim_id,
-                                pass_id,
+                                user_creds.clone(),
+                                claim_id.clone(),
+                                pass_id.clone(),
                             )
-                            .await
+                            .await?;
+
+                            if let Some(claim) = member.ss_claims.claims.get(&claim_id) {
+                                let completion = SsRecoveryCompletion {
+                                    vault_name: user_creds.vault_name.clone(),
+                                    recovery_id: SsRecoveryId {
+                                        claim_id: claim.dist_claim_id.clone(),
+                                        sender: claim.sender.clone(),
+                                        distribution_id: SsDistributionId {
+                                            pass_id: pass_id.clone(),
+                                            receiver: user_creds.device_id().clone(),
+                                        },
+                                    },
+                                    receiver_status: SsDistributionStatus::Sent,
+                                };
+                                let sync_request = SyncRequest::Read(Box::new(
+                                    ReadSyncRequest::SsRecoveryCompletion(completion),
+                                ));
+                                if let Err(e) = self.server.send(sync_request).await {
+                                    error!(error = %e, "failed to send recovery completion");
+                                }
+                            }
+
+                            Ok(plain_text)
                         }
                     }
                 }

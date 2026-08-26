@@ -291,7 +291,18 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
 
                         let ss_claims = {
                             let p_ss = PersistentSharedSecret::from(self.p_obj());
-                            p_ss.get_ss_log_obj(user_creds.vault_name).await?
+                            let log = p_ss.get_ss_log_obj(user_creds.vault_name).await?;
+                            let current_device_id = &member_user.user_data.device.device_id;
+                            let result = log.with_client_status(current_device_id);
+                            for (id, claim) in &result.claims {
+                                debug!(
+                                    claim_id = ?id,
+                                    distribution_type = ?claim.distribution_type,
+                                    client_status = ?claim.client_status,
+                                    "get_app_state: ss_claim client_status"
+                                );
+                            }
+                            result
                         };
 
                         let maybe_vault_log_event = {

@@ -1,7 +1,7 @@
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
 use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::secret::{
-    ClaimId, SecretDistributionType, SsDistributionStatus, SsLogData,
+    ClaimId, RecoveryClientStatus, SecretDistributionType, SsLogData,
 };
 use crate::node::common::model::user::common::{UserData, UserDataOutsider};
 use crate::node::common::model::vault::vault::VaultMember;
@@ -175,43 +175,152 @@ impl WasmUserMemberFullInfo {
     }
 
     pub fn find_recovery_claim(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
-        self.0.ss_claims.find_recovery_claim_id(pass_id)
+        self.0
+            .ss_claims
+            .claims
+            .values()
+            .find(|claim| {
+                matches!(claim.distribution_type, SecretDistributionType::Recover)
+                    && claim.dist_claim_id.pass_id == *pass_id
+                    && matches!(claim.client_status, Some(RecoveryClientStatus::Accepted))
+            })
+            .map(|claim| claim.id.clone())
     }
 
     pub fn find_pending_incoming_recovery_claim(
         &self,
         pass_id: &MetaPasswordId,
     ) -> Option<ClaimId> {
-        let local_device_id = self.0.member.member.user_data.device.device_id.clone();
-        let claim = self.0.ss_claims.find_recovery_claim(pass_id)?;
+        self.0
+            .ss_claims
+            .claims
+            .values()
+            .find(|claim| {
+                matches!(claim.distribution_type, SecretDistributionType::Recover)
+                    && claim.dist_claim_id.pass_id == *pass_id
+                    && matches!(claim.client_status, Some(RecoveryClientStatus::NeedApprove))
+            })
+            .map(|claim| claim.id.clone())
+    }
 
-        if !matches!(claim.distribution_type, SecretDistributionType::Recover) {
-            return None;
-        }
+    pub fn recovery_client_status(&self, pass_id: &MetaPasswordId) -> Option<String> {
+        // Prefer active claims over terminal (Done/Declined) ones.
+        // When a stale claim exists alongside a fresh claim for the same pass_id, the active
+        // claim's status is what the UI cares about — returning "declined" from a stale claim
+        // would incorrectly abort the ongoing recovery flow.
+        let claims: Vec<_> = self
+            .0
+            .ss_claims
+            .claims
+            .values()
+            .filter(|claim| {
+                matches!(claim.distribution_type, SecretDistributionType::Recover)
+                    && claim.dist_claim_id.pass_id == *pass_id
+            })
+            .collect();
 
-        if claim.sender.eq(&local_device_id) {
-            return None;
-        }
+        let best = claims
+            .iter()
+            .find(|c| {
+                matches!(
+                    c.client_status,
+                    Some(RecoveryClientStatus::NeedApprove)
+                        | Some(RecoveryClientStatus::Pending)
+                        | Some(RecoveryClientStatus::Accepted)
+                )
+            })
+            .or_else(|| claims.first());
 
-        if !matches!(
-            claim.status.get(&local_device_id),
-            Some(SsDistributionStatus::Pending)
-        ) {
-            return None;
-        }
-
-        Some(claim.id)
+        best.and_then(|claim| {
+            claim.client_status.as_ref().map(|s| {
+                match s {
+                    RecoveryClientStatus::Pending => "pending",
+                    RecoveryClientStatus::NeedApprove => "needApprove",
+                    RecoveryClientStatus::Accepted => "accepted",
+                    RecoveryClientStatus::Declined => "declined",
+                    RecoveryClientStatus::Done => "done",
+                }
+                .to_string()
+            })
+        })
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::node::common::model::IdString;
+    use crate::crypto::utils::Id48bit;
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::common::model::meta_pass::MetaPasswordId;
+    use crate::node::common::model::secret::{
+        ClaimId, RecoveryClientStatus, SecretDistributionType, SsClaim, SsClaimId,
+        SsDistributionCompositeStatus, SsLogData,
+    };
+    use crate::node::common::model::{IdString, UserMemberFullInfo, WasmUserMemberFullInfo};
+    use crate::node::db::events::vault::vault_log_event::VaultActionEvents;
 
     #[test]
     fn meta_password_id() {
         let pass_id = MetaPasswordId::build_from_str("test");
         assert_eq!(pass_id.id.id_str(), "n4bQgYhMfWU".to_string())
+    }
+
+    #[test]
+    fn recovery_client_status_prefers_need_approve_over_stale_done() {
+        let registry = FixtureRegistry::empty();
+        let sender = registry.state.device_creds.client.device.device_id.clone();
+        let receiver = registry
+            .state
+            .device_creds
+            .client_b
+            .device
+            .device_id
+            .clone();
+        let pass_id = MetaPasswordId::build_from_str("secret");
+
+        let done_claim = recover_claim(
+            pass_id.clone(),
+            sender.clone(),
+            receiver.clone(),
+            Some(RecoveryClientStatus::Done),
+        );
+        let need_approve_claim = recover_claim(
+            pass_id.clone(),
+            sender,
+            receiver,
+            Some(RecoveryClientStatus::NeedApprove),
+        );
+
+        let member = WasmUserMemberFullInfo(UserMemberFullInfo {
+            member: registry.state.vault_data.client_b_vault_member,
+            ss_claims: SsLogData::new(done_claim).insert(need_approve_claim),
+            vault_events: VaultActionEvents::default(),
+        });
+
+        assert_eq!(
+            member.recovery_client_status(&pass_id),
+            Some("needApprove".to_string())
+        );
+    }
+
+    fn recover_claim(
+        pass_id: MetaPasswordId,
+        sender: crate::node::common::model::device::common::DeviceId,
+        receiver: crate::node::common::model::device::common::DeviceId,
+        client_status: Option<RecoveryClientStatus>,
+    ) -> SsClaim {
+        let claim_id = ClaimId::from(Id48bit::generate());
+        SsClaim {
+            id: claim_id.clone(),
+            dist_claim_id: SsClaimId {
+                id: claim_id,
+                pass_id,
+            },
+            vault_name: crate::node::common::model::vault::vault::VaultName::test(),
+            sender,
+            distribution_type: SecretDistributionType::Recover,
+            receivers: vec![receiver.clone()],
+            status: SsDistributionCompositeStatus::from(vec![receiver]),
+            client_status,
+        }
     }
 }

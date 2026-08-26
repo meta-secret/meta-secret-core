@@ -1,18 +1,23 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import RegistrationComponent from '@/components/vault/auth/Registration.vue';
 import VaultComponent from '@/components/vault/Vault.vue';
 import { AppState } from '@/stores/app-state';
 import { useAuthStore } from '@/stores/auth';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRoute } from 'vue-router';
-import { useStatePolling } from '@/utils/statePolling';
+import { createStateInvalidationController } from '@/utils/stateInvalidation';
 
 const jsAppState = AppState();
 const authStore = useAuthStore();
 const route = useRoute();
 const isInitialized = ref(false);
-const statePoller = useStatePolling(() => jsAppState.updateState());
+const vaultName = computed(() => jsAppState.getVaultName());
+const stateInvalidation = createStateInvalidationController({
+  refresh: () => jsAppState.updateState(),
+});
+
+onBeforeUnmount(() => stateInvalidation.disconnect());
 
 watch(
   () => authStore.isAuthenticated,
@@ -25,7 +30,7 @@ watch(
         console.error('Error initializing app state:', error);
       }
     } else {
-      statePoller.stop();
+      stateInvalidation.disconnect();
       isInitialized.value = false;
     }
   },
@@ -33,13 +38,13 @@ watch(
 );
 
 watch(
-  () => isInitialized.value,
-  (initialized) => {
-    if (authStore.isAuthenticated && initialized) {
-      statePoller.start();
+  () => [authStore.isAuthenticated, isInitialized.value, vaultName.value] as const,
+  ([isAuthenticated, initialized, currentVaultName]) => {
+    if (isAuthenticated && initialized && currentVaultName) {
+      stateInvalidation.connect(currentVaultName);
       return;
     }
-    statePoller.stop();
+    stateInvalidation.disconnect();
   },
   { immediate: true },
 );
@@ -48,7 +53,7 @@ watch(
   () => route.path,
   () => {
     if (authStore.isAuthenticated && isInitialized.value) {
-      void statePoller.refreshNow();
+      void stateInvalidation.refreshNow();
     }
   },
 );

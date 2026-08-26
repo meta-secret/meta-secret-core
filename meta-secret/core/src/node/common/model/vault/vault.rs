@@ -146,6 +146,7 @@ impl VaultMember {
             distribution_type,
             receivers: links.clone(),
             status: SsDistributionCompositeStatus::from(links),
+            client_status: None,
         }
     }
 

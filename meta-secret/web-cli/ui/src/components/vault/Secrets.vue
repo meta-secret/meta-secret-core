@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { ClaimId, MetaPasswordId, WasmApplicationManager } from 'meta-secret-web-cli';
 import { AppState } from '@/stores/app-state';
 import { useAuthStore } from '@/stores/auth';
@@ -28,6 +28,7 @@ type RevealModalState = 'closed' | 'waiting' | 'revealedText' | 'revealedSeed';
 type RecoveryAction = 'approve' | 'decline';
 type RecoveryAwareMemberState = ReturnType<typeof getMemberVaultState> & {
   find_pending_incoming_recovery_claim?: (metaPassId: MetaPasswordId) => ClaimId | undefined;
+  recovery_client_status?: (metaPassId: MetaPasswordId) => string | undefined;
 };
 type RecoveryAwareApplicationManager = WasmApplicationManager & {
   accept_recover?: (claimId: ClaimId) => Promise<void>;
@@ -56,9 +57,6 @@ const recoveryDialogSecret = ref<MetaPasswordId | null>(null);
 const recoveryDialogClaim = ref<ClaimId | null>(null);
 const recoveryActionInProgress = ref<RecoveryAction | null>(null);
 
-const FLOW_MAX_ATTEMPTS = 15;
-const FLOW_POLL_DELAY_MS = 800;
-
 const isRecovered = (metaPassId: MetaPasswordId) => {
   const claim = getMemberVaultState(appState.currState)?.find_recovery_claim(metaPassId);
   return claim !== undefined;
@@ -73,8 +71,13 @@ const getPendingIncomingRecoveryClaim = (metaPassId: MetaPasswordId) => {
 const hasPendingIncomingRecoveryRequest = (metaPassId: MetaPasswordId) =>
   shouldShowRecoveryRequestIcon(getPendingIncomingRecoveryClaim(metaPassId));
 
+const getRecoveryClientStatus = (metaPassId: MetaPasswordId): string | undefined => {
+  const memberState = getMemberVaultState(appState.currState) as RecoveryAwareMemberState | undefined;
+  if (!memberState || typeof memberState.recovery_client_status !== 'function') return undefined;
+  return memberState.recovery_client_status(metaPassId);
+};
+
 const isFlowTokenActive = (token: number) => token === flowToken.value;
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const getVaultDeviceCount = () => {
   const data = getMemberVaultData(appState.currState);
   if (!data || typeof data.users !== 'function') return 1;
@@ -118,28 +121,39 @@ const closeRecoveryDialog = () => {
 };
 
 const submitRecoveryResponse = async (action: RecoveryAction) => {
-  if (recoveryActionInProgress.value || !recoveryDialogClaim.value) return;
+  console.log('[Recovery] submitRecoveryResponse called', { action, claim: recoveryDialogClaim.value, inProgress: recoveryActionInProgress.value });
+  if (recoveryActionInProgress.value || !recoveryDialogClaim.value) {
+    console.warn('[Recovery] early return — inProgress:', recoveryActionInProgress.value, 'claim:', recoveryDialogClaim.value);
+    return;
+  }
   recoveryActionInProgress.value = action;
   flowError.value = null;
 
   try {
+    console.log('[Recovery] calling authenticateWithPasskey...');
     const authenticated = await authStore.authenticateWithPasskey();
+    console.log('[Recovery] authenticateWithPasskey result:', authenticated);
     if (!authenticated) throw new Error(vaultSecrets.recoveryRequestAuthError);
 
     const recoveryAppManager = appManager as RecoveryAwareApplicationManager;
     if (action === 'approve') {
+      console.log('[Recovery] calling accept_recover, claimId:', recoveryDialogClaim.value);
       if (typeof recoveryAppManager.accept_recover !== 'function')
         throw new Error(vaultSecrets.recoveryRequestSubmitError);
       await recoveryAppManager.accept_recover(recoveryDialogClaim.value);
+      console.log('[Recovery] accept_recover done');
     } else {
+      console.log('[Recovery] calling decline_recover, claimId:', recoveryDialogClaim.value);
       if (typeof recoveryAppManager.decline_recover !== 'function')
         throw new Error(vaultSecrets.recoveryRequestSubmitError);
       await recoveryAppManager.decline_recover(recoveryDialogClaim.value);
+      console.log('[Recovery] decline_recover done');
     }
 
     await appState.updateState();
     resetRecoveryDialog();
   } catch (e) {
+    console.error('[Recovery] error:', e);
     flowError.value = e instanceof Error && e.message ? e.message : vaultSecrets.recoveryRequestSubmitError;
   } finally {
     recoveryActionInProgress.value = null;
@@ -166,15 +180,35 @@ const openRevealedModal = (secretValue: string) => {
 };
 
 const waitForRecoveredClaim = async (metaPassId: MetaPasswordId, token: number) => {
-  if (isRecovered(metaPassId)) return true;
-  for (let i = 0; i < FLOW_MAX_ATTEMPTS; i++) {
+  const resolveFromCurrentState = () => {
     if (!isFlowTokenActive(token) || revealModalState.value !== 'waiting') return false;
-    await sleep(FLOW_POLL_DELAY_MS);
-    if (!isFlowTokenActive(token) || revealModalState.value !== 'waiting') return false;
-    await appState.updateState();
     if (isRecovered(metaPassId)) return true;
-  }
-  throw new Error(vaultSecrets.errorRecoveryTimeout);
+
+    const status = getRecoveryClientStatus(metaPassId);
+    if (status === 'accepted') return true;
+    if (status === 'declined') throw new Error(vaultSecrets.errorRecoveryDeclined);
+    return undefined;
+  };
+
+  const immediateResult = resolveFromCurrentState();
+  if (immediateResult !== undefined) return immediateResult;
+
+  return new Promise<boolean>((resolve, reject) => {
+    const stop = watch(
+      () => [appState.currState, flowToken.value, revealModalState.value] as const,
+      () => {
+        try {
+          const result = resolveFromCurrentState();
+          if (result === undefined) return;
+          stop();
+          resolve(result);
+        } catch (error) {
+          stop();
+          reject(error);
+        }
+      },
+    );
+  });
 };
 
 const startRevealFlow = async (secret: MetaPasswordId) => {
@@ -329,18 +363,19 @@ const revealModalOpen = computed(() => revealModalState.value !== 'closed');
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel
+        <Button
+          variant="outline"
           :disabled="recoveryActionInProgress !== null"
-          @click.prevent="submitRecoveryResponse('decline')"
+          @click="submitRecoveryResponse('decline')"
         >
           {{ recoveryActionInProgress === 'decline' ? vaultSecrets.showLoading : vaultSecrets.recoveryRequestDecline }}
-        </AlertDialogCancel>
-        <AlertDialogAction
+        </Button>
+        <Button
           :disabled="recoveryActionInProgress !== null"
-          @click.prevent="submitRecoveryResponse('approve')"
+          @click="submitRecoveryResponse('approve')"
         >
           {{ recoveryActionInProgress === 'approve' ? vaultSecrets.showLoading : vaultSecrets.recoveryRequestApprove }}
-        </AlertDialogAction>
+        </Button>
       </AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>

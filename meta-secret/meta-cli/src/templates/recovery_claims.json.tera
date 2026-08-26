@@ -7,7 +7,7 @@
       "sender": "{{ claim.sender }}",
       "type": "{{ claim.type }}",
       "password": "{{ claim.password }}",
-      "status": "{{ claim.status }}",
+      "clientStatus": "{{ claim.clientStatus }}",
       "receivers": [
         {% for receiver in claim.receivers %}
         {
