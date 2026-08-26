@@ -15,8 +15,10 @@ Unified vocabulary for meta-secret-core Rust backend. All communication (AI, cod
 | **Master Key** | Per-device root encryption key; derived from user password/passphrase | Key generation | `generate_master_key()` |
 | **Device Master Key (DMK)** | Alias for Master Key when stored on specific device | Device storage | iOS Keychain / Android Keystore |
 | **Key Share** | Individual cryptographic share in Shamir Secret Sharing (k out of n) | Secret sharing | Each device holds 1 share |
-| **Shamir Secret Sharing (SSS)** | Cryptographic scheme: split secret into n shares, recover with k shares (k ≤ n) | Core algorithm | `threshold = k, total_shares = n` |
-| **Threshold (k)** | Minimum number of shares needed to recover a secret | SSS parameter | `k = n - 1` (one device can be offline) |
+| **Shamir Secret Sharing (SSS)** | Cryptographic scheme: split secret into n shares, recover with k shares (k ≤ n). Used only for n≥3 in meta-secret-core | Core algorithm | n=3: `k=2, n=3`; n=4: `k=2, n=4`; etc. |
+| **Threshold (k)** | Minimum number of shares (or devices) needed to recover a secret. K-of-N policy: k=1 for n=2 (each device has full secret); k=2 for n≥3 (SSS) | SSS parameter | n=1: k=1; n=2: k=1; n=3+: k=2 |
+| **K-of-N Policy** | Device-dependent secret sharing: single device stores full secret; 2 devices each store full copy; 3+ devices use SSS with k=2 threshold | Vault architecture | Trade-off: UX for n=2, security for n≥3 |
+| **Full Replication** | All devices store identical, complete copies of the secret (n=2 case) | 2-device vault | Not SSS; provides resilience if one device lost |
 | **Share Pool** | Collection of n key shares distributed among vault members | Vault state | Stored in DB, one per device |
 | **Ephemeral Key** | Short-lived encryption key used once, then discarded | Protocol security | Device-to-device communication |
 | **Public Key** | Asymmetric crypto: used for encryption, shared openly | Device registration | DSA signing key + Transport key |

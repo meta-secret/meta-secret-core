@@ -90,14 +90,6 @@ tasks:
     cmds:
       - docker buildx bake --load web-image
 
-  playwright-test:
-    desc: Run Playwright smoke tests in Docker (set PLAYWRIGHT_BASE_URL)
-    env:
-      PLAYWRIGHT_BASE_URL: '{{.PLAYWRIGHT_BASE_URL}}'
-    cmds:
-      - docker buildx bake playwright --load
-      - docker run --rm --network host -e PLAYWRIGHT_BASE_URL={{.PLAYWRIGHT_BASE_URL}} ghcr.io/meta-secret/meta-secret-core/playwright:latest
-
   generate-recipe:
     desc: Regenerate meta-secret/recipe.json via cargo-chef
     cmds:
@@ -134,6 +126,11 @@ tasks:
   # ============================================================
   # Local dev
   # ============================================================
+
+  set-env:
+    desc: "Switch MetaSecret clients between local and remote servers (usage: task set-env -- local|remote)"
+    cmds:
+      - ./scripts/set-meta-secret-env.sh {{.CLI_ARGS}}
 
   wasm-test:
     desc: Run WASM tests in Firefox

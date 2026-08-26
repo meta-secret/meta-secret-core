@@ -100,11 +100,22 @@ export const useAuthStore = defineStore('auth', () => {
       const challenge = new Uint8Array(32);
       crypto.getRandomValues(challenge);
 
-      // Create the credential request options
+      // Build allowCredentials from the stored credential ID so the browser
+      // knows exactly which passkey to use and shows the biometric prompt.
+      const storedCredId = localStorage.getItem('credential_id');
+      let allowCredentials: PublicKeyCredentialDescriptor[] | undefined;
+      if (storedCredId) {
+        const base64 = storedCredId.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = base64.padEnd(base64.length + (4 - (base64.length % 4)) % 4, '=');
+        const bytes = Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
+        allowCredentials = [{ id: bytes, type: 'public-key' }];
+      }
+
       const publicKeyCredentialRequestOptions: PublicKeyCredentialRequestOptions = {
         challenge,
-        timeout: 60000, // 1 minute
-        userVerification: 'required', // Require biometric verification
+        timeout: 60000,
+        userVerification: 'required',
+        allowCredentials,
       };
 
       // Request the credential

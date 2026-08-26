@@ -11,6 +11,7 @@ use crate::node::common::model::vault::vault_data::VaultData;
 use crate::node::db::actions::sign_up::join::{JoinAction, JoinActionUpdate};
 use crate::node::db::descriptors::shared_secret_descriptor::SsDeviceLogDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
+use crate::node::db::events::generic_log_event::ObjIdExtractor;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::shared_secret_event::{SsDeviceLogObject, SsWorkflowObject};
 use crate::node::db::events::vault::vault_log_event::{
@@ -25,7 +26,7 @@ use crate::secret::split2;
 use crate::secret::shared_secret::{PlainText, UserShareDto};
 use anyhow::bail;
 use anyhow::Result;
-use log::debug;
+use tracing::debug;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -248,6 +249,10 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                     });
             }
             let Some(mut split_claim) = split_claim else {
+                debug!(
+                    "redistribute_existing_secrets: no sender claim found for pass {:?}, skipping",
+                    pass_id
+                );
                 continue;
             };
 
@@ -386,16 +391,34 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                         secret_message: EncryptedMessage::CipherShare { share: encrypted },
                     },
                 });
+                // Delete any stale distribution before saving the new one so all members'
+                // shares always come from the same polynomial after redistribution.
+                self.p_obj.repo.delete(wf.obj_id()).await;
                 self.p_obj.repo.save(wf).await?;
             }
 
             if !split_claim.receivers.iter().any(|d| d.eq(&joined_device_id)) {
                 split_claim.receivers.push(joined_device_id.clone());
             }
-            split_claim
-                .status
-                .statuses
-                .insert(joined_device_id.clone(), SsDistributionStatus::Pending);
+            // Every existing receiver just got a brand new share from the re-split
+            // polynomial above, not just the newly joined device. Mark all of them
+            // Pending again so sync_ss_log's split_workflow_has_pending_receiver gate
+            // (sync_gateway.rs) actually re-uploads the refreshed distributions instead
+            // of skipping already-Delivered receivers and leaving them stuck on the
+            // stale (pre-redistribution) share.
+            for receiver in &members {
+                let receiver_id = receiver.user().device.device_id.clone();
+                if receiver_id.eq(&local_device_id) {
+                    continue;
+                }
+                split_claim
+                    .status
+                    .statuses
+                    .insert(receiver_id, SsDistributionStatus::Pending);
+            }
+            // Persist the updated claim in the device log too so the next sync
+            // sends the new receiver list to the server.
+            p_ss.save_claim_in_ss_device_log(split_claim.clone()).await?;
             p_ss.save_ss_log_event(split_claim.clone()).await?;
             ss_log_data.claims.insert(split_claim.id.clone(), split_claim);
         }
@@ -516,6 +539,7 @@ mod tests {
     use crate::node::common::model::secret::SsDistributionId;
     use crate::node::common::model::vault::vault_data::VaultData;
     use crate::node::db::events::shared_secret_event::SsWorkflowObject;
+    use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::secret::MetaDistributor;
     use anyhow::Result;
@@ -607,6 +631,32 @@ mod tests {
         assert!(
             share_json.contains("share_id"),
             "Redistributed payload must contain a valid share"
+        );
+
+        let p_ss = PersistentSharedSecret::from(orchestrator.p_obj.clone());
+        let device_log_event = p_ss
+            .find_ss_device_log_tail_event(
+                registry
+                    .state
+                    .vault_data
+                    .client_membership
+                    .user_data_member()
+                    .user()
+                    .device
+                    .device_id
+                    .clone(),
+            )
+            .await?;
+        let Some(device_log_event) = device_log_event else {
+            panic!("Expected updated device log claim");
+        };
+        let updated_claim = device_log_event.to_distribution_request();
+        assert!(
+            updated_claim
+                .receivers
+                .iter()
+                .any(|device_id| device_id == &joined_member.user().device.device_id),
+            "Updated claim must include the newly joined receiver"
         );
 
         Ok(())

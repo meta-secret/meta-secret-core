@@ -119,7 +119,7 @@ mod device_ui_category_ffi_tests {
 ///
 /// Must be called from app startup before any network-backed state fetch.
 #[cfg(target_os = "android")]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_metasecret_core_MetaSecretNative_initRustlsPlatformVerifier(
     mut env: JNIEnv,
     _class: JClass,

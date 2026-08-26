@@ -10,7 +10,7 @@ MetaSecret parent workspace: if your editor root is the **MetaSecret** folder, u
 
 | Slash command | Action |
 |---------------|--------|
-| `/help` | Assistant reads this README and prints a formatted list (read-only). |
+| `/help-core` | Assistant reads this README and prints a formatted list (read-only). Renamed to avoid conflict with built-in `/help`. |
 
 ## Workflow Entry
 

@@ -1,32 +1,61 @@
 use std::cmp::PartialEq;
 use std::sync::Arc;
 
+use crate::server::state_invalidation::{
+    NoopStateInvalidationPublisher, StateInvalidation, StateInvalidationPublisher,
+    StateInvalidationScope,
+};
 use anyhow::Result;
-use anyhow::{bail, Ok};
-use derive_more::From;
+use anyhow::{Ok, bail};
 use meta_secret_core::node::api::{SsRequest, VaultRequest};
 use meta_secret_core::node::common::model::device::common::{DeviceData, DeviceId};
-use meta_secret_core::node::common::model::secret::SecretDistributionType;
+use meta_secret_core::node::common::model::secret::{
+    SecretDistributionType, SsDistributionId, SsDistributionStatus,
+};
 use meta_secret_core::node::common::model::vault::vault::VaultStatus;
 use meta_secret_core::node::db::actions::vault::vault_action::ServerVaultAction;
-use meta_secret_core::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
+use meta_secret_core::node::db::descriptors::shared_secret_descriptor::{
+    SsLogDescriptor, SsWorkflowDescriptor,
+};
 use meta_secret_core::node::db::events::generic_log_event::{
     GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
 };
 use meta_secret_core::node::db::events::shared_secret_event::{SsLogObject, SsWorkflowObject};
 use meta_secret_core::node::db::events::vault::device_log_event::DeviceLogObject;
+use meta_secret_core::node::db::events::vault::vault_log_event::{
+    VaultActionEvent, VaultActionRequestEvent, VaultActionUpdateEvent,
+};
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use meta_secret_core::node::db::objects::persistent_vault::PersistentVault;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
-use tracing::{debug, info, instrument};
+use tracing::{debug, instrument};
 
-#[derive(From)]
 pub struct ServerSyncGateway<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
+    pub invalidation_publisher: Arc<dyn StateInvalidationPublisher>,
 }
 
 impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
+    pub fn new(
+        p_obj: Arc<PersistentObject<Repo>>,
+        invalidation_publisher: Arc<dyn StateInvalidationPublisher>,
+    ) -> Self {
+        Self {
+            p_obj,
+            invalidation_publisher,
+        }
+    }
+
+    fn publish_invalidation(
+        &self,
+        vault_name: meta_secret_core::node::common::model::vault::vault::VaultName,
+        scope: StateInvalidationScope,
+    ) {
+        self.invalidation_publisher
+            .publish(StateInvalidation::new(vault_name, scope));
+    }
+
     #[instrument(skip(self))]
     pub async fn vault_replication(&self, request: VaultRequest) -> Result<Vec<GenericKvLogEvent>> {
         let mut commit_log = vec![];
@@ -104,23 +133,28 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                     .await?;
             }
             GenericKvLogEvent::SsDeviceLog(ss_device_log_obj) => {
-                info!(
-                    "Shared Secret Device Log message processing: {:?}",
-                    &ss_device_log_obj
+                let claim_preview = ss_device_log_obj.clone().to_distribution_request();
+                let vault_name = claim_preview.vault_name.clone();
+                debug!(
+                    claim_id = ?claim_preview.id,
+                    claim_sender = ?claim_preview.sender,
+                    pass_id_name = %claim_preview.dist_claim_id.pass_id.name,
+                    receivers_count = claim_preview.receivers.len(),
+                    dist_type = ?claim_preview.distribution_type,
+                    "SsDeviceLog received"
                 );
 
                 self.p_obj.repo.save(ss_device_log_obj.clone()).await?;
 
-                let ss_claim = ss_device_log_obj.to_distribution_request();
-
                 let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
-                p_ss_log.save_ss_log_event(ss_claim).await?;
+                p_ss_log.save_ss_log_event(claim_preview).await?;
+                self.publish_invalidation(vault_name, StateInvalidationScope::SsClaims);
             }
             GenericKvLogEvent::SsWorkflow(ss_object) => {
-                self.p_obj.repo.save(ss_object.clone()).await?;
-
                 if let SsWorkflowObject::Decline(decline_event) = &ss_object {
+                    self.p_obj.repo.save(ss_object.clone()).await?;
                     let decline_data = decline_event.value.clone();
+                    let vault_name = decline_data.vault_name.clone();
                     let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
                     let maybe_ss_log_event = p_ss_log
                         .find_ss_log_tail_event(decline_data.vault_name.clone())
@@ -132,65 +166,80 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                     let new_ss_log_data =
                         ss_log_data.decline(decline_data.claim_id, decline_data.receiver_id);
                     let new_ss_log_event = p_ss_log
-                        .create_new_ss_log_object(
-                            new_ss_log_data,
-                            decline_data.vault_name,
-                        )
+                        .create_new_ss_log_object(new_ss_log_data, decline_data.vault_name)
                         .await?;
                     self.p_obj.repo.save(new_ss_log_event).await?;
+                    self.publish_invalidation(vault_name, StateInvalidationScope::SsClaims);
                 } else {
+                    let ss_object_to_save = ss_object.clone();
                     let wf = ss_object.to_distribution_data()?;
-                        let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
-                        let maybe_ss_log_event = p_ss_log
-                            .find_ss_log_tail_event(wf.vault_name.clone())
-                            .await?;
-                        match maybe_ss_log_event {
-                            None => {
-                                bail!("No claim found for distribution: {:?}", wf)
-                            }
-                            Some(ss_event) => {
-                                let ss_log_data = ss_event.to_data();
-                                let maybe_claim = ss_log_data.claims.get(&wf.claim_id.id);
+                    let vault_name = wf.vault_name.clone();
+                    let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
+                    let maybe_ss_log_event = p_ss_log
+                        .find_ss_log_tail_event(wf.vault_name.clone())
+                        .await?;
+                    match maybe_ss_log_event {
+                        None => {
+                            bail!("No claim found for distribution: {:?}", wf)
+                        }
+                        Some(ss_event) => {
+                            let ss_log_data = ss_event.to_data();
+                            let maybe_claim = ss_log_data.claims.get(&wf.claim_id.id);
 
-                                match maybe_claim {
-                                    None => {
-                                        bail!("Invalid! No claim found for distribution: {:?}", wf)
-                                    }
-                                    Some(claim) => {
-                                        let distribution_type = claim.distribution_type;
-                                        let device_id = match distribution_type {
-                                            SecretDistributionType::Split => wf
-                                                .secret_message
-                                                .cipher_text()
-                                                .channel
-                                                .receiver()
-                                                .to_device_id(),
-                                            SecretDistributionType::Recover => wf
-                                                .secret_message
-                                                .cipher_text()
-                                                .channel
-                                                .sender()
-                                                .to_device_id(),
-                                        };
+                            match maybe_claim {
+                                None => {
+                                    bail!("Invalid! No claim found for distribution: {:?}", wf)
+                                }
+                                Some(claim) => {
+                                    let distribution_type = claim.distribution_type;
+                                    let device_id = match distribution_type {
+                                        SecretDistributionType::Split => wf
+                                            .secret_message
+                                            .cipher_text()
+                                            .channel
+                                            .receiver()
+                                            .to_device_id(),
+                                        SecretDistributionType::Recover => wf
+                                            .secret_message
+                                            .cipher_text()
+                                            .channel
+                                            .sender()
+                                            .to_device_id(),
+                                    };
 
-                                        let claim_id = wf.claim_id.id.clone();
-                                        let new_ss_log_data =
-                                            ss_log_data.sent(wf.claim_id.id, device_id);
-                                        // TODO: k-of-N — call only when count(Sent) >= threshold
-                                        let new_ss_log_data = match distribution_type {
-                                            SecretDistributionType::Recover => {
-                                                new_ss_log_data.decline_remaining_pending(claim_id)
-                                            }
-                                            SecretDistributionType::Split => new_ss_log_data,
-                                        };
-                                        let new_ss_log_event = p_ss_log
-                                            .create_new_ss_log_object(new_ss_log_data, wf.vault_name)
-                                            .await?;
-                                        self.p_obj.repo.save(new_ss_log_event).await?;
+                                    let claim_id = wf.claim_id.id.clone();
+                                    if distribution_type == SecretDistributionType::Split
+                                        && matches!(
+                                            claim.status.get(&device_id),
+                                            Some(
+                                                SsDistributionStatus::Sent
+                                                    | SsDistributionStatus::Delivered
+                                            )
+                                        )
+                                    {
+                                        debug!(
+                                            claim_id = ?claim_id,
+                                            receiver = ?device_id,
+                                            "duplicate split distribution workflow ignored"
+                                        );
+                                        return Ok(());
                                     }
+
+                                    self.p_obj.repo.save(ss_object_to_save).await?;
+                                    let new_ss_log_data =
+                                        ss_log_data.sent(wf.claim_id.id, device_id);
+                                    let new_ss_log_event = p_ss_log
+                                        .create_new_ss_log_object(new_ss_log_data, wf.vault_name)
+                                        .await?;
+                                    self.p_obj.repo.save(new_ss_log_event).await?;
+                                    self.publish_invalidation(
+                                        vault_name,
+                                        StateInvalidationScope::SsClaims,
+                                    );
                                 }
                             }
                         }
+                    }
                 }
             }
             GenericKvLogEvent::DeviceCreds(_) => {
@@ -229,6 +278,8 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
         let vault_action_event = device_log_obj.0;
         let vault_action = vault_action_event.value;
+        let vault_name = vault_action.vault_name();
+        let scope = state_scope_for_vault_action(&vault_action);
 
         let action = ServerVaultAction {
             p_obj: self.p_obj.clone(),
@@ -236,6 +287,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         };
 
         action.do_processing(vault_action).await?;
+        self.publish_invalidation(vault_name, scope);
         Ok(())
     }
 
@@ -249,12 +301,18 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             .p_obj
             .find_object_events::<SsLogObject>(request.ss_log.clone())
             .await?;
-
         debug!(
             ss_log_events_count = ss_log_events.len(),
             "ss_replication: events from find_object_events for request.ss_log"
         );
-        let maybe_latest_ss_log_state = ss_log_events.last();
+        let maybe_latest_ss_log_state = match ss_log_events.last() {
+            Some(latest_ss_log_state) => Some(latest_ss_log_state.clone()),
+            None => {
+                self.p_obj
+                    .find_tail_event(SsLogDescriptor::from(request.sender.vault_name.clone()))
+                    .await?
+            }
+        };
         let Some(latest_ss_log_state) = maybe_latest_ss_log_state else {
             return Ok(vec![]);
         };
@@ -268,66 +326,75 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         let mut updated_ss_log_data = ss_log_data.clone();
         let mut updated_state = false;
 
+        debug!(
+            claims_count = ss_log_data.claims.len(),
+            request_sender = ?request.sender.device.device_id,
+            "ss_replication: iterating claims"
+        );
+
         for (_, claim) in ss_log_data.claims.iter() {
-            // Distribute shares
-            for dist_id in claim.recovery_db_ids() {
-                if claim.sender.eq(&server_device) {
-                    bail!("Invalid state. Server can't manage encrypted shares");
-                };
+            if claim.sender.eq(&server_device) {
+                bail!("Invalid state. Server can't manage encrypted shares");
+            };
 
-                let request_sender_device = request.sender.device.device_id.clone();
+            let request_sender_device = request.sender.device.device_id.clone();
 
-                let for_delivery = match claim.distribution_type {
-                    SecretDistributionType::Split => {
-                        // If the device is a receiver of the share (vise versa to recovery)
-                        dist_id.distribution_id.receiver.eq(&request_sender_device)
+            debug!(
+                claim_id = ?claim.id,
+                dist_type = ?claim.distribution_type,
+                pass_id_name = %claim.dist_claim_id.pass_id.name,
+                "ss_replication: processing claim"
+            );
+
+            match claim.distribution_type {
+                SecretDistributionType::Split => {
+                    // Directly look up the distribution by (pass_id, requesting_device).
+                    // Bypasses claim.receivers, which may be stale/empty when distributions
+                    // arrive at the server before the ss_log is updated with the full receiver list.
+                    let dist_id = SsDistributionId {
+                        pass_id: claim.dist_claim_id.pass_id.clone(),
+                        receiver: request_sender_device.clone(),
+                    };
+                    let desc = SsWorkflowDescriptor::Distribution(dist_id.clone());
+                    let dist_obj = self.p_obj.find_tail_event(desc).await?;
+                    debug!(
+                        found = dist_obj.is_some(),
+                        dist_id = ?dist_id,
+                        "ss_replication: Split — find_tail_event result"
+                    );
+
+                    if let Some(dist_event) = dist_obj {
+                        let ss_dist_obj_id = dist_event.obj_id();
+                        commit_log.push(dist_event.to_generic());
+                        updated_ss_log_data = updated_ss_log_data
+                            .complete(claim.id.clone(), request_sender_device.clone());
+                        updated_state = true;
+                        self.p_obj.repo.delete(ss_dist_obj_id).await;
                     }
-                    SecretDistributionType::Recover => {
-                        // The device that sent recovery claim request is a receiver of the share
-                        dist_id.sender.eq(&request_sender_device)
-                    }
-                };
-
-                if !for_delivery {
-                    continue;
                 }
-
-                let desc = match claim.distribution_type {
-                    SecretDistributionType::Split => {
-                        SsWorkflowDescriptor::Distribution(dist_id.distribution_id.clone())
-                    }
-                    SecretDistributionType::Recover => {
-                        SsWorkflowDescriptor::Recovery(dist_id.clone())
-                    }
-                };
-
-                let dist_obj = self.p_obj.find_tail_event(desc).await?;
-
-                if let Some(dist_event) = dist_obj {
-                    let ss_dist_obj_id = dist_event.obj_id();
-                    commit_log.push(dist_event.to_generic());
-                    self.p_obj.repo.delete(ss_dist_obj_id).await;
-
-                    match claim.distribution_type {
-                        SecretDistributionType::Split => {
-                            let claim_id = dist_id.claim_id.id;
-                            updated_ss_log_data = updated_ss_log_data
-                                .complete(claim_id, dist_id.distribution_id.receiver);
+                SecretDistributionType::Recover => {
+                    for dist_id in claim.recovery_db_ids() {
+                        if !dist_id.sender.eq(&request_sender_device) {
+                            continue;
                         }
-                        SecretDistributionType::Recover => {
+                        let desc = SsWorkflowDescriptor::Recovery(dist_id.clone());
+                        let dist_obj = self.p_obj.find_tail_event(desc).await?;
+                        if let Some(dist_event) = dist_obj {
+                            let ss_dist_obj_id = dist_event.obj_id();
+                            commit_log.push(dist_event.to_generic());
                             //skip: we can't complete the claim, otherwise we won't know
                             //on the sender device that the claim exists.
                             //Completion event needs to be sent by the recovery claim creator
+                            updated_state = true;
+                            self.p_obj.repo.delete(ss_dist_obj_id).await;
                         }
                     }
-
-                    updated_state = true;
                 }
             }
         }
 
+        let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
         if updated_state {
-            let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
             let new_ss_log_obj = p_ss
                 .create_new_ss_log_object(updated_ss_log_data, request.sender.vault_name.clone())
                 .await?;
@@ -336,6 +403,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                 .save(new_ss_log_obj.clone().to_generic())
                 .await?;
             commit_log.push(new_ss_log_obj.to_generic());
+            self.publish_invalidation(request.sender.vault_name, StateInvalidationScope::SsClaims);
         }
 
         debug!(
@@ -343,5 +411,26 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             "ss_replication: returning commit_log to client"
         );
         Ok(commit_log)
+    }
+}
+
+impl<Repo: KvLogEventRepo> From<Arc<PersistentObject<Repo>>> for ServerSyncGateway<Repo> {
+    fn from(p_obj: Arc<PersistentObject<Repo>>) -> Self {
+        Self::new(p_obj, Arc::new(NoopStateInvalidationPublisher))
+    }
+}
+
+fn state_scope_for_vault_action(action: &VaultActionEvent) -> StateInvalidationScope {
+    match action {
+        VaultActionEvent::Init(_) => StateInvalidationScope::All,
+        VaultActionEvent::Request(request) => match request {
+            VaultActionRequestEvent::JoinCluster(_) => StateInvalidationScope::Devices,
+            VaultActionRequestEvent::AddMetaPass(_) => StateInvalidationScope::Vault,
+        },
+        VaultActionEvent::Update(update) => match update {
+            VaultActionUpdateEvent::AddToPending { .. }
+            | VaultActionUpdateEvent::UpdateMembership(_) => StateInvalidationScope::Devices,
+            VaultActionUpdateEvent::AddMetaPass(_) => StateInvalidationScope::Vault,
+        },
     }
 }
