@@ -1,204 +1,475 @@
-# Automated Workflow Orchestration
+# Automated Workflow Orchestration — 14 Stages
 
-Single source of truth for `run issue <id>` / `run issue "<text>"` across Claude Code, Cursor, and Codex CLI.
+Single source of truth for `implement issue <id>` / `implement issue "<text>"` for meta-secret-core Rust backend.
+
+---
+
+## ⚠️ CRITICAL: Non-Optional Stages
+
+**These stages MUST ALWAYS be executed and are NOT optional:**
+
+1. **Stage 6 (Security Review)** — Mandatory crypto audit + unsafe code check
+2. **Stage 7 (Code Review)** — Mandatory constraints validation + 80% coverage check
+3. **Stage 10 (Coverage Verification)** — Mandatory `cargo tarpaulin`, verify >= 80%
+4. **Stage 12 (User Approval)** — Mandatory user approval before PR
+
+Stage 9 (Design Review) may be skipped only if no architecture changes; mark status as "Skipped".
+
+**If any of these stages are missing from execution, the workflow is INCOMPLETE and INVALID.**
+
+---
 
 ## Command Contract
 
-- Trigger: `run issue <id-or-text>`
-- Optional resume: `run issue <id-or-text> --from stage-<n>`
-- Artifacts directory: `.ai/artifacts/run/`
-- Artifact naming: `MS-<run-id>-<stage-number>-<stage-name>[ -retry-N ].md`
-- Retry budget: `2` full fix loops
+- **Trigger:** `implement issue <id-or-text>`
+- **Optional resume:** `implement issue <id-or-text> --from stage-<n>`
+- **Artifacts directory:** `.ai/artifacts/run/`
+- **Artifact naming:** `MS-<run-id>-<stage-number>-<stage-name>[ -retry-N ].md`
+- **Retry budget:** `2` full fix loops
 
-`<run-id>` rules:
+**`<run-id>` rules:**
 - Numeric issue input: use issue number (`123`)
 - Free-text input: use UTC timestamp (`YYYYMMDDHHmmss`)
 
+---
+
 ## Required Stage Logs
 
-**Finish (every stage):** `✅ Stage <n>: <name> completed`
+**Every stage MUST print:**
+- Start: `Start stage <n>: <name>`
+- End: `Stage <n>: <name> completed`
 
-**Start:** exactly one leading emoji per stage (table below), then one ASCII space, then `Start stage <n>: <name>`.
+Example:
+- `📋 Start stage 1: Issue Coordinator`
+- `✅ Stage 1: Issue Coordinator completed`
 
-| Stage | Name | Start line begins with |
-|------:|------|------------------------|
-| 1 | Issue Intake | `📋 ` |
-| 2 | Planning | `🗺️ ` |
-| 3 | Implementation | `🛠️ ` |
-| 4 | Build | `🏗️ ` |
-| 5 | Code Review | `🔍 ` |
-| 6 | Test Authoring | `🧪 ` |
-| 7 | Test Run | `▶️ ` |
-| 8 | Branch + Commit + PR | `🚀 ` |
+---
 
-After the start emoji there must be exactly one ASCII space before `Start stage`. Substrings `Start stage` and `completed` remain grep-friendly for tooling.
+## 14-Stage Pipeline (with TDD + Security)
 
-Examples:
-- `🏗️ Start stage 4: Build`
-- `✅ Stage 4: Build completed`
+```
+┌─ Intake & Analysis
+│  1. Issue Coordinator (understand problem)
+│  2. Requirements Clarifier (grill user with questions)
+│
+├─ Planning & Validation
+│  3. Feature Planner (create implementation plan)
+│  3.5. Constraint Validator (GATE - validate against CONSTRAINTS.md)
+│
+├─ Implementation (TDD)
+│  5a. TDD Test Author (write failing tests)
+│  5b. TDD Implementer (red-green-refactor cycles)
+│  5c. TDD Refactorer (major refactoring)
+│
+├─ Build & Validation
+│  6. Build (cargo build)
+│  7. Security Review ⭐ (crypto audit + unsafe code check)
+│  8. Code Review (architecture + constraints + coverage check)
+│  9. Design Review (diagrams if architecture changed, else Skipped)
+│
+├─ Quality Gates
+│  10. Coverage Verification (cargo tarpaulin >= 80%)
+│  11. Test Run (cargo test)
+│
+└─ Release
+   12. User Approval (STOP and ASK USER)
+   13. release-manager (branch + commit + PR)
+```
 
-## 8-Stage Pipeline
-
-1. Stage 1: Issue Intake
-2. Stage 2: Planning
-3. Stage 3: Implementation
-4. Stage 4: Build (no tests, max 10 minutes)
-5. Stage 5: Code Review
-6. Stage 6: Test Authoring
-7. Stage 7: Test Run
-8. Stage 8: Branch + Commit + PR
+---
 
 ## Stage Specs
 
-### Stage 1: Issue Intake
+### Stage 1: Issue Intake + Optional Architecture Context
 
-Primary agent: `github-issue-coordinator`
-Template: `.ai/artifacts/issue-analysis-template.md`
-Output: `.ai/artifacts/run/MS-<run-id>-001-understanding.md`
+**Agent:** `github-issue-coordinator`  
+**Template:** `.ai/artifacts/issue-analysis-template.md`  
+**Output:** `.ai/artifacts/run/MS-<run-id>-001-understanding.md`
 
-Required behavior:
+**Required behavior:**
 - Read issue (or free-text task)
-- Produce output following issue-analysis template
+- Understand scope and impact
+- If issue mentions architecture/protocol/crypto: extract key concepts
+- Produce output following template
+- Include: `Architecture Changed: YES/NO`
 
-### Stage 2: Planning
+---
 
-Agent: `feature-planner`
-Template: `.ai/artifacts/implementation-plan-template.md`
-Input:
+### Stage 2: Grill Me (Clarification & Deep Dive)
+
+**Agent:** `requirements-clarifier`  
+**Template:** `.ai/artifacts/clarification-template.md`  
+**Input:**
 - Stage 1 artifact
-- If retry: failed artifact from Stage 4/5/7
-Output: `.ai/artifacts/run/MS-<run-id>-002-planning.md`
 
-Required behavior:
-- Create implementation plan aligned with core architecture/security/style
-- If retry, add explicit fix plan derived from failure artifact
+**Output:** `.ai/artifacts/run/MS-<run-id>-002-clarification.md`
 
-### Stage 3: Implementation
+**Duration (adaptive - stop when shared understanding reached):**
+- Simple tasks (bug fix, style update): 5-10 minutes
+- Medium tasks (feature addition): 15-25 minutes
+- Complex tasks (protocol, crypto, resharing): 30-45 minutes
 
-Agent: `code-implementer`
-Input:
-- Stage 2 artifact
-Output:
-- `.ai/artifacts/run/MS-<run-id>-003-implementation.md`
+**Required behavior:**
+- Use "Grill Me" methodology: walk decision tree, resolve dependencies
+- Ask clarifying questions about unclear/risky areas ONLY (not all possible questions)
+- Validate crypto assumptions (if touching cryptography)
+- Validate FFI boundary changes (if touching UniFFI exports)
+- Provide recommendations for each question
+- Get explicit user approval before proceeding
+- Document all clarifications in artifact
 
-Required behavior:
-- Implement approved plan with minimal diff
-- Respect Rust crate boundaries and FFI stability rules
+---
 
-### Stage 4: Build (no tests)
+### Stage 3: Planning
 
-Skill: [`.ai/skills/build-via-task/SKILL.md`](skills/build-via-task/SKILL.md) — **read before running any build command**.
+**Agent:** `feature-planner`  
+**Template:** `.ai/artifacts/implementation-plan-template.md`  
+**Input:**
+- Stage 1 artifact
+- Stage 2 artifact (clarifications)
+- If retry: failed artifact from Stage 6/7/8/11
 
-Command (from **repository root**):
-- Run the narrowest `task` target for the change, e.g. `task web-local`, `task wasm-local`, `task test`
-- Record exact command(s) in the build report
+**Output:** `.ai/artifacts/run/MS-<run-id>-003-planning.md`
 
-Forbidden: `docker buildx bake`, `docker buildx build`, `docker build`
+**Required behavior:**
+- Create implementation plan aligned with architecture/security/style
+- Incorporate all clarifications from Stage 2
+- If architecture changed: document design decisions
+- If crypto touched: document SSS/key management changes
+- If FFI changed: document impact on mobile (meta-secret-compose)
+- If retry: add explicit fix plan derived from failure artifact
+- Include test strategy
 
-Timeout:
-- hard limit 10 minutes (600 seconds)
+---
 
-Template: `.ai/artifacts/build-report-template.md`
-Output: `.ai/artifacts/run/MS-<run-id>-004-build.md`
+### Stage 3.5: Constraint Validation (MANDATORY GATE)
 
-Required behavior:
-- Capture command, duration, and status
-- Mark `Status: PASSED` or `Status: FAILED`
+**Agent:** `constraint-validator`  
+**Input:**
+- Stage 3 (Planning artifact)
 
-### Stage 5: Code Review
+**Output:** `.ai/artifacts/run/MS-<run-id>-0035-constraints.md`
 
-Agent: `code-reviewer`
-Template: `.ai/artifacts/review-report-template.md`
-Input: code diff + architecture/style/security rules
-Output: `.ai/artifacts/run/MS-<run-id>-005-review.md`
+**Required behavior:**
+- Validate plan against `.ai/CONSTRAINTS.md`
+- Check K-of-N sharing rules (if device/vault logic changes)
+- Check approval requirements (if JOIN/RESTORE/REMOVE changes)
+- Check server zero-knowledge principle (if server logic changes)
+- Check FFI stability (if UniFFI boundary changes)
+- Check crypto assumptions (if SSS/key derivation changes)
 
-Required behavior:
-- Output `Status: PASSED` or `Status: FAILED`
-- When failed: include concrete blocking issues
+**Status:** Pass / Fail
 
-### Stage 6: Test Authoring
+**If Fail:**
+- Document which constraint(s) violated
+- Return to Stage 3 (Planning) with constraint violation details
+- Planner must re-architect to satisfy constraints
 
-Agent: `test-author`
-Input:
-- Stage 3 implementation artifact
-- Stage 5 findings (if any)
-Output: `.ai/artifacts/run/MS-<run-id>-006-testing.md`
+---
 
-Required behavior:
-- Add/update automated tests for changed behavior
-- Cover edge cases from plan and review feedback
+### Stage 5a: TDD Test Author
 
-### Stage 7: Test Run
+**Agent:** `tdd-test-author`  
+**Input:**
+- Stage 3 (Planning)
 
-Agent: `test-verifier`
-Skill: [`.ai/skills/build-via-task/SKILL.md`](skills/build-via-task/SKILL.md)
-Template: `.ai/artifacts/test-report-template.md`
-Command (from **repository root**):
-- `task test` — CI parity (preferred before PR)
-- Optional narrow local check: `cargo test -p …` from `meta-secret/`
-Output: `.ai/artifacts/run/MS-<run-id>-007-test-run.md`
+**Output:** `.ai/artifacts/run/MS-<run-id>-005a-tests.md`
 
-Required behavior:
-- Output `Status: PASSED` or `Status: FAILED`
-- Include failed test list and root-cause summary
+**Required behavior:**
+- Write failing tests covering all requirements from plan
+- Unit tests for individual functions
+- Integration tests for workflows (if applicable)
+- Property tests for crypto (if touching SSS/key derivation)
+- Tests must fail before implementation
+- Include test strategy in artifact
 
-### Stage 8: Branch + Commit + PR
+---
 
-Agent: `release-manager`
-Skill: [`.ai/skills/workflow-mr-body/SKILL.md`](skills/workflow-mr-body/SKILL.md)
-Output: `.ai/artifacts/run/MS-<run-id>-008-pr.md`
+### Stage 5b: TDD Implementer (Red-Green-Refactor)
 
-Required behavior:
-- Create branch: `{Prefix}/kuklin/MS-{issueNumber}` for numeric issues (see release-manager policy)
-- Commit and push with explicit user approvals
-- Open PR to `main`, or **`gh pr edit`** title/body when PR exists or branch scope grew
-- PR title and description must summarize **full branch** (`git log main..HEAD`, not stale first-commit text)
+**Agent:** `tdd-implementer`  
+**Input:**
+- Stage 5a tests
+- Stage 3 plan
 
-## Automatic Recovery Loops
+**Output:** `.ai/artifacts/run/MS-<run-id>-005b-implementation.md`
 
-If any of these stages fails:
-- Stage 4 (Build)
-- Stage 5 (Code Review)
-- Stage 7 (Test Run)
+**Required behavior:**
+- Execute red-green-refactor cycles
+- RED: write minimal code to make 1 test pass
+- GREEN: verify test passes
+- After 3-5 cycles: refactor (Stage 5c)
+- Respect Rust idioms (ownership, borrowing, error handling)
+- Respect crate boundaries and FFI stability
 
-Then run recovery loop:
+---
 
-1. Feed failed artifact into Stage 2 planning as mandatory context
-2. Re-run Stage 3 -> Stage 4 -> Stage 5 -> Stage 6 -> Stage 7
-3. Stop when all pass, then continue to Stage 8
-4. Max retries: 2
+### Stage 5c: TDD Refactorer
 
-On retry artifacts, append `-retry-1` / `-retry-2`.
+**Agent:** `tdd-refactorer`  
+**Input:**
+- Stage 5b implementation
+- Stage 5a tests
+
+**Output:** `.ai/artifacts/run/MS-<run-id>-005c-refactored.md`
+
+**Required behavior:**
+- Major refactoring after 3-5 red-green cycles
+- Remove duplication
+- Improve naming and structure
+- All tests must still pass
+- Verify no unsafe code added unless justified
+
+---
+
+### Stage 6: Build
+
+**Command:** `cargo build --release`  
+**Template:** `.ai/artifacts/build-report-template.md`  
+**Output:** `.ai/artifacts/run/MS-<run-id>-006-build.md`
+
+**Required behavior:**
+- Compile entire workspace
+- No tests executed
+- Timeout: 10 minutes max
+- Fail if compilation errors
+- Report all warnings (treat as information)
+
+**Status:** Success / Failed
+
+---
+
+### Stage 7: Security Review ⭐ NEW!
+
+**Agent:** `security-reviewer`  
+**Input:**
+- Stage 6 (compiled code)
+- Stage 5c (implementation)
+
+**Output:** `.ai/artifacts/run/MS-<run-id>-007-security-review.md`
+
+**Required behavior:**
+- If crypto code touched: audit SSS/key derivation algorithm correctness
+- If device logic touched: verify resharing protocol assumptions
+- If FFI changed: check for unintended exposure (no secrets over FFI)
+- Run: `cargo clippy --all-targets -- -D warnings`
+- Audit: all `unsafe` blocks (justify each one)
+- Check: no plaintext logging of secrets/keys
+- Verify: E2E encryption assumptions still hold
+
+**Status:** Pass / Fail
+
+**If Fail:**
+- Document security concerns
+- Return to Stage 3 (Planning) with security notes
+- May require design changes, not just code fixes
+
+---
+
+### Stage 8: Code Review
+
+**Agent:** `code-reviewer`  
+**Input:**
+- Stage 6 (build report)
+- Stage 5c (implementation)
+- Stage 3 (plan)
+
+**Output:** `.ai/artifacts/run/MS-<run-id>-008-code-review.md`
+
+**Required behavior:**
+- Architecture compliance: does code follow ARCHITECTURE.md?
+- Constraint re-validation: ensure plan compliance maintained
+- Coverage check: verify >= 80% (detailed in Stage 10)
+- Style and best practices: Rust idioms, crate organization
+- FFI impact: if boundary changes, note mobile compatibility
+- Performance: any crypto operations performant?
+
+**Status:** Pass / Fail
+
+---
+
+### Stage 9: Design Review (CONDITIONAL)
+
+**Condition:** Run only if Stage 3 (Planning) indicates architecture changed
+
+**Agent:** `design-reviewer`  
+**Template:** `.ai/artifacts/design-review-report-template.md`  
+**Output:** `.ai/artifacts/run/MS-<run-id>-009-design-review.md`
+
+**Required behavior (choose based on change type):**
+
+**For Web/Frontend changes:**
+- If Figma link provided: review UI against mockups
+- Verify design constraints met
+
+**For Core/Backend changes:**
+- Create protocol diagram (if communication changed)
+- Create algorithm diagram (if crypto/SSS changed)
+- Create state machine diagram (if device states changed)
+- Verify all diagrams match implementation
+
+**If no architecture change:**
+- Status: Skipped
+- Reason: "No architecture changes in Stage 3 plan"
+
+**Status:** Success / Failed / Skipped
+
+---
+
+### Stage 10: Coverage Verification (CRITICAL)
+
+**Command:** `cargo tarpaulin --out Html --timeout 300 --fail-under 80`  
+**Template:** `.ai/artifacts/coverage-report-template.md`  
+**Output:** `.ai/artifacts/run/MS-<run-id>-010-coverage.md`
+
+**Required behavior:**
+- Run tarpaulin and generate HTML report
+- Minimum threshold: 80% overall
+- Crypto modules preferred: >= 95%
+- Report uncovered lines (which lines missed coverage)
+- Fail if coverage < 80%
+
+**Status:** Pass / Fail (not Success/Failed, use Pass/Fail for coverage)
+
+**If Fail:**
+- Document which lines/modules lack coverage
+- Return to Stage 3 (Planning) to add tests
+- Must re-run Stages 5a → 5b → 5c → 6 → 7 → 8 → 9 → 10
+
+---
+
+### Stage 11: Test Run (Final Validation)
+
+**Command:** `cargo test --all`  
+**Template:** `.ai/artifacts/test-report-template.md`  
+**Output:** `.ai/artifacts/run/MS-<run-id>-011-test-run.md`
+
+**Required behavior:**
+- Execute all unit + integration tests
+- Parallel execution (safe for Rust)
+- Report pass/fail for each test
+- Capture failing test details
+- All tests must pass
+
+**Status:** Success / Failed
+
+**If Fail:**
+- Document which test failed and why
+- Return to Stage 3 (Planning)
+- May require design changes if tests reveal flaws
+
+---
+
+### Stage 12: User Approval
+
+**Agent:** `release-manager`  
+**Output:** `.ai/artifacts/run/MS-<run-id>-012-approval.md`
+
+**Required behavior:**
+- STOP before creating PR
+- Use AskUserQuestion tool
+- Ask: "Should we proceed to Stage 13 (Branch + Commit + PR)?"
+- Wait for explicit YES/NO response
+- If YES: proceed to Stage 13
+- If NO: stop workflow, await further instructions
+
+**Status:** Success (user approved) / Cancelled (user declined)
+
+---
+
+### Stage 13: Branch + Commit + PR
+
+**Agent:** `release-manager`  
+**Output:** `.ai/artifacts/run/MS-<run-id>-013-pr.md`
+
+**Required behavior:**
+- Create feature branch from main
+- Stage and commit all changes
+- Write meaningful commit message
+- Create pull request with:
+  - Link to original issue
+  - Summary of changes
+  - Coverage report link
+  - Security review notes (if applicable)
+- Ensure CI passes
+
+**Status:** Success / Failed
+
+---
+
+## Retry Rules
+
+**Retry trigger:**
+- Build failed (Stage 6)
+- Security review failed (Stage 7)
+- Code review failed (Stage 8)
+- Coverage failed (Stage 10)
+- Test run failed (Stage 11)
+
+**Retry path:**
+- Return to Stage 3 (Planning) with failed artifact as input
+- Re-run stages from Stage 5a onward
+- Max retries: 2 full loops
+
+---
 
 ## Failure Markers
-
-Pipeline must stop if artifact contains any marker:
 
 - `Status: FAILED`
 - `Return to Planning: YES`
 - `**FAIL**`
 - `FAIL`
-- `❌`
 
-## CI Auto-Fix (Cursor SDK)
+---
 
-This is a **separate, automated loop** that runs outside the 8-stage pipeline:
+## Artifact System
 
-- Trigger: `tests` GitHub Actions workflow completes with `failure`
-- Workflow: `.github/workflows/cursor-fix.yml`
-- Script: `.github/scripts/cursor-fix.ts` (Bun TypeScript, `@cursor/sdk`)
-- Behaviour: fetches failure logs → launches Cursor cloud agent → agent opens fix PR against the failing branch → fix PR re-runs tests
-- This loop is independent of the manual `run issue ...` pipeline
-- Skill: `.ai/skills/ci-auto-fix/SKILL.md`
+### Every Stage Creates an Artifact
 
-Required GitHub secret: `CURSOR_API_KEY`.
+Each stage writes output to `.ai/artifacts/run/` following naming convention:
 
-## IDE Entry Points
+```
+MS-<run-id>-<stage-number>-<stage-name>[ -retry-N ].md
+```
 
-- Claude Code: `.claude/ORCHESTRATE.md`
-- Cursor: `.cursor/WORKFLOW.md`
-- Codex CLI: `.codex/ORCHESTRATE.md`
+**Example:** `MS-42-010-coverage.md` or `MS-42-010-coverage -retry-1.md`
 
-All entry points must delegate orchestration logic to this file to avoid duplication.
+### Status Field (REQUIRED)
 
-Last updated: 2026-06-18
+Every artifact must have **Status** at the top:
+
+```markdown
+**Status:** Success | Failed | Skipped
+```
+
+Validation stages use:
+```markdown
+**Status:** Pass | Fail | Skipped
+```
+
+---
+
+## Validation Checklist Before Stage 13
+
+Before proceeding to Stage 13 (PR), verify:
+
+- ✅ Stage 1: Issue analyzed
+- ✅ Stage 2: Clarifications completed
+- ✅ Stage 3: Plan created
+- ✅ Stage 3.5: Constraints validated (Status: Pass)
+- ✅ Stage 5a: Failing tests written
+- ✅ Stage 5b: Implementation done
+- ✅ Stage 5c: Refactoring completed
+- ✅ Stage 6: Build successful
+- ✅ Stage 7: Security review passed
+- ✅ Stage 8: Code review passed
+- ✅ Stage 9: Design review (Status: Success or Skipped)
+- ✅ Stage 10: Coverage verified (Status: Pass, >= 80%)
+- ✅ Stage 11: Tests passed
+- ✅ Stage 12: User approved
+
+If any artifact is missing or status is Failed → return to Stage 3.
+
+---
+
+**Next:** See `.ai/ORCHESTRATOR.md` for command routing.

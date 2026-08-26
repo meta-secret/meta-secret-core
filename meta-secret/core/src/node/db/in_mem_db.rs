@@ -47,10 +47,15 @@ impl FindOneQuery for InMemKvLogEventRepo {
 impl SaveCommand for InMemKvLogEventRepo {
     #[instrument(skip_all)]
     async fn save<T: ToGenericEvent>(&self, value: T) -> Result<ArtifactId> {
-        let mut db = self.db.lock().await;
+        let generic_value = value.to_generic();
+        let key = generic_value.obj_id();
 
-        let key = value.clone().to_generic().obj_id();
-        db.insert(key.clone(), value.to_generic());
+        if self.find_one(key.clone()).await?.is_some() {
+            return Ok(key);
+        }
+
+        let mut db = self.db.lock().await;
+        db.insert(key.clone(), generic_value);
         Ok(key)
     }
 }

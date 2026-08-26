@@ -8,6 +8,7 @@ export const vaultSecrets = {
   emptyState: 'No secrets added yet',
   show: 'Show',
   showLoading: 'Loading...',
+  recover: 'Recover',
   waitingTitle: 'Secret is encrypted',
   waitingSubtitle: 'Requesting recovery shares to decrypt and reveal the content',
   waitingDevicesSuffix: 'device',
@@ -42,7 +43,12 @@ export const vaultSecrets = {
   addSecretSubmitError: 'Could not add secret. Please try again.',
   errorShowRecovered: 'Could not display the recovered secret. Shares may be incomplete or corrupted.',
   errorCopySecret: 'Could not copy the secret.',
-  errorRecoveryTimeout: 'Recovery took too long. Please try again.',
+  errorRecoveryDeclined: 'Recovery was declined by all devices.',
+  recoveryRequestTitle: 'Recover secret?',
+  recoveryRequestApprove: 'Approve',
+  recoveryRequestDecline: 'Decline',
+  recoveryRequestAuthError: 'Could not verify biometrics for this recovery request.',
+  recoveryRequestSubmitError: 'Could not submit the recovery response. Please try again.',
 } as const;
 
 export const vaultDevices = {

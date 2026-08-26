@@ -1,8 +1,15 @@
-use axum::extract::State;
+use axum::extract::{Query, State};
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::{Json, Router, routing::post};
+use futures_util::stream::{self, Stream};
 use http::{StatusCode, Uri};
-use serde_derive::Serialize;
+use meta_secret_core::node::common::model::vault::vault::VaultName;
+use meta_server_node::server::state_invalidation::{StateInvalidation, StateInvalidationPublisher};
+use serde_derive::{Deserialize, Serialize};
+use std::convert::Infallible;
 use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::broadcast;
 
 use anyhow::Result;
 use axum::response::Html;
@@ -20,6 +27,30 @@ use tracing_subscriber::{EnvFilter, FmtSubscriber};
 #[derive(Clone)]
 pub struct MetaServerAppState {
     data_transfer: Arc<MetaServerDataTransfer>,
+    invalidation_tx: broadcast::Sender<StateInvalidation>,
+}
+
+#[derive(Clone)]
+struct BroadcastStateInvalidationPublisher {
+    tx: broadcast::Sender<StateInvalidation>,
+}
+
+impl StateInvalidationPublisher for BroadcastStateInvalidationPublisher {
+    fn publish(&self, invalidation: StateInvalidation) {
+        info!(
+            vault_name = %invalidation.vault_name,
+            scope = ?invalidation.scope,
+            revision = ?invalidation.revision,
+            "Publishing state invalidation"
+        );
+        let _ = self.tx.send(invalidation);
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StateEventsQuery {
+    vault_name: String,
 }
 
 #[tokio::main]
@@ -53,11 +84,20 @@ async fn main() -> Result<()> {
     info!("Creating router...");
     let cors = CorsLayer::permissive();
 
+    let (invalidation_tx, _) = broadcast::channel(1024);
+    let invalidation_publisher = Arc::new(BroadcastStateInvalidationPublisher {
+        tx: invalidation_tx.clone(),
+    });
+
     let server_app = {
         let repo = Arc::new(SqlIteRepo {
             conn_url: String::from("file:meta-secret.db"),
         });
-        Arc::new(ServerApp::new(repo.clone(), master_key)?)
+        Arc::new(ServerApp::new_with_invalidation_publisher(
+            repo.clone(),
+            master_key,
+            invalidation_publisher,
+        )?)
     };
 
     let data_transfer = server_app.get_data_transfer();
@@ -77,11 +117,15 @@ async fn main() -> Result<()> {
         });
     });
 
-    let app_state = Arc::new(MetaServerAppState { data_transfer });
+    let app_state = Arc::new(MetaServerAppState {
+        data_transfer,
+        invalidation_tx,
+    });
 
     info!("Creating router...");
     let app = Router::new()
         .route("/meta_request", post(meta_request))
+        .route("/state-events", get(state_events))
         .route("/hi", get(hi))
         .with_state(app_state)
         .layer(cors)
@@ -94,6 +138,49 @@ async fn main() -> Result<()> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+async fn state_events(
+    State(state): State<Arc<MetaServerAppState>>,
+    Query(query): Query<StateEventsQuery>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let vault_name = VaultName::from(query.vault_name);
+    info!(vault_name = %vault_name, "SSE client connected");
+    let rx = state.invalidation_tx.subscribe();
+
+    let stream = stream::unfold((rx, vault_name), |(mut rx, vault_name)| async move {
+        loop {
+            match rx.recv().await {
+                Ok(invalidation) if invalidation.vault_name == vault_name => {
+                    let data = match serde_json::to_string(&invalidation) {
+                        Ok(data) => data,
+                        Err(error) => {
+                            tracing::warn!(
+                                vault_name = %invalidation.vault_name,
+                                error = ?error,
+                                "Failed to serialize state invalidation"
+                            );
+                            continue;
+                        }
+                    };
+                    let event = Event::default().event("state_invalidated").data(data);
+                    return Some((Ok(event), (rx, vault_name)));
+                }
+                Ok(_) => continue,
+                Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                    tracing::warn!(skipped, "SSE state invalidation receiver lagged");
+                    continue;
+                }
+                Err(broadcast::error::RecvError::Closed) => return None,
+            }
+        }
+    });
+
+    Sse::new(stream).keep_alive(
+        KeepAlive::new()
+            .interval(Duration::from_secs(15))
+            .text("ping"),
+    )
 }
 
 async fn hi() -> Html<&'static str> {

@@ -5,7 +5,6 @@
 # ============================================================
 
 ARG RUST_VERSION=1.96.0
-ARG PLAYWRIGHT_VERSION=1.61.0
 
 # --- Chef Planner: generate cargo-chef recipe ---
 FROM lukemathwalker/cargo-chef:latest-rust-${RUST_VERSION}-bookworm AS chef-planner
@@ -54,7 +53,7 @@ FROM builder-release AS prepare-db
 
 ARG DIESEL_VERSION=2.3.9
 RUN curl -LsSf "https://github.com/diesel-rs/diesel/releases/download/v${DIESEL_VERSION}/diesel_cli-x86_64-unknown-linux-gnu.tar.xz" | \
-    tar xJ -C /usr/local/bin diesel
+    tar xJ -C /usr/local/bin --strip-components=1
 
 WORKDIR /meta-secret-build
 RUN mkdir -p db
@@ -163,16 +162,3 @@ EXPOSE 5173
 # Minimal stage to extract just the dist output
 FROM scratch AS web-output
 COPY --from=web-build /meta-secret/web-cli/ui/dist/ /
-
-# --- Playwright: smoke test runner (browsers pre-installed in base image) ---
-FROM mcr.microsoft.com/playwright:v${PLAYWRIGHT_VERSION}-noble AS playwright
-
-WORKDIR /app
-
-COPY --from=webcli ui/package.json ./
-RUN npm install --legacy-peer-deps @playwright/test@${PLAYWRIGHT_VERSION}
-
-COPY --from=webcli ui/playwright.config.ts ./
-COPY --from=webcli ui/tests/e2e ./tests/e2e
-
-ENTRYPOINT ["npx", "playwright", "test"]
