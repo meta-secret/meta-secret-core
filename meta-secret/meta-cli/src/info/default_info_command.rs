@@ -155,12 +155,16 @@ impl InfoCommandTrait for DefaultInfoCommand {
                             }));
                         }
 
+                        let client_status = ss_claim.client_status.as_ref()
+                            .map(|s| format!("{:?}", s))
+                            .unwrap_or_else(|| "N/A".to_string());
+
                         claims.push(json!({
                             "id": claim_id.0.clone().id_str(),
                             "sender": ss_claim.sender.clone().id_str(),
                             "type": format!("{:?}", ss_claim.distribution_type),
                             "password": ss_claim.dist_claim_id.pass_id.name,
-                            "status": format!("{:?}", ss_claim.status.status()),
+                            "clientStatus": client_status,
                             "receivers": receivers
                         }));
                     }

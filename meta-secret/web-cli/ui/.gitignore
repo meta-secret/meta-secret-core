@@ -18,6 +18,11 @@ coverage
 /cypress/videos/
 /cypress/screenshots/
 
+# Test artifacts
+tests/e2e/.run-counter
+test-results/
+playwright-report/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

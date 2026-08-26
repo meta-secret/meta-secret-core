@@ -1,6 +1,6 @@
 use crate::log_timestamp;
-use anyhow::bail;
 use anyhow::Result;
+use anyhow::bail;
 use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::node::api::{ReadSyncRequest, SsRecoveryCompletion, SyncRequest};
 use meta_secret_core::node::app::app_manager_shared::{
@@ -15,8 +15,10 @@ use meta_secret_core::node::common::meta_tracing::client_span;
 use meta_secret_core::node::common::model::device::common::{DeviceName, DeviceType};
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::{
-    ClaimId, SecretDistributionType, SsClaim, SsDistributionId, SsDistributionStatus, SsRecoveryId,
+    ClaimId, RecoveryClientStatus, SecretDistributionType, SsClaim, SsDistributionId,
+    SsDistributionStatus, SsRecoveryId,
 };
+
 use meta_secret_core::node::common::model::user::common::UserData;
 use meta_secret_core::node::common::model::user::user_creds::UserCreds;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
@@ -27,45 +29,7 @@ use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use meta_secret_core::secret::shared_secret::PlainText;
 use std::sync::Arc;
 use std::thread;
-use tracing::{info, instrument, Instrument};
-
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum RecoveryStage {
-    Stale,
-    OneSent,
-    Waiting,
-    InProgress,
-}
-
-fn recovery_stage_from_claim(claim: &SsClaim) -> RecoveryStage {
-    let has_pending = claim
-        .status
-        .statuses
-        .values()
-        .any(|s| matches!(s, SsDistributionStatus::Pending));
-    let has_sent = claim
-        .status
-        .statuses
-        .values()
-        .any(|s| matches!(s, SsDistributionStatus::Sent));
-    match (has_pending, has_sent) {
-        (true, true) => RecoveryStage::InProgress,
-        (true, false) => RecoveryStage::Waiting,
-        (false, true) => RecoveryStage::OneSent,
-        (false, false) => RecoveryStage::Stale,
-    }
-}
-
-fn claim_selection_key(
-    claim: &SsClaim,
-    my_device_id: &meta_secret_core::node::common::model::device::common::DeviceId,
-) -> (bool, RecoveryStage, String) {
-    let sender_status = claim.status.get(my_device_id);
-    let is_active = sender_status != Some(&SsDistributionStatus::Delivered);
-    let stage = recovery_stage_from_claim(claim);
-    let tie_breaker = claim.id.0.text.clone();
-    (is_active, stage, tie_breaker)
-}
+use tracing::{Instrument, info, instrument};
 
 pub struct ApplicationManager<Repo: KvLogEventRepo + Send + Sync, SyncP: SyncProtocol + Send + Sync>
 {
@@ -101,7 +65,7 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
         println!("🦀Mobile App Manager: Initialize application state manager");
 
         let sync_protocol = Arc::new(HttpSyncProtocol {
-            api_url: ApiUrl::prod(),
+            api_url: ApiUrl::selected(),
         });
 
         let app_manager = Self::client_setup(
@@ -377,7 +341,9 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
                     let vault_members_count = member.member.vault.members().len();
 
                     if vault_members_count <= 2 {
-                        println!("🦀 Mobile App Manager: Replicated vault mode, showing local secret");
+                        println!(
+                            "🦀 Mobile App Manager: Replicated vault mode, showing local secret"
+                        );
                         return self.show_local_secret(user_creds, pass_id).await;
                     }
 
@@ -398,7 +364,9 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
 
                             // Send recovery completion to mark claim as Delivered
                             let ts = log_timestamp::log_timestamp_utc();
-                            println!("[{ts}] 🦀 App Manager: Send recovery completion to mark claim as Delivered");
+                            println!(
+                                "[{ts}] 🦀 App Manager: Send recovery completion to mark claim as Delivered"
+                            );
                             if let Some(claim) = member.ss_claims.claims.get(&claim_id) {
                                 let vault_name = user_creds.vault_name.clone();
                                 let device_id = user_creds.device_id();
@@ -423,9 +391,14 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
                                 ));
 
                                 if let Err(e) = self.server.send(sync_request).await {
-                                    println!("🦀 Mobile App Manager: ❌ Failed to send recovery completion: {}", e);
+                                    println!(
+                                        "🦀 Mobile App Manager: ❌ Failed to send recovery completion: {}",
+                                        e
+                                    );
                                 } else {
-                                    println!("🦀 Mobile App Manager: ✅ Recovery completion sent successfully");
+                                    println!(
+                                        "🦀 Mobile App Manager: ✅ Recovery completion sent successfully"
+                                    );
                                 }
                             }
 
@@ -488,18 +461,19 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
         };
         println!("🦀 Find claim id by pass id. State is Member");
         let my_device_id = user_creds.device_id();
-        let selected = member
+        // Core guarantees at most one active claim per (sender, pass_id).
+        // Find the claim approved by a receiver but not yet retrieved by sender.
+        member
             .ss_claims
             .claims
             .values()
-            .filter(|claim| {
+            .find(|claim| {
                 matches!(claim.distribution_type, SecretDistributionType::Recover)
                     && claim.dist_claim_id.pass_id.eq(pass_id)
                     && claim.sender.eq(my_device_id)
+                    && matches!(claim.client_status, Some(RecoveryClientStatus::Accepted))
             })
-            .max_by_key(|claim| claim_selection_key(claim, my_device_id));
-
-        selected.map(|claim| claim.id.clone())
+            .map(|claim| claim.id.clone())
     }
 
     pub async fn find_claim_by_pass_id(&self, pass_id: &MetaPasswordId) -> Option<SsClaim> {
@@ -521,12 +495,12 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
             .ss_claims
             .claims
             .values()
-            .filter(|claim| {
+            .find(|claim| {
                 matches!(claim.distribution_type, SecretDistributionType::Recover)
                     && claim.dist_claim_id.pass_id.eq(pass_id)
                     && claim.sender.eq(my_device_id)
+                    && matches!(claim.client_status, Some(RecoveryClientStatus::Accepted))
             })
-            .max_by_key(|claim| claim_selection_key(claim, my_device_id))
             .cloned()
     }
 

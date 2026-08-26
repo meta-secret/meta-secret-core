@@ -1,7 +1,12 @@
 use std::sync::Arc;
 
 use crate::server::server_data_sync::ServerSyncGateway;
-use anyhow::{bail, Result};
+use crate::server::state_invalidation::{
+    NoopStateInvalidationPublisher, StateInvalidation, StateInvalidationPublisher,
+    StateInvalidationScope,
+};
+use anyhow::{Result, bail};
+use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::node::api::{
     DataEventsResponse, DataSyncResponse, ReadSyncRequest, ServerTailRequest, ServerTailResponse,
     SyncRequest, WriteSyncRequest,
@@ -18,7 +23,6 @@ use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSha
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
 use tracing::{error, info, instrument};
-use meta_secret_core::crypto::keys::TransportSk;
 
 pub struct MetaServerDataTransfer {
     pub dt: MpscDataTransfer<SyncRequest, DataSyncResponse>,
@@ -46,12 +50,28 @@ pub struct ServerApp<Repo: KvLogEventRepo> {
     p_obj: Arc<PersistentObject<Repo>>,
     creds_repo: Arc<PersistentCredentials<Repo>>,
     data_transfer: Arc<MetaServerDataTransfer>,
+    invalidation_publisher: Arc<dyn StateInvalidationPublisher>,
 }
 
 impl<Repo: KvLogEventRepo> ServerApp<Repo> {
     pub fn new(repo: Arc<Repo>, master_key: TransportSk) -> Result<Self> {
+        Self::new_with_invalidation_publisher(
+            repo,
+            master_key,
+            Arc::new(NoopStateInvalidationPublisher),
+        )
+    }
+
+    pub fn new_with_invalidation_publisher(
+        repo: Arc<Repo>,
+        master_key: TransportSk,
+        invalidation_publisher: Arc<dyn StateInvalidationPublisher>,
+    ) -> Result<Self> {
         let p_obj = Arc::new(PersistentObject::new(repo));
-        let data_sync = Arc::new(ServerSyncGateway::from(p_obj.clone()));
+        let data_sync = Arc::new(ServerSyncGateway::new(
+            p_obj.clone(),
+            invalidation_publisher.clone(),
+        ));
         let creds_repo = Arc::new(PersistentCredentials {
             p_obj: p_obj.clone(),
             master_key: master_key.clone(),
@@ -62,7 +82,8 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
             data_sync,
             p_obj,
             creds_repo,
-            data_transfer
+            data_transfer,
+            invalidation_publisher,
         })
     }
 
@@ -159,13 +180,17 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
 
                             let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
                             let new_ss_log_obj = p_ss
-                                .create_new_ss_log_object(updated_ss_log_data, vault_name)
+                                .create_new_ss_log_object(updated_ss_log_data, vault_name.clone())
                                 .await?;
                             self.p_obj
                                 .repo
                                 .save(new_ss_log_obj.clone().to_generic())
                                 .await?;
                             let commit_log = vec![new_ss_log_obj.to_generic()];
+                            self.invalidation_publisher.publish(StateInvalidation::new(
+                                vault_name,
+                                StateInvalidationScope::SsClaims,
+                            ));
                             Ok(DataSyncResponse::Data(DataEventsResponse(commit_log)))
                         }
                     }

@@ -6,34 +6,40 @@ import init, {
   WasmApplicationState,
 } from 'meta-secret-web-cli';
 import { useAuthStore } from '@/stores/auth';
+import { META_SECRET_ENVIRONMENT } from '@/config/metaSecretEnvironment';
 
 export const AppState = defineStore('app_state', {
   state: () => {
     console.log('App state. Init');
 
     return {
-      appManager: WasmApplicationManager,
-      currState: WasmApplicationState,
+      appManager: null as WasmApplicationManager | null,
+      currState: null as WasmApplicationState | null,
     };
   },
 
   getters: {
     currentState: (state) => state.currState,
     passwords: (state) => {
+      if (!state.currState) return [];
       return state.currState.as_vault().as_member().vault_data().secrets();
     },
 
     // Helper methods for state comparisons
     isLocal: (state) => {
+      if (!state.currState) return false;
       return state.currState.as_info() === ApplicationStateInfo.Local;
     },
     isVaultNotExists: (state) => {
+      if (!state.currState) return false;
       return state.currState.as_info() === ApplicationStateInfo.VaultNotExists;
     },
     isMember: (state) => {
+      if (!state.currState) return false;
       return state.currState.as_info() === ApplicationStateInfo.Member;
     },
     isOutsider: (state) => {
+      if (!state.currState) return false;
       return state.currState.as_info() === ApplicationStateInfo.Outsider;
     },
   },
@@ -67,6 +73,10 @@ export const AppState = defineStore('app_state', {
     },
 
     async cleanDatabase() {
+      if (!this.appManager) {
+        await this.clearAllMetaSecretIndexedDb();
+        return;
+      }
       const manager = this.appManager as WasmApplicationManager & {
         clean_up_database?: () => Promise<void>;
       };
@@ -105,13 +115,22 @@ export const AppState = defineStore('app_state', {
       const transportSk = MasterKeyManager.from_pure_sk(authStore.masterKey);
       const { deviceName, deviceType } = this.resolveWebDeviceInfo();
       let appManager;
+      const managerClass = WasmApplicationManager as typeof WasmApplicationManager & {
+        init_wasm_with_device_and_environment: (
+          masterKey: ReturnType<typeof MasterKeyManager.from_pure_sk>,
+          deviceName: string,
+          deviceType: string,
+          environment: string,
+        ) => Promise<WasmApplicationManager>;
+      };
+      const initWithEnvironment = managerClass.init_wasm_with_device_and_environment;
       try {
-        appManager = await WasmApplicationManager.init_wasm_with_device(transportSk, deviceName, deviceType);
+        appManager = await initWithEnvironment(transportSk, deviceName, deviceType, META_SECRET_ENVIRONMENT);
       } catch (error) {
         if (this.shouldResetDbOnInitError(error)) {
           console.warn('Detected legacy IndexedDB data without deviceType. Cleaning DB and retrying init.');
           await this.clearAllMetaSecretIndexedDb();
-          appManager = await WasmApplicationManager.init_wasm_with_device(transportSk, deviceName, deviceType);
+          appManager = await initWithEnvironment(transportSk, deviceName, deviceType, META_SECRET_ENVIRONMENT);
         } else {
           throw error;
         }
@@ -134,6 +153,7 @@ export const AppState = defineStore('app_state', {
     },
 
     async updateState() {
+      if (!this.appManager) return null;
       this.currState = await this.appManager.get_state();
       return this.currState;
     },
