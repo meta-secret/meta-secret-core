@@ -49,11 +49,4 @@ export default [
     },
   },
 
-  {
-    name: 'app/cypress',
-    files: ['cypress/**', 'cypress.config.ts'],
-    rules: {
-      '@typescript-eslint/no-namespace': 'off',
-    },
-  },
 ];

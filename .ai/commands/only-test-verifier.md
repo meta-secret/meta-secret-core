@@ -8,7 +8,7 @@ Arguments: optional scope (crate, test filter). Example: `/only-test-verifier -p
 
 Delegate to subagent **test-verifier** with input: `$ARGUMENTS`
 
-**Default coverage:** when `$ARGUMENTS` is empty, run **`task test`** from **repository root** (CI parity — see [`.ai/skills/build-via-task/SKILL.md`](../../skills/build-via-task/SKILL.md) and [`.ai/agents/test-verifier.md`](../agents/test-verifier.md)). Optional narrow local check: `cargo test -p …` from `meta-secret/` when `$ARGUMENTS` narrows crates. For web-cli-only changes, add **`npm run test:unit`** / **`npm run test:e2e:ci`** in **`meta-secret/web-cli/ui`** (WASM **`pkg/`** may require **`task wasm-local`** first).
+**Default coverage:** when `$ARGUMENTS` is empty, run **`task test`** from **repository root** (CI parity — see [`.ai/skills/build-via-task/SKILL.md`](../../skills/build-via-task/SKILL.md) and [`.ai/agents/test-verifier.md`](../agents/test-verifier.md)). Optional narrow local check: `cargo test -p …` from `meta-secret/` when `$ARGUMENTS` narrows crates. For web-cli-only changes, add **`npm run test:unit`** in **`meta-secret/web-cli/ui`** (WASM **`pkg/`** may require **`task wasm-local`** first).
 
 ## Session mode
 

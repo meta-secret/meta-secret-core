@@ -31,7 +31,6 @@ If your next command matches `docker buildx` or `docker build` → **stop** and 
 | Export wasm pkg locally | `task wasm-local` |
 | Update cargo chef recipe | `task generate-recipe` |
 | Run web-ui locally | `task web-run` |
-| Playwright smoke tests | `PLAYWRIGHT_BASE_URL=… task playwright-test` |
 | Add shadcn-vue component | `cd meta-secret/web-cli/ui && npx shadcn-vue@latest add <name>` |
 
 Full list: `task -l`
