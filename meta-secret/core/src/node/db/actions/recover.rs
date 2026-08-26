@@ -1,5 +1,8 @@
+use crate::PlainText;
 use crate::node::common::model::meta_pass::MetaPasswordId;
-use crate::node::common::model::secret::{ClaimId, SecretDistributionData, SecretDistributionType, SsDistributionId, SsDistributionStatus};
+use crate::node::common::model::secret::{
+    ClaimId, SecretDistributionData, SecretDistributionType, SsDistributionId, SsDistributionStatus,
+};
 use crate::node::common::model::user::user_creds::UserCreds;
 use crate::node::common::model::vault::vault::VaultStatus;
 use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
@@ -9,16 +12,35 @@ use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::recover_from_shares;
 use crate::secret::shared_secret::UserShareDto;
-use crate::PlainText;
 use anyhow::bail;
 use derive_more::From;
 use std::sync::Arc;
 use tracing::{info, warn};
 use tracing_attributes::instrument;
 
+use crate::node::common::model::device::common::DeviceId;
+
 #[derive(From)]
 pub struct RecoveryAction<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
+}
+
+fn is_stale_recovery_claim(
+    claim: &crate::node::common::model::secret::SsClaim,
+    sender_device_id: &DeviceId,
+    pass_id: &MetaPasswordId,
+) -> bool {
+    let sender_done =
+        claim.status.statuses.get(sender_device_id) == Some(&SsDistributionStatus::Delivered);
+    claim.distribution_type == SecretDistributionType::Recover
+        && &claim.sender == sender_device_id
+        && claim.dist_claim_id.pass_id == *pass_id
+        && !sender_done
+        && claim
+            .status
+            .statuses
+            .values()
+            .any(|s| matches!(s, SsDistributionStatus::Sent))
 }
 
 impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
@@ -59,30 +81,32 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
                 // 3. show_recovered picks the stale claim (non-deterministic HashMap) →
                 //    its recovery data is absent → only 1 share → "Invalid share".
                 //
-                // Marking stale claims Done here breaks the cycle: dedup passes, a fresh
-                // claim is created, iOS approves it, and show_recovered gets valid data.
+                // Retiring stale claims as Declined breaks the cycle without faking Done:
+                // dedup passes, a fresh claim is created, iOS approves it, and
+                // show_recovered gets valid data.
                 {
-                    info!("🔍 [recovery_request v2] sweep stale Accepted claims for pass_id={:?}", pass_id);
+                    info!(
+                        "🔍 [recovery_request v2] sweep stale Accepted claims for pass_id={:?}",
+                        pass_id
+                    );
                     let ss_log_data = p_ss.get_ss_log_obj(vault_name.clone()).await?;
                     let stale: Vec<_> = ss_log_data
                         .claims
                         .values()
-                        .filter(|c| {
-                            c.distribution_type == SecretDistributionType::Recover
-                                && &c.sender == sender_device_id
-                                && c.dist_claim_id.pass_id == pass_id
-                                && c.status
-                                    .statuses
-                                    .values()
-                                    .any(|s| matches!(s, SsDistributionStatus::Sent))
-                        })
+                        .filter(|c| is_stale_recovery_claim(c, sender_device_id, &pass_id))
                         .cloned()
                         .collect();
 
-                    info!("🔍 [recovery_request v2] found {} stale claim(s) to retire", stale.len());
+                    info!(
+                        "🔍 [recovery_request v2] found {} stale claim(s) to retire",
+                        stale.len()
+                    );
 
                     for claim in stale {
-                        warn!("♻️ [recovery_request v2] retiring stale claim {:?}", claim.id);
+                        warn!(
+                            "♻️ [recovery_request v2] retiring stale claim {:?}",
+                            claim.id
+                        );
                         let mut updated = claim.clone();
                         // Decline all Sent receivers to retire the stale claim.
                         // Using decline() rather than complete() avoids a fake Delivered status that
@@ -103,7 +127,9 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
                 }
 
                 // Deduplication: ignore if an active claim already exists for (sender, pass_id).
-                let ss_log = p_ss.get_ss_log_obj(vault_name).await?
+                let ss_log = p_ss
+                    .get_ss_log_obj(vault_name)
+                    .await?
                     .with_client_status(sender_device_id);
                 if ss_log.has_active_recovery_claim(sender_device_id, &pass_id) {
                     return Ok(());
@@ -137,7 +163,10 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
         claim_id: ClaimId,
         pass_id: MetaPasswordId,
     ) -> anyhow::Result<PlainText> {
-        info!("🔑 [recover v2] claim_id={:?} pass_id={:?}", claim_id, pass_id);
+        info!(
+            "🔑 [recover v2] claim_id={:?} pass_id={:?}",
+            claim_id, pass_id
+        );
 
         // Create PersistentSharedSecret to access shared secret data
         let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
@@ -153,11 +182,17 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
             .ok_or_else(|| anyhow::anyhow!("Claim not found for recovery ID"))?
             .clone();
 
-        info!("🔑 [recover v2] claim statuses: {:?}", claim.status.statuses);
+        info!(
+            "🔑 [recover v2] claim statuses: {:?}",
+            claim.status.statuses
+        );
 
         // Get recoveries and distributions from the claim
         let recoveries = p_ss.get_recoveries(claim.clone()).await?;
-        info!("🔑 [recover v2] recovery shares count: {}", recoveries.len());
+        info!(
+            "🔑 [recover v2] recovery shares count: {}",
+            recoveries.len()
+        );
 
         let desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
             pass_id,
@@ -198,6 +233,15 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
         for data in recovery_data {
             let decrypted = data.secret_message.cipher_text().decrypt(transport_sk)?;
             let share = UserShareDto::try_from(&decrypted.msg)?;
+            if let Some(block) = share.share_blocks.first() {
+                info!(
+                    "🔑 [recover v2] recovery share diag: share_id={}, blocks={}, threshold={}, number_of_shares={}",
+                    share.share_id,
+                    share.share_blocks.len(),
+                    block.config.threshold,
+                    block.config.number_of_shares
+                );
+            }
             user_shares.push(share);
         }
 
@@ -205,13 +249,23 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
         for data in distribution_data {
             let decrypted = data.secret_message.cipher_text().decrypt(transport_sk)?;
             let share = UserShareDto::try_from(&decrypted.msg)?;
+            if let Some(block) = share.share_blocks.first() {
+                info!(
+                    "🔑 [recover v2] own distribution share diag: share_id={}, blocks={}, threshold={}, number_of_shares={}",
+                    share.share_id,
+                    share.share_blocks.len(),
+                    block.config.threshold,
+                    block.config.number_of_shares
+                );
+            }
             user_shares.push(share);
         }
 
         // Recover the secret using the collected shares
         let plain_text = recover_from_shares(user_shares)?;
 
-        // Mark the claim as Delivered so compute_client_status returns Done for the sender.
+        // Mark the sender as Delivered so compute_client_status returns Done only after
+        // this device has actually recovered the secret.
         // The server intentionally skips this transition for Recovery claims (see
         // server_data_sync.rs — "Completion event needs to be sent by the recovery claim creator").
         self.mark_claim_delivered(&user_creds, &claim_id).await?;
@@ -230,36 +284,11 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
         let Some(current_claim) = ss_log_data.claims.get(claim_id) else {
             return Ok(());
         };
-        let pass_id = current_claim.dist_claim_id.pass_id.clone();
-
-        // Sweep ALL Recover claims for this pass_id and mark any stale Sent receiver as Done.
-        // This handles claims from previous sessions that were never transitioned to Done
-        // (e.g., approved before mark_claim_delivered was deployed), which would otherwise
-        // block new claim creation and cause wrong claim selection on subsequent recoveries.
-        let claims_to_update: Vec<_> = ss_log_data
-            .claims
-            .values()
-            .filter(|c| {
-                c.distribution_type == SecretDistributionType::Recover
-                    && c.dist_claim_id.pass_id == pass_id
-            })
-            .cloned()
-            .collect();
-
-        for claim in claims_to_update {
-            let receiver_to_mark = claim
-                .status
-                .statuses
-                .iter()
-                .find(|(_, s)| matches!(s, SsDistributionStatus::Sent))
-                .map(|(id, _)| id.clone());
-
-            if let Some(receiver_id) = receiver_to_mark {
-                let mut updated_claim = claim.clone();
-                updated_claim.status = updated_claim.status.complete(receiver_id);
-                p_ss.save_ss_log_event(updated_claim).await?;
-            }
-        }
+        let mut updated_claim = current_claim.clone();
+        updated_claim.status = updated_claim
+            .status
+            .complete(user_creds.device_id().clone());
+        p_ss.save_ss_log_event(updated_claim).await?;
 
         Ok(())
     }
@@ -267,7 +296,7 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
 
 #[cfg(test)]
 mod tests {
-    use super::{RecoveryAction, RecoveryHandler};
+    use super::{RecoveryHandler, is_stale_recovery_claim};
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::common::model::crypto::aead::EncryptedMessage;
     use crate::node::common::model::meta_pass::MetaPasswordId;
@@ -290,12 +319,18 @@ mod tests {
     /// stale sweep would fake a Delivered status prematurely.
     #[test]
     fn stale_sweep_declines_sent_receiver_not_completes() {
-        use crate::node::common::model::secret::{SsClaimId, SsClaim};
         use crate::crypto::utils::Id48bit;
+        use crate::node::common::model::secret::{SsClaim, SsClaimId};
 
         let registry = FixtureRegistry::empty();
         let sender = registry.state.device_creds.client.device.device_id.clone();
-        let recv_a = registry.state.device_creds.client_b.device.device_id.clone();
+        let recv_a = registry
+            .state
+            .device_creds
+            .client_b
+            .device
+            .device_id
+            .clone();
         let pass_id = MetaPasswordId::build_from_str("stale_sweep_test");
 
         // Create a claim with Sent receiver (simulates previous recovery attempt)
@@ -310,7 +345,9 @@ mod tests {
             sender: sender.clone(),
             distribution_type: SecretDistributionType::Recover,
             receivers: vec![recv_a.clone()],
-            status: crate::node::common::model::secret::SsDistributionCompositeStatus::from(vec![recv_a.clone()]),
+            status: crate::node::common::model::secret::SsDistributionCompositeStatus::from(vec![
+                recv_a.clone(),
+            ]),
             client_status: None,
         };
         claim.status = claim.status.sent(recv_a.clone());
@@ -337,8 +374,8 @@ mod tests {
         );
 
         // Sender must NOT see Done — Declined is terminal but not Done
-        let log = crate::node::common::model::secret::SsLogData::new(retired)
-            .with_client_status(&sender);
+        let log =
+            crate::node::common::model::secret::SsLogData::new(retired).with_client_status(&sender);
         let client_status = log
             .claims
             .get(&claim_id)
@@ -348,6 +385,47 @@ mod tests {
             !matches!(client_status, Some(RecoveryClientStatus::Done)),
             "Sender must NOT see Done after declining stale claim. Got: {:?}",
             client_status
+        );
+    }
+
+    #[test]
+    fn stale_sweep_skips_done_claims() {
+        use crate::crypto::utils::Id48bit;
+        use crate::node::common::model::secret::{
+            ClaimId, SsClaim, SsClaimId, SsDistributionCompositeStatus,
+        };
+
+        let registry = FixtureRegistry::empty();
+        let sender = registry.state.device_creds.client.device.device_id.clone();
+        let recv_a = registry
+            .state
+            .device_creds
+            .client_b
+            .device
+            .device_id
+            .clone();
+        let pass_id = MetaPasswordId::build_from_str("done_claim_not_stale");
+
+        let claim_id = ClaimId::from(Id48bit::generate());
+        let mut claim = SsClaim {
+            id: claim_id.clone(),
+            dist_claim_id: SsClaimId {
+                id: claim_id,
+                pass_id: pass_id.clone(),
+            },
+            vault_name: crate::node::common::model::vault::vault::VaultName::test(),
+            sender: sender.clone(),
+            distribution_type: SecretDistributionType::Recover,
+            receivers: vec![recv_a.clone()],
+            status: SsDistributionCompositeStatus::from(vec![recv_a.clone()]),
+            client_status: None,
+        };
+        claim.status = claim.status.sent(recv_a);
+        claim.status = claim.status.complete(sender.clone());
+
+        assert!(
+            !is_stale_recovery_claim(&claim, &sender, &pass_id),
+            "Done recovery claims must not be retired by stale sweep"
         );
     }
 
@@ -400,9 +478,7 @@ mod tests {
         }
 
         let recovery = RecoveryHandler { p_obj };
-        let plain = recovery
-            .recover(user_creds, claim.id, pass_id)
-            .await?;
+        let plain = recovery.recover(user_creds, claim.id, pass_id).await?;
 
         assert_eq!(plain.text, "2bee|~");
         Ok(())
@@ -437,7 +513,8 @@ mod tests {
             .expect_err("Recover must fail when no shares are available");
 
         assert!(
-            err.to_string().contains("No recovery shares found for selected claim"),
+            err.to_string()
+                .contains("No recovery shares found for selected claim"),
             "Unexpected error: {err}"
         );
 

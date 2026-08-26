@@ -400,10 +400,22 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
             if !split_claim.receivers.iter().any(|d| d.eq(&joined_device_id)) {
                 split_claim.receivers.push(joined_device_id.clone());
             }
-            split_claim
-                .status
-                .statuses
-                .insert(joined_device_id.clone(), SsDistributionStatus::Pending);
+            // Every existing receiver just got a brand new share from the re-split
+            // polynomial above, not just the newly joined device. Mark all of them
+            // Pending again so sync_ss_log's split_workflow_has_pending_receiver gate
+            // (sync_gateway.rs) actually re-uploads the refreshed distributions instead
+            // of skipping already-Delivered receivers and leaving them stuck on the
+            // stale (pre-redistribution) share.
+            for receiver in &members {
+                let receiver_id = receiver.user().device.device_id.clone();
+                if receiver_id.eq(&local_device_id) {
+                    continue;
+                }
+                split_claim
+                    .status
+                    .statuses
+                    .insert(receiver_id, SsDistributionStatus::Pending);
+            }
             // Persist the updated claim in the device log too so the next sync
             // sends the new receiver list to the server.
             p_ss.save_claim_in_ss_device_log(split_claim.clone()).await?;

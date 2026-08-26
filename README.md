@@ -214,7 +214,6 @@ task web               # web image
 task web-local         # export web-cli dist to meta-secret/web-cli/ui/dist
 task wasm-local        # export WASM pkg to meta-secret/web-cli/ui/pkg
 task generate-recipe   # regenerate meta-secret/recipe.json (after Cargo.toml edits)
-task playwright-test   # Playwright smoke tests (set PLAYWRIGHT_BASE_URL)
 ```
 
 Agents: read [`.ai/skills/build-via-task/SKILL.md`](.ai/skills/build-via-task/SKILL.md) before any build command.  

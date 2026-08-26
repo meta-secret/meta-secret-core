@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use meta_db_redb::ReDbRepo;
 use meta_secret_core::crypto::key_utils::load_or_create_master_key;
 use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
@@ -33,7 +33,7 @@ impl BaseCommand {
         let master_key_path = format!("{}.key.json", &db_name);
         Self {
             db_name,
-            api_url: ApiUrl::prod(),
+            api_url: ApiUrl::selected(),
             master_key_path,
         }
     }
@@ -48,10 +48,10 @@ impl BaseCommand {
 
         let repo = Arc::new(ReDbRepo::open(db_path)?);
         let p_obj = Arc::new(PersistentObject::new(repo.clone()));
-        
+
         // Load or create master key
         let master_key = load_or_create_master_key(&self.master_key_path)?;
-        
+
         let p_creds = PersistentCredentials {
             p_obj: p_obj.clone(),
             master_key,
@@ -76,10 +76,10 @@ impl BaseCommand {
         };
 
         let p_obj = Arc::new(PersistentObject::new(repo.clone()));
-        
+
         // Load or create master key
         let master_key = load_or_create_master_key(&self.master_key_path)?;
-        
+
         let p_creds = PersistentCredentials {
             p_obj: p_obj.clone(),
             master_key,
@@ -148,7 +148,7 @@ impl BaseCommand {
 
         // Get the DeviceData from the user's device credentials
         let device_data = user_creds.device();
-        
+
         // Get master key
         let master_key = db_context.p_creds.master_key.clone();
 

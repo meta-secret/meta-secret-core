@@ -1,34 +1,26 @@
-use std::fs;
-use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tempfile::TempDir;
 
-fn get_next_run_number() -> u32 {
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let counter_file = PathBuf::from(manifest_dir).join(".run-counter");
-
-    let mut current = 0u32;
-    if counter_file.exists() {
-        if let Ok(content) = fs::read_to_string(&counter_file) {
-            if let Ok(num) = content.trim().parse::<u32>() {
-                current = num;
-            }
-        }
-    }
-
-    let next = current + 1;
-    let _ = fs::write(&counter_file, next.to_string());
-    next
+fn unique_run_id() -> String {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("System clock is before UNIX epoch")
+        .as_nanos();
+    format!("{}-{}", std::process::id(), timestamp)
 }
 
 #[test]
 fn test_one_device_lifecycle() {
-    let n = get_next_run_number();
-    let vault_name = format!("cli_{}@test.com", n);
-    let secret_name = format!("Secret{}", n);
-    let secret_value = n.to_string();
+    let run_id = unique_run_id();
+    let vault_name = format!("cli_{}@test.com", run_id);
+    let secret_name = format!("Secret{}", run_id);
+    let secret_value = run_id.clone();
 
-    println!("\n📝 CLI test run #{}: vault='{}', secret='{}', value='{}'\n", n, vault_name, secret_name, secret_value);
+    println!(
+        "\n📝 CLI test run: vault='{}', secret='{}', value='{}'\n",
+        vault_name, secret_name, secret_value
+    );
 
     // Create an isolated temp directory for this test run
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
@@ -87,7 +79,10 @@ fn test_one_device_lifecycle() {
     println!("✅ Signed up (vault created on server)");
 
     // Step 4: secret split (create secret)
-    println!("⏳ Step 4: secret split --pass-name '{}' --stdin", secret_name);
+    println!(
+        "⏳ Step 4: secret split --pass-name '{}' --stdin",
+        secret_name
+    );
     let mut child = Command::new(bin_path)
         .arg("secret")
         .arg("split")
@@ -106,7 +101,9 @@ fn test_one_device_lifecycle() {
         let _ = stdin.write_all(secret_value.as_bytes());
     }
 
-    let output = child.wait_with_output().expect("Failed to wait for secret split");
+    let output = child
+        .wait_with_output()
+        .expect("Failed to wait for secret split");
     if !output.status.success() {
         eprintln!("STDERR: {}", String::from_utf8_lossy(&output.stderr));
         panic!("secret split failed");
@@ -123,7 +120,11 @@ fn test_one_device_lifecycle() {
         .expect("Failed to run info secrets");
 
     let secrets_output = String::from_utf8_lossy(&output.stdout);
-    assert!(secrets_output.contains(&secret_name), "Secret '{}' not found in secrets list", secret_name);
+    assert!(
+        secrets_output.contains(&secret_name),
+        "Secret '{}' not found in secrets list",
+        secret_name
+    );
     println!("✅ Secret '{}' found in vault", secret_name);
 
     // Step 6: secret recovery-request
@@ -175,8 +176,8 @@ fn test_one_device_lifecycle() {
     }
 
     let claims_json = String::from_utf8_lossy(&output.stdout);
-    let claims: serde_json::Value = serde_json::from_str(&claims_json)
-        .expect("Failed to parse recovery-claims JSON");
+    let claims: serde_json::Value =
+        serde_json::from_str(&claims_json).expect("Failed to parse recovery-claims JSON");
 
     let claims_array = claims["claims"].as_array().expect("No claims array found");
     assert!(!claims_array.is_empty(), "No recovery claims found");
@@ -185,7 +186,10 @@ fn test_one_device_lifecycle() {
     let claim_id = claims_array
         .iter()
         .find(|claim| {
-            claim["password"].as_str().map(|p| p == secret_name).unwrap_or(false)
+            claim["password"]
+                .as_str()
+                .map(|p| p == secret_name)
+                .unwrap_or(false)
         })
         .and_then(|claim| claim["id"].as_str())
         .expect(&format!("Claim for secret '{}' not found", secret_name));
@@ -193,7 +197,10 @@ fn test_one_device_lifecycle() {
     println!("✅ Found claim ID: {}", claim_id);
 
     // Step 9: secret show --claim-id (JSON format to get recovered value)
-    println!("⏳ Step 9: --output-format json secret show --claim-id '{}'", claim_id);
+    println!(
+        "⏳ Step 9: --output-format json secret show --claim-id '{}'",
+        claim_id
+    );
     let output = Command::new(bin_path)
         .arg("--output-format")
         .arg("json")
@@ -211,15 +218,21 @@ fn test_one_device_lifecycle() {
     }
 
     let show_json = String::from_utf8_lossy(&output.stdout);
-    let show_result: serde_json::Value = serde_json::from_str(&show_json)
-        .expect("Failed to parse secret show JSON");
+    let show_result: serde_json::Value =
+        serde_json::from_str(&show_json).expect("Failed to parse secret show JSON");
 
     let recovered_value = show_result["secret"]
         .as_str()
         .expect(&format!("No 'secret' field in response: {}", show_json));
 
-    assert_eq!(recovered_value, secret_value, "Recovered value does not match original");
-    println!("✅ Secret recovered correctly: '{}' = '{}'", secret_name, recovered_value);
+    assert_eq!(
+        recovered_value, secret_value,
+        "Recovered value does not match original"
+    );
+    println!(
+        "✅ Secret recovered correctly: '{}' = '{}'",
+        secret_name, recovered_value
+    );
 
-    println!("\n🎉 Full lifecycle test passed for run #{}\n", n);
+    println!("\n🎉 Full lifecycle test passed\n");
 }

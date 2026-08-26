@@ -90,7 +90,7 @@ mod test {
     };
     use meta_secret_core::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor};
     use meta_secret_core::node::db::events::object_id::ArtifactId;
-    use meta_secret_core::node::db::events::shared_secret_event::SsWorkflowObject;
+    use meta_secret_core::node::db::events::shared_secret_event::{SsLogObject, SsWorkflowObject};
     use meta_secret_core::node::db::events::vault::vault_log_event::{
         JoinClusterEvent, VaultActionRequestEvent,
     };
@@ -489,6 +489,67 @@ mod test {
 
         split.spec.sign_up_and_second_devices_joins().await?;
         split.split().await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_sender_split_sync_is_idempotent_after_server_sent() -> Result<()> {
+        let spec = ServerAppSignUpSpec::build().await?;
+        spec.sign_up_and_second_devices_joins().await?;
+
+        let client_client_service = spec.registry.state.client.client_service.clone();
+        let app_state = client_client_service.build_service_state().await?.app_state;
+
+        let pass_id = MetaPasswordId::build_from_str("idempotent_split_upload");
+        let plain_pass = PlainPassInfo {
+            pass_id: pass_id.clone(),
+            pass: "2bee|~".to_string(),
+        };
+
+        client_client_service
+            .handle_client_request(
+                app_state,
+                GenericAppStateRequest::ClusterDistribution(plain_pass),
+            )
+            .await?;
+
+        spec.client_gw_sync().await?;
+
+        let server_p_obj = spec.registry.state.base.empty.p_obj.server.clone();
+        let vault_name = spec.registry.state.client.user.vault_name.clone();
+        let server_ss_log: SsLogObject = server_p_obj
+            .find_tail_event(SsLogDescriptor::from(vault_name.clone()))
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Server SsLog must exist after sender sync"))?;
+        let before_tail = server_ss_log.obj_id();
+        let receiver_id = spec.registry.state.vd.device_id();
+        let sent_claim = server_ss_log
+            .to_data()
+            .claims
+            .values()
+            .find(|claim| claim.dist_claim_id.pass_id == pass_id)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("Split claim must exist on server"))?;
+        assert_eq!(
+            sent_claim.status.get(&receiver_id),
+            Some(&SsDistributionStatus::Sent)
+        );
+
+        for _ in 0..3 {
+            spec.client_gw_sync().await?;
+        }
+
+        let after_tail = server_p_obj
+            .find_tail_event(SsLogDescriptor::from(vault_name))
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Server SsLog must still exist"))?
+            .obj_id();
+
+        assert_eq!(
+            before_tail, after_tail,
+            "Repeated sender sync must not append duplicate Sent SsLog entries"
+        );
 
         Ok(())
     }

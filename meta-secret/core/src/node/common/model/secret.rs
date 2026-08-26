@@ -1,13 +1,13 @@
 use crate::crypto::utils::Id48bit;
+use crate::node::common::model::IdString;
 use crate::node::common::model::crypto::aead::EncryptedMessage;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::vault::vault::VaultName;
-use crate::node::common::model::IdString;
 use derive_more::From;
 use std::collections::HashMap;
-use wasm_bindgen::prelude::wasm_bindgen;
 use tracing::debug;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 /// `ClaimId` is a wrapper around a `String` that serves as a unique identifier
 /// for claims within the system. It is used to track and manage claims associated
@@ -132,12 +132,10 @@ impl SsClaim {
             .values()
             .filter(|s| matches!(s, SsDistributionStatus::Sent))
             .count();
-        let num_delivered = self
-            .status
-            .statuses
-            .values()
-            .filter(|s| matches!(s, SsDistributionStatus::Delivered))
-            .count();
+        let sender_done = matches!(
+            self.status.statuses.get(&self.sender),
+            Some(SsDistributionStatus::Delivered)
+        );
         let num_declined = self
             .status
             .statuses
@@ -150,15 +148,15 @@ impl SsClaim {
             is_sender,
             is_receiver,
             num_sent,
-            num_delivered,
+            sender_done,
             num_declined,
             total,
             "compute_client_status: evaluating claim"
         );
 
         let result = if is_sender {
-            if num_delivered >= 1 {
-                // Sender retrieved the secret — claim is finished
+            if sender_done {
+                // Sender retrieved the secret and explicitly completed the recovery.
                 Some(RecoveryClientStatus::Done)
             } else if num_sent >= 1 {
                 Some(RecoveryClientStatus::Accepted)
@@ -168,12 +166,14 @@ impl SsClaim {
                 Some(RecoveryClientStatus::Pending)
             }
         } else if is_receiver {
-            if num_sent >= 1 {
+            if sender_done {
                 Some(RecoveryClientStatus::Done)
             } else {
                 match self.status.statuses.get(current_device) {
-                    Some(SsDistributionStatus::Pending) | None => Some(RecoveryClientStatus::NeedApprove),
-                    _ => Some(RecoveryClientStatus::Done),
+                    Some(SsDistributionStatus::Pending) | None => {
+                        Some(RecoveryClientStatus::NeedApprove)
+                    }
+                    _ => None,
                 }
             }
         } else {
@@ -201,11 +201,11 @@ pub enum SsDistributionStatus {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RecoveryClientStatus {
-    Pending,      // sender: waiting for receivers (show loader)
-    NeedApprove,  // receiver: show 'Allow recovery?' alert
-    Accepted,     // sender: call showRecovered()
-    Declined,     // sender: show 'recovery declined' notification
-    Done,         // sender: secret retrieved (Delivered); receiver: dismiss alerts/loaders
+    Pending,     // sender: waiting for receivers (show loader)
+    NeedApprove, // receiver: show 'Allow recovery?' alert
+    Accepted,    // sender: call showRecovered()
+    Declined,    // sender: show 'recovery declined' notification
+    Done,        // sender: secret retrieved (Delivered); receiver: dismiss alerts/loaders
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -319,10 +319,11 @@ pub struct SsLogData {
 
 impl SsLogData {
     pub fn find_recovery_claim_id(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
-        // Use client_status (populated by with_client_status()) to select only active claims.
+        // Use client_status (populated by with_client_status()) to select only ready claims.
         // This avoids the HashMap non-determinism bug: when multiple claims exist for the same
-        // pass_id (e.g. a stale retired claim and a fresh active one), only Pending/Accepted
-        // claims are candidates. Done and Declined claims are terminal and must be skipped.
+        // pass_id (e.g. a stale retired claim and a fresh active one), only Accepted claims are
+        // candidates. Pending claims are active, but their recovery shares are not available yet.
+        // Done and Declined claims are terminal and must be skipped.
         for (_, claim) in self.claims.iter() {
             let SecretDistributionType::Recover = claim.distribution_type else {
                 continue;
@@ -331,9 +332,7 @@ impl SsLogData {
                 continue;
             }
             match claim.client_status {
-                Some(RecoveryClientStatus::Pending) | Some(RecoveryClientStatus::Accepted) => {
-                    return Some(claim.id.clone());
-                }
+                Some(RecoveryClientStatus::Accepted) => return Some(claim.id.clone()),
                 _ => continue,
             }
         }
@@ -361,7 +360,7 @@ impl SsLogData {
                 }
                 SsDistributionStatus::Sent => {
                     println!("🦀 Founded claim status: Sent");
-                    result_claim= Some(claim.clone());
+                    result_claim = Some(claim.clone());
                     break;
                 }
                 SsDistributionStatus::Delivered => {
@@ -420,9 +419,9 @@ impl SsLogData {
 
     /// Complete recovery with specific receiver status (Sent for accept, Declined for decline)
     pub fn complete_with_receiver_status(
-        mut self, 
-        claim_id: ClaimId, 
-        sender_id: DeviceId, 
+        mut self,
+        claim_id: ClaimId,
+        sender_id: DeviceId,
         receiver_id: DeviceId,
         receiver_status: SsDistributionStatus,
     ) -> Self {
@@ -470,10 +469,24 @@ impl SsLogData {
     pub fn with_client_status(mut self, current_device: &DeviceId) -> Self {
         let total = self.claims.len();
         for claim in self.claims.values_mut() {
+            let previous_client_status = claim.client_status.clone();
             claim.client_status = claim.compute_client_status(current_device);
+            debug!(
+                claim_id = ?claim.id,
+                ?previous_client_status,
+                client_status = ?claim.client_status,
+                "recovery claim clientStatus transition"
+            );
         }
-        let computed = self.claims.values().filter(|c| c.client_status.is_some()).count();
-        debug!(total, computed, "with_client_status: populated client_status for Recover claims");
+        let computed = self
+            .claims
+            .values()
+            .filter(|c| c.client_status.is_some())
+            .count();
+        debug!(
+            total,
+            computed, "with_client_status: populated client_status for Recover claims"
+        );
         self
     }
 
@@ -879,10 +892,7 @@ mod test {
         Ok(())
     }
 
-    fn make_recover_claim(
-        sender: DeviceId,
-        receivers: Vec<DeviceId>,
-    ) -> (SsClaim, ClaimId) {
+    fn make_recover_claim(sender: DeviceId, receivers: Vec<DeviceId>) -> (SsClaim, ClaimId) {
         let claim_id = ClaimId::from(Id48bit::generate());
         let claim = SsClaim {
             id: claim_id.clone(),
@@ -894,7 +904,7 @@ mod test {
                 },
             },
             vault_name: VaultName::test(),
-            sender,
+            sender: sender.clone(),
             distribution_type: SecretDistributionType::Recover,
             receivers: receivers.clone(),
             status: SsDistributionCompositeStatus::from(receivers),
@@ -1003,8 +1013,8 @@ mod test {
             status: SsDistributionCompositeStatus::from(vec![recv_a.clone(), recv_b.clone()]),
             client_status: None,
         };
-        // Delivered means sender retrieved the secret — claim is finished
-        claim.status = claim.status.complete(recv_a.clone());
+        // Sender Delivered means sender retrieved the secret — claim is finished.
+        claim.status = claim.status.complete(sender.clone());
 
         assert_eq!(
             claim.compute_client_status(&sender),
@@ -1084,8 +1094,7 @@ mod test {
         let recv_a = registry.state.device_creds.client_b.device.device_id;
         let recv_b = registry.state.device_creds.vd.device.device_id;
 
-        let (claim, _) =
-            make_recover_claim(sender, vec![recv_a.clone(), recv_b.clone()]);
+        let (claim, _) = make_recover_claim(sender, vec![recv_a.clone(), recv_b.clone()]);
         // All Pending → recv_a should see NeedApprove
         assert_eq!(
             claim.compute_client_status(&recv_a),
@@ -1111,20 +1120,27 @@ mod test {
                 },
             },
             vault_name: VaultName::test(),
-            sender,
+            sender: sender.clone(),
             distribution_type: SecretDistributionType::Recover,
             receivers: vec![recv_a.clone(), recv_b.clone()],
             status: SsDistributionCompositeStatus::from(vec![recv_a.clone(), recv_b.clone()]),
             client_status: None,
         };
-        // recv_a approved → recv_b sees Done even though recv_b is still Pending
+        // recv_a approved → sender can recover, but other receivers are not Done yet.
         claim.status = claim.status.sent(recv_a.clone());
 
         assert_eq!(
             claim.compute_client_status(&recv_b),
+            Some(RecoveryClientStatus::NeedApprove)
+        );
+        // recv_a already acted; no client action is needed until sender completes recovery.
+        assert_eq!(claim.compute_client_status(&recv_a), None);
+
+        claim.status = claim.status.complete(sender.clone());
+        assert_eq!(
+            claim.compute_client_status(&recv_b),
             Some(RecoveryClientStatus::Done)
         );
-        // recv_a itself also sees Done (own status Sent, claim_resolved)
         assert_eq!(
             claim.compute_client_status(&recv_a),
             Some(RecoveryClientStatus::Done)
@@ -1155,13 +1171,10 @@ mod test {
             status: SsDistributionCompositeStatus::from(vec![recv_a.clone(), recv_b.clone()]),
             client_status: None,
         };
-        // recv_a declined → recv_a sees Done (already acted)
+        // recv_a declined → recv_a has no further client action until sender completes.
         claim.status = claim.status.decline(recv_a.clone());
 
-        assert_eq!(
-            claim.compute_client_status(&recv_a),
-            Some(RecoveryClientStatus::Done)
-        );
+        assert_eq!(claim.compute_client_status(&recv_a), None);
     }
 
     #[test]
@@ -1273,8 +1286,8 @@ mod test {
         let (mut claim, claim_id) = make_recover_claim(sender.clone(), vec![recv.clone()]);
         claim.dist_claim_id.pass_id = pass_id.clone();
 
-        // Sender retrieved secret (Delivered) → Done
-        let log = SsLogData::new(claim).complete(claim_id, recv);
+        // Sender retrieved secret (sender Delivered) → Done
+        let log = SsLogData::new(claim).complete(claim_id, sender.clone());
         let log = log.with_client_status(&sender);
 
         assert!(!log.has_active_recovery_claim(&sender, &pass_id));
@@ -1329,7 +1342,9 @@ mod test {
         let (mut claim, claim_id) = make_recover_claim(sender.clone(), vec![recv.clone()]);
         claim.dist_claim_id.pass_id = pass_id.clone();
 
-        let log = SsLogData::new(claim).sent(claim_id, recv).with_client_status(&sender);
+        let log = SsLogData::new(claim)
+            .sent(claim_id, recv)
+            .with_client_status(&sender);
 
         let found = log.find_recovery_claim_id(&pass_id);
         assert!(found.is_some(), "Should find the Accepted (Sent) claim");
@@ -1346,15 +1361,22 @@ mod test {
         // Claim #1: Done (Delivered) — stale from previous session
         let (mut claim1, claim_id1) = make_recover_claim(sender.clone(), vec![recv_a.clone()]);
         claim1.dist_claim_id.pass_id = pass_id.clone();
-        let log = SsLogData::new(claim1).complete(claim_id1, recv_a.clone());
+        let log = SsLogData::new(claim1).complete(claim_id1, sender.clone());
 
         // Claim #2: Accepted (Sent) — active
         let (mut claim2, claim_id2) = make_recover_claim(sender.clone(), vec![recv_b.clone()]);
         claim2.dist_claim_id.pass_id = pass_id.clone();
-        let log = log.insert(claim2).sent(claim_id2.clone(), recv_b.clone()).with_client_status(&sender);
+        let log = log
+            .insert(claim2)
+            .sent(claim_id2.clone(), recv_b.clone())
+            .with_client_status(&sender);
 
         let found = log.find_recovery_claim_id(&pass_id);
-        assert_eq!(found, Some(claim_id2), "Must return active claim, not the Done one");
+        assert_eq!(
+            found,
+            Some(claim_id2),
+            "Must return active claim, not the Done one"
+        );
     }
 
     #[test]
@@ -1366,14 +1388,19 @@ mod test {
 
         let (mut claim, claim_id) = make_recover_claim(sender.clone(), vec![recv.clone()]);
         claim.dist_claim_id.pass_id = pass_id.clone();
-        let log = SsLogData::new(claim).complete(claim_id, recv).with_client_status(&sender);
+        let log = SsLogData::new(claim)
+            .complete(claim_id, sender.clone())
+            .with_client_status(&sender);
 
         let found = log.find_recovery_claim_id(&pass_id);
-        assert!(found.is_none(), "All Done → no active claim to recover from");
+        assert!(
+            found.is_none(),
+            "All Done → no active claim to recover from"
+        );
     }
 
     #[test]
-    fn test_find_recovery_claim_id_skips_declined_claim_prefers_pending() {
+    fn test_find_recovery_claim_id_skips_declined_and_pending_claims() {
         let registry = FixtureRegistry::empty();
         let sender = registry.state.device_creds.client.device.device_id;
         let recv_a = registry.state.device_creds.client_b.device.device_id;
@@ -1386,12 +1413,15 @@ mod test {
         let log = SsLogData::new(claim1).decline(claim_id1, recv_a.clone());
 
         // Claim #2: Pending — fresh claim just created
-        let (mut claim2, claim_id2) = make_recover_claim(sender.clone(), vec![recv_b.clone()]);
+        let (mut claim2, _) = make_recover_claim(sender.clone(), vec![recv_b.clone()]);
         claim2.dist_claim_id.pass_id = pass_id.clone();
         let log = log.insert(claim2).with_client_status(&sender);
 
         let found = log.find_recovery_claim_id(&pass_id);
-        assert_eq!(found, Some(claim_id2), "Must return Pending claim, not the Declined stale one");
+        assert_eq!(
+            found, None,
+            "Pending claim is active but not ready for show_recovered"
+        );
     }
 
     #[test]
