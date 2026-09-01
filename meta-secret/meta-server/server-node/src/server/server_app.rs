@@ -160,6 +160,10 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                 }
                 ReadSyncRequest::SsRecoveryCompletion(recovery_completion) => {
                     let vault_name = recovery_completion.vault_name;
+                    let claim_id = recovery_completion.recovery_id.claim_id.id;
+                    let sender_id = recovery_completion.recovery_id.sender;
+                    let receiver_id = recovery_completion.recovery_id.distribution_id.receiver;
+                    let receiver_status = recovery_completion.receiver_status;
                     let maybe_ss_log_event = self
                         .p_obj
                         .find_tail_event(SsLogDescriptor::from(vault_name.clone()))
@@ -171,13 +175,32 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                         }
                         Some(ss_log_event) => {
                             let ss_log_data = ss_log_event.to_data();
-                            let updated_ss_log_data = ss_log_data.complete_with_receiver_status(
-                                recovery_completion.recovery_id.claim_id.id,
-                                recovery_completion.recovery_id.sender,
-                                recovery_completion.recovery_id.distribution_id.receiver,
-                                recovery_completion.receiver_status,
+                            let Some(current_claim) = ss_log_data.claims.get(&claim_id) else {
+                                bail!("Recovery completion references missing claim: {:?}", claim_id);
+                            };
+                            info!(
+                                ?claim_id,
+                                ?sender_id,
+                                ?receiver_id,
+                                ?receiver_status,
+                                statuses = ?current_claim.status.statuses,
+                                "applying recovery completion"
                             );
-
+                            let updated_ss_log_data = ss_log_data.complete_with_receiver_status(
+                                claim_id.clone(),
+                                sender_id,
+                                receiver_id,
+                                receiver_status,
+                            );
+                            let updated_claim = updated_ss_log_data
+                                .claims
+                                .get(&claim_id)
+                                .expect("recovery claim was checked above");
+                            info!(
+                                ?claim_id,
+                                statuses = ?updated_claim.status.statuses,
+                                "recovery completion applied"
+                            );
                             let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
                             let new_ss_log_obj = p_ss
                                 .create_new_ss_log_object(updated_ss_log_data, vault_name.clone())

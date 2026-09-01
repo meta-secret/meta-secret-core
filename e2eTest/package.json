@@ -1,0 +1,11 @@
+{
+  "name": "meta-secret-e2e-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test-1": "node orchestrator.mjs scenarios/test-1.json"
+  },
+  "dependencies": {
+    "playwright": "^1.61.0"
+  }
+}

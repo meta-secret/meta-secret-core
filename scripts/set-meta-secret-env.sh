@@ -46,6 +46,9 @@ replace_or_append_property "$repo_root/meta-secret/web-cli/ui/.env.local" "VITE_
 if [ -d "$compose_root" ]; then
   replace_or_append_property "$compose_root/gradle.properties" "META_SECRET_ENV" "$env_value"
   replace_or_append_property "$compose_root/iosApp/Configuration/Config.xcconfig" "META_SECRET_ENV" "$env_value"
+  # Keep this empty: Xcode treats // in an .xcconfig URL as a comment. The iOS
+  # socket client selects its platform-local or production endpoint from META_SECRET_ENV.
+  replace_or_append_property "$compose_root/iosApp/Configuration/Config.xcconfig" "META_SECRET_SOCKET_URL" ""
 else
   echo "compose repo not found at $compose_root; skipped mobile app env files" >&2
 fi

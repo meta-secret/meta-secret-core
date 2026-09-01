@@ -4,7 +4,7 @@ pub enum ServerEnvironment {
     Remote,
 }
 
-pub const SELECTED_SERVER_ENVIRONMENT: ServerEnvironment = ServerEnvironment::Remote;
+pub const SELECTED_SERVER_ENVIRONMENT: ServerEnvironment = ServerEnvironment::Local;
 
 pub fn parse_server_environment(environment: &str) -> ServerEnvironment {
     match environment.trim().to_lowercase().as_str() {

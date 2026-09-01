@@ -111,6 +111,30 @@ Unified vocabulary for meta-secret-core Rust backend. All communication (AI, cod
 
 ## 7. Lifecycle & Operations
 
+### 7.1 Recovery Claim Client Status Contract
+
+`clientStatus` is a per-device instruction computed by core from a recovery claim.
+The UI consumes it; it does not determine whether a claim is active, stale, or has
+enough approvals. `clientStatus` is meaningful only for `Recover` claims.
+
+The recovery threshold follows the K-of-N policy: for 1–2 devices `k=1`; for 3 or
+more devices `k=2`. In a 3+ device vault, the sender already has one share, so one
+`Sent` response from a receiver gives the two shares needed for recovery.
+
+| Device role | `clientStatus` | Core condition | Required client behavior |
+|---|---|---|---|
+| Sender | `Pending` | No receiver has sent a usable share and not all receivers declined | Keep the recovery flow waiting. |
+| Sender | `Accepted` | At least one receiver has sent a usable share | Recover and reveal the secret. |
+| Sender | `Declined` | All receivers declined | End the flow and show a recovery-declined error. |
+| Sender | `Done` | Sender retrieved the secret and completion was persisted | End the flow and dismiss loading/UI. |
+| Receiver | `NeedApprove` | The claim targets this device and its receiver status is `Pending` | Show an approve/decline recovery alert. |
+| Receiver | `Done` | Sender completed recovery | Dismiss any recovery alert or loader. |
+| Receiver | `None` | This receiver already approved or declined, while sender has not completed recovery yet | Do nothing; this device has no further action. |
+
+UI may retain a claim ID to deduplicate an already-visible alert and send the
+user's decision. It may technically choose one claim from the set already marked
+`NeedApprove` by core, but must not infer lifecycle state or implement quorum logic.
+
 | Term | Definition | Context | Example |
 |------|-----------|---------|---------|
 | **Sign-Up** | Process: new user creates vault on first device | User onboarding | Generates Master Key + shares |

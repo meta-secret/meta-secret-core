@@ -171,7 +171,11 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
 
     pub async fn show_recovered(&self, pass_id: MetaPasswordId) -> Result<PlainText> {
         let user_creds = self.meta_client_service.find_user_creds().await?;
-        match &self.get_state().await {
+        // Use one immutable state snapshot both to select the accepted claim and to create its
+        // completion. Previously these were two independent get_state() calls, which could select
+        // a claim from one snapshot and look it up in another.
+        let state = self.get_state().await;
+        match &state {
             ApplicationState::Local(_) => {
                 bail!("Show recovered is not allowed in local state");
             }
@@ -189,7 +193,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
                         return self.show_local_secret(user_creds, pass_id).await;
                     }
 
-                    let claim_id = self.find_claim_by_pass_id(&pass_id).await;
+                    let claim_id = member.ss_claims.find_recovery_claim_id(&pass_id);
                     match claim_id {
                         None => bail!("Claim id not found"),
                         Some(claim_id) => {
@@ -217,9 +221,10 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
                                 let sync_request = SyncRequest::Read(Box::new(
                                     ReadSyncRequest::SsRecoveryCompletion(completion),
                                 ));
-                                if let Err(e) = self.server.send(sync_request).await {
-                                    error!(error = %e, "failed to send recovery completion");
-                                }
+                                // Do not report a successful secret reveal until the server has
+                                // persisted the terminal recovery state. Otherwise the next
+                                // Recover can race the completion and be rejected as a duplicate.
+                                self.server.send(sync_request).await?;
                             }
 
                             Ok(plain_text)

@@ -459,10 +459,7 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
         let ApplicationState::Vault(VaultFullInfo::Member(member)) = state else {
             return None;
         };
-        println!("🦀 Find claim id by pass id. State is Member");
         let my_device_id = user_creds.device_id();
-        // Core guarantees at most one active claim per (sender, pass_id).
-        // Find the claim approved by a receiver but not yet retrieved by sender.
         member
             .ss_claims
             .claims

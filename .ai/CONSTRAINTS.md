@@ -17,10 +17,27 @@ Mandatory architectural rules for the Rust backend cryptography and protocol imp
 | **Atomicity** | Collect→Reshare→Distribute is all-or-nothing | Transactions |
 | **No Server Storage** | Keys, shares, secrets never on server | E2E principle |
 | **Two Cannot Erase Each Other** | With 2 devices, neither can remove the other | Safety |
+| **Recovery Status Ownership** | Core alone computes recovery lifecycle and `clientStatus`; UI only executes the resulting instruction | Recovery |
 
 ---
 
 ## 1. Vault Model & Device States
+
+### 1.0 Recovery Status Ownership
+
+For every `Recover` claim, core computes the per-device `clientStatus` from the
+claim state and the current device identity. This is the only authority for whether
+a recovery is active, ready, declined, or complete.
+
+- Web, iOS, and Android UI must react to `clientStatus`; they must not infer
+  lifecycle state or implement K-of-N/quorum rules. They may technically choose
+  one claim from the set already marked `NeedApprove` by core.
+- The UI may retain a claim ID only to deduplicate an alert and submit the user's
+  approve/decline decision.
+- `Done` is emitted only after the sender has recovered the secret and the
+  completion has been persisted. Receivers close recovery alerts only then.
+- A receiver that has already approved or declined has no further action until
+  completion; this is represented by no client instruction (`None`).
 
 ### 1.1 K-of-N Principle (Adaptive Sharing)
 

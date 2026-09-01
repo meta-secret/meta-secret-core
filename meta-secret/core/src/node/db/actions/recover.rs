@@ -132,6 +132,26 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
                     .await?
                     .with_client_status(sender_device_id);
                 if ss_log.has_active_recovery_claim(sender_device_id, &pass_id) {
+                    let active_claims: Vec<_> = ss_log
+                        .claims
+                        .values()
+                        .filter(|claim| {
+                            matches!(claim.distribution_type, SecretDistributionType::Recover)
+                                && &claim.sender == sender_device_id
+                                && claim.dist_claim_id.pass_id == pass_id
+                                && !matches!(
+                                    claim.client_status,
+                                    Some(crate::node::common::model::secret::RecoveryClientStatus::Declined)
+                                        | Some(crate::node::common::model::secret::RecoveryClientStatus::Done)
+                                )
+                        })
+                        .map(|claim| (&claim.id, &claim.client_status, &claim.status.statuses))
+                        .collect();
+                    warn!(
+                        ?pass_id,
+                        ?active_claims,
+                        "recovery_request blocked by an active claim"
+                    );
                     return Ok(());
                 }
 
@@ -141,6 +161,7 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
                     .to_data()
                     .to_vault_member(member)?;
                 let claim = vault_member.create_recovery_claim(pass_id);
+                info!(claim_id = ?claim.id, pass_id = ?claim.dist_claim_id.pass_id, "recovery_request created claim");
                 p_ss.save_claim_in_ss_device_log(claim).await?;
             }
         }

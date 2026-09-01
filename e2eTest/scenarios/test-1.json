@@ -1,0 +1,38 @@
+{
+  "name": "Test #1 — create vault and show secret on Web",
+  "server": {
+    "url": "http://127.0.0.1:3000",
+    "image": "ghcr.io/meta-secret/meta-secret-core/meta-secret-server:latest",
+    "container": "meta-secret-e2e-server",
+    "port": 3000
+  },
+  "web": {
+    "url": "http://localhost:5173",
+    "directory": "../meta-secret/web-cli/ui"
+  },
+  "ios": {
+    "composeRoot": "../../meta-secret-compose",
+    "simulatorName": "iPhone 17",
+    "bundleId": "org.metasecret.vault"
+  },
+  "android": {
+    "avdName": "Pixel_4a",
+    "bundleId": "metasecret.project.com"
+  },
+  "recovery": {
+    "showTimeoutMs": 45000,
+    "pauseMs": 2000,
+    "groups": [
+      { "approver": "ios", "count": 6 },
+      { "approver": "android", "count": 6 },
+      { "approver": "alternate", "count": 6 }
+    ]
+  },
+  "vault": {
+    "name": "test@test.ru"
+  },
+  "secret": {
+    "name": "test-secret",
+    "value": "test-secret-value"
+  }
+}

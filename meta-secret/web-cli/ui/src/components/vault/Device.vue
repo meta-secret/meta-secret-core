@@ -96,6 +96,7 @@ const handleDecline = async () => {
   <div
     class="flex items-center gap-3 border-b px-5 py-4 last:border-0 transition-colors"
     :class="[isPending && 'cursor-pointer hover:bg-muted/50', isDeclined && 'opacity-60']"
+    :data-testid="isPending ? 'pending-device-row' : undefined"
     :role="isPending ? 'button' : undefined"
     :tabindex="isPending ? 0 : undefined"
     @click="isPending && (isJoinConfirmOpen = true)"
@@ -261,7 +262,7 @@ const handleDecline = async () => {
           <Button variant="outline" class="flex-1" :disabled="isSubmitting" @click="handleDecline">
             {{ vaultDevices.actionDecline }}
           </Button>
-          <Button class="flex-1" :disabled="isSubmitting" @click="handleAccept">
+          <Button class="flex-1" data-testid="accept-join-request" :disabled="isSubmitting" @click="handleAccept">
             {{ vaultDevices.actionAccept }}
           </Button>
         </DialogFooter>

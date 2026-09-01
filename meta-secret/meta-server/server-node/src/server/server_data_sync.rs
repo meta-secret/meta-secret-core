@@ -143,7 +143,6 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                     dist_type = ?claim_preview.distribution_type,
                     "SsDeviceLog received"
                 );
-
                 self.p_obj.repo.save(ss_device_log_obj.clone()).await?;
 
                 let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
