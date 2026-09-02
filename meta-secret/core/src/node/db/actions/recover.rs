@@ -1,8 +1,6 @@
 use crate::PlainText;
 use crate::node::common::model::meta_pass::MetaPasswordId;
-use crate::node::common::model::secret::{
-    ClaimId, SecretDistributionData, SecretDistributionType, SsDistributionId, SsDistributionStatus,
-};
+use crate::node::common::model::secret::{ClaimId, SecretDistributionData, SsDistributionId};
 use crate::node::common::model::user::user_creds::UserCreds;
 use crate::node::common::model::vault::vault::VaultStatus;
 use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
@@ -15,32 +13,13 @@ use crate::secret::shared_secret::UserShareDto;
 use anyhow::bail;
 use derive_more::From;
 use std::sync::Arc;
-use tracing::{info, warn};
+use tracing::info;
 use tracing_attributes::instrument;
 
-use crate::node::common::model::device::common::DeviceId;
 
 #[derive(From)]
 pub struct RecoveryAction<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
-}
-
-fn is_stale_recovery_claim(
-    claim: &crate::node::common::model::secret::SsClaim,
-    sender_device_id: &DeviceId,
-    pass_id: &MetaPasswordId,
-) -> bool {
-    let sender_done =
-        claim.status.statuses.get(sender_device_id) == Some(&SsDistributionStatus::Delivered);
-    claim.distribution_type == SecretDistributionType::Recover
-        && &claim.sender == sender_device_id
-        && claim.dist_claim_id.pass_id == *pass_id
-        && !sender_done
-        && claim
-            .status
-            .statuses
-            .values()
-            .any(|s| matches!(s, SsDistributionStatus::Sent))
 }
 
 impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
@@ -68,90 +47,16 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
 
                 let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
 
-                // Retire stale Accepted claims before the dedup check.
-                //
-                // A claim with a Sent receiver is "Accepted" in compute_client_status.
-                // If such a claim lingers (e.g. mark_claim_delivered never ran because
-                // show_recovered crashed), two things go wrong on the next Recover click:
-                //
-                // 1. has_active_recovery_claim blocks new claim creation.
-                // 2. waitForRecoveredClaim (Vue) calls isRecovered → find_recovery_claim
-                //    returns the stale claim → returns true immediately without waiting
-                //    for iOS to approve the new claim.
-                // 3. show_recovered picks the stale claim (non-deterministic HashMap) →
-                //    its recovery data is absent → only 1 share → "Invalid share".
-                //
-                // Retiring stale claims as Declined breaks the cycle without faking Done:
-                // dedup passes, a fresh claim is created, iOS approves it, and
-                // show_recovered gets valid data.
-                {
-                    info!(
-                        "🔍 [recovery_request v2] sweep stale Accepted claims for pass_id={:?}",
-                        pass_id
-                    );
-                    let ss_log_data = p_ss.get_ss_log_obj(vault_name.clone()).await?;
-                    let stale: Vec<_> = ss_log_data
-                        .claims
-                        .values()
-                        .filter(|c| is_stale_recovery_claim(c, sender_device_id, &pass_id))
-                        .cloned()
-                        .collect();
-
-                    info!(
-                        "🔍 [recovery_request v2] found {} stale claim(s) to retire",
-                        stale.len()
-                    );
-
-                    for claim in stale {
-                        warn!(
-                            "♻️ [recovery_request v2] retiring stale claim {:?}",
-                            claim.id
-                        );
-                        let mut updated = claim.clone();
-                        // Decline all Sent receivers to retire the stale claim.
-                        // Using decline() rather than complete() avoids a fake Delivered status that
-                        // would make compute_client_status return Done for the sender before
-                        // show_recovered() has run — which triggers the wrong claim to be selected.
-                        let sent_receivers: Vec<_> = updated
-                            .status
-                            .statuses
-                            .iter()
-                            .filter(|(_, s)| matches!(s, SsDistributionStatus::Sent))
-                            .map(|(id, _)| id.clone())
-                            .collect();
-                        for receiver_id in sent_receivers {
-                            updated.status = updated.status.decline(receiver_id);
-                        }
-                        p_ss.save_ss_log_event(updated).await?;
-                    }
-                }
-
-                // Deduplication: ignore if an active claim already exists for (sender, pass_id).
+                // Reuse an active claim. It remains valid after a sender restart until a real
+                // completion or all-receiver decline; never rewrite it to a terminal status.
                 let ss_log = p_ss
                     .get_ss_log_obj(vault_name)
                     .await?
                     .with_client_status(sender_device_id);
-                if ss_log.has_active_recovery_claim(sender_device_id, &pass_id) {
-                    let active_claims: Vec<_> = ss_log
-                        .claims
-                        .values()
-                        .filter(|claim| {
-                            matches!(claim.distribution_type, SecretDistributionType::Recover)
-                                && &claim.sender == sender_device_id
-                                && claim.dist_claim_id.pass_id == pass_id
-                                && !matches!(
-                                    claim.client_status,
-                                    Some(crate::node::common::model::secret::RecoveryClientStatus::Declined)
-                                        | Some(crate::node::common::model::secret::RecoveryClientStatus::Done)
-                                )
-                        })
-                        .map(|claim| (&claim.id, &claim.client_status, &claim.status.statuses))
-                        .collect();
-                    warn!(
-                        ?pass_id,
-                        ?active_claims,
-                        "recovery_request blocked by an active claim"
-                    );
+                if let Some(claim_id) = ss_log
+                    .find_unique_active_recovery_claim_id(sender_device_id, &pass_id)?
+                {
+                    info!(?claim_id, ?pass_id, "recovery_request reused active claim");
                     return Ok(());
                 }
 
@@ -317,14 +222,11 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
 
 #[cfg(test)]
 mod tests {
-    use super::{RecoveryHandler, is_stale_recovery_claim};
+    use super::RecoveryHandler;
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::common::model::crypto::aead::EncryptedMessage;
     use crate::node::common::model::meta_pass::MetaPasswordId;
-    use crate::node::common::model::secret::{
-        RecoveryClientStatus, SecretDistributionData, SecretDistributionType, SsDistributionId,
-        SsDistributionStatus,
-    };
+    use crate::node::common::model::secret::{SecretDistributionData, SsDistributionId};
     use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
     use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
     use crate::node::db::events::shared_secret_event::SsWorkflowObject;
@@ -333,122 +235,6 @@ mod tests {
     use crate::secret::data_block::common::SharedSecretConfig;
     use crate::secret::shared_secret::{PlainText, SharedSecretEncryption};
     use anyhow::Result;
-
-    /// Stale sweep must decline (not complete) Sent receivers so the sender does NOT see Done
-    /// prematurely. Using decline() instead of complete() ensures the sender stays in a state
-    /// that blocks new claim creation (Sent is active, Declined is terminal). Without this,
-    /// stale sweep would fake a Delivered status prematurely.
-    #[test]
-    fn stale_sweep_declines_sent_receiver_not_completes() {
-        use crate::crypto::utils::Id48bit;
-        use crate::node::common::model::secret::{SsClaim, SsClaimId};
-
-        let registry = FixtureRegistry::empty();
-        let sender = registry.state.device_creds.client.device.device_id.clone();
-        let recv_a = registry
-            .state
-            .device_creds
-            .client_b
-            .device
-            .device_id
-            .clone();
-        let pass_id = MetaPasswordId::build_from_str("stale_sweep_test");
-
-        // Create a claim with Sent receiver (simulates previous recovery attempt)
-        let claim_id = crate::node::common::model::secret::ClaimId::from(Id48bit::generate());
-        let mut claim = SsClaim {
-            id: claim_id.clone(),
-            dist_claim_id: SsClaimId {
-                id: claim_id.clone(),
-                pass_id: pass_id.clone(),
-            },
-            vault_name: crate::node::common::model::vault::vault::VaultName::test(),
-            sender: sender.clone(),
-            distribution_type: SecretDistributionType::Recover,
-            receivers: vec![recv_a.clone()],
-            status: crate::node::common::model::secret::SsDistributionCompositeStatus::from(vec![
-                recv_a.clone(),
-            ]),
-            client_status: None,
-        };
-        claim.status = claim.status.sent(recv_a.clone());
-
-        // Simulate stale sweep with correct logic (decline, not complete)
-        let mut retired = claim.clone();
-        let sent_receivers: Vec<_> = retired
-            .status
-            .statuses
-            .iter()
-            .filter(|(_, s)| matches!(s, SsDistributionStatus::Sent))
-            .map(|(id, _)| id.clone())
-            .collect();
-        for receiver_id in sent_receivers {
-            retired.status = retired.status.decline(receiver_id);
-        }
-
-        // Verify the result: receiver must be Declined, not Delivered
-        let recv_status = retired.status.statuses.get(&recv_a).unwrap();
-        assert!(
-            matches!(recv_status, SsDistributionStatus::Declined),
-            "Stale sweep must Decline the Sent receiver. Got: {:?}",
-            recv_status
-        );
-
-        // Sender must NOT see Done — Declined is terminal but not Done
-        let log =
-            crate::node::common::model::secret::SsLogData::new(retired).with_client_status(&sender);
-        let client_status = log
-            .claims
-            .get(&claim_id)
-            .and_then(|c| c.client_status.as_ref());
-
-        assert!(
-            !matches!(client_status, Some(RecoveryClientStatus::Done)),
-            "Sender must NOT see Done after declining stale claim. Got: {:?}",
-            client_status
-        );
-    }
-
-    #[test]
-    fn stale_sweep_skips_done_claims() {
-        use crate::crypto::utils::Id48bit;
-        use crate::node::common::model::secret::{
-            ClaimId, SsClaim, SsClaimId, SsDistributionCompositeStatus,
-        };
-
-        let registry = FixtureRegistry::empty();
-        let sender = registry.state.device_creds.client.device.device_id.clone();
-        let recv_a = registry
-            .state
-            .device_creds
-            .client_b
-            .device
-            .device_id
-            .clone();
-        let pass_id = MetaPasswordId::build_from_str("done_claim_not_stale");
-
-        let claim_id = ClaimId::from(Id48bit::generate());
-        let mut claim = SsClaim {
-            id: claim_id.clone(),
-            dist_claim_id: SsClaimId {
-                id: claim_id,
-                pass_id: pass_id.clone(),
-            },
-            vault_name: crate::node::common::model::vault::vault::VaultName::test(),
-            sender: sender.clone(),
-            distribution_type: SecretDistributionType::Recover,
-            receivers: vec![recv_a.clone()],
-            status: SsDistributionCompositeStatus::from(vec![recv_a.clone()]),
-            client_status: None,
-        };
-        claim.status = claim.status.sent(recv_a);
-        claim.status = claim.status.complete(sender.clone());
-
-        assert!(
-            !is_stale_recovery_claim(&claim, &sender, &pass_id),
-            "Done recovery claims must not be retired by stale sweep"
-        );
-    }
 
     #[tokio::test]
     async fn recover_works_without_local_distribution_when_recovery_shares_exist() -> Result<()> {

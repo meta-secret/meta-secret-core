@@ -193,7 +193,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
                         return self.show_local_secret(user_creds, pass_id).await;
                     }
 
-                    let claim_id = member.ss_claims.find_recovery_claim_id(&pass_id);
+                    let claim_id = member
+                        .ss_claims
+                        .find_unique_accepted_recovery_claim_id(&pass_id)?;
                     match claim_id {
                         None => bail!("Claim id not found"),
                         Some(claim_id) => {

@@ -6,12 +6,12 @@ use crate::server::state_invalidation::{
     StateInvalidationScope,
 };
 use anyhow::{Result, bail};
+use flume::{Receiver, RecvError, Sender};
 use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::node::api::{
     DataEventsResponse, DataSyncResponse, ReadSyncRequest, ServerTailRequest, ServerTailResponse,
     SyncRequest, WriteSyncRequest,
 };
-use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::model::device::common::DeviceName;
 use meta_secret_core::node::common::model::device::device_creds::DeviceCreds;
 use meta_secret_core::node::db::descriptors::shared_secret_descriptor::SsLogDescriptor;
@@ -22,26 +22,46 @@ use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
-use tracing::{error, info, instrument};
+use tracing::{error, info, instrument, warn};
+
+pub struct ServerRequest {
+    request: SyncRequest,
+    response_sender: Sender<DataSyncResponse>,
+}
 
 pub struct MetaServerDataTransfer {
-    pub dt: MpscDataTransfer<SyncRequest, DataSyncResponse>,
+    request_sender: Sender<ServerRequest>,
+    request_receiver: Receiver<ServerRequest>,
 }
 
 impl Default for MetaServerDataTransfer {
     fn default() -> Self {
+        let (request_sender, request_receiver) = flume::bounded(10);
         Self {
-            dt: MpscDataTransfer::new(),
+            request_sender,
+            request_receiver,
         }
     }
 }
 
 impl MetaServerDataTransfer {
     pub async fn send_request(&self, request: SyncRequest) -> Result<DataSyncResponse> {
-        self.dt
-            .send_to_service_and_get(request)
+        let (response_sender, response_receiver) = flume::bounded(1);
+        self.request_sender
+            .send_async(ServerRequest {
+                request,
+                response_sender,
+            })
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to get response: {:?}", e))
+            .map_err(|e| anyhow::anyhow!("Failed to enqueue server request: {:?}", e))?;
+        response_receiver
+            .recv_async()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to get server response: {:?}", e))
+    }
+
+    async fn receive_request(&self) -> Result<ServerRequest, RecvError> {
+        self.request_receiver.recv_async().await
     }
 }
 
@@ -98,29 +118,27 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
         info!("Server initialized with device: {:?}", &device_creds.device);
 
         loop {
-            match self.data_transfer.dt.service_receive().await {
-                Ok(request) => {
-                    let response = self.handle_client_request(request).await;
-                    match response {
-                        Ok(resp) => {
-                            self.data_transfer.dt.send_to_client(resp).await;
+            match self.data_transfer.receive_request().await {
+                Ok(ServerRequest {
+                    request,
+                    response_sender,
+                }) => {
+                    let response = match self.handle_client_request(request).await {
+                        Ok(response) => response,
+                        Err(error) => {
+                            error!(?error, "Error processing request");
+                            DataSyncResponse::Error {
+                                msg: format!("Error processing client request: {error:?}"),
+                            }
                         }
-                        Err(e) => {
-                            let resp = DataSyncResponse::Error {
-                                msg: format!("Error processing client request: {:?}", e),
-                            };
-                            error!("Error processing request: {:?}", e);
-                            self.data_transfer.dt.send_to_client(resp).await;
-                        }
+                    };
+                    if response_sender.send_async(response).await.is_err() {
+                        warn!("Client disconnected before its server response was ready");
                     }
                 }
                 Err(e) => {
                     error!("Error receiving message: {:?}", e);
-                    let resp = DataSyncResponse::Error {
-                        msg: format!("Error receiving message: {:?}", e),
-                    };
-                    self.data_transfer.dt.send_to_client(resp).await;
-                    // Continue the loop even if there's an error
+                    return Err(e.into());
                 }
             }
 
@@ -176,7 +194,10 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                         Some(ss_log_event) => {
                             let ss_log_data = ss_log_event.to_data();
                             let Some(current_claim) = ss_log_data.claims.get(&claim_id) else {
-                                bail!("Recovery completion references missing claim: {:?}", claim_id);
+                                bail!(
+                                    "Recovery completion references missing claim: {:?}",
+                                    claim_id
+                                );
                             };
                             info!(
                                 ?claim_id,
@@ -261,5 +282,70 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
         self.creds_repo
             .get_or_generate_device_creds(DeviceName::server())
             .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MetaServerDataTransfer;
+    use meta_secret_core::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use meta_secret_core::node::api::{
+        DataSyncResponse, ReadSyncRequest, ServerTailRequest, SyncRequest,
+    };
+    use std::sync::Arc;
+
+    fn server_tail_request(
+        sender: meta_secret_core::node::common::model::user::common::UserData,
+    ) -> SyncRequest {
+        SyncRequest::Read(Box::new(ReadSyncRequest::ServerTail(ServerTailRequest {
+            sender,
+        })))
+    }
+
+    #[tokio::test]
+    async fn concurrent_requests_receive_their_own_responses() {
+        let registry = FixtureRegistry::empty();
+        let request_a = server_tail_request(registry.state.user_creds.client.user());
+        let request_b = server_tail_request(registry.state.user_creds.client_b.user());
+        let transport = Arc::new(MetaServerDataTransfer::default());
+
+        let first_transport = transport.clone();
+        let first_request = request_a.clone();
+        let first = tokio::spawn(async move { first_transport.send_request(first_request).await });
+
+        let second_transport = transport.clone();
+        let second_request = request_b.clone();
+        let second =
+            tokio::spawn(async move { second_transport.send_request(second_request).await });
+
+        let first_envelope = transport.receive_request().await.unwrap();
+        let second_envelope = transport.receive_request().await.unwrap();
+
+        for envelope in [second_envelope, first_envelope] {
+            let response = if envelope.request == request_a {
+                DataSyncResponse::Error {
+                    msg: "response-a".to_owned(),
+                }
+            } else {
+                assert_eq!(envelope.request, request_b);
+                DataSyncResponse::Error {
+                    msg: "response-b".to_owned(),
+                }
+            };
+            envelope.response_sender.send_async(response).await.unwrap();
+        }
+
+        assert_eq!(
+            first.await.unwrap().unwrap(),
+            DataSyncResponse::Error {
+                msg: "response-a".to_owned()
+            }
+        );
+        assert_eq!(
+            second.await.unwrap().unwrap(),
+            DataSyncResponse::Error {
+                msg: "response-b".to_owned()
+            }
+        );
     }
 }

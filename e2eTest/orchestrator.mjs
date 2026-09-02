@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:http';
 import process from 'node:process';
 import { setTimeout as wait } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
@@ -28,6 +29,35 @@ const androidEmulatorPath = '/Users/dmitrykuklin/Library/Android/sdk/emulator/em
 const serverContainer = scenario.server.container;
 const serverImage = scenario.server.image;
 const processes = [];
+const watchedProcessOutputs = [];
+let approvalCoordinator;
+
+function startApprovalCoordinator(port = 5180) {
+  const allowedApprovals = new Set();
+  const server = createServer((request, response) => {
+    const url = new URL(request.url, `http://${request.headers.host}`);
+    if (url.pathname !== '/approval') {
+      response.writeHead(404).end();
+      return;
+    }
+
+    const key = `${url.searchParams.get('platform')}:${url.searchParams.get('cycle')}`;
+    response.writeHead(200, { 'content-type': 'text/plain' });
+    response.end(allowedApprovals.has(key) ? 'allowed' : 'waiting');
+  });
+
+  return new Promise((resolvePromise, reject) => {
+    server.once('error', reject);
+    server.listen(port, '0.0.0.0', () => resolvePromise({
+      allow(platform, cycle) {
+        allowedApprovals.add(`${platform}:${cycle}`);
+      },
+      close() {
+        return new Promise((resolveClose) => server.close(resolveClose));
+      },
+    }));
+  });
+}
 function run(command, args, options = {}) {
   const child = spawn(command, args, {
     cwd: options.cwd ?? projectRoot,
@@ -127,7 +157,25 @@ function watchProcessOutput(command, args, options = {}) {
     markerWaiters.add(waiter);
   });
 
-  return { child, waitForMarker, result };
+  const watched = {
+    command,
+    args,
+    child,
+    waitForMarker,
+    result,
+    outputTail: () => `${stdout}\n${stderr}`.slice(-12_000),
+  };
+  watchedProcessOutputs.push(watched);
+  return watched;
+}
+
+function printFailureDiagnostics() {
+  for (const watched of watchedProcessOutputs) {
+    const tail = watched.outputTail();
+    if (tail.trim()) {
+      console.error(`\n=== E2E diagnostic: ${watched.command} ${watched.args.join(' ')} ===\n${tail}`);
+    }
+  }
 }
 
 async function waitForHttp(url, timeoutMs = 120_000) {
@@ -146,6 +194,8 @@ async function waitForHttp(url, timeoutMs = 120_000) {
 }
 
 async function stopProcesses() {
+  await approvalCoordinator?.close().catch(() => {});
+  approvalCoordinator = undefined;
   for (const child of processes.reverse()) {
     if (!child.killed) child.kill('SIGTERM');
   }
@@ -200,6 +250,7 @@ function startIosJoinTest(simulatorUdid) {
         E2E_SECRET_VALUE: scenario.secret.value,
         E2E_RECOVERY_CYCLES: String(recoveryCycles.length),
         E2E_IOS_RECOVERY_APPROVALS: iosRecoveryApprovalCycles.join(','),
+        E2E_APPROVAL_COORDINATOR_URL: 'http://127.0.0.1:5180',
       },
     },
   );
@@ -219,13 +270,49 @@ async function prepareAndroidEmulator() {
 
   if (!serial) throw new Error(`Android emulator ${scenario.android.avdName} did not start`);
   console.log(`13. Preparing Android emulator: ${serial}`);
+  await waitForAndroidBoot(serial);
   await runAndWait('adb', ['-s', serial, 'uninstall', scenario.android.bundleId], { stdio: 'ignore' }).catch(() => {});
   return serial;
 }
 
+async function waitForAndroidBoot(serial, timeoutMs = 120_000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError = 'Android did not report sys.boot_completed=1';
+
+  while (Date.now() < deadline) {
+    try {
+      const { stdout } = await runAndCapture('adb', ['-s', serial, 'shell', 'getprop', 'sys.boot_completed']);
+      if (stdout.trim() === '1') return;
+      lastError = `sys.boot_completed=${stdout.trim() || '<empty>'}`;
+    } catch (error) {
+      lastError = error.message;
+    }
+    await wait(1_000);
+  }
+
+  throw new Error(`Android emulator ${serial} did not finish booting: ${lastError}`);
+}
+
+async function runAdbWithRetry(args, { attempts = 5, delayMs = 1_000 } = {}) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await runAndCapture('adb', args);
+    } catch (error) {
+      lastError = error;
+      console.warn(`ADB command failed (${attempt}/${attempts}): adb ${args.join(' ')}\n${error.message}`);
+      await runAndCapture('adb', ['reconnect', 'device']).catch((reconnectError) => {
+        console.warn(`ADB reconnect failed: ${reconnectError.message}`);
+      });
+      if (attempt < attempts) await wait(delayMs);
+    }
+  }
+  throw lastError;
+}
+
 async function startAndroidJoinTest(serial) {
   console.log('14. Starting Android UI test');
-  await runAndWait('adb', ['-s', serial, 'logcat', '-c']);
+  await runAdbWithRetry(['-s', serial, 'logcat', '-c']);
   const logcat = watchProcessOutput('adb', ['-s', serial, 'logcat', 'MetaSecretE2E:I', '*:S']);
   void logcat.result.catch(() => {}); // logcat is stopped deliberately when the instrumentation test ends
   const test = runAndWait(
@@ -237,6 +324,7 @@ async function startAndroidJoinTest(serial) {
       `-Pandroid.testInstrumentationRunnerArguments.secretName=${scenario.secret.name}`,
       `-Pandroid.testInstrumentationRunnerArguments.recoveryCycles=${recoveryCycles.length}`,
       `-Pandroid.testInstrumentationRunnerArguments.androidRecoveryApprovals=${androidRecoveryApprovalCycles.join(',')}`,
+      '-Pandroid.testInstrumentationRunnerArguments.approvalCoordinatorUrl=http://10.0.2.2:5180',
     ],
     { cwd: composeRoot, env: { ANDROID_SERIAL: serial } },
   );
@@ -309,6 +397,7 @@ async function runRecoveryCycles(page, iosTest, androidTest) {
       androidTest.waitForMarker(`E2E: ANDROID_RECOVERY_REQUEST_ALERT_${cycle.number}`),
     ]);
 
+    approvalCoordinator.allow(cycle.approver, cycle.number);
     const approverTest = cycle.approver === 'ios' ? iosTest : androidTest;
     const approverMarker = cycle.approver === 'ios'
       ? `E2E: IOS_RECOVERY_APPROVE_SUCCESS_${cycle.number}`
@@ -333,6 +422,7 @@ async function main() {
   if (!existsSync(composeRoot)) throw new Error(`Compose directory not found: ${composeRoot}`);
 
   console.log(`\n=== ${scenario.name} ===`);
+  approvalCoordinator = await startApprovalCoordinator();
   console.log('1. Rebuilding the Web WASM package');
   await runAndWait('/opt/homebrew/bin/task', ['wasm-local'], { cwd: coreRoot });
 
@@ -342,7 +432,8 @@ async function main() {
   console.log('3. Cleaning server state');
   await runAndWait('docker', ['rm', '-f', serverContainer], { stdio: 'ignore' }).catch(() => {});
   console.log('4. Starting local server');
-  run('docker', ['run', '--rm', '--name', serverContainer, '-p', `${scenario.server.port}:3000`, serverImage]);
+  const server = watchProcessOutput('docker', ['run', '--rm', '--name', serverContainer, '-p', `${scenario.server.port}:3000`, serverImage]);
+  void server.result.catch(() => {});
   await waitForHttp(scenario.server.url);
 
   console.log('5. Starting Web in a visible browser');
@@ -423,6 +514,7 @@ process.once('SIGTERM', async () => {
 
 main().catch(async (error) => {
   console.error(`\n❌ Test #1 failed: ${error.message}`);
+  printFailureDiagnostics();
   await stopProcesses();
   process.exit(1);
 });

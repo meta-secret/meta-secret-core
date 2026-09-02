@@ -15,8 +15,7 @@ use meta_secret_core::node::common::meta_tracing::client_span;
 use meta_secret_core::node::common::model::device::common::{DeviceName, DeviceType};
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::{
-    ClaimId, RecoveryClientStatus, SecretDistributionType, SsClaim, SsDistributionId,
-    SsDistributionStatus, SsRecoveryId,
+    ClaimId, SsClaim, SsDistributionId, SsDistributionStatus, SsRecoveryId,
 };
 
 use meta_secret_core::node::common::model::user::common::UserData;
@@ -347,7 +346,9 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
                         return self.show_local_secret(user_creds, pass_id).await;
                     }
 
-                    let claim_id = self.find_claim_id_by_pass_id(&pass_id).await;
+                    let claim_id = member
+                        .ss_claims
+                        .find_unique_accepted_recovery_claim_id(&pass_id)?;
 
                     match claim_id {
                         None => {
@@ -390,16 +391,7 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
                                     ReadSyncRequest::SsRecoveryCompletion(completion),
                                 ));
 
-                                if let Err(e) = self.server.send(sync_request).await {
-                                    println!(
-                                        "🦀 Mobile App Manager: ❌ Failed to send recovery completion: {}",
-                                        e
-                                    );
-                                } else {
-                                    println!(
-                                        "🦀 Mobile App Manager: ✅ Recovery completion sent successfully"
-                                    );
-                                }
+                                self.server.send(sync_request).await?;
                             }
 
                             Ok(pass)
@@ -447,10 +439,9 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
     }
 
     pub async fn find_claim_id_by_pass_id(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
-        let user_creds = match self.meta_client_service.find_user_creds().await {
-            Ok(user_creds) => user_creds,
-            Err(_) => return None,
-        };
+        if self.meta_client_service.find_user_creds().await.is_err() {
+            return None;
+        }
         let state = match self.get_state().await {
             Ok(state) => state,
             Err(_) => return None,
@@ -459,25 +450,17 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
         let ApplicationState::Vault(VaultFullInfo::Member(member)) = state else {
             return None;
         };
-        let my_device_id = user_creds.device_id();
         member
             .ss_claims
-            .claims
-            .values()
-            .find(|claim| {
-                matches!(claim.distribution_type, SecretDistributionType::Recover)
-                    && claim.dist_claim_id.pass_id.eq(pass_id)
-                    && claim.sender.eq(my_device_id)
-                    && matches!(claim.client_status, Some(RecoveryClientStatus::Accepted))
-            })
-            .map(|claim| claim.id.clone())
+            .find_unique_accepted_recovery_claim_id(pass_id)
+            .ok()
+            .flatten()
     }
 
     pub async fn find_claim_by_pass_id(&self, pass_id: &MetaPasswordId) -> Option<SsClaim> {
-        let user_creds = match self.meta_client_service.find_user_creds().await {
-            Ok(user_creds) => user_creds,
-            Err(_) => return None,
-        };
+        if self.meta_client_service.find_user_creds().await.is_err() {
+            return None;
+        }
         let state = match self.get_state().await {
             Ok(state) => state,
             Err(_) => return None,
@@ -486,19 +469,12 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
         let ApplicationState::Vault(VaultFullInfo::Member(member)) = state else {
             return None;
         };
-        println!("🦀 Find claim by pass id. State is Member");
-        let my_device_id = user_creds.device_id();
-        member
+        let claim_id = member
             .ss_claims
-            .claims
-            .values()
-            .find(|claim| {
-                matches!(claim.distribution_type, SecretDistributionType::Recover)
-                    && claim.dist_claim_id.pass_id.eq(pass_id)
-                    && claim.sender.eq(my_device_id)
-                    && matches!(claim.client_status, Some(RecoveryClientStatus::Accepted))
-            })
-            .cloned()
+            .find_unique_accepted_recovery_claim_id(pass_id)
+            .ok()
+            .flatten()?;
+        member.ss_claims.claims.get(&claim_id).cloned()
     }
 
     #[instrument(name = "MetaClientService", skip_all)]

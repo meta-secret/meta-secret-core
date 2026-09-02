@@ -143,6 +143,26 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                     dist_type = ?claim_preview.distribution_type,
                     "SsDeviceLog received"
                 );
+                if claim_preview.distribution_type == SecretDistributionType::Recover {
+                    let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
+                    let server_log = p_ss_log
+                        .get_ss_log_obj(vault_name.clone())
+                        .await?
+                        .with_client_status(&claim_preview.sender);
+                    if let Some(active_claim_id) = server_log.find_unique_active_recovery_claim_id(
+                        &claim_preview.sender,
+                        &claim_preview.dist_claim_id.pass_id,
+                    )? {
+                        if active_claim_id != claim_preview.id {
+                            debug!(
+                                ?active_claim_id,
+                                rejected_claim_id = ?claim_preview.id,
+                                "recovery claim already active; keeping authoritative claim"
+                            );
+                            return Ok(());
+                        }
+                    }
+                }
                 self.p_obj.repo.save(ss_device_log_obj.clone()).await?;
 
                 let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
