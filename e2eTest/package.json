@@ -3,7 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test-1": "node orchestrator.mjs scenarios/test-1.json"
+    "test-1": "node Test1/orchestrator.mjs",
+    "test-2": "node Test2/orchestrator.mjs",
+    "test-3": "node Test3/orchestrator.mjs"
   },
   "dependencies": {
     "playwright": "^1.61.0"

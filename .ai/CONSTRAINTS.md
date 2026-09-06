@@ -222,7 +222,7 @@ Step 6: CONFIRMATION (on B)
   - B confirms it received new share s2'
   - B marks C as INACTIVE in its vault state
   
-Result: A=SHARE, B=SHARE (only 2 devices remain)
+Result: A=FULL COPY, B=FULL COPY (only 2 devices remain)
         C is INACTIVE (cannot participate in claims)
 
 ⚠️ CRITICAL: Old shares on A and B are DESTROYED
@@ -231,7 +231,7 @@ Result: A=SHARE, B=SHARE (only 2 devices remain)
 **Flow: 2 devices (A, B) + remove B**
 
 ```
-Initial: A=SHARE (s1), B=SHARE (s2) (n=2, k=2 SSS)
+Initial: A=FULL COPY, B=FULL COPY (n=2, k=1 full replication)
 
 Step 1: INITIATE REMOVAL (on A)
   - A's user requests "Remove device B"
@@ -255,51 +255,38 @@ Result: A=FULL_COPY, B=FULL_COPY (both remain intact)
 
 ### 1.4 K Value Rules
 
-**Rules for k (threshold):**
-- `k` NEVER INCREASES after vault creation
-- `k` may DECREASE when devices are removed
-- `k` stays SAME when devices are added (if n >= 3)
+**Current policy:**
 
-**Current policy (k=2 fixed, temporary):**
-
-| n | k (current) | Notes |
+| n | k | Notes |
 |---|---|---|
 | 1 | 1 | Trivial — full copy |
-| 2 | 2 | Both shares required (SSS) |
+| 2 | 1 | Full replication — either device has the complete secret |
 | 3 | 2 | Any 2 of 3 can recover |
 | 4 | 2 | Any 2 of 4 can recover |
 | 5 | 2 | Any 2 of 5 can recover |
 
-**Target policy (K = N − 1, pending resharing hardening):**
-
-| n | k (target) | Notes |
-|---|---|---|
-| 1 | 1 | Trivial — full copy |
-| 2 | 1 | Either device alone can recover |
-| 3 | 2 | Any 2 of 3 can recover |
-| 4 | 3 | Any 3 of 4 can recover |
-| 5 | 4 | Any 4 of 5 can recover |
+For 3+ devices the threshold remains `k=2`; it is not `k=n-1`.
 
 **Implementation:** `SharedSecretConfig::calculate()` in
 `meta-secret/core/src/secret/data_block/common.rs`
 
-**Removal examples (current k=2 policy):**
+**Removal examples:**
 ```
 n=4 (k=2) → remove 1 → n=3 (k=2) ✅ k stays same
-n=3 (k=2) → remove 1 → n=2 (k=2) ✅ k stays same (SSS)
-n=2 (k=2) → remove 1 → n=1 (cannot remove — blocked by UI)
+n=3 (k=2) → remove 1 → n=2 (k=1) ✅ reshare to full replication
+n=2 (k=1) → remove 1 → n=1 (cannot remove — blocked by UI)
 ```
 
 ### 1.5 Transitions & State Changes
 
-**State Transitions (all modes use SSS)**
+**State Transitions**
 
 | From | To | Trigger | Shares Change |
 |---|---|---|---|
-| 1 device (k=1) | 2 devices (k=2) | Device join | 1 COPY → 2 SSS shares |
-| 2 devices (k=2) | 3 devices (k=2) | Device join | 2 SHARES → 3 SHARES (reshare) |
-| 3 devices (k=2) | 2 devices (k=2) | Device removal | 3 SHARES → 2 SHARES (reshare) |
-| 2 devices (k=2) | 1 device | Cannot happen | (blocked by UI) |
+| 1 device (k=1) | 2 devices (k=1) | Device join | 1 COPY → 2 full copies |
+| 2 devices (k=1) | 3 devices (k=2) | Device join | 2 full copies → 3 SSS shares (reshare) |
+| 3 devices (k=2) | 2 devices (k=1) | Device removal | 3 SSS shares → 2 full copies (reshare) |
+| 2 devices (k=1) | 1 device | Cannot happen | (blocked by UI) |
 
 ---
 

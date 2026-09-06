@@ -120,6 +120,22 @@ const closeRecoveryDialog = () => {
   resetRecoveryDialog();
 };
 
+// A different receiver can approve the request. Once the sender has recovered
+// the secret, this receiver's client status becomes Done and it no longer has a
+// pending incoming claim. The dialog is local UI state, so it must be closed
+// explicitly when the refreshed application state says no action is required.
+watch(
+  () => appState.currState,
+  () => {
+    const secret = recoveryDialogSecret.value;
+    if (!recoveryDialogOpen.value || !secret || recoveryActionInProgress.value) return;
+    if (!getPendingIncomingRecoveryClaim(secret)) {
+      console.log('[Recovery] closing incoming dialog: request is no longer pending');
+      resetRecoveryDialog();
+    }
+  },
+);
+
 const submitRecoveryResponse = async (action: RecoveryAction) => {
   console.log('[Recovery] submitRecoveryResponse called', { action, claim: recoveryDialogClaim.value, inProgress: recoveryActionInProgress.value });
   if (recoveryActionInProgress.value || !recoveryDialogClaim.value) {

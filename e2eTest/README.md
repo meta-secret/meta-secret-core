@@ -2,14 +2,18 @@
 
 The tests in this directory orchestrate the local server, visible Web browser, and platform simulators.
 
-## Test #1
+## Commands
 
 Install dependencies and run:
 
 ```bash
 npm install
 npm run test-1
+npm run test-2
+npm run test-3
 ```
+
+## Test #1 — Web → iOS → Android
 
 The orchestrator builds a fresh local server image, starts it on port `3000`, starts the Web client on port `5173`, and opens a visible Chromium window. It creates the Vault and Secret, verifies Web `Show`, then runs the iOS and Android join flows. Web approves both requests.
 
@@ -20,3 +24,11 @@ The iOS simulator name is configured in `scenarios/test-1.json`. The test reuses
 Android is configured there too (`Pixel_4a` by default). The orchestrator reuses the existing AVD and starts it only when it is not already running. It never clones or wipes an AVD; before each Android run it uninstalls `metasecret.project.com`.
 
 The browser stays open after success so the flow can be observed. Press `Ctrl+C` to stop the test and remove its server container.
+
+## Test #2 — iOS → Android → Web
+
+iOS creates the vault and secret, approves Android and Web join requests, then Web runs the same recovery lifecycle as Test #1.
+
+## Test #3 — Android → Web → iOS
+
+Android creates the vault and secret, approves Web and iOS join requests, then Web runs the same recovery lifecycle as Test #1.

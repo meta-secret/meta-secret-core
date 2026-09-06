@@ -212,7 +212,7 @@ user's decision. It may technically choose one claim from the set already marked
 
 ### When Communicating:
 - **Code reviews:** "This claim needs k approvals" not "This request needs majority"
-- **Architecture docs:** "SSS with k=n-1 threshold" not "Secret split into n-1 shares"
+- **Architecture docs:** "full replication for 2 devices; SSS with k=2 for 3+ devices" not "Secret split into n-1 shares"
 - **Error messages:** "Device limit exceeded" not "Too many machines"
 
 ### Exceptions:

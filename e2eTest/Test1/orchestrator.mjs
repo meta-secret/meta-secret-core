@@ -8,7 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
 const root = dirname(fileURLToPath(import.meta.url));
-const scenarioPath = resolve(root, process.argv[2] ?? 'scenarios/test-1.json');
+const e2eRoot = resolve(root, '..');
+const scenarioPath = resolve(root, process.argv[2] ?? 'scenario.json');
 const scenario = JSON.parse(readFileSync(scenarioPath, 'utf8'));
 const recoveryCycles = scenario.recovery.groups.flatMap((group) =>
   Array.from({ length: group.count }, (_, offset) => ({
@@ -19,12 +20,12 @@ const recoveryCycles = scenario.recovery.groups.flatMap((group) =>
 const recoveryShowTimeoutMs = scenario.recovery.showTimeoutMs ?? 45_000;
 const iosRecoveryApprovalCycles = recoveryCycles.filter((cycle) => cycle.approver === 'ios').map((cycle) => cycle.number);
 const androidRecoveryApprovalCycles = recoveryCycles.filter((cycle) => cycle.approver === 'android').map((cycle) => cycle.number);
-const projectRoot = resolve(root, '..');
+const projectRoot = resolve(e2eRoot, '..');
 const coreRoot = projectRoot;
-const webDirectory = resolve(root, scenario.web.directory);
-const composeRoot = resolve(root, scenario.ios.composeRoot);
+const webDirectory = resolve(e2eRoot, scenario.web.directory);
+const composeRoot = resolve(e2eRoot, scenario.ios.composeRoot);
 const iosProjectPath = resolve(composeRoot, 'iosApp/iosApp.xcodeproj');
-const iosDerivedDataPath = resolve(root, '.derivedData/iosApp');
+const iosDerivedDataPath = resolve(e2eRoot, '.derivedData/iosApp');
 const androidEmulatorPath = '/Users/dmitrykuklin/Library/Android/sdk/emulator/emulator';
 const serverContainer = scenario.server.container;
 const serverImage = scenario.server.image;
