@@ -319,6 +319,7 @@ async function startAndroidJoinTest(serial) {
   const test = runAndWait(
     './gradlew',
     [
+      ':composeApp:installDebug',
       ':composeApp:connectedDebugAndroidTest',
       '-Pandroid.testInstrumentationRunnerArguments.class=metasecret.project.com.CaseOneJoinFromAndroidTest',
       `-Pandroid.testInstrumentationRunnerArguments.vaultName=${scenario.vault.name}`,
@@ -388,11 +389,10 @@ async function closeWebSecret(page) {
 
 async function runRecoveryCycles(page, iosTest, androidTest) {
   await page.getByRole('link', { name: 'Secrets', exact: true }).click();
-  const recoverySecretRow = page.getByRole('listitem').filter({ hasText: scenario.secret.name });
 
   for (const cycle of recoveryCycles) {
     console.log(`15.${cycle.number} Web requesting secret recovery (${cycle.approver} approves)`);
-    await recoverySecretRow.getByRole('button', { name: 'Recover', exact: true }).click();
+    await page.getByTestId(`secret-primary-action-${scenario.secret.name}`).click();
     await Promise.all([
       iosTest.waitForMarker(`E2E: IOS_RECOVERY_REQUEST_ALERT_${cycle.number}`),
       androidTest.waitForMarker(`E2E: ANDROID_RECOVERY_REQUEST_ALERT_${cycle.number}`),
@@ -461,8 +461,7 @@ async function main() {
   await page.getByRole('button', { name: 'Add Secret', exact: true }).click();
 
   console.log('7. Showing Secret');
-  const secretRow = page.getByRole('listitem').filter({ hasText: scenario.secret.name });
-  await secretRow.getByRole('button', { name: 'Show', exact: true }).click();
+  await page.getByTestId(`secret-primary-action-${scenario.secret.name}`).click();
   await page.getByText(scenario.secret.value, { exact: true }).waitFor();
   console.log('✅ Test #1 Web part passed');
   console.log('7a. Closing Web secret');
@@ -482,8 +481,7 @@ async function main() {
   console.log('11. Web showing Secret after iOS joined');
   await page.getByRole('link', { name: 'Secrets', exact: true }).click();
   await page.getByRole('button', { name: '+ Add Secret' }).waitFor();
-  const updatedSecretRow = page.getByRole('listitem').filter({ hasText: scenario.secret.name });
-  await updatedSecretRow.getByRole('button', { name: 'Show', exact: true }).click();
+  await page.getByTestId(`secret-primary-action-${scenario.secret.name}`).click();
   await page.getByText(scenario.secret.value, { exact: true }).waitFor({ timeout: 120_000 });
   console.log('✅ Web show secret after iOS join passed');
   console.log('12. Closing Web secret');

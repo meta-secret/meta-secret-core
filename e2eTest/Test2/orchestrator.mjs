@@ -328,6 +328,7 @@ async function startAndroidJoinTest(serial) {
   const test = runAndWait(
     './gradlew',
     [
+      ':composeApp:installDebug',
       ':composeApp:connectedDebugAndroidTest',
       '-Pandroid.testInstrumentationRunnerArguments.class=metasecret.project.com.CaseOneJoinFromAndroidTest',
       `-Pandroid.testInstrumentationRunnerArguments.vaultName=${scenario.vault.name}`,
@@ -403,13 +404,10 @@ async function runRecoveryCyclesFromIos(page, iosTest, androidTest) {
     approvalCoordinator.allow('ios-sender', cycle.number);
     await iosTest.waitForMarker(`E2E: IOS_RECOVERY_REQUEST_SENT_${cycle.number}`);
     // An incoming recovery request changes this <li>'s ARIA role from listitem
-    // to button. Use the DOM element rather than an accessibility role so the
-    // locator remains stable across that state transition.
-    const recoverySecretRow = page.locator('li').filter({ hasText: scenario.secret.name });
-    const recoveryRequestIndicator = recoverySecretRow.getByRole('button', { name: /recover secret/i });
-    await recoveryRequestIndicator.waitFor({ state: 'visible', timeout: 120_000 });
-    console.log(`Web received recovery ${cycle.number}; opening the secret row`);
-    await recoverySecretRow.click();
+    const openRequest = page.getByTestId(`open-recovery-request-${scenario.secret.name}`);
+    await openRequest.waitFor({ state: 'visible', timeout: 120_000 });
+    console.log(`Web received recovery ${cycle.number}; opening its recovery request`);
+    await openRequest.click();
 
     await androidTest.waitForMarker(`E2E: ANDROID_RECOVERY_REQUEST_ALERT_${cycle.number}`);
     if (cycle.approver === 'web') {
@@ -423,7 +421,7 @@ async function runRecoveryCyclesFromIos(page, iosTest, androidTest) {
     await iosTest.waitForMarker(`E2E: IOS_RECOVERY_SECRET_VISIBLE_${cycle.number}`, recoveryShowTimeoutMs);
     console.log(`✅ Recovery ${cycle.number}/${recoveryCycles.length}: iOS show secret passed`);
     await iosTest.waitForMarker(`E2E: IOS_RECOVERY_CLOSED_${cycle.number}`);
-    await recoveryRequestIndicator.waitFor({ state: 'hidden', timeout: 120_000 }).catch(() => {});
+    await openRequest.waitFor({ state: 'hidden', timeout: 120_000 }).catch(() => {});
 
     if (cycle.number < recoveryCycles.length) {
       await wait(scenario.recovery.pauseMs);

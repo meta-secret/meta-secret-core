@@ -341,6 +341,33 @@ impl SsLogData {
         }
     }
 
+    /// Finds the accepted recovery claim belonging to a particular sender.
+    /// Multiple devices may recover the same secret concurrently, so the
+    /// secret name alone is not a sufficient key.
+    pub fn find_unique_accepted_recovery_claim_id_for_sender(
+        &self,
+        sender: &DeviceId,
+        pass_id: &MetaPasswordId,
+    ) -> anyhow::Result<Option<ClaimId>> {
+        let accepted: Vec<_> = self
+            .claims
+            .values()
+            .filter(|claim| {
+                claim.distribution_type == SecretDistributionType::Recover
+                    && &claim.sender == sender
+                    && claim.dist_claim_id.pass_id == *pass_id
+                    && claim.client_status == Some(RecoveryClientStatus::Accepted)
+            })
+            .map(|claim| claim.id.clone())
+            .collect();
+
+        match accepted.as_slice() {
+            [] => Ok(None),
+            [claim_id] => Ok(Some(claim_id.clone())),
+            _ => bail!("ambiguous accepted recovery claims for sender and pass: {}", pass_id.name),
+        }
+    }
+
     pub fn find_unique_active_recovery_claim_id(
         &self,
         sender: &DeviceId,
@@ -1385,6 +1412,24 @@ mod test {
 
         let found = log.find_recovery_claim_id(&pass_id);
         assert!(found.is_some(), "Should find the Accepted (Sent) claim");
+    }
+
+    #[test]
+    fn test_find_active_recovery_claim_for_sender_returns_pending_claim() {
+        let registry = FixtureRegistry::empty();
+        let sender = registry.state.device_creds.client.device.device_id;
+        let receiver = registry.state.device_creds.client_b.device.device_id;
+        let pass_id = make_pass_id("secret1");
+
+        let (mut claim, claim_id) = make_recover_claim(sender.clone(), vec![receiver]);
+        claim.dist_claim_id.pass_id = pass_id.clone();
+        let log = SsLogData::new(claim);
+
+        assert_eq!(
+            log.find_unique_active_recovery_claim_id(&sender, &pass_id).unwrap(),
+            Some(claim_id),
+            "a pending sender claim must be reused instead of creating a second recovery request"
+        );
     }
 
     #[test]

@@ -1,0 +1,38 @@
+{
+  "runId": "block1",
+  "name": "Test #4 — concurrent recovery, block 1",
+  "server": {
+    "url": "http://127.0.0.1:3000",
+    "image": "ghcr.io/meta-secret/meta-secret-core/meta-secret-server:latest",
+    "container": "meta-secret-e2e-server",
+    "port": 3000
+  },
+  "web": {
+    "url": "http://localhost:5173",
+    "directory": "../meta-secret/web-cli/ui"
+  },
+  "ios": {
+    "composeRoot": "../../meta-secret-compose",
+    "simulatorName": "iPhone 17",
+    "bundleId": "org.metasecret.vault",
+    "testMethod": "testJoinAndroidInitiatedVaultAndHandleConcurrentRecoveryBlock1"
+  },
+  "android": {
+    "avdName": "Pixel_4a",
+    "bundleId": "metasecret.project.com"
+  },
+  "recovery": {
+    "showTimeoutMs": 45000,
+    "cyclePlan": [
+      { "block": 1, "count": 2, "senders": ["android", "web"], "firstApprover": "ios", "secondApprover": "ios" },
+      { "block": 1, "count": 4, "senders": ["android", "web"], "firstApprover": ["web", "android"], "secondApprover": ["android", "web"] }
+    ]
+  },
+  "vault": {
+    "name": "test@test.ru"
+  },
+  "secret": {
+    "name": "test-secret",
+    "value": "test-secret-value"
+  }
+}

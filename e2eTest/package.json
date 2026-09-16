@@ -5,7 +5,12 @@
   "scripts": {
     "test-1": "node Test1/orchestrator.mjs",
     "test-2": "node Test2/orchestrator.mjs",
-    "test-3": "node Test3/orchestrator.mjs"
+    "test-3": "node Test3/orchestrator.mjs",
+    "test-4": "node Test4/orchestrator.mjs",
+    "test-4:block1": "node Test4/orchestrator.mjs scenario-block1.json --exit-on-success",
+    "test-4:block2": "node Test4/orchestrator.mjs scenario-block2.json --exit-on-success",
+    "test-4:block3": "node Test4/orchestrator.mjs scenario-block3.json --exit-on-success",
+    "test-4:blocks": "npm run test-4:block1 && npm run test-4:block2 && npm run test-4:block3"
   },
   "dependencies": {
     "playwright": "^1.61.0"

@@ -348,7 +348,17 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
 
                     let claim_id = member
                         .ss_claims
-                        .find_unique_accepted_recovery_claim_id(&pass_id)?;
+                        .find_unique_accepted_recovery_claim_id_for_sender(
+                            user_creds.device_id(),
+                            &pass_id,
+                        )?;
+
+                    info!(
+                        pass_id = %pass_id.name,
+                        sender = ?user_creds.device_id(),
+                        claim_id = ?claim_id,
+                        "mobile selected recovery claim for show_recovered"
+                    );
 
                     match claim_id {
                         None => {
@@ -450,9 +460,10 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
         let ApplicationState::Vault(VaultFullInfo::Member(member)) = state else {
             return None;
         };
+        let user_creds = self.meta_client_service.find_user_creds().await.ok()?;
         member
             .ss_claims
-            .find_unique_accepted_recovery_claim_id(pass_id)
+            .find_unique_active_recovery_claim_id(user_creds.device_id(), pass_id)
             .ok()
             .flatten()
     }
@@ -469,9 +480,10 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
         let ApplicationState::Vault(VaultFullInfo::Member(member)) = state else {
             return None;
         };
+        let user_creds = self.meta_client_service.find_user_creds().await.ok()?;
         let claim_id = member
             .ss_claims
-            .find_unique_accepted_recovery_claim_id(pass_id)
+            .find_unique_active_recovery_claim_id(user_creds.device_id(), pass_id)
             .ok()
             .flatten()?;
         member.ss_claims.claims.get(&claim_id).cloned()

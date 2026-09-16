@@ -6,7 +6,7 @@ use wasm_bindgen_futures::spawn_local;
 use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::node::api::{ReadSyncRequest, SsRecoveryCompletion, SyncRequest};
 use meta_secret_core::node::app::app_manager_shared::{
-    build_client_components, find_recovery_claim_id_from_state, recover_plain_text,
+    build_client_components, recover_plain_text,
     resolve_signup_vault_name,
 };
 use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
@@ -195,7 +195,16 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
 
                     let claim_id = member
                         .ss_claims
-                        .find_unique_accepted_recovery_claim_id(&pass_id)?;
+                        .find_unique_accepted_recovery_claim_id_for_sender(
+                            user_creds.device_id(),
+                            &pass_id,
+                        )?;
+                    info!(
+                        pass_id = %pass_id.name,
+                        sender = ?user_creds.device_id(),
+                        claim_id = ?claim_id,
+                        "web selected recovery claim for show_recovered"
+                    );
                     match claim_id {
                         None => bail!("Claim id not found"),
                         Some(claim_id) => {
@@ -268,7 +277,15 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
 
     pub async fn find_claim_by_pass_id(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
         let state = self.get_state().await;
-        find_recovery_claim_id_from_state(&state, pass_id)
+        let user_creds = self.meta_client_service.find_user_creds().await.ok()?;
+        let ApplicationState::Vault(VaultFullInfo::Member(member)) = state else {
+            return None;
+        };
+        member
+            .ss_claims
+            .find_unique_active_recovery_claim_id(user_creds.device_id(), pass_id)
+            .ok()
+            .flatten()
     }
 
     #[instrument(name = "MetaClientService", skip_all)]
