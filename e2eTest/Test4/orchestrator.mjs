@@ -14,45 +14,114 @@ const scenarioArgument = process.argv.slice(2).find((argument) => !argument.star
 const exitOnSuccess = process.argv.includes('--exit-on-success') || process.env.E2E_EXIT_ON_SUCCESS === '1';
 const scenarioPath = resolve(root, scenarioArgument ?? 'scenario.json');
 const scenario = JSON.parse(readFileSync(scenarioPath, 'utf8'));
-const diagnosticFileName = scenario.runId ? `test-4-${scenario.runId}.log` : 'test-4.log';
+const testNumber = scenario.testNumber ?? 4;
+const secretConfigs = scenario.secrets ?? { default: scenario.secret };
+const defaultSecretKey = Object.keys(secretConfigs)[0];
+const defaultSecret = secretConfigs[defaultSecretKey];
+const diagnosticFileName = scenario.runId
+  ? `test-${testNumber}-${scenario.runId}.log`
+  : `test-${testNumber}.log`;
 const diagnosticLogPath = resolve(artifactsDirectory, diagnosticFileName);
-const recoveryCycles = (scenario.recovery.cyclePlan
+
+function secretConfigFor(keyOrName) {
+  if (keyOrName && secretConfigs[keyOrName]) return secretConfigs[keyOrName];
+  return Object.values(secretConfigs).find((config) => config?.name === keyOrName) ?? defaultSecret;
+}
+
+function secretNameFor(keyOrName) {
+  const config = secretConfigFor(keyOrName);
+  if (!config?.name) throw new Error(`Secret configuration is missing a name for ${keyOrName}`);
+  return config.name;
+}
+
+function secretValueForName(secretName) {
+  return Object.values(secretConfigs).find((config) => config?.name === secretName)?.value
+    ?? defaultSecret?.value;
+}
+
+function normalizeSender(sender) {
+  if (typeof sender === 'string') {
+    return { platform: sender, secret: defaultSecret?.name };
+  }
+  return {
+    platform: sender.platform,
+    secret: secretNameFor(sender.secret ?? sender.secretKey),
+  };
+}
+
+function normalizeApproval(approval, fallbackSecret = defaultSecret?.name) {
+  if (typeof approval === 'string') {
+    return { platform: approval, secret: fallbackSecret };
+  }
+  return {
+    platform: approval.platform ?? approval.approver,
+    secret: secretNameFor(approval.secret ?? approval.secretKey ?? fallbackSecret),
+  };
+}
+
+const rawRecoveryCycles = scenario.recovery.cyclePlan
   ? scenario.recovery.cyclePlan.flatMap((group) => Array.from({ length: group.count }, (_, offset) => {
-      const resolve = (value) => Array.isArray(value) ? value[offset % value.length] : value;
+      const resolveValue = (value) => Array.isArray(value) ? value[offset % value.length] : value;
+      const senderEntries = group.senders.map(normalizeSender);
+      const defaultApprovalSecret = senderEntries[0]?.secret ?? defaultSecret?.name;
+      const approvals = group.approvals
+        ? group.approvals.map((approval) => normalizeApproval(approval, defaultApprovalSecret))
+        : [
+            normalizeApproval(resolveValue(group.firstApprover), defaultApprovalSecret),
+            normalizeApproval(resolveValue(group.secondApprover), defaultApprovalSecret),
+          ];
       return {
         block: group.block,
-        senders: group.senders,
-        firstApprover: resolve(group.firstApprover),
-        secondApprover: resolve(group.secondApprover),
+        senders: senderEntries.map((sender) => sender.platform),
+        senderSecrets: Object.fromEntries(senderEntries.map((sender) => [sender.platform, sender.secret])),
+        approvals,
       };
     }))
   : scenario.recovery.groups.flatMap((group) => {
-  if (group.senders) {
-    return Array.from({ length: group.count }, () => ({
-      group: group.name,
-      senders: group.senders,
-      approvals: group.approvals,
-      followUpApprovals: group.followUpApprovals ?? [],
-    }));
-  }
-  const alternatingApprovers = group.approver.startsWith('alternate-')
-    ? group.approver.split('-').slice(1)
-    : null;
-  return Array.from({ length: group.count }, (_, offset) => ({
-    group: group.approver,
-    approver: alternatingApprovers
-      ? alternatingApprovers[offset % alternatingApprovers.length]
-      : group.approver,
-  }));
-})).map((cycle, index) => ({ ...cycle, number: index + 1 }));
+      if (group.senders) {
+        return Array.from({ length: group.count }, () => ({
+          group: group.name,
+          senders: group.senders,
+          approvals: group.approvals,
+          followUpApprovals: group.followUpApprovals ?? [],
+        }));
+      }
+      const alternatingApprovers = group.approver.startsWith('alternate-')
+        ? group.approver.split('-').slice(1)
+        : null;
+      return Array.from({ length: group.count }, (_, offset) => ({
+        group: group.approver,
+        approver: alternatingApprovers
+          ? alternatingApprovers[offset % alternatingApprovers.length]
+          : group.approver,
+      }));
+    });
+
+const recoveryCycles = rawRecoveryCycles.map((cycle, index) => {
+  const approvals = cycle.approvals?.map((approval) => normalizeApproval(approval))
+    ?? [normalizeApproval(cycle.approver), ...((cycle.followUpApprovals ?? []).map((approval) => normalizeApproval(approval)))];
+  const senderSecrets = cycle.senderSecrets ?? Object.fromEntries(
+    (cycle.senders ?? []).map((sender) => [sender, defaultSecret?.name]),
+  );
+  return {
+    ...cycle,
+    number: index + 1,
+    senders: cycle.senders ?? Object.keys(senderSecrets),
+    senderSecrets,
+    approvals,
+    firstApprover: approvals[0]?.platform,
+    secondApprover: approvals[1]?.platform,
+  };
+});
 const recoveryShowTimeoutMs = scenario.recovery.showTimeoutMs ?? 45_000;
 const cyclePlanJson = JSON.stringify(recoveryCycles);
+const secretConfigJson = JSON.stringify(secretConfigs);
 const iosSenderCycles = recoveryCycles
   .filter((cycle) => cycle.senders.includes('ios'))
   .map((cycle) => cycle.number)
   .join(',');
 const iosApprovalSteps = recoveryCycles
-  .flatMap((cycle) => [[1, cycle.firstApprover], [2, cycle.secondApprover]]
+  .flatMap((cycle) => cycle.approvals.map((approval, index) => [index + 1, approval.platform])
     .filter(([, approver]) => approver === 'ios')
     .map(([step]) => `${cycle.number}:${step}`))
   .join(',');
@@ -126,6 +195,15 @@ function startApprovalCoordinator(port = 5180) {
   const allowedApprovals = new Set();
   const server = createServer((request, response) => {
     const url = new URL(request.url, `http://${request.headers.host}`);
+    if (url.pathname === '/scenario') {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({
+        vaultName: scenario.vault.name,
+        secretConfig: secretConfigs,
+        recoveryPlan: recoveryCycles,
+      }));
+      return;
+    }
     if (url.pathname !== '/approval') {
       response.writeHead(404).end();
       return;
@@ -365,14 +443,16 @@ function startIosJoinTest(simulatorUdid) {
       `id=${simulatorUdid}`,
       '-derivedDataPath',
       iosDerivedDataPath,
-      `-only-testing:iosAppUITests/CaseFourIosConcurrentRecoveryUITest/${iosTestMethod}`,
+      `-only-testing:iosAppUITests/${scenario.ios.testClass ?? 'CaseFourIosConcurrentRecoveryUITest'}/${iosTestMethod}`,
     ],
     {
       cwd: resolve(composeRoot, 'iosApp'),
       env: {
         E2E_VAULT_NAME: scenario.vault.name,
-        E2E_SECRET_NAME: scenario.secret.name,
-        E2E_SECRET_VALUE: scenario.secret.value,
+        E2E_SECRET_NAME: defaultSecret?.name ?? '',
+        E2E_SECRET_VALUE: defaultSecret?.value ?? '',
+        E2E_SECRET_CONFIG: secretConfigJson,
+        E2E_RECOVERY_PLAN: cyclePlanJson,
         E2E_RECOVERY_CYCLES: String(recoveryCycles.length),
         // Keep iOS launch variables compact. XCTest's launch environment
         // truncates the full 18-cycle JSON payload before the test starts.
@@ -408,6 +488,13 @@ async function prepareAndroidEmulator() {
   // immediately before sending unlock input, otherwise adb may report the
   // device as not found/offline even though Android already reports booted.
   await waitForOnlineAndroidDevice(serial);
+  // The page-size-16kb debug AVD rejects shell input injection while adbd is
+  // running as the shell user. Rooting this debuggable emulator is reversible
+  // for the run and lets the semantic unlock below deliver the configured PIN.
+  await runAdbWithRetry(['-s', serial, 'root']).catch((error) => {
+    console.warn(`ADB root unavailable; continuing with existing adbd user: ${error.message}`);
+  });
+  await waitForOnlineAndroidDevice(serial);
   await unlockAndroidDevice(serial);
   await waitForAndroidStorage(serial);
   await runAndWait('adb', ['-s', serial, 'uninstall', scenario.android.bundleId], { stdio: 'ignore' }).catch(() => {});
@@ -417,10 +504,69 @@ async function prepareAndroidEmulator() {
 
 async function unlockAndroidDevice(serial) {
   console.log(`13a. Unlocking Android emulator: ${serial}`);
+  if (await androidUserIsUnlocked(serial)) return;
   await runAdbWithRetry(['-s', serial, 'shell', 'input', 'keyevent', 'KEYCODE_WAKEUP']);
-  await runAdbWithRetry(['-s', serial, 'shell', 'input', 'swipe', '540', '1800', '540', '500', '300']);
-  await runAdbWithRetry(['-s', serial, 'shell', 'input', 'text', '1111']);
+  await waitForAndroidPinPrompt(serial);
+  // The AVD is configured with PIN 1111. Key events are used instead of
+  // `input text`: secure PIN fields reject text injection on Android 36.
+  for (let digit = 0; digit < 4; digit += 1) {
+    await runAdbWithRetry(['-s', serial, 'shell', 'input', 'keyevent', 'KEYCODE_1']);
+  }
   await runAdbWithRetry(['-s', serial, 'shell', 'input', 'keyevent', 'KEYCODE_ENTER']);
+  await waitForAndroidUnlocked(serial);
+}
+
+async function androidUserIsUnlocked(serial) {
+  try {
+    const { stdout } = await runAndCapture('adb', ['-s', serial, 'shell', 'dumpsys', 'trust']);
+    return /deviceLocked=0/.test(stdout);
+  } catch {
+    return false;
+  }
+}
+
+async function waitForAndroidPinPrompt(serial, timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs;
+  const dumpPath = '/data/local/tmp/metasecret-e2e-window.xml';
+  let lastState = 'PIN prompt not visible';
+  while (Date.now() < deadline) {
+    if (await androidUserIsUnlocked(serial)) return;
+    try {
+      await runAdbWithRetry([
+        '-s', serial, 'shell', 'uiautomator', 'dump', dumpPath,
+      ], { attempts: 2, delayMs: 200 });
+      await runAdbWithRetry([
+        '-s', serial, 'shell', 'grep', '-q', 'keyguard_pin_view', dumpPath,
+      ], { attempts: 2, delayMs: 200 });
+      return;
+    } catch (error) {
+      lastState = error.message;
+      // A cold boot may still be showing the lock-screen artwork. Repeating
+      // the gesture until the PIN view exists is state-driven, not a fixed
+      // sleep, and also covers a display that woke between adb reconnects.
+      await runAdbWithRetry([
+        '-s', serial, 'shell', 'input', 'swipe', '540', '2200', '540', '300', '500',
+      ], { attempts: 2, delayMs: 200 }).catch(() => {});
+      await wait(250);
+    }
+  }
+  throw new Error(`Android PIN prompt did not appear: ${lastState}`);
+}
+
+async function waitForAndroidUnlocked(serial, timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastState = 'deviceLocked=1';
+  while (Date.now() < deadline) {
+    if (await androidUserIsUnlocked(serial)) return;
+    try {
+      const { stdout } = await runAndCapture('adb', ['-s', serial, 'shell', 'dumpsys', 'trust']);
+      lastState = stdout.match(/deviceLocked=[^, ]+/)?.[0] ?? lastState;
+    } catch (error) {
+      lastState = error.message;
+    }
+    await wait(250);
+  }
+  throw new Error(`Android emulator remained locked after PIN entry: ${lastState}`);
 }
 
 async function waitForOnlineAndroidDevice(expectedSerial = null, timeoutMs = 120_000) {
@@ -544,9 +690,10 @@ async function startAndroidJoinTest(serial) {
     [
       ':composeApp:installDebug',
       ':composeApp:connectedDebugAndroidTest',
-      '-Pandroid.testInstrumentationRunnerArguments.class=metasecret.project.com.CaseFourAndroidConcurrentRecoveryTest',
+      `-Pandroid.testInstrumentationRunnerArguments.class=${scenario.android.testClass ?? 'metasecret.project.com.CaseFourAndroidConcurrentRecoveryTest'}`,
       `-Pandroid.testInstrumentationRunnerArguments.vaultName=${scenario.vault.name}`,
-      `-Pandroid.testInstrumentationRunnerArguments.secretName=${scenario.secret.name}`,
+      `-Pandroid.testInstrumentationRunnerArguments.secretName=${defaultSecret?.name ?? ''}`,
+      `-Pandroid.testInstrumentationRunnerArguments.secretConfig=${secretConfigJson}`,
       `-Pandroid.testInstrumentationRunnerArguments.recoveryCycles=${recoveryCycles.length}`,
       `-Pandroid.testInstrumentationRunnerArguments.cyclePlan=${cyclePlanJson}`,
       '-Pandroid.testInstrumentationRunnerArguments.approvalCoordinatorUrl=http://10.0.2.2:5180',
@@ -606,60 +753,82 @@ async function approveJoinRequestOnWeb(page, deviceName) {
   await page.getByTestId('pending-device-row').waitFor({ state: 'detached', timeout: 120_000 }).catch(() => {});
 }
 
-async function closeWebSecret(page) {
+async function closeWebSecret(page, secretValue = defaultSecret?.value) {
   const closeButton = page.getByRole('button', { name: /close/i }).first();
   if (await closeButton.isVisible().catch(() => false)) {
     await closeButton.click();
-    await page.getByText(scenario.secret.value, { exact: true }).waitFor({ state: 'hidden' }).catch(() => {});
+    if (secretValue) {
+      await page.getByText(secretValue, { exact: true }).waitFor({ state: 'hidden' }).catch(() => {});
+    }
   }
 }
 
-async function waitForWebSecretValue(page) {
-  await page.getByText(scenario.secret.value, { exact: true })
+async function waitForWebSecretValue(page, secretValue = defaultSecret?.value) {
+  await page.getByText(secretValue, { exact: true })
     .waitFor({ state: 'visible', timeout: recoveryShowTimeoutMs });
 }
 
-async function waitForWebRecoveryBadgeCount(page, count) {
+async function waitForWebRecoveryBadgeCount(page, count, secretName) {
   const badge = page.getByTestId('recovery-request-badge');
-  await badge.filter({ hasText: String(count) }).waitFor({ state: 'visible', timeout: 120_000 });
-  console.log(`[UI][Web] recovery badge count=${count}`);
+  // The Web UI keeps a shared badge test id, scoped to the <li> for each
+  // secret. Select that row through its secret-specific action instead of
+  // assuming a per-secret badge id (the Compose UI has the latter).
+  const scopedBadge = secretName
+    ? page
+      .locator('li')
+      .filter({ has: page.getByTestId(`secret-primary-action-${secretName}`) })
+      .getByTestId('recovery-request-badge')
+    : badge;
+  await scopedBadge.filter({ hasText: String(count) }).waitFor({ state: 'visible', timeout: 120_000 });
+  console.log(`[UI][Web] recovery badge secret=${secretName ?? '<default>'} count=${count}`);
 }
 
-async function waitForWebIncomingRecoveryCount(page, count) {
-  const badge = page.getByTestId('recovery-request-badge');
+async function waitForWebIncomingRecoveryCount(page, count, secretName) {
+  const badge = secretName
+    ? page
+      .locator('li')
+      .filter({ has: page.getByTestId(`secret-primary-action-${secretName}`) })
+      .getByTestId('recovery-request-badge')
+    : page.getByTestId('recovery-request-badge');
   try {
     await badge.filter({ hasText: String(count) }).waitFor({ state: 'attached', timeout: 120_000 });
   } catch (error) {
     const badgeTexts = await badge.allTextContents().catch(() => []);
     const requestText = await page
-      .getByTestId(`open-recovery-request-${scenario.secret.name}`)
+      .getByTestId(`open-recovery-request-${secretName ?? defaultSecret?.name}`)
       .textContent()
       .catch(() => null);
     writeDiagnostic(
-      `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: expected incoming badge ${count}; `
+      `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: expected incoming badge ${count} `
+      + `for secret=${secretName ?? '<default>'}; `
       + `visibleBadges=${JSON.stringify(badgeTexts).slice(0, 1_000)} `
       + `openRequestText=${JSON.stringify(requestText).slice(0, 500)}`,
     );
     throw error;
   }
-  console.log(`[UI][Web] incoming recovery claim count=${count}`);
+  console.log(`[UI][Web] incoming recovery secret=${secretName ?? '<default>'} count=${count}`);
 }
 
-async function startWebRecovery(page) {
-  console.log(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: starting recovery request`);
+async function startWebRecovery(page, secretName = defaultSecret?.name) {
+  console.log(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: starting recovery request for ${secretName}`);
   await page.getByRole('link', { name: 'Secrets', exact: true }).click();
-  await page.getByTestId(`secret-primary-action-${scenario.secret.name}`).click();
+  await page.getByTestId(`secret-primary-action-${secretName}`).click();
   await page.locator('[data-slot="dialog-content"]').waitFor({ state: 'visible', timeout: 30_000 });
-  console.log(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: recovery waiting dialog opened`);
+  console.log(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: recovery waiting dialog opened for ${secretName}`);
 }
 
-async function dismissWebRecoveryWaitingUi(page, { senderClaimMayAlreadyBeAccepted = false } = {}) {
+async function dismissWebRecoveryWaitingUi(
+  page,
+  secretName = defaultSecret?.name,
+  { senderClaimMayAlreadyBeAccepted = false } = {},
+) {
+  const secretValue = secretValueForName(secretName);
   if (senderClaimMayAlreadyBeAccepted) {
     console.log(
       `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: waiting for sender recovery `
       + 'to reveal after the first approval',
     );
-    await page.getByText(scenario.secret.value, { exact: true }).waitFor({
+    await page.getByText(secretValue, { exact: true }).waitFor({
       state: 'visible',
       timeout: recoveryShowTimeoutMs,
     });
@@ -667,7 +836,7 @@ async function dismissWebRecoveryWaitingUi(page, { senderClaimMayAlreadyBeAccept
       `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: sender recovery auto-revealed; `
       + 'closing it before incoming approval',
     );
-    await closeWebSecret(page);
+    await closeWebSecret(page, secretValue);
     webSenderRevealCompletedCycles.add(currentCycleForDiagnostics);
     return;
   }
@@ -685,23 +854,30 @@ async function dismissWebRecoveryWaitingUi(page, { senderClaimMayAlreadyBeAccept
 
 async function approveIncomingRecoveryOnWeb(
   page,
+  incomingSecretName = defaultSecret?.name,
   expectedCount = null,
-  { senderClaimMayAlreadyBeAccepted = false } = {},
+  { senderSecretName = null, senderClaimMayAlreadyBeAccepted = false } = {},
 ) {
-  await dismissWebRecoveryWaitingUi(page, { senderClaimMayAlreadyBeAccepted });
-  if (expectedCount != null) {
-    await waitForWebRecoveryBadgeCount(page, expectedCount);
+  if (senderSecretName) {
+    await dismissWebRecoveryWaitingUi(page, senderSecretName, { senderClaimMayAlreadyBeAccepted });
   }
-  console.log(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: waiting for incoming recovery marker`);
-  const openRequest = page.getByTestId(`open-recovery-request-${scenario.secret.name}`);
+  if (expectedCount != null) {
+    await waitForWebRecoveryBadgeCount(page, expectedCount, incomingSecretName);
+  }
+  console.log(
+    `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: waiting for incoming recovery marker `
+    + `secret=${incomingSecretName}`,
+  );
+  const openRequest = page.getByTestId(`open-recovery-request-${incomingSecretName}`);
   await openRequest.waitFor({ state: 'visible', timeout: 120_000 });
   await openRequest.click();
   await page.getByRole('button', { name: 'Approve', exact: true }).click();
   console.log(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: incoming recovery approved`);
 }
 
-async function revealAndCloseWebSecret(page, reopenClaim) {
-  const primaryAction = page.getByTestId(`secret-primary-action-${scenario.secret.name}`);
+async function revealAndCloseWebSecret(page, secretName = defaultSecret?.name, reopenClaim = false) {
+  const secretValue = secretValueForName(secretName);
+  const primaryAction = page.getByTestId(`secret-primary-action-${secretName}`);
   if (webSenderRevealCompletedCycles.delete(currentCycleForDiagnostics)) {
     console.log(
       `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: sender secret was already `
@@ -710,7 +886,7 @@ async function revealAndCloseWebSecret(page, reopenClaim) {
     return;
   }
   if (reopenClaim) {
-    console.log(`[UI][Web] reopening secret for reveal: ${scenario.secret.name}`);
+    console.log(`[UI][Web] reopening secret for reveal: ${secretName}`);
     const actionBeforeWait = await primaryAction.textContent().catch(() => null);
     console.log(
       `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: waiting for primary action Show `
@@ -730,12 +906,22 @@ async function revealAndCloseWebSecret(page, reopenClaim) {
     );
     await primaryAction.click();
   } else {
-    console.log(`[UI][Web] waiting for the already-open sender dialog to reveal ${scenario.secret.name}`);
+    console.log(`[UI][Web] waiting for the already-open sender dialog to reveal ${secretName}`);
   }
-  await waitForWebSecretValue(page);
+  await waitForWebSecretValue(page, secretValue);
   console.log('[UI][Web] secret revealed; closing reveal dialog');
-  await closeWebSecret(page);
+  await closeWebSecret(page, secretValue);
   console.log('[UI][Web] reveal dialog closed');
+}
+
+async function waitForWebSecrets(page) {
+  await page.getByRole('link', { name: 'Secrets', exact: true }).click();
+  for (const config of Object.values(secretConfigs)) {
+    if (!config?.name) continue;
+    await page.getByText(config.name, { exact: true }).waitFor({ state: 'visible', timeout: 180_000 });
+    await page.getByTestId(`secret-primary-action-${config.name}`).waitFor({ state: 'visible', timeout: 180_000 });
+    console.log(`[UI][Web] secret ready: ${config.name}`);
+  }
 }
 
 async function runConcurrentRecoveryCycles(page, iosTest, androidTest) {
@@ -743,15 +929,21 @@ async function runConcurrentRecoveryCycles(page, iosTest, androidTest) {
 
   for (const cycle of recoveryCycles) {
     currentCycleForDiagnostics = cycle.number;
-    console.log(`15.${cycle.number} ${cycle.senders.join(' + ')} request recovery concurrently; ${cycle.firstApprover} approves first`);
+    const senderDescription = cycle.senders
+      .map((sender) => `${sender}:${cycle.senderSecrets[sender] ?? defaultSecret?.name}`)
+      .join(' + ');
+    console.log(
+      `15.${cycle.number} ${senderDescription} request recovery concurrently; `
+      + `${cycle.approvals.map((approval) => `${approval.platform}:${approval.secret}`).join(' then ')}`,
+    );
 
     // These two actions intentionally overlap. Each creates a different
-    // sender-owned claim for the same secret, and neither request may consume
-    // the other sender's response channel.
+    // sender-owned claim. Claims are bound to the sender and secret, so a
+    // request for Secret A can never consume the response for Secret B.
     const senderWaits = [];
     if (cycle.senders.includes('web')) {
       approvalCoordinator.allow('web-sender', cycle.number);
-      senderWaits.push(startWebRecovery(page));
+      senderWaits.push(startWebRecovery(page, cycle.senderSecrets.web));
     }
     if (cycle.senders.includes('android')) {
       approvalCoordinator.allow('android-sender', cycle.number);
@@ -762,28 +954,21 @@ async function runConcurrentRecoveryCycles(page, iosTest, androidTest) {
       senderWaits.push(iosTest.waitForMarker(`E2E: IOS_RECOVERY_REQUEST_SENT_${cycle.number}`, 180_000));
     }
     await Promise.all(senderWaits);
-    // Sender-side markers mean that the native dialog was opened; they do not
-    // by themselves prove that the recovery claim has reached the shared
-    // state. Wait for every non-Web sender's claim to be visible on Web before
-    // allowing any approver to act. This also covers the `web + ios` cycles,
-    // where Android is the approver and otherwise could consume Web's claim
-    // before iOS's claim had propagated to the receiver UI.
-    const incomingClaimCount = cycle.senders.filter((sender) => sender !== 'web').length;
-    if (incomingClaimCount > 0) {
-      await waitForWebIncomingRecoveryCount(page, incomingClaimCount);
-    }
-    for (const [step, approver] of [[1, cycle.firstApprover], [2, cycle.secondApprover]]) {
+    let webSenderDialogHandled = false;
+    for (const [index, approval] of cycle.approvals.entries()) {
+      const step = index + 1;
+      const approver = approval.platform;
       if (approver === 'web') {
-        // The Web receiver must expose the number of still-actionable claims
-        // for this secret. In cycles 10–12 this is 2 before the first click.
-        const priorWebApprovals = [cycle.firstApprover, cycle.secondApprover]
-          .slice(0, step - 1)
-          .filter((previousApprover) => previousApprover === 'web').length;
-        const incomingClaimCount = cycle.senders.filter((sender) => sender !== 'web').length - priorWebApprovals;
-        await approveIncomingRecoveryOnWeb(page, incomingClaimCount, {
-          senderClaimMayAlreadyBeAccepted: cycle.senders.includes('web') && cycle.firstApprover !== 'web',
+        const webSenderSecret = cycle.senderSecrets.web;
+        const webOwnClaimAccepted = cycle.approvals
+          .slice(0, index)
+          .some((previous) => previous.platform !== 'web' && previous.secret === webSenderSecret);
+        await approveIncomingRecoveryOnWeb(page, approval.secret, 1, {
+          senderSecretName: webSenderSecret && !webSenderDialogHandled ? webSenderSecret : null,
+          senderClaimMayAlreadyBeAccepted: webOwnClaimAccepted,
         });
-        console.log(`[UI][Web] cycle ${cycle.number}: approval ${step} complete`);
+        webSenderDialogHandled = true;
+        console.log(`[UI][Web] cycle ${cycle.number}: approval ${step} for ${approval.secret} complete`);
       } else {
         approvalCoordinator.allow(`${approver}-approve-${step}`, cycle.number);
         const test = approver === 'ios' ? iosTest : androidTest;
@@ -792,10 +977,12 @@ async function runConcurrentRecoveryCycles(page, iosTest, androidTest) {
     }
 
     for (const sender of cycle.senders) {
+      const secretName = cycle.senderSecrets[sender] ?? defaultSecret?.name;
       if (sender === 'web') {
         await revealAndCloseWebSecret(
           page,
-          [cycle.firstApprover, cycle.secondApprover].includes('web'),
+          secretName,
+          cycle.approvals.some((approval) => approval.platform === 'web'),
         );
       } else {
         approvalCoordinator.allow(`${sender}-show`, cycle.number);
@@ -811,7 +998,7 @@ async function runConcurrentRecoveryCycles(page, iosTest, androidTest) {
 
 async function main() {
   mkdirSync(artifactsDirectory, { recursive: true });
-  writeFileSync(diagnosticLogPath, `=== Test #4 started ${new Date().toISOString()} ===\n`);
+  writeFileSync(diagnosticLogPath, `=== Test #${testNumber} started ${new Date().toISOString()} ===\n`);
   writeDiagnostic(`scenario=${scenario.name}; cycles=${recoveryCycles.length}`);
   if (!existsSync(webDirectory)) throw new Error(`Web directory not found: ${webDirectory}`);
   if (!existsSync(composeRoot)) throw new Error(`Compose directory not found: ${composeRoot}`);
@@ -865,7 +1052,7 @@ async function main() {
   });
   await setupVirtualAuthenticator(page);
 
-  // Clean the iOS simulator before Android starts. Test #4's Android helper
+  // Clean the iOS simulator before Android starts. The Android helper
   // approves the first pending join request, so a left-over iOS UI-test app
   // from an interrupted run could otherwise be mistaken for the Web request.
   // Test #3 is safe without this because iOS is launched only after Web has
@@ -896,12 +1083,13 @@ async function main() {
   await androidTest.waitForMarker('E2E: ANDROID_IOS_JOIN_APPROVED', 120_000);
   // Let iOS finish its own join timeout (and emit a useful failure) before
   // stopping the parallel Android instrumentation.
-  await iosTest.waitForMarker('E2E: IOS_SECRET_VISIBLE', 210_000);
+  await iosTest.waitForMarker('E2E: IOS_SECRETS_READY', 210_000);
+  await waitForWebSecrets(page);
 
   await runConcurrentRecoveryCycles(page, iosTest, androidTest);
   await Promise.all([iosTest.result, androidTest.result]);
 
-  console.log('✅ Test #4 concurrent Web + iOS + Android recovery passed');
+  console.log(`✅ Test #${testNumber} concurrent Web + iOS + Android recovery passed`);
   if (exitOnSuccess) {
     await stopProcesses();
     process.exit(0);
@@ -920,7 +1108,7 @@ process.once('SIGTERM', async () => {
 });
 
 main().catch(async (error) => {
-  console.error(`\n❌ Test #4 failed: ${error.message}`);
+  console.error(`\n❌ Test #${testNumber} failed: ${error.message}`);
   writeDiagnostic(`FAILED: ${error.stack ?? error.message}`);
   printFailureDiagnostics();
   await stopProcesses();
