@@ -1,0 +1,136 @@
+{
+  "runId": "test6",
+  "testNumber": 6,
+  "name": "Test #6 — multiple secrets and isolated recovery",
+  "server": {
+    "url": "http://127.0.0.1:3000",
+    "image": "ghcr.io/meta-secret/meta-secret-core/meta-secret-server:latest",
+    "container": "meta-secret-e2e-server-test6",
+    "port": 3000
+  },
+  "web": {
+    "url": "http://localhost:5173",
+    "directory": "../meta-secret/web-cli/ui"
+  },
+  "ios": {
+    "composeRoot": "../../meta-secret-compose",
+    "simulatorName": "iPhone 17",
+    "bundleId": "org.metasecret.vault"
+  },
+  "android": {
+    "avdName": "Pixel_4a",
+    "bundleId": "metasecret.project.com"
+  },
+  "secretCreation": {
+    "initial": {
+      "android": ["a"]
+    },
+    "afterWebJoin": {
+      "web": ["b"]
+    },
+    "afterIosJoin": {
+      "ios": ["c"]
+    }
+  },
+  "recovery": {
+    "showTimeoutMs": 45000,
+    "cyclePlan": [
+      {
+        "block": "sequential-a",
+        "count": 1,
+        "senders": [{ "platform": "web", "secret": "a" }],
+        "approvals": [{ "platform": "ios", "secret": "a" }]
+      },
+      {
+        "block": "sequential-a",
+        "count": 1,
+        "senders": [{ "platform": "android", "secret": "a" }],
+        "approvals": [{ "platform": "web", "secret": "a" }]
+      },
+      {
+        "block": "sequential-a",
+        "count": 1,
+        "senders": [{ "platform": "ios", "secret": "a" }],
+        "approvals": [{ "platform": "android", "secret": "a" }]
+      },
+      {
+        "block": "sequential-b",
+        "count": 1,
+        "senders": [{ "platform": "web", "secret": "b" }],
+        "approvals": [{ "platform": "ios", "secret": "b" }]
+      },
+      {
+        "block": "sequential-b",
+        "count": 1,
+        "senders": [{ "platform": "android", "secret": "b" }],
+        "approvals": [{ "platform": "web", "secret": "b" }]
+      },
+      {
+        "block": "sequential-b",
+        "count": 1,
+        "senders": [{ "platform": "ios", "secret": "b" }],
+        "approvals": [{ "platform": "android", "secret": "b" }]
+      },
+      {
+        "block": "sequential-c",
+        "count": 1,
+        "senders": [{ "platform": "web", "secret": "c" }],
+        "approvals": [{ "platform": "ios", "secret": "c" }]
+      },
+      {
+        "block": "sequential-c",
+        "count": 1,
+        "senders": [{ "platform": "android", "secret": "c" }],
+        "approvals": [{ "platform": "web", "secret": "c" }]
+      },
+      {
+        "block": "sequential-c",
+        "count": 1,
+        "senders": [{ "platform": "ios", "secret": "c" }],
+        "approvals": [{ "platform": "android", "secret": "c" }]
+      },
+      {
+        "block": "parallel-web-android-to-ios",
+        "count": 3,
+        "senders": [
+          { "platform": "web", "secret": "b" },
+          { "platform": "android", "secret": "a" }
+        ],
+        "approvals": [
+          { "platform": "ios", "secret": "a" },
+          { "platform": "ios", "secret": "b" }
+        ]
+      },
+      {
+        "block": "parallel-web-ios-to-android",
+        "count": 3,
+        "senders": [
+          { "platform": "web", "secret": "b" },
+          { "platform": "ios", "secret": "c" }
+        ],
+        "approvals": [
+          { "platform": "android", "secret": "b" },
+          { "platform": "android", "secret": "c" }
+        ]
+      },
+      {
+        "block": "parallel-ios-android-to-web",
+        "count": 3,
+        "senders": [
+          { "platform": "ios", "secret": "c" },
+          { "platform": "android", "secret": "a" }
+        ],
+        "approvals": [
+          { "platform": "web", "secret": "c" },
+          { "platform": "web", "secret": "a" }
+        ]
+      }
+    ]
+  },
+  "vault": { "name": "test6@test.ru" },
+  "secrets": {
+    "a": { "name": "test-secret-a", "value": "test-secret-a-value" },
+    "b": { "name": "test-secret-b", "value": "test-secret-b-value" },
+    "c": { "name": "test-secret-c", "value": "test-secret-c-value" }
+  }
+}

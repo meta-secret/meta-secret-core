@@ -8,15 +8,17 @@ use crate::node::api::{
     DataEventsResponse, ReadSyncRequest, ServerTailRequest, ServerTailResponse, SsRequest,
     SyncRequest, VaultRequest, WriteSyncRequest,
 };
+use crate::node::app::orchestrator::MetaOrchestrator;
 use crate::node::app::sync::sync_protocol::SyncProtocol;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::secret::{SecretDistributionType, SsClaim, SsDistributionStatus};
-use crate::node::common::model::user::common::{UserData, UserId};
+use crate::node::common::model::user::common::{UserData, UserDataMember, UserId};
+use crate::node::common::model::user::user_creds::UserCreds;
 use crate::node::common::model::vault::vault::VaultStatus;
 use crate::node::db::descriptors::shared_secret_descriptor::{
     SsDeviceLogDescriptor, SsLogDescriptor,
 };
-use crate::node::db::descriptors::vault_descriptor::DeviceLogDescriptor;
+use crate::node::db::descriptors::vault_descriptor::{DeviceLogDescriptor, VaultDescriptor};
 use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
 };
@@ -25,12 +27,15 @@ use crate::node::db::events::shared_secret_event::{
     SsDeviceLogObject, SsLogObject, SsWorkflowObject,
 };
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
+use crate::node::db::events::vault::vault_event::VaultObject;
+use crate::node::db::events::vault::vault_log_event::JoinClusterEvent;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use anyhow::Result;
+use std::collections::HashSet;
 
 pub struct SyncGateway<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub id: String,
@@ -105,12 +110,18 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
     ///  - vault, shared secret... - user has been registered, we can sync vault related events
     #[instrument(skip_all)]
     pub async fn sync(&self, user: UserData) -> Result<()> {
+        let user_creds = PersistentCredentials {
+            p_obj: self.p_obj.clone(),
+            master_key: self.master_key.clone(),
+        }
+        .get_user_creds()
+        .await?;
         let server_tail = self.get_server_tail(user.clone()).await?;
 
         self.sync_device_log(&server_tail, user.user_id()).await?;
 
         let vault_sync_request = self.get_vault_request(user.clone()).await?;
-        self.sync_vault(vault_sync_request).await?;
+        self.sync_vault(vault_sync_request, user_creds).await?;
 
         self.sync_shared_secrets(&server_tail, user).await?;
 
@@ -144,7 +155,17 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
     }
 
     #[instrument(skip(self))]
-    async fn sync_vault(&self, vault_sync_request: SyncRequest) -> Result<()> {
+    async fn sync_vault(
+        &self,
+        vault_sync_request: SyncRequest,
+        user_creds: Option<UserCreds>,
+    ) -> Result<()> {
+        let previous_members = if let Some(creds) = user_creds.as_ref() {
+            self.local_vault_members(creds.vault_name.clone()).await?
+        } else {
+            Vec::new()
+        };
+
         let DataEventsResponse(data_sync_events) =
             self.sync.send(vault_sync_request).await?.to_data()?;
 
@@ -153,9 +174,61 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                 "id: {:?}. Sync gateway. New event from server: {:?}",
                 self.id, new_event
             );
+
             self.p_obj.repo.save(new_event).await?;
         }
+
+        // The approver's local update_membership path only has access to the
+        // secrets owned by that approver. Every other existing sender must
+        // reconcile its own shares when the canonical acceptance event arrives.
+        // Do this once per newly observed member, before sync_shared_secrets uploads
+        // the resulting workflows. The server clears VaultLog updates after applying
+        // them, so compare the canonical VaultObject membership instead of relying on
+        // transient update events. Never run this from get_app_state: that method is
+        // called for every UI refresh and would repeatedly re-split the vault.
+        if let Some(user_creds) = user_creds {
+            let current_members = self
+                .local_vault_members(user_creds.vault_name.clone())
+                .await?;
+            let previous_member_ids: HashSet<DeviceId> = previous_members
+                .iter()
+                .map(|member| member.user().device.device_id.clone())
+                .collect();
+            let orchestrator = MetaOrchestrator {
+                p_obj: self.p_obj.clone(),
+                user_creds,
+            };
+
+            for member in current_members {
+                let member_id = member.user().device.device_id.clone();
+                if previous_member_ids.contains(&member_id) {
+                    continue;
+                }
+
+                let join_request = JoinClusterEvent {
+                    candidate: member.user_data.clone(),
+                };
+                orchestrator
+                    .redistribute_existing_secrets_for_join(&join_request)
+                    .await?;
+            }
+        }
+
         Ok(())
+    }
+
+    async fn local_vault_members(
+        &self,
+        vault_name: crate::node::common::model::vault::vault::VaultName,
+    ) -> Result<Vec<UserDataMember>> {
+        let maybe_vault: Option<VaultObject> = self
+            .p_obj
+            .find_tail_event(VaultDescriptor::from(vault_name))
+            .await?;
+
+        Ok(maybe_vault
+            .map(|vault| vault.to_data().members())
+            .unwrap_or_default())
     }
 
     async fn get_vault_request(&self, user: UserData) -> Result<SyncRequest> {

@@ -4,12 +4,14 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, info, instrument};
 
+use crate::crypto::keys::TransportSk;
 use crate::node::app::meta_app::messaging::{GenericAppStateRequest, GenericAppStateResponse};
 use crate::node::app::orchestrator::MetaOrchestrator;
 use crate::node::app::sync::sync_gateway::SyncGateway;
 use crate::node::app::sync::sync_protocol::SyncProtocol;
 use crate::node::common::actor::ServiceState;
 use crate::node::common::data_transfer::MpscDataTransfer;
+use crate::node::common::model::device::common::DeviceData;
 use crate::node::common::model::meta_pass::SecurePassInfo;
 use crate::node::common::model::secret::ClaimId;
 use crate::node::common::model::user::common::{UserData, UserDataOutsiderStatus};
@@ -28,8 +30,6 @@ use crate::node::db::repo::persistent_credentials::PersistentCredentials;
 use crate::secret::MetaDistributor;
 use anyhow::Result;
 use log::error;
-use crate::crypto::keys::TransportSk;
-use crate::node::common::model::device::common::DeviceData;
 
 pub struct MetaClientService<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub data_transfer: Arc<MetaClientDataTransfer>,
@@ -194,8 +194,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                         .find_unique_accepted_recovery_claim_id_for_sender(
                             user_creds.device_id(),
                             meta_pass_id,
-                        )?
-                    ;
+                        )?;
                     info!(
                         pass_id = %meta_pass_id.name,
                         sender = ?user_creds.device_id(),
@@ -267,14 +266,22 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                 let device_name = self.device_data.device_name.clone();
                 let device_type = self.device_data.device_type.clone();
                 creds_repo
-                    .get_or_generate_user_creds_with_type(device_name, device_type, vault_name.clone())
+                    .get_or_generate_user_creds_with_type(
+                        device_name,
+                        device_type,
+                        vault_name.clone(),
+                    )
                     .await?
             }
             GenericAppStateRequest::SignUp(vault_name) => {
                 let device_name = self.device_data.device_name.clone();
                 let device_type = self.device_data.device_type.clone();
                 creds_repo
-                    .get_or_generate_user_creds_with_type(device_name, device_type, vault_name.clone())
+                    .get_or_generate_user_creds_with_type(
+                        device_name,
+                        device_type,
+                        vault_name.clone(),
+                    )
                     .await?
             }
             GenericAppStateRequest::ClusterDistribution(_) => self.find_user_creds().await?,
@@ -389,30 +396,23 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
     }
 
     pub async fn accept_recover(&self, claim_id: ClaimId) -> Result<()> {
-        match &self.get_app_state().await? {
-            ApplicationState::Local(_) => {
-                bail!("Invalid state. Local App State")
-            }
-            ApplicationState::Vault(vault_info) => match vault_info {
-                VaultFullInfo::NotExists(_) => {
-                    bail!("Invalid state. Vault doesn't exist")
-                }
-                VaultFullInfo::Outsider(_) => {
-                    bail!("Invalid state. User is outsider")
-                }
-                VaultFullInfo::Member(_) => {
-                    let user_creds = self.find_user_creds().await?;
+        info!(claim_id = ?claim_id, "accept_recover: started");
 
-                    let orchestrator = MetaOrchestrator {
-                        p_obj: self.sync_gateway.p_obj.clone(),
-                        user_creds,
-                    };
+        // The mobile caller has already synchronized and validated the claim.
+        // Do not perform another full get_app_state/sync here: that re-enters
+        // the shared sync gateway while UI refreshes may be in flight and was
+        // the source of a parallel-approval stall. The orchestrator validates
+        // membership and the claim against the same local snapshot before
+        // writing the recovery workflow.
+        let user_creds = self.find_user_creds().await?;
+        let orchestrator = MetaOrchestrator {
+            p_obj: self.sync_gateway.p_obj.clone(),
+            user_creds,
+        };
 
-                    orchestrator.accept_recover(claim_id).await?;
-                    Ok(())
-                }
-            },
-        }
+        orchestrator.accept_recover(claim_id.clone()).await?;
+        info!(claim_id = ?claim_id, "accept_recover: recovery workflow created");
+        Ok(())
     }
 
     pub async fn decline_recover(&self, claim_id: ClaimId) -> Result<()> {
@@ -491,7 +491,10 @@ pub struct MetaClientStateProvider {
 impl MetaClientStateProvider {
     pub fn new() -> Self {
         let (sender, receiver) = flume::bounded(1);
-        Self { sender, _receiver: receiver }
+        Self {
+            sender,
+            _receiver: receiver,
+        }
     }
 
     pub async fn push(&self, state: &ApplicationState) -> Result<()> {
@@ -535,7 +538,7 @@ pub mod fixture {
                 state_provider: state_provider.client.clone(),
                 p_obj: sync_gateway.client_gw.p_obj.clone(),
                 device_data: base.empty.device_creds.client.device.clone(),
-                master_key: base.p_creds.client_p_creds.master_key.clone()
+                master_key: base.p_creds.client_p_creds.master_key.clone(),
             });
 
             let vd = Arc::new(MetaClientService {
@@ -544,7 +547,7 @@ pub mod fixture {
                 state_provider: state_provider.vd.clone(),
                 p_obj: sync_gateway.vd_gw.p_obj.clone(),
                 device_data: base.empty.device_creds.vd.device.clone(),
-                master_key: base.p_creds.vd_p_creds.master_key.clone()
+                master_key: base.p_creds.vd_p_creds.master_key.clone(),
             });
 
             Self {

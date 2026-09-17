@@ -1,6 +1,6 @@
 use crate::log_timestamp;
-use anyhow::Result;
 use anyhow::bail;
+use anyhow::Result;
 use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::node::api::{ReadSyncRequest, SsRecoveryCompletion, SyncRequest};
 use meta_secret_core::node::app::app_manager_shared::{
@@ -28,7 +28,7 @@ use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use meta_secret_core::secret::shared_secret::PlainText;
 use std::sync::Arc;
 use std::thread;
-use tracing::{Instrument, info, instrument};
+use tracing::{info, instrument, warn, Instrument};
 
 pub struct ApplicationManager<Repo: KvLogEventRepo + Send + Sync, SyncP: SyncProtocol + Send + Sync>
 {
@@ -183,13 +183,13 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
     }
 
     pub async fn accept_recover_mobile(&self, claim_id: ClaimId) -> Result<()> {
-        println!("🦀 Mobile App Manager: Accept recover mobile");
+        info!(claim_id = ?claim_id, "accept_recover_mobile: started");
 
         // Force sync before checking claims to ensure we have latest distribution events
         if let Ok(user_creds) = self.meta_client_service.find_user_creds().await {
-            println!("🦀 Mobile App Manager: Force sync before accept_recover");
+            info!(claim_id = ?claim_id, "accept_recover_mobile: syncing before claim lookup");
             self.sync_gateway.sync(user_creds.user()).await?;
-            println!("🦀 Mobile App Manager: Force sync completed");
+            info!(claim_id = ?claim_id, "accept_recover_mobile: pre-accept sync completed");
         }
 
         let state = self.get_state().await?;
@@ -200,14 +200,29 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
             bail!("Not a member");
         };
 
-        let _ = member
+        let claim = member
             .ss_claims
             .claims
             .get(&claim_id)
             .ok_or_else(|| anyhow::anyhow!("Claim not found: {:?}", claim_id))?
             .clone();
 
-        self.accept_recover(claim_id).await
+        info!(
+            claim_id = ?claim_id,
+            secret = %claim.dist_claim_id.pass_id.name,
+            sender = ?claim.sender,
+            client_status = ?claim.client_status,
+            "accept_recover_mobile: claim found, dispatching approval"
+        );
+
+        let result = self.accept_recover(claim_id.clone()).await;
+        match &result {
+            Ok(()) => info!(claim_id = ?claim_id, "accept_recover_mobile: approval event created"),
+            Err(error) => {
+                warn!(claim_id = ?claim_id, error = %error, "accept_recover_mobile: approval failed")
+            }
+        }
+        result
     }
 
     pub async fn accept_recover(&self, claim_id: ClaimId) -> Result<()> {
@@ -402,6 +417,17 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
                                 ));
 
                                 self.server.send(sync_request).await?;
+
+                                // The sender's local claim is marked Delivered while
+                                // recovering the secret.  Flush that terminal state before
+                                // returning to the UI so the next Recover action cannot see
+                                // the previous claim as still Accepted and reuse it.
+                                self.sync_gateway.sync(user_creds.user()).await?;
+                                info!(
+                                    pass_id = %pass_id.name,
+                                    claim_id = ?claim_id,
+                                    "mobile recovery completion synchronized"
+                                );
                             }
 
                             Ok(pass)

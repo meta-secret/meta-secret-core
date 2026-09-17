@@ -39,6 +39,23 @@ function secretValueForName(secretName) {
     ?? defaultSecret?.value;
 }
 
+function normalizeSecretCreationPlan(rawPlan) {
+  if (!rawPlan) return null;
+  return Object.fromEntries(Object.entries(rawPlan).map(([stage, platformSecrets]) => {
+    if (!platformSecrets || typeof platformSecrets !== 'object') {
+      throw new Error(`Invalid secretCreation.${stage}: expected platform map`);
+    }
+    return [stage, Object.fromEntries(Object.entries(platformSecrets).map(([platform, keys]) => {
+      if (!Array.isArray(keys)) {
+        throw new Error(`Invalid secretCreation.${stage}.${platform}: expected array`);
+      }
+      return [platform, keys.map(secretNameFor)];
+    }))];
+  }));
+}
+
+const secretCreationPlan = normalizeSecretCreationPlan(scenario.secretCreation);
+
 function normalizeSender(sender) {
   if (typeof sender === 'string') {
     return { platform: sender, secret: defaultSecret?.name };
@@ -198,10 +215,11 @@ function startApprovalCoordinator(port = 5180) {
     if (url.pathname === '/scenario') {
       response.writeHead(200, { 'content-type': 'application/json' });
       response.end(JSON.stringify({
-        vaultName: scenario.vault.name,
-        secretConfig: secretConfigs,
-        recoveryPlan: recoveryCycles,
-      }));
+      vaultName: scenario.vault.name,
+      secretConfig: secretConfigs,
+      recoveryPlan: recoveryCycles,
+      secretCreation: secretCreationPlan,
+    }));
       return;
     }
     if (url.pathname !== '/approval') {
@@ -458,6 +476,7 @@ function startIosJoinTest(simulatorUdid) {
         // truncates the full 18-cycle JSON payload before the test starts.
         E2E_IOS_SENDER_CYCLES: iosSenderCycles,
         E2E_IOS_APPROVAL_STEPS: iosApprovalSteps,
+        E2E_SECRET_CREATION_PLAN: JSON.stringify(secretCreationPlan),
         E2E_APPROVAL_COORDINATOR_URL: 'http://127.0.0.1:5180',
       },
     },
@@ -696,6 +715,7 @@ async function startAndroidJoinTest(serial) {
       `-Pandroid.testInstrumentationRunnerArguments.secretConfig=${secretConfigJson}`,
       `-Pandroid.testInstrumentationRunnerArguments.recoveryCycles=${recoveryCycles.length}`,
       `-Pandroid.testInstrumentationRunnerArguments.cyclePlan=${cyclePlanJson}`,
+      `-Pandroid.testInstrumentationRunnerArguments.secretCreationPlan=${JSON.stringify(secretCreationPlan)}`,
       '-Pandroid.testInstrumentationRunnerArguments.approvalCoordinatorUrl=http://10.0.2.2:5180',
     ],
     { cwd: composeRoot, env: { ANDROID_SERIAL: serial } },
@@ -817,6 +837,27 @@ async function startWebRecovery(page, secretName = defaultSecret?.name) {
   console.log(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: recovery waiting dialog opened for ${secretName}`);
 }
 
+async function createWebSecret(page, secretName) {
+  const config = secretConfigFor(secretName);
+  console.log(`[UI][Web] creating secret after join: ${config.name}`);
+  await page.getByRole('link', { name: 'Secrets', exact: true }).click();
+  await page.getByRole('button', { name: '+ Add Secret', exact: true }).click();
+  const dialog = page.locator('[data-slot="dialog-content"]');
+  await dialog.waitFor({ state: 'visible', timeout: 30_000 });
+  await page.getByPlaceholder('Secret name').fill(config.name);
+  await page.getByPlaceholder('Enter your secret').fill(config.value);
+  await page.getByRole('button', { name: 'Add Secret', exact: true }).click();
+  await page.getByText(config.name, { exact: true }).waitFor({ state: 'visible', timeout: 180_000 });
+  await dialog.waitFor({ state: 'hidden', timeout: 30_000 }).catch(() => {});
+  console.log(`[UI][Web] secret added after join: ${config.name}`);
+}
+
+async function createWebSecretsAfterJoin(page) {
+  for (const secretName of secretCreationPlan?.afterWebJoin?.web ?? []) {
+    await createWebSecret(page, secretName);
+  }
+}
+
 async function dismissWebRecoveryWaitingUi(
   page,
   secretName = defaultSecret?.name,
@@ -908,7 +949,27 @@ async function revealAndCloseWebSecret(page, secretName = defaultSecret?.name, r
   } else {
     console.log(`[UI][Web] waiting for the already-open sender dialog to reveal ${secretName}`);
   }
-  await waitForWebSecretValue(page, secretValue);
+  try {
+    await waitForWebSecretValue(page, secretValue);
+  } catch (error) {
+    const actionText = await primaryAction.textContent().catch(() => null);
+    const waitingDialogVisible = await page
+      .locator('[data-slot="dialog-content"]')
+      .isVisible()
+      .catch(() => false);
+    const secretRowText = await page
+      .locator('li')
+      .filter({ has: primaryAction })
+      .textContent()
+      .catch(() => null);
+    writeDiagnostic(
+      `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: reveal timeout `
+      + `secret=${secretName}; primaryAction=${JSON.stringify(actionText?.trim() ?? null)}; `
+      + `waitingDialogVisible=${waitingDialogVisible}; `
+      + `secretRow=${JSON.stringify(secretRowText?.trim() ?? null).slice(0, 1_000)}`,
+    );
+    throw error;
+  }
   console.log('[UI][Web] secret revealed; closing reveal dialog');
   await closeWebSecret(page, secretValue);
   console.log('[UI][Web] reveal dialog closed');
@@ -1071,6 +1132,8 @@ async function main() {
   await page.getByRole('button', { name: 'Join', exact: true }).click();
   await androidTest.waitForMarker('E2E: ANDROID_WEB_JOIN_APPROVED', 120_000);
   await page.getByRole('button', { name: '+ Add Secret' }).waitFor({ timeout: 120_000 });
+
+  await createWebSecretsAfterJoin(page);
 
   const iosTest = startIosJoinTest(simulatorUdid);
   // Same as Android above: this test runs in parallel with the orchestrator.
