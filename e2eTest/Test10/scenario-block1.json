@@ -1,0 +1,47 @@
+{
+  "runId": "test10-block1",
+  "testNumber": 10,
+  "name": "Test #10 block 1 — Web sender, Android receiver stopped after alert",
+  "mode": "receiver-offline-after-alert",
+  "setup": { "initiator": "web" },
+  "server": {
+    "url": "http://127.0.0.1:3000",
+    "image": "ghcr.io/meta-secret/meta-secret-core/meta-secret-server:latest",
+    "container": "meta-secret-e2e-server-test10-block1",
+    "port": 3000
+  },
+  "web": { "url": "http://localhost:5173", "directory": "../meta-secret/web-cli/ui" },
+  "ios": {
+    "composeRoot": "../../meta-secret-compose",
+    "simulatorName": "iPhone 17",
+    "bundleId": "org.metasecret.vault",
+    "testClass": "CaseEightIosBothOfflineUITest",
+    "joinTestMethod": "joinWebInitiatedVault",
+    "stepTestMethod": "handleRecoveryStep",
+    "assertionClass": "CaseFourIosConcurrentRecoveryUITest",
+    "assertionMethod": "assertNoStaleRecoveryAlertAfterOfflineRestart"
+  },
+  "android": {
+    "avdName": "Pixel_4a",
+    "bundleId": "metasecret.project.com",
+    "testClass": "metasecret.project.com.CaseEightAndroidBothOfflineTest",
+    "testMethod": "joinWebInitiatedVault",
+    "stepTestMethod": "handleRecoveryStep",
+    "assertionClass": "metasecret.project.com.CaseSevenAndroidOfflineReceiverTest",
+    "assertionMethod": "assertNoStaleRecoveryAlertAfterOfflineRestart",
+    "directInstrumentationSetup": true
+  },
+  "secretCreation": { "initial": { "web": ["default"] } },
+  "recovery": {
+    "expectedCycles": 3,
+    "cyclePlan": [{
+      "block": "web-sender-android-offline-after-alert",
+      "count": 3,
+      "offlineReceiver": "android",
+      "senders": [{ "platform": "web", "secret": "default" }],
+      "approvals": [{ "platform": "ios", "secret": "default" }]
+    }]
+  },
+  "vault": { "name": "test10-block1@test.ru" },
+  "secrets": { "default": { "name": "test-secret", "value": "test-secret-value" } }
+}

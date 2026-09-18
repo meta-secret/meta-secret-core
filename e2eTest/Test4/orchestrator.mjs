@@ -1030,7 +1030,8 @@ async function runIosStaleAlertAssertion(simulatorUdid) {
   // A fresh XCTest invocation relaunches the persisted app state and checks
   // that no old incoming request remains in the UI.
   const assertion = startIosJoinTest(simulatorUdid, {
-    testMethod: 'assertNoStaleRecoveryAlertAfterOfflineRestart',
+    testClass: scenario.ios.assertionClass ?? scenario.ios.testClass,
+    testMethod: scenario.ios.assertionMethod ?? 'assertNoStaleRecoveryAlertAfterOfflineRestart',
     label: 'iOS stale-alert assertion',
   });
   await assertion.result;
@@ -1152,6 +1153,212 @@ async function runWebInitiatedSetup(page, simulatorUdid, androidSerial) {
   await androidTest.result;
   await waitForWebSecrets(page);
   return { iosTest, androidTest };
+}
+
+async function runReceiverOfflineAfterAlertRecovery(page, simulatorUdid, androidSerial) {
+  const expectedCycles = scenario.recovery.expectedCycles ?? recoveryCycles.length;
+  if (recoveryCycles.length !== expectedCycles) {
+    throw new Error(
+      `Test #10 expected ${expectedCycles} recovery requests, got ${recoveryCycles.length}`,
+    );
+  }
+
+  for (const cycle of recoveryCycles) {
+    currentCycleForDiagnostics = cycle.number;
+    if (cycle.senders.length !== 1 || cycle.approvals.length !== 1) {
+      throw new Error(
+        `Test #10 cycle ${cycle.number} must have exactly one sender and one approver`,
+      );
+    }
+
+    const sender = cycle.senders[0];
+    const approver = cycle.approvals[0].platform;
+    const offlineReceiver = cycle.offlineReceiver;
+    const secretName = cycle.senderSecrets[sender]
+      ?? cycle.approvals[0].secret
+      ?? defaultSecret?.name;
+    const receivers = ['web', 'ios', 'android'].filter((platform) => platform !== sender);
+    if (!offlineReceiver || !receivers.includes(offlineReceiver) || offlineReceiver === approver) {
+      throw new Error(
+        `Test #10 cycle ${cycle.number} must mark the non-approving receiver as offline `
+        + `(sender=${sender}, approver=${approver}, offline=${offlineReceiver})`,
+      );
+    }
+
+    const step = 1;
+    const nativeProcesses = new Map();
+    let webSenderRequestPending = false;
+
+    writeDiagnostic(
+      `TEST10 cycle=${cycle.number} sender=${sender} secret=${secretName} `
+      + `offlineReceiver=${offlineReceiver} approver=${approver}`,
+    );
+    console.log(
+      `Test #10 cycle ${cycle.number}/${expectedCycles}: sender=${sender} `
+      + `offlineReceiver=${offlineReceiver} approver=${approver} secret=${secretName}`,
+    );
+
+    // Always put the Web app at a known semantic state before using it as a
+    // sender, receiver, or approver. Navigation is a state reset, not a
+    // timing delay; waitForWebSecrets below confirms that the vault is usable.
+    if (receivers.includes('web') || sender === 'web') {
+      await reopenWebAfterOffline(page);
+    }
+
+    const startNativeStep = async (platform, role) => {
+      const environment = stepEnvironment({
+        role,
+        cycle: cycle.number,
+        step,
+        approvalPlatform: approver,
+        sender,
+      });
+      if (platform === 'ios') {
+        const test = startIosJoinTest(simulatorUdid, {
+          testClass: scenario.ios.testClass,
+          testMethod: scenario.ios.stepTestMethod ?? 'handleRecoveryStep',
+          label: `iOS Test #10 ${role} cycle ${cycle.number}`,
+          secretName,
+          environment,
+        });
+        void test.result.catch(() => {});
+        nativeProcesses.set(platform, { platform, test, role });
+        return;
+      }
+      if (platform === 'android') {
+        const test = await startAndroidStepTest(androidSerial, {
+          role,
+          cycle: cycle.number,
+          step,
+          approvalPlatform: approver,
+          sender,
+          secretName,
+          testMethod: scenario.android.stepTestMethod ?? 'handleRecoveryStep',
+          label: `Android Test #10 ${role} cycle ${cycle.number}`,
+        });
+        nativeProcesses.set(platform, { platform, test, role });
+        return;
+      }
+      throw new Error(`Unsupported native Test #10 platform: ${platform}`);
+    };
+
+    // Start native participants before releasing the sender gate. This keeps
+    // the receiver UI alive before the request is emitted and avoids the
+    // missed-first-event race that affected the earlier offline scenarios.
+    for (const receiver of receivers) {
+      if (receiver !== 'web') await startNativeStep(receiver, 'receiver');
+    }
+    if (sender !== 'web') {
+      await startNativeStep(sender, 'sender');
+      approvalCoordinator.allow(`${sender}-sender-${step}`, cycle.number);
+    } else {
+      approvalCoordinator.allow('web-sender', cycle.number);
+      await startWebRecovery(page, secretName);
+      webSenderRequestPending = true;
+    }
+
+    // The sender marker only means the native recover() action was dispatched;
+    // receiver-visible markers are the authoritative boundary before taking a
+    // receiver offline. For Web, the incoming badge is the same boundary.
+    if (sender !== 'web') {
+      await nativeProcesses.get(sender).test.waitForMarker(
+        `E2E: ${sender.toUpperCase()}_RECOVERY_REQUEST_SENT_${cycle.number}_${step}`,
+        180_000,
+      );
+    }
+
+    for (const receiver of receivers) {
+      if (receiver === 'web') {
+        await waitForWebIncomingRecoveryCount(page, 1, secretName);
+      } else {
+        await nativeProcesses.get(receiver).test.waitForMarker(
+          `E2E: ${receiver.toUpperCase()}_INCOMING_VISIBLE_${cycle.number}_${step}`,
+          180_000,
+        );
+      }
+    }
+    if (webSenderRequestPending) {
+      // Keep a Web sender alive until both receivers observed the request. The
+      // sender socket may still be carrying the claim persistence event.
+      writeDiagnostic(`TEST10 cycle=${cycle.number} web sender request observed by all receivers`);
+    }
+    console.log(`✅ Test #10 cycle ${cycle.number}: both receiver alerts are visible`);
+
+    // This is the defining Test #10 boundary: the receiver is killed only
+    // after its alert has been observed, never before the request arrives.
+    if (offlineReceiver === 'android') await stopAndroidApplication(androidSerial);
+    if (offlineReceiver === 'ios') await stopIosApplication(simulatorUdid);
+    if (offlineReceiver === 'web') await stopWebApplication(page);
+    if (offlineReceiver !== 'web') {
+      // Force-stopping the app is the scenario boundary. Terminate the
+      // corresponding instrumentation wrapper as well so a blocked receiver
+      // test cannot retain Gradle/XCTest resources into the next repetition.
+      const stoppedReceiver = nativeProcesses.get(offlineReceiver)?.test;
+      if (stoppedReceiver?.child && !stoppedReceiver.child.killed) {
+        stoppedReceiver.child.kill('SIGTERM');
+      }
+    }
+    writeDiagnostic(`TEST10 cycle=${cycle.number} offline receiver stopped after alert: ${offlineReceiver}`);
+
+    if (approver === 'web') {
+      await approveIncomingRecoveryOnWeb(page, secretName, 1);
+    } else {
+      approvalCoordinator.allow(`${approver}-approve-${step}`, cycle.number);
+      await nativeProcesses.get(approver).test.waitForMarker(
+        `E2E: ${approver.toUpperCase()}_APPROVED_INCOMING_${cycle.number}_${step}`,
+        180_000,
+      );
+    }
+    console.log(`✅ Test #10 cycle ${cycle.number}: ${approver} approved while ${offlineReceiver} was offline`);
+
+    if (sender === 'web') {
+      // Web keeps the sender dialog open; after the approver completes it
+      // resolves to the recovered value without creating a second claim.
+      await revealAndCloseWebSecret(page, secretName, false);
+    } else {
+      approvalCoordinator.allow(`${sender}-show-${step}`, cycle.number);
+      await nativeProcesses.get(sender).test.waitForMarker(
+        `E2E: ${sender.toUpperCase()}_RECOVERY_SECRET_VISIBLE_${cycle.number}_${step}`,
+        recoveryShowTimeoutMs,
+      );
+      await nativeProcesses.get(sender).test.waitForMarker(
+        `E2E: ${sender.toUpperCase()}_RECOVERY_CLOSED_${cycle.number}_${step}`,
+        60_000,
+      );
+    }
+
+    // Relaunch the receiver that had the visible alert and assert against the
+    // persisted state. The assertion checks both native claim state and UI
+    // alert/badge state, so a stale local alert cannot hide behind a clean UI.
+    if (offlineReceiver === 'android') {
+      await runAndroidStaleAlertAssertion(androidSerial);
+    } else if (offlineReceiver === 'ios') {
+      await runIosStaleAlertAssertion(simulatorUdid);
+    } else {
+      await reopenWebAfterOffline(page);
+      await assertNoStaleWebRecoveryAlert(page, secretName);
+    }
+    console.log(`✅ Test #10 cycle ${cycle.number}: no stale alert after ${offlineReceiver} restart`);
+
+    // Await only participants that were expected to finish. The intentionally
+    // stopped receiver's instrumentation is not awaited because force-stop is
+    // its test boundary and produces a non-zero process exit by design.
+    for (const [platform, entry] of nativeProcesses.entries()) {
+      if (platform === offlineReceiver) continue;
+      await entry.test.result;
+    }
+
+    // Stop native participants before the next repetition. This prevents a
+    // prior Compose/XCTest process from consuming the next cycle's event.
+    for (const platform of ['android', 'ios']) {
+      if (platform === offlineReceiver || receivers.includes(platform) || sender === platform) {
+        if (platform === 'android') await stopAndroidApplication(androidSerial);
+        if (platform === 'ios') await stopIosApplication(simulatorUdid);
+      }
+    }
+    if (offlineReceiver === 'web') await stopWebApplication(page);
+    console.log(`✅ Test #10 cycle ${cycle.number}/${expectedCycles} passed`);
+  }
 }
 
 function stepEnvironment({ role, cycle, step, approvalPlatform, sender }) {
@@ -2052,6 +2259,17 @@ async function main() {
   const simulatorUdid = await prepareIosSimulator();
 
   const androidSerial = await prepareAndroidEmulator();
+  if (scenario.mode === 'receiver-offline-after-alert' && scenario.setup?.initiator === 'web') {
+    await runWebInitiatedSetup(page, simulatorUdid, androidSerial);
+    await runReceiverOfflineAfterAlertRecovery(page, simulatorUdid, androidSerial);
+    console.log(`✅ Test #10 receiver-offline-after-alert recovery passed: ${recoveryCycles.length} requests`);
+    if (exitOnSuccess) {
+      await stopProcesses();
+      process.exit(0);
+    }
+    console.log('Browser remains open. Press Ctrl+C when ready to stop.');
+    await new Promise(() => {});
+  }
   if (scenario.mode === 'both-receivers-offline' && scenario.setup?.initiator === 'web') {
     await runWebInitiatedSetup(page, simulatorUdid, androidSerial);
     await runBothReceiversOfflineRecovery(page, simulatorUdid, androidSerial);
