@@ -22,6 +22,7 @@ const diagnosticFileName = scenario.runId
   ? `test-${testNumber}-${scenario.runId}.log`
   : `test-${testNumber}.log`;
 const diagnosticLogPath = resolve(artifactsDirectory, diagnosticFileName);
+const iosStepConfigPath = '/tmp/metasecret-e2e-ios-step.json';
 
 function secretConfigFor(keyOrName) {
   if (keyOrName && secretConfigs[keyOrName]) return secretConfigs[keyOrName];
@@ -76,7 +77,9 @@ function normalizeApproval(approval, fallbackSecret = defaultSecret?.name) {
   };
 }
 
-const rawRecoveryCycles = scenario.recovery.cyclePlan
+const rawRecoveryCycles = scenario.mode === 'both-receivers-offline'
+  ? []
+  : scenario.recovery.cyclePlan
   ? scenario.recovery.cyclePlan.flatMap((group) => Array.from({ length: group.count }, (_, offset) => {
       const resolveValue = (value) => Array.isArray(value) ? value[offset % value.length] : value;
       const senderEntries = group.senders.map(normalizeSender);
@@ -89,15 +92,17 @@ const rawRecoveryCycles = scenario.recovery.cyclePlan
           ];
       return {
         block: group.block,
+        offlineReceiver: group.offlineReceiver ?? scenario.offlineReceiver?.platform,
         senders: senderEntries.map((sender) => sender.platform),
         senderSecrets: Object.fromEntries(senderEntries.map((sender) => [sender.platform, sender.secret])),
         approvals,
       };
     }))
-  : scenario.recovery.groups.flatMap((group) => {
+  : (scenario.recovery.groups ?? []).flatMap((group) => {
       if (group.senders) {
-        return Array.from({ length: group.count }, () => ({
-          group: group.name,
+      return Array.from({ length: group.count }, () => ({
+        group: group.name,
+        offlineReceiver: group.offlineReceiver ?? scenario.offlineReceiver?.platform,
           senders: group.senders,
           approvals: group.approvals,
           followUpApprovals: group.followUpApprovals ?? [],
@@ -108,6 +113,7 @@ const rawRecoveryCycles = scenario.recovery.cyclePlan
         : null;
       return Array.from({ length: group.count }, (_, offset) => ({
         group: group.approver,
+        offlineReceiver: group.offlineReceiver ?? scenario.offlineReceiver?.platform,
         approver: alternatingApprovers
           ? alternatingApprovers[offset % alternatingApprovers.length]
           : group.approver,
@@ -151,6 +157,7 @@ const iosDerivedDataPath = resolve(e2eRoot, '.derivedData/iosApp');
 const androidEmulatorPath = '/Users/dmitrykuklin/Library/Android/sdk/emulator/emulator';
 const androidTestBundleId = `${scenario.android.bundleId}.test`;
 const iosTestMethod = scenario.ios.testMethod
+  ?? scenario.ios.joinTestMethod
   ?? 'testJoinAndroidInitiatedVaultAndHandleConcurrentRecovery';
 const serverContainer = scenario.server.container;
 const serverImage = scenario.server.image;
@@ -445,9 +452,26 @@ async function prepareIosSimulator() {
   return simulator.udid;
 }
 
-function startIosJoinTest(simulatorUdid) {
-  console.log('9. Starting iOS UI test');
-  return watchProcessOutput(
+function startIosJoinTest(simulatorUdid, {
+  testClass = scenario.ios.testClass ?? 'CaseFourIosConcurrentRecoveryUITest',
+  testMethod = iosTestMethod,
+  label = 'iOS UI test',
+  environment = {},
+} = {}) {
+  console.log(`9. Starting ${label}`);
+  // xcodebuild does not reliably propagate per-invocation E2E_* variables to
+  // the XCTest process. Persist the compact step context on the host so the
+  // iOS UI test can read the exact cycle/step without timing-based defaults.
+  if (environment.E2E_ROLE) {
+    writeFileSync(iosStepConfigPath, JSON.stringify({
+      role: environment.E2E_ROLE,
+      cycle: environment.E2E_CYCLE,
+      step: environment.E2E_STEP,
+      approvalPlatform: environment.E2E_APPROVAL_PLATFORM,
+      sender: environment.E2E_SENDER,
+    }));
+  }
+  const watched = watchProcessOutput(
     'xcodebuild',
     [
       'test',
@@ -461,7 +485,7 @@ function startIosJoinTest(simulatorUdid) {
       `id=${simulatorUdid}`,
       '-derivedDataPath',
       iosDerivedDataPath,
-      `-only-testing:iosAppUITests/${scenario.ios.testClass ?? 'CaseFourIosConcurrentRecoveryUITest'}/${iosTestMethod}`,
+      `-only-testing:iosAppUITests/${testClass}/${testMethod}`,
     ],
     {
       cwd: resolve(composeRoot, 'iosApp'),
@@ -478,9 +502,22 @@ function startIosJoinTest(simulatorUdid) {
         E2E_IOS_APPROVAL_STEPS: iosApprovalSteps,
         E2E_SECRET_CREATION_PLAN: JSON.stringify(secretCreationPlan),
         E2E_APPROVAL_COORDINATOR_URL: 'http://127.0.0.1:5180',
+        ...environment,
       },
     },
   );
+  // XCTest can finish the selected test successfully while xcodebuild keeps
+  // its testmanagerd session open indefinitely. The selected-suite result is
+  // the authoritative pass/fail boundary for this one-test invocation; close
+  // the stuck wrapper so the next recovery cycle can start.
+  const selectedSuitePassed = watched.waitForMarker("Test Suite 'Selected tests' passed", 300_000)
+    .then(() => {
+      if (!watched.child.killed) watched.child.kill('SIGTERM');
+      return { stdout: watched.outputTail(), stderr: '' };
+    });
+  const result = Promise.race([watched.result, selectedSuitePassed]);
+  void result.catch(() => {});
+  return { ...watched, result };
 }
 
 async function prepareAndroidEmulator() {
@@ -544,11 +581,19 @@ async function androidUserIsUnlocked(serial) {
   }
 }
 
-async function waitForAndroidPinPrompt(serial, timeoutMs = 30_000) {
+async function waitForAndroidPinPrompt(serial, timeoutMs = 120_000) {
   const deadline = Date.now() + timeoutMs;
   const dumpPath = '/data/local/tmp/metasecret-e2e-window.xml';
   let lastState = 'PIN prompt not visible';
   while (Date.now() < deadline) {
+    // Android 16 can publish boot_completed before adbd finishes its final
+    // reconnect. Re-check the transport here instead of treating one
+    // transient offline/not-found response as a PIN failure.
+    const onlineWindow = Math.min(deadline - Date.now(), 5_000);
+    await waitForOnlineAndroidDevice(serial, onlineWindow).catch((error) => {
+      lastState = error.message;
+    });
+    if (Date.now() >= deadline) break;
     if (await androidUserIsUnlocked(serial)) return;
     try {
       await runAdbWithRetry([
@@ -598,7 +643,17 @@ async function waitForOnlineAndroidDevice(expectedSerial = null, timeoutMs = 120
       const online = rows.find(([id, state]) =>
         id?.startsWith('emulator-') && state === 'device' &&
         (expectedSerial == null || id === expectedSerial));
-      if (online?.[0]) return online[0];
+      if (online?.[0]) {
+        // `adb devices` can briefly report `device` while adbd is still
+        // restarting (especially after `adb root`). Verify a real shell
+        // round-trip before allowing Gradle or UI input to start.
+        try {
+          await runAndCapture('adb', ['-s', online[0], 'shell', 'true']);
+          return online[0];
+        } catch (error) {
+          lastState = `${online[0]} shell unavailable: ${error.message}`;
+        }
+      }
       const emulator = rows.find(([id]) =>
         id?.startsWith('emulator-') &&
         (expectedSerial == null || id === expectedSerial));
@@ -696,36 +751,614 @@ async function startAndroidJoinTest(serial) {
   // APK, then launches the target activity itself. A separate `am start`
   // preflight is redundant and has proved flaky on the Android 16 emulator.
   await runAdbWithRetry(['-s', serial, 'logcat', '-c']);
-  // The orchestrator uninstalls the app before each run, while Gradle may
-  // consider installDebug up-to-date and skip reinstalling it. Install the
-  // freshly assembled target APK explicitly so ActivityScenario can resolve
-  // MainActivity even when the Gradle install task is cached.
   const appApkPath = resolve(composeRoot, 'composeApp/build/outputs/apk/debug/composeApp-debug.apk');
-  await runAdbWithRetry(['-s', serial, 'install', '-r', appApkPath]);
-  const logcat = watchProcessOutput('adb', ['-s', serial, 'logcat', 'MetaSecretE2E:I', '*:S']);
-  void logcat.result.catch(() => {}); // logcat is stopped deliberately when the instrumentation test ends
-  const test = runAndWait(
-    './gradlew',
-    [
-      ':composeApp:installDebug',
-      ':composeApp:connectedDebugAndroidTest',
-      `-Pandroid.testInstrumentationRunnerArguments.class=${scenario.android.testClass ?? 'metasecret.project.com.CaseFourAndroidConcurrentRecoveryTest'}`,
-      `-Pandroid.testInstrumentationRunnerArguments.vaultName=${scenario.vault.name}`,
-      `-Pandroid.testInstrumentationRunnerArguments.secretName=${defaultSecret?.name ?? ''}`,
-      `-Pandroid.testInstrumentationRunnerArguments.secretConfig=${secretConfigJson}`,
-      `-Pandroid.testInstrumentationRunnerArguments.recoveryCycles=${recoveryCycles.length}`,
-      `-Pandroid.testInstrumentationRunnerArguments.cyclePlan=${cyclePlanJson}`,
-      `-Pandroid.testInstrumentationRunnerArguments.secretCreationPlan=${JSON.stringify(secretCreationPlan)}`,
-      '-Pandroid.testInstrumentationRunnerArguments.approvalCoordinatorUrl=http://10.0.2.2:5180',
-    ],
-    { cwd: composeRoot, env: { ANDROID_SERIAL: serial } },
+  const testApkPath = resolve(
+    composeRoot,
+    'composeApp/build/outputs/apk/androidTest/debug/composeApp-debug-androidTest.apk',
   );
-  const result = test.finally(() => logcat.child.kill('SIGTERM'));
+  const logcat = watchProcessOutput('adb', [
+    '-s', serial, 'logcat',
+    'MetaSecretE2E:I',
+    'AndroidRuntime:E',
+    'ActivityManager:E',
+    'libc:F',
+    '*:S',
+  ]);
+  void logcat.result.catch(() => {}); // logcat is stopped deliberately when the instrumentation test ends
+  const androidTestClass = scenario.android.testClass
+    ?? 'metasecret.project.com.CaseFourAndroidConcurrentRecoveryTest';
+  const androidTestMethod = scenario.android.testMethod ?? scenario.android.joinTestMethod;
+  const androidTestSelector = androidTestMethod
+    ? `${androidTestClass}#${androidTestMethod}`
+    : androidTestClass;
+  const runnerArguments = [
+    '-e', 'class', androidTestSelector,
+    '-e', 'vaultName', scenario.vault.name,
+    '-e', 'secretName', defaultSecret?.name ?? '',
+    '-e', 'secretConfig', secretConfigJson,
+    '-e', 'recoveryCycles', String(recoveryCycles.length),
+    '-e', 'cyclePlan', cyclePlanJson,
+    '-e', 'secretCreationPlan', JSON.stringify(secretCreationPlan),
+    '-e', 'approvalCoordinatorUrl', 'http://10.0.2.2:5180',
+  ];
+  // Android's `am` parser treats JSON punctuation as shell syntax when a
+  // long value is passed through `adb shell`. The Test #7 setup only needs
+  // these scalar values; keeping the JSON plan for the Gradle path avoids a
+  // fragile command-line encoding and does not reduce scenario coverage.
+  const directRunnerArguments = [
+    '-e', 'class', androidTestSelector,
+    '-e', 'vaultName', scenario.vault.name,
+    '-e', 'secretName', defaultSecret?.name ?? '',
+    '-e', 'approvalCoordinatorUrl', 'http://10.0.2.2:5180',
+  ];
+
+  let test;
+  let directInstrumentation = false;
+  if (scenario.android.directInstrumentationSetup) {
+    // Gradle's connected test task may uninstall the target application after
+    // the test. Test #7 must keep its vault between the setup and assertion
+    // instrumentation, so build/install both APKs and invoke the runner
+    // directly instead of using connectedDebugAndroidTest.
+    await runAndWait('./gradlew', [
+      ':composeApp:assembleDebug',
+      ':composeApp:assembleDebugAndroidTest',
+    ], { cwd: composeRoot, env: { ANDROID_SERIAL: serial } });
+    await runAdbWithRetry(['-s', serial, 'install', '-r', appApkPath]);
+    await runAdbWithRetry(['-s', serial, 'install', '-r', testApkPath]);
+    await dismissAndroidCompatibilityDialog(serial);
+    test = watchProcessOutput('adb', [
+      '-s', serial,
+      'shell',
+      '--',
+      'am',
+      'instrument',
+      '-w',
+      ...directRunnerArguments,
+      `${androidTestBundleId}/androidx.test.runner.AndroidJUnitRunner`,
+    ]);
+    directInstrumentation = true;
+  } else {
+    // The orchestrator uninstalls the app before each run, while Gradle may
+    // consider installDebug up-to-date and skip reinstalling it. Install the
+    // freshly assembled target APK explicitly so ActivityScenario can resolve
+    // MainActivity even when the Gradle install task is cached.
+    await runAdbWithRetry(['-s', serial, 'install', '-r', appApkPath]);
+    test = runAndWait(
+      './gradlew',
+      [
+        ':composeApp:installDebug',
+        ':composeApp:connectedDebugAndroidTest',
+        `-Pandroid.testInstrumentationRunnerArguments.class=${androidTestSelector}`,
+        `-Pandroid.testInstrumentationRunnerArguments.vaultName=${scenario.vault.name}`,
+        `-Pandroid.testInstrumentationRunnerArguments.secretName=${defaultSecret?.name ?? ''}`,
+        `-Pandroid.testInstrumentationRunnerArguments.secretConfig=${secretConfigJson}`,
+        `-Pandroid.testInstrumentationRunnerArguments.recoveryCycles=${recoveryCycles.length}`,
+        `-Pandroid.testInstrumentationRunnerArguments.cyclePlan=${cyclePlanJson}`,
+        `-Pandroid.testInstrumentationRunnerArguments.secretCreationPlan=${JSON.stringify(secretCreationPlan)}`,
+        '-Pandroid.testInstrumentationRunnerArguments.approvalCoordinatorUrl=http://10.0.2.2:5180',
+      ],
+      { cwd: composeRoot, env: { ANDROID_SERIAL: serial } },
+    );
+  }
+
+  const result = (directInstrumentation
+    ? test.result.then((output) => {
+        assertAndroidInstrumentationPassed(output, androidTestSelector);
+        return output;
+      })
+    : test
+  ).finally(() => logcat.child.kill('SIGTERM'));
   // The orchestrator waits for E2E markers before awaiting the full Android
   // result. Attach a rejection handler now so a parallel failure cannot turn
   // into an unhandled rejection and hide the original orchestration error.
   void result.catch(() => {});
   return { ...logcat, result };
+}
+
+function assertAndroidInstrumentationPassed(output, selector) {
+  const text = `${output?.stdout ?? ''}\n${output?.stderr ?? ''}`;
+  if (/FAILURES!!!|There was\s+\d+ failure|There were\s+\d+ failures|INSTRUMENTATION_STATUS_CODE:\s*-\d+/.test(text)) {
+    throw new Error(`Android instrumentation failed for ${selector}\n${text.slice(-12_000)}`);
+  }
+}
+
+async function startAndroidStepTest(serial, {
+  role,
+  cycle,
+  step,
+  approvalPlatform = '',
+  sender = '',
+  label = 'Android recovery step',
+} = {}) {
+  console.log(`Starting ${label}: role=${role} cycle=${cycle} step=${step}`);
+  const appApkPath = resolve(composeRoot, 'composeApp/build/outputs/apk/debug/composeApp-debug.apk');
+  const testApkPath = resolve(composeRoot, 'composeApp/build/outputs/apk/androidTest/debug/composeApp-debug-androidTest.apk');
+  await runAdbWithRetry(['-s', serial, 'install', '-r', appApkPath]);
+  await runAdbWithRetry(['-s', serial, 'install', '-r', testApkPath]);
+  await dismissAndroidCompatibilityDialog(serial);
+  const logcat = watchProcessOutput('adb', [
+    '-s', serial, 'logcat',
+    'MetaSecretE2E:I',
+    'AndroidRuntime:E',
+    'ActivityManager:E',
+    'libc:F',
+    '*:S',
+  ]);
+  void logcat.result.catch(() => {});
+  const androidTestClass = scenario.android.testClass
+    ?? 'metasecret.project.com.CaseEightAndroidBothOfflineTest';
+  const androidTestMethod = scenario.android.stepTestMethod ?? 'handleRecoveryStep';
+  const selector = `${androidTestClass}#${androidTestMethod}`;
+  const test = watchProcessOutput('adb', [
+    '-s', serial,
+    'shell', '--', 'am', 'instrument', '-w',
+    '-e', 'class', selector,
+    '-e', 'vaultName', scenario.vault.name,
+    '-e', 'secretName', defaultSecret?.name ?? '',
+    '-e', 'role', role,
+    '-e', 'cycle', String(cycle),
+    '-e', 'step', String(step),
+    '-e', 'approvalPlatform', approvalPlatform,
+    '-e', 'sender', sender,
+    '-e', 'approvalCoordinatorUrl', 'http://10.0.2.2:5180',
+    `${androidTestBundleId}/androidx.test.runner.AndroidJUnitRunner`,
+  ]);
+  const result = test.result
+    .then((output) => {
+      assertAndroidInstrumentationPassed(output, selector);
+      return output;
+    })
+    .finally(() => logcat.child.kill('SIGTERM'));
+  void result.catch(() => {});
+  // Android E2E markers are emitted with Log.i and therefore arrive on the
+  // dedicated logcat watcher, not on `am instrument` stdout. Keep the
+  // instrumentation result for pass/fail validation, but expose the logcat
+  // marker waiter to the orchestrator.
+  return { ...test, waitForMarker: logcat.waitForMarker, result };
+}
+
+async function dismissAndroidCompatibilityDialog(serial, timeoutMs = 30_000) {
+  // Android 16 shows this system dialog the first time the debug APK is
+  // launched. It is outside Compose's semantics tree, so dismiss it through
+  // accessibility only when its text is actually present.
+  await runAdbWithRetry([
+    '-s', serial, 'shell', 'monkey', '-p', scenario.android.bundleId, '1',
+  ]);
+  const dumpPath = '/data/local/tmp/metasecret-e2e-window.xml';
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      await runAdbWithRetry([
+        '-s', serial, 'shell', 'uiautomator', 'dump', dumpPath,
+      ], { attempts: 2, delayMs: 200 });
+      const { stdout } = await runAndCapture('adb', ['-s', serial, 'shell', 'cat', dumpPath]);
+      if (stdout.includes('16 KB compatible') || stdout.includes('ELF alignment check failed')) {
+        const ok = stdout.match(/<node[^>]*text="OK"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/);
+        if (ok) {
+          const [, left, top, right, bottom] = ok.map(Number);
+          await runAdbWithRetry([
+            '-s', serial,
+            'shell',
+            'input',
+            'tap',
+            String(Math.round((left + right) / 2)),
+            String(Math.round((top + bottom) / 2)),
+          ]);
+        } else {
+          await runAdbWithRetry(['-s', serial, 'shell', 'input', 'keyevent', 'KEYCODE_ENTER']);
+        }
+        break;
+      }
+    } catch {
+      // The target may still be starting; the next accessibility snapshot is authoritative.
+    }
+    await wait(250);
+  }
+  await runAdbWithRetry(['-s', serial, 'shell', 'am', 'force-stop', scenario.android.bundleId]);
+}
+
+async function stopAndroidApplication(serial) {
+  console.log(`15a. Stopping offline Android application: ${scenario.android.bundleId}`);
+  await runAdbWithRetry([
+    '-s', serial, 'shell', 'am', 'force-stop', scenario.android.bundleId,
+  ]);
+  const deadline = Date.now() + 30_000;
+  let lastPid = '<unknown>';
+  while (Date.now() < deadline) {
+    const { stdout } = await runAndCapture(
+      'adb',
+      ['-s', serial, 'shell', 'pidof', scenario.android.bundleId],
+    ).catch(() => ({ stdout: '' }));
+    lastPid = stdout.trim() || '<none>';
+    if (!stdout.trim()) {
+      console.log('Android application is stopped');
+      return;
+    }
+    await wait(500);
+  }
+  throw new Error(`Android application did not stop: pid=${lastPid}`);
+}
+
+async function stopIosApplication(simulatorUdid) {
+  console.log(`15a. Stopping offline iOS application: ${scenario.ios.bundleId}`);
+  await runAndWait('xcrun', ['simctl', 'terminate', simulatorUdid, scenario.ios.bundleId])
+    .catch(() => {});
+  console.log('iOS application is stopped');
+}
+
+async function startAndroidRemainingRecoveryTest(serial) {
+  console.log('15c. Starting Android recovery cycles after offline restart');
+  await waitForOnlineAndroidDevice(serial, 120_000);
+  const appApkPath = resolve(
+    composeRoot,
+    'composeApp/build/outputs/apk/debug/composeApp-debug.apk',
+  );
+  const testApkPath = resolve(
+    composeRoot,
+    'composeApp/build/outputs/apk/androidTest/debug/composeApp-debug-androidTest.apk',
+  );
+  await runAdbWithRetry(['-s', serial, 'install', '-r', appApkPath]);
+  await runAdbWithRetry(['-s', serial, 'install', '-r', testApkPath]);
+  const selector = `${scenario.android.testClass}#handleRemainingRecoveryCycles`;
+  const logcat = watchProcessOutput('adb', ['-s', serial, 'logcat', 'MetaSecretE2E:I', '*:S']);
+  void logcat.result.catch(() => {});
+  const test = watchProcessOutput('adb', [
+    '-s', serial,
+    'shell', '--', 'am', 'instrument', '-w',
+    '-e', 'class', selector,
+    '-e', 'vaultName', scenario.vault.name,
+    '-e', 'secretName', defaultSecret?.name ?? '',
+    '-e', 'approvalCoordinatorUrl', 'http://10.0.2.2:5180',
+    `${androidTestBundleId}/androidx.test.runner.AndroidJUnitRunner`,
+  ]);
+  const result = test.result.then((output) => {
+    assertAndroidInstrumentationPassed(output, selector);
+    return output;
+  }).finally(() => logcat.child.kill('SIGTERM'));
+  void result.catch(() => {});
+  return { ...logcat, result };
+}
+
+async function runIosStaleAlertAssertion(simulatorUdid) {
+  // The first iOS UI test deliberately returns after the offline boundary.
+  // A fresh XCTest invocation relaunches the persisted app state and checks
+  // that no old incoming request remains in the UI.
+  const assertion = startIosJoinTest(simulatorUdid, {
+    testMethod: 'assertNoStaleRecoveryAlertAfterOfflineRestart',
+    label: 'iOS stale-alert assertion',
+  });
+  await assertion.result;
+  console.log('✅ Offline iOS receiver did not show a stale recovery alert');
+}
+
+async function runOfflineReceiverRecovery(page, iosTest, androidTest, androidSerial, simulatorUdid) {
+  const cycleFor = (platform) => recoveryCycles.find((cycle) => cycle.offlineReceiver === platform);
+  const androidCycle = cycleFor('android');
+  const webCycle = cycleFor('web');
+  const iosCycle = cycleFor('ios');
+  if (!androidCycle || !webCycle || !iosCycle) {
+    throw new Error('Test #7 requires exactly one offline cycle for android, web, and ios');
+  }
+
+  // Cycle 1 — Android is offline: Web sends, iOS approves.
+  currentCycleForDiagnostics = androidCycle.number;
+  const androidSecret = androidCycle.senderSecrets.web ?? defaultSecret?.name;
+  const androidApprovalStep = androidCycle.approvals.findIndex((approval) => approval.platform === 'ios') + 1;
+  if (androidApprovalStep <= 0) throw new Error('Android-offline cycle requires an iOS approval');
+  await androidTest.waitForMarker('E2E: ANDROID_OFFLINE_READY', 180_000);
+  await androidTest.result;
+  await stopAndroidApplication(androidSerial);
+  console.log(`15.${androidCycle.number} Web requests recovery while Android is offline`);
+  approvalCoordinator.allow('web-sender', androidCycle.number);
+  await startWebRecovery(page, androidSecret);
+  approvalCoordinator.allow(`ios-approve-${androidApprovalStep}`, androidCycle.number);
+  await iosTest.waitForMarker(
+    `E2E: IOS_APPROVED_INCOMING_${androidCycle.number}_${androidApprovalStep}`,
+    180_000,
+  );
+  await revealAndCloseWebSecret(page, androidSecret, false);
+  await runAndroidStaleAlertAssertion(androidSerial);
+  console.log('✅ Offline Android receiver did not show a stale recovery alert');
+
+  // Cycle 2 — Web is offline: Android sends, iOS approves.
+  currentCycleForDiagnostics = webCycle.number;
+  const webSecret = webCycle.senderSecrets.android ?? defaultSecret?.name;
+  await stopWebApplication(page);
+  const androidRemaining = await startAndroidRemainingRecoveryTest(androidSerial);
+  approvalCoordinator.allow('android-sender', webCycle.number);
+  await androidRemaining.waitForMarker(`E2E: ANDROID_RECOVERY_REQUEST_SENT_${webCycle.number}`, 180_000);
+  const webApprovalStep = webCycle.approvals.findIndex((approval) => approval.platform === 'ios') + 1;
+  if (webApprovalStep <= 0) throw new Error('Web-offline cycle requires an iOS approval');
+  approvalCoordinator.allow(`ios-approve-${webApprovalStep}`, webCycle.number);
+  await iosTest.waitForMarker(
+    `E2E: IOS_APPROVED_INCOMING_${webCycle.number}_${webApprovalStep}`,
+    180_000,
+  );
+  approvalCoordinator.allow('android-show', webCycle.number);
+  await androidRemaining.waitForMarker(
+    `E2E: ANDROID_RECOVERY_CLOSED_${webCycle.number}`,
+    180_000,
+  );
+  await reopenWebAfterOffline(page);
+  await assertNoStaleWebRecoveryAlert(page, webSecret);
+  console.log('✅ Offline Web receiver did not show a stale recovery alert');
+
+  // Cycle 3 — iOS is offline: Android sends, Web approves. iOS exits its
+  // first UI-test invocation at the explicit offline boundary, then a fresh
+  // invocation checks the persisted state after the request is completed.
+  currentCycleForDiagnostics = iosCycle.number;
+  const iosSecret = iosCycle.senderSecrets.android ?? defaultSecret?.name;
+  await iosTest.waitForMarker(`E2E: IOS_OFFLINE_READY_${iosCycle.number}`, 180_000);
+  await stopIosApplication(simulatorUdid);
+  approvalCoordinator.allow('ios-offline-stop', iosCycle.number);
+  await iosTest.result;
+  await androidRemaining.waitForMarker('E2E: ANDROID_REMAINING_RECOVERY_READY', 180_000);
+  approvalCoordinator.allow('android-sender', iosCycle.number);
+  await androidRemaining.waitForMarker(
+    `E2E: ANDROID_RECOVERY_REQUEST_SENT_${iosCycle.number}`,
+    180_000,
+  );
+  const webApproverSecret = iosCycle.approvals.find((approval) => approval.platform === 'web')?.secret
+    ?? iosSecret;
+  await approveIncomingRecoveryOnWeb(page, webApproverSecret, 1);
+  approvalCoordinator.allow('android-show', iosCycle.number);
+  await androidRemaining.waitForMarker(
+    `E2E: ANDROID_RECOVERY_CLOSED_${iosCycle.number}`,
+    180_000,
+  );
+  await androidRemaining.result;
+  await runIosStaleAlertAssertion(simulatorUdid);
+}
+
+async function createWebInitiatedVault(page) {
+  await page.goto(scenario.web.url, { waitUntil: 'domcontentloaded' });
+  await unlockWithPasskeyIfNeeded(page);
+  await page.getByPlaceholder('vault name').fill(scenario.vault.name);
+  await page.getByRole('button', { name: 'Set Vault Name' }).click();
+  await page.getByText('Vault name is free!').waitFor({ timeout: 120_000 });
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await page.getByRole('button', { name: '+ Add Secret', exact: true }).waitFor({ timeout: 180_000 });
+  for (const secretName of secretCreationPlan?.initial?.web ?? [defaultSecret?.name]) {
+    await createWebSecret(page, secretName);
+  }
+  await waitForWebSecrets(page);
+  console.log('✅ Web vault and initial secret ready');
+}
+
+async function runWebInitiatedSetup(page, simulatorUdid, androidSerial) {
+  await createWebInitiatedVault(page);
+
+  const iosTest = startIosJoinTest(simulatorUdid, {
+    testClass: scenario.ios.testClass,
+    testMethod: scenario.ios.joinTestMethod,
+    label: 'iOS Web-initiated join',
+  });
+  void iosTest.result.catch(() => {});
+  await iosTest.waitForMarker('E2E: IOS_JOIN_REQUEST_SENT', 180_000);
+  await approveJoinRequestOnWeb(page, 'iOS');
+  await iosTest.waitForMarker('E2E: IOS_JOIN_READY', 180_000);
+  await iosTest.result;
+
+  const androidTest = await startAndroidJoinTest(androidSerial);
+  await androidTest.waitForMarker('E2E: ANDROID_JOIN_REQUEST_SENT', 180_000);
+  await approveJoinRequestOnWeb(page, 'Android');
+  await androidTest.waitForMarker('E2E: ANDROID_JOIN_READY', 180_000);
+  await androidTest.result;
+  await waitForWebSecrets(page);
+  return { iosTest, androidTest };
+}
+
+function stepEnvironment({ role, cycle, step, approvalPlatform, sender }) {
+  return {
+    E2E_ROLE: role,
+    E2E_CYCLE: String(cycle),
+    E2E_STEP: String(step),
+    E2E_APPROVAL_PLATFORM: approvalPlatform,
+    E2E_SENDER: sender,
+  };
+}
+
+async function runBothReceiversOfflineRecovery(page, simulatorUdid, androidSerial) {
+  const blocks = scenario.recovery.offlineBlocks ?? [];
+  const expectedBlockCount = scenario.recovery.expectedBlockCount ?? 3;
+  const expectedCycles = scenario.recovery.expectedCycles ?? expectedBlockCount * 6;
+  if (blocks.length !== expectedBlockCount) {
+    throw new Error(`Test #8 requires ${expectedBlockCount} sender block(s)`);
+  }
+  let cycle = 0;
+
+  for (const block of blocks) {
+    if (block.count !== 3) throw new Error(`Test #8 block ${block.name} must repeat exactly three times`);
+    if (block.receivers.length !== 2 || block.approvalOrder.length !== 2) {
+      throw new Error(`Test #8 block ${block.name} must have two receivers and two approval steps`);
+    }
+    const secretName = defaultSecret?.name;
+    for (let repeat = 1; repeat <= block.count; repeat += 1) {
+      for (let step = 1; step <= 2; step += 1) {
+        cycle += 1;
+        currentCycleForDiagnostics = cycle;
+        const approver = block.approvalOrder[step - 1];
+        const nonApprover = block.receivers.find((receiver) => receiver !== approver);
+        console.log(
+          `Test #8 cycle ${cycle}/${expectedCycles}: sender=${block.sender} `
+          + `repeat=${repeat}/3 approval=${approver} then dismiss=${nonApprover}`,
+        );
+
+        // Receivers are deliberately stopped before the sender creates its
+        // claim. They are restarted only after the request marker exists.
+        for (const receiver of block.receivers) {
+          if (receiver === 'android') await stopAndroidApplication(androidSerial);
+          if (receiver === 'ios') await stopIosApplication(simulatorUdid);
+          if (receiver === 'web') await stopWebApplication(page);
+        }
+        if (block.sender === 'web') await reopenWebAfterOffline(page);
+
+        let senderProcess;
+        if (block.sender === 'ios') {
+          senderProcess = startIosJoinTest(simulatorUdid, {
+            testClass: scenario.ios.testClass,
+            testMethod: scenario.ios.stepTestMethod,
+            label: `iOS sender cycle ${cycle}`,
+            environment: stepEnvironment({
+              role: 'sender', cycle, step, approvalPlatform: approver, sender: block.sender,
+            }),
+          });
+          void senderProcess.result.catch(() => {});
+          approvalCoordinator.allow(`ios-sender-${step}`, cycle);
+          await senderProcess.waitForMarker(`E2E: IOS_RECOVERY_REQUEST_SENT_${cycle}_${step}`, 180_000);
+        } else if (block.sender === 'android') {
+          senderProcess = await startAndroidStepTest(androidSerial, {
+            role: 'sender', cycle, step, approvalPlatform: approver, sender: block.sender,
+            label: `Android sender cycle ${cycle}`,
+          });
+          approvalCoordinator.allow(`android-sender-${step}`, cycle);
+          await senderProcess.waitForMarker(`E2E: ANDROID_RECOVERY_REQUEST_SENT_${cycle}_${step}`, 180_000);
+        } else {
+          await startWebRecovery(page, secretName);
+        }
+
+        const receiverProcesses = [];
+        for (const receiver of block.receivers) {
+          if (receiver === 'android') {
+            receiverProcesses.push({
+              platform: receiver,
+              test: await startAndroidStepTest(androidSerial, {
+                role: 'receiver', cycle, step, approvalPlatform: approver, sender: block.sender,
+                label: `Android receiver cycle ${cycle}`,
+              }),
+            });
+          } else if (receiver === 'ios') {
+            const test = startIosJoinTest(simulatorUdid, {
+              testClass: scenario.ios.testClass,
+              testMethod: scenario.ios.stepTestMethod,
+              label: `iOS receiver cycle ${cycle}`,
+              environment: stepEnvironment({
+                role: 'receiver', cycle, step, approvalPlatform: approver, sender: block.sender,
+              }),
+            });
+            void test.result.catch(() => {});
+            receiverProcesses.push({ platform: receiver, test });
+          } else {
+            await reopenWebAfterOffline(page);
+            receiverProcesses.push({ platform: receiver, test: null });
+          }
+        }
+
+        for (const receiverProcess of receiverProcesses) {
+          if (receiverProcess.platform === 'web') {
+            await waitForWebIncomingRecoveryCount(page, 1, secretName);
+          } else {
+            const marker = receiverProcess.platform === 'ios'
+              ? `E2E: IOS_INCOMING_VISIBLE_${cycle}_${step}`
+              : `E2E: ANDROID_INCOMING_VISIBLE_${cycle}_${step}`;
+            await receiverProcess.test.waitForMarker(marker, 180_000);
+          }
+        }
+        console.log(`✅ Test #8 cycle ${cycle}: both receiver alerts visible`);
+
+        if (approver === 'web') {
+          await approveIncomingRecoveryOnWeb(page, secretName, 1);
+        } else {
+          approvalCoordinator.allow(`${approver}-approve-${step}`, cycle);
+          const approving = receiverProcesses.find((entry) => entry.platform === approver);
+          const marker = approver === 'ios'
+            ? `E2E: IOS_APPROVED_INCOMING_${cycle}_${step}`
+            : `E2E: ANDROID_APPROVED_INCOMING_${cycle}_${step}`;
+          await approving.test.waitForMarker(marker, 180_000);
+        }
+
+        if (nonApprover === 'web') {
+          await waitForWebIncomingRecoveryGone(page, secretName);
+        } else {
+          approvalCoordinator.allow(`${nonApprover}-dismiss-${step}`, cycle);
+          const dismissed = receiverProcesses.find((entry) => entry.platform === nonApprover);
+          const marker = nonApprover === 'ios'
+            ? `E2E: IOS_DISMISSED_INCOMING_${cycle}_${step}`
+            : `E2E: ANDROID_DISMISSED_INCOMING_${cycle}_${step}`;
+          await dismissed.test.waitForMarker(marker, 180_000);
+        }
+        console.log(`✅ Test #8 cycle ${cycle}: ${approver} approved and ${nonApprover} alert disappeared`);
+
+        if (block.sender === 'web') {
+          await revealAndCloseWebSecret(page, secretName, false);
+        } else {
+          approvalCoordinator.allow(`${block.sender}-show-${step}`, cycle);
+          const marker = block.sender === 'ios'
+            ? `E2E: IOS_RECOVERY_CLOSED_${cycle}_${step}`
+            : `E2E: ANDROID_RECOVERY_CLOSED_${cycle}_${step}`;
+          await senderProcess.waitForMarker(marker, 180_000);
+          await senderProcess.result;
+        }
+
+        for (const receiverProcess of receiverProcesses) {
+          if (receiverProcess.test) await receiverProcess.test.result;
+        }
+        // Let each instrumentation/UI process publish its final result before
+        // stopping its application. Killing the target first can leave
+        // `am instrument` waiting forever after its E2E marker was emitted.
+        for (const receiver of block.receivers) {
+          if (receiver === 'android') await stopAndroidApplication(androidSerial);
+          if (receiver === 'ios') await stopIosApplication(simulatorUdid);
+          if (receiver === 'web') await stopWebApplication(page);
+        }
+      }
+    }
+  }
+  if (cycle !== expectedCycles) throw new Error(`Test #8 expected ${expectedCycles} recovery requests, ran ${cycle}`);
+}
+
+async function runAndroidStaleAlertAssertion(serial) {
+  console.log('15b. Starting Android assertion after recovery');
+  await waitForOnlineAndroidDevice(serial, 120_000);
+  const appApkPath = resolve(composeRoot, 'composeApp/build/outputs/apk/debug/composeApp-debug.apk');
+  const testApkPath = resolve(composeRoot, 'composeApp/build/outputs/apk/androidTest/debug/composeApp-debug-androidTest.apk');
+  await runAdbWithRetry(['-s', serial, 'install', '-r', appApkPath]);
+  await runAdbWithRetry(['-s', serial, 'install', '-r', testApkPath]);
+  const assertionClass = scenario.android.assertionClass
+    ?? scenario.android.testClass
+    ?? 'metasecret.project.com.CaseSevenAndroidOfflineReceiverTest';
+  const assertionMethod = scenario.android.assertionMethod
+    ?? 'assertNoStaleRecoveryAlertAfterOfflineRestart';
+  const assertion = watchProcessOutput('adb', [
+    '-s', serial, 'shell', '--', 'am', 'instrument', '-w', '-e', 'class',
+    `${assertionClass}#${assertionMethod}`,
+    `${androidTestBundleId}/androidx.test.runner.AndroidJUnitRunner`,
+  ]);
+  await assertion.result;
+}
+
+async function stopWebApplication(page) {
+  console.log('15d. Navigating Web receiver offline');
+  await page.goto('about:blank', { waitUntil: 'load' });
+}
+
+async function reopenWebAfterOffline(page) {
+  console.log('15e. Reopening Web receiver');
+  await page.goto(scenario.web.url, { waitUntil: 'domcontentloaded' });
+  await unlockWithPasskeyIfNeeded(page);
+  await waitForWebSecrets(page);
+}
+
+async function assertNoStaleWebRecoveryAlert(page, secretName) {
+  const openRequest = page.getByTestId(`open-recovery-request-${secretName}`);
+  const badge = page.locator('li')
+    .filter({ has: page.getByTestId(`secret-primary-action-${secretName}`) })
+    .getByTestId('recovery-request-badge');
+  await openRequest.waitFor({ state: 'hidden', timeout: 30_000 }).catch(() => {});
+  await badge.waitFor({ state: 'hidden', timeout: 30_000 }).catch(() => {});
+  const openVisible = await openRequest.isVisible().catch(() => false);
+  const badgeVisible = await badge.isVisible().catch(() => false);
+  if (openVisible || badgeVisible) {
+    throw new Error(`Web receiver retained a stale recovery request for ${secretName}`);
+  }
+}
+
+async function waitForWebIncomingRecoveryGone(page, secretName) {
+  const openRequest = page.getByTestId(`open-recovery-request-${secretName}`);
+  await openRequest.waitFor({ state: 'hidden', timeout: 120_000 });
+  const row = page.locator('li').filter({ has: page.getByTestId(`secret-primary-action-${secretName}`) });
+  await row.getByTestId('recovery-request-badge').waitFor({ state: 'hidden', timeout: 120_000 });
+  console.log(`[UI][Web] incoming recovery closed secret=${secretName}`);
 }
 
 async function setupVirtualAuthenticator(page) {
@@ -746,11 +1379,17 @@ async function setupVirtualAuthenticator(page) {
 async function unlockWithPasskeyIfNeeded(page) {
   const createPasskeyButton = page.getByRole('button', { name: 'Create Passkey' });
   const authenticateButton = page.getByRole('button', { name: 'Authenticate with Passkey' });
+  const vaultNameInput = page.getByPlaceholder('vault name');
+  const secretsLink = page.getByRole('link', { name: 'Secrets', exact: true });
 
   await Promise.race([
-    page.getByPlaceholder('vault name').waitFor({ state: 'visible' }),
+    vaultNameInput.waitFor({ state: 'visible' }),
     createPasskeyButton.waitFor({ state: 'visible' }),
     authenticateButton.waitFor({ state: 'visible' }),
+    // A page reopened in the same browser context may already be unlocked.
+    // In that case the navigation link is the readiness boundary; there is
+    // no vault-name input to wait for.
+    secretsLink.waitFor({ state: 'visible' }),
   ]);
 
   if (await createPasskeyButton.isVisible()) {
@@ -761,7 +1400,11 @@ async function unlockWithPasskeyIfNeeded(page) {
     await authenticateButton.click();
   }
 
-  await page.getByPlaceholder('vault name').waitFor({ state: 'visible' });
+  if (await vaultNameInput.isVisible().catch(() => false)) return;
+  await Promise.race([
+    vaultNameInput.waitFor({ state: 'visible' }),
+    secretsLink.waitFor({ state: 'visible' }),
+  ]);
 }
 
 async function approveJoinRequestOnWeb(page, deviceName) {
@@ -1105,7 +1748,13 @@ async function main() {
   });
   page.on('console', (message) => {
     const line = `[${message.type()}] ${message.text()}`;
-    recordBrowserDiagnostic(line, { important: message.type() !== 'debug' });
+    // Core tracing emits a high-volume `info` stream during recovery. Keep
+    // actionable browser logs while avoiding synchronous diagnostic I/O for
+    // every state snapshot; native E2E markers remain the synchronization
+    // source of truth.
+    recordBrowserDiagnostic(line, {
+      important: !['debug', 'info'].includes(message.type()),
+    });
   });
   page.on('pageerror', (error) => {
     const line = `[pageerror] ${error.message}`;
@@ -1121,11 +1770,27 @@ async function main() {
   const simulatorUdid = await prepareIosSimulator();
 
   const androidSerial = await prepareAndroidEmulator();
+  if (scenario.mode === 'both-receivers-offline' && scenario.setup?.initiator === 'web') {
+    await runWebInitiatedSetup(page, simulatorUdid, androidSerial);
+    await runBothReceiversOfflineRecovery(page, simulatorUdid, androidSerial);
+    const expectedCycles = scenario.recovery.expectedCycles ?? 18;
+    console.log(`✅ Test #8 both-receivers-offline recovery passed: ${expectedCycles} requests`);
+    if (exitOnSuccess) {
+      await stopProcesses();
+      process.exit(0);
+    }
+    console.log('Browser remains open. Press Ctrl+C when ready to stop.');
+    await new Promise(() => {});
+  }
   const androidTest = await startAndroidJoinTest(androidSerial);
   await androidTest.waitForMarker('E2E: ANDROID_INITIATOR_READY');
 
   console.log('Web joining Android-created vault');
-  await page.goto(scenario.web.url, { waitUntil: 'networkidle' });
+  // The Web app keeps a live connection for vault state, so `networkidle`
+  // is not a valid readiness signal and can time out after the UI is usable.
+  // Subsequent semantic waits and E2E markers provide the actual readiness
+  // boundaries for this scenario.
+  await page.goto(scenario.web.url, { waitUntil: 'domcontentloaded' });
   await unlockWithPasskeyIfNeeded(page);
   await page.getByPlaceholder('vault name').fill(scenario.vault.name);
   await page.getByRole('button', { name: 'Set Vault Name' }).click();
@@ -1149,7 +1814,11 @@ async function main() {
   await iosTest.waitForMarker('E2E: IOS_SECRETS_READY', 210_000);
   await waitForWebSecrets(page);
 
-  await runConcurrentRecoveryCycles(page, iosTest, androidTest);
+  if (scenario.offlineReceiver?.platform === 'android') {
+    await runOfflineReceiverRecovery(page, iosTest, androidTest, androidSerial, simulatorUdid);
+  } else {
+    await runConcurrentRecoveryCycles(page, iosTest, androidTest);
+  }
   await Promise.all([iosTest.result, androidTest.result]);
 
   console.log(`✅ Test #${testNumber} concurrent Web + iOS + Android recovery passed`);

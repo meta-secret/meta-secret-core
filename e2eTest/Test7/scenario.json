@@ -1,0 +1,69 @@
+{
+  "runId": "test7",
+  "testNumber": 7,
+  "name": "Test #7 — offline receiver must not show a stale recovery alert",
+  "server": {
+    "url": "http://127.0.0.1:3000",
+    "image": "ghcr.io/meta-secret/meta-secret-core/meta-secret-server:latest",
+    "container": "meta-secret-e2e-server-test7",
+    "port": 3000
+  },
+  "web": {
+    "url": "http://localhost:5173",
+    "directory": "../meta-secret/web-cli/ui"
+  },
+  "ios": {
+    "composeRoot": "../../meta-secret-compose",
+    "simulatorName": "iPhone 17",
+    "bundleId": "org.metasecret.vault",
+    "testClass": "CaseFourIosConcurrentRecoveryUITest",
+    "testMethod": "testJoinAndroidInitiatedVaultAndHandleConcurrentRecovery"
+  },
+  "android": {
+    "avdName": "Pixel_4a",
+    "bundleId": "metasecret.project.com",
+    "testClass": "metasecret.project.com.CaseSevenAndroidOfflineReceiverTest",
+    "testMethod": "createVaultThenWaitForOfflineRecovery",
+    "directInstrumentationSetup": true,
+    "assertionClass": "metasecret.project.com.CaseSevenAndroidOfflineReceiverTest",
+    "assertionMethod": "assertNoStaleRecoveryAlertAfterOfflineRestart"
+  },
+  "offlineReceiver": {
+    "platform": "android"
+  },
+  "secretCreation": {
+    "initial": {
+      "android": ["default"]
+    }
+  },
+  "recovery": {
+    "showTimeoutMs": 45000,
+    "cyclePlan": [
+      {
+        "block": "offline-android-receiver",
+        "count": 1,
+        "offlineReceiver": "android",
+        "senders": [{ "platform": "web", "secret": "default" }],
+        "approvals": [{ "platform": "ios", "secret": "default" }]
+      },
+      {
+        "block": "offline-web-receiver",
+        "count": 1,
+        "offlineReceiver": "web",
+        "senders": [{ "platform": "android", "secret": "default" }],
+        "approvals": [{ "platform": "ios", "secret": "default" }]
+      },
+      {
+        "block": "offline-ios-receiver",
+        "count": 1,
+        "offlineReceiver": "ios",
+        "senders": [{ "platform": "android", "secret": "default" }],
+        "approvals": [{ "platform": "web", "secret": "default" }]
+      }
+    ]
+  },
+  "vault": { "name": "test7@test.ru" },
+  "secrets": {
+    "default": { "name": "test-secret", "value": "test-secret-value" }
+  }
+}
