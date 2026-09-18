@@ -457,6 +457,7 @@ function startIosJoinTest(simulatorUdid, {
   testMethod = iosTestMethod,
   label = 'iOS UI test',
   environment = {},
+  secretName = '',
 } = {}) {
   console.log(`9. Starting ${label}`);
   // xcodebuild does not reliably propagate per-invocation E2E_* variables to
@@ -469,6 +470,7 @@ function startIosJoinTest(simulatorUdid, {
       step: environment.E2E_STEP,
       approvalPlatform: environment.E2E_APPROVAL_PLATFORM,
       sender: environment.E2E_SENDER,
+      secretName: environment.E2E_SECRET_NAME ?? secretName,
     }));
   }
   const watched = watchProcessOutput(
@@ -491,7 +493,7 @@ function startIosJoinTest(simulatorUdid, {
       cwd: resolve(composeRoot, 'iosApp'),
       env: {
         E2E_VAULT_NAME: scenario.vault.name,
-        E2E_SECRET_NAME: defaultSecret?.name ?? '',
+        E2E_SECRET_NAME: secretName || defaultSecret?.name || '',
         E2E_SECRET_VALUE: defaultSecret?.value ?? '',
         E2E_SECRET_CONFIG: secretConfigJson,
         E2E_RECOVERY_PLAN: cyclePlanJson,
@@ -741,7 +743,7 @@ async function runAdbWithRetry(args, { attempts = 5, delayMs = 1_000 } = {}) {
   throw lastError;
 }
 
-async function startAndroidJoinTest(serial) {
+async function startAndroidJoinTest(serial, { testClass = scenario.android.testClass } = {}) {
   console.log('14. Starting Android UI test');
   // An emulator can briefly switch from `device` to `offline` after boot
   // while its services settle. AGP fails immediately in that state, so make
@@ -765,7 +767,7 @@ async function startAndroidJoinTest(serial) {
     '*:S',
   ]);
   void logcat.result.catch(() => {}); // logcat is stopped deliberately when the instrumentation test ends
-  const androidTestClass = scenario.android.testClass
+  const androidTestClass = testClass
     ?? 'metasecret.project.com.CaseFourAndroidConcurrentRecoveryTest';
   const androidTestMethod = scenario.android.testMethod ?? scenario.android.joinTestMethod;
   const androidTestSelector = androidTestMethod
@@ -789,6 +791,8 @@ async function startAndroidJoinTest(serial) {
     '-e', 'class', androidTestSelector,
     '-e', 'vaultName', scenario.vault.name,
     '-e', 'secretName', defaultSecret?.name ?? '',
+    '-e', 'secretNames', Object.values(secretConfigs).map((config) => config.name).join(','),
+    '-e', 'secretValues', Object.values(secretConfigs).map((config) => config.value).join(','),
     '-e', 'approvalCoordinatorUrl', 'http://10.0.2.2:5180',
   ];
 
@@ -868,6 +872,8 @@ async function startAndroidStepTest(serial, {
   step,
   approvalPlatform = '',
   sender = '',
+  secretName = defaultSecret?.name ?? '',
+  testMethod = scenario.android.stepTestMethod ?? 'handleRecoveryStep',
   label = 'Android recovery step',
 } = {}) {
   console.log(`Starting ${label}: role=${role} cycle=${cycle} step=${step}`);
@@ -887,14 +893,14 @@ async function startAndroidStepTest(serial, {
   void logcat.result.catch(() => {});
   const androidTestClass = scenario.android.testClass
     ?? 'metasecret.project.com.CaseEightAndroidBothOfflineTest';
-  const androidTestMethod = scenario.android.stepTestMethod ?? 'handleRecoveryStep';
+  const androidTestMethod = testMethod;
   const selector = `${androidTestClass}#${androidTestMethod}`;
   const test = watchProcessOutput('adb', [
     '-s', serial,
     'shell', '--', 'am', 'instrument', '-w',
     '-e', 'class', selector,
     '-e', 'vaultName', scenario.vault.name,
-    '-e', 'secretName', defaultSecret?.name ?? '',
+    '-e', 'secretName', secretName,
     '-e', 'role', role,
     '-e', 'cycle', String(cycle),
     '-e', 'step', String(step),
@@ -1305,6 +1311,282 @@ async function runBothReceiversOfflineRecovery(page, simulatorUdid, androidSeria
     }
   }
   if (cycle !== expectedCycles) throw new Error(`Test #8 expected ${expectedCycles} recovery requests, ran ${cycle}`);
+}
+
+async function runSenderOfflineSetup(page, simulatorUdid, androidSerial) {
+  const initiator = scenario.setup?.initiator;
+  if (!initiator) throw new Error('Test #9 requires setup.initiator');
+
+  if (initiator === 'web') {
+    return runWebInitiatedSetup(page, simulatorUdid, androidSerial);
+  }
+
+  if (initiator === 'android') {
+    const androidTest = await startAndroidJoinTest(androidSerial, {
+      testClass: scenario.android.setupTestClass ?? scenario.android.testClass,
+    });
+    await androidTest.waitForMarker('E2E: ANDROID_INITIATOR_READY', 180_000);
+
+    await page.goto(scenario.web.url, { waitUntil: 'domcontentloaded' });
+    await unlockWithPasskeyIfNeeded(page);
+    await page.getByPlaceholder('vault name').fill(scenario.vault.name);
+    await page.getByRole('button', { name: 'Set Vault Name' }).click();
+    await page.getByRole('button', { name: 'Join', exact: true }).click();
+    await androidTest.waitForMarker('E2E: ANDROID_WEB_JOIN_APPROVED', 180_000);
+    await page.getByRole('button', { name: '+ Add Secret' }).waitFor({ timeout: 120_000 });
+
+    const iosTest = startIosJoinTest(simulatorUdid, {
+      testClass: scenario.ios.setupTestClass ?? scenario.ios.testClass,
+      testMethod: scenario.ios.joinTestMethod,
+      label: 'iOS Android-initiated join',
+    });
+    void iosTest.result.catch(() => {});
+    await iosTest.waitForMarker('E2E: IOS_JOIN_REQUEST_SENT', 180_000);
+    await androidTest.waitForMarker('E2E: ANDROID_IOS_JOIN_APPROVED', 180_000);
+    await iosTest.waitForMarker('E2E: IOS_SECRETS_READY', 210_000);
+    await androidTest.waitForMarker('E2E: ANDROID_SECRETS_READY', 210_000);
+    await Promise.all([iosTest.result, androidTest.result]);
+    // The setup instrumentation leaves MainActivity alive. Start the
+    // sender phase from a clean Android process so its socket/native request
+    // loop is foregrounded and can flush the first recovery event.
+    await stopAndroidApplication(androidSerial);
+    await waitForWebSecrets(page);
+    return { iosTest: null, androidTest: null };
+  }
+
+  if (initiator === 'ios') {
+    const iosTest = startIosJoinTest(simulatorUdid, {
+      testClass: scenario.ios.setupTestClass ?? scenario.ios.testClass,
+      testMethod: scenario.ios.joinTestMethod,
+      label: 'iOS initiator setup',
+    });
+    void iosTest.result.catch(() => {});
+    await iosTest.waitForMarker('E2E: IOS_INITIATOR_READY', 180_000);
+
+    await page.goto(scenario.web.url, { waitUntil: 'domcontentloaded' });
+    await unlockWithPasskeyIfNeeded(page);
+    await page.getByPlaceholder('vault name').fill(scenario.vault.name);
+    await page.getByRole('button', { name: 'Set Vault Name' }).click();
+    await page.getByRole('button', { name: 'Join', exact: true }).click();
+    await iosTest.waitForMarker('E2E: IOS_WEB_JOIN_APPROVED', 180_000);
+    await page.getByRole('button', { name: '+ Add Secret' }).waitFor({ timeout: 120_000 });
+
+    const androidTest = await startAndroidJoinTest(androidSerial, {
+      testClass: scenario.android.setupTestClass ?? scenario.android.testClass,
+    });
+    await androidTest.waitForMarker('E2E: ANDROID_JOIN_REQUEST_SENT', 180_000);
+    await iosTest.waitForMarker('E2E: IOS_ANDROID_JOIN_APPROVED', 180_000);
+    await androidTest.waitForMarker('E2E: ANDROID_JOIN_READY', 180_000);
+    await androidTest.waitForMarker('E2E: ANDROID_SECRETS_READY', 210_000);
+    await iosTest.waitForMarker('E2E: IOS_SECRETS_READY', 210_000);
+    await Promise.all([iosTest.result, androidTest.result]);
+    await waitForWebSecrets(page);
+    return { iosTest: null, androidTest: null };
+  }
+
+  throw new Error(`Unsupported Test #9 setup initiator: ${initiator}`);
+}
+
+async function runSenderOfflineRecovery(page, simulatorUdid, androidSerial) {
+  const expectedCycles = scenario.recovery.expectedCycles ?? recoveryCycles.length;
+  if (recoveryCycles.length !== expectedCycles) {
+    throw new Error(`Test #9 expected ${expectedCycles} recovery requests, got ${recoveryCycles.length}`);
+  }
+
+  for (const cycle of recoveryCycles) {
+    currentCycleForDiagnostics = cycle.number;
+    if (cycle.senders.length !== 1 || cycle.approvals.length !== 1) {
+      throw new Error(`Test #9 cycle ${cycle.number} must have one sender and one approver`);
+    }
+    const sender = cycle.senders[0];
+    const approver = cycle.approvals[0].platform;
+    const secretName = cycle.senderSecrets[sender] ?? cycle.approvals[0].secret ?? defaultSecret?.name;
+    const receivers = ['web', 'ios', 'android'].filter((platform) => platform !== sender);
+    const nonApprover = receivers.find((platform) => platform !== approver);
+    const step = 1;
+    // Web's recover_js call starts asynchronously from the UI click. Keep the
+    // sender page alive until at least one receiver observes the request; this
+    // is the synchronization point proving the request reached the server.
+    let webSenderRequestPending = false;
+    let androidSenderRequestPending = false;
+    console.log(
+      `Test #9 cycle ${cycle.number}/${expectedCycles}: sender=${sender} secret=${secretName} `
+        + `approver=${approver} nonApprover=${nonApprover}`,
+    );
+    writeDiagnostic(
+      `TEST9 cycle=${cycle.number} sender=${sender} secret=${secretName} `
+        + `approver=${approver} nonApprover=${nonApprover}`,
+    );
+
+    let senderRequest;
+    if (sender === 'web') {
+      await reopenWebAfterOffline(page);
+      approvalCoordinator.allow('web-sender', cycle.number);
+      await startWebRecovery(page, secretName);
+      writeDiagnostic(`TEST9 cycle=${cycle.number} web request dialog opened; taking sender offline`);
+      webSenderRequestPending = true;
+    } else if (sender === 'ios') {
+      senderRequest = startIosJoinTest(simulatorUdid, {
+        testClass: scenario.ios.testClass,
+        testMethod: scenario.ios.requestTestMethod ?? 'sendRecoveryRequestAndExit',
+        label: `iOS sender request cycle ${cycle.number}`,
+        secretName,
+        environment: stepEnvironment({
+          role: 'sender-offline', cycle: cycle.number, step,
+          approvalPlatform: approver, sender,
+        }),
+      });
+      void senderRequest.result.catch(() => {});
+      approvalCoordinator.allow('ios-sender-1', cycle.number);
+      await senderRequest.waitForMarker(`E2E: IOS_RECOVERY_REQUEST_SENT_${cycle.number}_1`, 180_000);
+      await senderRequest.result;
+      await stopIosApplication(simulatorUdid);
+    } else {
+      // The Android native service emits a cycle-independent recover-result
+      // marker. Clear the emulator buffer before this sender step so the
+      // waiter cannot consume a result from an earlier cycle.
+      await runAdbWithRetry(['-s', androidSerial, 'logcat', '-c']);
+      senderRequest = await startAndroidStepTest(androidSerial, {
+        role: 'sender-offline', cycle: cycle.number, step,
+        approvalPlatform: approver, sender, secretName,
+        testMethod: scenario.android.requestTestMethod ?? 'sendRecoveryRequestAndExit',
+        label: `Android sender request cycle ${cycle.number}`,
+      });
+      approvalCoordinator.allow('android-sender-1', cycle.number);
+      await senderRequest.waitForMarker(`E2E: ANDROID_RECOVERY_REQUEST_SENT_${cycle.number}_1`, 180_000);
+      await senderRequest.waitForMarker(`E2E: ANDROID_NATIVE_RECOVER_RESULT secret=${secretName}`, 180_000);
+      approvalCoordinator.allow('android-request-persisted', cycle.number);
+      await senderRequest.result;
+      // The marker is emitted immediately after the Compose click, while the
+      // socket event may still be in flight. Keep the sender app alive until
+      // a receiver observes the request; stopping it here can lose the event
+      // before the server persists it.
+      androidSenderRequestPending = true;
+    }
+
+    const receiverProcesses = [];
+    for (const receiver of receivers) {
+      if (receiver === 'web') {
+        await reopenWebAfterOffline(page);
+        receiverProcesses.push({ platform: receiver, test: null });
+      } else if (receiver === 'ios') {
+        const test = startIosJoinTest(simulatorUdid, {
+          testClass: scenario.ios.testClass,
+          testMethod: scenario.ios.receiverTestMethod ?? scenario.ios.stepTestMethod,
+          label: `iOS receiver cycle ${cycle.number}`,
+          secretName,
+          environment: stepEnvironment({
+            role: 'receiver', cycle: cycle.number, step,
+            approvalPlatform: approver, sender,
+          }),
+        });
+        void test.result.catch(() => {});
+        receiverProcesses.push({ platform: receiver, test });
+      } else {
+        receiverProcesses.push({
+          platform: receiver,
+          test: await startAndroidStepTest(androidSerial, {
+            role: 'receiver', cycle: cycle.number, step,
+            approvalPlatform: approver, sender, secretName,
+            testMethod: scenario.android.receiverTestMethod ?? scenario.android.stepTestMethod,
+            label: `Android receiver cycle ${cycle.number}`,
+          }),
+        });
+      }
+    }
+
+    for (const receiverProcess of receiverProcesses) {
+      if (receiverProcess.platform === 'web') {
+        await waitForWebIncomingRecoveryCount(page, 1, secretName);
+      } else {
+        const marker = receiverProcess.platform === 'ios'
+          ? `E2E: IOS_INCOMING_VISIBLE_${cycle.number}_1`
+          : `E2E: ANDROID_INCOMING_VISIBLE_${cycle.number}_1`;
+        await receiverProcess.test.waitForMarker(marker, 180_000);
+      }
+      // Once a receiver has observed the request, the sender can safely go
+      // offline. The remaining receiver must still process the persisted claim.
+      if (webSenderRequestPending) {
+        await stopWebApplication(page);
+        webSenderRequestPending = false;
+        writeDiagnostic(`TEST9 cycle=${cycle.number} web request observed by ${receiverProcess.platform}; sender offline`);
+      }
+      if (androidSenderRequestPending) {
+        await stopAndroidApplication(androidSerial);
+        androidSenderRequestPending = false;
+        writeDiagnostic(`TEST9 cycle=${cycle.number} android request observed by ${receiverProcess.platform}; sender offline`);
+      }
+    }
+    console.log(`✅ Test #9 cycle ${cycle.number}: both receivers saw the request`);
+
+    if (approver === 'web') {
+      await approveIncomingRecoveryOnWeb(page, secretName, 1);
+    } else {
+      approvalCoordinator.allow(`${approver}-approve-1`, cycle.number);
+      const approving = receiverProcesses.find((entry) => entry.platform === approver);
+      const marker = approver === 'ios'
+        ? `E2E: IOS_APPROVED_INCOMING_${cycle.number}_1`
+        : `E2E: ANDROID_APPROVED_INCOMING_${cycle.number}_1`;
+      await approving.test.waitForMarker(marker, 180_000);
+    }
+
+    if (sender === 'web') {
+      await reopenWebAfterOffline(page);
+      await revealAndCloseWebSecret(page, secretName, true);
+    } else if (sender === 'ios') {
+      const show = startIosJoinTest(simulatorUdid, {
+        testClass: scenario.ios.testClass,
+        testMethod: scenario.ios.showTestMethod ?? 'showAcceptedRecoveryAfterOffline',
+        label: `iOS sender return cycle ${cycle.number}`,
+        secretName,
+        environment: stepEnvironment({
+          role: 'sender-returned', cycle: cycle.number, step,
+          approvalPlatform: approver, sender,
+        }),
+      });
+      void show.result.catch(() => {});
+      approvalCoordinator.allow('ios-show-1', cycle.number);
+      await show.waitForMarker(`E2E: IOS_RECOVERY_SECRET_VISIBLE_${cycle.number}_1`, recoveryShowTimeoutMs);
+      await show.waitForMarker(`E2E: IOS_RECOVERY_CLOSED_${cycle.number}_1`, 60_000);
+      await show.result;
+    } else {
+      const show = await startAndroidStepTest(androidSerial, {
+        role: 'sender-returned', cycle: cycle.number, step,
+        approvalPlatform: approver, sender, secretName,
+        testMethod: scenario.android.showTestMethod ?? 'showAcceptedRecoveryAfterOffline',
+        label: `Android sender return cycle ${cycle.number}`,
+      });
+      approvalCoordinator.allow('android-show-1', cycle.number);
+      await show.waitForMarker(`E2E: ANDROID_RECOVERY_SECRET_VISIBLE_${cycle.number}_1`, recoveryShowTimeoutMs);
+      await show.waitForMarker(`E2E: ANDROID_RECOVERY_CLOSED_${cycle.number}_1`, 60_000);
+      await show.result;
+    }
+
+    // A non-approving receiver remains in NEED_APPROVE until the sender has
+    // completed Show. Only then should its alert disappear; release the
+    // receiver's assertion gate after sender completion.
+    if (nonApprover === 'web') {
+      await waitForWebIncomingRecoveryGone(page, secretName);
+    } else {
+      approvalCoordinator.allow(`${nonApprover}-dismiss-1`, cycle.number);
+      const dismissed = receiverProcesses.find((entry) => entry.platform === nonApprover);
+      const marker = nonApprover === 'ios'
+        ? `E2E: IOS_DISMISSED_INCOMING_${cycle.number}_1`
+        : `E2E: ANDROID_DISMISSED_INCOMING_${cycle.number}_1`;
+      await dismissed.test.waitForMarker(marker, 180_000);
+    }
+    console.log(`✅ Test #9 cycle ${cycle.number}: ${approver} approved, sender showed, and ${nonApprover} alert disappeared`);
+
+    for (const receiverProcess of receiverProcesses) {
+      if (receiverProcess.test) await receiverProcess.test.result;
+    }
+    for (const receiver of receivers) {
+      if (receiver === 'android') await stopAndroidApplication(androidSerial);
+      if (receiver === 'ios') await stopIosApplication(simulatorUdid);
+      if (receiver === 'web') await stopWebApplication(page);
+    }
+    console.log(`✅ Test #9 cycle ${cycle.number}/${expectedCycles} passed`);
+  }
 }
 
 async function runAndroidStaleAlertAssertion(serial) {
@@ -1775,6 +2057,17 @@ async function main() {
     await runBothReceiversOfflineRecovery(page, simulatorUdid, androidSerial);
     const expectedCycles = scenario.recovery.expectedCycles ?? 18;
     console.log(`✅ Test #8 both-receivers-offline recovery passed: ${expectedCycles} requests`);
+    if (exitOnSuccess) {
+      await stopProcesses();
+      process.exit(0);
+    }
+    console.log('Browser remains open. Press Ctrl+C when ready to stop.');
+    await new Promise(() => {});
+  }
+  if (scenario.mode === 'sender-offline') {
+    await runSenderOfflineSetup(page, simulatorUdid, androidSerial);
+    await runSenderOfflineRecovery(page, simulatorUdid, androidSerial);
+    console.log(`✅ Test #9 sender-offline recovery passed: ${recoveryCycles.length} requests`);
     if (exitOnSuccess) {
       await stopProcesses();
       process.exit(0);

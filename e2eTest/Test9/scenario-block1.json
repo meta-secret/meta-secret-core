@@ -1,0 +1,52 @@
+{
+  "runId": "test9-block1",
+  "testNumber": 9,
+  "name": "Test #9 block 1 — Web sender goes offline after recovery request",
+  "mode": "sender-offline",
+  "setup": { "initiator": "web" },
+  "server": {
+    "url": "http://127.0.0.1:3000",
+    "image": "ghcr.io/meta-secret/meta-secret-core/meta-secret-server:latest",
+    "container": "meta-secret-e2e-server-test9-block1",
+    "port": 3000
+  },
+  "web": { "url": "http://localhost:5173", "directory": "../meta-secret/web-cli/ui" },
+  "ios": {
+    "composeRoot": "../../meta-secret-compose",
+    "simulatorName": "iPhone 17",
+    "bundleId": "org.metasecret.vault",
+    "testClass": "CaseEightIosBothOfflineUITest",
+    "joinTestMethod": "joinWebInitiatedVault",
+    "receiverTestMethod": "handleRecoveryStep",
+    "requestTestMethod": "sendRecoveryRequestAndExit",
+    "showTestMethod": "showAcceptedRecoveryAfterOffline"
+  },
+  "android": {
+    "avdName": "Pixel_4a",
+    "bundleId": "metasecret.project.com",
+    "testClass": "metasecret.project.com.CaseEightAndroidBothOfflineTest",
+    "joinTestMethod": "joinWebInitiatedVault",
+    "receiverTestMethod": "handleRecoveryStep",
+    "requestTestMethod": "sendRecoveryRequestAndExit",
+    "showTestMethod": "showAcceptedRecoveryAfterOffline",
+    "directInstrumentationSetup": true
+  },
+  "secretCreation": { "initial": { "web": ["a", "b", "c"] } },
+  "recovery": {
+    "expectedCycles": 6,
+    "cyclePlan": [
+      { "block": 1, "count": 1, "senders": [{ "platform": "web", "secret": "a" }], "approvals": [{ "platform": "ios", "secret": "a" }] },
+      { "block": 1, "count": 1, "senders": [{ "platform": "web", "secret": "a" }], "approvals": [{ "platform": "android", "secret": "a" }] },
+      { "block": 1, "count": 1, "senders": [{ "platform": "web", "secret": "b" }], "approvals": [{ "platform": "ios", "secret": "b" }] },
+      { "block": 1, "count": 1, "senders": [{ "platform": "web", "secret": "b" }], "approvals": [{ "platform": "android", "secret": "b" }] },
+      { "block": 1, "count": 1, "senders": [{ "platform": "web", "secret": "c" }], "approvals": [{ "platform": "ios", "secret": "c" }] },
+      { "block": 1, "count": 1, "senders": [{ "platform": "web", "secret": "c" }], "approvals": [{ "platform": "android", "secret": "c" }] }
+    ]
+  },
+  "vault": { "name": "test9-block1@test.ru" },
+  "secrets": {
+    "a": { "name": "test-secret-a", "value": "test-secret-a-value" },
+    "b": { "name": "test-secret-b", "value": "test-secret-b-value" },
+    "c": { "name": "test-secret-c", "value": "test-secret-c-value" }
+  }
+}
