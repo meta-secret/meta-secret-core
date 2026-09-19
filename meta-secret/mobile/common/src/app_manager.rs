@@ -186,11 +186,10 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
         info!(claim_id = ?claim_id, "accept_recover_mobile: started");
 
         // Force sync before checking claims to ensure we have latest distribution events
-        if let Ok(user_creds) = self.meta_client_service.find_user_creds().await {
-            info!(claim_id = ?claim_id, "accept_recover_mobile: syncing before claim lookup");
-            self.sync_gateway.sync(user_creds.user()).await?;
-            info!(claim_id = ?claim_id, "accept_recover_mobile: pre-accept sync completed");
-        }
+        let user_creds = self.meta_client_service.find_user_creds().await?;
+        info!(claim_id = ?claim_id, "accept_recover_mobile: syncing before claim lookup");
+        self.sync_gateway.sync(user_creds.user()).await?;
+        info!(claim_id = ?claim_id, "accept_recover_mobile: pre-accept sync completed");
 
         let state = self.get_state().await?;
         let ApplicationState::Vault(vault_info) = state else {
@@ -217,7 +216,15 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
 
         let result = self.accept_recover(claim_id.clone()).await;
         match &result {
-            Ok(()) => info!(claim_id = ?claim_id, "accept_recover_mobile: approval event created"),
+            Ok(()) => {
+                info!(claim_id = ?claim_id, "accept_recover_mobile: approval event created");
+                // The UI must not finish the action before the approval is visible
+                // to the server. Otherwise a later decline can overtake a local
+                // approval (or vice versa) simply because the background sync
+                // runs after the alert has already disappeared.
+                self.sync_gateway.sync(user_creds.user()).await?;
+                info!(claim_id = ?claim_id, "accept_recover_mobile: approval synced");
+            }
             Err(error) => {
                 warn!(claim_id = ?claim_id, error = %error, "accept_recover_mobile: approval failed")
             }
@@ -253,12 +260,10 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
         self.meta_client_service
             .decline_recover(claim_id.clone())
             .await?;
-        if let Err(e) = self.sync_gateway.sync(user_creds.user()).await {
-            println!(
-                "🦀 Mobile App Manager: ⚠️ Sync after decline failed (will retry): {}",
-                e
-            );
-        }
+        // Do not hide a failed upload behind a successful UI dismissal. The
+        // decline is the terminal decision for the claim and must reach the
+        // server before the alert is reported as processed.
+        self.sync_gateway.sync(user_creds.user()).await?;
         println!(
             "🦀 Mobile App Manager: ✅ Decline recover completed for claim: {:?}",
             claim_id

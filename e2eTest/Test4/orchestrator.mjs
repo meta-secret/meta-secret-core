@@ -69,11 +69,12 @@ function normalizeSender(sender) {
 
 function normalizeApproval(approval, fallbackSecret = defaultSecret?.name) {
   if (typeof approval === 'string') {
-    return { platform: approval, secret: fallbackSecret };
+    return { platform: approval, secret: fallbackSecret, action: 'approve' };
   }
   return {
     platform: approval.platform ?? approval.approver,
     secret: secretNameFor(approval.secret ?? approval.secretKey ?? fallbackSecret),
+    action: approval.action ?? approval.decision ?? 'approve',
   };
 }
 
@@ -96,6 +97,7 @@ const rawRecoveryCycles = scenario.mode === 'both-receivers-offline'
         senders: senderEntries.map((sender) => sender.platform),
         senderSecrets: Object.fromEntries(senderEntries.map((sender) => [sender.platform, sender.secret])),
         approvals,
+        expectedOutcome: group.expectedOutcome,
       };
     }))
   : (scenario.recovery.groups ?? []).flatMap((group) => {
@@ -132,6 +134,7 @@ const recoveryCycles = rawRecoveryCycles.map((cycle, index) => {
     senders: cycle.senders ?? Object.keys(senderSecrets),
     senderSecrets,
     approvals,
+    expectedOutcome: cycle.expectedOutcome,
     firstApprover: approvals[0]?.platform,
     secondApprover: approvals[1]?.platform,
   };
@@ -470,7 +473,11 @@ function startIosJoinTest(simulatorUdid, {
       step: environment.E2E_STEP,
       approvalPlatform: environment.E2E_APPROVAL_PLATFORM,
       sender: environment.E2E_SENDER,
+      action: environment.E2E_ACTION,
+      expectedOutcome: environment.E2E_EXPECTED_OUTCOME,
       secretName: environment.E2E_SECRET_NAME ?? secretName,
+      repeatApprove: environment.E2E_REPEAT_APPROVE === '1',
+      duplicateRecovery: environment.E2E_DUPLICATE_RECOVERY === '1',
     }));
   }
   const watched = watchProcessOutput(
@@ -872,6 +879,10 @@ async function startAndroidStepTest(serial, {
   step,
   approvalPlatform = '',
   sender = '',
+  decision = '',
+  expectedOutcome = '',
+  repeatApprove = false,
+  duplicateRecovery = false,
   secretName = defaultSecret?.name ?? '',
   testMethod = scenario.android.stepTestMethod ?? 'handleRecoveryStep',
   label = 'Android recovery step',
@@ -906,6 +917,10 @@ async function startAndroidStepTest(serial, {
     '-e', 'step', String(step),
     '-e', 'approvalPlatform', approvalPlatform,
     '-e', 'sender', sender,
+    '-e', 'decision', decision,
+    '-e', 'expectedOutcome', expectedOutcome,
+    '-e', 'repeatApprove', repeatApprove ? 'true' : 'false',
+    '-e', 'duplicateRecovery', duplicateRecovery ? 'true' : 'false',
     '-e', 'approvalCoordinatorUrl', 'http://10.0.2.2:5180',
     `${androidTestBundleId}/androidx.test.runner.AndroidJUnitRunner`,
   ]);
@@ -1361,13 +1376,533 @@ async function runReceiverOfflineAfterAlertRecovery(page, simulatorUdid, android
   }
 }
 
-function stepEnvironment({ role, cycle, step, approvalPlatform, sender }) {
+async function runApproveDeclineRaceRecovery(page, simulatorUdid, androidSerial) {
+  const expectedCycles = scenario.recovery.expectedCycles ?? recoveryCycles.length;
+  if (recoveryCycles.length !== expectedCycles) {
+    throw new Error(`Test #${testNumber} expected ${expectedCycles} recovery requests, got ${recoveryCycles.length}`);
+  }
+
+  for (const cycle of recoveryCycles) {
+    currentCycleForDiagnostics = cycle.number;
+    if (cycle.senders.length !== 1 || cycle.approvals.length !== 2) {
+      throw new Error(`Test #${testNumber} cycle ${cycle.number} must have one sender and two ordered approvals`);
+    }
+    const sender = cycle.senders[0];
+    const secretName = cycle.senderSecrets[sender] ?? cycle.approvals[0].secret ?? defaultSecret?.name;
+    const receivers = ['web', 'ios', 'android'].filter((platform) => platform !== sender);
+    const expectedOutcome = cycle.expectedOutcome ?? (cycle.approvals[0].action === 'approve' ? 'approved' : 'declined');
+    const step = 1;
+    const nativeProcesses = new Map();
+    const first = cycle.approvals[0];
+    const second = cycle.approvals[1];
+
+    if (!['approve', 'decline'].includes(first.action) || !['approve', 'decline'].includes(second.action)) {
+      throw new Error(`Test #${testNumber} cycle ${cycle.number} actions must be approve or decline`);
+    }
+    if (new Set(cycle.approvals.map((approval) => approval.platform)).size !== 2) {
+      throw new Error(`Test #${testNumber} cycle ${cycle.number} approvals must come from two different receivers`);
+    }
+
+    writeDiagnostic(
+      `TEST${testNumber} cycle=${cycle.number} sender=${sender} secret=${secretName} `
+      + `first=${first.platform}:${first.action} second=${second.platform}:${second.action} `
+      + `expected=${expectedOutcome}`,
+    );
+    console.log(
+      `Test #${testNumber} cycle ${cycle.number}/${expectedCycles}: sender=${sender} `
+      + `first=${first.platform}/${first.action} second=${second.platform}/${second.action} `
+      + `expected=${expectedOutcome}`,
+    );
+
+    if (receivers.includes('web') || sender === 'web') await reopenWebAfterOffline(page);
+
+    const startNativeStep = async (platform, role, approval) => {
+      const environment = stepEnvironment({
+        role,
+        cycle: cycle.number,
+        step,
+        approvalPlatform: approval?.platform ?? '',
+        sender,
+        action: approval?.action ?? '',
+        expectedOutcome,
+      });
+      if (platform === 'ios') {
+        const test = startIosJoinTest(simulatorUdid, {
+          testClass: scenario.ios.testClass,
+          testMethod: scenario.ios.raceStepTestMethod ?? 'handleApproveDeclineStep',
+          label: `iOS Test #${testNumber} ${role} cycle ${cycle.number}`,
+          secretName,
+          environment,
+        });
+        void test.result.catch(() => {});
+        nativeProcesses.set(platform, { platform, role, test, approval });
+      } else if (platform === 'android') {
+        const test = await startAndroidStepTest(androidSerial, {
+          role,
+          cycle: cycle.number,
+          step,
+          approvalPlatform: approval?.platform ?? '',
+          sender,
+          decision: approval?.action ?? '',
+          expectedOutcome,
+          secretName,
+          testMethod: scenario.android.raceStepTestMethod ?? 'handleApproveDeclineStep',
+          label: `Android Test #${testNumber} ${role} cycle ${cycle.number}`,
+        });
+        nativeProcesses.set(platform, { platform, role, test, approval });
+      } else {
+        throw new Error(`Unsupported native Test #${testNumber} platform: ${platform}`);
+      }
+    };
+
+    for (const receiver of receivers) {
+      if (receiver !== 'web') {
+        const approval = cycle.approvals.find((entry) => entry.platform === receiver);
+        await startNativeStep(receiver, 'receiver', approval);
+      }
+    }
+
+    if (sender !== 'web') {
+      await startNativeStep(sender, 'sender', { platform: first.platform, action: first.action });
+      approvalCoordinator.allow(`${sender}-sender-${step}`, cycle.number);
+      await nativeProcesses.get(sender).test.waitForMarker(
+        `E2E: ${sender.toUpperCase()}_RECOVERY_REQUEST_SENT_${cycle.number}_${step}`,
+        180_000,
+      );
+    } else {
+      await startWebRecovery(page, secretName);
+    }
+
+    for (const receiver of receivers) {
+      if (receiver === 'web') {
+        await waitForWebIncomingRecoveryCount(page, 1, secretName);
+      } else {
+        await nativeProcesses.get(receiver).test.waitForMarker(
+          `E2E: ${receiver.toUpperCase()}_INCOMING_VISIBLE_${cycle.number}_${step}`,
+          180_000,
+        );
+      }
+    }
+    console.log(`✅ Test #${testNumber} cycle ${cycle.number}: both receiver alerts visible`);
+
+    const runWebDecision = async (approval, allowTerminalSkip = false) => {
+      if (!allowTerminalSkip) {
+        await decideIncomingRecoveryOnWeb(page, secretName, approval.action, 1);
+        return;
+      }
+      const openRequest = page.getByTestId(`open-recovery-request-${secretName}`);
+      const badge = page.getByTestId(`recovery-request-badge-${secretName}`);
+      const state = await Promise.race([
+        openRequest.waitFor({ state: 'visible', timeout: 120_000 }).then(() => 'pending', () => null),
+        badge.waitFor({ state: 'hidden', timeout: 120_000 }).then(() => 'terminal', () => null),
+      ]);
+      if (state === 'terminal') {
+        console.log(
+          `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: `
+          + `late ${approval.action} skipped after terminal recovery`,
+        );
+        return;
+      }
+      if (state !== 'pending') {
+        throw new Error(`Web recovery request did not become actionable or terminal for cycle ${cycle.number}`);
+      }
+      await decideIncomingRecoveryOnWeb(page, secretName, approval.action, 1);
+    };
+    const releaseNativeDecision = async (approval) => {
+      approvalCoordinator.allow(`${approval.platform}-${approval.action}-${step}`, cycle.number);
+      const process = nativeProcesses.get(approval.platform)?.test;
+      if (!process) throw new Error(`Missing native process for ${approval.platform}`);
+      await process.waitForMarker(
+        `E2E: ${approval.platform.toUpperCase()}_ACTION_STARTED_${cycle.number}_${step}`,
+        120_000,
+      );
+      // Release the second responder only after the first responder has
+      // completed its actual decision. The native action waits for its local
+      // sync/processing path before emitting this marker, so the test observes
+      // the same ordering that the server receives instead of racing two UI
+      // clicks behind an artificial delay.
+      await Promise.race([
+        process.waitForMarker(
+          `E2E: ${approval.platform.toUpperCase()}_${approval.action === 'approve' ? 'APPROVED' : 'DECLINED'}_INCOMING_${cycle.number}_${step}`,
+          180_000,
+        ),
+        process.waitForMarker(
+          `E2E: ${approval.platform.toUpperCase()}_ACTION_SKIPPED_AFTER_TERMINAL_${cycle.number}_${step}`,
+          180_000,
+        ),
+      ]);
+    };
+
+    if (first.platform === 'web') await runWebDecision(first);
+    else await releaseNativeDecision(first);
+    // Once the first response is terminal, release the second runner as well.
+    // It should observe the terminal state and record
+    // ACTION_SKIPPED_AFTER_TERMINAL instead of changing the result.
+    if (second.platform === 'web') {
+      await runWebDecision(second, expectedOutcome === 'declined');
+    }
+    else approvalCoordinator.allow(`${second.platform}-${second.action}-${step}`, cycle.number);
+
+    const waitNativeDecision = async (approval) => {
+      if (approval.platform === 'web') return;
+      const process = nativeProcesses.get(approval.platform)?.test;
+      const prefix = approval.platform.toUpperCase();
+      await Promise.race([
+        process.waitForMarker(`E2E: ${prefix}_${approval.action === 'approve' ? 'APPROVED' : 'DECLINED'}_INCOMING_${cycle.number}_${step}`, 180_000),
+        process.waitForMarker(`E2E: ${prefix}_ACTION_SKIPPED_AFTER_TERMINAL_${cycle.number}_${step}`, 180_000),
+      ]);
+    };
+    await Promise.all([waitNativeDecision(first), waitNativeDecision(second)]);
+
+    if (expectedOutcome === 'approved') {
+      if (sender === 'web') {
+        await revealAndCloseWebSecret(page, secretName, false);
+      } else {
+        approvalCoordinator.allow(`${sender}-show-${step}`, cycle.number);
+        const senderTest = nativeProcesses.get(sender).test;
+        await senderTest.waitForMarker(
+          `E2E: ${sender.toUpperCase()}_RECOVERY_SECRET_VISIBLE_${cycle.number}_${step}`,
+          recoveryShowTimeoutMs,
+        );
+        await senderTest.waitForMarker(`E2E: ${sender.toUpperCase()}_RECOVERY_CLOSED_${cycle.number}_${step}`, 60_000);
+      }
+    } else if (sender === 'web') {
+      await assertWebRecoveryDeclined(page, secretName);
+    } else {
+      approvalCoordinator.allow(`${sender}-declined-${step}`, cycle.number);
+      const senderTest = nativeProcesses.get(sender).test;
+      await senderTest.waitForMarker(`E2E: ${sender.toUpperCase()}_RECOVERY_NOT_VISIBLE_${cycle.number}_${step}`, 180_000);
+      await senderTest.waitForMarker(`E2E: ${sender.toUpperCase()}_RECOVERY_CLOSED_${cycle.number}_${step}`, 60_000);
+    }
+
+    for (const entry of nativeProcesses.values()) await entry.test.result;
+    for (const platform of ['android', 'ios']) {
+      if (sender === platform || receivers.includes(platform)) {
+        if (platform === 'android') await stopAndroidApplication(androidSerial);
+        if (platform === 'ios') await stopIosApplication(simulatorUdid);
+      }
+    }
+    console.log(`✅ Test #${testNumber} cycle ${cycle.number}/${expectedCycles} passed`);
+  }
+}
+
+async function runRepeatApproveRecovery(page, simulatorUdid, androidSerial) {
+  const expectedCycles = scenario.recovery.expectedCycles ?? recoveryCycles.length;
+  if (recoveryCycles.length !== expectedCycles) {
+    throw new Error(`Test #${testNumber} expected ${expectedCycles} recovery requests, got ${recoveryCycles.length}`);
+  }
+
+  for (const cycle of recoveryCycles) {
+    currentCycleForDiagnostics = cycle.number;
+    if (cycle.senders.length !== 1 || cycle.approvals.length !== 1) {
+      throw new Error(`Test #${testNumber} cycle ${cycle.number} must have one sender and one receiver approval`);
+    }
+    const sender = cycle.senders[0];
+    const approval = cycle.approvals[0];
+    const target = approval.platform;
+    const secretName = cycle.senderSecrets[sender] ?? approval.secret ?? defaultSecret?.name;
+    const step = 1;
+    if (sender === target || !['web', 'ios', 'android'].includes(sender) || !['web', 'ios', 'android'].includes(target)) {
+      throw new Error(`Test #${testNumber} cycle ${cycle.number} sender and receiver must be different supported platforms`);
+    }
+    if (approval.action !== 'approve') {
+      throw new Error(`Test #${testNumber} cycle ${cycle.number} must use an approve receiver action`);
+    }
+
+    writeDiagnostic(
+      `TEST${testNumber} cycle=${cycle.number} sender=${sender} receiver=${target} `
+      + `secret=${secretName} action=approve repeat=true`,
+    );
+    console.log(
+      `Test #${testNumber} cycle ${cycle.number}/${expectedCycles}: sender=${sender} `
+      + `receiver=${target} double-approve guard`,
+    );
+
+    if (sender === 'web' || target === 'web') await reopenWebAfterOffline(page);
+
+    const nativeProcesses = new Map();
+    const startNativeStep = async (platform, role) => {
+      const environment = {
+        ...stepEnvironment({
+          role,
+          cycle: cycle.number,
+          step,
+          approvalPlatform: target,
+          sender,
+          action: 'approve',
+          expectedOutcome: 'approved',
+        }),
+        E2E_REPEAT_APPROVE: '1',
+      };
+      if (platform === 'ios') {
+        const test = startIosJoinTest(simulatorUdid, {
+          testClass: scenario.ios.testClass,
+          testMethod: scenario.ios.repeatApproveTestMethod
+            ?? scenario.ios.raceStepTestMethod
+            ?? 'handleApproveDeclineStep',
+          label: `iOS Test #${testNumber} ${role} cycle ${cycle.number}`,
+          secretName,
+          environment,
+        });
+        void test.result.catch(() => {});
+        nativeProcesses.set(platform, { platform, role, test });
+        return;
+      }
+      if (platform === 'android') {
+        const test = await startAndroidStepTest(androidSerial, {
+          role,
+          cycle: cycle.number,
+          step,
+          approvalPlatform: target,
+          sender,
+          decision: 'approve',
+          expectedOutcome: 'approved',
+          secretName,
+          repeatApprove: true,
+          testMethod: scenario.android.repeatApproveTestMethod
+            ?? scenario.android.raceStepTestMethod
+            ?? 'handleApproveDeclineStep',
+          label: `Android Test #${testNumber} ${role} cycle ${cycle.number}`,
+        });
+        nativeProcesses.set(platform, { platform, role, test });
+        return;
+      }
+      throw new Error(`Unsupported native Test #${testNumber} platform: ${platform}`);
+    };
+
+    if (target !== 'web') await startNativeStep(target, 'receiver');
+    if (sender !== 'web') await startNativeStep(sender, 'sender');
+
+    if (sender === 'web') {
+      await startWebRecovery(page, secretName);
+    } else {
+      approvalCoordinator.allow(`${sender}-sender-${step}`, cycle.number);
+      await nativeProcesses.get(sender).test.waitForMarker(
+        `E2E: ${sender.toUpperCase()}_RECOVERY_REQUEST_SENT_${cycle.number}_${step}`,
+        180_000,
+      );
+    }
+
+    if (target === 'web') {
+      await decideIncomingRecoveryTwiceOnWeb(page, secretName);
+    } else {
+      const targetProcess = nativeProcesses.get(target)?.test;
+      await targetProcess.waitForMarker(
+        `E2E: ${target.toUpperCase()}_INCOMING_VISIBLE_${cycle.number}_${step}`,
+        180_000,
+      );
+      approvalCoordinator.allow(`${target}-approve-${step}`, cycle.number);
+      await targetProcess.waitForMarker(
+        `E2E: ${target.toUpperCase()}_ACTION_STARTED_${cycle.number}_${step}`,
+        120_000,
+      );
+      await targetProcess.waitForMarker(
+        `E2E: ${target.toUpperCase()}_APPROVED_INCOMING_${cycle.number}_${step}`,
+        180_000,
+      );
+      await Promise.race([
+        targetProcess.waitForMarker(
+          `E2E: ${target.toUpperCase()}_REPEAT_APPROVE_SECOND_TAP_SENT_${cycle.number}_${step}`,
+          30_000,
+        ),
+        targetProcess.waitForMarker(
+          `E2E: ${target.toUpperCase()}_REPEAT_APPROVE_SECOND_TAP_SKIPPED_AFTER_DISMISS_${cycle.number}_${step}`,
+          30_000,
+        ),
+      ]);
+    }
+
+    if (sender === 'web') {
+      await revealAndCloseWebSecret(page, secretName, false);
+    } else {
+      approvalCoordinator.allow(`${sender}-show-${step}`, cycle.number);
+      const senderProcess = nativeProcesses.get(sender).test;
+      await senderProcess.waitForMarker(
+        `E2E: ${sender.toUpperCase()}_RECOVERY_SECRET_VISIBLE_${cycle.number}_${step}`,
+        recoveryShowTimeoutMs,
+      );
+      await senderProcess.waitForMarker(
+        `E2E: ${sender.toUpperCase()}_RECOVERY_CLOSED_${cycle.number}_${step}`,
+        60_000,
+      );
+    }
+
+    for (const entry of nativeProcesses.values()) await entry.test.result;
+    if (nativeProcesses.has('android')) await stopAndroidApplication(androidSerial);
+    if (nativeProcesses.has('ios')) await stopIosApplication(simulatorUdid);
+    console.log(`✅ Test #${testNumber} cycle ${cycle.number}/${expectedCycles} passed: one approval despite repeat tap`);
+  }
+}
+
+async function runDuplicateRecovery(page, simulatorUdid, androidSerial) {
+  const expectedCycles = scenario.recovery.expectedCycles ?? recoveryCycles.length;
+  if (recoveryCycles.length !== expectedCycles) {
+    throw new Error(`Test #${testNumber} expected ${expectedCycles} duplicate-recovery cycles, got ${recoveryCycles.length}`);
+  }
+
+  for (const cycle of recoveryCycles) {
+    currentCycleForDiagnostics = cycle.number;
+    if (cycle.senders.length !== 1 || cycle.approvals.length !== 1) {
+      throw new Error(`Test #${testNumber} cycle ${cycle.number} must have one sender and one approval target`);
+    }
+    const sender = cycle.senders[0];
+    const approval = cycle.approvals[0];
+    const receiver = approval.platform;
+    const secretName = cycle.senderSecrets[sender] ?? approval.secret ?? defaultSecret?.name;
+    const step = 1;
+    if (sender === receiver || !['web', 'ios', 'android'].includes(sender) || !['web', 'ios', 'android'].includes(receiver)) {
+      throw new Error(`Test #${testNumber} cycle ${cycle.number} sender and receiver must be different supported platforms`);
+    }
+    if (approval.action !== 'approve') {
+      throw new Error(`Test #${testNumber} cycle ${cycle.number} must approve the single surviving claim`);
+    }
+
+    writeDiagnostic(
+      `TEST${testNumber} cycle=${cycle.number} sender=${sender} receiver=${receiver} `
+      + `secret=${secretName} duplicateRecovery=true expectedActiveClaims=1`,
+    );
+    console.log(
+      `Test #${testNumber} cycle ${cycle.number}/${expectedCycles}: sender=${sender} `
+      + `submits recovery twice before ${receiver} approves`,
+    );
+
+    if (sender === 'web' || receiver === 'web') await reopenWebAfterOffline(page);
+
+    const nativeProcesses = new Map();
+    const startNativeParticipant = async (platform, role) => {
+      const environment = {
+        ...stepEnvironment({
+          role,
+          cycle: cycle.number,
+          step,
+          approvalPlatform: receiver,
+          sender,
+          action: 'approve',
+          expectedOutcome: 'approved',
+        }),
+        E2E_DUPLICATE_RECOVERY: '1',
+      };
+      if (platform === 'ios') {
+        const test = startIosJoinTest(simulatorUdid, {
+          testClass: scenario.ios.testClass,
+          testMethod: scenario.ios.duplicateRecoveryTestMethod
+            ?? scenario.ios.raceStepTestMethod
+            ?? 'handleApproveDeclineStep',
+          label: `iOS Test #${testNumber} ${role} cycle ${cycle.number}`,
+          secretName,
+          environment,
+        });
+        void test.result.catch(() => {});
+        nativeProcesses.set(platform, { platform, role, test });
+        return;
+      }
+      if (platform === 'android') {
+        const test = await startAndroidStepTest(androidSerial, {
+          role,
+          cycle: cycle.number,
+          step,
+          approvalPlatform: receiver,
+          sender,
+          decision: 'approve',
+          expectedOutcome: 'approved',
+          secretName,
+          duplicateRecovery: true,
+          testMethod: scenario.android.duplicateRecoveryTestMethod
+            ?? scenario.android.raceStepTestMethod
+            ?? 'handleApproveDeclineStep',
+          label: `Android Test #${testNumber} ${role} cycle ${cycle.number}`,
+        });
+        nativeProcesses.set(platform, { platform, role, test });
+        return;
+      }
+      throw new Error(`Unsupported native Test #${testNumber} platform: ${platform}`);
+    };
+
+    // The receiver is listening before either sender submit. This makes the
+    // single-claim assertion observe the persisted state, not a transient UI.
+    if (receiver !== 'web') await startNativeParticipant(receiver, 'receiver');
+    if (sender !== 'web') await startNativeParticipant(sender, 'sender');
+
+    if (sender === 'web') {
+      await startWebDuplicateRecovery(page, secretName);
+    } else {
+      approvalCoordinator.allow(`${sender}-sender-${step}`, cycle.number);
+      const senderProcess = nativeProcesses.get(sender).test;
+      await senderProcess.waitForMarker(
+        `E2E: ${sender.toUpperCase()}_RECOVERY_REQUEST_SENT_${cycle.number}_${step}`,
+        180_000,
+      );
+      await Promise.race([
+        senderProcess.waitForMarker(
+          `E2E: ${sender.toUpperCase()}_DUPLICATE_RECOVERY_SENT_${cycle.number}_${step}`,
+          30_000,
+        ),
+        senderProcess.waitForMarker(
+          `E2E: ${sender.toUpperCase()}_DUPLICATE_RECOVERY_SKIPPED_AFTER_GUARD_${cycle.number}_${step}`,
+          30_000,
+        ),
+      ]);
+    }
+
+    if (receiver === 'web') {
+      await waitForWebRecoveryBadgeCount(page, 1, secretName);
+      writeDiagnostic(`[UI][Web] cycle ${cycle.number}: exactly one active recovery badge observed`);
+      console.log(`[UI][Web] cycle ${cycle.number}: exactly one active recovery claim observed`);
+    } else {
+      const receiverProcess = nativeProcesses.get(receiver).test;
+      await receiverProcess.waitForMarker(
+        `E2E: ${receiver.toUpperCase()}_INCOMING_VISIBLE_${cycle.number}_${step}`,
+        180_000,
+      );
+      await receiverProcess.waitForMarker(
+        `E2E: ${receiver.toUpperCase()}_SINGLE_ACTIVE_CLAIM_${cycle.number}_${step}`,
+        180_000,
+      );
+    }
+
+    if (receiver === 'web') {
+      await decideIncomingRecoveryOnWeb(page, secretName, 'approve', 1);
+    } else {
+      approvalCoordinator.allow(`${receiver}-approve-${step}`, cycle.number);
+      await nativeProcesses.get(receiver).test.waitForMarker(
+        `E2E: ${receiver.toUpperCase()}_APPROVED_INCOMING_${cycle.number}_${step}`,
+        180_000,
+      );
+    }
+
+    if (sender === 'web') {
+      await revealAndCloseWebSecret(page, secretName, true);
+    } else {
+      // iOS names coordinator gates through waitForApproval(platform, step),
+      // so the key includes the step suffix just like the receiver gate.
+      approvalCoordinator.allow(`${sender}-duplicate-finish-${step}`, cycle.number);
+      const senderProcess = nativeProcesses.get(sender).test;
+      await senderProcess.waitForMarker(
+        `E2E: ${sender.toUpperCase()}_RECOVERY_SECRET_VISIBLE_${cycle.number}_${step}`,
+        recoveryShowTimeoutMs,
+      );
+      await senderProcess.waitForMarker(
+        `E2E: ${sender.toUpperCase()}_RECOVERY_CLOSED_${cycle.number}_${step}`,
+        60_000,
+      );
+    }
+
+    for (const entry of nativeProcesses.values()) await entry.test.result;
+    if (nativeProcesses.has('android')) await stopAndroidApplication(androidSerial);
+    if (nativeProcesses.has('ios')) await stopIosApplication(simulatorUdid);
+    console.log(`✅ Test #${testNumber} cycle ${cycle.number}/${expectedCycles} passed: one active claim after duplicate submit`);
+  }
+}
+
+function stepEnvironment({ role, cycle, step, approvalPlatform, sender, action = '', expectedOutcome = '' }) {
   return {
     E2E_ROLE: role,
     E2E_CYCLE: String(cycle),
     E2E_STEP: String(step),
     E2E_APPROVAL_PLATFORM: approvalPlatform,
     E2E_SENDER: sender,
+    E2E_ACTION: action,
+    E2E_EXPECTED_OUTCOME: expectedOutcome,
   };
 }
 
@@ -1969,6 +2504,33 @@ async function startWebRecovery(page, secretName = defaultSecret?.name) {
   console.log(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: recovery waiting dialog opened for ${secretName}`);
 }
 
+async function startWebDuplicateRecovery(page, secretName = defaultSecret?.name) {
+  console.log(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: starting duplicate recovery submit for ${secretName}`);
+  await page.getByRole('link', { name: 'Secrets', exact: true }).click();
+  const action = page.getByTestId(`secret-primary-action-${secretName}`);
+  await action.click();
+  await page.locator('[data-slot="dialog-content"]').waitFor({ state: 'visible', timeout: 30_000 });
+  writeDiagnostic(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: first recovery submit dispatched`);
+
+  // Issue the second submit immediately through the same UI action. If the
+  // modal has already removed/blocked the action, that is the expected guard;
+  // either outcome is recorded and the receiver-side count remains the
+  // authoritative duplicate-claim assertion.
+  let duplicateSent = false;
+  try {
+    await action.click({ timeout: 1_000 });
+    duplicateSent = true;
+  } catch (_) {
+    // The first click normally changes the action state before a second click
+    // can be delivered. This is a state-based guard, not a timing sleep.
+  }
+  writeDiagnostic(
+    `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: `
+    + (duplicateSent ? 'duplicate recovery submit dispatched' : 'duplicate recovery submit blocked by UI guard'),
+  );
+  await dismissWebRecoveryWaitingUi(page, secretName);
+}
+
 async function createWebSecret(page, secretName) {
   const config = secretConfigFor(secretName);
   console.log(`[UI][Web] creating secret after join: ${config.name}`);
@@ -2046,6 +2608,76 @@ async function approveIncomingRecoveryOnWeb(
   await openRequest.click();
   await page.getByRole('button', { name: 'Approve', exact: true }).click();
   console.log(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: incoming recovery approved`);
+}
+
+async function decideIncomingRecoveryOnWeb(
+  page,
+  incomingSecretName = defaultSecret?.name,
+  action = 'approve',
+  expectedCount = 1,
+) {
+  if (expectedCount != null) {
+    await waitForWebRecoveryBadgeCount(page, expectedCount, incomingSecretName);
+  }
+  const openRequest = page.getByTestId(`open-recovery-request-${incomingSecretName}`);
+  await openRequest.waitFor({ state: 'visible', timeout: 120_000 });
+  await openRequest.click();
+  const buttonName = action === 'decline' ? 'Decline' : 'Approve';
+  await page.getByRole('button', { name: buttonName, exact: true }).click();
+  await openRequest.waitFor({ state: 'hidden', timeout: 120_000 }).catch(() => {});
+  await page.getByTestId(`recovery-request-badge-${incomingSecretName}`)
+    .waitFor({ state: 'hidden', timeout: 120_000 }).catch(() => {});
+  console.log(
+    `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: incoming recovery ${action}d `
+    + `secret=${incomingSecretName}`,
+  );
+}
+
+async function decideIncomingRecoveryTwiceOnWeb(page, incomingSecretName = defaultSecret?.name) {
+  await waitForWebRecoveryBadgeCount(page, 1, incomingSecretName);
+  const openRequest = page.getByTestId(`open-recovery-request-${incomingSecretName}`);
+  await openRequest.waitFor({ state: 'visible', timeout: 120_000 });
+  await openRequest.click();
+  const approve = page.getByRole('button', { name: 'Approve', exact: true });
+  await approve.waitFor({ state: 'visible', timeout: 30_000 });
+  await approve.click();
+
+  // A second click is attempted only while the UI still exposes an enabled
+  // Approve control. Usually the first click closes the alert immediately;
+  // that disappearance is itself the expected duplicate-click guard.
+  const secondTapAvailable = await approve.isVisible().catch(() => false)
+    && await approve.isEnabled().catch(() => false);
+  if (secondTapAvailable) {
+    writeDiagnostic(
+      `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: repeat approve second click sent`,
+    );
+    await approve.click();
+    writeDiagnostic(
+      `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: repeat approve second click completed`,
+    );
+  } else {
+    writeDiagnostic(
+      `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: repeat approve second click skipped after dismiss`,
+    );
+  }
+  await openRequest.waitFor({ state: 'hidden', timeout: 120_000 }).catch(() => {});
+  await page.getByTestId(`recovery-request-badge-${incomingSecretName}`)
+    .waitFor({ state: 'hidden', timeout: 120_000 }).catch(() => {});
+  console.log(
+    `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: incoming recovery approved; `
+    + 'repeat-click guard checked',
+  );
+}
+
+async function assertWebRecoveryDeclined(page, secretName = defaultSecret?.name) {
+  const secretValue = secretValueForName(secretName);
+  await page.locator('[data-slot="dialog-content"]').waitFor({ state: 'hidden', timeout: 120_000 }).catch(() => {});
+  await page.getByText(secretValue, { exact: true }).waitFor({ state: 'hidden', timeout: 10_000 }).catch(() => {});
+  const primaryAction = page.getByTestId(`secret-primary-action-${secretName}`);
+  await primaryAction.filter({ hasText: /^\s*Recover\s*$/ }).waitFor({ state: 'visible', timeout: 120_000 });
+  const valueVisible = await page.getByText(secretValue, { exact: true }).isVisible().catch(() => false);
+  if (valueVisible) throw new Error(`Web unexpectedly revealed ${secretName} after declined recovery`);
+  console.log(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: declined recovery did not reveal ${secretName}`);
 }
 
 async function revealAndCloseWebSecret(page, secretName = defaultSecret?.name, reopenClaim = false) {
@@ -2286,6 +2918,39 @@ async function main() {
     await runSenderOfflineSetup(page, simulatorUdid, androidSerial);
     await runSenderOfflineRecovery(page, simulatorUdid, androidSerial);
     console.log(`✅ Test #9 sender-offline recovery passed: ${recoveryCycles.length} requests`);
+    if (exitOnSuccess) {
+      await stopProcesses();
+      process.exit(0);
+    }
+    console.log('Browser remains open. Press Ctrl+C when ready to stop.');
+    await new Promise(() => {});
+  }
+  if (scenario.mode === 'approve-decline-race' && scenario.setup?.initiator === 'web') {
+    await runWebInitiatedSetup(page, simulatorUdid, androidSerial);
+    await runApproveDeclineRaceRecovery(page, simulatorUdid, androidSerial);
+    console.log(`✅ Test #${testNumber} approve/decline recovery passed: ${recoveryCycles.length} requests`);
+    if (exitOnSuccess) {
+      await stopProcesses();
+      process.exit(0);
+    }
+    console.log('Browser remains open. Press Ctrl+C when ready to stop.');
+    await new Promise(() => {});
+  }
+  if (scenario.mode === 'repeat-approve' && scenario.setup?.initiator === 'web') {
+    await runWebInitiatedSetup(page, simulatorUdid, androidSerial);
+    await runRepeatApproveRecovery(page, simulatorUdid, androidSerial);
+    console.log(`✅ Test #${testNumber} repeat-approve recovery passed: ${recoveryCycles.length} requests`);
+    if (exitOnSuccess) {
+      await stopProcesses();
+      process.exit(0);
+    }
+    console.log('Browser remains open. Press Ctrl+C when ready to stop.');
+    await new Promise(() => {});
+  }
+  if (scenario.mode === 'duplicate-recovery' && scenario.setup?.initiator === 'web') {
+    await runWebInitiatedSetup(page, simulatorUdid, androidSerial);
+    await runDuplicateRecovery(page, simulatorUdid, androidSerial);
+    console.log(`✅ Test #${testNumber} duplicate-recovery passed: ${recoveryCycles.length} requests`);
     if (exitOnSuccess) {
       await stopProcesses();
       process.exit(0);

@@ -1,0 +1,58 @@
+{
+  "runId": "test11-block1",
+  "testNumber": 11,
+  "name": "Test #11 block 1 — Web sender, Android/iOS approve-decline race",
+  "mode": "approve-decline-race",
+  "setup": { "initiator": "web" },
+  "server": {
+    "url": "http://127.0.0.1:3000",
+    "image": "ghcr.io/meta-secret/meta-secret-core/meta-secret-server:latest",
+    "container": "meta-secret-e2e-server-test11-block1",
+    "port": 3000
+  },
+  "web": { "url": "http://localhost:5173", "directory": "../meta-secret/web-cli/ui" },
+  "ios": {
+    "composeRoot": "../../meta-secret-compose",
+    "simulatorName": "iPhone 17",
+    "bundleId": "org.metasecret.vault",
+    "testClass": "CaseEightIosBothOfflineUITest",
+    "joinTestMethod": "joinWebInitiatedVault",
+    "raceStepTestMethod": "handleApproveDeclineStep"
+  },
+  "android": {
+    "avdName": "Pixel_4a",
+    "bundleId": "metasecret.project.com",
+    "testClass": "metasecret.project.com.CaseEightAndroidBothOfflineTest",
+    "testMethod": "joinWebInitiatedVault",
+    "directInstrumentationSetup": true,
+    "raceStepTestMethod": "handleApproveDeclineStep"
+  },
+  "secretCreation": { "initial": { "web": ["default"] } },
+  "recovery": {
+    "expectedCycles": 6,
+    "cyclePlan": [
+      {
+        "block": "web-decline-first",
+        "count": 3,
+        "senders": [{ "platform": "web", "secret": "default" }],
+        "approvals": [
+          { "platform": "android", "action": "decline", "secret": "default" },
+          { "platform": "ios", "action": "approve", "secret": "default" }
+        ],
+        "expectedOutcome": "declined"
+      },
+      {
+        "block": "web-approve-first",
+        "count": 3,
+        "senders": [{ "platform": "web", "secret": "default" }],
+        "approvals": [
+          { "platform": "ios", "action": "approve", "secret": "default" },
+          { "platform": "android", "action": "decline", "secret": "default" }
+        ],
+        "expectedOutcome": "approved"
+      }
+    ]
+  },
+  "vault": { "name": "test11-block1@test.ru" },
+  "secrets": { "default": { "name": "test-secret", "value": "test-secret-value" } }
+}

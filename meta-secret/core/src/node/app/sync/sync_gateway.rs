@@ -15,6 +15,8 @@ use crate::node::common::model::secret::{SecretDistributionType, SsClaim, SsDist
 use crate::node::common::model::user::common::{UserData, UserDataMember, UserId};
 use crate::node::common::model::user::user_creds::UserCreds;
 use crate::node::common::model::vault::vault::VaultStatus;
+use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
+use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::{
     SsDeviceLogDescriptor, SsLogDescriptor,
 };
@@ -275,6 +277,13 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
 
     async fn sync_ss_log(&self, user: UserData) -> Result<()> {
         let vault_name = user.vault_name.clone();
+
+        // Push a local recovery decision before reading the server snapshot. A receiver can
+        // create its decision using the same SsLog sequence number as a concurrent decision
+        // from another device. Reading that server event first would then overwrite the local
+        // terminal decision before the workflow is uploaded.
+        self.upload_local_recovery_workflows(&user).await?;
+
         let ss_sync_request = {
             let ss_log_free_id = {
                 let obj_desc = SsLogDescriptor::from(vault_name.clone());
@@ -376,7 +385,21 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                             self.p_obj.repo.delete(obj_id).await;
                         }
 
-                        if claim.status.status() == SsDistributionStatus::Declined {
+                        // A recovery claim is terminal for the whole request as soon as
+                        // any receiver declines it. `status()` is an aggregate view and
+                        // intentionally remains Pending while another receiver is still
+                        // pending, so using it here would leave the Decline workflow in
+                        // the local database and let a later approval win the race.
+                        let has_declined_receiver = claim
+                            .status
+                            .statuses
+                            .values()
+                            .any(|status| matches!(status, SsDistributionStatus::Declined));
+                        if has_declined_receiver {
+                            info!(
+                                claim_id = ?claim.id,
+                                "sync_ss_log: uploading recovery decline workflow"
+                            );
                             let decline_events = p_ss.get_declines(claim.clone()).await?;
                             for wf_event in decline_events {
                                 let obj_id = wf_event.obj_id();
@@ -448,6 +471,74 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                     )));
                     self.sync.send(request).await?;
                 }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn upload_local_recovery_workflows(&self, user: &UserData) -> Result<()> {
+        let Some(ss_log) = self
+            .p_obj
+            .find_tail_event(SsLogDescriptor::from(user.vault_name.clone()))
+            .await?
+        else {
+            return Ok(());
+        };
+
+        let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
+        for (_, claim) in ss_log.to_data().claims {
+            if claim.distribution_type != SecretDistributionType::Recover
+                || claim.sender == user.device.device_id
+            {
+                continue;
+            }
+
+            let has_declined_receiver = claim
+                .status
+                .statuses
+                .values()
+                .any(|status| matches!(status, SsDistributionStatus::Declined));
+
+            if has_declined_receiver {
+                for wf_event in p_ss.get_declines(claim.clone()).await? {
+                    let SsWorkflowObject::Decline(event) = &wf_event else {
+                        continue;
+                    };
+                    if event.value.receiver_id != user.device.device_id {
+                        continue;
+                    }
+
+                    let obj_id = wf_event.obj_id();
+                    let request = SyncRequest::Write(Box::from(WriteSyncRequest::Event(
+                        wf_event.to_generic(),
+                    )));
+                    info!(claim_id = ?claim.id, "sync_ss_log: uploading local recovery decline first");
+                    self.sync.send(request).await?;
+                    self.p_obj.repo.delete(obj_id).await;
+                }
+                continue;
+            }
+
+            for wf_event in p_ss.get_recoveries(claim.clone()).await? {
+                let SsWorkflowObject::Recovery(event) = &wf_event else {
+                    continue;
+                };
+                let receiver_matches = matches!(
+                    &event.key.obj_desc,
+                    ObjectDescriptor::SharedSecret(SsWorkflowDescriptor::Recovery(recovery_id))
+                        if recovery_id.distribution_id.receiver == user.device.device_id
+                );
+                if !receiver_matches {
+                    continue;
+                }
+
+                let obj_id = wf_event.obj_id();
+                let request =
+                    SyncRequest::Write(Box::from(WriteSyncRequest::Event(wf_event.to_generic())));
+                info!(claim_id = ?claim.id, "sync_ss_log: uploading local recovery approval first");
+                self.sync.send(request).await?;
+                self.p_obj.repo.delete(obj_id).await;
             }
         }
 

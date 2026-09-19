@@ -1,0 +1,59 @@
+{
+  "runId": "test13-block1",
+  "testNumber": 13,
+  "name": "Test #13 block 1 — Web sender, Android repeated Approve",
+  "mode": "repeat-approve",
+  "setup": { "initiator": "web" },
+  "server": {
+    "url": "http://127.0.0.1:3000",
+    "image": "ghcr.io/meta-secret/meta-secret-core/meta-secret-server:latest",
+    "container": "meta-secret-e2e-server-test13-block1",
+    "port": 3000
+  },
+  "web": { "url": "http://localhost:5173", "directory": "../meta-secret/web-cli/ui" },
+  "ios": {
+    "composeRoot": "../../meta-secret-compose",
+    "simulatorName": "iPhone 17",
+    "bundleId": "org.metasecret.vault",
+    "testClass": "CaseEightIosBothOfflineUITest",
+    "joinTestMethod": "joinWebInitiatedVault",
+    "raceStepTestMethod": "handleApproveDeclineStep"
+  },
+  "android": {
+    "avdName": "Pixel_4a",
+    "bundleId": "metasecret.project.com",
+    "testClass": "metasecret.project.com.CaseEightAndroidBothOfflineTest",
+    "testMethod": "joinWebInitiatedVault",
+    "directInstrumentationSetup": true,
+    "raceStepTestMethod": "handleApproveDeclineStep"
+  },
+  "secretCreation": { "initial": { "web": ["default"] } },
+  "recovery": {
+    "expectedCycles": 3,
+    "cyclePlan": [
+      {
+        "block": "android-repeat-approve-1",
+        "count": 1,
+        "senders": [{ "platform": "web", "secret": "default" }],
+        "approvals": [{ "platform": "android", "action": "approve", "secret": "default" }],
+        "expectedOutcome": "approved"
+      },
+      {
+        "block": "android-repeat-approve-2",
+        "count": 1,
+        "senders": [{ "platform": "web", "secret": "default" }],
+        "approvals": [{ "platform": "android", "action": "approve", "secret": "default" }],
+        "expectedOutcome": "approved"
+      },
+      {
+        "block": "android-repeat-approve-3",
+        "count": 1,
+        "senders": [{ "platform": "web", "secret": "default" }],
+        "approvals": [{ "platform": "android", "action": "approve", "secret": "default" }],
+        "expectedOutcome": "approved"
+      }
+    ]
+  },
+  "vault": { "name": "test13-block1@test.ru" },
+  "secrets": { "default": { "name": "test-secret", "value": "test-secret-value" } }
+}

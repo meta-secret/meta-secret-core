@@ -34,7 +34,27 @@
     "test-10:block1": "node Test10/orchestrator.mjs scenario-block1.json --exit-on-success",
     "test-10:block2": "node Test10/orchestrator.mjs scenario-block2.json --exit-on-success",
     "test-10:block3": "node Test10/orchestrator.mjs scenario-block3.json --exit-on-success",
-    "test-10:blocks": "npm run test-10:block1 && npm run test-10:block2 && npm run test-10:block3"
+    "test-10:blocks": "npm run test-10:block1 && npm run test-10:block2 && npm run test-10:block3",
+    "test-11": "node Test11/orchestrator.mjs scenario-block1.json",
+    "test-11:block1": "node Test11/orchestrator.mjs scenario-block1.json --exit-on-success",
+    "test-11:block2": "node Test11/orchestrator.mjs scenario-block2.json --exit-on-success",
+    "test-11:block3": "node Test11/orchestrator.mjs scenario-block3.json --exit-on-success",
+    "test-11:blocks": "npm run test-11:block1 && npm run test-11:block2 && npm run test-11:block3",
+    "test-12": "node Test12/orchestrator.mjs scenario-block1.json",
+    "test-12:block1": "node Test12/orchestrator.mjs scenario-block1.json --exit-on-success",
+    "test-12:block2": "node Test12/orchestrator.mjs scenario-block2.json --exit-on-success",
+    "test-12:block3": "node Test12/orchestrator.mjs scenario-block3.json --exit-on-success",
+    "test-12:blocks": "npm run test-12:block1 && npm run test-12:block2 && npm run test-12:block3",
+    "test-13": "node Test13/orchestrator.mjs scenario-block1.json",
+    "test-13:block1": "node Test13/orchestrator.mjs scenario-block1.json --exit-on-success",
+    "test-13:block2": "node Test13/orchestrator.mjs scenario-block2.json --exit-on-success",
+    "test-13:block3": "node Test13/orchestrator.mjs scenario-block3.json --exit-on-success",
+    "test-13:blocks": "npm run test-13:block1 && npm run test-13:block2 && npm run test-13:block3",
+    "test-14": "node Test14/orchestrator.mjs scenario-block1.json",
+    "test-14:block1": "node Test14/orchestrator.mjs scenario-block1.json --exit-on-success",
+    "test-14:block2": "node Test14/orchestrator.mjs scenario-block2.json --exit-on-success",
+    "test-14:block3": "node Test14/orchestrator.mjs scenario-block3.json --exit-on-success",
+    "test-14:blocks": "npm run test-14:block1 && npm run test-14:block2 && npm run test-14:block3"
   },
   "dependencies": {
     "playwright": "^1.61.0"

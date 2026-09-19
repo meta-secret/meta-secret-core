@@ -2,7 +2,7 @@
 
 Unified vocabulary for meta-secret-core Rust backend. All communication (AI, code, docs, comments) uses these terms consistently.
 
-**Last updated:** 2026-06-22  
+**Last updated:** 2026-09-19
 **Maintenance:** Monthly or when architecture changes  
 **Scope:** Cryptography, protocols, server logic, and mobile FFI
 
@@ -37,6 +37,8 @@ Unified vocabulary for meta-secret-core Rust backend. All communication (AI, cod
 | **Claim** | Request object: distribute or recover a pass among vault members | Protocol | `ClaimObject` in API, `Claim` in core |
 | **Claim ID** | Unique identifier for a claim | Claim tracking | 32-byte hash |
 | **Claim Status** | Enum: `Pending`, `Sent`, `Delivered`, `Accepted`, `Declined` | Claim lifecycle | Per-device status |
+| **Terminal Recovery Decision** | Immutable receiver outcome for a recovery claim: `Declined` or `Sent`/`Delivered` | Recovery race handling | Stale snapshots cannot restore `Pending` |
+| **First-Response-Wins** | The first receiver decision processed by the server determines the recovery claim outcome | Recovery consensus | First decline blocks reveal; first approve permits recovery; late opposite action is ignored |
 | **Distribution Type** | Enum: `Split` (share) or `Recover` (combine shares) | Claim type | Sets claim behavior |
 | **Resharing** | Regenerating shares after member leaves vault (k remains same) | Vault ops | New SS setup, same k value |
 | **Key Rotation** | Changing all shares after security concern (k may change) | Vault ops | Full regeneration of SSS |
@@ -116,6 +118,10 @@ Unified vocabulary for meta-secret-core Rust backend. All communication (AI, cod
 `clientStatus` is a per-device instruction computed by core from a recovery claim.
 The UI consumes it; it does not determine whether a claim is active, stale, or has
 enough approvals. `clientStatus` is meaningful only for `Recover` claims.
+
+For concurrent receiver actions, “first” means the first decision processed by
+the server's ordered event stream. Once a receiver or claim reaches a terminal
+decision, stale snapshots and an opposite late decision must not change it.
 
 The recovery threshold follows the K-of-N policy: for 1–2 devices `k=1`; for 3 or
 more devices `k=2`. In a 3+ device vault, the sender already has one share, so one

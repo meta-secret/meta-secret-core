@@ -1,0 +1,68 @@
+{
+  "runId": "test12-block1",
+  "testNumber": 12,
+  "name": "Test #12 block 1 — Web sender, Android/iOS both decline",
+  "mode": "approve-decline-race",
+  "setup": { "initiator": "web" },
+  "server": {
+    "url": "http://127.0.0.1:3000",
+    "image": "ghcr.io/meta-secret/meta-secret-core/meta-secret-server:latest",
+    "container": "meta-secret-e2e-server-test12-block1",
+    "port": 3000
+  },
+  "web": { "url": "http://localhost:5173", "directory": "../meta-secret/web-cli/ui" },
+  "ios": {
+    "composeRoot": "../../meta-secret-compose",
+    "simulatorName": "iPhone 17",
+    "bundleId": "org.metasecret.vault",
+    "testClass": "CaseEightIosBothOfflineUITest",
+    "joinTestMethod": "joinWebInitiatedVault",
+    "raceStepTestMethod": "handleApproveDeclineStep"
+  },
+  "android": {
+    "avdName": "Pixel_4a",
+    "bundleId": "metasecret.project.com",
+    "testClass": "metasecret.project.com.CaseEightAndroidBothOfflineTest",
+    "testMethod": "joinWebInitiatedVault",
+    "directInstrumentationSetup": true,
+    "raceStepTestMethod": "handleApproveDeclineStep"
+  },
+  "secretCreation": { "initial": { "web": ["default"] } },
+  "recovery": {
+    "expectedCycles": 3,
+    "cyclePlan": [
+      {
+        "block": "android-decline-first",
+        "count": 1,
+        "senders": [{ "platform": "web", "secret": "default" }],
+        "approvals": [
+          { "platform": "android", "action": "decline", "secret": "default" },
+          { "platform": "ios", "action": "decline", "secret": "default" }
+        ],
+        "expectedOutcome": "declined"
+      },
+      {
+        "block": "ios-decline-first",
+        "count": 1,
+        "senders": [{ "platform": "web", "secret": "default" }],
+        "approvals": [
+          { "platform": "ios", "action": "decline", "secret": "default" },
+          { "platform": "android", "action": "decline", "secret": "default" }
+        ],
+        "expectedOutcome": "declined"
+      },
+      {
+        "block": "android-decline-first-again",
+        "count": 1,
+        "senders": [{ "platform": "web", "secret": "default" }],
+        "approvals": [
+          { "platform": "android", "action": "decline", "secret": "default" },
+          { "platform": "ios", "action": "decline", "secret": "default" }
+        ],
+        "expectedOutcome": "declined"
+      }
+    ]
+  },
+  "vault": { "name": "test12-block1@test.ru" },
+  "secrets": { "default": { "name": "test-secret", "value": "test-secret-value" } }
+}

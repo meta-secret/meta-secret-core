@@ -2,7 +2,7 @@
 
 Mandatory architectural rules for the Rust backend cryptography and protocol implementation. All code changes must validate against these constraints.
 
-**Last updated:** 2026-06-22  
+**Last updated:** 2026-09-19
 **Maintainer:** Architecture Guardian (validate at Stage 3.5)
 
 ---
@@ -18,6 +18,7 @@ Mandatory architectural rules for the Rust backend cryptography and protocol imp
 | **No Server Storage** | Keys, shares, secrets never on server | E2E principle |
 | **Two Cannot Erase Each Other** | With 2 devices, neither can remove the other | Safety |
 | **Recovery Status Ownership** | Core alone computes recovery lifecycle and `clientStatus`; UI only executes the resulting instruction | Recovery |
+| **First Response Wins** | The first server-processed receiver decision terminalizes the recovery claim; a late opposite decision is ignored | Recovery consensus |
 
 ---
 
@@ -38,6 +39,18 @@ a recovery is active, ready, declined, or complete.
   completion has been persisted. Receivers close recovery alerts only then.
 - A receiver that has already approved or declined has no further action until
   completion; this is represented by no client instruction (`None`).
+- Recovery uses first-response-wins ordering: the first receiver decision
+  processed by the server is authoritative for the claim.
+- If the first decision is `Decline`, remaining pending receivers become
+  terminally declined and the sender cannot recover or reveal the secret.
+- If the first decision is `Approve`, the approving receiver reaches
+  `Sent`/`Delivered`, recovery may proceed once the threshold is met, and a
+  later `Decline` cannot revoke that result.
+- Terminal receiver statuses are monotonic and cannot be reverted by stale
+  snapshots or device-log reconciliation.
+- “First” is a server-processing guarantee: for packets that arrive at nearly
+  the same time, the ordered event stream decides which one is first; it is not
+  a wall-clock promise.
 
 ### 1.1 K-of-N Principle (Adaptive Sharing)
 

@@ -519,6 +519,38 @@ impl SsLogData {
 }
 
 impl SsLogData {
+    /// Merge a claim snapshot received from a device without allowing a late
+    /// device update to overwrite a decision already accepted by the server.
+    ///
+    /// Recovery decisions are ordered by the server's serialized event stream:
+    /// once a receiver is Declined, Sent, or Delivered, that receiver status
+    /// is terminal for this recovery claim and must survive stale snapshots
+    /// from other devices.
+    pub fn merge_claim_update(mut self, incoming: SsClaim) -> Self {
+        let claim_id = incoming.id.clone();
+        let Some(existing) = self.claims.get(&claim_id).cloned() else {
+            self.claims.insert(claim_id, incoming);
+            return self;
+        };
+
+        let mut merged = existing;
+        for (device_id, incoming_status) in incoming.status.statuses {
+            let is_terminal = matches!(
+                merged.status.statuses.get(&device_id),
+                Some(
+                    SsDistributionStatus::Declined
+                        | SsDistributionStatus::Sent
+                        | SsDistributionStatus::Delivered
+                )
+            );
+            if !is_terminal {
+                merged.status.statuses.insert(device_id, incoming_status);
+            }
+        }
+        self.claims.insert(claim_id, merged);
+        self
+    }
+
     pub fn new(claim: SsClaim) -> Self {
         let mut claims = HashMap::new();
         claims.insert(claim.id.clone(), claim);
@@ -975,6 +1007,80 @@ mod test {
             client_status: None,
         };
         (claim, claim_id)
+    }
+
+    #[test]
+    fn test_decline_remaining_pending_makes_recovery_terminal() {
+        let registry = FixtureRegistry::empty();
+        let sender = registry.state.device_creds.client.device.device_id;
+        let receiver_a = registry.state.device_creds.client_b.device.device_id;
+        let receiver_b = registry.state.device_creds.vd.device.device_id;
+        let (claim, claim_id) =
+            make_recover_claim(sender, vec![receiver_a.clone(), receiver_b.clone()]);
+
+        let declined = SsLogData::new(claim).decline_remaining_pending(claim_id.clone());
+        let stored_claim = declined.claims.get(&claim_id).expect("claim is retained");
+
+        assert!(matches!(
+            stored_claim.status.get(&receiver_a),
+            Some(SsDistributionStatus::Declined)
+        ));
+        assert!(matches!(
+            stored_claim.status.get(&receiver_b),
+            Some(SsDistributionStatus::Declined)
+        ));
+        assert!(matches!(
+            stored_claim.status.status(),
+            SsDistributionStatus::Declined
+        ));
+    }
+
+    #[test]
+    fn test_merge_claim_update_preserves_terminal_recovery_decision() {
+        let registry = FixtureRegistry::empty();
+        let sender = registry.state.device_creds.client.device.device_id;
+        let receiver_a = registry.state.device_creds.client_b.device.device_id;
+        let receiver_b = registry.state.device_creds.vd.device.device_id;
+        let receivers = vec![receiver_a.clone(), receiver_b.clone()];
+        let (claim, claim_id) = make_recover_claim(sender.clone(), receivers.clone());
+
+        // A stale device snapshot still reports both receivers as Pending. It must not
+        // resurrect the terminal Declined decision stored on the server.
+        let declined = SsLogData::new(claim).decline_remaining_pending(claim_id.clone());
+        let (stale_snapshot, _) = make_recover_claim(sender.clone(), receivers.clone());
+        let merged_declined = declined.merge_claim_update(stale_snapshot);
+        let declined_claim = merged_declined
+            .claims
+            .get(&claim_id)
+            .expect("claim is retained");
+        assert!(matches!(
+            declined_claim.status.get(&receiver_a),
+            Some(SsDistributionStatus::Declined)
+        ));
+        assert!(matches!(
+            declined_claim.status.get(&receiver_b),
+            Some(SsDistributionStatus::Declined)
+        ));
+
+        // The same merge rule preserves an earlier approval from a late stale snapshot.
+        let (approved_claim, approved_claim_id) =
+            make_recover_claim(sender.clone(), receivers.clone());
+        let approved = SsLogData::new(approved_claim)
+            .sent(approved_claim_id.clone(), receiver_a.clone());
+        let (stale_snapshot, _) = make_recover_claim(sender, receivers);
+        let merged_approved = approved.merge_claim_update(stale_snapshot);
+        let approved_claim = merged_approved
+            .claims
+            .get(&approved_claim_id)
+            .expect("claim is retained");
+        assert!(matches!(
+            approved_claim.status.get(&receiver_a),
+            Some(SsDistributionStatus::Sent)
+        ));
+        assert!(matches!(
+            approved_claim.status.get(&receiver_b),
+            Some(SsDistributionStatus::Pending)
+        ));
     }
 
     #[test]
