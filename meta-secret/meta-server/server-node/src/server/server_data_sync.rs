@@ -12,7 +12,8 @@ use meta_secret_core::node::common::model::device::common::{DeviceData, DeviceId
 use meta_secret_core::node::common::model::secret::{
     SecretDistributionType, SsDistributionId, SsDistributionStatus,
 };
-use meta_secret_core::node::common::model::vault::vault::VaultStatus;
+use meta_secret_core::node::common::model::user::common::UserMembership;
+use meta_secret_core::node::common::model::vault::vault::{VaultName, VaultStatus};
 use meta_secret_core::node::db::actions::vault::vault_action::ServerVaultAction;
 use meta_secret_core::node::db::descriptors::shared_secret_descriptor::{
     SsLogDescriptor, SsWorkflowDescriptor,
@@ -350,6 +351,11 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         let vault_action = vault_action_event.value;
         let vault_name = vault_action.vault_name();
         let scope = state_scope_for_vault_action(&vault_action);
+        let accepted_new_member = matches!(
+            &vault_action,
+            VaultActionEvent::Update(VaultActionUpdateEvent::UpdateMembership(update))
+                if matches!(&update.update, UserMembership::Member(_))
+        );
 
         let action = ServerVaultAction {
             p_obj: self.p_obj.clone(),
@@ -357,8 +363,38 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         };
 
         action.do_processing(vault_action).await?;
+        if accepted_new_member && self.decline_pending_recovery_claims(vault_name.clone()).await? {
+            self.publish_invalidation(vault_name.clone(), StateInvalidationScope::SsClaims);
+        }
         self.publish_invalidation(vault_name, scope);
         Ok(())
+    }
+
+    /// A membership change invalidates recovery requests created against the
+    /// previous member set. The server is the canonical log, so terminalize
+    /// pending receivers here and let every client consume the resulting
+    /// `Declined` claim through normal SsLog replication.
+    async fn decline_pending_recovery_claims(&self, vault_name: VaultName) -> Result<bool> {
+        let Some(ss_log_event) = self
+            .p_obj
+            .find_tail_event(SsLogDescriptor::from(vault_name.clone()))
+            .await?
+        else {
+            return Ok(false);
+        };
+
+        let ss_log_data = ss_log_event.to_data();
+        let declined_ss_log_data = ss_log_data.clone().decline_pending_recovery_claims();
+        if declined_ss_log_data == ss_log_data {
+            return Ok(false);
+        }
+
+        let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
+        let new_ss_log_event = p_ss
+            .create_new_ss_log_object(declined_ss_log_data, vault_name)
+            .await?;
+        self.p_obj.repo.save(new_ss_log_event).await?;
+        Ok(true)
     }
 
     pub async fn ss_replication(

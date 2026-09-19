@@ -158,6 +158,7 @@ const composeRoot = resolve(e2eRoot, scenario.ios.composeRoot);
 const iosProjectPath = resolve(composeRoot, 'iosApp/iosApp.xcodeproj');
 const iosDerivedDataPath = resolve(e2eRoot, '.derivedData/iosApp');
 const androidEmulatorPath = '/Users/dmitrykuklin/Library/Android/sdk/emulator/emulator';
+const metaCliBinaryPath = resolve(projectRoot, 'meta-secret/target/debug/meta-cli');
 const androidTestBundleId = `${scenario.android.bundleId}.test`;
 const iosTestMethod = scenario.ios.testMethod
   ?? scenario.ios.joinTestMethod
@@ -297,6 +298,97 @@ function runAndCapture(command, args, options = {}) {
       else reject(new Error(`${command} exited with ${code ?? signal}\n${stderr || stdout}`));
     });
   });
+}
+
+async function runMetaCli(cliDirectory, args, { label = args.join(' ') } = {}) {
+  if (!existsSync(metaCliBinaryPath)) {
+    throw new Error(
+      `meta-cli binary not found at ${metaCliBinaryPath}. `
+      + 'Build it with: cargo build -p meta-cli',
+    );
+  }
+
+  writeDiagnostic(`[CLI] ${label}; cwd=${cliDirectory}`);
+  const result = await runAndCapture(
+    metaCliBinaryPath,
+    ['--output-format', 'json', ...args],
+    { cwd: cliDirectory },
+  );
+  if (result.stderr.trim()) {
+    writeDiagnostic(`[CLI][stderr] ${result.stderr.trim().slice(-4_000)}`);
+  }
+  if (result.stdout.trim()) {
+    writeDiagnostic(`[CLI][stdout] ${result.stdout.trim().slice(-4_000)}`);
+  }
+  return result;
+}
+
+async function createMetaCliDevice(cycle) {
+  const cliDirectory = resolve(
+    artifactsDirectory,
+    `test15-${scenario.runId ?? 'run'}-cli-${process.pid}-${Date.now()}-${cycle.number}`,
+  );
+  mkdirSync(cliDirectory, { recursive: true });
+  const deviceName = `test15-cli-${cycle.number}`;
+  const deviceInit = await runMetaCli(
+    cliDirectory,
+    ['init', 'device', '--device-name', deviceName],
+    { label: `init device ${deviceName}` },
+  );
+  const deviceId = deviceInit.stdout.match(/Device ID:\s*([^\s]+)/)?.[1];
+  if (!deviceId) {
+    throw new Error(`Could not parse CLI device ID from init output: ${deviceInit.stdout}`);
+  }
+
+  await runMetaCli(
+    cliDirectory,
+    ['init', 'user', '--vault-name', scenario.vault.name],
+    { label: `init user vault=${scenario.vault.name}` },
+  );
+  await runMetaCli(cliDirectory, ['auth', 'sign-up'], { label: 'submit CLI join request' });
+  writeDiagnostic(`[CLI] join request submitted device=${deviceId} name=${deviceName}`);
+  return { cliDirectory, deviceId, deviceName };
+}
+
+function parseCliJson(result, label) {
+  try {
+    return JSON.parse(result.stdout);
+  } catch (error) {
+    throw new Error(
+      `CLI ${label} returned invalid JSON: ${error.message}; `
+      + `stdout=${result.stdout.slice(-4_000)}`,
+    );
+  }
+}
+
+async function readMetaCliInfo(cliDevice, command = ['info', 'default']) {
+  const result = await runMetaCli(cliDevice.cliDirectory, command, {
+    label: command.join(' '),
+  });
+  return parseCliJson(result, command.join(' '));
+}
+
+async function assertMetaCliMember(cliDevice, expectedMemberCount) {
+  // `info default` is intentionally not used here: its JSON template still
+  // expects a legacy claim.status field and fails as soon as recovery claims
+  // are present. A redistributed Split claim is the protocol-level proof
+  // that the new member was accepted and received a vault copy.
+  const claimsInfo = await readMetaCliInfo(cliDevice, ['info', 'recovery-claims']);
+  const redistributed = (claimsInfo.claims ?? []).find((claim) => (
+    claim.type === 'Split'
+      && claim.receivers?.some((receiver) => receiver.id === cliDevice.deviceId)
+  ));
+  if (!redistributed) {
+    throw new Error(
+      `CLI did not observe accepted membership: no Split claim contains device=${cliDevice.deviceId}; `
+      + `claims=${JSON.stringify(claimsInfo).slice(0, 2_000)}`,
+    );
+  }
+  writeDiagnostic(
+    `[CLI] member state observed device=${cliDevice.deviceId} `
+    + `redistributedClaim=${redistributed.id}`,
+  );
+  return claimsInfo;
 }
 
 function watchProcessOutput(command, args, options = {}) {
@@ -906,7 +998,7 @@ async function startAndroidStepTest(serial, {
     ?? 'metasecret.project.com.CaseEightAndroidBothOfflineTest';
   const androidTestMethod = testMethod;
   const selector = `${androidTestClass}#${androidTestMethod}`;
-  const test = watchProcessOutput('adb', [
+  const runnerArguments = [
     '-s', serial,
     'shell', '--', 'am', 'instrument', '-w',
     '-e', 'class', selector,
@@ -917,13 +1009,17 @@ async function startAndroidStepTest(serial, {
     '-e', 'step', String(step),
     '-e', 'approvalPlatform', approvalPlatform,
     '-e', 'sender', sender,
-    '-e', 'decision', decision,
     '-e', 'expectedOutcome', expectedOutcome,
     '-e', 'repeatApprove', repeatApprove ? 'true' : 'false',
     '-e', 'duplicateRecovery', duplicateRecovery ? 'true' : 'false',
     '-e', 'approvalCoordinatorUrl', 'http://10.0.2.2:5180',
     `${androidTestBundleId}/androidx.test.runner.AndroidJUnitRunner`,
-  ]);
+  ];
+  if (decision) {
+    const coordinatorIndex = runnerArguments.indexOf('approvalCoordinatorUrl');
+    runnerArguments.splice(coordinatorIndex, 0, '-e', 'decision', decision);
+  }
+  const test = watchProcessOutput('adb', runnerArguments);
   const result = test.result
     .then((output) => {
       assertAndroidInstrumentationPassed(output, selector);
@@ -1891,6 +1987,361 @@ async function runDuplicateRecovery(page, simulatorUdid, androidSerial) {
     if (nativeProcesses.has('android')) await stopAndroidApplication(androidSerial);
     if (nativeProcesses.has('ios')) await stopIosApplication(simulatorUdid);
     console.log(`✅ Test #${testNumber} cycle ${cycle.number}/${expectedCycles} passed: one active claim after duplicate submit`);
+  }
+}
+
+async function runNewDeviceDuringRecoveryWithCli(page, simulatorUdid, androidSerial) {
+  const expectedCycles = scenario.recovery.expectedCycles ?? recoveryCycles.length;
+  if (recoveryCycles.length !== expectedCycles) {
+    throw new Error(`Test #${testNumber} expected ${expectedCycles} recovery requests, got ${recoveryCycles.length}`);
+  }
+  if (scenario.setup?.initiator !== 'web') {
+    throw new Error('Test #15 CLI block currently requires a Web-created vault');
+  }
+
+  for (const cycle of recoveryCycles) {
+    currentCycleForDiagnostics = cycle.number;
+    const sender = cycle.senders?.[0] ?? 'web';
+    const secretName = cycle.senderSecrets?.[sender] ?? defaultSecret?.name;
+    if (sender !== 'web') {
+      throw new Error(
+        `Test #15 CLI smoke block currently supports Web as sender; got ${sender} in cycle ${cycle.number}`,
+      );
+    }
+
+    writeDiagnostic(
+      `TEST15 cycle=${cycle.number} sender=${sender} secret=${secretName} `
+      + 'newDevice=cli during active recovery',
+    );
+    console.log(
+      `Test #15 cycle ${cycle.number}/${expectedCycles}: Web requests recovery, `
+      + 'CLI joins before the old claim is answered',
+    );
+
+    await reopenWebAfterOffline(page);
+    const nativeReceiverPlatforms = scenario.newDevice?.oldReceivers ?? ['ios', 'android'];
+    const nativeReceivers = new Map();
+    for (const platform of nativeReceiverPlatforms) {
+      if (platform === 'ios') {
+        const test = startIosJoinTest(simulatorUdid, {
+          testClass: scenario.ios.testClass,
+          testMethod: scenario.ios.stepTestMethod ?? 'handleRecoveryStep',
+          label: `iOS Test #15 old receiver cycle ${cycle.number}`,
+          secretName,
+          environment: stepEnvironment({
+            role: 'receiver', cycle: cycle.number, step: 1,
+            approvalPlatform: 'cli', sender,
+          }),
+        });
+        void test.result.catch(() => {});
+        nativeReceivers.set(platform, test);
+      } else {
+        const test = await startAndroidStepTest(androidSerial, {
+          role: 'receiver', cycle: cycle.number, step: 1,
+          approvalPlatform: 'cli', sender, secretName,
+          decision: 'dismiss',
+          expectedOutcome: 'approved',
+          testMethod: scenario.android.stepTestMethod ?? 'handleRecoveryStep',
+          label: `Android Test #15 old receiver cycle ${cycle.number}`,
+        });
+        nativeReceivers.set(platform, test);
+      }
+    }
+
+    await startWebRecovery(page, secretName);
+    for (const [platform, test] of nativeReceivers.entries()) {
+      await test.waitForMarker(
+        `E2E: ${platform.toUpperCase()}_INCOMING_VISIBLE_${cycle.number}_1`,
+        180_000,
+      );
+    }
+    writeDiagnostic(
+      `TEST15 cycle=${cycle.number} old recovery visible on native receivers `
+      + nativeReceiverPlatforms.join(','),
+    );
+
+    const cliDevice = await createMetaCliDevice(cycle);
+    // The Web sender's waiting dialog is only a view of the active claim;
+    // close it before navigating to Devices to approve the new CLI member.
+    // The claim remains active until a receiver answers it.
+    await dismissWebRecoveryWaitingUi(page, secretName);
+    await approveJoinRequestOnWeb(page, 'CLI');
+    const cliClaimsInfo = await assertMetaCliMember(cliDevice, 4);
+    const activeRecoveryClaims = (cliClaimsInfo.claims ?? [])
+      .filter((claim) => claim.type === 'Recover' && claim.password === secretName)
+      .map((claim) => ({
+        id: claim.id,
+        clientStatus: claim.clientStatus,
+        receivers: (claim.receivers ?? []).map((receiver) => ({
+          id: receiver.id,
+          status: receiver.status,
+        })),
+      }));
+    writeDiagnostic(
+      `[CLI] post-join recovery claims secret=${secretName} `
+      + JSON.stringify(activeRecoveryClaims),
+    );
+    writeDiagnostic(`TEST15 cycle=${cycle.number} CLI join accepted and redistributed`);
+
+    // The join is the state boundary. Release the old native receivers only
+    // after the new membership is canonical; their own UI assertions must
+    // prove that the pre-join recovery was invalidated, not merely hidden by
+    // a test-side dismissal.
+    for (const platform of nativeReceiverPlatforms) {
+      approvalCoordinator.allow(`${platform}-dismiss-1`, cycle.number);
+    }
+    for (const [platform, test] of nativeReceivers.entries()) {
+      await test.waitForMarker(
+        `E2E: ${platform.toUpperCase()}_DISMISSED_INCOMING_${cycle.number}_1`,
+        180_000,
+      );
+    }
+    for (const test of nativeReceivers.values()) await test.result;
+
+    await stopAndroidApplication(androidSerial);
+    await stopIosApplication(simulatorUdid);
+    await reopenWebAfterOffline(page);
+    await assertNoStaleWebRecoveryAlert(page, secretName);
+    const primaryAction = page.getByTestId(`secret-primary-action-${secretName}`);
+    await primaryAction.filter({ hasText: /^\s*Recover\s*$/ }).waitFor({
+      state: 'visible',
+      timeout: 120_000,
+    });
+    writeDiagnostic(`TEST15 cycle=${cycle.number} old sender claim is no longer actionable`);
+
+    // Membership redistribution gives the new member a Split claim. The
+    // recovery that was already open before the join must stay terminal and
+    // must not be recreated as a recovery request for the new device. The
+    // sender already has a complete Split after redistribution, so its action
+    // is Show rather than another recovery request in this cycle.
+    const staleRecoveryClaims = (cliClaimsInfo.claims ?? [])
+      .filter((claim) => claim.type === 'Recover' && claim.password === secretName);
+    const cliInStaleRecovery = staleRecoveryClaims.some((claim) => (
+      claim.receivers?.some((receiver) => receiver.id === cliDevice.deviceId)
+        && (claim.receivers ?? []).some((receiver) => (
+          ['Pending', 'Sent', 'Delivered', 'NeedApprove'].includes(receiver.status)
+        ))
+    ));
+    if (cliInStaleRecovery) {
+      throw new Error(
+        `CLI unexpectedly received an actionable old recovery claim for ${secretName}; `
+        + `device=${cliDevice.deviceId}`,
+      );
+    }
+    const terminalOldRecovery = staleRecoveryClaims.every((claim) => (
+      (claim.receivers ?? []).length > 0
+        && (claim.receivers ?? []).every((receiver) => receiver.status === 'Declined')
+    ));
+    if (!terminalOldRecovery) {
+      throw new Error(
+        `Old recovery claim is not terminal after CLI join for ${secretName}: `
+        + `${JSON.stringify(staleRecoveryClaims).slice(0, 2_000)}`,
+      );
+    }
+    writeDiagnostic(
+      `TEST15 cycle=${cycle.number} new CLI has Split only; `
+      + 'old Recover is Declined and no stale recovery was recreated',
+    );
+    console.log(`✅ Test #15 cycle ${cycle.number}/${expectedCycles} passed`);
+  }
+}
+
+async function runNewDeviceDuringRecoveryWithCliFull(page, simulatorUdid, androidSerial) {
+  const expectedCycles = scenario.recovery.expectedCycles ?? recoveryCycles.length;
+  if (recoveryCycles.length !== expectedCycles) {
+    throw new Error(`Test #${testNumber} expected ${expectedCycles} recovery requests, got ${recoveryCycles.length}`);
+  }
+
+  const senderForCycle = (cycle) => {
+    if (cycle.senders.length !== 1) {
+      throw new Error(`Test #15 cycle ${cycle.number} must have exactly one sender`);
+    }
+    return cycle.senders[0];
+  };
+
+  for (const cycle of recoveryCycles) {
+    currentCycleForDiagnostics = cycle.number;
+    const sender = senderForCycle(cycle);
+    const secretName = cycle.senderSecrets[sender] ?? defaultSecret?.name;
+    const oldReceivers = scenario.newDevice?.oldReceivers
+      ?? ['web', 'ios', 'android'].filter((platform) => platform !== sender);
+    if (!['web', 'ios', 'android'].includes(sender)) {
+      throw new Error(`Test #15 unsupported sender platform: ${sender}`);
+    }
+    if (oldReceivers.length !== 2 || oldReceivers.includes(sender)) {
+      throw new Error(
+        `Test #15 cycle ${cycle.number} must observe the two receivers other than sender=${sender}; `
+        + `got=${JSON.stringify(oldReceivers)}`,
+      );
+    }
+
+    writeDiagnostic(
+      `TEST15 cycle=${cycle.number} sender=${sender} secret=${secretName} `
+      + `oldReceivers=${oldReceivers.join(',')} newDevice=cli`,
+    );
+    console.log(
+      `Test #15 cycle ${cycle.number}/${expectedCycles}: sender=${sender}; `
+      + `CLI joins during recovery; old receivers=${oldReceivers.join(',')}`,
+    );
+
+    await reopenWebAfterOffline(page);
+    const nativeProcesses = new Map();
+    const startNative = async (platform, role) => {
+      const environment = stepEnvironment({
+        role,
+        cycle: cycle.number,
+        step: 1,
+        approvalPlatform: 'cli',
+        sender,
+        expectedOutcome: 'invalidated',
+      });
+      if (platform === 'ios') {
+        const test = startIosJoinTest(simulatorUdid, {
+          testClass: scenario.ios.testClass,
+          testMethod: scenario.ios.stepTestMethod ?? 'handleRecoveryStep',
+          label: `iOS Test #15 ${role} cycle ${cycle.number}`,
+          secretName,
+          environment,
+        });
+        void test.result.catch(() => {});
+        nativeProcesses.set(platform, { role, test });
+        return;
+      }
+      if (platform === 'android') {
+        const test = await startAndroidStepTest(androidSerial, {
+          role,
+          cycle: cycle.number,
+          step: 1,
+          approvalPlatform: 'cli',
+          sender,
+          secretName,
+          expectedOutcome: 'invalidated',
+          testMethod: scenario.android.stepTestMethod ?? 'handleRecoveryStep',
+          label: `Android Test #15 ${role} cycle ${cycle.number}`,
+        });
+        nativeProcesses.set(platform, { role, test });
+        await test.waitForMarker(
+          `E2E: ANDROID_STEP_CONFIG role=${role} cycle=${cycle.number} step=1 approval=cli`,
+          180_000,
+        );
+        return;
+      }
+      throw new Error(`Test #15 cannot start Web as a native process: ${platform}`);
+    };
+
+    for (const platform of oldReceivers) {
+      if (platform !== 'web') await startNative(platform, 'receiver');
+    }
+    if (sender !== 'web') await startNative(sender, 'sender');
+
+    if (sender === 'web') {
+      await startWebRecovery(page, secretName);
+    } else {
+      approvalCoordinator.allow(`${sender}-sender-1`, cycle.number);
+      const senderProcess = nativeProcesses.get(sender)?.test;
+      await senderProcess.waitForMarker(
+        `E2E: ${sender.toUpperCase()}_RECOVERY_REQUEST_SENT_${cycle.number}_1`,
+        180_000,
+      );
+    }
+
+    for (const platform of oldReceivers) {
+      if (platform === 'web') {
+        await waitForWebRecoveryBadgeCount(page, 1, secretName);
+      } else {
+        await nativeProcesses.get(platform).test.waitForMarker(
+          `E2E: ${platform.toUpperCase()}_INCOMING_VISIBLE_${cycle.number}_1`,
+          180_000,
+        );
+      }
+    }
+    writeDiagnostic(`TEST15 cycle=${cycle.number} old recovery visible on all receivers`);
+
+    const cliDevice = await createMetaCliDevice(cycle);
+    // Web is always an existing member in all three blocks, so it is the
+    // deterministic join approver even when it is also observing the old
+    // recovery request as a receiver.
+    if (sender === 'web') await dismissWebRecoveryWaitingUi(page, secretName);
+    await approveJoinRequestOnWeb(page, 'CLI');
+    const cliClaimsInfo = await assertMetaCliMember(cliDevice, 4);
+    const activeRecoveryClaims = (cliClaimsInfo.claims ?? [])
+      .filter((claim) => claim.type === 'Recover' && claim.password === secretName)
+      .map((claim) => ({
+        id: claim.id,
+        clientStatus: claim.clientStatus,
+        receivers: (claim.receivers ?? []).map((receiver) => ({
+          id: receiver.id,
+          status: receiver.status,
+        })),
+      }));
+    writeDiagnostic(
+      `[CLI] post-join recovery claims secret=${secretName} `
+      + JSON.stringify(activeRecoveryClaims),
+    );
+
+    for (const platform of oldReceivers) {
+      if (platform === 'web') {
+        await waitForWebIncomingRecoveryGone(page, secretName);
+      } else {
+        approvalCoordinator.allow(`${platform}-dismiss-1`, cycle.number);
+        await nativeProcesses.get(platform).test.waitForMarker(
+          `E2E: ${platform.toUpperCase()}_DISMISSED_INCOMING_${cycle.number}_1`,
+          180_000,
+        );
+      }
+    }
+    if (sender !== 'web') {
+      approvalCoordinator.allow(`${sender}-invalidated-1`, cycle.number);
+      await nativeProcesses.get(sender).test.waitForMarker(
+        `E2E: ${sender.toUpperCase()}_RECOVERY_INVALIDATED_${cycle.number}_1`,
+        180_000,
+      );
+    }
+
+    for (const { test } of nativeProcesses.values()) await test.result;
+    if (nativeProcesses.has('android')) await stopAndroidApplication(androidSerial);
+    if (nativeProcesses.has('ios')) await stopIosApplication(simulatorUdid);
+
+    await reopenWebAfterOffline(page);
+    if (oldReceivers.includes('web')) await assertNoStaleWebRecoveryAlert(page, secretName);
+    if (sender === 'web') {
+      const primaryAction = page.getByTestId(`secret-primary-action-${secretName}`);
+      await primaryAction.filter({ hasText: /^\s*Recover\s*$/ }).waitFor({
+        state: 'visible',
+        timeout: 120_000,
+      });
+    }
+
+    const staleRecoveryClaims = (cliClaimsInfo.claims ?? [])
+      .filter((claim) => claim.type === 'Recover' && claim.password === secretName);
+    const cliInStaleRecovery = staleRecoveryClaims.some((claim) => (
+      claim.receivers?.some((receiver) => receiver.id === cliDevice.deviceId)
+        && (claim.receivers ?? []).some((receiver) => (
+          ['Pending', 'Sent', 'Delivered', 'NeedApprove'].includes(receiver.status)
+        ))
+    ));
+    if (cliInStaleRecovery) {
+      throw new Error(
+        `CLI unexpectedly received an actionable old recovery claim for ${secretName}; `
+        + `device=${cliDevice.deviceId}`,
+      );
+    }
+    const terminalOldRecovery = staleRecoveryClaims.length > 0
+      && staleRecoveryClaims.every((claim) => (
+        (claim.receivers ?? []).length > 0
+          && (claim.receivers ?? []).every((receiver) => receiver.status === 'Declined')
+      ));
+    if (!terminalOldRecovery) {
+      throw new Error(
+        `Old recovery claim is not terminal after CLI join for ${secretName}: `
+        + `${JSON.stringify(staleRecoveryClaims).slice(0, 2_000)}`,
+      );
+    }
+    writeDiagnostic(
+      `TEST15 cycle=${cycle.number} new CLI has Split only; `
+      + 'all old Recover claims are Declined and no stale recovery was recreated',
+    );
+    console.log(`✅ Test #15 cycle ${cycle.number}/${expectedCycles} passed`);
   }
 }
 
@@ -2891,6 +3342,21 @@ async function main() {
   const simulatorUdid = await prepareIosSimulator();
 
   const androidSerial = await prepareAndroidEmulator();
+  if (scenario.mode === 'new-device-during-recovery') {
+    if (scenario.setup?.initiator === 'web') {
+      await runWebInitiatedSetup(page, simulatorUdid, androidSerial);
+    } else {
+      await runSenderOfflineSetup(page, simulatorUdid, androidSerial);
+    }
+    await runNewDeviceDuringRecoveryWithCliFull(page, simulatorUdid, androidSerial);
+    console.log(`✅ Test #15 new-device-during-recovery passed: ${recoveryCycles.length} cycles`);
+    if (exitOnSuccess) {
+      await stopProcesses();
+      process.exit(0);
+    }
+    console.log('Browser remains open. Press Ctrl+C when ready to stop.');
+    await new Promise(() => {});
+  }
   if (scenario.mode === 'receiver-offline-after-alert' && scenario.setup?.initiator === 'web') {
     await runWebInitiatedSetup(page, simulatorUdid, androidSerial);
     await runReceiverOfflineAfterAlertRecovery(page, simulatorUdid, androidSerial);

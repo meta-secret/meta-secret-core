@@ -51,6 +51,10 @@ a recovery is active, ready, declined, or complete.
 - “First” is a server-processing guarantee: for packets that arrive at nearly
   the same time, the ordered event stream decides which one is first; it is not
   a wall-clock promise.
+- Accepting a new vault member invalidates every still-pending `Recover` claim
+  created for the previous membership set. The server records those pending
+  receiver decisions as `Declined` and publishes an `SsClaims` invalidation;
+  existing `Sent`/`Delivered` decisions remain unchanged.
 
 ### 1.1 K-of-N Principle (Adaptive Sharing)
 
@@ -90,6 +94,15 @@ a recovery is active, ready, declined, or complete.
 ```
 
 ### 1.2 Redistribution on Device Join (Addition)
+
+#### Recovery claims during a join
+
+If a `Recover` claim is pending when a new member is accepted, the claim is
+bound to the old member set and must not remain actionable. The server first
+terminalizes all of its pending receiver statuses as `Declined`, then publishes
+the normal claims invalidation. Membership redistribution creates a new
+`Split` claim for the joining device. Clients must remove the stale recovery
+alert and must not show the old recovery request to the new member.
 
 **Flow: 1 device (A) + new device B joins**
 

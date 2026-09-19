@@ -39,6 +39,7 @@ Unified vocabulary for meta-secret-core Rust backend. All communication (AI, cod
 | **Claim Status** | Enum: `Pending`, `Sent`, `Delivered`, `Accepted`, `Declined` | Claim lifecycle | Per-device status |
 | **Terminal Recovery Decision** | Immutable receiver outcome for a recovery claim: `Declined` or `Sent`/`Delivered` | Recovery race handling | Stale snapshots cannot restore `Pending` |
 | **First-Response-Wins** | The first receiver decision processed by the server determines the recovery claim outcome | Recovery consensus | First decline blocks reveal; first approve permits recovery; late opposite action is ignored |
+| **Membership-Change Invalidation** | Accepting a new vault member invalidates pending recovery claims created for the previous membership set; pending receiver statuses become `Declined` | Recovery + membership synchronization | The new member receives a redistributed `Split` claim, not the stale `Recover` request |
 | **Distribution Type** | Enum: `Split` (share) or `Recover` (combine shares) | Claim type | Sets claim behavior |
 | **Resharing** | Regenerating shares after member leaves vault (k remains same) | Vault ops | New SS setup, same k value |
 | **Key Rotation** | Changing all shares after security concern (k may change) | Vault ops | Full regeneration of SSS |

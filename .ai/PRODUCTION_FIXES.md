@@ -67,3 +67,12 @@ changes are intentionally excluded.
     **Correction:** local recovery workflow events are synchronized before a
     server snapshot, and mobile approve/decline/completion synchronization
     errors are propagated to callers.
+
+11. **Joining a new device left an in-flight recovery claim tied to the old
+    membership set.**
+
+    **Correction:** when a new member is accepted, the server terminalizes
+    every still-pending receiver of an existing `Recover` claim as `Declined`
+    and publishes the claims invalidation. The new member receives the
+    redistributed `Split` claim and never receives the stale recovery request;
+    existing `Sent`/`Delivered` decisions are preserved.

@@ -54,7 +54,12 @@
     "test-14:block1": "node Test14/orchestrator.mjs scenario-block1.json --exit-on-success",
     "test-14:block2": "node Test14/orchestrator.mjs scenario-block2.json --exit-on-success",
     "test-14:block3": "node Test14/orchestrator.mjs scenario-block3.json --exit-on-success",
-    "test-14:blocks": "npm run test-14:block1 && npm run test-14:block2 && npm run test-14:block3"
+    "test-14:blocks": "npm run test-14:block1 && npm run test-14:block2 && npm run test-14:block3",
+    "test-15": "npm run test-15:blocks",
+    "test-15:block1": "node Test15/orchestrator.mjs scenario-block1.json --exit-on-success",
+    "test-15:block2": "node Test15/orchestrator.mjs scenario-block2.json --exit-on-success",
+    "test-15:block3": "node Test15/orchestrator.mjs scenario-block3.json --exit-on-success",
+    "test-15:blocks": "npm run test-15:block1 && npm run test-15:block2 && npm run test-15:block3"
   },
   "dependencies": {
     "playwright": "^1.61.0"
