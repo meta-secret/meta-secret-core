@@ -1,6 +1,6 @@
 use age::secrecy::ExposeSecret;
 use age::x25519::Identity;
-use ed25519_dalek::{SecretKey, Signer, SigningKey};
+use ed25519_dalek::{SecretKey, Signer, SigningKey, Verifier};
 use rand::rngs::OsRng;
 use rand::TryRngCore;
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -34,6 +34,16 @@ impl DsaKeyPair {
 
     pub fn encode_key_pair(&self) -> Base64Text {
         Base64Text::from(self.key_pair.to_bytes().as_slice())
+    }
+}
+
+impl DsaPk {
+    /// Verify a signature produced by the matching [`DsaKeyPair`].
+    pub fn verify(&self, text: &str, signature: &Base64Text) -> anyhow::Result<()> {
+        let public_key = DalekPublicKey::try_from(&self.0)?;
+        let signature = DalekSignature::try_from(signature)?;
+        public_key.verify(text.as_bytes(), &signature)?;
+        Ok(())
     }
 }
 

@@ -177,11 +177,13 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                     Ok(DataSyncResponse::Data(DataEventsResponse(new_events)))
                 }
                 ReadSyncRequest::SsRecoveryCompletion(recovery_completion) => {
-                    let vault_name = recovery_completion.vault_name;
-                    let claim_id = recovery_completion.recovery_id.claim_id.id;
-                    let sender_id = recovery_completion.recovery_id.sender;
-                    let receiver_id = recovery_completion.recovery_id.distribution_id.receiver;
-                    let receiver_status = recovery_completion.receiver_status;
+                    self.data_sync.verify_recovery_completion(&recovery_completion).await?;
+                    let completion = recovery_completion.completion()?.clone();
+                    let vault_name = completion.vault_name;
+                    let claim_id = completion.recovery_id.claim_id.id;
+                    let sender_id = completion.recovery_id.sender;
+                    let receiver_id = completion.recovery_id.distribution_id.receiver;
+                    let receiver_status = completion.receiver_status;
                     let maybe_ss_log_event = self
                         .p_obj
                         .find_tail_event(SsLogDescriptor::from(vault_name.clone()))

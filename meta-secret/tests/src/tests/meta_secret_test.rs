@@ -90,6 +90,7 @@ mod test {
     use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
     use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
     use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
+    use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
     use meta_secret_core::recover_from_shares;
     use meta_secret_core::secret::MetaDistributor;
     use meta_secret_core::secret::shared_secret::UserShareDto;
@@ -655,6 +656,19 @@ mod test {
         spec.vd_gw_sync().await?;
 
         // D3 joins, D1 accepts.
+        PersistentCredentials {
+            p_obj: spec.registry.state.base.empty.p_obj.client_b.clone(),
+            master_key: spec
+                .registry
+                .state
+                .base
+                .empty
+                .device_creds
+                .client_b_master_key
+                .clone(),
+        }
+        .save_user_creds(spec.user_creds().client_b.clone())
+        .await?;
         client_b_gw.sync(client_b_user.clone()).await?;
         client_b_gw.sync(client_b_user.clone()).await?;
         SignUpClaimTestAction::sign_up(

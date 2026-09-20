@@ -36,6 +36,7 @@ use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
+use crate::node::security::sign_event;
 use anyhow::Result;
 use std::collections::HashSet;
 
@@ -47,6 +48,21 @@ pub struct SyncGateway<Repo: KvLogEventRepo, Sync: SyncProtocol> {
 }
 
 impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
+    async fn signed_event(&self, event: GenericKvLogEvent, user: &UserData) -> Result<crate::node::api::SignedAction> {
+        let creds = PersistentCredentials {
+            p_obj: self.p_obj.clone(),
+            master_key: self.master_key.clone(),
+        }
+        .get_user_creds()
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Cannot sign sync event without user credentials"))?;
+        if creds.device_id() != &user.device.device_id {
+            return Err(anyhow::anyhow!("Sync signer does not match local device"));
+        }
+        let key_manager = creds.device_creds.key_manager()?;
+        sign_event(event, user.device.device_id.clone(), &key_manager.dsa)
+    }
+
     fn has_pending_split_receiver(claim: &SsClaim) -> bool {
         claim
             .status
@@ -158,7 +174,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         .await?;
         let server_tail = self.get_server_tail(user.clone()).await?;
 
-        self.sync_device_log(&server_tail, user.user_id()).await?;
+        self.sync_device_log(&server_tail, user.user_id(), &user).await?;
 
         let vault_sync_request = self.get_vault_request(user.clone()).await?;
         self.sync_vault(vault_sync_request, user_creds).await?;
@@ -285,11 +301,8 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         Ok(vault_sync_request)
     }
 
-    async fn sync_ss_device_log(
-        &self,
-        server_tail: &ServerTailResponse,
-        device_id: DeviceId,
-    ) -> Result<()> {
+    async fn sync_ss_device_log(&self, server_tail: &ServerTailResponse, user: &UserData) -> Result<()> {
+        let device_id = user.device.device_id.clone();
         let server_ss_device_log_tail_id = {
             let unit_id = || ArtifactId::from(SsDeviceLogDescriptor::from(device_id));
             server_tail
@@ -304,9 +317,8 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
             .await?;
 
         for ss_device_log_event in ss_device_log_events_to_sync {
-            let sync_request = SyncRequest::Write(Box::from(WriteSyncRequest::Event(
-                ss_device_log_event.to_generic(),
-            )));
+            let signed = self.signed_event(ss_device_log_event.to_generic(), user).await?;
+            let sync_request = SyncRequest::Write(Box::from(WriteSyncRequest::Event(signed)));
             self.sync.send(sync_request).await?.ensure_success()?;
         }
 
@@ -409,7 +421,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                             let obj_id = wf_event.obj_id();
                             let receiver = Self::split_workflow_receiver(&wf_event);
                             let request = {
-                                let event = WriteSyncRequest::Event(wf_event.to_generic());
+                                let event = WriteSyncRequest::Event(
+                                    self.signed_event(wf_event.to_generic(), &user).await?,
+                                );
                                 SyncRequest::Write(Box::from(event))
                             };
                             self.sync.send(request).await?.ensure_success()?;
@@ -427,7 +441,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                         for wf_event in wf_events {
                             let obj_id = wf_event.obj_id();
                             let request = {
-                                let event = WriteSyncRequest::Event(wf_event.to_generic());
+                                let event = WriteSyncRequest::Event(
+                                    self.signed_event(wf_event.to_generic(), &user).await?,
+                                );
                                 SyncRequest::Write(Box::from(event))
                             };
                             self.sync.send(request).await?.ensure_success()?;
@@ -453,7 +469,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                             for wf_event in decline_events {
                                 let obj_id = wf_event.obj_id();
                                 let request = {
-                                    let event = WriteSyncRequest::Event(wf_event.to_generic());
+                                    let event = WriteSyncRequest::Event(
+                                        self.signed_event(wf_event.to_generic(), &user).await?,
+                                    );
                                     SyncRequest::Write(Box::from(event))
                                 };
                                 match self.sync.send(request).await {
@@ -518,7 +536,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                     let obj_id = wf_event.obj_id();
                     let receiver = Self::split_workflow_receiver(&wf_event);
                     let request = SyncRequest::Write(Box::from(WriteSyncRequest::Event(
-                        wf_event.to_generic(),
+                        self.signed_event(wf_event.to_generic(), &user).await?,
                     )));
                     self.sync.send(request).await?.ensure_success()?;
                     if receiver.as_ref() != Some(&user.device.device_id) {
@@ -565,7 +583,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
 
                     let obj_id = wf_event.obj_id();
                     let request = SyncRequest::Write(Box::from(WriteSyncRequest::Event(
-                        wf_event.to_generic(),
+                        self.signed_event(wf_event.to_generic(), user).await?,
                     )));
                     info!(claim_id = ?claim.id, "sync_ss_log: uploading local recovery decline first");
                     self.sync.send(request).await?.ensure_success()?;
@@ -588,8 +606,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                 }
 
                 let obj_id = wf_event.obj_id();
-                let request =
-                    SyncRequest::Write(Box::from(WriteSyncRequest::Event(wf_event.to_generic())));
+                let request = SyncRequest::Write(Box::from(WriteSyncRequest::Event(
+                    self.signed_event(wf_event.to_generic(), user).await?,
+                )));
                 info!(claim_id = ?claim.id, "sync_ss_log: uploading local recovery approval first");
                     self.sync.send(request).await?.ensure_success()?;
                 self.p_obj.repo.delete(obj_id).await;
@@ -604,10 +623,13 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         &self,
         server_tail: &ServerTailResponse,
         user_id: UserId,
+        user: &UserData,
     ) -> Result<()> {
         let device_log_events_to_sync = self.device_log_sync_request(server_tail, user_id).await?;
         for device_log_event in device_log_events_to_sync {
-                self.sync.send(device_log_event).await?.ensure_success()?;
+            let signed = self.signed_event(device_log_event, user).await?;
+            let request = SyncRequest::Write(Box::from(WriteSyncRequest::Event(signed)));
+            self.sync.send(request).await?.ensure_success()?;
         }
 
         Ok(())
@@ -617,22 +639,18 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         &self,
         server_tail: &ServerTailResponse,
         user_id: UserId,
-    ) -> Result<Vec<SyncRequest>> {
+    ) -> Result<Vec<GenericKvLogEvent>> {
         let tail_to_sync = match &server_tail.device_log_tail {
             None => ArtifactId::from(DeviceLogDescriptor::from(user_id)),
             Some(server_tail_id) => server_tail_id.clone(),
         };
 
-        let device_log_events_to_sync: Vec<SyncRequest> = self
+        let device_log_events_to_sync: Vec<GenericKvLogEvent> = self
             .p_obj
             .find_object_events::<DeviceLogObject>(tail_to_sync)
             .await?
             .into_iter()
-            .map(|device_log_event| {
-                SyncRequest::Write(Box::from(WriteSyncRequest::Event(
-                    device_log_event.to_generic(),
-                )))
-            })
+            .map(|device_log_event| device_log_event.to_generic())
             .collect();
         Ok(device_log_events_to_sync)
     }
@@ -656,7 +674,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         };
 
         //sync ss_device_log and ss_log
-        self.sync_ss_device_log(server_tail, user.device.device_id.clone())
+        self.sync_ss_device_log(server_tail, &user)
             .await?;
         self.sync_ss_log(user).await?;
 

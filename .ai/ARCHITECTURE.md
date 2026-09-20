@@ -24,7 +24,8 @@ Single source of truth for AI automation in `meta-secret-core`.
 
 ## Stage Model (core)
 
-Core follows an 8-stage workflow:
+Core follows the stage workflow defined in `.ai/WORKFLOW.md` (including the
+conditional documentation, UI-E2E, and approval gates):
 
 1. Issue Intake
 2. Planning
@@ -35,7 +36,19 @@ Core follows an 8-stage workflow:
 7. Test Run
 8. Branch + Commit + PR
 
-This is intentionally different from compose (no UI/design review split), because core is Rust-first and FFI-sensitive.
+Core is Rust-first and FFI-sensitive; server-authentication changes are tested at
+the protocol/integration layer, while visual UI E2E is used only when a client
+contract visibly changes.
+
+## Authenticated Sync Boundary
+
+All state-changing writes and recovery completion commands cross the sync boundary
+as Core-owned `SignedAction` values. The envelope contains a deterministic
+canonical payload, signer Device ID, action stream, monotonic nonce, and Ed25519
+signature. The server resolves the signer's public key from canonical Vault
+membership, checks authorization and sequence freshness, then applies the event.
+Unsigned, modified, unauthorized, and replayed commands are rejected before
+persistence. DELETE DEVICE is intentionally outside this issue's protocol scope.
 
 ## Language and Architecture Adaptation
 
