@@ -50,7 +50,8 @@ Review architectural and design changes when implementation touches protocol, cr
 
 - [ ] SSS parameters clear (k=?, n=?)
 - [ ] Recovery ceremony documented (how to combine shares?)
-- [ ] Key derivation documented (PBKDF2? iterations? salt?)
+- [ ] Master Key lifecycle documented (CSPRNG generation, per-device protection, and no password derivation)
+- [ ] Any separate password KDF is documented with its algorithm, parameters, and salt
 - [ ] Share encryption documented (which public key? which cipher?)
 - [ ] No plaintext transmission (all secrets encrypted?)
 - [ ] Backward compatibility (old shares vs new shares)?
@@ -80,7 +81,7 @@ Review architectural and design changes when implementation touches protocol, cr
 ### 5. Server Orchestration (if server logic changes)
 
 - [ ] Zero-knowledge maintained (server learns nothing?)
-- [ ] What server stores (metadata only, no secrets?)
+- [ ] What server stores (metadata and temporary Encrypted Key Share ciphertext only; never plaintext secrets or keys)
 - [ ] Message routing (which messages go where?)
 - [ ] State tracking (what does server remember?)
 - [ ] Consistency (concurrent operations safe?)
@@ -172,4 +173,3 @@ For Rust backend, diagrams can be:
 - Detailed descriptions (if visual diagram not needed)
 
 Main goal is to **document and validate the design before implementation**, not to create pretty pictures.
-

@@ -94,10 +94,10 @@ changes are intentionally excluded.
     resulting membership update is written, so clients cannot bypass it.
 
 14. **After a three-device redistribution, a sender could retain other devices'
-    encrypted shares locally.**
+    Encrypted Key Shares locally.**
 
-    **Correction:** each device keeps only its own encrypted share. Outbound
-    encrypted share workflows for other devices are deleted after successful
+    **Correction:** each device keeps only its own Encrypted Key Share. Outbound
+    Encrypted Key Share workflows for other devices are deleted after successful
     upload (and stale copies are cleaned during sync), so the sender cannot
     reconstruct a three-device secret alone from foreign shares.
 

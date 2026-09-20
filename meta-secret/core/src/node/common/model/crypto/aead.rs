@@ -71,7 +71,7 @@ impl AeadPlainText {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum EncryptedMessage {
-    /// There is only one type of encrypted message for now, which is encrypted share of a secret,
+    /// There is only one type of encrypted message for now: an Encrypted Key Share for a secret,
     /// and that particular type of message has a device link,
     /// and it used to figure out which vault the message belongs to
     CipherShare { share: AeadCipherText },

@@ -221,12 +221,12 @@ mod tests {
         // Verify the results
         assert!(
             !encrypted_shares.is_empty(),
-            "Encrypted shares should not be empty"
+            "Encrypted Key Shares should not be empty"
         );
         assert_eq!(
             encrypted_shares.len(),
             member_count,
-            "There should be one encrypted share per vault member"
+            "There should be one Encrypted Key Share per vault member"
         );
 
         // Verify all shares are CipherShare variants

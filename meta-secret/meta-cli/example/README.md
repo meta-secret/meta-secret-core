@@ -72,4 +72,11 @@ The workflow demonstrates:
 - Initiating and approving recovery requests
 - Recovering the original secret
 
-This provides a practical demonstration of the Shamir's Secret Sharing scheme implementation in the Meta Secret system. 
+This provides a practical demonstration of the Shamir's Secret Sharing scheme implementation in the Meta Secret system.
+
+## Master Key handling
+
+The Rust Core generates a random Master Key from the operating-system CSPRNG
+when a device is initialized. It is not derived from the vault name, a user
+password, or a passphrase. The CLI stores the device's Master Key in its
+protected local key file and never sends it to the server.
