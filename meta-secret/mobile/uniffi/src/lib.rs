@@ -34,6 +34,10 @@ pub fn generate_master_key() -> String {
     json_api::generate_master_key()
 }
 
+pub fn database_file_name(master_key: String) -> String {
+    json_api::database_file_name(master_key)
+}
+
 pub fn init_ios(master_key: String) -> String {
     json_api::init_ios(master_key)
 }

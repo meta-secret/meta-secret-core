@@ -3,6 +3,7 @@ use anyhow::{bail, Result};
 use meta_db_sqlite::db::sqlite_migration::EmbeddedMigrationsTool;
 use meta_db_sqlite::db::sqlite_store::SqlIteRepo;
 use meta_secret_core::crypto::keys::TransportSk;
+use meta_secret_core::crypto::utils::sha256_hex;
 use meta_secret_core::node::app::sync::api_url::ApiUrl;
 use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
 use meta_secret_core::node::common::model::device::common::{DeviceName, DeviceType};
@@ -42,6 +43,11 @@ static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
         .build()
         .expect("Failed to create Tokio runtime")
 });
+
+/// Stable local database filename that never embeds the raw Master Key.
+pub fn database_file_name(master_key: &str) -> String {
+    format!("meta-secret-db-{}.db", sha256_hex(master_key))
+}
 
 /// Resolve Android package name with priority:
 /// 1. METASECRET_ANDROID_DB_DIR environment variable
@@ -124,13 +130,13 @@ impl MobileApplicationManager {
         device_type: DeviceType,
     ) -> anyhow::Result<MobileApplicationManager> {
         let home_dir = std::env::var("HOME").expect("Unable to get HOME directory");
-        let db_name = format!("meta-secret-{raw_master_key}.db");
+        let db_name = database_file_name(&raw_master_key);
         let db_path = PathBuf::from(home_dir)
             .join("Documents")
             .join(db_name)
             .to_string_lossy()
             .to_string();
-        println!("🦀 iOS database path: {}", db_path);
+        info!("iOS database path resolved");
 
         Self::init(master_key, &db_path, device_name, device_type).await
     }
@@ -156,10 +162,11 @@ impl MobileApplicationManager {
     ) -> anyhow::Result<MobileApplicationManager> {
         let package = resolve_android_package();
         let db_path = format!(
-            "/data/data/{}/databases/meta-secret-{}.db",
-            package, raw_master_key
+            "/data/data/{}/databases/{}",
+            package,
+            database_file_name(&raw_master_key)
         );
-        info!("Resolved Android database path: {}", db_path);
+        info!("Android database path resolved");
         Self::init(master_key, &db_path, device_name, device_type).await
     }
 
@@ -281,6 +288,25 @@ impl MobileApplicationManager {
             None => warn!(pass_id = %pass_id.name, "find_claim_by_pass_id: not found"),
         }
         result
+    }
+}
+
+#[cfg(test)]
+mod database_filename_tests {
+    use super::database_file_name;
+
+    #[test]
+    fn database_filename_uses_lowercase_sha256_without_raw_master_key() {
+        let master_key = "master-key-test-value";
+        let file_name = database_file_name(master_key);
+
+        assert_eq!(
+            file_name,
+            "meta-secret-db-7d5b81f34d920a2a847a2b0b3e673cb369268e6a010605d59a19be660a8d83db.db"
+        );
+        assert!(!file_name.contains(master_key));
+        assert!(file_name.starts_with("meta-secret-db-"));
+        assert!(file_name.ends_with(".db"));
     }
 }
 

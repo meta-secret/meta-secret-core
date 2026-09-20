@@ -25,6 +25,7 @@ All three must delegate to `.ai/WORKFLOW.md`.
 - `test-author`
 - `test-verifier`
 - `release-manager`
+- `ci-monitor` (CI diagnostics and remediation policy)
 
 ## Artifacts
 
@@ -35,6 +36,7 @@ All three must delegate to `.ai/WORKFLOW.md`.
 ## Skills
 
 - **Build / test / Docker:** [`.ai/skills/build-via-task/SKILL.md`](skills/build-via-task/SKILL.md) — mandatory before `task` or verification commands
+- **CI monitoring:** [`.ai/skills/ci-monitor/SKILL.md`](skills/ci-monitor/SKILL.md) — classification, redaction, retries, and remediation gates
 - **PR title & description:** [`.ai/skills/workflow-mr-body/SKILL.md`](skills/workflow-mr-body/SKILL.md) — full branch scope; `gh pr create` / **`gh pr edit`**
 - **Final UI E2E:** root [`ui-e2e-testing`](../../.ai/skills/ui-e2e-testing/SKILL.md) skill and [`ui-e2e-test-contract`](../../.ai/rules/ui-e2e-test-contract.md) — after regular checks and before release
 

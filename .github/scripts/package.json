@@ -4,7 +4,9 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "fix": "bun run cursor-fix.ts"
+    "fix": "bun run cursor-fix.ts",
+    "monitor": "bun run ci-monitor.ts",
+    "test": "bun test"
   },
   "dependencies": {
     "@cursor/sdk": "latest"

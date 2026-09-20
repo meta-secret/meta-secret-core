@@ -90,13 +90,23 @@ cargo build --package mobile-uniffi --target armv7-linux-androideabi --release
 echo "🤖 Compiling for Android x86_64..."
 cargo build --package mobile-uniffi --target x86_64-linux-android --release
 
-# Generate Kotlin UniFFI bindings for the Android consumer.
+# Generate Kotlin UniFFI bindings for the Android consumer. This is a host
+# command: the Android-only RUSTFLAGS used for the native builds must not leak
+# into proc-macro compilation (for example askama_derive), otherwise Cargo
+# tries to build a host proc-macro with Android CRT flags.
 mkdir -p "$ANDROID_BINDINGS_DIR"
-cargo run -p uniffi-bindgen-runner --bin uniffi-bindgen -- \
+ANDROID_BUILD_RUSTFLAGS="${CARGO_BUILD_RUSTFLAGS:-}"
+unset CARGO_BUILD_RUSTFLAGS
+# The repository Cargo config enables `+crt-static` globally for native builds.
+# Override it for this host-side command: proc-macro crates (for example
+# `askama_derive`) must be built with the normal host toolchain.
+cargo --config 'build.rustflags=[]' \
+  run -p uniffi-bindgen-runner --bin uniffi-bindgen -- \
   generate "$UNIFFI_CRATE_DIR/src/mobile_uniffi.udl" \
   --language kotlin \
   --no-format \
   --out-dir "$ANDROID_BINDINGS_DIR"
+export CARGO_BUILD_RUSTFLAGS="$ANDROID_BUILD_RUSTFLAGS"
 
 # Convert .a to .so and copy to compose project
 COMPOSE_JNILIBS="${COMPOSE_ROOT}/composeApp/src/androidMain/jniLibs"

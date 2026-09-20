@@ -13,12 +13,14 @@ export interface CIContext {
   failureLogs: string;
   branch: string;
   repo: string;
+  sha: string;
 }
 
 export function fetchCIContext(): CIContext {
   let failureLogs = "";
   try {
-    failureLogs = readFileSync(LOG_FILE, "utf8").slice(0, MAX_LOG_CHARS);
+    const configuredFile = process.env.FAILURE_LOGS_FILE ?? LOG_FILE;
+    failureLogs = readFileSync(configuredFile, "utf8").slice(0, MAX_LOG_CHARS);
   } catch {
     // Fallback to env var if the file doesn't exist (e.g. local testing)
     failureLogs = (process.env.FAILURE_LOGS ?? "").slice(0, MAX_LOG_CHARS);
@@ -26,6 +28,7 @@ export function fetchCIContext(): CIContext {
 
   const branch = process.env.HEAD_BRANCH ?? "main";
   const repo = process.env.GITHUB_REPOSITORY ?? "";
+  const sha = process.env.HEAD_SHA ?? "";
 
-  return { failureLogs, branch, repo };
+  return { failureLogs, branch, repo, sha };
 }

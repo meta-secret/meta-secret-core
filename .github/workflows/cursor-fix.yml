@@ -1,51 +1,109 @@
-# Runs after the "CI" workflow fails.
-# Fetches the failure logs, then launches a Cursor cloud agent that analyses
-# the failures and opens a fix PR against the same branch.
-#
-# Required GitHub secrets:
-#   CURSOR_API_KEY  - Cursor API key (team service-account or personal).
-#                     Create at https://cursor.com/dashboard/integrations
-#                     The Cursor account must have GitHub access granted so the
-#                     cloud agent can push branches and open PRs.
+# Monitors completed CI runs, classifies failures, retries transient
+# infrastructure failures, and starts Cursor remediation only for eligible
+# trusted-repository source failures.
 
-name: "Cursor Auto-Fix"
+name: "CI Monitor"
 
 on:
   workflow_run:
     workflows: ["CI"]
     types: [completed]
 
+concurrency:
+  group: ci-monitor-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
 jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    outputs:
+      action: ${{ steps.monitor.outputs.action }}
+      classification: ${{ steps.monitor.outputs.classification }}
+      retry_eligible: ${{ steps.monitor.outputs.retry_eligible }}
+      auto_fix_eligible: ${{ steps.monitor.outputs.auto_fix_eligible }}
+      run_id: ${{ steps.monitor.outputs.run_id }}
+      run_attempt: ${{ steps.monitor.outputs.run_attempt }}
+      head_sha: ${{ steps.monitor.outputs.head_sha }}
+      head_branch: ${{ steps.monitor.outputs.head_branch }}
+      pr_number: ${{ steps.monitor.outputs.pr_number }}
+      artifact_name: ${{ steps.monitor.outputs.artifact_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+      - name: Install dependencies
+        run: bun install
+        working-directory: .github/scripts
+      - name: Inspect and classify CI run
+        id: monitor
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bun run .github/scripts/ci-monitor.ts
+      - name: Upload sanitized monitor artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.monitor.outputs.artifact_name || format('ci-monitor-{0}', github.event.workflow_run.id) }}
+          path: ${{ runner.temp }}/ci-monitor
+          if-no-files-found: warn
+          retention-days: 14
+
+  retry:
+    needs: inspect
+    if: needs.inspect.outputs.action == 'rerun' && needs.inspect.outputs.retry_eligible == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Rerun failed CI jobs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh run rerun ${{ needs.inspect.outputs.run_id }} --failed --repo ${{ github.repository }}
+
   cursor-fix:
-    if: github.event.workflow_run.conclusion == 'failure'
+    needs: inspect
+    if: needs.inspect.outputs.action == 'cursor_fix' && needs.inspect.outputs.auto_fix_eligible == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       actions: read
-
     steps:
       - uses: actions/checkout@v4
-
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
-
       - name: Install dependencies
         run: bun install
         working-directory: .github/scripts
-
-      - name: Fetch failure logs
-        id: logs
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh run view ${{ github.event.workflow_run.id }} \
-            --log-failed \
-            --repo ${{ github.repository }} \
-            2>&1 | tail -300 > /tmp/failure_logs.txt
-          echo "branch=${{ github.event.workflow_run.head_branch }}" >> $GITHUB_OUTPUT
-
+      - name: Download sanitized failure context
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.inspect.outputs.artifact_name }}
+          path: ${{ runner.temp }}/ci-monitor
       - name: Run Cursor fix agent
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
-          HEAD_BRANCH: ${{ steps.logs.outputs.branch }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_BRANCH: ${{ needs.inspect.outputs.head_branch }}
+          HEAD_SHA: ${{ needs.inspect.outputs.head_sha }}
+          FAILURE_LOGS_FILE: ${{ runner.temp }}/ci-monitor/cursor-prompt.log
         run: bun run .github/scripts/cursor-fix.ts
+
+  notify:
+    needs: inspect
+    if: needs.inspect.outputs.action == 'notify'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Add monitor summary to pull request
+        if: needs.inspect.outputs.pr_number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ needs.inspect.outputs.pr_number }}
+          CLASSIFICATION: ${{ needs.inspect.outputs.classification }}
+          RUN_ID: ${{ needs.inspect.outputs.run_id }}
+        run: gh pr comment "$PR_NUMBER" --repo "${{ github.repository }}" --body "CI Monitor classified run ${RUN_ID} as **${CLASSIFICATION}**. See the CI Monitor artifact for sanitized diagnostics and required next action."

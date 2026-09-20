@@ -26,6 +26,15 @@ pub fn generate_hash() -> String {
     hex::encode(hasher.finalize())
 }
 
+/// Returns the lowercase hexadecimal SHA-256 digest of `value`.
+///
+/// This is used for stable, non-secret identifiers such as local database
+/// filenames. The input itself must never be logged or persisted as part of
+/// the identifier.
+pub fn sha256_hex(value: &str) -> String {
+    hex::encode(Sha256::digest(value.as_bytes()))
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(transparent)]
@@ -156,6 +165,17 @@ mod tests {
 
         // Verify it's a valid hex string
         assert!(hash1.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn test_sha256_hex_is_lowercase_and_deterministic() {
+        assert_eq!(
+            sha256_hex("master-key-test-value"),
+            "7d5b81f34d920a2a847a2b0b3e673cb369268e6a010605d59a19be660a8d83db"
+        );
+        assert!(sha256_hex("master-key-test-value")
+            .chars()
+            .all(|character| character.is_ascii_hexdigit() && !character.is_ascii_uppercase()));
     }
 
     #[test]
