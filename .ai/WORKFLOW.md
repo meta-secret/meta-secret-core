@@ -27,6 +27,19 @@ Stage 9 (Design Review) may be skipped only if no architecture changes; mark sta
 - **Artifact naming:** `MS-<run-id>-<stage-number>-<stage-name>[ -retry-N ].md`
 - **Retry budget:** `2` full fix loops
 
+## Root orchestration mode
+
+When started by `MetaSecret` root via `get_issue`, the root passes a normalized
+Issue context bundle containing the source repository, canonical Issue URL,
+title/body, root run ID, scope decision, and any prior handoff artifacts. Do not
+assume that the source Issue number exists in this repository.
+
+Core remains responsible for every stage in this document, including its
+constraints, security review, tests, documentation checks, and user approval
+before commit/PR. On completion it returns a handoff summary containing public
+API/FFI changes, behavior and compatibility notes, verification results,
+documentation status, and unresolved blockers.
+
 **`<run-id>` rules:**
 - Numeric issue input: use issue number (`123`)
 - Free-text input: use UTC timestamp (`YYYYMMDDHHmmss`)
