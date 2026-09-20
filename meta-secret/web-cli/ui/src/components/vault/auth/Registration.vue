@@ -16,6 +16,7 @@ const jsAppState = AppState();
 
 const signUpProcessing = ref(false);
 const signUpCompleted = ref(false);
+const signUpError = ref('');
 const isCleaning = ref(false);
 const vaultName = ref('');
 const hasSubmittedVaultName = ref(false);
@@ -93,6 +94,7 @@ watch(vaultName, () => {
 const generateUserCreds = async () => {
   if (signUpProcessing.value || isCheckingVaultName.value || !vaultName.value.trim()) return;
   hasSubmittedVaultName.value = true;
+  signUpError.value = '';
   isCheckingVaultName.value = true;
   try {
     // @ts-expect-error Method exists in Rust but TS definitions may be outdated
@@ -111,14 +113,19 @@ const signUp = async () => {
   if (signUpProcessing.value) return;
   signUpProcessing.value = true;
   signUpCompleted.value = false;
+  signUpError.value = '';
   try {
     // @ts-expect-error Method exists in Rust but TS definitions may be outdated
     const newState = await jsAppState.appManager.sign_up();
     signUpCompleted.value = true;
     jsAppState.updateStateWith(newState);
-  } catch {
+  } catch (error) {
     signUpProcessing.value = false;
     signUpCompleted.value = false;
+    const message = error instanceof Error ? error.message : String(error);
+    signUpError.value = message.toLowerCase().includes('at most 3 devices')
+      ? 'This vault already has the maximum of 3 devices.'
+      : message || 'Unable to complete registration. Please try again.';
   }
 };
 
@@ -130,6 +137,7 @@ const cleanDatabase = async () => {
     await jsAppState.appStateInit();
     hasSubmittedVaultName.value = false;
     vaultName.value = '';
+    signUpError.value = '';
     await router.push('/');
   } finally {
     isCleaning.value = false;
@@ -156,6 +164,14 @@ const progressMessage = computed(() => {
     <Card class="w-full max-w-md">
       <CardContent class="flex flex-col gap-4 pt-6">
         <Label class="text-sm font-medium">Enter vault name</Label>
+        <Alert v-if="signUpError" variant="destructive" data-testid="signup-error">
+          <AlertDescription class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span>{{ signUpError }}</span>
+            <Button variant="outline" size="sm" :disabled="isCleaning || signUpProcessing" @click="cleanDatabase">
+              Reset &amp; Create New
+            </Button>
+          </AlertDescription>
+        </Alert>
         <div class="flex gap-2">
           <div class="relative flex-1">
             <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">@</span>

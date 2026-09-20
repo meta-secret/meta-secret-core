@@ -37,14 +37,14 @@ Deep dive clarification of requirements. Ask probing questions to resolve ambigu
 ## Key Questions to Ask
 
 ### For Vault Model Changes:
-- "Does this change affect K-of-N sharing? (1→2→3+ devices)"
+- "Does this change affect K-of-N sharing? (1→2→3 devices; 4+ joins are rejected)"
 - "Do we need redistribution? If yes, how do we handle it?"
 - "Does this add new approval steps?"
 - "Can 2 devices still remove each other? (should be NO)"
 
 ### For Cryptography Changes:
 - "Does this change Shamir Secret Sharing (SSS)?"
-- "Does k=2 threshold still apply for 3+ devices?"
+- "Does k=2 threshold still apply for the 3-device state?"
 - "How do we handle recovery ceremony?"
 - "Are shares destroyed after resharing?"
 
@@ -134,4 +134,3 @@ Before submitting, verify:
 - [ ] Approval flow requirements known
 - [ ] User has reviewed and approved
 - [ ] Clarification report artifact created
-

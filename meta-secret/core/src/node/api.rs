@@ -87,6 +87,14 @@ pub struct ServerTailResponse {
 }
 
 impl DataSyncResponse {
+    pub fn ensure_success(&self) -> Result<()> {
+        match self {
+            DataSyncResponse::Empty => Ok(()),
+            DataSyncResponse::Error { msg } => Err(anyhow!(msg.clone())),
+            _ => Err(anyhow!("Invalid response type")),
+        }
+    }
+
     pub fn to_data(&self) -> Result<DataEventsResponse> {
         match self {
             DataSyncResponse::Data(data) => Ok(data.clone()),

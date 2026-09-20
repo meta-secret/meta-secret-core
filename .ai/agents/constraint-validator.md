@@ -22,11 +22,11 @@ Validate implementation plan against architectural constraints (Stage 3.5). Acts
 - [ ] K-of-N sharing matches current state:
   - 1 device: 1 FULL COPY (not share)
   - 2 devices: 2 FULL COPIES (replication, not SSS)
-  - 3+ devices: n SHARES (SSS with k=2)
+  - 3 devices: 3 SHARES (SSS with k=2); 4+ devices rejected
 - [ ] If device join planned: resharing will happen (Collect → Reshare → Distribute)
 - [ ] If device removal planned: resharing will happen + k stays same or decreases
 - [ ] If 2 devices: removal is blocked (no other device can survive alone)
-- [ ] Transition logic correct (1→2→3+ or reverse)
+- [ ] Transition logic correct (1→2→3 or reverse); 4+ joins rejected
 
 ### 2. Approval Requirements
 
@@ -39,7 +39,7 @@ Validate implementation plan against architectural constraints (Stage 3.5). Acts
 ### 3. Cryptography Rules
 
 - [ ] If touching Shamir Secret Sharing:
-  - k=2 for 3+ devices (confirmed)
+  - k=2 for 3 devices (confirmed)
   - Recovery requires ANY 2 shares (confirmed)
   - Old shares destroyed after resharing (confirmed)
 - [ ] If touching key derivation:
@@ -86,7 +86,7 @@ Validate implementation plan against architectural constraints (Stage 3.5). Acts
 - [ ] Offline device handling:
   - 1 device: can't recover (offline = blocked)
   - 2 devices: other device works fine
-  - 3+ devices: k-1 online sufficient
+  - 3 devices: k-1 online sufficient
 - [ ] Device status transitions (ACTIVE → INACTIVE → REMOVED)
 
 ### 7. Testing & Quality Rules

@@ -14,4 +14,5 @@ pub enum GenericAppStateRequest {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum GenericAppStateResponse {
     AppState(ApplicationState),
+    Error(String),
 }

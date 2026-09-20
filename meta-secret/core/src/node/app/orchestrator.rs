@@ -243,6 +243,8 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
         vault: &VaultData,
         join_request: &JoinClusterEvent,
     ) -> Result<()> {
+        vault.ensure_valid_member_count()?;
+
         let joined_device_id = join_request.candidate.device.device_id.clone();
         let local_device_id = self.user_creds.device_id().clone();
         let p_ss = PersistentSharedSecret::from(self.p_obj.clone());

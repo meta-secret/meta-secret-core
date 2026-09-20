@@ -21,7 +21,7 @@ impl SharedSecretConfig {
         // K-of-N Secret Sharing Policy:
         // - 1 device: k=1 (trivial, no sharing)
         // - 2 devices: k=1 (full replication - each device has complete secret)
-        // - 3+ devices: k=2 (Shamir Secret Sharing with threshold 2)
+        // - 3 devices: k=2 (Shamir Secret Sharing with threshold 2)
         match num_shares {
             0 => SharedSecretConfig {
                 number_of_shares: 0,
@@ -39,7 +39,7 @@ impl SharedSecretConfig {
                 }
             }
             _ => {
-                // 3+ devices: SSS with k=2
+                // The Vault layer limits this branch to the supported 3-device Vault.
                 SharedSecretConfig {
                     number_of_shares: num_shares,
                     threshold: 2,
@@ -93,13 +93,11 @@ mod tests {
     }
 
     #[test]
-    fn test_k_of_n_three_plus_devices_sss() {
-        // 3+ devices: k=2 (SSS)
-        for n in 3..=10 {
-            let cfg = SharedSecretConfig::calculate(n);
-            assert_eq!(cfg.number_of_shares, n);
-            assert_eq!(cfg.threshold, 2);
-        }
+    fn test_k_of_n_three_devices_sss() {
+        // 3 devices: k=2 (SSS)
+        let cfg = SharedSecretConfig::calculate(3);
+        assert_eq!(cfg.number_of_shares, 3);
+        assert_eq!(cfg.threshold, 2);
     }
 
     #[test]

@@ -54,14 +54,18 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         loop {
             let request = self.data_transfer.dt.service_receive().await?;
             let new_app_state_result = self
-                .handle_client_request(service_state.app_state, request)
+                .handle_client_request(service_state.app_state.clone(), request)
                 .await;
 
             let new_app_state = match new_app_state_result {
                 Ok(new_state) => new_state,
                 Err(err) => {
                     error!("Error while handling request: {:?}", err);
-                    bail!("Error while handling request: {:?}", err);
+                    self.data_transfer
+                        .dt
+                        .send_to_client(GenericAppStateResponse::Error(err.to_string()))
+                        .await;
+                    continue;
                 }
             };
 
@@ -392,6 +396,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
             .await?;
         match resp {
             GenericAppStateResponse::AppState(app_state) => Ok(app_state),
+            GenericAppStateResponse::Error(message) => anyhow::bail!(message),
         }
     }
 

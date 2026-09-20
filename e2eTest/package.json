@@ -67,6 +67,11 @@
     "test-19": "node Test19/orchestrator.mjs scenario.json",
     "test-19:run": "node Test19/orchestrator.mjs scenario.json --exit-on-success",
     "test-20": "node Test20/orchestrator.mjs"
+    ,"test-21": "npm run test-21:blocks"
+    ,"test-21:block1": "node Test21/orchestrator.mjs scenario-block1.json --exit-on-success"
+    ,"test-21:block2": "node Test21/orchestrator.mjs scenario-block2.json --exit-on-success"
+    ,"test-21:block3": "node Test21/orchestrator.mjs scenario-block3.json --exit-on-success"
+    ,"test-21:blocks": "npm run test-21:block1 && npm run test-21:block2 && npm run test-21:block3"
   },
   "dependencies": {
     "playwright": "^1.61.0"

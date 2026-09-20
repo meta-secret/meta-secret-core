@@ -85,3 +85,30 @@ changes are intentionally excluded.
     The reconnect sync performs a second pass to cover the background sync
     worker racing the reconnect boundary, so the canonical claim status is
     visible without changing the normal mobile refresh path.
+
+13. **The supported three-device sharing scheme had no enforced upper bound.**
+
+    **Correction:** Core rejects every fourth-device join at the vault boundary
+    with a single `maximum of 3 devices` error shared by Web, Mobile, and CLI.
+    The check is applied both when a join request is accepted and when the
+    resulting membership update is written, so clients cannot bypass it.
+
+14. **After a three-device redistribution, a sender could retain other devices'
+    encrypted shares locally.**
+
+    **Correction:** each device keeps only its own encrypted share. Outbound
+    encrypted share workflows for other devices are deleted after successful
+    upload (and stale copies are cleaned during sync), so the sender cannot
+    reconstruct a three-device secret alone from foreign shares.
+
+15. **Server-side sync errors could be reported as successful client state.**
+
+    **Correction:** sync paths now inspect `DataSyncResponse::Error` and
+    propagate the error through Core/FFI instead of continuing as if the write
+    had succeeded.
+
+16. **Fourth-device rejection was a silent/panicking failure at the clients.**
+
+    **Correction:** WASM registration propagates the Core error instead of
+    unwrapping it, and Web/Mobile render a clear retryable message with a
+    reset/new-vault action.

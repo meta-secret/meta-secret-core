@@ -36,10 +36,15 @@ impl<Repo: KvLogEventRepo> JoinAction<Repo> {
         match candidate_membership {
             UserMembership::Outsider(outsider) => match outsider.status {
                 UserDataOutsiderStatus::NonMember | UserDataOutsiderStatus::Pending => {
+                    let candidate_member = UserDataMember {
+                        user_data: outsider.user_data.clone(),
+                    };
+                    if matches!(upd, JoinActionUpdate::Accept) {
+                        self.member.vault.ensure_can_add_member(&candidate_member)?;
+                    }
+
                     let update = match upd {
-                        JoinActionUpdate::Accept => UserMembership::Member(UserDataMember {
-                            user_data: outsider.user_data,
-                        }),
+                        JoinActionUpdate::Accept => UserMembership::Member(candidate_member),
                         JoinActionUpdate::Decline => UserMembership::Outsider(UserDataOutsider {
                             user_data: outsider.user_data,
                             status: UserDataOutsiderStatus::Declined,
@@ -70,8 +75,12 @@ impl<Repo: KvLogEventRepo> JoinAction<Repo> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::node::common::model::device::common::DeviceName;
+    use crate::node::common::model::device::device_creds::DeviceCredsBuilder;
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
-    use crate::node::common::model::user::common::{UserDataOutsider, UserDataOutsiderStatus};
+    use crate::node::common::model::user::common::{
+        UserData, UserDataOutsider, UserDataOutsiderStatus,
+    };
     use crate::node::db::descriptors::vault_descriptor::DeviceLogDescriptor;
 
     /// Tests successful acceptance of a join request for a non-member user
@@ -218,6 +227,48 @@ mod tests {
             "Error message should indicate membership cannot be accepted"
         );
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_accept_join_request_rejected_when_vault_has_three_members() -> Result<()> {
+        let registry = FixtureRegistry::empty();
+        let p_obj = registry.state.p_obj.client.clone();
+        let vault_data_fixture = &registry.state.vault_data;
+        let extra_device = DeviceCredsBuilder::generate()
+            .build(DeviceName::generate())
+            .creds
+            .device;
+        let candidate_user = UserData {
+            vault_name: vault_data_fixture.full_membership.vault_name.clone(),
+            device: extra_device,
+        };
+
+        let custom_vault = vault_data_fixture
+            .full_membership
+            .clone()
+            .update_membership(UserMembership::Outsider(UserDataOutsider::non_member(
+                candidate_user.clone(),
+            )));
+        let action = JoinAction {
+            p_obj,
+            member: VaultMember {
+                member: vault_data_fixture.client_membership.user_data_member(),
+                vault: custom_vault,
+            },
+        };
+
+        let error = action
+            .update(
+                JoinClusterEvent {
+                    candidate: candidate_user,
+                },
+                JoinActionUpdate::Accept,
+            )
+            .await
+            .expect_err("Core must reject a fourth device");
+
+        assert_eq!(error.to_string(), "Vault supports at most 3 devices");
         Ok(())
     }
 }
