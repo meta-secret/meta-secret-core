@@ -96,6 +96,14 @@ Validate implementation plan against architectural constraints (Stage 3.5). Acts
 - [ ] If full flow: integration tests for workflow
 - [ ] Failing tests written BEFORE implementation
 
+### 8. Documentation Impact Gate
+
+- [ ] The implementation plan contains a Documentation Impact section
+- [ ] If `Required`, affected constraints, glossary, architecture, protocol/API,
+      README, and E2E documents are listed
+- [ ] If `Not required`, the plan gives a concrete, reviewable reason
+- [ ] Missing or incomplete documentation impact decision = FAIL
+
 ## Validation Status
 
 - **PASS:** All constraints satisfied, proceed to implementation

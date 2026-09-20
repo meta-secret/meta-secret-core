@@ -19,6 +19,7 @@ Mandatory architectural rules for the Rust backend cryptography and protocol imp
 | **No Server Plaintext Storage** | The server never stores plaintext Master Keys, Key Shares, or Secrets. It may temporarily queue an Encrypted Key Share while delivery/synchronization is pending, then remove it after delivery. | E2E principle |
 | **Two Cannot Erase Each Other** | With 2 devices, neither can remove the other | Safety |
 | **Recovery Status Ownership** | Core alone computes recovery lifecycle and `clientStatus`; UI only executes the resulting instruction | Recovery |
+| **Shared Logic Ownership** | Core alone owns cryptography, Key Share operations, quorum, claims, recovery decisions, JOIN/DELETE/resharing, synchronization, conflicts, and Secret reveal eligibility; clients only adapt and render Core results | Cross-platform architecture |
 | **First Response Wins** | The first server-processed receiver decision terminalizes the recovery claim; a late opposite decision is ignored | Recovery consensus |
 | **Reconnect Flush** | A client must upload locally queued recovery decisions before reading refreshed canonical state after connectivity returns | Offline recovery |
 
@@ -61,6 +62,24 @@ a recovery is active, ready, declined, or complete.
   created for the previous membership set. The server records those pending
   receiver decisions as `Declined` and publishes an `SsClaims` invalidation;
   existing `Sent`/`Delivered` decisions remain unchanged.
+
+### 1.0.1 Shared Logic Ownership
+
+Rust Core is the only authority for shared security and domain decisions:
+
+- cryptography and Key Share operations;
+- K-of-N/quorum calculations;
+- recovery claims and lifecycle statuses;
+- Approve/Decline and first-response-wins;
+- JOIN, DELETE DEVICE, and resharing;
+- synchronization, conflict resolution, and Secret reveal eligibility.
+
+Web, CLI, Android, and iOS clients may call Core, map Core responses into
+client models, coordinate ViewModels and platform adapters, and render UI. They
+must not reimplement these decisions. They may perform non-security UX
+validation (for example, reject an empty form field) and invoke platform UI
+such as biometry or navigation. A client may choose presentation (for example
+`Recover` versus `Show`) only from the status returned by Core.
 
 ### 1.1 K-of-N Principle (Adaptive Sharing)
 

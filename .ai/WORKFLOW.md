@@ -1,4 +1,4 @@
-# Automated Workflow Orchestration — 14 Stages
+# Automated Workflow Orchestration — 14 Stages (including the conditional UI E2E gate)
 
 Single source of truth for `implement issue <id>` / `implement issue "<text>"` for meta-secret-core Rust backend.
 
@@ -14,6 +14,10 @@ Single source of truth for `implement issue <id>` / `implement issue "<text>"` f
 4. **Stage 12 (User Approval)** — Mandatory user approval before PR
 
 Stage 9 (Design Review) may be skipped only if no architecture changes; mark status as "Skipped".
+
+The conditional **Stage 11.5 (Final UI E2E)** is mandatory for applicable
+client-visible, synchronization/recovery, FFI-consumed, or explicitly requested
+UI behavior. Otherwise it must be marked `Skipped` with a concrete reason.
 
 **If any of these stages are missing from execution, the workflow is INCOMPLETE and INVALID.**
 
@@ -39,6 +43,11 @@ constraints, security review, tests, documentation checks, and user approval
 before commit/PR. On completion it returns a handoff summary containing public
 API/FFI changes, behavior and compatibility notes, verification results,
 documentation status, and unresolved blockers.
+
+When root scope is `core+compose`, Core runs through Stage 11.5 but defers
+Stage 12/13 release actions. It returns a successful pre-release handoff;
+Compose and the root final UI E2E gate must pass before either repository is
+committed.
 
 **`<run-id>` rules:**
 - Numeric issue input: use issue number (`123`)
@@ -83,6 +92,7 @@ Example:
 ├─ Quality Gates
 │  10. Coverage Verification (cargo tarpaulin >= 80%)
 │  11. Test Run (cargo test)
+│  11.5. Final UI E2E (conditional, before release)
 │
 └─ Release
    12. User Approval (STOP and ASK USER)
@@ -150,6 +160,10 @@ Example:
 - If architecture changed: document design decisions
 - If crypto touched: document SSS/key management changes
 - If FFI changed: document impact on mobile (meta-secret-compose)
+- Complete the **Documentation Impact** section in the plan. Mark it
+  `Required` and list files/sections when behavior, terminology, constraints,
+  architecture, protocol/API contracts, or workflows change. Mark it `Not
+  required` only with a concrete reason.
 - If retry: add explicit fix plan derived from failure artifact
 - Include test strategy
 
@@ -296,6 +310,9 @@ Example:
 - Style and best practices: Rust idioms, crate organization
 - FFI impact: if boundary changes, note mobile compatibility
 - Performance: any crypto operations performant?
+- Documentation Impact: verify every item marked `Required` in the plan is
+  updated, or record the exact blocker and fail the review. If marked `Not
+  required`, verify that the reason is still valid.
 
 **Status:** Pass / Fail
 
@@ -371,6 +388,35 @@ Example:
 - Return to Stage 3 (Planning)
 - May require design changes if tests reveal flaws
 
+### Stage 11.5: Final UI E2E (CONDITIONAL RELEASE GATE)
+
+**Agents:** root `ui-e2e-test-author`, then root `ui-e2e-test-runner`
+**Skill:** root `.ai/skills/ui-e2e-testing/SKILL.md`
+**Contract:** root `.ai/rules/ui-e2e-test-contract.md`
+**Template:** root `.ai/artifacts/ui-e2e-report-template.md`
+**Artifact:** `.ai/artifacts/run/MS-<run-id>-0115-ui-e2e.md`
+
+Run only after Stages 6–11 and the documentation check have passed. The gate
+is required when the change affects client-visible behavior, client-consumed
+FFI/API behavior, synchronization/recovery, or explicitly requested UI E2E.
+Otherwise record `Status: Skipped` and the concrete reason.
+
+The author prepares the role matrix and scenario using the existing
+`e2eTest` harness. The runner executes Web visibly, boots/unlocks iOS and
+Android, uses CLI only when the scenario requires it, and runs blocks
+sequentially. Every relevant platform occupies every relevant role and every
+variant runs three cycles by default; a lower count requires a documented
+resource reason. Only marker/state/deadline waits are allowed—no arbitrary
+sleep, fixed delay, or `slowMo`.
+
+The report must include exact commands, block/cycle/role assignments, marker
+timeline, Recover/Show decisions from current Core state, receiver badge/alert
+assertions, screenshots, browser/server/device logs, cleanup, and any
+deviation. A failure blocks Stage 12. Scenario-only failures may return to the
+author; evidence of a production defect returns to planning and follows the
+normal approval rule. In root `core+compose` mode this stage is deferred to the
+root final gate after Compose validation.
+
 ---
 
 ### Stage 12: User Approval
@@ -418,6 +464,7 @@ Example:
 - Code review failed (Stage 8)
 - Coverage failed (Stage 10)
 - Test run failed (Stage 11)
+- Final UI E2E failed (Stage 11.5)
 
 **Retry path:**
 - Return to Stage 3 (Planning) with failed artifact as input
@@ -479,6 +526,7 @@ Before proceeding to Stage 13 (PR), verify:
 - ✅ Stage 9: Design review (Status: Success or Skipped)
 - ✅ Stage 10: Coverage verified (Status: Pass, >= 80%)
 - ✅ Stage 11: Tests passed
+- ✅ Stage 11.5: Final UI E2E passed, or was explicitly skipped with a reason
 - ✅ Stage 12: User approved
 
 If any artifact is missing or status is Failed → return to Stage 3.

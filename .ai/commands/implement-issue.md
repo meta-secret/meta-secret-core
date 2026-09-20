@@ -14,7 +14,8 @@ Where `<payload>`:
 
 ## Purpose
 
-Execute complete 14-stage automated workflow for meta-secret-core Rust backend.
+Execute complete 14-stage automated workflow for meta-secret-core Rust backend,
+including the conditional final UI E2E release gate.
 
 **⚠️ CRITICAL:** All 14 stages are MANDATORY. Do NOT skip any stages:
 - **Stage 6 (Security Review)** is CRITICAL — must check crypto correctness + FFI changes
@@ -37,11 +38,12 @@ Even if task looks "trivial" or "1-line change", execute ALL stages.
    - 5c. **tdd-refactorer** — Major refactoring after 3-5 cycles
 6. **Build** — Compile code with `cargo build` (no tests, max 10 minutes)
 7. **Security Review** — Crypto correctness + unsafe code audit + FFI boundary impact ⭐ NEW
-8. **Code Review** — Architecture, style, constraints, 80% coverage check
+8. **Code Review** — Architecture, style, constraints, Documentation Impact, 80% coverage check
 9. **Design Review** — If architecture/protocol changed: create diagrams (else Skipped)
 10. **Coverage Verification** — Run `cargo tarpaulin`, verify >= 80% coverage
 11. **Test Run** — Execute `cargo test` (all tests pass)
-12. **User Approval** — **STOP and ASK USER:** "Should we proceed to Stage 12 (Branch + Commit + PR)?"
+11.5. **Final UI E2E** — Run the visible cross-platform gate when applicable
+12. **User Approval** — **STOP and ASK USER** before release
 13. **release-manager** — Create branch, commit, pull request
 
 See `.ai/WORKFLOW.md` for complete 14-stage specification.
@@ -76,6 +78,7 @@ Each stage creates an artifact in `.ai/artifacts/run/`:
 - **Stage 9:** `MS-<run-id>-009-design-review.md` — Design review or "Skipped"
 - **Stage 10:** `MS-<run-id>-010-coverage.md` — Coverage verification (Pass/Fail, >= 80%)
 - **Stage 11:** `MS-<run-id>-011-test-run.md` — Test execution results (Pass/Fail)
+- **Stage 11.5:** `MS-<run-id>-0115-ui-e2e.md` — Final visible UI E2E gate
 - **Stage 12:** `MS-<run-id>-012-pr.md` — PR details (Success/Failed)
 
 Each artifact includes **Status: Success / Failed / Skipped**.
@@ -143,7 +146,9 @@ cargo test --all
 3. **Coverage >= 80%** — non-negotiable threshold
 4. **FFI boundary changes** — must note impact on mobile (meta-secret-compose)
 5. **Constraint re-check** — Stage 8 validates against `.ai/CONSTRAINTS.md`
-6. **User approval** — Stage 12 asks before PR creation
+6. **Documentation Impact** — Stage 3 records Required/Not required with a reason; final review verifies the decision
+7. **Final UI E2E** — Stage 11.5 runs after all regular checks and before approval/commit when applicable
+8. **User approval** — Stage 12 asks before PR creation
 
 ---
 

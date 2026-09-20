@@ -42,6 +42,17 @@ Save as: `.ai/artifacts/run/MS-<run-id>-002-planning.md`
 - Compose follow-up needed: YES / NO
 - Notes:
 
+## Documentation Impact
+
+- Status: Required / Not required
+- Affected files or sections:
+  - `CONSTRAINTS.md`:
+  - `GLOSSARY.md`:
+  - `ARCHITECTURE.md` / protocol/API docs:
+  - README / E2E scenario docs:
+- If not required, concrete reason:
+- Verification that updates are complete:
+
 ## Fix Plan From Failures (retry only)
 
 -

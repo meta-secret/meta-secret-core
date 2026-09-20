@@ -17,13 +17,17 @@ Stage: 5 (Code Review)
    - code style rules
    - security rules
    - FFI stability expectations
-3. Write report using template:
+   - Documentation Impact decision from the implementation plan
+3. Confirm every documentation item marked `Required` is updated and uses the
+   current Glossary/Constraints terminology. If the decision is `Not required`,
+   verify that its reason is still valid.
+4. Write report using template:
    - `.ai/artifacts/review-report-template.md`
    - output: `.ai/artifacts/run/MS-<run-id>-005-review.md`
-4. Set explicit status:
+5. Set explicit status:
    - `Status: PASSED` or `Status: FAILED`
    - `Return to Planning: YES/NO`
-5. Print: `✅ Stage 5: Code Review completed`
+6. Print: `✅ Stage 5: Code Review completed`
 
 ## Rules
 

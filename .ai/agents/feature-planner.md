@@ -29,4 +29,8 @@ Stage: 2 (Planning)
 - Plan only, no code edits.
 - Output file-level steps and verification criteria.
 - For FFI/UniFFI changes, explicitly call out compose impact and migration requirements.
+- Complete the plan's **Documentation Impact** section. Mark `Required` and
+  list affected `CONSTRAINTS.md`, `GLOSSARY.md`, architecture, protocol/API,
+  README, or E2E documentation when applicable. Mark `Not required` only with
+  a concrete reason.
 - On blocking ambiguity, mark `Status: FAILED` with specific missing info.
