@@ -97,7 +97,11 @@ cargo build --package mobile-uniffi --target x86_64-linux-android --release
 mkdir -p "$ANDROID_BINDINGS_DIR"
 ANDROID_BUILD_RUSTFLAGS="${CARGO_BUILD_RUSTFLAGS:-}"
 unset CARGO_BUILD_RUSTFLAGS
-cargo run -p uniffi-bindgen-runner --bin uniffi-bindgen -- \
+# The repository Cargo config enables `+crt-static` globally for native builds.
+# Override it for this host-side command: proc-macro crates (for example
+# `askama_derive`) must be built with the normal host toolchain.
+cargo --config 'build.rustflags=[]' \
+  run -p uniffi-bindgen-runner --bin uniffi-bindgen -- \
   generate "$UNIFFI_CRATE_DIR/src/mobile_uniffi.udl" \
   --language kotlin \
   --no-format \
