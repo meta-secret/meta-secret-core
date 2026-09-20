@@ -215,6 +215,13 @@ user's decision. It may technically choose one claim from the set already marked
 | **Mock** | Fake object replacing real service for testing | Isolation | Socket mock for offline test |
 | **Coverage** | Percentage of code executed by tests | Metrics | Target: >= 80% |
 
+## 12. Security & Storage
+
+| Term | Definition | Context | Example |
+|------|-----------|---------|---------|
+| **Sensitive Logging** | Logging policy that forbids Master Keys, plaintext Secrets, Key Shares (Доли), encrypted Key Shares, and recovery material in every build. | Security | Log `claim_id`, status, or count only |
+| **Database Filename** | Stable local database name derived from `SHA-256(master_key)` encoded as lowercase hexadecimal. | Mobile storage | `meta-secret-db-<digest>.db` |
+
 ---
 
 ## Usage Rules

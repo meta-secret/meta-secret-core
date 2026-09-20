@@ -22,6 +22,8 @@ Mandatory architectural rules for the Rust backend cryptography and protocol imp
 | **Shared Logic Ownership** | Core alone owns cryptography, Key Share operations, quorum, claims, recovery decisions, JOIN/DELETE/resharing, synchronization, conflicts, and Secret reveal eligibility; clients only adapt and render Core results | Cross-platform architecture |
 | **First Response Wins** | The first server-processed receiver decision terminalizes the recovery claim; a late opposite decision is ignored | Recovery consensus |
 | **Reconnect Flush** | A client must upload locally queued recovery decisions before reading refreshed canonical state after connectivity returns | Offline recovery |
+| **Sensitive Logging** | Never log Master Keys, plaintext Secrets, Key Shares (Доли), encrypted Key Shares, or recovery material in debug or production builds. Log only opaque IDs, statuses, and counts. | Security |
+| **Database Filename** | Mobile local databases use `meta-secret-db-<SHA-256(master_key)>.db` with lowercase hexadecimal digest; the raw Master Key is never part of a filename or path log. | Device storage |
 
 ---
 

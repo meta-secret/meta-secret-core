@@ -1,4 +1,5 @@
 namespace mobile_uniffi {
+    string database_file_name(string master_key);
     string generate_master_key();
     string init_ios(string master_key);
     string init_android(string master_key);

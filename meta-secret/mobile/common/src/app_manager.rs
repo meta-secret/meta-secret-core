@@ -157,10 +157,7 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
             .find(|secret| secret.id.text.base64_str() == secret_id)
             .cloned();
 
-        println!(
-            "🦀 Mobile App Manager: Looking for secret with id: {}, found: {:?}",
-            secret_id, found_secret
-        );
+        println!("🦀 Mobile App Manager: Secret lookup completed");
 
         Ok(found_secret)
     }
@@ -209,7 +206,6 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
 
         info!(
             claim_id = ?claim_id,
-            secret = %claim.dist_claim_id.pass_id.name,
             sender = ?claim.sender,
             client_status = ?claim.client_status,
             "accept_recover_mobile: claim found, dispatching approval"

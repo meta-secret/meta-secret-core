@@ -14,6 +14,10 @@ use std::sync::Arc;
 use crate::log_timestamp;
 use crate::mobile_manager::MobileApplicationManager;
 
+pub fn database_file_name(master_key: String) -> String {
+    crate::mobile_manager::database_file_name(&master_key)
+}
+
 pub fn generate_master_key() -> String {
     MobileApplicationManager::sync_wrapper(async_generate_master_key())
 }

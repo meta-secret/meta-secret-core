@@ -1,4 +1,3 @@
-use anyhow::bail;
 use async_trait::async_trait;
 use std::sync::Arc;
 use tracing::{error, instrument};
@@ -116,7 +115,8 @@ impl SaveCommand for WasmRepo {
 
         let op_result = store.add(&js_value, Some(&obj_id_js)).await;
         if op_result.is_err() {
-            error!("Failed to save event: {:?}", &generic_event);
+            // The event may contain encrypted Key Shares; keep failure logs payload-free.
+            error!("Failed to save event");
         }
 
         op_result.unwrap();
