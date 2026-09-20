@@ -33,8 +33,10 @@ Use this skill for edits under `meta-secret/core/` and adjacent shared Rust mode
 - Never log secrets, key bytes, shares, or decrypted payloads.
 - Crypto changes require minimal diff plus focused tests.
 - Do not weaken validation paths for convenience.
-- Temporary threshold policy: fixed `K=2` for `N>=2`.
-- TODO: migrate threshold strategy to `K=N-1` after protocol hardening.
+- Supported threshold policy is device-count specific: `n=1 → k=1`,
+  `n=2 → k=1` full replication, and `n=3 → k=2` Shamir Secret Sharing.
+- The supported Vault limit is three devices; Core rejects a fourth and later
+  join until a future redistribution protocol is designed.
 
 ## Verify before finish
 
