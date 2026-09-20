@@ -7,7 +7,7 @@
  *   GITHUB_REPOSITORY - owner/repo  (set automatically by GitHub Actions)
  *
  * The workflow writes raw `gh run view --log-failed` output to
- * /tmp/failure_logs.txt before running this script.
+ * /tmp/failure_logs.txt (or FAILURE_LOGS_FILE) before running this script.
  */
 
 import { fetchCIContext } from "./lib/fetch-logs.ts";

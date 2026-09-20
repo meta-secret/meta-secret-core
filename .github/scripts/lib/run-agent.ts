@@ -7,12 +7,27 @@ export interface AgentOptions {
   context: CIContext;
 }
 
+async function verifyBranchAtSha(repo: string, branch: string, sha: string): Promise<void> {
+  const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
+  if (!token) throw new Error("Cannot verify Cursor branch without GITHUB_TOKEN");
+  if (!/^[A-Za-z0-9._/-]+$/.test(branch)) throw new Error("Refusing an unsafe branch name");
+  const response = await fetch(`https://api.github.com/repos/${repo}/git/ref/heads/${branch}`, {
+    headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${token}`, "X-GitHub-Api-Version": "2022-11-28" },
+  });
+  if (!response.ok) throw new Error(`Cannot verify branch ${branch} (${response.status})`);
+  const payload = (await response.json()) as { object?: { sha?: string } };
+  if (payload.object?.sha !== sha) throw new Error(`Refusing remediation: branch ${branch} moved from ${sha} to ${payload.object?.sha ?? "unknown"}`);
+}
+
 export async function runFixAgent({
   apiKey,
   prompt,
   context,
 }: AgentOptions): Promise<void> {
-  const { branch, repo } = context;
+  const { branch, repo, sha } = context;
+  if (!repo || !branch || !sha) throw new Error("Cursor remediation requires repository, branch, and SHA context");
+  // The SDK accepts a branch rather than a commit pin. Refuse a moved branch.
+  await verifyBranchAtSha(repo, branch, sha);
 
   let result;
   try {
