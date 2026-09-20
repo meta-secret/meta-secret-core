@@ -598,7 +598,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
         for (_, claim) in ss_log_data.claims.iter() {
             if claim.sender.eq(&server_device) {
-                bail!("Invalid state. Server can't manage encrypted shares");
+                bail!("Invalid state. Server can't manage Encrypted Key Shares");
             };
 
             let request_sender_device = request.sender.device.device_id.clone();

@@ -82,7 +82,7 @@ pub struct SsClaim {
     pub sender: DeviceId,
 
     pub distribution_type: SecretDistributionType,
-    // All receivers of secret shares excluding the sender (the sender already has a share).
+    // All receivers of Key Shares excluding the sender (the sender already has its own Key Share).
     pub receivers: Vec<DeviceId>,
     pub status: SsDistributionCompositeStatus,
     #[serde(skip_deserializing, default, skip_serializing_if = "Option::is_none")]

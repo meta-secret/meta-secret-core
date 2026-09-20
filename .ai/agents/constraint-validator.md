@@ -42,10 +42,11 @@ Validate implementation plan against architectural constraints (Stage 3.5). Acts
   - k=2 for 3 devices (confirmed)
   - Recovery requires ANY 2 shares (confirmed)
   - Old shares destroyed after resharing (confirmed)
-- [ ] If touching key derivation:
-  - Master Key uses PBKDF2 or similar (slow hash)
-  - Device Master Key (DMK) unique per device
-  - DMK never transmitted to server
+- [ ] If touching Master Key lifecycle:
+  - Master Key is generated randomly by the Core/OS CSPRNG; it is not derived from a user password
+  - Device Master Key (DMK) is unique per device
+  - DMK is never transmitted to the server
+  - Any separate password KDF must be documented independently from Master Key generation
 - [ ] If touching encryption:
   - Shares encrypted to recipient's public key
   - Authenticated encryption used (AEAD)

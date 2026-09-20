@@ -114,7 +114,7 @@ flowchart TB
 - **Purpose**: Eliminate single point of failure
 - **How it works**: Split each secret into N pieces (shares)
   - Any K shares can reconstruct the original
-  - Each device stores one encrypted share
+  - Each device stores one Encrypted Key Share
   - Need threshold of devices to recover
 - **Result**: Lose devices? Still recover if threshold met
 
@@ -213,7 +213,7 @@ flowchart TB
     end
     
     LAYER1 ==>|Public Keys| LAYER2
-    LAYER1 ==>|Encrypted Shares| LAYER3
+    LAYER1 ==>|Encrypted Key Shares| LAYER3
     
     LAYER2 -.->|enables| LAYER3
     
@@ -246,7 +246,7 @@ We want **passwordless authentication** - similar to Passkeys/WebAuthn - where y
 | **Who controls keys?** | Platform (Apple/Google/Browser) | Application (we generate and manage) |
 | **Who approves new devices?** | Central server or cloud account | Existing vault members (peer-to-peer) |
 | **Data location** | Cloud-synced | Local-first (each device has full copy) |
-| **Server role** | Full account management | Simple relay - just passes messages |
+| **Server role** | Full account management | Relay for device messages; may temporarily queue Encrypted Key Share ciphertext |
 
 **Why This Matters:**
 
@@ -254,7 +254,7 @@ We want **passwordless authentication** - similar to Passkeys/WebAuthn - where y
 
 2. **Decentralized trust model**: No single entity (not even our server) can add a device to your vault. Only existing members can approve new ones.
 
-3. **Server minimization**: The server is intentionally "simple" - it relays messages and stores public keys. It cannot impersonate devices or access secrets.
+3. **Server minimization**: The server is intentionally "simple" - it relays messages, stores public keys, and may temporarily queue opaque Encrypted Key Share ciphertext until delivery. It cannot impersonate devices or access plaintext secrets.
 
 ```mermaid
 flowchart LR
@@ -367,7 +367,7 @@ sequenceDiagram
 - Add/remove secrets (triggers Module 2)
 - Sync vault state across devices
 
-> **🔒 Security Property**: Server stores public keys only - cannot impersonate devices or decrypt data
+> **🔒 Security Property**: Server stores public keys and temporary Encrypted Key Share ciphertext only; it cannot impersonate devices or decrypt data.
 
 ---
 
@@ -414,7 +414,7 @@ Each share has only PARTIAL information
 | What Server Stores | What Server CANNOT Do |
 |-------------------|----------------------|
 | ✅ Public keys (vault members) | ❌ Cannot decrypt shares |
-| ✅ Encrypted message blobs | ❌ Cannot impersonate devices |
+| ✅ Temporary Encrypted Key Share ciphertext while delivery is pending | ❌ Cannot impersonate devices |
 | ✅ Vault membership metadata | ❌ Cannot read passwords |
 | ✅ Device sync state | ❌ Cannot recover secrets alone |
 
@@ -434,7 +434,7 @@ flowchart TD
     D --> E{Is recipient Device 1?}
     E -->|Yes| F[Store locally]
     E -->|No| G[Send via Server]
-    G --> H[Recipient device stores encrypted share]
+    G --> H[Recipient device stores an Encrypted Key Share]
     F --> I[Split complete]
     H --> I
 ```
@@ -444,7 +444,7 @@ flowchart TD
 1. **N shares created** - one for each vault member (N = number of devices)
 2. **Threshold = majority** - need K shares to recover (e.g., 2 of 3)
 3. **End-to-end encryption** - each share encrypted for specific device
-4. **Server = relay only** - cannot decrypt any share
+4. **Server = relay only** - it may temporarily queue Encrypted Key Share ciphertext, but cannot decrypt any Key Share
 
 ---
 
@@ -471,9 +471,9 @@ sequenceDiagram
     
     Note over D1: Device offline - no response
     
-    D2->>D2: Encrypt share for Device 3
-    D2->>S: Send encrypted share
-    S->>D3: Deliver share from Device 2
+    D2->>D2: Encrypt Key Share for Device 3
+    D2->>S: Send Encrypted Key Share
+    S->>D3: Deliver Encrypted Key Share from Device 2
     
     D3->>D3: Decrypt share (now have 2/3)
     D3->>D3: Threshold met! Combine shares
@@ -510,11 +510,11 @@ sequenceDiagram
     
     Note over D1,D2: MODULE 2: Secret Re-distribution
     
-    D1->>D1: Re-split all secrets (2→3 shares)
-    D1->>D1: Encrypt new share for Device 2
-    D1->>S: Send shares for Device 2
-    S->>D2: Deliver encrypted shares
-    D2->>D2: Store encrypted shares locally
+    D1->>D1: Re-split all secrets (2→3 Key Shares)
+    D1->>D1: Encrypt new Key Share for Device 2
+    D1->>S: Send Encrypted Key Share for Device 2
+    S->>D2: Deliver Encrypted Key Share
+    D2->>D2: Store its Encrypted Key Share locally
     
     Note over U,D2: Device 2 is fully operational
 ```
@@ -611,7 +611,7 @@ Each device holds its own share of secrets and vault state. When a user adds a n
 ```mermaid
 flowchart TB
     A["1️⃣ Secrets must stay local<br/>(security requirement)"] --> B["2️⃣ Server can't store secrets<br/>(no central database)"]
-    B --> C["3️⃣ Each device has its own DB<br/>(vault state + secret shares)"]
+    B --> C["3️⃣ Each device has its own DB<br/>(vault state + Key Shares)"]
     C --> D["3.1 Devices must stay in sync"]
     D --> E["3.2 REST API won't work<br/>(no central source of truth)"]
     D --> F["3.3 Commit Log + State Machine<br/>Replication works"]
@@ -627,7 +627,7 @@ flowchart TB
     style G fill:#66bb6a,color:#000,stroke:#388e3c,stroke-width:3px
 ```
 
-> Each device maintains an **append-only commit log** of vault events and encrypted secret shares. Events are replicated between devices via the server relay. Each device replays the log to build its current state - vault membership, secret distribution status, and recovery workflows.
+> Each device maintains an **append-only commit log** of vault events and Encrypted Key Shares. Events are replicated between devices via the server relay. Each device replays the log to build its current state - vault membership, secret distribution status, and recovery workflows.
 
 ---
 

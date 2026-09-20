@@ -13,8 +13,8 @@ Split:
    - deviceA sends encrypted password to vault-server
    - vault server splits encrypted password
    - vault server distributes shares across devices:
-     - encrypt each share of encrypted password with device's RSA public key accordingly
-     - send each encrypted share of the password to devices accordingly  
+     - encrypt each Key Share of the encrypted password with the device's RSA public key accordingly
+     - send each Encrypted Key Share to the corresponding device
 
 Recover:
  - deviceA asking deviceB to provide a second share of the password

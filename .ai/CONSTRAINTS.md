@@ -428,7 +428,7 @@ Share:     { share_id: u32, share_data: bytes, encrypted: true }
 
 3. **DISTRIBUTE & REPLACE**
    - Encrypt each new share to target device's public key
-   - Keep remote encrypted shares only as temporary outbound workflows
+   - Keep remote Encrypted Key Shares only as temporary outbound workflows
    - Send each new share to its target device
    - Each device REPLACES old share/copy with its own new share
    - After the server accepts an outbound workflow, delete that remote share from
@@ -667,7 +667,7 @@ pub fn collect_secret(vault_json: String) -> String {
 ### 8.1 Unit Tests (Crypto)
 
 **All crypto operations must be tested:**
-- Master key derivation
+- Master Key generation and storage
 - Share generation (SSS)
 - Share combination (SSS)
 - Encryption/decryption
