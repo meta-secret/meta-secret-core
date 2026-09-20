@@ -6,13 +6,14 @@ use crate::server::state_invalidation::{
     StateInvalidationScope,
 };
 use anyhow::Result;
-use anyhow::{Ok, bail};
-use meta_secret_core::node::api::{SsRequest, VaultRequest};
+use anyhow::bail;
+use meta_secret_core::node::api::{SignedAction, SignedActionPayload, SsRequest, VaultRequest};
 use meta_secret_core::node::common::model::device::common::{DeviceData, DeviceId};
+use meta_secret_core::node::common::model::IdString;
 use meta_secret_core::node::common::model::secret::{
     SecretDistributionType, SsDistributionId, SsDistributionStatus,
 };
-use meta_secret_core::node::common::model::user::common::UserMembership;
+use meta_secret_core::node::common::model::user::common::{UserData, UserMembership};
 use meta_secret_core::node::common::model::vault::vault::{VaultName, VaultStatus};
 use meta_secret_core::node::db::actions::vault::vault_action::ServerVaultAction;
 use meta_secret_core::node::db::descriptors::shared_secret_descriptor::{
@@ -22,10 +23,10 @@ use meta_secret_core::node::db::events::generic_log_event::{
     GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
 };
 use meta_secret_core::node::db::events::shared_secret_event::{SsLogObject, SsWorkflowObject};
-use meta_secret_core::node::db::events::vault::device_log_event::DeviceLogObject;
 use meta_secret_core::node::db::events::vault::vault_log_event::{
-    VaultActionEvent, VaultActionRequestEvent, VaultActionUpdateEvent,
+    VaultActionEvent, VaultActionInitEvent, VaultActionRequestEvent, VaultActionUpdateEvent,
 };
+use meta_secret_core::node::db::events::vault::device_log_event::DeviceLogObject;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use meta_secret_core::node::db::objects::persistent_vault::PersistentVault;
@@ -111,14 +112,171 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
     /// Handle request: all types of requests will be handled
     /// and the actions will be executed accordingly
-    pub async fn handle_write(
-        &self,
-        server_device: DeviceData,
-        generic_event: GenericKvLogEvent,
-    ) -> Result<()> {
+    pub async fn handle_write(&self, server_device: DeviceData, action: SignedAction) -> Result<()> {
+        let generic_event = self.verify_event_action(&action).await?;
         self.server_write_processing(server_device, generic_event)
             .await
     }
+
+    /// Verify the authenticated envelope before any event is persisted.
+    pub async fn verify_event_action(&self, action: &SignedAction) -> Result<GenericKvLogEvent> {
+        let event = match &action.payload {
+            SignedActionPayload::Event(event) => event.clone(),
+            SignedActionPayload::RecoveryCompletion(_) => {
+                bail!("recovery completion cannot be sent as a write event")
+            }
+        };
+        let object_id = event.obj_id();
+        if action.stream != object_id.fqdn.clone().id_str() {
+            bail!("signed action stream does not match event object")
+        }
+        if action.nonce != object_id.id.curr as u64 {
+            bail!("signed action nonce does not match event sequence")
+        }
+
+        let vault_name = event_vault_name(&event)?;
+        let p_vault = PersistentVault::from(self.p_obj.clone());
+        let signer_user = match p_vault.get_vault(vault_name.clone()).await {
+            Ok(vault) => vault
+                .to_data()
+                .find_user(&action.signer)
+                .and_then(|membership| match membership {
+                    UserMembership::Member(member) => Some(member.user_data.clone()),
+                    UserMembership::Outsider(_) => None,
+                })
+                .or_else(|| event_actor_user(&event, &action.signer)),
+            Err(_) => event_actor_user(&event, &action.signer),
+        }
+        .ok_or_else(|| anyhow::anyhow!("signer is not authorized for this Vault"))?;
+
+        if signer_user.device.device_id != action.signer {
+            bail!("signer device id does not match action actor")
+        }
+        if DeviceId::from(&signer_user.device.keys) != action.signer {
+            bail!("signer device id does not match transport public key")
+        }
+        action.verify(&signer_user.device.keys.dsa_pk)?;
+        validate_event_actor(&event, &action.signer)?;
+
+        // The event's ArtifactId is the durable per-stream monotonic sequence.
+        // Reject the same or an older sequence before the event can be applied.
+        if let Some(tail) = self.p_obj.find_tail_id(object_id.clone().first()).await? {
+            if object_id.id.curr <= tail.id.curr {
+                bail!("replayed or out-of-order signed action")
+            }
+        }
+        Ok(event)
+    }
+
+    pub async fn verify_recovery_completion(&self, action: &SignedAction) -> Result<()> {
+        let completion = action.completion()?;
+        if action.stream != completion.recovery_id.clone().id_str() || action.nonce != 1 {
+            bail!("invalid recovery completion sequence")
+        }
+        let p_vault = PersistentVault::from(self.p_obj.clone());
+        let vault = p_vault.get_vault(completion.vault_name.clone()).await?;
+        let member = vault
+            .to_data()
+            .find_user(&action.signer)
+            .and_then(|membership| match membership {
+                UserMembership::Member(member) => Some(member.user_data.clone()),
+                UserMembership::Outsider(_) => None,
+            })
+            .ok_or_else(|| anyhow::anyhow!("completion signer is not a Vault member"))?;
+        if action.signer != completion.recovery_id.distribution_id.receiver {
+            bail!("only the recovery receiver can complete the claim")
+        }
+        let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
+        let ss_log = p_ss
+            .get_ss_log_obj(completion.vault_name.clone())
+            .await?;
+        let claim = ss_log
+            .claims
+            .get(&completion.recovery_id.claim_id.id)
+            .ok_or_else(|| anyhow::anyhow!("completion references an unknown claim"))?;
+        if claim.sender != completion.recovery_id.sender
+            || !claim.receivers.contains(&action.signer)
+        {
+            bail!("completion receiver is not a target of this claim")
+        }
+        if !matches!(completion.receiver_status, SsDistributionStatus::Sent | SsDistributionStatus::Declined) {
+            bail!("invalid recovery completion status")
+        }
+        action.verify(&member.device.keys.dsa_pk)
+    }
+}
+
+fn event_vault_name(event: &GenericKvLogEvent) -> Result<VaultName> {
+    Ok(match event {
+        GenericKvLogEvent::DeviceLog(object) => object.0.value.vault_name(),
+        GenericKvLogEvent::SsDeviceLog(object) => object.0.value.vault_name.clone(),
+        GenericKvLogEvent::SsWorkflow(object) => match object {
+            SsWorkflowObject::Recovery(event) | SsWorkflowObject::Distribution(event) => {
+                event.value.vault_name.clone()
+            }
+            SsWorkflowObject::Decline(event) => event.value.vault_name.clone(),
+        },
+        _ => bail!("unsupported unsigned state-changing event"),
+    })
+}
+
+fn event_actor_user(event: &GenericKvLogEvent, signer: &DeviceId) -> Option<UserData> {
+    let GenericKvLogEvent::DeviceLog(object) = event else {
+        return None;
+    };
+    let user = match &object.0.value {
+        VaultActionEvent::Init(VaultActionInitEvent::CreateVault(event)) => {
+            event.owner.user_data.clone()
+        }
+        VaultActionEvent::Request(VaultActionRequestEvent::JoinCluster(event)) => {
+            event.candidate.clone()
+        }
+        VaultActionEvent::Request(VaultActionRequestEvent::AddMetaPass(event)) => {
+            event.sender.user_data.clone()
+        }
+        VaultActionEvent::Update(VaultActionUpdateEvent::UpdateMembership(event)) => {
+            event.sender.user_data.clone()
+        }
+        VaultActionEvent::Update(VaultActionUpdateEvent::AddMetaPass(event)) => {
+            event.sender.user_data.clone()
+        }
+        VaultActionEvent::Update(VaultActionUpdateEvent::AddToPending { candidate }) => {
+            candidate.clone()
+        }
+    };
+    (user.device.device_id == *signer).then_some(user)
+}
+
+fn validate_event_actor(event: &GenericKvLogEvent, signer: &DeviceId) -> Result<()> {
+    match event {
+        GenericKvLogEvent::SsDeviceLog(object) => {
+            if object.0.value.sender != *signer {
+                bail!("claim sender does not match action signer")
+            }
+        }
+        GenericKvLogEvent::SsWorkflow(object) => match object {
+            SsWorkflowObject::Decline(event) => {
+                if event.value.receiver_id != *signer {
+                    bail!("decline receiver does not match action signer")
+                }
+            }
+            SsWorkflowObject::Recovery(event) | SsWorkflowObject::Distribution(event) => {
+                let channel_sender = event
+                    .value
+                    .secret_message
+                    .cipher_text()
+                    .channel
+                    .sender()
+                    .to_device_id();
+                if channel_sender != *signer {
+                    bail!("workflow channel sender does not match action signer")
+                }
+            }
+        },
+        GenericKvLogEvent::DeviceLog(_) => {}
+        _ => bail!("unsupported state-changing event"),
+    }
+    Ok(())
 }
 
 impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {

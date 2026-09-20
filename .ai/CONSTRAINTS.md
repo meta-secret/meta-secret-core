@@ -347,7 +347,15 @@ n=2 (k=1) → remove 1 → n=1 (cannot remove — blocked by UI)
 - Approval message is sent through the sync transport
 - The server MUST verify the signature against the registered public key and authorization before mutating canonical state
 - The recipient may verify it again before secret collection
-- Current implementation status: the signing primitive and public-key fields exist, but the sync event/request path does not yet carry and verify an approval signature. This requirement is therefore not yet satisfied.
+- Implemented contract: Core wraps state-changing writes and recovery completion in
+  `SignedAction`; the server resolves the registered DSA public key, verifies the
+  canonical payload, checks the signer/target relationship, and rejects the
+  command before persistence when any check fails.
+- Every action stream carries a monotonic nonce. The server compares it with the
+  durable event sequence (and terminal recovery state for completion), so an old
+  or replayed command cannot be applied twice.
+- Unsigned write events and unsigned recovery completions are invalid protocol
+  messages. DELETE DEVICE remains a separate implementation task.
 
 **No Approval Needed:**
 - 1 device vault (no other device to approve)
@@ -590,7 +598,15 @@ ciphertext, not server possession of a usable Key Share.
 **Signature verification:**
 - The signed payload must bind the action to its vault, Claim/request ID, sender and receiver/device IDs, and freshness data
 - Server verification is mandatory before applying JOIN, RESTORE SECRET, DELETE DEVICE, or Claim confirmation
-- Current implementation status: DSA signing helpers exist, but the network event path currently does not enforce this verification; this is an implementation gap, not an achieved security guarantee
+- `SignedAction` is the common envelope for write events and RESTORE completion.
+  Its canonical payload binds action type, Vault, Claim/request IDs, signer,
+  sender/receiver IDs, stream, nonce, and the complete action body.
+- The server resolves the signer's registered DSA public key from canonical Vault
+  membership (with only the explicit bootstrap JOIN exception), verifies the
+  signature, enforces authorization, and advances the sequence before applying
+  state.
+- DELETE DEVICE is intentionally tracked separately and is not claimed as
+  covered by this issue.
 
 ---
 
@@ -725,9 +741,11 @@ pub fn collect_secret(vault_json: String) -> String {
 - Core/server: must validate the cryptographic signature and authorization on approval
 - Both: block actions without valid approval
 
-**Current implementation status:** the UI prompt and Core signing primitives exist,
-but the sync event path currently does not carry and verify the approval signature.
-This is a documented security gap, not an achieved guarantee.
+**Current implementation status:** the UI prompt and Core signing primitives are
+transported through the mandatory `SignedAction` envelope. The server resolves the
+registered device key and verifies the signature, signer/receiver authorization,
+and action sequence before accepting the approval. DELETE DEVICE remains a
+separate follow-up task.
 
 ---
 

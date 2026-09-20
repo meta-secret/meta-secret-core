@@ -3,6 +3,7 @@ use anyhow::bail;
 use anyhow::Result;
 use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::node::api::{ReadSyncRequest, SsRecoveryCompletion, SyncRequest};
+use meta_secret_core::node::security::sign_recovery_completion;
 use meta_secret_core::node::app::app_manager_shared::{
     build_client_components, recover_plain_text, resolve_signup_vault_name,
 };
@@ -317,8 +318,14 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
             "🦀 Mobile App Manager: Sending recovery completion for decline, sender: {:?}, receiver: {:?}",
             recovery_id.sender, recovery_id.distribution_id.receiver
         );
+        let key_manager = user_creds.device_creds.key_manager()?;
+        let signed = sign_recovery_completion(
+            completion,
+            user_creds.device_id().clone(),
+            &key_manager.dsa,
+        )?;
         let sync_request =
-            SyncRequest::Read(Box::from(ReadSyncRequest::SsRecoveryCompletion(completion)));
+            SyncRequest::Read(Box::from(ReadSyncRequest::SsRecoveryCompletion(signed)));
         if let Err(e) = self.server.send(sync_request).await {
             println!(
                 "🦀 Mobile App Manager: ❌ Failed to send recovery completion: {}",
@@ -417,8 +424,14 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
                                     receiver_status: SsDistributionStatus::Sent,
                                 };
 
+                                let key_manager = user_creds.device_creds.key_manager()?;
+                                let signed = sign_recovery_completion(
+                                    completion,
+                                    user_creds.device_id().clone(),
+                                    &key_manager.dsa,
+                                )?;
                                 let sync_request = SyncRequest::Read(Box::from(
-                                    ReadSyncRequest::SsRecoveryCompletion(completion),
+                                    ReadSyncRequest::SsRecoveryCompletion(signed),
                                 ));
 
                                 self.server.send(sync_request).await?;

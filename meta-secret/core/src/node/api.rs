@@ -4,6 +4,11 @@ use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::objects::persistent_vault::VaultTail;
+use crate::crypto::encoding::base64::Base64Text;
+use crate::crypto::key_pair::DsaKeyPair;
+use crate::crypto::keys::DsaPk;
+use crate::node::common::model::device::common::DeviceId;
+use crate::node::security::canonical_json;
 use anyhow::{anyhow, Result};
 use derive_more::From;
 use serde::{Deserialize, Serialize};
@@ -13,14 +18,14 @@ use serde::{Deserialize, Serialize};
 pub enum ReadSyncRequest {
     Vault(VaultRequest),
     SsRequest(SsRequest),
-    SsRecoveryCompletion(SsRecoveryCompletion),
+    SsRecoveryCompletion(SignedAction),
     ServerTail(ServerTailRequest),
 }
 
 #[derive(Clone, Debug, PartialEq, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum WriteSyncRequest {
-    Event(GenericKvLogEvent),
+    Event(SignedAction),
 }
 
 #[derive(Clone, Debug, PartialEq, From, Serialize, Deserialize)]
@@ -38,6 +43,86 @@ pub struct SsRecoveryCompletion {
     /// Status to set for receiver (Sent for accept, Declined for decline)
     #[serde(default = "default_receiver_status")]
     pub receiver_status: SsDistributionStatus,
+}
+
+/// A signed, replay-protected state-changing command.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignedAction {
+    pub signer: DeviceId,
+    /// Monotonic sequence within `stream` for this signer.
+    pub nonce: u64,
+    pub stream: String,
+    pub signature: Base64Text,
+    pub payload: SignedActionPayload,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SignedActionPayload {
+    Event(GenericKvLogEvent),
+    RecoveryCompletion(SsRecoveryCompletion),
+}
+
+#[derive(Serialize)]
+struct UnsignedSignedAction<'a> {
+    signer: &'a DeviceId,
+    nonce: u64,
+    stream: &'a str,
+    payload: &'a SignedActionPayload,
+}
+
+impl SignedAction {
+    pub fn sign(
+        payload: SignedActionPayload,
+        signer: DeviceId,
+        stream: String,
+        nonce: u64,
+        key_pair: &DsaKeyPair,
+    ) -> Result<Self> {
+        let mut action = Self {
+            signer,
+            nonce,
+            stream,
+            signature: Base64Text::from(""),
+            payload,
+        };
+        let canonical = action.unsigned_canonical_bytes()?;
+        action.signature = key_pair.sign(String::from_utf8(canonical)?);
+        Ok(action)
+    }
+
+    pub fn unsigned_canonical_bytes(&self) -> Result<Vec<u8>> {
+        canonical_json(&UnsignedSignedAction {
+            signer: &self.signer,
+            nonce: self.nonce,
+            stream: &self.stream,
+            payload: &self.payload,
+        })
+    }
+
+    pub fn verify(&self, public_key: &DsaPk) -> Result<()> {
+        let canonical = String::from_utf8(self.unsigned_canonical_bytes()?)?;
+        public_key.verify(&canonical, &self.signature)
+    }
+
+    pub fn event(&self) -> Result<&GenericKvLogEvent> {
+        match &self.payload {
+            SignedActionPayload::Event(event) => Ok(event),
+            SignedActionPayload::RecoveryCompletion(_) => {
+                Err(anyhow!("signed action does not contain an event"))
+            }
+        }
+    }
+
+    pub fn completion(&self) -> Result<&SsRecoveryCompletion> {
+        match &self.payload {
+            SignedActionPayload::RecoveryCompletion(completion) => Ok(completion),
+            SignedActionPayload::Event(_) => {
+                Err(anyhow!("signed action does not contain recovery completion"))
+            }
+        }
+    }
 }
 
 fn default_receiver_status() -> SsDistributionStatus {
