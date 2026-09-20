@@ -71,6 +71,16 @@ impl WasmApplicationManager {
         WasmApplicationState::from(app_state)
     }
 
+    pub async fn sync_now(&self) -> Result<(), JsValue> {
+        match self.app_manager.sync_now().await {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                error!(error = %e, "sync_now failed");
+                Err(JsError::new(&e.to_string()).into())
+            }
+        }
+    }
+
     pub async fn generate_user_creds(&self, vault_name: String) {
         info!("Generate user credentials for vault: {}", vault_name);
         self.app_manager

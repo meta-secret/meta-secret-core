@@ -191,16 +191,53 @@ impl WasmUserMemberFullInfo {
         &self,
         pass_id: &MetaPasswordId,
     ) -> Option<ClaimId> {
-        self.0
+        let mut pending: Vec<_> = self.0
             .ss_claims
             .claims
             .values()
-            .find(|claim| {
+            .filter(|claim| {
                 matches!(claim.distribution_type, SecretDistributionType::Recover)
                     && claim.dist_claim_id.pass_id == *pass_id
                     && matches!(claim.client_status, Some(RecoveryClientStatus::NeedApprove))
             })
             .map(|claim| claim.id.clone())
+            .collect();
+        // A HashMap traversal is deliberately not an approval policy. The UI
+        // receives and submits this concrete, stable ClaimId to accept_recover.
+        pending.sort_by(|left, right| left.0.text.cmp(&right.0.text));
+        pending.into_iter().next()
+    }
+
+    pub fn pending_incoming_recovery_claim_count(&self, pass_id: &MetaPasswordId) -> usize {
+        self.0
+            .ss_claims
+            .claims
+            .values()
+            .filter(|claim| {
+                matches!(claim.distribution_type, SecretDistributionType::Recover)
+                    && claim.dist_claim_id.pass_id == *pass_id
+                    && matches!(claim.client_status, Some(RecoveryClientStatus::NeedApprove))
+            })
+            .count()
+    }
+
+    /// The sender type for the same deterministic incoming recovery claim that
+    /// `find_pending_incoming_recovery_claim` returns.  Keeping both lookups
+    /// on the sorted ClaimId avoids accidentally labelling one request while
+    /// opening another when several devices request the same secret.
+    pub fn pending_incoming_recovery_claim_sender_type(
+        &self,
+        pass_id: &MetaPasswordId,
+    ) -> Option<String> {
+        let claim_id = self.find_pending_incoming_recovery_claim(pass_id)?;
+        let sender = &self.0.ss_claims.claims.get(&claim_id)?.sender;
+        self.0
+            .member
+            .vault
+            .members()
+            .into_iter()
+            .find(|member| &member.user_data.device.device_id == sender)
+            .map(|member| member.user_data.device.device_type.as_str().to_owned())
     }
 
     pub fn recovery_client_status(&self, pass_id: &MetaPasswordId) -> Option<String> {

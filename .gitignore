@@ -47,3 +47,7 @@ infra/.secret
 # AI
 .ai/artifacts/
 .github/scripts/bun.lock
+# E2E runner dependencies
+e2eTest/node_modules/
+e2eTest/.derivedData/
+e2eTest/.artifacts/

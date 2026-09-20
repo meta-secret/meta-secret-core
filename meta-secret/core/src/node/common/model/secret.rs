@@ -4,6 +4,7 @@ use crate::node::common::model::crypto::aead::EncryptedMessage;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::vault::vault::VaultName;
+use anyhow::bail;
 use derive_more::From;
 use std::collections::HashMap;
 use tracing::debug;
@@ -318,25 +319,88 @@ pub struct SsLogData {
 }
 
 impl SsLogData {
-    pub fn find_recovery_claim_id(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
-        // Use client_status (populated by with_client_status()) to select only ready claims.
-        // This avoids the HashMap non-determinism bug: when multiple claims exist for the same
-        // pass_id (e.g. a stale retired claim and a fresh active one), only Accepted claims are
-        // candidates. Pending claims are active, but their recovery shares are not available yet.
-        // Done and Declined claims are terminal and must be skipped.
-        for (_, claim) in self.claims.iter() {
-            let SecretDistributionType::Recover = claim.distribution_type else {
-                continue;
-            };
-            if !pass_id.eq(&claim.dist_claim_id.pass_id) {
-                continue;
-            }
-            match claim.client_status {
-                Some(RecoveryClientStatus::Accepted) => return Some(claim.id.clone()),
-                _ => continue,
-            }
+    pub fn find_unique_accepted_recovery_claim_id(
+        &self,
+        pass_id: &MetaPasswordId,
+    ) -> anyhow::Result<Option<ClaimId>> {
+        let accepted: Vec<_> = self
+            .claims
+            .values()
+            .filter(|claim| {
+                claim.distribution_type == SecretDistributionType::Recover
+                    && claim.dist_claim_id.pass_id == *pass_id
+                    && claim.client_status == Some(RecoveryClientStatus::Accepted)
+            })
+            .map(|claim| claim.id.clone())
+            .collect();
+
+        match accepted.as_slice() {
+            [] => Ok(None),
+            [claim_id] => Ok(Some(claim_id.clone())),
+            _ => bail!("ambiguous accepted recovery claims for pass: {}", pass_id.name),
         }
-        None
+    }
+
+    /// Finds the accepted recovery claim belonging to a particular sender.
+    /// Multiple devices may recover the same secret concurrently, so the
+    /// secret name alone is not a sufficient key.
+    pub fn find_unique_accepted_recovery_claim_id_for_sender(
+        &self,
+        sender: &DeviceId,
+        pass_id: &MetaPasswordId,
+    ) -> anyhow::Result<Option<ClaimId>> {
+        let accepted: Vec<_> = self
+            .claims
+            .values()
+            .filter(|claim| {
+                claim.distribution_type == SecretDistributionType::Recover
+                    && &claim.sender == sender
+                    && claim.dist_claim_id.pass_id == *pass_id
+                    && claim.client_status == Some(RecoveryClientStatus::Accepted)
+            })
+            .map(|claim| claim.id.clone())
+            .collect();
+
+        match accepted.as_slice() {
+            [] => Ok(None),
+            [claim_id] => Ok(Some(claim_id.clone())),
+            _ => bail!("ambiguous accepted recovery claims for sender and pass: {}", pass_id.name),
+        }
+    }
+
+    pub fn find_unique_active_recovery_claim_id(
+        &self,
+        sender: &DeviceId,
+        pass_id: &MetaPasswordId,
+    ) -> anyhow::Result<Option<ClaimId>> {
+        let active: Vec<_> = self
+            .claims
+            .values()
+            .filter(|claim| {
+                claim.distribution_type == SecretDistributionType::Recover
+                    && &claim.sender == sender
+                    && claim.dist_claim_id.pass_id == *pass_id
+                    && !matches!(
+                        claim.client_status,
+                        Some(RecoveryClientStatus::Declined) | Some(RecoveryClientStatus::Done)
+                    )
+            })
+            .map(|claim| claim.id.clone())
+            .collect();
+
+        match active.as_slice() {
+            [] => Ok(None),
+            [claim_id] => Ok(Some(claim_id.clone())),
+            _ => bail!("ambiguous active recovery claims for pass: {}", pass_id.name),
+        }
+    }
+
+    pub fn find_recovery_claim_id(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
+        // Legacy Optional API: ambiguity is reported as no result. Recovery execution paths use
+        // find_unique_accepted_recovery_claim_id directly and surface the error to the caller.
+        self.find_unique_accepted_recovery_claim_id(pass_id)
+            .ok()
+            .flatten()
     }
 
     pub fn find_recovery_claim(&self, pass_id: &MetaPasswordId) -> Option<SsClaim> {
@@ -404,6 +468,35 @@ impl SsLogData {
         self
     }
 
+    /// Invalidate recovery requests when the vault membership changes.
+    ///
+    /// A new member triggers a fresh split of every sender-owned secret. Any
+    /// recovery request that was still waiting for a receiver belongs to the
+    /// old membership snapshot and must not remain actionable on clients.
+    /// Existing `Sent`/`Delivered` decisions are preserved; only pending
+    /// receivers are terminalized as `Declined`.
+    pub fn decline_pending_recovery_claims(mut self) -> Self {
+        let claim_ids: Vec<ClaimId> = self
+            .claims
+            .values()
+            .filter(|claim| {
+                claim.distribution_type == SecretDistributionType::Recover
+                    && claim
+                        .status
+                        .statuses
+                        .values()
+                        .any(|status| matches!(status, SsDistributionStatus::Pending))
+            })
+            .map(|claim| claim.id.clone())
+            .collect();
+
+        for claim_id in claim_ids {
+            self = self.decline_remaining_pending(claim_id);
+        }
+
+        self
+    }
+
     pub fn complete(mut self, claim_id: ClaimId, device_id: DeviceId) -> Self {
         let maybe_claim = self.claims.remove(&claim_id);
 
@@ -455,6 +548,38 @@ impl SsLogData {
 }
 
 impl SsLogData {
+    /// Merge a claim snapshot received from a device without allowing a late
+    /// device update to overwrite a decision already accepted by the server.
+    ///
+    /// Recovery decisions are ordered by the server's serialized event stream:
+    /// once a receiver is Declined, Sent, or Delivered, that receiver status
+    /// is terminal for this recovery claim and must survive stale snapshots
+    /// from other devices.
+    pub fn merge_claim_update(mut self, incoming: SsClaim) -> Self {
+        let claim_id = incoming.id.clone();
+        let Some(existing) = self.claims.get(&claim_id).cloned() else {
+            self.claims.insert(claim_id, incoming);
+            return self;
+        };
+
+        let mut merged = existing;
+        for (device_id, incoming_status) in incoming.status.statuses {
+            let is_terminal = matches!(
+                merged.status.statuses.get(&device_id),
+                Some(
+                    SsDistributionStatus::Declined
+                        | SsDistributionStatus::Sent
+                        | SsDistributionStatus::Delivered
+                )
+            );
+            if !is_terminal {
+                merged.status.statuses.insert(device_id, incoming_status);
+            }
+        }
+        self.claims.insert(claim_id, merged);
+        self
+    }
+
     pub fn new(claim: SsClaim) -> Self {
         let mut claims = HashMap::new();
         claims.insert(claim.id.clone(), claim);
@@ -914,6 +1039,119 @@ mod test {
     }
 
     #[test]
+    fn test_decline_remaining_pending_makes_recovery_terminal() {
+        let registry = FixtureRegistry::empty();
+        let sender = registry.state.device_creds.client.device.device_id;
+        let receiver_a = registry.state.device_creds.client_b.device.device_id;
+        let receiver_b = registry.state.device_creds.vd.device.device_id;
+        let (claim, claim_id) =
+            make_recover_claim(sender, vec![receiver_a.clone(), receiver_b.clone()]);
+
+        let declined = SsLogData::new(claim).decline_remaining_pending(claim_id.clone());
+        let stored_claim = declined.claims.get(&claim_id).expect("claim is retained");
+
+        assert!(matches!(
+            stored_claim.status.get(&receiver_a),
+            Some(SsDistributionStatus::Declined)
+        ));
+        assert!(matches!(
+            stored_claim.status.get(&receiver_b),
+            Some(SsDistributionStatus::Declined)
+        ));
+        assert!(matches!(
+            stored_claim.status.status(),
+            SsDistributionStatus::Declined
+        ));
+    }
+
+    #[test]
+    fn test_decline_pending_recovery_claims_only_invalidates_recovery_claims() {
+        let registry = FixtureRegistry::empty();
+        let sender = registry.state.device_creds.client.device.device_id;
+        let receiver_a = registry.state.device_creds.client_b.device.device_id;
+        let receiver_b = registry.state.device_creds.vd.device.device_id;
+        let (recovery_claim, recovery_id) =
+            make_recover_claim(sender.clone(), vec![receiver_a.clone(), receiver_b.clone()]);
+
+        let (mut split_claim, _) =
+            make_recover_claim(sender.clone(), vec![receiver_a.clone(), receiver_b.clone()]);
+        split_claim.distribution_type = SecretDistributionType::Split;
+        let split_id = split_claim.id.clone();
+
+        let declined = SsLogData::new(recovery_claim)
+            .insert(split_claim)
+            .decline_pending_recovery_claims();
+
+        let recovery = declined.claims.get(&recovery_id).expect("recovery claim is retained");
+        assert!(matches!(
+            recovery.status.get(&receiver_a),
+            Some(SsDistributionStatus::Declined)
+        ));
+        assert!(matches!(
+            recovery.status.get(&receiver_b),
+            Some(SsDistributionStatus::Declined)
+        ));
+
+        let split = declined.claims.get(&split_id).expect("split claim is retained");
+        assert!(matches!(
+            split.status.get(&receiver_a),
+            Some(SsDistributionStatus::Pending)
+        ));
+        assert!(matches!(
+            split.status.get(&receiver_b),
+            Some(SsDistributionStatus::Pending)
+        ));
+    }
+
+    #[test]
+    fn test_merge_claim_update_preserves_terminal_recovery_decision() {
+        let registry = FixtureRegistry::empty();
+        let sender = registry.state.device_creds.client.device.device_id;
+        let receiver_a = registry.state.device_creds.client_b.device.device_id;
+        let receiver_b = registry.state.device_creds.vd.device.device_id;
+        let receivers = vec![receiver_a.clone(), receiver_b.clone()];
+        let (claim, claim_id) = make_recover_claim(sender.clone(), receivers.clone());
+
+        // A stale device snapshot still reports both receivers as Pending. It must not
+        // resurrect the terminal Declined decision stored on the server.
+        let declined = SsLogData::new(claim).decline_remaining_pending(claim_id.clone());
+        let (stale_snapshot, _) = make_recover_claim(sender.clone(), receivers.clone());
+        let merged_declined = declined.merge_claim_update(stale_snapshot);
+        let declined_claim = merged_declined
+            .claims
+            .get(&claim_id)
+            .expect("claim is retained");
+        assert!(matches!(
+            declined_claim.status.get(&receiver_a),
+            Some(SsDistributionStatus::Declined)
+        ));
+        assert!(matches!(
+            declined_claim.status.get(&receiver_b),
+            Some(SsDistributionStatus::Declined)
+        ));
+
+        // The same merge rule preserves an earlier approval from a late stale snapshot.
+        let (approved_claim, approved_claim_id) =
+            make_recover_claim(sender.clone(), receivers.clone());
+        let approved = SsLogData::new(approved_claim)
+            .sent(approved_claim_id.clone(), receiver_a.clone());
+        let (stale_snapshot, _) = make_recover_claim(sender, receivers);
+        let merged_approved = approved.merge_claim_update(stale_snapshot);
+        let approved_claim = merged_approved
+            .claims
+            .get(&approved_claim_id)
+            .expect("claim is retained");
+        assert!(matches!(
+            approved_claim.status.get(&receiver_a),
+            Some(SsDistributionStatus::Sent)
+        ));
+        assert!(matches!(
+            approved_claim.status.get(&receiver_b),
+            Some(SsDistributionStatus::Pending)
+        ));
+    }
+
+    #[test]
     fn test_compute_client_status_split_returns_none() {
         let registry = FixtureRegistry::empty();
         let sender = registry.state.device_creds.client.device.device_id;
@@ -1351,6 +1589,24 @@ mod test {
     }
 
     #[test]
+    fn test_find_active_recovery_claim_for_sender_returns_pending_claim() {
+        let registry = FixtureRegistry::empty();
+        let sender = registry.state.device_creds.client.device.device_id;
+        let receiver = registry.state.device_creds.client_b.device.device_id;
+        let pass_id = make_pass_id("secret1");
+
+        let (mut claim, claim_id) = make_recover_claim(sender.clone(), vec![receiver]);
+        claim.dist_claim_id.pass_id = pass_id.clone();
+        let log = SsLogData::new(claim);
+
+        assert_eq!(
+            log.find_unique_active_recovery_claim_id(&sender, &pass_id).unwrap(),
+            Some(claim_id),
+            "a pending sender claim must be reused instead of creating a second recovery request"
+        );
+    }
+
+    #[test]
     fn test_find_recovery_claim_id_skips_done_claim_prefers_accepted() {
         let registry = FixtureRegistry::empty();
         let sender = registry.state.device_creds.client.device.device_id;
@@ -1376,6 +1632,31 @@ mod test {
             found,
             Some(claim_id2),
             "Must return active claim, not the Done one"
+        );
+    }
+
+    #[test]
+    fn test_find_recovery_claim_id_rejects_ambiguous_accepted_claims() {
+        let registry = FixtureRegistry::empty();
+        let sender = registry.state.device_creds.client.device.device_id;
+        let recv_a = registry.state.device_creds.client_b.device.device_id;
+        let recv_b = registry.state.device_creds.vd.device.device_id;
+        let pass_id = make_pass_id("secret1");
+
+        let (mut claim_a, claim_a_id) = make_recover_claim(sender.clone(), vec![recv_a.clone()]);
+        claim_a.dist_claim_id.pass_id = pass_id.clone();
+        let (mut claim_b, claim_b_id) = make_recover_claim(sender.clone(), vec![recv_b.clone()]);
+        claim_b.dist_claim_id.pass_id = pass_id.clone();
+
+        let log = SsLogData::new(claim_a)
+            .insert(claim_b)
+            .sent(claim_a_id, recv_a)
+            .sent(claim_b_id, recv_b)
+            .with_client_status(&sender);
+
+        assert!(
+            log.find_unique_accepted_recovery_claim_id(&pass_id).is_err(),
+            "multiple Accepted recovery claims must fail safely instead of depending on HashMap order"
         );
     }
 
@@ -1407,7 +1688,7 @@ mod test {
         let recv_b = registry.state.device_creds.vd.device.device_id;
         let pass_id = make_pass_id("secret1");
 
-        // Claim #1: Declined — stale claim retired by stale sweep (now using decline())
+        // Claim #1: terminal result from a previous recovery attempt.
         let (mut claim1, claim_id1) = make_recover_claim(sender.clone(), vec![recv_a.clone()]);
         claim1.dist_claim_id.pass_id = pass_id.clone();
         let log = SsLogData::new(claim1).decline(claim_id1, recv_a.clone());

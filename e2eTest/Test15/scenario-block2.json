@@ -1,0 +1,62 @@
+{
+  "runId": "test15-block2",
+  "testNumber": 15,
+  "name": "Test #15 block 2 — CLI joins during iOS recovery",
+  "mode": "new-device-during-recovery",
+  "setup": { "initiator": "ios" },
+  "newDevice": { "oldReceivers": ["web", "android"] },
+  "server": {
+    "url": "http://127.0.0.1:3000",
+    "image": "ghcr.io/meta-secret/meta-secret-core/meta-secret-server:latest",
+    "container": "meta-secret-e2e-server-test15-block2",
+    "port": 3000
+  },
+  "web": { "url": "http://localhost:5173", "directory": "../meta-secret/web-cli/ui" },
+  "ios": {
+    "composeRoot": "../../meta-secret-compose",
+    "simulatorName": "iPhone 17",
+    "bundleId": "org.metasecret.vault",
+    "testClass": "CaseEightIosBothOfflineUITest",
+    "setupTestClass": "CaseTwoIosInitiatorUITest",
+    "joinTestMethod": "createVaultAndWaitForJoins",
+    "stepTestMethod": "handleRecoveryStep"
+  },
+  "android": {
+    "avdName": "Pixel_4a",
+    "bundleId": "metasecret.project.com",
+    "testClass": "metasecret.project.com.CaseEightAndroidBothOfflineTest",
+    "testMethod": "joinWebInitiatedVault",
+    "joinTestMethod": "joinWebInitiatedVault",
+    "stepTestMethod": "handleRecoveryStep",
+    "directInstrumentationSetup": true
+  },
+  "secretCreation": { "initial": { "ios": ["default"] } },
+  "recovery": {
+    "expectedCycles": 3,
+    "cyclePlan": [
+      {
+        "block": "ios-sender-cli-join-1",
+        "count": 1,
+        "senders": [{ "platform": "ios", "secret": "default" }],
+        "approvals": [{ "platform": "cli", "action": "approve", "secret": "default" }],
+        "expectedOutcome": "approved"
+      },
+      {
+        "block": "ios-sender-cli-join-2",
+        "count": 1,
+        "senders": [{ "platform": "ios", "secret": "default" }],
+        "approvals": [{ "platform": "cli", "action": "approve", "secret": "default" }],
+        "expectedOutcome": "approved"
+      },
+      {
+        "block": "ios-sender-cli-join-3",
+        "count": 1,
+        "senders": [{ "platform": "ios", "secret": "default" }],
+        "approvals": [{ "platform": "cli", "action": "approve", "secret": "default" }],
+        "expectedOutcome": "approved"
+      }
+    ]
+  },
+  "vault": { "name": "test15-block2@test.ru" },
+  "secrets": { "default": { "name": "test-secret", "value": "test-secret-value" } }
+}

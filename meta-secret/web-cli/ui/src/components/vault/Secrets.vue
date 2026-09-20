@@ -28,6 +28,8 @@ type RevealModalState = 'closed' | 'waiting' | 'revealedText' | 'revealedSeed';
 type RecoveryAction = 'approve' | 'decline';
 type RecoveryAwareMemberState = ReturnType<typeof getMemberVaultState> & {
   find_pending_incoming_recovery_claim?: (metaPassId: MetaPasswordId) => ClaimId | undefined;
+  pending_incoming_recovery_claim_count?: (metaPassId: MetaPasswordId) => number;
+  pending_incoming_recovery_claim_sender_type?: (metaPassId: MetaPasswordId) => string | undefined;
   recovery_client_status?: (metaPassId: MetaPasswordId) => string | undefined;
 };
 type RecoveryAwareApplicationManager = WasmApplicationManager & {
@@ -71,6 +73,22 @@ const getPendingIncomingRecoveryClaim = (metaPassId: MetaPasswordId) => {
 const hasPendingIncomingRecoveryRequest = (metaPassId: MetaPasswordId) =>
   shouldShowRecoveryRequestIcon(getPendingIncomingRecoveryClaim(metaPassId));
 
+const getPendingIncomingRecoveryRequestCount = (metaPassId: MetaPasswordId) => {
+  const memberState = getMemberVaultState(appState.currState) as RecoveryAwareMemberState | undefined;
+  if (!memberState || typeof memberState.pending_incoming_recovery_claim_count !== 'function') return 0;
+  return memberState.pending_incoming_recovery_claim_count(metaPassId);
+};
+
+const getPendingIncomingRecoveryRequestSender = (metaPassId: MetaPasswordId) => {
+  const memberState = getMemberVaultState(appState.currState) as RecoveryAwareMemberState | undefined;
+  if (!memberState || typeof memberState.pending_incoming_recovery_claim_sender_type !== 'function') return 'A device';
+  const type = memberState.pending_incoming_recovery_claim_sender_type(metaPassId)?.toLowerCase() || '';
+  if (type.includes('android')) return 'Android';
+  if (type.includes('iphone') || type.includes('ios')) return 'iOS';
+  if (type.includes('web') || type.includes('browser')) return 'Web';
+  return 'A device';
+};
+
 const getRecoveryClientStatus = (metaPassId: MetaPasswordId): string | undefined => {
   const memberState = getMemberVaultState(appState.currState) as RecoveryAwareMemberState | undefined;
   if (!memberState || typeof memberState.recovery_client_status !== 'function') return undefined;
@@ -83,7 +101,10 @@ const getVaultDeviceCount = () => {
   if (!data || typeof data.users !== 'function') return 1;
   return data.users().length || 1;
 };
-const actionButtonLabel = computed(() => (getVaultDeviceCount() <= 2 ? vaultSecrets.show : vaultSecrets.recover));
+const actionButtonLabel = (secret: MetaPasswordId) =>
+  getVaultDeviceCount() <= 2 || getRecoveryClientStatus(secret) === 'accepted'
+    ? vaultSecrets.show
+    : vaultSecrets.recover;
 
 const clearRevealData = () => {
   revealedSecret.value = '';
@@ -120,6 +141,22 @@ const closeRecoveryDialog = () => {
   resetRecoveryDialog();
 };
 
+// A different receiver can approve the request. Once the sender has recovered
+// the secret, this receiver's client status becomes Done and it no longer has a
+// pending incoming claim. The dialog is local UI state, so it must be closed
+// explicitly when the refreshed application state says no action is required.
+watch(
+  () => appState.currState,
+  () => {
+    const secret = recoveryDialogSecret.value;
+    if (!recoveryDialogOpen.value || !secret || recoveryActionInProgress.value) return;
+    if (!getPendingIncomingRecoveryClaim(secret)) {
+      console.log('[Recovery] closing incoming dialog: request is no longer pending');
+      resetRecoveryDialog();
+    }
+  },
+);
+
 const submitRecoveryResponse = async (action: RecoveryAction) => {
   console.log('[Recovery] submitRecoveryResponse called', { action, claim: recoveryDialogClaim.value, inProgress: recoveryActionInProgress.value });
   if (recoveryActionInProgress.value || !recoveryDialogClaim.value) {
@@ -128,6 +165,7 @@ const submitRecoveryResponse = async (action: RecoveryAction) => {
   }
   recoveryActionInProgress.value = action;
   flowError.value = null;
+  let actionSubmitted = false;
 
   try {
     console.log('[Recovery] calling authenticateWithPasskey...');
@@ -150,11 +188,28 @@ const submitRecoveryResponse = async (action: RecoveryAction) => {
       console.log('[Recovery] decline_recover done');
     }
 
-    await appState.updateState();
+    // The native/core layer persists the decision locally before it can be
+    // uploaded. Close the dialog at that point so a temporary offline refresh
+    // failure cannot leave the user with an actionable-looking request and
+    // invite a duplicate response after reconnect.
+    actionSubmitted = true;
     resetRecoveryDialog();
+    if (typeof navigator === 'undefined' || navigator.onLine) {
+      try {
+        await appState.updateState();
+      } catch (refreshError) {
+        console.warn('[Recovery] response saved locally; state refresh deferred:', refreshError);
+      }
+    } else {
+      console.log('[Recovery] response saved locally while offline; state refresh deferred until reconnect');
+    }
   } catch (e) {
-    console.error('[Recovery] error:', e);
-    flowError.value = e instanceof Error && e.message ? e.message : vaultSecrets.recoveryRequestSubmitError;
+    if (actionSubmitted) {
+      console.warn('[Recovery] response saved locally; state refresh deferred:', e);
+    } else {
+      console.error('[Recovery] error:', e);
+      flowError.value = e instanceof Error && e.message ? e.message : vaultSecrets.recoveryRequestSubmitError;
+    }
   } finally {
     recoveryActionInProgress.value = null;
   }
@@ -236,7 +291,18 @@ const startRevealFlow = async (secret: MetaPasswordId) => {
     }
 
     revealModalState.value = 'waiting';
-    await appManager.recover_js(secret);
+    // An existing Pending request must remain a single request, and an
+    // Accepted request can be shown immediately.  Calling recover_js in
+    // either case creates a duplicate claim and makes the UI ambiguous.
+    if (getRecoveryClientStatus(secret) === 'accepted') {
+      const secretText = await appManager.show_recovered(secret);
+      if (!isFlowTokenActive(token)) return;
+      openRevealedModal(secretText);
+      return;
+    }
+    if (getRecoveryClientStatus(secret) !== 'pending') {
+      await appManager.recover_js(secret);
+    }
     if (!isFlowTokenActive(token)) return;
     await appState.updateState();
     if (!isFlowTokenActive(token)) return;
@@ -319,32 +385,35 @@ const revealModalOpen = computed(() => revealModalState.value !== 'closed');
             v-for="secret in passwords"
             :key="secret.id_str()"
             class="flex items-center justify-between px-5 py-4 transition-colors"
-            :class="hasPendingIncomingRecoveryRequest(secret) && 'cursor-pointer hover:bg-muted/40'"
-            :role="hasPendingIncomingRecoveryRequest(secret) ? 'button' : undefined"
-            :tabindex="hasPendingIncomingRecoveryRequest(secret) ? 0 : undefined"
-            @click="hasPendingIncomingRecoveryRequest(secret) && openRecoveryDialog(secret)"
-            @keydown.enter.prevent="hasPendingIncomingRecoveryRequest(secret) && openRecoveryDialog(secret)"
-            @keydown.space.prevent="hasPendingIncomingRecoveryRequest(secret) && openRecoveryDialog(secret)"
           >
             <span class="font-semibold">{{ secret.name }}</span>
-            <div class="flex items-center gap-4">
-              <button
-                v-if="hasPendingIncomingRecoveryRequest(secret)"
-                type="button"
-                class="flex h-12 w-12 items-center justify-center rounded-full border border-transparent transition-colors hover:border-primary/40 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                :aria-label="vaultSecrets.recoveryRequestTitle"
-                @click.stop="openRecoveryDialog(secret)"
-              >
-                <img src="/approve_request.png" alt="" class="h-10 w-10 rounded-full object-cover" />
-              </button>
-              <Button
+            <div class="flex flex-col items-end gap-2">
+              <p v-if="hasPendingIncomingRecoveryRequest(secret)" class="text-xs text-muted-foreground">
+                {{ getPendingIncomingRecoveryRequestSender(secret) }} requests recovery for this secret.
+                <span data-testid="recovery-request-badge" class="absolute ml-8 -mt-8 min-w-5 rounded-full bg-red-600 px-1 text-center text-xs font-bold text-white">
+                  {{ getPendingIncomingRecoveryRequestCount(secret) }}
+                </span>
+              </p>
+              <div class="flex items-center gap-2">
+                <Button
+                  v-if="hasPendingIncomingRecoveryRequest(secret)"
+                  variant="outline"
+                  size="sm"
+                  :data-testid="`open-recovery-request-${secret.name}`"
+                  @click.stop="openRecoveryDialog(secret)"
+                >
+                  Open request
+                </Button>
+                <Button
                 variant="outline"
                 size="sm"
                 :disabled="flowInProgressId !== null"
+                :data-testid="`secret-primary-action-${secret.name}`"
                 @click.stop="startRevealFlow(secret)"
               >
-                {{ flowInProgressId === secret.id_str() ? vaultSecrets.showLoading : actionButtonLabel }}
+                {{ flowInProgressId === secret.id_str() ? vaultSecrets.showLoading : actionButtonLabel(secret) }}
               </Button>
+              </div>
             </div>
           </li>
         </ul>

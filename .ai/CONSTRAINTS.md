@@ -2,7 +2,7 @@
 
 Mandatory architectural rules for the Rust backend cryptography and protocol implementation. All code changes must validate against these constraints.
 
-**Last updated:** 2026-06-22  
+**Last updated:** 2026-09-20
 **Maintainer:** Architecture Guardian (validate at Stage 3.5)
 
 ---
@@ -15,12 +15,51 @@ Mandatory architectural rules for the Rust backend cryptography and protocol imp
 | **Redistribution** | Required on every device add/remove | Vault ops |
 | **Approval Required** | JOIN, RESTORE SECRET, DELETE DEVICE need biometric signature | Consensus |
 | **Atomicity** | Collect→Reshare→Distribute is all-or-nothing | Transactions |
-| **No Server Storage** | Keys, shares, secrets never on server | E2E principle |
+| **No Server Plaintext Storage** | The server never stores plaintext Master Keys, Key Shares, or Secrets. It may temporarily queue an Encrypted Key Share while delivery/synchronization is pending, then remove it after delivery. | E2E principle |
 | **Two Cannot Erase Each Other** | With 2 devices, neither can remove the other | Safety |
+| **Recovery Status Ownership** | Core alone computes recovery lifecycle and `clientStatus`; UI only executes the resulting instruction | Recovery |
+| **First Response Wins** | The first server-processed receiver decision terminalizes the recovery claim; a late opposite decision is ignored | Recovery consensus |
+| **Reconnect Flush** | A client must upload locally queued recovery decisions before reading refreshed canonical state after connectivity returns | Offline recovery |
 
 ---
 
 ## 1. Vault Model & Device States
+
+### 1.0 Recovery Status Ownership
+
+For every `Recover` claim, core computes the per-device `clientStatus` from the
+claim state and the current device identity. This is the only authority for whether
+a recovery is active, ready, declined, or complete.
+
+- Web, iOS, and Android UI must react to `clientStatus`; they must not infer
+  lifecycle state or implement K-of-N/quorum rules. They may technically choose
+  one claim from the set already marked `NeedApprove` by core.
+- The UI may retain a claim ID only to deduplicate an alert and submit the user's
+  approve/decline decision.
+- `Done` is emitted only after the sender has recovered the secret and the
+  completion has been persisted. Receivers close recovery alerts only then.
+- A receiver that has already approved or declined has no further action until
+  completion; this is represented by no client instruction (`None`).
+- Recovery uses first-response-wins ordering: the first receiver decision
+  processed by the server is authoritative for the claim.
+- If the first decision is `Decline`, remaining pending receivers become
+  terminally declined and the sender cannot recover or reveal the secret.
+- If the first decision is `Approve`, the approving receiver reaches
+  `Sent`/`Delivered`, recovery may proceed once the threshold is met, and a
+  later `Decline` cannot revoke that result.
+- Terminal receiver statuses are monotonic and cannot be reverted by stale
+  snapshots or device-log reconciliation.
+- A recovery decision created while offline must be flushed to the server before
+  the client treats a reconnect state refresh as authoritative. The Web client
+  performs an explicit idempotent reconnect sync; this is a state boundary, not
+  a timer-based retry.
+- “First” is a server-processing guarantee: for packets that arrive at nearly
+  the same time, the ordered event stream decides which one is first; it is not
+  a wall-clock promise.
+- Accepting a new vault member invalidates every still-pending `Recover` claim
+  created for the previous membership set. The server records those pending
+  receiver decisions as `Declined` and publishes an `SsClaims` invalidation;
+  existing `Sent`/`Delivered` decisions remain unchanged.
 
 ### 1.1 K-of-N Principle (Adaptive Sharing)
 
@@ -60,6 +99,15 @@ Mandatory architectural rules for the Rust backend cryptography and protocol imp
 ```
 
 ### 1.2 Redistribution on Device Join (Addition)
+
+#### Recovery claims during a join
+
+If a `Recover` claim is pending when a new member is accepted, the claim is
+bound to the old member set and must not remain actionable. The server first
+terminalizes all of its pending receiver statuses as `Declined`, then publishes
+the normal claims invalidation. Membership redistribution creates a new
+`Split` claim for the joining device. Clients must remove the stale recovery
+alert and must not show the old recovery request to the new member.
 
 **Flow: 1 device (A) + new device B joins**
 
@@ -205,7 +253,7 @@ Step 6: CONFIRMATION (on B)
   - B confirms it received new share s2'
   - B marks C as INACTIVE in its vault state
   
-Result: A=SHARE, B=SHARE (only 2 devices remain)
+Result: A=FULL COPY, B=FULL COPY (only 2 devices remain)
         C is INACTIVE (cannot participate in claims)
 
 ⚠️ CRITICAL: Old shares on A and B are DESTROYED
@@ -214,7 +262,7 @@ Result: A=SHARE, B=SHARE (only 2 devices remain)
 **Flow: 2 devices (A, B) + remove B**
 
 ```
-Initial: A=SHARE (s1), B=SHARE (s2) (n=2, k=2 SSS)
+Initial: A=FULL COPY, B=FULL COPY (n=2, k=1 full replication)
 
 Step 1: INITIATE REMOVAL (on A)
   - A's user requests "Remove device B"
@@ -238,51 +286,38 @@ Result: A=FULL_COPY, B=FULL_COPY (both remain intact)
 
 ### 1.4 K Value Rules
 
-**Rules for k (threshold):**
-- `k` NEVER INCREASES after vault creation
-- `k` may DECREASE when devices are removed
-- `k` stays SAME when devices are added (if n >= 3)
+**Current policy:**
 
-**Current policy (k=2 fixed, temporary):**
-
-| n | k (current) | Notes |
+| n | k | Notes |
 |---|---|---|
 | 1 | 1 | Trivial — full copy |
-| 2 | 2 | Both shares required (SSS) |
+| 2 | 1 | Full replication — either device has the complete secret |
 | 3 | 2 | Any 2 of 3 can recover |
 | 4 | 2 | Any 2 of 4 can recover |
 | 5 | 2 | Any 2 of 5 can recover |
 
-**Target policy (K = N − 1, pending resharing hardening):**
-
-| n | k (target) | Notes |
-|---|---|---|
-| 1 | 1 | Trivial — full copy |
-| 2 | 1 | Either device alone can recover |
-| 3 | 2 | Any 2 of 3 can recover |
-| 4 | 3 | Any 3 of 4 can recover |
-| 5 | 4 | Any 4 of 5 can recover |
+For 3+ devices the threshold remains `k=2`; it is not `k=n-1`.
 
 **Implementation:** `SharedSecretConfig::calculate()` in
 `meta-secret/core/src/secret/data_block/common.rs`
 
-**Removal examples (current k=2 policy):**
+**Removal examples:**
 ```
 n=4 (k=2) → remove 1 → n=3 (k=2) ✅ k stays same
-n=3 (k=2) → remove 1 → n=2 (k=2) ✅ k stays same (SSS)
-n=2 (k=2) → remove 1 → n=1 (cannot remove — blocked by UI)
+n=3 (k=2) → remove 1 → n=2 (k=1) ✅ reshare to full replication
+n=2 (k=1) → remove 1 → n=1 (cannot remove — blocked by UI)
 ```
 
 ### 1.5 Transitions & State Changes
 
-**State Transitions (all modes use SSS)**
+**State Transitions**
 
 | From | To | Trigger | Shares Change |
 |---|---|---|---|
-| 1 device (k=1) | 2 devices (k=2) | Device join | 1 COPY → 2 SSS shares |
-| 2 devices (k=2) | 3 devices (k=2) | Device join | 2 SHARES → 3 SHARES (reshare) |
-| 3 devices (k=2) | 2 devices (k=2) | Device removal | 3 SHARES → 2 SHARES (reshare) |
-| 2 devices (k=2) | 1 device | Cannot happen | (blocked by UI) |
+| 1 device (k=1) | 2 devices (k=1) | Device join | 1 COPY → 2 full copies |
+| 2 devices (k=1) | 3 devices (k=2) | Device join | 2 full copies → 3 SSS shares (reshare) |
+| 3 devices (k=2) | 2 devices (k=1) | Device removal | 3 SSS shares → 2 full copies (reshare) |
+| 2 devices (k=1) | 1 device | Cannot happen | (blocked by UI) |
 
 ---
 
@@ -311,16 +346,16 @@ n=2 (k=2) → remove 1 → n=1 (cannot remove — blocked by UI)
 
 ### 2.2 Approval Mechanism
 
-**Biometric Signature:**
+**Biometric approval and signature (required protocol property):**
 - User performs biometric (fingerprint, face) on OTHER device
-- System creates approval message with signature
-- Message includes: action_type, device_id, timestamp, initiator_id
-- Message is CRYPTOGRAPHICALLY SIGNED by approving device's private key
+- System creates an approval message containing action type, vault/Claim or request ID, device IDs, and freshness data (nonce or timestamp)
+- Message MUST be cryptographically signed by the approving device's private key
 
-**Transport:**
-- Approval message sent via socket to initiator device
-- Initiator verifies signature using approver's public key
-- Initiator proceeds with secret collection ONLY after valid signature
+**Transport and verification:**
+- Approval message is sent through the sync transport
+- The server MUST verify the signature against the registered public key and authorization before mutating canonical state
+- The recipient may verify it again before secret collection
+- Current implementation status: the signing primitive and public-key fields exist, but the sync event/request path does not yet carry and verify an approval signature. This requirement is therefore not yet satisfied.
 
 **No Approval Needed:**
 - 1 device vault (no other device to approve)
@@ -479,18 +514,23 @@ Share:     { share_id: u32, share_data: bytes, encrypted: true }
 
 ### 5.1 Zero-Knowledge Principle
 
-**Server NEVER stores:**
-- Master key (any format)
-- Key shares (raw or encrypted)
-- Complete secrets
-- Private keys
+**Server NEVER stores in plaintext:**
+- Master Key (any format)
+- Key Shares
+- Complete Secrets
+- Private Keys
+
+The server may temporarily queue an Encrypted Key Share while delivery is
+pending because it cannot decrypt the ciphertext without the recipient's
+Private Key. After the recipient synchronizes, the workflow item is removed; it
+is not part of the server's durable Vault data. This is transport buffering of
+ciphertext, not server possession of a usable Key Share.
 
 **Server CAN store:**
 - Vault metadata (name, created_at, device_count)
 - Device info (ID, name, type, public keys, status)
-- Claim records (metadata + encrypted share blobs)
-- Event log (audit trail with signatures)
-- User signatures (for non-repudiation)
+- Claim records (metadata) and temporary Encrypted Key Shares pending delivery
+- Event metadata and, once implemented, verified signed audit events
 
 ### 5.2 Encrypted At Rest
 
@@ -524,7 +564,7 @@ Share:     { share_id: u32, share_data: bytes, encrypted: true }
 **Principle:**
 - Secrets encrypted from device to device
 - Server cannot decrypt
-- Encrypted shares transmitted over socket
+- Encrypted Key Shares transmitted over socket
 
 **Implementation:**
 - Asymmetric encryption: recipient's public key
@@ -546,16 +586,16 @@ Share:     { share_id: u32, share_data: bytes, encrypted: true }
 
 ### 6.3 Non-Repudiation
 
-**All critical actions signed:**
+**Required protocol property — all critical actions must be signed and verified:**
 - Device join approval
 - Secret recovery approval
 - Device removal approval
 - Claim confirmation
 
 **Signature verification:**
-- Recipient verifies sender's signature
-- Server verifies signatures in audit log
-- Prevents sender from denying action later
+- The signed payload must bind the action to its vault, Claim/request ID, sender and receiver/device IDs, and freshness data
+- Server verification is mandatory before applying JOIN, RESTORE SECRET, DELETE DEVICE, or Claim confirmation
+- Current implementation status: DSA signing helpers exist, but the network event path currently does not enforce this verification; this is an implementation gap, not an achieved security guarantee
 
 ---
 
@@ -685,10 +725,14 @@ pub fn collect_secret(vault_json: String) -> String {
 
 ### 9.3 Approval Consistency
 
-**Both projects implement same approval flow:**
+**Required cross-project approval contract:**
 - Mobile UI: shows biometric prompt on other device
-- Core: validates biometric signature on approval
+- Core/server: must validate the cryptographic signature and authorization on approval
 - Both: block actions without valid approval
+
+**Current implementation status:** the UI prompt and Core signing primitives exist,
+but the sync event path currently does not carry and verify the approval signature.
+This is a documented security gap, not an achieved guarantee.
 
 ---
 
@@ -704,7 +748,7 @@ Use this checklist when validating new code against constraints:
 [ ] Biometric signature verified
 [ ] Two devices cannot remove each other (UI blocks)
 [ ] Old shares/copies destroyed after redistribution
-[ ] Server never stores keys, only shares/metadata
+[ ] Server never stores plaintext keys, shares, or Secrets; only metadata and E2E ciphertext
 [ ] All FFI returns are JSON strings
 [ ] Error codes mapped to mobile messages
 [ ] Non-repudiation: all actions signed

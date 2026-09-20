@@ -52,7 +52,13 @@ RUN cargo chef cook --release --recipe-path recipe.json
 FROM builder-release AS prepare-db
 
 ARG DIESEL_VERSION=2.3.9
-RUN curl -LsSf "https://github.com/diesel-rs/diesel/releases/download/v${DIESEL_VERSION}/diesel_cli-x86_64-unknown-linux-gnu.tar.xz" | \
+ARG TARGETARCH
+RUN case "${TARGETARCH:-$(dpkg --print-architecture)}" in \
+      amd64) DIESEL_ARCH="x86_64" ;; \
+      arm64) DIESEL_ARCH="aarch64" ;; \
+      *) echo "Unsupported Diesel CLI architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && curl -LsSf "https://github.com/diesel-rs/diesel/releases/download/v${DIESEL_VERSION}/diesel_cli-${DIESEL_ARCH}-unknown-linux-gnu.tar.xz" | \
     tar xJ -C /usr/local/bin --strip-components=1
 
 WORKDIR /meta-secret-build

@@ -22,13 +22,13 @@ use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::recover_from_shares;
-use crate::secret::split2;
 use crate::secret::shared_secret::{PlainText, UserShareDto};
+use crate::secret::split2;
 use anyhow::bail;
 use anyhow::Result;
-use tracing::debug;
 use std::collections::HashSet;
 use std::sync::Arc;
+use tracing::{debug, info};
 
 /// Contains business logic of secrets management and login/sign-up actions.
 /// Orchestrator is in charge of what is meta secret is made for (the most important part of the app).
@@ -110,7 +110,10 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
         let mut updated_claim = claim.clone();
         println!("🦀 Orchestrator: local_device_id: {:?}", local_device_id);
         updated_claim.status = updated_claim.status.decline(local_device_id.clone());
-        println!("🦀 Orchestrator: updated_claim status: {:?}", updated_claim.status);
+        println!(
+            "🦀 Orchestrator: updated_claim status: {:?}",
+            updated_claim.status
+        );
 
         let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
         p_ss.save_ss_log_event(updated_claim).await?;
@@ -122,8 +125,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                     claim_id: claim.id.clone(),
                     receiver_id: local_device_id.clone(),
                 };
-                let key =
-                    KvKey::from(SsWorkflowDescriptor::Decline(recovery_db_id.clone()));
+                let key = KvKey::from(SsWorkflowDescriptor::Decline(recovery_db_id.clone()));
                 let decline_wf = SsWorkflowObject::Decline(KvLogEvent {
                     key,
                     value: decline_data,
@@ -177,7 +179,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                                 &redistribution_vault,
                                 &join_request,
                             )
-                                .await?;
+                            .await?;
                         }
                     }
                 }
@@ -196,7 +198,35 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
         vault: &VaultData,
         join_request: &JoinClusterEvent,
     ) -> Result<()> {
-        self.redistribute_existing_secrets(vault, join_request).await
+        self.redistribute_existing_secrets(vault, join_request)
+            .await
+    }
+
+    /// Reconcile the local sender-owned distributions after a member is accepted.
+    ///
+    /// Membership acceptance is a single canonical event emitted by one approver,
+    /// so every other existing member must react to that event and re-share the
+    /// secrets it owns. Devices that are receiver-only cannot decrypt another
+    /// device's share and are skipped by `redistribute_existing_secrets`.
+    pub async fn redistribute_existing_secrets_for_join(
+        &self,
+        join_request: &JoinClusterEvent,
+    ) -> Result<()> {
+        let member = self.get_member().await?;
+        let vault = self
+            .get_vault(member)
+            .await?
+            .update_membership(UserMembership::Member(UserDataMember {
+                user_data: join_request.candidate.clone(),
+            }));
+
+        debug!(
+            local_device = ?self.user_creds.device_id(),
+            candidate_device = ?join_request.candidate.device.device_id,
+            "Reconciling sender-owned secret distributions for accepted vault member"
+        );
+        self.redistribute_existing_secrets(&vault, join_request)
+            .await
     }
 
     async fn get_vault(&self, member: UserDataMember) -> Result<VaultData> {
@@ -233,15 +263,13 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
             if split_claim.is_none() {
                 let local_claim_events = self
                     .p_obj
-                    .get_object_events_from_beginning(
-                        SsDeviceLogDescriptor::from(local_device_id.clone()),
-                    )
+                    .get_object_events_from_beginning(SsDeviceLogDescriptor::from(
+                        local_device_id.clone(),
+                    ))
                     .await?;
                 split_claim = local_claim_events
                     .into_iter()
-                    .map(|obj: SsDeviceLogObject| {
-                        obj.to_distribution_request()
-                    })
+                    .map(|obj: SsDeviceLogObject| obj.to_distribution_request())
                     .find(|claim| {
                         claim.distribution_type == SecretDistributionType::Split
                             && claim.sender.eq(&local_device_id)
@@ -261,8 +289,10 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                 receiver: joined_device_id.clone(),
             });
             let has_target_distribution = self.p_obj.find_tail_event(target_desc).await?.is_some();
-            let claim_already_contains_joined =
-                split_claim.receivers.iter().any(|d| d.eq(&joined_device_id));
+            let claim_already_contains_joined = split_claim
+                .receivers
+                .iter()
+                .any(|d| d.eq(&joined_device_id));
             if has_target_distribution && claim_already_contains_joined {
                 continue;
             }
@@ -357,6 +387,14 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                 continue;
             }
 
+            info!(
+                local_device = ?local_device_id,
+                joined_device = ?joined_device_id,
+                pass_id = %pass_id.name,
+                shares_needed,
+                "Redistributing sender-owned secret for vault member"
+            );
+
             let plain_secret = recover_from_shares(shares_for_recovery)?;
             let secure_pass = SecurePassInfo::from(PlainPassInfo {
                 pass_id: pass_id.clone(),
@@ -397,7 +435,11 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                 self.p_obj.repo.save(wf).await?;
             }
 
-            if !split_claim.receivers.iter().any(|d| d.eq(&joined_device_id)) {
+            if !split_claim
+                .receivers
+                .iter()
+                .any(|d| d.eq(&joined_device_id))
+            {
                 split_claim.receivers.push(joined_device_id.clone());
             }
             // Every existing receiver just got a brand new share from the re-split
@@ -418,9 +460,19 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
             }
             // Persist the updated claim in the device log too so the next sync
             // sends the new receiver list to the server.
-            p_ss.save_claim_in_ss_device_log(split_claim.clone()).await?;
+            p_ss.save_claim_in_ss_device_log(split_claim.clone())
+                .await?;
             p_ss.save_ss_log_event(split_claim.clone()).await?;
-            ss_log_data.claims.insert(split_claim.id.clone(), split_claim);
+            ss_log_data
+                .claims
+                .insert(split_claim.id.clone(), split_claim);
+
+            info!(
+                local_device = ?local_device_id,
+                joined_device = ?joined_device_id,
+                pass_id = %pass_id.name,
+                "Sender-owned secret redistribution saved locally"
+            );
         }
 
         Ok(())
@@ -533,14 +585,22 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo, SecurePassInfo};
-    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::crypto::utils::Id48bit;
     use crate::meta_tests::fixture_util::fixture::states::EmptyState;
-    use crate::node::common::model::secret::SsDistributionId;
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo, SecurePassInfo};
+    use crate::node::common::model::secret::{
+        SsClaimId, SsDistributionCompositeStatus, SsDistributionId, SsRecoveryId,
+    };
     use crate::node::common::model::vault::vault_data::VaultData;
+    use crate::node::db::descriptors::vault_descriptor::VaultStatusDescriptor;
+    use crate::node::db::events::object_id::ArtifactId;
+    use crate::node::db::events::vault::vault_event::VaultObject;
+    use crate::node::db::events::vault::vault_status::VaultStatusObject;
     use crate::node::db::events::shared_secret_event::SsWorkflowObject;
-    use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
+    use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
+    use crate::node::db::repo::generic_db::SaveCommand;
     use crate::secret::MetaDistributor;
     use anyhow::Result;
 
@@ -552,7 +612,11 @@ mod tests {
     )> {
         let registry = FixtureRegistry::empty();
         let client_user_creds = registry.state.user_creds.client.clone();
-        let client_member = registry.state.vault_data.client_membership.user_data_member();
+        let client_member = registry
+            .state
+            .vault_data
+            .client_membership
+            .user_data_member();
         let single_member_vault = VaultData::from(client_member.clone());
 
         let vault_member = VaultMember {
@@ -690,6 +754,82 @@ mod tests {
             "Second redistribution run must not create additional events"
         );
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test20_accept_recover_ignores_foreign_and_unknown_claims() -> Result<()> {
+        let registry = FixtureRegistry::base().await?;
+        let client_user_creds = registry.state.empty.user_creds.client.clone();
+        let orchestrator = MetaOrchestrator {
+            p_obj: registry.state.spec.client.p_obj.clone(),
+            user_creds: client_user_creds,
+        };
+        let client_user = orchestrator.user_creds.user();
+        let client_member = UserDataMember::from(client_user.clone());
+        orchestrator
+            .p_obj
+            .repo
+            .save(VaultObject::sign_up(client_user.vault_name(), client_member.clone()))
+            .await?;
+        orchestrator
+            .p_obj
+            .repo
+            .save(VaultStatusObject::new(
+                VaultStatus::Member(client_member),
+                ArtifactId::from(VaultStatusDescriptor::from(client_user.user_id())),
+            ))
+            .await?;
+        let foreign_receiver = registry
+            .state
+            .empty
+            .vault_data
+            .vd_membership
+            .user_data_member()
+            .user()
+            .device
+            .device_id
+            .clone();
+        let pass_info = PlainPassInfo::new("test20_foreign".to_string(), "foreign|~".to_string());
+        let pass_id = SecurePassInfo::from(pass_info).pass_id;
+        let claim_id = ClaimId::from(Id48bit::generate());
+        let claim = SsClaim {
+            id: claim_id.clone(),
+            dist_claim_id: SsClaimId {
+                id: claim_id.clone(),
+                pass_id: pass_id.clone(),
+            },
+            vault_name: orchestrator.user_creds.vault_name.clone(),
+            sender: orchestrator.user_creds.device_id().clone(),
+            distribution_type: SecretDistributionType::Recover,
+            receivers: vec![foreign_receiver.clone()],
+            status: SsDistributionCompositeStatus::from(vec![foreign_receiver.clone()]),
+            client_status: None,
+        };
+
+        let p_ss = PersistentSharedSecret::from(orchestrator.p_obj.clone());
+        p_ss.save_ss_log_event(claim.clone()).await?;
+        orchestrator.accept_recover(claim_id.clone()).await?;
+
+        let recovery_descriptor = SsWorkflowDescriptor::Recovery(SsRecoveryId {
+            claim_id: claim.dist_claim_id.clone(),
+            sender: claim.sender.clone(),
+            distribution_id: SsDistributionId {
+                pass_id,
+                receiver: foreign_receiver,
+            },
+        });
+        assert!(
+            orchestrator
+                .p_obj
+                .find_tail_event(recovery_descriptor)
+                .await?
+                .is_none(),
+            "a device that is not listed in receivers must not create a recovery response"
+        );
+
+        let unknown_claim = ClaimId::from(Id48bit::generate());
+        orchestrator.accept_recover(unknown_claim).await?;
         Ok(())
     }
 }

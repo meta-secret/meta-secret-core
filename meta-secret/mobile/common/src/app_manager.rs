@@ -1,6 +1,6 @@
 use crate::log_timestamp;
-use anyhow::Result;
 use anyhow::bail;
+use anyhow::Result;
 use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::node::api::{ReadSyncRequest, SsRecoveryCompletion, SyncRequest};
 use meta_secret_core::node::app::app_manager_shared::{
@@ -15,8 +15,7 @@ use meta_secret_core::node::common::meta_tracing::client_span;
 use meta_secret_core::node::common::model::device::common::{DeviceName, DeviceType};
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::{
-    ClaimId, RecoveryClientStatus, SecretDistributionType, SsClaim, SsDistributionId,
-    SsDistributionStatus, SsRecoveryId,
+    ClaimId, SsClaim, SsDistributionId, SsDistributionStatus, SsRecoveryId,
 };
 
 use meta_secret_core::node::common::model::user::common::UserData;
@@ -29,7 +28,7 @@ use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use meta_secret_core::secret::shared_secret::PlainText;
 use std::sync::Arc;
 use std::thread;
-use tracing::{Instrument, info, instrument};
+use tracing::{info, instrument, warn, Instrument};
 
 pub struct ApplicationManager<Repo: KvLogEventRepo + Send + Sync, SyncP: SyncProtocol + Send + Sync>
 {
@@ -184,14 +183,13 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
     }
 
     pub async fn accept_recover_mobile(&self, claim_id: ClaimId) -> Result<()> {
-        println!("🦀 Mobile App Manager: Accept recover mobile");
+        info!(claim_id = ?claim_id, "accept_recover_mobile: started");
 
         // Force sync before checking claims to ensure we have latest distribution events
-        if let Ok(user_creds) = self.meta_client_service.find_user_creds().await {
-            println!("🦀 Mobile App Manager: Force sync before accept_recover");
-            self.sync_gateway.sync(user_creds.user()).await?;
-            println!("🦀 Mobile App Manager: Force sync completed");
-        }
+        let user_creds = self.meta_client_service.find_user_creds().await?;
+        info!(claim_id = ?claim_id, "accept_recover_mobile: syncing before claim lookup");
+        self.sync_gateway.sync(user_creds.user()).await?;
+        info!(claim_id = ?claim_id, "accept_recover_mobile: pre-accept sync completed");
 
         let state = self.get_state().await?;
         let ApplicationState::Vault(vault_info) = state else {
@@ -201,14 +199,37 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
             bail!("Not a member");
         };
 
-        let _ = member
+        let claim = member
             .ss_claims
             .claims
             .get(&claim_id)
             .ok_or_else(|| anyhow::anyhow!("Claim not found: {:?}", claim_id))?
             .clone();
 
-        self.accept_recover(claim_id).await
+        info!(
+            claim_id = ?claim_id,
+            secret = %claim.dist_claim_id.pass_id.name,
+            sender = ?claim.sender,
+            client_status = ?claim.client_status,
+            "accept_recover_mobile: claim found, dispatching approval"
+        );
+
+        let result = self.accept_recover(claim_id.clone()).await;
+        match &result {
+            Ok(()) => {
+                info!(claim_id = ?claim_id, "accept_recover_mobile: approval event created");
+                // The UI must not finish the action before the approval is visible
+                // to the server. Otherwise a later decline can overtake a local
+                // approval (or vice versa) simply because the background sync
+                // runs after the alert has already disappeared.
+                self.sync_gateway.sync(user_creds.user()).await?;
+                info!(claim_id = ?claim_id, "accept_recover_mobile: approval synced");
+            }
+            Err(error) => {
+                warn!(claim_id = ?claim_id, error = %error, "accept_recover_mobile: approval failed")
+            }
+        }
+        result
     }
 
     pub async fn accept_recover(&self, claim_id: ClaimId) -> Result<()> {
@@ -239,12 +260,10 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
         self.meta_client_service
             .decline_recover(claim_id.clone())
             .await?;
-        if let Err(e) = self.sync_gateway.sync(user_creds.user()).await {
-            println!(
-                "🦀 Mobile App Manager: ⚠️ Sync after decline failed (will retry): {}",
-                e
-            );
-        }
+        // Do not hide a failed upload behind a successful UI dismissal. The
+        // decline is the terminal decision for the claim and must reach the
+        // server before the alert is reported as processed.
+        self.sync_gateway.sync(user_creds.user()).await?;
         println!(
             "🦀 Mobile App Manager: ✅ Decline recover completed for claim: {:?}",
             claim_id
@@ -347,7 +366,19 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
                         return self.show_local_secret(user_creds, pass_id).await;
                     }
 
-                    let claim_id = self.find_claim_id_by_pass_id(&pass_id).await;
+                    let claim_id = member
+                        .ss_claims
+                        .find_unique_accepted_recovery_claim_id_for_sender(
+                            user_creds.device_id(),
+                            &pass_id,
+                        )?;
+
+                    info!(
+                        pass_id = %pass_id.name,
+                        sender = ?user_creds.device_id(),
+                        claim_id = ?claim_id,
+                        "mobile selected recovery claim for show_recovered"
+                    );
 
                     match claim_id {
                         None => {
@@ -390,16 +421,18 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
                                     ReadSyncRequest::SsRecoveryCompletion(completion),
                                 ));
 
-                                if let Err(e) = self.server.send(sync_request).await {
-                                    println!(
-                                        "🦀 Mobile App Manager: ❌ Failed to send recovery completion: {}",
-                                        e
-                                    );
-                                } else {
-                                    println!(
-                                        "🦀 Mobile App Manager: ✅ Recovery completion sent successfully"
-                                    );
-                                }
+                                self.server.send(sync_request).await?;
+
+                                // The sender's local claim is marked Delivered while
+                                // recovering the secret.  Flush that terminal state before
+                                // returning to the UI so the next Recover action cannot see
+                                // the previous claim as still Accepted and reuse it.
+                                self.sync_gateway.sync(user_creds.user()).await?;
+                                info!(
+                                    pass_id = %pass_id.name,
+                                    claim_id = ?claim_id,
+                                    "mobile recovery completion synchronized"
+                                );
                             }
 
                             Ok(pass)
@@ -447,10 +480,9 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
     }
 
     pub async fn find_claim_id_by_pass_id(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
-        let user_creds = match self.meta_client_service.find_user_creds().await {
-            Ok(user_creds) => user_creds,
-            Err(_) => return None,
-        };
+        if self.meta_client_service.find_user_creds().await.is_err() {
+            return None;
+        }
         let state = match self.get_state().await {
             Ok(state) => state,
             Err(_) => return None,
@@ -459,28 +491,18 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
         let ApplicationState::Vault(VaultFullInfo::Member(member)) = state else {
             return None;
         };
-        println!("🦀 Find claim id by pass id. State is Member");
-        let my_device_id = user_creds.device_id();
-        // Core guarantees at most one active claim per (sender, pass_id).
-        // Find the claim approved by a receiver but not yet retrieved by sender.
+        let user_creds = self.meta_client_service.find_user_creds().await.ok()?;
         member
             .ss_claims
-            .claims
-            .values()
-            .find(|claim| {
-                matches!(claim.distribution_type, SecretDistributionType::Recover)
-                    && claim.dist_claim_id.pass_id.eq(pass_id)
-                    && claim.sender.eq(my_device_id)
-                    && matches!(claim.client_status, Some(RecoveryClientStatus::Accepted))
-            })
-            .map(|claim| claim.id.clone())
+            .find_unique_active_recovery_claim_id(user_creds.device_id(), pass_id)
+            .ok()
+            .flatten()
     }
 
     pub async fn find_claim_by_pass_id(&self, pass_id: &MetaPasswordId) -> Option<SsClaim> {
-        let user_creds = match self.meta_client_service.find_user_creds().await {
-            Ok(user_creds) => user_creds,
-            Err(_) => return None,
-        };
+        if self.meta_client_service.find_user_creds().await.is_err() {
+            return None;
+        }
         let state = match self.get_state().await {
             Ok(state) => state,
             Err(_) => return None,
@@ -489,19 +511,13 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
         let ApplicationState::Vault(VaultFullInfo::Member(member)) = state else {
             return None;
         };
-        println!("🦀 Find claim by pass id. State is Member");
-        let my_device_id = user_creds.device_id();
-        member
+        let user_creds = self.meta_client_service.find_user_creds().await.ok()?;
+        let claim_id = member
             .ss_claims
-            .claims
-            .values()
-            .find(|claim| {
-                matches!(claim.distribution_type, SecretDistributionType::Recover)
-                    && claim.dist_claim_id.pass_id.eq(pass_id)
-                    && claim.sender.eq(my_device_id)
-                    && matches!(claim.client_status, Some(RecoveryClientStatus::Accepted))
-            })
-            .cloned()
+            .find_unique_active_recovery_claim_id(user_creds.device_id(), pass_id)
+            .ok()
+            .flatten()?;
+        member.ss_claims.claims.get(&claim_id).cloned()
     }
 
     #[instrument(name = "MetaClientService", skip_all)]

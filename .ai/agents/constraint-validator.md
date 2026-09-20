@@ -54,7 +54,7 @@ Validate implementation plan against architectural constraints (Stage 3.5). Acts
 
 ### 4. Server & Persistence Rules
 
-- [ ] Server NEVER stores:
+- [ ] Server never stores plaintext Master Keys, Key Shares, or Secrets; Encrypted Key Shares may be temporarily queued for delivery/synchronization:
   - Master key
   - Key shares
   - Plain secret values
@@ -200,4 +200,3 @@ Does plan handle device operations correctly?
 All checks passed?
 └─ PASS ✅ → Proceed to implementation
 ```
-

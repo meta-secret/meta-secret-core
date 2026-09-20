@@ -15,13 +15,9 @@ dist-ssr
 coverage
 *.local
 
-/cypress/videos/
-/cypress/screenshots/
 
 # Test artifacts
-tests/e2e/.run-counter
 test-results/
-playwright-report/
 
 # Editor directories and files
 .vscode/*
@@ -32,4 +28,3 @@ playwright-report/
 *.njsproj
 *.sln
 *.sw?
-.cypress-cache/

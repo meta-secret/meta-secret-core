@@ -1,0 +1,61 @@
+{
+  "runId": "test14-block3",
+  "testNumber": 14,
+  "name": "Test #14 block 3 — Android sender duplicate recovery, iOS receiver",
+  "mode": "duplicate-recovery",
+  "setup": { "initiator": "web" },
+  "server": {
+    "url": "http://127.0.0.1:3000",
+    "image": "ghcr.io/meta-secret/meta-secret-core/meta-secret-server:latest",
+    "container": "meta-secret-e2e-server-test14-block3",
+    "port": 3000
+  },
+  "web": { "url": "http://localhost:5173", "directory": "../meta-secret/web-cli/ui" },
+  "ios": {
+    "composeRoot": "../../meta-secret-compose",
+    "simulatorName": "iPhone 17",
+    "bundleId": "org.metasecret.vault",
+    "testClass": "CaseEightIosBothOfflineUITest",
+    "joinTestMethod": "joinWebInitiatedVault",
+    "raceStepTestMethod": "handleApproveDeclineStep",
+    "duplicateRecoveryTestMethod": "handleApproveDeclineStep"
+  },
+  "android": {
+    "avdName": "Pixel_4a",
+    "bundleId": "metasecret.project.com",
+    "testClass": "metasecret.project.com.CaseEightAndroidBothOfflineTest",
+    "testMethod": "joinWebInitiatedVault",
+    "directInstrumentationSetup": true,
+    "raceStepTestMethod": "handleApproveDeclineStep",
+    "duplicateRecoveryTestMethod": "handleApproveDeclineStep"
+  },
+  "secretCreation": { "initial": { "web": ["default"] } },
+  "recovery": {
+    "expectedCycles": 3,
+    "cyclePlan": [
+      {
+        "block": "android-duplicate-recovery-1",
+        "count": 1,
+        "senders": [{ "platform": "android", "secret": "default" }],
+        "approvals": [{ "platform": "ios", "action": "approve", "secret": "default" }],
+        "expectedOutcome": "approved"
+      },
+      {
+        "block": "android-duplicate-recovery-2",
+        "count": 1,
+        "senders": [{ "platform": "android", "secret": "default" }],
+        "approvals": [{ "platform": "ios", "action": "approve", "secret": "default" }],
+        "expectedOutcome": "approved"
+      },
+      {
+        "block": "android-duplicate-recovery-3",
+        "count": 1,
+        "senders": [{ "platform": "android", "secret": "default" }],
+        "approvals": [{ "platform": "ios", "action": "approve", "secret": "default" }],
+        "expectedOutcome": "approved"
+      }
+    ]
+  },
+  "vault": { "name": "test14-block3@test.ru" },
+  "secrets": { "default": { "name": "test-secret", "value": "test-secret-value" } }
+}

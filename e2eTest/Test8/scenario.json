@@ -1,0 +1,66 @@
+{
+  "runId": "test8",
+  "testNumber": 8,
+  "name": "Test #8 — both receivers offline, then online one at a time",
+  "mode": "both-receivers-offline",
+  "setup": { "initiator": "web" },
+  "server": {
+    "url": "http://127.0.0.1:3000",
+    "image": "ghcr.io/meta-secret/meta-secret-core/meta-secret-server:latest",
+    "container": "meta-secret-e2e-server-test8",
+    "port": 3000
+  },
+  "web": {
+    "url": "http://localhost:5173",
+    "directory": "../meta-secret/web-cli/ui"
+  },
+  "ios": {
+    "composeRoot": "../../meta-secret-compose",
+    "simulatorName": "iPhone 17",
+    "bundleId": "org.metasecret.vault",
+    "testClass": "CaseEightIosBothOfflineUITest",
+    "joinTestMethod": "joinWebInitiatedVault",
+    "stepTestMethod": "handleRecoveryStep"
+  },
+  "android": {
+    "avdName": "Pixel_4a",
+    "bundleId": "metasecret.project.com",
+    "testClass": "metasecret.project.com.CaseEightAndroidBothOfflineTest",
+    "joinTestMethod": "joinWebInitiatedVault",
+    "stepTestMethod": "handleRecoveryStep",
+    "directInstrumentationSetup": true
+  },
+  "secretCreation": {
+    "initial": { "web": ["default"] }
+  },
+  "recovery": {
+    "showTimeoutMs": 45000,
+    "offlineBlocks": [
+      {
+        "name": "web-sender",
+        "sender": "web",
+        "receivers": ["android", "ios"],
+        "approvalOrder": ["android", "ios"],
+        "count": 3
+      },
+      {
+        "name": "ios-sender",
+        "sender": "ios",
+        "receivers": ["web", "android"],
+        "approvalOrder": ["web", "android"],
+        "count": 3
+      },
+      {
+        "name": "android-sender",
+        "sender": "android",
+        "receivers": ["web", "ios"],
+        "approvalOrder": ["web", "ios"],
+        "count": 3
+      }
+    ]
+  },
+  "vault": { "name": "test8@test.ru" },
+  "secrets": {
+    "default": { "name": "test-secret", "value": "test-secret-value" }
+  }
+}

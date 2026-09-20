@@ -1,0 +1,63 @@
+{
+  "runId": "test15-block1",
+  "testNumber": 15,
+  "name": "Test #15 block 1 — CLI joins during Web recovery",
+  "mode": "new-device-during-recovery",
+  "setup": { "initiator": "web" },
+  "newDevice": { "oldReceivers": ["ios", "android"] },
+  "server": {
+    "url": "http://127.0.0.1:3000",
+    "image": "ghcr.io/meta-secret/meta-secret-core/meta-secret-server:latest",
+    "container": "meta-secret-e2e-server-test15-block1",
+    "port": 3000
+  },
+  "web": {
+    "url": "http://localhost:5173",
+    "directory": "../meta-secret/web-cli/ui"
+  },
+  "ios": {
+    "composeRoot": "../../meta-secret-compose",
+    "simulatorName": "iPhone 17",
+    "bundleId": "org.metasecret.vault",
+    "testClass": "CaseEightIosBothOfflineUITest",
+    "joinTestMethod": "joinWebInitiatedVault",
+    "stepTestMethod": "handleRecoveryStep"
+  },
+  "android": {
+    "avdName": "Pixel_4a",
+    "bundleId": "metasecret.project.com",
+    "testClass": "metasecret.project.com.CaseEightAndroidBothOfflineTest",
+    "testMethod": "joinWebInitiatedVault",
+    "stepTestMethod": "handleRecoveryStep",
+    "directInstrumentationSetup": true
+  },
+  "secretCreation": { "initial": { "web": ["default"] } },
+  "recovery": {
+    "expectedCycles": 3,
+    "cyclePlan": [
+      {
+        "block": "web-sender-cli-join-1",
+        "count": 1,
+        "senders": [{ "platform": "web", "secret": "default" }],
+        "approvals": [{ "platform": "cli", "action": "approve", "secret": "default" }],
+        "expectedOutcome": "approved"
+      },
+      {
+        "block": "web-sender-cli-join-2",
+        "count": 1,
+        "senders": [{ "platform": "web", "secret": "default" }],
+        "approvals": [{ "platform": "cli", "action": "approve", "secret": "default" }],
+        "expectedOutcome": "approved"
+      },
+      {
+        "block": "web-sender-cli-join-3",
+        "count": 1,
+        "senders": [{ "platform": "web", "secret": "default" }],
+        "approvals": [{ "platform": "cli", "action": "approve", "secret": "default" }],
+        "expectedOutcome": "approved"
+      }
+    ]
+  },
+  "vault": { "name": "test15-block1@test.ru" },
+  "secrets": { "default": { "name": "test-secret", "value": "test-secret-value" } }
+}

@@ -6,7 +6,7 @@ use wasm_bindgen_futures::spawn_local;
 use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::node::api::{ReadSyncRequest, SsRecoveryCompletion, SyncRequest};
 use meta_secret_core::node::app::app_manager_shared::{
-    build_client_components, find_recovery_claim_id_from_state, recover_plain_text,
+    build_client_components, recover_plain_text,
     resolve_signup_vault_name,
 };
 use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
@@ -150,6 +150,23 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
             .unwrap()
     }
 
+    /// Flush locally-created events after the browser comes back online.
+    ///
+    /// `get_state` reads the local application state; it does not upload a
+    /// recovery response that was created while the browser was offline.
+    /// Keeping this operation explicit lets the Web UI perform one bounded
+    /// sync at the reconnect boundary without changing the normal refresh
+    /// path used by the mobile clients.
+    pub async fn sync_now(&self) -> Result<()> {
+        let user_creds = self.meta_client_service.find_user_creds().await?;
+        // The background MetaClientService may upload a locally queued recovery
+        // workflow at the same time as this reconnect hook.  A second
+        // idempotent pass makes the following read observe the canonical
+        // SsLog snapshot created by that upload instead of the previous tail.
+        self.sync_gateway.sync(user_creds.user()).await?;
+        self.sync_gateway.sync(user_creds.user()).await
+    }
+
     pub async fn accept_recover(&self, claim_id: ClaimId) -> Result<()> {
         self.meta_client_service.accept_recover(claim_id).await
     }
@@ -171,7 +188,11 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
 
     pub async fn show_recovered(&self, pass_id: MetaPasswordId) -> Result<PlainText> {
         let user_creds = self.meta_client_service.find_user_creds().await?;
-        match &self.get_state().await {
+        // Use one immutable state snapshot both to select the accepted claim and to create its
+        // completion. Previously these were two independent get_state() calls, which could select
+        // a claim from one snapshot and look it up in another.
+        let state = self.get_state().await;
+        match &state {
             ApplicationState::Local(_) => {
                 bail!("Show recovered is not allowed in local state");
             }
@@ -189,7 +210,18 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
                         return self.show_local_secret(user_creds, pass_id).await;
                     }
 
-                    let claim_id = self.find_claim_by_pass_id(&pass_id).await;
+                    let claim_id = member
+                        .ss_claims
+                        .find_unique_accepted_recovery_claim_id_for_sender(
+                            user_creds.device_id(),
+                            &pass_id,
+                        )?;
+                    info!(
+                        pass_id = %pass_id.name,
+                        sender = ?user_creds.device_id(),
+                        claim_id = ?claim_id,
+                        "web selected recovery claim for show_recovered"
+                    );
                     match claim_id {
                         None => bail!("Claim id not found"),
                         Some(claim_id) => {
@@ -217,9 +249,10 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
                                 let sync_request = SyncRequest::Read(Box::new(
                                     ReadSyncRequest::SsRecoveryCompletion(completion),
                                 ));
-                                if let Err(e) = self.server.send(sync_request).await {
-                                    error!(error = %e, "failed to send recovery completion");
-                                }
+                                // Do not report a successful secret reveal until the server has
+                                // persisted the terminal recovery state. Otherwise the next
+                                // Recover can race the completion and be rejected as a duplicate.
+                                self.server.send(sync_request).await?;
                             }
 
                             Ok(plain_text)
@@ -261,7 +294,15 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
 
     pub async fn find_claim_by_pass_id(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
         let state = self.get_state().await;
-        find_recovery_claim_id_from_state(&state, pass_id)
+        let user_creds = self.meta_client_service.find_user_creds().await.ok()?;
+        let ApplicationState::Vault(VaultFullInfo::Member(member)) = state else {
+            return None;
+        };
+        member
+            .ss_claims
+            .find_unique_active_recovery_claim_id(user_creds.device_id(), pass_id)
+            .ok()
+            .flatten()
     }
 
     #[instrument(name = "MetaClientService", skip_all)]

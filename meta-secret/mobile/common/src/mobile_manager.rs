@@ -1,16 +1,17 @@
 use crate::app_manager::ApplicationManager;
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use meta_db_sqlite::db::sqlite_migration::EmbeddedMigrationsTool;
 use meta_db_sqlite::db::sqlite_store::SqlIteRepo;
 use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::node::app::sync::api_url::ApiUrl;
 use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
-use meta_secret_core::node::common::model::ApplicationState;
 use meta_secret_core::node::common::model::device::common::{DeviceName, DeviceType};
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::{ClaimId, SsClaim};
 use meta_secret_core::node::common::model::user::common::UserData;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
+use meta_secret_core::node::common::model::ApplicationState;
+use meta_secret_core::node::common::model::VaultFullInfo::Member;
 use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
 use once_cell::sync::Lazy;
 use std::fs;
@@ -19,10 +20,17 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 use tracing::{info, warn};
-use meta_secret_core::node::common::model::VaultFullInfo::Member;
 
 static GLOBAL_APP_MANAGER: Lazy<Mutex<Option<Arc<MobileApplicationManager>>>> =
     Lazy::new(|| Mutex::new(None));
+
+// The UniFFI surface is synchronous, while the Kotlin/Swift clients can call
+// several operations concurrently (state refresh, claim lookup and recovery
+// approval).  All of those operations share one Tokio runtime and one
+// MpscDataTransfer response channel.  Letting block_on calls overlap allows a
+// response to be consumed by the wrong caller and can leave an approval stuck
+// indefinitely.  Serialize calls at the FFI boundary per mobile process.
+static FFI_CALL_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
     // Multi-thread runtime: Kotlin Native calls FFI from worker threads (e.g. Dispatchers.IO).
@@ -77,6 +85,7 @@ pub struct MobileApplicationManager {
 
 impl MobileApplicationManager {
     pub fn sync_wrapper<F: Future>(future: F) -> F::Output {
+        let _guard = FFI_CALL_LOCK.lock().expect("mobile FFI call lock poisoned");
         RUNTIME.block_on(future)
     }
 

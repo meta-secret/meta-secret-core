@@ -41,7 +41,6 @@ Run `task -l` from repo root for the full list.
 | Build all default images | `task build` |
 | Build + push images | `task push` |
 | Regenerate cargo-chef recipe | `task generate-recipe` (after any `Cargo.toml` change) |
-| Playwright smoke tests | `PLAYWRIGHT_BASE_URL=… task playwright-test` |
 | Run web-ui dev server | `task web-run` |
 
 ## Change → verify mapping

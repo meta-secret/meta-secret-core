@@ -12,7 +12,8 @@ use meta_secret_core::node::common::model::device::common::{DeviceData, DeviceId
 use meta_secret_core::node::common::model::secret::{
     SecretDistributionType, SsDistributionId, SsDistributionStatus,
 };
-use meta_secret_core::node::common::model::vault::vault::VaultStatus;
+use meta_secret_core::node::common::model::user::common::UserMembership;
+use meta_secret_core::node::common::model::vault::vault::{VaultName, VaultStatus};
 use meta_secret_core::node::db::actions::vault::vault_action::ServerVaultAction;
 use meta_secret_core::node::db::descriptors::shared_secret_descriptor::{
     SsLogDescriptor, SsWorkflowDescriptor,
@@ -143,7 +144,40 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                     dist_type = ?claim_preview.distribution_type,
                     "SsDeviceLog received"
                 );
+                if claim_preview.distribution_type == SecretDistributionType::Recover {
+                    let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
+                    let server_log = p_ss_log.get_ss_log_obj(vault_name.clone()).await?;
+                    let server_log_with_status = server_log
+                        .clone()
+                        .with_client_status(&claim_preview.sender);
+                    if let Some(active_claim_id) = server_log_with_status
+                        .find_unique_active_recovery_claim_id(
+                        &claim_preview.sender,
+                        &claim_preview.dist_claim_id.pass_id,
+                    )? {
+                        if active_claim_id != claim_preview.id {
+                            debug!(
+                                ?active_claim_id,
+                                rejected_claim_id = ?claim_preview.id,
+                                "recovery claim already active; keeping authoritative claim"
+                            );
+                            return Ok(());
+                        }
+                    }
 
+                    // Device logs contain a complete local snapshot. Merge it with the
+                    // server's current claim instead of inserting it wholesale: a stale
+                    // snapshot from another receiver must not resurrect Pending after a
+                    // terminal recovery decision has already been accepted.
+                    self.p_obj.repo.save(ss_device_log_obj.clone()).await?;
+                    let merged_log = server_log.merge_claim_update(claim_preview);
+                    let new_ss_log_event = p_ss_log
+                        .create_new_ss_log_object(merged_log, vault_name.clone())
+                        .await?;
+                    self.p_obj.repo.save(new_ss_log_event).await?;
+                    self.publish_invalidation(vault_name, StateInvalidationScope::SsClaims);
+                    return Ok(());
+                }
                 self.p_obj.repo.save(ss_device_log_obj.clone()).await?;
 
                 let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
@@ -163,8 +197,27 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                         bail!("No claim found for decline: {:?}", decline_data)
                     };
                     let ss_log_data = ss_event.to_data();
-                    let new_ss_log_data =
-                        ss_log_data.decline(decline_data.claim_id, decline_data.receiver_id);
+                    let Some(current_claim) = ss_log_data.claims.get(&decline_data.claim_id) else {
+                        bail!("No claim found for decline: {:?}", decline_data)
+                    };
+                    let has_prior_approval = current_claim.status.statuses.values().any(|status| {
+                        matches!(
+                            status,
+                            SsDistributionStatus::Sent | SsDistributionStatus::Delivered
+                        )
+                    });
+                    let new_ss_log_data = if has_prior_approval {
+                        debug!(
+                            claim_id = ?decline_data.claim_id,
+                            receiver = ?decline_data.receiver_id,
+                            "ignoring late recovery decline after approval"
+                        );
+                        ss_log_data
+                    } else {
+                        // The first decline is terminal for this claim: retire every
+                        // still-pending receiver so a later approval cannot reveal the secret.
+                        ss_log_data.decline_remaining_pending(decline_data.claim_id)
+                    };
                     let new_ss_log_event = p_ss_log
                         .create_new_ss_log_object(new_ss_log_data, decline_data.vault_name)
                         .await?;
@@ -208,6 +261,24 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                                     };
 
                                     let claim_id = wf.claim_id.id.clone();
+                                    if distribution_type == SecretDistributionType::Recover
+                                        && claim.status.statuses.values().any(|status| {
+                                            matches!(
+                                                status,
+                                                SsDistributionStatus::Declined
+                                                    | SsDistributionStatus::Sent
+                                                    | SsDistributionStatus::Delivered
+                                            )
+                                        })
+                                    {
+                                        debug!(
+                                            claim_id = ?claim_id,
+                                            receiver = ?device_id,
+                                            "ignoring late recovery response after terminal decision"
+                                        );
+                                        return Ok(());
+                                    }
+
                                     if distribution_type == SecretDistributionType::Split
                                         && matches!(
                                             claim.status.get(&device_id),
@@ -280,6 +351,11 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         let vault_action = vault_action_event.value;
         let vault_name = vault_action.vault_name();
         let scope = state_scope_for_vault_action(&vault_action);
+        let accepted_new_member = matches!(
+            &vault_action,
+            VaultActionEvent::Update(VaultActionUpdateEvent::UpdateMembership(update))
+                if matches!(&update.update, UserMembership::Member(_))
+        );
 
         let action = ServerVaultAction {
             p_obj: self.p_obj.clone(),
@@ -287,8 +363,38 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         };
 
         action.do_processing(vault_action).await?;
+        if accepted_new_member && self.decline_pending_recovery_claims(vault_name.clone()).await? {
+            self.publish_invalidation(vault_name.clone(), StateInvalidationScope::SsClaims);
+        }
         self.publish_invalidation(vault_name, scope);
         Ok(())
+    }
+
+    /// A membership change invalidates recovery requests created against the
+    /// previous member set. The server is the canonical log, so terminalize
+    /// pending receivers here and let every client consume the resulting
+    /// `Declined` claim through normal SsLog replication.
+    async fn decline_pending_recovery_claims(&self, vault_name: VaultName) -> Result<bool> {
+        let Some(ss_log_event) = self
+            .p_obj
+            .find_tail_event(SsLogDescriptor::from(vault_name.clone()))
+            .await?
+        else {
+            return Ok(false);
+        };
+
+        let ss_log_data = ss_log_event.to_data();
+        let declined_ss_log_data = ss_log_data.clone().decline_pending_recovery_claims();
+        if declined_ss_log_data == ss_log_data {
+            return Ok(false);
+        }
+
+        let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
+        let new_ss_log_event = p_ss
+            .create_new_ss_log_object(declined_ss_log_data, vault_name)
+            .await?;
+        self.p_obj.repo.save(new_ss_log_event).await?;
+        Ok(true)
     }
 
     pub async fn ss_replication(
