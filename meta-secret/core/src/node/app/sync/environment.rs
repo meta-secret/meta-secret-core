@@ -4,7 +4,9 @@ pub enum ServerEnvironment {
     Remote,
 }
 
-pub const SELECTED_SERVER_ENVIRONMENT: ServerEnvironment = ServerEnvironment::Local;
+/// Production/CI builds use the remote MetaServer by default.
+/// Local development is opt-in via `task set-env -- local`.
+pub const SELECTED_SERVER_ENVIRONMENT: ServerEnvironment = ServerEnvironment::Remote;
 
 pub fn parse_server_environment(environment: &str) -> ServerEnvironment {
     match environment.trim().to_lowercase().as_str() {
