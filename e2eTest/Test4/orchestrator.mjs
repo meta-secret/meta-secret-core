@@ -418,6 +418,22 @@ function runAndCapture(command, args, options = {}) {
   });
 }
 
+function runAndCaptureWithInput(command, args, input, options = {}) {
+  return new Promise((resolvePromise, reject) => {
+    const child = run(command, args, { ...options, stdio: ['pipe', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+    child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+    child.once('error', reject);
+    child.once('exit', (code, signal) => {
+      if (code === 0) resolvePromise({ stdout, stderr });
+      else reject(new Error(`${command} exited with ${code ?? signal}\n${stderr || stdout}`));
+    });
+    child.stdin.end(input);
+  });
+}
+
 async function runMetaCli(cliDirectory, args, { label = args.join(' ') } = {}) {
   if (!existsSync(metaCliBinaryPath)) {
     throw new Error(
@@ -439,6 +455,82 @@ async function runMetaCli(cliDirectory, args, { label = args.join(' ') } = {}) {
     writeDiagnostic(`[CLI][stdout] ${result.stdout.trim().slice(-4_000)}`);
   }
   return result;
+}
+
+async function runMetaCliWithInput(cliDirectory, args, input, { label = args.join(' ') } = {}) {
+  if (!existsSync(metaCliBinaryPath)) {
+    throw new Error(
+      `meta-cli binary not found at ${metaCliBinaryPath}. `
+      + 'Build it with: cargo build -p meta-cli',
+    );
+  }
+
+  writeDiagnostic(`[CLI] ${label}; cwd=${cliDirectory}`);
+  const result = await runAndCaptureWithInput(
+    metaCliBinaryPath,
+    ['--output-format', 'json', ...args],
+    input,
+    { cwd: cliDirectory },
+  );
+  if (result.stderr.trim()) writeDiagnostic(`[CLI][stderr] ${result.stderr.trim().slice(-4_000)}`);
+  if (result.stdout.trim()) writeDiagnostic(`[CLI][stdout] ${result.stdout.trim().slice(-4_000)}`);
+  return result;
+}
+
+async function createMetaCliRootDevice() {
+  const cliDirectory = resolve(
+    artifactsDirectory,
+    `test21-${scenario.runId ?? 'run'}-cli-${process.pid}-${Date.now()}`,
+  );
+  mkdirSync(cliDirectory, { recursive: true });
+  const deviceName = `test21-cli-${scenario.runId ?? 'run'}`;
+  const deviceInit = await runMetaCli(
+    cliDirectory,
+    ['init', 'device', '--device-name', deviceName],
+    { label: `init root CLI device ${deviceName}` },
+  );
+  const deviceId = deviceInit.stdout.match(/Device ID:\s*([^\s]+)/)?.[1];
+  if (!deviceId) throw new Error(`Could not parse CLI root device ID: ${deviceInit.stdout}`);
+  await runMetaCli(
+    cliDirectory,
+    ['init', 'user', '--vault-name', scenario.vault.name],
+    { label: `init root CLI vault=${scenario.vault.name}` },
+  );
+  await runMetaCli(cliDirectory, ['auth', 'sign-up'], { label: 'create CLI root vault' });
+  const secret = defaultSecret;
+  if (secret?.name && secret?.value) {
+    await runMetaCliWithInput(
+      cliDirectory,
+      ['secret', 'split', '--pass-name', secret.name, '--stdin'],
+      `${secret.value}\n`,
+      { label: `create CLI secret ${secret.name}` },
+    );
+  }
+  writeDiagnostic(`[CLI] root vault ready device=${deviceId} name=${deviceName}`);
+  return { cliDirectory, deviceId, deviceName };
+}
+
+async function acceptNextCliJoin(cliDevice, platform, timeoutMs = 180_000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastOutput = '';
+  while (Date.now() < deadline) {
+    const result = await runMetaCli(cliDevice.cliDirectory, ['auth', 'accept-all-join-requests'], {
+      label: `accept pending ${platform} join request`,
+    });
+    lastOutput = `${result.stdout}\n${result.stderr}`;
+    if (/Accepted join request|Successfully accepted\s+[1-9]/i.test(lastOutput)) {
+      writeDiagnostic(`[CLI] accepted ${platform} join request`);
+      // The CLI writes the membership update to its local log first. Opening
+      // the client once more flushes that event through the sync gateway so
+      // the joined device can observe the accepted membership immediately.
+      await runMetaCli(cliDevice.cliDirectory, ['info', 'secrets'], {
+        label: `flush ${platform} membership update`,
+      });
+      return;
+    }
+    await wait(500);
+  }
+  throw new Error(`Timed out waiting for CLI to accept ${platform} join request: ${lastOutput.slice(-2_000)}`);
 }
 
 async function createMetaCliDevice(cycle) {
@@ -643,6 +735,35 @@ async function stopProcesses() {
     }).catch(() => {});
   }
   await runAndWait('docker', ['rm', '-f', serverContainer], { stdio: 'ignore' }).catch(() => {});
+}
+
+async function captureIosScreenshot(simulatorUdid, filePath) {
+  await runAndWait('xcrun', ['simctl', 'io', simulatorUdid, 'screenshot', filePath]);
+  writeDiagnostic(`[SCREENSHOT] iOS saved ${filePath}`);
+}
+
+function captureAndroidScreenshot(serial, filePath) {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn('adb', ['-s', serial, 'exec-out', 'screencap', '-p'], {
+      cwd: projectRoot,
+      env: { ...process.env, PATH: `/opt/homebrew/bin:/usr/local/bin:${process.env.PATH ?? ''}` },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const chunks = [];
+    let stderr = '';
+    child.stdout.on('data', (chunk) => chunks.push(chunk));
+    child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+    child.once('error', reject);
+    child.once('exit', (code, signal) => {
+      if (code !== 0) {
+        reject(new Error(`adb screenshot exited with ${code ?? signal}: ${stderr}`));
+        return;
+      }
+      writeFileSync(filePath, Buffer.concat(chunks));
+      writeDiagnostic(`[SCREENSHOT] Android saved ${filePath}`);
+      resolvePromise();
+    });
+  });
 }
 
 async function findIosSimulator() {
@@ -972,7 +1093,10 @@ async function runAdbWithRetry(args, { attempts = 5, delayMs = 1_000 } = {}) {
   throw lastError;
 }
 
-async function startAndroidJoinTest(serial, { testClass = scenario.android.testClass } = {}) {
+async function startAndroidJoinTest(
+  serial,
+  { testClass = scenario.android.testClass, testMethod = scenario.android.testMethod ?? scenario.android.joinTestMethod } = {},
+) {
   console.log('14. Starting Android UI test');
   // An emulator can briefly switch from `device` to `offline` after boot
   // while its services settle. AGP fails immediately in that state, so make
@@ -998,7 +1122,7 @@ async function startAndroidJoinTest(serial, { testClass = scenario.android.testC
   void logcat.result.catch(() => {}); // logcat is stopped deliberately when the instrumentation test ends
   const androidTestClass = testClass
     ?? 'metasecret.project.com.CaseFourAndroidConcurrentRecoveryTest';
-  const androidTestMethod = scenario.android.testMethod ?? scenario.android.joinTestMethod;
+  const androidTestMethod = testMethod;
   const androidTestSelector = androidTestMethod
     ? `${androidTestClass}#${androidTestMethod}`
     : androidTestClass;
@@ -1064,8 +1188,19 @@ async function startAndroidJoinTest(serial, { testClass = scenario.android.testC
     // The orchestrator uninstalls the app before each run, while Gradle may
     // consider installDebug up-to-date and skip reinstalling it. Install the
     // freshly assembled target APK explicitly so ActivityScenario can resolve
-    // MainActivity even when the Gradle install task is cached.
+    // MainActivity even when the Gradle install task is cached. Build both
+    // artifacts here as well: a clean workspace may not have APKs yet.
+    await runAndWait('./gradlew', [
+      ':composeApp:assembleDebug',
+      ':composeApp:assembleDebugAndroidTest',
+      ...androidNetworkGradleArgs,
+    ], { cwd: composeRoot, env: { ANDROID_SERIAL: serial } });
     await runAdbWithRetry(['-s', serial, 'install', '-r', appApkPath]);
+    // Android 16 may show the 16 KB compatibility warning only when the
+    // freshly installed target is first launched by instrumentation. Dismiss
+    // it before the UI test reaches a screenshot marker so the captured frame
+    // contains the application error state rather than the system dialog.
+    await dismissAndroidCompatibilityDialog(serial);
     test = runAndWait(
       './gradlew',
       [
@@ -1422,6 +1557,135 @@ async function runWebInitiatedSetup(page, simulatorUdid, androidSerial) {
   await androidTest.result;
   await waitForWebSecrets(page);
   return { iosTest, androidTest };
+}
+
+async function joinWebToCliVault(page, cliDevice, platform) {
+  await page.goto(scenario.web.url, { waitUntil: 'domcontentloaded' });
+  await unlockWithPasskeyIfNeeded(page);
+  await page.getByPlaceholder('vault name').fill(scenario.vault.name);
+  await page.getByRole('button', { name: 'Set Vault Name' }).click();
+  await page.getByRole('button', { name: 'Join', exact: true }).waitFor({ timeout: 120_000 });
+  await page.getByRole('button', { name: 'Join', exact: true }).click();
+  await acceptNextCliJoin(cliDevice, platform);
+  // The Web confirmation screen can remain visible while its accepted member
+  // state is persisted locally. The CLI acceptance is the authoritative
+  // membership boundary; no route transition is needed for this setup step.
+  writeDiagnostic(`[TEST21] ${platform} joined CLI-created vault`);
+}
+
+async function rejectFourthDeviceOnWeb(page, blockName) {
+  await page.goto(scenario.web.url, { waitUntil: 'domcontentloaded' });
+  await unlockWithPasskeyIfNeeded(page);
+  await page.getByPlaceholder('vault name').fill(scenario.vault.name);
+  await page.getByRole('button', { name: 'Set Vault Name' }).click();
+  await page.getByRole('button', { name: 'Join', exact: true }).waitFor({ timeout: 120_000 });
+  await page.getByRole('button', { name: 'Join', exact: true }).click();
+  const error = page.getByTestId('signup-error');
+  await error.waitFor({ state: 'visible', timeout: 120_000 });
+  await page.screenshot({
+    path: resolve(artifactsDirectory, `test-21-${blockName}-web-rejection.png`),
+    fullPage: true,
+  });
+  writeDiagnostic(`[SCREENSHOT] Web saved test-21-${blockName}-web-rejection.png`);
+  if (!(await error.innerText()).toLowerCase().includes('maximum of 3 devices')) {
+    throw new Error(`Web fourth-device error did not mention the device limit: ${await error.innerText()}`);
+  }
+  writeDiagnostic('[TEST21] Web fourth device rejected');
+
+  await page.getByRole('button', { name: 'Reset & Create New', exact: true }).click();
+  // The reset action clears IndexedDB and reinitializes the WASM manager before
+  // routing back to registration. Reload only after the reset control has
+  // disappeared so the next interaction cannot race the cleanup/re-init.
+  await error.waitFor({ state: 'hidden', timeout: 60_000 });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await unlockWithPasskeyIfNeeded(page);
+  await page.getByPlaceholder('vault name').waitFor({ state: 'visible', timeout: 60_000 });
+  const retryVaultName = scenario.vault.retryName;
+  const retryVaultInput = page.getByPlaceholder('vault name');
+  const retrySetVaultButton = page.getByRole('button', { name: 'Set Vault Name' });
+  await retryVaultInput.fill(retryVaultName);
+  await retrySetVaultButton.waitFor({ state: 'visible', timeout: 30_000 });
+  await retrySetVaultButton.click();
+  await page.getByText('Vault name is free!', { exact: true }).waitFor({ timeout: 120_000 });
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await page.getByRole('link', { name: 'Secrets', exact: true }).waitFor({ timeout: 180_000 });
+  writeDiagnostic('[TEST21] Web retry registration completed');
+}
+
+async function runFourthDeviceRejection(page, simulatorUdid, androidSerial) {
+  if (scenario.mode !== 'fourth-device-rejection') return;
+  const cliDevice = await createMetaCliRootDevice();
+  const members = scenario.memberPlatforms ?? [];
+  if (members.length !== 2) throw new Error(`Test #21 requires exactly two approved UI members, got ${members.length}`);
+
+  for (const platform of members) {
+    if (platform === 'web') {
+      await joinWebToCliVault(page, cliDevice, 'web');
+      continue;
+    }
+    if (platform === 'ios') {
+      const iosTest = startIosJoinTest(simulatorUdid, {
+        testClass: scenario.ios.testClass,
+        testMethod: scenario.ios.joinTestMethod ?? 'joinWebInitiatedVault',
+        label: 'iOS Test #21 member join',
+      });
+      void iosTest.result.catch(() => {});
+      await iosTest.waitForMarker('E2E: IOS_JOIN_REQUEST_SENT', 180_000);
+      await acceptNextCliJoin(cliDevice, 'ios');
+      await iosTest.waitForMarker('E2E: IOS_JOIN_READY', 180_000);
+      await iosTest.result;
+      continue;
+    }
+    if (platform === 'android') {
+      const androidTest = await startAndroidJoinTest(androidSerial, {
+        testClass: scenario.android.testClass,
+        testMethod: scenario.android.joinTestMethod ?? 'joinWebInitiatedVault',
+      });
+      await androidTest.waitForMarker('E2E: ANDROID_JOIN_REQUEST_SENT', 180_000);
+      await acceptNextCliJoin(cliDevice, 'android');
+      await androidTest.waitForMarker('E2E: ANDROID_JOIN_READY', 180_000);
+      await androidTest.result;
+      continue;
+    }
+    throw new Error(`Unsupported Test #21 member platform: ${platform}`);
+  }
+
+  const rejected = scenario.rejectionPlatform;
+  const blockName = scenario.runId ?? `block-${rejected}`;
+  if (rejected === 'web') {
+    await rejectFourthDeviceOnWeb(page, blockName);
+  } else if (rejected === 'ios') {
+    const iosTest = startIosJoinTest(simulatorUdid, {
+      testClass: scenario.ios.testClass,
+      testMethod: 'rejectFourthDeviceAndRegisterNewVault',
+      label: 'iOS Test #21 fourth-device rejection',
+    });
+    void iosTest.result.catch(() => {});
+    await iosTest.waitForMarker('E2E: IOS_FOURTH_DEVICE_REJECTED', 180_000);
+    await captureIosScreenshot(
+      simulatorUdid,
+      resolve(artifactsDirectory, `test-21-${blockName}-ios-rejection.png`),
+    );
+    approvalCoordinator.allow('ios-rejection-screenshot', 1);
+    await iosTest.waitForMarker('E2E: IOS_FOURTH_DEVICE_RETRY_REGISTERED', 180_000);
+    await iosTest.result;
+  } else if (rejected === 'android') {
+    const androidTest = await startAndroidJoinTest(androidSerial, {
+      testClass: scenario.android.testClass,
+      testMethod: 'rejectFourthDeviceAndRegisterNewVault',
+    });
+    await androidTest.waitForMarker('E2E: ANDROID_FOURTH_DEVICE_REJECTED', 180_000);
+    await captureAndroidScreenshot(
+      androidSerial,
+      resolve(artifactsDirectory, `test-21-${blockName}-android-rejection.png`),
+    );
+    approvalCoordinator.allow('android-rejection-screenshot', 1);
+    await androidTest.waitForMarker('E2E: ANDROID_FOURTH_DEVICE_RETRY_REGISTERED', 180_000);
+    await androidTest.result;
+  } else {
+    throw new Error(`Unsupported Test #21 rejected platform: ${rejected}`);
+  }
+  console.log(`✅ Test #21 ${blockName}: ${rejected} fourth device rejected and retry registered`);
 }
 
 async function runReceiverOfflineAfterAlertRecovery(page, simulatorUdid, androidSerial) {
@@ -4061,6 +4325,21 @@ async function main() {
   const simulatorUdid = await prepareIosSimulator();
 
   const androidSerial = await prepareAndroidEmulator();
+  if (scenario.mode === 'fourth-device-rejection') {
+    if (!existsSync(metaCliBinaryPath)) {
+      console.log('6. Building meta-cli for Test #21');
+      await runAndWait('cargo', ['build', '-p', 'meta-cli'], {
+        cwd: resolve(projectRoot, 'meta-secret'),
+      });
+    }
+    await runFourthDeviceRejection(page, simulatorUdid, androidSerial);
+    if (exitOnSuccess) {
+      await stopProcesses();
+      process.exit(0);
+    }
+    console.log('Browser remains open. Press Ctrl+C when ready to stop.');
+    await new Promise(() => {});
+  }
   if (scenario.mode === 'network-loss' && scenario.setup?.initiator === 'web') {
     await runWebInitiatedSetup(page, simulatorUdid, androidSerial);
     await runNetworkLossRecovery(page, simulatorUdid, androidSerial);

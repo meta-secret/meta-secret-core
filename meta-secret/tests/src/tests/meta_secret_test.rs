@@ -57,28 +57,21 @@ mod test {
     use meta_secret_core::meta_tests::fixture_util::fixture::states::EmptyState;
     use meta_secret_core::meta_tests::spec::test_spec::TestSpec;
     use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
-    use meta_secret_core::node::app::orchestrator::MetaOrchestrator;
     use meta_secret_core::node::app::sync::sync_gateway::SyncGateway;
     use meta_secret_core::node::api::{DataSyncResponse, ReadSyncRequest, SsRequest, SyncRequest};
     use meta_secret_core::node::common::meta_tracing::{client_span, server_span, vd_span};
     use meta_secret_core::node::common::model::crypto::aead::EncryptedMessage;
     use meta_secret_core::node::common::model::device::common::DeviceName;
-    use meta_secret_core::node::common::model::device::device_creds::{
-        DeviceCreds, DeviceCredsBuilder,
-    };
+    use meta_secret_core::node::common::model::device::device_creds::DeviceCredsBuilder;
     use meta_secret_core::node::common::model::meta_pass::{
         MetaPasswordId, PlainPassInfo, SecurePassInfo,
     };
     use meta_secret_core::node::common::model::secret::{
         ClaimId, SecretDistributionType, SsClaim, SsDistributionId, SsDistributionStatus,
     };
-    use meta_secret_core::node::common::model::user::common::{
-        UserData, UserDataMember, UserMembership,
-    };
+    use meta_secret_core::node::common::model::user::common::{UserData, UserMembership};
     use meta_secret_core::node::common::model::user::user_creds::fixture::UserCredentialsFixture;
-    use meta_secret_core::node::common::model::vault::vault::{
-        VaultMember, VaultName, VaultStatus,
-    };
+    use meta_secret_core::node::common::model::vault::vault::{VaultMember, VaultStatus};
     use meta_secret_core::node::common::model::vault::vault_data::VaultData;
     use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
     use meta_secret_core::node::db::actions::recover::RecoveryHandler;
@@ -418,63 +411,6 @@ mod test {
         Ok(UserShareDto::try_from(&decrypted.msg)?)
     }
 
-    async fn prepare_single_device_secret_for_redistribution() -> Result<(
-        FixtureRegistry<EmptyState>,
-        MetaOrchestrator<InMemKvLogEventRepo>,
-        VaultData,
-        MetaPasswordId,
-    )> {
-        let registry = FixtureRegistry::empty();
-        let client_user_creds = registry.state.user_creds.client.clone();
-        let client_member = registry
-            .state
-            .vault_data
-            .client_membership
-            .user_data_member();
-        let single_member_vault = VaultData::from(client_member.clone());
-
-        let vault_member = VaultMember {
-            member: client_member,
-            vault: single_member_vault.clone(),
-        };
-
-        let pass_info = PlainPassInfo::new("late_join_secret".to_string(), "2bee|~".to_string());
-        let secure_pass = SecurePassInfo::from(pass_info);
-        let pass_id = secure_pass.pass_id.clone();
-
-        let distributor = MetaDistributor {
-            p_obj: registry.state.p_obj.client.clone(),
-            user_creds: std::sync::Arc::new(client_user_creds.clone()),
-            vault_member: vault_member.clone(),
-        };
-        distributor
-            .distribute(vault_member.clone(), secure_pass)
-            .await?;
-
-        // In this integration test we do not run server sync, so seed ss_log explicitly.
-        let p_ss = PersistentSharedSecret::from(registry.state.p_obj.client.clone());
-        let seeded_claim = vault_member.create_split_claim(pass_id.clone());
-        p_ss.save_ss_log_event(seeded_claim).await?;
-
-        let orchestrator = MetaOrchestrator {
-            p_obj: registry.state.p_obj.client.clone(),
-            user_creds: client_user_creds,
-        };
-
-        Ok((registry, orchestrator, single_member_vault, pass_id))
-    }
-
-    fn generate_member_for_vault(vault: VaultName) -> (UserDataMember, DeviceCreds) {
-        let extra_creds = DeviceCredsBuilder::generate()
-            .build(DeviceName::generate())
-            .creds;
-        let user = UserData {
-            vault_name: vault,
-            device: extra_creds.device.clone(),
-        };
-        (UserDataMember { user_data: user }, extra_creds)
-    }
-
     #[tokio::test]
     async fn test_sign_up_and_join_two_devices() -> Result<()> {
         let spec = ServerAppSignUpSpec::build().await?;
@@ -760,34 +696,6 @@ mod test {
             .update_membership(join_d3, JoinActionUpdate::Accept)
             .await?;
 
-        // Capture recalculated D2/D3 shares right after redistribution (before sender-side sync cleanup).
-        let share_d2 = read_share_from_node(
-            spec.registry.state.client.p_obj.clone(),
-            pass_id.clone(),
-            vd_user.device.device_id.clone(),
-            &spec
-                .user_creds()
-                .client
-                .device_creds
-                .secret_box
-                .transport
-                .sk,
-        )
-        .await?;
-        let share_d3 = read_share_from_node(
-            spec.registry.state.client.p_obj.clone(),
-            pass_id.clone(),
-            client_b_user.device.device_id.clone(),
-            &spec
-                .user_creds()
-                .client
-                .device_creds
-                .secret_box
-                .transport
-                .sk,
-        )
-        .await?;
-
         // Sync all nodes until convergence.
         for _ in 0..8 {
             spec.client_gw_sync().await?;
@@ -852,12 +760,110 @@ mod test {
             assert_eq!(claim.distribution_type, SecretDistributionType::Split);
         }
 
-        // K=2 validation: any two redistributed shares recover secret, one share does not.
+        // After synchronization, each node keeps only its own Key Share.
+        let client_share = read_share_from_node(
+            spec.registry.state.client.p_obj.clone(),
+            pass_id.clone(),
+            client_user.device.device_id.clone(),
+            &spec
+                .user_creds()
+                .client
+                .device_creds
+                .secret_box
+                .transport
+                .sk,
+        )
+        .await?;
+        let share_d2 = read_share_from_node(
+            spec.registry.state.vd.p_obj.clone(),
+            pass_id.clone(),
+            vd_user.device.device_id.clone(),
+            &spec
+                .user_creds()
+                .vd
+                .device_creds
+                .secret_box
+                .transport
+                .sk,
+        )
+        .await?;
+        let share_d3 = read_share_from_node(
+            spec.registry.state.base.empty.p_obj.client_b.clone(),
+            pass_id.clone(),
+            client_b_user.device.device_id.clone(),
+            &spec
+                .user_creds()
+                .client_b
+                .device_creds
+                .secret_box
+                .transport
+                .sk,
+        )
+        .await?;
+
+        for (node_name, p_obj, foreign_receivers) in [
+            (
+                "D2",
+                spec.registry.state.vd.p_obj.clone(),
+                vec![client_user.device.device_id.clone(), client_b_user.device.device_id.clone()],
+            ),
+            (
+                "D3",
+                spec.registry.state.base.empty.p_obj.client_b.clone(),
+                vec![client_user.device.device_id.clone(), vd_user.device.device_id.clone()],
+            ),
+        ] {
+            for receiver in foreign_receivers {
+                let foreign_desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
+                    pass_id: pass_id.clone(),
+                    receiver,
+                });
+                assert!(
+                    p_obj.find_tail_event(foreign_desc).await?.is_none(),
+                    "{node_name} must not retain another device's Key Share"
+                );
+            }
+        }
+
+        for receiver in [vd_user.device.device_id.clone(), client_b_user.device.device_id.clone()] {
+            let sender_remote_desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
+                pass_id: pass_id.clone(),
+                receiver,
+            });
+            assert!(
+                spec.registry
+                    .state
+                    .client
+                    .p_obj
+                    .find_tail_event(sender_remote_desc)
+                    .await?
+                    .is_none(),
+                "Sender must not retain a remote Key Share"
+            );
+        }
+        assert!(
+            spec.registry
+                .state
+                .client
+                .p_obj
+                .find_tail_event(SsWorkflowDescriptor::Distribution(SsDistributionId {
+                    pass_id: pass_id.clone(),
+                    receiver: client_user.device.device_id.clone(),
+                }))
+                .await?
+                .is_some(),
+            "Sender must retain only its own Key Share"
+        );
+        assert_ne!(client_share.share_id, share_d2.share_id);
+        assert_ne!(client_share.share_id, share_d3.share_id);
+        assert_ne!(share_d2.share_id, share_d3.share_id);
+
+        // K=2 validation: any two different device shares recover the secret, one does not.
         let recovered = recover_from_shares(vec![share_d2.clone(), share_d3.clone()])?;
         assert_eq!(recovered.text, "2bee|~");
         assert!(
-            recover_from_shares(vec![share_d2]).is_err(),
-            "One share must be insufficient after K=2 redistribution"
+            recover_from_shares(vec![client_share]).is_err(),
+            "A single device must not recover a 3-device secret without another device"
         );
 
         Ok(())
@@ -949,118 +955,29 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_e2e_redistribution_join_d4_d5_with_fixed_k2() -> Result<()> {
-        let (registry, orchestrator, single_member_vault, pass_id) =
-            prepare_single_device_secret_for_redistribution().await?;
-
-        let d2 = registry.state.vault_data.vd_membership.user_data_member();
-        let d3 = registry
-            .state
-            .vault_data
-            .client_b_membership
-            .user_data_member();
-        let (d4, d4_creds) =
-            generate_member_for_vault(registry.state.user_creds.client.user().vault_name.clone());
-        let (d5, d5_creds) =
-            generate_member_for_vault(registry.state.user_creds.client.user().vault_name.clone());
-
-        let vault_d2 = single_member_vault
-            .clone()
-            .update_membership(UserMembership::Member(d2.clone()))
-            .add_secret(pass_id.clone());
-        orchestrator
-            .redistribute_existing_secrets_for_test(
-                &vault_d2,
-                &JoinClusterEvent {
-                    candidate: d2.user().clone(),
-                },
-            )
-            .await?;
-
-        let vault_d3 = vault_d2
-            .clone()
-            .update_membership(UserMembership::Member(d3.clone()))
-            .add_secret(pass_id.clone());
-        orchestrator
-            .redistribute_existing_secrets_for_test(
-                &vault_d3,
-                &JoinClusterEvent {
-                    candidate: d3.user().clone(),
-                },
-            )
-            .await?;
-
-        let vault_d4 = vault_d3
-            .clone()
-            .update_membership(UserMembership::Member(d4.clone()))
-            .add_secret(pass_id.clone());
-        orchestrator
-            .redistribute_existing_secrets_for_test(
-                &vault_d4,
-                &JoinClusterEvent {
-                    candidate: d4.user().clone(),
-                },
-            )
-            .await?;
-
-        let vault_d5 = vault_d4
-            .clone()
-            .update_membership(UserMembership::Member(d5.clone()))
-            .add_secret(pass_id.clone());
-        orchestrator
-            .redistribute_existing_secrets_for_test(
-                &vault_d5,
-                &JoinClusterEvent {
-                    candidate: d5.user().clone(),
-                },
-            )
-            .await?;
-
-        let d4_event = orchestrator
-            .p_obj
-            .find_tail_event(SsWorkflowDescriptor::Distribution(SsDistributionId {
-                pass_id: pass_id.clone(),
-                receiver: d4.user().device.device_id.clone(),
-            }))
-            .await?;
-        assert!(d4_event.is_some(), "D4 distribution must exist");
-
-        let d5_event = orchestrator
-            .p_obj
-            .find_tail_event(SsWorkflowDescriptor::Distribution(SsDistributionId {
-                pass_id: pass_id.clone(),
-                receiver: d5.user().device.device_id.clone(),
-            }))
-            .await?;
-        assert!(d5_event.is_some(), "D5 distribution must exist");
-
-        let Some(SsWorkflowObject::Distribution(d4_dist)) = d4_event else {
-            panic!("Expected distribution for D4");
+    async fn test_e2e_fourth_device_is_rejected() -> Result<()> {
+        let registry = FixtureRegistry::empty();
+        let p_obj = registry.state.p_obj.client.clone();
+        let extra_device = DeviceCredsBuilder::generate()
+            .build(DeviceName::generate())
+            .creds
+            .device;
+        let candidate = UserData {
+            vault_name: registry.state.user_creds.client.user().vault_name(),
+            device: extra_device,
         };
-        let Some(SsWorkflowObject::Distribution(d5_dist)) = d5_event else {
-            panic!("Expected distribution for D5");
+        let vault_member = registry.state.vault_data.client_vault_member.clone();
+        let action = meta_secret_core::node::db::actions::sign_up::join::JoinAction {
+            p_obj,
+            member: vault_member,
         };
 
-        let d4_plain = d4_dist
-            .value
-            .secret_message
-            .cipher_text()
-            .decrypt(&d4_creds.secret_box.transport.sk)?;
-        let d5_plain = d5_dist
-            .value
-            .secret_message
-            .cipher_text()
-            .decrypt(&d5_creds.secret_box.transport.sk)?;
-
-        let d4_share = UserShareDto::try_from(&d4_plain.msg)?;
-        let d5_share = UserShareDto::try_from(&d5_plain.msg)?;
-
-        let recovered = recover_from_shares(vec![d4_share.clone(), d5_share.clone()])?;
-        assert_eq!(recovered.text, "2bee|~");
-        assert!(
-            recover_from_shares(vec![d4_share]).is_err(),
-            "Single share must not recover secret for fixed K=2"
-        );
+        let join_request = JoinClusterEvent { candidate };
+        let error = action
+            .update(join_request, JoinActionUpdate::Accept)
+            .await
+            .expect_err("A fourth device must be rejected by Core");
+        assert!(error.to_string().contains("at most 3 devices"));
 
         Ok(())
     }

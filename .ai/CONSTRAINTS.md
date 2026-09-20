@@ -11,7 +11,8 @@ Mandatory architectural rules for the Rust backend cryptography and protocol imp
 
 | Constraint | Rule | Scope |
 |---|---|---|
-| **K-of-N Sharing** | 1 device→k=1 (trivial); 2 devices→k=1 (full replication); 3+→k=2 (SSS) | Core |
+| **K-of-N Sharing** | 1 device→k=1 (trivial); 2 devices→k=1 (full replication); 3 devices→k=2 (SSS) | Core |
+| **Device Limit** | A Vault may contain at most 3 devices. Core rejects a fourth and later join. | Membership |
 | **Redistribution** | Required on every device add/remove | Vault ops |
 | **Approval Required** | JOIN, RESTORE SECRET, DELETE DEVICE need biometric signature | Consensus |
 | **Atomicity** | Collect→Reshare→Distribute is all-or-nothing | Transactions |
@@ -87,15 +88,16 @@ a recovery is active, ready, declined, or complete.
             More practical than SSS for 2-device vaults.
 ```
 
-**State: 3+ Devices**
+**State: 3 Devices (maximum)**
 ```
-- Configuration: n=devices, k=2 (Shamir Secret Sharing)
-- Storage: n SHARES, each device holds 1 share
+- Configuration: n=3, k=2 (Shamir Secret Sharing)
+- Storage: 3 SHARES, each device holds exactly its own share
            Each share is cryptographically secure chunk
 - Recovery: Any 2 devices can combine shares → recover secret
-            Requires ceremony (signatures from 2 devices)
+            Requires one other device's approval and share
 - Offline handling: 1 device offline = OK (k-1 others available)
                    2+ devices offline = recovery impossible
+- Membership: a fourth device is rejected until a future redistribution protocol is designed
 ```
 
 ### 1.2 Redistribution on Device Join (Addition)
@@ -183,36 +185,8 @@ Result: A=SHARE (s1), B=SHARE (s2), C=SHARE (s3)
 ```
 Initial: A=SHARE, B=SHARE, C=SHARE (SSS state, k=2)
 
-Step 1: COLLECT (on initiating device, e.g., A)
-  - D sends join request
-  - A, B, C receive request
-  
-Step 2: APPROVAL (REQUIRED on OTHER devices)
-  - B's user performs BIOMETRIC + CONSENT on device B
-  - B signs approval message
-  - (C approval not needed, 1 is sufficient for k-1 rule)
-  
-Step 3: COLLECT SHARED SECRET (on A)
-  - A has its SHARE (s1)
-  - B sends its SHARE (s2) after approval
-  - A combines s1 + s2 → recover complete secret
-  
-Step 4: RESHARE (on A)
-  - A runs SSS: split secret into 4 shares
-  - Configuration: n=4, k=2
-  - Shares: s1' (for A), s2' (for B), s3' (for C), s4' (for D)
-  
-Step 5: DISTRIBUTE & REPLACE
-  - A: REPLACE s1 with s1'
-  - A sends s2' (encrypted to B) → B REPLACES s2 with s2'
-  - A sends s3' (encrypted to C) → C REPLACES s3 with s3'
-  - A sends s4' (encrypted to D) → D stores s4' (first time)
-  - All devices confirm receipt
-  
-Result: A=SHARE, B=SHARE, C=SHARE, D=SHARE (4 new shares)
-
-⚠️ CRITICAL: OLD SHARES on A, B, C are DESTROYED
-  (old shares are invalid after resharing)
+Result: D's join is rejected by Core with "Vault supports at most 3 devices".
+No new share is generated and the existing three-device state is unchanged.
 ```
 
 ### 1.3 Redistribution on Device Removal
@@ -293,17 +267,15 @@ Result: A=FULL_COPY, B=FULL_COPY (both remain intact)
 | 1 | 1 | Trivial — full copy |
 | 2 | 1 | Full replication — either device has the complete secret |
 | 3 | 2 | Any 2 of 3 can recover |
-| 4 | 2 | Any 2 of 4 can recover |
-| 5 | 2 | Any 2 of 5 can recover |
 
-For 3+ devices the threshold remains `k=2`; it is not `k=n-1`.
+The supported maximum is three devices. For the three-device state the threshold is
+`k=2`; it is not `k=n-1`.
 
 **Implementation:** `SharedSecretConfig::calculate()` in
 `meta-secret/core/src/secret/data_block/common.rs`
 
 **Removal examples:**
 ```
-n=4 (k=2) → remove 1 → n=3 (k=2) ✅ k stays same
 n=3 (k=2) → remove 1 → n=2 (k=1) ✅ reshare to full replication
 n=2 (k=1) → remove 1 → n=1 (cannot remove — blocked by UI)
 ```
@@ -318,6 +290,7 @@ n=2 (k=1) → remove 1 → n=1 (cannot remove — blocked by UI)
 | 2 devices (k=1) | 3 devices (k=2) | Device join | 2 full copies → 3 SSS shares (reshare) |
 | 3 devices (k=2) | 2 devices (k=1) | Device removal | 3 SSS shares → 2 full copies (reshare) |
 | 2 devices (k=1) | 1 device | Cannot happen | (blocked by UI) |
+| 3 devices (k=2) | 4 devices | Cannot happen | (blocked by Core device limit) |
 
 ---
 
@@ -363,7 +336,7 @@ n=2 (k=1) → remove 1 → n=1 (cannot remove — blocked by UI)
 
 ### 2.3 Quorum Rules
 
-**For 3+ devices:**
+**For 3 devices:**
 ```
 Approval threshold: 1 device (simple majority path)
 Rationale: k=2 means any 2 can recover secret
@@ -397,7 +370,7 @@ No approval needed (trivial case)
 - No ceremony needed
 - Two copies are independent (no sync requirement)
 
-**Share (3+ device cases):**
+**Share (3-device case):**
 - Cryptographic share from SSS
 - Cannot independently recover secret
 - Requires k other shares
@@ -426,10 +399,13 @@ Share:     { share_id: u32, share_data: bytes, encrypted: true }
 
 3. **DISTRIBUTE & REPLACE**
    - Encrypt each new share to target device's public key
-   - Send new shares to all devices
-   - Each device REPLACES old share/copy with new share
-   - Confirm: All devices acknowledge receipt and decryption
-   - Only after ALL confirmations: mark old shares as deleted
+   - Keep remote encrypted shares only as temporary outbound workflows
+   - Send each new share to its target device
+   - Each device REPLACES old share/copy with its own new share
+   - After the server accepts an outbound workflow, delete that remote share from
+     the sender's local database
+   - The sender retains only its own local share; it must not retain other devices'
+     shares after synchronization
 
 **Atomicity Guarantee:**
 - If any device fails to confirm receipt: ABORT entire operation
@@ -442,7 +418,7 @@ Share:     { share_id: u32, share_data: bytes, encrypted: true }
 |---|---|---|---|
 | 1 | Direct (FULL_COPY) | None | None |
 | 2 | Direct (FULL_COPY) | None | None |
-| 3+ | SSS combine | From 1 other (k-1) | Yes: sign + verify |
+| 3 | SSS combine | From 1 other (k-1) | Yes: sign + verify |
 
 ---
 
@@ -741,13 +717,14 @@ This is a documented security gap, not an achieved guarantee.
 Use this checklist when validating new code against constraints:
 
 ```
-[ ] K-of-N logic matches current state (1/2/3+ devices)
+[ ] K-of-N logic matches current state (1/2/3 devices)
 [ ] Redistribution triggered on device add/remove
 [ ] Collect→Reshare→Distribute is atomic
 [ ] Approval required before secret collection
 [ ] Biometric signature verified
 [ ] Two devices cannot remove each other (UI blocks)
-[ ] Old shares/copies destroyed after redistribution
+[ ] Old shares/copies destroyed after redistribution; sender retains only its own share
+[ ] Fourth-device join is rejected by Core
 [ ] Server never stores plaintext keys, shares, or Secrets; only metadata and E2E ciphertext
 [ ] All FFI returns are JSON strings
 [ ] Error codes mapped to mobile messages

@@ -82,6 +82,44 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         )
     }
 
+    async fn cleanup_foreign_sender_distributions(
+        &self,
+        user: &UserData,
+        ss_log: &SsLogObject,
+    ) -> Result<()> {
+        let local_device_id = &user.device.device_id;
+        let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
+
+        for claim in ss_log.as_data().claims.values() {
+            if claim.distribution_type != SecretDistributionType::Split
+                || claim.sender != *local_device_id
+            {
+                continue;
+            }
+
+            for wf_event in p_ss.get_distributions(claim.clone()).await? {
+                let Some(receiver) = Self::split_workflow_receiver(&wf_event) else {
+                    continue;
+                };
+                if receiver == *local_device_id {
+                    continue;
+                }
+
+                // Pending workflows are still needed for upload. Every terminal or
+                // already-sent remote workflow is only a stale local copy.
+                let is_pending = matches!(
+                    claim.status.get(&receiver),
+                    Some(SsDistributionStatus::Pending)
+                );
+                if !is_pending {
+                    self.p_obj.repo.delete(wf_event.obj_id()).await;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     #[instrument(skip_all)]
     pub async fn run(&self) {
         info!("Run sync gateway");
@@ -269,7 +307,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
             let sync_request = SyncRequest::Write(Box::from(WriteSyncRequest::Event(
                 ss_device_log_event.to_generic(),
             )));
-            self.sync.send(sync_request).await?;
+            self.sync.send(sync_request).await?.ensure_success()?;
         }
 
         Ok(())
@@ -334,6 +372,11 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
             .find_tail_event(SsLogDescriptor::from(vault_name.clone()))
             .await?;
 
+        if let Some(ss_log) = maybe_ss_log.as_ref() {
+            self.cleanup_foreign_sender_distributions(&user, ss_log)
+                .await?;
+        }
+
         if let Some(ss_log) = maybe_ss_log {
             for (_, claim) in ss_log.to_data().claims {
                 let is_delivered = claim.status.status() == SsDistributionStatus::Delivered;
@@ -359,14 +402,20 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                                 continue;
                             }
 
-                            // Keep local split distributions so sender can perform future
-                            // redistributions for new members under current K=2 policy.
-                            // TODO(security): revisit retention strategy when migrating to K=N-1 resharing.
+                            // A sender must retain only its own local Key Share. Remote shares are
+                            // outbound payloads: once the server accepts the upload, remove the
+                            // local workflow copy so the sender cannot decrypt another member's
+                            // share and reconstruct a 3-device secret alone.
+                            let obj_id = wf_event.obj_id();
+                            let receiver = Self::split_workflow_receiver(&wf_event);
                             let request = {
                                 let event = WriteSyncRequest::Event(wf_event.to_generic());
                                 SyncRequest::Write(Box::from(event))
                             };
-                            self.sync.send(request).await?;
+                            self.sync.send(request).await?.ensure_success()?;
+                            if receiver.as_ref() != Some(&user.device.device_id) {
+                                self.p_obj.repo.delete(obj_id).await;
+                            }
                         }
                     }
                     SecretDistributionType::Recover => {
@@ -381,7 +430,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                                 let event = WriteSyncRequest::Event(wf_event.to_generic());
                                 SyncRequest::Write(Box::from(event))
                             };
-                            self.sync.send(request).await?;
+                            self.sync.send(request).await?.ensure_success()?;
                             self.p_obj.repo.delete(obj_id).await;
                         }
 
@@ -466,10 +515,15 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                         }
                     }
 
+                    let obj_id = wf_event.obj_id();
+                    let receiver = Self::split_workflow_receiver(&wf_event);
                     let request = SyncRequest::Write(Box::from(WriteSyncRequest::Event(
                         wf_event.to_generic(),
                     )));
-                    self.sync.send(request).await?;
+                    self.sync.send(request).await?.ensure_success()?;
+                    if receiver.as_ref() != Some(&user.device.device_id) {
+                        self.p_obj.repo.delete(obj_id).await;
+                    }
                 }
             }
         }
@@ -514,7 +568,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                         wf_event.to_generic(),
                     )));
                     info!(claim_id = ?claim.id, "sync_ss_log: uploading local recovery decline first");
-                    self.sync.send(request).await?;
+                    self.sync.send(request).await?.ensure_success()?;
                     self.p_obj.repo.delete(obj_id).await;
                 }
                 continue;
@@ -537,7 +591,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                 let request =
                     SyncRequest::Write(Box::from(WriteSyncRequest::Event(wf_event.to_generic())));
                 info!(claim_id = ?claim.id, "sync_ss_log: uploading local recovery approval first");
-                self.sync.send(request).await?;
+                    self.sync.send(request).await?.ensure_success()?;
                 self.p_obj.repo.delete(obj_id).await;
             }
         }
@@ -553,7 +607,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
     ) -> Result<()> {
         let device_log_events_to_sync = self.device_log_sync_request(server_tail, user_id).await?;
         for device_log_event in device_log_events_to_sync {
-            self.sync.send(device_log_event).await?;
+                self.sync.send(device_log_event).await?.ensure_success()?;
         }
 
         Ok(())

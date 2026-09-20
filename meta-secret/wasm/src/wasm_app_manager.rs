@@ -88,9 +88,14 @@ impl WasmApplicationManager {
             .await;
     }
 
-    pub async fn sign_up(&self) -> WasmApplicationState {
-        let app_state = self.app_manager.sign_up().await.unwrap();
-        WasmApplicationState::from(app_state)
+    pub async fn sign_up(&self) -> Result<WasmApplicationState, JsValue> {
+        match self.app_manager.sign_up().await {
+            Ok(app_state) => Ok(WasmApplicationState::from(app_state)),
+            Err(error) => {
+                error!(error = %error, "sign_up failed");
+                Err(JsError::new(&error.to_string()).into())
+            }
+        }
     }
 
     pub async fn update_membership(&self, candidate: UserData, upd: JoinActionUpdate) {

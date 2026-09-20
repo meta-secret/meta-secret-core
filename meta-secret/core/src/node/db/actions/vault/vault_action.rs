@@ -41,6 +41,14 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
             }
 
             VaultActionEvent::Request(action_request) => {
+                if let VaultActionRequestEvent::JoinCluster(join_event) = action_request {
+                    let vault = p_vault.get_vault(action_event.vault_name()).await?;
+                    let candidate = UserDataMember {
+                        user_data: join_event.candidate.clone(),
+                    };
+                    vault.to_data().ensure_can_add_member(&candidate)?;
+                }
+
                 p_vault
                     .save_vault_log_request_event(action_request.clone())
                     .await?;
@@ -85,6 +93,12 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
         let vault_name = action_update.vault_name();
         //check if a sender is a member of the vault and update the vault then
         let vault = p_vault.get_vault(vault_name.clone()).await?;
+
+        if let VaultActionUpdateEvent::UpdateMembership(update) = action_update {
+            if let UserMembership::Member(candidate) = &update.update {
+                vault.clone().to_data().ensure_can_add_member(candidate)?;
+            }
+        }
 
         let vault_action_events = p_vault
             .get_vault_log_artifact(vault_name.clone())

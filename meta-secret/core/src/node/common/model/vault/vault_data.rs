@@ -12,6 +12,12 @@ use anyhow::{bail, Result};
 use std::collections::{HashMap, HashSet};
 use wasm_bindgen::prelude::wasm_bindgen;
 
+/// The current secret-sharing contract supports at most three vault devices.
+///
+/// A fourth device would require a new redistribution/quorum protocol. Keep the
+/// limit in Core so Web, Mobile and CLI cannot diverge on this rule.
+pub const MAX_VAULT_MEMBERS: usize = 3;
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VaultData {
@@ -75,6 +81,25 @@ impl From<UserDataMember> for VaultData {
 }
 
 impl VaultData {
+    pub fn ensure_valid_member_count(&self) -> Result<()> {
+        if self.members().len() > MAX_VAULT_MEMBERS {
+            bail!("Vault supports at most {MAX_VAULT_MEMBERS} devices");
+        }
+        Ok(())
+    }
+
+    pub fn ensure_can_add_member(&self, candidate: &UserDataMember) -> Result<()> {
+        if self.is_member(&candidate.user_data.device.device_id) {
+            return Ok(());
+        }
+
+        if self.members().len() >= MAX_VAULT_MEMBERS {
+            bail!("Vault supports at most {MAX_VAULT_MEMBERS} devices");
+        }
+
+        Ok(())
+    }
+
     pub fn sss_cfg(&self) -> SharedSecretConfig {
         let members_num = self.members().len();
         SharedSecretConfig::calculate(members_num)

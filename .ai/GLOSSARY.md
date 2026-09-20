@@ -16,9 +16,9 @@ Unified vocabulary for meta-secret-core Rust backend. All communication (AI, cod
 | **Device Master Key (DMK)** | Alias for Master Key when stored on specific device | Device storage | iOS Keychain / Android Keystore |
 | **Key Share** | Individual cryptographic share in Shamir Secret Sharing (k out of n) | Secret sharing | Each device holds 1 share |
 | **Encrypted Key Share** | A Key Share encrypted for its recipient's Transport Public Key before delivery. The server may temporarily queue the ciphertext, but must not be able to decrypt it. | Share delivery | Recovery sends an Encrypted Key Share through the server |
-| **Shamir Secret Sharing (SSS)** | Cryptographic scheme: split secret into n shares, recover with k shares (k ≤ n). Used only for n≥3 in meta-secret-core | Core algorithm | n=3: `k=2, n=3`; n=4: `k=2, n=4`; etc. |
-| **Threshold (k)** | Minimum number of shares (or devices) needed to recover a secret. K-of-N policy: k=1 for n=2 (each device has full secret); k=2 for n≥3 (SSS) | SSS parameter | n=1: k=1; n=2: k=1; n=3+: k=2 |
-| **K-of-N Policy** | Device-dependent secret sharing: single device stores full secret; 2 devices each store full copy; 3+ devices use SSS with k=2 threshold | Vault architecture | Trade-off: UX for n=2, security for n≥3 |
+| **Shamir Secret Sharing (SSS)** | Cryptographic scheme: split secret into n shares, recover with k shares (k ≤ n). Used for the supported 3-device state in meta-secret-core | Core algorithm | n=3: `k=2, n=3` |
+| **Threshold (k)** | Minimum number of shares (or devices) needed to recover a secret. Policy: k=1 for n=1–2; k=2 for n=3 | SSS parameter | n=1: k=1; n=2: k=1; n=3: k=2 |
+| **K-of-N Policy** | Device-dependent secret sharing: one device stores the whole secret; 2 devices use full replication; 3 devices use SSS with k=2. A Vault cannot currently exceed 3 devices | Vault architecture | 3-device Vault: any 2 Key Shares are required |
 | **Full Replication** | All devices store identical, complete copies of the secret (n=2 case) | 2-device vault | Not SSS; provides resilience if one device lost |
 | **Share Pool** | Collection of n key shares distributed among vault members | Vault state | Stored in DB, one per device |
 | **Ephemeral Key** | Short-lived encryption key used once, then discarded | Protocol security | Device-to-device communication |
@@ -42,7 +42,7 @@ Unified vocabulary for meta-secret-core Rust backend. All communication (AI, cod
 | **First-Response-Wins** | The first receiver decision processed by the server determines the recovery claim outcome | Recovery consensus | First decline blocks reveal; first approve permits recovery; late opposite action is ignored |
 | **Membership-Change Invalidation** | Accepting a new vault member invalidates pending recovery claims created for the previous membership set; pending receiver statuses become `Declined` | Recovery + membership synchronization | The new member receives a redistributed `Split` claim, not the stale `Recover` request |
 | **Distribution Type** | Enum: `Split` (share) or `Recover` (combine shares) | Claim type | Sets claim behavior |
-| **Resharing** | Regenerating shares after member leaves vault (k remains same) | Vault ops | New SS setup, same k value |
+| **Resharing** | Recreating the current Key Shares after a membership change. For 2→3 devices it converts full copies into three new Key Shares; for 3→2 it converts back to full replication | Vault ops | Every device keeps only its own new Key Share |
 | **Key Rotation** | Changing all shares after security concern (k may change) | Vault ops | Full regeneration of SSS |
 
 ---
@@ -62,7 +62,7 @@ Unified vocabulary for meta-secret-core Rust backend. All communication (AI, cod
 | **Join Request** | Device data sent by outsider requesting vault membership | Join flow | Contains device info + proof |
 | **Join Approval** | Owner/devices approving an outsider's request | Join flow | Incremental: each device approves |
 | **Approval Quorum** | Number of approvals needed to admit outsider (configurable, typically k-1) | Join rule | Must match protocol definition |
-| **Device Registration** | Adding device to vault: assign device ID, store device info, generate share | Join completion | Final step after quorum reached |
+| **Device Registration** | Adding device to vault: assign device ID, store device info, generate its share. Core currently rejects registration when the Vault already has 3 devices | Join completion | Fourth-device join returns a device-limit error |
 | **Device List** | All devices in vault with their IDs, public keys, and roles | Vault state | Used for target selection in claims |
 
 ---
@@ -106,6 +106,7 @@ Unified vocabulary for meta-secret-core Rust backend. All communication (AI, cod
 | **VaultFullInfo** | Sealed enum: `NotExists`, `Outsider`, `Member` — vault membership state | Vault lookup | Determines next UI screen |
 | **VaultData** | Persistent vault record: name, members, shares, passes | Storage | Serialized to DB |
 | **Share Record** | Stored Key Share record: Claim ID + Encrypted Key Share + device target | Storage | Per-device, one per Vault |
+| **Local Share Retention** | A device retains its own Key Share. Encrypted outbound copies for other devices are temporary local workflows and are deleted after successful server upload | Storage security | A 3-device sender cannot keep or decrypt B/C shares after sync |
 | **Pass Record** | Stored secret: ID, name, type, creation metadata | Storage | Encrypted at rest |
 | **Claim Record** | Stored claim: ID, type, targets, status per device, created at | Storage | Audit trail |
 | **Event Log** | Sequence of vault operations (join, claim, removal) | Audit | For replay/recovery |
@@ -126,8 +127,8 @@ For concurrent receiver actions, “first” means the first decision processed 
 the server's ordered event stream. Once a receiver or claim reaches a terminal
 decision, stale snapshots and an opposite late decision must not change it.
 
-The recovery threshold follows the K-of-N policy: for 1–2 devices `k=1`; for 3 or
-more devices `k=2`. In a 3+ device vault, the sender already has one share, so one
+The recovery threshold follows the K-of-N policy: for 1–2 devices `k=1`; for the
+supported 3-device state `k=2`. In a 3-device vault, the sender already has one share, so one
 `Sent` response from a receiver gives the two shares needed for recovery.
 
 | Device role | `clientStatus` | Core condition | Required client behavior |
@@ -221,7 +222,7 @@ user's decision. It may technically choose one claim from the set already marked
 
 ### When Communicating:
 - **Code reviews:** "This claim needs k approvals" not "This request needs majority"
-- **Architecture docs:** "full replication for 2 devices; SSS with k=2 for 3+ devices" not "Secret split into n-1 shares"
+- **Architecture docs:** "full replication for 2 devices; SSS with k=2 for 3 devices" not "Secret split into n-1 shares"
 - **Error messages:** "Device limit exceeded" not "Too many machines"
 
 ### Exceptions:

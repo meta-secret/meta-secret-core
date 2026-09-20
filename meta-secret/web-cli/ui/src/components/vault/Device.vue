@@ -66,14 +66,18 @@ const isDeclined = computed(
 
 const isJoinConfirmOpen = ref(false);
 const isSubmitting = ref(false);
+const actionError = ref('');
 
 const handleAccept = async () => {
   if (isSubmitting.value) return;
   isSubmitting.value = true;
+  actionError.value = '';
   try {
     await appManager.update_membership(user.value, JoinActionUpdate.Accept);
     await appState.updateState();
     isJoinConfirmOpen.value = false;
+  } catch (error) {
+    actionError.value = error instanceof Error ? error.message : String(error);
   } finally {
     isSubmitting.value = false;
   }
@@ -82,10 +86,13 @@ const handleAccept = async () => {
 const handleDecline = async () => {
   if (isSubmitting.value) return;
   isSubmitting.value = true;
+  actionError.value = '';
   try {
     await appManager.update_membership(user.value, JoinActionUpdate.Decline);
     await appState.updateState();
     isJoinConfirmOpen.value = false;
+  } catch (error) {
+    actionError.value = error instanceof Error ? error.message : String(error);
   } finally {
     isSubmitting.value = false;
   }
@@ -258,6 +265,7 @@ const handleDecline = async () => {
           </DialogTitle>
           <DialogDescription>{{ typeLabel }}</DialogDescription>
         </DialogHeader>
+        <p v-if="actionError" class="text-sm text-destructive" role="alert">{{ actionError }}</p>
         <DialogFooter class="w-full gap-2 sm:gap-2">
           <Button variant="outline" class="flex-1" :disabled="isSubmitting" @click="handleDecline">
             {{ vaultDevices.actionDecline }}

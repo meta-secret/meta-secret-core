@@ -1,0 +1,32 @@
+{
+  "runId": "test21-block3",
+  "testNumber": 21,
+  "name": "Test #21 block 3 — Android is rejected as fourth device",
+  "mode": "fourth-device-rejection",
+  "setup": { "initiator": "cli" },
+  "memberPlatforms": ["web", "ios"],
+  "rejectionPlatform": "android",
+  "server": {
+    "url": "http://127.0.0.1:3000",
+    "image": "ghcr.io/meta-secret/meta-secret-core/meta-secret-server:latest",
+    "container": "meta-secret-e2e-server-test21-block3",
+    "port": 3000
+  },
+  "web": { "url": "http://localhost:5173", "directory": "../meta-secret/web-cli/ui" },
+  "ios": {
+    "composeRoot": "../../meta-secret-compose",
+    "simulatorName": "iPhone 17",
+    "bundleId": "org.metasecret.vault",
+    "testClass": "CaseEightIosBothOfflineUITest",
+    "joinTestMethod": "joinWebInitiatedVault"
+  },
+  "android": {
+    "avdName": "Pixel_4a",
+    "bundleId": "metasecret.project.com",
+    "testClass": "metasecret.project.com.CaseEightAndroidBothOfflineTest",
+    "joinTestMethod": "joinWebInitiatedVault"
+  },
+  "recovery": { "expectedCycles": 0, "cyclePlan": [] },
+  "vault": { "name": "test21-block3@test.ru", "retryName": "test21-block3-retry@test.ru" },
+  "secrets": { "default": { "name": "test21-secret", "value": "test21-secret-value" } }
+}

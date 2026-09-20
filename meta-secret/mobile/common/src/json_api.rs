@@ -134,7 +134,7 @@ async fn async_sign_up() -> String {
     match MobileApplicationManager::get_global_instance() {
         Some(app_manager) => match app_manager.sign_up().await {
             Ok(state) => json!({"success": true, "message": {"state": state}}).to_string(),
-            Err(e) => json!({"success": false, "error": format!("App manager is not initialized: {e}")}).to_string(),
+            Err(e) => json!({"success": false, "error": format!("{e}")}).to_string(),
         },
         None => json!({"success": false, "error": "App manager is not initialized"}).to_string(),
     }
