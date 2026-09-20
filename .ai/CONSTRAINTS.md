@@ -15,7 +15,7 @@ Mandatory architectural rules for the Rust backend cryptography and protocol imp
 | **Redistribution** | Required on every device add/remove | Vault ops |
 | **Approval Required** | JOIN, RESTORE SECRET, DELETE DEVICE need biometric signature | Consensus |
 | **Atomicity** | Collect→Reshare→Distribute is all-or-nothing | Transactions |
-| **No Server Storage** | Keys, shares, secrets never on server | E2E principle |
+| **No Server Plaintext Storage** | The server never stores plaintext Master Keys, Key Shares, or Secrets. It may temporarily queue an Encrypted Key Share while delivery/synchronization is pending, then remove it after delivery. | E2E principle |
 | **Two Cannot Erase Each Other** | With 2 devices, neither can remove the other | Safety |
 | **Recovery Status Ownership** | Core alone computes recovery lifecycle and `clientStatus`; UI only executes the resulting instruction | Recovery |
 | **First Response Wins** | The first server-processed receiver decision terminalizes the recovery claim; a late opposite decision is ignored | Recovery consensus |
@@ -346,16 +346,16 @@ n=2 (k=1) → remove 1 → n=1 (cannot remove — blocked by UI)
 
 ### 2.2 Approval Mechanism
 
-**Biometric Signature:**
+**Biometric approval and signature (required protocol property):**
 - User performs biometric (fingerprint, face) on OTHER device
-- System creates approval message with signature
-- Message includes: action_type, device_id, timestamp, initiator_id
-- Message is CRYPTOGRAPHICALLY SIGNED by approving device's private key
+- System creates an approval message containing action type, vault/Claim or request ID, device IDs, and freshness data (nonce or timestamp)
+- Message MUST be cryptographically signed by the approving device's private key
 
-**Transport:**
-- Approval message sent via socket to initiator device
-- Initiator verifies signature using approver's public key
-- Initiator proceeds with secret collection ONLY after valid signature
+**Transport and verification:**
+- Approval message is sent through the sync transport
+- The server MUST verify the signature against the registered public key and authorization before mutating canonical state
+- The recipient may verify it again before secret collection
+- Current implementation status: the signing primitive and public-key fields exist, but the sync event/request path does not yet carry and verify an approval signature. This requirement is therefore not yet satisfied.
 
 **No Approval Needed:**
 - 1 device vault (no other device to approve)
@@ -514,18 +514,23 @@ Share:     { share_id: u32, share_data: bytes, encrypted: true }
 
 ### 5.1 Zero-Knowledge Principle
 
-**Server NEVER stores:**
-- Master key (any format)
-- Key shares (raw or encrypted)
-- Complete secrets
-- Private keys
+**Server NEVER stores in plaintext:**
+- Master Key (any format)
+- Key Shares
+- Complete Secrets
+- Private Keys
+
+The server may temporarily queue an Encrypted Key Share while delivery is
+pending because it cannot decrypt the ciphertext without the recipient's
+Private Key. After the recipient synchronizes, the workflow item is removed; it
+is not part of the server's durable Vault data. This is transport buffering of
+ciphertext, not server possession of a usable Key Share.
 
 **Server CAN store:**
 - Vault metadata (name, created_at, device_count)
 - Device info (ID, name, type, public keys, status)
-- Claim records (metadata + encrypted share blobs)
-- Event log (audit trail with signatures)
-- User signatures (for non-repudiation)
+- Claim records (metadata) and temporary Encrypted Key Shares pending delivery
+- Event metadata and, once implemented, verified signed audit events
 
 ### 5.2 Encrypted At Rest
 
@@ -559,7 +564,7 @@ Share:     { share_id: u32, share_data: bytes, encrypted: true }
 **Principle:**
 - Secrets encrypted from device to device
 - Server cannot decrypt
-- Encrypted shares transmitted over socket
+- Encrypted Key Shares transmitted over socket
 
 **Implementation:**
 - Asymmetric encryption: recipient's public key
@@ -581,16 +586,16 @@ Share:     { share_id: u32, share_data: bytes, encrypted: true }
 
 ### 6.3 Non-Repudiation
 
-**All critical actions signed:**
+**Required protocol property — all critical actions must be signed and verified:**
 - Device join approval
 - Secret recovery approval
 - Device removal approval
 - Claim confirmation
 
 **Signature verification:**
-- Recipient verifies sender's signature
-- Server verifies signatures in audit log
-- Prevents sender from denying action later
+- The signed payload must bind the action to its vault, Claim/request ID, sender and receiver/device IDs, and freshness data
+- Server verification is mandatory before applying JOIN, RESTORE SECRET, DELETE DEVICE, or Claim confirmation
+- Current implementation status: DSA signing helpers exist, but the network event path currently does not enforce this verification; this is an implementation gap, not an achieved security guarantee
 
 ---
 
@@ -720,10 +725,14 @@ pub fn collect_secret(vault_json: String) -> String {
 
 ### 9.3 Approval Consistency
 
-**Both projects implement same approval flow:**
+**Required cross-project approval contract:**
 - Mobile UI: shows biometric prompt on other device
-- Core: validates biometric signature on approval
+- Core/server: must validate the cryptographic signature and authorization on approval
 - Both: block actions without valid approval
+
+**Current implementation status:** the UI prompt and Core signing primitives exist,
+but the sync event path currently does not carry and verify the approval signature.
+This is a documented security gap, not an achieved guarantee.
 
 ---
 
@@ -739,7 +748,7 @@ Use this checklist when validating new code against constraints:
 [ ] Biometric signature verified
 [ ] Two devices cannot remove each other (UI blocks)
 [ ] Old shares/copies destroyed after redistribution
-[ ] Server never stores keys, only shares/metadata
+[ ] Server never stores plaintext keys, shares, or Secrets; only metadata and E2E ciphertext
 [ ] All FFI returns are JSON strings
 [ ] Error codes mapped to mobile messages
 [ ] Non-repudiation: all actions signed
