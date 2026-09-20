@@ -150,6 +150,23 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
             .unwrap()
     }
 
+    /// Flush locally-created events after the browser comes back online.
+    ///
+    /// `get_state` reads the local application state; it does not upload a
+    /// recovery response that was created while the browser was offline.
+    /// Keeping this operation explicit lets the Web UI perform one bounded
+    /// sync at the reconnect boundary without changing the normal refresh
+    /// path used by the mobile clients.
+    pub async fn sync_now(&self) -> Result<()> {
+        let user_creds = self.meta_client_service.find_user_creds().await?;
+        // The background MetaClientService may upload a locally queued recovery
+        // workflow at the same time as this reconnect hook.  A second
+        // idempotent pass makes the following read observe the canonical
+        // SsLog snapshot created by that upload instead of the previous tail.
+        self.sync_gateway.sync(user_creds.user()).await?;
+        self.sync_gateway.sync(user_creds.user()).await
+    }
+
     pub async fn accept_recover(&self, claim_id: ClaimId) -> Result<()> {
         self.meta_client_service.accept_recover(claim_id).await
     }

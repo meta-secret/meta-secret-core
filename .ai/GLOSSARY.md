@@ -2,7 +2,7 @@
 
 Unified vocabulary for meta-secret-core Rust backend. All communication (AI, code, docs, comments) uses these terms consistently.
 
-**Last updated:** 2026-09-19
+**Last updated:** 2026-09-20
 **Maintenance:** Monthly or when architecture changes  
 **Scope:** Cryptography, protocols, server logic, and mobile FFI
 
@@ -88,6 +88,7 @@ Unified vocabulary for meta-secret-core Rust backend. All communication (AI, cod
 | **Claim Message** | Protocol message sent over socket: claim announcement + device response | Communication | `SocketAction` variant |
 | **Socket Connection** | Persistent WebSocket or transport to server/node | Runtime | Enables real-time updates |
 | **Socket Event** | Message from server indicating claim/vault update | Event handling | Triggers UI updates |
+| **Reconnect Sync** | Explicit client sync that uploads locally queued workflow events before refreshing canonical vault state after connectivity returns | Offline recovery | Web `sync_now()` on the browser `online` event |
 | **Node Orchestration** | Server logic coordinating device responses for claims | Server logic | Waits for quorum, confirms delivery |
 | **Broadcast** | Sending message to all devices in vault (or subset) | Communication | Announce new claim |
 | **Unicast** | Sending message to single device | Communication | Device-specific response |

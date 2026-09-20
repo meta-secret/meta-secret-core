@@ -17,7 +17,33 @@ const stateInvalidation = createStateInvalidationController({
   refresh: () => jsAppState.updateState(),
 });
 
-onBeforeUnmount(() => stateInvalidation.disconnect());
+const handleBrowserOnline = async () => {
+  if (!authStore.isAuthenticated || !isInitialized.value) return;
+  console.log('[StateEvents] browser online; syncing local events and refreshing application state');
+  const manager = jsAppState.appManager as typeof jsAppState.appManager & {
+    sync_now?: () => Promise<void>;
+  };
+  try {
+    const canSyncNow = typeof manager?.sync_now === 'function';
+    console.log('[StateEvents] reconnect sync_now availability', { canSyncNow });
+    if (canSyncNow) {
+      await manager.sync_now();
+      console.log('[StateEvents] reconnect sync_now finished');
+    } else {
+      console.warn('[StateEvents] reconnect sync_now is unavailable in the loaded WASM module');
+    }
+  } catch (error) {
+    console.warn('[StateEvents] reconnect sync deferred; background sync will retry', error);
+  }
+  await stateInvalidation.refreshNow();
+};
+
+window.addEventListener('online', handleBrowserOnline);
+
+onBeforeUnmount(() => {
+  window.removeEventListener('online', handleBrowserOnline);
+  stateInvalidation.disconnect();
+});
 
 watch(
   () => authStore.isAuthenticated,

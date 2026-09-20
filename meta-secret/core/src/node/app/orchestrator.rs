@@ -585,14 +585,22 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crypto::utils::Id48bit;
     use crate::meta_tests::fixture_util::fixture::states::EmptyState;
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo, SecurePassInfo};
-    use crate::node::common::model::secret::SsDistributionId;
+    use crate::node::common::model::secret::{
+        SsClaimId, SsDistributionCompositeStatus, SsDistributionId, SsRecoveryId,
+    };
     use crate::node::common::model::vault::vault_data::VaultData;
+    use crate::node::db::descriptors::vault_descriptor::VaultStatusDescriptor;
+    use crate::node::db::events::object_id::ArtifactId;
+    use crate::node::db::events::vault::vault_event::VaultObject;
+    use crate::node::db::events::vault::vault_status::VaultStatusObject;
     use crate::node::db::events::shared_secret_event::SsWorkflowObject;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
+    use crate::node::db::repo::generic_db::SaveCommand;
     use crate::secret::MetaDistributor;
     use anyhow::Result;
 
@@ -746,6 +754,82 @@ mod tests {
             "Second redistribution run must not create additional events"
         );
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test20_accept_recover_ignores_foreign_and_unknown_claims() -> Result<()> {
+        let registry = FixtureRegistry::base().await?;
+        let client_user_creds = registry.state.empty.user_creds.client.clone();
+        let orchestrator = MetaOrchestrator {
+            p_obj: registry.state.spec.client.p_obj.clone(),
+            user_creds: client_user_creds,
+        };
+        let client_user = orchestrator.user_creds.user();
+        let client_member = UserDataMember::from(client_user.clone());
+        orchestrator
+            .p_obj
+            .repo
+            .save(VaultObject::sign_up(client_user.vault_name(), client_member.clone()))
+            .await?;
+        orchestrator
+            .p_obj
+            .repo
+            .save(VaultStatusObject::new(
+                VaultStatus::Member(client_member),
+                ArtifactId::from(VaultStatusDescriptor::from(client_user.user_id())),
+            ))
+            .await?;
+        let foreign_receiver = registry
+            .state
+            .empty
+            .vault_data
+            .vd_membership
+            .user_data_member()
+            .user()
+            .device
+            .device_id
+            .clone();
+        let pass_info = PlainPassInfo::new("test20_foreign".to_string(), "foreign|~".to_string());
+        let pass_id = SecurePassInfo::from(pass_info).pass_id;
+        let claim_id = ClaimId::from(Id48bit::generate());
+        let claim = SsClaim {
+            id: claim_id.clone(),
+            dist_claim_id: SsClaimId {
+                id: claim_id.clone(),
+                pass_id: pass_id.clone(),
+            },
+            vault_name: orchestrator.user_creds.vault_name.clone(),
+            sender: orchestrator.user_creds.device_id().clone(),
+            distribution_type: SecretDistributionType::Recover,
+            receivers: vec![foreign_receiver.clone()],
+            status: SsDistributionCompositeStatus::from(vec![foreign_receiver.clone()]),
+            client_status: None,
+        };
+
+        let p_ss = PersistentSharedSecret::from(orchestrator.p_obj.clone());
+        p_ss.save_ss_log_event(claim.clone()).await?;
+        orchestrator.accept_recover(claim_id.clone()).await?;
+
+        let recovery_descriptor = SsWorkflowDescriptor::Recovery(SsRecoveryId {
+            claim_id: claim.dist_claim_id.clone(),
+            sender: claim.sender.clone(),
+            distribution_id: SsDistributionId {
+                pass_id,
+                receiver: foreign_receiver,
+            },
+        });
+        assert!(
+            orchestrator
+                .p_obj
+                .find_tail_event(recovery_descriptor)
+                .await?
+                .is_none(),
+            "a device that is not listed in receivers must not create a recovery response"
+        );
+
+        let unknown_claim = ClaimId::from(Id48bit::generate());
+        orchestrator.accept_recover(unknown_claim).await?;
         Ok(())
     }
 }

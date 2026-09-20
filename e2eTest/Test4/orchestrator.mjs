@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { spawn } from 'node:child_process';
-import { createServer } from 'node:http';
+import { createServer, request as httpRequest } from 'node:http';
 import process from 'node:process';
 import { setTimeout as wait } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
@@ -171,10 +171,23 @@ const browserDiagnostics = [];
 let approvalCoordinator;
 let currentCycleForDiagnostics = null;
 let browserInstance;
+let primaryVirtualAuthenticator;
 let simulatorUdidForCleanup;
 let androidSerialForCleanup;
 let cleanupStarted = false;
 const webSenderRevealCompletedCycles = new Set();
+const networkGateProcesses = new Map();
+
+const networkLossConfig = scenario.networkLoss ?? null;
+
+function networkProxyUrl(platform) {
+  if (!networkLossConfig) return '';
+  const port = platform === 'android'
+    ? networkLossConfig.androidProxyPort
+    : networkLossConfig.iosProxyPort;
+  const host = platform === 'android' ? '10.0.2.2' : '127.0.0.1';
+  return `http://${host}:${port}`;
+}
 
 // Test #4 intentionally exercises many recovery claims. Keeping every byte of
 // server/UI output in live JavaScript strings makes memory usage grow with
@@ -219,6 +232,33 @@ function writeDiagnostic(message) {
   appendFileSync(diagnosticLogPath, line);
 }
 
+function waitForBrowserConsole(page, predicate, timeoutMs = 120_000) {
+  return new Promise((resolve, reject) => {
+    let timer;
+    const cleanup = () => {
+      page.off('console', onConsole);
+      clearTimeout(timer);
+    };
+    const onConsole = (message) => {
+      try {
+        if (!predicate(message)) return;
+        cleanup();
+        resolve(message.text());
+      } catch (error) {
+        cleanup();
+        reject(error);
+      }
+    };
+    page.on('console', onConsole);
+    timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(
+        `Timed out waiting for browser console marker; recent diagnostics: ${browserDiagnostics.slice(-8).join(' | ')}`,
+      ));
+    }, timeoutMs);
+  });
+}
+
 function startApprovalCoordinator(port = 5180) {
   const allowedApprovals = new Set();
   const server = createServer((request, response) => {
@@ -254,6 +294,84 @@ function startApprovalCoordinator(port = 5180) {
       },
     }));
   });
+}
+
+function startNetworkGateProxy(platform, port, upstreamPort = 3000) {
+  let blocked = false;
+  const server = createServer((request, response) => {
+    if (blocked) {
+      writeDiagnostic(`[NETWORK] ${platform} blocked ${request.method} ${request.url}`);
+      request.destroy();
+      return;
+    }
+
+    const upstream = httpRequest({
+      hostname: '127.0.0.1',
+      port: upstreamPort,
+      method: request.method,
+      path: request.url,
+      headers: {
+        ...request.headers,
+        host: `127.0.0.1:${upstreamPort}`,
+      },
+    }, (upstreamResponse) => {
+      response.writeHead(
+        upstreamResponse.statusCode ?? 502,
+        upstreamResponse.statusMessage,
+        upstreamResponse.headers,
+      );
+      upstreamResponse.pipe(response);
+    });
+
+    upstream.on('error', (error) => {
+      writeDiagnostic(`[NETWORK] ${platform} upstream error: ${error.message}`);
+      if (!response.headersSent) response.writeHead(502);
+      response.end();
+    });
+    request.on('aborted', () => upstream.destroy());
+    response.on('close', () => upstream.destroy());
+    request.pipe(upstream);
+  });
+
+  return new Promise((resolvePromise, reject) => {
+    server.once('error', reject);
+    server.listen(port, '0.0.0.0', () => {
+      const gate = {
+        block() {
+          blocked = true;
+          writeDiagnostic(`[NETWORK] ${platform} -> OFFLINE`);
+        },
+        unblock() {
+          blocked = false;
+          writeDiagnostic(`[NETWORK] ${platform} -> ONLINE`);
+        },
+        close() {
+          return new Promise((resolveClose) => server.close(resolveClose));
+        },
+      };
+      networkGateProcesses.set(platform, gate);
+      resolvePromise(gate);
+    });
+  });
+}
+
+async function startNetworkLossGates() {
+  if (!networkLossConfig) return;
+  await Promise.all([
+    startNetworkGateProxy('android', networkLossConfig.androidProxyPort),
+    startNetworkGateProxy('ios', networkLossConfig.iosProxyPort),
+  ]);
+  console.log(
+    `Network-loss gates ready: Android=${networkProxyUrl('android')} `
+      + `iOS=${networkProxyUrl('ios')}`,
+  );
+}
+
+async function setNetworkGate(platform, online) {
+  const gate = networkGateProcesses.get(platform);
+  if (!gate) throw new Error(`Network-loss gate is not configured for ${platform}`);
+  if (online) gate.unblock();
+  else gate.block();
 }
 function run(command, args, options = {}) {
   const child = spawn(command, args, {
@@ -494,6 +612,8 @@ async function waitForHttp(url, timeoutMs = 120_000) {
 async function stopProcesses() {
   if (cleanupStarted) return;
   cleanupStarted = true;
+  for (const gate of networkGateProcesses.values()) await gate.close().catch(() => {});
+  networkGateProcesses.clear();
   await approvalCoordinator?.close().catch(() => {});
   approvalCoordinator = undefined;
   await browserInstance?.close().catch(() => {});
@@ -558,9 +678,9 @@ function startIosJoinTest(simulatorUdid, {
   // xcodebuild does not reliably propagate per-invocation E2E_* variables to
   // the XCTest process. Persist the compact step context on the host so the
   // iOS UI test can read the exact cycle/step without timing-based defaults.
-  if (environment.E2E_ROLE) {
+  if (environment.E2E_ROLE || environment.E2E_NETWORK_ROLE) {
     writeFileSync(iosStepConfigPath, JSON.stringify({
-      role: environment.E2E_ROLE,
+      role: environment.E2E_ROLE ?? environment.E2E_NETWORK_ROLE,
       cycle: environment.E2E_CYCLE,
       step: environment.E2E_STEP,
       approvalPlatform: environment.E2E_APPROVAL_PLATFORM,
@@ -570,24 +690,33 @@ function startIosJoinTest(simulatorUdid, {
       secretName: environment.E2E_SECRET_NAME ?? secretName,
       repeatApprove: environment.E2E_REPEAT_APPROVE === '1',
       duplicateRecovery: environment.E2E_DUPLICATE_RECOVERY === '1',
+      networkRole: environment.E2E_NETWORK_ROLE,
+      networkCycles: environment.E2E_NETWORK_CYCLES,
     }));
+  }
+  const xcodebuildArgs = [
+    'test',
+    '-project',
+    iosProjectPath,
+    '-scheme',
+    'iosApp',
+    '-configuration',
+    'Debug',
+    '-destination',
+    `id=${simulatorUdid}`,
+    '-derivedDataPath',
+    iosDerivedDataPath,
+    `-only-testing:iosAppUITests/${testClass}/${testMethod}`,
+  ];
+  if (networkLossConfig) {
+    xcodebuildArgs.push(
+      `META_SECRET_SOCKET_URL=${networkProxyUrl('ios')}`,
+      'META_SECRET_ENV=local',
+    );
   }
   const watched = watchProcessOutput(
     'xcodebuild',
-    [
-      'test',
-      '-project',
-      iosProjectPath,
-      '-scheme',
-      'iosApp',
-      '-configuration',
-      'Debug',
-      '-destination',
-      `id=${simulatorUdid}`,
-      '-derivedDataPath',
-      iosDerivedDataPath,
-      `-only-testing:iosAppUITests/${testClass}/${testMethod}`,
-    ],
+    xcodebuildArgs,
     {
       cwd: resolve(composeRoot, 'iosApp'),
       env: {
@@ -603,6 +732,7 @@ function startIosJoinTest(simulatorUdid, {
         E2E_IOS_APPROVAL_STEPS: iosApprovalSteps,
         E2E_SECRET_CREATION_PLAN: JSON.stringify(secretCreationPlan),
         E2E_APPROVAL_COORDINATOR_URL: 'http://127.0.0.1:5180',
+        ...(networkLossConfig ? { E2E_CORE_SERVER_URL: networkProxyUrl('ios') } : {}),
         ...environment,
       },
     },
@@ -881,6 +1011,7 @@ async function startAndroidJoinTest(serial, { testClass = scenario.android.testC
     '-e', 'cyclePlan', cyclePlanJson,
     '-e', 'secretCreationPlan', JSON.stringify(secretCreationPlan),
     '-e', 'approvalCoordinatorUrl', 'http://10.0.2.2:5180',
+    '-e', 'setupOnly', scenario.android.setupOnly ? 'true' : 'false',
   ];
   // Android's `am` parser treats JSON punctuation as shell syntax when a
   // long value is passed through `adb shell`. The Test #7 setup only needs
@@ -893,7 +1024,15 @@ async function startAndroidJoinTest(serial, { testClass = scenario.android.testC
     '-e', 'secretNames', Object.values(secretConfigs).map((config) => config.name).join(','),
     '-e', 'secretValues', Object.values(secretConfigs).map((config) => config.value).join(','),
     '-e', 'approvalCoordinatorUrl', 'http://10.0.2.2:5180',
+    '-e', 'setupOnly', scenario.android.setupOnly ? 'true' : 'false',
   ];
+  const androidNetworkGradleArgs = networkLossConfig
+    ? [
+        `-PMETA_SECRET_ENV=local`,
+        `-PMETA_SECRET_SOCKET_URL=${networkProxyUrl('android')}`,
+        `-PMETA_SECRET_E2E_SERVER_URL=${networkProxyUrl('android')}`,
+      ]
+    : [];
 
   let test;
   let directInstrumentation = false;
@@ -905,6 +1044,7 @@ async function startAndroidJoinTest(serial, { testClass = scenario.android.testC
     await runAndWait('./gradlew', [
       ':composeApp:assembleDebug',
       ':composeApp:assembleDebugAndroidTest',
+      ...androidNetworkGradleArgs,
     ], { cwd: composeRoot, env: { ANDROID_SERIAL: serial } });
     await runAdbWithRetry(['-s', serial, 'install', '-r', appApkPath]);
     await runAdbWithRetry(['-s', serial, 'install', '-r', testApkPath]);
@@ -939,6 +1079,8 @@ async function startAndroidJoinTest(serial, { testClass = scenario.android.testC
         `-Pandroid.testInstrumentationRunnerArguments.cyclePlan=${cyclePlanJson}`,
         `-Pandroid.testInstrumentationRunnerArguments.secretCreationPlan=${JSON.stringify(secretCreationPlan)}`,
         '-Pandroid.testInstrumentationRunnerArguments.approvalCoordinatorUrl=http://10.0.2.2:5180',
+        `-Pandroid.testInstrumentationRunnerArguments.setupOnly=${scenario.android.setupOnly ? 'true' : 'false'}`,
+        ...androidNetworkGradleArgs,
       ],
       { cwd: composeRoot, env: { ANDROID_SERIAL: serial } },
     );
@@ -975,6 +1117,9 @@ async function startAndroidStepTest(serial, {
   expectedOutcome = '',
   repeatApprove = false,
   duplicateRecovery = false,
+  networkRole = '',
+  networkBlock = '',
+  networkCycles = '',
   secretName = defaultSecret?.name ?? '',
   testMethod = scenario.android.stepTestMethod ?? 'handleRecoveryStep',
   label = 'Android recovery step',
@@ -1007,14 +1152,27 @@ async function startAndroidStepTest(serial, {
     '-e', 'role', role,
     '-e', 'cycle', String(cycle),
     '-e', 'step', String(step),
-    '-e', 'approvalPlatform', approvalPlatform,
-    '-e', 'sender', sender,
-    '-e', 'expectedOutcome', expectedOutcome,
     '-e', 'repeatApprove', repeatApprove ? 'true' : 'false',
     '-e', 'duplicateRecovery', duplicateRecovery ? 'true' : 'false',
     '-e', 'approvalCoordinatorUrl', 'http://10.0.2.2:5180',
     `${androidTestBundleId}/androidx.test.runner.AndroidJUnitRunner`,
   ];
+  const optionalRunnerArguments = [
+    ['approvalPlatform', approvalPlatform],
+    ['sender', sender],
+    ['expectedOutcome', expectedOutcome],
+    ['networkRole', networkRole],
+    ['networkBlock', networkBlock],
+    ['networkCycles', networkCycles],
+  ];
+  const runnerInsertAt = runnerArguments.length - 1;
+  runnerArguments.splice(
+    runnerInsertAt,
+    0,
+    ...optionalRunnerArguments
+      .filter(([, value]) => value !== undefined && value !== null && String(value).length > 0)
+      .flatMap(([key, value]) => ['-e', key, String(value)]),
+  );
   if (decision) {
     const coordinatorIndex = runnerArguments.indexOf('approvalCoordinatorUrl');
     runnerArguments.splice(coordinatorIndex, 0, '-e', 'decision', decision);
@@ -2839,7 +2997,7 @@ async function waitForWebIncomingRecoveryGone(page, secretName) {
 async function setupVirtualAuthenticator(page) {
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('WebAuthn.enable');
-  await cdp.send('WebAuthn.addVirtualAuthenticator', {
+  const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
     options: {
       protocol: 'ctap2',
       transport: 'internal',
@@ -2849,6 +3007,43 @@ async function setupVirtualAuthenticator(page) {
       automaticPresenceSimulation: true,
     },
   });
+  return { cdp, authenticatorId };
+}
+
+async function cloneVirtualAuthenticator(targetPage) {
+  if (!primaryVirtualAuthenticator) {
+    throw new Error('Primary virtual authenticator is not initialized');
+  }
+  const credentials = await primaryVirtualAuthenticator.cdp
+    .send('WebAuthn.getCredentials', {
+      authenticatorId: primaryVirtualAuthenticator.authenticatorId,
+    });
+  const targetCdp = await targetPage.context().newCDPSession(targetPage);
+  await targetCdp.send('WebAuthn.enable');
+  const { authenticatorId } = await targetCdp.send('WebAuthn.addVirtualAuthenticator', {
+    options: {
+      protocol: 'ctap2',
+      transport: 'internal',
+      hasResidentKey: true,
+      hasUserVerification: true,
+      isUserVerified: true,
+      automaticPresenceSimulation: true,
+    },
+  });
+  for (const credential of credentials.credentials ?? []) {
+    await targetCdp.send('WebAuthn.addCredential', {
+      authenticatorId,
+      credential: {
+        credentialId: credential.credentialId,
+        isResidentCredential: credential.isResidentCredential,
+        rpId: credential.rpId,
+        privateKey: credential.privateKey,
+        userHandle: credential.userHandle,
+        signCount: credential.signCount,
+      },
+    });
+  }
+  return targetCdp;
 }
 
 async function unlockWithPasskeyIfNeeded(page) {
@@ -2857,15 +3052,27 @@ async function unlockWithPasskeyIfNeeded(page) {
   const vaultNameInput = page.getByPlaceholder('vault name');
   const secretsLink = page.getByRole('link', { name: 'Secrets', exact: true });
 
-  await Promise.race([
-    vaultNameInput.waitFor({ state: 'visible' }),
-    createPasskeyButton.waitFor({ state: 'visible' }),
-    authenticateButton.waitFor({ state: 'visible' }),
-    // A page reopened in the same browser context may already be unlocked.
-    // In that case the navigation link is the readiness boundary; there is
-    // no vault-name input to wait for.
-    secretsLink.waitFor({ state: 'visible' }),
-  ]);
+  try {
+    await Promise.race([
+      vaultNameInput.waitFor({ state: 'visible' }),
+      createPasskeyButton.waitFor({ state: 'visible' }),
+      authenticateButton.waitFor({ state: 'visible' }),
+      // A page reopened in the same browser context may already be unlocked.
+      // In that case the navigation link is the readiness boundary; there is
+      // no vault-name input to wait for.
+      secretsLink.waitFor({ state: 'visible' }),
+    ]);
+  } catch (error) {
+    const bodyText = await page.locator('body').innerText().catch(() => '');
+    const html = await page.locator('body').innerHTML().catch(() => '');
+    writeDiagnostic(
+      `[UI][Web] unlock readiness timeout url=${page.url()} `
+      + `title=${JSON.stringify(await page.title().catch(() => ''))} `
+      + `body=${JSON.stringify(bodyText.slice(0, 2_000))} `
+      + `html=${JSON.stringify(html.slice(0, 4_000))}`,
+    );
+    throw error;
+  }
 
   if (await createPasskeyButton.isVisible()) {
     console.log('5a. Creating test passkey');
@@ -3082,6 +3289,513 @@ async function decideIncomingRecoveryOnWeb(
     `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: incoming recovery ${action}d `
     + `secret=${incomingSecretName}`,
   );
+}
+
+async function attemptWebApproveWhileOffline(page, secretName) {
+  const openRequest = page.getByTestId(`open-recovery-request-${secretName}`);
+  await openRequest.waitFor({ state: 'visible', timeout: 120_000 });
+  await openRequest.click();
+  const approve = page.getByRole('button', { name: 'Approve', exact: true });
+  await approve.waitFor({ state: 'visible', timeout: 30_000 });
+  // The click starts WebAuthn before the native recovery workflow is written.
+  // Keep the browser offline until the local decision is actually persisted;
+  // reconnecting immediately after click would test only the online path.
+  const actionSubmitted = waitForBrowserConsole(
+    page,
+    (message) => message.type() === 'log' && message.text().includes('[Recovery] accept_recover done'),
+  );
+  await approve.click();
+  await actionSubmitted;
+  writeDiagnostic(
+    `[NETWORK] Web offline approve dispatched secret=${secretName}; `
+      + 'the page remains offline until the reconnect boundary',
+  );
+}
+
+async function approveWebAfterReconnect(page, secretName) {
+  const approve = page.getByRole('button', { name: 'Approve', exact: true });
+  const outcome = await page.waitForFunction(
+    ({ name }) => {
+      const isVisible = (element) => Boolean(
+        element
+        && (element.offsetWidth || element.offsetHeight || element.getClientRects().length),
+      );
+      const approveButton = [...document.querySelectorAll('button')]
+        .find((button) => isVisible(button) && button.textContent?.trim() === 'Approve');
+      if (approveButton) return 'approve';
+      const openRequest = document.querySelector(`[data-testid="open-recovery-request-${name}"]`);
+      const badge = document.querySelector('[data-testid="recovery-request-badge"]');
+      return !isVisible(openRequest) && !isVisible(badge) ? 'resolved' : false;
+    },
+    { name: secretName },
+    { timeout: 120_000 },
+  ).then((handle) => handle.jsonValue());
+  if (outcome === 'approve') {
+    try {
+      // Reconnect refresh can remove this transient button between the
+      // visibility check and the click. The offline response is already
+      // persisted, so a detached locator means the refresh won the race;
+      // wait for the resolved state instead of issuing a duplicate action.
+      await approve.click({ timeout: 5_000 });
+    } catch (error) {
+      console.log(
+        `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: `
+          + `Approve detached during reconnect refresh; waiting for resolution (${error.message})`,
+      );
+    }
+  } else {
+    console.log(
+      `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: `
+      + 'recovery approval was retried automatically after reconnect',
+    );
+  }
+  await waitForWebIncomingRecoveryGone(page, secretName);
+}
+
+async function runNetworkLossRecovery(page, simulatorUdid, androidSerial) {
+  const expectedCycles = scenario.recovery.expectedCycles ?? recoveryCycles.length;
+  if (recoveryCycles.length !== expectedCycles) {
+    throw new Error(`Test #16 expected ${expectedCycles} recovery requests, got ${recoveryCycles.length}`);
+  }
+
+  const blocks = [...new Set(recoveryCycles.map((cycle) => cycle.block))];
+  if (blocks.length !== 3) throw new Error(`Test #16 expected 3 blocks, got ${blocks.length}`);
+
+  for (const block of blocks) {
+    const blockCycles = recoveryCycles.filter((cycle) => cycle.block === block);
+    const first = blockCycles[0];
+    const sender = first.senders[0];
+    const offlineReceiver = first.offlineReceiver;
+    const participants = ['web', 'ios', 'android'];
+    const observer = participants.find((platform) => platform !== sender && platform !== offlineReceiver);
+    const secretName = first.senderSecrets[sender] ?? defaultSecret?.name;
+    if (!sender || !offlineReceiver || !observer || sender === offlineReceiver) {
+      throw new Error(
+        `Test #16 block ${block} must define distinct sender/offline receiver/observer: `
+          + `sender=${sender} offline=${offlineReceiver} observer=${observer}`,
+      );
+    }
+    if (blockCycles.some((cycle) => (
+      cycle.senders[0] !== sender
+        || cycle.offlineReceiver !== offlineReceiver
+        || (cycle.senderSecrets[sender] ?? defaultSecret?.name) !== secretName
+    ))) {
+      throw new Error(`Test #16 block ${block} changes roles or secret between repetitions`);
+    }
+
+    currentCycleForDiagnostics = first.number;
+    writeDiagnostic(
+      `TEST16 block=${block} sender=${sender} offlineReceiver=${offlineReceiver} `
+        + `observer=${observer} cycles=${blockCycles.map((cycle) => cycle.number).join(',')}`,
+    );
+    console.log(
+      `Test #16 ${block}: sender=${sender}, offline receiver=${offlineReceiver}, `
+        + `observer=${observer}, cycles=${blockCycles.map((cycle) => cycle.number).join(',')}`,
+    );
+
+    if (participants.includes('web')) await reopenWebAfterOffline(page);
+    const nativeProcesses = new Map();
+    const cycleNumbers = blockCycles.map((cycle) => cycle.number).join(',');
+    const startNative = async (platform, role) => {
+      const environment = {
+        E2E_NETWORK_ROLE: role,
+        E2E_NETWORK_BLOCK: block,
+        E2E_NETWORK_CYCLES: cycleNumbers,
+        E2E_CORE_SERVER_URL: networkProxyUrl(platform),
+      };
+      if (platform === 'ios') {
+        const test = startIosJoinTest(simulatorUdid, {
+          testClass: scenario.ios.testClass,
+          testMethod: scenario.ios.networkStepTestMethod ?? 'runNetworkLossCycles',
+          label: `iOS Test #16 ${role} block ${block}`,
+          secretName,
+          environment,
+        });
+        void test.result.catch(() => {});
+        nativeProcesses.set(platform, { test, role });
+      } else if (platform === 'android') {
+        const test = await startAndroidStepTest(androidSerial, {
+          role,
+          networkRole: role,
+          networkBlock: block,
+          networkCycles: cycleNumbers,
+          cycle: first.number,
+          step: 1,
+          sender,
+          secretName,
+          testMethod: scenario.android.networkStepTestMethod ?? 'runNetworkLossCycles',
+          label: `Android Test #16 ${role} block ${block}`,
+        });
+        nativeProcesses.set(platform, { test, role });
+      }
+    };
+
+    for (const platform of [sender, offlineReceiver, observer]) {
+      if (platform !== 'web') await startNative(platform, platform === sender ? 'sender' : platform === offlineReceiver ? 'offline-receiver' : 'observer');
+    }
+
+    // Do not release the first recovery request until each native runner has
+    // rendered its secret row. This is a state-driven startup barrier: without
+    // it a fast Web request can arrive while Android is still launching, and
+    // the test would wait forever for an alert that was missed by the UI.
+    for (const [platform, process] of nativeProcesses) {
+      await process.test.waitForMarker(
+        `E2E: ${platform.toUpperCase()}_NETWORK_READY`,
+        180_000,
+      );
+    }
+
+    for (const cycle of blockCycles) {
+      currentCycleForDiagnostics = cycle.number;
+      if (sender === 'web') {
+        approvalCoordinator.allow('web-sender', cycle.number);
+        await startWebRecovery(page, secretName);
+      } else {
+        approvalCoordinator.allow(`${sender}-sender-1`, cycle.number);
+        await nativeProcesses.get(sender).test.waitForMarker(
+          `E2E: ${sender.toUpperCase()}_RECOVERY_REQUEST_SENT_${cycle.number}_1`,
+          180_000,
+        );
+      }
+
+      if (offlineReceiver === 'web') {
+        await waitForWebIncomingRecoveryCount(page, 1, secretName);
+      } else {
+        await nativeProcesses.get(offlineReceiver).test.waitForMarker(
+          `E2E: ${offlineReceiver.toUpperCase()}_INCOMING_VISIBLE_${cycle.number}_1`,
+          180_000,
+        );
+      }
+      if (observer === 'web') {
+        await waitForWebIncomingRecoveryCount(page, 1, secretName);
+      } else {
+        await nativeProcesses.get(observer).test.waitForMarker(
+          `E2E: ${observer.toUpperCase()}_INCOMING_VISIBLE_${cycle.number}_1`,
+          180_000,
+        );
+      }
+      writeDiagnostic(`TEST16 cycle=${cycle.number} both receiver alerts visible`);
+
+      if (offlineReceiver === 'web') {
+        await page.context().setOffline(true);
+        writeDiagnostic(`TEST16 cycle=${cycle.number} Web -> OFFLINE`);
+        await attemptWebApproveWhileOffline(page, secretName);
+        await page.context().setOffline(false);
+        writeDiagnostic(`TEST16 cycle=${cycle.number} Web -> ONLINE`);
+        await approveWebAfterReconnect(page, secretName);
+      } else {
+        await setNetworkGate(offlineReceiver, false);
+        approvalCoordinator.allow(`${offlineReceiver}-offline-attempt-1`, cycle.number);
+        await nativeProcesses.get(offlineReceiver).test.waitForMarker(
+          `E2E: ${offlineReceiver.toUpperCase()}_OFFLINE_APPROVE_CLICKED_${cycle.number}`,
+          120_000,
+        );
+        await setNetworkGate(offlineReceiver, true);
+        approvalCoordinator.allow(`${offlineReceiver}-offline-online-1`, cycle.number);
+        await nativeProcesses.get(offlineReceiver).test.waitForMarker(
+          `E2E: ${offlineReceiver.toUpperCase()}_APPROVED_AFTER_RECONNECT_${cycle.number}_1`,
+          180_000,
+        );
+      }
+
+      if (sender === 'web') {
+        await revealAndCloseWebSecret(page, secretName, false);
+      } else {
+        approvalCoordinator.allow(`${sender}-show-1`, cycle.number);
+        await nativeProcesses.get(sender).test.waitForMarker(
+          `E2E: ${sender.toUpperCase()}_RECOVERY_SECRET_VISIBLE_${cycle.number}_1`,
+          recoveryShowTimeoutMs,
+        );
+        await nativeProcesses.get(sender).test.waitForMarker(
+          `E2E: ${sender.toUpperCase()}_RECOVERY_CLOSED_${cycle.number}_1`,
+          60_000,
+        );
+      }
+
+      if (observer === 'web') {
+        await waitForWebIncomingRecoveryGone(page, secretName);
+      } else {
+        approvalCoordinator.allow(`${observer}-observer-finish-1`, cycle.number);
+        await nativeProcesses.get(observer).test.waitForMarker(
+          `E2E: ${observer.toUpperCase()}_OBSERVER_CLOSED_${cycle.number}_1`,
+          180_000,
+        );
+      }
+      console.log(`✅ Test #16 cycle ${cycle.number}/${expectedCycles} passed`);
+    }
+
+    for (const entry of nativeProcesses.values()) await entry.test.result;
+    if (nativeProcesses.has('android')) await stopAndroidApplication(androidSerial);
+    if (nativeProcesses.has('ios')) await stopIosApplication(simulatorUdid);
+  }
+}
+
+async function restartRecoveryServer(cycleNumber, testLabel) {
+  writeDiagnostic(`${testLabel} cycle=${cycleNumber}: restarting server container=${serverContainer}`);
+  console.log(`${testLabel} cycle ${cycleNumber}: restarting server`);
+  await runAndWait('docker', ['restart', serverContainer]);
+  await waitForHttp(scenario.server.url);
+  writeDiagnostic(`${testLabel} cycle=${cycleNumber}: server HTTP ready after restart`);
+}
+
+async function revealWebAfterServerRestart(page, secretName) {
+  const secretValue = secretValueForName(secretName);
+  const primaryAction = page.getByTestId(`secret-primary-action-${secretName}`);
+  const visibleSecret = page.getByText(secretValue, { exact: true });
+  const state = await Promise.race([
+    visibleSecret.waitFor({ state: 'visible', timeout: 120_000 }).then(() => 'visible'),
+    primaryAction.filter({ hasText: /^\s*Show\s*$/ }).waitFor({ state: 'visible', timeout: 120_000 }).then(() => 'show'),
+  ]);
+  if (state === 'show') {
+    await primaryAction.click();
+    await visibleSecret.waitFor({ state: 'visible', timeout: recoveryShowTimeoutMs });
+  }
+  await closeWebSecret(page, secretValue);
+}
+
+async function runServerRestartRecovery(page, simulatorUdid, androidSerial) {
+  const expectedCycles = scenario.recovery.expectedCycles ?? recoveryCycles.length;
+  if (recoveryCycles.length !== expectedCycles) {
+    throw new Error(`Test #17 expected ${expectedCycles} recovery requests, got ${recoveryCycles.length}`);
+  }
+
+  for (const cycle of recoveryCycles) {
+    currentCycleForDiagnostics = cycle.number;
+    if (cycle.senders.length !== 1 || cycle.approvals.length !== 1) {
+      throw new Error(`Test #17 cycle ${cycle.number} must define one sender and one approval`);
+    }
+    const sender = cycle.senders[0];
+    const approver = cycle.approvals[0].platform;
+    const secretName = cycle.senderSecrets[sender] ?? cycle.approvals[0].secret ?? defaultSecret?.name;
+    const receivers = ['web', 'ios', 'android'].filter((platform) => platform !== sender);
+    const nonApprover = receivers.find((platform) => platform !== approver);
+    const step = 1;
+    if (!receivers.includes(approver) || !nonApprover) {
+      throw new Error(`Test #17 cycle ${cycle.number} has invalid receiver roles`);
+    }
+
+    writeDiagnostic(
+      `TEST17 cycle=${cycle.number} sender=${sender} approver=${approver} `
+      + `nonApprover=${nonApprover} secret=${secretName}`,
+    );
+    console.log(
+      `Test #17 cycle ${cycle.number}/${expectedCycles}: sender=${sender} `
+      + `approver=${approver} nonApprover=${nonApprover}`,
+    );
+
+    if (receivers.includes('web') || sender === 'web') await reopenWebAfterOffline(page);
+    const nativeProcesses = new Map();
+    const startNativeStep = async (platform, role) => {
+      const environment = stepEnvironment({
+        role,
+        cycle: cycle.number,
+        step,
+        approvalPlatform: approver,
+        sender,
+      });
+      if (platform === 'ios') {
+        const test = startIosJoinTest(simulatorUdid, {
+          testClass: scenario.ios.testClass,
+          testMethod: scenario.ios.serverRestartStepTestMethod ?? scenario.ios.stepTestMethod ?? 'handleRecoveryStep',
+          label: `iOS Test #17 ${role} cycle ${cycle.number}`,
+          secretName,
+          environment,
+        });
+        void test.result.catch(() => {});
+        nativeProcesses.set(platform, { test, role });
+      } else if (platform === 'android') {
+        const test = await startAndroidStepTest(androidSerial, {
+          role,
+          cycle: cycle.number,
+          step,
+          approvalPlatform: approver,
+          sender,
+          secretName,
+          testMethod: scenario.android.serverRestartStepTestMethod ?? scenario.android.stepTestMethod ?? 'handleRecoveryStep',
+          label: `Android Test #17 ${role} cycle ${cycle.number}`,
+        });
+        nativeProcesses.set(platform, { test, role });
+      }
+    };
+
+    for (const receiver of receivers) {
+      if (receiver !== 'web') await startNativeStep(receiver, 'receiver');
+    }
+    if (sender !== 'web') await startNativeStep(sender, 'sender');
+
+    if (sender === 'web') {
+      approvalCoordinator.allow('web-sender', cycle.number);
+      await startWebRecovery(page, secretName);
+    } else {
+      approvalCoordinator.allow(`${sender}-sender-${step}`, cycle.number);
+      await nativeProcesses.get(sender).test.waitForMarker(
+        `E2E: ${sender.toUpperCase()}_RECOVERY_REQUEST_SENT_${cycle.number}_${step}`,
+        180_000,
+      );
+    }
+
+    for (const receiver of receivers) {
+      if (receiver === 'web') {
+        await waitForWebIncomingRecoveryCount(page, 1, secretName);
+      } else {
+        await nativeProcesses.get(receiver).test.waitForMarker(
+          `E2E: ${receiver.toUpperCase()}_INCOMING_VISIBLE_${cycle.number}_${step}`,
+          180_000,
+        );
+      }
+    }
+    writeDiagnostic(`TEST17 cycle=${cycle.number}: all receiver alerts visible before restart`);
+
+    await restartRecoveryServer(cycle.number, 'TEST17');
+
+    if (approver === 'web') {
+      await decideIncomingRecoveryOnWeb(page, secretName, 'approve', 1);
+    } else {
+      approvalCoordinator.allow(`${approver}-approve-${step}`, cycle.number);
+      await nativeProcesses.get(approver).test.waitForMarker(
+        `E2E: ${approver.toUpperCase()}_APPROVED_INCOMING_${cycle.number}_${step}`,
+        180_000,
+      );
+    }
+
+    if (sender === 'web') {
+      await revealWebAfterServerRestart(page, secretName);
+    } else {
+      approvalCoordinator.allow(`${sender}-show-${step}`, cycle.number);
+      await nativeProcesses.get(sender).test.waitForMarker(
+        `E2E: ${sender.toUpperCase()}_RECOVERY_SECRET_VISIBLE_${cycle.number}_${step}`,
+        recoveryShowTimeoutMs,
+      );
+      await nativeProcesses.get(sender).test.waitForMarker(
+        `E2E: ${sender.toUpperCase()}_RECOVERY_CLOSED_${cycle.number}_${step}`,
+        60_000,
+      );
+    }
+
+    if (nonApprover === 'web') {
+      await waitForWebIncomingRecoveryGone(page, secretName);
+    } else {
+      approvalCoordinator.allow(`${nonApprover}-dismiss-${step}`, cycle.number);
+      await nativeProcesses.get(nonApprover).test.waitForMarker(
+        `E2E: ${nonApprover.toUpperCase()}_DISMISSED_INCOMING_${cycle.number}_${step}`,
+        180_000,
+      );
+    }
+
+    for (const entry of nativeProcesses.values()) await entry.test.result;
+    if (nativeProcesses.has('android')) await stopAndroidApplication(androidSerial);
+    if (nativeProcesses.has('ios')) await stopIosApplication(simulatorUdid);
+    if (receivers.includes('web') || sender === 'web') await stopWebApplication(page);
+    console.log(`✅ Test #17 cycle ${cycle.number}/${expectedCycles} passed`);
+  }
+}
+
+async function runMultipleWebTabsRecovery(page, simulatorUdid, androidSerial) {
+  const expectedCycles = scenario.recovery.expectedCycles ?? recoveryCycles.length;
+  if (recoveryCycles.length !== expectedCycles) {
+    throw new Error(`Test #19 expected ${expectedCycles} recovery requests, got ${recoveryCycles.length}`);
+  }
+  const secondPage = await page.context().newPage();
+  await secondPage.setViewportSize({ width: 1100, height: 800 });
+  secondPage.on('console', (message) => recordBrowserDiagnostic(`[web-tab-2][${message.type()}] ${message.text()}`, { important: !['debug', 'info'].includes(message.type()) }));
+  secondPage.on('pageerror', (error) => recordBrowserDiagnostic(`[web-tab-2][pageerror] ${error.message}`));
+  // Open the same authenticated route as the first tab. Auth state is kept
+  // in the Pinia store per page, so the second tab still performs its own
+  // passkey assertion, while localStorage supplies the credential id.
+  await secondPage.goto(page.url(), { waitUntil: 'domcontentloaded' });
+  // CDP virtual authenticators are target-scoped. Clone the credential from
+  // the first tab into the second tab's authenticator so both tabs represent
+  // the same Web device without creating a second vault identity.
+  await cloneVirtualAuthenticator(secondPage);
+  await unlockWithPasskeyIfNeeded(secondPage);
+  await waitForWebSecrets(secondPage);
+
+  try {
+    for (const cycle of recoveryCycles) {
+      currentCycleForDiagnostics = cycle.number;
+      if (cycle.senders.length !== 1 || cycle.senders[0] === 'web') {
+        throw new Error(`Test #19 cycle ${cycle.number} must use one native sender`);
+      }
+      const sender = cycle.senders[0];
+      const secretName = cycle.senderSecrets[sender] ?? defaultSecret?.name;
+      const observer = ['ios', 'android'].find((platform) => platform !== sender);
+      const nativeProcesses = new Map();
+      const step = 1;
+
+      const startNativeStep = async (platform, role) => {
+        const environment = stepEnvironment({
+          role,
+          cycle: cycle.number,
+          step,
+          approvalPlatform: 'web',
+          sender,
+        });
+        if (platform === 'ios') {
+          const test = startIosJoinTest(simulatorUdid, {
+            testClass: scenario.ios.testClass,
+            testMethod: scenario.ios.multiTabStepTestMethod ?? scenario.ios.stepTestMethod ?? 'handleRecoveryStep',
+            label: `iOS Test #19 ${role} cycle ${cycle.number}`,
+            secretName,
+            environment,
+          });
+          void test.result.catch(() => {});
+          nativeProcesses.set(platform, { test, role });
+        } else if (platform === 'android') {
+          const test = await startAndroidStepTest(androidSerial, {
+            role,
+            cycle: cycle.number,
+            step,
+            approvalPlatform: 'web',
+            sender,
+            secretName,
+            testMethod: scenario.android.multiTabStepTestMethod ?? scenario.android.stepTestMethod ?? 'handleRecoveryStep',
+            label: `Android Test #19 ${role} cycle ${cycle.number}`,
+          });
+          nativeProcesses.set(platform, { test, role });
+        }
+      };
+
+      await startNativeStep(sender, 'sender');
+      await startNativeStep(observer, 'receiver');
+      approvalCoordinator.allow(`${sender}-sender-${step}`, cycle.number);
+      await nativeProcesses.get(sender).test.waitForMarker(
+        `E2E: ${sender.toUpperCase()}_RECOVERY_REQUEST_SENT_${cycle.number}_${step}`,
+        180_000,
+      );
+      await Promise.all([
+        waitForWebIncomingRecoveryCount(page, 1, secretName),
+        waitForWebIncomingRecoveryCount(secondPage, 1, secretName),
+        nativeProcesses.get(observer).test.waitForMarker(
+          `E2E: ${observer.toUpperCase()}_INCOMING_VISIBLE_${cycle.number}_${step}`,
+          180_000,
+        ),
+      ]);
+      writeDiagnostic(`TEST19 cycle=${cycle.number}: both Web tabs and native observer saw incoming request`);
+
+      await decideIncomingRecoveryOnWeb(secondPage, secretName, 'approve', 1);
+      await waitForWebIncomingRecoveryGone(page, secretName);
+      approvalCoordinator.allow(`${sender}-show-${step}`, cycle.number);
+      await nativeProcesses.get(sender).test.waitForMarker(
+        `E2E: ${sender.toUpperCase()}_RECOVERY_SECRET_VISIBLE_${cycle.number}_${step}`,
+        recoveryShowTimeoutMs,
+      );
+      await nativeProcesses.get(sender).test.waitForMarker(
+        `E2E: ${sender.toUpperCase()}_RECOVERY_CLOSED_${cycle.number}_${step}`,
+        60_000,
+      );
+      approvalCoordinator.allow(`${observer}-dismiss-${step}`, cycle.number);
+      await nativeProcesses.get(observer).test.waitForMarker(
+        `E2E: ${observer.toUpperCase()}_DISMISSED_INCOMING_${cycle.number}_${step}`,
+        180_000,
+      );
+      for (const entry of nativeProcesses.values()) await entry.test.result;
+      if (nativeProcesses.has('android')) await stopAndroidApplication(androidSerial);
+      if (nativeProcesses.has('ios')) await stopIosApplication(simulatorUdid);
+      console.log(`✅ Test #19 cycle ${cycle.number}/${expectedCycles} passed: tab 2 approved, tab 1 closed`);
+    }
+  } finally {
+    await secondPage.close().catch(() => {});
+  }
 }
 
 async function decideIncomingRecoveryTwiceOnWeb(page, incomingSecretName = defaultSecret?.name) {
@@ -3301,6 +4015,7 @@ async function main() {
   );
   void server.result.catch(() => {});
   await waitForHttp(scenario.server.url);
+  await startNetworkLossGates();
 
   console.log('5. Starting Web in a visible browser');
   run('npm', ['run', 'dev', '--', '--host', 'localhost', '--port', '5173'], { cwd: webDirectory });
@@ -3308,7 +4023,11 @@ async function main() {
 
   browserInstance = await chromium.launch({ headless: false });
   const browser = browserInstance;
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  // Use an explicit context because Test #19 opens a second page in the
+  // same browser context. The Browser.newPage() convenience API creates an
+  // owned context that intentionally rejects context.newPage().
+  const browserContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await browserContext.newPage();
   // The WASM tracing layer writes every DEBUG state snapshot to
   // console.debug. With repeated recovery cycles those snapshots become very
   // large and can
@@ -3332,7 +4051,7 @@ async function main() {
     const line = `[pageerror] ${error.message}`;
     recordBrowserDiagnostic(line);
   });
-  await setupVirtualAuthenticator(page);
+  primaryVirtualAuthenticator = await setupVirtualAuthenticator(page);
 
   // Clean the iOS simulator before Android starts. The Android helper
   // approves the first pending join request, so a left-over iOS UI-test app
@@ -3342,6 +4061,39 @@ async function main() {
   const simulatorUdid = await prepareIosSimulator();
 
   const androidSerial = await prepareAndroidEmulator();
+  if (scenario.mode === 'network-loss' && scenario.setup?.initiator === 'web') {
+    await runWebInitiatedSetup(page, simulatorUdid, androidSerial);
+    await runNetworkLossRecovery(page, simulatorUdid, androidSerial);
+    console.log(`✅ Test #16 network-loss recovery passed: ${recoveryCycles.length} requests`);
+    if (exitOnSuccess) {
+      await stopProcesses();
+      process.exit(0);
+    }
+    console.log('Browser remains open. Press Ctrl+C when ready to stop.');
+    await new Promise(() => {});
+  }
+  if (scenario.mode === 'server-restart-recovery' && scenario.setup?.initiator === 'web') {
+    await runWebInitiatedSetup(page, simulatorUdid, androidSerial);
+    await runServerRestartRecovery(page, simulatorUdid, androidSerial);
+    console.log(`✅ Test #17 server-restart recovery passed: ${recoveryCycles.length} requests`);
+    if (exitOnSuccess) {
+      await stopProcesses();
+      process.exit(0);
+    }
+    console.log('Browser remains open. Press Ctrl+C when ready to stop.');
+    await new Promise(() => {});
+  }
+  if (scenario.mode === 'multiple-web-tabs' && scenario.setup?.initiator === 'web') {
+    await runWebInitiatedSetup(page, simulatorUdid, androidSerial);
+    await runMultipleWebTabsRecovery(page, simulatorUdid, androidSerial);
+    console.log(`✅ Test #19 multiple-Web-tabs recovery passed: ${recoveryCycles.length} requests`);
+    if (exitOnSuccess) {
+      await stopProcesses();
+      process.exit(0);
+    }
+    console.log('Browser remains open. Press Ctrl+C when ready to stop.');
+    await new Promise(() => {});
+  }
   if (scenario.mode === 'new-device-during-recovery') {
     if (scenario.setup?.initiator === 'web') {
       await runWebInitiatedSetup(page, simulatorUdid, androidSerial);

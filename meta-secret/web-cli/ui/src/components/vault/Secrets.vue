@@ -165,6 +165,7 @@ const submitRecoveryResponse = async (action: RecoveryAction) => {
   }
   recoveryActionInProgress.value = action;
   flowError.value = null;
+  let actionSubmitted = false;
 
   try {
     console.log('[Recovery] calling authenticateWithPasskey...');
@@ -187,11 +188,28 @@ const submitRecoveryResponse = async (action: RecoveryAction) => {
       console.log('[Recovery] decline_recover done');
     }
 
-    await appState.updateState();
+    // The native/core layer persists the decision locally before it can be
+    // uploaded. Close the dialog at that point so a temporary offline refresh
+    // failure cannot leave the user with an actionable-looking request and
+    // invite a duplicate response after reconnect.
+    actionSubmitted = true;
     resetRecoveryDialog();
+    if (typeof navigator === 'undefined' || navigator.onLine) {
+      try {
+        await appState.updateState();
+      } catch (refreshError) {
+        console.warn('[Recovery] response saved locally; state refresh deferred:', refreshError);
+      }
+    } else {
+      console.log('[Recovery] response saved locally while offline; state refresh deferred until reconnect');
+    }
   } catch (e) {
-    console.error('[Recovery] error:', e);
-    flowError.value = e instanceof Error && e.message ? e.message : vaultSecrets.recoveryRequestSubmitError;
+    if (actionSubmitted) {
+      console.warn('[Recovery] response saved locally; state refresh deferred:', e);
+    } else {
+      console.error('[Recovery] error:', e);
+      flowError.value = e instanceof Error && e.message ? e.message : vaultSecrets.recoveryRequestSubmitError;
+    }
   } finally {
     recoveryActionInProgress.value = null;
   }

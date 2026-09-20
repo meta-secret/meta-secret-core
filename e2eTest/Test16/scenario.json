@@ -1,0 +1,67 @@
+{
+  "runId": "test16",
+  "testNumber": 16,
+  "name": "Test #16 — network loss before Approve",
+  "mode": "network-loss",
+  "setup": { "initiator": "web" },
+  "server": {
+    "url": "http://127.0.0.1:3000",
+    "image": "ghcr.io/meta-secret/meta-secret-core/meta-secret-server:latest",
+    "container": "meta-secret-e2e-server-test16",
+    "port": 3000
+  },
+  "networkLoss": {
+    "androidProxyPort": 5181,
+    "iosProxyPort": 5182
+  },
+  "web": {
+    "url": "http://localhost:5173",
+    "directory": "../meta-secret/web-cli/ui"
+  },
+  "ios": {
+    "composeRoot": "../../meta-secret-compose",
+    "simulatorName": "iPhone 17",
+    "bundleId": "org.metasecret.vault",
+    "testClass": "CaseEightIosBothOfflineUITest",
+    "joinTestMethod": "joinWebInitiatedVault",
+    "networkStepTestMethod": "runNetworkLossCycles"
+  },
+  "android": {
+    "avdName": "Pixel_4a",
+    "bundleId": "metasecret.project.com",
+    "testClass": "metasecret.project.com.CaseEightAndroidBothOfflineTest",
+    "testMethod": "joinWebInitiatedVault",
+    "networkStepTestMethod": "runNetworkLossCycles",
+    "directInstrumentationSetup": true
+  },
+  "recovery": {
+    "expectedCycles": 9,
+    "cyclePlan": [
+      {
+        "block": "web-sender-android-offline",
+        "count": 3,
+        "offlineReceiver": "android",
+        "senders": [{ "platform": "web", "secret": "default" }],
+        "approvals": [{ "platform": "android", "secret": "default", "action": "approve" }]
+      },
+      {
+        "block": "ios-sender-web-offline",
+        "count": 3,
+        "offlineReceiver": "web",
+        "senders": [{ "platform": "ios", "secret": "default" }],
+        "approvals": [{ "platform": "web", "secret": "default", "action": "approve" }]
+      },
+      {
+        "block": "android-sender-ios-offline",
+        "count": 3,
+        "offlineReceiver": "ios",
+        "senders": [{ "platform": "android", "secret": "default" }],
+        "approvals": [{ "platform": "ios", "secret": "default", "action": "approve" }]
+      }
+    ]
+  },
+  "vault": { "name": "test16@test.ru" },
+  "secrets": {
+    "default": { "name": "test-secret", "value": "test-secret-value" }
+  }
+}

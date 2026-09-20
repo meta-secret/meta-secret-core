@@ -2,7 +2,7 @@
 
 Mandatory architectural rules for the Rust backend cryptography and protocol implementation. All code changes must validate against these constraints.
 
-**Last updated:** 2026-09-19
+**Last updated:** 2026-09-20
 **Maintainer:** Architecture Guardian (validate at Stage 3.5)
 
 ---
@@ -19,6 +19,7 @@ Mandatory architectural rules for the Rust backend cryptography and protocol imp
 | **Two Cannot Erase Each Other** | With 2 devices, neither can remove the other | Safety |
 | **Recovery Status Ownership** | Core alone computes recovery lifecycle and `clientStatus`; UI only executes the resulting instruction | Recovery |
 | **First Response Wins** | The first server-processed receiver decision terminalizes the recovery claim; a late opposite decision is ignored | Recovery consensus |
+| **Reconnect Flush** | A client must upload locally queued recovery decisions before reading refreshed canonical state after connectivity returns | Offline recovery |
 
 ---
 
@@ -48,6 +49,10 @@ a recovery is active, ready, declined, or complete.
   later `Decline` cannot revoke that result.
 - Terminal receiver statuses are monotonic and cannot be reverted by stale
   snapshots or device-log reconciliation.
+- A recovery decision created while offline must be flushed to the server before
+  the client treats a reconnect state refresh as authoritative. The Web client
+  performs an explicit idempotent reconnect sync; this is a state boundary, not
+  a timer-based retry.
 - “First” is a server-processing guarantee: for packets that arrive at nearly
   the same time, the ordered event stream decides which one is first; it is not
   a wall-clock promise.

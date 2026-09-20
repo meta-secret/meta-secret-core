@@ -3,7 +3,7 @@
 Scope: production-code corrections only. Test-harness changes and logging-only
 changes are intentionally excluded.
 
-**Last updated:** 2026-09-19
+**Last updated:** 2026-09-20
 
 ## Cumulative production corrections
 
@@ -76,3 +76,12 @@ changes are intentionally excluded.
     and publishes the claims invalidation. The new member receives the
     redistributed `Split` claim and never receives the stale recovery request;
     existing `Sent`/`Delivered` decisions are preserved.
+
+12. **A Web recovery decision made while offline was not flushed reliably at
+    reconnect.**
+
+    **Correction:** the Web UI now performs an explicit, idempotent recovery
+    sync when the browser returns online and then refreshes application state.
+    The reconnect sync performs a second pass to cover the background sync
+    worker racing the reconnect boundary, so the canonical claim status is
+    visible without changing the normal mobile refresh path.

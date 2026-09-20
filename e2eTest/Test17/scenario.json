@@ -1,0 +1,55 @@
+{
+  "runId": "test17",
+  "testNumber": 17,
+  "name": "Test #17 — server restart during recovery",
+  "mode": "server-restart-recovery",
+  "setup": { "initiator": "web" },
+  "server": {
+    "url": "http://127.0.0.1:3000",
+    "image": "ghcr.io/meta-secret/meta-secret-core/meta-secret-server:latest",
+    "container": "meta-secret-e2e-server-test17",
+    "port": 3000
+  },
+  "web": { "url": "http://localhost:5173", "directory": "../meta-secret/web-cli/ui" },
+  "ios": {
+    "composeRoot": "../../meta-secret-compose",
+    "simulatorName": "iPhone 17",
+    "bundleId": "org.metasecret.vault",
+    "testClass": "CaseEightIosBothOfflineUITest",
+    "joinTestMethod": "joinWebInitiatedVault",
+    "stepTestMethod": "handleRecoveryStep"
+  },
+  "android": {
+    "avdName": "Pixel_4a",
+    "bundleId": "metasecret.project.com",
+    "testClass": "metasecret.project.com.CaseEightAndroidBothOfflineTest",
+    "testMethod": "joinWebInitiatedVault",
+    "directInstrumentationSetup": true,
+    "stepTestMethod": "handleRecoveryStep"
+  },
+  "recovery": {
+    "expectedCycles": 3,
+    "cyclePlan": [
+      {
+        "block": "ios-sender-server-restart",
+        "count": 1,
+        "senders": [{ "platform": "ios", "secret": "default" }],
+        "approvals": [{ "platform": "web", "secret": "default", "action": "approve" }]
+      },
+      {
+        "block": "android-sender-server-restart",
+        "count": 1,
+        "senders": [{ "platform": "android", "secret": "default" }],
+        "approvals": [{ "platform": "ios", "secret": "default", "action": "approve" }]
+      },
+      {
+        "block": "web-sender-server-restart",
+        "count": 1,
+        "senders": [{ "platform": "web", "secret": "default" }],
+        "approvals": [{ "platform": "android", "secret": "default", "action": "approve" }]
+      }
+    ]
+  },
+  "vault": { "name": "test17@test.ru" },
+  "secrets": { "default": { "name": "test-secret", "value": "test-secret-value" } }
+}
