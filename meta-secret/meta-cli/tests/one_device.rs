@@ -186,7 +186,11 @@ fn test_one_device_lifecycle() {
     let claim_id = claims_array
         .iter()
         .find(|claim| {
-            claim["password"]
+            claim["type"]
+                .as_str()
+                .map(|claim_type| claim_type == "Recover")
+                .unwrap_or(false)
+                && claim["password"]
                 .as_str()
                 .map(|p| p == secret_name)
                 .unwrap_or(false)
