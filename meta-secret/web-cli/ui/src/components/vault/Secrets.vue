@@ -35,6 +35,7 @@ type RecoveryAwareMemberState = ReturnType<typeof getMemberVaultState> & {
 type RecoveryAwareApplicationManager = WasmApplicationManager & {
   accept_recover?: (claimId: ClaimId) => Promise<void>;
   decline_recover?: (claimId: ClaimId) => Promise<void>;
+  show_local_secret?: (passId: MetaPasswordId) => Promise<string>;
 };
 
 const appState = AppState();
@@ -63,6 +64,9 @@ const isRecovered = (metaPassId: MetaPasswordId) => {
   const claim = getMemberVaultState(appState.currState)?.find_recovery_claim(metaPassId);
   return claim !== undefined;
 };
+
+const getAcceptedRecoveryClaimId = (metaPassId: MetaPasswordId): ClaimId | undefined =>
+  getMemberVaultState(appState.currState)?.find_recovery_claim(metaPassId);
 
 const getPendingIncomingRecoveryClaim = (metaPassId: MetaPasswordId) => {
   const memberState = getMemberVaultState(appState.currState) as RecoveryAwareMemberState | undefined;
@@ -284,7 +288,11 @@ const startRevealFlow = async (secret: MetaPasswordId) => {
     const deviceCount = getVaultDeviceCount();
 
     if (deviceCount <= 2) {
-      const secretText = await appManager.show_recovered(secret);
+      const localAppManager = appManager as RecoveryAwareApplicationManager;
+      if (typeof localAppManager.show_local_secret !== 'function') {
+        throw new Error(vaultSecrets.errorShowRecovered);
+      }
+      const secretText = await localAppManager.show_local_secret(secret);
       if (!isFlowTokenActive(token)) return;
       openRevealedModal(secretText);
       return;
@@ -295,7 +303,9 @@ const startRevealFlow = async (secret: MetaPasswordId) => {
     // Accepted request can be shown immediately.  Calling recover_js in
     // either case creates a duplicate claim and makes the UI ambiguous.
     if (getRecoveryClientStatus(secret) === 'accepted') {
-      const secretText = await appManager.show_recovered(secret);
+      const claimId = getAcceptedRecoveryClaimId(secret);
+      if (!claimId) throw new Error(vaultSecrets.errorShowRecovered);
+      const secretText = await appManager.show_recovered(claimId);
       if (!isFlowTokenActive(token)) return;
       openRevealedModal(secretText);
       return;
@@ -308,7 +318,9 @@ const startRevealFlow = async (secret: MetaPasswordId) => {
     if (!isFlowTokenActive(token)) return;
     await waitForRecoveredClaim(secret, token);
     if (!isFlowTokenActive(token)) return;
-    const secretText = await appManager.show_recovered(secret);
+    const claimId = getAcceptedRecoveryClaimId(secret);
+    if (!claimId) throw new Error(vaultSecrets.errorShowRecovered);
+    const secretText = await appManager.show_recovered(claimId);
     if (!isFlowTokenActive(token)) return;
     openRevealedModal(secretText);
   } catch (e) {

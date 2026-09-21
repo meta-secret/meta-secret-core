@@ -1,6 +1,6 @@
 use crate::base_command::BaseCommand;
 use crate::cli_format::CliOutputFormat;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use meta_secret_core::crypto::utils::Id48bit;
 use meta_secret_core::node::common::model::secret::ClaimId;
 use meta_secret_core::node::common::model::{ApplicationState, IdString, VaultFullInfo};
@@ -59,11 +59,7 @@ impl ShowSecretCommand {
                                 // Clone claim_id to avoid ownership issues
                                 let claim_id_for_recovery = claim_id.clone();
                                 let secret = handler
-                                    .recover(
-                                        user_creds,
-                                        claim_id_for_recovery,
-                                        claim.dist_claim_id.pass_id.clone(),
-                                    )
+                                    .recover_by_claim_id(user_creds, claim_id_for_recovery)
                                     .await?;
 
                                 match self.output_format {

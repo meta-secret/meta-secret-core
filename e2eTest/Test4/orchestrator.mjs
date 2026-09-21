@@ -1310,7 +1310,10 @@ async function startAndroidStepTest(serial, {
   );
   if (decision) {
     const coordinatorIndex = runnerArguments.indexOf('approvalCoordinatorUrl');
-    runnerArguments.splice(coordinatorIndex, 0, '-e', 'decision', decision);
+    // Insert before the existing `-e approvalCoordinatorUrl` pair. Inserting
+    // at the value index leaves the pair's `-e` in place and produces the
+    // invalid `-e -e decision ...` command line for `am instrument`.
+    runnerArguments.splice(coordinatorIndex - 1, 0, '-e', 'decision', decision);
   }
   const test = watchProcessOutput('adb', runnerArguments);
   const result = test.result
@@ -1545,7 +1548,10 @@ async function runWebInitiatedSetup(page, simulatorUdid, androidSerial) {
     label: 'iOS Web-initiated join',
   });
   void iosTest.result.catch(() => {});
-  await iosTest.waitForMarker('E2E: IOS_JOIN_REQUEST_SENT', 180_000);
+  // A cold Xcode/Kotlin framework build can exceed three minutes after the
+  // native libraries were rebuilt. This is an event timeout, not a scenario
+  // sleep: the test continues immediately when the marker is emitted.
+  await iosTest.waitForMarker('E2E: IOS_JOIN_REQUEST_SENT', 300_000);
   await approveJoinRequestOnWeb(page, 'iOS');
   await iosTest.waitForMarker('E2E: IOS_JOIN_READY', 180_000);
   await iosTest.result;
