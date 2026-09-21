@@ -145,8 +145,11 @@ supported 3-device state `k=2`. In a 3-device vault, the sender already has one 
 | Receiver | `None` | This receiver already approved or declined, while sender has not completed recovery yet | Do nothing; this device has no further action. |
 
 UI may retain a claim ID to deduplicate an already-visible alert and send the
-user's decision. It may technically choose one claim from the set already marked
-`NeedApprove` by core, but must not infer lifecycle state or implement quorum logic.
+user's decision. A sender must pass that exact accepted `Claim ID` to
+`showRecovered`; Core derives the associated `Pass ID` from the persisted claim.
+The replicated 1–2-device path has no recovery claim and therefore uses the
+separate `showLocalSecret(Pass ID)` operation. Clients must not select a claim
+by pass ID when executing recovery or implement quorum logic themselves.
 
 | Term | Definition | Context | Example |
 |------|-----------|---------|---------|

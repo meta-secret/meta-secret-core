@@ -16,7 +16,6 @@ use std::sync::Arc;
 use tracing::info;
 use tracing_attributes::instrument;
 
-
 #[derive(From)]
 pub struct RecoveryAction<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
@@ -53,8 +52,8 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
                     .get_ss_log_obj(vault_name)
                     .await?
                     .with_client_status(sender_device_id);
-                if let Some(claim_id) = ss_log
-                    .find_unique_active_recovery_claim_id(sender_device_id, &pass_id)?
+                if let Some(claim_id) =
+                    ss_log.find_unique_active_recovery_claim_id(sender_device_id, &pass_id)?
                 {
                     info!(?claim_id, ?pass_id, "recovery_request reused active claim");
                     return Ok(());
@@ -82,6 +81,37 @@ pub struct RecoveryHandler<Repo: KvLogEventRepo> {
 }
 
 impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
+    /// Recover a secret using the exact claim selected by Core.
+    ///
+    /// The Pass ID is intentionally derived from the persisted claim instead of
+    /// being supplied by a client. This prevents a caller from pairing one
+    /// Claim ID with a different Pass ID and guarantees that the recovery
+    /// distribution lookup and completion refer to the same claim.
+    pub async fn recover_by_claim_id(
+        &self,
+        user_creds: UserCreds,
+        claim_id: ClaimId,
+    ) -> anyhow::Result<PlainText> {
+        let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
+        let ss_log_data = p_ss.get_ss_log_obj(user_creds.vault_name.clone()).await?;
+        let claim = ss_log_data
+            .claims
+            .get(&claim_id)
+            .ok_or_else(|| anyhow::anyhow!("Claim not found for recovery ID"))?;
+
+        if claim.distribution_type
+            != crate::node::common::model::secret::SecretDistributionType::Recover
+        {
+            bail!("Claim is not a recovery claim");
+        }
+        if claim.sender != *user_creds.device_id() {
+            bail!("Recovery claim belongs to another device");
+        }
+
+        self.recover(user_creds, claim_id, claim.dist_claim_id.pass_id.clone())
+            .await
+    }
+
     #[instrument(skip_all)]
     pub async fn recover(
         &self,
@@ -285,7 +315,7 @@ mod tests {
         }
 
         let recovery = RecoveryHandler { p_obj };
-        let plain = recovery.recover(user_creds, claim.id, pass_id).await?;
+        let plain = recovery.recover_by_claim_id(user_creds, claim.id).await?;
 
         assert_eq!(plain.text, "2bee|~");
         Ok(())
@@ -315,7 +345,7 @@ mod tests {
 
         let recovery = RecoveryHandler { p_obj };
         let err = recovery
-            .recover(user_creds, claim.id, pass_id)
+            .recover_by_claim_id(user_creds, claim.id)
             .await
             .expect_err("Recover must fail when no shares are available");
 
@@ -325,6 +355,29 @@ mod tests {
             "Unexpected error: {err}"
         );
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn recover_by_claim_id_rejects_a_claim_owned_by_another_sender() -> Result<()> {
+        let fixture = FixtureRegistry::empty();
+        let user_creds = fixture.state.user_creds.client.clone();
+        let p_obj = fixture.state.p_obj.client.clone();
+        let p_ss = PersistentSharedSecret::from(p_obj.clone());
+        let vault_member = fixture.state.vault_data.client_vault_member.clone();
+
+        let pass_id = MetaPasswordId::build_from_str("claim_sender_binding");
+        let mut claim = vault_member.create_recovery_claim(pass_id);
+        claim.sender = fixture.state.device_creds.client_b.device.device_id.clone();
+        p_ss.save_ss_log_event(claim.clone()).await?;
+
+        let recovery = RecoveryHandler { p_obj };
+        let err = recovery
+            .recover_by_claim_id(user_creds, claim.id)
+            .await
+            .expect_err("a sender must not recover another device's claim");
+
+        assert!(err.to_string().contains("belongs to another device"));
         Ok(())
     }
 }

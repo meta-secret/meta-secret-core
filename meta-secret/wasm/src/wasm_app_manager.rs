@@ -143,12 +143,23 @@ impl WasmApplicationManager {
         }
     }
 
-    pub async fn show_recovered(&self, pass_id: &MetaPasswordId) -> Result<String, JsValue> {
-        info!("Show recovered pass id: {:?}", pass_id);
-        match self.app_manager.show_recovered(pass_id.clone()).await {
+    pub async fn show_recovered(&self, claim_id: &ClaimId) -> Result<String, JsValue> {
+        info!("Show recovered claim id: {:?}", claim_id);
+        match self.app_manager.show_recovered(claim_id.clone()).await {
             Ok(plain) => Ok(plain.text),
             Err(e) => {
                 error!(error = %e, "show_recovered failed");
+                Err(JsError::new(&e.to_string()).into())
+            }
+        }
+    }
+
+    pub async fn show_local_secret(&self, pass_id: &MetaPasswordId) -> Result<String, JsValue> {
+        info!("Show local secret pass id: {:?}", pass_id);
+        match self.app_manager.show_local_secret(pass_id.clone()).await {
+            Ok(plain) => Ok(plain.text),
+            Err(e) => {
+                error!(error = %e, "show_local_secret failed");
                 Err(JsError::new(&e.to_string()).into())
             }
         }

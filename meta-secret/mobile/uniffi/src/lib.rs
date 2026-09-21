@@ -1,7 +1,7 @@
 //! UniFFI facade over `mobile_common::json_api` (JSON string payloads).
 
 use meta_secret_core::node::common::model::device::common::{
-    device_ui_category, DeviceType, DeviceUiCategory as CoreDeviceUiCategory,
+    DeviceType, DeviceUiCategory as CoreDeviceUiCategory, device_ui_category,
 };
 use mobile_common::json_api;
 
@@ -24,11 +24,11 @@ pub fn device_ui_category_discriminant(device_type: String) -> i32 {
 }
 
 #[cfg(target_os = "android")]
+use jni::JNIEnv;
+#[cfg(target_os = "android")]
 use jni::objects::{JClass, JObject};
 #[cfg(target_os = "android")]
 use jni::sys::jboolean;
-#[cfg(target_os = "android")]
-use jni::JNIEnv;
 
 pub fn generate_master_key() -> String {
     json_api::generate_master_key()
@@ -46,11 +46,19 @@ pub fn init_android(master_key: String) -> String {
     json_api::init_android(master_key)
 }
 
-pub fn init_ios_with_device(master_key: String, device_name: String, device_type: String) -> String {
+pub fn init_ios_with_device(
+    master_key: String,
+    device_name: String,
+    device_type: String,
+) -> String {
     json_api::init_ios_with_device(master_key, device_name, device_type)
 }
 
-pub fn init_android_with_device(master_key: String, device_name: String, device_type: String) -> String {
+pub fn init_android_with_device(
+    master_key: String,
+    device_name: String,
+    device_type: String,
+) -> String {
     json_api::init_android_with_device(master_key, device_name, device_type)
 }
 
@@ -106,8 +114,12 @@ pub fn send_decline_completion(claim_id: String) -> String {
     json_api::send_decline_completion(claim_id)
 }
 
-pub fn show_recovered(secret_id: String) -> String {
-    json_api::show_recovered(secret_id)
+pub fn show_recovered(claim_id: String) -> String {
+    json_api::show_recovered(claim_id)
+}
+
+pub fn show_local_secret(secret_id: String) -> String {
+    json_api::show_local_secret(secret_id)
 }
 
 #[cfg(test)]
@@ -118,8 +130,14 @@ mod device_ui_category_ffi_tests {
     fn discriminant_matches_wasm_ts_order() {
         assert_eq!(device_ui_category_discriminant("Android".to_string()), 0);
         assert_eq!(device_ui_category_discriminant("Web".to_string()), 5);
-        assert_eq!(device_ui_category_discriminant("my android phone".to_string()), 0);
-        assert_eq!(device_ui_category_discriminant("unknown-thing".to_string()), 6);
+        assert_eq!(
+            device_ui_category_discriminant("my android phone".to_string()),
+            0
+        );
+        assert_eq!(
+            device_ui_category_discriminant("unknown-thing".to_string()),
+            6
+        );
     }
 }
 

@@ -70,6 +70,25 @@ pub async fn recover_plain_text<Repo: KvLogEventRepo, SyncP: SyncProtocol>(
         .await
 }
 
+/// Recover a secret using the exact recovery claim selected by Core.
+///
+/// The pass ID is read from the persisted claim. Callers cannot pair a claim
+/// with an unrelated secret, which keeps the recovery distribution and the
+/// completion event bound to the same request.
+pub async fn recover_plain_text_by_claim<Repo: KvLogEventRepo, SyncP: SyncProtocol>(
+    sync_gateway: &SyncGateway<Repo, SyncP>,
+    user_creds: UserCreds,
+    claim_id: ClaimId,
+) -> Result<PlainText> {
+    let recovery_handler = RecoveryHandler {
+        p_obj: sync_gateway.p_obj.clone(),
+    };
+
+    recovery_handler
+        .recover_by_claim_id(user_creds, claim_id)
+        .await
+}
+
 pub async fn build_client_components<Repo: KvLogEventRepo>(
     client_repo: Arc<Repo>,
     sync_protocol: Arc<HttpSyncProtocol>,

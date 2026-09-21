@@ -2,20 +2,20 @@
 #![allow(clippy::items_after_test_module)]
 
 use crate::app_manager::ApplicationManager;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use meta_db_sqlite::db::sqlite_migration::EmbeddedMigrationsTool;
 use meta_db_sqlite::db::sqlite_store::SqlIteRepo;
 use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::crypto::utils::sha256_hex;
 use meta_secret_core::node::app::sync::api_url::ApiUrl;
 use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
+use meta_secret_core::node::common::model::ApplicationState;
+use meta_secret_core::node::common::model::VaultFullInfo::Member;
 use meta_secret_core::node::common::model::device::common::{DeviceName, DeviceType};
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::{ClaimId, SsClaim};
 use meta_secret_core::node::common::model::user::common::UserData;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
-use meta_secret_core::node::common::model::ApplicationState;
-use meta_secret_core::node::common::model::VaultFullInfo::Member;
 use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
 use once_cell::sync::Lazy;
 use std::fs;
@@ -269,8 +269,13 @@ impl MobileApplicationManager {
         };
     }
 
-    pub async fn show_recovered(&self, pass_id: &MetaPasswordId) -> Result<String> {
-        let plain_text = self.app_manager.show_recovered(pass_id.clone()).await?;
+    pub async fn show_recovered(&self, claim_id: &ClaimId) -> Result<String> {
+        let plain_text = self.app_manager.show_recovered(claim_id.clone()).await?;
+        Ok(plain_text.text)
+    }
+
+    pub async fn show_local_secret(&self, pass_id: &MetaPasswordId) -> Result<String> {
+        let plain_text = self.app_manager.show_local_secret(pass_id.clone()).await?;
         Ok(plain_text.text)
     }
 

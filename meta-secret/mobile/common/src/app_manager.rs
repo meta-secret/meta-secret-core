@@ -1,12 +1,10 @@
 use crate::log_timestamp;
-use anyhow::bail;
 use anyhow::Result;
+use anyhow::bail;
 use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::node::api::{ReadSyncRequest, SsRecoveryCompletion, SyncRequest};
-use meta_secret_core::node::security::sign_recovery_completion;
-use meta_secret_core::node::state_events::StateEventsSubscription;
 use meta_secret_core::node::app::app_manager_shared::{
-    build_client_components, recover_plain_text, resolve_signup_vault_name,
+    build_client_components, recover_plain_text_by_claim, resolve_signup_vault_name,
 };
 use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
 use meta_secret_core::node::app::meta_app::meta_client_service::MetaClientService;
@@ -17,8 +15,11 @@ use meta_secret_core::node::common::meta_tracing::client_span;
 use meta_secret_core::node::common::model::device::common::{DeviceName, DeviceType};
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::{
-    ClaimId, SsClaim, SsDistributionId, SsDistributionStatus, SsRecoveryId,
+    ClaimId, RecoveryClientStatus, SecretDistributionType, SsClaim, SsDistributionId,
+    SsDistributionStatus, SsRecoveryId,
 };
+use meta_secret_core::node::security::sign_recovery_completion;
+use meta_secret_core::node::state_events::StateEventsSubscription;
 
 use meta_secret_core::node::common::model::user::common::UserData;
 use meta_secret_core::node::common::model::user::user_creds::UserCreds;
@@ -30,7 +31,7 @@ use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use meta_secret_core::secret::shared_secret::PlainText;
 use std::sync::Arc;
 use std::thread;
-use tracing::{info, instrument, warn, Instrument};
+use tracing::{Instrument, info, instrument, warn};
 
 pub struct ApplicationManager<Repo: KvLogEventRepo + Send + Sync, SyncP: SyncProtocol + Send + Sync>
 {
@@ -187,7 +188,8 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
             bail!("state events Vault does not match local credentials");
         }
         let key_manager = user_creds.device_creds.key_manager()?;
-        StateEventsSubscription::sign(vault_name, user_creds.device_id().clone(), &key_manager.dsa)?.bearer_token()
+        StateEventsSubscription::sign(vault_name, user_creds.device_id().clone(), &key_manager.dsa)?
+            .bearer_token()
     }
 
     pub async fn accept_recover_mobile(&self, claim_id: ClaimId) -> Result<()> {
@@ -325,11 +327,8 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
             recovery_id.sender, recovery_id.distribution_id.receiver
         );
         let key_manager = user_creds.device_creds.key_manager()?;
-        let signed = sign_recovery_completion(
-            completion,
-            user_creds.device_id().clone(),
-            &key_manager.dsa,
-        )?;
+        let signed =
+            sign_recovery_completion(completion, user_creds.device_id().clone(), &key_manager.dsa)?;
         let sync_request =
             SyncRequest::Read(Box::from(ReadSyncRequest::SsRecoveryCompletion(signed)));
         if let Err(e) = self.server.send(sync_request).await {
@@ -354,7 +353,11 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
             .await
     }
 
-    pub async fn show_recovered(&self, pass_id: MetaPasswordId) -> Result<PlainText> {
+    /// Show a recovered secret for the exact claim selected by Core.
+    ///
+    /// The Pass ID is derived from that claim, so a client cannot combine a
+    /// Claim ID belonging to one secret with another secret identifier.
+    pub async fn show_recovered(&self, claim_id: ClaimId) -> Result<PlainText> {
         let user_creds = self.meta_client_service.find_user_creds().await?;
         let state = self.get_state().await?;
 
@@ -371,20 +374,25 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
                 }
                 VaultFullInfo::Member(member) => {
                     let vault_members_count = member.member.vault.members().len();
-
                     if vault_members_count <= 2 {
-                        println!(
-                            "🦀 Mobile App Manager: Replicated vault mode, showing local secret"
-                        );
-                        return self.show_local_secret(user_creds, pass_id).await;
+                        bail!("Recovery claim is not required for a replicated vault");
                     }
 
-                    let claim_id = member
+                    let claim = member
                         .ss_claims
-                        .find_unique_accepted_recovery_claim_id_for_sender(
-                            user_creds.device_id(),
-                            &pass_id,
-                        )?;
+                        .claims
+                        .get(&claim_id)
+                        .ok_or_else(|| anyhow::anyhow!("Claim id not found"))?;
+                    if claim.distribution_type != SecretDistributionType::Recover {
+                        bail!("Claim is not a recovery claim");
+                    }
+                    if claim.sender != *user_creds.device_id() {
+                        bail!("Recovery claim belongs to another device");
+                    }
+                    if claim.client_status != Some(RecoveryClientStatus::Accepted) {
+                        bail!("Recovery claim is not accepted");
+                    }
+                    let pass_id = claim.dist_claim_id.pass_id.clone();
 
                     info!(
                         pass_id = %pass_id.name,
@@ -393,76 +401,71 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
                         "mobile selected recovery claim for show_recovered"
                     );
 
-                    match claim_id {
-                        None => {
-                            bail!("Claim id not found");
-                        }
-                        Some(claim_id) => {
-                            let pass = recover_plain_text(
-                                self.sync_gateway.as_ref(),
-                                user_creds.clone(),
-                                claim_id.clone(),
-                                pass_id.clone(),
-                            )
-                            .await?;
+                    let pass = recover_plain_text_by_claim(
+                        self.sync_gateway.as_ref(),
+                        user_creds.clone(),
+                        claim_id.clone(),
+                    )
+                    .await?;
 
-                            // Send recovery completion to mark claim as Delivered
-                            let ts = log_timestamp::log_timestamp_utc();
-                            println!(
-                                "[{ts}] 🦀 App Manager: Send recovery completion to mark claim as Delivered"
-                            );
-                            if let Some(claim) = member.ss_claims.claims.get(&claim_id) {
-                                let receiver = claim.approved_recovery_receiver()?;
-                                let vault_name = user_creds.vault_name.clone();
+                    // Send recovery completion to mark claim as Delivered
+                    let ts = log_timestamp::log_timestamp_utc();
+                    println!(
+                        "[{ts}] 🦀 App Manager: Send recovery completion to mark claim as Delivered"
+                    );
+                    let receiver = claim.approved_recovery_receiver()?;
+                    let vault_name = user_creds.vault_name.clone();
 
-                                let recovery_id = SsRecoveryId {
-                                    claim_id: claim.dist_claim_id.clone(),
-                                    sender: claim.sender.clone(),
-                                    distribution_id: SsDistributionId {
-                                        pass_id: pass_id.clone(),
-                                        receiver,
-                                    },
-                                };
+                    let recovery_id = SsRecoveryId {
+                        claim_id: claim.dist_claim_id.clone(),
+                        sender: claim.sender.clone(),
+                        distribution_id: SsDistributionId {
+                            pass_id: pass_id.clone(),
+                            receiver,
+                        },
+                    };
 
-                                let completion = SsRecoveryCompletion {
-                                    vault_name,
-                                    recovery_id,
-                                    receiver_status: SsDistributionStatus::Sent,
-                                };
+                    let completion = SsRecoveryCompletion {
+                        vault_name,
+                        recovery_id,
+                        receiver_status: SsDistributionStatus::Sent,
+                    };
 
-                                let key_manager = user_creds.device_creds.key_manager()?;
-                                let signed = sign_recovery_completion(
-                                    completion,
-                                    user_creds.device_id().clone(),
-                                    &key_manager.dsa,
-                                )?;
-                                let sync_request = SyncRequest::Read(Box::from(
-                                    ReadSyncRequest::SsRecoveryCompletion(signed),
-                                ));
+                    let key_manager = user_creds.device_creds.key_manager()?;
+                    let signed = sign_recovery_completion(
+                        completion,
+                        user_creds.device_id().clone(),
+                        &key_manager.dsa,
+                    )?;
+                    let sync_request =
+                        SyncRequest::Read(Box::from(ReadSyncRequest::SsRecoveryCompletion(signed)));
 
-                                self.server.send(sync_request).await?;
+                    self.server.send(sync_request).await?;
 
-                                // The sender's local claim is marked Delivered while
-                                // recovering the secret.  Flush that terminal state before
-                                // returning to the UI so the next Recover action cannot see
-                                // the previous claim as still Accepted and reuse it.
-                                self.sync_gateway.sync(user_creds.user()).await?;
-                                info!(
-                                    pass_id = %pass_id.name,
-                                    claim_id = ?claim_id,
-                                    "mobile recovery completion synchronized"
-                                );
-                            }
+                    // The sender's local claim is marked Delivered while
+                    // recovering the secret.  Flush that terminal state before
+                    // returning to the UI so the next Recover action cannot see
+                    // the previous claim as still Accepted and reuse it.
+                    self.sync_gateway.sync(user_creds.user()).await?;
+                    info!(
+                        pass_id = %pass_id.name,
+                        claim_id = ?claim_id,
+                        "mobile recovery completion synchronized"
+                    );
 
-                            Ok(pass)
-                        }
-                    }
+                    Ok(pass)
                 }
             },
         }
     }
 
-    async fn show_local_secret(
+    /// Show a locally replicated secret (one or two devices, no recovery claim).
+    pub async fn show_local_secret(&self, pass_id: MetaPasswordId) -> Result<PlainText> {
+        let user_creds = self.meta_client_service.find_user_creds().await?;
+        self.show_local_secret_with_creds(user_creds, pass_id).await
+    }
+
+    async fn show_local_secret_with_creds(
         &self,
         user_creds: UserCreds,
         pass_id: MetaPasswordId,

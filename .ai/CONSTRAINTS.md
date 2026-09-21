@@ -40,8 +40,11 @@ a recovery is active, ready, declined, or complete.
 - Web, iOS, and Android UI must react to `clientStatus`; they must not infer
   lifecycle state or implement K-of-N/quorum rules. They may technically choose
   one claim from the set already marked `NeedApprove` by core.
-- The UI may retain a claim ID only to deduplicate an alert and submit the user's
-  approve/decline decision.
+- The UI may retain a claim ID to deduplicate an alert and submit the user's
+  approve/decline decision. A sender must pass the exact accepted Claim ID to
+  `showRecovered`; Core derives the Pass ID from the persisted claim. The
+  replicated 1–2-device path uses a separate `showLocalSecret(Pass ID)` call
+  because it has no recovery claim.
 - `Done` is emitted only after the sender has recovered the secret and the
   completion has been persisted. Receivers close recovery alerts only then.
 - A receiver that has already approved or declined has no further action until
