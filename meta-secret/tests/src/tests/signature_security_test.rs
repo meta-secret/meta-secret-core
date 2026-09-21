@@ -1,5 +1,6 @@
 use crate::fixture::ExtendedFixtureRegistry;
 use anyhow::Result;
+use axum::{extract::State, routing::post, Json, Router};
 use meta_secret_core::crypto::encoding::base64::Base64Text;
 use meta_secret_core::node::api::{
     DataSyncResponse, ReadSyncRequest, SignedAction, SignedActionPayload, SsRecoveryCompletion,
@@ -18,11 +19,71 @@ use meta_secret_core::node::common::model::IdString;
 use meta_secret_core::node::db::descriptors::vault_descriptor::DeviceLogDescriptor;
 use meta_secret_core::node::db::events::generic_log_event::{ObjIdExtractor, ToGenericEvent};
 use meta_secret_core::node::db::events::vault::vault_log_event::VaultActionRequestEvent;
+use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
 use meta_secret_core::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
 use meta_secret_core::node::security::{sign_event, sign_recovery_completion};
 use meta_secret_core::meta_tests::fixture_util::fixture::FixtureRegistry;
+use meta_server_node::server::server_app::{MetaServerDataTransfer, ServerApp};
 use std::sync::Arc;
+use tokio::net::TcpListener;
+use tokio::task::JoinHandle;
+
+struct LocalHttpServer {
+    protocol: Arc<HttpSyncProtocol>,
+    server_task: JoinHandle<()>,
+    http_task: JoinHandle<()>,
+}
+
+impl LocalHttpServer {
+    async fn start(server: Arc<ServerApp<InMemKvLogEventRepo>>) -> Result<Self> {
+        let data_transfer = server.get_data_transfer();
+        let server_task = tokio::task::spawn_local(async move {
+            if let Err(error) = server.run().await {
+                eprintln!("test meta-server stopped: {error:?}");
+            }
+        });
+
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await?;
+        let port = listener.local_addr()?.port() as u32;
+        let app = Router::new()
+            .route("/meta_request", post(test_meta_request))
+            .with_state(data_transfer);
+        let http_task = tokio::task::spawn_local(async move {
+            if let Err(error) = axum::serve(listener, app).await {
+                eprintln!("test HTTP server stopped: {error:?}");
+            }
+        });
+
+        Ok(Self {
+            protocol: Arc::new(HttpSyncProtocol {
+                api_url: ApiUrl::custom_dev("http://127.0.0.1", port),
+            }),
+            server_task,
+            http_task,
+        })
+    }
+}
+
+impl Drop for LocalHttpServer {
+    fn drop(&mut self) {
+        self.server_task.abort();
+        self.http_task.abort();
+    }
+}
+
+async fn test_meta_request(
+    State(data_transfer): State<Arc<MetaServerDataTransfer>>,
+    Json(request): Json<SyncRequest>,
+) -> Json<DataSyncResponse> {
+    let response = match data_transfer.send_request(request).await {
+        Ok(response) => response,
+        Err(error) => DataSyncResponse::Error {
+            msg: format!("test HTTP server request failed: {error:?}"),
+        },
+    };
+    Json(response)
+}
 
 #[tokio::test]
 async fn server_rejects_unsigned_forged_and_replayed_actions() -> Result<()> {
@@ -109,12 +170,19 @@ async fn server_rejects_unsigned_forged_and_replayed_actions() -> Result<()> {
 
 /// Test #20 security path: send forged recovery responses through the real
 /// local HTTP server, not directly to Core or ServerApp.
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn test20_http_server_rejects_forged_recovery_responses() -> Result<()> {
+    tokio::task::LocalSet::new()
+        .run_until(test20_http_server_rejects_forged_recovery_responses_impl())
+        .await
+}
+
+async fn test20_http_server_rejects_forged_recovery_responses_impl() -> Result<()> {
     let registry = FixtureRegistry::base().await?;
-    let protocol = Arc::new(HttpSyncProtocol {
-        api_url: ApiUrl::local(),
-    });
+    let server_fixture =
+        crate::tests::meta_secret_test::fixture::ServerAppFixture::try_from(&registry)?;
+    let http_server = LocalHttpServer::start(server_fixture.server_app).await?;
+    let protocol = http_server.protocol.clone();
     let services = MetaClientServiceFixture::from(&registry.state, protocol.clone());
     let client_service = services.client.clone();
     let receiver_service = services.vd.clone();

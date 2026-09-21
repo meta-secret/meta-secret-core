@@ -7,6 +7,7 @@ edition.workspace = true
 test-framework = []
 
 [dependencies]
+axum.workspace = true
 meta-secret-core = { path = "../core", features = ["test-framework"] }
 meta-server-node = { path = "../meta-server/server-node", features = ["test-framework"] }
 secrecy = "0.10.3"
@@ -25,4 +26,3 @@ tracing-subscriber = { workspace = true, features = ["fmt", "json", "env-filter"
 tracing-attributes.workspace = true
 
 tokio.workspace = true
-
