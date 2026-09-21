@@ -50,6 +50,15 @@ membership, checks authorization and sequence freshness, then applies the event.
 Unsigned, modified, unauthorized, and replayed commands are rejected before
 persistence. DELETE DEVICE is intentionally outside this issue's protocol scope.
 
+State invalidation uses a separate authenticated signal boundary. Core issues a
+short-lived `StateEventsSubscription` signed by the device DSA key; the server
+checks the signature and current Vault membership before opening `/state-events`.
+The stream carries only opaque invalidation metadata, and every client refreshes
+canonical state through Core after receiving a signal. Web uses an authenticated
+fetch stream because native `EventSource` cannot send an `Authorization` header;
+mobile clients attach the same Bearer credential to their Ktor stream and obtain
+a new credential on reconnect.
+
 ## Language and Architecture Adaptation
 
 - Primary stack: Rust workspace in `meta-secret/`

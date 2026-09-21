@@ -71,6 +71,13 @@ impl WasmApplicationManager {
         WasmApplicationState::from(app_state)
     }
 
+    pub async fn state_events_auth_token(&self, vault_name: String) -> Result<String, JsValue> {
+        self.app_manager
+            .state_events_auth_token(VaultName::from(vault_name))
+            .await
+            .map_err(|error| JsError::new(&error.to_string()).into())
+    }
+
     pub async fn sync_now(&self) -> Result<(), JsValue> {
         match self.app_manager.sync_now().await {
             Ok(()) => Ok(()),

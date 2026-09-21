@@ -58,6 +58,10 @@ pub fn get_state() -> String {
     json_api::get_state()
 }
 
+pub fn state_events_auth_token(vault_name: String) -> String {
+    json_api::state_events_auth_token(vault_name)
+}
+
 pub fn generate_user_creds(vault_name: String) -> String {
     json_api::generate_user_creds(vault_name)
 }

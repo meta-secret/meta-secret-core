@@ -10,11 +10,13 @@ use anyhow::bail;
 use meta_secret_core::node::api::{SignedAction, SignedActionPayload, SsRequest, VaultRequest};
 use meta_secret_core::node::common::model::device::common::{DeviceData, DeviceId};
 use meta_secret_core::node::common::model::IdString;
+use meta_secret_core::node::state_events::{StateEventsSubscription, unix_time_secs};
 use meta_secret_core::node::common::model::secret::{
     SecretDistributionType, SsDistributionId, SsDistributionStatus,
 };
 use meta_secret_core::node::common::model::user::common::{UserData, UserMembership};
 use meta_secret_core::node::common::model::vault::vault::{VaultName, VaultStatus};
+use meta_secret_core::node::common::model::vault::vault_data::VaultData;
 use meta_secret_core::node::db::actions::vault::vault_action::ServerVaultAction;
 use meta_secret_core::node::db::descriptors::shared_secret_descriptor::{
     SsLogDescriptor, SsWorkflowDescriptor,
@@ -31,7 +33,7 @@ use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use meta_secret_core::node::db::objects::persistent_vault::PersistentVault;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
-use tracing::{debug, instrument};
+use tracing::{debug, instrument, warn};
 
 pub struct ServerSyncGateway<Repo: KvLogEventRepo> {
     pub p_obj: Arc<PersistentObject<Repo>>,
@@ -47,6 +49,18 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             p_obj,
             invalidation_publisher,
         }
+    }
+
+    /// Verify that a state invalidation subscriber is a current member of the
+    /// signed Vault. The HTTP handler must call this before creating an SSE
+    /// stream; the stream itself never trusts a client-provided device ID.
+    pub async fn verify_state_events_subscription(
+        &self,
+        subscription: &StateEventsSubscription,
+    ) -> Result<()> {
+        let p_vault = PersistentVault::from(self.p_obj.clone());
+        let vault = p_vault.get_vault(subscription.vault_name.clone()).await?;
+        verify_state_events_subscription_data(&vault.to_data(), subscription, unix_time_secs()?)
     }
 
     fn publish_invalidation(
@@ -203,6 +217,127 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             bail!("invalid recovery completion status")
         }
         action.verify(&member.device.keys.dsa_pk)
+    }
+}
+
+fn verify_state_events_subscription_data(
+    vault: &VaultData,
+    subscription: &StateEventsSubscription,
+    now: u64,
+) -> Result<()> {
+    debug!(
+        vault_name = %subscription.vault_name,
+        subscriber_device_id = %subscription.signer,
+        member_count = vault.members().len(),
+        member_device_ids = ?vault
+            .members()
+            .iter()
+            .map(|member| member.user_data.device.device_id.to_string())
+            .collect::<Vec<_>>(),
+        "verifying state events subscription"
+    );
+    let member = vault
+        .find_user(&subscription.signer)
+        .and_then(|membership| match membership {
+            UserMembership::Member(member) => Some(member.user_data.clone()),
+            UserMembership::Outsider(_) => None,
+        })
+        .ok_or_else(|| {
+            warn!(
+                vault_name = %subscription.vault_name,
+                subscriber_device_id = %subscription.signer,
+                "state events subscriber is not a Vault member"
+            );
+            anyhow::anyhow!("state events subscriber is not a Vault member")
+        })?;
+
+    if member.device.device_id != subscription.signer {
+        bail!("state events signer device id does not match membership");
+    }
+    if DeviceId::from(&member.device.keys) != subscription.signer {
+        bail!("state events signer device id does not match transport public key");
+    }
+
+    let result = subscription.verify(&member.device.keys.dsa_pk, now);
+    if result.is_ok() {
+        debug!(
+            vault_name = %subscription.vault_name,
+            subscriber_device_id = %subscription.signer,
+            "state events subscription authorized"
+        );
+    }
+    result
+}
+
+#[cfg(test)]
+mod state_events_tests {
+    use super::verify_state_events_subscription_data;
+    use meta_secret_core::crypto::key_pair::KeyPair;
+    use meta_secret_core::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use meta_secret_core::node::state_events::StateEventsSubscription;
+
+    #[test]
+    fn accepts_signed_subscription_for_current_member() {
+        let registry = FixtureRegistry::empty();
+        let member = &registry.state.user_creds.client;
+        let key_manager = member.device_creds.key_manager().unwrap();
+        let subscription = StateEventsSubscription::sign_at(
+            member.vault_name.clone(),
+            member.device_id().clone(),
+            &key_manager.dsa,
+            1_000,
+        )
+        .unwrap();
+
+        verify_state_events_subscription_data(
+            &registry.state.vault_data.full_membership,
+            &subscription,
+            1_001,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn rejects_signed_subscription_for_non_member() {
+        let registry = FixtureRegistry::empty();
+        let outsider_key = meta_secret_core::crypto::key_pair::DsaKeyPair::generate();
+        let outsider_device = meta_secret_core::node::common::model::device::common::DeviceId(
+            meta_secret_core::crypto::utils::U64IdUrlEnc::from("outside-state-events".to_string()),
+        );
+        let subscription = StateEventsSubscription::sign_at(
+            registry.state.user_creds.client.vault_name.clone(),
+            outsider_device,
+            &outsider_key,
+            1_000,
+        )
+        .unwrap();
+
+        assert!(verify_state_events_subscription_data(
+            &registry.state.vault_data.full_membership,
+            &subscription,
+            1_001,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn rejects_subscription_signed_by_a_different_key() {
+        let registry = FixtureRegistry::empty();
+        let member = &registry.state.user_creds.client;
+        let wrong_key_manager = registry.state.user_creds.client_b.device_creds.key_manager().unwrap();
+        let subscription = StateEventsSubscription::sign_at(
+            member.vault_name.clone(),
+            member.device_id().clone(),
+            &wrong_key_manager.dsa,
+            1_000,
+        )
+        .unwrap();
+
+        assert!(verify_state_events_subscription_data(
+            &registry.state.vault_data.full_membership,
+            &subscription,
+            1_001,
+        ).is_err());
     }
 }
 

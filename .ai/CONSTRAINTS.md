@@ -2,7 +2,7 @@
 
 Mandatory architectural rules for the Rust backend cryptography and protocol implementation. All code changes must validate against these constraints.
 
-**Last updated:** 2026-09-20
+**Last updated:** 2026-09-21
 **Maintainer:** Architecture Guardian (validate at Stage 3.5)
 
 ---
@@ -24,6 +24,8 @@ Mandatory architectural rules for the Rust backend cryptography and protocol imp
 | **Reconnect Flush** | A client must upload locally queued recovery decisions before reading refreshed canonical state after connectivity returns | Offline recovery |
 | **Sensitive Logging** | Never log Master Keys, plaintext Secrets, Key Shares (Доли), encrypted Key Shares, or recovery material in debug or production builds. Log only opaque IDs, statuses, and counts. | Security |
 | **Database Filename** | Mobile local databases use `meta-secret-db-<SHA-256(master_key)>.db` with lowercase hexadecimal digest; the raw Master Key is never part of a filename or path log. | Device storage |
+| **Authenticated State Events** | `/state-events` accepts only a short-lived Core-signed subscription credential for a current Vault member; client query/device IDs are not authorization inputs. | Synchronization |
+| **Signal-Only SSE** | State-event payloads contain only opaque invalidation metadata. Clients fetch canonical state through Core after a signal. | Synchronization |
 
 ---
 
@@ -82,6 +84,25 @@ must not reimplement these decisions. They may perform non-security UX
 validation (for example, reject an empty form field) and invoke platform UI
 such as biometry or navigation. A client may choose presentation (for example
 `Recover` versus `Show`) only from the status returned by Core.
+
+### 1.0.2 Authenticated State Invalidation
+
+The `/state-events` Server-Sent Events stream is an authenticated signal channel,
+not an application-state API:
+
+- Core issues a short-lived, device-signed credential containing only the Device
+  ID, Vault name, validity window, nonce, and signature.
+- The server verifies the signature against the registered DSA public key and
+  checks current Vault membership before opening the stream. A client-supplied
+  query parameter or local `deviceId` is never an authorization source.
+- Missing, malformed, expired, future-dated, cross-Vault, outsider, and
+  cross-device credentials are rejected before the stream is created.
+- SSE payloads contain only opaque invalidation metadata (Vault, scope, revision).
+  Web and mobile clients call Core `getAppState` after a signal.
+- Web and mobile clients request a fresh credential on every connection and
+  reconnect. For current members, artificial sleeps and polling loops must not
+  replace the stream. A pending joiner is not yet a member and keeps the
+  existing status-refresh fallback until membership is granted.
 
 ### 1.1 K-of-N Principle (Adaptive Sharing)
 

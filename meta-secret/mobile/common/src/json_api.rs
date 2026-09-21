@@ -116,6 +116,23 @@ async fn async_get_state() -> String {
     }
 }
 
+pub fn state_events_auth_token(vault_name: String) -> String {
+    MobileApplicationManager::sync_wrapper(async_state_events_auth_token(vault_name))
+}
+
+async fn async_state_events_auth_token(vault_name: String) -> String {
+    match MobileApplicationManager::get_global_instance() {
+        Some(app_manager) => match app_manager
+            .state_events_auth_token(VaultName::from(vault_name))
+            .await
+        {
+            Ok(token) => json!({"success": true, "message": token}).to_string(),
+            Err(error) => json!({"success": false, "error": error.to_string()}).to_string(),
+        },
+        None => json!({"success": false, "error": "App manager is not initialized"}).to_string(),
+    }
+}
+
 pub fn generate_user_creds(vault_name: String) -> String {
     MobileApplicationManager::sync_wrapper(async_generate_user_creds(vault_name))
 }

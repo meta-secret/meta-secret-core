@@ -6,6 +6,9 @@ meta-secret/target
 meta-secret/Cargo.lock
 meta-secret/tarpaulin-report.html
 
+# Transient Rust/LLVM coverage output
+*.profraw
+
 meta-secret/meta-server-serverless/.idea/
 meta-secret/meta-server-serverless/node_modules/
 meta-secret/meta-server-serverless/build/

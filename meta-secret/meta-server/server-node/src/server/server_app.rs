@@ -151,7 +151,7 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
         Ok(device_creds)
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, sync_message))]
     pub async fn handle_client_request(
         &self,
         sync_message: SyncRequest,
@@ -266,6 +266,12 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
 
                     let data_sync_response = DataSyncResponse::ServerTailResponse(response);
                     Ok(data_sync_response)
+                }
+                ReadSyncRequest::StateEventsSubscription(subscription) => {
+                    self.data_sync
+                        .verify_state_events_subscription(&subscription)
+                        .await?;
+                    Ok(DataSyncResponse::Empty)
                 }
             },
             SyncRequest::Write(write_request) => match *write_request {

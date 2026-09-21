@@ -2,7 +2,7 @@
 
 Unified vocabulary for meta-secret-core Rust backend. All communication (AI, code, docs, comments) uses these terms consistently.
 
-**Last updated:** 2026-09-20
+**Last updated:** 2026-09-21
 **Maintenance:** Monthly or when architecture changes  
 **Scope:** Cryptography, protocols, server logic, and mobile FFI
 
@@ -25,6 +25,8 @@ Unified vocabulary for meta-secret-core Rust backend. All communication (AI, cod
 | **Public Key** | Asymmetric crypto: used for encryption, shared openly | Device registration | DSA signing key + Transport key |
 | **Private Key** | Asymmetric crypto: kept secret, used for decryption/signing | Device storage | Never transmitted |
 | **OpenBox** | Sealed container holding device's public keys: `dsa_pk` + `transport_pk` | Device info | Sent to server during registration |
+| **State Events Subscription** | Short-lived Core-signed credential binding a Device ID to a Vault and validity window. It authorizes the state-invalidation stream; it contains no Secret, Key Share, or application state. | Synchronization auth | Sent as `Authorization: Bearer <credential>` |
+| **State Invalidation** | Minimal server signal that canonical Vault state changed. It carries only opaque Vault/scope/revision metadata; clients fetch the state through Core. | Synchronization | `state_invalidated` SSE event |
 
 ---
 
@@ -87,8 +89,9 @@ Unified vocabulary for meta-secret-core Rust backend. All communication (AI, cod
 | Term | Definition | Context | Example |
 |------|-----------|---------|---------|
 | **Claim Message** | Protocol message sent over socket: claim announcement + device response | Communication | `SocketAction` variant |
-| **Socket Connection** | Persistent WebSocket or transport to server/node | Runtime | Enables real-time updates |
-| **Socket Event** | Message from server indicating claim/vault update | Event handling | Triggers UI updates |
+| **State Events Stream** | Authenticated Server-Sent Events stream used only to signal that canonical state should be refreshed. It is not a state or Secret transport. | Runtime | `/state-events?vaultName=...` |
+| **Socket Event** | Message from the state-events stream indicating a claim/Vault update | Event handling | Triggers a Core `getAppState` refresh |
+| **Subscription Credential** | Bearer-encoded `State Events Subscription` signed by the device DSA key and checked against current Vault membership | Authentication | Refreshed on each reconnect |
 | **Reconnect Sync** | Explicit client sync that uploads locally queued workflow events before refreshing canonical vault state after connectivity returns | Offline recovery | Web `sync_now()` on the browser `online` event |
 | **Node Orchestration** | Server logic coordinating device responses for claims | Server logic | Waits for quorum, confirms delivery |
 | **Broadcast** | Sending message to all devices in vault (or subset) | Communication | Announce new claim |
