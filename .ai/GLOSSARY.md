@@ -202,7 +202,7 @@ user's decision. It may technically choose one claim from the set already marked
 | **Non-Repudiation** | Security property achieved when a critical action is bound to the actor by a verified cryptographic signature. `SignedAction` is the Core protocol envelope for authenticated state changes. | Accountability | Required for JOIN, RESTORE SECRET, and Claim completion; DELETE DEVICE is a separate task |
 | **SignedAction** | Common signed protocol envelope containing the signer Device ID, action stream, monotonic nonce, Ed25519 signature, and typed action payload. | Protocol security | Server verifies it before persisting a JOIN or recovery event |
 | **Canonical Payload** | Deterministic serialized representation of a SignedAction without its signature; object keys are sorted so map iteration order cannot change the signed bytes. | Cryptographic integrity | The server verifies exactly the bytes Core signed |
-| **Action Signer** | Device whose DSA private key produced a SignedAction. The server resolves the matching DSA public key from canonical Vault membership. | Authorization | A receiver signs its own Approve/Decline completion |
+| **Action Signer** | Device whose DSA private key produced a SignedAction. The server resolves the matching DSA public key from canonical Vault membership and checks the role for that action. | Authorization | A receiver signs Approve/Decline; the sender signs final recovery completion after showing the Secret |
 | **Action Nonce / Sequence** | Monotonic number within a signer action stream. The server rejects an old or replayed sequence before state mutation. | Replay protection | An event with sequence 2 cannot be replayed after sequence 2 is stored |
 
 ---

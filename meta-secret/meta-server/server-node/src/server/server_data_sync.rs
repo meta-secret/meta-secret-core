@@ -197,9 +197,6 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                 UserMembership::Outsider(_) => None,
             })
             .ok_or_else(|| anyhow::anyhow!("completion signer is not a Vault member"))?;
-        if action.signer != completion.recovery_id.distribution_id.receiver {
-            bail!("only the recovery receiver can complete the claim")
-        }
         let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
         let ss_log = p_ss
             .get_ss_log_obj(completion.vault_name.clone())
@@ -208,13 +205,28 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             .claims
             .get(&completion.recovery_id.claim_id.id)
             .ok_or_else(|| anyhow::anyhow!("completion references an unknown claim"))?;
-        if claim.sender != completion.recovery_id.sender
-            || !claim.receivers.contains(&action.signer)
-        {
+        let receiver = &completion.recovery_id.distribution_id.receiver;
+        if claim.sender != completion.recovery_id.sender || !claim.receivers.contains(receiver) {
             bail!("completion receiver is not a target of this claim")
         }
-        if !matches!(completion.receiver_status, SsDistributionStatus::Sent | SsDistributionStatus::Declined) {
-            bail!("invalid recovery completion status")
+        match &completion.receiver_status {
+            SsDistributionStatus::Sent => {
+                let receiver_has_approved =
+                    claim.status.get(receiver) == Some(&SsDistributionStatus::Sent);
+                let receiver_is_signer = action.signer == *receiver;
+                let sender_is_signer = action.signer == claim.sender;
+                if !receiver_is_signer && !(sender_is_signer && receiver_has_approved) {
+                    bail!("completion signer is not authorized for this claim")
+                }
+            }
+            SsDistributionStatus::Declined => {
+                if action.signer != *receiver {
+                    bail!("only the declining receiver can complete the claim")
+                }
+            }
+            SsDistributionStatus::Pending | SsDistributionStatus::Delivered => {
+                bail!("invalid recovery completion status")
+            }
         }
         action.verify(&member.device.keys.dsa_pk)
     }

@@ -412,15 +412,15 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
                                 "[{ts}] 🦀 App Manager: Send recovery completion to mark claim as Delivered"
                             );
                             if let Some(claim) = member.ss_claims.claims.get(&claim_id) {
+                                let receiver = claim.approved_recovery_receiver()?;
                                 let vault_name = user_creds.vault_name.clone();
-                                let device_id = user_creds.device_id();
 
                                 let recovery_id = SsRecoveryId {
                                     claim_id: claim.dist_claim_id.clone(),
                                     sender: claim.sender.clone(),
                                     distribution_id: SsDistributionId {
                                         pass_id: pass_id.clone(),
-                                        receiver: device_id.clone(),
+                                        receiver,
                                     },
                                 };
 
