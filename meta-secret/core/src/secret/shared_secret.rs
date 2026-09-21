@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::fmt::Display;
 use std::str;
 
@@ -123,6 +122,8 @@ impl TryFrom<&SecretShareWithOrderingDto> for EncryptedDataBlock {
 pub struct SharedSecretEncryption;
 
 impl SharedSecretEncryption {
+    // Historical constructor returns the encrypted secret value directly; keep this API stable.
+    #[allow(clippy::new_ret_no_self)]
     pub fn new(config: SharedSecretConfig, text: PlainText) -> CoreResult<SharedSecret> {
         let mut secret_blocks = vec![];
         for data_block in text.to_data_blocks() {
@@ -141,8 +142,7 @@ impl SharedSecret {
         let secret_blocks = self.secret_blocks;
         let size = secret_blocks.len();
 
-        for i in 0..size {
-            let secret_block: &SharedSecretBlock = secret_blocks[i].borrow();
+        for (i, secret_block) in secret_blocks.iter().enumerate().take(size) {
             let shares: Vec<Vec<u8>> = secret_block
                 .shares
                 .iter()

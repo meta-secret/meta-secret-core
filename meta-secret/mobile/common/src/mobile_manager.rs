@@ -1,3 +1,6 @@
+// Tests intentionally remain colocated with the mobile manager implementation.
+#![allow(clippy::items_after_test_module)]
+
 use crate::app_manager::ApplicationManager;
 use anyhow::{bail, Result};
 use meta_db_sqlite::db::sqlite_migration::EmbeddedMigrationsTool;
@@ -66,16 +69,16 @@ fn resolve_android_package() -> String {
     // Priority 2: Extract package from /proc/self/cmdline
     if let Ok(cmdline) = fs::read("/proc/self/cmdline") {
         // cmdline format: "package.name\0arg1\0arg2\0..."
-        if let Ok(cmd_str) = String::from_utf8(cmdline) {
-            if let Some(package) = cmd_str.split('\0').next() {
-                if !package.is_empty() && package.contains('.') {
-                    info!(
-                        "Android package resolved from /proc/self/cmdline: {}",
-                        package
-                    );
-                    return package.to_string();
-                }
-            }
+        if let Ok(cmd_str) = String::from_utf8(cmdline)
+            && let Some(package) = cmd_str.split('\0').next()
+            && !package.is_empty()
+            && package.contains('.')
+        {
+            info!(
+                "Android package resolved from /proc/self/cmdline: {}",
+                package
+            );
+            return package.to_string();
         }
     }
 
@@ -173,7 +176,7 @@ impl MobileApplicationManager {
     pub async fn get_state(&self) -> anyhow::Result<ApplicationState> {
         info!("get_state: fetching application state");
         let app_state = match self.app_manager.get_state().await {
-            Ok(state) => ApplicationState::from(state),
+            Ok(state) => state,
             Err(e) => {
                 bail!("Unable to get state from mobile manager: {:?}", e);
             }
@@ -206,7 +209,7 @@ impl MobileApplicationManager {
 
     pub async fn sign_up(&self) -> anyhow::Result<ApplicationState> {
         let app_state = self.app_manager.sign_up().await?;
-        Ok(ApplicationState::from(app_state))
+        Ok(app_state)
     }
 
     pub async fn update_membership(
@@ -214,7 +217,7 @@ impl MobileApplicationManager {
         candidate: UserData,
         upd: JoinActionUpdate,
     ) -> anyhow::Result<()> {
-        Ok(self.app_manager.update_membership(candidate, upd).await?)
+        self.app_manager.update_membership(candidate, upd).await
     }
 
     pub async fn cluster_distribution(&self, plain_pass_info: &PlainPassInfo) {

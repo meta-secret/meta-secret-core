@@ -17,7 +17,6 @@ use std::sync::Arc;
 
 /// Container for database-related components
 pub struct DbContext<Repo: KvLogEventRepo> {
-    pub repo: Arc<Repo>,
     pub p_obj: Arc<PersistentObject<Repo>>,
     pub p_creds: PersistentCredentials<Repo>,
 }
@@ -58,7 +57,6 @@ impl BaseCommand {
         };
 
         Ok(DbContext {
-            repo,
             p_obj,
             p_creds,
         })
@@ -86,7 +84,6 @@ impl BaseCommand {
         };
 
         Ok(DbContext {
-            repo,
             p_obj,
             p_creds,
         })

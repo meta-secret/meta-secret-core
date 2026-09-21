@@ -16,6 +16,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+// Public wire enum: keep the inline variants to preserve the existing API shape.
+#[allow(clippy::large_enum_variant)]
 pub enum ReadSyncRequest {
     Vault(VaultRequest),
     SsRequest(SsRequest),
@@ -61,6 +63,8 @@ pub struct SignedAction {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+// Public wire enum: boxing would change the serialized/public contract.
+#[allow(clippy::large_enum_variant)]
 pub enum SignedActionPayload {
     Event(GenericKvLogEvent),
     RecoveryCompletion(SsRecoveryCompletion),

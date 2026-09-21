@@ -1,18 +1,13 @@
 use std::str::FromStr;
 
 /// Output format for CLI command results
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CliOutputFormat {
     /// JSON output
     Json,
     /// YAML output
+    #[default]
     Yaml,
-}
-
-impl Default for CliOutputFormat {
-    fn default() -> Self {
-        CliOutputFormat::Yaml
-    }
 }
 
 impl FromStr for CliOutputFormat {

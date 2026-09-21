@@ -36,7 +36,7 @@ fn test_one_device_lifecycle() {
         .arg("device")
         .arg("--device-name")
         .arg("one-device-test")
-        .current_dir(&temp_path)
+        .current_dir(temp_path)
         .output()
         .expect("Failed to run init device");
 
@@ -53,7 +53,7 @@ fn test_one_device_lifecycle() {
         .arg("user")
         .arg("--vault-name")
         .arg(&vault_name)
-        .current_dir(&temp_path)
+        .current_dir(temp_path)
         .output()
         .expect("Failed to run init user");
 
@@ -68,7 +68,7 @@ fn test_one_device_lifecycle() {
     let output = Command::new(bin_path)
         .arg("auth")
         .arg("sign-up")
-        .current_dir(&temp_path)
+        .current_dir(temp_path)
         .output()
         .expect("Failed to run auth sign-up");
 
@@ -92,7 +92,7 @@ fn test_one_device_lifecycle() {
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .current_dir(&temp_path)
+        .current_dir(temp_path)
         .spawn()
         .expect("Failed to spawn secret split");
 
@@ -115,7 +115,7 @@ fn test_one_device_lifecycle() {
     let output = Command::new(bin_path)
         .arg("info")
         .arg("secrets")
-        .current_dir(&temp_path)
+        .current_dir(temp_path)
         .output()
         .expect("Failed to run info secrets");
 
@@ -134,7 +134,7 @@ fn test_one_device_lifecycle() {
         .arg("recovery-request")
         .arg("--pass-name")
         .arg(&secret_name)
-        .current_dir(&temp_path)
+        .current_dir(temp_path)
         .output()
         .expect("Failed to run recovery-request");
 
@@ -149,7 +149,7 @@ fn test_one_device_lifecycle() {
     let output = Command::new(bin_path)
         .arg("secret")
         .arg("accept-all-recovery-requests")
-        .current_dir(&temp_path)
+        .current_dir(temp_path)
         .output()
         .expect("Failed to run accept-all-recovery-requests");
 
@@ -166,7 +166,7 @@ fn test_one_device_lifecycle() {
         .arg("json")
         .arg("info")
         .arg("recovery-claims")
-        .current_dir(&temp_path)
+        .current_dir(temp_path)
         .output()
         .expect("Failed to run recovery-claims");
 
@@ -192,7 +192,7 @@ fn test_one_device_lifecycle() {
                 .unwrap_or(false)
         })
         .and_then(|claim| claim["id"].as_str())
-        .expect(&format!("Claim for secret '{}' not found", secret_name));
+        .unwrap_or_else(|| panic!("Claim for secret '{}' not found", secret_name));
 
     println!("✅ Found claim ID: {}", claim_id);
 
@@ -208,7 +208,7 @@ fn test_one_device_lifecycle() {
         .arg("show")
         .arg("--claim-id")
         .arg(claim_id)
-        .current_dir(&temp_path)
+        .current_dir(temp_path)
         .output()
         .expect("Failed to run secret show");
 
@@ -223,7 +223,7 @@ fn test_one_device_lifecycle() {
 
     let recovered_value = show_result["secret"]
         .as_str()
-        .expect(&format!("No 'secret' field in response: {}", show_json));
+        .unwrap_or_else(|| panic!("No 'secret' field in response: {}", show_json));
 
     assert_eq!(
         recovered_value, secret_value,

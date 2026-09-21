@@ -4,6 +4,7 @@ use anyhow::Result;
 use meta_secret_core::node::common::model::ApplicationState;
 
 // Base trait for info commands
+#[allow(async_fn_in_trait)]
 pub trait InfoCommandTrait {
     async fn execute(&self) -> Result<()>;
 }

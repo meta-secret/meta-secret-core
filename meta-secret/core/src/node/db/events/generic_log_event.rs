@@ -11,6 +11,8 @@ use crate::node::db::events::vault::vault_status::VaultStatusObject;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+// Persisted event envelope; boxing would alter the serialized database format.
+#[allow(clippy::large_enum_variant)]
 pub enum GenericKvLogEvent {
     DeviceCreds(DeviceCredsObject),
     UserCreds(UserCredsObject),

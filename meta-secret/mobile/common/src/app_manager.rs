@@ -178,7 +178,7 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
         }
 
         let request = GenericAppStateRequest::GetState;
-        Ok(self.meta_client_service.send_request(request).await?)
+        self.meta_client_service.send_request(request).await
     }
 
     pub async fn state_events_auth_token(&self, vault_name: VaultName) -> Result<String> {

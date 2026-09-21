@@ -94,10 +94,10 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
         //check if a sender is a member of the vault and update the vault then
         let vault = p_vault.get_vault(vault_name.clone()).await?;
 
-        if let VaultActionUpdateEvent::UpdateMembership(update) = action_update {
-            if let UserMembership::Member(candidate) = &update.update {
-                vault.clone().to_data().ensure_can_add_member(candidate)?;
-            }
+        if let VaultActionUpdateEvent::UpdateMembership(update) = action_update
+            && let UserMembership::Member(candidate) = &update.update
+        {
+            vault.clone().to_data().ensure_can_add_member(candidate)?;
         }
 
         let vault_action_events = p_vault

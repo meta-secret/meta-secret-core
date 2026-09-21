@@ -79,6 +79,8 @@ pub mod fixture {
         use crate::node::db::objects::persistent_vault::fixture::PersistentVaultFixture;
         use crate::node::db::repo::persistent_credentials::fixture::PersistentCredentialsFixture;
 
+        // Keep fixture state inline; boxing would make test construction needlessly complex.
+        #[allow(clippy::large_enum_variant)]
         pub enum Fixture {
             Empty(EmptyState),
             Base(BaseState),

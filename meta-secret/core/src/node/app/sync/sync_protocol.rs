@@ -4,6 +4,8 @@ use anyhow::Result;
 use reqwest::Client;
 use std::time::Duration;
 
+// Public async trait is consumed by native, WASM, and test implementations.
+#[allow(async_fn_in_trait)]
 pub trait SyncProtocol {
     async fn send(&self, request: SyncRequest) -> Result<DataSyncResponse>;
 }
