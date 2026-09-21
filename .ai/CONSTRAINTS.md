@@ -603,6 +603,10 @@ ciphertext, not server possession of a usable Key Share.
 - `SignedAction` is the common envelope for write events and RESTORE completion.
   Its canonical payload binds action type, Vault, Claim/request IDs, signer,
   sender/receiver IDs, stream, nonce, and the complete action body.
+- A receiver signs its own Approve/Decline action. After the sender recovers and
+  shows the Secret, the sender signs the terminal completion and names the
+  receiver whose `Sent` decision supplied the recovery share. The server checks
+  both the target receiver and the signer role before applying the completion.
 - The server resolves the signer's registered DSA public key from canonical Vault
   membership (with only the explicit bootstrap JOIN exception), verifies the
   signature, enforces authorization, and advances the sequence before applying

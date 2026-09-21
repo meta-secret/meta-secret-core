@@ -235,6 +235,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
                             .await?;
 
                             if let Some(claim) = member.ss_claims.claims.get(&claim_id) {
+                                let receiver = claim.approved_recovery_receiver()?;
                                 let completion = SsRecoveryCompletion {
                                     vault_name: user_creds.vault_name.clone(),
                                     recovery_id: SsRecoveryId {
@@ -242,7 +243,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
                                         sender: claim.sender.clone(),
                                         distribution_id: SsDistributionId {
                                             pass_id: pass_id.clone(),
-                                            receiver: user_creds.device_id().clone(),
+                                            receiver,
                                         },
                                     },
                                     receiver_status: SsDistributionStatus::Sent,

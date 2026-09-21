@@ -90,6 +90,27 @@ pub struct SsClaim {
 }
 
 impl SsClaim {
+    /// Return the unique receiver that has approved this recovery claim.
+    pub fn approved_recovery_receiver(&self) -> anyhow::Result<DeviceId> {
+        let approved: Vec<DeviceId> = self
+            .receivers
+            .iter()
+            .filter(|receiver| {
+                matches!(
+                    self.status.statuses.get(*receiver),
+                    Some(SsDistributionStatus::Sent)
+                )
+            })
+            .cloned()
+            .collect();
+
+        match approved.as_slice() {
+            [receiver] => Ok(receiver.clone()),
+            [] => bail!("recovery claim has no approved receiver"),
+            _ => bail!("recovery claim has multiple approved receivers"),
+        }
+    }
+
     pub fn distribution_ids(&self) -> Vec<SsDistributionId> {
         let mut ids = Vec::with_capacity(self.receivers.len());
         for receiver in self.receivers.iter() {
