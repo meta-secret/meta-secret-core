@@ -4,6 +4,7 @@ use anyhow::Result;
 use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::node::api::{ReadSyncRequest, SsRecoveryCompletion, SyncRequest};
 use meta_secret_core::node::security::sign_recovery_completion;
+use meta_secret_core::node::state_events::StateEventsSubscription;
 use meta_secret_core::node::app::app_manager_shared::{
     build_client_components, recover_plain_text, resolve_signup_vault_name,
 };
@@ -178,6 +179,15 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
 
         let request = GenericAppStateRequest::GetState;
         Ok(self.meta_client_service.send_request(request).await?)
+    }
+
+    pub async fn state_events_auth_token(&self, vault_name: VaultName) -> Result<String> {
+        let user_creds = self.meta_client_service.find_user_creds().await?;
+        if user_creds.vault_name != vault_name {
+            bail!("state events Vault does not match local credentials");
+        }
+        let key_manager = user_creds.device_creds.key_manager()?;
+        StateEventsSubscription::sign(vault_name, user_creds.device_id().clone(), &key_manager.dsa)?.bearer_token()
     }
 
     pub async fn accept_recover_mobile(&self, claim_id: ClaimId) -> Result<()> {

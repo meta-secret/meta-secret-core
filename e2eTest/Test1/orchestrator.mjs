@@ -373,7 +373,13 @@ async function unlockWithPasskeyIfNeeded(page) {
 async function approveJoinRequestOnWeb(page, deviceName) {
   console.log(`Web approving ${deviceName} join request`);
   await page.getByRole('link', { name: 'Devices', exact: true }).click();
-  await page.getByTestId('pending-device-row').waitFor({ state: 'visible', timeout: 120_000 });
+  try {
+    await page.getByTestId('pending-device-row').waitFor({ state: 'visible', timeout: 120_000 });
+  } catch (error) {
+    const bodyText = await page.locator('body').innerText().catch(() => '<unable to read Web page text>');
+    console.error(`E2E Web device screen after waiting for ${deviceName} pending row:\n${bodyText}`);
+    throw error;
+  }
   await page.getByTestId('pending-device-row').click();
   await page.getByTestId('accept-join-request').click();
   await page.getByTestId('pending-device-row').waitFor({ state: 'detached', timeout: 120_000 }).catch(() => {});
@@ -443,6 +449,8 @@ async function main() {
 
   const browser = await chromium.launch({ headless: false, slowMo: 250 });
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  page.on('console', (message) => console.log(`WEB CONSOLE [${message.type()}] ${message.text()}`));
+  page.on('pageerror', (error) => console.error(`WEB PAGE ERROR ${error.message}`));
   await setupVirtualAuthenticator(page);
 
   console.log('5. Creating Vault');

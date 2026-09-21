@@ -15,6 +15,7 @@ const isInitialized = ref(false);
 const vaultName = computed(() => jsAppState.getVaultName());
 const stateInvalidation = createStateInvalidationController({
   refresh: () => jsAppState.updateState(),
+  getAuthorization: () => jsAppState.getStateEventsAuthToken(vaultName.value),
 });
 
 const handleBrowserOnline = async () => {
@@ -64,9 +65,9 @@ watch(
 );
 
 watch(
-  () => [authStore.isAuthenticated, isInitialized.value, vaultName.value] as const,
-  ([isAuthenticated, initialized, currentVaultName]) => {
-    if (isAuthenticated && initialized && currentVaultName) {
+  () => [authStore.isAuthenticated, isInitialized.value, vaultName.value, jsAppState.isMember] as const,
+  ([isAuthenticated, initialized, currentVaultName, member]) => {
+    if (isAuthenticated && initialized && member && currentVaultName) {
       stateInvalidation.connect(currentVaultName);
       return;
     }

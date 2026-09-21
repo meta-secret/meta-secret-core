@@ -158,6 +158,17 @@ export const AppState = defineStore('app_state', {
       return this.currState;
     },
 
+    async getStateEventsAuthToken(vaultName = this.getVaultName()) {
+      if (!this.appManager) throw new Error('App manager is not initialized');
+      const manager = this.appManager as WasmApplicationManager & {
+        state_events_auth_token?: (name: string) => Promise<string>;
+      };
+      if (typeof manager.state_events_auth_token !== 'function') {
+        throw new Error('State events authorization is unavailable in the loaded WASM module');
+      }
+      return manager.state_events_auth_token(vaultName);
+    },
+
     updateStateWith(newState: WasmApplicationState) {
       this.currState = newState;
       return this.currState;

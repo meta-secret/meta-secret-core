@@ -1,4 +1,5 @@
 use axum::extract::{Query, State};
+use axum::http::HeaderMap;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::{Json, Router, routing::post};
 use futures_util::stream::{self, Stream};
@@ -142,10 +143,28 @@ async fn main() -> Result<()> {
 
 async fn state_events(
     State(state): State<Arc<MetaServerAppState>>,
+    headers: HeaderMap,
     Query(query): Query<StateEventsQuery>,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, Json<ErrorResponse>)> {
+    let subscription = parse_state_events_subscription(&headers, &VaultName::from(query.vault_name.clone()))?;
+    let subscriber_device_id = subscription.signer.clone();
+    let authorization_response = state
+        .data_transfer
+        .send_request(meta_secret_core::node::api::SyncRequest::Read(Box::new(
+            meta_secret_core::node::api::ReadSyncRequest::StateEventsSubscription(subscription),
+        )))
+        .await
+        .map_err(|_| error_response(StatusCode::FORBIDDEN, "State events subscription is not authorized"))?;
+    authorization_response
+        .ensure_success()
+        .map_err(|_| error_response(StatusCode::FORBIDDEN, "State events subscription is not authorized"))?;
+
     let vault_name = VaultName::from(query.vault_name);
-    info!(vault_name = %vault_name, "SSE client connected");
+    info!(
+        vault_name = %vault_name,
+        subscriber_device_id = %subscriber_device_id,
+        "SSE client connected"
+    );
     let rx = state.invalidation_tx.subscribe();
 
     let stream = stream::unfold((rx, vault_name), |(mut rx, vault_name)| async move {
@@ -176,11 +195,30 @@ async fn state_events(
         }
     });
 
-    Sse::new(stream).keep_alive(
+    Ok(Sse::new(stream).keep_alive(
         KeepAlive::new()
             .interval(Duration::from_secs(15))
             .text("ping"),
-    )
+    ))
+}
+
+fn parse_state_events_subscription(
+    headers: &HeaderMap,
+    requested_vault: &VaultName,
+) -> Result<
+    meta_secret_core::node::state_events::StateEventsSubscription,
+    (StatusCode, Json<ErrorResponse>),
+> {
+    let authorization = headers
+        .get(http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| error_response(StatusCode::UNAUTHORIZED, "Missing state events authorization"))?;
+    let subscription = meta_secret_core::node::state_events::StateEventsSubscription::from_bearer_token(authorization)
+        .map_err(|_| error_response(StatusCode::UNAUTHORIZED, "Invalid state events authorization"))?;
+    if subscription.vault_name != *requested_vault {
+        return Err(error_response(StatusCode::FORBIDDEN, "State events Vault does not match authorization"));
+    }
+    Ok(subscription)
 }
 
 async fn hi() -> Html<&'static str> {
@@ -191,12 +229,74 @@ async fn hi() -> Html<&'static str> {
 struct ErrorResponse {
     message: String,
 }
+
+fn error_response(status: StatusCode, message: &str) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        status,
+        Json(ErrorResponse {
+            message: message.to_string(),
+        }),
+    )
+}
 async fn not_found_handler(uri: Uri) -> (StatusCode, Json<ErrorResponse>) {
     let error_response = ErrorResponse {
         message: format!("404. MetaServer has no route: {uri}"),
     };
     let response = Json(error_response);
     (StatusCode::NOT_FOUND, response)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use meta_secret_core::crypto::key_pair::{DsaKeyPair, KeyPair};
+    use meta_secret_core::crypto::utils::U64IdUrlEnc;
+    use meta_secret_core::node::common::model::device::common::DeviceId;
+    use meta_secret_core::node::state_events::StateEventsSubscription;
+
+    fn token(vault_name: &str) -> String {
+        let key = DsaKeyPair::generate();
+        StateEventsSubscription::sign_at(
+            VaultName::from(vault_name),
+            DeviceId(U64IdUrlEnc::from("web-state-events-test".to_string())),
+            &key,
+            1_000,
+        )
+        .unwrap()
+        .bearer_token()
+        .unwrap()
+    }
+
+    #[test]
+    fn state_events_requires_authorization_header() {
+        let headers = HeaderMap::new();
+        let error = parse_state_events_subscription(&headers, &VaultName::from("vault-a"))
+            .unwrap_err();
+        assert_eq!(error.0, StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn state_events_rejects_invalid_or_cross_vault_credentials() {
+        let mut headers = HeaderMap::new();
+        headers.insert(http::header::AUTHORIZATION, "Bearer not-a-token".parse().unwrap());
+        assert_eq!(
+            parse_state_events_subscription(&headers, &VaultName::from("vault-a"))
+                .unwrap_err()
+                .0,
+            StatusCode::UNAUTHORIZED
+        );
+
+        headers.insert(
+            http::header::AUTHORIZATION,
+            format!("Bearer {}", token("vault-a")).parse().unwrap(),
+        );
+        assert_eq!(
+            parse_state_events_subscription(&headers, &VaultName::from("vault-b"))
+                .unwrap_err()
+                .0,
+            StatusCode::FORBIDDEN
+        );
+    }
 }
 
 pub async fn meta_request(

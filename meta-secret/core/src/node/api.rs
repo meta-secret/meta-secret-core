@@ -4,6 +4,7 @@ use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::objects::persistent_vault::VaultTail;
+use crate::node::state_events::StateEventsSubscription;
 use crate::crypto::encoding::base64::Base64Text;
 use crate::crypto::key_pair::DsaKeyPair;
 use crate::crypto::keys::DsaPk;
@@ -20,6 +21,7 @@ pub enum ReadSyncRequest {
     SsRequest(SsRequest),
     SsRecoveryCompletion(SignedAction),
     ServerTail(ServerTailRequest),
+    StateEventsSubscription(StateEventsSubscription),
 }
 
 #[derive(Clone, Debug, PartialEq, From, Serialize, Deserialize)]
