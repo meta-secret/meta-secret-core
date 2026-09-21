@@ -508,6 +508,12 @@ impl MetaClientStateProvider {
     }
 }
 
+impl Default for MetaClientStateProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(any(test, feature = "test-framework"))]
 pub mod fixture {
     use crate::meta_tests::fixture_util::fixture::states::BaseState;

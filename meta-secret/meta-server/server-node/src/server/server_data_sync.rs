@@ -1,3 +1,6 @@
+// Tests intentionally live next to the server data-sync implementation.
+#![allow(clippy::items_after_test_module)]
+
 use std::cmp::PartialEq;
 use std::sync::Arc;
 
@@ -174,10 +177,10 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
         // The event's ArtifactId is the durable per-stream monotonic sequence.
         // Reject the same or an older sequence before the event can be applied.
-        if let Some(tail) = self.p_obj.find_tail_id(object_id.clone().first()).await? {
-            if object_id.id.curr <= tail.id.curr {
-                bail!("replayed or out-of-order signed action")
-            }
+        if let Some(tail) = self.p_obj.find_tail_id(object_id.clone().first()).await?
+            && object_id.id.curr <= tail.id.curr
+        {
+            bail!("replayed or out-of-order signed action")
         }
         Ok(event)
     }
@@ -215,7 +218,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                     claim.status.get(receiver) == Some(&SsDistributionStatus::Sent);
                 let receiver_is_signer = action.signer == *receiver;
                 let sender_is_signer = action.signer == claim.sender;
-                if !receiver_is_signer && !(sender_is_signer && receiver_has_approved) {
+                if !(receiver_is_signer || sender_is_signer && receiver_has_approved) {
                     bail!("completion signer is not authorized for this claim")
                 }
             }
@@ -459,15 +462,15 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                         .find_unique_active_recovery_claim_id(
                         &claim_preview.sender,
                         &claim_preview.dist_claim_id.pass_id,
-                    )? {
-                        if active_claim_id != claim_preview.id {
-                            debug!(
-                                ?active_claim_id,
-                                rejected_claim_id = ?claim_preview.id,
-                                "recovery claim already active; keeping authoritative claim"
-                            );
-                            return Ok(());
-                        }
+                    )?
+                        && active_claim_id != claim_preview.id
+                    {
+                        debug!(
+                            ?active_claim_id,
+                            rejected_claim_id = ?claim_preview.id,
+                            "recovery claim already active; keeping authoritative claim"
+                        );
+                        return Ok(());
                     }
 
                     // Device logs contain a complete local snapshot. Merge it with the

@@ -41,6 +41,7 @@ impl WasmApplicationManager {
         .await
     }
 
+    #[allow(clippy::arc_with_non_send_sync)]
     pub async fn init_wasm_with_device_and_environment(
         master_key: TransportSk,
         device_name: String,

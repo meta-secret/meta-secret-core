@@ -110,8 +110,7 @@ impl InfoCommandTrait for DefaultInfoCommand {
                 VaultFullInfo::Member(member_info) => {
                     // Build structured data for the template
                     let mut users = Vec::new();
-                    for (_i, (device_id, user)) in member_info.member.vault.users.iter().enumerate()
-                    {
+                    for (device_id, user) in &member_info.member.vault.users {
                         if let UserMembership::Member(member) = user {
                             users.push(json!({
                                 "type": "Member",

@@ -140,7 +140,7 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
 
         info!(
             "🔑 [recover v2] own local share found: {}, distribution_data count: {}, recovery_data count: {}",
-            distribution_data.len() > 0,
+            !distribution_data.is_empty(),
             distribution_data.len(),
             recovery_data.len()
         );
@@ -270,7 +270,7 @@ mod tests {
             let share_json = shared_secret.get_share(share_index).as_json()?;
             let encrypted = sender_km
                 .transport
-                .encrypt_string(PlainText::from(share_json), &sender_pk)?;
+                .encrypt_string(PlainText::from(share_json), sender_pk)?;
 
             let wf_event = SsWorkflowObject::Recovery(KvLogEvent {
                 key: KvKey::from(SsWorkflowDescriptor::Recovery(recovery_id.clone())),

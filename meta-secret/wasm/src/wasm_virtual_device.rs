@@ -17,6 +17,7 @@ use tracing::{Instrument, info, instrument};
 use wasm_bindgen_futures::spawn_local;
 
 #[instrument(name = "Vd", skip_all)]
+#[allow(dead_code)]
 pub async fn virtual_device_setup<Repo: KvLogEventRepo>(
     device_repo: Arc<Repo>,
     sync_protocol: Arc<WasmSyncProtocol<Repo>>,

@@ -1,3 +1,6 @@
+// Keep colocated endpoint tests below the production handlers.
+#![allow(clippy::items_after_test_module)]
+
 use axum::extract::{Query, State};
 use axum::http::HeaderMap;
 use axum::response::sse::{Event, KeepAlive, Sse};

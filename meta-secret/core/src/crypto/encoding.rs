@@ -178,8 +178,8 @@ pub mod base64 {
         #[test]
         fn from_array256bit() {
             let mut array = [0u8; KEY_SIZE_32_BYTES];
-            for i in 0..array.len() {
-                array[i] = i as u8;
+            for (i, value) in array.iter_mut().enumerate() {
+                *value = i as u8;
             }
 
             let encoded = Base64Text::from(array);
@@ -222,8 +222,8 @@ pub mod base64 {
         #[test]
         fn roundtrip_array256bit() {
             let mut original = [0u8; KEY_SIZE_32_BYTES];
-            for i in 0..original.len() {
-                original[i] = i as u8;
+            for (i, value) in original.iter_mut().enumerate() {
+                *value = i as u8;
             }
 
             let encoded = Base64Text::from(&original);

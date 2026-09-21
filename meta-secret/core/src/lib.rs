@@ -66,7 +66,7 @@ pub fn recover_from_shares(users_shares: Vec<UserShareDto>) -> CoreResult<PlainT
         let curr_block = &users_shares[0].share_blocks[block_index];
         let secret_block = SharedSecretBlock {
             config: curr_block.config,
-            meta_data: curr_block.meta_data.clone(),
+            meta_data: curr_block.meta_data,
             shares: encrypted_data_blocks,
         };
 
@@ -89,8 +89,9 @@ fn load_users_shares() -> Result<Vec<UserShareDto>, SharesLoaderError> {
 
         let maybe_ext = file_path.extension().and_then(OsStr::to_str);
 
-        if let Some(ext) = maybe_ext {
-            if ext.eq("json") {
+        if let Some(ext) = maybe_ext
+            && ext.eq("json")
+        {
                 // Open the file in read-only mode with buffer.
                 let file = File::open(file_path)?;
                 let reader = BufReader::new(file);
@@ -98,7 +99,6 @@ fn load_users_shares() -> Result<Vec<UserShareDto>, SharesLoaderError> {
                 // Read the JSON contents of the file as an instance of `User`.
                 let secret_share: UserShareDto = serde_json::from_reader(reader)?;
                 users_shares_dto.push(secret_share);
-            }
         }
     }
 
@@ -260,18 +260,20 @@ mod tests {
         if let Ok(entries) = fs::read_dir("secrets") {
             for entry in entries.filter_map(Result::ok) {
                 let path = entry.path();
-                if let Some(ext) = path.extension() {
-                    if ext == "json" {
-                        json_count += 1;
+                if let Some(ext) = path.extension().and_then(OsStr::to_str) {
+                    match ext {
+                        "json" => {
+                            json_count += 1;
 
-                        // Verify JSON file can be parsed
-                        if let Ok(content) = fs::read_to_string(&path) {
-                            let parse_result: Result<UserShareDto, _> =
-                                serde_json::from_str(&content);
-                            assert!(parse_result.is_ok(), "Failed to parse JSON file");
+                            // Verify JSON file can be parsed
+                            if let Ok(content) = fs::read_to_string(&path) {
+                                let parse_result: Result<UserShareDto, _> =
+                                    serde_json::from_str(&content);
+                                assert!(parse_result.is_ok(), "Failed to parse JSON file");
+                            }
                         }
-                    } else if ext == "png" {
-                        png_count += 1;
+                        "png" => png_count += 1,
+                        _ => {}
                     }
                 }
             }

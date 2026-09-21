@@ -144,7 +144,6 @@ pub mod tests {
         };
 
         DbContext {
-            repo,
             p_obj,
             p_creds,
         }

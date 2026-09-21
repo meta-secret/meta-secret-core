@@ -426,7 +426,7 @@ impl SsLogData {
 
     pub fn find_recovery_claim(&self, pass_id: &MetaPasswordId) -> Option<SsClaim> {
         let mut result_claim = None;
-        for (_, claim) in self.claims.iter() {
+        for claim in self.claims.values() {
             let SecretDistributionType::Recover = claim.distribution_type else {
                 continue;
             };
@@ -825,7 +825,7 @@ mod test {
             "Should have status for all two devices"
         );
 
-        for (_, device_status) in &status.statuses {
+        for device_status in status.statuses.values() {
             assert!(
                 matches!(device_status, SsDistributionStatus::Pending),
                 "Initial status should be Pending"

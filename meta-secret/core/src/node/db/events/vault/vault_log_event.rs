@@ -147,6 +147,7 @@ impl VaultActionEvents {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(clippy::large_enum_variant)]
 pub enum VaultActionEvent {
     Init(VaultActionInitEvent),
     Request(VaultActionRequestEvent),
@@ -207,6 +208,7 @@ impl VaultActionRequestEvent {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(clippy::large_enum_variant)]
 pub enum VaultActionUpdateEvent {
     /// There is no corresponding request for this event (server prematurely adds candidate to pending list)
     AddToPending { candidate: UserData },

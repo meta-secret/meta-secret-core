@@ -89,8 +89,8 @@ impl CommunicationChannel {
 
     pub fn sender(&self) -> &TransportPk {
         match self {
-            CommunicationChannel::End2End(End2EndChannel { sender, .. }) => &sender,
-            CommunicationChannel::SingleDevice(LoopbackChannel { device }) => &device,
+            CommunicationChannel::End2End(End2EndChannel { sender, .. }) => sender,
+            CommunicationChannel::SingleDevice(LoopbackChannel { device }) => device,
         }
     }
 

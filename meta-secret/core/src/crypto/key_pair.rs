@@ -79,6 +79,8 @@ impl KeyPair<DsaPk, DsaSk> for DsaKeyPair {
     }
 }
 #[wasm_bindgen]
+// The field is intentionally private/unused; keep the opaque FFI layout stable.
+#[allow(dead_code)]
 pub struct MasterKeyManager(TransportDsaKeyPair);
 #[wasm_bindgen]
 impl MasterKeyManager {

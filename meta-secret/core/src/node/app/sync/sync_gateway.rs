@@ -519,18 +519,18 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                 let current_claim = current_claims.get(&claim.id).cloned();
                 // If not found (ss_log may be contaminated with another device's claim), still
                 // attempt upload. If found, upload only while a receiver is still Pending.
-                if let Some(c) = current_claim.as_ref() {
-                    if !Self::has_pending_split_receiver(c) {
-                        continue;
-                    }
+                if let Some(c) = current_claim.as_ref()
+                    && !Self::has_pending_split_receiver(c)
+                {
+                    continue;
                 }
                 let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
                 let wf_events = p_ss.get_distributions(claim).await?;
                 for wf_event in wf_events {
-                    if let Some(c) = current_claim.as_ref() {
-                        if !Self::split_workflow_has_pending_receiver(c, &wf_event) {
-                            continue;
-                        }
+                    if let Some(c) = current_claim.as_ref()
+                        && !Self::split_workflow_has_pending_receiver(c, &wf_event)
+                    {
+                        continue;
                     }
 
                     let obj_id = wf_event.obj_id();
