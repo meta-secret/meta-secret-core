@@ -2,20 +2,22 @@ use crate::node::common::model::crypto::aead::EncryptedMessage;
 use crate::node::common::model::meta_pass::{PlainPassInfo, SecurePassInfo};
 use crate::node::common::model::secret::{
     ClaimId, SecretDistributionData, SecretDistributionType, SsClaim, SsDeclineData,
-    SsDistributionId, SsDistributionStatus, SsLogData,
+    SsDistributionCompositeStatus, SsDistributionId, SsDistributionStatus, SsLogData,
 };
 use crate::node::common::model::user::common::{UserDataMember, UserMembership};
 use crate::node::common::model::user::user_creds::UserCreds;
 use crate::node::common::model::vault::vault::{VaultMember, VaultStatus};
 use crate::node::common::model::vault::vault_data::VaultData;
 use crate::node::db::actions::sign_up::join::{JoinAction, JoinActionUpdate};
+use crate::node::db::actions::sign_up::remove::{RemoveAction, RemoveActionUpdate};
 use crate::node::db::descriptors::shared_secret_descriptor::SsDeviceLogDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
 use crate::node::db::events::generic_log_event::ObjIdExtractor;
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::shared_secret_event::{SsDeviceLogObject, SsWorkflowObject};
 use crate::node::db::events::vault::vault_log_event::{
-    JoinClusterEvent, VaultActionRequestEvent, VaultLogObject,
+    JoinClusterEvent, RemoveMemberEvent, RemoveMemberRequestEvent, RemoveMemberShareTransfer,
+    VaultActionRequestEvent, VaultActionUpdateEvent, VaultLogObject,
 };
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -57,6 +59,9 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                 VaultActionRequestEvent::JoinCluster(join_request) => {
                     self.update_membership(join_request, JoinActionUpdate::Accept)
                         .await?;
+                }
+                VaultActionRequestEvent::RemoveMember(_) => {
+                    // Removal requires an explicit user action; never auto-approve it.
                 }
                 VaultActionRequestEvent::AddMetaPass(_) => {
                     //skip
@@ -183,12 +188,365 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                         }
                     }
                 }
+                VaultActionRequestEvent::RemoveMember(_) => {
+                    // Handled by `request_remove_member` / `accept_remove_member`.
+                }
                 VaultActionRequestEvent::AddMetaPass(_) => {
                     //Ignore server side events (no need approval)
                 }
             }
         }
 
+        Ok(())
+    }
+
+    /// Create a signed removal request. In a two-device vault the same local
+    /// confirmation immediately completes the operation; with three devices a
+    /// different member must call `accept_remove_member`.
+    pub async fn request_remove_member(
+        &self,
+        target: UserDataMember,
+    ) -> Result<RemoveMemberRequestEvent> {
+        let member = self.get_member().await?;
+        let vault = self.get_vault(member.clone()).await?;
+        let action = RemoveAction {
+            p_obj: self.p_obj.clone(),
+            member: VaultMember { member, vault: vault.clone() },
+        };
+        let request_share_transfers = if vault.members().len() >= 3 {
+            self.build_local_share_transfers_for_removal(&vault, &target)
+                .await?
+        } else {
+            vec![]
+        };
+        let request = action.request(target, request_share_transfers).await?;
+        if vault.members().len() == 2 {
+            action
+                .update(request.clone(), RemoveActionUpdate::Accept, vec![])
+                .await?;
+        }
+        Ok(request)
+    }
+
+    /// Approve the pending removal for the target device. Core checks that the
+    /// local device is a different current member when three devices remain.
+    pub async fn accept_remove_member(&self, target_device_id: String) -> Result<()> {
+        let member = self.get_member().await?;
+        let vault = self.get_vault(member.clone()).await?;
+        let Some(VaultLogObject(log)) = self.get_vault_log_event(&member).await? else {
+            bail!("Removal request not found");
+        };
+        let request = log
+            .value
+            .requests
+            .into_iter()
+            .find_map(|request| match request {
+                VaultActionRequestEvent::RemoveMember(request)
+                    if request.target.user_data.device.device_id.to_string() == target_device_id => Some(request),
+                _ => None,
+            })
+            .ok_or_else(|| anyhow::anyhow!("Removal request not found"))?;
+        let action = RemoveAction {
+            p_obj: self.p_obj.clone(),
+            member: VaultMember { member, vault: vault.clone() },
+        };
+        let share_transfers = if vault.members().len() >= 3 {
+            self.build_remove_share_transfers(&request).await?
+        } else {
+            vec![]
+        };
+        action
+            .update(request, RemoveActionUpdate::Accept, share_transfers)
+            .await
+    }
+
+    /// Encrypt the approver's current share for the removal initiator. The
+    /// transfer is intentionally a ciphertext payload in the signed vault
+    /// event; the server and the removed device never receive the plaintext.
+    async fn build_remove_share_transfers(
+        &self,
+        request: &RemoveMemberRequestEvent,
+    ) -> Result<Vec<RemoveMemberShareTransfer>> {
+        let member = self.get_member().await?;
+        let vault = self.get_vault(member).await?;
+        let mut transfers = Vec::new();
+
+        for pass_id in vault.secrets.iter() {
+            transfers.push(self.encrypt_local_share_for(pass_id, &request.sender).await?);
+        }
+
+        Ok(transfers)
+    }
+
+    /// Prepare the initiator's local shares for the approver. This lets the
+    /// approver perform the canonical resharing when the initiator did not
+    /// create a particular secret.
+    async fn build_local_share_transfers_for_removal(
+        &self,
+        vault: &VaultData,
+        target: &UserDataMember,
+    ) -> Result<Vec<RemoveMemberShareTransfer>> {
+        let local_device_id = self.user_creds.device_id().clone();
+        let approvers: Vec<UserDataMember> = vault
+            .members()
+            .into_iter()
+            .filter(|member| {
+                member.user_data.device.device_id != local_device_id
+                    && member.user_data.device.device_id
+                        != target.user_data.device.device_id
+            })
+            .collect();
+        let mut transfers = Vec::new();
+        for approver in approvers {
+            for pass_id in vault.secrets.iter() {
+                transfers.push(
+                    self.encrypt_local_share_for(pass_id, &approver)
+                        .await?,
+                );
+            }
+        }
+        Ok(transfers)
+    }
+
+    async fn encrypt_local_share_for(
+        &self,
+        pass_id: &crate::node::common::model::meta_pass::MetaPasswordId,
+        receiver: &UserDataMember,
+    ) -> Result<RemoveMemberShareTransfer> {
+        let local_device_id = self.user_creds.device_id().clone();
+        let desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
+            pass_id: pass_id.clone(),
+            receiver: local_device_id,
+        });
+        let Some(SsWorkflowObject::Distribution(distribution)) =
+            self.p_obj.find_tail_event(desc).await?
+        else {
+            bail!("Local share for {} is missing", pass_id.name);
+        };
+
+        let plain = distribution
+            .value
+            .secret_message
+            .cipher_text()
+            .decrypt(&self.user_creds.device_creds.secret_box.transport.sk)?;
+        let share = UserShareDto::try_from(&plain.msg)?;
+        let encrypted = self
+            .user_creds
+            .device_creds
+            .key_manager()?
+            .transport
+            .encrypt_string(
+                PlainText::from(share.as_json()?),
+                &receiver.user_data.device.keys.transport_pk,
+            )?;
+
+        Ok(RemoveMemberShareTransfer {
+            pass_id: pass_id.clone(),
+            receiver: receiver.user_data.device.device_id.clone(),
+            encrypted_share: serde_json::to_string(&EncryptedMessage::CipherShare {
+                share: encrypted,
+            })?,
+        })
+    }
+
+    /// Finalize the 3→2 resharing after the signed approval update has arrived
+    /// through the vault log. The remaining member that owns the original
+    /// split claim stays canonical; if the original sender was removed, the
+    /// approver takes ownership using the initiator's encrypted share.
+    pub async fn finalize_pending_removal_resharing(&self) -> Result<()> {
+        // The removed device receives the same signed update and immediately
+        // becomes an Outsider/Declined. It must still be able to build its
+        // next app state, so a non-member simply has nothing to reshare.
+        let p_vault = PersistentVault::from(self.p_obj());
+        let vault_status = p_vault.find(self.user_creds.user()).await?;
+        let VaultStatus::Member(member) = vault_status else {
+            return Ok(());
+        };
+        let vault = p_vault
+            .get_vault(member.user_data.vault_name())
+            .await?
+            .to_data();
+        if vault.members().len() != 2 {
+            return Ok(());
+        }
+        let Some(VaultLogObject(log)) = self.get_vault_log_event(&member).await? else {
+            return Ok(());
+        };
+        let local_device_id = self.user_creds.device_id().clone();
+        let updates: Vec<RemoveMemberEvent> = log
+            .value
+            .updates
+            .into_iter()
+            .filter_map(|event| match event {
+                VaultActionUpdateEvent::RemoveMember(update)
+                    if (update.request.sender.user_data.device.device_id == local_device_id
+                        && !update.share_transfers.is_empty())
+                        || (update.sender.user_data.device.device_id == local_device_id
+                            && !update.request.share_transfers.is_empty()) => Some(update),
+                _ => None,
+            })
+            .collect();
+
+        for update in updates {
+            let is_initiator = update.request.sender.user_data.device.device_id == local_device_id;
+            let is_approver = update.sender.user_data.device.device_id == local_device_id;
+            let transfers = if is_initiator {
+                update.share_transfers.clone()
+            } else if is_approver {
+                update
+                    .request
+                    .share_transfers
+                    .iter()
+                    .filter(|transfer| transfer.receiver == local_device_id)
+                    .cloned()
+                    .collect()
+            } else {
+                continue;
+            };
+            self.reshare_after_removal(&vault, &update, transfers, is_initiator)
+                .await?;
+        }
+        Ok(())
+    }
+
+    async fn reshare_after_removal(
+        &self,
+        vault: &VaultData,
+        update: &RemoveMemberEvent,
+        transfers: Vec<RemoveMemberShareTransfer>,
+        is_initiator: bool,
+    ) -> Result<()> {
+        let local_device_id = self.user_creds.device_id().clone();
+        let mut members = vault.members();
+        members.sort_by_key(|member| member.user().device.device_id.to_string());
+        let remaining_ids: HashSet<_> = members
+            .iter()
+            .map(|member| member.user().device.device_id.clone())
+            .collect();
+        let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
+        let mut ss_log_data = self.get_ss_log_data().await?;
+
+        for transfer in &transfers {
+            let initiator_id = &update.request.sender.user_data.device.device_id;
+            let initiator_owns_claim = ss_log_data
+                .claims
+                .values()
+                .any(|claim| {
+                    claim.distribution_type == SecretDistributionType::Split
+                        && &claim.sender == initiator_id
+                        && claim.dist_claim_id.pass_id == transfer.pass_id
+                });
+
+            // Keep the original sender as the canonical resharer when it is
+            // still present. The approver takes over only when that sender
+            // was the removed device.
+            if is_initiator && !initiator_owns_claim {
+                continue;
+            }
+            if !is_initiator && initiator_owns_claim {
+                continue;
+            }
+
+            let Some(mut split_claim) = ss_log_data
+                .claims
+                .values()
+                .find(|claim| {
+                    claim.distribution_type == SecretDistributionType::Split
+                        && claim.dist_claim_id.pass_id == transfer.pass_id
+                        && (if is_initiator {
+                            claim.sender == local_device_id
+                        } else {
+                            true
+                        })
+                })
+                .cloned()
+            else {
+                bail!("Split claim for {} is missing", transfer.pass_id.name);
+            };
+
+            // A new canonical sender must be the member who can sign the
+            // refreshed split claim. This is required when the old sender was
+            // the device being removed.
+            split_claim.sender = local_device_id.clone();
+
+            if split_claim.receivers.iter().all(|id| remaining_ids.contains(id))
+                && split_claim.receivers.len() == remaining_ids.len() - 1
+            {
+                continue;
+            }
+
+            let local_desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
+                pass_id: transfer.pass_id.clone(),
+                receiver: local_device_id.clone(),
+            });
+            let Some(SsWorkflowObject::Distribution(local_distribution)) =
+                self.p_obj.find_tail_event(local_desc).await?
+            else {
+                bail!("Local share for {} is missing", transfer.pass_id.name);
+            };
+            let local_plain = local_distribution
+                .value
+                .secret_message
+                .cipher_text()
+                .decrypt(&self.user_creds.device_creds.secret_box.transport.sk)?;
+            let local_share = UserShareDto::try_from(&local_plain.msg)?;
+
+            let transfer_message: EncryptedMessage = serde_json::from_str(&transfer.encrypted_share)?;
+            let transferred_plain = transfer_message
+                .cipher_text()
+                .decrypt(&self.user_creds.device_creds.secret_box.transport.sk)?;
+            let transferred_share = UserShareDto::try_from(&transferred_plain.msg)?;
+
+            let plain_secret = recover_from_shares(vec![local_share, transferred_share])?;
+            let secure_pass = SecurePassInfo::from(PlainPassInfo {
+                pass_id: transfer.pass_id.clone(),
+                pass: plain_secret.text,
+            });
+            let re_split = split2(secure_pass, vault.sss_cfg())?;
+            if re_split.shares.len() != members.len() {
+                bail!("Removal resharing produced an invalid share count");
+            }
+
+            for (idx, receiver) in members.iter().enumerate() {
+                let encrypted = self
+                    .user_creds
+                    .device_creds
+                    .key_manager()?
+                    .transport
+                    .encrypt_string(
+                        PlainText::from(re_split.shares[idx].as_json()?),
+                        &receiver.user().device.keys.transport_pk,
+                    )?;
+                let dist_id = SsDistributionId {
+                    pass_id: transfer.pass_id.clone(),
+                    receiver: receiver.user().device.device_id.clone(),
+                };
+                let wf = SsWorkflowObject::Distribution(KvLogEvent {
+                    key: KvKey::from(SsWorkflowDescriptor::Distribution(dist_id)),
+                    value: SecretDistributionData {
+                        vault_name: update.request.sender.user_data.vault_name(),
+                        claim_id: split_claim.dist_claim_id.clone(),
+                        secret_message: EncryptedMessage::CipherShare { share: encrypted },
+                    },
+                });
+                self.p_obj.repo.delete(wf.obj_id()).await;
+                self.p_obj.repo.save(wf).await?;
+            }
+
+            split_claim.receivers = members
+                .iter()
+                .filter_map(|member| {
+                    let device_id = member.user().device.device_id.clone();
+                    (device_id != local_device_id).then_some(device_id)
+                })
+                .collect();
+            split_claim.status = SsDistributionCompositeStatus::from(split_claim.receivers.clone());
+            p_ss.save_claim_in_ss_device_log(split_claim.clone()).await?;
+            p_ss.save_ss_log_event(split_claim.clone()).await?;
+            ss_log_data
+                .claims
+                .insert(split_claim.id.clone(), split_claim);
+        }
         Ok(())
     }
 

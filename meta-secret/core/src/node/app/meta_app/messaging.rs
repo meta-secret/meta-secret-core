@@ -9,6 +9,8 @@ pub enum GenericAppStateRequest {
     SignUp(VaultName),
     ClusterDistribution(PlainPassInfo),
     Recover(MetaPasswordId),
+    RemoveMember(String),
+    ApproveRemoveMember(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

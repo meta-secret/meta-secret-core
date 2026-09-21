@@ -82,6 +82,14 @@ pub fn update_membership(candidate: String, action_update: String) -> String {
     json_api::update_membership(candidate, action_update)
 }
 
+pub fn remove_member(target_device_id: String) -> String {
+    json_api::remove_member(target_device_id)
+}
+
+pub fn approve_remove_member(target_device_id: String) -> String {
+    json_api::approve_remove_member(target_device_id)
+}
+
 pub fn clean_up_database() -> String {
     json_api::clean_up_database()
 }

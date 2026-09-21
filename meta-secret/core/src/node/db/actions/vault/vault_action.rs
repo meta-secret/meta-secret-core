@@ -1,5 +1,7 @@
 use crate::node::common::model::device::common::DeviceData;
-use crate::node::common::model::user::common::{UserDataMember, UserDataOutsider, UserMembership};
+use crate::node::common::model::user::common::{
+    UserDataMember, UserDataOutsider, UserDataOutsiderStatus, UserMembership,
+};
 use crate::node::common::model::vault::vault_data::VaultAggregate;
 use crate::node::db::actions::sign_up::action::SignUpAction;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
@@ -9,8 +11,8 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::Next;
 use crate::node::db::events::vault::vault_event::VaultObject;
 use crate::node::db::events::vault::vault_log_event::{
-    AddMetaPassEvent, VaultActionEvent, VaultActionInitEvent, VaultActionRequestEvent,
-    VaultActionUpdateEvent,
+    AddMetaPassEvent, VaultActionEvent,
+    VaultActionInitEvent, VaultActionRequestEvent, VaultActionUpdateEvent,
 };
 use crate::node::db::events::vault::vault_status::VaultStatusObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
@@ -41,12 +43,19 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
             }
 
             VaultActionEvent::Request(action_request) => {
-                if let VaultActionRequestEvent::JoinCluster(join_event) = action_request {
-                    let vault = p_vault.get_vault(action_event.vault_name()).await?;
-                    let candidate = UserDataMember {
-                        user_data: join_event.candidate.clone(),
-                    };
-                    vault.to_data().ensure_can_add_member(&candidate)?;
+                let vault = p_vault.get_vault(action_event.vault_name()).await?;
+                match action_request {
+                    VaultActionRequestEvent::JoinCluster(join_event) => {
+                        let candidate = UserDataMember { user_data: join_event.candidate.clone() };
+                        vault.to_data().ensure_can_add_member(&candidate)?;
+                    }
+                    VaultActionRequestEvent::RemoveMember(request) => {
+                        vault.clone().to_data().ensure_can_remove_member(request, None)?;
+                        vault
+                            .to_data()
+                            .ensure_valid_removal_transfers(request, &request.share_transfers)?;
+                    }
+                    VaultActionRequestEvent::AddMetaPass(_) => {}
                 }
 
                 p_vault
@@ -59,6 +68,10 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
                             candidate: join_event.candidate.clone(),
                         };
                         self.handle_update(&upd).await?;
+                    }
+                    VaultActionRequestEvent::RemoveMember(_) => {
+                        // The request itself is the pending approval record.
+                        // No membership mutation occurs until a signed update.
                     }
                     VaultActionRequestEvent::AddMetaPass(add_meta_pass_event) => {
                         //server is a handler for add meta pass requests
@@ -94,10 +107,45 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
         //check if a sender is a member of the vault and update the vault then
         let vault = p_vault.get_vault(vault_name.clone()).await?;
 
-        if let VaultActionUpdateEvent::UpdateMembership(update) = action_update
-            && let UserMembership::Member(candidate) = &update.update
-        {
-            vault.clone().to_data().ensure_can_add_member(candidate)?;
+        match action_update {
+            VaultActionUpdateEvent::UpdateMembership(update)
+                if matches!(&update.update, UserMembership::Member(_)) =>
+            {
+                if let UserMembership::Member(candidate) = &update.update {
+                    vault.clone().to_data().ensure_can_add_member(candidate)?;
+                }
+            }
+            VaultActionUpdateEvent::RemoveMember(update) => {
+                // Retries of the same signed removal update are idempotent
+                // once the target is already recorded as Declined.
+                if matches!(
+                    vault
+                        .clone()
+                        .to_data()
+                        .find_user(&update.target.user_data.device.device_id),
+                    Some(UserMembership::Outsider(UserDataOutsider {
+                        status: UserDataOutsiderStatus::Declined,
+                        ..
+                    }))
+                ) {
+                    return Ok(());
+                }
+                vault.clone().to_data().ensure_can_remove_member(&update.request, Some(&update.sender))?;
+                vault
+                    .clone()
+                    .to_data()
+                    .ensure_valid_removal_transfers(&update.request, &update.request.share_transfers)?;
+                vault
+                    .clone()
+                    .to_data()
+                    .ensure_valid_removal_transfers(&update.request, &update.share_transfers)?;
+                if update.target.user_data.device.device_id != update.new_status.device_id()
+                    || !matches!(update.new_status, UserMembership::Outsider(UserDataOutsider { status: UserDataOutsiderStatus::Declined, .. }))
+                {
+                    anyhow::bail!("Removal update must decline its target");
+                }
+            }
+            _ => {}
         }
 
         let vault_action_events = p_vault
@@ -130,6 +178,9 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
             VaultActionUpdateEvent::UpdateMembership(update) => {
                 self.update_vault_status(vault_event, update.update.clone())
                     .await?;
+            }
+            VaultActionUpdateEvent::RemoveMember(update) => {
+                self.update_vault_status(vault_event, update.new_status.clone()).await?;
             }
             VaultActionUpdateEvent::AddMetaPass(AddMetaPassEvent { .. }) => {
                 // no extra steps required (vault  is already updated by VaultAggregate)

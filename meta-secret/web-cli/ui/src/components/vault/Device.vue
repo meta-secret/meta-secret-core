@@ -22,9 +22,9 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Shield } from 'lucide-vue-next';
+import { Shield, Trash2 } from 'lucide-vue-next';
 
-const props = defineProps<{ membership: WasmUserMembership }>();
+const props = defineProps<{ membership: WasmUserMembership; isRemovalPending?: boolean }>();
 
 const appState = AppState();
 const appManager = getAppManager();
@@ -63,6 +63,8 @@ const isPending = computed(
 const isDeclined = computed(
   () => props.membership.is_outsider() && props.membership.as_outsider().status === UserDataOutsiderStatus.Declined,
 );
+const canRemove = computed(() => isMember.value && !isCurrent.value);
+const isRemovalConfirmOpen = ref(false);
 
 const isJoinConfirmOpen = ref(false);
 const isSubmitting = ref(false);
@@ -91,6 +93,32 @@ const handleDecline = async () => {
     await appManager.update_membership(user.value, JoinActionUpdate.Decline);
     await appState.updateState();
     isJoinConfirmOpen.value = false;
+  } catch (error) {
+    actionError.value = error instanceof Error ? error.message : String(error);
+  } finally {
+    isSubmitting.value = false;
+  }
+};
+
+const handleRemove = async () => {
+  if (isSubmitting.value) return;
+  isSubmitting.value = true;
+  actionError.value = '';
+  try {
+    const manager = appManager as typeof appManager & {
+      remove_member_from_vault?: (id: unknown) => Promise<void>;
+      approve_remove_member?: (id: unknown) => Promise<void>;
+    };
+    const target = device.value.device_id;
+    if (props.isRemovalPending) {
+      if (typeof manager.approve_remove_member !== 'function') throw new Error(vaultDevices.removeError);
+      await manager.approve_remove_member(target);
+    } else {
+      if (typeof manager.remove_member_from_vault !== 'function') throw new Error(vaultDevices.removeError);
+      await manager.remove_member_from_vault(target);
+    }
+    await appState.updateState();
+    isRemovalConfirmOpen.value = false;
   } catch (error) {
     actionError.value = error instanceof Error ? error.message : String(error);
   } finally {
@@ -239,6 +267,18 @@ const handleDecline = async () => {
     <Badge v-if="isDeclined" variant="destructive">
       {{ vaultDevices.statusDeclined }}
     </Badge>
+    <Button
+      v-if="canRemove"
+      variant="ghost"
+      size="icon"
+      class="text-destructive hover:bg-destructive/10"
+      data-testid="remove-device"
+      :aria-label="vaultDevices.actionRemove"
+      :disabled="isSubmitting"
+      @click.stop="isRemovalConfirmOpen = true"
+    >
+      <Trash2 class="h-4 w-4" />
+    </Button>
   </div>
 
   <!-- Join confirm dialog -->
@@ -272,6 +312,47 @@ const handleDecline = async () => {
           </Button>
           <Button class="flex-1" data-testid="accept-join-request" :disabled="isSubmitting" @click="handleAccept">
             {{ vaultDevices.actionAccept }}
+          </Button>
+        </DialogFooter>
+      </div>
+    </DialogContent>
+  </Dialog>
+
+  <!-- Remove-device confirmation dialog -->
+  <Dialog
+    :open="isRemovalConfirmOpen"
+    @update:open="
+      (v) => {
+        if (!v && !isSubmitting) isRemovalConfirmOpen = false;
+      }
+    "
+  >
+    <DialogContent class="max-w-md text-center" data-testid="remove-device-dialog">
+      <div class="flex flex-col items-center gap-4 py-2">
+        <div class="flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
+          <Trash2 class="h-6 w-6 text-destructive" />
+        </div>
+        <DialogHeader>
+          <DialogTitle>
+            {{ vaultDevices.confirmRemovePrefix }}
+            <span class="text-primary">{{ deviceName }}</span>
+            {{ vaultDevices.confirmRemoveMiddle }}?
+          </DialogTitle>
+          <DialogDescription>{{ typeLabel }}</DialogDescription>
+        </DialogHeader>
+        <p v-if="actionError" class="text-sm text-destructive" role="alert">{{ actionError }}</p>
+        <DialogFooter class="w-full gap-2 sm:gap-2">
+          <Button variant="outline" class="flex-1" :disabled="isSubmitting" @click="isRemovalConfirmOpen = false">
+            {{ vaultDevices.actionDecline }}
+          </Button>
+          <Button
+            variant="destructive"
+            class="flex-1"
+            data-testid="confirm-remove-device"
+            :disabled="isSubmitting"
+            @click="handleRemove"
+          >
+            {{ vaultDevices.actionRemove }}
           </Button>
         </DialogFooter>
       </div>

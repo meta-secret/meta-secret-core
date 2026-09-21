@@ -201,6 +201,34 @@ pub fn update_membership(candidate: String, action_update: String) -> String {
     MobileApplicationManager::sync_wrapper(async_update_membership(candidate, action_update))
 }
 
+pub fn remove_member(target_device_id: String) -> String {
+    MobileApplicationManager::sync_wrapper(async_remove_member(target_device_id))
+}
+
+async fn async_remove_member(target_device_id: String) -> String {
+    match MobileApplicationManager::get_global_instance() {
+        Some(app_manager) => match app_manager.remove_member(target_device_id).await {
+            Ok(()) => json!({"success": true}).to_string(),
+            Err(e) => json!({"success": false, "error": format!("Remove device failed: {e}")}).to_string(),
+        },
+        None => json!({"success": false, "error": "Remove device failed: app manager is not initialized"}).to_string(),
+    }
+}
+
+pub fn approve_remove_member(target_device_id: String) -> String {
+    MobileApplicationManager::sync_wrapper(async_approve_remove_member(target_device_id))
+}
+
+async fn async_approve_remove_member(target_device_id: String) -> String {
+    match MobileApplicationManager::get_global_instance() {
+        Some(app_manager) => match app_manager.approve_remove_member(target_device_id).await {
+            Ok(()) => json!({"success": true}).to_string(),
+            Err(e) => json!({"success": false, "error": format!("Approve device removal failed: {e}")}).to_string(),
+        },
+        None => json!({"success": false, "error": "Approve device removal failed: app manager is not initialized"}).to_string(),
+    }
+}
+
 async fn async_update_membership(candidate: String, action_update: String) -> String {
     let candidate: UserData = match serde_json::from_str(&candidate) {
         Ok(data) => data,

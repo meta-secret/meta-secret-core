@@ -185,6 +185,13 @@ impl InfoCommandTrait for DefaultInfoCommand {
                                     "sender": format!("{:?}", meta_pass.sender.user_data.user_id()),
                                 }));
                             }
+                            VaultActionRequestEvent::RemoveMember(remove_request) => {
+                                events.push(json!({
+                                    "type": "RemoveMember",
+                                    "sender": remove_request.sender.user_data.device.device_name.as_str(),
+                                    "target": remove_request.target.user_data.device.device_name.as_str(),
+                                }));
+                            }
                         }
                     }
 

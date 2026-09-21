@@ -35,7 +35,9 @@ impl<Repo: KvLogEventRepo> JoinAction<Repo> {
 
         match candidate_membership {
             UserMembership::Outsider(outsider) => match outsider.status {
-                UserDataOutsiderStatus::NonMember | UserDataOutsiderStatus::Pending => {
+                UserDataOutsiderStatus::NonMember
+                | UserDataOutsiderStatus::Pending
+                | UserDataOutsiderStatus::Declined => {
                     let candidate_member = UserDataMember {
                         user_data: outsider.user_data.clone(),
                     };
@@ -60,9 +62,6 @@ impl<Repo: KvLogEventRepo> JoinAction<Repo> {
                     p_device_log
                         .save_updated_membership_event(update_event)
                         .await
-                }
-                UserDataOutsiderStatus::Declined => {
-                    bail!("User request already declined")
                 }
             },
             UserMembership::Member(_) => {
@@ -134,9 +133,10 @@ mod tests {
         Ok(())
     }
 
-    /// Tests that a user who has been declined cannot be accepted
+    /// A removed device may rejoin only through a fresh Join request and
+    /// current-member approval.
     #[tokio::test]
-    async fn test_accept_join_request_already_declined() -> Result<()> {
+    async fn test_accept_join_request_after_removal_requires_fresh_approval() -> Result<()> {
         // Setup fixture
         let registry = FixtureRegistry::empty();
         let p_obj = registry.state.p_obj.client.clone();
@@ -171,18 +171,13 @@ mod tests {
             candidate: candidate_user.clone(),
         };
 
-        // Execute the function
+        // Execute the fresh Join approval.
         let result = action.update(join_request, JoinActionUpdate::Accept).await;
 
         // Verify result
         assert!(
-            result.is_err(),
-            "Accept join request should fail for declined user"
-        );
-        let error = result.unwrap_err().to_string();
-        assert_eq!(
-            error, "User request already declined",
-            "Error message should indicate user request was declined"
+            result.is_ok(),
+            "A declined device may rejoin only after a fresh member approval"
         );
 
         Ok(())

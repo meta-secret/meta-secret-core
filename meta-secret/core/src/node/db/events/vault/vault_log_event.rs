@@ -1,4 +1,5 @@
 use crate::node::common::model::meta_pass::MetaPasswordId;
+use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::user::common::{UserData, UserDataMember, UserMembership};
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::descriptors::vault_descriptor::VaultLogDescriptor;
@@ -116,6 +117,18 @@ impl VaultActionEvents {
                     );
                 }
             }
+            VaultActionUpdateEvent::RemoveMember(update) => {
+                let request = VaultActionRequestEvent::RemoveMember(update.request.clone());
+                let removed = self.requests.remove(&request);
+                if removed {
+                    self.updates.insert(upd_event);
+                } else {
+                    info!(
+                        "Corresponding remove-member request not found: {:?}, update won't be applied",
+                        request
+                    );
+                }
+            }
             VaultActionUpdateEvent::AddMetaPass(event) => {
                 let request = VaultActionRequestEvent::AddMetaPass(event.clone());
                 let removed = self.requests.remove(&request);
@@ -164,6 +177,7 @@ pub enum VaultActionInitEvent {
 #[serde(rename_all = "camelCase")]
 pub enum VaultActionRequestEvent {
     JoinCluster(JoinClusterEvent),
+    RemoveMember(RemoveMemberRequestEvent),
     AddMetaPass(AddMetaPassEvent),
 }
 
@@ -182,6 +196,17 @@ pub struct JoinClusterEvent {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RemoveMemberRequestEvent {
+    pub sender: UserDataMember,
+    pub target: UserDataMember,
+    /// The initiator's encrypted local shares, addressed to the member that
+    /// will approve the removal. The server only relays ciphertext.
+    #[serde(default)]
+    pub share_transfers: Vec<RemoveMemberShareTransfer>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AddMetaPassEvent {
     pub sender: UserDataMember,
     pub meta_pass_id: MetaPasswordId,
@@ -195,10 +220,33 @@ pub struct UpdateMembershipEvent {
     pub update: UserMembership,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoveMemberEvent {
+    pub request: RemoveMemberRequestEvent,
+    pub sender: UserDataMember,
+    pub target: UserDataMember,
+    pub new_status: UserMembership,
+    /// Encrypted Key Shares sent by the approver to the initiator so the
+    /// initiator can complete 3→2 resharing. Values are ciphertext JSON only;
+    /// the server cannot decrypt them.
+    #[serde(default)]
+    pub share_transfers: Vec<RemoveMemberShareTransfer>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoveMemberShareTransfer {
+    pub pass_id: MetaPasswordId,
+    pub receiver: DeviceId,
+    pub encrypted_share: String,
+}
+
 impl VaultActionRequestEvent {
     pub fn name(&self) -> String {
         let name = match self {
             VaultActionRequestEvent::JoinCluster { .. } => "JoinRequest",
+            VaultActionRequestEvent::RemoveMember { .. } => "RemoveMemberRequest",
             VaultActionRequestEvent::AddMetaPass { .. } => "AddMetaPasswordRequest",
         };
 
@@ -214,6 +262,8 @@ pub enum VaultActionUpdateEvent {
     AddToPending { candidate: UserData },
     /// When the device becomes a member of the vault, it can change membership of other members
     UpdateMembership(UpdateMembershipEvent),
+    /// A current member removes another member after the matching request.
+    RemoveMember(RemoveMemberEvent),
     /// A member can add a new meta password into the vault
     AddMetaPass(AddMetaPassEvent),
 }
@@ -224,6 +274,7 @@ impl VaultActionUpdateEvent {
             VaultActionUpdateEvent::UpdateMembership(update) => {
                 update.update.user_data().vault_name()
             }
+            VaultActionUpdateEvent::RemoveMember(update) => update.target.user_data.vault_name(),
             VaultActionUpdateEvent::AddMetaPass(AddMetaPassEvent { sender, .. }) => {
                 sender.user_data.vault_name()
             }
@@ -236,6 +287,7 @@ impl VaultActionRequestEvent {
     pub fn vault_name(&self) -> VaultName {
         match self {
             VaultActionRequestEvent::JoinCluster(request) => request.candidate.vault_name(),
+            VaultActionRequestEvent::RemoveMember(request) => request.sender.user_data.vault_name(),
             VaultActionRequestEvent::AddMetaPass(request) => request.sender.user_data.vault_name(),
         }
     }
@@ -245,6 +297,7 @@ impl VaultActionUpdateEvent {
     pub fn name(&self) -> String {
         let name = match self {
             VaultActionUpdateEvent::UpdateMembership { .. } => "UpdateMembership",
+            VaultActionUpdateEvent::RemoveMember { .. } => "RemoveMember",
             VaultActionUpdateEvent::AddMetaPass { .. } => "AddMetaPassword",
             VaultActionUpdateEvent::AddToPending { .. } => "AddToPending",
         };
@@ -286,6 +339,7 @@ impl VaultActionEvent {
             VaultActionEvent::Request(request) => {
                 let user = match request {
                     VaultActionRequestEvent::JoinCluster(event) => &event.candidate,
+                    VaultActionRequestEvent::RemoveMember(event) => &event.sender.user_data,
                     VaultActionRequestEvent::AddMetaPass(event) => &event.sender.user_data,
                 };
                 user.vault_name()

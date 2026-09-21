@@ -7,8 +7,9 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::events::vault::vault_log_event::{
-    AddMetaPassEvent, CreateVaultEvent, JoinClusterEvent, UpdateMembershipEvent, VaultActionEvent,
-    VaultActionInitEvent, VaultActionRequestEvent, VaultActionUpdateEvent,
+    AddMetaPassEvent, CreateVaultEvent, JoinClusterEvent, RemoveMemberEvent,
+    RemoveMemberRequestEvent, UpdateMembershipEvent, VaultActionEvent, VaultActionInitEvent,
+    VaultActionRequestEvent, VaultActionUpdateEvent,
 };
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
@@ -98,6 +99,29 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
         });
         self.p_obj.repo.save(join_request).await?;
 
+        Ok(())
+    }
+
+    pub async fn save_remove_member_request(
+        &self,
+        request: RemoveMemberRequestEvent,
+    ) -> Result<()> {
+        let sender = request.sender.user();
+        let event = DeviceLogObject(KvLogEvent {
+            key: self.get_device_log_free_key(sender).await?,
+            value: VaultActionEvent::Request(VaultActionRequestEvent::RemoveMember(request)),
+        });
+        self.p_obj.repo.save(event).await?;
+        Ok(())
+    }
+
+    pub async fn save_remove_member_update(&self, update: RemoveMemberEvent) -> Result<()> {
+        let sender = update.sender.user();
+        let event = DeviceLogObject(KvLogEvent {
+            key: self.get_device_log_free_key(sender).await?,
+            value: VaultActionEvent::Update(VaultActionUpdateEvent::RemoveMember(update)),
+        });
+        self.p_obj.repo.save(event).await?;
         Ok(())
     }
 

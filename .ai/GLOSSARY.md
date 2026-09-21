@@ -77,7 +77,7 @@ Unified vocabulary for meta-secret-core Rust backend. All communication (AI, cod
 | **Device Data** | Full device record: ID, name, type, public keys, status | Vault state | Stored in core db |
 | **Device Type** | Enum: `Android`, `Iphone`, `Tablet`, `Desktop`, `Cli`, `Web` | Device classification | Used for UI icons |
 | **Device Offline** | Device unable to respond (network down or app closed) | Claim operation | Doesn't block if k shares available |
-| **Device Removal** | Process: remove device from vault, reshare remaining shares | Vault ops | Requires resharing |
+| **Device Removal** | Core-authorized transition of a member to `Outsider/Declined`, invalidation of active Recovery claims, and resharing for the remaining members | Vault ops | `3 → 2` needs another current member's approval; `2 → 1` needs local confirmation; self-removal is forbidden |
 | **Primary Device** | First device to join vault; initiator of vault creation | Vault lifecycle | Ownership marker |
 | **Secondary Device** | Any device added after vault creation | Vault lifecycle | Via join flow |
 | **Active Session** | Current device with valid auth state and socket connection | Runtime | Can participate in claims |
@@ -202,7 +202,7 @@ by pass ID when executing recovery or implement quorum logic themselves.
 | **Threat Model** | Defined adversary capabilities and protections needed | Security design | See SECURITY.md |
 | **Compliance** | Meeting security standards (SOC 2, ISO 27001) | Governance | Future requirement |
 | **Audit Trail** | Immutable log of all vault operations | Accountability | Claim approvals + device changes |
-| **Non-Repudiation** | Security property achieved when a critical action is bound to the actor by a verified cryptographic signature. `SignedAction` is the Core protocol envelope for authenticated state changes. | Accountability | Required for JOIN, RESTORE SECRET, and Claim completion; DELETE DEVICE is a separate task |
+| **Non-Repudiation** | Security property achieved when a critical action is bound to the actor by a verified cryptographic signature. `SignedAction` is the Core protocol envelope for authenticated state changes. | Accountability | Required for JOIN, RESTORE SECRET, DELETE DEVICE, and Claim completion |
 | **SignedAction** | Common signed protocol envelope containing the signer Device ID, action stream, monotonic nonce, Ed25519 signature, and typed action payload. | Protocol security | Server verifies it before persisting a JOIN or recovery event |
 | **Canonical Payload** | Deterministic serialized representation of a SignedAction without its signature; object keys are sorted so map iteration order cannot change the signed bytes. | Cryptographic integrity | The server verifies exactly the bytes Core signed |
 | **Action Signer** | Device whose DSA private key produced a SignedAction. The server resolves the matching DSA public key from canonical Vault membership and checks the role for that action. | Authorization | A receiver signs Approve/Decline; the sender signs final recovery completion after showing the Secret |

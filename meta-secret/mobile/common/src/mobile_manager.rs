@@ -220,6 +220,14 @@ impl MobileApplicationManager {
         self.app_manager.update_membership(candidate, upd).await
     }
 
+    pub async fn remove_member(&self, target_device_id: String) -> anyhow::Result<()> {
+        self.app_manager.remove_member(target_device_id).await
+    }
+
+    pub async fn approve_remove_member(&self, target_device_id: String) -> anyhow::Result<()> {
+        self.app_manager.approve_remove_member(target_device_id).await
+    }
+
     pub async fn cluster_distribution(&self, plain_pass_info: &PlainPassInfo) {
         self.app_manager
             .cluster_distribution(plain_pass_info.clone())

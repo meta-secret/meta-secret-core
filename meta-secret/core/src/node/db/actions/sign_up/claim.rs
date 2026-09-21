@@ -65,7 +65,11 @@ impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
                     info!("Device is pending")
                 }
                 UserDataOutsiderStatus::Declined => {
-                    info!("Device has been declined")
+                    // A removed device must start a fresh Join request. The
+                    // Declined marker prevents implicit access, but does not
+                    // bypass the normal approval flow on a later attempt.
+                    info!("Save fresh Join request for previously declined device");
+                    p_device_log.save_join_request(&outsider.user_data).await?;
                 }
             },
             VaultStatus::Member { .. } => {

@@ -15,7 +15,7 @@ use meta_secret_core::node::app::sync::environment::ServerEnvironment;
 use meta_secret_core::node::app::sync::sync_gateway::SyncGateway;
 use meta_secret_core::node::app::sync::sync_protocol::{HttpSyncProtocol, SyncProtocol};
 use meta_secret_core::node::common::meta_tracing::client_span;
-use meta_secret_core::node::common::model::device::common::{DeviceName, DeviceType};
+use meta_secret_core::node::common::model::device::common::{DeviceId, DeviceName, DeviceType};
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::{
     ClaimId, RecoveryClientStatus, SecretDistributionType, SsDistributionId, SsDistributionStatus,
@@ -195,6 +195,16 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
         let join_request = JoinClusterEvent { candidate };
         self.meta_client_service
             .update_membership(join_request, upd)
+            .await
+    }
+
+    pub async fn remove_member(&self, target_device_id: DeviceId) -> Result<()> {
+        self.meta_client_service.remove_member(target_device_id.to_string()).await
+    }
+
+    pub async fn approve_remove_member(&self, target_device_id: DeviceId) -> Result<()> {
+        self.meta_client_service
+            .approve_remove_member(target_device_id.to_string())
             .await
     }
 

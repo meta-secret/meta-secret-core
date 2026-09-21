@@ -55,6 +55,13 @@ impl InfoCommandTrait for VaultEventsInfoCommand {
                                 "sender": format!("{:?}", meta_pass.sender.user_data.user_id())
                             }));
                         }
+                        VaultActionRequestEvent::RemoveMember(remove_request) => {
+                            events_vec.push(json!({
+                                "type": "RemoveMember",
+                                "sender": remove_request.sender.user_data.device.device_name.as_str().to_string(),
+                                "target": remove_request.target.user_data.device.device_name.as_str().to_string(),
+                            }));
+                        }
                     }
                 }
 

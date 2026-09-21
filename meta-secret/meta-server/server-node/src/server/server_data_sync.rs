@@ -381,10 +381,16 @@ fn event_actor_user(event: &GenericKvLogEvent, signer: &DeviceId) -> Option<User
         VaultActionEvent::Request(VaultActionRequestEvent::JoinCluster(event)) => {
             event.candidate.clone()
         }
+        VaultActionEvent::Request(VaultActionRequestEvent::RemoveMember(event)) => {
+            event.sender.user_data.clone()
+        }
         VaultActionEvent::Request(VaultActionRequestEvent::AddMetaPass(event)) => {
             event.sender.user_data.clone()
         }
         VaultActionEvent::Update(VaultActionUpdateEvent::UpdateMembership(event)) => {
+            event.sender.user_data.clone()
+        }
+        VaultActionEvent::Update(VaultActionUpdateEvent::RemoveMember(event)) => {
             event.sender.user_data.clone()
         }
         VaultActionEvent::Update(VaultActionUpdateEvent::AddMetaPass(event)) => {
@@ -423,7 +429,26 @@ fn validate_event_actor(event: &GenericKvLogEvent, signer: &DeviceId) -> Result<
                 }
             }
         },
-        GenericKvLogEvent::DeviceLog(_) => {}
+        GenericKvLogEvent::DeviceLog(object) => {
+            let actor = event_actor_user(event, signer)
+                .ok_or_else(|| anyhow::anyhow!("device log actor does not match action signer"))?;
+            if actor.device.device_id != *signer {
+                bail!("device log actor does not match action signer");
+            }
+            if !matches!(
+                &object.0.value,
+                VaultActionEvent::Init(VaultActionInitEvent::CreateVault(_))
+                    | VaultActionEvent::Request(VaultActionRequestEvent::JoinCluster(_))
+                    | VaultActionEvent::Request(VaultActionRequestEvent::RemoveMember(_))
+                    | VaultActionEvent::Request(VaultActionRequestEvent::AddMetaPass(_))
+                    | VaultActionEvent::Update(VaultActionUpdateEvent::UpdateMembership(_))
+                    | VaultActionEvent::Update(VaultActionUpdateEvent::RemoveMember(_))
+                    | VaultActionEvent::Update(VaultActionUpdateEvent::AddMetaPass(_))
+                    | VaultActionEvent::Update(VaultActionUpdateEvent::AddToPending { .. })
+            ) {
+                bail!("unsupported device log action")
+            }
+        }
         _ => bail!("unsupported state-changing event"),
     }
     Ok(())
@@ -659,10 +684,13 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         let vault_action = vault_action_event.value;
         let vault_name = vault_action.vault_name();
         let scope = state_scope_for_vault_action(&vault_action);
-        let accepted_new_member = matches!(
+        let membership_changed = matches!(
             &vault_action,
             VaultActionEvent::Update(VaultActionUpdateEvent::UpdateMembership(update))
                 if matches!(&update.update, UserMembership::Member(_))
+        ) || matches!(
+            &vault_action,
+            VaultActionEvent::Update(VaultActionUpdateEvent::RemoveMember(_))
         );
 
         let action = ServerVaultAction {
@@ -671,7 +699,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         };
 
         action.do_processing(vault_action).await?;
-        if accepted_new_member && self.decline_pending_recovery_claims(vault_name.clone()).await? {
+        if membership_changed && self.decline_pending_recovery_claims(vault_name.clone()).await? {
             self.publish_invalidation(vault_name.clone(), StateInvalidationScope::SsClaims);
         }
         self.publish_invalidation(vault_name, scope);
@@ -839,11 +867,13 @@ fn state_scope_for_vault_action(action: &VaultActionEvent) -> StateInvalidationS
         VaultActionEvent::Init(_) => StateInvalidationScope::All,
         VaultActionEvent::Request(request) => match request {
             VaultActionRequestEvent::JoinCluster(_) => StateInvalidationScope::Devices,
+            VaultActionRequestEvent::RemoveMember(_) => StateInvalidationScope::Devices,
             VaultActionRequestEvent::AddMetaPass(_) => StateInvalidationScope::Vault,
         },
         VaultActionEvent::Update(update) => match update {
             VaultActionUpdateEvent::AddToPending { .. }
-            | VaultActionUpdateEvent::UpdateMembership(_) => StateInvalidationScope::Devices,
+            | VaultActionUpdateEvent::UpdateMembership(_)
+            | VaultActionUpdateEvent::RemoveMember(_) => StateInvalidationScope::Devices,
             VaultActionUpdateEvent::AddMetaPass(_) => StateInvalidationScope::Vault,
         },
     }

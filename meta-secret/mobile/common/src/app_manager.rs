@@ -353,6 +353,16 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
             .await
     }
 
+    pub async fn remove_member(&self, target_device_id: String) -> Result<()> {
+        self.meta_client_service.remove_member(target_device_id).await
+    }
+
+    pub async fn approve_remove_member(&self, target_device_id: String) -> Result<()> {
+        self.meta_client_service
+            .approve_remove_member(target_device_id)
+            .await
+    }
+
     /// Show a recovered secret for the exact claim selected by Core.
     ///
     /// The Pass ID is derived from that claim, so a client cannot combine a

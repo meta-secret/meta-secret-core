@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import { AppState } from '@/stores/app-state';
 import Device from '@/components/vault/Device.vue';
 import { UserDataOutsiderStatus, WasmUserMembership } from 'meta-secret-web-cli';
-import { getMemberVaultData } from '@/utils/wasmBridge';
+import { getMemberVaultData, getMemberVaultState } from '@/utils/wasmBridge';
 import { vaultSecrets } from '@/locales/en';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -12,6 +12,14 @@ const appState = AppState();
 const users = computed(() => getMemberVaultData(appState.currState)?.users() ?? []);
 
 const memberDevices = computed(() => users.value.filter((m: WasmUserMembership) => m.is_member()));
+const pendingRemovalTargetIds = computed(() => {
+  const memberState = getMemberVaultState(appState.currState) as
+    | (ReturnType<typeof getMemberVaultState> & {
+        pending_removal_targets?: () => Array<{ wasm_id_str: () => string }>;
+      })
+    | undefined;
+  return new Set((memberState?.pending_removal_targets?.() ?? []).map((id) => id.wasm_id_str()));
+});
 const pendingDevices = computed(() =>
   users.value.filter(
     (m: WasmUserMembership) => m.is_outsider() && m.as_outsider().status === UserDataOutsiderStatus.Pending,
@@ -47,6 +55,7 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
             v-for="membership in memberDevices"
             :key="membership.user_data().device.device_id.wasm_id_str()"
             :membership="membership"
+            :is-removal-pending="pendingRemovalTargetIds.has(membership.user_data().device.device_id.wasm_id_str())"
           />
           <Device
             v-for="membership in pendingDevices"

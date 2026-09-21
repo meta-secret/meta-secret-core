@@ -14,10 +14,10 @@ Mandatory architectural rules for the Rust backend cryptography and protocol imp
 | **K-of-N Sharing** | 1 device→k=1 (trivial); 2 devices→k=1 (full replication); 3 devices→k=2 (SSS) | Core |
 | **Device Limit** | A Vault may contain at most 3 devices. Core rejects a fourth and later join. | Membership |
 | **Redistribution** | Required on every device add/remove | Vault ops |
-| **Approval Required** | JOIN, RESTORE SECRET, DELETE DEVICE need biometric signature | Consensus |
-| **Atomicity** | Collect→Reshare→Distribute is all-or-nothing | Transactions |
+| **Approval Required** | JOIN, RESTORE SECRET, and `3 → 2` DELETE DEVICE need a different-device biometric signature; `2 → 1` uses local confirmation | Consensus |
+| **Resharing** | Join resharing is finalized before membership; removal resharing is retryable after the signed removal update and never targets the removed device | Transactions |
 | **No Server Plaintext Storage** | The server never stores plaintext Master Keys, Key Shares, or Secrets. It may temporarily queue an Encrypted Key Share while delivery/synchronization is pending, then remove it after delivery. | E2E principle |
-| **Two Cannot Erase Each Other** | With 2 devices, neither can remove the other | Safety |
+| **Self-Removal** | A device cannot remove itself. With 2 devices, the initiator may remove the other after local confirmation; `1 → 0` remains forbidden. | Safety |
 | **Recovery Status Ownership** | Core alone computes recovery lifecycle and `clientStatus`; UI only executes the resulting instruction | Recovery |
 | **Shared Logic Ownership** | Core alone owns cryptography, Key Share operations, quorum, claims, recovery decisions, JOIN/DELETE/resharing, synchronization, conflicts, and Secret reveal eligibility; clients only adapt and render Core results | Cross-platform architecture |
 | **First Response Wins** | The first server-processed receiver decision terminalizes the recovery claim; a late opposite decision is ignored | Recovery consensus |
@@ -257,12 +257,12 @@ Step 3: COLLECT SHARED SECRET (on A)
   - Secret is ONLY in A's memory (ephemeral)
   
 Step 4: RESHARE (on A)
-  - A runs SSS: split secret into 3 shares
-  - Configuration: n=3, k=2
-  - Shares: s1' (for A), s2' (for B), s3' (for C - will be deleted)
+  - A runs the supported resulting-state policy for 2 devices
+  - Configuration: n=2, k=1
+  - Shares: s1' (for A), s2' (for B)
   
 Step 5: DELETE & REDISTRIBUTE
-  - A marks C as INACTIVE (cannot receive messages)
+  - Core marks C as `Outsider/Declined` (cannot receive messages)
   - A REPLACES its SHARE: s1 → s1'
   - A sends s2' (encrypted to B) → B REPLACES s2 with s2'
   - A CONFIRMS C is deleted (no share sent to C)
@@ -272,8 +272,8 @@ Step 6: CONFIRMATION (on B)
   - B confirms it received new share s2'
   - B marks C as INACTIVE in its vault state
   
-Result: A=FULL COPY, B=FULL COPY (only 2 devices remain)
-        C is INACTIVE (cannot participate in claims)
+Result: A=SHARE (k=1), B=SHARE (k=1) (only 2 devices remain)
+        C is Outsider/Declined (cannot participate in claims)
 
 ⚠️ CRITICAL: Old shares on A and B are DESTROYED
 ```
@@ -286,24 +286,30 @@ Initial: A=FULL COPY, B=FULL COPY (n=2, k=1 full replication)
 Step 1: INITIATE REMOVAL (on A)
   - A's user requests "Remove device B"
   
-Step 2: APPROVAL (REQUIRED but special case)
-  - Only A and B exist
-  - B cannot approve removal of itself
-  - A cannot collect secret without B's permission
-  - ⚠️ REMOVAL IS BLOCKED
-  
-UI: B's removal button is HIDDEN (not shown to user)
-    User cannot remove B (system prevents it)
+Step 2: LOCAL CONFIRMATION (no second-device approval)
+  - B cannot approve removal of itself.
+  - A confirms locally (biometry/PIN) and Core executes a signed removal.
 
-Result: A=FULL_COPY, B=FULL_COPY (both remain intact)
+Step 3: TRANSITION
+  - A keeps the single-device k=1 copy.
+  - B becomes Outsider/Declined and receives no new share.
 
-⚠️ CRITICAL RULE: 
-  With exactly 2 devices, neither can remove the other.
-  Removing one = other has no way to recover secret.
-  This is a safety guardrail (UI level prevents it).
+Result: A=FULL_COPY, B=DECLINED
+
+⚠️ The one remaining device cannot remove itself, so `1 → 0` remains blocked.
 ```
 
 ### 1.4 K Value Rules
+
+### 1.3.1 Removal connectivity and claims
+
+- An offline target is still removed. On reconnect Core reports
+  `Outsider(Declined)`, resets the local Vault/session state, and returns the
+  device to authorization; rejoining requires a new Join approval.
+- If the required approver is offline, the removal remains pending. Clients do
+  not persist or replay a removal command as an offline queue.
+- Any active Recovery claim involving the target is terminalized as
+  `Declined`; a new Recovery request is required.
 
 **Current policy:**
 
@@ -322,7 +328,7 @@ The supported maximum is three devices. For the three-device state the threshold
 **Removal examples:**
 ```
 n=3 (k=2) → remove 1 → n=2 (k=1) ✅ reshare to full replication
-n=2 (k=1) → remove 1 → n=1 (cannot remove — blocked by UI)
+n=2 (k=1) → remove 1 → n=1 (allowed with local confirmation; self-removal remains blocked)
 ```
 
 ### 1.5 Transitions & State Changes
@@ -334,7 +340,7 @@ n=2 (k=1) → remove 1 → n=1 (cannot remove — blocked by UI)
 | 1 device (k=1) | 2 devices (k=1) | Device join | 1 COPY → 2 full copies |
 | 2 devices (k=1) | 3 devices (k=2) | Device join | 2 full copies → 3 SSS shares (reshare) |
 | 3 devices (k=2) | 2 devices (k=1) | Device removal | 3 SSS shares → 2 full copies (reshare) |
-| 2 devices (k=1) | 1 device | Cannot happen | (blocked by UI) |
+| 2 devices (k=1) | 1 device | Device removal with local confirmation | Remaining device keeps its full copy |
 | 3 devices (k=2) | 4 devices | Cannot happen | (blocked by Core device limit) |
 
 ---
@@ -435,9 +441,11 @@ Full Copy: { key_material: bytes, encrypted: true }
 Share:     { share_id: u32, share_data: bytes, encrypted: true }
 ```
 
-### 3.2 Resharing Process (Atomic)
+### 3.2 Resharing Process
 
-**Three steps that MUST be atomic (all-or-nothing):**
+Join resharing is finalized before the new membership is exposed. Removal is a
+signed membership update followed by a Core retryable resharing; the removed
+device never receives a new share.
 
 1. **COLLECT**
    - Gather shares/copies from multiple devices
@@ -460,10 +468,13 @@ Share:     { share_id: u32, share_data: bytes, encrypted: true }
    - The sender retains only its own local share; it must not retain other devices'
      shares after synchronization
 
-**Atomicity Guarantee:**
-- If any device fails to confirm receipt: ABORT entire operation
-- Failed devices: old shares remain valid, new shares discarded
-- No partial updates (no device left with mismatched shares)
+**Removal guarantee:**
+- `3 → 2` uses the initiator's share plus the encrypted approver share to
+  create fresh `k=1,n=2` shares only for the remaining members.
+- If synchronization fails, the removal update is not replayed as a client
+  offline queue; Core retries the resharing when the initiator next refreshes.
+- The removed device is never a distribution target and is reset to
+  `Outsider/Declined` on reconnect.
 
 ### 3.3 Recovery Rules Per Device Count
 
@@ -575,14 +586,17 @@ ciphertext, not server possession of a usable Key Share.
 
 **Operations that MUST be atomic:**
 1. Device join + resharing
-2. Device removal + resharing
-3. Claim approval + delivery confirmation
-4. State transitions
+2. Claim approval + delivery confirmation
+3. State transitions
+
+Device removal is a signed membership update followed by a retryable Core
+resharing step. The target is never a recipient of the new shares.
 
 **Implementation:**
 - Use database transactions (SERIALIZABLE isolation)
-- All-or-nothing: commit only if all steps succeed
-- Rollback if any step fails
+- Join/claim operations are all-or-nothing and roll back if a step fails.
+- A removal update remains authoritative while Core retries the post-removal
+  resharing; no offline client command is replayed.
 
 ---
 
@@ -715,8 +729,8 @@ pub fn collect_secret(vault_json: String) -> String {
    - Device A creates vault
    - Device B joins (replication)
    - Either device can restore secret
-   - Device A removes B (blocked by UI)
-   - Device B removes A (blocked by UI)
+  - Device A removes B with local confirmation; no remote approval is needed
+  - A device cannot remove itself
 
 3. **3-device vault (SSS):**
    - Device A creates vault
@@ -774,8 +788,8 @@ pub fn collect_secret(vault_json: String) -> String {
 **Current implementation status:** the UI prompt and Core signing primitives are
 transported through the mandatory `SignedAction` envelope. The server resolves the
 registered device key and verifies the signature, signer/receiver authorization,
-and action sequence before accepting the approval. DELETE DEVICE remains a
-separate follow-up task.
+and action sequence before accepting the approval. DELETE DEVICE follows the same
+Core authorization path; `2 → 1` uses the initiator's local signed confirmation.
 
 ---
 
@@ -786,10 +800,10 @@ Use this checklist when validating new code against constraints:
 ```
 [ ] K-of-N logic matches current state (1/2/3 devices)
 [ ] Redistribution triggered on device add/remove
-[ ] Collect→Reshare→Distribute is atomic
+[ ] Collect→Reshare→Distribute is handled as one Core operation
 [ ] Approval required before secret collection
 [ ] Biometric signature verified
-[ ] Two devices cannot remove each other (UI blocks)
+[ ] Two-device removal uses local confirmation; self-removal remains blocked
 [ ] Old shares/copies destroyed after redistribution; sender retains only its own share
 [ ] Fourth-device join is rejected by Core
 [ ] Server never stores plaintext keys, shares, or Secrets; only metadata and E2E ciphertext
