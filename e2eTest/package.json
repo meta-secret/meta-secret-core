@@ -72,6 +72,8 @@
     ,"test-21:block2": "node Test21/orchestrator.mjs scenario-block2.json --exit-on-success"
     ,"test-21:block3": "node Test21/orchestrator.mjs scenario-block3.json --exit-on-success"
     ,"test-21:blocks": "npm run test-21:block1 && npm run test-21:block2 && npm run test-21:block3"
+    ,"test-22": "node Test22/orchestrator.mjs"
+    ,"test-22:run": "node Test22/orchestrator.mjs --exit-on-success"
   },
   "dependencies": {
     "playwright": "^1.61.0"

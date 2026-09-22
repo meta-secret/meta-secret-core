@@ -56,6 +56,7 @@ function normalizeSecretCreationPlan(rawPlan) {
 }
 
 const secretCreationPlan = normalizeSecretCreationPlan(scenario.secretCreation);
+let joinExpectedSecretNames = [];
 
 function normalizeSender(sender) {
   if (typeof sender === 'string') {
@@ -85,7 +86,9 @@ const rawRecoveryCycles = scenario.mode === 'both-receivers-offline'
       const resolveValue = (value) => Array.isArray(value) ? value[offset % value.length] : value;
       const senderEntries = group.senders.map(normalizeSender);
       const defaultApprovalSecret = senderEntries[0]?.secret ?? defaultSecret?.name;
-      const approvals = group.approvals
+      const approvals = group.mode === 'direct-show'
+        ? []
+        : group.approvals
         ? group.approvals.map((approval) => normalizeApproval(approval, defaultApprovalSecret))
         : [
             normalizeApproval(resolveValue(group.firstApprover), defaultApprovalSecret),
@@ -93,6 +96,7 @@ const rawRecoveryCycles = scenario.mode === 'both-receivers-offline'
           ];
       return {
         block: group.block,
+        kind: group.mode,
         offlineReceiver: group.offlineReceiver ?? scenario.offlineReceiver?.platform,
         senders: senderEntries.map((sender) => sender.platform),
         senderSecrets: Object.fromEntries(senderEntries.map((sender) => [sender.platform, sender.secret])),
@@ -130,6 +134,7 @@ const recoveryCycles = rawRecoveryCycles.map((cycle, index) => {
   );
   return {
     ...cycle,
+    kind: cycle.kind ?? cycle.mode ?? 'recovery',
     number: index + 1,
     senders: cycle.senders ?? Object.keys(senderSecrets),
     senderSecrets,
@@ -266,11 +271,12 @@ function startApprovalCoordinator(port = 5180) {
     if (url.pathname === '/scenario') {
       response.writeHead(200, { 'content-type': 'application/json' });
       response.end(JSON.stringify({
-      vaultName: scenario.vault.name,
-      secretConfig: secretConfigs,
-      recoveryPlan: recoveryCycles,
-      secretCreation: secretCreationPlan,
-    }));
+        vaultName: scenario.vault.name,
+        secretConfig: secretConfigs,
+        recoveryPlan: recoveryCycles,
+        secretCreation: secretCreationPlan,
+        joinExpectedSecretNames,
+      }));
       return;
     }
     if (url.pathname !== '/approval') {
@@ -794,6 +800,7 @@ function startIosJoinTest(simulatorUdid, {
   label = 'iOS UI test',
   environment = {},
   secretName = '',
+  secretValue = null,
 } = {}) {
   console.log(`9. Starting ${label}`);
   // xcodebuild does not reliably propagate per-invocation E2E_* variables to
@@ -843,7 +850,7 @@ function startIosJoinTest(simulatorUdid, {
       env: {
         E2E_VAULT_NAME: scenario.vault.name,
         E2E_SECRET_NAME: secretName || defaultSecret?.name || '',
-        E2E_SECRET_VALUE: defaultSecret?.value ?? '',
+        E2E_SECRET_VALUE: secretValue ?? defaultSecret?.value ?? '',
         E2E_SECRET_CONFIG: secretConfigJson,
         E2E_RECOVERY_PLAN: cyclePlanJson,
         E2E_RECOVERY_CYCLES: String(recoveryCycles.length),
@@ -1095,7 +1102,11 @@ async function runAdbWithRetry(args, { attempts = 5, delayMs = 1_000 } = {}) {
 
 async function startAndroidJoinTest(
   serial,
-  { testClass = scenario.android.testClass, testMethod = scenario.android.testMethod ?? scenario.android.joinTestMethod } = {},
+  {
+    testClass = scenario.android.testClass,
+    testMethod = scenario.android.testMethod ?? scenario.android.joinTestMethod,
+    expectedSecretNames = [],
+  } = {},
 ) {
   console.log('14. Starting Android UI test');
   // An emulator can briefly switch from `device` to `offline` after boot
@@ -1134,6 +1145,9 @@ async function startAndroidJoinTest(
     '-e', 'recoveryCycles', String(recoveryCycles.length),
     '-e', 'cyclePlan', cyclePlanJson,
     '-e', 'secretCreationPlan', JSON.stringify(secretCreationPlan),
+    ...(expectedSecretNames.length > 0
+      ? ['-e', 'expectedSecretNames', expectedSecretNames.join(',')]
+      : []),
     '-e', 'approvalCoordinatorUrl', 'http://10.0.2.2:5180',
     '-e', 'setupOnly', scenario.android.setupOnly ? 'true' : 'false',
   ];
@@ -1147,6 +1161,9 @@ async function startAndroidJoinTest(
     '-e', 'secretName', defaultSecret?.name ?? '',
     '-e', 'secretNames', Object.values(secretConfigs).map((config) => config.name).join(','),
     '-e', 'secretValues', Object.values(secretConfigs).map((config) => config.value).join(','),
+    ...(expectedSecretNames.length > 0
+      ? ['-e', 'expectedSecretNames', expectedSecretNames.join(',')]
+      : []),
     '-e', 'approvalCoordinatorUrl', 'http://10.0.2.2:5180',
     '-e', 'setupOnly', scenario.android.setupOnly ? 'true' : 'false',
   ];
@@ -1213,6 +1230,9 @@ async function startAndroidJoinTest(
         `-Pandroid.testInstrumentationRunnerArguments.recoveryCycles=${recoveryCycles.length}`,
         `-Pandroid.testInstrumentationRunnerArguments.cyclePlan=${cyclePlanJson}`,
         `-Pandroid.testInstrumentationRunnerArguments.secretCreationPlan=${JSON.stringify(secretCreationPlan)}`,
+        ...(expectedSecretNames.length > 0
+          ? [`-Pandroid.testInstrumentationRunnerArguments.expectedSecretNames=${expectedSecretNames.join(',')}`]
+          : []),
         '-Pandroid.testInstrumentationRunnerArguments.approvalCoordinatorUrl=http://10.0.2.2:5180',
         `-Pandroid.testInstrumentationRunnerArguments.setupOnly=${scenario.android.setupOnly ? 'true' : 'false'}`,
         ...androidNetworkGradleArgs,
@@ -1532,10 +1552,12 @@ async function createWebInitiatedVault(page) {
   await page.getByText('Vault name is free!').waitFor({ timeout: 120_000 });
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await page.getByRole('button', { name: '+ Add Secret', exact: true }).waitFor({ timeout: 180_000 });
-  for (const secretName of secretCreationPlan?.initial?.web ?? [defaultSecret?.name]) {
+  const initialSecretNames = secretCreationPlan?.initial?.web
+    ?? Object.values(secretConfigs).map((config) => config.name);
+  for (const secretName of initialSecretNames) {
     await createWebSecret(page, secretName);
   }
-  await waitForWebSecrets(page);
+  await waitForWebSecretNames(page, initialSecretNames);
   console.log('✅ Web vault and initial secret ready');
 }
 
@@ -1563,6 +1585,230 @@ async function runWebInitiatedSetup(page, simulatorUdid, androidSerial) {
   await androidTest.result;
   await waitForWebSecrets(page);
   return { iosTest, androidTest };
+}
+
+function setJoinExpectedSecretNames(secretNames) {
+  joinExpectedSecretNames = secretNames.map(secretNameFor);
+  writeDiagnostic(
+    `[TEST22] joinExpectedSecretNames=${joinExpectedSecretNames.join(',')}`,
+  );
+}
+
+async function runWebMultiSecretLifecycleSetup(page, simulatorUdid, androidSerial) {
+  const initialNames = secretCreationPlan?.initial?.web ?? [defaultSecret?.name];
+  const joinOrder = scenario.setup?.joinOrder ?? ['android', 'ios'];
+  if (joinOrder.join(',') !== 'android,ios') {
+    throw new Error(`Test #22 requires setup.joinOrder=[android,ios], got ${joinOrder.join(',')}`);
+  }
+
+  setJoinExpectedSecretNames(initialNames);
+  await createWebInitiatedVault(page);
+
+  const androidTest = await startAndroidJoinTest(androidSerial, {
+    testClass: scenario.android.joinTestClass
+      ?? scenario.android.testClass
+      ?? 'metasecret.project.com.CaseEightAndroidBothOfflineTest',
+    testMethod: scenario.android.joinTestMethod ?? 'joinWebInitiatedVault',
+    expectedSecretNames: initialNames,
+  });
+  await androidTest.waitForMarker('E2E: ANDROID_JOIN_REQUEST_SENT', 180_000);
+  await approveJoinRequestOnWeb(page, 'Android');
+  await androidTest.waitForMarker('E2E: ANDROID_JOIN_READY', 180_000);
+  await androidTest.result;
+  await waitForWebSecretNames(page, initialNames);
+  writeDiagnostic(`[TEST22] setup complete members=web,android secrets=${initialNames.join(',')}`);
+}
+
+async function runWebMultiSecretLifecycleIosJoin(page, simulatorUdid, namesBeforeIos) {
+  setJoinExpectedSecretNames(namesBeforeIos);
+  const iosTest = startIosJoinTest(simulatorUdid, {
+    testClass: scenario.ios.joinTestClass
+      ?? scenario.ios.testClass
+      ?? 'CaseEightIosBothOfflineUITest',
+    testMethod: scenario.ios.joinTestMethod ?? 'joinWebInitiatedVault',
+    label: 'iOS Web-initiated join after Secret2',
+  });
+  void iosTest.result.catch(() => {});
+  await iosTest.waitForMarker('E2E: IOS_JOIN_REQUEST_SENT', 300_000);
+  await approveJoinRequestOnWeb(page, 'iOS');
+  await iosTest.waitForMarker('E2E: IOS_JOIN_READY', 180_000);
+  await iosTest.result;
+  await waitForWebSecretNames(page, namesBeforeIos);
+  writeDiagnostic(`[TEST22] iOS joined after Secret2; members=web,android,ios secrets=${namesBeforeIos.join(',')}`);
+}
+
+async function runWebMultiSecretLifecycle(page, simulatorUdid, androidSerial) {
+  await runWebMultiSecretLifecycleSetup(page, simulatorUdid, androidSerial);
+  const expectedCycles = scenario.recovery.expectedCycles ?? recoveryCycles.length;
+  if (recoveryCycles.length !== expectedCycles) {
+    throw new Error(`Test #22 expected ${expectedCycles} recovery cycles, got ${recoveryCycles.length}`);
+  }
+  const expectedRecoveryCycles = scenario.recovery.expectedRecoveryCycles
+    ?? recoveryCycles.filter((cycle) => cycle.kind !== 'direct-show').length;
+  const actualRecoveryCycles = recoveryCycles.filter((cycle) => cycle.kind !== 'direct-show').length;
+  if (actualRecoveryCycles !== expectedRecoveryCycles) {
+    throw new Error(`Test #22 expected ${expectedRecoveryCycles} recovery cycles, got ${actualRecoveryCycles}`);
+  }
+  const stepTestMethod = 'handleRecoveryStep';
+  const startNativeStep = async (platform, role, cycle, secretName, approvalPlatform, sender) => {
+    const environment = stepEnvironment({
+      role,
+      cycle: cycle.number,
+      step: 1,
+      approvalPlatform,
+      sender,
+    });
+    if (platform === 'ios') {
+      const test = startIosJoinTest(simulatorUdid, {
+        testClass: scenario.ios.stepTestClass
+          ?? scenario.ios.testClass
+          ?? 'CaseEightIosBothOfflineUITest',
+        testMethod: scenario.ios.stepTestMethod ?? stepTestMethod,
+        label: `iOS Test #22 ${role} cycle ${cycle.number}`,
+        environment,
+        secretName,
+      });
+      void test.result.catch(() => {});
+      return test;
+    }
+    return startAndroidStepTest(androidSerial, {
+      role,
+      cycle: cycle.number,
+      step: 1,
+      approvalPlatform,
+      sender,
+      secretName,
+      testMethod: scenario.android.stepTestMethod ?? stepTestMethod,
+      label: `Android Test #22 ${role} cycle ${cycle.number}`,
+    });
+  };
+
+  for (const cycle of recoveryCycles) {
+    currentCycleForDiagnostics = cycle.number;
+    if (cycle.senders.length !== 1) {
+      throw new Error(`Test #22 cycle ${cycle.number} must have one sender`);
+    }
+    const sender = cycle.senders[0];
+    const approval = cycle.approvals[0];
+    const approver = approval?.platform;
+    const secretName = cycle.senderSecrets[sender] ?? approval?.secret ?? defaultSecret?.name;
+    if (!['web', 'android', 'ios'].includes(sender)) {
+      throw new Error(`Test #22 cycle ${cycle.number} has unsupported sender/approver`);
+    }
+    writeDiagnostic(
+      `[TEST22] cycle=${cycle.number} block=${cycle.block ?? ''} sender=${sender} `
+        + `approver=${approver ?? 'none'} kind=${cycle.kind} secret=${secretName}`,
+    );
+
+    if (cycle.kind === 'show' || cycle.kind === 'direct-show') {
+      if (cycle.approvals.length !== 0) {
+        throw new Error(`Test #22 show cycle ${cycle.number} must not have an approval`);
+      }
+      if (sender === 'web') {
+        await showAndCloseWebSecret(page, secretName);
+      } else if (sender === 'android') {
+        const showTest = await startAndroidStepTest(androidSerial, {
+          role: 'show',
+          cycle: cycle.number,
+          step: 1,
+          secretName,
+          testMethod: 'showLocalSecret',
+          label: `Android Test #22 local Show cycle ${cycle.number}`,
+        });
+        await showTest.waitForMarker(`E2E: ANDROID_LOCAL_SECRET_VISIBLE_${cycle.number}`, 180_000);
+        await showTest.waitForMarker(`E2E: ANDROID_LOCAL_SECRET_CLOSED_${cycle.number}`, 60_000);
+        await showTest.result;
+        await stopAndroidApplication(androidSerial);
+      } else {
+        throw new Error(`Test #22 local Show does not support sender ${sender}`);
+      }
+      console.log(`✅ Test #22 cycle ${cycle.number}/${expectedCycles} passed: ${sender} local Show`);
+      continue;
+    }
+
+    if (!['web', 'android', 'ios'].includes(approver)) {
+      throw new Error(`Test #22 recovery cycle ${cycle.number} has unsupported approver`);
+    }
+    if (sender === approver) throw new Error(`Test #22 cycle ${cycle.number} sender and approver must differ`);
+
+    let senderTest;
+    let approverTest;
+    if (approver !== 'web') {
+      approverTest = await startNativeStep(approver, 'receiver', cycle, secretName, approver, sender);
+    }
+    if (sender !== 'web') {
+      senderTest = await startNativeStep(sender, 'sender', cycle, secretName, approver, sender);
+    }
+
+    if (sender === 'web') {
+      approvalCoordinator.allow('web-sender', cycle.number);
+      await startWebRecovery(page, secretName);
+    } else {
+      approvalCoordinator.allow(`${sender}-sender-1`, cycle.number);
+      await senderTest.waitForMarker(
+        `E2E: ${sender.toUpperCase()}_RECOVERY_REQUEST_SENT_${cycle.number}_1`,
+        180_000,
+      );
+    }
+
+    if (approver === 'web') {
+      await approveIncomingRecoveryOnWeb(page, secretName, 1);
+    } else {
+      await approverTest.waitForMarker(
+        `E2E: ${approver.toUpperCase()}_INCOMING_VISIBLE_${cycle.number}_1`,
+        180_000,
+      );
+      approvalCoordinator.allow(`${approver}-approve-1`, cycle.number);
+      await approverTest.waitForMarker(
+        `E2E: ${approver.toUpperCase()}_APPROVED_INCOMING_${cycle.number}_1`,
+        180_000,
+      );
+    }
+
+    if (sender === 'web') {
+      await revealAndCloseWebSecret(page, secretName, false);
+    } else {
+      approvalCoordinator.allow(`${sender}-show`, cycle.number);
+      await senderTest.waitForMarker(
+        `E2E: ${sender.toUpperCase()}_RECOVERY_SECRET_VISIBLE_${cycle.number}_1`,
+        recoveryShowTimeoutMs,
+      );
+      await senderTest.waitForMarker(
+        `E2E: ${sender.toUpperCase()}_RECOVERY_CLOSED_${cycle.number}_1`,
+        60_000,
+      );
+    }
+
+    if (senderTest) await senderTest.result;
+    if (approverTest) await approverTest.result;
+    if (sender === 'android' || approver === 'android') await stopAndroidApplication(androidSerial);
+    if (sender === 'ios' || approver === 'ios') await stopIosApplication(simulatorUdid);
+
+    if (cycle.number === scenario.recovery.createSecret3AfterCycle) {
+      const deferredSecrets = secretCreationPlan?.afterRecovery?.web ?? [];
+      for (const deferredSecret of deferredSecrets) await createWebSecret(page, deferredSecret);
+      await waitForWebSecrets(page);
+      writeDiagnostic(`[TEST22] deferred Web secret creation complete names=${deferredSecrets.join(',')}`);
+    }
+    if (cycle.number === scenario.recovery.createSecret2AfterCycle) {
+      const deferredSecrets = secretCreationPlan?.afterAndroidJoin?.web ?? [];
+      for (const deferredSecret of deferredSecrets) await createWebSecret(page, deferredSecret);
+      await waitForWebSecretNames(page, [
+        ...(secretCreationPlan?.initial?.web ?? []),
+        ...deferredSecrets,
+      ]);
+      writeDiagnostic(`[TEST22] Secret2 created; iOS join deferred until cycle ${scenario.recovery.joinIosAfterCycle ?? cycle.number}`);
+    }
+    if (cycle.number === scenario.recovery.joinIosAfterCycle) {
+      const namesBeforeIos = Object.values(secretCreationPlan?.initial ?? {})
+        .flat()
+        .concat(Object.values(secretCreationPlan?.afterAndroidJoin ?? {}).flat())
+        .map(secretNameFor);
+      await runWebMultiSecretLifecycleIosJoin(page, simulatorUdid, [...new Set(namesBeforeIos)]);
+      writeDiagnostic(`[TEST22] iOS joined after direct Show cycles=${cycle.number}`);
+    }
+    console.log(`✅ Test #22 cycle ${cycle.number}/${expectedCycles} passed: ${sender} recovery/show`);
+  }
 }
 
 async function joinWebToCliVault(page, cliDevice, platform) {
@@ -4115,6 +4361,22 @@ async function assertWebRecoveryDeclined(page, secretName = defaultSecret?.name)
   console.log(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: declined recovery did not reveal ${secretName}`);
 }
 
+async function showAndCloseWebSecret(page, secretName = defaultSecret?.name) {
+  const secretValue = secretValueForName(secretName);
+  const primaryAction = page.getByTestId(`secret-primary-action-${secretName}`);
+  await primaryAction.filter({ hasText: /^\s*Show\s*$/ }).waitFor({
+    state: 'visible',
+    timeout: 120_000,
+  });
+  await primaryAction.click();
+  await waitForWebSecretValue(page, secretValue);
+  await closeWebSecret(page, secretValue);
+  await primaryAction.filter({ hasText: /^\s*Show\s*$/ }).waitFor({
+    state: 'visible',
+    timeout: 120_000,
+  });
+}
+
 async function revealAndCloseWebSecret(page, secretName = defaultSecret?.name, reopenClaim = false) {
   const secretValue = secretValueForName(secretName);
   const primaryAction = page.getByTestId(`secret-primary-action-${secretName}`);
@@ -4174,14 +4436,19 @@ async function revealAndCloseWebSecret(page, secretName = defaultSecret?.name, r
   console.log('[UI][Web] reveal dialog closed');
 }
 
-async function waitForWebSecrets(page) {
+async function waitForWebSecretNames(page, secretNames) {
   await page.getByRole('link', { name: 'Secrets', exact: true }).click();
-  for (const config of Object.values(secretConfigs)) {
+  for (const secretName of secretNames) {
+    const config = secretConfigFor(secretName);
     if (!config?.name) continue;
     await page.getByText(config.name, { exact: true }).waitFor({ state: 'visible', timeout: 180_000 });
     await page.getByTestId(`secret-primary-action-${config.name}`).waitFor({ state: 'visible', timeout: 180_000 });
     console.log(`[UI][Web] secret ready: ${config.name}`);
   }
+}
+
+async function waitForWebSecrets(page) {
+  return waitForWebSecretNames(page, Object.values(secretConfigs).map((config) => config.name));
 }
 
 async function runConcurrentRecoveryCycles(page, iosTest, androidTest) {
@@ -4331,6 +4598,16 @@ async function main() {
   const simulatorUdid = await prepareIosSimulator();
 
   const androidSerial = await prepareAndroidEmulator();
+  if (scenario.mode === 'web-multi-secret-lifecycle' && scenario.setup?.initiator === 'web') {
+    await runWebMultiSecretLifecycle(page, simulatorUdid, androidSerial);
+    console.log(`✅ Test #${testNumber} Web multi-secret lifecycle passed: ${recoveryCycles.length} cycles`);
+    if (exitOnSuccess) {
+      await stopProcesses();
+      process.exit(0);
+    }
+    console.log('Browser remains open. Press Ctrl+C when ready to stop.');
+    await new Promise(() => {});
+  }
   if (scenario.mode === 'fourth-device-rejection') {
     if (!existsSync(metaCliBinaryPath)) {
       console.log('6. Building meta-cli for Test #21');
