@@ -30,6 +30,8 @@
     "bundleId": "metasecret.project.com",
     "testClass": "metasecret.project.com.CaseEightAndroidBothOfflineTest",
     "joinTestMethod": "joinWebInitiatedVault",
+    "directShowTestMethod": "joinAndShowLocalSecrets",
+    "directInstrumentationSetup": true,
     "stepTestMethod": "handleRecoveryStep"
   },
   "secretCreation": {
