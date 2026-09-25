@@ -90,6 +90,10 @@ pub fn approve_remove_member(target_device_id: String) -> String {
     json_api::approve_remove_member(target_device_id)
 }
 
+pub fn decline_remove_member(target_device_id: String) -> String {
+    json_api::decline_remove_member(target_device_id)
+}
+
 pub fn clean_up_database() -> String {
     json_api::clean_up_database()
 }

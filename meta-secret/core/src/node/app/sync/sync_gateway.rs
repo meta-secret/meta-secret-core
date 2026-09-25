@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use async_lock::Mutex;
 use tracing::{debug, error, info, instrument};
 
 use crate::crypto::keys::TransportSk;
@@ -45,10 +46,30 @@ pub struct SyncGateway<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub p_obj: Arc<PersistentObject<Repo>>,
     pub sync: Arc<Sync>,
     pub master_key: TransportSk,
+    sync_guard: Mutex<()>,
 }
 
 impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
-    async fn signed_event(&self, event: GenericKvLogEvent, user: &UserData) -> Result<crate::node::api::SignedAction> {
+    pub fn new(
+        id: String,
+        p_obj: Arc<PersistentObject<Repo>>,
+        sync: Arc<Sync>,
+        master_key: TransportSk,
+    ) -> Self {
+        Self {
+            id,
+            p_obj,
+            sync,
+            master_key,
+            sync_guard: Mutex::new(()),
+        }
+    }
+
+    async fn signed_event(
+        &self,
+        event: GenericKvLogEvent,
+        user: &UserData,
+    ) -> Result<crate::node::api::SignedAction> {
         let creds = PersistentCredentials {
             p_obj: self.p_obj.clone(),
             master_key: self.master_key.clone(),
@@ -166,6 +187,11 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
     ///  - vault, shared secret... - user has been registered, we can sync vault related events
     #[instrument(skip_all)]
     pub async fn sync(&self, user: UserData) -> Result<()> {
+        let _sync_guard = self.sync_guard.lock().await;
+        self.sync_transaction(user).await
+    }
+
+    async fn sync_transaction(&self, user: UserData) -> Result<()> {
         let user_creds = PersistentCredentials {
             p_obj: self.p_obj.clone(),
             master_key: self.master_key.clone(),
@@ -174,7 +200,8 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         .await?;
         let server_tail = self.get_server_tail(user.clone()).await?;
 
-        self.sync_device_log(&server_tail, user.user_id(), &user).await?;
+        self.sync_device_log(&server_tail, user.user_id(), &user)
+            .await?;
 
         let vault_sync_request = self.get_vault_request(user.clone()).await?;
         self.sync_vault(vault_sync_request, user_creds).await?;
@@ -301,7 +328,11 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         Ok(vault_sync_request)
     }
 
-    async fn sync_ss_device_log(&self, server_tail: &ServerTailResponse, user: &UserData) -> Result<()> {
+    async fn sync_ss_device_log(
+        &self,
+        server_tail: &ServerTailResponse,
+        user: &UserData,
+    ) -> Result<()> {
         let device_id = user.device.device_id.clone();
         let server_ss_device_log_tail_id = {
             let unit_id = || ArtifactId::from(SsDeviceLogDescriptor::from(device_id));
@@ -317,7 +348,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
             .await?;
 
         for ss_device_log_event in ss_device_log_events_to_sync {
-            let signed = self.signed_event(ss_device_log_event.to_generic(), user).await?;
+            let signed = self
+                .signed_event(ss_device_log_event.to_generic(), user)
+                .await?;
             let sync_request = SyncRequest::Write(Box::from(WriteSyncRequest::Event(signed)));
             self.sync.send(sync_request).await?.ensure_success()?;
         }
@@ -610,7 +643,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                     self.signed_event(wf_event.to_generic(), user).await?,
                 )));
                 info!(claim_id = ?claim.id, "sync_ss_log: uploading local recovery approval first");
-                    self.sync.send(request).await?.ensure_success()?;
+                self.sync.send(request).await?.ensure_success()?;
                 self.p_obj.repo.delete(obj_id).await;
             }
         }
@@ -674,8 +707,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         };
 
         //sync ss_device_log and ss_log
-        self.sync_ss_device_log(server_tail, &user)
-            .await?;
+        self.sync_ss_device_log(server_tail, &user).await?;
         self.sync_ss_log(user).await?;
 
         Ok(())
@@ -697,21 +729,155 @@ pub mod fixture {
 
     impl<Sync: SyncProtocol> SyncGatewayFixture<Sync> {
         pub fn from(state: &EmptyState, server_sync: Arc<Sync>) -> Self {
-            let client_gw = Arc::new(SyncGateway {
-                id: "client_gw".to_string(),
-                p_obj: state.p_obj.client.clone(),
-                sync: server_sync.clone(),
-                master_key: state.device_creds.client_master_key.clone(),
-            });
+            let client_gw = Arc::new(SyncGateway::new(
+                "client_gw".to_string(),
+                state.p_obj.client.clone(),
+                server_sync.clone(),
+                state.device_creds.client_master_key.clone(),
+            ));
 
-            let vd_gw = Arc::new(SyncGateway {
-                id: "vd_gw".to_string(),
-                p_obj: state.p_obj.vd.clone(),
-                sync: server_sync,
-                master_key: state.device_creds.vd_master_key.clone(),
-            });
+            let vd_gw = Arc::new(SyncGateway::new(
+                "vd_gw".to_string(),
+                state.p_obj.vd.clone(),
+                server_sync,
+                state.device_creds.vd_master_key.clone(),
+            ));
 
             Self { client_gw, vd_gw }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex as StdMutex};
+
+    use anyhow::Result;
+
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::node::api::{
+        DataEventsResponse, DataSyncResponse, ReadSyncRequest, ServerTailResponse, SyncRequest,
+        WriteSyncRequest,
+    };
+    use crate::node::app::sync::sync_gateway::SyncGateway;
+    use crate::node::app::sync::sync_protocol::SyncProtocol;
+    use crate::node::db::events::generic_log_event::ObjIdExtractor;
+    use crate::node::db::events::object_id::{ArtifactId, Next};
+    use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
+    use crate::node::db::objects::persistent_vault::PersistentVault;
+    use crate::node::db::repo::persistent_credentials::PersistentCredentials;
+
+    #[derive(Default)]
+    struct ReplayRejectingSyncProtocol {
+        next_device_tail: StdMutex<Option<ArtifactId>>,
+        observed_device_tails: StdMutex<Vec<Option<ArtifactId>>>,
+        write_attempts: AtomicUsize,
+    }
+
+    impl ReplayRejectingSyncProtocol {
+        fn write_attempts(&self) -> usize {
+            self.write_attempts.load(Ordering::SeqCst)
+        }
+
+        fn observed_device_tails(&self) -> Vec<Option<ArtifactId>> {
+            self.observed_device_tails
+                .lock()
+                .expect("observed tail lock must not be poisoned")
+                .clone()
+        }
+    }
+
+    impl SyncProtocol for ReplayRejectingSyncProtocol {
+        async fn send(&self, request: SyncRequest) -> Result<DataSyncResponse> {
+            match request {
+                SyncRequest::Read(request) => match *request {
+                    ReadSyncRequest::ServerTail(_) => {
+                        let device_log_tail = self
+                            .next_device_tail
+                            .lock()
+                            .expect("device tail lock must not be poisoned")
+                            .clone();
+                        self.observed_device_tails
+                            .lock()
+                            .expect("observed tail lock must not be poisoned")
+                            .push(device_log_tail.clone());
+
+                        // Let a concurrently polled sync reach this point. Without the
+                        // SyncGateway guard both callers snapshot the same stale tail and
+                        // attempt to upload the same signed event.
+                        tokio::task::yield_now().await;
+
+                        Ok(DataSyncResponse::ServerTailResponse(ServerTailResponse {
+                            device_log_tail,
+                            ss_device_log_tail: None,
+                        }))
+                    }
+                    ReadSyncRequest::Vault(_) | ReadSyncRequest::SsRequest(_) => {
+                        Ok(DataSyncResponse::Data(DataEventsResponse(Vec::new())))
+                    }
+                    ReadSyncRequest::SsRecoveryCompletion(_)
+                    | ReadSyncRequest::StateEventsSubscription(_) => Ok(DataSyncResponse::Empty),
+                },
+                SyncRequest::Write(request) => match *request {
+                    WriteSyncRequest::Event(action) => {
+                        self.write_attempts.fetch_add(1, Ordering::SeqCst);
+                        let next_tail = action.event()?.obj_id().next();
+                        let mut stored_tail = self
+                            .next_device_tail
+                            .lock()
+                            .expect("device tail lock must not be poisoned");
+                        if stored_tail.is_some() {
+                            return Ok(DataSyncResponse::Error {
+                                msg: "replayed signed action".to_string(),
+                            });
+                        }
+                        *stored_tail = Some(next_tail);
+                        Ok(DataSyncResponse::Empty)
+                    }
+                },
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn concurrent_syncs_serialize_and_do_not_replay_a_queued_event() -> Result<()> {
+        let fixture = FixtureRegistry::base().await?;
+        let state = &fixture.state.empty;
+        let credentials = PersistentCredentials {
+            p_obj: state.p_obj.client.clone(),
+            master_key: state.device_creds.client_master_key.clone(),
+        };
+        let user = credentials
+            .get_user_creds()
+            .await?
+            .expect("client credentials must exist")
+            .user();
+        PersistentVault::from(state.p_obj.client.clone())
+            .update_vault_membership_info_for_user(user.clone())
+            .await?;
+        PersistentDeviceLog::from(state.p_obj.client.clone())
+            .save_create_vault_request(&user)
+            .await?;
+
+        let protocol = Arc::new(ReplayRejectingSyncProtocol::default());
+        let gateway = Arc::new(SyncGateway::new(
+            "concurrent-sync-test".to_string(),
+            state.p_obj.client.clone(),
+            protocol.clone(),
+            state.device_creds.client_master_key.clone(),
+        ));
+
+        let (first, second) = tokio::join!(gateway.sync(user.clone()), gateway.sync(user));
+        first?;
+        second?;
+
+        assert_eq!(protocol.write_attempts(), 1);
+        let observed_tails = protocol.observed_device_tails();
+        assert_eq!(observed_tails.len(), 2);
+        assert!(observed_tails[0].is_none());
+        assert!(observed_tails[1].is_some());
+
+        Ok(())
     }
 }

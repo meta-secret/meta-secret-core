@@ -26,8 +26,8 @@ use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::recover_from_shares;
 use crate::secret::shared_secret::{PlainText, UserShareDto};
 use crate::secret::split2;
-use anyhow::bail;
 use anyhow::Result;
+use anyhow::bail;
 use std::collections::HashSet;
 use std::sync::Arc;
 use tracing::{debug, info};
@@ -211,7 +211,10 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
         let vault = self.get_vault(member.clone()).await?;
         let action = RemoveAction {
             p_obj: self.p_obj.clone(),
-            member: VaultMember { member, vault: vault.clone() },
+            member: VaultMember {
+                member,
+                vault: vault.clone(),
+            },
         };
         let request_share_transfers = if vault.members().len() >= 3 {
             self.build_local_share_transfers_for_removal(&vault, &target)
@@ -221,8 +224,11 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
         };
         let request = action.request(target, request_share_transfers).await?;
         if vault.members().len() == 2 {
-            action
+            let update = action
                 .update(request.clone(), RemoveActionUpdate::Accept, vec![])
+                .await?;
+            let single_device_vault = vault.update_membership(update.new_status);
+            self.canonicalize_single_device_claims(&single_device_vault)
                 .await?;
         }
         Ok(request)
@@ -242,40 +248,78 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
             .into_iter()
             .find_map(|request| match request {
                 VaultActionRequestEvent::RemoveMember(request)
-                    if request.target.user_data.device.device_id.to_string() == target_device_id => Some(request),
+                    if request.target.user_data.device.device_id.to_string()
+                        == target_device_id =>
+                {
+                    Some(request)
+                }
                 _ => None,
             })
             .ok_or_else(|| anyhow::anyhow!("Removal request not found"))?;
         let action = RemoveAction {
             p_obj: self.p_obj.clone(),
-            member: VaultMember { member, vault: vault.clone() },
+            member: VaultMember {
+                member,
+                vault: vault.clone(),
+            },
         };
-        let share_transfers = if vault.members().len() >= 3 {
-            self.build_remove_share_transfers(&request).await?
+        let request_share_transfers = if vault.members().len() >= 3 {
+            let local_device_id = self.user_creds.device_id();
+            request
+                .share_transfers
+                .iter()
+                .filter(|transfer| &transfer.receiver == local_device_id)
+                .cloned()
+                .collect()
         } else {
             vec![]
         };
-        action
-            .update(request, RemoveActionUpdate::Accept, share_transfers)
-            .await
+        let update = action
+            .update(request, RemoveActionUpdate::Accept, vec![])
+            .await?;
+
+        if vault.members().len() >= 3 {
+            let post_removal_vault = vault.update_membership(update.new_status.clone());
+            self.reshare_after_removal(
+                &post_removal_vault,
+                &update,
+                request_share_transfers,
+                false,
+            )
+            .await?;
+        }
+        Ok(())
     }
 
-    /// Encrypt the approver's current share for the removal initiator. The
-    /// transfer is intentionally a ciphertext payload in the signed vault
-    /// event; the server and the removed device never receive the plaintext.
-    async fn build_remove_share_transfers(
-        &self,
-        request: &RemoveMemberRequestEvent,
-    ) -> Result<Vec<RemoveMemberShareTransfer>> {
+    /// Decline a pending removal request without changing membership or Key Shares.
+    /// The signed terminal response consumes the exact pending request on the server.
+    pub async fn decline_remove_member(&self, target_device_id: String) -> Result<()> {
         let member = self.get_member().await?;
-        let vault = self.get_vault(member).await?;
-        let mut transfers = Vec::new();
-
-        for pass_id in vault.secrets.iter() {
-            transfers.push(self.encrypt_local_share_for(pass_id, &request.sender).await?);
+        let vault = self.get_vault(member.clone()).await?;
+        let Some(VaultLogObject(log)) = self.get_vault_log_event(&member).await? else {
+            bail!("Removal request not found");
+        };
+        let request = log
+            .value
+            .requests
+            .into_iter()
+            .find_map(|request| match request {
+                VaultActionRequestEvent::RemoveMember(request)
+                    if request.target.user_data.device.device_id.to_string()
+                        == target_device_id =>
+                {
+                    Some(request)
+                }
+                _ => None,
+            })
+            .ok_or_else(|| anyhow::anyhow!("Removal request not found"))?;
+        RemoveAction {
+            p_obj: self.p_obj.clone(),
+            member: VaultMember { member, vault },
         }
-
-        Ok(transfers)
+        .update(request, RemoveActionUpdate::Decline, vec![])
+        .await?;
+        Ok(())
     }
 
     /// Prepare the initiator's local shares for the approver. This lets the
@@ -292,17 +336,13 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
             .into_iter()
             .filter(|member| {
                 member.user_data.device.device_id != local_device_id
-                    && member.user_data.device.device_id
-                        != target.user_data.device.device_id
+                    && member.user_data.device.device_id != target.user_data.device.device_id
             })
             .collect();
         let mut transfers = Vec::new();
         for approver in approvers {
             for pass_id in vault.secrets.iter() {
-                transfers.push(
-                    self.encrypt_local_share_for(pass_id, &approver)
-                        .await?,
-                );
+                transfers.push(self.encrypt_local_share_for(pass_id, &approver).await?);
             }
         }
         Ok(transfers)
@@ -349,10 +389,9 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
         })
     }
 
-    /// Finalize the 3→2 resharing after the signed approval update has arrived
-    /// through the vault log. The remaining member that owns the original
-    /// split claim stays canonical; if the original sender was removed, the
-    /// approver takes ownership using the initiator's encrypted share.
+    /// Compatibility fallback for a pending 3→2 resharing carried by a signed
+    /// approval update. New approvals are reshared immediately by the approver
+    /// in `accept_remove_member`, before the completed Vault event is cleared.
     pub async fn finalize_pending_removal_resharing(&self) -> Result<()> {
         // The removed device receives the same signed update and immediately
         // becomes an Outsider/Declined. It must still be able to build its
@@ -366,6 +405,10 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
             .get_vault(member.user_data.vault_name())
             .await?
             .to_data();
+        if vault.members().len() == 1 {
+            self.canonicalize_single_device_claims(&vault).await?;
+            return Ok(());
+        }
         if vault.members().len() != 2 {
             return Ok(());
         }
@@ -382,7 +425,10 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                     if (update.request.sender.user_data.device.device_id == local_device_id
                         && !update.share_transfers.is_empty())
                         || (update.sender.user_data.device.device_id == local_device_id
-                            && !update.request.share_transfers.is_empty()) => Some(update),
+                            && !update.request.share_transfers.is_empty()) =>
+                {
+                    Some(update)
+                }
                 _ => None,
             })
             .collect();
@@ -409,6 +455,103 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
         Ok(())
     }
 
+    /// Make the sole remaining member the canonical sender for every local
+    /// `k=1` Key Share. A later Join can then redistribute every Secret even
+    /// when its previous sender was the device removed by the `2 → 1` step.
+    async fn canonicalize_single_device_claims(&self, vault: &VaultData) -> Result<()> {
+        let members = vault.members();
+        if members.len() != 1 {
+            bail!("Single-device claim reconciliation requires exactly one vault member");
+        }
+
+        let local_device_id = self.user_creds.device_id().clone();
+        if members[0].user().device.device_id != local_device_id {
+            bail!("Single-device claim reconciliation requires the local vault member");
+        }
+
+        let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
+        let ss_log_data = self.get_ss_log_data().await?;
+        let local_claim_events = self
+            .p_obj
+            .get_object_events_from_beginning(SsDeviceLogDescriptor::from(local_device_id.clone()))
+            .await?;
+        let local_claims: Vec<SsClaim> = local_claim_events
+            .into_iter()
+            .map(|obj: SsDeviceLogObject| obj.to_distribution_request())
+            .collect();
+        let mut updated_claims = 0usize;
+
+        for pass_id in &vault.secrets {
+            let local_desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
+                pass_id: pass_id.clone(),
+                receiver: local_device_id.clone(),
+            });
+            let Some(SsWorkflowObject::Distribution(local_distribution)) =
+                self.p_obj.find_tail_event(local_desc).await?
+            else {
+                bail!("Local Key Share is missing during single-device reconciliation");
+            };
+
+            let local_plain = local_distribution
+                .value
+                .secret_message
+                .cipher_text()
+                .decrypt(&self.user_creds.device_creds.secret_box.transport.sk)?;
+            let local_share = UserShareDto::try_from(&local_plain.msg)?;
+            let threshold = local_share
+                .share_blocks
+                .first()
+                .map(|block| block.config.threshold)
+                .unwrap_or(0);
+            if threshold != 1 {
+                bail!("Single-device reconciliation requires a k=1 Key Share");
+            }
+
+            let claim_id = &local_distribution.value.claim_id.id;
+            let mut split_claim = ss_log_data
+                .claims
+                .get(claim_id)
+                .cloned()
+                .or_else(|| {
+                    local_claims
+                        .iter()
+                        .find(|claim| claim.id == *claim_id)
+                        .cloned()
+                })
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Split claim is missing during single-device reconciliation")
+                })?;
+            if split_claim.distribution_type != SecretDistributionType::Split
+                || split_claim.dist_claim_id.pass_id != *pass_id
+            {
+                bail!("Local Key Share references an invalid split claim");
+            }
+
+            let already_canonical = split_claim.sender == local_device_id
+                && split_claim.receivers.is_empty()
+                && split_claim.status.statuses.is_empty();
+            if already_canonical {
+                continue;
+            }
+
+            split_claim.sender = local_device_id.clone();
+            split_claim.receivers.clear();
+            split_claim.status = SsDistributionCompositeStatus::from(vec![]);
+            split_claim.client_status = None;
+            p_ss.save_claim_in_ss_device_log(split_claim.clone())
+                .await?;
+            p_ss.save_ss_log_event(split_claim).await?;
+            updated_claims += 1;
+        }
+
+        info!(
+            local_device = ?local_device_id,
+            updated_claims,
+            "Canonicalized single-device split claims after member removal"
+        );
+        Ok(())
+    }
+
     async fn reshare_after_removal(
         &self,
         vault: &VaultData,
@@ -427,24 +570,16 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
         let mut ss_log_data = self.get_ss_log_data().await?;
 
         for transfer in &transfers {
-            let initiator_id = &update.request.sender.user_data.device.device_id;
-            let initiator_owns_claim = ss_log_data
-                .claims
-                .values()
-                .any(|claim| {
+            if is_initiator {
+                let initiator_id = &update.request.sender.user_data.device.device_id;
+                let initiator_owns_claim = ss_log_data.claims.values().any(|claim| {
                     claim.distribution_type == SecretDistributionType::Split
                         && &claim.sender == initiator_id
                         && claim.dist_claim_id.pass_id == transfer.pass_id
                 });
-
-            // Keep the original sender as the canonical resharer when it is
-            // still present. The approver takes over only when that sender
-            // was the removed device.
-            if is_initiator && !initiator_owns_claim {
-                continue;
-            }
-            if !is_initiator && initiator_owns_claim {
-                continue;
+                if !initiator_owns_claim {
+                    continue;
+                }
             }
 
             let Some(mut split_claim) = ss_log_data
@@ -469,7 +604,10 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
             // the device being removed.
             split_claim.sender = local_device_id.clone();
 
-            if split_claim.receivers.iter().all(|id| remaining_ids.contains(id))
+            if split_claim
+                .receivers
+                .iter()
+                .all(|id| remaining_ids.contains(id))
                 && split_claim.receivers.len() == remaining_ids.len() - 1
             {
                 continue;
@@ -491,7 +629,8 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                 .decrypt(&self.user_creds.device_creds.secret_box.transport.sk)?;
             let local_share = UserShareDto::try_from(&local_plain.msg)?;
 
-            let transfer_message: EncryptedMessage = serde_json::from_str(&transfer.encrypted_share)?;
+            let transfer_message: EncryptedMessage =
+                serde_json::from_str(&transfer.encrypted_share)?;
             let transferred_plain = transfer_message
                 .cipher_text()
                 .decrypt(&self.user_creds.device_creds.secret_box.transport.sk)?;
@@ -541,7 +680,8 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                 })
                 .collect();
             split_claim.status = SsDistributionCompositeStatus::from(split_claim.receivers.clone());
-            p_ss.save_claim_in_ss_device_log(split_claim.clone()).await?;
+            p_ss.save_claim_in_ss_device_log(split_claim.clone())
+                .await?;
             p_ss.save_ss_log_event(split_claim.clone()).await?;
             ss_log_data
                 .claims
@@ -946,18 +1086,21 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
 mod tests {
     use super::*;
     use crate::crypto::utils::Id48bit;
-    use crate::meta_tests::fixture_util::fixture::states::EmptyState;
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::meta_tests::fixture_util::fixture::states::EmptyState;
     use crate::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo, SecurePassInfo};
     use crate::node::common::model::secret::{
         SsClaimId, SsDistributionCompositeStatus, SsDistributionId, SsRecoveryId,
     };
+    use crate::node::common::model::user::common::{UserDataOutsider, UserDataOutsiderStatus};
     use crate::node::common::model::vault::vault_data::VaultData;
     use crate::node::db::descriptors::vault_descriptor::VaultStatusDescriptor;
+    use crate::node::db::descriptors::vault_descriptor::{VaultDescriptor, VaultLogDescriptor};
     use crate::node::db::events::object_id::ArtifactId;
-    use crate::node::db::events::vault::vault_event::VaultObject;
-    use crate::node::db::events::vault::vault_status::VaultStatusObject;
     use crate::node::db::events::shared_secret_event::SsWorkflowObject;
+    use crate::node::db::events::vault::vault_event::VaultObject;
+    use crate::node::db::events::vault::vault_log_event::RemoveMemberDecision;
+    use crate::node::db::events::vault::vault_status::VaultStatusObject;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
     use crate::node::db::repo::generic_db::SaveCommand;
@@ -1118,6 +1261,298 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_removal_resharing_replaces_initiator_share_with_two_device_replica() -> Result<()>
+    {
+        let registry = FixtureRegistry::empty();
+        let client_creds = registry.state.user_creds.client.clone();
+        let client_member = registry
+            .state
+            .vault_data
+            .client_membership
+            .user_data_member();
+        let approver_member = registry
+            .state
+            .vault_data
+            .client_b_membership
+            .user_data_member();
+        let target_member = registry.state.vault_data.vd_membership.user_data_member();
+        let three_device_vault = registry.state.vault_data.full_membership.clone();
+        let vault_member = VaultMember {
+            member: client_member.clone(),
+            vault: three_device_vault.clone(),
+        };
+        let expected_secret = "removal-resharing-secret";
+        let secure_pass = SecurePassInfo::from(PlainPassInfo::new(
+            "removal-resharing".to_string(),
+            expected_secret.to_string(),
+        ));
+        let pass_id = secure_pass.pass_id.clone();
+
+        MetaDistributor {
+            p_obj: registry.state.p_obj.client.clone(),
+            user_creds: Arc::new(client_creds.clone()),
+            vault_member: vault_member.clone(),
+        }
+        .distribute(vault_member.clone(), secure_pass)
+        .await?;
+
+        let split_claim = vault_member.create_split_claim(pass_id.clone());
+        PersistentSharedSecret::from(registry.state.p_obj.client.clone())
+            .save_ss_log_event(split_claim)
+            .await?;
+
+        let approver_distribution = registry
+            .state
+            .p_obj
+            .client
+            .find_tail_event(SsWorkflowDescriptor::Distribution(SsDistributionId {
+                pass_id: pass_id.clone(),
+                receiver: approver_member.user().device.device_id.clone(),
+            }))
+            .await?
+            .expect("approver distribution must exist")
+            .to_distribution_data()?;
+        let approver_plain = approver_distribution.secret_message.cipher_text().decrypt(
+            &registry
+                .state
+                .user_creds
+                .client_b
+                .device_creds
+                .secret_box
+                .transport
+                .sk,
+        )?;
+        let approver_share = UserShareDto::try_from(&approver_plain.msg)?;
+        let encrypted_for_initiator = registry
+            .state
+            .user_creds
+            .client_b
+            .device_creds
+            .key_manager()?
+            .transport
+            .encrypt_string(
+                PlainText::from(approver_share.as_json()?),
+                &client_member.user().device.keys.transport_pk,
+            )?;
+        let transfer = RemoveMemberShareTransfer {
+            pass_id: pass_id.clone(),
+            receiver: client_member.user().device.device_id.clone(),
+            encrypted_share: serde_json::to_string(&EncryptedMessage::CipherShare {
+                share: encrypted_for_initiator,
+            })?,
+        };
+        let declined_target = UserMembership::Outsider(UserDataOutsider {
+            user_data: target_member.user().clone(),
+            status: UserDataOutsiderStatus::Declined,
+        });
+        let request = RemoveMemberRequestEvent {
+            sender: client_member.clone(),
+            target: target_member.clone(),
+            share_transfers: vec![],
+        };
+        let update = RemoveMemberEvent {
+            request: request.clone(),
+            sender: approver_member,
+            target: target_member,
+            new_status: declined_target.clone(),
+            decision: RemoveMemberDecision::Accepted,
+            share_transfers: vec![transfer.clone()],
+        };
+        let two_device_vault = three_device_vault
+            .update_membership(declined_target)
+            .add_secret(pass_id.clone());
+        let orchestrator = MetaOrchestrator {
+            p_obj: registry.state.p_obj.client.clone(),
+            user_creds: client_creds.clone(),
+        };
+
+        orchestrator
+            .p_obj
+            .repo
+            .save(VaultObject(KvLogEvent {
+                key: KvKey::from(VaultDescriptor::from(client_creds.vault_name.clone())),
+                value: two_device_vault,
+            }))
+            .await?;
+        orchestrator
+            .p_obj
+            .repo
+            .save(VaultStatusObject::new(
+                VaultStatus::Member(client_member),
+                ArtifactId::from(VaultStatusDescriptor::from(client_creds.user().user_id())),
+            ))
+            .await?;
+        let vault_events =
+            crate::node::db::events::vault::vault_log_event::VaultActionEvents::default()
+                .request(VaultActionRequestEvent::RemoveMember(request))
+                .apply(VaultActionUpdateEvent::RemoveMember(update));
+        orchestrator
+            .p_obj
+            .repo
+            .save(VaultLogObject(KvLogEvent {
+                key: KvKey::from(VaultLogDescriptor::from(client_creds.vault_name.clone())),
+                value: vault_events,
+            }))
+            .await?;
+
+        orchestrator.finalize_pending_removal_resharing().await?;
+
+        let local_distribution = orchestrator
+            .p_obj
+            .find_tail_event(SsWorkflowDescriptor::Distribution(SsDistributionId {
+                pass_id,
+                receiver: client_creds.device_id().clone(),
+            }))
+            .await?
+            .expect("initiator distribution must exist")
+            .to_distribution_data()?;
+        let local_plain = local_distribution
+            .secret_message
+            .cipher_text()
+            .decrypt(&client_creds.device_creds.secret_box.transport.sk)?;
+        let local_share = UserShareDto::try_from(&local_plain.msg)?;
+
+        assert_eq!(local_share.share_blocks[0].config.threshold, 1);
+        assert_eq!(
+            recover_from_shares(vec![local_share])?.text,
+            expected_secret
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_two_to_one_removal_reassigns_foreign_secret_before_rejoin() -> Result<()> {
+        let registry = FixtureRegistry::empty();
+        let survivor_creds = registry.state.user_creds.client.clone();
+        let survivor = registry
+            .state
+            .vault_data
+            .client_membership
+            .user_data_member();
+        let removed_member = registry.state.vault_data.vd_membership.user_data_member();
+        let two_device_vault = VaultData::from(survivor.clone())
+            .update_membership(UserMembership::Member(removed_member.clone()));
+        let vault_member = VaultMember {
+            member: survivor.clone(),
+            vault: two_device_vault.clone(),
+        };
+        let expected_secret = "foreign-owner-survives-two-to-one";
+        let secure_pass = SecurePassInfo::from(PlainPassInfo::new(
+            "foreign-owner-two-to-one".to_string(),
+            expected_secret.to_string(),
+        ));
+        let pass_id = secure_pass.pass_id.clone();
+
+        MetaDistributor {
+            p_obj: registry.state.p_obj.client.clone(),
+            user_creds: Arc::new(survivor_creds.clone()),
+            vault_member: vault_member.clone(),
+        }
+        .distribute(vault_member, secure_pass)
+        .await?;
+
+        let p_ss = PersistentSharedSecret::from(registry.state.p_obj.client.clone());
+        let local_device_claim = p_ss
+            .find_ss_device_log_tail_event(survivor_creds.device_id().clone())
+            .await?
+            .expect("local split claim must exist")
+            .to_distribution_request();
+        let mut foreign_sender_claim = local_device_claim.clone();
+        foreign_sender_claim.sender = removed_member.user().device.device_id.clone();
+        foreign_sender_claim.receivers = vec![survivor_creds.device_id().clone()];
+        foreign_sender_claim.status =
+            SsDistributionCompositeStatus::from(foreign_sender_claim.receivers.clone());
+        p_ss.save_ss_log_event(foreign_sender_claim).await?;
+
+        let persisted_vault = two_device_vault.add_secret(pass_id.clone());
+        registry
+            .state
+            .p_obj
+            .client
+            .repo
+            .save(VaultObject(KvLogEvent {
+                key: KvKey::from(VaultDescriptor::from(survivor_creds.vault_name.clone())),
+                value: persisted_vault.clone(),
+            }))
+            .await?;
+        registry
+            .state
+            .p_obj
+            .client
+            .repo
+            .save(VaultStatusObject::new(
+                VaultStatus::Member(survivor.clone()),
+                ArtifactId::from(VaultStatusDescriptor::from(survivor_creds.user().user_id())),
+            ))
+            .await?;
+
+        let orchestrator = MetaOrchestrator {
+            p_obj: registry.state.p_obj.client.clone(),
+            user_creds: survivor_creds.clone(),
+        };
+        orchestrator
+            .request_remove_member(removed_member.clone())
+            .await?;
+
+        let post_removal_claim = orchestrator
+            .get_ss_log_data()
+            .await?
+            .claims
+            .get(&local_device_claim.id)
+            .cloned()
+            .expect("split claim must remain after removal");
+        assert_eq!(
+            post_removal_claim.sender,
+            survivor_creds.device_id().clone(),
+            "the sole remaining device must become the canonical sender"
+        );
+        assert!(
+            post_removal_claim.receivers.is_empty(),
+            "a single-device split claim must not retain removed receivers"
+        );
+        assert!(
+            post_removal_claim.status.statuses.is_empty(),
+            "a single-device split claim must not retain receiver statuses"
+        );
+
+        let rejoin_request = JoinClusterEvent {
+            candidate: removed_member.user().clone(),
+        };
+        let rejoined_vault = VaultData::from(survivor)
+            .update_membership(UserMembership::Member(removed_member.clone()))
+            .add_secret(pass_id.clone());
+        orchestrator
+            .redistribute_existing_secrets(&rejoined_vault, &rejoin_request)
+            .await?;
+
+        let rejoined_distribution = orchestrator
+            .p_obj
+            .find_tail_event(SsWorkflowDescriptor::Distribution(SsDistributionId {
+                pass_id,
+                receiver: removed_member.user().device.device_id.clone(),
+            }))
+            .await?
+            .expect("rejoined device must receive the foreign-created secret")
+            .to_distribution_data()?;
+        let rejoined_plain = rejoined_distribution.secret_message.cipher_text().decrypt(
+            &registry
+                .state
+                .user_creds
+                .vd
+                .device_creds
+                .secret_box
+                .transport
+                .sk,
+        )?;
+        let rejoined_share = UserShareDto::try_from(&rejoined_plain.msg)?;
+        assert_eq!(
+            recover_from_shares(vec![rejoined_share])?.text,
+            expected_secret
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test20_accept_recover_ignores_foreign_and_unknown_claims() -> Result<()> {
         let registry = FixtureRegistry::base().await?;
         let client_user_creds = registry.state.empty.user_creds.client.clone();
@@ -1130,7 +1565,10 @@ mod tests {
         orchestrator
             .p_obj
             .repo
-            .save(VaultObject::sign_up(client_user.vault_name(), client_member.clone()))
+            .save(VaultObject::sign_up(
+                client_user.vault_name(),
+                client_member.clone(),
+            ))
             .await?;
         orchestrator
             .p_obj

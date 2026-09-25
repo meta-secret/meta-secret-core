@@ -199,12 +199,20 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
     }
 
     pub async fn remove_member(&self, target_device_id: DeviceId) -> Result<()> {
-        self.meta_client_service.remove_member(target_device_id.to_string()).await
+        self.meta_client_service
+            .remove_member(target_device_id.to_string())
+            .await
     }
 
     pub async fn approve_remove_member(&self, target_device_id: DeviceId) -> Result<()> {
         self.meta_client_service
             .approve_remove_member(target_device_id.to_string())
+            .await
+    }
+
+    pub async fn decline_remove_member(&self, target_device_id: DeviceId) -> Result<()> {
+        self.meta_client_service
+            .decline_remove_member(target_device_id.to_string())
             .await
     }
 

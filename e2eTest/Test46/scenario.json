@@ -1,0 +1,134 @@
+{
+  "runId": "test46",
+  "testNumber": 46,
+  "name": "Test #46 — remove, re-Join, redistribute, and recover every Secret",
+  "mode": "web-distributed-creator-removal-rejoin-recovery-lifecycle",
+  "description": "Web, Android, and iOS create one Secret each; Web and iOS are removed in sequence, then re-Join through visible approvals. Web and Android directly Show all Secrets before iOS returns, after which every platform recovers every Secret three times.",
+  "setup": {
+    "initiator": "web",
+    "joinOrder": ["android", "ios"],
+    "secondJoinApprover": "android"
+  },
+  "server": {
+    "environment": "local",
+    "url": "http://127.0.0.1:3000",
+    "image": "ghcr.io/meta-secret/meta-secret-core/meta-secret-server:latest",
+    "container": "meta-secret-e2e-server-test46",
+    "port": 3000
+  },
+  "web": {
+    "url": "http://localhost:5173",
+    "directory": "../meta-secret/web-cli/ui",
+    "role": "A"
+  },
+  "android": {
+    "role": "B",
+    "avdName": "Pixel_4a",
+    "bundleId": "metasecret.project.com",
+    "testClass": "metasecret.project.com.CaseEightAndroidBothOfflineTest",
+    "directInstrumentationSetup": true,
+    "joinTestMethod": "joinWebInitiatedVaultForTest46",
+    "joinApproverTestClass": "metasecret.project.com.Case31AndroidJoinApproverTest",
+    "approveJoinTestMethod": "approvePendingJoinForTest46",
+    "creatorTestClass": "metasecret.project.com.Case25AndroidSecondaryCreatorTest",
+    "createSecretTestMethod": "createSecretForTest46",
+    "lifecycleTestClass": "metasecret.project.com.Case37AndroidMemberRemovalTest",
+    "requestRemovalTestMethod": "requestWebRemovalForTest46",
+    "localRemovalTestMethod": "removeIosLocallyForTest46",
+    "showSecretTestMethod": "showLocalSecretForTest46",
+    "stepTestClass": "metasecret.project.com.CaseEightAndroidBothOfflineTest",
+    "stepTestMethod": "handleRecoveryStep"
+  },
+  "ios": {
+    "role": "C",
+    "scheme": "iosApp",
+    "composeRoot": "../../meta-secret-compose",
+    "simulatorName": "iPhone 17",
+    "bundleId": "org.metasecret.vault",
+    "reuseBuildForTesting": true,
+    "testClass": "CaseEightIosBothOfflineUITest",
+    "joinTestMethod": "joinWebInitiatedVaultForTest46",
+    "createSecretTestMethod": "createSecretForTest46",
+    "approveRemovalTestMethod": "approveWebRemovalForTest46",
+    "removalObserverTestMethod": "observeOwnRemovalForTest46",
+    "rejoinTestMethod": "rejoinWebInitiatedVaultForTest46",
+    "stepTestClass": "CaseEightIosBothOfflineUITest",
+    "stepTestMethod": "handleRecoveryStep"
+  },
+  "secretCreation": {
+    "initial": { "web": ["secret1"] },
+    "afterAndroidJoin": { "android": ["secret2"] },
+    "afterIosJoin": { "ios": ["secret3"] }
+  },
+  "membership": {
+    "initialPlatforms": ["web", "android", "ios"],
+    "firstRemoval": {
+      "requester": "android",
+      "approver": "ios",
+      "target": "web",
+      "expectedMemberCount": 2
+    },
+    "secondRemoval": {
+      "requester": "android",
+      "approver": null,
+      "target": "ios",
+      "expectedMemberCount": 1
+    },
+    "rejoins": [
+      { "requester": "web", "approver": "android", "expectedMemberCount": 2 },
+      { "requester": "ios", "approver": "web", "expectedMemberCount": 3 }
+    ]
+  },
+  "recovery": {
+    "showTimeoutMs": 45000,
+    "expectedCycles": 33,
+    "expectedDirectShowCycles": 6,
+    "expectedRecoveryCycles": 27,
+    "expectedRoleCountPerPlatform": 9,
+    "verifyBothReceiverAlerts": true,
+    "cyclePlan": [
+      { "block": "after-web-rejoin", "mode": "direct-show", "count": 1, "senders": [{ "platform": "web", "secret": "secret1" }] },
+      { "block": "after-web-rejoin", "mode": "direct-show", "count": 1, "senders": [{ "platform": "web", "secret": "secret2" }] },
+      { "block": "after-web-rejoin", "mode": "direct-show", "count": 1, "senders": [{ "platform": "web", "secret": "secret3" }] },
+      { "block": "after-web-rejoin", "mode": "direct-show", "count": 1, "senders": [{ "platform": "android", "secret": "secret1" }] },
+      { "block": "after-web-rejoin", "mode": "direct-show", "count": 1, "senders": [{ "platform": "android", "secret": "secret2" }] },
+      { "block": "after-web-rejoin", "mode": "direct-show", "count": 1, "senders": [{ "platform": "android", "secret": "secret3" }] },
+
+      { "block": "secret1-web-sender", "mode": "recovery", "count": 1, "senders": [{ "platform": "web", "secret": "secret1" }], "approvals": [{ "platform": "android", "secret": "secret1" }], "observer": "ios" },
+      { "block": "secret1-web-sender", "mode": "recovery", "count": 1, "senders": [{ "platform": "web", "secret": "secret1" }], "approvals": [{ "platform": "ios", "secret": "secret1" }], "observer": "android" },
+      { "block": "secret1-web-sender", "mode": "recovery", "count": 1, "senders": [{ "platform": "web", "secret": "secret1" }], "approvals": [{ "platform": "android", "secret": "secret1" }], "observer": "ios" },
+      { "block": "secret2-web-sender", "mode": "recovery", "count": 1, "senders": [{ "platform": "web", "secret": "secret2" }], "approvals": [{ "platform": "ios", "secret": "secret2" }], "observer": "android" },
+      { "block": "secret2-web-sender", "mode": "recovery", "count": 1, "senders": [{ "platform": "web", "secret": "secret2" }], "approvals": [{ "platform": "android", "secret": "secret2" }], "observer": "ios" },
+      { "block": "secret2-web-sender", "mode": "recovery", "count": 1, "senders": [{ "platform": "web", "secret": "secret2" }], "approvals": [{ "platform": "ios", "secret": "secret2" }], "observer": "android" },
+      { "block": "secret3-web-sender", "mode": "recovery", "count": 1, "senders": [{ "platform": "web", "secret": "secret3" }], "approvals": [{ "platform": "android", "secret": "secret3" }], "observer": "ios" },
+      { "block": "secret3-web-sender", "mode": "recovery", "count": 1, "senders": [{ "platform": "web", "secret": "secret3" }], "approvals": [{ "platform": "ios", "secret": "secret3" }], "observer": "android" },
+      { "block": "secret3-web-sender", "mode": "recovery", "count": 1, "senders": [{ "platform": "web", "secret": "secret3" }], "approvals": [{ "platform": "android", "secret": "secret3" }], "observer": "ios" },
+
+      { "block": "secret1-android-sender", "mode": "recovery", "count": 1, "senders": [{ "platform": "android", "secret": "secret1" }], "approvals": [{ "platform": "ios", "secret": "secret1" }], "observer": "web" },
+      { "block": "secret1-android-sender", "mode": "recovery", "count": 1, "senders": [{ "platform": "android", "secret": "secret1" }], "approvals": [{ "platform": "web", "secret": "secret1" }], "observer": "ios" },
+      { "block": "secret1-android-sender", "mode": "recovery", "count": 1, "senders": [{ "platform": "android", "secret": "secret1" }], "approvals": [{ "platform": "ios", "secret": "secret1" }], "observer": "web" },
+      { "block": "secret2-android-sender", "mode": "recovery", "count": 1, "senders": [{ "platform": "android", "secret": "secret2" }], "approvals": [{ "platform": "web", "secret": "secret2" }], "observer": "ios" },
+      { "block": "secret2-android-sender", "mode": "recovery", "count": 1, "senders": [{ "platform": "android", "secret": "secret2" }], "approvals": [{ "platform": "ios", "secret": "secret2" }], "observer": "web" },
+      { "block": "secret2-android-sender", "mode": "recovery", "count": 1, "senders": [{ "platform": "android", "secret": "secret2" }], "approvals": [{ "platform": "web", "secret": "secret2" }], "observer": "ios" },
+      { "block": "secret3-android-sender", "mode": "recovery", "count": 1, "senders": [{ "platform": "android", "secret": "secret3" }], "approvals": [{ "platform": "ios", "secret": "secret3" }], "observer": "web" },
+      { "block": "secret3-android-sender", "mode": "recovery", "count": 1, "senders": [{ "platform": "android", "secret": "secret3" }], "approvals": [{ "platform": "web", "secret": "secret3" }], "observer": "ios" },
+      { "block": "secret3-android-sender", "mode": "recovery", "count": 1, "senders": [{ "platform": "android", "secret": "secret3" }], "approvals": [{ "platform": "ios", "secret": "secret3" }], "observer": "web" },
+
+      { "block": "secret1-ios-sender", "mode": "recovery", "count": 1, "senders": [{ "platform": "ios", "secret": "secret1" }], "approvals": [{ "platform": "web", "secret": "secret1" }], "observer": "android" },
+      { "block": "secret1-ios-sender", "mode": "recovery", "count": 1, "senders": [{ "platform": "ios", "secret": "secret1" }], "approvals": [{ "platform": "android", "secret": "secret1" }], "observer": "web" },
+      { "block": "secret1-ios-sender", "mode": "recovery", "count": 1, "senders": [{ "platform": "ios", "secret": "secret1" }], "approvals": [{ "platform": "web", "secret": "secret1" }], "observer": "android" },
+      { "block": "secret2-ios-sender", "mode": "recovery", "count": 1, "senders": [{ "platform": "ios", "secret": "secret2" }], "approvals": [{ "platform": "android", "secret": "secret2" }], "observer": "web" },
+      { "block": "secret2-ios-sender", "mode": "recovery", "count": 1, "senders": [{ "platform": "ios", "secret": "secret2" }], "approvals": [{ "platform": "web", "secret": "secret2" }], "observer": "android" },
+      { "block": "secret2-ios-sender", "mode": "recovery", "count": 1, "senders": [{ "platform": "ios", "secret": "secret2" }], "approvals": [{ "platform": "android", "secret": "secret2" }], "observer": "web" },
+      { "block": "secret3-ios-sender", "mode": "recovery", "count": 1, "senders": [{ "platform": "ios", "secret": "secret3" }], "approvals": [{ "platform": "web", "secret": "secret3" }], "observer": "android" },
+      { "block": "secret3-ios-sender", "mode": "recovery", "count": 1, "senders": [{ "platform": "ios", "secret": "secret3" }], "approvals": [{ "platform": "android", "secret": "secret3" }], "observer": "web" },
+      { "block": "secret3-ios-sender", "mode": "recovery", "count": 1, "senders": [{ "platform": "ios", "secret": "secret3" }], "approvals": [{ "platform": "web", "secret": "secret3" }], "observer": "android" }
+    ]
+  },
+  "vault": { "name": "test46@test.ru" },
+  "secrets": {
+    "secret1": { "name": "test46-secret1", "value": "test46-secret1-value" },
+    "secret2": { "name": "test46-secret2", "value": "test46-secret2-value" },
+    "secret3": { "name": "test46-secret3", "value": "test46-secret3-value" }
+  }
+}

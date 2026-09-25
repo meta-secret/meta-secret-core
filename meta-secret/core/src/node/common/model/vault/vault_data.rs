@@ -1,7 +1,8 @@
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::user::common::{
-    UserData, UserDataMember, UserDataOutsider, UserMembership, WasmUserMembership,
+    UserData, UserDataMember, UserDataOutsider, UserDataOutsiderStatus, UserMembership,
+    WasmUserMembership,
 };
 use crate::node::common::model::vault::vault::{VaultMember, VaultName, VaultStatus};
 use crate::node::db::events::vault::vault_log_event::{
@@ -9,7 +10,7 @@ use crate::node::db::events::vault::vault_log_event::{
     VaultActionEvents, VaultActionUpdateEvent,
 };
 use crate::secret::data_block::common::SharedSecretConfig;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use std::collections::{HashMap, HashSet};
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -144,10 +145,10 @@ impl VaultData {
                     bail!("Removal approver is not a vault member");
                 }
             }
-        } else if let Some(approver) = approver {
-            if approver.user_data.device.device_id != sender_id {
-                bail!("Two-device removal must be confirmed by its initiator");
-            }
+        } else if let Some(approver) = approver
+            && approver.user_data.device.device_id != sender_id
+        {
+            bail!("Two-device removal must be confirmed by its initiator");
         }
         Ok(())
     }
@@ -197,6 +198,25 @@ impl VaultData {
         });
 
         outsiders
+    }
+
+    /// Build the Vault view exposed to clients.
+    ///
+    /// A declined outsider remains in the persisted aggregate as a terminal
+    /// protocol marker, but it is no longer a Vault participant and must not
+    /// appear in Web, Mobile or CLI device lists. Pending outsiders remain
+    /// visible so current members can process Join requests.
+    pub fn client_view(mut self) -> Self {
+        self.users.retain(|_, membership| {
+            !matches!(
+                membership,
+                UserMembership::Outsider(UserDataOutsider {
+                    status: UserDataOutsiderStatus::Declined,
+                    ..
+                })
+            )
+        });
+        self
     }
 
     pub fn add_secret(mut self, meta_password_id: MetaPasswordId) -> Self {
@@ -287,6 +307,7 @@ impl VaultAggregate {
                     sender,
                     target,
                     new_status,
+                    decision,
                     ..
                 }) => {
                     if self
@@ -294,6 +315,10 @@ impl VaultAggregate {
                         .ensure_can_remove_member(request, Some(sender))
                         .is_ok()
                         && target.user_data.device.device_id == new_status.device_id()
+                        && matches!(
+                            decision,
+                            crate::node::db::events::vault::vault_log_event::RemoveMemberDecision::Accepted
+                        )
                     {
                         self.vault = self.vault.update_membership(new_status.clone());
                     }
@@ -407,9 +432,9 @@ mod test {
     };
     use crate::node::common::model::vault::vault_data::{VaultAggregate, VaultData};
     use crate::node::db::events::vault::vault_log_event::{
-        AddMetaPassEvent, JoinClusterEvent, RemoveMemberEvent, RemoveMemberRequestEvent,
-        RemoveMemberShareTransfer, UpdateMembershipEvent, VaultActionEvent, VaultActionEvents,
-        VaultActionRequestEvent, VaultActionUpdateEvent,
+        AddMetaPassEvent, JoinClusterEvent, RemoveMemberDecision, RemoveMemberEvent,
+        RemoveMemberRequestEvent, RemoveMemberShareTransfer, UpdateMembershipEvent,
+        VaultActionEvent, VaultActionEvents, VaultActionRequestEvent, VaultActionUpdateEvent,
     };
     use anyhow::Result;
 
@@ -673,11 +698,16 @@ mod test {
             target: b.clone(),
             share_transfers: vec![],
         };
-        let two_device = VaultData::from(a.clone()).update_membership(UserMembership::Member(b.clone()));
+        let two_device =
+            VaultData::from(a.clone()).update_membership(UserMembership::Member(b.clone()));
         two_device.ensure_can_remove_member(&request, Some(&a))?;
 
         let one_device = VaultData::from(a.clone());
-        assert!(one_device.ensure_can_remove_member(&request, Some(&a)).is_err());
+        assert!(
+            one_device
+                .ensure_can_remove_member(&request, Some(&a))
+                .is_err()
+        );
         Ok(())
     }
 
@@ -704,9 +734,11 @@ mod test {
             receiver: c.user_data.device.device_id.clone(),
             encrypted_share: "ciphertext".to_string(),
         };
-        assert!(vault
-            .ensure_valid_removal_transfers(&request, &[target_transfer])
-            .is_err());
+        assert!(
+            vault
+                .ensure_valid_removal_transfers(&request, &[target_transfer])
+                .is_err()
+        );
 
         let update = VaultActionUpdateEvent::RemoveMember(RemoveMemberEvent {
             request: request.clone(),
@@ -716,6 +748,8 @@ mod test {
                 user_data: c.user_data.clone(),
                 status: crate::node::common::model::user::common::UserDataOutsiderStatus::Declined,
             }),
+            decision:
+                crate::node::db::events::vault::vault_log_event::RemoveMemberDecision::Accepted,
             share_transfers: vec![],
         });
         let aggregate = VaultAggregate::build_from(
@@ -730,6 +764,70 @@ mod test {
             Some(UserMembership::Outsider(outsider))
                 if outsider.status == crate::node::common::model::user::common::UserDataOutsiderStatus::Declined
         ));
+
+        let client_view = aggregate.vault.client_view();
+        assert_eq!(client_view.members().len(), 2);
+        assert!(
+            client_view
+                .find_user(&c.user_data.device.device_id)
+                .is_none()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn first_removal_response_is_terminal() -> Result<()> {
+        let fixture = FixtureRegistry::empty();
+        let a = UserDataMember::from(fixture.state.user_creds.client.user());
+        let b = UserDataMember::from(fixture.state.user_creds.client_b.user());
+        let c = UserDataMember::from(fixture.state.user_creds.vd.user());
+        let vault = VaultData::from(a.clone())
+            .update_membership(UserMembership::Member(b.clone()))
+            .update_membership(UserMembership::Member(c.clone()));
+        let request = RemoveMemberRequestEvent {
+            sender: a,
+            target: c.clone(),
+            share_transfers: vec![],
+        };
+        let decline = VaultActionUpdateEvent::RemoveMember(RemoveMemberEvent {
+            request: request.clone(),
+            sender: b.clone(),
+            target: c.clone(),
+            new_status: UserMembership::Member(c.clone()),
+            decision: RemoveMemberDecision::Declined,
+            share_transfers: vec![],
+        });
+        let accept = VaultActionUpdateEvent::RemoveMember(RemoveMemberEvent {
+            request: request.clone(),
+            sender: b,
+            target: c.clone(),
+            new_status: UserMembership::Outsider(UserDataOutsider {
+                user_data: c.user_data.clone(),
+                status: crate::node::common::model::user::common::UserDataOutsiderStatus::Declined,
+            }),
+            decision: RemoveMemberDecision::Accepted,
+            share_transfers: vec![],
+        });
+
+        let decline_first = VaultAggregate::build_from(
+            VaultActionEvents::default()
+                .request(VaultActionRequestEvent::RemoveMember(request.clone()))
+                .apply(decline.clone())
+                .apply(accept.clone()),
+            vault.clone(),
+        );
+        assert_eq!(decline_first.vault.members().len(), 3);
+        assert!(decline_first.vault.is_member(&c.user_data.device.device_id));
+
+        let accept_first = VaultAggregate::build_from(
+            VaultActionEvents::default()
+                .request(VaultActionRequestEvent::RemoveMember(request))
+                .apply(accept)
+                .apply(decline),
+            vault,
+        );
+        assert_eq!(accept_first.vault.members().len(), 2);
+        assert!(!accept_first.vault.is_member(&c.user_data.device.device_id));
         Ok(())
     }
 }

@@ -41,12 +41,12 @@ pub async fn virtual_device_setup<Repo: KvLogEventRepo>(
         dt: MpscDataTransfer::new(),
     });
 
-    let gateway = Arc::new(SyncGateway {
-        id: String::from("vd-gateway"),
-        p_obj: persistent_object.clone(),
-        sync: sync_protocol.clone(),
-        master_key: master_key.clone(),
-    });
+    let gateway = Arc::new(SyncGateway::new(
+        String::from("vd-gateway"),
+        persistent_object.clone(),
+        sync_protocol.clone(),
+        master_key.clone(),
+    ));
 
     let state_provider = Arc::new(MetaClientStateProvider::new());
     let meta_client_service = MetaClientService {
@@ -74,7 +74,7 @@ pub async fn virtual_device_setup<Repo: KvLogEventRepo>(
         master_key,
     )
     .await?;
-    
+
     let vd = Arc::new(vd);
     spawn_local(async move { vd.run().instrument(vd_span()).await.unwrap() });
 

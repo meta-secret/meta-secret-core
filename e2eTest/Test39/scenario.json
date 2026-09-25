@@ -1,0 +1,92 @@
+{
+  "runId": "test39",
+  "testNumber": 39,
+  "name": "Test #39 — iOS-owned membership removal and resharing",
+  "mode": "ios-member-removal-lifecycle",
+  "description": "iOS creates three Secrets across the Web/Android Join boundaries, removes Android through Web approval, verifies two-member direct Show, then removes Web through the local two-to-one path and verifies single-member direct Show.",
+  "setup": {
+    "initiator": "ios",
+    "joinOrder": ["web", "android"],
+    "secondJoinApprover": "ios"
+  },
+  "server": {
+    "environment": "local",
+    "url": "http://127.0.0.1:3000",
+    "image": "ghcr.io/meta-secret/meta-secret-core/meta-secret-server:latest",
+    "container": "meta-secret-e2e-server-test39",
+    "port": 3000
+  },
+  "web": {
+    "url": "http://localhost:5173",
+    "directory": "../meta-secret/web-cli/ui",
+    "role": "B"
+  },
+  "ios": {
+    "role": "A",
+    "scheme": "iosApp",
+    "composeRoot": "../../meta-secret-compose",
+    "simulatorName": "iPhone 17",
+    "bundleId": "org.metasecret.vault",
+    "reuseBuildForTesting": true,
+    "testClass": "CaseEightIosBothOfflineUITest",
+    "initiatorSetupTestMethod": "createVaultForTest39",
+    "approveJoinTestMethod": "approvePendingJoinForTest39",
+    "createSecretTestMethod": "createSecretForTest39",
+    "requestRemovalTestMethod": "requestAndroidRemovalForTest39",
+    "showSecretTestMethod": "showLocalSecretForTest39",
+    "localRemovalTestMethod": "removeWebLocallyForTest39"
+  },
+  "android": {
+    "role": "C",
+    "avdName": "Pixel_4a",
+    "bundleId": "metasecret.project.com",
+    "testClass": "metasecret.project.com.CaseEightAndroidBothOfflineTest",
+    "directInstrumentationSetup": true,
+    "joinTestMethod": "joinIosInitiatedVaultForTest39",
+    "lifecycleTestClass": "metasecret.project.com.Case37AndroidMemberRemovalTest",
+    "removalObserverTestMethod": "observeOwnRemovalForTest39"
+  },
+  "secretCreation": {
+    "initial": { "ios": ["secret1"] },
+    "afterWebJoin": { "ios": ["secret2"] },
+    "afterAndroidJoin": { "ios": ["secret3"] }
+  },
+  "membership": {
+    "initialPlatforms": ["ios", "web", "android"],
+    "firstRemoval": {
+      "requester": "ios",
+      "approver": "web",
+      "target": "android",
+      "expectedMemberCount": 2
+    },
+    "secondRemoval": {
+      "requester": "ios",
+      "approver": null,
+      "target": "web",
+      "expectedMemberCount": 1
+    }
+  },
+  "recovery": {
+    "showTimeoutMs": 45000,
+    "expectedCycles": 9,
+    "expectedDirectShowCycles": 9,
+    "expectedRecoveryCycles": 0,
+    "cyclePlan": [
+      { "block": "after-android-removal", "mode": "direct-show", "count": 1, "senders": [{ "platform": "ios", "secret": "secret1" }] },
+      { "block": "after-android-removal", "mode": "direct-show", "count": 1, "senders": [{ "platform": "ios", "secret": "secret2" }] },
+      { "block": "after-android-removal", "mode": "direct-show", "count": 1, "senders": [{ "platform": "ios", "secret": "secret3" }] },
+      { "block": "after-android-removal", "mode": "direct-show", "count": 1, "senders": [{ "platform": "web", "secret": "secret1" }] },
+      { "block": "after-android-removal", "mode": "direct-show", "count": 1, "senders": [{ "platform": "web", "secret": "secret2" }] },
+      { "block": "after-android-removal", "mode": "direct-show", "count": 1, "senders": [{ "platform": "web", "secret": "secret3" }] },
+      { "block": "after-web-removal", "mode": "direct-show", "count": 1, "senders": [{ "platform": "ios", "secret": "secret1" }] },
+      { "block": "after-web-removal", "mode": "direct-show", "count": 1, "senders": [{ "platform": "ios", "secret": "secret2" }] },
+      { "block": "after-web-removal", "mode": "direct-show", "count": 1, "senders": [{ "platform": "ios", "secret": "secret3" }] }
+    ]
+  },
+  "vault": { "name": "test39@test.ru" },
+  "secrets": {
+    "secret1": { "name": "test39-secret1", "value": "test39-secret1-value" },
+    "secret2": { "name": "test39-secret2", "value": "test39-secret2-value" },
+    "secret3": { "name": "test39-secret3", "value": "test39-secret3-value" }
+  }
+}

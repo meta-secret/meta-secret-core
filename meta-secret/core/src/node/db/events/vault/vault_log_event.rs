@@ -1,5 +1,5 @@
-use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::device::common::DeviceId;
+use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::user::common::{UserData, UserDataMember, UserMembership};
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::descriptors::vault_descriptor::VaultLogDescriptor;
@@ -9,7 +9,7 @@ use crate::node::db::events::generic_log_event::{
 };
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::ArtifactId;
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use derive_more::From;
 use std::collections::HashSet;
 use std::fmt::Display;
@@ -220,6 +220,16 @@ pub struct UpdateMembershipEvent {
     pub update: UserMembership,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RemoveMemberDecision {
+    /// The approver accepted the request and the target leaves the Vault.
+    #[default]
+    Accepted,
+    /// The approver rejected the request. Membership and Key Shares stay unchanged.
+    Declined,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoveMemberEvent {
@@ -227,6 +237,9 @@ pub struct RemoveMemberEvent {
     pub sender: UserDataMember,
     pub target: UserDataMember,
     pub new_status: UserMembership,
+    /// Missing in historical events, which were all approvals.
+    #[serde(default)]
+    pub decision: RemoveMemberDecision,
     /// Encrypted Key Shares sent by the approver to the initiator so the
     /// initiator can complete 3→2 resharing. Values are ciphertext JSON only;
     /// the server cannot decrypt them.

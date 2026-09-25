@@ -1,7 +1,8 @@
 use crate::fixture::ExtendedFixtureRegistry;
 use anyhow::Result;
-use axum::{extract::State, routing::post, Json, Router};
+use axum::{Json, Router, extract::State, routing::post};
 use meta_secret_core::crypto::encoding::base64::Base64Text;
+use meta_secret_core::meta_tests::fixture_util::fixture::FixtureRegistry;
 use meta_secret_core::node::api::{
     DataSyncResponse, ReadSyncRequest, SignedAction, SignedActionPayload, SsRecoveryCompletion,
     SyncRequest, WriteSyncRequest,
@@ -11,11 +12,11 @@ use meta_secret_core::node::app::meta_app::meta_client_service::fixture::MetaCli
 use meta_secret_core::node::app::orchestrator::MetaOrchestrator;
 use meta_secret_core::node::app::sync::api_url::ApiUrl;
 use meta_secret_core::node::app::sync::sync_protocol::{HttpSyncProtocol, SyncProtocol};
+use meta_secret_core::node::common::model::IdString;
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::SsDistributionStatus;
 use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
 use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
-use meta_secret_core::node::common::model::IdString;
 use meta_secret_core::node::db::descriptors::vault_descriptor::DeviceLogDescriptor;
 use meta_secret_core::node::db::events::generic_log_event::{ObjIdExtractor, ToGenericEvent};
 use meta_secret_core::node::db::events::vault::vault_log_event::VaultActionRequestEvent;
@@ -23,7 +24,6 @@ use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
 use meta_secret_core::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
 use meta_secret_core::node::security::{sign_event, sign_recovery_completion};
-use meta_secret_core::meta_tests::fixture_util::fixture::FixtureRegistry;
 use meta_server_node::server::server_app::{MetaServerDataTransfer, ServerApp};
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -138,12 +138,14 @@ async fn server_rejects_unsigned_forged_and_replayed_actions() -> Result<()> {
         object_id.id.curr as u64,
         &forged_key_manager.dsa,
     )?;
-    assert!(server
-        .handle_client_request(SyncRequest::Write(Box::new(WriteSyncRequest::Event(
-            forged
-        ))))
-        .await
-        .is_err());
+    assert!(
+        server
+            .handle_client_request(SyncRequest::Write(Box::new(WriteSyncRequest::Event(
+                forged
+            ))))
+            .await
+            .is_err()
+    );
 
     // Empty signature is rejected even when all clear-text fields look valid.
     let unsigned = SignedAction {
@@ -153,18 +155,22 @@ async fn server_rejects_unsigned_forged_and_replayed_actions() -> Result<()> {
         signature: Base64Text::from(""),
         payload: SignedActionPayload::Event(event),
     };
-    assert!(server
-        .handle_client_request(SyncRequest::Write(Box::new(WriteSyncRequest::Event(
-            unsigned
-        ))))
-        .await
-        .is_err());
+    assert!(
+        server
+            .handle_client_request(SyncRequest::Write(Box::new(WriteSyncRequest::Event(
+                unsigned
+            ))))
+            .await
+            .is_err()
+    );
 
     // Replaying the already accepted sequence is rejected before persistence.
-    assert!(server
-        .handle_client_request(SyncRequest::Write(Box::new(WriteSyncRequest::Event(valid))))
-        .await
-        .is_err());
+    assert!(
+        server
+            .handle_client_request(SyncRequest::Write(Box::new(WriteSyncRequest::Event(valid))))
+            .await
+            .is_err()
+    );
     Ok(())
 }
 
@@ -221,7 +227,9 @@ async fn test20_http_server_rejects_forged_recovery_responses_impl() -> Result<(
         .iter()
         .find_map(|event| match event {
             VaultActionRequestEvent::JoinCluster(request) => Some(request.clone()),
-            VaultActionRequestEvent::AddMetaPass(_) => None,
+            VaultActionRequestEvent::RemoveMember(_) | VaultActionRequestEvent::AddMetaPass(_) => {
+                None
+            }
         })
         .ok_or_else(|| anyhow::anyhow!("receiver join request was not found"))?;
 

@@ -125,6 +125,29 @@ const handleRemove = async () => {
     isSubmitting.value = false;
   }
 };
+
+const handleDeclineRemoval = async () => {
+  if (!props.isRemovalPending) {
+    isRemovalConfirmOpen.value = false;
+    return;
+  }
+  if (isSubmitting.value) return;
+  isSubmitting.value = true;
+  actionError.value = '';
+  try {
+    const manager = appManager as typeof appManager & {
+      decline_remove_member?: (id: unknown) => Promise<void>;
+    };
+    if (typeof manager.decline_remove_member !== 'function') throw new Error(vaultDevices.removeError);
+    await manager.decline_remove_member(device.value.device_id);
+    await appState.updateState();
+    isRemovalConfirmOpen.value = false;
+  } catch (error) {
+    actionError.value = error instanceof Error ? error.message : String(error);
+  } finally {
+    isSubmitting.value = false;
+  }
+};
 </script>
 
 <template>
@@ -342,7 +365,13 @@ const handleRemove = async () => {
         </DialogHeader>
         <p v-if="actionError" class="text-sm text-destructive" role="alert">{{ actionError }}</p>
         <DialogFooter class="w-full gap-2 sm:gap-2">
-          <Button variant="outline" class="flex-1" :disabled="isSubmitting" @click="isRemovalConfirmOpen = false">
+          <Button
+            variant="outline"
+            class="flex-1"
+            data-testid="decline-remove-device"
+            :disabled="isSubmitting"
+            @click="handleDeclineRemoval"
+          >
             {{ vaultDevices.actionDecline }}
           </Button>
           <Button

@@ -56,10 +56,7 @@ impl BaseCommand {
             master_key,
         };
 
-        Ok(DbContext {
-            p_obj,
-            p_creds,
-        })
+        Ok(DbContext { p_obj, p_creds })
     }
 
     /// Opens an existing database or creates a new one if it doesn't exist
@@ -83,10 +80,7 @@ impl BaseCommand {
             master_key,
         };
 
-        Ok(DbContext {
-            p_obj,
-            p_creds,
-        })
+        Ok(DbContext { p_obj, p_creds })
     }
 
     /// Common error message for credentials that already exist
@@ -153,12 +147,12 @@ impl BaseCommand {
             api_url: self.api_url.clone(),
         };
 
-        let sync_gateway = Arc::new(SyncGateway {
-            id: "meta-cli".to_string(),
-            p_obj: db_context.p_obj.clone(),
-            sync: Arc::new(sync_protocol),
-            master_key: master_key.clone(),
-        });
+        let sync_gateway = Arc::new(SyncGateway::new(
+            "meta-cli".to_string(),
+            db_context.p_obj.clone(),
+            Arc::new(sync_protocol),
+            master_key.clone(),
+        ));
 
         let state_provider = Arc::new(MetaClientStateProvider::new());
 

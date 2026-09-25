@@ -56,9 +56,9 @@ mod test {
     use meta_secret_core::meta_tests::fixture_util::fixture::FixtureRegistry;
     use meta_secret_core::meta_tests::fixture_util::fixture::states::EmptyState;
     use meta_secret_core::meta_tests::spec::test_spec::TestSpec;
+    use meta_secret_core::node::api::{DataSyncResponse, ReadSyncRequest, SsRequest, SyncRequest};
     use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
     use meta_secret_core::node::app::sync::sync_gateway::SyncGateway;
-    use meta_secret_core::node::api::{DataSyncResponse, ReadSyncRequest, SsRequest, SyncRequest};
     use meta_secret_core::node::common::meta_tracing::{client_span, server_span, vd_span};
     use meta_secret_core::node::common::model::crypto::aead::EncryptedMessage;
     use meta_secret_core::node::common::model::device::common::DeviceName;
@@ -81,7 +81,9 @@ mod test {
     use meta_secret_core::node::db::descriptors::shared_secret_descriptor::{
         SsDeviceLogDescriptor, SsLogDescriptor, SsWorkflowDescriptor,
     };
-    use meta_secret_core::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor};
+    use meta_secret_core::node::db::events::generic_log_event::{
+        GenericKvLogEvent, ObjIdExtractor,
+    };
     use meta_secret_core::node::db::events::object_id::ArtifactId;
     use meta_secret_core::node::db::events::shared_secret_event::{SsLogObject, SsWorkflowObject};
     use meta_secret_core::node::db::events::vault::vault_log_event::{
@@ -571,19 +573,18 @@ mod test {
         let vd_user = spec.user_creds().vd.user();
         let client_b_user = spec.user_creds().client_b.user();
 
-        let client_b_gw = std::sync::Arc::new(SyncGateway {
-            id: "client_b_gw".to_string(),
-            p_obj: spec.registry.state.base.empty.p_obj.client_b.clone(),
-            sync: spec.registry.state.sync.sync_protocol.clone(),
-            master_key: spec
-                .registry
+        let client_b_gw = std::sync::Arc::new(SyncGateway::new(
+            "client_b_gw".to_string(),
+            spec.registry.state.base.empty.p_obj.client_b.clone(),
+            spec.registry.state.sync.sync_protocol.clone(),
+            spec.registry
                 .state
                 .base
                 .empty
                 .device_creds
                 .client_b_master_key
                 .clone(),
-        });
+        ));
 
         // D1 creates vault and secret before any joins.
         SignUpClaimTestAction::sign_up(
@@ -792,13 +793,7 @@ mod test {
             spec.registry.state.vd.p_obj.clone(),
             pass_id.clone(),
             vd_user.device.device_id.clone(),
-            &spec
-                .user_creds()
-                .vd
-                .device_creds
-                .secret_box
-                .transport
-                .sk,
+            &spec.user_creds().vd.device_creds.secret_box.transport.sk,
         )
         .await?;
         let share_d3 = read_share_from_node(
@@ -819,12 +814,18 @@ mod test {
             (
                 "D2",
                 spec.registry.state.vd.p_obj.clone(),
-                vec![client_user.device.device_id.clone(), client_b_user.device.device_id.clone()],
+                vec![
+                    client_user.device.device_id.clone(),
+                    client_b_user.device.device_id.clone(),
+                ],
             ),
             (
                 "D3",
                 spec.registry.state.base.empty.p_obj.client_b.clone(),
-                vec![client_user.device.device_id.clone(), vd_user.device.device_id.clone()],
+                vec![
+                    client_user.device.device_id.clone(),
+                    vd_user.device.device_id.clone(),
+                ],
             ),
         ] {
             for receiver in foreign_receivers {
@@ -839,7 +840,10 @@ mod test {
             }
         }
 
-        for receiver in [vd_user.device.device_id.clone(), client_b_user.device.device_id.clone()] {
+        for receiver in [
+            vd_user.device.device_id.clone(),
+            client_b_user.device.device_id.clone(),
+        ] {
             let sender_remote_desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
                 pass_id: pass_id.clone(),
                 receiver,
@@ -880,6 +884,73 @@ mod test {
             "A single device must not recover a 3-device secret without another device"
         );
 
+        // Exercise the same 3→2 removal path as UI E2E Test #37. D1 requests
+        // removal of D3, D2 approves, and D1 consumes the signed update through
+        // get_app_state before attempting a local Show.
+        let target_member = spec
+            .registry
+            .state
+            .base
+            .empty
+            .vault_data
+            .client_b_membership
+            .user_data_member();
+        spec.registry
+            .state
+            .client
+            .orchestrator
+            .request_remove_member(target_member)
+            .await?;
+        spec.client_gw_sync().await?;
+        spec.vd_gw_sync().await?;
+        spec.registry
+            .state
+            .vd
+            .orchestrator
+            .accept_remove_member(client_b_user.device.device_id.to_string())
+            .await?;
+        spec.vd_gw_sync().await?;
+
+        let approver_replica = read_share_from_node(
+            spec.registry.state.vd.p_obj.clone(),
+            pass_id.clone(),
+            vd_user.device.device_id.clone(),
+            &spec.user_creds().vd.device_creds.secret_box.transport.sk,
+        )
+        .await?;
+        assert_eq!(approver_replica.share_blocks[0].config.threshold, 1);
+        assert_eq!(recover_from_shares(vec![approver_replica])?.text, "2bee|~");
+
+        let client_state_after_removal = spec
+            .registry
+            .state
+            .client
+            .client_service
+            .get_app_state()
+            .await?;
+        let ApplicationState::Vault(VaultFullInfo::Member(client_after_removal)) =
+            client_state_after_removal
+        else {
+            bail!("D1 must remain a member after D3 removal");
+        };
+        assert_eq!(client_after_removal.member.vault.members().len(), 2);
+
+        let client_replica = read_share_from_node(
+            spec.registry.state.client.p_obj.clone(),
+            pass_id,
+            client_user.device.device_id,
+            &spec
+                .user_creds()
+                .client
+                .device_creds
+                .secret_box
+                .transport
+                .sk,
+        )
+        .await?;
+        assert_eq!(client_replica.share_blocks[0].config.threshold, 1);
+        assert_eq!(recover_from_shares(vec![client_replica])?.text, "2bee|~");
+
         Ok(())
     }
 
@@ -891,8 +962,18 @@ mod test {
         let client_user_creds = registry.state.empty.user_creds.client.clone();
         let receiver_user_creds = registry.state.empty.user_creds.vd.clone();
 
-        let client_member = registry.state.empty.vault_data.client_membership.user_data_member();
-        let receiver_member = registry.state.empty.vault_data.vd_membership.user_data_member();
+        let client_member = registry
+            .state
+            .empty
+            .vault_data
+            .client_membership
+            .user_data_member();
+        let receiver_member = registry
+            .state
+            .empty
+            .vault_data
+            .vd_membership
+            .user_data_member();
         let vault_data = VaultData::from(client_member.clone())
             .update_membership(UserMembership::Member(receiver_member.clone()));
         let vault_member = VaultMember {
@@ -937,13 +1018,15 @@ mod test {
             .find_free_id_by_obj_desc(SsLogDescriptor::from(vault_data.vault_name.clone()))
             .await?;
 
-        let response = server_app_fixture.server_app.handle_client_request(
-            SyncRequest::Read(Box::from(ReadSyncRequest::SsRequest(SsRequest {
-                sender: receiver_user_creds.user(),
-                ss_log: ss_log_free_id.clone(),
-            }))),
-        )
-        .await?;
+        let response = server_app_fixture
+            .server_app
+            .handle_client_request(SyncRequest::Read(Box::from(ReadSyncRequest::SsRequest(
+                SsRequest {
+                    sender: receiver_user_creds.user(),
+                    ss_log: ss_log_free_id.clone(),
+                },
+            ))))
+            .await?;
 
         let DataSyncResponse::Data(data_response) = response else {
             bail!("Server must return data response for ss replication");
@@ -1062,8 +1145,7 @@ mod test {
             .iter()
             .find_map(|req| match req {
                 VaultActionRequestEvent::JoinCluster(join)
-                    if join.candidate.device.device_id
-                        == spec.registry.state.vd.device_id() =>
+                    if join.candidate.device.device_id == spec.registry.state.vd.device_id() =>
                 {
                     Some(join.clone())
                 }

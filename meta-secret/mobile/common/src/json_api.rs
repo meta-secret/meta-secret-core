@@ -229,6 +229,20 @@ async fn async_approve_remove_member(target_device_id: String) -> String {
     }
 }
 
+pub fn decline_remove_member(target_device_id: String) -> String {
+    MobileApplicationManager::sync_wrapper(async_decline_remove_member(target_device_id))
+}
+
+async fn async_decline_remove_member(target_device_id: String) -> String {
+    match MobileApplicationManager::get_global_instance() {
+        Some(app_manager) => match app_manager.decline_remove_member(target_device_id).await {
+            Ok(()) => json!({"success": true}).to_string(),
+            Err(e) => json!({"success": false, "error": format!("Decline device removal failed: {e}")}).to_string(),
+        },
+        None => json!({"success": false, "error": "Decline device removal failed: app manager is not initialized"}).to_string(),
+    }
+}
+
 async fn async_update_membership(candidate: String, action_update: String) -> String {
     let candidate: UserData = match serde_json::from_str(&candidate) {
         Ok(data) => data,

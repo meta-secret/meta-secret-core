@@ -1,0 +1,113 @@
+{
+  "runId": "test48",
+  "testNumber": 48,
+  "name": "Test #48 — rotated three declined removals followed by complete recovery matrices",
+  "mode": "android-distributed-creator-declined-removal-recovery-lifecycle",
+  "description": "Android, iOS, and Web create one Secret each. Every platform requests one removal, a different eligible member declines it, membership remains three, and all platforms then recover every Secret once.",
+  "setup": {
+    "initiator": "android",
+    "joinOrder": ["ios", "web"],
+    "secondJoinApprover": "android"
+  },
+  "server": {
+    "environment": "local",
+    "url": "http://127.0.0.1:3000",
+    "image": "ghcr.io/meta-secret/meta-secret-core/meta-secret-server:latest",
+    "container": "meta-secret-e2e-server-test48",
+    "port": 3000
+  },
+  "web": {
+    "url": "http://localhost:5173",
+    "directory": "../meta-secret/web-cli/ui",
+    "role": "C"
+  },
+  "android": {
+    "role": "A",
+    "avdName": "Pixel_4a",
+    "bundleId": "metasecret.project.com",
+    "testClass": "metasecret.project.com.CaseEightAndroidBothOfflineTest",
+    "directInstrumentationSetup": true,
+    "initiatorTestClass": "metasecret.project.com.Case32AndroidOwnerTest",
+    "initiatorSetupTestMethod": "createVaultForTest48",
+    "approveJoinTestMethod": "approvePendingJoinForTest48",
+    "lifecycleTestClass": "metasecret.project.com.Case37AndroidMemberRemovalTest",
+    "observeAndroidDeclineTestMethod": "observeAndroidRemovalDeclinedForTest48",
+    "declineWebRemovalTestMethod": "declineWebRemovalForTest48",
+    "requestIosRemovalTestMethod": "requestIosRemovalForTest48",
+    "stepTestClass": "metasecret.project.com.CaseEightAndroidBothOfflineTest",
+    "stepTestMethod": "handleRecoveryStep"
+  },
+  "ios": {
+    "role": "B",
+    "scheme": "iosApp",
+    "composeRoot": "../../meta-secret-compose",
+    "simulatorName": "iPhone 17",
+    "bundleId": "org.metasecret.vault",
+    "reuseBuildForTesting": true,
+    "testClass": "CaseEightIosBothOfflineUITest",
+    "joinTestMethod": "joinAndroidInitiatedVaultForTest48",
+    "createSecretTestMethod": "createSecretForTest48",
+    "declineAndroidRemovalTestMethod": "declineAndroidRemovalForTest48",
+    "requestWebRemovalTestMethod": "requestWebRemovalForTest48",
+    "observeIosDeclineTestMethod": "observeIosRemovalDeclinedForTest48",
+    "stepTestClass": "CaseEightIosBothOfflineUITest",
+    "stepTestMethod": "handleRecoveryStep"
+  },
+  "secretCreation": {
+    "initial": { "android": ["secret1"] },
+    "afterIosJoin": { "ios": ["secret2"] },
+    "afterWebJoin": { "web": ["secret3"] }
+  },
+  "membership": {
+    "initialPlatforms": ["android", "ios", "web"],
+    "declinedRemovals": [
+      { "phase": 1, "requester": "web", "decliner": "ios", "target": "android", "expectedMemberCount": 3 },
+      { "phase": 2, "requester": "ios", "decliner": "android", "target": "web", "expectedMemberCount": 3 },
+      { "phase": 3, "requester": "android", "decliner": "web", "target": "ios", "expectedMemberCount": 3 }
+    ]
+  },
+  "recovery": {
+    "showTimeoutMs": 45000,
+    "expectedCycles": 27,
+    "expectedRecoveryCycles": 27,
+    "expectedRoleCountPerPlatform": 9,
+    "verifyBothReceiverAlerts": true,
+    "cyclePlan": [
+      { "block": "phase1-web-secret1", "mode": "recovery", "count": 1, "senders": [{ "platform": "web", "secret": "secret1" }], "approvals": [{ "platform": "android", "secret": "secret1" }], "observer": "ios" },
+      { "block": "phase1-web-secret2", "mode": "recovery", "count": 1, "senders": [{ "platform": "web", "secret": "secret2" }], "approvals": [{ "platform": "ios", "secret": "secret2" }], "observer": "android" },
+      { "block": "phase1-web-secret3", "mode": "recovery", "count": 1, "senders": [{ "platform": "web", "secret": "secret3" }], "approvals": [{ "platform": "android", "secret": "secret3" }], "observer": "ios" },
+      { "block": "phase1-android-secret1", "mode": "recovery", "count": 1, "senders": [{ "platform": "android", "secret": "secret1" }], "approvals": [{ "platform": "ios", "secret": "secret1" }], "observer": "web" },
+      { "block": "phase1-android-secret2", "mode": "recovery", "count": 1, "senders": [{ "platform": "android", "secret": "secret2" }], "approvals": [{ "platform": "web", "secret": "secret2" }], "observer": "ios" },
+      { "block": "phase1-android-secret3", "mode": "recovery", "count": 1, "senders": [{ "platform": "android", "secret": "secret3" }], "approvals": [{ "platform": "ios", "secret": "secret3" }], "observer": "web" },
+      { "block": "phase1-ios-secret1", "mode": "recovery", "count": 1, "senders": [{ "platform": "ios", "secret": "secret1" }], "approvals": [{ "platform": "web", "secret": "secret1" }], "observer": "android" },
+      { "block": "phase1-ios-secret2", "mode": "recovery", "count": 1, "senders": [{ "platform": "ios", "secret": "secret2" }], "approvals": [{ "platform": "android", "secret": "secret2" }], "observer": "web" },
+      { "block": "phase1-ios-secret3", "mode": "recovery", "count": 1, "senders": [{ "platform": "ios", "secret": "secret3" }], "approvals": [{ "platform": "web", "secret": "secret3" }], "observer": "android" },
+
+      { "block": "phase2-web-secret1", "mode": "recovery", "count": 1, "senders": [{ "platform": "web", "secret": "secret1" }], "approvals": [{ "platform": "android", "secret": "secret1" }], "observer": "ios" },
+      { "block": "phase2-web-secret2", "mode": "recovery", "count": 1, "senders": [{ "platform": "web", "secret": "secret2" }], "approvals": [{ "platform": "ios", "secret": "secret2" }], "observer": "android" },
+      { "block": "phase2-web-secret3", "mode": "recovery", "count": 1, "senders": [{ "platform": "web", "secret": "secret3" }], "approvals": [{ "platform": "android", "secret": "secret3" }], "observer": "ios" },
+      { "block": "phase2-android-secret1", "mode": "recovery", "count": 1, "senders": [{ "platform": "android", "secret": "secret1" }], "approvals": [{ "platform": "ios", "secret": "secret1" }], "observer": "web" },
+      { "block": "phase2-android-secret2", "mode": "recovery", "count": 1, "senders": [{ "platform": "android", "secret": "secret2" }], "approvals": [{ "platform": "web", "secret": "secret2" }], "observer": "ios" },
+      { "block": "phase2-android-secret3", "mode": "recovery", "count": 1, "senders": [{ "platform": "android", "secret": "secret3" }], "approvals": [{ "platform": "ios", "secret": "secret3" }], "observer": "web" },
+      { "block": "phase2-ios-secret1", "mode": "recovery", "count": 1, "senders": [{ "platform": "ios", "secret": "secret1" }], "approvals": [{ "platform": "web", "secret": "secret1" }], "observer": "android" },
+      { "block": "phase2-ios-secret2", "mode": "recovery", "count": 1, "senders": [{ "platform": "ios", "secret": "secret2" }], "approvals": [{ "platform": "android", "secret": "secret2" }], "observer": "web" },
+      { "block": "phase2-ios-secret3", "mode": "recovery", "count": 1, "senders": [{ "platform": "ios", "secret": "secret3" }], "approvals": [{ "platform": "web", "secret": "secret3" }], "observer": "android" },
+
+      { "block": "phase3-web-secret1", "mode": "recovery", "count": 1, "senders": [{ "platform": "web", "secret": "secret1" }], "approvals": [{ "platform": "android", "secret": "secret1" }], "observer": "ios" },
+      { "block": "phase3-web-secret2", "mode": "recovery", "count": 1, "senders": [{ "platform": "web", "secret": "secret2" }], "approvals": [{ "platform": "ios", "secret": "secret2" }], "observer": "android" },
+      { "block": "phase3-web-secret3", "mode": "recovery", "count": 1, "senders": [{ "platform": "web", "secret": "secret3" }], "approvals": [{ "platform": "android", "secret": "secret3" }], "observer": "ios" },
+      { "block": "phase3-android-secret1", "mode": "recovery", "count": 1, "senders": [{ "platform": "android", "secret": "secret1" }], "approvals": [{ "platform": "ios", "secret": "secret1" }], "observer": "web" },
+      { "block": "phase3-android-secret2", "mode": "recovery", "count": 1, "senders": [{ "platform": "android", "secret": "secret2" }], "approvals": [{ "platform": "web", "secret": "secret2" }], "observer": "ios" },
+      { "block": "phase3-android-secret3", "mode": "recovery", "count": 1, "senders": [{ "platform": "android", "secret": "secret3" }], "approvals": [{ "platform": "ios", "secret": "secret3" }], "observer": "web" },
+      { "block": "phase3-ios-secret1", "mode": "recovery", "count": 1, "senders": [{ "platform": "ios", "secret": "secret1" }], "approvals": [{ "platform": "web", "secret": "secret1" }], "observer": "android" },
+      { "block": "phase3-ios-secret2", "mode": "recovery", "count": 1, "senders": [{ "platform": "ios", "secret": "secret2" }], "approvals": [{ "platform": "android", "secret": "secret2" }], "observer": "web" },
+      { "block": "phase3-ios-secret3", "mode": "recovery", "count": 1, "senders": [{ "platform": "ios", "secret": "secret3" }], "approvals": [{ "platform": "web", "secret": "secret3" }], "observer": "android" }
+    ]
+  },
+  "vault": { "name": "test48@test.ru" },
+  "secrets": {
+    "secret1": { "name": "test48-secret1", "value": "test48-secret1-value" },
+    "secret2": { "name": "test48-secret2", "value": "test48-secret2-value" },
+    "secret3": { "name": "test48-secret3", "value": "test48-secret3-value" }
+  }
+}

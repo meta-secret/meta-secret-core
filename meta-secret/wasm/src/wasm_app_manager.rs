@@ -113,7 +113,10 @@ impl WasmApplicationManager {
             .unwrap()
     }
 
-    pub async fn remove_member_from_vault(&self, target_device_id: DeviceId) -> Result<(), JsValue> {
+    pub async fn remove_member_from_vault(
+        &self,
+        target_device_id: DeviceId,
+    ) -> Result<(), JsValue> {
         self.app_manager
             .remove_member(target_device_id)
             .await
@@ -123,6 +126,13 @@ impl WasmApplicationManager {
     pub async fn approve_remove_member(&self, target_device_id: DeviceId) -> Result<(), JsValue> {
         self.app_manager
             .approve_remove_member(target_device_id)
+            .await
+            .map_err(|error| JsError::new(&error.to_string()).into())
+    }
+
+    pub async fn decline_remove_member(&self, target_device_id: DeviceId) -> Result<(), JsValue> {
+        self.app_manager
+            .decline_remove_member(target_device_id)
             .await
             .map_err(|error| JsError::new(&error.to_string()).into())
     }

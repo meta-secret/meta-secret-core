@@ -225,7 +225,15 @@ impl MobileApplicationManager {
     }
 
     pub async fn approve_remove_member(&self, target_device_id: String) -> anyhow::Result<()> {
-        self.app_manager.approve_remove_member(target_device_id).await
+        self.app_manager
+            .approve_remove_member(target_device_id)
+            .await
+    }
+
+    pub async fn decline_remove_member(&self, target_device_id: String) -> anyhow::Result<()> {
+        self.app_manager
+            .decline_remove_member(target_device_id)
+            .await
     }
 
     pub async fn cluster_distribution(&self, plain_pass_info: &PlainPassInfo) {

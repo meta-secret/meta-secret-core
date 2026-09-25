@@ -3,17 +3,18 @@ use crate::node::common::model::user::common::{
 };
 use crate::node::common::model::vault::vault::VaultMember;
 use crate::node::db::events::vault::vault_log_event::{
-    RemoveMemberEvent, RemoveMemberRequestEvent, RemoveMemberShareTransfer,
+    RemoveMemberDecision, RemoveMemberEvent, RemoveMemberRequestEvent, RemoveMemberShareTransfer,
 };
 use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use std::sync::Arc;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RemoveActionUpdate {
     Accept,
+    Decline,
 }
 
 pub struct RemoveAction<Repo: KvLogEventRepo> {
@@ -32,9 +33,7 @@ impl<Repo: KvLogEventRepo> RemoveAction<Repo> {
             target,
             share_transfers,
         };
-        self.member
-            .vault
-            .ensure_can_remove_member(&request, None)?;
+        self.member.vault.ensure_can_remove_member(&request, None)?;
         self.member
             .vault
             .ensure_valid_removal_transfers(&request, &request.share_transfers)?;
@@ -49,7 +48,7 @@ impl<Repo: KvLogEventRepo> RemoveAction<Repo> {
         request: RemoveMemberRequestEvent,
         upd: RemoveActionUpdate,
         share_transfers: Vec<RemoveMemberShareTransfer>,
-    ) -> Result<()> {
+    ) -> Result<RemoveMemberEvent> {
         let approver = self.member.member.clone();
         self.member
             .vault
@@ -60,21 +59,35 @@ impl<Repo: KvLogEventRepo> RemoveAction<Repo> {
         self.member
             .vault
             .ensure_valid_removal_transfers(&request, &share_transfers)?;
-        if !matches!(upd, RemoveActionUpdate::Accept) {
-            bail!("Unsupported removal action")
-        }
+        let (decision, new_status) = match upd {
+            RemoveActionUpdate::Accept => (
+                RemoveMemberDecision::Accepted,
+                UserMembership::Outsider(UserDataOutsider {
+                    user_data: request.target.user_data.clone(),
+                    status: UserDataOutsiderStatus::Declined,
+                }),
+            ),
+            RemoveActionUpdate::Decline => {
+                if !share_transfers.is_empty() {
+                    bail!("Declined removal must not contain Key Share transfers")
+                }
+                (
+                    RemoveMemberDecision::Declined,
+                    UserMembership::Member(request.target.clone()),
+                )
+            }
+        };
         let update = RemoveMemberEvent {
             request: request.clone(),
             sender: approver,
             target: request.target.clone(),
-            new_status: UserMembership::Outsider(UserDataOutsider {
-                user_data: request.target.user_data,
-                status: UserDataOutsiderStatus::Declined,
-            }),
+            new_status,
+            decision,
             share_transfers,
         };
         PersistentDeviceLog::from(self.p_obj.clone())
-            .save_remove_member_update(update)
-            .await
+            .save_remove_member_update(update.clone())
+            .await?;
+        Ok(update)
     }
 }

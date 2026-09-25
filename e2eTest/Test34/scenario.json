@@ -1,0 +1,85 @@
+{
+  "runId": "test34",
+  "testNumber": 34,
+  "name": "Test #34 — Android Secret2 creator, Android-approved iOS join",
+  "mode": "web-secondary-creator-lifecycle",
+  "description": "Web creates Secret1, Android joins and creates Secret2, Android approves iOS joining, then iOS creates Secret3 after the first 12 recoveries. All three Secrets use the complete three-platform recovery matrix with two repetitions per role.",
+  "setup": {
+    "initiator": "web",
+    "joinOrder": ["android", "ios"],
+    "secondarySecretCreator": "android",
+    "thirdSecretCreator": "ios",
+    "secondJoinApprover": "android"
+  },
+  "server": {
+    "environment": "local",
+    "url": "http://127.0.0.1:3000",
+    "image": "ghcr.io/meta-secret/meta-secret-core/meta-secret-server:latest",
+    "container": "meta-secret-e2e-server-test34",
+    "port": 3000
+  },
+  "web": {
+    "url": "http://localhost:5173",
+    "directory": "../meta-secret/web-cli/ui",
+    "role": "A"
+  },
+  "android": {
+    "role": "B",
+    "avdName": "Pixel_4a",
+    "bundleId": "metasecret.project.com",
+    "device": "Pixel_4a",
+    "testClass": "metasecret.project.com.CaseEightAndroidBothOfflineTest",
+    "directInstrumentationSetup": true,
+    "joinTestMethod": "joinWebInitiatedVault",
+    "lifecycleTestClass": "metasecret.project.com.Case31AndroidJoinApproverTest",
+    "approveJoinTestMethod": "approvePendingJoinForTest34",
+    "creatorTestClass": "metasecret.project.com.Case25AndroidSecondaryCreatorTest",
+    "createSecretTestMethod": "createSecretForTest34",
+    "redistributionCheckTestMethod": "assertSecretVisibleForTest34",
+    "stepTestMethod": "handleRecoveryStep"
+  },
+  "ios": {
+    "role": "C",
+    "device": "iPhone 17",
+    "scheme": "iosApp",
+    "composeRoot": "../../meta-secret-compose",
+    "simulatorName": "iPhone 17",
+    "bundleId": "org.metasecret.vault",
+    "testClass": "CaseEightIosBothOfflineUITest",
+    "joinTestMethod": "joinWebInitiatedVault",
+    "createSecretTestMethod": "createSecretForTest34",
+    "redistributionCheckTestMethod": "assertSecretVisibleForTest34",
+    "stepTestMethod": "handleRecoveryStep"
+  },
+  "secretCreation": {
+    "initial": { "web": ["secret1"] },
+    "afterAndroidJoin": { "android": ["secret2"] },
+    "afterRecovery": { "ios": ["secret3"] }
+  },
+  "recovery": {
+    "showTimeoutMs": 45000,
+    "expectedCycles": 18,
+    "expectedDirectShowCycles": 0,
+    "expectedRecoveryCycles": 18,
+    "joinIosAfterCycle": 0,
+    "createSecret3AfterCycle": 12,
+    "expectedRoleCountPerPlatform": 6,
+    "cyclePlan": [
+      { "block": "secret1-three-device", "mode": "recovery", "count": 2, "senders": [{ "platform": "web", "secret": "secret1" }], "approvals": [{ "platform": "android", "secret": "secret1" }], "observer": "ios" },
+      { "block": "secret1-three-device", "mode": "recovery", "count": 2, "senders": [{ "platform": "android", "secret": "secret1" }], "approvals": [{ "platform": "ios", "secret": "secret1" }], "observer": "web" },
+      { "block": "secret1-three-device", "mode": "recovery", "count": 2, "senders": [{ "platform": "ios", "secret": "secret1" }], "approvals": [{ "platform": "web", "secret": "secret1" }], "observer": "android" },
+      { "block": "secret2-three-device", "mode": "recovery", "count": 2, "senders": [{ "platform": "web", "secret": "secret2" }], "approvals": [{ "platform": "ios", "secret": "secret2" }], "observer": "android" },
+      { "block": "secret2-three-device", "mode": "recovery", "count": 2, "senders": [{ "platform": "android", "secret": "secret2" }], "approvals": [{ "platform": "web", "secret": "secret2" }], "observer": "ios" },
+      { "block": "secret2-three-device", "mode": "recovery", "count": 2, "senders": [{ "platform": "ios", "secret": "secret2" }], "approvals": [{ "platform": "android", "secret": "secret2" }], "observer": "web" },
+      { "block": "secret3-three-device", "mode": "recovery", "count": 2, "senders": [{ "platform": "web", "secret": "secret3" }], "approvals": [{ "platform": "android", "secret": "secret3" }], "observer": "ios" },
+      { "block": "secret3-three-device", "mode": "recovery", "count": 2, "senders": [{ "platform": "android", "secret": "secret3" }], "approvals": [{ "platform": "ios", "secret": "secret3" }], "observer": "web" },
+      { "block": "secret3-three-device", "mode": "recovery", "count": 2, "senders": [{ "platform": "ios", "secret": "secret3" }], "approvals": [{ "platform": "web", "secret": "secret3" }], "observer": "android" }
+    ]
+  },
+  "vault": { "name": "test34@test.ru" },
+  "secrets": {
+    "secret1": { "name": "test34-secret1", "value": "test34-secret1-value" },
+    "secret2": { "name": "test34-secret2", "value": "test34-secret2-value" },
+    "secret3": { "name": "test34-secret3", "value": "test34-secret3-value" }
+  }
+}

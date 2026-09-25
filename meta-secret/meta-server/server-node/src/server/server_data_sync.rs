@@ -11,9 +11,8 @@ use crate::server::state_invalidation::{
 use anyhow::Result;
 use anyhow::bail;
 use meta_secret_core::node::api::{SignedAction, SignedActionPayload, SsRequest, VaultRequest};
-use meta_secret_core::node::common::model::device::common::{DeviceData, DeviceId};
 use meta_secret_core::node::common::model::IdString;
-use meta_secret_core::node::state_events::{StateEventsSubscription, unix_time_secs};
+use meta_secret_core::node::common::model::device::common::{DeviceData, DeviceId};
 use meta_secret_core::node::common::model::secret::{
     SecretDistributionType, SsDistributionId, SsDistributionStatus,
 };
@@ -28,14 +27,16 @@ use meta_secret_core::node::db::events::generic_log_event::{
     GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
 };
 use meta_secret_core::node::db::events::shared_secret_event::{SsLogObject, SsWorkflowObject};
-use meta_secret_core::node::db::events::vault::vault_log_event::{
-    VaultActionEvent, VaultActionInitEvent, VaultActionRequestEvent, VaultActionUpdateEvent,
-};
 use meta_secret_core::node::db::events::vault::device_log_event::DeviceLogObject;
+use meta_secret_core::node::db::events::vault::vault_log_event::{
+    RemoveMemberDecision, VaultActionEvent, VaultActionInitEvent, VaultActionRequestEvent,
+    VaultActionUpdateEvent,
+};
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use meta_secret_core::node::db::objects::persistent_vault::PersistentVault;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
+use meta_secret_core::node::state_events::{StateEventsSubscription, unix_time_secs};
 use tracing::{debug, instrument, warn};
 
 pub struct ServerSyncGateway<Repo: KvLogEventRepo> {
@@ -129,7 +130,11 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
     /// Handle request: all types of requests will be handled
     /// and the actions will be executed accordingly
-    pub async fn handle_write(&self, server_device: DeviceData, action: SignedAction) -> Result<()> {
+    pub async fn handle_write(
+        &self,
+        server_device: DeviceData,
+        action: SignedAction,
+    ) -> Result<()> {
         let generic_event = self.verify_event_action(&action).await?;
         self.server_write_processing(server_device, generic_event)
             .await
@@ -201,9 +206,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             })
             .ok_or_else(|| anyhow::anyhow!("completion signer is not a Vault member"))?;
         let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
-        let ss_log = p_ss
-            .get_ss_log_obj(completion.vault_name.clone())
-            .await?;
+        let ss_log = p_ss.get_ss_log_obj(completion.vault_name.clone()).await?;
         let claim = ss_log
             .claims
             .get(&completion.recovery_id.claim_id.id)
@@ -327,19 +330,27 @@ mod state_events_tests {
         )
         .unwrap();
 
-        assert!(verify_state_events_subscription_data(
-            &registry.state.vault_data.full_membership,
-            &subscription,
-            1_001,
-        )
-        .is_err());
+        assert!(
+            verify_state_events_subscription_data(
+                &registry.state.vault_data.full_membership,
+                &subscription,
+                1_001,
+            )
+            .is_err()
+        );
     }
 
     #[test]
     fn rejects_subscription_signed_by_a_different_key() {
         let registry = FixtureRegistry::empty();
         let member = &registry.state.user_creds.client;
-        let wrong_key_manager = registry.state.user_creds.client_b.device_creds.key_manager().unwrap();
+        let wrong_key_manager = registry
+            .state
+            .user_creds
+            .client_b
+            .device_creds
+            .key_manager()
+            .unwrap();
         let subscription = StateEventsSubscription::sign_at(
             member.vault_name.clone(),
             member.device_id().clone(),
@@ -348,11 +359,14 @@ mod state_events_tests {
         )
         .unwrap();
 
-        assert!(verify_state_events_subscription_data(
-            &registry.state.vault_data.full_membership,
-            &subscription,
-            1_001,
-        ).is_err());
+        assert!(
+            verify_state_events_subscription_data(
+                &registry.state.vault_data.full_membership,
+                &subscription,
+                1_001,
+            )
+            .is_err()
+        );
     }
 }
 
@@ -480,14 +494,13 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                 if claim_preview.distribution_type == SecretDistributionType::Recover {
                     let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
                     let server_log = p_ss_log.get_ss_log_obj(vault_name.clone()).await?;
-                    let server_log_with_status = server_log
-                        .clone()
-                        .with_client_status(&claim_preview.sender);
+                    let server_log_with_status =
+                        server_log.clone().with_client_status(&claim_preview.sender);
                     if let Some(active_claim_id) = server_log_with_status
                         .find_unique_active_recovery_claim_id(
-                        &claim_preview.sender,
-                        &claim_preview.dist_claim_id.pass_id,
-                    )?
+                            &claim_preview.sender,
+                            &claim_preview.dist_claim_id.pass_id,
+                        )?
                         && active_claim_id != claim_preview.id
                     {
                         debug!(
@@ -684,14 +697,28 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         let vault_action = vault_action_event.value;
         let vault_name = vault_action.vault_name();
         let scope = state_scope_for_vault_action(&vault_action);
-        let membership_changed = matches!(
+        let join_accepted = matches!(
             &vault_action,
             VaultActionEvent::Update(VaultActionUpdateEvent::UpdateMembership(update))
                 if matches!(&update.update, UserMembership::Member(_))
-        ) || matches!(
-            &vault_action,
-            VaultActionEvent::Update(VaultActionUpdateEvent::RemoveMember(_))
         );
+        let accepted_removal_target = match &vault_action {
+            VaultActionEvent::Update(VaultActionUpdateEvent::RemoveMember(update))
+                if update.decision == RemoveMemberDecision::Accepted =>
+            {
+                Some(update.target.user_data.device.device_id.clone())
+            }
+            _ => None,
+        };
+        let removal_target_was_member = if let Some(target_id) = &accepted_removal_target {
+            PersistentVault::from(self.p_obj.clone())
+                .get_vault(vault_name.clone())
+                .await?
+                .to_data()
+                .is_member(target_id)
+        } else {
+            false
+        };
 
         let action = ServerVaultAction {
             p_obj: self.p_obj.clone(),
@@ -699,7 +726,24 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         };
 
         action.do_processing(vault_action).await?;
-        if membership_changed && self.decline_pending_recovery_claims(vault_name.clone()).await? {
+        let removal_changed_membership = if removal_target_was_member {
+            let target_id = accepted_removal_target
+                .as_ref()
+                .expect("accepted removal target is present");
+            !PersistentVault::from(self.p_obj.clone())
+                .get_vault(vault_name.clone())
+                .await?
+                .to_data()
+                .is_member(target_id)
+        } else {
+            false
+        };
+        let membership_changed = join_accepted || removal_changed_membership;
+        if membership_changed
+            && self
+                .decline_pending_recovery_claims(vault_name.clone())
+                .await?
+        {
             self.publish_invalidation(vault_name.clone(), StateInvalidationScope::SsClaims);
         }
         self.publish_invalidation(vault_name, scope);

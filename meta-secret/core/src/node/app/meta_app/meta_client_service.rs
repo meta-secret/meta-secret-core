@@ -11,12 +11,15 @@ use crate::node::app::sync::sync_gateway::SyncGateway;
 use crate::node::app::sync::sync_protocol::SyncProtocol;
 use crate::node::common::actor::ServiceState;
 use crate::node::common::data_transfer::MpscDataTransfer;
-use crate::node::common::model::device::common::DeviceData;
+use crate::node::common::model::device::common::{DeviceData, DeviceId};
 use crate::node::common::model::meta_pass::SecurePassInfo;
 use crate::node::common::model::secret::ClaimId;
-use crate::node::common::model::user::common::{UserData, UserDataOutsider, UserDataOutsiderStatus};
+use crate::node::common::model::user::common::{
+    UserData, UserDataOutsider, UserDataOutsiderStatus, UserMembership,
+};
 use crate::node::common::model::user::user_creds::UserCreds;
 use crate::node::common::model::vault::vault::{VaultMember, VaultStatus};
+use crate::node::common::model::vault::vault_data::VaultData;
 use crate::node::common::model::{ApplicationState, UserMemberFullInfo, VaultFullInfo};
 use crate::node::db::actions::recover::RecoveryAction;
 use crate::node::db::actions::sign_up::claim::SignUpClaim;
@@ -44,6 +47,10 @@ pub struct MetaClientService<Repo: KvLogEventRepo, Sync: SyncProtocol> {
 
 pub struct MetaClientDataTransfer {
     pub dt: MpscDataTransfer<GenericAppStateRequest, GenericAppStateResponse>,
+}
+
+fn vault_contains_member(vault: &VaultData, device_id: &DeviceId) -> bool {
+    matches!(vault.find_user(device_id), Some(UserMembership::Member(_)))
 }
 
 impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
@@ -277,7 +284,22 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                     p_obj: self.p_obj.clone(),
                     user_creds: user_creds.clone(),
                 };
-                orchestrator.accept_remove_member(target_device_id.clone()).await?;
+                orchestrator
+                    .accept_remove_member(target_device_id.clone())
+                    .await?;
+                self.sync_gateway.sync(user_creds.user()).await?;
+                self.sync_gateway.sync(user_creds.user()).await?;
+            }
+            GenericAppStateRequest::DeclineRemoveMember(target_device_id) => {
+                let user_creds = self.get_user_creds(&request).await?;
+                self.sync_gateway.sync(user_creds.user()).await?;
+                let orchestrator = MetaOrchestrator {
+                    p_obj: self.p_obj.clone(),
+                    user_creds: user_creds.clone(),
+                };
+                orchestrator
+                    .decline_remove_member(target_device_id.clone())
+                    .await?;
                 self.sync_gateway.sync(user_creds.user()).await?;
                 self.sync_gateway.sync(user_creds.user()).await?;
             }
@@ -336,6 +358,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
             GenericAppStateRequest::Recover(_) => self.find_user_creds().await?,
             GenericAppStateRequest::RemoveMember(_) => self.find_user_creds().await?,
             GenericAppStateRequest::ApproveRemoveMember(_) => self.find_user_creds().await?,
+            GenericAppStateRequest::DeclineRemoveMember(_) => self.find_user_creds().await?,
         };
         Ok(user_creds)
     }
@@ -442,7 +465,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                         let user_full_info = UserMemberFullInfo {
                             member: VaultMember {
                                 member: member_user,
-                                vault: vault.to_data(),
+                                vault: vault.to_data().client_view(),
                             },
                             ss_claims,
                             vault_events: vault_action_events,
@@ -457,18 +480,26 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
 
     async fn was_removed_from_vault(&self, outsider: &UserDataOutsider) -> Result<bool> {
         let p_vault = PersistentVault::from(self.p_obj());
-        let Some(VaultLogObject(log)) = p_vault
-            .vault_log(outsider.user_data.vault_name())
-            .await?
+        let device_id = &outsider.user_data.device.device_id;
+        if let Ok(vault) = p_vault.get_vault(outsider.user_data.vault_name()).await
+            && vault_contains_member(&vault.to_data(), device_id)
+        {
+            return Ok(true);
+        }
+
+        let Some(VaultLogObject(log)) = p_vault.vault_log(outsider.user_data.vault_name()).await?
         else {
             return Ok(false);
         };
-        let device_id = &outsider.user_data.device.device_id;
         Ok(log.value.updates.iter().any(|update| {
             matches!(
                 update,
                 VaultActionUpdateEvent::RemoveMember(event)
                     if event.target.user_data.device.device_id == *device_id
+                        && matches!(
+                            event.decision,
+                            crate::node::db::events::vault::vault_log_event::RemoveMemberDecision::Accepted
+                        )
             )
         }))
     }
@@ -571,9 +602,19 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
     }
 
     pub async fn approve_remove_member(&self, target_device_id: String) -> Result<()> {
-        self.send_request(GenericAppStateRequest::ApproveRemoveMember(target_device_id))
-            .await
-            .map(|_| ())
+        self.send_request(GenericAppStateRequest::ApproveRemoveMember(
+            target_device_id,
+        ))
+        .await
+        .map(|_| ())
+    }
+
+    pub async fn decline_remove_member(&self, target_device_id: String) -> Result<()> {
+        self.send_request(GenericAppStateRequest::DeclineRemoveMember(
+            target_device_id,
+        ))
+        .await
+        .map(|_| ())
     }
 
     fn p_obj(&self) -> Arc<PersistentObject<Repo>> {
@@ -698,5 +739,34 @@ pub mod fixture {
                 }),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::vault_contains_member;
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::node::common::model::user::common::{
+        UserDataOutsider, UserDataOutsiderStatus, UserMembership,
+    };
+
+    #[test]
+    fn local_vault_distinguishes_removed_member_from_declined_join_candidate() {
+        let registry = FixtureRegistry::empty();
+        let current_user = registry.state.user_creds.client.user();
+        let current_device_id = current_user.device.device_id.clone();
+        let vault = registry.state.vault_data.full_membership;
+
+        assert!(vault_contains_member(&vault, &current_device_id));
+
+        let vault_after_removal =
+            vault.update_membership(UserMembership::Outsider(UserDataOutsider {
+                user_data: current_user,
+                status: UserDataOutsiderStatus::Declined,
+            }));
+        assert!(!vault_contains_member(
+            &vault_after_removal,
+            &current_device_id
+        ));
     }
 }

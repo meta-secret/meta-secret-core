@@ -111,12 +111,12 @@ pub async fn build_client_components<Repo: KvLogEventRepo>(
             .await?,
     );
 
-    let sync_gateway = Arc::new(SyncGateway {
-        id: String::from("client-gateway"),
-        p_obj: p_obj.clone(),
-        sync: sync_protocol,
-        master_key: master_key.clone(),
-    });
+    let sync_gateway = Arc::new(SyncGateway::new(
+        String::from("client-gateway"),
+        p_obj.clone(),
+        sync_protocol,
+        master_key.clone(),
+    ));
 
     let state_provider = Arc::new(MetaClientStateProvider::new());
 

@@ -11,8 +11,8 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::Next;
 use crate::node::db::events::vault::vault_event::VaultObject;
 use crate::node::db::events::vault::vault_log_event::{
-    AddMetaPassEvent, VaultActionEvent,
-    VaultActionInitEvent, VaultActionRequestEvent, VaultActionUpdateEvent,
+    AddMetaPassEvent, RemoveMemberDecision, VaultActionEvent, VaultActionInitEvent,
+    VaultActionRequestEvent, VaultActionUpdateEvent,
 };
 use crate::node::db::events::vault::vault_status::VaultStatusObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
@@ -46,11 +46,16 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
                 let vault = p_vault.get_vault(action_event.vault_name()).await?;
                 match action_request {
                     VaultActionRequestEvent::JoinCluster(join_event) => {
-                        let candidate = UserDataMember { user_data: join_event.candidate.clone() };
+                        let candidate = UserDataMember {
+                            user_data: join_event.candidate.clone(),
+                        };
                         vault.to_data().ensure_can_add_member(&candidate)?;
                     }
                     VaultActionRequestEvent::RemoveMember(request) => {
-                        vault.clone().to_data().ensure_can_remove_member(request, None)?;
+                        vault
+                            .clone()
+                            .to_data()
+                            .ensure_can_remove_member(request, None)?;
                         vault
                             .to_data()
                             .ensure_valid_removal_transfers(request, &request.share_transfers)?;
@@ -107,6 +112,23 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
         //check if a sender is a member of the vault and update the vault then
         let vault = p_vault.get_vault(vault_name.clone()).await?;
 
+        if let VaultActionUpdateEvent::RemoveMember(update) = action_update {
+            let pending_request = VaultActionRequestEvent::RemoveMember(update.request.clone());
+            let events = p_vault
+                .get_vault_log_artifact(vault_name.clone())
+                .await?
+                .0
+                .value;
+            if !events.requests.contains(&pending_request) {
+                info!(
+                    target = %update.target.user_data.device.device_id,
+                    decision = ?update.decision,
+                    "Removal request is already terminal; ignoring late or duplicate response"
+                );
+                return Ok(());
+            }
+        }
+
         match action_update {
             VaultActionUpdateEvent::UpdateMembership(update)
                 if matches!(&update.update, UserMembership::Member(_)) =>
@@ -116,33 +138,43 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
                 }
             }
             VaultActionUpdateEvent::RemoveMember(update) => {
-                // Retries of the same signed removal update are idempotent
-                // once the target is already recorded as Declined.
-                if matches!(
-                    vault
-                        .clone()
-                        .to_data()
-                        .find_user(&update.target.user_data.device.device_id),
-                    Some(UserMembership::Outsider(UserDataOutsider {
-                        status: UserDataOutsiderStatus::Declined,
-                        ..
-                    }))
-                ) {
-                    return Ok(());
+                vault
+                    .clone()
+                    .to_data()
+                    .ensure_can_remove_member(&update.request, Some(&update.sender))?;
+                vault.clone().to_data().ensure_valid_removal_transfers(
+                    &update.request,
+                    &update.request.share_transfers,
+                )?;
+                if update.target != update.request.target {
+                    anyhow::bail!("Removal response target must match its request");
                 }
-                vault.clone().to_data().ensure_can_remove_member(&update.request, Some(&update.sender))?;
-                vault
-                    .clone()
-                    .to_data()
-                    .ensure_valid_removal_transfers(&update.request, &update.request.share_transfers)?;
-                vault
-                    .clone()
-                    .to_data()
-                    .ensure_valid_removal_transfers(&update.request, &update.share_transfers)?;
-                if update.target.user_data.device.device_id != update.new_status.device_id()
-                    || !matches!(update.new_status, UserMembership::Outsider(UserDataOutsider { status: UserDataOutsiderStatus::Declined, .. }))
-                {
-                    anyhow::bail!("Removal update must decline its target");
+                match update.decision {
+                    RemoveMemberDecision::Accepted => {
+                        vault.clone().to_data().ensure_valid_removal_transfers(
+                            &update.request,
+                            &update.share_transfers,
+                        )?;
+                        if update.target.user_data.device.device_id != update.new_status.device_id()
+                            || !matches!(
+                                update.new_status,
+                                UserMembership::Outsider(UserDataOutsider {
+                                    status: UserDataOutsiderStatus::Declined,
+                                    ..
+                                })
+                            )
+                        {
+                            anyhow::bail!("Accepted removal must remove its target");
+                        }
+                    }
+                    RemoveMemberDecision::Declined => {
+                        if !update.share_transfers.is_empty() {
+                            anyhow::bail!("Declined removal must not contain Key Share transfers");
+                        }
+                        if update.new_status != UserMembership::Member(update.target.clone()) {
+                            anyhow::bail!("Declined removal must preserve target membership");
+                        }
+                    }
                 }
             }
             _ => {}
@@ -180,7 +212,10 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
                     .await?;
             }
             VaultActionUpdateEvent::RemoveMember(update) => {
-                self.update_vault_status(vault_event, update.new_status.clone()).await?;
+                if update.decision == RemoveMemberDecision::Accepted {
+                    self.update_vault_status(vault_event, update.new_status.clone())
+                        .await?;
+                }
             }
             VaultActionUpdateEvent::AddMetaPass(AddMetaPassEvent { .. }) => {
                 // no extra steps required (vault  is already updated by VaultAggregate)
@@ -283,13 +318,16 @@ pub mod fixture {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::meta_tests::fixture_util::fixture::states::BaseState;
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::meta_tests::fixture_util::fixture::states::BaseState;
     use crate::node::common::model::meta_pass::MetaPasswordId;
-    use crate::node::common::model::user::common::{UserDataMember, UserMembership};
+    use crate::node::common::model::user::common::{
+        UserDataMember, UserDataOutsider, UserDataOutsiderStatus, UserMembership,
+    };
     use crate::node::common::model::vault::vault::VaultStatus;
     use crate::node::db::events::vault::vault_log_event::{
-        AddMetaPassEvent, UpdateMembershipEvent,
+        AddMetaPassEvent, RemoveMemberDecision, RemoveMemberEvent, RemoveMemberRequestEvent,
+        UpdateMembershipEvent,
     };
     use crate::node::db::events::vault::vault_log_event::{
         CreateVaultEvent, JoinClusterEvent, VaultActionInitEvent, VaultActionRequestEvent,
@@ -414,5 +452,93 @@ mod tests {
             VaultStatus::Member(_) => Ok(()),
             _ => panic!("Expected VaultStatus::Member, got {:?}", status),
         }
+    }
+
+    #[tokio::test]
+    async fn declined_removal_blocks_late_accept() -> Result<()> {
+        let registry = FixtureRegistry::base().await?;
+        let server = &registry.state.server_vault_action.server;
+        let owner = UserDataMember::from(registry.state.empty.user_creds.client.user());
+        let approver = UserDataMember::from(registry.state.empty.user_creds.client_b.user());
+        let target = UserDataMember::from(registry.state.empty.user_creds.vd.user());
+        create_vault(&registry).await?;
+
+        for candidate in [&approver, &target] {
+            let request = JoinClusterEvent::from(candidate.user_data.clone());
+            server
+                .do_processing(VaultActionEvent::Request(
+                    VaultActionRequestEvent::JoinCluster(request.clone()),
+                ))
+                .await?;
+            server
+                .do_processing(VaultActionEvent::Update(
+                    VaultActionUpdateEvent::UpdateMembership(UpdateMembershipEvent {
+                        request,
+                        sender: owner.clone(),
+                        update: UserMembership::Member(candidate.clone()),
+                    }),
+                ))
+                .await?;
+        }
+
+        let request = RemoveMemberRequestEvent {
+            sender: owner.clone(),
+            target: target.clone(),
+            share_transfers: vec![],
+        };
+        server
+            .do_processing(VaultActionEvent::Request(
+                VaultActionRequestEvent::RemoveMember(request.clone()),
+            ))
+            .await?;
+
+        server
+            .do_processing(VaultActionEvent::Update(
+                VaultActionUpdateEvent::RemoveMember(RemoveMemberEvent {
+                    request: request.clone(),
+                    sender: approver.clone(),
+                    target: target.clone(),
+                    new_status: UserMembership::Member(target.clone()),
+                    decision: RemoveMemberDecision::Declined,
+                    share_transfers: vec![],
+                }),
+            ))
+            .await?;
+
+        let p_vault = PersistentVault::from(server.p_obj.clone());
+        let after_decline = p_vault
+            .get_vault(owner.user_data.vault_name())
+            .await?
+            .to_data();
+        assert_eq!(after_decline.members().len(), 3);
+        assert!(after_decline.is_member(&target.user().device.device_id));
+
+        server
+            .do_processing(VaultActionEvent::Update(
+                VaultActionUpdateEvent::RemoveMember(RemoveMemberEvent {
+                    request,
+                    sender: approver,
+                    target: target.clone(),
+                    new_status: UserMembership::Outsider(UserDataOutsider {
+                        user_data: target.user_data.clone(),
+                        status: UserDataOutsiderStatus::Declined,
+                    }),
+                    decision: RemoveMemberDecision::Accepted,
+                    share_transfers: vec![],
+                }),
+            ))
+            .await?;
+
+        let after_late_accept = p_vault
+            .get_vault(owner.user_data.vault_name())
+            .await?
+            .to_data();
+        assert_eq!(after_late_accept.members().len(), 3);
+        assert!(after_late_accept.is_member(&target.user().device.device_id));
+        assert!(matches!(
+            p_vault.find(target.user_data).await?,
+            VaultStatus::Member(_)
+        ));
+        Ok(())
     }
 }

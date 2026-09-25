@@ -247,8 +247,17 @@ Step 1: INITIATE REMOVAL (on A)
   
 Step 2: APPROVAL (REQUIRED on OTHER devices)
   - B's user performs BIOMETRIC + CONSENT on device B
-  - B signs approval message, sends to A
+  - B signs exactly one terminal response: Accepted or Declined
   - C receives removal request but cannot approve it
+
+Decline branch:
+  - A, B, and C all remain members and keep their current Key Shares.
+  - The exact pending removal request is consumed.
+  - No resharing runs and active Recovery claims remain valid.
+  - A later response to the same request is ignored (first response wins).
+  - A new removal request may be created explicitly.
+
+The remaining steps apply only when B responds Accepted.
   
 Step 3: COLLECT SHARED SECRET (on A)
   - A has SHARE s1
@@ -292,9 +301,17 @@ Step 2: LOCAL CONFIRMATION (no second-device approval)
 
 Step 3: TRANSITION
   - A keeps the single-device k=1 copy.
+  - Core makes A the canonical sender of every surviving `Split` claim,
+    including Secrets originally created by B or by an earlier member.
+  - Core clears the removed receiver and its distribution status from each
+    single-device claim.
   - B becomes Outsider/Declined and receives no new share.
 
 Result: A=FULL_COPY, B=DECLINED
+
+Future Join guarantee:
+  - Because A owns every single-device `Split` claim, a later approved Join
+    redistributes every Secret, regardless of which device originally created it.
 
 ⚠️ The one remaining device cannot remove itself, so `1 → 0` remains blocked.
 ```
@@ -308,8 +325,10 @@ Result: A=FULL_COPY, B=DECLINED
   device to authorization; rejoining requires a new Join approval.
 - If the required approver is offline, the removal remains pending. Clients do
   not persist or replay a removal command as an offline queue.
-- Any active Recovery claim involving the target is terminalized as
-  `Declined`; a new Recovery request is required.
+- Only an accepted removal changes membership. It terminalizes active Recovery
+  claims created for the previous membership set as `Declined`; a new Recovery
+  request is required. Declining the removal request does not invalidate
+  Recovery claims.
 
 **Current policy:**
 
@@ -340,7 +359,7 @@ n=2 (k=1) → remove 1 → n=1 (allowed with local confirmation; self-removal re
 | 1 device (k=1) | 2 devices (k=1) | Device join | 1 COPY → 2 full copies |
 | 2 devices (k=1) | 3 devices (k=2) | Device join | 2 full copies → 3 SSS shares (reshare) |
 | 3 devices (k=2) | 2 devices (k=1) | Device removal | 3 SSS shares → 2 full copies (reshare) |
-| 2 devices (k=1) | 1 device | Device removal with local confirmation | Remaining device keeps its full copy |
+| 2 devices (k=1) | 1 device | Device removal with local confirmation | Remaining device keeps its full copy and becomes canonical sender for every `Split` claim |
 | 3 devices (k=2) | 4 devices | Cannot happen | (blocked by Core device limit) |
 
 ---
@@ -365,8 +384,12 @@ n=2 (k=1) → remove 1 → n=1 (allowed with local confirmation; self-removal re
 3. **DELETE DEVICE**
    - Initiator: Owner or any device
    - Approval needed: From 1 other device (biometric)
-   - Exception: Cannot delete last 2 devices (UI blocks)
-   - Flow: Request → Biometric on other device → Collect secret → Reshare
+   - Exception: `2 → 1` uses local confirmation; self-removal and `1 → 0`
+     remain blocked
+   - Flow (`3 → 2`): Request → Biometric on other device → approving device
+     collects the two required Key Shares → approving device reshares
+   - Flow (`2 → 1`): Local confirmation → remove the other device while the
+     remaining full copy stays usable
 
 ### 2.2 Approval Mechanism
 
@@ -409,7 +432,7 @@ Future: May change to 50% or 66% threshold
 ```
 Approval: Not possible to get from "other" for removal
          (would leave only 1 device)
-         UI blocks removal button
+         initiator confirms locally; self-removal remains blocked
 ```
 
 **For 1 device:**
@@ -443,9 +466,10 @@ Share:     { share_id: u32, share_data: bytes, encrypted: true }
 
 ### 3.2 Resharing Process
 
-Join resharing is finalized before the new membership is exposed. Removal is a
-signed membership update followed by a Core retryable resharing; the removed
-device never receives a new share.
+Join resharing is finalized before the new membership is exposed. For a
+`3 → 2` removal, the approving device completes reverse resharing while
+accepting the signed membership update; the removed device never receives a
+new share.
 
 1. **COLLECT**
    - Gather shares/copies from multiple devices
@@ -456,7 +480,8 @@ device never receives a new share.
    - Run SSS to generate new shares from collected secret
    - Input: complete secret, n (device count), k (threshold)
    - Output: n new shares
-   - Timing: Happens on initiating device's memory
+   - Timing: Happens in Core memory on the device that owns the required
+     shares: the join initiator for join, and the approver for `3 → 2` removal
 
 3. **DISTRIBUTE & REPLACE**
    - Encrypt each new share to target device's public key
@@ -469,10 +494,13 @@ device never receives a new share.
      shares after synchronization
 
 **Removal guarantee:**
-- `3 → 2` uses the initiator's share plus the encrypted approver share to
-  create fresh `k=1,n=2` shares only for the remaining members.
-- If synchronization fails, the removal update is not replayed as a client
-  offline queue; Core retries the resharing when the initiator next refreshes.
+- `3 → 2` sends the initiator's Encrypted Key Share only to the selected
+  approver. The approver combines it with its own Key Share and creates fresh
+  `k=1,n=2` Key Shares only for the two remaining members.
+- Core completes this resharing before the accepted removal workflow can be
+  synchronized as complete. A synchronization failure is propagated and the
+  pending Core workflow remains retryable; clients do not maintain a separate
+  offline command queue.
 - The removed device is never a distribution target and is reset to
   `Outsider/Declined` on reconnect.
 
@@ -589,14 +617,16 @@ ciphertext, not server possession of a usable Key Share.
 2. Claim approval + delivery confirmation
 3. State transitions
 
-Device removal is a signed membership update followed by a retryable Core
-resharing step. The target is never a recipient of the new shares.
+For `3 → 2`, device removal is a signed membership update coupled to immediate
+Core resharing on the approving device. The target is never a recipient of the
+new shares.
 
 **Implementation:**
 - Use database transactions (SERIALIZABLE isolation)
 - Join/claim operations are all-or-nothing and roll back if a step fails.
-- A removal update remains authoritative while Core retries the post-removal
-  resharing; no offline client command is replayed.
+- Core does not report a successful approval until the approver has created
+  the post-removal shares. Failed synchronization remains retryable inside
+  Core; no offline client command is replayed.
 
 ---
 
