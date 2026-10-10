@@ -1,10 +1,10 @@
 {
   "runId": "test15-block3",
   "testNumber": 15,
-  "name": "Test #15 block 3 — CLI joins during Android recovery",
+  "name": "Test #15 block 3 — Android recovery, one removal, CLI rejoin, three member checks",
   "mode": "new-device-during-recovery",
   "setup": { "initiator": "android" },
-  "newDevice": { "oldReceivers": ["web", "ios"] },
+  "newDevice": { "oldReceivers": ["web", "ios"], "removalTarget": "ios", "removalApprover": "android" },
   "server": {
     "url": "http://127.0.0.1:3000",
     "image": "ghcr.io/meta-secret/meta-secret-core/meta-secret-server:latest",
@@ -32,31 +32,22 @@
   },
   "secretCreation": { "initial": { "android": ["default"] } },
   "recovery": {
-    "expectedCycles": 3,
+    "expectedCycles": 1,
     "cyclePlan": [
       {
-        "block": "android-sender-cli-join-1",
+        "block": "old-recovery-declined-by-membership-removal",
         "count": 1,
         "senders": [{ "platform": "android", "secret": "default" }],
-        "approvals": [{ "platform": "cli", "action": "approve", "secret": "default" }],
-        "expectedOutcome": "approved"
-      },
-      {
-        "block": "android-sender-cli-join-2",
-        "count": 1,
-        "senders": [{ "platform": "android", "secret": "default" }],
-        "approvals": [{ "platform": "cli", "action": "approve", "secret": "default" }],
-        "expectedOutcome": "approved"
-      },
-      {
-        "block": "android-sender-cli-join-3",
-        "count": 1,
-        "senders": [{ "platform": "android", "secret": "default" }],
-        "approvals": [{ "platform": "cli", "action": "approve", "secret": "default" }],
-        "expectedOutcome": "approved"
+        "approvals": [],
+        "expectedOutcome": "declined"
       }
     ]
   },
+  "postJoinRecoveryPlan": [
+    { "sender": "web", "approver": "android", "expectedOutcome": "approved" },
+    { "sender": "android", "approver": "cli", "expectedOutcome": "approved" },
+    { "sender": "cli", "approver": "web", "expectedOutcome": "approved" }
+  ],
   "vault": { "name": "test15-block3@test.ru" },
   "secrets": { "default": { "name": "test-secret", "value": "test-secret-value" } }
 }

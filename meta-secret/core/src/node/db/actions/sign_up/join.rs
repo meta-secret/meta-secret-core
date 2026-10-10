@@ -6,8 +6,8 @@ use crate::node::db::events::vault::vault_log_event::{JoinClusterEvent, UpdateMe
 use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
-use anyhow::bail;
 use anyhow::Result;
+use anyhow::bail;
 use std::sync::Arc;
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -74,9 +74,9 @@ impl<Repo: KvLogEventRepo> JoinAction<Repo> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::common::model::device::common::DeviceName;
     use crate::node::common::model::device::device_creds::DeviceCredsBuilder;
-    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::common::model::user::common::{
         UserData, UserDataOutsider, UserDataOutsiderStatus,
     };
@@ -114,6 +114,7 @@ mod tests {
         // Create the join request
         let join_request = JoinClusterEvent {
             candidate: candidate_user.clone(),
+            request_id: "join-test".into(),
         };
 
         // Execute the function
@@ -169,6 +170,7 @@ mod tests {
         // Create the join request
         let join_request = JoinClusterEvent {
             candidate: candidate_user.clone(),
+            request_id: "fresh-rejoin-test".into(),
         };
 
         // Execute the fresh Join approval.
@@ -206,6 +208,7 @@ mod tests {
         // Create the join request
         let join_request = JoinClusterEvent {
             candidate: candidate_user.clone(),
+            request_id: "member-rejoin-test".into(),
         };
 
         // Execute the function
@@ -257,6 +260,7 @@ mod tests {
             .update(
                 JoinClusterEvent {
                     candidate: candidate_user,
+                    request_id: "fourth-device-test".into(),
                 },
                 JoinActionUpdate::Accept,
             )

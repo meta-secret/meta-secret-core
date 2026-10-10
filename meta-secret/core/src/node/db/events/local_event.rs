@@ -1,13 +1,13 @@
 use crate::node::common::model::device::common::DeviceData;
-use crate::node::common::model::device::device_creds::{SecureDeviceCreds};
-use crate::node::common::model::user::user_creds::{SecureUserCreds};
+use crate::node::common::model::device::device_creds::SecureDeviceCreds;
+use crate::node::common::model::user::user_creds::SecureUserCreds;
 use crate::node::db::descriptors::creds::{DeviceCredsDescriptor, UserCredsDescriptor};
 use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
 };
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::ArtifactId;
-use anyhow::{anyhow, Error};
+use anyhow::{Error, anyhow};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -121,17 +121,17 @@ impl UserCredsObject {
 
 #[cfg(test)]
 mod tests {
-    use crate::crypto::key_pair::KeyPair;
-use crate::node::common::model::device::device_creds::DeviceCreds;
-    use crate::node::common::model::user::user_creds::UserCreds;
     use super::*;
+    use crate::crypto::key_pair::KeyPair;
+    use crate::crypto::key_pair::TransportDsaKeyPair;
     use crate::node::common::model::device::common::DeviceName;
+    use crate::node::common::model::device::device_creds::DeviceCreds;
     use crate::node::common::model::device::device_creds::DeviceCredsBuilder;
+    use crate::node::common::model::user::user_creds::UserCreds;
     use crate::node::common::model::user::user_creds::UserCredsBuilder;
     use crate::node::common::model::vault::vault::VaultName;
     use crate::node::db::descriptors::object_descriptor::ObjectDescriptor;
     use anyhow::Result;
-    use crate::crypto::key_pair::TransportDsaKeyPair;
 
     fn create_test_device_credentials() -> DeviceCreds {
         let device_name = DeviceName::from("test_device");
@@ -149,7 +149,7 @@ use crate::node::common::model::device::device_creds::DeviceCreds;
         let device_creds = create_test_device_credentials();
         let master_pk = TransportDsaKeyPair::generate().sk().pk()?;
         let secure_device_creds = SecureDeviceCreds::build(device_creds.clone(), master_pk)?;
-        
+
         let device_creds_obj = DeviceCredsObject::from(secure_device_creds);
 
         let key = device_creds_obj.key();
@@ -196,7 +196,7 @@ use crate::node::common::model::device::device_creds::DeviceCreds;
             recovered_key.obj_desc,
             ObjectDescriptor::DeviceCreds(_)
         ));
-        
+
         Ok(())
     }
 
@@ -221,7 +221,7 @@ use crate::node::common::model::device::device_creds::DeviceCreds;
             recovered_key.obj_desc,
             ObjectDescriptor::UserCreds(_)
         ));
-        
+
         Ok(())
     }
 
@@ -236,7 +236,7 @@ use crate::node::common::model::device::device_creds::DeviceCreds;
         // Try to convert the device creds event to user creds - should fail
         let result = UserCredsObject::try_from(generic_event);
         assert!(result.is_err());
-        
+
         Ok(())
     }
 }

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::crypto::keys::TransportSk;
 use crate::node::common::model::device::common::DeviceName;
 use crate::node::common::model::user::common::{UserData, UserDataOutsiderStatus};
 use crate::node::common::model::user::user_creds::UserCreds;
@@ -19,7 +20,6 @@ use anyhow::Ok;
 use derive_more::From;
 use tracing::info;
 use tracing_attributes::instrument;
-use crate::crypto::keys::TransportSk;
 
 #[derive(From)]
 pub struct SignUpClaim<Repo: KvLogEventRepo> {
@@ -35,7 +35,7 @@ impl<Repo: KvLogEventRepo> SignUpClaim<Repo> {
     ) -> anyhow::Result<UserCreds> {
         let creds_repo = PersistentCredentials {
             p_obj: self.p_obj.clone(),
-            master_key
+            master_key,
         };
         creds_repo
             .get_or_generate_user_creds(device_name, vault_name)

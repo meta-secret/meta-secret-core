@@ -1,0 +1,9 @@
+{
+  "name": "Test #20 — Core regression and local HTTP server reject forged recovery responses",
+  "cli": {
+    "participant": "Rust Core and HTTP integration"
+  },
+  "server": {
+    "participant": "isolated local meta-server"
+  }
+}

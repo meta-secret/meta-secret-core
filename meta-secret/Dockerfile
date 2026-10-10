@@ -34,6 +34,7 @@ WORKDIR ${BASE_DIR}
 ENV CARGO_INCREMENTAL=0
 # crates.io HTTP/2 flakes in CI (curl error 16); disable multiplexing and retry downloads.
 ENV CARGO_HTTP_MULTIPLEXING=false
+ENV CARGO_HTTP_TIMEOUT=120
 ENV CARGO_NET_RETRY=10
 
 # --- Builder Debug: pre-compiled deps in debug mode (for tests); pushed as builder-debug:cache in CI ---

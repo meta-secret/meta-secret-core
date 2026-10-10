@@ -1,5 +1,5 @@
-use time::macros::format_description;
 use time::OffsetDateTime;
+use time::macros::format_description;
 
 const LOG_TIMESTAMP_FMT: &[time::format_description::FormatItem<'_>] =
     format_description!("[year]-[month]-[day] [hour]:[minute]:[second]");

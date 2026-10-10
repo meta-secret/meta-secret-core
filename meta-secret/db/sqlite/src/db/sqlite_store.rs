@@ -123,16 +123,20 @@ impl DbCleanUpCommand for SqlIteRepo {
 mod tests {
     use super::*;
     use crate::db::sqlite_migration::EmbeddedMigrationsTool;
+    use meta_secret_core::crypto::key_pair::{KeyPair, TransportDsaKeyPair};
     use meta_secret_core::node::common::model::device::common::DeviceName;
-    use meta_secret_core::node::common::model::device::device_creds::{DeviceCredsBuilder, SecureDeviceCreds};
-    use meta_secret_core::node::db::descriptors::object_descriptor::{ObjectFqdn, ToObjectDescriptor};
+    use meta_secret_core::node::common::model::device::device_creds::{
+        DeviceCredsBuilder, SecureDeviceCreds,
+    };
+    use meta_secret_core::node::db::descriptors::creds::DeviceCredsDescriptor;
+    use meta_secret_core::node::db::descriptors::object_descriptor::{
+        ObjectFqdn, ToObjectDescriptor,
+    };
+    use meta_secret_core::node::db::events::kv_log_event::{KvKey, KvLogEvent};
     use meta_secret_core::node::db::events::local_event::DeviceCredsObject;
     use meta_secret_core::node::db::events::object_id::{ArtifactId, Next};
     use std::clone::Clone;
     use tempfile::tempdir;
-    use meta_secret_core::crypto::key_pair::{KeyPair, TransportDsaKeyPair};
-    use meta_secret_core::node::db::descriptors::creds::DeviceCredsDescriptor;
-    use meta_secret_core::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 
     #[tokio::test]
     async fn test_sqlite_repo_with_migrations_idempotent() -> anyhow::Result<()> {
@@ -178,7 +182,7 @@ mod tests {
             .build(DeviceName::client())
             .creds;
         let master_pk = TransportDsaKeyPair::generate().sk().pk()?;
-        
+
         let secure_device_creds = SecureDeviceCreds::build(device_creds, master_pk)?;
 
         let creds_obj = DeviceCredsObject::from(secure_device_creds);
@@ -220,7 +224,7 @@ mod tests {
             .build(DeviceName::client())
             .creds;
         let master_pk = TransportDsaKeyPair::generate().sk().pk()?;
-        
+
         let secure_device_creds = SecureDeviceCreds::build(device_creds, master_pk)?;
 
         let creds_desc = DeviceCredsDescriptor;
@@ -237,7 +241,7 @@ mod tests {
             let test_event = creds_obj.to_generic();
 
             repo.save(test_event).await?;
-            
+
             // Verify the event was saved
             let found = repo.find_one(id.clone()).await?;
             assert!(found.is_some(), "Failed to save event {}", i);

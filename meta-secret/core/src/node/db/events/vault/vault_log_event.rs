@@ -1,6 +1,9 @@
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::meta_pass::MetaPasswordId;
-use crate::node::common::model::user::common::{UserData, UserDataMember, UserMembership};
+use crate::node::common::model::secret::ClaimId;
+use crate::node::common::model::user::common::{
+    UserData, UserDataMember, UserDataOutsiderStatus, UserMembership,
+};
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::descriptors::vault_descriptor::VaultLogDescriptor;
 use crate::node::db::events::error::LogEventCastError;
@@ -67,6 +70,24 @@ impl ObjIdExtractor for VaultLogObject {
 pub struct VaultActionEvents {
     pub requests: HashSet<VaultActionRequestEvent>,
     pub updates: HashSet<VaultActionUpdateEvent>,
+    /// Compact terminal JOIN decisions retained after transient updates are
+    /// cleared, so an exact request can receive its result on reconnect.
+    #[serde(default)]
+    pub join_results: HashSet<JoinResultRecord>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum JoinResultOutcome {
+    Accepted,
+    Declined,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JoinResultRecord {
+    pub request: JoinClusterEvent,
+    pub outcome: JoinResultOutcome,
 }
 
 impl VaultActionEvents {
@@ -109,6 +130,26 @@ impl VaultActionEvents {
                 let removed = self.requests.remove(&request);
                 // if corresponding request exists we can apply the update
                 if removed {
+                    let outcome = match &update.update {
+                        UserMembership::Member(member)
+                            if member.user_data == update.request.candidate =>
+                        {
+                            Some(JoinResultOutcome::Accepted)
+                        }
+                        UserMembership::Outsider(outsider)
+                            if outsider.user_data == update.request.candidate
+                                && outsider.status == UserDataOutsiderStatus::Declined =>
+                        {
+                            Some(JoinResultOutcome::Declined)
+                        }
+                        _ => None,
+                    };
+                    if let Some(outcome) = outcome {
+                        self.join_results.insert(JoinResultRecord {
+                            request: update.request.clone(),
+                            outcome,
+                        });
+                    }
                     self.updates.insert(upd_event);
                 } else {
                     info!(
@@ -187,11 +228,24 @@ pub struct CreateVaultEvent {
     pub owner: UserDataMember,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, From, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(getter_with_clone)]
 pub struct JoinClusterEvent {
     pub candidate: UserData,
+    /// Core-generated identifier for this JOIN attempt. Empty only when
+    /// deserializing historical events written before request-scoped SSE.
+    #[serde(default)]
+    pub request_id: String,
+}
+
+impl From<UserData> for JoinClusterEvent {
+    fn from(candidate: UserData) -> Self {
+        Self {
+            candidate,
+            request_id: uuid::Uuid::new_v4().to_string(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -252,6 +306,10 @@ pub struct RemoveMemberEvent {
 pub struct RemoveMemberShareTransfer {
     pub pass_id: MetaPasswordId,
     pub receiver: DeviceId,
+    /// Split claim generation that owns the encrypted input share. Optional
+    /// only for decoding removal events written before generation binding.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claim_id: Option<ClaimId>,
     pub encrypted_share: String,
 }
 
@@ -384,6 +442,7 @@ mod test {
 
         let join_request = JoinClusterEvent {
             candidate: client_creds.user(),
+            request_id: "request-test".into(),
         };
         let event =
             VaultActionEvent::Request(VaultActionRequestEvent::JoinCluster(join_request.clone()));
@@ -406,5 +465,36 @@ mod test {
         assert_eq!(with_update_vault_request.updates.len(), 1);
 
         Ok(())
+    }
+
+    #[test]
+    fn terminal_join_result_survives_completion_and_legacy_deserialization() {
+        let fixture = FixtureRegistry::empty();
+        let candidate = fixture.state.user_creds.vd.user();
+        let sender = UserDataMember::from(fixture.state.user_creds.client.user());
+        let request = JoinClusterEvent {
+            candidate: candidate.clone(),
+            request_id: "terminal-record-test".into(),
+        };
+        let pending = VaultActionEvents::default()
+            .request(VaultActionRequestEvent::JoinCluster(request.clone()));
+        let terminal = pending.apply(VaultActionUpdateEvent::UpdateMembership(
+            UpdateMembershipEvent {
+                request: request.clone(),
+                sender,
+                update: UserMembership::Member(UserDataMember {
+                    user_data: candidate,
+                }),
+            },
+        ));
+
+        assert_eq!(terminal.join_results.len(), 1);
+        let completed = terminal.complete();
+        assert!(completed.updates.is_empty());
+        assert_eq!(completed.join_results.len(), 1);
+
+        let decoded: VaultActionEvents =
+            serde_json::from_str(r#"{"requests":[],"updates":[]}"#).unwrap();
+        assert!(decoded.join_results.is_empty());
     }
 }

@@ -47,11 +47,7 @@ impl StateEventsSubscription {
     pub const TOKEN_TTL_SECS: u64 = 300;
     pub const CLOCK_SKEW_SECS: u64 = 30;
 
-    pub fn sign(
-        vault_name: VaultName,
-        signer: DeviceId,
-        key_pair: &DsaKeyPair,
-    ) -> Result<Self> {
+    pub fn sign(vault_name: VaultName, signer: DeviceId, key_pair: &DsaKeyPair) -> Result<Self> {
         Self::sign_at(vault_name, signer, key_pair, unix_time_secs()?)
     }
 
@@ -74,9 +70,8 @@ impl StateEventsSubscription {
             nonce,
             signature: Base64Text::from(""),
         };
-        subscription.signature = key_pair.sign(String::from_utf8(
-            subscription.unsigned_canonical_bytes()?,
-        )?);
+        subscription.signature =
+            key_pair.sign(String::from_utf8(subscription.unsigned_canonical_bytes()?)?);
         Ok(subscription)
     }
 
@@ -112,10 +107,7 @@ impl StateEventsSubscription {
     }
 
     pub fn from_bearer_token(token: &str) -> Result<Self> {
-        let encoded = token
-            .strip_prefix("Bearer ")
-            .unwrap_or(token)
-            .trim();
+        let encoded = token.strip_prefix("Bearer ").unwrap_or(token).trim();
         if encoded.is_empty() {
             bail!("state events bearer token is empty");
         }
@@ -149,7 +141,7 @@ pub fn unix_time_secs() -> Result<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crypto::key_pair::{KeyPair, DsaKeyPair};
+    use crate::crypto::key_pair::{DsaKeyPair, KeyPair};
     use crate::crypto::utils::U64IdUrlEnc;
     use crate::node::common::model::vault::vault::VaultName;
 

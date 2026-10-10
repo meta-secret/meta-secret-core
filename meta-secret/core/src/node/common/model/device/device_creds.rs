@@ -1,5 +1,7 @@
 use crate::crypto::encoding::base64::Base64Text;
-use crate::crypto::keys::{KeyManager, OpenBox, SecretBox, SecureSecretBox, TransportPk, TransportSk};
+use crate::crypto::keys::{
+    KeyManager, OpenBox, SecretBox, SecureSecretBox, TransportPk, TransportSk,
+};
 use crate::node::common::model::crypto::aead::AeadPlainText;
 use crate::node::common::model::crypto::channel::CommunicationChannel;
 use crate::node::common::model::device::common::{DeviceData, DeviceName, DeviceType};
@@ -20,13 +22,12 @@ impl SecureDeviceCreds {
         let secret_box_json_str = String::try_from(&secret_box_plain_text.msg)?;
 
         let device_creds: DeviceCreds = serde_json::from_str(&secret_box_json_str)?;
-        
+
         Ok(device_creds)
     }
 }
 
 impl SecureDeviceCreds {
-    
     pub fn build(device_creds: DeviceCreds, master_pk: TransportPk) -> Result<Self> {
         let device_creds_json = serde_json::to_string(&device_creds)?;
         let channel = CommunicationChannel::single_device(master_pk).to_channel();
@@ -84,7 +85,8 @@ impl DeviceCredsBuilder<KeyManager> {
         device_type: DeviceType,
     ) -> DeviceCredsBuilder<DeviceCreds> {
         let secret_box = SecretBox::from(&self.creds);
-        let device = DeviceData::from_with_type(device_name, device_type, OpenBox::from(&secret_box));
+        let device =
+            DeviceData::from_with_type(device_name, device_type, OpenBox::from(&secret_box));
         let creds = DeviceCreds { secret_box, device };
 
         DeviceCredsBuilder { creds }
@@ -159,24 +161,24 @@ mod tests {
         // Use fixture data for consistency
         let empty_registry = FixtureRegistry::empty();
         let device_creds = empty_registry.state.device_creds.client.clone();
-        
+
         // Generate a new key pair for the test - don't reuse fixture keys
         let key_pair = TransportDsaKeyPair::generate();
         let master_pk = key_pair.pk();
         let master_sk = key_pair.sk();
-        
+
         // Build (encrypt)
         let secure_device_creds = SecureDeviceCreds::build(device_creds.clone(), master_pk)?;
-        
+
         // Verify device data is preserved
         assert_eq!(secure_device_creds.device, device_creds.device);
-        
+
         // Decrypt
         let decrypted_creds = secure_device_creds.decrypt(&master_sk)?;
-        
+
         // Verify full equality works after fixed implementation
         assert_eq!(decrypted_creds, device_creds);
-        
+
         Ok(())
     }
 
@@ -185,17 +187,17 @@ mod tests {
         // Generate key pairs for test
         let key_pair = TransportDsaKeyPair::generate();
         let master_pk = key_pair.pk();
-        
+
         let wrong_key_pair = TransportDsaKeyPair::generate();
         let wrong_sk = wrong_key_pair.sk();
-        
+
         // Use fixture data
         let empty_registry = FixtureRegistry::empty();
         let device_creds = empty_registry.state.device_creds.client.clone();
-        
+
         // Create secure device credentials using first key
         let secure_device_creds = SecureDeviceCreds::build(device_creds, master_pk).unwrap();
-        
+
         // Attempt to decrypt with wrong key - should fail
         let decrypt_result = secure_device_creds.decrypt(&wrong_sk);
         assert!(decrypt_result.is_err());

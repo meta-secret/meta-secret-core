@@ -1,6 +1,6 @@
 use flume::{Drain, Receiver, RecvError, Sender};
 use std::fmt::Debug;
-use tracing::{instrument, Instrument};
+use tracing::{Instrument, instrument};
 
 pub struct MpscDataTransfer<Request, Response> {
     pub service_channel: MpscServiceChannel<Request>,

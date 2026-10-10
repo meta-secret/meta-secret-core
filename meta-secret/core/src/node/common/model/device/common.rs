@@ -4,8 +4,8 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::crypto::keys::OpenBox;
 use crate::crypto::utils::{U64IdUrlEnc, UuidUrlEnc};
-use crate::node::common::model::device::device_link::LoopbackDeviceLink;
 use crate::node::common::model::IdString;
+use crate::node::common::model::device::device_link::LoopbackDeviceLink;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -202,7 +202,11 @@ pub struct DeviceData {
 
 /// Contains only public information about device
 impl DeviceData {
-    pub fn from_with_type(device_name: DeviceName, device_type: DeviceType, open_box: OpenBox) -> Self {
+    pub fn from_with_type(
+        device_name: DeviceName,
+        device_type: DeviceType,
+        open_box: OpenBox,
+    ) -> Self {
         Self {
             device_name,
             device_type,
@@ -225,7 +229,7 @@ impl DeviceData {
 
 #[cfg(test)]
 mod tests {
-    use super::{device_ui_category, DeviceData, DeviceType, DeviceUiCategory};
+    use super::{DeviceData, DeviceType, DeviceUiCategory, device_ui_category};
     use serde_json::json;
 
     #[test]
@@ -276,8 +280,14 @@ mod tests {
             device_ui_category(&DeviceType::desktop()),
             DeviceUiCategory::Desktop
         );
-        assert_eq!(device_ui_category(&DeviceType::cli()), DeviceUiCategory::Cli);
-        assert_eq!(device_ui_category(&DeviceType::web()), DeviceUiCategory::Web);
+        assert_eq!(
+            device_ui_category(&DeviceType::cli()),
+            DeviceUiCategory::Cli
+        );
+        assert_eq!(
+            device_ui_category(&DeviceType::web()),
+            DeviceUiCategory::Web
+        );
         assert_eq!(
             device_ui_category(&DeviceType::other()),
             DeviceUiCategory::Other

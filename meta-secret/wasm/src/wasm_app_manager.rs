@@ -79,6 +79,13 @@ impl WasmApplicationManager {
             .map_err(|error| JsError::new(&error.to_string()).into())
     }
 
+    pub async fn join_result_auth_token(&self) -> Result<String, JsValue> {
+        self.app_manager
+            .join_result_auth_token()
+            .await
+            .map_err(|error| JsError::new(&error.to_string()).into())
+    }
+
     pub async fn sync_now(&self) -> Result<(), JsValue> {
         match self.app_manager.sync_now().await {
             Ok(()) => Ok(()),

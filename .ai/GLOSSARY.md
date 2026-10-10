@@ -44,7 +44,8 @@ Unified vocabulary for meta-secret-core Rust backend. All communication (AI, cod
 | **First-Response-Wins** | The first receiver decision processed by the server determines the recovery claim outcome | Recovery consensus | First decline blocks reveal; first approve permits recovery; late opposite action is ignored |
 | **Membership-Change Invalidation** | Accepting a new vault member invalidates pending recovery claims created for the previous membership set; pending receiver statuses become `Declined` | Recovery + membership synchronization | The new member receives a redistributed `Split` claim, not the stale `Recover` request |
 | **Distribution Type** | Enum: `Split` (share) or `Recover` (combine shares) | Claim type | Sets claim behavior |
-| **Resharing** | Recreating the current Key Shares after a membership change. For 2→3 devices it converts full copies into three new Key Shares. For 3→2, the removal approver combines its own Key Share with the initiator's Encrypted Key Share and converts them into two full replicas | Vault ops | Every remaining device keeps only its own new Key Share |
+| **Resharing** | Recreating the current Key Shares after a membership change. For 2→3 devices it converts full copies into three new Key Shares. For 3→2, only the removal approver combines its own Key Share with the initiator's Encrypted Key Share and creates two new full replicas. A retry is allowed only on the approver and only when every request transfer recovers with its current local Key Share. The initiator must not independently generate a second random share set from the same inputs. Removal can be skipped only when both receiver topology and the decrypted local share threshold match the target generation. | Vault ops | Every remaining device keeps only its own new Key Share from one generation |
+| **Share Generation** | One Split claim and the encrypted shares it creates for a particular accepted membership change. A returning device ID starts a new generation; an old receiver entry does not satisfy the new join. The stable `(Pass ID, receiver Device ID)` workflow contains the latest share, while the claim ID identifies which generation that share belongs to. | Resharing + sync | Rejoining device receives a fresh share under the new join request's claim |
 | **Key Rotation** | Changing all shares after security concern (k may change) | Vault ops | Full regeneration of SSS |
 
 ---
@@ -91,9 +92,10 @@ Unified vocabulary for meta-secret-core Rust backend. All communication (AI, cod
 |------|-----------|---------|---------|
 | **Claim Message** | Protocol message sent over socket: claim announcement + device response | Communication | `SocketAction` variant |
 | **State Events Stream** | Authenticated Server-Sent Events stream used only to signal that canonical state should be refreshed. It is not a state or Secret transport. | Runtime | `/state-events?vaultName=...` |
-| **Socket Event** | Message from the state-events stream indicating a claim/Vault update | Event handling | Triggers a Core `getAppState` refresh |
+| **Socket Event** | Message from the state-events stream indicating a claim/Vault update | Event handling | Web syncs the server event log, then refreshes Core state; mobile refreshes after its normal socket sync |
 | **Subscription Credential** | Bearer-encoded `State Events Subscription` signed by the device DSA key and checked against current Vault membership | Authentication | Refreshed on each reconnect |
 | **Reconnect Sync** | Explicit client sync that uploads locally queued workflow events before refreshing canonical vault state after connectivity returns | Offline recovery | Web `sync_now()` on the browser `online` event |
+| **Invalidation Sync** | Serialized Web `sync_now()` before `get_state()` after an authenticated server invalidation, applying remote server events to the local event log before rendering the refreshed state | State Events | Web processes a `Devices` invalidation, syncs, then refreshes the device list |
 | **Node Orchestration** | Server logic coordinating device responses for claims | Server logic | Waits for quorum, confirms delivery |
 | **Broadcast** | Sending message to all devices in vault (or subset) | Communication | Announce new claim |
 | **Unicast** | Sending message to single device | Communication | Device-specific response |
@@ -111,6 +113,7 @@ Unified vocabulary for meta-secret-core Rust backend. All communication (AI, cod
 | **VaultData** | Persistent vault record: name, members, shares, passes | Storage | Serialized to DB |
 | **Share Record** | Stored Key Share record: Claim ID + Encrypted Key Share + device target | Storage | Per-device, one per Vault |
 | **Local Share Retention** | A device retains its own Key Share. Encrypted outbound copies for other devices are temporary local workflows and are deleted after successful server upload | Storage security | A 3-device sender cannot keep or decrypt B/C shares after sync |
+| **Join Reshare Idempotency** | Reprocessing an already accepted join recognizes the receiver's distribution when it matches the current sender claim generation and skips another random split | Membership redistribution | The immediate approval path and later sync reconciliation do not produce competing polynomials |
 | **Single-device Claim Canonicalization** | After a `2 → 1` removal, Core assigns every surviving `Split` claim to the sole remaining device and clears removed receivers/statuses. The local `k=1` Key Share is unchanged. | Membership redistribution | A later Join redistributes Secrets even when they were originally created by a removed device |
 | **Pass Record** | Stored secret: ID, name, type, creation metadata | Storage | Encrypted at rest |
 | **Claim Record** | Stored claim: ID, type, targets, status per device, created at | Storage | Audit trail |

@@ -732,6 +732,7 @@ mod test {
         let target_transfer = RemoveMemberShareTransfer {
             pass_id: MetaPasswordId::build_from_str("removal-transfer"),
             receiver: c.user_data.device.device_id.clone(),
+            claim_id: None,
             encrypted_share: "ciphertext".to_string(),
         };
         assert!(

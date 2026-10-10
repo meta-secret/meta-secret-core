@@ -70,6 +70,10 @@ pub fn state_events_auth_token(vault_name: String) -> String {
     json_api::state_events_auth_token(vault_name)
 }
 
+pub fn join_result_auth_token() -> String {
+    json_api::join_result_auth_token()
+}
+
 pub fn generate_user_creds(vault_name: String) -> String {
     json_api::generate_user_creds(vault_name)
 }
@@ -150,6 +154,15 @@ mod device_ui_category_ffi_tests {
             device_ui_category_discriminant("unknown-thing".to_string()),
             6
         );
+    }
+}
+
+#[cfg(test)]
+mod join_result_ffi_contract_tests {
+    #[test]
+    fn udl_exports_join_result_auth_token() {
+        let udl = include_str!("mobile_uniffi.udl");
+        assert!(udl.contains("string join_result_auth_token();"));
     }
 }
 

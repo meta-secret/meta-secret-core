@@ -198,6 +198,10 @@ impl MobileApplicationManager {
         self.app_manager.state_events_auth_token(vault_name).await
     }
 
+    pub async fn join_result_auth_token(&self) -> anyhow::Result<String> {
+        self.app_manager.join_result_auth_token().await
+    }
+
     pub async fn generate_user_creds(
         &self,
         vault_name: VaultName,

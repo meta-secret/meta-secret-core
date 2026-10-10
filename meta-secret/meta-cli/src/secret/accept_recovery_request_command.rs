@@ -1,5 +1,5 @@
 use crate::base_command::BaseCommand;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use meta_secret_core::crypto::utils::Id48bit;
 use meta_secret_core::node::common::model::secret::{ClaimId, SecretDistributionType};
 use meta_secret_core::node::common::model::{ApplicationState, IdString, VaultFullInfo};
@@ -67,6 +67,9 @@ impl AcceptRecoveryRequestCommand {
                             info!("Accepting the recovery request");
 
                             client.accept_recover(claim_id).await?;
+                            // accept_recover queues a local workflow. Flush it before
+                            // reporting success so other members can observe the decision.
+                            client.get_app_state().await?;
 
                             println!(
                                 "Recovery request for password '{}' accepted successfully",

@@ -16,6 +16,7 @@ Mandatory architectural rules for the Rust backend cryptography and protocol imp
 | **Redistribution** | Required on every device add/remove | Vault ops |
 | **Approval Required** | JOIN, RESTORE SECRET, and `3 → 2` DELETE DEVICE need a different-device biometric signature; `2 → 1` uses local confirmation | Consensus |
 | **Resharing** | Join resharing is finalized before membership; removal resharing is retryable after the signed removal update and never targets the removed device | Transactions |
+| **Join Reshare Idempotency** | If a join was already reshared and the current sender claim plus the joining device's distribution identify the same active generation, repeat reconciliation must skip; it must not create another random polynomial for the same membership transition | Transactions / Security |
 | **No Server Plaintext Storage** | The server never stores plaintext Master Keys, Key Shares, or Secrets. It may temporarily queue an Encrypted Key Share while delivery/synchronization is pending, then remove it after delivery. | E2E principle |
 | **Self-Removal** | A device cannot remove itself. With 2 devices, the initiator may remove the other after local confirmation; `1 → 0` remains forbidden. | Safety |
 | **Recovery Status Ownership** | Core alone computes recovery lifecycle and `clientStatus`; UI only executes the resulting instruction | Recovery |
@@ -47,6 +48,11 @@ a recovery is active, ready, declined, or complete.
   because it has no recovery claim.
 - `Done` is emitted only after the sender has recovered the secret and the
   completion has been persisted. Receivers close recovery alerts only then.
+- Every client, including CLI, must send the Core-signed recovery completion
+  for the exact accepted claim after successfully recovering the Secret and
+  before reporting reveal success. A local `Delivered` status alone is not
+  completion; the sender must receive a successful server response so the
+  server can persist the terminal status and invalidate member state.
 - A receiver that has already approved or declined has no further action until
   completion; this is represented by no client instruction (`None`).
 - Recovery uses first-response-wins ordering: the first receiver decision
@@ -101,11 +107,41 @@ not an application-state API:
 - Missing, malformed, expired, future-dated, cross-Vault, outsider, and
   cross-device credentials are rejected before the stream is created.
 - SSE payloads contain only opaque invalidation metadata (Vault, scope, revision).
-  Web and mobile clients call Core `getAppState` after a signal.
+  Web clients run serialized `sync_now` before Core `getAppState` after a server
+  invalidation so remote events are applied to their local event log. Mobile
+  clients call Core `getAppState` after a signal because their normal
+  synchronization path already reconciles server events.
 - Web and mobile clients request a fresh credential on every connection and
   reconnect. For current members, artificial sleeps and polling loops must not
-  replace the stream. A pending joiner is not yet a member and keeps the
-  existing status-refresh fallback until membership is granted.
+  replace the stream.
+
+### 1.0.3 Request-Scoped JOIN Result Stream
+
+Pending JOIN devices use a separate `/join-events` SSE stream. Core creates a
+random UUID when persisting each JOIN request, carries that UUID into its
+membership decision, and signs a short-lived result credential bound to the
+Vault, candidate device, request UUID, and candidate DSA public key. The server
+authenticates signature and expiry before reading Vault state, then checks the
+public key against canonical candidate state and authorizes only the exact
+pending request or its compact terminal result record in VaultLog. That record
+contains the exact JOIN event and accepted/declined outcome, survives cleanup
+of transient updates, and defaults empty when an older VaultLog is read. A stale
+credential cannot observe a later JOIN retry.
+
+The stream contains only `{requestId, outcome}` (`accepted` or `declined`), then
+closes. Clients perform one canonical Core refresh after receiving it. Result
+events are filtered by Vault and request UUID; the receiver is attached before
+the canonical status check so a decision racing stream setup is not lost.
+Decision application requires the exact request to remain pending, so the first
+serialized server decision wins and an opposite late decision cannot rewrite
+membership.
+
+Historical JOIN events without a request UUID continue to deserialize and
+participate in existing approval processing, but cannot authorize `/join-events`.
+New clients surface that compatibility limitation and let the user recreate the
+JOIN request after it becomes terminal. They must not silently fall back to
+polling. Browser clients must send the credential in an `Authorization` header
+using fetch streaming; secrets must not be placed in the URL.
 
 ### 1.1 K-of-N Principle (Adaptive Sharing)
 
@@ -488,6 +524,16 @@ new share.
    - Keep remote Encrypted Key Shares only as temporary outbound workflows
    - Send each new share to its target device
    - Each device REPLACES old share/copy with its own new share
+   - A membership generation is identified by the claim ID. A repeated join
+     request for the same device is a new generation; device presence in an old
+     receiver list or an old `(pass, receiver)` workflow does not mean the new
+     request was already distributed. Join reconciliation is idempotent only
+     when the stored workflow references that request's generation claim.
+   - The current share remains addressable at the stable `(pass, receiver)`
+     descriptor. The server may replace an existing descriptor sequence only
+     when the signed payload names the sender's latest Split claim for that
+     pass and that claim still marks the receiver `Pending`. Replays from an
+     older claim or terminal receiver status remain rejected.
    - After the server accepts an outbound workflow, delete that remote share from
      the sender's local database
    - The sender retains only its own local share; it must not retain other devices'
@@ -499,10 +545,20 @@ new share.
   `k=1,n=2` Key Shares only for the two remaining members.
 - Core completes this resharing before the accepted removal workflow can be
   synchronized as complete. A synchronization failure is propagated and the
-  pending Core workflow remains retryable; clients do not maintain a separate
-  offline command queue.
+  pending Core workflow remains retryable only by the approving device, and
+  only after every request transfer recovers with that approver's current local
+  share. VaultLog updates have no chronological order, so retry selection must
+  validate share compatibility instead of choosing an arbitrary retained event.
+  The initiator must not independently re-split the same request shares:
+  SSS re-splitting is randomized and would create a different share generation.
+  Clients do not maintain a separate offline command queue.
 - The removed device is never a distribution target and is reset to
   `Outsider/Declined` on reconnect.
+- A removal reshare is complete for a remaining device only when both its
+  current receiver topology and the decrypted local share threshold match the
+  target generation. Receiver count alone must never skip resharing: the
+  two-member post-removal state requires `k=1`, so a retained `k=2` share must
+  be regenerated before a later join can produce a new `k=2` generation.
 
 ### 3.3 Recovery Rules Per Device Count
 

@@ -4,10 +4,10 @@ use crate::template_manager::TemplateManager;
 use anyhow::Result;
 use meta_db_redb::CRATE_PKG_VERSION as DB_PKG_VERSION;
 use meta_secret_core::node::common::model::secret::SsDistributionStatus;
-use meta_server_node::CRATE_PKG_VERSION as SERVER_PKG_VERSION;
 use meta_secret_core::node::common::model::user::common::UserMembership;
 use meta_secret_core::node::common::model::{ApplicationState, IdString, VaultFullInfo};
 use meta_secret_core::node::db::events::vault::vault_log_event::VaultActionRequestEvent;
+use meta_server_node::CRATE_PKG_VERSION as SERVER_PKG_VERSION;
 use serde_json::json;
 use tera::Context;
 
@@ -154,7 +154,9 @@ impl InfoCommandTrait for DefaultInfoCommand {
                             }));
                         }
 
-                        let client_status = ss_claim.client_status.as_ref()
+                        let client_status = ss_claim
+                            .client_status
+                            .as_ref()
                             .map(|s| format!("{:?}", s))
                             .unwrap_or_else(|| "N/A".to_string());
 

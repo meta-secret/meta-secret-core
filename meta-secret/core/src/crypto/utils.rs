@@ -1,8 +1,8 @@
 use crate::crypto::encoding::base64::Base64Text;
 use crate::node::common::model::IdString;
 use derive_more::From;
-use rand::rngs::OsRng;
 use rand::TryRngCore;
+use rand::rngs::OsRng;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -173,9 +173,11 @@ mod tests {
             sha256_hex("master-key-test-value"),
             "7d5b81f34d920a2a847a2b0b3e673cb369268e6a010605d59a19be660a8d83db"
         );
-        assert!(sha256_hex("master-key-test-value")
-            .chars()
-            .all(|character| character.is_ascii_hexdigit() && !character.is_ascii_uppercase()));
+        assert!(
+            sha256_hex("master-key-test-value")
+                .chars()
+                .all(|character| character.is_ascii_hexdigit() && !character.is_ascii_uppercase())
+        );
     }
 
     #[test]

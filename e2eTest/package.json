@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "clean-space": "node clean-ui-e2e-space.mjs",
     "test-1": "node Test1/orchestrator.mjs",
     "test-2": "node Test2/orchestrator.mjs",
     "test-3": "node Test3/orchestrator.mjs",
@@ -128,6 +129,7 @@
     ,"test-48:run": "node Test48/orchestrator.mjs --exit-on-success"
     ,"test-49": "node Test49/orchestrator.mjs"
     ,"test-49:run": "node Test49/orchestrator.mjs --exit-on-success"
+    ,"test-range": "node run-ui-e2e-range.mjs"
   },
   "dependencies": {
     "playwright": "^1.61.0"

@@ -574,6 +574,7 @@ mod tests {
         // Test save_vault_log_events by creating a join request event
         let join_request = JoinClusterEvent {
             candidate: user.clone(),
+            request_id: "first-request".into(),
         };
         let new_events = VaultActionEvents::default()
             .request(VaultActionRequestEvent::JoinCluster(join_request));
@@ -587,17 +588,17 @@ mod tests {
         assert_eq!(updated_log.0.value.requests.len(), 1);
 
         // Test save_vault_log_request_event by adding another join request
-        // Note: This creates an identical request to the one we already added
+        // A retry is a distinct request and receives a distinct request ID.
         let join_request2 = JoinClusterEvent {
             candidate: user.clone(),
+            request_id: "second-request".into(),
         };
         let request_event = VaultActionRequestEvent::JoinCluster(join_request2);
         p_vault.save_vault_log_request_event(request_event).await?;
 
-        // Verify that the request count doesn't change
-        // VaultActionEvents.requests is a HashSet, so identical requests are deduplicated
+        // Verify that a fresh request has its own identity.
         let final_log = p_vault.get_vault_log_artifact(user.vault_name()).await?;
-        assert_eq!(final_log.0.value.requests.len(), 1);
+        assert_eq!(final_log.0.value.requests.len(), 2);
 
         Ok(())
     }

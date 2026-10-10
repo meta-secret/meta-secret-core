@@ -20,6 +20,12 @@ matrix (9 cycles). In every recovery both receivers expose the pending request,
 the selected approver accepts it, the observer loses the request, and the
 sender reveals the exact synthetic value and closes the dialog.
 
+After all cycle 18 actors finish, the shared runner opens a fresh Web page in
+the same browser context, migrates the passkey, and verifies the two existing
+Secrets before closing the previous page. Web then creates Secret3. This
+earlier completed boundary avoids retaining the original renderer until cycle
+21; the existing cycle 21 recycle and all recovery assertions remain.
+
 The resulting 27-cycle matrix gives each platform nine sender, nine approver,
 and nine observer roles. There is no direct-Show phase, fixed sleep, `slowMo`,
 or weakened assertion.

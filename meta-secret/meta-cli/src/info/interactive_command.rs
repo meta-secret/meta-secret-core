@@ -6,7 +6,7 @@ use crate::info::recovery_claims_command::RecoveryClaimsInfoCommand;
 use crate::info::secrets_command::SecretsInfoCommand;
 use crate::info::vault_events_command::VaultEventsInfoCommand;
 use anyhow::Result;
-use dialoguer::{theme::ColorfulTheme, Select};
+use dialoguer::{Select, theme::ColorfulTheme};
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter};
 

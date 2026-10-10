@@ -21,7 +21,6 @@
   },
   "recovery": {
     "showTimeoutMs": 45000,
-    "pauseMs": 2000,
     "groups": [
       { "approver": "web", "count": 6 },
       { "approver": "ios", "count": 6 },
@@ -29,7 +28,7 @@
     ]
   },
   "vault": {
-    "name": "test@test.ru"
+    "name": "test3@test.ru"
   },
   "secret": {
     "name": "test-secret",

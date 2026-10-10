@@ -21,6 +21,14 @@ use wasm_bindgen::prelude::wasm_bindgen;
 #[wasm_bindgen(getter_with_clone)]
 pub struct ClaimId(pub Id48bit);
 
+#[wasm_bindgen]
+impl ClaimId {
+    /// Stable opaque identifier for authorized E2E correlation and UI labels.
+    pub fn wasm_id_str(&self) -> String {
+        self.0.clone().id_str()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SsDistributionId {
@@ -358,7 +366,10 @@ impl SsLogData {
         match accepted.as_slice() {
             [] => Ok(None),
             [claim_id] => Ok(Some(claim_id.clone())),
-            _ => bail!("ambiguous accepted recovery claims for pass: {}", pass_id.name),
+            _ => bail!(
+                "ambiguous accepted recovery claims for pass: {}",
+                pass_id.name
+            ),
         }
     }
 
@@ -385,7 +396,10 @@ impl SsLogData {
         match accepted.as_slice() {
             [] => Ok(None),
             [claim_id] => Ok(Some(claim_id.clone())),
-            _ => bail!("ambiguous accepted recovery claims for sender and pass: {}", pass_id.name),
+            _ => bail!(
+                "ambiguous accepted recovery claims for sender and pass: {}",
+                pass_id.name
+            ),
         }
     }
 
@@ -412,7 +426,10 @@ impl SsLogData {
         match active.as_slice() {
             [] => Ok(None),
             [claim_id] => Ok(Some(claim_id.clone())),
-            _ => bail!("ambiguous active recovery claims for pass: {}", pass_id.name),
+            _ => bail!(
+                "ambiguous active recovery claims for pass: {}",
+                pass_id.name
+            ),
         }
     }
 
@@ -1103,7 +1120,10 @@ mod test {
             .insert(split_claim)
             .decline_pending_recovery_claims();
 
-        let recovery = declined.claims.get(&recovery_id).expect("recovery claim is retained");
+        let recovery = declined
+            .claims
+            .get(&recovery_id)
+            .expect("recovery claim is retained");
         assert!(matches!(
             recovery.status.get(&receiver_a),
             Some(SsDistributionStatus::Declined)
@@ -1113,7 +1133,10 @@ mod test {
             Some(SsDistributionStatus::Declined)
         ));
 
-        let split = declined.claims.get(&split_id).expect("split claim is retained");
+        let split = declined
+            .claims
+            .get(&split_id)
+            .expect("split claim is retained");
         assert!(matches!(
             split.status.get(&receiver_a),
             Some(SsDistributionStatus::Pending)
@@ -1154,8 +1177,8 @@ mod test {
         // The same merge rule preserves an earlier approval from a late stale snapshot.
         let (approved_claim, approved_claim_id) =
             make_recover_claim(sender.clone(), receivers.clone());
-        let approved = SsLogData::new(approved_claim)
-            .sent(approved_claim_id.clone(), receiver_a.clone());
+        let approved =
+            SsLogData::new(approved_claim).sent(approved_claim_id.clone(), receiver_a.clone());
         let (stale_snapshot, _) = make_recover_claim(sender, receivers);
         let merged_approved = approved.merge_claim_update(stale_snapshot);
         let approved_claim = merged_approved
@@ -1621,7 +1644,8 @@ mod test {
         let log = SsLogData::new(claim);
 
         assert_eq!(
-            log.find_unique_active_recovery_claim_id(&sender, &pass_id).unwrap(),
+            log.find_unique_active_recovery_claim_id(&sender, &pass_id)
+                .unwrap(),
             Some(claim_id),
             "a pending sender claim must be reused instead of creating a second recovery request"
         );
@@ -1676,7 +1700,8 @@ mod test {
             .with_client_status(&sender);
 
         assert!(
-            log.find_unique_accepted_recovery_claim_id(&pass_id).is_err(),
+            log.find_unique_accepted_recovery_claim_id(&pass_id)
+                .is_err(),
             "multiple Accepted recovery claims must fail safely instead of depending on HashMap order"
         );
     }

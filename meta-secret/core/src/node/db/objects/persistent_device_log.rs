@@ -28,6 +28,24 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
         let obj_desc = DeviceLogDescriptor::from(user_id.clone());
         self.p_obj.find_tail_id_by_obj_desc(obj_desc.clone()).await
     }
+
+    /// Return the latest locally persisted JOIN request for this exact user.
+    /// The Core-generated request ID lets a pending joiner subscribe to that
+    /// attempt and prevents an old credential observing a later rejoin.
+    pub async fn latest_join_request(&self, user: &UserData) -> Result<Option<JoinClusterEvent>> {
+        let events = self
+            .p_obj
+            .get_object_events_from_beginning(DeviceLogDescriptor::from(user.user_id()))
+            .await?;
+        Ok(events.into_iter().rev().find_map(|object| {
+            let VaultActionEvent::Request(VaultActionRequestEvent::JoinCluster(request)) =
+                object.0.value
+            else {
+                return None;
+            };
+            (request.candidate == *user).then_some(request)
+        }))
+    }
 }
 
 impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {

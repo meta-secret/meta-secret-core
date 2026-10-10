@@ -1,10 +1,13 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { updateReadinessReport } from '../shared/platform-supervisor.mjs';
 
 const coreRoot = resolve(fileURLToPath(new URL('../../meta-secret', import.meta.url)));
 const serverUrl = 'http://127.0.0.1:3000';
+const readinessParticipants = ['CLI/Core + local HTTP server', 'isolated local HTTP server'];
 let serverProcess;
 let serverTempDir;
 
@@ -87,8 +90,58 @@ async function startLocalServer() {
   serverProcess.stdout.on('data', (chunk) => process.stdout.write(`[meta-server] ${chunk}`));
   serverProcess.stderr.on('data', (chunk) => process.stderr.write(`[meta-server] ${chunk}`));
 
-  await waitForHttp(`${serverUrl}/hi`);
+  let onSpawnError;
+  let onEarlyExit;
+  const serverStartFailure = new Promise((_, reject) => {
+    onSpawnError = (error) => reject(new Error(`Local meta-server could not start: ${error.message}`));
+    onEarlyExit = (code, signal) => reject(new Error(
+      `Local meta-server exited before /hi became healthy: exit=${code ?? 'null'} signal=${signal ?? 'null'}`,
+    ));
+    serverProcess.once('error', onSpawnError);
+    serverProcess.once('exit', onEarlyExit);
+  });
+  try {
+    await Promise.race([waitForHttp(`${serverUrl}/hi`), serverStartFailure]);
+  } finally {
+    serverProcess.removeListener('error', onSpawnError);
+    serverProcess.removeListener('exit', onEarlyExit);
+  }
+  updateReadinessReport({
+    platform: 'isolated local HTTP server',
+    checks: { url: serverUrl, healthEndpoint: '/hi', healthy: true },
+    requiredNonPlatformParticipants: readinessParticipants,
+  });
   console.log(`✅ Local meta-server is ready at ${serverUrl}`);
+}
+
+function recordCliReadiness() {
+  const checks = {};
+  for (const [name, executable, args] of [
+    ['cargo', 'cargo', ['--version']],
+    ['sqlite3', 'sqlite3', ['--version']],
+  ]) {
+    const result = spawnSync(executable, args, { encoding: 'utf8' });
+    if (result.error || result.status !== 0) {
+      throw new Error(`Test #20 CLI readiness failed for ${name}: ${result.error?.message ?? result.stderr.trim()}`);
+    }
+    checks[name] = result.stdout.trim().split('\n')[0];
+  }
+  const coreManifest = resolve(coreRoot, 'Cargo.toml');
+  const serverMigration = resolve(
+    coreRoot,
+    'db/sqlite/migrations/2023-04-22-065820_create_commit_log/up.sql',
+  );
+  if (!existsSync(coreManifest) || !existsSync(serverMigration)) {
+    throw new Error('Test #20 CLI readiness failed: Core manifest or server migration is missing');
+  }
+  checks.coreManifest = coreManifest;
+  checks.serverMigration = serverMigration;
+  updateReadinessReport({
+    platform: 'CLI/Core + local HTTP server',
+    checks,
+    requiredNonPlatformParticipants: readinessParticipants,
+  });
+  console.log('✅ Test #20 CLI/Core and local-server prerequisites verified before scenario checks');
 }
 
 async function stopLocalServer() {
@@ -111,6 +164,12 @@ async function runCargoTest(args, label) {
 
 async function main() {
   try {
+    // Test20 declares no native UI apps: its participants are Rust Core, CLI
+    // build tools, sqlite migration, and the isolated local HTTP server.
+    if (await portIsAlreadyUsed()) {
+      throw new Error(`${serverUrl} is already in use; cannot declare Test #20's isolated server ready`);
+    }
+    recordCliReadiness();
     // Keep the existing Core regression and add the real HTTP/server path.
     await runCargoTest(
       [

@@ -1,10 +1,10 @@
 use crate::base_command::BaseCommand;
 use crate::cli_format::CliOutputFormat;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use meta_secret_core::node::common::model::meta_pass::MetaPasswordId;
+use meta_secret_core::node::common::model::secret::SsDistributionId;
 use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
 use meta_secret_core::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
-use meta_secret_core::node::common::model::secret::SsDistributionId;
 use meta_secret_core::recover_from_shares;
 use meta_secret_core::secret::shared_secret::UserShareDto;
 use serde_json::json;
@@ -69,7 +69,10 @@ impl ShowLocalSecretCommand {
                             println!("secret: {}", secret.text);
                             println!("status: success");
                             println!("password_name: {}", pass_id.name);
-                            println!("devices_count: {}", member_info.member.vault.members().len());
+                            println!(
+                                "devices_count: {}",
+                                member_info.member.vault.members().len()
+                            );
                         }
                     }
                 }

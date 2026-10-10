@@ -67,6 +67,7 @@
     ]
   },
   "recovery": {
+    "webPageRefreshAfterCycles": [9, 18],
     "showTimeoutMs": 45000,
     "expectedCycles": 27,
     "expectedRecoveryCycles": 27,

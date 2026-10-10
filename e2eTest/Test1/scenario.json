@@ -1,5 +1,6 @@
 {
   "name": "Test #1 — create vault and show secret on Web",
+  "summary": "Web creates one Vault and one Secret, then opens the Secret; iOS joins and approves six recovery requests, Android approves six, then iOS and Android alternate for six more approvals.",
   "server": {
     "url": "http://127.0.0.1:3000",
     "image": "ghcr.io/meta-secret/meta-secret-core/meta-secret-server:latest",
@@ -21,7 +22,6 @@
   },
   "recovery": {
     "showTimeoutMs": 45000,
-    "pauseMs": 2000,
     "groups": [
       { "approver": "ios", "count": 6 },
       { "approver": "android", "count": 6 },

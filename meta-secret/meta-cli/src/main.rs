@@ -236,7 +236,9 @@ async fn main() -> Result<()> {
                 accept_all_cmd.execute().await?
             }
             AuthCommand::RemoveDevice { device_id } => {
-                RemoveDeviceCommand::new(db_name, device_id).execute().await?
+                RemoveDeviceCommand::new(db_name, device_id)
+                    .execute()
+                    .await?
             }
             AuthCommand::ApproveRemoveDevice { device_id } => {
                 ApproveRemoveDeviceCommand::new(db_name, device_id)

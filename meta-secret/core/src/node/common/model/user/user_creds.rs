@@ -13,7 +13,6 @@ pub struct SecureUserCreds {
 }
 
 impl SecureUserCreds {
-    
     pub fn build(user_creds: UserCreds, master_pk: TransportPk) -> Result<Self> {
         let secure_device_creds = SecureDeviceCreds::build(user_creds.device_creds, master_pk)?;
 

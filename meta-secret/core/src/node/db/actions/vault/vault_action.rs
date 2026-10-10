@@ -46,6 +46,21 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
                 let vault = p_vault.get_vault(action_event.vault_name()).await?;
                 match action_request {
                     VaultActionRequestEvent::JoinCluster(join_event) => {
+                        let pending_request_exists = p_vault
+                            .vault_log(join_event.candidate.vault_name())
+                            .await?
+                            .is_some_and(|log| {
+                                log.0.value.requests.iter().any(|request| {
+                                    matches!(request,
+                                        VaultActionRequestEvent::JoinCluster(pending)
+                                            if pending.candidate.device.device_id
+                                                == join_event.candidate.device.device_id
+                                    )
+                                })
+                            });
+                        if pending_request_exists {
+                            anyhow::bail!("A JOIN request is already pending for this device");
+                        }
                         let candidate = UserDataMember {
                             user_data: join_event.candidate.clone(),
                         };
@@ -126,6 +141,21 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
                     "Removal request is already terminal; ignoring late or duplicate response"
                 );
                 return Ok(());
+            }
+        }
+
+        if let VaultActionUpdateEvent::UpdateMembership(update) = action_update {
+            let pending_request = VaultActionRequestEvent::JoinCluster(update.request.clone());
+            let events = p_vault
+                .get_vault_log_artifact(vault_name.clone())
+                .await?
+                .0
+                .value;
+            if !events.requests.contains(&pending_request) {
+                anyhow::bail!("JOIN request is already terminal or does not match the update");
+            }
+            if update.update.user_data() != update.request.candidate {
+                anyhow::bail!("JOIN decision candidate does not match its request");
             }
         }
 
@@ -452,6 +482,54 @@ mod tests {
             VaultStatus::Member(_) => Ok(()),
             _ => panic!("Expected VaultStatus::Member, got {:?}", status),
         }
+    }
+
+    #[tokio::test]
+    async fn competing_join_decision_cannot_rewrite_terminal_membership() -> Result<()> {
+        let registry = FixtureRegistry::base().await?;
+        let server = &registry.state.server_vault_action.server;
+        let owner = UserDataMember::from(registry.state.empty.user_creds.client.user());
+        let candidate = UserDataMember::from(registry.state.empty.user_creds.vd.user());
+        create_vault(&registry).await?;
+        let request = JoinClusterEvent::from(candidate.user_data.clone());
+        server
+            .do_processing(VaultActionEvent::Request(
+                VaultActionRequestEvent::JoinCluster(request.clone()),
+            ))
+            .await?;
+        server
+            .do_processing(VaultActionEvent::Update(
+                VaultActionUpdateEvent::UpdateMembership(UpdateMembershipEvent {
+                    request: request.clone(),
+                    sender: owner,
+                    update: UserMembership::Member(candidate.clone()),
+                }),
+            ))
+            .await?;
+
+        let stale_decline = VaultActionEvent::Update(VaultActionUpdateEvent::UpdateMembership(
+            UpdateMembershipEvent {
+                request,
+                sender: UserDataMember::from(registry.state.empty.user_creds.client.user()),
+                update: UserMembership::Outsider(UserDataOutsider {
+                    user_data: candidate.user_data.clone(),
+                    status: UserDataOutsiderStatus::Declined,
+                }),
+            },
+        ));
+        let result = server.do_processing(stale_decline).await;
+        let status = PersistentVault::from(server.p_obj.clone())
+            .find(candidate.user_data.clone())
+            .await?;
+        assert!(
+            result.is_err(),
+            "a competing decision must be rejected after the JOIN is terminal"
+        );
+        assert!(
+            matches!(status, VaultStatus::Member(_)),
+            "stale decline must not revoke accepted membership"
+        );
+        Ok(())
     }
 
     #[tokio::test]

@@ -18,6 +18,8 @@ use meta_secret_core::node::common::model::secret::{
     ClaimId, RecoveryClientStatus, SecretDistributionType, SsClaim, SsDistributionId,
     SsDistributionStatus, SsRecoveryId,
 };
+use meta_secret_core::node::db::objects::persistent_device_log::PersistentDeviceLog;
+use meta_secret_core::node::join_events::JoinResultSubscription;
 use meta_secret_core::node::security::sign_recovery_completion;
 use meta_secret_core::node::state_events::StateEventsSubscription;
 
@@ -192,6 +194,16 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
             .bearer_token()
     }
 
+    pub async fn join_result_auth_token(&self) -> Result<String> {
+        let user_creds = self.meta_client_service.find_user_creds().await?;
+        let request = PersistentDeviceLog::from(self.meta_client_service.p_obj.clone())
+            .latest_join_request(&user_creds.user())
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("No local JOIN request exists for this device"))?;
+        let key_manager = user_creds.device_creds.key_manager()?;
+        JoinResultSubscription::sign(&request, &key_manager.dsa)?.bearer_token()
+    }
+
     pub async fn accept_recover_mobile(&self, claim_id: ClaimId) -> Result<()> {
         info!(claim_id = ?claim_id, "accept_recover_mobile: started");
 
@@ -347,7 +359,10 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
         candidate: UserData,
         upd: JoinActionUpdate,
     ) -> Result<()> {
-        let join_request = JoinClusterEvent { candidate };
+        let join_request = JoinClusterEvent {
+            candidate,
+            request_id: String::new(),
+        };
         self.meta_client_service
             .update_membership(join_request, upd)
             .await

@@ -16,7 +16,7 @@ mod wasm_virtual_device;
 use tracing_subscriber::fmt::format::Pretty;
 use tracing_subscriber::fmt::time::UtcTime;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_web::{performance_layer, MakeWebConsoleWriter};
+use tracing_web::{MakeWebConsoleWriter, performance_layer};
 
 #[wasm_bindgen]
 extern "C" {
@@ -41,13 +41,13 @@ pub fn configure() {
 
     // Use a static to track if we've already initialized tracing
     static mut TRACING_INITIALIZED: bool = false;
-    
+
     // Check if tracing has already been initialized
     unsafe {
         if TRACING_INITIALIZED {
             return;
         }
-        
+
         let fmt_layer = tracing_subscriber::fmt::layer()
             .with_ansi(false) // Only partially supported across browsers
             .with_timer(UtcTime::rfc_3339()) // std::time is not available in browsers, see note below
@@ -59,9 +59,11 @@ pub fn configure() {
         if tracing_subscriber::registry()
             .with(fmt_layer)
             .with(perf_layer)
-            .try_init().is_ok() {
-                TRACING_INITIALIZED = true;
-            }
+            .try_init()
+            .is_ok()
+        {
+            TRACING_INITIALIZED = true;
+        }
     }
 }
 

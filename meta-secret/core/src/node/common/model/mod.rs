@@ -6,9 +6,7 @@ use crate::node::common::model::secret::{
 use crate::node::common::model::user::common::{UserData, UserDataOutsider};
 use crate::node::common::model::vault::vault::VaultMember;
 use crate::node::common::model::vault::vault_data::WasmVaultData;
-use crate::node::db::events::vault::vault_log_event::{
-    VaultActionEvents, VaultActionRequestEvent,
-};
+use crate::node::db::events::vault::vault_log_event::{VaultActionEvents, VaultActionRequestEvent};
 use wasm_bindgen::prelude::wasm_bindgen;
 
 pub mod crypto;
@@ -213,7 +211,8 @@ impl WasmUserMemberFullInfo {
         &self,
         pass_id: &MetaPasswordId,
     ) -> Option<ClaimId> {
-        let mut pending: Vec<_> = self.0
+        let mut pending: Vec<_> = self
+            .0
             .ss_claims
             .claims
             .values()

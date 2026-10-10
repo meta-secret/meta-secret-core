@@ -191,9 +191,9 @@ fn test_one_device_lifecycle() {
                 .map(|claim_type| claim_type == "Recover")
                 .unwrap_or(false)
                 && claim["password"]
-                .as_str()
-                .map(|p| p == secret_name)
-                .unwrap_or(false)
+                    .as_str()
+                    .map(|p| p == secret_name)
+                    .unwrap_or(false)
         })
         .and_then(|claim| claim["id"].as_str())
         .unwrap_or_else(|| panic!("Claim for secret '{}' not found", secret_name));
