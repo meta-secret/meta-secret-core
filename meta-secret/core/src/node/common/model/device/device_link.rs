@@ -81,16 +81,6 @@ impl TryFrom<&CommunicationChannel> for DeviceLink {
     }
 }
 
-#[allow(dead_code)]
-pub struct WasmDeviceLink(DeviceLink);
-impl WasmDeviceLink {}
-
-impl From<DeviceLink> for WasmDeviceLink {
-    fn from(device_link: DeviceLink) -> Self {
-        Self(device_link)
-    }
-}
-
 /// a <-> a
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

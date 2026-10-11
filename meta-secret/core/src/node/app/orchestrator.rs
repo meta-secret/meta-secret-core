@@ -1,4 +1,5 @@
 use crate::crypto::utils::{Id48bit, sha256_hex};
+use crate::node::app::sync::environment::{SELECTED_SERVER_ENVIRONMENT, ServerEnvironment};
 use crate::node::common::model::crypto::aead::EncryptedMessage;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::meta_pass::{PlainPassInfo, SecurePassInfo};
@@ -36,6 +37,9 @@ use tracing::{debug, info};
 
 #[cfg(target_os = "android")]
 fn core_diag(message: &str) {
+    if !matches!(SELECTED_SERVER_ENVIRONMENT, ServerEnvironment::Local) {
+        return;
+    }
     use std::ffi::CString;
     use std::os::raw::c_char;
 
@@ -90,7 +94,9 @@ fn device_diagnostic_alias(device_id: &DeviceId) -> String {
 
 #[cfg(not(target_os = "android"))]
 fn core_diag(message: &str) {
-    println!("{message}");
+    if matches!(SELECTED_SERVER_ENVIRONMENT, ServerEnvironment::Local) {
+        println!("{message}");
+    }
 }
 
 /// Contains business logic of secrets management and login/sign-up actions.

@@ -1,8 +1,12 @@
 use std::sync::Arc;
 use std::time::Duration;
+use crate::node::app::sync::environment::{SELECTED_SERVER_ENVIRONMENT, ServerEnvironment};
 
 #[cfg(target_os = "android")]
 fn core_diag(message: &str) {
+    if !matches!(SELECTED_SERVER_ENVIRONMENT, ServerEnvironment::Local) {
+        return;
+    }
     use std::ffi::CString;
     use std::os::raw::c_char;
 
@@ -21,7 +25,9 @@ fn core_diag(message: &str) {
 
 #[cfg(not(target_os = "android"))]
 fn core_diag(message: &str) {
-    println!("{message}");
+    if matches!(SELECTED_SERVER_ENVIRONMENT, ServerEnvironment::Local) {
+        println!("{message}");
+    }
 }
 
 use async_lock::Mutex;
