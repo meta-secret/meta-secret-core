@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use async_mutex::Mutex;
+use async_lock::Mutex;
 use async_trait::async_trait;
 
 use crate::node::db::events::generic_log_event::{
@@ -91,17 +91,17 @@ impl InMemKvLogEventRepo {
 
 #[cfg(test)]
 mod tests {
-    use crate::crypto::key_pair::KeyPair;
-use crate::crypto::key_pair::TransportDsaKeyPair;
     use super::*;
+    use crate::crypto::key_pair::KeyPair;
+    use crate::crypto::key_pair::TransportDsaKeyPair;
     use crate::node::common::model::IdString;
     use crate::node::common::model::device::common::DeviceName;
     use crate::node::common::model::device::device_creds::{DeviceCredsBuilder, SecureDeviceCreds};
+    use crate::node::db::descriptors::creds::DeviceCredsDescriptor;
     use crate::node::db::descriptors::object_descriptor::{ObjectFqdn, ToObjectDescriptor};
+    use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
     use crate::node::db::events::local_event::DeviceCredsObject;
     use crate::node::db::events::object_id::{ArtifactId, Next};
-    use crate::node::db::descriptors::creds::DeviceCredsDescriptor;
-    use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 
     #[tokio::test]
     async fn test_in_mem_repo_basic_operations() -> anyhow::Result<()> {
@@ -119,7 +119,7 @@ use crate::crypto::key_pair::TransportDsaKeyPair;
             .creds;
         let master_pk = TransportDsaKeyPair::generate().sk().pk()?;
         let secure_device_creds = SecureDeviceCreds::build(device_creds.clone(), master_pk)?;
-        
+
         let creds_obj = DeviceCredsObject::from(secure_device_creds);
         let test_event = creds_obj.to_generic();
 
@@ -155,7 +155,7 @@ use crate::crypto::key_pair::TransportDsaKeyPair;
             .creds;
         let master_pk = TransportDsaKeyPair::generate().sk().pk()?;
         let secure_device_creds = SecureDeviceCreds::build(device_creds, master_pk)?;
-        
+
         let creds_desc = DeviceCredsDescriptor;
         let initial_id = ArtifactId::from(creds_desc.clone());
         let mut id = initial_id.clone();
@@ -166,16 +166,16 @@ use crate::crypto::key_pair::TransportDsaKeyPair;
                 key: KvKey::artifact(creds_desc.clone().to_obj_desc(), id.clone()),
                 value: secure_device_creds.clone(),
             };
-            
+
             let creds_obj = DeviceCredsObject(kv_event);
             let test_event = creds_obj.to_generic();
 
             repo.save(test_event).await?;
-            
+
             // Verify the event was saved
             let found = repo.find_one(id.clone()).await?;
             assert!(found.is_some(), "Failed to save event {}", i);
-            
+
             id = id.next();
         }
 
@@ -188,7 +188,11 @@ use crate::crypto::key_pair::TransportDsaKeyPair;
 
         // Verify all records have been deleted
         let db_content_after_cleanup = repo.get_db().await;
-        assert_eq!(db_content_after_cleanup.len(), 0, "Database should be empty after cleanup");
+        assert_eq!(
+            db_content_after_cleanup.len(),
+            0,
+            "Database should be empty after cleanup"
+        );
 
         // Double-check specific events are gone
         let mut id = initial_id.clone();

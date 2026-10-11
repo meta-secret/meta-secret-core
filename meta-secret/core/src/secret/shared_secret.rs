@@ -3,14 +3,36 @@ use std::str;
 
 use serde::{Deserialize, Serialize};
 
+use crate::CoreResult;
 use crate::crypto::encoding::base64::Base64Text;
 use crate::errors::RecoveryError::InvalidShare;
 use crate::errors::{CoreError, RecoveryError};
 use crate::secret::data_block::common::{BlockMetaData, SharedSecretConfig};
 use crate::secret::data_block::encrypted_data_block::EncryptedDataBlock;
-use crate::secret::data_block::plain_data_block::{PlainDataBlock, PLAIN_DATA_BLOCK_SIZE};
+use crate::secret::data_block::plain_data_block::{PLAIN_DATA_BLOCK_SIZE, PlainDataBlock};
 use crate::secret::data_block::shared_secret_data_block::SharedSecretBlock;
-use crate::CoreResult;
+
+#[cfg(target_os = "android")]
+fn core_diag(message: &str) {
+    use std::ffi::CString;
+    use std::os::raw::c_char;
+
+    #[link(name = "log")]
+    unsafe extern "C" {
+        fn __android_log_write(priority: i32, tag: *const c_char, text: *const c_char) -> i32;
+    }
+
+    if let Ok(message) = CString::new(message) {
+        unsafe {
+            __android_log_write(4, c"MetaSecretE2E".as_ptr().cast(), message.as_ptr().cast());
+        }
+    }
+}
+
+#[cfg(not(target_os = "android"))]
+fn core_diag(message: &str) {
+    println!("{message}");
+}
 
 #[derive(Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
 pub struct PlainText {
@@ -149,10 +171,29 @@ impl SharedSecret {
                 .map(|share| share.data.to_vec())
                 .collect();
 
-            let maybe_restored = shamirsecretsharing::combine_shares(&shares)?;
+            let maybe_restored = match shamirsecretsharing::combine_shares(&shares) {
+                Ok(restored) => restored,
+                Err(error) => {
+                    let error_variant = match &error {
+                        shamirsecretsharing::SSSError::InvalidN(_) => "invalid_n",
+                        shamirsecretsharing::SSSError::InvalidK(_) => "invalid_k",
+                        shamirsecretsharing::SSSError::BadShareLen(_) => "bad_share_len",
+                        shamirsecretsharing::SSSError::BadInputLen(_) => "bad_input_len",
+                    };
+                    core_diag(&format!(
+                        "[CORE_DIAG] shared_secret recover block_index={} result=combine_error variant={}",
+                        i, error_variant
+                    ));
+                    return Err(error.into());
+                }
+            };
 
             match maybe_restored {
                 None => {
+                    core_diag(&format!(
+                        "[CORE_DIAG] shared_secret recover block_index={} result=invalid_share",
+                        i
+                    ));
                     let err_mgs = format!(
                         "Invalid share. Secret block with index: {} has been corrupted",
                         i

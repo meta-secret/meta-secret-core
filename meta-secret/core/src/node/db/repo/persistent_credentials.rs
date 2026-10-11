@@ -1,4 +1,4 @@
-use crate::crypto::keys::{TransportSk};
+use crate::crypto::keys::TransportSk;
 use crate::node::common::model::device::common::{DeviceName, DeviceType};
 use crate::node::common::model::device::device_creds::{
     DeviceCreds, DeviceCredsBuilder, SecureDeviceCreds,
@@ -79,7 +79,7 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
         // Create secure user credentials with the secure device credentials
         let master_pk = self.master_key.pk()?;
         let secure_user_creds = SecureUserCreds::build(user_creds.clone(), master_pk)?;
-        
+
         // Create a user credentials object and save it
         let creds_obj = UserCredsObject::from(secure_user_creds);
         self.p_obj.repo.save(creds_obj).await
@@ -87,25 +87,22 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
 
     #[instrument(skip_all)]
     pub async fn get_user_creds(&self) -> Result<Option<UserCreds>> {
-        let maybe_secure_user_creds_obj = self
-            .p_obj
-            .find_tail_event(UserCredsDescriptor)
-            .await?;
+        let maybe_secure_user_creds_obj = self.p_obj.find_tail_event(UserCredsDescriptor).await?;
 
         match maybe_secure_user_creds_obj {
             None => Ok(None),
             Some(secure_user_creds_obj) => {
                 let secure_user_creds = secure_user_creds_obj.value();
-                
+
                 // Decrypt device credentials
                 let device_creds = secure_user_creds.device_creds.decrypt(&self.master_key)?;
-                
+
                 // Create UserCreds with the decrypted device credentials
                 let user_creds = UserCreds {
                     vault_name: secure_user_creds.vault_name,
                     device_creds,
                 };
-                
+
                 Ok(Some(user_creds))
             }
         }
@@ -177,7 +174,12 @@ impl<Repo: KvLogEventRepo> PersistentCredentials<Repo> {
             }
         };
 
-        if !user_creds.device_creds.device.device_id.eq(&device_creds.device.device_id) {
+        if !user_creds
+            .device_creds
+            .device
+            .device_id
+            .eq(&device_creds.device.device_id)
+        {
             bail!("Inconsistent credentials: device credentials do not match user credentials");
         }
 
@@ -200,7 +202,6 @@ pub mod fixture {
 
     impl PersistentCredentialsFixture {
         pub async fn init(state: &EmptyState) -> anyhow::Result<Self> {
-            
             let client_p_creds = Arc::new(PersistentCredentials {
                 p_obj: state.p_obj.client.clone(),
                 master_key: state.device_creds.client_master_key.clone(),
@@ -297,33 +298,35 @@ pub mod spec {
 
 #[cfg(test)]
 mod test {
-    use crate::node::db::repo::persistent_credentials::DeviceCredsObject;
     use crate::crypto::key_pair::KeyPair;
+    use crate::crypto::key_pair::TransportDsaKeyPair;
     use crate::node::common::model::device::common::DeviceName;
-    use crate::node::db::repo::persistent_credentials::spec::PersistentCredentialsSpec;
+    use crate::node::common::model::device::device_creds::{DeviceCredsBuilder, SecureDeviceCreds};
     use crate::node::db::descriptors::creds::DeviceCredsDescriptor;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use crate::node::db::objects::persistent_object::PersistentObject;
-    use crate::node::common::model::device::device_creds::{DeviceCredsBuilder, SecureDeviceCreds};
     use crate::node::db::repo::generic_db::SaveCommand;
+    use crate::node::db::repo::persistent_credentials::DeviceCredsObject;
+    use crate::node::db::repo::persistent_credentials::spec::PersistentCredentialsSpec;
     use std::sync::Arc;
-    use crate::crypto::key_pair::TransportDsaKeyPair;
 
     #[tokio::test]
     async fn test_verify_device_creds() -> anyhow::Result<()> {
         // Create an in-memory repository
         let repo = Arc::new(InMemKvLogEventRepo::default());
         let p_obj = Arc::new(PersistentObject::new(repo.clone()));
-        
+
         // Create the spec to verify credentials
         let spec = PersistentCredentialsSpec {
             p_obj: p_obj.clone(),
         };
-        
+
         // Verify no credentials exist yet
-        let events = p_obj.get_object_events_from_beginning(DeviceCredsDescriptor).await?;
+        let events = p_obj
+            .get_object_events_from_beginning(DeviceCredsDescriptor)
+            .await?;
         assert_eq!(events.len(), 0, "No credentials should exist initially");
-        
+
         // Generate device credentials
         let device_name = DeviceName::server();
         let device_creds = DeviceCredsBuilder::generate()
@@ -331,14 +334,14 @@ mod test {
             .creds;
         let master_sk = TransportDsaKeyPair::generate().sk();
         let secure_device_creds = SecureDeviceCreds::build(device_creds, master_sk.pk()?)?;
-        
+
         // Store the device credentials directly using the repository
         let creds_obj = DeviceCredsObject::from(secure_device_creds);
         repo.save(creds_obj).await?;
-        
+
         // Use the spec to verify device credentials were stored correctly
         spec.verify_device_creds().await?;
-        
+
         Ok(())
     }
 }

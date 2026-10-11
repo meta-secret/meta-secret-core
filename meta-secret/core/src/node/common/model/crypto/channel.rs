@@ -1,7 +1,7 @@
+use crate::CoreResult;
 use crate::crypto::keys::TransportPk;
 use crate::errors::CoreError;
-use crate::CoreResult;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use std::collections::HashSet;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -129,8 +129,8 @@ impl CommunicationChannel {
 #[cfg(test)]
 mod test {
     use crate::crypto::key_pair::KeyPair;
-    use crate::crypto::keys::fixture::KeyManagerFixture;
     use crate::crypto::keys::KeyManager;
+    use crate::crypto::keys::fixture::KeyManagerFixture;
     use crate::node::common::model::crypto::channel::CommunicationChannel;
 
     #[test]

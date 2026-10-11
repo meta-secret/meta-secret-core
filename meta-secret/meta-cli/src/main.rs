@@ -10,7 +10,9 @@ mod template_manager;
 
 use crate::auth::accept_all_join_requests_command::AcceptAllJoinRequestsCommand;
 use crate::auth::accept_join_request_command::AcceptJoinRequestCommand;
+use crate::auth::approve_remove_device_command::ApproveRemoveDeviceCommand;
 use crate::auth::interactive_command::AuthInteractiveCommand;
+use crate::auth::remove_device_command::RemoveDeviceCommand;
 use crate::auth::sign_up_command::JoinVaultCommand;
 use crate::cli_format::CliOutputFormat;
 use crate::info::default_info_command::DefaultInfoCommand;
@@ -98,6 +100,16 @@ enum AuthCommand {
     },
     /// Accept all pending join requests
     AcceptAllJoinRequests,
+    /// Remove another device from the vault (2→1 completes locally)
+    RemoveDevice {
+        #[arg(long)]
+        device_id: String,
+    },
+    /// Approve a pending device removal (required for 3→2)
+    ApproveRemoveDevice {
+        #[arg(long)]
+        device_id: String,
+    },
     /// Interactive mode for authentication
     Interactive,
 }
@@ -222,6 +234,16 @@ async fn main() -> Result<()> {
             AuthCommand::AcceptAllJoinRequests => {
                 let accept_all_cmd = AcceptAllJoinRequestsCommand::new(db_name);
                 accept_all_cmd.execute().await?
+            }
+            AuthCommand::RemoveDevice { device_id } => {
+                RemoveDeviceCommand::new(db_name, device_id)
+                    .execute()
+                    .await?
+            }
+            AuthCommand::ApproveRemoveDevice { device_id } => {
+                ApproveRemoveDeviceCommand::new(db_name, device_id)
+                    .execute()
+                    .await?
             }
             AuthCommand::Interactive => {
                 let auth_interactive_cmd = AuthInteractiveCommand::new(db_name);

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::CoreResult;
 use crate::node::common::model::crypto::aead::EncryptedMessage;
 use crate::node::common::model::meta_pass::SecurePassInfo;
 use crate::node::common::model::secret::{SecretDistributionData, SsDistributionId};
@@ -14,7 +15,6 @@ use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::secret::shared_secret::UserSecretDto;
-use crate::CoreResult;
 use crate::{PlainText, SharedSecretConfig, SharedSecretEncryption, UserShareDto};
 use anyhow::Result;
 use tracing_attributes::instrument;

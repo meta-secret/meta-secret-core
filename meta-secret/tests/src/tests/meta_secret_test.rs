@@ -56,11 +56,12 @@ mod test {
     use meta_secret_core::meta_tests::fixture_util::fixture::FixtureRegistry;
     use meta_secret_core::meta_tests::fixture_util::fixture::states::EmptyState;
     use meta_secret_core::meta_tests::spec::test_spec::TestSpec;
+    use meta_secret_core::node::api::{DataSyncResponse, ReadSyncRequest, SsRequest, SyncRequest};
     use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
     use meta_secret_core::node::app::sync::sync_gateway::SyncGateway;
-    use meta_secret_core::node::api::{DataSyncResponse, ReadSyncRequest, SsRequest, SyncRequest};
     use meta_secret_core::node::common::meta_tracing::{client_span, server_span, vd_span};
     use meta_secret_core::node::common::model::crypto::aead::EncryptedMessage;
+    use meta_secret_core::node::common::model::device::common::DeviceId;
     use meta_secret_core::node::common::model::device::common::DeviceName;
     use meta_secret_core::node::common::model::device::device_creds::DeviceCredsBuilder;
     use meta_secret_core::node::common::model::meta_pass::{
@@ -81,7 +82,9 @@ mod test {
     use meta_secret_core::node::db::descriptors::shared_secret_descriptor::{
         SsDeviceLogDescriptor, SsLogDescriptor, SsWorkflowDescriptor,
     };
-    use meta_secret_core::node::db::events::generic_log_event::{GenericKvLogEvent, ObjIdExtractor};
+    use meta_secret_core::node::db::events::generic_log_event::{
+        GenericKvLogEvent, ObjIdExtractor,
+    };
     use meta_secret_core::node::db::events::object_id::ArtifactId;
     use meta_secret_core::node::db::events::shared_secret_event::{SsLogObject, SsWorkflowObject};
     use meta_secret_core::node::db::events::vault::vault_log_event::{
@@ -90,11 +93,30 @@ mod test {
     use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
     use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
     use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
+    use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
     use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
     use meta_secret_core::recover_from_shares;
     use meta_secret_core::secret::MetaDistributor;
     use meta_secret_core::secret::shared_secret::UserShareDto;
     use tracing::{Instrument, info};
+
+    async fn current_split_generation<Repo: KvLogEventRepo>(
+        p_obj: std::sync::Arc<PersistentObject<Repo>>,
+        pass_id: MetaPasswordId,
+        device_id: DeviceId,
+    ) -> Result<ClaimId> {
+        let event = p_obj
+            .find_tail_event(SsWorkflowDescriptor::Distribution(SsDistributionId {
+                pass_id,
+                receiver: device_id,
+            }))
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Current Split distribution missing"))?;
+        let SsWorkflowObject::Distribution(event) = event else {
+            bail!("Current workflow is not a Split distribution");
+        };
+        Ok(event.value.claim_id.id)
+    }
 
     struct ServerAppSignUpSpec {
         registry: FixtureRegistry<ExtendedFixtureState>,
@@ -571,19 +593,18 @@ mod test {
         let vd_user = spec.user_creds().vd.user();
         let client_b_user = spec.user_creds().client_b.user();
 
-        let client_b_gw = std::sync::Arc::new(SyncGateway {
-            id: "client_b_gw".to_string(),
-            p_obj: spec.registry.state.base.empty.p_obj.client_b.clone(),
-            sync: spec.registry.state.sync.sync_protocol.clone(),
-            master_key: spec
-                .registry
+        let client_b_gw = std::sync::Arc::new(SyncGateway::new(
+            "client_b_gw".to_string(),
+            spec.registry.state.base.empty.p_obj.client_b.clone(),
+            spec.registry.state.sync.sync_protocol.clone(),
+            spec.registry
                 .state
                 .base
                 .empty
                 .device_creds
                 .client_b_master_key
                 .clone(),
-        });
+        ));
 
         // D1 creates vault and secret before any joins.
         SignUpClaimTestAction::sign_up(
@@ -792,13 +813,7 @@ mod test {
             spec.registry.state.vd.p_obj.clone(),
             pass_id.clone(),
             vd_user.device.device_id.clone(),
-            &spec
-                .user_creds()
-                .vd
-                .device_creds
-                .secret_box
-                .transport
-                .sk,
+            &spec.user_creds().vd.device_creds.secret_box.transport.sk,
         )
         .await?;
         let share_d3 = read_share_from_node(
@@ -814,17 +829,22 @@ mod test {
                 .sk,
         )
         .await?;
-
         for (node_name, p_obj, foreign_receivers) in [
             (
                 "D2",
                 spec.registry.state.vd.p_obj.clone(),
-                vec![client_user.device.device_id.clone(), client_b_user.device.device_id.clone()],
+                vec![
+                    client_user.device.device_id.clone(),
+                    client_b_user.device.device_id.clone(),
+                ],
             ),
             (
                 "D3",
                 spec.registry.state.base.empty.p_obj.client_b.clone(),
-                vec![client_user.device.device_id.clone(), vd_user.device.device_id.clone()],
+                vec![
+                    client_user.device.device_id.clone(),
+                    vd_user.device.device_id.clone(),
+                ],
             ),
         ] {
             for receiver in foreign_receivers {
@@ -839,7 +859,10 @@ mod test {
             }
         }
 
-        for receiver in [vd_user.device.device_id.clone(), client_b_user.device.device_id.clone()] {
+        for receiver in [
+            vd_user.device.device_id.clone(),
+            client_b_user.device.device_id.clone(),
+        ] {
             let sender_remote_desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
                 pass_id: pass_id.clone(),
                 receiver,
@@ -880,6 +903,608 @@ mod test {
             "A single device must not recover a 3-device secret without another device"
         );
 
+        // Exercise the same 3→2 removal path as UI E2E Test #37. D1 requests
+        // removal of D3, D2 approves, and D1 consumes the signed update through
+        // get_app_state before attempting a local Show.
+        let target_member = spec
+            .registry
+            .state
+            .base
+            .empty
+            .vault_data
+            .client_b_membership
+            .user_data_member();
+        spec.registry
+            .state
+            .client
+            .orchestrator
+            .request_remove_member(target_member)
+            .await?;
+        spec.client_gw_sync().await?;
+        spec.vd_gw_sync().await?;
+        spec.registry
+            .state
+            .vd
+            .orchestrator
+            .accept_remove_member(client_b_user.device.device_id.to_string())
+            .await?;
+        spec.vd_gw_sync().await?;
+
+        let approver_state_after_remote_removal = spec
+            .registry
+            .state
+            .vd
+            .client_service
+            .get_app_state()
+            .await?;
+        let ApplicationState::Vault(VaultFullInfo::Member(approver_after_removal)) =
+            approver_state_after_remote_removal
+        else {
+            bail!("Android approver must remain a vault member after remote removal");
+        };
+        assert_eq!(
+            approver_after_removal.member.vault.members().len(),
+            2,
+            "Android's sync after removing remote Web must materialize two members"
+        );
+
+        let approver_replica = read_share_from_node(
+            spec.registry.state.vd.p_obj.clone(),
+            pass_id.clone(),
+            vd_user.device.device_id.clone(),
+            &spec.user_creds().vd.device_creds.secret_box.transport.sk,
+        )
+        .await?;
+        assert_eq!(approver_replica.share_blocks[0].config.threshold, 1);
+        assert_eq!(recover_from_shares(vec![approver_replica])?.text, "2bee|~");
+
+        // The approver must publish its regenerated share and claim; D1 then
+        // consumes that server-canonical generation through ordinary sync.
+        let server_replica = read_share_from_node(
+            spec.registry.state.server_node.p_obj.clone(),
+            pass_id.clone(),
+            client_user.device.device_id.clone(),
+            &spec
+                .user_creds()
+                .client
+                .device_creds
+                .secret_box
+                .transport
+                .sk,
+        )
+        .await?;
+        assert_eq!(server_replica.share_blocks[0].config.threshold, 1);
+
+        spec.client_gw_sync().await?;
+
+        let client_state_after_removal = spec
+            .registry
+            .state
+            .client
+            .client_service
+            .get_app_state()
+            .await?;
+        let ApplicationState::Vault(VaultFullInfo::Member(client_after_removal)) =
+            client_state_after_removal
+        else {
+            bail!("D1 must remain a member after D3 removal");
+        };
+        assert_eq!(client_after_removal.member.vault.members().len(), 2);
+
+        let client_replica = read_share_from_node(
+            spec.registry.state.client.p_obj.clone(),
+            pass_id.clone(),
+            client_user.device.device_id.clone(),
+            &spec
+                .user_creds()
+                .client
+                .device_creds
+                .secret_box
+                .transport
+                .sk,
+        )
+        .await?;
+        assert_eq!(client_replica.share_blocks[0].config.threshold, 1);
+        assert_eq!(recover_from_shares(vec![client_replica])?.text, "2bee|~");
+        let first_removal_d1 = current_split_generation(
+            spec.registry.state.client.p_obj.clone(),
+            pass_id.clone(),
+            client_user.device.device_id.clone(),
+        )
+        .await?;
+        let first_removal_d2 = current_split_generation(
+            spec.registry.state.vd.p_obj.clone(),
+            pass_id.clone(),
+            vd_user.device.device_id.clone(),
+        )
+        .await?;
+        assert_eq!(
+            first_removal_d1, first_removal_d2,
+            "first removal must converge D1/D2 generation"
+        );
+
+        // Rejoin the removed device and exercise another generation. This guards
+        // against a stale 3-device claim suppressing redistribution after the
+        // first 3→2 transition.
+        client_b_gw.sync(client_b_user.clone()).await?;
+        SignUpClaimTestAction::sign_up(
+            spec.registry.state.base.empty.p_obj.client_b.clone(),
+            &spec.user_creds().client_b,
+        )
+        .await?;
+        client_b_gw.sync(client_b_user.clone()).await?;
+        client_b_gw.sync(client_b_user.clone()).await?;
+        spec.client_gw_sync().await?;
+
+        let client_state_after_rejoin = spec
+            .registry
+            .state
+            .client
+            .client_service
+            .get_app_state()
+            .await?;
+        let ApplicationState::Vault(VaultFullInfo::Member(client_after_rejoin)) =
+            client_state_after_rejoin
+        else {
+            bail!("D1 must remain a member after D3 rejoins");
+        };
+        let join_d3_again = client_after_rejoin
+            .vault_events
+            .requests
+            .iter()
+            .find_map(|request| match request {
+                VaultActionRequestEvent::JoinCluster(join)
+                    if join.candidate.device.device_id == client_b_user.device.device_id =>
+                {
+                    Some(join.clone())
+                }
+                _ => None,
+            })
+            .ok_or_else(|| anyhow::anyhow!("Rejoin request for D3 not found"))?;
+        spec.registry
+            .state
+            .client
+            .orchestrator
+            .update_membership(join_d3_again, JoinActionUpdate::Accept)
+            .await?;
+
+        for _ in 0..8 {
+            spec.client_gw_sync().await?;
+            spec.vd_gw_sync().await?;
+            client_b_gw.sync(client_b_user.clone()).await?;
+            client_b_gw.sync(client_b_user.clone()).await?;
+        }
+
+        let d1_after_rejoin = read_share_from_node(
+            spec.registry.state.client.p_obj.clone(),
+            pass_id.clone(),
+            client_user.device.device_id.clone(),
+            &spec
+                .user_creds()
+                .client
+                .device_creds
+                .secret_box
+                .transport
+                .sk,
+        )
+        .await?;
+        let d3_after_rejoin = read_share_from_node(
+            spec.registry.state.base.empty.p_obj.client_b.clone(),
+            pass_id.clone(),
+            client_b_user.device.device_id.clone(),
+            &spec
+                .user_creds()
+                .client_b
+                .device_creds
+                .secret_box
+                .transport
+                .sk,
+        )
+        .await?;
+        assert_eq!(d1_after_rejoin.share_blocks[0].config.threshold, 2);
+        assert_eq!(d3_after_rejoin.share_blocks[0].config.threshold, 2);
+        let first_rejoin_d1 = current_split_generation(
+            spec.registry.state.client.p_obj.clone(),
+            pass_id.clone(),
+            client_user.device.device_id.clone(),
+        )
+        .await?;
+        let first_rejoin_d2 = current_split_generation(
+            spec.registry.state.vd.p_obj.clone(),
+            pass_id.clone(),
+            vd_user.device.device_id.clone(),
+        )
+        .await?;
+        assert_eq!(
+            first_rejoin_d1, first_rejoin_d2,
+            "first rejoin must converge D1/D2 generation"
+        );
+        let d3_generation_event = spec
+            .registry
+            .state
+            .base
+            .empty
+            .p_obj
+            .client_b
+            .find_tail_event(SsWorkflowDescriptor::Distribution(SsDistributionId {
+                pass_id: pass_id.clone(),
+                receiver: client_b_user.device.device_id.clone(),
+            }))
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Rejoined D3 must have a current Split workflow"))?;
+        let SsWorkflowObject::Distribution(d3_generation_event) = d3_generation_event else {
+            bail!("Rejoined D3 must have a distribution workflow");
+        };
+        let server_ss_log = spec
+            .registry
+            .state
+            .server_node
+            .p_ss
+            .get_ss_log_obj(vault_name.clone())
+            .await?;
+        let server_generation_claim = server_ss_log
+            .claims
+            .get(&d3_generation_event.value.claim_id.id)
+            .ok_or_else(|| anyhow::anyhow!("Server must have the rejoin Split claim"))?;
+        assert!(
+            matches!(
+                server_generation_claim
+                    .status
+                    .get(&client_b_user.device.device_id),
+                Some(SsDistributionStatus::Sent | SsDistributionStatus::Delivered)
+            ),
+            "The rejoin generation must be accepted by the server Split workflow"
+        );
+        assert!(
+            recover_from_shares(vec![d1_after_rejoin.clone(), share_d3.clone()]).is_err(),
+            "A pre-removal generation share must not combine with the rejoin generation"
+        );
+        assert_eq!(
+            recover_from_shares(vec![d1_after_rejoin, d3_after_rejoin])?.text,
+            "2bee|~"
+        );
+
+        Box::pin(async {
+            // Run a second removal and rejoin from the repeated Test #15 cycle.
+            // D2 removes D3 and D1 approves, using app services that are available
+            // in this fixture for both roles.
+            let target_d3 = spec
+                .registry
+                .state
+                .base
+                .empty
+                .vault_data
+                .client_b_membership
+                .user_data_member();
+            spec.registry
+                .state
+                .vd
+                .orchestrator
+                .request_remove_member(target_d3)
+                .await?;
+            spec.vd_gw_sync().await?;
+            spec.client_gw_sync().await?;
+            spec.registry
+                .state
+                .client
+                .orchestrator
+                .accept_remove_member(client_b_user.device.device_id.to_string())
+                .await?;
+            spec.client_gw_sync().await?;
+            // The initiator (D2) must consume the approver's server-canonical
+            // removal generation before comparing or using its local share.
+            spec.vd_gw_sync().await?;
+
+            let d1_after_second_removal = read_share_from_node(
+                spec.registry.state.client.p_obj.clone(),
+                pass_id.clone(),
+                client_user.device.device_id.clone(),
+                &spec
+                    .user_creds()
+                    .client
+                    .device_creds
+                    .secret_box
+                    .transport
+                    .sk,
+            )
+            .await?;
+            assert_eq!(d1_after_second_removal.share_blocks[0].config.threshold, 1);
+            let second_removal_d1 = current_split_generation(
+                spec.registry.state.client.p_obj.clone(),
+                pass_id.clone(),
+                client_user.device.device_id.clone(),
+            )
+            .await?;
+            let second_removal_d2 = current_split_generation(
+                spec.registry.state.vd.p_obj.clone(),
+                pass_id.clone(),
+                vd_user.device.device_id.clone(),
+            )
+            .await?;
+            assert_eq!(
+                second_removal_d1, second_removal_d2,
+                "second removal must converge D1/D2 generation"
+            );
+
+            // D3 rejoins after its removal. D1 accepts the request and the new
+            // generation must again be recoverable from any two member shares.
+            client_b_gw.sync(client_b_user.clone()).await?;
+            SignUpClaimTestAction::sign_up(
+                spec.registry.state.base.empty.p_obj.client_b.clone(),
+                &spec.user_creds().client_b,
+            )
+            .await?;
+            client_b_gw.sync(client_b_user.clone()).await?;
+            client_b_gw.sync(client_b_user.clone()).await?;
+            spec.client_gw_sync().await?;
+            let d1_state_after_d3_rejoin = spec
+                .registry
+                .state
+                .client
+                .client_service
+                .get_app_state()
+                .await?;
+            let ApplicationState::Vault(VaultFullInfo::Member(d1_member_after_d3_rejoin)) =
+                d1_state_after_d3_rejoin
+            else {
+                bail!("D1 must remain a member after D3 rejoins");
+            };
+            let join_d3_again = d1_member_after_d3_rejoin
+                .vault_events
+                .requests
+                .iter()
+                .find_map(|request| match request {
+                    VaultActionRequestEvent::JoinCluster(join)
+                        if join.candidate.device.device_id == client_b_user.device.device_id =>
+                    {
+                        Some(join.clone())
+                    }
+                    _ => None,
+                })
+                .ok_or_else(|| anyhow::anyhow!("Rejoin request for D3 not found"))?;
+            spec.registry
+                .state
+                .client
+                .orchestrator
+                .update_membership(join_d3_again, JoinActionUpdate::Accept)
+                .await?;
+            for _ in 0..8 {
+                spec.client_gw_sync()
+                    .await
+                    .map_err(|error| anyhow::anyhow!("D1 sync after D3 rejoin: {error}"))?;
+                spec.vd_gw_sync()
+                    .await
+                    .map_err(|error| anyhow::anyhow!("D2 sync after D3 rejoin: {error}"))?;
+                client_b_gw
+                    .sync(client_b_user.clone())
+                    .await
+                    .map_err(|error| anyhow::anyhow!("D3 first sync after rejoin: {error}"))?;
+                client_b_gw
+                    .sync(client_b_user.clone())
+                    .await
+                    .map_err(|error| anyhow::anyhow!("D3 second sync after rejoin: {error}"))?;
+            }
+
+            let d1_final = read_share_from_node(
+                spec.registry.state.client.p_obj.clone(),
+                pass_id.clone(),
+                client_user.device.device_id.clone(),
+                &spec
+                    .user_creds()
+                    .client
+                    .device_creds
+                    .secret_box
+                    .transport
+                    .sk,
+            )
+            .await?;
+            let d3_final = read_share_from_node(
+                spec.registry.state.base.empty.p_obj.client_b.clone(),
+                pass_id.clone(),
+                client_b_user.device.device_id.clone(),
+                &spec
+                    .user_creds()
+                    .client_b
+                    .device_creds
+                    .secret_box
+                    .transport
+                    .sk,
+            )
+            .await?;
+            assert_eq!(d1_final.share_blocks[0].config.threshold, 2);
+            assert_eq!(d3_final.share_blocks[0].config.threshold, 2);
+            let second_rejoin_d1 = current_split_generation(
+                spec.registry.state.client.p_obj.clone(),
+                pass_id.clone(),
+                client_user.device.device_id.clone(),
+            )
+            .await?;
+            let second_rejoin_d2 = current_split_generation(
+                spec.registry.state.vd.p_obj.clone(),
+                pass_id.clone(),
+                vd_user.device.device_id.clone(),
+            )
+            .await?;
+            assert_eq!(
+                second_rejoin_d1, second_rejoin_d2,
+                "second rejoin must converge D1/D2 generation"
+            );
+            assert_eq!(
+                recover_from_shares(vec![d1_final, d3_final])?.text,
+                "2bee|~"
+            );
+
+            // Third rotation: verify the removal request carries the generation
+            // that Android (D2) currently holds, then require a fresh K=1 replica
+            // generation before D3's next rejoin.
+            let d1_current_distribution = spec
+                .registry
+                .state
+                .client
+                .p_obj
+                .find_tail_event(SsWorkflowDescriptor::Distribution(SsDistributionId {
+                    pass_id: pass_id.clone(),
+                    receiver: client_user.device.device_id.clone(),
+                }))
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("D1 current Split distribution missing"))?;
+            let d2_current_distribution = spec
+                .registry
+                .state
+                .vd
+                .p_obj
+                .find_tail_event(SsWorkflowDescriptor::Distribution(SsDistributionId {
+                    pass_id: pass_id.clone(),
+                    receiver: vd_user.device.device_id.clone(),
+                }))
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("D2 current Split distribution missing"))?;
+            let (
+                SsWorkflowObject::Distribution(d1_current_distribution),
+                SsWorkflowObject::Distribution(d2_current_distribution),
+            ) = (d1_current_distribution, d2_current_distribution)
+            else {
+                bail!("D1 and D2 must hold current Split distributions");
+            };
+            assert_eq!(
+                d1_current_distribution.value.claim_id.id,
+                d2_current_distribution.value.claim_id.id,
+                "D1 and D2 must hold the same current Split generation before removal"
+            );
+
+            let target_d3_third = spec
+                .registry
+                .state
+                .base
+                .empty
+                .vault_data
+                .client_b_membership
+                .user_data_member();
+            spec.registry
+                .state
+                .client
+                .orchestrator
+                .request_remove_member(target_d3_third)
+                .await?;
+            spec.client_gw_sync().await?;
+            spec.vd_gw_sync().await?;
+            spec.registry
+                .state
+                .vd
+                .orchestrator
+                .accept_remove_member(client_b_user.device.device_id.to_string())
+                .await?;
+            spec.vd_gw_sync().await?;
+            spec.client_gw_sync().await?;
+            let d1_after_third_removal = read_share_from_node(
+                spec.registry.state.client.p_obj.clone(),
+                pass_id.clone(),
+                client_user.device.device_id.clone(),
+                &spec
+                    .user_creds()
+                    .client
+                    .device_creds
+                    .secret_box
+                    .transport
+                    .sk,
+            )
+            .await?;
+            let d2_after_third_removal = read_share_from_node(
+                spec.registry.state.vd.p_obj.clone(),
+                pass_id.clone(),
+                vd_user.device.device_id.clone(),
+                &spec.user_creds().vd.device_creds.secret_box.transport.sk,
+            )
+            .await?;
+            assert_eq!(d1_after_third_removal.share_blocks[0].config.threshold, 1);
+            assert_eq!(d2_after_third_removal.share_blocks[0].config.threshold, 1);
+            assert_eq!(
+                recover_from_shares(vec![d1_after_third_removal])?.text,
+                "2bee|~"
+            );
+
+            client_b_gw.sync(client_b_user.clone()).await?;
+            SignUpClaimTestAction::sign_up(
+                spec.registry.state.base.empty.p_obj.client_b.clone(),
+                &spec.user_creds().client_b,
+            )
+            .await?;
+            client_b_gw.sync(client_b_user.clone()).await?;
+            client_b_gw.sync(client_b_user.clone()).await?;
+            spec.client_gw_sync().await?;
+            let d1_state_after_third_rejoin = spec
+                .registry
+                .state
+                .client
+                .client_service
+                .get_app_state()
+                .await?;
+            let ApplicationState::Vault(VaultFullInfo::Member(d1_member_after_third_rejoin)) =
+                d1_state_after_third_rejoin
+            else {
+                bail!("D1 must remain a member after D3's third join");
+            };
+            let join_d3_third = d1_member_after_third_rejoin
+                .vault_events
+                .requests
+                .iter()
+                .find_map(|request| match request {
+                    VaultActionRequestEvent::JoinCluster(join)
+                        if join.candidate.device.device_id == client_b_user.device.device_id =>
+                    {
+                        Some(join.clone())
+                    }
+                    _ => None,
+                })
+                .ok_or_else(|| anyhow::anyhow!("Third rejoin request for D3 not found"))?;
+            spec.registry
+                .state
+                .client
+                .orchestrator
+                .update_membership(join_d3_third, JoinActionUpdate::Accept)
+                .await?;
+            for _ in 0..8 {
+                spec.client_gw_sync().await?;
+                spec.vd_gw_sync().await?;
+                client_b_gw.sync(client_b_user.clone()).await?;
+                client_b_gw.sync(client_b_user.clone()).await?;
+            }
+            let d1_after_third_rejoin = read_share_from_node(
+                spec.registry.state.client.p_obj.clone(),
+                pass_id.clone(),
+                client_user.device.device_id.clone(),
+                &spec
+                    .user_creds()
+                    .client
+                    .device_creds
+                    .secret_box
+                    .transport
+                    .sk,
+            )
+            .await?;
+            let d3_after_third_rejoin = read_share_from_node(
+                spec.registry.state.base.empty.p_obj.client_b.clone(),
+                pass_id.clone(),
+                client_b_user.device.device_id.clone(),
+                &spec
+                    .user_creds()
+                    .client_b
+                    .device_creds
+                    .secret_box
+                    .transport
+                    .sk,
+            )
+            .await?;
+            assert_eq!(d1_after_third_rejoin.share_blocks[0].config.threshold, 2);
+            assert_eq!(d3_after_third_rejoin.share_blocks[0].config.threshold, 2);
+            assert_eq!(
+                recover_from_shares(vec![d1_after_third_rejoin, d3_after_third_rejoin])?.text,
+                "2bee|~"
+            );
+            Ok::<(), anyhow::Error>(())
+        })
+        .await?;
+
         Ok(())
     }
 
@@ -891,8 +1516,18 @@ mod test {
         let client_user_creds = registry.state.empty.user_creds.client.clone();
         let receiver_user_creds = registry.state.empty.user_creds.vd.clone();
 
-        let client_member = registry.state.empty.vault_data.client_membership.user_data_member();
-        let receiver_member = registry.state.empty.vault_data.vd_membership.user_data_member();
+        let client_member = registry
+            .state
+            .empty
+            .vault_data
+            .client_membership
+            .user_data_member();
+        let receiver_member = registry
+            .state
+            .empty
+            .vault_data
+            .vd_membership
+            .user_data_member();
         let vault_data = VaultData::from(client_member.clone())
             .update_membership(UserMembership::Member(receiver_member.clone()));
         let vault_member = VaultMember {
@@ -937,13 +1572,15 @@ mod test {
             .find_free_id_by_obj_desc(SsLogDescriptor::from(vault_data.vault_name.clone()))
             .await?;
 
-        let response = server_app_fixture.server_app.handle_client_request(
-            SyncRequest::Read(Box::from(ReadSyncRequest::SsRequest(SsRequest {
-                sender: receiver_user_creds.user(),
-                ss_log: ss_log_free_id.clone(),
-            }))),
-        )
-        .await?;
+        let response = server_app_fixture
+            .server_app
+            .handle_client_request(SyncRequest::Read(Box::from(ReadSyncRequest::SsRequest(
+                SsRequest {
+                    sender: receiver_user_creds.user(),
+                    ss_log: ss_log_free_id.clone(),
+                },
+            ))))
+            .await?;
 
         let DataSyncResponse::Data(data_response) = response else {
             bail!("Server must return data response for ss replication");
@@ -986,7 +1623,10 @@ mod test {
             member: vault_member,
         };
 
-        let join_request = JoinClusterEvent { candidate };
+        let join_request = JoinClusterEvent {
+            candidate,
+            request_id: String::new(),
+        };
         let error = action
             .update(join_request, JoinActionUpdate::Accept)
             .await
@@ -1062,8 +1702,7 @@ mod test {
             .iter()
             .find_map(|req| match req {
                 VaultActionRequestEvent::JoinCluster(join)
-                    if join.candidate.device.device_id
-                        == spec.registry.state.vd.device_id() =>
+                    if join.candidate.device.device_id == spec.registry.state.vd.device_id() =>
                 {
                     Some(join.clone())
                 }

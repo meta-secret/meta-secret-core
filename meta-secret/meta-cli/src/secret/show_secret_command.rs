@@ -59,7 +59,15 @@ impl ShowSecretCommand {
                                 // Clone claim_id to avoid ownership issues
                                 let claim_id_for_recovery = claim_id.clone();
                                 let secret = handler
-                                    .recover_by_claim_id(user_creds, claim_id_for_recovery)
+                                    .recover_by_claim_id(user_creds.clone(), claim_id_for_recovery)
+                                    .await?;
+
+                                // Do not report a successful reveal until the server has
+                                // persisted its terminal recovery state and can invalidate
+                                // the other members' state.
+                                client
+                                    .sync_gateway
+                                    .complete_recovery(&user_creds, &claim_id)
                                     .await?;
 
                                 match self.output_format {

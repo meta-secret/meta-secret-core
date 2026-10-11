@@ -24,11 +24,15 @@ impl JoinVaultCommand {
         let user_creds = db_context.p_creds.get_user_creds().await?.unwrap();
         let device_name = user_creds.device().device_name.clone();
         let vault_name = user_creds.vault_name.clone();
-        
+
         // Force CLI device type for CLI client flow (also migrates old `Other` credentials).
         let _ = db_context
             .p_creds
-            .get_or_generate_user_creds_with_type(device_name, DeviceType::cli(), vault_name.clone())
+            .get_or_generate_user_creds_with_type(
+                device_name,
+                DeviceType::cli(),
+                vault_name.clone(),
+            )
             .await?;
 
         // Create signup request with the vault name and handle it

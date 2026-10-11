@@ -26,3 +26,6 @@ tower-http.workspace = true
 http.workspace = true
 async-std.workspace = true
 futures-util.workspace = true
+
+[dev-dependencies]
+meta-secret-core = { path = "../../core", features = ["test-framework"] }

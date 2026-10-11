@@ -21,7 +21,6 @@
   },
   "recovery": {
     "showTimeoutMs": 45000,
-    "pauseMs": 2000,
     "groups": [
       { "approver": "web", "count": 6 },
       { "approver": "android", "count": 6 },

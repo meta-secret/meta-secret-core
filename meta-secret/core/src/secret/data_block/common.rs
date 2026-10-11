@@ -90,7 +90,7 @@ mod tests {
         // 2 devices: k=1 (full replication)
         let cfg = SharedSecretConfig::calculate(2);
         assert_eq!(cfg.number_of_shares, 2);
-        assert_eq!(cfg.threshold, 1);  // Each device has full secret
+        assert_eq!(cfg.threshold, 1); // Each device has full secret
     }
 
     #[test]

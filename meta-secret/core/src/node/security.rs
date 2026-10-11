@@ -5,11 +5,11 @@ use crate::crypto::key_pair::DsaKeyPair;
 use crate::crypto::keys::DsaPk;
 use crate::node::api::SsRecoveryCompletion;
 use crate::node::api::{SignedAction, SignedActionPayload};
-use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::IdString;
+use crate::node::common::model::device::common::DeviceId;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::generic_log_event::ObjIdExtractor;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 /// Build the canonical stream name used by the monotonic event sequence.
 pub fn event_stream(event: &GenericKvLogEvent) -> String {
@@ -154,9 +154,11 @@ mod tests {
         assert!(tampered.verify(&user.device.keys.dsa_pk).is_err());
 
         let other = registry.state.user_creds.client_b;
-        assert!(action
-            .verify(&other.device_creds.device.keys.dsa_pk)
-            .is_err());
+        assert!(
+            action
+                .verify(&other.device_creds.device.keys.dsa_pk)
+                .is_err()
+        );
 
         let pass_id = MetaPasswordId::build_from_str("signature-test");
         let recovery = SsRecoveryCompletion {

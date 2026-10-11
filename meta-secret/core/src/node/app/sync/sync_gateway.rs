@@ -1,17 +1,49 @@
 use std::sync::Arc;
 use std::time::Duration;
+use crate::node::app::sync::environment::{SELECTED_SERVER_ENVIRONMENT, ServerEnvironment};
 
+#[cfg(target_os = "android")]
+fn core_diag(message: &str) {
+    if !matches!(SELECTED_SERVER_ENVIRONMENT, ServerEnvironment::Local) {
+        return;
+    }
+    use std::ffi::CString;
+    use std::os::raw::c_char;
+
+    #[link(name = "log")]
+    unsafe extern "C" {
+        fn __android_log_write(priority: i32, tag: *const c_char, text: *const c_char) -> i32;
+    }
+
+    let Ok(message) = CString::new(message) else {
+        return;
+    };
+    unsafe {
+        __android_log_write(4, c"MetaSecretE2E".as_ptr().cast(), message.as_ptr().cast());
+    }
+}
+
+#[cfg(not(target_os = "android"))]
+fn core_diag(message: &str) {
+    if matches!(SELECTED_SERVER_ENVIRONMENT, ServerEnvironment::Local) {
+        println!("{message}");
+    }
+}
+
+use async_lock::Mutex;
 use tracing::{debug, error, info, instrument};
 
 use crate::crypto::keys::TransportSk;
 use crate::node::api::{
-    DataEventsResponse, ReadSyncRequest, ServerTailRequest, ServerTailResponse, SsRequest,
-    SyncRequest, VaultRequest, WriteSyncRequest,
+    DataEventsResponse, ReadSyncRequest, ServerTailRequest, ServerTailResponse,
+    SsRecoveryCompletion, SsRequest, SyncRequest, VaultRequest, WriteSyncRequest,
 };
 use crate::node::app::orchestrator::MetaOrchestrator;
 use crate::node::app::sync::sync_protocol::SyncProtocol;
 use crate::node::common::model::device::common::DeviceId;
-use crate::node::common::model::secret::{SecretDistributionType, SsClaim, SsDistributionStatus};
+use crate::node::common::model::secret::{
+    ClaimId, SecretDistributionType, SsClaim, SsDistributionId, SsDistributionStatus, SsRecoveryId,
+};
 use crate::node::common::model::user::common::{UserData, UserDataMember, UserId};
 use crate::node::common::model::user::user_creds::UserCreds;
 use crate::node::common::model::vault::vault::VaultStatus;
@@ -30,13 +62,15 @@ use crate::node::db::events::shared_secret_event::{
 };
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::events::vault::vault_event::VaultObject;
-use crate::node::db::events::vault::vault_log_event::JoinClusterEvent;
+use crate::node::db::events::vault::vault_log_event::{
+    JoinClusterEvent, RemoveMemberDecision, VaultActionEvent, VaultActionUpdateEvent,
+};
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use crate::node::db::repo::persistent_credentials::PersistentCredentials;
-use crate::node::security::sign_event;
+use crate::node::security::{sign_event, sign_recovery_completion};
 use anyhow::Result;
 use std::collections::HashSet;
 
@@ -45,10 +79,98 @@ pub struct SyncGateway<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub p_obj: Arc<PersistentObject<Repo>>,
     pub sync: Arc<Sync>,
     pub master_key: TransportSk,
+    sync_guard: Mutex<()>,
 }
 
 impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
-    async fn signed_event(&self, event: GenericKvLogEvent, user: &UserData) -> Result<crate::node::api::SignedAction> {
+    pub fn new(
+        id: String,
+        p_obj: Arc<PersistentObject<Repo>>,
+        sync: Arc<Sync>,
+        master_key: TransportSk,
+    ) -> Self {
+        Self {
+            id,
+            p_obj,
+            sync,
+            master_key,
+            sync_guard: Mutex::new(()),
+        }
+    }
+
+    /// Persist successful recovery completion on the server for the exact local claim.
+    /// The caller invokes this only after Core has reconstructed the plaintext;
+    /// the approved receiver and Pass ID are derived from the persisted claim.
+    pub async fn complete_recovery(
+        &self,
+        user_creds: &UserCreds,
+        claim_id: &ClaimId,
+    ) -> Result<()> {
+        let ss_log = PersistentSharedSecret::from(self.p_obj.clone())
+            .get_ss_log_obj(user_creds.vault_name.clone())
+            .await?;
+        let claim = ss_log
+            .claims
+            .get(claim_id)
+            .ok_or_else(|| anyhow::anyhow!("Recovery claim not found for completion"))?;
+
+        if claim.distribution_type != SecretDistributionType::Recover {
+            return Err(anyhow::anyhow!("Claim is not a recovery claim"));
+        }
+        if claim.sender != *user_creds.device_id() {
+            return Err(anyhow::anyhow!("Recovery claim belongs to another device"));
+        }
+
+        let receiver = claim.approved_recovery_receiver()?;
+        let completion = SsRecoveryCompletion {
+            vault_name: user_creds.vault_name.clone(),
+            recovery_id: SsRecoveryId {
+                claim_id: claim.dist_claim_id.clone(),
+                sender: claim.sender.clone(),
+                distribution_id: SsDistributionId {
+                    pass_id: claim.dist_claim_id.pass_id.clone(),
+                    receiver: receiver.clone(),
+                },
+            },
+            receiver_status: SsDistributionStatus::Sent,
+        };
+        let key_manager = user_creds.device_creds.key_manager()?;
+        let signed =
+            sign_recovery_completion(completion, user_creds.device_id().clone(), &key_manager.dsa)?;
+        let response = self
+            .sync
+            .send(SyncRequest::Read(Box::new(
+                ReadSyncRequest::SsRecoveryCompletion(signed),
+            )))
+            .await?;
+
+        // The server persists the completion and returns the updated shared-secret log.
+        // Accept only that response when it contains this claim's terminal completion.
+        let response_data = response.to_data()?;
+        let completion_was_persisted = response_data.0.into_iter().any(|event| {
+            event.ss_log().ok().is_some_and(|ss_log| {
+                ss_log.as_data().claims.get(claim_id).is_some_and(|claim| {
+                    claim.sender == *user_creds.device_id()
+                        && claim.status.statuses.get(user_creds.device_id())
+                            == Some(&SsDistributionStatus::Delivered)
+                        && claim.status.statuses.get(&receiver) == Some(&SsDistributionStatus::Sent)
+                })
+            })
+        });
+        if !completion_was_persisted {
+            return Err(anyhow::anyhow!(
+                "Server response did not confirm recovery completion"
+            ));
+        }
+
+        Ok(())
+    }
+
+    async fn signed_event(
+        &self,
+        event: GenericKvLogEvent,
+        user: &UserData,
+    ) -> Result<crate::node::api::SignedAction> {
         let creds = PersistentCredentials {
             p_obj: self.p_obj.clone(),
             master_key: self.master_key.clone(),
@@ -88,6 +210,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
     }
 
     fn split_workflow_has_pending_receiver(claim: &SsClaim, wf_event: &SsWorkflowObject) -> bool {
+        if !Self::split_workflow_matches_claim(claim, wf_event) {
+            return false;
+        }
         let Some(receiver) = Self::split_workflow_receiver(wf_event) else {
             return false;
         };
@@ -95,6 +220,13 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         matches!(
             claim.status.get(&receiver),
             Some(SsDistributionStatus::Pending)
+        )
+    }
+
+    fn split_workflow_matches_claim(claim: &SsClaim, wf_event: &SsWorkflowObject) -> bool {
+        matches!(
+            wf_event,
+            SsWorkflowObject::Distribution(event) if event.value.claim_id.id == claim.id
         )
     }
 
@@ -114,6 +246,11 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
             }
 
             for wf_event in p_ss.get_distributions(claim.clone()).await? {
+                // A descriptor is keyed by pass and receiver, so this lookup can
+                // return the newest generation while iterating an older claim.
+                if !Self::split_workflow_matches_claim(claim, &wf_event) {
+                    continue;
+                }
                 let Some(receiver) = Self::split_workflow_receiver(&wf_event) else {
                     continue;
                 };
@@ -166,6 +303,11 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
     ///  - vault, shared secret... - user has been registered, we can sync vault related events
     #[instrument(skip_all)]
     pub async fn sync(&self, user: UserData) -> Result<()> {
+        let _sync_guard = self.sync_guard.lock().await;
+        self.sync_transaction(user).await
+    }
+
+    async fn sync_transaction(&self, user: UserData) -> Result<()> {
         let user_creds = PersistentCredentials {
             p_obj: self.p_obj.clone(),
             master_key: self.master_key.clone(),
@@ -174,7 +316,8 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         .await?;
         let server_tail = self.get_server_tail(user.clone()).await?;
 
-        self.sync_device_log(&server_tail, user.user_id(), &user).await?;
+        self.sync_device_log(&server_tail, user.user_id(), &user)
+            .await?;
 
         let vault_sync_request = self.get_vault_request(user.clone()).await?;
         self.sync_vault(vault_sync_request, user_creds).await?;
@@ -222,8 +365,56 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
             Vec::new()
         };
 
+        if let Some(creds) = user_creds.as_ref() {
+            core_diag(&format!(
+                "[CORE_DIAG] membership snapshot actor_type={} previous_members={}",
+                creds.device_creds.device.device_type.as_str(),
+                previous_members.len()
+            ));
+            info!(
+                actor_type = %creds.device_creds.device.device_type.as_str(),
+                previous_member_count = previous_members.len(),
+                "join_reconcile: captured pre-sync membership snapshot"
+            );
+        }
+
         let DataEventsResponse(data_sync_events) =
             self.sync.send(vault_sync_request).await?.to_data()?;
+
+        let response_event_count = data_sync_events.len();
+        let mut response_device_log_count = 0usize;
+        let mut response_remove_update_count = 0usize;
+        let mut response_accepted_remove_update_count = 0usize;
+        let mut response_remove_targets_local_count = 0usize;
+        for event in &data_sync_events {
+            let GenericKvLogEvent::DeviceLog(device_log) = event else {
+                continue;
+            };
+            response_device_log_count += 1;
+            let VaultActionEvent::Update(VaultActionUpdateEvent::RemoveMember(update)) =
+                &device_log.0.value
+            else {
+                continue;
+            };
+            response_remove_update_count += 1;
+            if update.decision == RemoveMemberDecision::Accepted {
+                response_accepted_remove_update_count += 1;
+            }
+            if user_creds
+                .as_ref()
+                .is_some_and(|creds| update.target.user_data.device.device_id == *creds.device_id())
+            {
+                response_remove_targets_local_count += 1;
+            }
+        }
+        core_diag(&format!(
+            "[CORE_DIAG] sync_vault response events={} device_log_events={} remove_member_updates={} accepted_remove_member_updates={} remove_targets_local={}",
+            response_event_count,
+            response_device_log_count,
+            response_remove_update_count,
+            response_accepted_remove_update_count,
+            response_remove_targets_local_count
+        ));
 
         for new_event in data_sync_events {
             debug!(
@@ -246,10 +437,36 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
             let current_members = self
                 .local_vault_members(user_creds.vault_name.clone())
                 .await?;
+            let local_device_id = user_creds.device_id();
+            let local_is_member = current_members
+                .iter()
+                .any(|member| &member.user().device.device_id == local_device_id);
+            core_diag(&format!(
+                "[CORE_DIAG] sync_vault post_save_membership actor_type={} current_members={} local_is_member={}",
+                user_creds.device_creds.device.device_type.as_str(),
+                current_members.len(),
+                local_is_member
+            ));
             let previous_member_ids: HashSet<DeviceId> = previous_members
                 .iter()
                 .map(|member| member.user().device.device_id.clone())
                 .collect();
+            let new_members: Vec<_> = current_members
+                .iter()
+                .filter(|member| !previous_member_ids.contains(&member.user().device.device_id))
+                .collect();
+            info!(
+                actor_type = %user_creds.device_creds.device.device_type.as_str(),
+                current_member_count = current_members.len(),
+                newly_observed_member_count = new_members.len(),
+                "join_reconcile: compared canonical membership after sync"
+            );
+            core_diag(&format!(
+                "[CORE_DIAG] membership delta actor_type={} current_members={} newly_observed_members={}",
+                user_creds.device_creds.device.device_type.as_str(),
+                current_members.len(),
+                new_members.len()
+            ));
             let orchestrator = MetaOrchestrator {
                 p_obj: self.p_obj.clone(),
                 user_creds,
@@ -261,8 +478,25 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                     continue;
                 }
 
+                info!(
+                    actor_type = %orchestrator.user_creds.device_creds.device.device_type.as_str(),
+                    accepted_member_type = %member.user().device.device_type.as_str(),
+                    "join_reconcile: processing newly accepted member"
+                );
+                core_diag(&format!(
+                    "[CORE_DIAG] accepted member actor_type={} accepted_member_type={}",
+                    orchestrator
+                        .user_creds
+                        .device_creds
+                        .device
+                        .device_type
+                        .as_str(),
+                    member.user().device.device_type.as_str()
+                ));
+
                 let join_request = JoinClusterEvent {
                     candidate: member.user_data.clone(),
+                    request_id: String::new(),
                 };
                 orchestrator
                     .redistribute_existing_secrets_for_join(&join_request)
@@ -301,7 +535,11 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         Ok(vault_sync_request)
     }
 
-    async fn sync_ss_device_log(&self, server_tail: &ServerTailResponse, user: &UserData) -> Result<()> {
+    async fn sync_ss_device_log(
+        &self,
+        server_tail: &ServerTailResponse,
+        user: &UserData,
+    ) -> Result<()> {
         let device_id = user.device.device_id.clone();
         let server_ss_device_log_tail_id = {
             let unit_id = || ArtifactId::from(SsDeviceLogDescriptor::from(device_id));
@@ -317,7 +555,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
             .await?;
 
         for ss_device_log_event in ss_device_log_events_to_sync {
-            let signed = self.signed_event(ss_device_log_event.to_generic(), user).await?;
+            let signed = self
+                .signed_event(ss_device_log_event.to_generic(), user)
+                .await?;
             let sync_request = SyncRequest::Write(Box::from(WriteSyncRequest::Event(signed)));
             self.sync.send(sync_request).await?.ensure_success()?;
         }
@@ -408,6 +648,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                         let wf_events = p_ss.get_distributions(claim.clone()).await?;
 
                         for wf_event in wf_events {
+                            if !Self::split_workflow_matches_claim(&claim, &wf_event) {
+                                continue;
+                            }
                             // Sent means the server already has this distribution. Only Pending
                             // receivers need an upload from the sender.
                             if !Self::split_workflow_has_pending_receiver(&claim, &wf_event) {
@@ -517,19 +760,69 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                     continue;
                 }
                 let current_claim = current_claims.get(&claim.id).cloned();
+                let pending_receiver_count = current_claim.as_ref().map(|claim| {
+                    claim
+                        .status
+                        .statuses
+                        .values()
+                        .filter(|status| **status == SsDistributionStatus::Pending)
+                        .count()
+                });
                 // If not found (ss_log may be contaminated with another device's claim), still
                 // attempt upload. If found, upload only while a receiver is still Pending.
                 if let Some(c) = current_claim.as_ref()
                     && !Self::has_pending_split_receiver(c)
                 {
+                    info!(
+                        actor_type = %user.device.device_type.as_str(),
+                        claim_owned_by_local_device = true,
+                        current_claim_found = true,
+                        ?pending_receiver_count,
+                        "split_upload: skipped because no receiver is pending"
+                    );
+                    core_diag(&format!(
+                        "[CORE_DIAG] split upload skipped actor_type={} reason=no_pending_receivers",
+                        user.device.device_type.as_str()
+                    ));
                     continue;
                 }
+                info!(
+                    actor_type = %user.device.device_type.as_str(),
+                    claim_owned_by_local_device = claim.sender.eq(&user.device.device_id),
+                    current_claim_found = current_claim.is_some(),
+                    ?pending_receiver_count,
+                    "split_upload: evaluating local device-log claim"
+                );
+                core_diag(&format!(
+                    "[CORE_DIAG] split upload candidate actor_type={} claim_owned_by_local={} current_claim_found={} pending_receiver_count={:?}",
+                    user.device.device_type.as_str(),
+                    claim.sender.eq(&user.device.device_id),
+                    current_claim.is_some(),
+                    pending_receiver_count
+                ));
                 let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
-                let wf_events = p_ss.get_distributions(claim).await?;
+                let wf_events = p_ss.get_distributions(claim.clone()).await?;
+                info!(
+                    actor_type = %user.device.device_type.as_str(),
+                    workflow_event_count = wf_events.len(),
+                    "split_upload: loaded local distribution workflows"
+                );
+                core_diag(&format!(
+                    "[CORE_DIAG] split workflows actor_type={} count={}",
+                    user.device.device_type.as_str(),
+                    wf_events.len()
+                ));
                 for wf_event in wf_events {
+                    if !Self::split_workflow_matches_claim(&claim, &wf_event) {
+                        continue;
+                    }
                     if let Some(c) = current_claim.as_ref()
                         && !Self::split_workflow_has_pending_receiver(c, &wf_event)
                     {
+                        info!(
+                            actor_type = %user.device.device_type.as_str(),
+                            "split_upload: skipped distribution because receiver is not pending"
+                        );
                         continue;
                     }
 
@@ -538,7 +831,18 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                     let request = SyncRequest::Write(Box::from(WriteSyncRequest::Event(
                         self.signed_event(wf_event.to_generic(), &user).await?,
                     )));
-                    self.sync.send(request).await?.ensure_success()?;
+                    let response = self.sync.send(request).await?;
+                    response.ensure_success()?;
+                    info!(
+                        actor_type = %user.device.device_type.as_str(),
+                        uploaded = true,
+                        "split_upload: server accepted local distribution workflow"
+                    );
+                    core_diag(&format!(
+                        "[CORE_DIAG] split upload accepted actor_type={} receiver_is_local={}",
+                        user.device.device_type.as_str(),
+                        receiver.as_ref() == Some(&user.device.device_id)
+                    ));
                     if receiver.as_ref() != Some(&user.device.device_id) {
                         self.p_obj.repo.delete(obj_id).await;
                     }
@@ -610,7 +914,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                     self.signed_event(wf_event.to_generic(), user).await?,
                 )));
                 info!(claim_id = ?claim.id, "sync_ss_log: uploading local recovery approval first");
-                    self.sync.send(request).await?.ensure_success()?;
+                self.sync.send(request).await?.ensure_success()?;
                 self.p_obj.repo.delete(obj_id).await;
             }
         }
@@ -674,8 +978,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         };
 
         //sync ss_device_log and ss_log
-        self.sync_ss_device_log(server_tail, &user)
-            .await?;
+        self.sync_ss_device_log(server_tail, &user).await?;
         self.sync_ss_log(user).await?;
 
         Ok(())
@@ -697,21 +1000,245 @@ pub mod fixture {
 
     impl<Sync: SyncProtocol> SyncGatewayFixture<Sync> {
         pub fn from(state: &EmptyState, server_sync: Arc<Sync>) -> Self {
-            let client_gw = Arc::new(SyncGateway {
-                id: "client_gw".to_string(),
-                p_obj: state.p_obj.client.clone(),
-                sync: server_sync.clone(),
-                master_key: state.device_creds.client_master_key.clone(),
-            });
+            let client_gw = Arc::new(SyncGateway::new(
+                "client_gw".to_string(),
+                state.p_obj.client.clone(),
+                server_sync.clone(),
+                state.device_creds.client_master_key.clone(),
+            ));
 
-            let vd_gw = Arc::new(SyncGateway {
-                id: "vd_gw".to_string(),
-                p_obj: state.p_obj.vd.clone(),
-                sync: server_sync,
-                master_key: state.device_creds.vd_master_key.clone(),
-            });
+            let vd_gw = Arc::new(SyncGateway::new(
+                "vd_gw".to_string(),
+                state.p_obj.vd.clone(),
+                server_sync,
+                state.device_creds.vd_master_key.clone(),
+            ));
 
             Self { client_gw, vd_gw }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex as StdMutex};
+
+    use anyhow::Result;
+
+    use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use crate::node::api::{
+        DataEventsResponse, DataSyncResponse, ReadSyncRequest, ServerTailResponse, SyncRequest,
+        WriteSyncRequest,
+    };
+    use crate::node::app::sync::sync_gateway::SyncGateway;
+    use crate::node::app::sync::sync_protocol::SyncProtocol;
+    use crate::node::common::model::secret::SsDistributionStatus;
+    use crate::node::db::events::generic_log_event::{ObjIdExtractor, ToGenericEvent};
+    use crate::node::db::events::object_id::{ArtifactId, Next};
+    use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
+    use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
+    use crate::node::db::objects::persistent_vault::PersistentVault;
+    use crate::node::db::repo::persistent_credentials::PersistentCredentials;
+
+    #[derive(Default)]
+    struct ReplayRejectingSyncProtocol {
+        next_device_tail: StdMutex<Option<ArtifactId>>,
+        observed_device_tails: StdMutex<Vec<Option<ArtifactId>>>,
+        write_attempts: AtomicUsize,
+    }
+
+    impl ReplayRejectingSyncProtocol {
+        fn write_attempts(&self) -> usize {
+            self.write_attempts.load(Ordering::SeqCst)
+        }
+
+        fn observed_device_tails(&self) -> Vec<Option<ArtifactId>> {
+            self.observed_device_tails
+                .lock()
+                .expect("observed tail lock must not be poisoned")
+                .clone()
+        }
+    }
+
+    impl SyncProtocol for ReplayRejectingSyncProtocol {
+        async fn send(&self, request: SyncRequest) -> Result<DataSyncResponse> {
+            match request {
+                SyncRequest::Read(request) => match *request {
+                    ReadSyncRequest::ServerTail(_) => {
+                        let device_log_tail = self
+                            .next_device_tail
+                            .lock()
+                            .expect("device tail lock must not be poisoned")
+                            .clone();
+                        self.observed_device_tails
+                            .lock()
+                            .expect("observed tail lock must not be poisoned")
+                            .push(device_log_tail.clone());
+
+                        // Let a concurrently polled sync reach this point. Without the
+                        // SyncGateway guard both callers snapshot the same stale tail and
+                        // attempt to upload the same signed event.
+                        tokio::task::yield_now().await;
+
+                        Ok(DataSyncResponse::ServerTailResponse(ServerTailResponse {
+                            device_log_tail,
+                            ss_device_log_tail: None,
+                        }))
+                    }
+                    ReadSyncRequest::Vault(_) | ReadSyncRequest::SsRequest(_) => {
+                        Ok(DataSyncResponse::Data(DataEventsResponse(Vec::new())))
+                    }
+                    ReadSyncRequest::SsRecoveryCompletion(_)
+                    | ReadSyncRequest::StateEventsSubscription(_)
+                    | ReadSyncRequest::JoinResultSubscription(_) => Ok(DataSyncResponse::Empty),
+                },
+                SyncRequest::Write(request) => match *request {
+                    WriteSyncRequest::Event(action) => {
+                        self.write_attempts.fetch_add(1, Ordering::SeqCst);
+                        let next_tail = action.event()?.obj_id().next();
+                        let mut stored_tail = self
+                            .next_device_tail
+                            .lock()
+                            .expect("device tail lock must not be poisoned");
+                        if stored_tail.is_some() {
+                            return Ok(DataSyncResponse::Error {
+                                msg: "replayed signed action".to_string(),
+                            });
+                        }
+                        *stored_tail = Some(next_tail);
+                        Ok(DataSyncResponse::Empty)
+                    }
+                },
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn concurrent_syncs_serialize_and_do_not_replay_a_queued_event() -> Result<()> {
+        let fixture = FixtureRegistry::base().await?;
+        let state = &fixture.state.empty;
+        let credentials = PersistentCredentials {
+            p_obj: state.p_obj.client.clone(),
+            master_key: state.device_creds.client_master_key.clone(),
+        };
+        let user = credentials
+            .get_user_creds()
+            .await?
+            .expect("client credentials must exist")
+            .user();
+        PersistentVault::from(state.p_obj.client.clone())
+            .update_vault_membership_info_for_user(user.clone())
+            .await?;
+        PersistentDeviceLog::from(state.p_obj.client.clone())
+            .save_create_vault_request(&user)
+            .await?;
+
+        let protocol = Arc::new(ReplayRejectingSyncProtocol::default());
+        let gateway = Arc::new(SyncGateway::new(
+            "concurrent-sync-test".to_string(),
+            state.p_obj.client.clone(),
+            protocol.clone(),
+            state.device_creds.client_master_key.clone(),
+        ));
+
+        let (first, second) = tokio::join!(gateway.sync(user.clone()), gateway.sync(user));
+        first?;
+        second?;
+
+        assert_eq!(protocol.write_attempts(), 1);
+        let observed_tails = protocol.observed_device_tails();
+        assert_eq!(observed_tails.len(), 2);
+        assert!(observed_tails[0].is_none());
+        assert!(observed_tails[1].is_some());
+
+        Ok(())
+    }
+
+    #[derive(Default)]
+    struct CapturingSyncProtocol {
+        requests: StdMutex<Vec<SyncRequest>>,
+        response: StdMutex<Option<DataSyncResponse>>,
+    }
+
+    impl SyncProtocol for CapturingSyncProtocol {
+        async fn send(&self, request: SyncRequest) -> Result<DataSyncResponse> {
+            self.requests.lock().expect("request mutex").push(request);
+            Ok(self
+                .response
+                .lock()
+                .expect("response mutex")
+                .clone()
+                .unwrap_or(DataSyncResponse::Empty))
+        }
+    }
+
+    #[tokio::test]
+    async fn complete_recovery_sends_signed_completion_for_approved_receiver() -> Result<()> {
+        let fixture = FixtureRegistry::empty();
+        let user_creds = fixture.state.user_creds.client.clone();
+        let pass_id = crate::node::common::model::meta_pass::MetaPasswordId::build_from_str(
+            "complete_recovery_test",
+        );
+        let mut claim = fixture
+            .state
+            .vault_data
+            .client_vault_member
+            .create_recovery_claim(pass_id.clone());
+        let receiver = claim.receivers[0].clone();
+        claim
+            .status
+            .statuses
+            .insert(receiver.clone(), SsDistributionStatus::Sent);
+        PersistentSharedSecret::from(fixture.state.p_obj.client.clone())
+            .save_ss_log_event(claim.clone())
+            .await?;
+
+        let completed_ss_log = PersistentSharedSecret::from(fixture.state.p_obj.client.clone())
+            .find_ss_log_tail_event(user_creds.vault_name.clone())
+            .await?
+            .expect("recovery claim should be persisted")
+            .to_data()
+            .complete_with_receiver_status(
+                claim.id.clone(),
+                user_creds.device_id().clone(),
+                receiver.clone(),
+                SsDistributionStatus::Sent,
+            );
+        let completed_event = PersistentSharedSecret::from(fixture.state.p_obj.client.clone())
+            .create_new_ss_log_object(completed_ss_log, user_creds.vault_name.clone())
+            .await?
+            .to_generic();
+        let protocol = Arc::new(CapturingSyncProtocol::default());
+        *protocol.response.lock().expect("response mutex") =
+            Some(DataSyncResponse::Data(DataEventsResponse(vec![
+                completed_event,
+            ])));
+        let gateway = SyncGateway::new(
+            "complete-recovery-test".to_string(),
+            fixture.state.p_obj.client.clone(),
+            protocol.clone(),
+            fixture.state.device_creds.client_master_key.clone(),
+        );
+        gateway.complete_recovery(&user_creds, &claim.id).await?;
+
+        let requests = protocol.requests.lock().expect("request mutex");
+        let [SyncRequest::Read(request)] = requests.as_slice() else {
+            anyhow::bail!("expected one recovery completion request")
+        };
+        let ReadSyncRequest::SsRecoveryCompletion(signed) = request.as_ref() else {
+            anyhow::bail!("expected an SsRecoveryCompletion request")
+        };
+        assert_eq!(signed.signer, *user_creds.device_id());
+        assert_eq!(signed.nonce, 1);
+        let completion = signed.completion()?;
+        assert_eq!(completion.vault_name, user_creds.vault_name);
+        assert_eq!(completion.recovery_id.claim_id, claim.dist_claim_id);
+        assert_eq!(completion.recovery_id.distribution_id.pass_id, pass_id);
+        assert_eq!(completion.recovery_id.distribution_id.receiver, receiver);
+        assert_eq!(completion.receiver_status, SsDistributionStatus::Sent);
+        signed.verify(&user_creds.device_creds.device.keys.dsa_pk)?;
+
+        Ok(())
     }
 }

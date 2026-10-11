@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { ensureIosFfi, verifyIosXcodeBuild } from '../shared/ios-ffi-provenance.mjs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
@@ -6,11 +7,16 @@ import process from 'node:process';
 import { setTimeout as wait } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { discoverAndroidSdk, findOnlineAndroidAvd, withAndroidSdkPath } from '../shared/android-sdk.mjs';
+import { installAndVerifyAndroidE2eApps, prepareIosTestApps } from '../shared/platform-readiness.mjs';
+import { openVisibleIosDeviceUi } from '../shared/visible-ios-ui.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const e2eRoot = resolve(root, '..');
-const scenarioPath = resolve(root, process.argv[2] ?? 'scenario.json');
+const scenarioArgument = process.argv.slice(2).find((argument) => !argument.startsWith('--'));
+const scenarioPath = resolve(root, scenarioArgument ?? 'scenario.json');
 const scenario = JSON.parse(readFileSync(scenarioPath, 'utf8'));
+const exitOnSuccess = process.argv.includes('--exit-on-success') || process.env.E2E_EXIT_ON_SUCCESS === '1';
 const recoveryCycles = scenario.recovery.groups.flatMap((group) =>
   Array.from({ length: group.count }, (_, offset) => ({
     group: group.approver,
@@ -26,7 +32,13 @@ const webDirectory = resolve(e2eRoot, scenario.web.directory);
 const composeRoot = resolve(e2eRoot, scenario.ios.composeRoot);
 const iosProjectPath = resolve(composeRoot, 'iosApp/iosApp.xcodeproj');
 const iosDerivedDataPath = resolve(e2eRoot, '.derivedData/iosApp');
-const androidEmulatorPath = '/Users/dmitrykuklin/Library/Android/sdk/emulator/emulator';
+const artifactsDirectory = resolve(e2eRoot, '.artifacts');
+const testAttemptToken = process.env.E2E_RUN_ID
+  ? `${process.env.E2E_RUN_ID}-attempt-${process.env.E2E_TEST_ATTEMPT ?? '1'}`
+  : new Date().toISOString().replace(/[:.]/g, '-');
+const iosResultBundlePath = resolve(artifactsDirectory, `test-1-run-${testAttemptToken}.xcresult`);
+const androidSdkTools = discoverAndroidSdk();
+const androidEmulatorPath = androidSdkTools.emulatorPath;
 const serverContainer = scenario.server.container;
 const serverImage = scenario.server.image;
 const processes = [];
@@ -64,7 +76,7 @@ function run(command, args, options = {}) {
     cwd: options.cwd ?? projectRoot,
     env: {
       ...process.env,
-      PATH: `/opt/homebrew/bin:/usr/local/bin:${process.env.PATH ?? ''}`,
+      PATH: withAndroidSdkPath(`/opt/homebrew/bin:/usr/local/bin:${process.env.PATH ?? ''}`, androidSdkTools),
       ...(options.env ?? {}),
     },
     stdio: options.stdio ?? 'inherit',
@@ -127,6 +139,7 @@ function watchProcessOutput(command, args, options = {}) {
 
   child.stdout.on('data', (chunk) => processOutput(chunk, 'stdout'));
   child.stderr.on('data', (chunk) => processOutput(chunk, 'stderr'));
+  const closed = new Promise((resolvePromise) => child.once('close', resolvePromise));
 
   let processError;
   const result = new Promise((resolvePromise, reject) => {
@@ -164,6 +177,7 @@ function watchProcessOutput(command, args, options = {}) {
     child,
     waitForMarker,
     result,
+    closed,
     outputTail: () => `${stdout}\n${stderr}`.slice(-12_000),
   };
   watchedProcessOutputs.push(watched);
@@ -216,21 +230,32 @@ async function findIosSimulator() {
 async function prepareIosSimulator() {
   const simulator = await findIosSimulator();
   console.log(`8. Preparing iOS simulator: ${simulator.name} (${simulator.udid})`);
+  if (process.env.E2E_RANGE_RUN === '1' && simulator.state !== 'Booted') {
+    throw new Error(`Range supervisor's iOS simulator ${simulator.name} is not Booted at scenario handoff`);
+  }
   if (simulator.state !== 'Booted') {
     await runAndWait('xcrun', ['simctl', 'boot', simulator.udid]);
   }
   await runAndWait('xcrun', ['simctl', 'bootstatus', simulator.udid, '-b']);
-  await runAndWait('xcrun', ['simctl', 'uninstall', simulator.udid, scenario.ios.bundleId], { stdio: 'ignore' }).catch(() => {});
-  await runAndWait('open', ['-a', 'Simulator']).catch(() => {});
+  if (process.env.E2E_RANGE_RUN !== '1') {
+    const installed = await runAndWait('xcrun', ['simctl', 'get_app_container', simulator.udid, scenario.ios.bundleId])
+      .then(() => true, (error) => {
+        if (/not installed|No such file|not found|No matching applications/i.test(error.message)) return false;
+        throw error;
+      });
+    if (installed) await runAndWait('xcrun', ['simctl', 'uninstall', simulator.udid, scenario.ios.bundleId]);
+  }
+  await openVisibleIosDeviceUi({ runAndCapture, runAndWait, simulatorUdid: simulator.udid });
   return simulator.udid;
 }
 
 function startIosJoinTest(simulatorUdid) {
+  verifyIosXcodeBuild({ derivedDataPath: iosDerivedDataPath });
   console.log('9. Starting iOS UI test');
-  return watchProcessOutput(
+  const watched = watchProcessOutput(
     'xcodebuild',
     [
-      'test',
+      'test-without-building',
       '-project',
       iosProjectPath,
       '-scheme',
@@ -241,6 +266,8 @@ function startIosJoinTest(simulatorUdid) {
       `id=${simulatorUdid}`,
       '-derivedDataPath',
       iosDerivedDataPath,
+      '-resultBundlePath',
+      iosResultBundlePath,
       '-only-testing:iosAppUITests/CaseOneJoinFromIosUITest/testJoinApprovedVaultAndShowSecret',
     ],
     {
@@ -255,25 +282,73 @@ function startIosJoinTest(simulatorUdid) {
       },
     },
   );
+  // XCTest can pass the selected UI test while xcodebuild's testmanagerd
+  // session remains open. Treat the selected-suite pass marker as the
+  // authoritative UI result, then close the lingering wrapper before the
+  // orchestrator advances to the next recovery cycle.
+  const selectedSuitePassed = watched.waitForMarker(
+    "Test Suite 'Selected tests' passed",
+    600_000,
+  ).then(async () => {
+    if (!watched.child.killed) watched.child.kill('SIGTERM');
+    await watched.closed;
+    return { stdout: watched.outputTail(), stderr: '' };
+  });
+  void watched.result.catch(() => {});
+  void selectedSuitePassed.catch(() => {});
+  return { ...watched, result: selectedSuitePassed };
 }
 
 async function prepareAndroidEmulator() {
-  const { stdout } = await runAndCapture('adb', ['devices']);
-  let serial = stdout.split('\n').map((line) => line.trim().split(/\s+/)).find(([id, state]) => id.startsWith('emulator-') && state === 'device')?.[0];
+  let serial = await findOnlineAndroidAvd(androidSdkTools, scenario.android.avdName, runAndCapture);
+
+  if (process.env.E2E_RANGE_RUN === '1') {
+    if (!serial) throw new Error(`Range supervisor's Android AVD ${scenario.android.avdName} is offline at scenario handoff`);
+    await waitForAndroidBoot(serial);
+    return serial;
+  }
 
   if (!serial) {
     console.log(`12. Starting Android emulator: ${scenario.android.avdName}`);
     run(androidEmulatorPath, ['-avd', scenario.android.avdName]);
-    await runAndWait('adb', ['wait-for-device']);
-    const devices = await runAndCapture('adb', ['devices']);
-    serial = devices.stdout.split('\n').map((line) => line.trim().split(/\s+/)).find(([id, state]) => id.startsWith('emulator-') && state === 'device')?.[0];
+    serial = await waitForConfiguredAndroidAvd();
   }
 
   if (!serial) throw new Error(`Android emulator ${scenario.android.avdName} did not start`);
   console.log(`13. Preparing Android emulator: ${serial}`);
   await waitForAndroidBoot(serial);
-  await runAndWait('adb', ['-s', serial, 'uninstall', scenario.android.bundleId], { stdio: 'ignore' }).catch(() => {});
+  const { stdout: installedPath } = await runAndCapture('adb', ['-s', serial, 'shell', 'pm', 'path', scenario.android.bundleId]);
+  if (installedPath.includes('package:')) {
+    await runAndWait('adb', ['-s', serial, 'uninstall', scenario.android.bundleId]);
+    const { stdout: remainingPath } = await runAndCapture('adb', ['-s', serial, 'shell', 'pm', 'path', scenario.android.bundleId]);
+    if (remainingPath.includes('package:')) throw new Error(`Android app ${scenario.android.bundleId} remains installed after uninstall`);
+  }
   return serial;
+}
+
+async function waitForConfiguredAndroidAvd(timeoutMs = 120_000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError = `AVD ${scenario.android.avdName} is not online`;
+  while (Date.now() < deadline) {
+    try {
+      const serial = await findOnlineAndroidAvd(androidSdkTools, scenario.android.avdName, runAndCapture);
+      if (serial) return serial;
+    } catch (error) {
+      lastError = error.message;
+    }
+    await wait(1_000);
+  }
+  throw new Error(`Android AVD ${scenario.android.avdName} did not become online: ${lastError}`);
+}
+
+async function preflightLocalRuntimes() {
+  const { stdout } = await runAndCapture(androidEmulatorPath, ['-list-avds']);
+  const avds = stdout.split(/\r?\n/).map((name) => name.trim()).filter(Boolean);
+  if (!avds.includes(scenario.android.avdName)) {
+    throw new Error(`Android AVD "${scenario.android.avdName}" is unavailable; installed AVDs: ${avds.join(', ') || '<none>'}`);
+  }
+  const simulator = await findIosSimulator();
+  console.log(`✅ Local runtimes available: Android AVD ${scenario.android.avdName}; iOS ${simulator.name} (${simulator.state})`);
 }
 
 async function waitForAndroidBoot(serial, timeoutMs = 120_000) {
@@ -331,7 +406,18 @@ async function startAndroidJoinTest(serial) {
     { cwd: composeRoot, env: { ANDROID_SERIAL: serial } },
   );
   const result = test.finally(() => logcat.child.kill('SIGTERM'));
-  return { ...logcat, result };
+  const waitForMarker = (marker, timeoutMs = 300_000) => Promise.race([
+    logcat.waitForMarker(marker, timeoutMs),
+    result.then(
+      () => {
+        throw new Error(`Android UI test completed before expected E2E marker ${marker}`);
+      },
+      (error) => {
+        throw new Error(`Android UI test failed before expected E2E marker ${marker}: ${error.message}`);
+      },
+    ),
+  ]);
+  return { ...logcat, result, waitForMarker };
 }
 
 async function setupVirtualAuthenticator(page) {
@@ -371,6 +457,7 @@ async function unlockWithPasskeyIfNeeded(page) {
 }
 
 async function approveJoinRequestOnWeb(page, deviceName) {
+  await page.bringToFront();
   console.log(`Web approving ${deviceName} join request`);
   await page.getByRole('link', { name: 'Devices', exact: true }).click();
   try {
@@ -396,7 +483,12 @@ async function closeWebSecret(page) {
 async function runRecoveryCycles(page, iosTest, androidTest) {
   await page.getByRole('link', { name: 'Secrets', exact: true }).click();
 
+  let previousApprover;
   for (const cycle of recoveryCycles) {
+    if (cycle.approver !== previousApprover) {
+      console.log(`📱 Roles changed: Device A — Web requester; Device B — iOS ${cycle.approver === 'ios' ? 'approver' : 'observer'}; Device C — Android ${cycle.approver === 'android' ? 'approver' : 'observer'}`);
+      previousApprover = cycle.approver;
+    }
     console.log(`15.${cycle.number} Web requesting secret recovery (${cycle.approver} approves)`);
     await page.getByTestId(`secret-primary-action-${scenario.secret.name}`).click();
     await Promise.all([
@@ -418,17 +510,17 @@ async function runRecoveryCycles(page, iosTest, androidTest) {
       androidTest.waitForMarker(`E2E: ANDROID_RECOVERY_REQUEST_CLOSED_${cycle.number}`),
     ]);
 
-    if (cycle.number < recoveryCycles.length) {
-      await wait(scenario.recovery.pauseMs);
-    }
   }
 }
 
 async function main() {
   if (!existsSync(webDirectory)) throw new Error(`Web directory not found: ${webDirectory}`);
   if (!existsSync(composeRoot)) throw new Error(`Compose directory not found: ${composeRoot}`);
+  mkdirSync(artifactsDirectory, { recursive: true });
 
   console.log(`\n=== ${scenario.name} ===`);
+  await ensureIosFfi({ coreRoot, composeRoot, runAndWait, evidenceDirectory: artifactsDirectory });
+  await preflightLocalRuntimes();
   approvalCoordinator = await startApprovalCoordinator();
   console.log('1. Rebuilding the Web WASM package');
   await runAndWait('/opt/homebrew/bin/task', ['wasm-local'], { cwd: coreRoot });
@@ -447,15 +539,43 @@ async function main() {
   run('npm', ['run', 'dev', '--', '--host', 'localhost', '--port', '5173'], { cwd: webDirectory });
   await waitForHttp(scenario.web.url);
 
-  const browser = await chromium.launch({ headless: false, slowMo: 250 });
+  const browser = await chromium.launch({ headless: false });
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   page.on('console', (message) => console.log(`WEB CONSOLE [${message.type()}] ${message.text()}`));
   page.on('pageerror', (error) => console.error(`WEB PAGE ERROR ${error.message}`));
   await setupVirtualAuthenticator(page);
 
-  console.log('5. Creating Vault');
+  console.log('5a. Opening and authenticating Web before business actions');
   await page.goto(scenario.web.url, { waitUntil: 'networkidle' });
   await unlockWithPasskeyIfNeeded(page);
+
+  // All participating clients must be ready before the first Vault mutation.
+  // This also catches an ADB-offline installation failure before the Web/iOS
+  // scenario has created data.
+  console.log('5b. Preparing Android before the business scenario');
+  const androidSerial = await prepareAndroidEmulator();
+  await installAndVerifyAndroidE2eApps({
+    serial: androidSerial,
+    appBundleId: scenario.android.bundleId,
+    composeRoot,
+    runAndWait,
+    runAndCapture,
+  });
+  console.log('5c. Preparing iOS app and XCTest runner before the business scenario');
+  const simulatorUdid = await prepareIosSimulator();
+  const iosReadiness = await prepareIosTestApps({
+    simulatorUdid,
+    projectPath: iosProjectPath,
+    derivedDataPath: iosDerivedDataPath,
+    appBundleId: scenario.ios.bundleId,
+    testSelector: 'iosAppUITests/CaseOneJoinFromIosUITest/testJoinApprovedVaultAndShowSecret',
+    cwd: resolve(composeRoot, 'iosApp'),
+    runAndWait,
+    runAndCapture,
+  });
+  console.log(`✅ iOS app and XCTest runner are installed (${iosReadiness.appBundleId})`);
+
+  console.log('5. Creating Vault');
   await page.getByPlaceholder('vault name').fill(scenario.vault.name);
   await page.getByRole('button', { name: 'Set Vault Name' }).click();
   await page.getByText('Vault name is free!').waitFor();
@@ -475,7 +595,6 @@ async function main() {
   console.log('7a. Closing Web secret');
   await closeWebSecret(page);
 
-  const simulatorUdid = await prepareIosSimulator();
   const iosTest = startIosJoinTest(simulatorUdid);
   await Promise.race([
     iosTest.waitForMarker('E2E: IOS_JOIN_REQUEST_SENT'),
@@ -495,7 +614,6 @@ async function main() {
   console.log('12. Closing Web secret');
   await closeWebSecret(page);
 
-  const androidSerial = await prepareAndroidEmulator();
   const androidTest = await startAndroidJoinTest(androidSerial);
   await androidTest.waitForMarker('E2E: ANDROID_JOIN_REQUEST_SENT');
   await iosTest.waitForMarker('E2E: IOS_ANDROID_JOIN_NOTIFICATION_SUCCESS', 120_000);
@@ -506,6 +624,11 @@ async function main() {
   await Promise.all([iosTest.result, androidTest.result]);
 
   console.log('✅ Test #1 Web + iOS + Android part passed');
+  if (exitOnSuccess) {
+    await browser.close();
+    await stopProcesses();
+    return;
+  }
   console.log('Browser remains open. Press Ctrl+C when ready to stop.');
   await new Promise(() => {});
 }

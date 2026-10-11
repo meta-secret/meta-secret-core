@@ -25,7 +25,10 @@
     "showTimeoutMs": 45000,
     "cyclePlan": [
       { "block": 2, "count": 2, "senders": ["web", "ios"], "firstApprover": "android", "secondApprover": "android" },
-      { "block": 2, "count": 4, "senders": ["web", "ios"], "firstApprover": ["web", "ios"], "secondApprover": ["ios", "web"] }
+      { "block": 2, "count": 1, "senders": ["web", "ios"], "firstApprover": "web", "secondApprover": "ios" },
+      { "block": 2, "count": 1, "senders": ["web", "ios"], "firstApprover": "web", "secondApprover": "ios" },
+      { "block": 2, "count": 1, "senders": ["web", "ios"], "firstApprover": "web", "secondApprover": "ios" },
+      { "block": 2, "count": 1, "senders": ["web", "ios"], "firstApprover": "ios", "secondApprover": "web" }
     ]
   },
   "vault": {

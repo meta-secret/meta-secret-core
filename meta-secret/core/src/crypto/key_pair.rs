@@ -1,15 +1,15 @@
-use age::secrecy::ExposeSecret;
-use age::x25519::Identity;
-use ed25519_dalek::{SecretKey, Signer, SigningKey, Verifier};
-use rand::rngs::OsRng;
-use rand::TryRngCore;
-use wasm_bindgen::prelude::wasm_bindgen;
+use crate::CoreResult;
 use crate::crypto::encoding::base64::Base64Text;
 use crate::crypto::keys::{DsaPk, DsaSk, TransportPk, TransportSk};
 use crate::node::common::model::crypto::aead::{AeadCipherText, AeadPlainText};
 use crate::node::common::model::crypto::channel::CommunicationChannel;
 use crate::secret::shared_secret::PlainText;
-use crate::CoreResult;
+use age::secrecy::ExposeSecret;
+use age::x25519::Identity;
+use ed25519_dalek::{SecretKey, Signer, SigningKey, Verifier};
+use rand::TryRngCore;
+use rand::rngs::OsRng;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 pub type DalekKeyPair = SigningKey;
 pub type DalekPublicKey = ed25519_dalek::VerifyingKey;
@@ -97,7 +97,6 @@ impl MasterKeyManager {
     }
 }
 
-
 pub struct TransportDsaKeyPair {
     pub secret_key: Identity,
 }
@@ -153,9 +152,9 @@ pub mod test {
     use crate::crypto::encoding::base64::Base64Text;
     use crate::crypto::key_pair::{DsaKeyPair, KeyPair, TransportDsaKeyPair};
     use crate::crypto::keys::fixture::KeyManagerFixture;
+    use crate::node::common::model::IdString;
     use crate::node::common::model::crypto::aead::{AeadCipherText, AeadPlainText};
     use crate::node::common::model::crypto::channel::CommunicationChannel;
-    use crate::node::common::model::IdString;
     use crate::secret::shared_secret::PlainText;
 
     #[test]

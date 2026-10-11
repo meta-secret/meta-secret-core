@@ -92,13 +92,13 @@ fn load_users_shares() -> Result<Vec<UserShareDto>, SharesLoaderError> {
         if let Some(ext) = maybe_ext
             && ext.eq("json")
         {
-                // Open the file in read-only mode with buffer.
-                let file = File::open(file_path)?;
-                let reader = BufReader::new(file);
+            // Open the file in read-only mode with buffer.
+            let file = File::open(file_path)?;
+            let reader = BufReader::new(file);
 
-                // Read the JSON contents of the file as an instance of `User`.
-                let secret_share: UserShareDto = serde_json::from_reader(reader)?;
-                users_shares_dto.push(secret_share);
+            // Read the JSON contents of the file as an instance of `User`.
+            let secret_share: UserShareDto = serde_json::from_reader(reader)?;
+            users_shares_dto.push(secret_share);
         }
     }
 

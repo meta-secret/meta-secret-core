@@ -3,6 +3,7 @@
 ## Principles
 
 - **No secrets in logs:** Never log a Master Key, plaintext Secret, Key Share (Доля), encrypted Key Share, password, or recovery material in any build (debug or production). Use opaque ids and status/count fields only.
+- **Local E2E diagnostics:** Core diagnostic sinks emit only when the compiled server environment is `Local`, including release native libraries used by local E2E. They emit nothing for `Remote`. JSON parsing failures must not log the input, exception message, or stack trace; report a payload-free error class instead.
 - **Safe database filenames:** Mobile local databases use `meta-secret-db-<SHA-256(master_key)>.db`, where the digest is lowercase hexadecimal. The raw Master Key must never appear in a filename or path log.
 - **Crypto changes are high-risk:** Require clear threat model, minimal diff, and tests. Avoid “quick” algorithm or parameter tweaks.
 - **Operational files:** `master_key.json` and similar runtime secrets belong only in controlled environments—never commit them.

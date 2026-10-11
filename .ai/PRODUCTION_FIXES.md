@@ -3,7 +3,7 @@
 Scope: production-code corrections only. Test-harness changes and logging-only
 changes are intentionally excluded.
 
-**Last updated:** 2026-09-20
+**Last updated:** 2026-09-25
 
 ## Cumulative production corrections
 
@@ -112,3 +112,63 @@ changes are intentionally excluded.
     **Correction:** WASM registration propagates the Core error instead of
     unwrapping it, and Web/Mobile render a clear retryable message with a
     reset/new-vault action.
+
+17. **A completed old recovery claim could close the alert for a newer claim.**
+
+    **Correction:** recovery-alert dismissal is bound to the completed Claim
+    ID. Mobile clients close the dialog only when that Claim ID matches the
+    request currently open in the UI, so an old `DONE` state cannot dismiss a
+    newer recovery request.
+
+18. **Concurrent state refreshes could resend the same signed sync action and
+    leave a client on stale recovery state.**
+
+    **Correction:** Core serializes the complete sync transaction per client —
+    from reading the server tail through uploading local events and receiving
+    vault/claim updates — so a second caller observes the fresh sequence
+    instead of replaying the previous action. Mobile Splash also coalesces
+    duplicate biometric-success events into one authentication and navigation
+    flow, preventing competing startup refreshes.
+
+19. **The sync serialization lock could panic in WebAssembly when two sync
+    callers contended for it.**
+
+    **Correction:** Core uses the WASM-safe `async-lock` mutex for per-client
+    sync and in-memory database serialization. Its contested path does not
+    require `std::time::Instant`, so concurrent Web approval and SSE state
+    refresh no longer crash with `time not implemented` or a nested `RefCell`
+    borrow panic.
+
+20. **A completed `3 → 2` device removal could leave the remaining devices
+    with unusable old `k=2` Key Shares.**
+
+    **Correction:** the approving device now completes reverse resharing as
+    part of accepting the removal. It combines its own Key Share with the
+    initiator's Encrypted Key Share from the signed request, reconstructs the
+    Secret only in memory, and distributes fresh `k=1` Key Shares to the two
+    remaining devices. The removed device receives no new Key Share, and each
+    remaining device retains only its own new Key Share.
+
+21. **An incoming removal-request row could ignore taps on iOS.**
+
+    **Correction:** a pending removal target is rendered as a plain clickable
+    row instead of being wrapped by the swipe-to-delete gesture container.
+    This makes Approve/Decline dialog opening deterministic on iOS and removes
+    the irrelevant delete swipe from an incoming request, while ordinary
+    removable member rows retain their swipe action.
+
+22. **A `2 → 1` removal could strand Secrets owned by the removed device.**
+
+    **Correction:** after the locally confirmed removal, Core makes the sole
+    remaining device the canonical sender for every surviving `Split` claim and
+    clears removed receivers/statuses. The existing local `k=1` Key Share stays
+    unchanged. A later Join therefore redistributes every Secret, regardless of
+    which removed device originally created it.
+
+23. **Declining a pending Device Removal only closed the client dialog.**
+
+    **Correction:** Core now records a signed terminal `Declined` response for
+    the exact removal request. It consumes that request while preserving Vault
+    membership and all Key Shares, performs no resharing, and does not
+    invalidate active Recovery claims. The server enforces first-response-wins,
+    so a late or duplicate `Accepted` response cannot remove the Device.

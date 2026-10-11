@@ -6,9 +6,9 @@ use crate::secret::recovery_request_command::RecoveryRequestCommand;
 use crate::secret::show_local_secret_command::ShowLocalSecretCommand;
 use crate::secret::split_command::SplitCommand;
 use anyhow::Result;
-use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
-use dialoguer::{theme::ColorfulTheme, Input, Password, Select};
+use dialoguer::{Input, Password, Select, theme::ColorfulTheme};
 use meta_secret_core::node::common::model::meta_pass::PlainPassInfo;
+use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
 use strum_macros::Display;
 
 #[derive(Debug, Clone, Copy, Display)]
@@ -165,7 +165,10 @@ mod tests {
         assert!(matches!(options[0], SecretOption::SplitSecret));
         assert!(matches!(options[1], SecretOption::ShowSecret));
         assert!(matches!(options[2], SecretOption::AcceptRecoveryRequest));
-        assert!(matches!(options[3], SecretOption::AcceptAllRecoveryRequests));
+        assert!(matches!(
+            options[3],
+            SecretOption::AcceptAllRecoveryRequests
+        ));
         assert!(matches!(options[4], SecretOption::Back));
     }
 

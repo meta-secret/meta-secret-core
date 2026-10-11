@@ -54,3 +54,11 @@ infra/.secret
 e2eTest/node_modules/
 e2eTest/.derivedData/
 e2eTest/.artifacts/
+
+# Runtime server state and private master keys (server may run from any cwd)
+**/master_key.json
+**/meta-secret.db
+**/meta-secret.db-*
+
+# JVM crash heap dumps
+*.hprof

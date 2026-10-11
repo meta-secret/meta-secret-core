@@ -70,6 +70,10 @@ pub fn state_events_auth_token(vault_name: String) -> String {
     json_api::state_events_auth_token(vault_name)
 }
 
+pub fn join_result_auth_token() -> String {
+    json_api::join_result_auth_token()
+}
+
 pub fn generate_user_creds(vault_name: String) -> String {
     json_api::generate_user_creds(vault_name)
 }
@@ -80,6 +84,18 @@ pub fn sign_up() -> String {
 
 pub fn update_membership(candidate: String, action_update: String) -> String {
     json_api::update_membership(candidate, action_update)
+}
+
+pub fn remove_member(target_device_id: String) -> String {
+    json_api::remove_member(target_device_id)
+}
+
+pub fn approve_remove_member(target_device_id: String) -> String {
+    json_api::approve_remove_member(target_device_id)
+}
+
+pub fn decline_remove_member(target_device_id: String) -> String {
+    json_api::decline_remove_member(target_device_id)
 }
 
 pub fn clean_up_database() -> String {
@@ -138,6 +154,15 @@ mod device_ui_category_ffi_tests {
             device_ui_category_discriminant("unknown-thing".to_string()),
             6
         );
+    }
+}
+
+#[cfg(test)]
+mod join_result_ffi_contract_tests {
+    #[test]
+    fn udl_exports_join_result_auth_token() {
+        let udl = include_str!("mobile_uniffi.udl");
+        assert!(udl.contains("string join_result_auth_token();"));
     }
 }
 

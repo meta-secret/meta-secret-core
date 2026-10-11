@@ -7,8 +7,9 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::events::vault::vault_log_event::{
-    AddMetaPassEvent, CreateVaultEvent, JoinClusterEvent, UpdateMembershipEvent, VaultActionEvent,
-    VaultActionInitEvent, VaultActionRequestEvent, VaultActionUpdateEvent,
+    AddMetaPassEvent, CreateVaultEvent, JoinClusterEvent, RemoveMemberEvent,
+    RemoveMemberRequestEvent, UpdateMembershipEvent, VaultActionEvent, VaultActionInitEvent,
+    VaultActionRequestEvent, VaultActionUpdateEvent,
 };
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
@@ -26,6 +27,24 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
     pub async fn find_tail_id(&self, user_id: &UserId) -> Result<Option<ArtifactId>> {
         let obj_desc = DeviceLogDescriptor::from(user_id.clone());
         self.p_obj.find_tail_id_by_obj_desc(obj_desc.clone()).await
+    }
+
+    /// Return the latest locally persisted JOIN request for this exact user.
+    /// The Core-generated request ID lets a pending joiner subscribe to that
+    /// attempt and prevents an old credential observing a later rejoin.
+    pub async fn latest_join_request(&self, user: &UserData) -> Result<Option<JoinClusterEvent>> {
+        let events = self
+            .p_obj
+            .get_object_events_from_beginning(DeviceLogDescriptor::from(user.user_id()))
+            .await?;
+        Ok(events.into_iter().rev().find_map(|object| {
+            let VaultActionEvent::Request(VaultActionRequestEvent::JoinCluster(request)) =
+                object.0.value
+            else {
+                return None;
+            };
+            (request.candidate == *user).then_some(request)
+        }))
     }
 }
 
@@ -98,6 +117,29 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
         });
         self.p_obj.repo.save(join_request).await?;
 
+        Ok(())
+    }
+
+    pub async fn save_remove_member_request(
+        &self,
+        request: RemoveMemberRequestEvent,
+    ) -> Result<()> {
+        let sender = request.sender.user();
+        let event = DeviceLogObject(KvLogEvent {
+            key: self.get_device_log_free_key(sender).await?,
+            value: VaultActionEvent::Request(VaultActionRequestEvent::RemoveMember(request)),
+        });
+        self.p_obj.repo.save(event).await?;
+        Ok(())
+    }
+
+    pub async fn save_remove_member_update(&self, update: RemoveMemberEvent) -> Result<()> {
+        let sender = update.sender.user();
+        let event = DeviceLogObject(KvLogEvent {
+            key: self.get_device_log_free_key(sender).await?,
+            value: VaultActionEvent::Update(VaultActionUpdateEvent::RemoveMember(update)),
+        });
+        self.p_obj.repo.save(event).await?;
         Ok(())
     }
 

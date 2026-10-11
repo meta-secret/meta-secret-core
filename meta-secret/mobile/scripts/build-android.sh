@@ -127,7 +127,7 @@ build_so() {
       -o "$so_file" \
       -Wl,--whole-archive "$static_lib" \
       -Wl,--no-whole-archive \
-      -lm
+      -lm -llog
 }
 
 echo ""

@@ -177,7 +177,9 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                     Ok(DataSyncResponse::Data(DataEventsResponse(new_events)))
                 }
                 ReadSyncRequest::SsRecoveryCompletion(recovery_completion) => {
-                    self.data_sync.verify_recovery_completion(&recovery_completion).await?;
+                    self.data_sync
+                        .verify_recovery_completion(&recovery_completion)
+                        .await?;
                     let completion = recovery_completion.completion()?.clone();
                     let vault_name = completion.vault_name;
                     let claim_id = completion.recovery_id.claim_id.id;
@@ -272,6 +274,13 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                         .verify_state_events_subscription(&subscription)
                         .await?;
                     Ok(DataSyncResponse::Empty)
+                }
+                ReadSyncRequest::JoinResultSubscription(subscription) => {
+                    let status = self
+                        .data_sync
+                        .verify_join_result_subscription(&subscription)
+                        .await?;
+                    Ok(DataSyncResponse::JoinResult(status))
                 }
             },
             SyncRequest::Write(write_request) => match *write_request {

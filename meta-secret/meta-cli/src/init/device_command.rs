@@ -1,6 +1,6 @@
 use crate::base_command::{BaseCommand, DbContext};
-use anyhow::bail;
 use anyhow::Result;
+use anyhow::bail;
 use meta_secret_core::node::common::model::device::common::{DeviceName, DeviceType};
 use meta_secret_core::node::db::descriptors::creds::DeviceCredsDescriptor;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
@@ -72,11 +72,11 @@ impl InitDeviceCommand {
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use meta_secret_core::crypto::key_pair::{KeyPair, TransportDsaKeyPair};
     use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
     use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
     use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
     use std::sync::Arc;
-    use meta_secret_core::crypto::key_pair::{KeyPair, TransportDsaKeyPair};
 
     #[tokio::test]
     async fn test_init_device_command() -> Result<()> {
@@ -132,20 +132,17 @@ pub mod tests {
     pub async fn create_in_memory_context() -> DbContext<InMemKvLogEventRepo> {
         let repo = Arc::new(InMemKvLogEventRepo::default());
         let p_obj = Arc::new(PersistentObject::new(repo.clone()));
-        
+
         // Always use the same key for tests to avoid "Invalid recipient" errors
         let key_pair = TransportDsaKeyPair::generate();
         let master_key = key_pair.sk();
-        
+
         // Create persistent credentials with this master key
         let p_creds = PersistentCredentials {
             p_obj: p_obj.clone(),
             master_key,
         };
 
-        DbContext {
-            p_obj,
-            p_creds,
-        }
+        DbContext { p_obj, p_creds }
     }
 }

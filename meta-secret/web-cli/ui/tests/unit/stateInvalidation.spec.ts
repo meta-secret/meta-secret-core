@@ -64,15 +64,65 @@ describe('createStateInvalidationController', () => {
     controller.disconnect();
   });
 
+  it('syncs server invalidations before refreshing state and coalesces their sync', async () => {
+    vi.useFakeTimers();
+    const streams: FakeStream[] = [];
+    const operations: string[] = [];
+    const syncBeforeRefresh = vi.fn(async () => {
+      operations.push('sync');
+    });
+    const refresh = vi.fn(async () => {
+      operations.push('refresh');
+    });
+    const controller = createStateInvalidationController({
+      refresh,
+      syncBeforeRefresh,
+      getAuthorization: vi.fn().mockResolvedValue('token-1'),
+      fetchImpl: vi.fn(async () => {
+        const stream = fakeStream();
+        streams.push(stream);
+        return { ok: true, status: 200, body: stream.body } as Response;
+      }),
+      debounceMs: 25,
+      reconnectDelayMs: 0,
+      resolveUrl: (vaultName) => `http://localhost/state-events?vaultName=${vaultName}`,
+    });
+
+    controller.connect('vault-a');
+    await Promise.resolve();
+    await Promise.resolve();
+    streams[0].push(
+      'event: state_invalidated\ndata: {"type":"state_invalidated","vaultName":"vault-a","scope":"devices"}\n\n',
+    );
+    streams[0].push(
+      'event: state_invalidated\ndata: {"type":"state_invalidated","vaultName":"vault-a","scope":"devices"}\n\n',
+    );
+    await vi.advanceTimersByTimeAsync(25);
+
+    expect(operations).toEqual(['sync', 'refresh']);
+    expect(syncBeforeRefresh).toHaveBeenCalledTimes(1);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    controller.disconnect();
+  });
+
   it('runs one follow-up refresh when invalidation arrives during an active refresh', async () => {
     vi.useFakeTimers();
     const streams: FakeStream[] = [];
+    const operations: string[] = [];
     let resolveRefresh!: () => void;
-    const refresh = vi.fn(
-      () => new Promise<void>((resolve) => {
-        resolveRefresh = resolve;
-      }),
-    );
+    let refreshCalls = 0;
+    const refresh = vi.fn(() => {
+      refreshCalls += 1;
+      operations.push('refresh');
+      return refreshCalls === 1
+        ? new Promise<void>((resolve) => {
+            resolveRefresh = resolve;
+          })
+        : Promise.resolve();
+    });
+    const syncBeforeRefresh = vi.fn(async () => {
+      operations.push('sync');
+    });
     const fetchImpl = vi.fn(async () => {
       const stream = fakeStream();
       streams.push(stream);
@@ -80,6 +130,7 @@ describe('createStateInvalidationController', () => {
     });
     const controller = createStateInvalidationController({
       refresh,
+      syncBeforeRefresh,
       getAuthorization: vi.fn().mockResolvedValue('token-1'),
       fetchImpl,
       debounceMs: 10,
@@ -101,6 +152,8 @@ describe('createStateInvalidationController', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(refresh).toHaveBeenCalledTimes(2);
+    expect(syncBeforeRefresh).toHaveBeenCalledTimes(1);
+    expect(operations).toEqual(['refresh', 'sync', 'refresh']);
     controller.disconnect();
   });
 
@@ -129,10 +182,7 @@ describe('createStateInvalidationController', () => {
   it('refreshes authorization after a rejected connection and then opens the stream', async () => {
     const stream = fakeStream();
     const refresh = vi.fn().mockResolvedValue(undefined);
-    const getAuthorization = vi
-      .fn()
-      .mockResolvedValueOnce('expired-token')
-      .mockResolvedValueOnce('fresh-token');
+    const getAuthorization = vi.fn().mockResolvedValueOnce('expired-token').mockResolvedValueOnce('fresh-token');
     const fetchImpl = vi
       .fn()
       .mockResolvedValueOnce({ ok: false, status: 403, body: null } as Response)

@@ -1,5 +1,5 @@
 use crate::base_command::BaseCommand;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use meta_secret_core::node::common::model::secret::SecretDistributionType;
 use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
 use tracing::info;
@@ -85,6 +85,12 @@ impl AcceptAllRecoveryRequestsCommand {
                                 );
                             }
                         }
+                    }
+
+                    if accepted_count > 0 {
+                        // Flush accepted decisions once after the batch so the command
+                        // does not report completion while approvals remain local.
+                        client.get_app_state().await?;
                     }
 
                     println!(

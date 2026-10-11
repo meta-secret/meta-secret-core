@@ -7,7 +7,7 @@ use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::node::app::sync::environment::parse_server_environment;
 use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
 use meta_secret_core::node::common::model::WasmApplicationState;
-use meta_secret_core::node::common::model::device::common::{DeviceName, DeviceType};
+use meta_secret_core::node::common::model::device::common::{DeviceId, DeviceName, DeviceType};
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::ClaimId;
 use meta_secret_core::node::common::model::user::common::UserData;
@@ -79,6 +79,13 @@ impl WasmApplicationManager {
             .map_err(|error| JsError::new(&error.to_string()).into())
     }
 
+    pub async fn join_result_auth_token(&self) -> Result<String, JsValue> {
+        self.app_manager
+            .join_result_auth_token()
+            .await
+            .map_err(|error| JsError::new(&error.to_string()).into())
+    }
+
     pub async fn sync_now(&self) -> Result<(), JsValue> {
         match self.app_manager.sync_now().await {
             Ok(()) => Ok(()),
@@ -111,6 +118,30 @@ impl WasmApplicationManager {
             .update_membership(candidate, upd)
             .await
             .unwrap()
+    }
+
+    pub async fn remove_member_from_vault(
+        &self,
+        target_device_id: DeviceId,
+    ) -> Result<(), JsValue> {
+        self.app_manager
+            .remove_member(target_device_id)
+            .await
+            .map_err(|error| JsError::new(&error.to_string()).into())
+    }
+
+    pub async fn approve_remove_member(&self, target_device_id: DeviceId) -> Result<(), JsValue> {
+        self.app_manager
+            .approve_remove_member(target_device_id)
+            .await
+            .map_err(|error| JsError::new(&error.to_string()).into())
+    }
+
+    pub async fn decline_remove_member(&self, target_device_id: DeviceId) -> Result<(), JsValue> {
+        self.app_manager
+            .decline_remove_member(target_device_id)
+            .await
+            .map_err(|error| JsError::new(&error.to_string()).into())
     }
 
     pub async fn cluster_distribution(&self, plain_pass_info: &PlainPassInfo) {

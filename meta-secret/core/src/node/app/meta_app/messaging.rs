@@ -1,6 +1,6 @@
+use crate::node::common::model::ApplicationState;
 use crate::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use crate::node::common::model::vault::vault::VaultName;
-use crate::node::common::model::ApplicationState;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum GenericAppStateRequest {
@@ -9,6 +9,9 @@ pub enum GenericAppStateRequest {
     SignUp(VaultName),
     ClusterDistribution(PlainPassInfo),
     Recover(MetaPasswordId),
+    RemoveMember(String),
+    ApproveRemoveMember(String),
+    DeclineRemoveMember(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

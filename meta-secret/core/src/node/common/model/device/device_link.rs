@@ -1,9 +1,9 @@
 use crate::crypto::encoding::base64::Base64Text;
 use crate::crypto::utils::UuidUrlEnc;
+use crate::node::common::model::IdString;
 use crate::node::common::model::crypto::channel::CommunicationChannel;
 use crate::node::common::model::device::common::DeviceId;
-use crate::node::common::model::IdString;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use wasm_bindgen::prelude::wasm_bindgen;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -78,16 +78,6 @@ impl TryFrom<&CommunicationChannel> for DeviceLink {
             .peer_to_peer(channel.receiver().to_device_id())?
             .to_device_link();
         Ok(link)
-    }
-}
-
-#[allow(dead_code)]
-pub struct WasmDeviceLink(DeviceLink);
-impl WasmDeviceLink {}
-
-impl From<DeviceLink> for WasmDeviceLink {
-    fn from(device_link: DeviceLink) -> Self {
-        Self(device_link)
     }
 }
 

@@ -5,37 +5,42 @@ use std::cmp::PartialEq;
 use std::sync::Arc;
 
 use crate::server::state_invalidation::{
-    NoopStateInvalidationPublisher, StateInvalidation, StateInvalidationPublisher,
-    StateInvalidationScope,
+    JoinResultOutcome, NoopStateInvalidationPublisher, RecoveryDecisionOutcome, StateInvalidation,
+    StateInvalidationPublisher, StateInvalidationScope,
 };
 use anyhow::Result;
 use anyhow::bail;
 use meta_secret_core::node::api::{SignedAction, SignedActionPayload, SsRequest, VaultRequest};
-use meta_secret_core::node::common::model::device::common::{DeviceData, DeviceId};
 use meta_secret_core::node::common::model::IdString;
-use meta_secret_core::node::state_events::{StateEventsSubscription, unix_time_secs};
+use meta_secret_core::node::common::model::device::common::{DeviceData, DeviceId};
 use meta_secret_core::node::common::model::secret::{
     SecretDistributionType, SsDistributionId, SsDistributionStatus,
 };
-use meta_secret_core::node::common::model::user::common::{UserData, UserMembership};
+use meta_secret_core::node::common::model::user::common::UserData;
+use meta_secret_core::node::common::model::user::common::{UserDataOutsiderStatus, UserMembership};
 use meta_secret_core::node::common::model::vault::vault::{VaultName, VaultStatus};
 use meta_secret_core::node::common::model::vault::vault_data::VaultData;
 use meta_secret_core::node::db::actions::vault::vault_action::ServerVaultAction;
 use meta_secret_core::node::db::descriptors::shared_secret_descriptor::{
-    SsLogDescriptor, SsWorkflowDescriptor,
+    SsDeviceLogDescriptor, SsLogDescriptor, SsWorkflowDescriptor,
 };
 use meta_secret_core::node::db::events::generic_log_event::{
     GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
 };
-use meta_secret_core::node::db::events::shared_secret_event::{SsLogObject, SsWorkflowObject};
-use meta_secret_core::node::db::events::vault::vault_log_event::{
-    VaultActionEvent, VaultActionInitEvent, VaultActionRequestEvent, VaultActionUpdateEvent,
+use meta_secret_core::node::db::events::shared_secret_event::{
+    SsDeviceLogObject, SsLogObject, SsWorkflowObject,
 };
 use meta_secret_core::node::db::events::vault::device_log_event::DeviceLogObject;
+use meta_secret_core::node::db::events::vault::vault_log_event::{
+    RemoveMemberDecision, VaultActionEvent, VaultActionInitEvent, VaultActionRequestEvent,
+    VaultActionUpdateEvent,
+};
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use meta_secret_core::node::db::objects::persistent_vault::PersistentVault;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
+use meta_secret_core::node::join_events::{JoinResultStatus, JoinResultSubscription};
+use meta_secret_core::node::state_events::{StateEventsSubscription, unix_time_secs};
 use tracing::{debug, instrument, warn};
 
 pub struct ServerSyncGateway<Repo: KvLogEventRepo> {
@@ -66,6 +71,74 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         verify_state_events_subscription_data(&vault.to_data(), subscription, unix_time_secs()?)
     }
 
+    /// Authorize a request-scoped JOIN-result stream and return its current
+    /// canonical status. Pending requests are checked against VaultLog;
+    /// terminal requests are checked against the approver's persisted update.
+    pub async fn verify_join_result_subscription(
+        &self,
+        subscription: &JoinResultSubscription,
+    ) -> Result<JoinResultStatus> {
+        let now = unix_time_secs()?;
+        // Verify signature, request binding and expiry before a token-derived
+        // Vault/device identifier is used to access persisted state.
+        subscription.verify_signature(now)?;
+        let p_vault = PersistentVault::from(self.p_obj.clone());
+        let vault = p_vault
+            .get_vault(subscription.vault_name.clone())
+            .await?
+            .to_data();
+        let membership = vault
+            .find_user(&subscription.signer)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("join result subscriber has no Vault request"))?;
+        let candidate = membership.user_data();
+        let request =
+            meta_secret_core::node::db::events::vault::vault_log_event::JoinClusterEvent {
+                candidate: candidate.clone(),
+                request_id: subscription.request_id.clone(),
+            };
+        subscription.verify(
+            &candidate,
+            &request.request_id,
+            &candidate.device.keys.dsa_pk,
+            now,
+        )?;
+        if subscription.request_id.is_empty() {
+            bail!("legacy JOIN request has no request-scoped identity");
+        }
+
+        let exact_pending = p_vault
+            .vault_log(subscription.vault_name.clone())
+            .await?
+            .is_some_and(|log| {
+                log.0
+                    .value
+                    .requests
+                    .contains(&VaultActionRequestEvent::JoinCluster(request.clone()))
+            });
+        let terminal_decision = self.join_result_from_update(&request).await?;
+        join_result_status_for_membership(&membership, exact_pending, terminal_decision)
+    }
+
+    async fn join_result_from_update(
+        &self,
+        request: &meta_secret_core::node::db::events::vault::vault_log_event::JoinClusterEvent,
+    ) -> Result<Option<JoinResultStatus>> {
+        use meta_secret_core::node::db::events::vault::vault_log_event::JoinResultOutcome;
+
+        let events = PersistentVault::from(self.p_obj.clone())
+            .get_vault_log_artifact(request.candidate.vault_name())
+            .await?
+            .0
+            .value;
+        Ok(events.join_results.iter().find_map(|record| {
+            (record.request == *request).then_some(match record.outcome {
+                JoinResultOutcome::Accepted => JoinResultStatus::Accepted,
+                JoinResultOutcome::Declined => JoinResultStatus::Declined,
+            })
+        }))
+    }
+
     fn publish_invalidation(
         &self,
         vault_name: meta_secret_core::node::common::model::vault::vault::VaultName,
@@ -73,6 +146,18 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
     ) {
         self.invalidation_publisher
             .publish(StateInvalidation::new(vault_name, scope));
+    }
+
+    fn publish_recovery_decision(
+        &self,
+        vault_name: meta_secret_core::node::common::model::vault::vault::VaultName,
+        claim_id: String,
+        outcome: RecoveryDecisionOutcome,
+    ) {
+        self.invalidation_publisher
+            .publish(StateInvalidation::recovery_decision(
+                vault_name, claim_id, outcome,
+            ));
     }
 
     #[instrument(skip(self))]
@@ -129,7 +214,11 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
     /// Handle request: all types of requests will be handled
     /// and the actions will be executed accordingly
-    pub async fn handle_write(&self, server_device: DeviceData, action: SignedAction) -> Result<()> {
+    pub async fn handle_write(
+        &self,
+        server_device: DeviceData,
+        action: SignedAction,
+    ) -> Result<()> {
         let generic_event = self.verify_event_action(&action).await?;
         self.server_write_processing(server_device, generic_event)
             .await
@@ -180,7 +269,65 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         if let Some(tail) = self.p_obj.find_tail_id(object_id.clone().first()).await?
             && object_id.id.curr <= tail.id.curr
         {
-            bail!("replayed or out-of-order signed action")
+            // Split distributions are replaceable current values at a stable
+            // (pass, receiver) descriptor. A fresh Pending claim authorizes one
+            // replacement at the same descriptor sequence; the old generation
+            // remains unauthorized because its claim ID is no longer current.
+            let pending_split_replacement = if object_id.id.curr == tail.id.curr {
+                match &event {
+                    GenericKvLogEvent::SsWorkflow(SsWorkflowObject::Distribution(dist)) => {
+                        let receiver = dist
+                            .value
+                            .secret_message
+                            .cipher_text()
+                            .channel
+                            .receiver()
+                            .to_device_id();
+                        let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
+                        let ss_log = p_ss
+                            .get_ss_log_obj(vault_name.clone())
+                            .await?;
+                        let sender_claims: Vec<SsDeviceLogObject> = self
+                            .p_obj
+                            .get_object_events_from_beginning(SsDeviceLogDescriptor::from(
+                                action.signer.clone(),
+                            ))
+                            .await?;
+                        let current_split_claim = sender_claims
+                            .into_iter()
+                            .filter(|event| {
+                                event.0.value.distribution_type == SecretDistributionType::Split
+                                    && event.0.value.dist_claim_id.pass_id
+                                        == dist.value.claim_id.pass_id
+                            })
+                            .max_by_key(|event| event.obj_id().id.curr)
+                            .map(SsDeviceLogObject::to_distribution_request);
+                        ss_log
+                            .claims
+                            .get(&dist.value.claim_id.id)
+                            .is_some_and(|claim| {
+                                claim.distribution_type == SecretDistributionType::Split
+                                    && claim.sender == action.signer
+                                    && current_split_claim
+                                        .as_ref()
+                                        .is_some_and(|current| current.id == claim.id)
+                                    && claim.status.get(&receiver)
+                                        == Some(&SsDistributionStatus::Pending)
+                            })
+                    }
+                    _ => false,
+                }
+            } else {
+                false
+            };
+            if !pending_split_replacement {
+                bail!(
+                    "replayed or out-of-order signed action: stream={} nonce={} server_tail={}",
+                    object_id.fqdn.clone().id_str(),
+                    object_id.id.curr,
+                    tail.id.curr
+                )
+            }
         }
         Ok(event)
     }
@@ -201,9 +348,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             })
             .ok_or_else(|| anyhow::anyhow!("completion signer is not a Vault member"))?;
         let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
-        let ss_log = p_ss
-            .get_ss_log_obj(completion.vault_name.clone())
-            .await?;
+        let ss_log = p_ss.get_ss_log_obj(completion.vault_name.clone()).await?;
         let claim = ss_log
             .claims
             .get(&completion.recovery_id.claim_id.id)
@@ -284,6 +429,30 @@ fn verify_state_events_subscription_data(
     result
 }
 
+/// Resolve status only when the request's exact canonical identity still
+/// matches server state. `exact_pending` and `terminal_decision` are computed
+/// by matching the complete JOIN request (candidate plus Core UUID).
+fn join_result_status_for_membership(
+    membership: &UserMembership,
+    exact_pending: bool,
+    terminal_decision: Option<JoinResultStatus>,
+) -> Result<JoinResultStatus> {
+    // A terminal record is keyed to the exact request UUID and candidate, so
+    // it remains authoritative even if the candidate later retries or is
+    // removed after acceptance.
+    if let Some(terminal_decision) = terminal_decision {
+        return Ok(terminal_decision);
+    }
+    match membership {
+        UserMembership::Outsider(outsider)
+            if outsider.status == UserDataOutsiderStatus::Pending && exact_pending =>
+        {
+            Ok(JoinResultStatus::Pending)
+        }
+        _ => bail!("JOIN request identity or status does not match canonical server state"),
+    }
+}
+
 #[cfg(test)]
 mod state_events_tests {
     use super::verify_state_events_subscription_data;
@@ -327,19 +496,27 @@ mod state_events_tests {
         )
         .unwrap();
 
-        assert!(verify_state_events_subscription_data(
-            &registry.state.vault_data.full_membership,
-            &subscription,
-            1_001,
-        )
-        .is_err());
+        assert!(
+            verify_state_events_subscription_data(
+                &registry.state.vault_data.full_membership,
+                &subscription,
+                1_001,
+            )
+            .is_err()
+        );
     }
 
     #[test]
     fn rejects_subscription_signed_by_a_different_key() {
         let registry = FixtureRegistry::empty();
         let member = &registry.state.user_creds.client;
-        let wrong_key_manager = registry.state.user_creds.client_b.device_creds.key_manager().unwrap();
+        let wrong_key_manager = registry
+            .state
+            .user_creds
+            .client_b
+            .device_creds
+            .key_manager()
+            .unwrap();
         let subscription = StateEventsSubscription::sign_at(
             member.vault_name.clone(),
             member.device_id().clone(),
@@ -348,11 +525,219 @@ mod state_events_tests {
         )
         .unwrap();
 
-        assert!(verify_state_events_subscription_data(
-            &registry.state.vault_data.full_membership,
-            &subscription,
-            1_001,
-        ).is_err());
+        assert!(
+            verify_state_events_subscription_data(
+                &registry.state.vault_data.full_membership,
+                &subscription,
+                1_001,
+            )
+            .is_err()
+        );
+    }
+}
+
+#[cfg(test)]
+mod join_result_contract_tests {
+    use super::{
+        NoopStateInvalidationPublisher, ServerSyncGateway, join_result_status_for_membership,
+    };
+    use anyhow::Result;
+    use meta_secret_core::meta_tests::fixture_util::fixture::FixtureRegistry;
+    use meta_secret_core::node::common::model::user::common::{
+        UserDataMember, UserDataOutsider, UserDataOutsiderStatus, UserMembership,
+    };
+    use meta_secret_core::node::db::events::vault::vault_log_event::{
+        CreateVaultEvent, JoinClusterEvent, UpdateMembershipEvent, VaultActionEvent,
+        VaultActionInitEvent, VaultActionRequestEvent, VaultActionUpdateEvent,
+    };
+    use meta_secret_core::node::join_events::{JoinResultStatus, JoinResultSubscription};
+    use std::sync::Arc;
+
+    #[test]
+    fn pending_is_authorized_only_while_exact_request_is_still_pending() {
+        let registry = FixtureRegistry::empty();
+        let candidate = registry.state.user_creds.vd.user();
+        let outsider = UserMembership::Outsider(UserDataOutsider::pending(candidate));
+
+        assert_eq!(
+            join_result_status_for_membership(&outsider, true, None).unwrap(),
+            JoinResultStatus::Pending
+        );
+        assert!(join_result_status_for_membership(&outsider, false, None).is_err());
+        assert_eq!(
+            join_result_status_for_membership(&outsider, true, Some(JoinResultStatus::Accepted))
+                .unwrap(),
+            JoinResultStatus::Accepted,
+            "a terminal decision for an older UUID remains queryable during a fresh pending retry"
+        );
+    }
+
+    #[test]
+    fn terminal_status_requires_an_exact_persisted_decision() {
+        let registry = FixtureRegistry::empty();
+        let member = UserMembership::Member(UserDataMember {
+            user_data: registry.state.user_creds.client.user(),
+        });
+        assert_eq!(
+            join_result_status_for_membership(&member, false, Some(JoinResultStatus::Accepted))
+                .unwrap(),
+            JoinResultStatus::Accepted
+        );
+        assert!(join_result_status_for_membership(&member, false, None).is_err());
+        assert!(join_result_status_for_membership(&member, true, None).is_err());
+    }
+
+    #[test]
+    fn exact_terminal_decision_remains_authoritative_after_later_membership_transition() {
+        let registry = FixtureRegistry::empty();
+        let candidate = registry.state.user_creds.vd.user();
+        let declined = UserMembership::Outsider(UserDataOutsider {
+            user_data: candidate,
+            status: meta_secret_core::node::common::model::user::common::UserDataOutsiderStatus::Declined,
+        });
+        assert_eq!(
+            join_result_status_for_membership(&declined, false, Some(JoinResultStatus::Declined))
+                .unwrap(),
+            JoinResultStatus::Declined
+        );
+        assert_eq!(
+            join_result_status_for_membership(&declined, false, Some(JoinResultStatus::Accepted))
+                .unwrap(),
+            JoinResultStatus::Accepted,
+            "an exact accepted record remains the result of its request even if a later state snapshot differs"
+        );
+        assert!(join_result_status_for_membership(&declined, true, None).is_err());
+    }
+
+    #[tokio::test]
+    async fn server_authorizes_exact_pending_and_persisted_accepted_request() -> Result<()> {
+        let registry = FixtureRegistry::base().await?;
+        let server = &registry.state.server_vault_action.server;
+        let owner = UserDataMember::from(registry.state.empty.user_creds.client.user());
+        let candidate = registry.state.empty.user_creds.vd.user();
+        server
+            .do_processing(VaultActionEvent::Init(VaultActionInitEvent::CreateVault(
+                CreateVaultEvent::from(owner.clone()),
+            )))
+            .await?;
+        let request = JoinClusterEvent::from(candidate.clone());
+        server
+            .do_processing(VaultActionEvent::Request(
+                VaultActionRequestEvent::JoinCluster(request.clone()),
+            ))
+            .await?;
+        let key_pair = registry
+            .state
+            .empty
+            .user_creds
+            .vd
+            .device_creds
+            .key_manager()?
+            .dsa;
+        let gateway = ServerSyncGateway::new(
+            server.p_obj.clone(),
+            Arc::new(NoopStateInvalidationPublisher),
+        );
+        // Use a future-ish clock for a stable token test, while the public
+        // method itself uses system time. Token roundtrip/signature is covered
+        // separately; this exercises canonical exact UUID status resolution.
+        let auth = JoinResultSubscription::sign(&request, &key_pair)?;
+        assert_eq!(
+            gateway.verify_join_result_subscription(&auth).await?,
+            JoinResultStatus::Pending
+        );
+        server
+            .do_processing(VaultActionEvent::Update(
+                VaultActionUpdateEvent::UpdateMembership(UpdateMembershipEvent {
+                    request: request.clone(),
+                    sender: owner,
+                    update: UserMembership::Member(UserDataMember {
+                        user_data: candidate.clone(),
+                    }),
+                }),
+            ))
+            .await?;
+        assert_eq!(
+            gateway.verify_join_result_subscription(&auth).await?,
+            JoinResultStatus::Accepted
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn server_authorizes_exact_persisted_decline_and_rejects_stale_uuid() -> Result<()> {
+        let registry = FixtureRegistry::base().await?;
+        let server = &registry.state.server_vault_action.server;
+        let owner = UserDataMember::from(registry.state.empty.user_creds.client.user());
+        let candidate = registry.state.empty.user_creds.vd.user();
+        server
+            .do_processing(VaultActionEvent::Init(VaultActionInitEvent::CreateVault(
+                CreateVaultEvent::from(owner.clone()),
+            )))
+            .await?;
+        let request = JoinClusterEvent::from(candidate.clone());
+        server
+            .do_processing(VaultActionEvent::Request(
+                VaultActionRequestEvent::JoinCluster(request.clone()),
+            ))
+            .await?;
+        let key_pair = registry
+            .state
+            .empty
+            .user_creds
+            .vd
+            .device_creds
+            .key_manager()?
+            .dsa;
+        let old_auth = JoinResultSubscription::sign(&request, &key_pair)?;
+        let gateway = ServerSyncGateway::new(
+            server.p_obj.clone(),
+            Arc::new(NoopStateInvalidationPublisher),
+        );
+        server
+            .do_processing(VaultActionEvent::Update(
+                VaultActionUpdateEvent::UpdateMembership(UpdateMembershipEvent {
+                    request: request.clone(),
+                    sender: owner.clone(),
+                    update: UserMembership::Outsider(UserDataOutsider {
+                        user_data: candidate.clone(),
+                        status: UserDataOutsiderStatus::Declined,
+                    }),
+                }),
+            ))
+            .await?;
+        assert_eq!(
+            gateway
+                .verify_join_result_subscription(&old_auth)
+                .await
+                .map_err(|error| anyhow::anyhow!("initial declined result: {error}"))?,
+            JoinResultStatus::Declined
+        );
+
+        let retry = JoinClusterEvent::from(candidate.clone());
+        assert_ne!(retry.request_id, request.request_id);
+        server
+            .do_processing(VaultActionEvent::Request(
+                VaultActionRequestEvent::JoinCluster(retry.clone()),
+            ))
+            .await?;
+        assert_eq!(
+            gateway
+                .verify_join_result_subscription(&old_auth)
+                .await
+                .map_err(|error| anyhow::anyhow!("old terminal result during retry: {error}"))?,
+            JoinResultStatus::Declined,
+            "old token must remain attached to the original terminal request"
+        );
+        let retry_auth = JoinResultSubscription::sign(&retry, &key_pair)?;
+        assert_eq!(
+            gateway
+                .verify_join_result_subscription(&retry_auth)
+                .await
+                .map_err(|error| anyhow::anyhow!("new pending result: {error}"))?,
+            JoinResultStatus::Pending
+        );
+        Ok(())
     }
 }
 
@@ -381,10 +766,16 @@ fn event_actor_user(event: &GenericKvLogEvent, signer: &DeviceId) -> Option<User
         VaultActionEvent::Request(VaultActionRequestEvent::JoinCluster(event)) => {
             event.candidate.clone()
         }
+        VaultActionEvent::Request(VaultActionRequestEvent::RemoveMember(event)) => {
+            event.sender.user_data.clone()
+        }
         VaultActionEvent::Request(VaultActionRequestEvent::AddMetaPass(event)) => {
             event.sender.user_data.clone()
         }
         VaultActionEvent::Update(VaultActionUpdateEvent::UpdateMembership(event)) => {
+            event.sender.user_data.clone()
+        }
+        VaultActionEvent::Update(VaultActionUpdateEvent::RemoveMember(event)) => {
             event.sender.user_data.clone()
         }
         VaultActionEvent::Update(VaultActionUpdateEvent::AddMetaPass(event)) => {
@@ -423,7 +814,26 @@ fn validate_event_actor(event: &GenericKvLogEvent, signer: &DeviceId) -> Result<
                 }
             }
         },
-        GenericKvLogEvent::DeviceLog(_) => {}
+        GenericKvLogEvent::DeviceLog(object) => {
+            let actor = event_actor_user(event, signer)
+                .ok_or_else(|| anyhow::anyhow!("device log actor does not match action signer"))?;
+            if actor.device.device_id != *signer {
+                bail!("device log actor does not match action signer");
+            }
+            if !matches!(
+                &object.0.value,
+                VaultActionEvent::Init(VaultActionInitEvent::CreateVault(_))
+                    | VaultActionEvent::Request(VaultActionRequestEvent::JoinCluster(_))
+                    | VaultActionEvent::Request(VaultActionRequestEvent::RemoveMember(_))
+                    | VaultActionEvent::Request(VaultActionRequestEvent::AddMetaPass(_))
+                    | VaultActionEvent::Update(VaultActionUpdateEvent::UpdateMembership(_))
+                    | VaultActionEvent::Update(VaultActionUpdateEvent::RemoveMember(_))
+                    | VaultActionEvent::Update(VaultActionUpdateEvent::AddMetaPass(_))
+                    | VaultActionEvent::Update(VaultActionUpdateEvent::AddToPending { .. })
+            ) {
+                bail!("unsupported device log action")
+            }
+        }
         _ => bail!("unsupported state-changing event"),
     }
     Ok(())
@@ -455,14 +865,13 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                 if claim_preview.distribution_type == SecretDistributionType::Recover {
                     let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
                     let server_log = p_ss_log.get_ss_log_obj(vault_name.clone()).await?;
-                    let server_log_with_status = server_log
-                        .clone()
-                        .with_client_status(&claim_preview.sender);
+                    let server_log_with_status =
+                        server_log.clone().with_client_status(&claim_preview.sender);
                     if let Some(active_claim_id) = server_log_with_status
                         .find_unique_active_recovery_claim_id(
-                        &claim_preview.sender,
-                        &claim_preview.dist_claim_id.pass_id,
-                    )?
+                            &claim_preview.sender,
+                            &claim_preview.dist_claim_id.pass_id,
+                        )?
                         && active_claim_id != claim_preview.id
                     {
                         debug!(
@@ -497,6 +906,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                     self.p_obj.repo.save(ss_object.clone()).await?;
                     let decline_data = decline_event.value.clone();
                     let vault_name = decline_data.vault_name.clone();
+                    let claim_id = decline_data.claim_id.0.clone().id_str();
                     let p_ss_log = PersistentSharedSecret::from(self.p_obj.clone());
                     let maybe_ss_log_event = p_ss_log
                         .find_ss_log_tail_event(decline_data.vault_name.clone())
@@ -514,6 +924,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                             SsDistributionStatus::Sent | SsDistributionStatus::Delivered
                         )
                     });
+                    let decline_applied = !has_prior_approval;
                     let new_ss_log_data = if has_prior_approval {
                         debug!(
                             claim_id = ?decline_data.claim_id,
@@ -530,7 +941,14 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                         .create_new_ss_log_object(new_ss_log_data, decline_data.vault_name)
                         .await?;
                     self.p_obj.repo.save(new_ss_log_event).await?;
-                    self.publish_invalidation(vault_name, StateInvalidationScope::SsClaims);
+                    self.publish_invalidation(vault_name.clone(), StateInvalidationScope::SsClaims);
+                    if decline_applied {
+                        self.publish_recovery_decision(
+                            vault_name,
+                            claim_id,
+                            RecoveryDecisionOutcome::Declined,
+                        );
+                    }
                 } else {
                     let ss_object_to_save = ss_object.clone();
                     let wf = ss_object.to_distribution_data()?;
@@ -569,6 +987,9 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                                     };
 
                                     let claim_id = wf.claim_id.id.clone();
+                                    let recovery_claim_id = (distribution_type
+                                        == SecretDistributionType::Recover)
+                                        .then(|| claim_id.0.clone().id_str());
                                     if distribution_type == SecretDistributionType::Recover
                                         && claim.status.statuses.values().any(|status| {
                                             matches!(
@@ -604,6 +1025,14 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                                         return Ok(());
                                     }
 
+                                    if distribution_type == SecretDistributionType::Split {
+                                        // Split distributions are current-generation values at a
+                                        // stable (pass, receiver) key. The claim ID and Pending
+                                        // status above authorize replacing stale ciphertext; the
+                                        // insert-only repo otherwise leaves an earlier polynomial
+                                        // in place while marking this generation Sent.
+                                        self.p_obj.repo.delete(ss_object_to_save.obj_id()).await;
+                                    }
                                     self.p_obj.repo.save(ss_object_to_save).await?;
                                     let new_ss_log_data =
                                         ss_log_data.sent(wf.claim_id.id, device_id);
@@ -612,9 +1041,16 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                                         .await?;
                                     self.p_obj.repo.save(new_ss_log_event).await?;
                                     self.publish_invalidation(
-                                        vault_name,
+                                        vault_name.clone(),
                                         StateInvalidationScope::SsClaims,
                                     );
+                                    if let Some(claim_id) = recovery_claim_id {
+                                        self.publish_recovery_decision(
+                                            vault_name,
+                                            claim_id,
+                                            RecoveryDecisionOutcome::Accepted,
+                                        );
+                                    }
                                 }
                             }
                         }
@@ -659,11 +1095,70 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         let vault_action = vault_action_event.value;
         let vault_name = vault_action.vault_name();
         let scope = state_scope_for_vault_action(&vault_action);
-        let accepted_new_member = matches!(
+        let join_accepted = matches!(
             &vault_action,
             VaultActionEvent::Update(VaultActionUpdateEvent::UpdateMembership(update))
                 if matches!(&update.update, UserMembership::Member(_))
         );
+        let join_resolution = match &vault_action {
+            VaultActionEvent::Update(VaultActionUpdateEvent::UpdateMembership(update)) => {
+                match &update.update {
+                    UserMembership::Member(member)
+                        if member.user_data == update.request.candidate
+                            && !update.request.request_id.is_empty() =>
+                    {
+                        Some((
+                            update.request.request_id.clone(),
+                            JoinResultOutcome::Accepted,
+                        ))
+                    }
+                    UserMembership::Outsider(outsider)
+                        if outsider.user_data == update.request.candidate
+                            && outsider.status == UserDataOutsiderStatus::Declined
+                            && !update.request.request_id.is_empty() =>
+                    {
+                        Some((
+                            update.request.request_id.clone(),
+                            JoinResultOutcome::Declined,
+                        ))
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+        let join_resolution_was_pending = if let Some((request_id, _)) = &join_resolution {
+            PersistentVault::from(self.p_obj.clone())
+                .vault_log(vault_name.clone())
+                .await?
+                .is_some_and(|log| {
+                    log.0.value.requests.iter().any(|request| {
+                        matches!(request,
+                            VaultActionRequestEvent::JoinCluster(request)
+                                if request.request_id == *request_id
+                        )
+                    })
+                })
+        } else {
+            false
+        };
+        let accepted_removal_target = match &vault_action {
+            VaultActionEvent::Update(VaultActionUpdateEvent::RemoveMember(update))
+                if update.decision == RemoveMemberDecision::Accepted =>
+            {
+                Some(update.target.user_data.device.device_id.clone())
+            }
+            _ => None,
+        };
+        let removal_target_was_member = if let Some(target_id) = &accepted_removal_target {
+            PersistentVault::from(self.p_obj.clone())
+                .get_vault(vault_name.clone())
+                .await?
+                .to_data()
+                .is_member(target_id)
+        } else {
+            false
+        };
 
         let action = ServerVaultAction {
             p_obj: self.p_obj.clone(),
@@ -671,7 +1166,32 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         };
 
         action.do_processing(vault_action).await?;
-        if accepted_new_member && self.decline_pending_recovery_claims(vault_name.clone()).await? {
+        if join_resolution_was_pending && let Some((request_id, outcome)) = join_resolution {
+            self.invalidation_publisher
+                .publish(StateInvalidation::join_result(
+                    vault_name.clone(),
+                    request_id,
+                    outcome,
+                ));
+        }
+        let removal_changed_membership = if removal_target_was_member {
+            let target_id = accepted_removal_target
+                .as_ref()
+                .expect("accepted removal target is present");
+            !PersistentVault::from(self.p_obj.clone())
+                .get_vault(vault_name.clone())
+                .await?
+                .to_data()
+                .is_member(target_id)
+        } else {
+            false
+        };
+        let membership_changed = join_accepted || removal_changed_membership;
+        if membership_changed
+            && self
+                .decline_pending_recovery_claims(vault_name.clone())
+                .await?
+        {
             self.publish_invalidation(vault_name.clone(), StateInvalidationScope::SsClaims);
         }
         self.publish_invalidation(vault_name, scope);
@@ -839,11 +1359,13 @@ fn state_scope_for_vault_action(action: &VaultActionEvent) -> StateInvalidationS
         VaultActionEvent::Init(_) => StateInvalidationScope::All,
         VaultActionEvent::Request(request) => match request {
             VaultActionRequestEvent::JoinCluster(_) => StateInvalidationScope::Devices,
+            VaultActionRequestEvent::RemoveMember(_) => StateInvalidationScope::Devices,
             VaultActionRequestEvent::AddMetaPass(_) => StateInvalidationScope::Vault,
         },
         VaultActionEvent::Update(update) => match update {
             VaultActionUpdateEvent::AddToPending { .. }
-            | VaultActionUpdateEvent::UpdateMembership(_) => StateInvalidationScope::Devices,
+            | VaultActionUpdateEvent::UpdateMembership(_)
+            | VaultActionUpdateEvent::RemoveMember(_) => StateInvalidationScope::Devices,
             VaultActionUpdateEvent::AddMetaPass(_) => StateInvalidationScope::Vault,
         },
     }

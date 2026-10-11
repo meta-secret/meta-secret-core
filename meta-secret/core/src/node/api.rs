@@ -1,16 +1,17 @@
+use crate::crypto::encoding::base64::Base64Text;
+use crate::crypto::key_pair::DsaKeyPair;
+use crate::crypto::keys::DsaPk;
+use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::secret::{SsDistributionStatus, SsRecoveryId};
 use crate::node::common::model::user::common::UserData;
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::objects::persistent_vault::VaultTail;
-use crate::node::state_events::StateEventsSubscription;
-use crate::crypto::encoding::base64::Base64Text;
-use crate::crypto::key_pair::DsaKeyPair;
-use crate::crypto::keys::DsaPk;
-use crate::node::common::model::device::common::DeviceId;
+use crate::node::join_events::{JoinResultStatus, JoinResultSubscription};
 use crate::node::security::canonical_json;
-use anyhow::{anyhow, Result};
+use crate::node::state_events::StateEventsSubscription;
+use anyhow::{Result, anyhow};
 use derive_more::From;
 use serde::{Deserialize, Serialize};
 
@@ -24,6 +25,7 @@ pub enum ReadSyncRequest {
     SsRecoveryCompletion(SignedAction),
     ServerTail(ServerTailRequest),
     StateEventsSubscription(StateEventsSubscription),
+    JoinResultSubscription(JoinResultSubscription),
 }
 
 #[derive(Clone, Debug, PartialEq, From, Serialize, Deserialize)]
@@ -124,9 +126,9 @@ impl SignedAction {
     pub fn completion(&self) -> Result<&SsRecoveryCompletion> {
         match &self.payload {
             SignedActionPayload::RecoveryCompletion(completion) => Ok(completion),
-            SignedActionPayload::Event(_) => {
-                Err(anyhow!("signed action does not contain recovery completion"))
-            }
+            SignedActionPayload::Event(_) => Err(anyhow!(
+                "signed action does not contain recovery completion"
+            )),
         }
     }
 }
@@ -162,6 +164,7 @@ pub enum DataSyncResponse {
     Data(DataEventsResponse),
     ServerTailResponse(ServerTailResponse),
     Error { msg: String },
+    JoinResult(JoinResultStatus),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -196,6 +199,14 @@ impl DataSyncResponse {
     pub fn to_server_tail(&self) -> Result<ServerTailResponse> {
         match self {
             DataSyncResponse::ServerTailResponse(server_tail) => Ok(server_tail.clone()),
+            _ => Err(anyhow!("Invalid response type")),
+        }
+    }
+
+    pub fn to_join_result(&self) -> Result<JoinResultStatus> {
+        match self {
+            DataSyncResponse::JoinResult(status) => Ok(*status),
+            DataSyncResponse::Error { msg } => Err(anyhow!(msg.clone())),
             _ => Err(anyhow!("Invalid response type")),
         }
     }

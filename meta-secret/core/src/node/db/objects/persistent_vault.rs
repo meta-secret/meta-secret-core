@@ -15,7 +15,7 @@ use crate::node::db::events::vault::vault_log_event::{
 use crate::node::db::events::vault::vault_status::VaultStatusObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use derive_more::From;
 use tracing_attributes::instrument;
 
@@ -168,7 +168,10 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
             }
             // Vault doesn't exist or the user is outsider
             (None, Some(status)) => status.status(),
-            (Some(vault_obj), Some(_)) => vault_obj.to_data().status(user),
+            (Some(vault_obj), Some(status)) => match status.status() {
+                VaultStatus::Member(_) => vault_obj.to_data().status(user),
+                non_member_status => non_member_status,
+            },
         };
 
         Ok(final_status)
@@ -235,7 +238,7 @@ pub mod spec {
     use crate::node::db::objects::persistent_object::PersistentObject;
     use crate::node::db::objects::persistent_vault::PersistentVault;
     use crate::node::db::repo::generic_db::KvLogEventRepo;
-    use anyhow::{bail, Result};
+    use anyhow::{Result, bail};
     use std::sync::Arc;
 
     pub struct VaultLogSpec<Repo: KvLogEventRepo> {
@@ -296,7 +299,9 @@ mod tests {
     use anyhow::Result;
 
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
-    use crate::node::common::model::user::common::{UserDataMember, UserDataOutsider};
+    use crate::node::common::model::user::common::{
+        UserDataMember, UserDataOutsider, UserDataOutsiderStatus,
+    };
     use crate::node::common::model::vault::vault::VaultStatus;
     use crate::node::db::descriptors::vault_descriptor::{
         VaultLogDescriptor, VaultStatusDescriptor,
@@ -423,6 +428,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn find_prefers_declined_server_status_over_stale_member_vault() -> Result<()> {
+        let registry = FixtureRegistry::empty();
+        let user = registry.state.user_creds.client.user();
+        let p_vault = registry.state.p_vault.client.clone();
+        let p_obj = registry.state.p_obj.client.clone();
+
+        let member = UserDataMember::from(user.clone());
+        p_obj
+            .repo
+            .save(VaultObject::sign_up(user.vault_name(), member))
+            .await?;
+
+        let declined = VaultStatus::Outsider(UserDataOutsider {
+            user_data: user.clone(),
+            status: UserDataOutsiderStatus::Declined,
+        });
+        let status_desc = VaultStatusDescriptor::from(user.user_id());
+        p_obj
+            .repo
+            .save(VaultStatusObject::new(
+                declined,
+                ArtifactId::from(status_desc),
+            ))
+            .await?;
+
+        let result = p_vault.find(user).await?;
+
+        assert!(matches!(
+            result,
+            VaultStatus::Outsider(UserDataOutsider {
+                status: UserDataOutsiderStatus::Declined,
+                ..
+            })
+        ));
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_vault_exists() -> Result<()> {
         let registry = FixtureRegistry::empty();
         let user = registry.state.user_creds.client.user();
@@ -531,6 +574,7 @@ mod tests {
         // Test save_vault_log_events by creating a join request event
         let join_request = JoinClusterEvent {
             candidate: user.clone(),
+            request_id: "first-request".into(),
         };
         let new_events = VaultActionEvents::default()
             .request(VaultActionRequestEvent::JoinCluster(join_request));
@@ -544,17 +588,17 @@ mod tests {
         assert_eq!(updated_log.0.value.requests.len(), 1);
 
         // Test save_vault_log_request_event by adding another join request
-        // Note: This creates an identical request to the one we already added
+        // A retry is a distinct request and receives a distinct request ID.
         let join_request2 = JoinClusterEvent {
             candidate: user.clone(),
+            request_id: "second-request".into(),
         };
         let request_event = VaultActionRequestEvent::JoinCluster(join_request2);
         p_vault.save_vault_log_request_event(request_event).await?;
 
-        // Verify that the request count doesn't change
-        // VaultActionEvents.requests is a HashSet, so identical requests are deduplicated
+        // Verify that a fresh request has its own identity.
         let final_log = p_vault.get_vault_log_artifact(user.vault_name()).await?;
-        assert_eq!(final_log.0.value.requests.len(), 1);
+        assert_eq!(final_log.0.value.requests.len(), 2);
 
         Ok(())
     }

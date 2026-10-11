@@ -166,6 +166,20 @@ async fn async_state_events_auth_token(vault_name: String) -> String {
     }
 }
 
+pub fn join_result_auth_token() -> String {
+    MobileApplicationManager::sync_wrapper(async_join_result_auth_token())
+}
+
+async fn async_join_result_auth_token() -> String {
+    match MobileApplicationManager::get_global_instance() {
+        Some(app_manager) => match app_manager.join_result_auth_token().await {
+            Ok(token) => json!({"success": true, "message": token}).to_string(),
+            Err(error) => json!({"success": false, "error": error.to_string()}).to_string(),
+        },
+        None => json!({"success": false, "error": "App manager is not initialized"}).to_string(),
+    }
+}
+
 pub fn generate_user_creds(vault_name: String) -> String {
     MobileApplicationManager::sync_wrapper(async_generate_user_creds(vault_name))
 }
@@ -199,6 +213,48 @@ async fn async_sign_up() -> String {
 
 pub fn update_membership(candidate: String, action_update: String) -> String {
     MobileApplicationManager::sync_wrapper(async_update_membership(candidate, action_update))
+}
+
+pub fn remove_member(target_device_id: String) -> String {
+    MobileApplicationManager::sync_wrapper(async_remove_member(target_device_id))
+}
+
+async fn async_remove_member(target_device_id: String) -> String {
+    match MobileApplicationManager::get_global_instance() {
+        Some(app_manager) => match app_manager.remove_member(target_device_id).await {
+            Ok(()) => json!({"success": true}).to_string(),
+            Err(e) => json!({"success": false, "error": format!("Remove device failed: {e}")}).to_string(),
+        },
+        None => json!({"success": false, "error": "Remove device failed: app manager is not initialized"}).to_string(),
+    }
+}
+
+pub fn approve_remove_member(target_device_id: String) -> String {
+    MobileApplicationManager::sync_wrapper(async_approve_remove_member(target_device_id))
+}
+
+async fn async_approve_remove_member(target_device_id: String) -> String {
+    match MobileApplicationManager::get_global_instance() {
+        Some(app_manager) => match app_manager.approve_remove_member(target_device_id).await {
+            Ok(()) => json!({"success": true}).to_string(),
+            Err(e) => json!({"success": false, "error": format!("Approve device removal failed: {e}")}).to_string(),
+        },
+        None => json!({"success": false, "error": "Approve device removal failed: app manager is not initialized"}).to_string(),
+    }
+}
+
+pub fn decline_remove_member(target_device_id: String) -> String {
+    MobileApplicationManager::sync_wrapper(async_decline_remove_member(target_device_id))
+}
+
+async fn async_decline_remove_member(target_device_id: String) -> String {
+    match MobileApplicationManager::get_global_instance() {
+        Some(app_manager) => match app_manager.decline_remove_member(target_device_id).await {
+            Ok(()) => json!({"success": true}).to_string(),
+            Err(e) => json!({"success": false, "error": format!("Decline device removal failed: {e}")}).to_string(),
+        },
+        None => json!({"success": false, "error": "Decline device removal failed: app manager is not initialized"}).to_string(),
+    }
 }
 
 async fn async_update_membership(candidate: String, action_update: String) -> String {

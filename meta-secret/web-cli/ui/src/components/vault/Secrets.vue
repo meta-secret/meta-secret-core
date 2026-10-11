@@ -58,6 +58,10 @@ const flowToken = ref(0);
 const recoveryDialogOpen = ref(false);
 const recoveryDialogSecret = ref<MetaPasswordId | null>(null);
 const recoveryDialogClaim = ref<ClaimId | null>(null);
+const recoveryDialogClaimId = computed(() => {
+  const claim = recoveryDialogClaim.value as (ClaimId & { wasm_id_str?: () => string }) | null;
+  return claim?.wasm_id_str?.();
+});
 const recoveryActionInProgress = ref<RecoveryAction | null>(null);
 
 const isRecovered = (metaPassId: MetaPasswordId) => {
@@ -453,6 +457,8 @@ const revealModalOpen = computed(() => revealModalState.value !== 'closed');
         </Button>
         <Button
           :disabled="recoveryActionInProgress !== null"
+          data-testid="approve-recovery-request"
+          :data-claim-id="recoveryDialogClaimId"
           @click="submitRecoveryResponse('approve')"
         >
           {{ recoveryActionInProgress === 'approve' ? vaultSecrets.showLoading : vaultSecrets.recoveryRequestApprove }}

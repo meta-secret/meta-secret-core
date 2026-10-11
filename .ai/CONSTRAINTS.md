@@ -14,10 +14,11 @@ Mandatory architectural rules for the Rust backend cryptography and protocol imp
 | **K-of-N Sharing** | 1 device→k=1 (trivial); 2 devices→k=1 (full replication); 3 devices→k=2 (SSS) | Core |
 | **Device Limit** | A Vault may contain at most 3 devices. Core rejects a fourth and later join. | Membership |
 | **Redistribution** | Required on every device add/remove | Vault ops |
-| **Approval Required** | JOIN, RESTORE SECRET, DELETE DEVICE need biometric signature | Consensus |
-| **Atomicity** | Collect→Reshare→Distribute is all-or-nothing | Transactions |
+| **Approval Required** | JOIN, RESTORE SECRET, and `3 → 2` DELETE DEVICE need a different-device biometric signature; `2 → 1` uses local confirmation | Consensus |
+| **Resharing** | Join resharing is finalized before membership; removal resharing is retryable after the signed removal update and never targets the removed device | Transactions |
+| **Join Reshare Idempotency** | If a join was already reshared and the current sender claim plus the joining device's distribution identify the same active generation, repeat reconciliation must skip; it must not create another random polynomial for the same membership transition | Transactions / Security |
 | **No Server Plaintext Storage** | The server never stores plaintext Master Keys, Key Shares, or Secrets. It may temporarily queue an Encrypted Key Share while delivery/synchronization is pending, then remove it after delivery. | E2E principle |
-| **Two Cannot Erase Each Other** | With 2 devices, neither can remove the other | Safety |
+| **Self-Removal** | A device cannot remove itself. With 2 devices, the initiator may remove the other after local confirmation; `1 → 0` remains forbidden. | Safety |
 | **Recovery Status Ownership** | Core alone computes recovery lifecycle and `clientStatus`; UI only executes the resulting instruction | Recovery |
 | **Shared Logic Ownership** | Core alone owns cryptography, Key Share operations, quorum, claims, recovery decisions, JOIN/DELETE/resharing, synchronization, conflicts, and Secret reveal eligibility; clients only adapt and render Core results | Cross-platform architecture |
 | **First Response Wins** | The first server-processed receiver decision terminalizes the recovery claim; a late opposite decision is ignored | Recovery consensus |
@@ -47,6 +48,11 @@ a recovery is active, ready, declined, or complete.
   because it has no recovery claim.
 - `Done` is emitted only after the sender has recovered the secret and the
   completion has been persisted. Receivers close recovery alerts only then.
+- Every client, including CLI, must send the Core-signed recovery completion
+  for the exact accepted claim after successfully recovering the Secret and
+  before reporting reveal success. A local `Delivered` status alone is not
+  completion; the sender must receive a successful server response so the
+  server can persist the terminal status and invalidate member state.
 - A receiver that has already approved or declined has no further action until
   completion; this is represented by no client instruction (`None`).
 - Recovery uses first-response-wins ordering: the first receiver decision
@@ -101,11 +107,41 @@ not an application-state API:
 - Missing, malformed, expired, future-dated, cross-Vault, outsider, and
   cross-device credentials are rejected before the stream is created.
 - SSE payloads contain only opaque invalidation metadata (Vault, scope, revision).
-  Web and mobile clients call Core `getAppState` after a signal.
+  Web clients run serialized `sync_now` before Core `getAppState` after a server
+  invalidation so remote events are applied to their local event log. Mobile
+  clients call Core `getAppState` after a signal because their normal
+  synchronization path already reconciles server events.
 - Web and mobile clients request a fresh credential on every connection and
   reconnect. For current members, artificial sleeps and polling loops must not
-  replace the stream. A pending joiner is not yet a member and keeps the
-  existing status-refresh fallback until membership is granted.
+  replace the stream.
+
+### 1.0.3 Request-Scoped JOIN Result Stream
+
+Pending JOIN devices use a separate `/join-events` SSE stream. Core creates a
+random UUID when persisting each JOIN request, carries that UUID into its
+membership decision, and signs a short-lived result credential bound to the
+Vault, candidate device, request UUID, and candidate DSA public key. The server
+authenticates signature and expiry before reading Vault state, then checks the
+public key against canonical candidate state and authorizes only the exact
+pending request or its compact terminal result record in VaultLog. That record
+contains the exact JOIN event and accepted/declined outcome, survives cleanup
+of transient updates, and defaults empty when an older VaultLog is read. A stale
+credential cannot observe a later JOIN retry.
+
+The stream contains only `{requestId, outcome}` (`accepted` or `declined`), then
+closes. Clients perform one canonical Core refresh after receiving it. Result
+events are filtered by Vault and request UUID; the receiver is attached before
+the canonical status check so a decision racing stream setup is not lost.
+Decision application requires the exact request to remain pending, so the first
+serialized server decision wins and an opposite late decision cannot rewrite
+membership.
+
+Historical JOIN events without a request UUID continue to deserialize and
+participate in existing approval processing, but cannot authorize `/join-events`.
+New clients surface that compatibility limitation and let the user recreate the
+JOIN request after it becomes terminal. They must not silently fall back to
+polling. Browser clients must send the credential in an `Authorization` header
+using fetch streaming; secrets must not be placed in the URL.
 
 ### 1.1 K-of-N Principle (Adaptive Sharing)
 
@@ -247,8 +283,17 @@ Step 1: INITIATE REMOVAL (on A)
   
 Step 2: APPROVAL (REQUIRED on OTHER devices)
   - B's user performs BIOMETRIC + CONSENT on device B
-  - B signs approval message, sends to A
+  - B signs exactly one terminal response: Accepted or Declined
   - C receives removal request but cannot approve it
+
+Decline branch:
+  - A, B, and C all remain members and keep their current Key Shares.
+  - The exact pending removal request is consumed.
+  - No resharing runs and active Recovery claims remain valid.
+  - A later response to the same request is ignored (first response wins).
+  - A new removal request may be created explicitly.
+
+The remaining steps apply only when B responds Accepted.
   
 Step 3: COLLECT SHARED SECRET (on A)
   - A has SHARE s1
@@ -257,12 +302,12 @@ Step 3: COLLECT SHARED SECRET (on A)
   - Secret is ONLY in A's memory (ephemeral)
   
 Step 4: RESHARE (on A)
-  - A runs SSS: split secret into 3 shares
-  - Configuration: n=3, k=2
-  - Shares: s1' (for A), s2' (for B), s3' (for C - will be deleted)
+  - A runs the supported resulting-state policy for 2 devices
+  - Configuration: n=2, k=1
+  - Shares: s1' (for A), s2' (for B)
   
 Step 5: DELETE & REDISTRIBUTE
-  - A marks C as INACTIVE (cannot receive messages)
+  - Core marks C as `Outsider/Declined` (cannot receive messages)
   - A REPLACES its SHARE: s1 → s1'
   - A sends s2' (encrypted to B) → B REPLACES s2 with s2'
   - A CONFIRMS C is deleted (no share sent to C)
@@ -272,8 +317,8 @@ Step 6: CONFIRMATION (on B)
   - B confirms it received new share s2'
   - B marks C as INACTIVE in its vault state
   
-Result: A=FULL COPY, B=FULL COPY (only 2 devices remain)
-        C is INACTIVE (cannot participate in claims)
+Result: A=SHARE (k=1), B=SHARE (k=1) (only 2 devices remain)
+        C is Outsider/Declined (cannot participate in claims)
 
 ⚠️ CRITICAL: Old shares on A and B are DESTROYED
 ```
@@ -286,24 +331,40 @@ Initial: A=FULL COPY, B=FULL COPY (n=2, k=1 full replication)
 Step 1: INITIATE REMOVAL (on A)
   - A's user requests "Remove device B"
   
-Step 2: APPROVAL (REQUIRED but special case)
-  - Only A and B exist
-  - B cannot approve removal of itself
-  - A cannot collect secret without B's permission
-  - ⚠️ REMOVAL IS BLOCKED
-  
-UI: B's removal button is HIDDEN (not shown to user)
-    User cannot remove B (system prevents it)
+Step 2: LOCAL CONFIRMATION (no second-device approval)
+  - B cannot approve removal of itself.
+  - A confirms locally (biometry/PIN) and Core executes a signed removal.
 
-Result: A=FULL_COPY, B=FULL_COPY (both remain intact)
+Step 3: TRANSITION
+  - A keeps the single-device k=1 copy.
+  - Core makes A the canonical sender of every surviving `Split` claim,
+    including Secrets originally created by B or by an earlier member.
+  - Core clears the removed receiver and its distribution status from each
+    single-device claim.
+  - B becomes Outsider/Declined and receives no new share.
 
-⚠️ CRITICAL RULE: 
-  With exactly 2 devices, neither can remove the other.
-  Removing one = other has no way to recover secret.
-  This is a safety guardrail (UI level prevents it).
+Result: A=FULL_COPY, B=DECLINED
+
+Future Join guarantee:
+  - Because A owns every single-device `Split` claim, a later approved Join
+    redistributes every Secret, regardless of which device originally created it.
+
+⚠️ The one remaining device cannot remove itself, so `1 → 0` remains blocked.
 ```
 
 ### 1.4 K Value Rules
+
+### 1.3.1 Removal connectivity and claims
+
+- An offline target is still removed. On reconnect Core reports
+  `Outsider(Declined)`, resets the local Vault/session state, and returns the
+  device to authorization; rejoining requires a new Join approval.
+- If the required approver is offline, the removal remains pending. Clients do
+  not persist or replay a removal command as an offline queue.
+- Only an accepted removal changes membership. It terminalizes active Recovery
+  claims created for the previous membership set as `Declined`; a new Recovery
+  request is required. Declining the removal request does not invalidate
+  Recovery claims.
 
 **Current policy:**
 
@@ -322,7 +383,7 @@ The supported maximum is three devices. For the three-device state the threshold
 **Removal examples:**
 ```
 n=3 (k=2) → remove 1 → n=2 (k=1) ✅ reshare to full replication
-n=2 (k=1) → remove 1 → n=1 (cannot remove — blocked by UI)
+n=2 (k=1) → remove 1 → n=1 (allowed with local confirmation; self-removal remains blocked)
 ```
 
 ### 1.5 Transitions & State Changes
@@ -334,7 +395,7 @@ n=2 (k=1) → remove 1 → n=1 (cannot remove — blocked by UI)
 | 1 device (k=1) | 2 devices (k=1) | Device join | 1 COPY → 2 full copies |
 | 2 devices (k=1) | 3 devices (k=2) | Device join | 2 full copies → 3 SSS shares (reshare) |
 | 3 devices (k=2) | 2 devices (k=1) | Device removal | 3 SSS shares → 2 full copies (reshare) |
-| 2 devices (k=1) | 1 device | Cannot happen | (blocked by UI) |
+| 2 devices (k=1) | 1 device | Device removal with local confirmation | Remaining device keeps its full copy and becomes canonical sender for every `Split` claim |
 | 3 devices (k=2) | 4 devices | Cannot happen | (blocked by Core device limit) |
 
 ---
@@ -359,8 +420,12 @@ n=2 (k=1) → remove 1 → n=1 (cannot remove — blocked by UI)
 3. **DELETE DEVICE**
    - Initiator: Owner or any device
    - Approval needed: From 1 other device (biometric)
-   - Exception: Cannot delete last 2 devices (UI blocks)
-   - Flow: Request → Biometric on other device → Collect secret → Reshare
+   - Exception: `2 → 1` uses local confirmation; self-removal and `1 → 0`
+     remain blocked
+   - Flow (`3 → 2`): Request → Biometric on other device → approving device
+     collects the two required Key Shares → approving device reshares
+   - Flow (`2 → 1`): Local confirmation → remove the other device while the
+     remaining full copy stays usable
 
 ### 2.2 Approval Mechanism
 
@@ -403,7 +468,7 @@ Future: May change to 50% or 66% threshold
 ```
 Approval: Not possible to get from "other" for removal
          (would leave only 1 device)
-         UI blocks removal button
+         initiator confirms locally; self-removal remains blocked
 ```
 
 **For 1 device:**
@@ -435,9 +500,12 @@ Full Copy: { key_material: bytes, encrypted: true }
 Share:     { share_id: u32, share_data: bytes, encrypted: true }
 ```
 
-### 3.2 Resharing Process (Atomic)
+### 3.2 Resharing Process
 
-**Three steps that MUST be atomic (all-or-nothing):**
+Join resharing is finalized before the new membership is exposed. For a
+`3 → 2` removal, the approving device completes reverse resharing while
+accepting the signed membership update; the removed device never receives a
+new share.
 
 1. **COLLECT**
    - Gather shares/copies from multiple devices
@@ -448,22 +516,49 @@ Share:     { share_id: u32, share_data: bytes, encrypted: true }
    - Run SSS to generate new shares from collected secret
    - Input: complete secret, n (device count), k (threshold)
    - Output: n new shares
-   - Timing: Happens on initiating device's memory
+   - Timing: Happens in Core memory on the device that owns the required
+     shares: the join initiator for join, and the approver for `3 → 2` removal
 
 3. **DISTRIBUTE & REPLACE**
    - Encrypt each new share to target device's public key
    - Keep remote Encrypted Key Shares only as temporary outbound workflows
    - Send each new share to its target device
    - Each device REPLACES old share/copy with its own new share
+   - A membership generation is identified by the claim ID. A repeated join
+     request for the same device is a new generation; device presence in an old
+     receiver list or an old `(pass, receiver)` workflow does not mean the new
+     request was already distributed. Join reconciliation is idempotent only
+     when the stored workflow references that request's generation claim.
+   - The current share remains addressable at the stable `(pass, receiver)`
+     descriptor. The server may replace an existing descriptor sequence only
+     when the signed payload names the sender's latest Split claim for that
+     pass and that claim still marks the receiver `Pending`. Replays from an
+     older claim or terminal receiver status remain rejected.
    - After the server accepts an outbound workflow, delete that remote share from
      the sender's local database
    - The sender retains only its own local share; it must not retain other devices'
      shares after synchronization
 
-**Atomicity Guarantee:**
-- If any device fails to confirm receipt: ABORT entire operation
-- Failed devices: old shares remain valid, new shares discarded
-- No partial updates (no device left with mismatched shares)
+**Removal guarantee:**
+- `3 → 2` sends the initiator's Encrypted Key Share only to the selected
+  approver. The approver combines it with its own Key Share and creates fresh
+  `k=1,n=2` Key Shares only for the two remaining members.
+- Core completes this resharing before the accepted removal workflow can be
+  synchronized as complete. A synchronization failure is propagated and the
+  pending Core workflow remains retryable only by the approving device, and
+  only after every request transfer recovers with that approver's current local
+  share. VaultLog updates have no chronological order, so retry selection must
+  validate share compatibility instead of choosing an arbitrary retained event.
+  The initiator must not independently re-split the same request shares:
+  SSS re-splitting is randomized and would create a different share generation.
+  Clients do not maintain a separate offline command queue.
+- The removed device is never a distribution target and is reset to
+  `Outsider/Declined` on reconnect.
+- A removal reshare is complete for a remaining device only when both its
+  current receiver topology and the decrypted local share threshold match the
+  target generation. Receiver count alone must never skip resharing: the
+  two-member post-removal state requires `k=1`, so a retained `k=2` share must
+  be regenerated before a later join can produce a new `k=2` generation.
 
 ### 3.3 Recovery Rules Per Device Count
 
@@ -575,14 +670,19 @@ ciphertext, not server possession of a usable Key Share.
 
 **Operations that MUST be atomic:**
 1. Device join + resharing
-2. Device removal + resharing
-3. Claim approval + delivery confirmation
-4. State transitions
+2. Claim approval + delivery confirmation
+3. State transitions
+
+For `3 → 2`, device removal is a signed membership update coupled to immediate
+Core resharing on the approving device. The target is never a recipient of the
+new shares.
 
 **Implementation:**
 - Use database transactions (SERIALIZABLE isolation)
-- All-or-nothing: commit only if all steps succeed
-- Rollback if any step fails
+- Join/claim operations are all-or-nothing and roll back if a step fails.
+- Core does not report a successful approval until the approver has created
+  the post-removal shares. Failed synchronization remains retryable inside
+  Core; no offline client command is replayed.
 
 ---
 
@@ -715,8 +815,8 @@ pub fn collect_secret(vault_json: String) -> String {
    - Device A creates vault
    - Device B joins (replication)
    - Either device can restore secret
-   - Device A removes B (blocked by UI)
-   - Device B removes A (blocked by UI)
+  - Device A removes B with local confirmation; no remote approval is needed
+  - A device cannot remove itself
 
 3. **3-device vault (SSS):**
    - Device A creates vault
@@ -774,8 +874,8 @@ pub fn collect_secret(vault_json: String) -> String {
 **Current implementation status:** the UI prompt and Core signing primitives are
 transported through the mandatory `SignedAction` envelope. The server resolves the
 registered device key and verifies the signature, signer/receiver authorization,
-and action sequence before accepting the approval. DELETE DEVICE remains a
-separate follow-up task.
+and action sequence before accepting the approval. DELETE DEVICE follows the same
+Core authorization path; `2 → 1` uses the initiator's local signed confirmation.
 
 ---
 
@@ -786,10 +886,10 @@ Use this checklist when validating new code against constraints:
 ```
 [ ] K-of-N logic matches current state (1/2/3 devices)
 [ ] Redistribution triggered on device add/remove
-[ ] Collect→Reshare→Distribute is atomic
+[ ] Collect→Reshare→Distribute is handled as one Core operation
 [ ] Approval required before secret collection
 [ ] Biometric signature verified
-[ ] Two devices cannot remove each other (UI blocks)
+[ ] Two-device removal uses local confirmation; self-removal remains blocked
 [ ] Old shares/copies destroyed after redistribution; sender retains only its own share
 [ ] Fourth-device join is rejected by Core
 [ ] Server never stores plaintext keys, shares, or Secrets; only metadata and E2E ciphertext

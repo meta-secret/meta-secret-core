@@ -76,10 +76,10 @@ mod tests {
     async fn test_init_user_command() -> Result<()> {
         // Create an in-memory database context
         let db_context = create_in_memory_context().await;
-        
+
         let device_name = "device_a";
         let vault_name = VaultName::from("test_vault");
-        
+
         let init_device_cmd =
             InitDeviceCommand::new("in_memory_db".to_string(), device_name.to_string());
 

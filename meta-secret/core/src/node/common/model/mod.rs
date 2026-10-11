@@ -6,7 +6,7 @@ use crate::node::common::model::secret::{
 use crate::node::common::model::user::common::{UserData, UserDataOutsider};
 use crate::node::common::model::vault::vault::VaultMember;
 use crate::node::common::model::vault::vault_data::WasmVaultData;
-use crate::node::db::events::vault::vault_log_event::VaultActionEvents;
+use crate::node::db::events::vault::vault_log_event::{VaultActionEvents, VaultActionRequestEvent};
 use wasm_bindgen::prelude::wasm_bindgen;
 
 pub mod crypto;
@@ -174,6 +174,26 @@ impl WasmUserMemberFullInfo {
         WasmVaultData::from(self.0.member.vault.clone())
     }
 
+    /// Targets of pending removal requests that this current member may
+    /// approve. The initiator and target never see an approval affordance.
+    pub fn pending_removal_targets(&self) -> Vec<DeviceId> {
+        let current_id = &self.0.member.member.user_data.device.device_id;
+        self.0
+            .vault_events
+            .requests
+            .iter()
+            .filter_map(|request| match request {
+                VaultActionRequestEvent::RemoveMember(request)
+                    if request.sender.user_data.device.device_id != *current_id
+                        && request.target.user_data.device.device_id != *current_id =>
+                {
+                    Some(request.target.user_data.device.device_id.clone())
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
     pub fn find_recovery_claim(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
         self.0
             .ss_claims
@@ -191,7 +211,8 @@ impl WasmUserMemberFullInfo {
         &self,
         pass_id: &MetaPasswordId,
     ) -> Option<ClaimId> {
-        let mut pending: Vec<_> = self.0
+        let mut pending: Vec<_> = self
+            .0
             .ss_claims
             .claims
             .values()

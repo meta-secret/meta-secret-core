@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use tracing::{info, instrument};
 
+use crate::crypto::keys::TransportSk;
 use crate::node::app::meta_app::meta_client_service::MetaClientAccessProxy;
 use crate::node::app::orchestrator::MetaOrchestrator;
 use crate::node::app::sync::sync_gateway::SyncGateway;
@@ -12,7 +13,6 @@ use crate::node::db::actions::sign_up::claim::SignUpClaim;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use anyhow::Result;
-use crate::crypto::keys::TransportSk;
 
 pub struct VirtualDevice<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     p_obj: Arc<PersistentObject<Repo>>,
@@ -27,7 +27,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> VirtualDevice<Repo, Sync> {
         persistent_object: Arc<PersistentObject<Repo>>,
         meta_client_access_proxy: Arc<MetaClientAccessProxy>,
         gateway: Arc<SyncGateway<Repo, Sync>>,
-        master_key: TransportSk
+        master_key: TransportSk,
     ) -> Result<VirtualDevice<Repo, Sync>> {
         info!("Initialize virtual device event handler");
 
@@ -35,7 +35,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> VirtualDevice<Repo, Sync> {
             p_obj: persistent_object,
             meta_client_proxy: meta_client_access_proxy.clone(),
             gateway,
-            master_key
+            master_key,
         };
 
         Ok(virtual_device)

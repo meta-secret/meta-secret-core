@@ -1,11 +1,13 @@
-use crate::node::common::model::secret::{SecretDistributionData, SsClaim, SsDeclineData, SsLogData};
+use crate::node::common::model::secret::{
+    SecretDistributionData, SsClaim, SsDeclineData, SsLogData,
+};
 use crate::node::db::events::error::LogEventCastError;
 use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, KeyExtractor, ObjIdExtractor, ToGenericEvent,
 };
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::ArtifactId;
-use anyhow::{bail, Ok};
+use anyhow::{Ok, bail};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

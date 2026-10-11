@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use meta_secret_core::secret::data_block::common::SharedSecretConfig;
 use meta_secret_core::{
-    convert_qr_images_to_json_files, recover, split, CoreResult, RecoveryOperationError,
+    CoreResult, RecoveryOperationError, convert_qr_images_to_json_files, recover, split,
 };
 use serde::{Deserialize, Serialize};
 

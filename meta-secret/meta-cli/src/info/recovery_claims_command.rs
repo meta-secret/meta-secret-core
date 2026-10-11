@@ -58,7 +58,9 @@ impl InfoCommandTrait for RecoveryClaimsInfoCommand {
                         }));
                     }
 
-                    let client_status = ss_claim.client_status.as_ref()
+                    let client_status = ss_claim
+                        .client_status
+                        .as_ref()
                         .map(|s| format!("{:?}", s))
                         .unwrap_or_else(|| "N/A".to_string());
 

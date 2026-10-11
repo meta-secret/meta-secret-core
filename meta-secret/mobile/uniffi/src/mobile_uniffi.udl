@@ -7,9 +7,13 @@ namespace mobile_uniffi {
     string init_android_with_device(string master_key, string device_name, string device_type);
     string get_state();
     string state_events_auth_token(string vault_name);
+    string join_result_auth_token();
     string generate_user_creds(string vault_name);
     string sign_up();
     string update_membership(string candidate, string action_update);
+    string remove_member(string target_device_id);
+    string approve_remove_member(string target_device_id);
+    string decline_remove_member(string target_device_id);
     string clean_up_database();
     string split_secret(string secret_id, string secret);
     string find_claim_by(string secret_id);

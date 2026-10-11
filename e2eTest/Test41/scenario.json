@@ -1,0 +1,93 @@
+{
+  "runId": "test41",
+  "testNumber": 41,
+  "name": "Test #41 — Android owner, iOS Secret creator, Web removal approver",
+  "mode": "android-secondary-creator-member-removal-lifecycle",
+  "description": "Android creates the Vault and Secret1, iOS creates Secret2 and Secret3 across the Web Join boundary, Android removes iOS through Web approval, then Web removes Android through the local two-to-one path.",
+  "setup": {
+    "initiator": "android",
+    "joinOrder": ["ios", "web"],
+    "secondJoinApprover": "android"
+  },
+  "server": {
+    "environment": "local",
+    "url": "http://127.0.0.1:3000",
+    "image": "ghcr.io/meta-secret/meta-secret-core/meta-secret-server:latest",
+    "container": "meta-secret-e2e-server-test41",
+    "port": 3000
+  },
+  "web": {
+    "url": "http://localhost:5173",
+    "directory": "../meta-secret/web-cli/ui",
+    "role": "C"
+  },
+  "ios": {
+    "role": "B",
+    "scheme": "iosApp",
+    "composeRoot": "../../meta-secret-compose",
+    "simulatorName": "iPhone 17",
+    "bundleId": "org.metasecret.vault",
+    "reuseBuildForTesting": true,
+    "testClass": "CaseEightIosBothOfflineUITest",
+    "joinTestMethod": "joinAndroidInitiatedVaultForTest41",
+    "createSecretTestMethod": "createSecretForTest41",
+    "removalObserverTestMethod": "observeOwnRemovalForTest41"
+  },
+  "android": {
+    "role": "A",
+    "avdName": "Pixel_4a",
+    "bundleId": "metasecret.project.com",
+    "testClass": "metasecret.project.com.CaseEightAndroidBothOfflineTest",
+    "directInstrumentationSetup": true,
+    "initiatorTestClass": "metasecret.project.com.Case32AndroidOwnerTest",
+    "initiatorSetupTestMethod": "createVaultForTest41",
+    "approveJoinTestMethod": "approvePendingJoinForTest41",
+    "lifecycleTestClass": "metasecret.project.com.Case37AndroidMemberRemovalTest",
+    "requestRemovalTestMethod": "requestIosRemovalForTest41",
+    "showSecretTestMethod": "showLocalSecretForTest41",
+    "removalObserverTestMethod": "observeOwnRemovalForTest41"
+  },
+  "secretCreation": {
+    "initial": { "android": ["secret1"] },
+    "afterIosJoin": { "ios": ["secret2"] },
+    "afterWebJoin": { "ios": ["secret3"] }
+  },
+  "membership": {
+    "initialPlatforms": ["android", "ios", "web"],
+    "firstRemoval": {
+      "requester": "android",
+      "approver": "web",
+      "target": "ios",
+      "expectedMemberCount": 2
+    },
+    "secondRemoval": {
+      "requester": "web",
+      "approver": null,
+      "target": "android",
+      "expectedMemberCount": 1
+    }
+  },
+  "recovery": {
+    "showTimeoutMs": 45000,
+    "expectedCycles": 9,
+    "expectedDirectShowCycles": 9,
+    "expectedRecoveryCycles": 0,
+    "cyclePlan": [
+      { "block": "after-ios-removal", "mode": "direct-show", "count": 1, "senders": [{ "platform": "android", "secret": "secret1" }] },
+      { "block": "after-ios-removal", "mode": "direct-show", "count": 1, "senders": [{ "platform": "android", "secret": "secret2" }] },
+      { "block": "after-ios-removal", "mode": "direct-show", "count": 1, "senders": [{ "platform": "android", "secret": "secret3" }] },
+      { "block": "after-ios-removal", "mode": "direct-show", "count": 1, "senders": [{ "platform": "web", "secret": "secret1" }] },
+      { "block": "after-ios-removal", "mode": "direct-show", "count": 1, "senders": [{ "platform": "web", "secret": "secret2" }] },
+      { "block": "after-ios-removal", "mode": "direct-show", "count": 1, "senders": [{ "platform": "web", "secret": "secret3" }] },
+      { "block": "after-android-removal", "mode": "direct-show", "count": 1, "senders": [{ "platform": "web", "secret": "secret1" }] },
+      { "block": "after-android-removal", "mode": "direct-show", "count": 1, "senders": [{ "platform": "web", "secret": "secret2" }] },
+      { "block": "after-android-removal", "mode": "direct-show", "count": 1, "senders": [{ "platform": "web", "secret": "secret3" }] }
+    ]
+  },
+  "vault": { "name": "test41@test.ru" },
+  "secrets": {
+    "secret1": { "name": "test41-secret1", "value": "test41-secret1-value" },
+    "secret2": { "name": "test41-secret2", "value": "test41-secret2-value" },
+    "secret3": { "name": "test41-secret3", "value": "test41-secret3-value" }
+  }
+}

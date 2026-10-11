@@ -198,6 +198,10 @@ impl MobileApplicationManager {
         self.app_manager.state_events_auth_token(vault_name).await
     }
 
+    pub async fn join_result_auth_token(&self) -> anyhow::Result<String> {
+        self.app_manager.join_result_auth_token().await
+    }
+
     pub async fn generate_user_creds(
         &self,
         vault_name: VaultName,
@@ -218,6 +222,22 @@ impl MobileApplicationManager {
         upd: JoinActionUpdate,
     ) -> anyhow::Result<()> {
         self.app_manager.update_membership(candidate, upd).await
+    }
+
+    pub async fn remove_member(&self, target_device_id: String) -> anyhow::Result<()> {
+        self.app_manager.remove_member(target_device_id).await
+    }
+
+    pub async fn approve_remove_member(&self, target_device_id: String) -> anyhow::Result<()> {
+        self.app_manager
+            .approve_remove_member(target_device_id)
+            .await
+    }
+
+    pub async fn decline_remove_member(&self, target_device_id: String) -> anyhow::Result<()> {
+        self.app_manager
+            .decline_remove_member(target_device_id)
+            .await
     }
 
     pub async fn cluster_distribution(&self, plain_pass_info: &PlainPassInfo) {

@@ -7,12 +7,18 @@ export type StateInvalidationEvent = {
   vaultName: string;
   scope?: StateInvalidationScope;
   revision?: string;
+  e2eSignal?: {
+    type: 'recovery_decision';
+    claimId: string;
+    outcome: 'accepted' | 'declined';
+  };
 };
 
 export type StateRefresh = () => Promise<unknown>;
 
 export type StateInvalidationControllerOptions = {
   refresh: StateRefresh;
+  syncBeforeRefresh?: StateRefresh;
   getAuthorization: () => Promise<string>;
   debounceMs?: number;
   reconnectDelayMs?: number;
@@ -83,15 +89,20 @@ function waitForReconnect(delayMs: number, signal: AbortSignal): Promise<void> {
   if (delayMs <= 0 || signal.aborted) return Promise.resolve();
   return new Promise((resolve) => {
     const timer = window.setTimeout(resolve, delayMs);
-    signal.addEventListener('abort', () => {
-      window.clearTimeout(timer);
-      resolve();
-    }, { once: true });
+    signal.addEventListener(
+      'abort',
+      () => {
+        window.clearTimeout(timer);
+        resolve();
+      },
+      { once: true },
+    );
   });
 }
 
 export function createStateInvalidationController({
   refresh,
+  syncBeforeRefresh,
   getAuthorization,
   debounceMs = STATE_INVALIDATION_DEBOUNCE_MS,
   reconnectDelayMs = DEFAULT_RECONNECT_DELAY_MS,
@@ -103,6 +114,8 @@ export function createStateInvalidationController({
   let refreshTimer: number | null = null;
   let isRefreshing = false;
   let pendingRefresh = false;
+  let pendingSync = false;
+  let scheduledSync = false;
   let streamGeneration = 0;
 
   const clearRefreshTimer = () => {
@@ -111,16 +124,26 @@ export function createStateInvalidationController({
     refreshTimer = null;
   };
 
-  const refreshNow = async () => {
+  const refreshNow = async (syncFirst = false) => {
     clearRefreshTimer();
     if (isRefreshing) {
       pendingRefresh = true;
+      pendingSync ||= syncFirst;
       return;
     }
 
     isRefreshing = true;
-    console.log('[StateEvents] getAppState refresh started');
     try {
+      if (syncFirst && syncBeforeRefresh) {
+        console.log('[StateEvents] syncing invalidated server state');
+        try {
+          await syncBeforeRefresh();
+          console.log('[StateEvents] invalidated server state sync finished');
+        } catch (error) {
+          console.warn('[StateEvents] invalidated server state sync failed:', error);
+        }
+      }
+      console.log('[StateEvents] getAppState refresh started');
       await refresh();
       console.log('[StateEvents] getAppState refresh finished');
     } catch (error) {
@@ -129,26 +152,34 @@ export function createStateInvalidationController({
       isRefreshing = false;
       if (pendingRefresh) {
         pendingRefresh = false;
-        await refreshNow();
+        const shouldSync = pendingSync;
+        pendingSync = false;
+        await refreshNow(shouldSync);
       }
     }
   };
 
-  const scheduleRefresh = () => {
+  const scheduleRefresh = (syncFirst = false) => {
     if (isRefreshing) {
       pendingRefresh = true;
+      pendingSync ||= syncFirst;
       return;
     }
+    scheduledSync ||= syncFirst;
     if (refreshTimer !== null) return;
     refreshTimer = window.setTimeout(() => {
       refreshTimer = null;
-      void refreshNow();
+      const shouldSync = scheduledSync;
+      scheduledSync = false;
+      void refreshNow(shouldSync);
     }, debounceMs);
   };
 
   const disconnect = () => {
     clearRefreshTimer();
     pendingRefresh = false;
+    pendingSync = false;
+    scheduledSync = false;
     streamGeneration += 1;
     if (!streamAbortController) return;
     console.log('[StateEvents] socket disconnected', { vaultName: connectedVaultName });
@@ -181,21 +212,31 @@ export function createStateInvalidationController({
         });
         hasConnected = true;
         scheduleRefresh();
-        await consumeSseStream(response.body, (message) => {
-          if (message.event !== 'state_invalidated') return;
-          try {
-            const event = JSON.parse(message.data) as StateInvalidationEvent;
-            if (event.type !== 'state_invalidated' || event.vaultName !== connectedVaultName) return;
-            console.log('[StateEvents] invalidation received', {
-              vaultName: event.vaultName,
-              scope: event.scope,
-              revision: event.revision,
-            });
-            scheduleRefresh();
-          } catch (error) {
-            console.warn('[StateEvents] invalid invalidation payload:', error);
-          }
-        }, abortController.signal);
+        await consumeSseStream(
+          response.body,
+          (message) => {
+            if (message.event !== 'state_invalidated') return;
+            try {
+              const event = JSON.parse(message.data) as StateInvalidationEvent;
+              if (event.type !== 'state_invalidated' || event.vaultName !== connectedVaultName) return;
+              console.log('[StateEvents] invalidation received', {
+                vaultName: event.vaultName,
+                scope: event.scope,
+                revision: event.revision,
+              });
+              if (event.e2eSignal?.type === 'recovery_decision') {
+                console.log(
+                  `E2E_SSE_RECOVERY_DECISION claimId=${event.e2eSignal.claimId} ` +
+                    `outcome=${event.e2eSignal.outcome}`,
+                );
+              }
+              scheduleRefresh(true);
+            } catch (error) {
+              console.warn('[StateEvents] invalid invalidation payload:', error);
+            }
+          },
+          abortController.signal,
+        );
       } catch (error) {
         if (abortController.signal.aborted || generation !== streamGeneration) return;
         console.warn('[StateEvents] socket disconnected', { vaultName, error });
