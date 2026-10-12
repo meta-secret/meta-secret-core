@@ -1,0 +1,1691 @@
+{
+  "runId": "test50",
+  "testNumber": 50,
+  "name": "Test #50 \u2014 Vault-wide Secret deletion across Web/Android/iOS/CLI",
+  "mode": "vault-secret-deletion",
+  "description": "iOS, Web, and Android create one Secret each. Every platform requests one removal, a different eligible member declines it, membership remains three, and all platforms then recover every Secret once.",
+  "setup": {
+    "initiator": "web"
+  },
+  "server": {
+    "environment": "local",
+    "url": "http://127.0.0.1:3000",
+    "image": "ghcr.io/meta-secret/meta-secret-core/meta-secret-server:latest",
+    "container": "meta-secret-e2e-server-test50",
+    "port": 3000
+  },
+  "web": {
+    "url": "http://localhost:5173",
+    "directory": "../meta-secret/web-cli/ui",
+    "role": "B"
+  },
+  "ios": {
+    "role": "A",
+    "scheme": "iosApp",
+    "composeRoot": "../../meta-secret-compose",
+    "simulatorName": "iPhone 17",
+    "bundleId": "org.metasecret.vault",
+    "reuseBuildForTesting": true,
+    "testClass": "CaseEightIosBothOfflineUITest",
+    "initiatorSetupTestMethod": "createVaultForTest49",
+    "approveJoinTestMethod": "approvePendingJoinForTest49",
+    "observeIosDeclineTestMethod": "observeIosRemovalDeclinedForTest49",
+    "declineAndroidRemovalTestMethod": "declineAndroidRemovalForTest49",
+    "requestWebRemovalTestMethod": "requestWebRemovalForTest49",
+    "stepTestClass": "CaseEightIosBothOfflineUITest",
+    "stepTestMethod": "handleRecoveryStep",
+    "joinTestMethod": "joinVaultForTest50"
+  },
+  "android": {
+    "role": "C",
+    "avdName": "Pixel_4a",
+    "bundleId": "metasecret.project.com",
+    "testClass": "metasecret.project.com.CaseEightAndroidBothOfflineTest",
+    "directInstrumentationSetup": true,
+    "joinTestMethod": "joinWebInitiatedVault",
+    "creatorTestClass": "metasecret.project.com.Case30AndroidSecretCreatorTest",
+    "createSecretTestMethod": "createSecretForTest49",
+    "lifecycleTestClass": "metasecret.project.com.Case37AndroidMemberRemovalTest",
+    "requestIosRemovalTestMethod": "requestIosRemovalForTest49",
+    "observeAndroidDeclineTestMethod": "observeAndroidRemovalDeclinedForTest49",
+    "declineWebRemovalTestMethod": "declineWebRemovalForTest49",
+    "stepTestClass": "metasecret.project.com.CaseEightAndroidBothOfflineTest",
+    "stepTestMethod": "handleRecoveryStep"
+  },
+  "secretCreation": {
+    "initial": {
+      "web": [
+        "seed"
+      ]
+    }
+  },
+  "recovery": {
+    "cyclePlan": [],
+    "expectedCycles": 0
+  },
+  "vault": {
+    "name": "test49@test.ru"
+  },
+  "secrets": {
+    "seed": {
+      "name": "test50-seed",
+      "value": "test50-seed-value"
+    }
+  },
+  "repetitions": 3,
+  "expectedBlocks": 8,
+  "expectedCycles": 60,
+  "blocks": [
+    {
+      "id": "one-web",
+      "members": [
+        "web"
+      ],
+      "variants": [
+        {
+          "requester": "web",
+          "outcome": "accepted"
+        }
+      ],
+      "runId": "test50-one-web",
+      "cycles": [
+        {
+          "requester": "web",
+          "outcome": "accepted",
+          "number": 1,
+          "repetition": 1,
+          "variant": 1,
+          "secretName": "test50-one-web-v1-r1",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "local-confirmation-only",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "web",
+          "outcome": "accepted",
+          "number": 2,
+          "repetition": 2,
+          "variant": 1,
+          "secretName": "test50-one-web-v1-r2",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "local-confirmation-only",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "web",
+          "outcome": "accepted",
+          "number": 3,
+          "repetition": 3,
+          "variant": 1,
+          "secretName": "test50-one-web-v1-r3",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "local-confirmation-only",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "one-android",
+      "members": [
+        "android"
+      ],
+      "variants": [
+        {
+          "requester": "android",
+          "outcome": "accepted"
+        }
+      ],
+      "runId": "test50-one-android",
+      "cycles": [
+        {
+          "requester": "android",
+          "outcome": "accepted",
+          "number": 4,
+          "repetition": 1,
+          "variant": 1,
+          "secretName": "test50-one-android-v1-r1",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "local-confirmation-only",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "android",
+          "outcome": "accepted",
+          "number": 5,
+          "repetition": 2,
+          "variant": 1,
+          "secretName": "test50-one-android-v1-r2",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "local-confirmation-only",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "android",
+          "outcome": "accepted",
+          "number": 6,
+          "repetition": 3,
+          "variant": 1,
+          "secretName": "test50-one-android-v1-r3",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "local-confirmation-only",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "one-ios",
+      "members": [
+        "ios"
+      ],
+      "variants": [
+        {
+          "requester": "ios",
+          "outcome": "accepted"
+        }
+      ],
+      "runId": "test50-one-ios",
+      "cycles": [
+        {
+          "requester": "ios",
+          "outcome": "accepted",
+          "number": 7,
+          "repetition": 1,
+          "variant": 1,
+          "secretName": "test50-one-ios-v1-r1",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "local-confirmation-only",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "ios",
+          "outcome": "accepted",
+          "number": 8,
+          "repetition": 2,
+          "variant": 1,
+          "secretName": "test50-one-ios-v1-r2",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "local-confirmation-only",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "ios",
+          "outcome": "accepted",
+          "number": 9,
+          "repetition": 3,
+          "variant": 1,
+          "secretName": "test50-one-ios-v1-r3",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "local-confirmation-only",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "one-cli",
+      "members": [
+        "cli"
+      ],
+      "variants": [
+        {
+          "requester": "cli",
+          "outcome": "accepted"
+        }
+      ],
+      "runId": "test50-one-cli",
+      "cycles": [
+        {
+          "requester": "cli",
+          "outcome": "accepted",
+          "number": 10,
+          "repetition": 1,
+          "variant": 1,
+          "secretName": "test50-one-cli-v1-r1",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "local-confirmation-only",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "cli",
+          "outcome": "accepted",
+          "number": 11,
+          "repetition": 2,
+          "variant": 1,
+          "secretName": "test50-one-cli-v1-r2",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "local-confirmation-only",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "cli",
+          "outcome": "accepted",
+          "number": 12,
+          "repetition": 3,
+          "variant": 1,
+          "secretName": "test50-one-cli-v1-r3",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "local-confirmation-only",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "two-1",
+      "members": [
+        "web",
+        "android"
+      ],
+      "variants": [
+        {
+          "requester": "web",
+          "offline": "android",
+          "outcome": "accepted"
+        },
+        {
+          "requester": "android",
+          "offline": "web",
+          "outcome": "accepted"
+        }
+      ],
+      "runId": "test50-two-1",
+      "cycles": [
+        {
+          "requester": "web",
+          "offline": "android",
+          "outcome": "accepted",
+          "number": 13,
+          "repetition": 1,
+          "variant": 1,
+          "secretName": "test50-two-1-v1-r1",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "local-confirmation-only",
+            "offline-cached-id",
+            "startup-sync-overlay-blocks-read-copy",
+            "reconnect-tombstone-before-unblock",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "web",
+          "offline": "android",
+          "outcome": "accepted",
+          "number": 14,
+          "repetition": 2,
+          "variant": 1,
+          "secretName": "test50-two-1-v1-r2",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "local-confirmation-only",
+            "offline-cached-id",
+            "startup-sync-overlay-blocks-read-copy",
+            "reconnect-tombstone-before-unblock",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "web",
+          "offline": "android",
+          "outcome": "accepted",
+          "number": 15,
+          "repetition": 3,
+          "variant": 1,
+          "secretName": "test50-two-1-v1-r3",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "local-confirmation-only",
+            "offline-cached-id",
+            "startup-sync-overlay-blocks-read-copy",
+            "reconnect-tombstone-before-unblock",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "android",
+          "offline": "web",
+          "outcome": "accepted",
+          "number": 16,
+          "repetition": 1,
+          "variant": 2,
+          "secretName": "test50-two-1-v2-r1",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "local-confirmation-only",
+            "offline-cached-id",
+            "startup-sync-overlay-blocks-read-copy",
+            "reconnect-tombstone-before-unblock",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "android",
+          "offline": "web",
+          "outcome": "accepted",
+          "number": 17,
+          "repetition": 2,
+          "variant": 2,
+          "secretName": "test50-two-1-v2-r2",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "local-confirmation-only",
+            "offline-cached-id",
+            "startup-sync-overlay-blocks-read-copy",
+            "reconnect-tombstone-before-unblock",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "android",
+          "offline": "web",
+          "outcome": "accepted",
+          "number": 18,
+          "repetition": 3,
+          "variant": 2,
+          "secretName": "test50-two-1-v2-r3",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "local-confirmation-only",
+            "offline-cached-id",
+            "startup-sync-overlay-blocks-read-copy",
+            "reconnect-tombstone-before-unblock",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "two-2",
+      "members": [
+        "cli",
+        "ios"
+      ],
+      "variants": [
+        {
+          "requester": "cli",
+          "offline": "ios",
+          "outcome": "accepted"
+        },
+        {
+          "requester": "ios",
+          "offline": "cli",
+          "outcome": "accepted"
+        }
+      ],
+      "runId": "test50-two-2",
+      "cycles": [
+        {
+          "requester": "cli",
+          "offline": "ios",
+          "outcome": "accepted",
+          "number": 19,
+          "repetition": 1,
+          "variant": 1,
+          "secretName": "test50-two-2-v1-r1",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "local-confirmation-only",
+            "offline-cached-id",
+            "startup-sync-overlay-blocks-read-copy",
+            "reconnect-tombstone-before-unblock",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "cli",
+          "offline": "ios",
+          "outcome": "accepted",
+          "number": 20,
+          "repetition": 2,
+          "variant": 1,
+          "secretName": "test50-two-2-v1-r2",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "local-confirmation-only",
+            "offline-cached-id",
+            "startup-sync-overlay-blocks-read-copy",
+            "reconnect-tombstone-before-unblock",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "cli",
+          "offline": "ios",
+          "outcome": "accepted",
+          "number": 21,
+          "repetition": 3,
+          "variant": 1,
+          "secretName": "test50-two-2-v1-r3",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "local-confirmation-only",
+            "offline-cached-id",
+            "startup-sync-overlay-blocks-read-copy",
+            "reconnect-tombstone-before-unblock",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "ios",
+          "offline": "cli",
+          "outcome": "accepted",
+          "number": 22,
+          "repetition": 1,
+          "variant": 2,
+          "secretName": "test50-two-2-v2-r1",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "local-confirmation-only",
+            "offline-cached-id",
+            "startup-sync-overlay-blocks-read-copy",
+            "reconnect-tombstone-before-unblock",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "ios",
+          "offline": "cli",
+          "outcome": "accepted",
+          "number": 23,
+          "repetition": 2,
+          "variant": 2,
+          "secretName": "test50-two-2-v2-r2",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "local-confirmation-only",
+            "offline-cached-id",
+            "startup-sync-overlay-blocks-read-copy",
+            "reconnect-tombstone-before-unblock",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "ios",
+          "offline": "cli",
+          "outcome": "accepted",
+          "number": 24,
+          "repetition": 3,
+          "variant": 2,
+          "secretName": "test50-two-2-v2-r3",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "local-confirmation-only",
+            "offline-cached-id",
+            "startup-sync-overlay-blocks-read-copy",
+            "reconnect-tombstone-before-unblock",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "three-1",
+      "members": [
+        "web",
+        "android",
+        "ios"
+      ],
+      "variants": [
+        {
+          "requester": "web",
+          "responder": "android",
+          "observer": "ios",
+          "outcome": "accepted"
+        },
+        {
+          "requester": "web",
+          "responder": "android",
+          "observer": "ios",
+          "outcome": "declined"
+        },
+        {
+          "requester": "android",
+          "responder": "ios",
+          "observer": "web",
+          "outcome": "accepted"
+        },
+        {
+          "requester": "android",
+          "responder": "ios",
+          "observer": "web",
+          "outcome": "declined"
+        },
+        {
+          "requester": "ios",
+          "responder": "web",
+          "observer": "android",
+          "outcome": "accepted"
+        },
+        {
+          "requester": "ios",
+          "responder": "web",
+          "observer": "android",
+          "outcome": "declined"
+        }
+      ],
+      "runId": "test50-three-1",
+      "cycles": [
+        {
+          "requester": "web",
+          "responder": "android",
+          "observer": "ios",
+          "outcome": "accepted",
+          "number": 25,
+          "repetition": 1,
+          "variant": 1,
+          "secretName": "test50-three-1-v1-r1",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "web",
+          "responder": "android",
+          "observer": "ios",
+          "outcome": "accepted",
+          "number": 26,
+          "repetition": 2,
+          "variant": 1,
+          "secretName": "test50-three-1-v1-r2",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "web",
+          "responder": "android",
+          "observer": "ios",
+          "outcome": "accepted",
+          "number": 27,
+          "repetition": 3,
+          "variant": 1,
+          "secretName": "test50-three-1-v1-r3",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "web",
+          "responder": "android",
+          "observer": "ios",
+          "outcome": "declined",
+          "number": 28,
+          "repetition": 1,
+          "variant": 2,
+          "secretName": "test50-three-1-v2-r1",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "preserve-secret-after-decline",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "web",
+          "responder": "android",
+          "observer": "ios",
+          "outcome": "declined",
+          "number": 29,
+          "repetition": 2,
+          "variant": 2,
+          "secretName": "test50-three-1-v2-r2",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "preserve-secret-after-decline",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "web",
+          "responder": "android",
+          "observer": "ios",
+          "outcome": "declined",
+          "number": 30,
+          "repetition": 3,
+          "variant": 2,
+          "secretName": "test50-three-1-v2-r3",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "preserve-secret-after-decline",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "android",
+          "responder": "ios",
+          "observer": "web",
+          "outcome": "accepted",
+          "number": 31,
+          "repetition": 1,
+          "variant": 3,
+          "secretName": "test50-three-1-v3-r1",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "android",
+          "responder": "ios",
+          "observer": "web",
+          "outcome": "accepted",
+          "number": 32,
+          "repetition": 2,
+          "variant": 3,
+          "secretName": "test50-three-1-v3-r2",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "android",
+          "responder": "ios",
+          "observer": "web",
+          "outcome": "accepted",
+          "number": 33,
+          "repetition": 3,
+          "variant": 3,
+          "secretName": "test50-three-1-v3-r3",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "android",
+          "responder": "ios",
+          "observer": "web",
+          "outcome": "declined",
+          "number": 34,
+          "repetition": 1,
+          "variant": 4,
+          "secretName": "test50-three-1-v4-r1",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "preserve-secret-after-decline",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "android",
+          "responder": "ios",
+          "observer": "web",
+          "outcome": "declined",
+          "number": 35,
+          "repetition": 2,
+          "variant": 4,
+          "secretName": "test50-three-1-v4-r2",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "preserve-secret-after-decline",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "android",
+          "responder": "ios",
+          "observer": "web",
+          "outcome": "declined",
+          "number": 36,
+          "repetition": 3,
+          "variant": 4,
+          "secretName": "test50-three-1-v4-r3",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "preserve-secret-after-decline",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "ios",
+          "responder": "web",
+          "observer": "android",
+          "outcome": "accepted",
+          "number": 37,
+          "repetition": 1,
+          "variant": 5,
+          "secretName": "test50-three-1-v5-r1",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "ios",
+          "responder": "web",
+          "observer": "android",
+          "outcome": "accepted",
+          "number": 38,
+          "repetition": 2,
+          "variant": 5,
+          "secretName": "test50-three-1-v5-r2",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "ios",
+          "responder": "web",
+          "observer": "android",
+          "outcome": "accepted",
+          "number": 39,
+          "repetition": 3,
+          "variant": 5,
+          "secretName": "test50-three-1-v5-r3",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "ios",
+          "responder": "web",
+          "observer": "android",
+          "outcome": "declined",
+          "number": 40,
+          "repetition": 1,
+          "variant": 6,
+          "secretName": "test50-three-1-v6-r1",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "preserve-secret-after-decline",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "ios",
+          "responder": "web",
+          "observer": "android",
+          "outcome": "declined",
+          "number": 41,
+          "repetition": 2,
+          "variant": 6,
+          "secretName": "test50-three-1-v6-r2",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "preserve-secret-after-decline",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "ios",
+          "responder": "web",
+          "observer": "android",
+          "outcome": "declined",
+          "number": 42,
+          "repetition": 3,
+          "variant": 6,
+          "secretName": "test50-three-1-v6-r3",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "preserve-secret-after-decline",
+            "clean-boundary-all-peers"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "three-2",
+      "members": [
+        "cli",
+        "android",
+        "ios"
+      ],
+      "variants": [
+        {
+          "requester": "cli",
+          "responder": "android",
+          "observer": "ios",
+          "outcome": "accepted"
+        },
+        {
+          "requester": "cli",
+          "responder": "android",
+          "observer": "ios",
+          "outcome": "declined"
+        },
+        {
+          "requester": "android",
+          "responder": "ios",
+          "observer": "cli",
+          "outcome": "accepted"
+        },
+        {
+          "requester": "android",
+          "responder": "ios",
+          "observer": "cli",
+          "outcome": "declined"
+        },
+        {
+          "requester": "ios",
+          "responder": "cli",
+          "observer": "android",
+          "outcome": "accepted"
+        },
+        {
+          "requester": "ios",
+          "responder": "cli",
+          "observer": "android",
+          "outcome": "declined"
+        }
+      ],
+      "runId": "test50-three-2",
+      "cycles": [
+        {
+          "requester": "cli",
+          "responder": "android",
+          "observer": "ios",
+          "outcome": "accepted",
+          "number": 43,
+          "repetition": 1,
+          "variant": 1,
+          "secretName": "test50-three-2-v1-r1",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "cli",
+          "responder": "android",
+          "observer": "ios",
+          "outcome": "accepted",
+          "number": 44,
+          "repetition": 2,
+          "variant": 1,
+          "secretName": "test50-three-2-v1-r2",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "cli",
+          "responder": "android",
+          "observer": "ios",
+          "outcome": "accepted",
+          "number": 45,
+          "repetition": 3,
+          "variant": 1,
+          "secretName": "test50-three-2-v1-r3",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "cli",
+          "responder": "android",
+          "observer": "ios",
+          "outcome": "declined",
+          "number": 46,
+          "repetition": 1,
+          "variant": 2,
+          "secretName": "test50-three-2-v2-r1",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "preserve-secret-after-decline",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "cli",
+          "responder": "android",
+          "observer": "ios",
+          "outcome": "declined",
+          "number": 47,
+          "repetition": 2,
+          "variant": 2,
+          "secretName": "test50-three-2-v2-r2",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "preserve-secret-after-decline",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "cli",
+          "responder": "android",
+          "observer": "ios",
+          "outcome": "declined",
+          "number": 48,
+          "repetition": 3,
+          "variant": 2,
+          "secretName": "test50-three-2-v2-r3",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "preserve-secret-after-decline",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "android",
+          "responder": "ios",
+          "observer": "cli",
+          "outcome": "accepted",
+          "number": 49,
+          "repetition": 1,
+          "variant": 3,
+          "secretName": "test50-three-2-v3-r1",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "android",
+          "responder": "ios",
+          "observer": "cli",
+          "outcome": "accepted",
+          "number": 50,
+          "repetition": 2,
+          "variant": 3,
+          "secretName": "test50-three-2-v3-r2",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "android",
+          "responder": "ios",
+          "observer": "cli",
+          "outcome": "accepted",
+          "number": 51,
+          "repetition": 3,
+          "variant": 3,
+          "secretName": "test50-three-2-v3-r3",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "android",
+          "responder": "ios",
+          "observer": "cli",
+          "outcome": "declined",
+          "number": 52,
+          "repetition": 1,
+          "variant": 4,
+          "secretName": "test50-three-2-v4-r1",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "preserve-secret-after-decline",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "android",
+          "responder": "ios",
+          "observer": "cli",
+          "outcome": "declined",
+          "number": 53,
+          "repetition": 2,
+          "variant": 4,
+          "secretName": "test50-three-2-v4-r2",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "preserve-secret-after-decline",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "android",
+          "responder": "ios",
+          "observer": "cli",
+          "outcome": "declined",
+          "number": 54,
+          "repetition": 3,
+          "variant": 4,
+          "secretName": "test50-three-2-v4-r3",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "preserve-secret-after-decline",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "ios",
+          "responder": "cli",
+          "observer": "android",
+          "outcome": "accepted",
+          "number": 55,
+          "repetition": 1,
+          "variant": 5,
+          "secretName": "test50-three-2-v5-r1",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "ios",
+          "responder": "cli",
+          "observer": "android",
+          "outcome": "accepted",
+          "number": 56,
+          "repetition": 2,
+          "variant": 5,
+          "secretName": "test50-three-2-v5-r2",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "ios",
+          "responder": "cli",
+          "observer": "android",
+          "outcome": "accepted",
+          "number": 57,
+          "repetition": 3,
+          "variant": 5,
+          "secretName": "test50-three-2-v5-r3",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "remove-revealed-and-cached-id",
+            "reject-late-reveal",
+            "same-name-new-id",
+            "reject-old-id-after-recreation",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "ios",
+          "responder": "cli",
+          "observer": "android",
+          "outcome": "declined",
+          "number": 58,
+          "repetition": 1,
+          "variant": 6,
+          "secretName": "test50-three-2-v6-r1",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "preserve-secret-after-decline",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "ios",
+          "responder": "cli",
+          "observer": "android",
+          "outcome": "declined",
+          "number": 59,
+          "repetition": 2,
+          "variant": 6,
+          "secretName": "test50-three-2-v6-r2",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "preserve-secret-after-decline",
+            "clean-boundary-all-peers"
+          ]
+        },
+        {
+          "requester": "ios",
+          "responder": "cli",
+          "observer": "android",
+          "outcome": "declined",
+          "number": 60,
+          "repetition": 3,
+          "variant": 6,
+          "secretName": "test50-three-2-v6-r3",
+          "requirements": [
+            "cancel-no-action",
+            "valid-show-survives-own-refresh",
+            "canonical-pass-id",
+            "all-peers-ready-before-mutation",
+            "persisted-request-and-rendered-state",
+            "different-current-member",
+            "first-response-wins",
+            "terminal-all-peers",
+            "preserve-secret-after-decline",
+            "clean-boundary-all-peers"
+          ]
+        }
+      ]
+    }
+  ],
+  "cli": {
+    "required": true
+  },
+  "networkLoss": {
+    "androidProxyPort": 5201,
+    "iosProxyPort": 5202
+  },
+  "secret": {
+    "name": "test50-seed",
+    "value": "test50-seed-value"
+  }
+}

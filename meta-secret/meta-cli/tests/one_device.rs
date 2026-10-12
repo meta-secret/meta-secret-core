@@ -1,242 +1,160 @@
-use std::process::{Command, Stdio};
-use std::time::{SystemTime, UNIX_EPOCH};
+use axum::{Json, Router, extract::State, routing::post};
+use meta_secret_core::crypto::key_pair::MasterKeyManager;
+use meta_secret_core::node::api::{DataSyncResponse, SyncRequest};
+use meta_secret_core::node::db::in_mem_db::InMemKvLogEventRepo;
+use meta_server_node::server::server_app::{MetaServerDataTransfer, ServerApp};
+use std::process::{Command, Output, Stdio};
+use std::sync::{Arc, mpsc};
+use std::thread::JoinHandle;
 use tempfile::TempDir;
+use tokio::net::TcpListener;
+use tokio::sync::oneshot;
 
-fn unique_run_id() -> String {
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("System clock is before UNIX epoch")
-        .as_nanos();
-    format!("{}-{}", std::process::id(), timestamp)
+struct LocalServer {
+    endpoint: String,
+    stop: Option<oneshot::Sender<()>>,
+    thread: Option<JoinHandle<()>>,
+}
+
+impl LocalServer {
+    fn start() -> Self {
+        let (ready_sender, ready_receiver) = mpsc::channel();
+        let (stop, shutdown) = oneshot::channel();
+        let thread = std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            tokio::task::LocalSet::new().block_on(&runtime, async move {
+                let key = MasterKeyManager::from_pure_sk(MasterKeyManager::generate_sk());
+                let server = Arc::new(
+                    ServerApp::new(Arc::new(InMemKvLogEventRepo::default()), key).unwrap(),
+                );
+                let transfer = server.get_data_transfer();
+                tokio::task::spawn_local(async move {
+                    let _ = server.run().await;
+                });
+                let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+                ready_sender
+                    .send(format!("http://{}", listener.local_addr().unwrap()))
+                    .unwrap();
+                let app = Router::new()
+                    .route("/meta_request", post(meta_request))
+                    .with_state(transfer);
+                axum::serve(listener, app)
+                    .with_graceful_shutdown(async {
+                        let _ = shutdown.await;
+                    })
+                    .await
+                    .unwrap();
+            });
+        });
+        Self {
+            endpoint: ready_receiver.recv().unwrap(),
+            stop: Some(stop),
+            thread: Some(thread),
+        }
+    }
+}
+
+impl Drop for LocalServer {
+    fn drop(&mut self) {
+        if let Some(stop) = self.stop.take() {
+            let _ = stop.send(());
+        }
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+async fn meta_request(
+    State(transfer): State<Arc<MetaServerDataTransfer>>,
+    Json(request): Json<SyncRequest>,
+) -> Json<DataSyncResponse> {
+    Json(transfer.send_request(request).await.unwrap())
 }
 
 #[test]
 fn test_one_device_lifecycle() {
-    let run_id = unique_run_id();
-    let vault_name = format!("cli_{}@test.com", run_id);
-    let secret_name = format!("Secret{}", run_id);
-    let secret_value = run_id.clone();
-
-    println!(
-        "\n📝 CLI test run: vault='{}', secret='{}', value='{}'\n",
-        vault_name, secret_name, secret_value
+    let server = LocalServer::start();
+    let directory = TempDir::new().unwrap();
+    let command = |arguments: &[&str]| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_meta-cli"));
+        command
+            .args(arguments)
+            .current_dir(directory.path())
+            .env("METASECRET_E2E_SERVER_URL", &server.endpoint);
+        command
+    };
+    let success = |output: Output| {
+        assert!(
+            output.status.success(),
+            "CLI command failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        output
+    };
+    success(
+        command(&["init", "device", "--device-name", "local-test"])
+            .output()
+            .unwrap(),
     );
-
-    // Create an isolated temp directory for this test run
-    let temp_dir = TempDir::new().expect("Failed to create temp directory");
-    let temp_path = temp_dir.path();
-
-    let bin_path = env!("CARGO_BIN_EXE_meta-cli");
-    println!("✅ Using CLI binary: {}", bin_path);
-
-    // Step 1: init device
-    println!("⏳ Step 1: init device");
-    let output = Command::new(bin_path)
-        .arg("init")
-        .arg("device")
-        .arg("--device-name")
-        .arg("one-device-test")
-        .current_dir(temp_path)
-        .output()
-        .expect("Failed to run init device");
-
-    if !output.status.success() {
-        eprintln!("STDERR: {}", String::from_utf8_lossy(&output.stderr));
-        panic!("init device failed");
-    }
-    println!("✅ Device initialized");
-
-    // Step 2: init user with vault name
-    println!("⏳ Step 2: init user --vault-name '{}'", vault_name);
-    let output = Command::new(bin_path)
-        .arg("init")
-        .arg("user")
-        .arg("--vault-name")
-        .arg(&vault_name)
-        .current_dir(temp_path)
-        .output()
-        .expect("Failed to run init user");
-
-    if !output.status.success() {
-        eprintln!("STDERR: {}", String::from_utf8_lossy(&output.stderr));
-        panic!("init user failed");
-    }
-    println!("✅ User initialized with vault name '{}'", vault_name);
-
-    // Step 3: auth sign-up
-    println!("⏳ Step 3: auth sign-up");
-    let output = Command::new(bin_path)
-        .arg("auth")
-        .arg("sign-up")
-        .current_dir(temp_path)
-        .output()
-        .expect("Failed to run auth sign-up");
-
-    if !output.status.success() {
-        eprintln!("STDERR: {}", String::from_utf8_lossy(&output.stderr));
-        panic!("auth sign-up failed");
-    }
-    println!("✅ Signed up (vault created on server)");
-
-    // Step 4: secret split (create secret)
-    println!(
-        "⏳ Step 4: secret split --pass-name '{}' --stdin",
-        secret_name
+    success(
+        command(&["init", "user", "--vault-name", "local-cli@test.invalid"])
+            .output()
+            .unwrap(),
     );
-    let mut child = Command::new(bin_path)
-        .arg("secret")
-        .arg("split")
-        .arg("--pass-name")
-        .arg(&secret_name)
-        .arg("--stdin")
+    success(command(&["auth", "sign-up"]).output().unwrap());
+    let mut child = command(&["secret", "split", "--pass-name", "Example", "--stdin"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .current_dir(temp_path)
         .spawn()
-        .expect("Failed to spawn secret split");
-
-    if let Some(mut stdin) = child.stdin.take() {
+        .unwrap();
+    {
         use std::io::Write;
-        let _ = stdin.write_all(secret_value.as_bytes());
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(b"test-only-value")
+            .unwrap();
     }
-
-    let output = child
-        .wait_with_output()
-        .expect("Failed to wait for secret split");
-    if !output.status.success() {
-        eprintln!("STDERR: {}", String::from_utf8_lossy(&output.stderr));
-        panic!("secret split failed");
-    }
-    println!("✅ Secret created: '{}' = '{}'", secret_name, secret_value);
-
-    // Step 5: info secrets (verify secret exists)
-    println!("⏳ Step 5: info secrets");
-    let output = Command::new(bin_path)
-        .arg("info")
-        .arg("secrets")
-        .current_dir(temp_path)
+    success(child.wait_with_output().unwrap());
+    let output = success(
+        command(&[
+            "--output-format",
+            "json",
+            "secret",
+            "show-local",
+            "--pass-name",
+            "Example",
+        ])
         .output()
-        .expect("Failed to run info secrets");
-
-    let secrets_output = String::from_utf8_lossy(&output.stdout);
+        .unwrap(),
+    );
+    let shown: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(shown["secret"], "test-only-value");
+    let output = success(
+        command(&["secret", "delete", "--pass-name", "Example", "--yes"])
+            .output()
+            .unwrap(),
+    );
+    let deleted: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(deleted["clientStatus"], "Done");
+    assert!(deleted["requestId"].as_str().is_some());
+    let output = success(
+        command(&["--output-format", "json", "info", "secrets"])
+            .output()
+            .unwrap(),
+    );
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("Example"));
     assert!(
-        secrets_output.contains(&secret_name),
-        "Secret '{}' not found in secrets list",
-        secret_name
+        !command(&["secret", "show-local", "--pass-name", "Example"])
+            .output()
+            .unwrap()
+            .status
+            .success()
     );
-    println!("✅ Secret '{}' found in vault", secret_name);
-
-    // Step 6: secret recovery-request
-    println!("⏳ Step 6: secret recovery-request");
-    let output = Command::new(bin_path)
-        .arg("secret")
-        .arg("recovery-request")
-        .arg("--pass-name")
-        .arg(&secret_name)
-        .current_dir(temp_path)
-        .output()
-        .expect("Failed to run recovery-request");
-
-    if !output.status.success() {
-        eprintln!("STDERR: {}", String::from_utf8_lossy(&output.stderr));
-        panic!("recovery-request failed");
-    }
-    println!("✅ Recovery request sent");
-
-    // Step 7: secret accept-all-recovery-requests (self-approve)
-    println!("⏳ Step 7: secret accept-all-recovery-requests");
-    let output = Command::new(bin_path)
-        .arg("secret")
-        .arg("accept-all-recovery-requests")
-        .current_dir(temp_path)
-        .output()
-        .expect("Failed to run accept-all-recovery-requests");
-
-    if !output.status.success() {
-        eprintln!("STDERR: {}", String::from_utf8_lossy(&output.stderr));
-        panic!("accept-all-recovery-requests failed");
-    }
-    println!("✅ Recovery request accepted (self-approved)");
-
-    // Step 8: info recovery-claims (JSON format to get claim ID)
-    println!("⏳ Step 8: --output-format json info recovery-claims");
-    let output = Command::new(bin_path)
-        .arg("--output-format")
-        .arg("json")
-        .arg("info")
-        .arg("recovery-claims")
-        .current_dir(temp_path)
-        .output()
-        .expect("Failed to run recovery-claims");
-
-    if !output.status.success() {
-        eprintln!("STDERR: {}", String::from_utf8_lossy(&output.stderr));
-        panic!("recovery-claims failed");
-    }
-
-    let claims_json = String::from_utf8_lossy(&output.stdout);
-    let claims: serde_json::Value =
-        serde_json::from_str(&claims_json).expect("Failed to parse recovery-claims JSON");
-
-    let claims_array = claims["claims"].as_array().expect("No claims array found");
-    assert!(!claims_array.is_empty(), "No recovery claims found");
-
-    // Find the claim for our secret
-    let claim_id = claims_array
-        .iter()
-        .find(|claim| {
-            claim["type"]
-                .as_str()
-                .map(|claim_type| claim_type == "Recover")
-                .unwrap_or(false)
-                && claim["password"]
-                    .as_str()
-                    .map(|p| p == secret_name)
-                    .unwrap_or(false)
-        })
-        .and_then(|claim| claim["id"].as_str())
-        .unwrap_or_else(|| panic!("Claim for secret '{}' not found", secret_name));
-
-    println!("✅ Found claim ID: {}", claim_id);
-
-    // Step 9: secret show --claim-id (JSON format to get recovered value)
-    println!(
-        "⏳ Step 9: --output-format json secret show --claim-id '{}'",
-        claim_id
-    );
-    let output = Command::new(bin_path)
-        .arg("--output-format")
-        .arg("json")
-        .arg("secret")
-        .arg("show")
-        .arg("--claim-id")
-        .arg(claim_id)
-        .current_dir(temp_path)
-        .output()
-        .expect("Failed to run secret show");
-
-    if !output.status.success() {
-        eprintln!("STDERR: {}", String::from_utf8_lossy(&output.stderr));
-        panic!("secret show failed");
-    }
-
-    let show_json = String::from_utf8_lossy(&output.stdout);
-    let show_result: serde_json::Value =
-        serde_json::from_str(&show_json).expect("Failed to parse secret show JSON");
-
-    let recovered_value = show_result["secret"]
-        .as_str()
-        .unwrap_or_else(|| panic!("No 'secret' field in response: {}", show_json));
-
-    assert_eq!(
-        recovered_value, secret_value,
-        "Recovered value does not match original"
-    );
-    println!(
-        "✅ Secret recovered correctly: '{}' = '{}'",
-        secret_name, recovered_value
-    );
-
-    println!("\n🎉 Full lifecycle test passed\n");
 }

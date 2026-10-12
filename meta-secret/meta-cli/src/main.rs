@@ -116,6 +116,29 @@ enum AuthCommand {
 
 #[derive(Subcommand, Debug)]
 enum SecretCommand {
+    /// Reveal a local full copy in a one/two-device Vault.
+    ShowLocal {
+        #[arg(long)]
+        pass_name: String,
+    },
+    /// Delete a Secret everywhere; three-device Vaults await another member.
+    Delete {
+        #[arg(long)]
+        pass_name: String,
+        #[arg(long)]
+        yes: bool,
+    },
+    ApproveDeletion {
+        #[arg(long)]
+        request_id: String,
+        #[arg(long)]
+        yes: bool,
+    },
+    DeclineDeletion {
+        #[arg(long)]
+        request_id: String,
+    },
+    DeletionRequests,
     /// Split a password securely
     Split {
         /// Password name
@@ -251,6 +274,42 @@ async fn main() -> Result<()> {
             }
         },
         Command::Secret { command } => match command {
+            SecretCommand::ShowLocal { pass_name } => {
+                secret::show_local_secret_command::ShowLocalSecretCommand::new(
+                    db_name,
+                    args.output_format,
+                )
+                .execute(pass_name)
+                .await?;
+            }
+            SecretCommand::Delete { pass_name, yes } => {
+                secret::delete_secret_command::DeleteSecretCommand {
+                    base: base_command::BaseCommand::new(db_name),
+                }
+                .execute(pass_name, yes)
+                .await?;
+            }
+            SecretCommand::ApproveDeletion { request_id, yes } => {
+                secret::delete_secret_command::DeleteSecretCommand {
+                    base: base_command::BaseCommand::new(db_name),
+                }
+                .decide(request_id, true, yes)
+                .await?;
+            }
+            SecretCommand::DeclineDeletion { request_id } => {
+                secret::delete_secret_command::DeleteSecretCommand {
+                    base: base_command::BaseCommand::new(db_name),
+                }
+                .decide(request_id, false, true)
+                .await?;
+            }
+            SecretCommand::DeletionRequests => {
+                secret::delete_secret_command::DeleteSecretCommand {
+                    base: base_command::BaseCommand::new(db_name),
+                }
+                .requests()
+                .await?;
+            }
             SecretCommand::Split { pass_name, stdin } => {
                 let pass = if stdin {
                     // Read password from stdin (pipe)

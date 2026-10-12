@@ -173,6 +173,9 @@ impl InfoCommandTrait for DefaultInfoCommand {
                     let mut events = Vec::new();
                     for request in &member_info.vault_events.requests {
                         match request {
+                            VaultActionRequestEvent::DeleteSecret(request) => {
+                                events.push(json!({ "type": "DeleteSecret", "request_id": request.request_id, "secret_name": request.pass_id.name }));
+                            }
                             VaultActionRequestEvent::JoinCluster(join_request) => {
                                 events.push(json!({
                                     "type": "JoinCluster",

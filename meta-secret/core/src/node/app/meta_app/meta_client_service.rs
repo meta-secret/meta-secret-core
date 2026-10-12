@@ -12,8 +12,9 @@ use crate::node::app::sync::sync_protocol::SyncProtocol;
 use crate::node::common::actor::ServiceState;
 use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
-use crate::node::common::model::meta_pass::SecurePassInfo;
+use crate::node::common::model::meta_pass::{MetaPasswordId, SecurePassInfo};
 use crate::node::common::model::secret::ClaimId;
+use crate::node::common::model::secret_deletion::deletion_states;
 use crate::node::common::model::user::common::{
     UserData, UserDataOutsider, UserDataOutsiderStatus, UserMembership,
 };
@@ -22,6 +23,7 @@ use crate::node::common::model::vault::vault::{VaultMember, VaultStatus};
 use crate::node::common::model::vault::vault_data::VaultData;
 use crate::node::common::model::{ApplicationState, UserMemberFullInfo, VaultFullInfo};
 use crate::node::db::actions::recover::RecoveryAction;
+use crate::node::db::actions::secret_deletion::SecretDeletionAction;
 use crate::node::db::actions::sign_up::claim::SignUpClaim;
 use crate::node::db::actions::sign_up::join::JoinActionUpdate;
 use crate::node::db::events::vault::vault_log_event::{
@@ -87,18 +89,35 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         }
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip_all)]
     pub async fn handle_client_request(
         &self,
         app_state: ApplicationState,
         request: GenericAppStateRequest,
     ) -> Result<ApplicationState> {
-        debug!(
-            "Action execution. Request {:?}, state: {:?}",
-            &request, &app_state
-        );
+        debug!(action = request.kind(), "Action execution");
 
         match &request {
+            GenericAppStateRequest::DeleteSecret(_)
+            | GenericAppStateRequest::DecideDeleteSecret { .. } => {
+                let creds = self.find_user_creds().await?;
+                self.sync_gateway.sync(creds.user()).await?;
+                let deletion = SecretDeletionAction {
+                    p_obj: self.p_obj(),
+                    user_creds: creds.clone(),
+                };
+                match &request {
+                    GenericAppStateRequest::DeleteSecret(pass_id) => {
+                        Box::pin(deletion.request(pass_id.clone())).await?
+                    }
+                    GenericAppStateRequest::DecideDeleteSecret {
+                        request_id,
+                        accepted,
+                    } => Box::pin(deletion.decide(request_id, *accepted)).await?,
+                    _ => unreachable!(),
+                }
+                self.sync_gateway.sync(creds.user()).await?;
+            }
             GenericAppStateRequest::GetState => {
                 return self.get_app_state().await;
             }
@@ -356,6 +375,8 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
             }
             GenericAppStateRequest::ClusterDistribution(_) => self.find_user_creds().await?,
             GenericAppStateRequest::Recover(_) => self.find_user_creds().await?,
+            GenericAppStateRequest::DeleteSecret(_)
+            | GenericAppStateRequest::DecideDeleteSecret { .. } => self.find_user_creds().await?,
             GenericAppStateRequest::RemoveMember(_) => self.find_user_creds().await?,
             GenericAppStateRequest::ApproveRemoveMember(_) => self.find_user_creds().await?,
             GenericAppStateRequest::DeclineRemoveMember(_) => self.find_user_creds().await?,
@@ -437,9 +458,20 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                             .get_vault(member_user.user_data.vault_name())
                             .await?;
 
+                        Box::pin(
+                            PersistentSharedSecret::from(self.p_obj())
+                                .purge_deleted_secrets(&vault.clone().to_data()),
+                        )
+                        .await?;
                         let ss_claims = {
                             let p_ss = PersistentSharedSecret::from(self.p_obj());
-                            let log = p_ss.get_ss_log_obj(user_creds.vault_name).await?;
+                            let mut log = p_ss.get_ss_log_obj(user_creds.vault_name).await?;
+                            let deleted = &vault.0.value.deleted_secrets;
+                            log.claims.retain(|_, claim| {
+                                !deleted
+                                    .iter()
+                                    .any(|pass| pass.id == claim.dist_claim_id.pass_id.id)
+                            });
                             let current_device_id = &member_user.user_data.device.device_id;
                             let result = log.with_client_status(current_device_id);
                             for (id, claim) in &result.claims {
@@ -462,7 +494,13 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                             .map(|obj| obj.0.value)
                             .unwrap_or(VaultActionEvents::default());
 
+                        let deletion_states = deletion_states(
+                            &vault.clone().to_data(),
+                            &vault_action_events,
+                            &member_user.user_data.device.device_id,
+                        );
                         let user_full_info = UserMemberFullInfo {
+                            deletion_states,
                             member: VaultMember {
                                 member: member_user,
                                 vault: vault.to_data().client_view(),
@@ -599,6 +637,46 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         self.send_request(GenericAppStateRequest::RemoveMember(target_device_id))
             .await
             .map(|_| ())
+    }
+
+    pub async fn delete_secret(&self, pass_id: MetaPasswordId) -> Result<()> {
+        self.send_request(GenericAppStateRequest::DeleteSecret(pass_id))
+            .await
+            .map(|_| ())
+    }
+
+    pub async fn resolve_secret(&self, identifier: &str) -> Result<MetaPasswordId> {
+        if identifier.is_empty() || identifier.len() > 512 {
+            bail!("Invalid Secret identifier");
+        }
+        let creds = self.find_user_creds().await?;
+        let vault = PersistentVault::from(self.p_obj())
+            .get_vault(creds.vault_name.clone())
+            .await?
+            .to_data();
+        if !vault.is_member(creds.device_id()) {
+            bail!("User is not a Vault member");
+        }
+        let matches: Vec<_> = vault
+            .secrets
+            .iter()
+            .filter(|pass| pass.name == identifier || pass.id_str() == identifier)
+            .cloned()
+            .collect();
+        match matches.as_slice() {
+            [pass] => Ok(pass.clone()),
+            [] => bail!("Secret is deleted or does not exist"),
+            _ => bail!("Secret name is ambiguous; use its ID"),
+        }
+    }
+
+    pub async fn decide_delete_secret(&self, request_id: String, accepted: bool) -> Result<()> {
+        self.send_request(GenericAppStateRequest::DecideDeleteSecret {
+            request_id,
+            accepted,
+        })
+        .await
+        .map(|_| ())
     }
 
     pub async fn approve_remove_member(&self, target_device_id: String) -> Result<()> {

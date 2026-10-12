@@ -32,7 +32,11 @@ impl BaseCommand {
         let master_key_path = format!("{}.key.json", &db_name);
         Self {
             db_name,
-            api_url: ApiUrl::selected(),
+            api_url: if std::env::var_os("METASECRET_E2E_SERVER_URL").is_some() {
+                ApiUrl::local()
+            } else {
+                ApiUrl::selected()
+            },
             master_key_path,
         }
     }
@@ -131,6 +135,19 @@ impl BaseCommand {
         &self,
         db_context: &DbContext<ReDbRepo>,
     ) -> Result<MetaClientService<ReDbRepo, HttpSyncProtocol>> {
+        if let Some(endpoint) = std::env::var_os("METASECRET_E2E_SERVER_URL") {
+            let endpoint = endpoint
+                .to_str()
+                .ok_or_else(|| anyhow::anyhow!("CLI test endpoint is not valid UTF-8"))?;
+            let address = endpoint
+                .trim()
+                .trim_end_matches('/')
+                .strip_prefix("http://")
+                .and_then(|address| address.parse::<std::net::SocketAddr>().ok());
+            if !address.is_some_and(|address| address.ip().is_loopback() && address.port() != 0) {
+                bail!("CLI test endpoint must be an explicit HTTP loopback address");
+            }
+        }
         // Get user credentials from the database
         let maybe_user_creds = db_context.p_creds.get_user_creds().await?;
         let Some(user_creds) = maybe_user_creds else {

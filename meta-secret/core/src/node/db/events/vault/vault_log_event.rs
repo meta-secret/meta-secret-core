@@ -5,6 +5,7 @@ use crate::node::common::model::user::common::{
     UserData, UserDataMember, UserDataOutsiderStatus, UserMembership,
 };
 use crate::node::common::model::vault::vault::VaultName;
+use crate::node::common::model::vault::vault_data::VaultData;
 use crate::node::db::descriptors::vault_descriptor::VaultLogDescriptor;
 use crate::node::db::events::error::LogEventCastError;
 use crate::node::db::events::generic_log_event::{
@@ -74,6 +75,8 @@ pub struct VaultActionEvents {
     /// cleared, so an exact request can receive its result on reconnect.
     #[serde(default)]
     pub join_results: HashSet<JoinResultRecord>,
+    #[serde(default)]
+    pub deletion_results: HashSet<DeleteSecretDecision>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -91,6 +94,37 @@ pub struct JoinResultRecord {
 }
 
 impl VaultActionEvents {
+    pub fn retire_invalid_deletions(mut self, vault: &VaultData) -> Self {
+        let stale: Vec<_> = self
+            .requests
+            .iter()
+            .filter_map(|event| match event {
+                VaultActionRequestEvent::DeleteSecret(request)
+                    if vault.deletion_results.contains_key(&request.request_id)
+                        || vault.ensure_can_delete_secret(request, None).is_err() =>
+                {
+                    Some(request.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        for request in stale {
+            self.requests
+                .remove(&VaultActionRequestEvent::DeleteSecret(request.clone()));
+            self.deletion_results.insert(
+                vault
+                    .deletion_results
+                    .get(&request.request_id)
+                    .cloned()
+                    .unwrap_or_else(|| DeleteSecretDecision {
+                        sender: request.sender.clone(),
+                        request,
+                        accepted: false,
+                    }),
+            );
+        }
+        self
+    }
     pub fn synchronize(mut self) -> Self {
         let updates = self.updates.clone();
 
@@ -170,6 +204,14 @@ impl VaultActionEvents {
                     );
                 }
             }
+            VaultActionUpdateEvent::DeleteSecret(update) => {
+                if self.requests.remove(&VaultActionRequestEvent::DeleteSecret(
+                    update.request.clone(),
+                )) {
+                    self.deletion_results.insert(update.clone());
+                    self.updates.insert(upd_event);
+                }
+            }
             VaultActionUpdateEvent::AddMetaPass(event) => {
                 let request = VaultActionRequestEvent::AddMetaPass(event.clone());
                 let removed = self.requests.remove(&request);
@@ -220,6 +262,45 @@ pub enum VaultActionRequestEvent {
     JoinCluster(JoinClusterEvent),
     RemoveMember(RemoveMemberRequestEvent),
     AddMetaPass(AddMetaPassEvent),
+    DeleteSecret(DeleteSecretRequest),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteSecretRequest {
+    pub request_id: String,
+    pub sender: UserDataMember,
+    pub pass_id: MetaPasswordId,
+    pub members: Vec<DeviceId>,
+}
+
+impl DeleteSecretRequest {
+    pub fn new(sender: UserDataMember, pass_id: MetaPasswordId, vault: &VaultData) -> Self {
+        let mut members: Vec<_> = vault
+            .members()
+            .into_iter()
+            .map(|m| m.user_data.device.device_id)
+            .collect();
+        members.sort_by_key(ToString::to_string);
+        Self {
+            request_id: uuid::Uuid::new_v4().to_string(),
+            sender,
+            pass_id,
+            members,
+        }
+    }
+
+    pub fn requires_approval(&self) -> bool {
+        self.members.len() >= 3
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteSecretDecision {
+    pub request: DeleteSecretRequest,
+    pub sender: UserDataMember,
+    pub accepted: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, From, Serialize, Deserialize)]
@@ -319,6 +400,7 @@ impl VaultActionRequestEvent {
             VaultActionRequestEvent::JoinCluster { .. } => "JoinRequest",
             VaultActionRequestEvent::RemoveMember { .. } => "RemoveMemberRequest",
             VaultActionRequestEvent::AddMetaPass { .. } => "AddMetaPasswordRequest",
+            VaultActionRequestEvent::DeleteSecret { .. } => "DeleteSecretRequest",
         };
 
         String::from(name)
@@ -330,13 +412,16 @@ impl VaultActionRequestEvent {
 #[allow(clippy::large_enum_variant)]
 pub enum VaultActionUpdateEvent {
     /// There is no corresponding request for this event (server prematurely adds candidate to pending list)
-    AddToPending { candidate: UserData },
+    AddToPending {
+        candidate: UserData,
+    },
     /// When the device becomes a member of the vault, it can change membership of other members
     UpdateMembership(UpdateMembershipEvent),
     /// A current member removes another member after the matching request.
     RemoveMember(RemoveMemberEvent),
     /// A member can add a new meta password into the vault
     AddMetaPass(AddMetaPassEvent),
+    DeleteSecret(DeleteSecretDecision),
 }
 
 impl VaultActionUpdateEvent {
@@ -350,6 +435,9 @@ impl VaultActionUpdateEvent {
                 sender.user_data.vault_name()
             }
             VaultActionUpdateEvent::AddToPending { candidate } => candidate.vault_name(),
+            VaultActionUpdateEvent::DeleteSecret(event) => {
+                event.request.sender.user_data.vault_name()
+            }
         }
     }
 }
@@ -360,6 +448,7 @@ impl VaultActionRequestEvent {
             VaultActionRequestEvent::JoinCluster(request) => request.candidate.vault_name(),
             VaultActionRequestEvent::RemoveMember(request) => request.sender.user_data.vault_name(),
             VaultActionRequestEvent::AddMetaPass(request) => request.sender.user_data.vault_name(),
+            VaultActionRequestEvent::DeleteSecret(request) => request.sender.user_data.vault_name(),
         }
     }
 }
@@ -371,6 +460,7 @@ impl VaultActionUpdateEvent {
             VaultActionUpdateEvent::RemoveMember { .. } => "RemoveMember",
             VaultActionUpdateEvent::AddMetaPass { .. } => "AddMetaPassword",
             VaultActionUpdateEvent::AddToPending { .. } => "AddToPending",
+            VaultActionUpdateEvent::DeleteSecret { .. } => "DeleteSecret",
         };
 
         name.to_string()
@@ -412,6 +502,7 @@ impl VaultActionEvent {
                     VaultActionRequestEvent::JoinCluster(event) => &event.candidate,
                     VaultActionRequestEvent::RemoveMember(event) => &event.sender.user_data,
                     VaultActionRequestEvent::AddMetaPass(event) => &event.sender.user_data,
+                    VaultActionRequestEvent::DeleteSecret(event) => &event.sender.user_data,
                 };
                 user.vault_name()
             }

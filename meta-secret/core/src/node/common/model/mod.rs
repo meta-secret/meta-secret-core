@@ -13,6 +13,7 @@ pub mod crypto;
 pub mod device;
 pub mod meta_pass;
 pub mod secret;
+pub mod secret_deletion;
 pub mod user;
 pub mod vault;
 
@@ -47,6 +48,8 @@ pub struct UserMemberFullInfo {
     pub member: VaultMember,
     pub ss_claims: SsLogData,
     pub vault_events: VaultActionEvents,
+    #[serde(default)]
+    pub deletion_states: Vec<secret_deletion::SecretDeletionState>,
 }
 
 #[wasm_bindgen]
@@ -170,6 +173,10 @@ impl WasmVaultFullInfo {
 
 #[wasm_bindgen]
 impl WasmUserMemberFullInfo {
+    pub fn deletion_states_json(&self) -> Result<String, wasm_bindgen::JsError> {
+        serde_json::to_string(&self.0.deletion_states)
+            .map_err(|error| wasm_bindgen::JsError::new(&error.to_string()))
+    }
     pub fn vault_data(&self) -> WasmVaultData {
         WasmVaultData::from(self.0.member.vault.clone())
     }
@@ -352,6 +359,7 @@ mod test {
             member: registry.state.vault_data.client_b_vault_member,
             ss_claims: SsLogData::new(done_claim).insert(need_approve_claim),
             vault_events: VaultActionEvents::default(),
+            deletion_states: vec![],
         });
 
         assert_eq!(

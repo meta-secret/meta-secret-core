@@ -228,6 +228,20 @@ impl MobileApplicationManager {
         self.app_manager.remove_member(target_device_id).await
     }
 
+    pub async fn resolve_secret(&self, identifier: &str) -> Result<MetaPasswordId> {
+        self.app_manager.resolve_secret(identifier).await
+    }
+
+    pub async fn delete_secret(&self, identifier: String) -> Result<()> {
+        self.app_manager.delete_secret(identifier).await
+    }
+
+    pub async fn decide_delete_secret(&self, request_id: String, accepted: bool) -> Result<()> {
+        self.app_manager
+            .decide_delete_secret(request_id, accepted)
+            .await
+    }
+
     pub async fn approve_remove_member(&self, target_device_id: String) -> anyhow::Result<()> {
         self.app_manager
             .approve_remove_member(target_device_id)

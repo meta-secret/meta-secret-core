@@ -41,6 +41,11 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
                 bail!("Outsider status: {:?}", outsider)
             }
             VaultStatus::Member(member) => {
+                vault_repo
+                    .get_vault(member.user().vault_name())
+                    .await?
+                    .to_data()
+                    .ensure_secret_available(&pass_id)?;
                 let sender_device_id = user_creds.device_id();
                 let vault_name = user_creds.vault_name.clone();
 
@@ -64,6 +69,7 @@ impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
                     .await?
                     .to_data()
                     .to_vault_member(member)?;
+                vault_member.vault.ensure_secret_available(&pass_id)?;
                 let claim = vault_member.create_recovery_claim(pass_id);
                 info!(claim_id = ?claim.id, pass_id = ?claim.dist_claim_id.pass_id, "recovery_request created claim");
                 p_ss.save_claim_in_ss_device_log(claim).await?;
@@ -107,6 +113,11 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
         if claim.sender != *user_creds.device_id() {
             bail!("Recovery claim belongs to another device");
         }
+        PersistentVault::from(self.p_obj.clone())
+            .get_vault(user_creds.vault_name.clone())
+            .await?
+            .to_data()
+            .ensure_secret_available(&claim.dist_claim_id.pass_id)?;
 
         self.recover(user_creds, claim_id, claim.dist_claim_id.pass_id.clone())
             .await
@@ -119,6 +130,11 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
         claim_id: ClaimId,
         pass_id: MetaPasswordId,
     ) -> anyhow::Result<PlainText> {
+        PersistentVault::from(self.p_obj.clone())
+            .get_vault(user_creds.vault_name.clone())
+            .await?
+            .to_data()
+            .ensure_secret_available(&pass_id)?;
         info!(
             "🔑 [recover v2] claim_id={:?} pass_id={:?}",
             claim_id, pass_id
@@ -275,6 +291,12 @@ mod tests {
         let vault_member = fixture.state.vault_data.client_vault_member.clone();
 
         let pass_id = MetaPasswordId::build_from_str("recover_without_local_distribution");
+        let mut vault = crate::node::db::events::vault::vault_event::VaultObject::sign_up(
+            user_creds.vault_name.clone(),
+            vault_member.member.clone(),
+        );
+        vault.0.value = vault_member.vault.clone().add_secret(pass_id.clone());
+        p_obj.repo.save(vault).await?;
         let claim = vault_member.create_recovery_claim(pass_id.clone());
         p_ss.save_ss_log_event(claim.clone()).await?;
 
@@ -330,6 +352,12 @@ mod tests {
         let vault_member = fixture.state.vault_data.client_vault_member.clone();
 
         let pass_id = MetaPasswordId::build_from_str("recover_without_any_shares");
+        let mut vault = crate::node::db::events::vault::vault_event::VaultObject::sign_up(
+            user_creds.vault_name.clone(),
+            vault_member.member.clone(),
+        );
+        vault.0.value = vault_member.vault.clone().add_secret(pass_id.clone());
+        p_obj.repo.save(vault).await?;
         let claim = vault_member.create_recovery_claim(pass_id.clone());
         p_ss.save_ss_log_event(claim.clone()).await?;
 

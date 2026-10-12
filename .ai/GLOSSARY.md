@@ -125,6 +125,13 @@ Unified vocabulary for meta-secret-core Rust backend. All communication (AI, cod
 
 ## 7. Lifecycle & Operations
 
+| Term | Definition | Context |
+|---|---|---|
+| **Secret Deletion Request** | Core-generated UUID-bound request to delete an exact Pass ID from every Vault device; signed by a current member and bound to the current membership | Local confirmation at 1–2 devices; one other approver at 3 |
+| **Secret Deletion Decision** | Signed approve/decline response to an exact pending request; the first server-processed response is terminal | Deletion authorization |
+| **Secret Tombstone** | Durable canonical marker that a Pass ID was deleted; stale additions/workflows cannot revive it | Offline synchronization and ciphertext cleanup |
+| **Deletion Client Status** | Core-computed instruction: Pending, NeedApprove, Done or Declined, scoped to a Pass ID and request UUID | Clients render and submit decisions |
+
 ### 7.1 Recovery Claim Client Status Contract
 
 `clientStatus` is a per-device instruction computed by core from a recovery claim.

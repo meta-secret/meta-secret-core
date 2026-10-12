@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::CoreResult;
+use crate::crypto::utils::U64IdUrlEnc;
 use crate::node::common::model::crypto::aead::EncryptedMessage;
 use crate::node::common::model::meta_pass::SecurePassInfo;
 use crate::node::common::model::secret::{SecretDistributionData, SsDistributionId};
@@ -96,8 +97,26 @@ impl<Repo: KvLogEventRepo> MetaDistributor<Repo> {
     pub async fn distribute(
         self,
         vault_member: VaultMember,
-        pass_info: SecurePassInfo,
+        mut pass_info: SecurePassInfo,
     ) -> Result<()> {
+        // Recreating a deleted name starts a new identity; old offline events
+        // remain bound to the tombstoned ID and cannot overwrite this Secret.
+        if vault_member
+            .vault
+            .deleted_secrets
+            .iter()
+            .any(|pass| pass.id == pass_info.pass_id.id)
+        {
+            if vault_member
+                .vault
+                .secrets
+                .iter()
+                .any(|pass| pass.name == pass_info.pass_id.name)
+            {
+                anyhow::bail!("A Secret with this name already exists");
+            }
+            pass_info.pass_id.id = U64IdUrlEnc::from(uuid::Uuid::new_v4().to_string());
+        }
         let vault_name = self.user_creds.vault_name.clone();
         let pass_id = pass_info.pass_id.clone();
 

@@ -15,10 +15,13 @@ export const AppState = defineStore('app_state', {
     return {
       appManager: null as WasmApplicationManager | null,
       currState: null as WasmApplicationState | null,
+      pendingSyncCount: 0,
+      syncError: '',
     };
   },
 
   getters: {
+    isSynchronizing: (state) => state.pendingSyncCount > 0,
     currentState: (state) => state.currState,
     passwords: (state) => {
       if (!state.currState) return [];
@@ -45,6 +48,12 @@ export const AppState = defineStore('app_state', {
   },
 
   actions: {
+    beginSync() {
+      this.pendingSyncCount += 1;
+    },
+    endSync() {
+      this.pendingSyncCount = Math.max(0, this.pendingSyncCount - 1);
+    },
     async clearIndexedDbByName(dbName: string) {
       await new Promise<void>((resolve, reject) => {
         const request = indexedDB.deleteDatabase(dbName);
@@ -154,8 +163,17 @@ export const AppState = defineStore('app_state', {
 
     async updateState() {
       if (!this.appManager) return null;
-      this.currState = await this.appManager.get_state();
-      return this.currState;
+      this.beginSync();
+      try {
+        this.currState = await this.appManager.get_state();
+        this.syncError = '';
+        return this.currState;
+      } catch (error) {
+        this.syncError = 'Could not synchronize Vault. Retry to apply pending changes.';
+        throw error;
+      } finally {
+        this.endSync();
+      }
     },
 
     async getStateEventsAuthToken(vaultName = this.getVaultName()) {

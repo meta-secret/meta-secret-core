@@ -127,6 +127,34 @@ tasks:
   # Local dev
   # ============================================================
 
+  rust-build-release:
+    desc: Build the full native Rust workspace for the workflow build gate
+    dir: meta-secret
+    cmds:
+      - cargo build --release
+
+  rust-clippy:
+    desc: Check every Rust workspace target with warnings denied
+    dir: meta-secret
+    cmds:
+      - cargo clippy --all-targets -- -D warnings
+
+  rust-coverage:
+    desc: Verify Rust coverage with the workflow's 80 percent threshold
+    dir: meta-secret
+    env:
+      RUST_MIN_STACK: "8388608"
+    cmds:
+      - cargo tarpaulin --skip-clean --out Html --timeout 300 --fail-under 80
+
+  rust-test:
+    desc: Run all regular Rust workspace tests locally
+    dir: meta-secret
+    env:
+      RUST_MIN_STACK: "8388608"
+    cmds:
+      - cargo test --all
+
   set-env:
     desc: "Switch MetaSecret clients between local and remote servers (usage: task set-env -- local|remote)"
     cmds:

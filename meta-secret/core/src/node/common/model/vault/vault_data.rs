@@ -6,8 +6,8 @@ use crate::node::common::model::user::common::{
 };
 use crate::node::common::model::vault::vault::{VaultMember, VaultName, VaultStatus};
 use crate::node::db::events::vault::vault_log_event::{
-    AddMetaPassEvent, RemoveMemberEvent, RemoveMemberRequestEvent, RemoveMemberShareTransfer,
-    VaultActionEvents, VaultActionUpdateEvent,
+    AddMetaPassEvent, DeleteSecretDecision, DeleteSecretRequest, RemoveMemberEvent,
+    RemoveMemberRequestEvent, RemoveMemberShareTransfer, VaultActionEvents, VaultActionUpdateEvent,
 };
 use crate::secret::data_block::common::SharedSecretConfig;
 use anyhow::{Result, bail};
@@ -26,6 +26,11 @@ pub struct VaultData {
     pub vault_name: VaultName,
     pub users: HashMap<DeviceId, UserMembership>,
     pub secrets: HashSet<MetaPasswordId>,
+    #[serde(default)]
+    pub deleted_secrets: HashSet<MetaPasswordId>,
+    /// Authoritative outcome stored atomically with the Secret tombstone.
+    #[serde(default)]
+    pub deletion_results: HashMap<String, DeleteSecretDecision>,
 }
 
 #[wasm_bindgen(getter_with_clone)]
@@ -78,11 +83,86 @@ impl From<UserDataMember> for VaultData {
             vault_name,
             users,
             secrets: HashSet::new(),
+            deleted_secrets: HashSet::new(),
+            deletion_results: HashMap::new(),
         }
     }
 }
 
 impl VaultData {
+    pub fn ensure_can_delete_secret(
+        &self,
+        request: &DeleteSecretRequest,
+        approver: Option<&UserDataMember>,
+    ) -> Result<()> {
+        self.ensure_valid_member_count()?;
+        if uuid::Uuid::parse_str(&request.request_id).is_err() {
+            bail!("Invalid deletion request ID");
+        }
+        if request.sender.user_data.vault_name() != self.vault_name
+            || self.find_user(&request.sender.user_data.device.device_id)
+                != Some(&UserMembership::Member(request.sender.clone()))
+        {
+            bail!("Deletion sender is not a current Vault member");
+        }
+        self.ensure_secret_available(&request.pass_id)?;
+        let mut members: Vec<_> = self
+            .members()
+            .into_iter()
+            .map(|m| m.user_data.device.device_id)
+            .collect();
+        members.sort_by_key(ToString::to_string);
+        if members != request.members {
+            bail!("Deletion request membership has changed");
+        }
+        if let Some(approver) = approver {
+            if approver.user_data.vault_name() != self.vault_name
+                || self.find_user(&approver.user_data.device.device_id)
+                    != Some(&UserMembership::Member(approver.clone()))
+            {
+                bail!("Deletion approver is not a current Vault member");
+            }
+            let is_sender = approver == &request.sender;
+            if request.requires_approval() == is_sender {
+                bail!("Deletion decision does not satisfy the approval policy");
+            }
+        }
+        Ok(())
+    }
+
+    pub fn ensure_secret_available(&self, pass_id: &MetaPasswordId) -> Result<()> {
+        if self
+            .deleted_secrets
+            .iter()
+            .any(|pass| pass.id == pass_id.id)
+            || !self.secrets.contains(pass_id)
+        {
+            bail!("Secret is deleted or does not exist");
+        }
+        Ok(())
+    }
+
+    pub fn ensure_local_secret_available(
+        &self,
+        device_id: &DeviceId,
+        pass_id: &MetaPasswordId,
+    ) -> Result<()> {
+        self.ensure_valid_member_count()?;
+        self.ensure_secret_available(pass_id)?;
+        if !self.is_member(device_id) {
+            bail!("Local reveal requires current Vault membership");
+        }
+        if self.members().len() >= 3 {
+            bail!("This Secret requires an approved recovery claim");
+        }
+        Ok(())
+    }
+
+    pub fn delete_secret(mut self, pass_id: MetaPasswordId) -> Self {
+        self.secrets.retain(|pass| pass.id != pass_id.id);
+        self.deleted_secrets.insert(pass_id);
+        self
+    }
     pub fn ensure_valid_member_count(&self) -> Result<()> {
         if self.members().len() > MAX_VAULT_MEMBERS {
             bail!("Vault supports at most {MAX_VAULT_MEMBERS} devices");
@@ -220,7 +300,13 @@ impl VaultData {
     }
 
     pub fn add_secret(mut self, meta_password_id: MetaPasswordId) -> Self {
-        self.secrets.insert(meta_password_id);
+        if !self
+            .deleted_secrets
+            .iter()
+            .any(|pass| pass.id == meta_password_id.id)
+        {
+            self.secrets.insert(meta_password_id);
+        }
         self
     }
 
@@ -336,6 +422,13 @@ impl VaultAggregate {
                         UserMembership::Outsider(UserDataOutsider::pending(candidate.clone()));
                     self.vault = self.vault.update_membership(pending);
                 }
+                VaultActionUpdateEvent::DeleteSecret(update) => {
+                    if !self.vault.deletion_results.contains_key(&update.request.request_id)
+                        && self.vault.ensure_can_delete_secret(&update.request, Some(&update.sender)).is_ok() {
+                        if update.accepted { self.vault = self.vault.delete_secret(update.request.pass_id.clone()); }
+                        self.vault.deletion_results.insert(update.request.request_id.clone(), update.clone());
+                    }
+                }
             }
         }
 
@@ -425,6 +518,68 @@ pub mod fixture {
 
 #[cfg(test)]
 mod test {
+    use super::DeleteSecretRequest;
+    #[test]
+    fn secret_deletion_requires_another_member_only_at_three_devices() {
+        use super::VaultData;
+        use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+        use crate::node::common::model::meta_pass::MetaPasswordId;
+        use crate::node::common::model::user::common::{UserDataMember, UserMembership};
+
+        let fixture = FixtureRegistry::empty();
+        let a = UserDataMember::from(fixture.state.user_creds.client.user());
+        let b = UserDataMember::from(fixture.state.user_creds.client_b.user());
+        let c = UserDataMember::from(fixture.state.user_creds.vd.user());
+        let pass = MetaPasswordId::build_from_str("delete-policy");
+        let mut vault = VaultData::from(a.clone()).add_secret(pass.clone());
+        for member in [None, Some(b.clone()), Some(c.clone())] {
+            if let Some(member) = member {
+                vault = vault.update_membership(UserMembership::Member(member));
+            }
+            let request = DeleteSecretRequest::new(a.clone(), pass.clone(), &vault);
+            assert!(vault.ensure_can_delete_secret(&request, None).is_ok());
+            assert_eq!(
+                vault
+                    .ensure_local_secret_available(&a.user_data.device.device_id, &pass)
+                    .is_ok(),
+                vault.members().len() <= 2
+            );
+            assert_eq!(request.requires_approval(), vault.members().len() == 3);
+            assert_eq!(
+                vault.ensure_can_delete_secret(&request, Some(&a)).is_ok(),
+                vault.members().len() <= 2
+            );
+            if vault.members().len() == 3 {
+                assert!(vault.ensure_can_delete_secret(&request, Some(&b)).is_ok());
+            }
+        }
+    }
+
+    #[test]
+    fn secret_deletion_tombstone_prevents_resurrection_and_stale_approval() {
+        use super::VaultData;
+        use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
+        use crate::node::common::model::meta_pass::MetaPasswordId;
+        use crate::node::common::model::user::common::{UserDataMember, UserMembership};
+
+        let fixture = FixtureRegistry::empty();
+        let a = UserDataMember::from(fixture.state.user_creds.client.user());
+        let b = UserDataMember::from(fixture.state.user_creds.client_b.user());
+        let pass = MetaPasswordId::build_from_str("delete-tombstone");
+        let vault = VaultData::from(a.clone()).add_secret(pass.clone());
+        let request = DeleteSecretRequest::new(a, pass.clone(), &vault);
+        let changed_membership = vault.clone().update_membership(UserMembership::Member(b));
+        assert!(
+            changed_membership
+                .ensure_can_delete_secret(&request, None)
+                .is_err()
+        );
+        let deleted = vault.delete_secret(pass.clone()).add_secret(pass.clone());
+        assert!(!deleted.secrets.contains(&pass));
+        assert!(deleted.deleted_secrets.contains(&pass));
+        assert!(deleted.ensure_can_delete_secret(&request, None).is_err());
+    }
+
     use crate::meta_tests::fixture_util::fixture::FixtureRegistry;
     use crate::node::common::model::meta_pass::MetaPasswordId;
     use crate::node::common::model::user::common::{

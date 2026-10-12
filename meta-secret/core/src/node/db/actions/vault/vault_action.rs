@@ -11,11 +11,12 @@ use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::Next;
 use crate::node::db::events::vault::vault_event::VaultObject;
 use crate::node::db::events::vault::vault_log_event::{
-    AddMetaPassEvent, RemoveMemberDecision, VaultActionEvent, VaultActionInitEvent,
-    VaultActionRequestEvent, VaultActionUpdateEvent,
+    AddMetaPassEvent, DeleteSecretDecision, RemoveMemberDecision, VaultActionEvent,
+    VaultActionInitEvent, VaultActionRequestEvent, VaultActionUpdateEvent,
 };
 use crate::node::db::events::vault::vault_status::VaultStatusObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
+use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use anyhow::Result;
@@ -75,7 +76,87 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
                             .to_data()
                             .ensure_valid_removal_transfers(request, &request.share_transfers)?;
                     }
-                    VaultActionRequestEvent::AddMetaPass(_) => {}
+                    VaultActionRequestEvent::DeleteSecret(request) => {
+                        let data = vault.clone().to_data();
+                        data.ensure_valid_member_count()?;
+                        if data.find_user(&request.sender.user_data.device.device_id)
+                            != Some(&UserMembership::Member(request.sender.clone()))
+                        {
+                            anyhow::bail!("Deletion sender is not a current Vault member");
+                        }
+                        if uuid::Uuid::parse_str(&request.request_id).is_err() {
+                            anyhow::bail!("Invalid deletion request ID");
+                        }
+                        if let Some(result) = data.deletion_results.get(&request.request_id) {
+                            if result.request != *request {
+                                anyhow::bail!(
+                                    "Deletion request ID is already bound to another request"
+                                );
+                            }
+                            return Ok(());
+                        }
+                        if data
+                            .deleted_secrets
+                            .iter()
+                            .any(|pass| pass.id == request.pass_id.id)
+                        {
+                            return Ok(());
+                        }
+                        let mut members: Vec<_> = data
+                            .members()
+                            .into_iter()
+                            .map(|member| member.user_data.device.device_id)
+                            .collect();
+                        members.sort_by_key(ToString::to_string);
+                        if request.members != members {
+                            // Consume an offline request from an obsolete membership
+                            // without blocking the caller's canonical state refresh.
+                            let mut events = p_vault
+                                .get_vault_log_artifact(data.vault_name.clone())
+                                .await?
+                                .0
+                                .value;
+                            let result = DeleteSecretDecision {
+                                request: request.clone(),
+                                sender: request.sender.clone(),
+                                accepted: false,
+                            };
+                            let mut canonical = vault.clone();
+                            canonical.0.key.obj_id = canonical.obj_id().next();
+                            canonical
+                                .0
+                                .value
+                                .deletion_results
+                                .insert(request.request_id.clone(), result.clone());
+                            self.p_obj.repo.save(canonical).await?;
+                            events.deletion_results.insert(result);
+                            p_vault
+                                .save_vault_log_events(events, data.vault_name)
+                                .await?;
+                            return Ok(());
+                        }
+                        data.ensure_can_delete_secret(request, None)?;
+                        let events = p_vault
+                            .get_vault_log_artifact(data.vault_name.clone())
+                            .await?
+                            .0
+                            .value;
+                        if events.deletion_results.iter().any(|result| result.request.request_id == request.request_id)
+                            || events.requests.iter().any(|event| matches!(event, VaultActionRequestEvent::DeleteSecret(pending) if pending.pass_id.id == request.pass_id.id
+                                && !data.deletion_results.contains_key(&pending.request_id) && data.ensure_can_delete_secret(pending, None).is_ok())) {
+                            anyhow::bail!("Deletion request is already pending or terminal");
+                        }
+                    }
+                    VaultActionRequestEvent::AddMetaPass(event) => {
+                        if vault
+                            .to_data()
+                            .deleted_secrets
+                            .iter()
+                            .any(|pass| pass.id == event.meta_pass_id.id)
+                        {
+                            return Ok(());
+                        }
+                    }
                 }
 
                 p_vault
@@ -83,6 +164,18 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
                     .await?;
 
                 match action_request {
+                    VaultActionRequestEvent::DeleteSecret(request) => {
+                        if !request.requires_approval() {
+                            self.handle_update(&VaultActionUpdateEvent::DeleteSecret(
+                                DeleteSecretDecision {
+                                    request: request.clone(),
+                                    sender: request.sender.clone(),
+                                    accepted: true,
+                                },
+                            ))
+                            .await?;
+                        }
+                    }
                     VaultActionRequestEvent::JoinCluster(join_event) => {
                         let upd = VaultActionUpdateEvent::AddToPending {
                             candidate: join_event.candidate.clone(),
@@ -126,6 +219,37 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
         let vault_name = action_update.vault_name();
         //check if a sender is a member of the vault and update the vault then
         let vault = p_vault.get_vault(vault_name.clone()).await?;
+
+        if let VaultActionUpdateEvent::DeleteSecret(update) = action_update {
+            if let Some(result) = vault
+                .0
+                .value
+                .deletion_results
+                .get(&update.request.request_id)
+            {
+                if result.request != update.request {
+                    anyhow::bail!("Deletion request ID is already bound to another request");
+                }
+                return Ok(());
+            }
+            let events = p_vault
+                .get_vault_log_artifact(vault_name.clone())
+                .await?
+                .0
+                .value;
+            if !events
+                .requests
+                .contains(&VaultActionRequestEvent::DeleteSecret(
+                    update.request.clone(),
+                ))
+            {
+                return Ok(());
+            }
+            vault
+                .clone()
+                .to_data()
+                .ensure_can_delete_secret(&update.request, Some(&update.sender))?;
+        }
 
         if let VaultActionUpdateEvent::RemoveMember(update) = action_update {
             let pending_request = VaultActionRequestEvent::RemoveMember(update.request.clone());
@@ -217,7 +341,14 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
             .value
             .apply(action_update.clone());
 
-        let agg = VaultAggregate::build_from(vault_action_events, vault.clone().to_data());
+        let mut agg = VaultAggregate::build_from(vault_action_events, vault.clone().to_data());
+        agg.events = agg.events.retire_invalid_deletions(&agg.vault);
+        for result in &agg.events.deletion_results {
+            agg.vault
+                .deletion_results
+                .entry(result.request.request_id.clone())
+                .or_insert_with(|| result.clone());
+        }
 
         let vault_event = {
             let key = KvKey {
@@ -237,6 +368,13 @@ impl<Repo: KvLogEventRepo> ServerVaultAction<Repo> {
             .await?;
 
         match action_update {
+            VaultActionUpdateEvent::DeleteSecret(_) => {
+                Box::pin(
+                    PersistentSharedSecret::from(self.p_obj.clone())
+                        .purge_deleted_secrets(&vault_event.to_data()),
+                )
+                .await?;
+            }
             VaultActionUpdateEvent::UpdateMembership(update) => {
                 self.update_vault_status(vault_event, update.update.clone())
                     .await?;

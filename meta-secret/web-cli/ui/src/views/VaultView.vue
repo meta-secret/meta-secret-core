@@ -5,6 +5,7 @@ import VaultComponent from '@/components/vault/Vault.vue';
 import { AppState } from '@/stores/app-state';
 import { useAuthStore } from '@/stores/auth';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
 import { useRoute } from 'vue-router';
 import { createStateInvalidationController } from '@/utils/stateInvalidation';
 import { createJoinResultController } from '@/utils/joinResult';
@@ -27,8 +28,15 @@ const syncServerState = () => {
     return Promise.resolve();
   }
   console.log('[StateEvents] syncing local events with server');
-  const sync = manager.sync_now();
+  jsAppState.beginSync();
+  const sync = Promise.resolve()
+    .then(() => manager.sync_now!())
+    .catch((error) => {
+      jsAppState.syncError = 'Could not synchronize Vault. Retry to apply pending changes.';
+      throw error;
+    });
   serverSyncInFlight = sync.finally(() => {
+    jsAppState.endSync();
     serverSyncInFlight = null;
   });
   return serverSyncInFlight;
@@ -147,5 +155,23 @@ watch(
   </div>
 
   <RegistrationComponent v-else-if="authStore.isAuthenticated && isInitialized && !jsAppState.isMember" />
-  <VaultComponent v-else-if="authStore.isAuthenticated && isInitialized && jsAppState.isMember" />
+  <VaultComponent
+    v-else-if="authStore.isAuthenticated && isInitialized && jsAppState.isMember"
+    v-show="!jsAppState.isSynchronizing && !jsAppState.syncError"
+  />
+  <div
+    v-if="authStore.isAuthenticated && isInitialized && (jsAppState.isSynchronizing || jsAppState.syncError)"
+    role="status"
+    aria-live="polite"
+    aria-busy="true"
+    data-testid="vault-sync-loader"
+    class="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-4 bg-background p-6"
+  >
+    <Skeleton v-if="jsAppState.isSynchronizing" class="h-4 w-48" />
+    <p v-if="jsAppState.syncError" role="alert">{{ jsAppState.syncError }}</p>
+    <p v-else>Synchronizing Vault and applying pending changes…</p>
+    <Button v-if="jsAppState.syncError" :disabled="jsAppState.isSynchronizing" @click="stateInvalidation.refreshNow()"
+      >Retry</Button
+    >
+  </div>
 </template>

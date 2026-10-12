@@ -23,9 +23,11 @@ impl RecoveryRequestCommand {
         self.base.ensure_user_creds(&db_context).await?;
 
         // Create recovery request with password ID and handle it
-        let recovery_request = GenericAppStateRequest::Recover(self.pass_id.clone());
-        self.base
-            .handle_client_request(&db_context, recovery_request)
+        let client = self.base.create_client_service(&db_context).await?;
+        let state = client.get_app_state().await?;
+        let pass_id = client.resolve_secret(&self.pass_id.name).await?;
+        client
+            .handle_client_request(state, GenericAppStateRequest::Recover(pass_id))
             .await?;
 
         println!(

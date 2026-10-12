@@ -1556,6 +1556,14 @@ mod test {
         p_ss.save_ss_log_event(seeded_split_claim).await?;
 
         let server_p_obj = registry.state.empty.p_obj.server.clone();
+        // Share delivery now checks the canonical Vault's deletion tombstones.
+        // Seed that canonical state as well as the workflow under test.
+        use meta_secret_core::node::db::events::vault::vault_event::VaultObject;
+        use meta_secret_core::node::db::repo::generic_db::SaveCommand;
+        let mut canonical =
+            VaultObject::sign_up(vault_data.vault_name.clone(), vault_member.member.clone());
+        canonical.0.value = vault_data.clone().add_secret(pass_id.clone());
+        server_p_obj.repo.save(canonical).await?;
         let receiver_dist_desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
             pass_id: pass_id.clone(),
             receiver: receiver_user_creds.device_id().clone(),

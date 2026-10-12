@@ -90,6 +90,14 @@ pub fn remove_member(target_device_id: String) -> String {
     json_api::remove_member(target_device_id)
 }
 
+pub fn delete_secret(secret_id: String) -> String {
+    json_api::delete_secret(secret_id)
+}
+
+pub fn decide_delete_secret(request_json: String) -> String {
+    json_api::decide_delete_secret(request_json)
+}
+
 pub fn approve_remove_member(target_device_id: String) -> String {
     json_api::approve_remove_member(target_device_id)
 }

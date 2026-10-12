@@ -12,7 +12,10 @@ pub mod fixture {
 
     impl SyncProtocol for EmbeddedSyncProtocol {
         async fn send(&self, request: SyncRequest) -> anyhow::Result<DataSyncResponse> {
-            self.server.handle_client_request(request).await
+            // The in-process fixture nests the complete server future inside
+            // the client future. Heap-allocate that boundary like the real
+            // HTTP transport to avoid exhausting debug test thread stacks.
+            Box::pin(self.server.handle_client_request(request)).await
         }
     }
 

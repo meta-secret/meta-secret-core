@@ -227,9 +227,9 @@ async fn test20_http_server_rejects_forged_recovery_responses_impl() -> Result<(
         .iter()
         .find_map(|event| match event {
             VaultActionRequestEvent::JoinCluster(request) => Some(request.clone()),
-            VaultActionRequestEvent::RemoveMember(_) | VaultActionRequestEvent::AddMetaPass(_) => {
-                None
-            }
+            VaultActionRequestEvent::RemoveMember(_)
+            | VaultActionRequestEvent::AddMetaPass(_)
+            | VaultActionRequestEvent::DeleteSecret(_) => None,
         })
         .ok_or_else(|| anyhow::anyhow!("receiver join request was not found"))?;
 

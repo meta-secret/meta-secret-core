@@ -5,6 +5,7 @@ use meta_secret_core::crypto::utils::Id48bit;
 use meta_secret_core::node::common::model::device::common::{DeviceName, DeviceType};
 use meta_secret_core::node::common::model::meta_pass::{MetaPasswordId, PlainPassInfo};
 use meta_secret_core::node::common::model::secret::ClaimId;
+use meta_secret_core::node::common::model::secret_deletion::SecretDeletionDecisionInput;
 use meta_secret_core::node::common::model::user::common::UserData;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
@@ -219,6 +220,41 @@ pub fn remove_member(target_device_id: String) -> String {
     MobileApplicationManager::sync_wrapper(async_remove_member(target_device_id))
 }
 
+pub fn delete_secret(secret_id: String) -> String {
+    MobileApplicationManager::sync_wrapper(async {
+        let Some(manager) = MobileApplicationManager::get_global_instance() else {
+            return json!({"success": false, "error": "App manager is not initialized"})
+                .to_string();
+        };
+        match manager.delete_secret(secret_id).await {
+            Ok(()) => json!({"success": true}).to_string(),
+            Err(error) => json!({"success": false, "error": error.to_string()}).to_string(),
+        }
+    })
+}
+
+pub fn decide_delete_secret(request_json: String) -> String {
+    if request_json.len() > 512 {
+        return json!({"success": false, "error": "Invalid deletion decision JSON"}).to_string();
+    }
+    let Ok(input) = serde_json::from_str::<SecretDeletionDecisionInput>(&request_json) else {
+        return json!({"success": false, "error": "Invalid deletion decision JSON"}).to_string();
+    };
+    MobileApplicationManager::sync_wrapper(async {
+        let Some(manager) = MobileApplicationManager::get_global_instance() else {
+            return json!({"success": false, "error": "App manager is not initialized"})
+                .to_string();
+        };
+        match manager
+            .decide_delete_secret(input.request_id, input.accepted)
+            .await
+        {
+            Ok(()) => json!({"success": true}).to_string(),
+            Err(error) => json!({"success": false, "error": error.to_string()}).to_string(),
+        }
+    })
+}
+
 async fn async_remove_member(target_device_id: String) -> String {
     match MobileApplicationManager::get_global_instance() {
         Some(app_manager) => match app_manager.remove_member(target_device_id).await {
@@ -315,7 +351,12 @@ pub fn find_claim_by(secret_id: String) -> String {
 async fn async_find_claim_by(secret_id: String) -> String {
     match MobileApplicationManager::get_global_instance() {
         Some(app_manager) => {
-            let meta_password_id = MetaPasswordId::build_from_str(&secret_id);
+            let meta_password_id = match app_manager.resolve_secret(&secret_id).await {
+                Ok(pass_id) => pass_id,
+                Err(error) => {
+                    return json!({"success": false, "error": error.to_string()}).to_string();
+                }
+            };
             match app_manager.find_claim_by_pass_id(&meta_password_id).await {
                 Some(claim) => json!({"success": true, "message": {"claim": claim}}).to_string(),
                 None => json!({"success": false, "error": "Claim has not been found"}).to_string(),
@@ -332,7 +373,12 @@ pub fn find_claim_id_by(secret_id: String) -> String {
 async fn async_find_claim_id_by(secret_id: String) -> String {
     match MobileApplicationManager::get_global_instance() {
         Some(app_manager) => {
-            let meta_password_id = MetaPasswordId::build_from_str(&secret_id);
+            let meta_password_id = match app_manager.resolve_secret(&secret_id).await {
+                Ok(pass_id) => pass_id,
+                Err(error) => {
+                    return json!({"success": false, "error": error.to_string()}).to_string();
+                }
+            };
             match app_manager
                 .find_claim_id_by_pass_id(&meta_password_id)
                 .await
@@ -352,7 +398,12 @@ pub fn recover(secret_id: String) -> String {
 async fn async_recover(secret_id: String) -> String {
     match MobileApplicationManager::get_global_instance() {
         Some(app_manager) => {
-            let meta_password_id = MetaPasswordId::build_from_str(&secret_id);
+            let meta_password_id = match app_manager.resolve_secret(&secret_id).await {
+                Ok(pass_id) => pass_id,
+                Err(error) => {
+                    return json!({"success": false, "error": error.to_string()}).to_string();
+                }
+            };
             app_manager.recover(&meta_password_id).await;
             json!({"success": true}).to_string()
         }
@@ -441,7 +492,12 @@ pub fn show_local_secret(secret_id: String) -> String {
 async fn async_show_local_secret(secret_id: String) -> String {
     match MobileApplicationManager::get_global_instance() {
         Some(app_manager) => {
-            let meta_password_id = MetaPasswordId::build_from_str(&secret_id);
+            let meta_password_id = match app_manager.resolve_secret(&secret_id).await {
+                Ok(pass_id) => pass_id,
+                Err(error) => {
+                    return json!({"success": false, "error": error.to_string()}).to_string();
+                }
+            };
             match app_manager.show_local_secret(&meta_password_id).await {
                 Ok(secret) => json!({"success": true, "message": {"secret": secret}}).to_string(),
                 Err(e) => json!({"success": false, "error": format!("{}", e)}).to_string(),
@@ -449,6 +505,26 @@ async fn async_show_local_secret(secret_id: String) -> String {
         }
         None => {
             json!({"success": false, "error": "Show local secret request is failed"}).to_string()
+        }
+    }
+}
+
+#[cfg(test)]
+mod deletion_input_tests {
+    #[test]
+    fn rejects_malformed_missing_and_oversized_decisions_without_echoing_input() {
+        for input in [
+            "private-input-marker".to_string(),
+            r#"{"requestId":"private-input-marker"}"#.to_string(),
+            r#"{"requestId":"private-input-marker","accepted":"yes"}"#.to_string(),
+            r#"{"requestId":"private-input-marker","accepted":true,"extra":0}"#.to_string(),
+            "private-input-marker".repeat(100),
+        ] {
+            let response: serde_json::Value =
+                serde_json::from_str(&super::decide_delete_secret(input)).unwrap();
+            assert_eq!(response["success"], false);
+            assert_eq!(response["error"], "Invalid deletion decision JSON");
+            assert!(!response.to_string().contains("private-input-marker"));
         }
     }
 }

@@ -10,14 +10,21 @@ export async function installAndVerifyAndroidE2eApps({
   composeRoot,
   runAndWait,
   runAndCapture,
+  prebuiltApks = null,
 }) {
   if (!serial || !appBundleId || !composeRoot) {
     throw new Error('Android readiness requires a device serial, app package, and Compose root');
   }
-  await runAndWait('./gradlew', [':composeApp:installDebug', ':composeApp:installDebugAndroidTest'], {
-    cwd: composeRoot,
-    env: { ANDROID_SERIAL: serial },
-  });
+  if (prebuiltApks) {
+    if (!existsSync(prebuiltApks.app) || !existsSync(prebuiltApks.test)) throw new Error('Verified prebuilt Android app/test APKs are missing');
+    await runAndWait('adb', ['-s', serial, 'install', '-r', prebuiltApks.app]);
+    await runAndWait('adb', ['-s', serial, 'install', '-r', prebuiltApks.test]);
+  } else {
+    await runAndWait('./gradlew', [':composeApp:installDebug', ':composeApp:installDebugAndroidTest'], {
+      cwd: composeRoot,
+      env: { ANDROID_SERIAL: serial },
+    });
+  }
   const { stdout: appPath } = await runAndCapture('adb', ['-s', serial, 'shell', 'pm', 'path', appBundleId]);
   if (!appPath.includes('package:')) {
     throw new Error(`Android app ${appBundleId} is not installed on ${serial}`);

@@ -45,6 +45,16 @@ impl FindOneQuery for InMemKvLogEventRepo {
 
 #[async_trait(? Send)]
 impl SaveCommand for InMemKvLogEventRepo {
+    async fn replace<T: ToGenericEvent>(&self, value: T) -> Result<ArtifactId> {
+        let value = value.to_generic();
+        let key = value.obj_id();
+        let mut db = self.db.lock().await;
+        if !db.contains_key(&key) {
+            anyhow::bail!("Cannot replace a missing record");
+        }
+        db.insert(key.clone(), value);
+        Ok(key)
+    }
     #[instrument(skip_all)]
     async fn save<T: ToGenericEvent>(&self, value: T) -> Result<ArtifactId> {
         let generic_value = value.to_generic();
@@ -62,6 +72,10 @@ impl SaveCommand for InMemKvLogEventRepo {
 
 #[async_trait(? Send)]
 impl DeleteCommand for InMemKvLogEventRepo {
+    async fn try_delete(&self, key: ArtifactId) -> Result<()> {
+        self.db.lock().await.remove(&key);
+        Ok(())
+    }
     #[instrument(skip_all)]
     async fn delete(&self, key: ArtifactId) {
         let mut db = self.db.lock().await;

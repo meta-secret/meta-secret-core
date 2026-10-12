@@ -53,7 +53,7 @@ impl<Request, Response> MpscDataTransfer<Request, Response> {
 }
 
 impl<Request: Debug, Response: Debug> MpscDataTransfer<Request, Response> {
-    #[instrument(skip(self))]
+    #[instrument(skip_all)]
     pub async fn send_to_service(&self, message: Request) {
         let _ = self
             .service_channel
@@ -77,7 +77,7 @@ impl<Request: Debug, Response: Debug> MpscDataTransfer<Request, Response> {
             .await
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip_all)]
     pub async fn send_to_service_and_get(&self, message: Request) -> Result<Response, RecvError> {
         let _ = self
             .service_channel
@@ -93,7 +93,7 @@ impl<Request: Debug, Response: Debug> MpscDataTransfer<Request, Response> {
             .await
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip_all)]
     pub async fn send_to_client(&self, events: Response) {
         let _ = self
             .client_channel
