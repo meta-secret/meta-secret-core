@@ -1,3 +1,9 @@
+import { createCliActorDirectory } from '../Test50/cli-workspace.mjs';
+import { createScopedSecretIdCollector } from '../shared/scoped-secret-id.mjs';
+import { deletionCycleProgress } from '../Test50/progress.mjs';
+import { environmentModeFromSnapshot } from '../shared/batch-environment.mjs';
+import { runDeletionBlock } from '../Test50/business.mjs';
+import { createDeletionNetworkGate } from '../Test50/network-gate.mjs';
 import { ensureIosFfi, prepareIosXcodeBuild, recordIosXcodeBuild, verifyIosXcodeBuild } from '../shared/ios-ffi-provenance.mjs';
 import {
   appendFileSync,
@@ -13,7 +19,7 @@ import {
   statfsSync,
   writeFileSync,
 } from 'node:fs';
-import { resolve, dirname, basename } from 'node:path';
+import { resolve, dirname, basename, relative } from 'node:path';
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createServer, request as httpRequest } from 'node:http';
@@ -58,7 +64,7 @@ const diagnosticAndroidVerbose = process.env.E2E_DIAGNOSTIC_ANDROID_VERBOSE === 
 const scenarioPath = resolve(root, scenarioArgument ?? 'scenario.json');
 const scenario = JSON.parse(readFileSync(scenarioPath, 'utf8'));
 const testNumber = scenario.testNumber ?? 4;
-if (process.env.E2E_RANGE_RUN === '1') scenario.runId = process.env.E2E_RUN_ID;
+if (process.env.E2E_RANGE_RUN === '1') scenario.runId = scenario.deletionBlock ? `${process.env.E2E_RUN_ID}-${scenario.deletionBlock.id}` : process.env.E2E_RUN_ID;
 const scenarioArtifactLabel = basename(scenarioPath, '.json');
 const secretConfigs = scenario.secrets ?? { default: scenario.secret };
 const defaultSecretKey = Object.keys(secretConfigs)[0];
@@ -513,6 +519,12 @@ function startNetworkGateProxy(platform, port, upstreamPort = 3000) {
 
 async function startNetworkLossGates() {
   if (!networkLossConfig) return;
+  if (scenario.mode === 'vault-secret-deletion') {
+    for (const [platform, port] of [['android', networkLossConfig.androidProxyPort], ['ios', networkLossConfig.iosProxyPort]]) {
+      networkGateProcesses.set(platform, await createDeletionNetworkGate({ port, onEvent: (event) => writeDiagnostic(`[TEST50_NETWORK] ${platform} ${event}`) }));
+    }
+    return;
+  }
   await Promise.all([
     startNetworkGateProxy('android', networkLossConfig.androidProxyPort),
     startNetworkGateProxy('ios', networkLossConfig.iosProxyPort),
@@ -642,22 +654,18 @@ function restoreFile(snapshot) {
   }
 }
 
-function environmentModeFromSnapshot(snapshot) {
-  if (!snapshot.existed) return null;
-  const contents = snapshot.contents.toString('utf8');
-  if (snapshot.path.endsWith('environment.rs')) {
-    return contents.match(/SELECTED_SERVER_ENVIRONMENT[^\n]*ServerEnvironment::(Local|Remote)/)?.[1]?.toLowerCase()
-      ?? null;
+async function captureRepoDirtyState(repoRoot, { parentOwnsArtifacts = false } = {}) {
+  const paths = ['.'];
+  if (parentOwnsArtifacts) {
+    for (const artifact of [...environmentArtifactRoots, wasmArtifactRoot]) {
+      const name = relative(repoRoot, artifact);
+      if (name && !name.startsWith('..')) paths.push(`:(exclude)${name}`);
+    }
   }
-  const key = snapshot.path.endsWith('.env.local') ? 'VITE_META_SECRET_ENV' : 'META_SECRET_ENV';
-  return contents.match(new RegExp(`^${key}=(local|remote)$`, 'm'))?.[1] ?? null;
-}
-
-async function captureRepoDirtyState(repoRoot) {
   const [{ stdout: status }, { stdout: diff }, { stdout: untrackedRaw }] = await Promise.all([
-    runAndCapture('git', ['status', '--porcelain=v1', '-z', '--untracked-files=all'], { cwd: repoRoot }),
-    runAndCapture('git', ['diff', '--binary', '--no-ext-diff', 'HEAD', '--'], { cwd: repoRoot }),
-    runAndCapture('git', ['ls-files', '--others', '--exclude-standard', '-z'], { cwd: repoRoot }),
+    runAndCapture('git', ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--', ...paths], { cwd: repoRoot }),
+    runAndCapture('git', ['diff', '--binary', '--no-ext-diff', 'HEAD', '--', ...paths], { cwd: repoRoot }),
+    runAndCapture('git', ['ls-files', '--others', '--exclude-standard', '-z', '--', ...paths], { cwd: repoRoot }),
   ]);
   const digest = createHash('sha256');
   digest.update(diff);
@@ -1060,22 +1068,24 @@ async function prepareLocalEnvironmentGuard() {
   if (uniqueModes.length !== 1) {
     throw new Error(`Cannot snapshot a mixed MetaSecret environment: ${uniqueModes.join(',') || '<unknown>'}`);
   }
-  const artifactBackup = snapshotEnvironmentArtifactTrees();
+  const parentOwnsArtifacts = process.env.E2E_RANGE_RUN === '1';
+  const artifactBackup = parentOwnsArtifacts ? null : snapshotEnvironmentArtifactTrees();
   let coreState;
   let composeState;
   try {
     [coreState, composeState] = await Promise.all([
-      captureRepoDirtyState(coreRoot),
-      captureRepoDirtyState(composeRoot),
+      captureRepoDirtyState(coreRoot, { parentOwnsArtifacts }),
+      captureRepoDirtyState(composeRoot, { parentOwnsArtifacts }),
     ]);
   } catch (error) {
-    rmSync(artifactBackup.backupRoot, { recursive: true, force: true });
+    if (artifactBackup) rmSync(artifactBackup.backupRoot, { recursive: true, force: true });
     throw error;
   }
   environmentGuard = {
     previousMode: uniqueModes[0],
     configSnapshots,
     artifactBackup,
+    parentOwnsArtifacts,
     coreState,
     composeState,
     localApplied: false,
@@ -1084,7 +1094,7 @@ async function prepareLocalEnvironmentGuard() {
   writeDiagnostic(
     `[ENV] snapshot mode=${environmentGuard.previousMode}; `
       + `coreDirty=${coreState.status.length > 0}; composeDirty=${composeState.status.length > 0}; `
-      + `nativeArtifactBackup=${artifactBackup.backupRoot}`,
+      + `nativeArtifactBackup=${artifactBackup?.backupRoot ?? 'parent-batch-owned'}`,
   );
 
   environmentGuard.runtimeSnapshot = await preflightSelectedRuntimes();
@@ -1097,6 +1107,7 @@ async function prepareLocalEnvironmentGuard() {
     if (uniqueModes[0] !== 'local') {
       throw new Error(`The range coordinator must set local mode before launching Test #${testNumber}; found ${uniqueModes[0]}`);
     }
+    if (reuseProvenArtifacts) await verifyOrBootstrapBuildProvenance();
     writeDiagnostic('[ENV] range coordinator already verified local mode; skipping duplicate task set-env rebuild');
     return;
   }
@@ -1137,7 +1148,8 @@ async function restoreEnvironmentGuard() {
   } finally {
     for (const snapshot of environmentGuard.configSnapshots) restoreFile(snapshot);
     try {
-      restoreEnvironmentArtifactTrees(environmentGuard.artifactBackup);
+      if (!environmentGuard.parentOwnsArtifacts) restoreEnvironmentArtifactTrees(environmentGuard.artifactBackup);
+      else writeDiagnostic('[ENV] fresh batch artifacts retained; parent owns final exact restoration');
     } catch (error) {
       artifactRestoreError = error;
     }
@@ -1149,8 +1161,8 @@ async function restoreEnvironmentGuard() {
     return snapshot.existed && !readFileSync(snapshot.path).equals(snapshot.contents);
   });
   const [coreState, composeState] = await Promise.all([
-    captureRepoDirtyState(coreRoot),
-    captureRepoDirtyState(composeRoot),
+    captureRepoDirtyState(coreRoot, { parentOwnsArtifacts: environmentGuard.parentOwnsArtifacts }),
+    captureRepoDirtyState(composeRoot, { parentOwnsArtifacts: environmentGuard.parentOwnsArtifacts }),
   ]);
   const stateMismatch = coreState.status !== environmentGuard.coreState.status
     || coreState.digest !== environmentGuard.coreState.digest
@@ -1165,7 +1177,7 @@ async function restoreEnvironmentGuard() {
     ].filter(Boolean);
     throw new Error(`MetaSecret environment restoration blocker: ${reasons.join('; ')}`);
   }
-  rmSync(environmentGuard.artifactBackup.backupRoot, { recursive: true, force: true });
+  if (environmentGuard.artifactBackup) rmSync(environmentGuard.artifactBackup.backupRoot, { recursive: true, force: true });
   writeDiagnostic(`[ENV] restored exact mode=${environmentGuard.previousMode}; repository state preserved`);
 }
 
@@ -1357,6 +1369,8 @@ function watchProcessOutput(command, args, options = {}) {
     stdout: diagnosticRedactor.createStream(),
     stderr: diagnosticRedactor.createStream(),
   };
+  let scopedIdentityError;
+  const scopedSecretIds = scenario.mode === 'vault-secret-deletion' && command === 'adb' ? createScopedSecretIdCollector() : null;
   const markerWaiters = new Set();
   let markerWaiterSequence = 0;
 
@@ -1376,6 +1390,11 @@ function watchProcessOutput(command, args, options = {}) {
   };
   const processOutput = (chunk, sink) => {
     const text = chunk.toString();
+    try { scopedSecretIds?.push(sink, text); } catch (error) {
+      scopedIdentityError = error; scopedSecretIds.close(error);
+      for (const waiter of markerWaiters) { clearTimeout(waiter.timeout); waiter.reject(error); }
+      markerWaiters.clear();
+    }
     const previousMarkerScanTail = markerScanTails[sink];
     markerScanTails[sink] = appendBounded(previousMarkerScanTail, text);
     emitSafeOutput(sink, text);
@@ -1421,6 +1440,7 @@ function watchProcessOutput(command, args, options = {}) {
   const result = new Promise((resolvePromise, reject) => {
     child.once('error', reject);
     child.once('exit', (code, signal) => {
+      scopedSecretIds?.close(new Error('Native actor ended before its exact identity payload'));
       processError = code === 0 ? new Error(`${command} ended before expected E2E event`) : new Error(`${command} exited with ${code ?? signal}`);
       for (const waiter of markerWaiters) {
         clearTimeout(waiter.timeout);
@@ -1440,6 +1460,7 @@ function watchProcessOutput(command, args, options = {}) {
   });
 
   const waitForMarker = (marker, timeoutMs = 300_000) => new Promise((resolvePromise, reject) => {
+    if (scopedIdentityError) return reject(scopedIdentityError);
     const matches = [markerScanTails.stdout, markerScanTails.stderr].some((output) => (
       marker instanceof RegExp
         ? (marker.lastIndex = 0, marker.test(output))
@@ -1460,6 +1481,7 @@ function watchProcessOutput(command, args, options = {}) {
   });
 
   const waitForNextMarker = (marker, timeoutMs = 300_000) => new Promise((resolvePromise, reject) => {
+    if (scopedIdentityError) return reject(scopedIdentityError);
     if (processError) return reject(processError);
     const waiterId = ++markerWaiterSequence;
     const armedAt = Date.now();
@@ -1501,11 +1523,13 @@ function watchProcessOutput(command, args, options = {}) {
     displayEnvironment: redactEnvironment(processOptions.env),
     child,
     waitForMarker,
+    waitForSecretId: (key, timeoutMs) => { if (scopedIdentityError) return Promise.reject(scopedIdentityError); if (!scopedSecretIds) throw new Error('Scoped identity capture is unavailable for this actor'); return scopedSecretIds.wait(key, timeoutMs); },
     waitForNextMarker,
     result,
     closed,
     cancelPendingWaits(error) {
       processError ??= error;
+      scopedSecretIds?.close(error);
       for (const waiter of markerWaiters) {
         clearTimeout(waiter.timeout);
         waiter.reject(processError);
@@ -1949,12 +1973,16 @@ function startIosJoinTest(simulatorUdid, {
   // xcodebuild does not reliably propagate per-invocation E2E_* variables to
   // the XCTest process. Persist the compact step context on the host so the
   // iOS UI test can read the exact cycle/step without timing-based defaults.
-  if (environment.E2E_ROLE || environment.E2E_NETWORK_ROLE) {
+  const persistedCoreServerUrl = networkLossConfig ? networkProxyUrl('ios') : (environment.E2E_CORE_SERVER_URL ?? '');
+  if (scenario.mode === 'vault-secret-deletion' && persistedCoreServerUrl !== 'http://127.0.0.1:5202') throw new Error('Test50 iOS actor requires its verified loopback Core proxy before XCTest launch');
+  { // Always replace the actor context; XCTest process environment is not authoritative.
     writeDiagnostic(`[IOS_STEP_BINDING] role=${environment.E2E_ROLE ?? environment.E2E_NETWORK_ROLE} `
       + `cycle=${environment.E2E_CYCLE ?? '?'} step=${environment.E2E_STEP ?? '?'} `
       + `selectorHash=${createHash('sha256').update(selectedSecret.name).digest('hex').slice(0, 12)} `
       + 'configAndLaunchSelectionEqual=true');
     writeFileSync(iosStepConfigPath, JSON.stringify({
+      coreServerUrl: persistedCoreServerUrl,
+      requireCoreRouting: scenario.mode === 'vault-secret-deletion',
       role: environment.E2E_ROLE ?? environment.E2E_NETWORK_ROLE,
       cycle: environment.E2E_CYCLE,
       step: environment.E2E_STEP,
@@ -1962,6 +1990,7 @@ function startIosJoinTest(simulatorUdid, {
       sender: environment.E2E_SENDER,
       action: environment.E2E_ACTION,
       expectedOutcome: environment.E2E_EXPECTED_OUTCOME,
+      expectRequest: environment.E2E_EXPECT_REQUEST !== 'false',
       secretName: selectedSecret.name,
       secretValue: selectedSecret.value,
       repeatApprove: environment.E2E_REPEAT_APPROVE === '1',
@@ -2020,6 +2049,9 @@ function startIosJoinTest(simulatorUdid, {
       },
     },
   );
+  const coreRoutingVerified = scenario.mode === 'vault-secret-deletion'
+    ? watched.waitForMarker('E2E: IOS_TEST50_CORE_ROUTING_VERIFIED', 60000) : Promise.resolve();
+  void coreRoutingVerified.catch(() => {});
   // XCTest can finish the selected test successfully while xcodebuild keeps
   // its testmanagerd session open indefinitely. The selected-suite result is
   // the authoritative pass/fail boundary for this one-test invocation; close
@@ -2046,9 +2078,9 @@ function startIosJoinTest(simulatorUdid, {
   // waitForMarker already rejects if xcodebuild exits before the XCTest pass
   // marker. Once the marker is seen, wait for the actual process close before
   // allowing the next iOS step to start.
-  const result = selectedSuitePassed;
+  const result = Promise.all([coreRoutingVerified, selectedSuitePassed]).then(([, result]) => result);
   void result.catch(() => {});
-  return { ...watched, result };
+  return { ...watched, result, waitForMarker: async (marker, timeoutMs) => { await coreRoutingVerified; return watched.waitForMarker(marker, timeoutMs); } };
 }
 
 async function prepareAndroidEmulator() {
@@ -2384,6 +2416,7 @@ async function startAndroidJoinTest(
       : []),
     '-e', 'approvalCoordinatorUrl', 'http://10.0.2.2:5180',
     '-e', 'setupOnly', scenario.android.setupOnly ? 'true' : 'false',
+    ...(scenario.mode === 'vault-secret-deletion' ? ['-e', 'requiredE2eServerUrl', networkProxyUrl('android')] : []),
     ...(joinPlatforms ? ['-e', 'joinPlatforms', joinPlatforms.join(',')] : []),
   ];
   // Android's `am` parser treats JSON punctuation as shell syntax when a
@@ -2405,6 +2438,7 @@ async function startAndroidJoinTest(
       : []),
     '-e', 'approvalCoordinatorUrl', 'http://10.0.2.2:5180',
     '-e', 'setupOnly', scenario.android.setupOnly ? 'true' : 'false',
+    ...(scenario.mode === 'vault-secret-deletion' ? ['-e', 'requiredE2eServerUrl', networkProxyUrl('android')] : []),
     ...(joinPlatforms ? ['-e', 'joinPlatforms', joinPlatforms.join(',')] : []),
   ];
   const androidNetworkGradleArgs = networkLossConfig
@@ -2422,7 +2456,7 @@ async function startAndroidJoinTest(
     // the test. Test #7 must keep its vault between the setup and assertion
     // instrumentation, so build/install both APKs and invoke the runner
     // directly instead of using connectedDebugAndroidTest.
-    if (reuseProvenArtifacts) {
+    if (reuseProvenArtifacts || scenario.mode === 'vault-secret-deletion') {
       writeDiagnostic('[ANDROID] reusing exact fingerprint-verified app and instrumentation APKs');
       await verifyAndroidApkFfiProvenance();
     } else {
@@ -2524,6 +2558,7 @@ async function startAndroidStepTest(serial, {
   sender = '',
   decision = '',
   expectedOutcome = '',
+  expectRequest = true,
   repeatApprove = false,
   duplicateRecovery = false,
   networkRole = '',
@@ -2581,6 +2616,8 @@ async function startAndroidStepTest(serial, {
     ['approvalPlatform', approvalPlatform],
     ['sender', sender],
     ['expectedOutcome', expectedOutcome],
+    ['expectRequest', String(expectRequest)],
+    ['requiredE2eServerUrl', scenario.mode === 'vault-secret-deletion' ? networkProxyUrl('android') : ''],
     ['networkRole', networkRole],
     ['networkBlock', networkBlock],
     ['networkCycles', networkCycles],
@@ -14341,6 +14378,18 @@ async function main() {
     await reclaimBuildCacheForVisibleRun();
   }
 
+  if (scenario.mode === 'vault-secret-deletion' && scenario.cli) {
+    process.env.METASECRET_E2E_SERVER_URL = scenario.server.url;
+    if (process.env.E2E_META_CLI_PREBUILT !== '1') await runAndWait('cargo', ['build', '-p', 'meta-cli'], { cwd: resolve(coreRoot, 'meta-secret') });
+    if (!existsSync(metaCliBinaryPath)) throw new Error('Test50 CLI current executable missing before client startup');
+  }
+
+  if (scenario.mode === 'vault-secret-deletion' && !reuseProvenArtifacts) {
+    await buildAndroidFfiFromCurrentSource();
+    await runAndWait('./gradlew', [':composeApp:assembleDebug', ':composeApp:assembleDebugAndroidTest', '-PMETA_SECRET_ENV=local', `-PMETA_SECRET_SOCKET_URL=${networkProxyUrl('android')}`, `-PMETA_SECRET_E2E_SERVER_URL=${networkProxyUrl('android')}`], { cwd: composeRoot });
+    await verifyAndroidApkFfiProvenance();
+  }
+
   console.log('3. Cleaning server state');
   // Preflight proved this scenario-specific name was not owned by another
   // process. Cleanup below only removes the container after this ownership
@@ -14405,9 +14454,92 @@ async function main() {
     serial: androidSerial,
     appBundleId: scenario.android.bundleId,
     composeRoot,
+    prebuiltApks: scenario.mode === 'vault-secret-deletion' ? { app: androidAppApkPath, test: androidTestApkPath } : null,
     runAndWait,
     runAndCapture,
   });
+  if (scenario.mode === 'vault-secret-deletion') {
+    await captureInstalledAndroidAppProvenance(androidSerial);
+    if (!reuseProvenArtifacts) await recordFreshBuildProvenance();
+  }
+  if (scenario.mode === 'vault-secret-deletion' && scenario.deletionBlock.members.includes('android')) {
+    await runAdbWithRetry(['-s', androidSerial, 'shell', 'rm', '-f', `/sdcard/Android/data/${scenario.android.bundleId}/files/test50-f3-window.png`]);
+    const accessibilityProbe = await startAndroidStepTest(androidSerial, {
+      role: 'accessibility-probe', cycle: 0, step: 'f3-accessibility',
+      testMethod: 'verifyTest50AccessibilityReady', label: 'Test50 F3 native accessibility readiness',
+    });
+    try {
+      await accessibilityProbe.waitForMarker('E2E: ANDROID_TEST50_ACCESSIBILITY_READY', 60_000);
+      await accessibilityProbe.result;
+    } catch (failure) {
+      // F3 has not executed any Vault business; the native producer guards the unauthenticated screen.
+      const screenshotPath = resolve(artifactsDirectory, `${scenario.runId}-f3-failure-window.png`);
+      await runAndWait('adb', ['-s', androidSerial, 'pull', `/sdcard/Android/data/${scenario.android.bundleId}/files/test50-f3-window.png`, screenshotPath], { stdio: 'ignore' })
+        .then(() => writeDiagnostic(`[F3 SCREENSHOT] pre-business window saved ${screenshotPath}`))
+        .catch(() => writeDiagnostic('[F3 SCREENSHOT] unavailable; no raw UI dump captured'));
+      throw failure;
+    }
+    await runAdbWithRetry(['-s', androidSerial, 'shell', 'am', 'force-stop', scenario.android.bundleId]);
+    if (process.env.E2E_TEST50_ACCESSIBILITY_PROBE_ONLY === '1') {
+      await stopProcesses();
+      console.log('✅ Test50 F3 accessibility-only PASS; owned cleanup complete; no Vault business executed');
+      process.exit(0);
+    }
+  }
+  if (process.env.E2E_TEST50_ACCESSIBILITY_PROBE_ONLY === '1') throw new Error('Accessibility-only mode requires a Test50 Android block');
+
+  if (scenario.mode === 'vault-secret-deletion') {
+    const runCli = (cliDirectory, args, { input, allowFailure = false } = {}) => new Promise((resolveResult, reject) => {
+      const child = run(metaCliBinaryPath, ['--output-format', 'json', ...args], {
+        cwd: cliDirectory, stdio: ['pipe', 'pipe', 'pipe'], env: { METASECRET_E2E_SERVER_URL: scenario.server.url },
+      });
+      let stdout = ''; let stderr = '';
+      child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+      child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+      child.once('error', reject);
+      child.once('exit', (code, signal) => {
+        if (code === 0 || allowFailure) resolveResult({ stdout, stderr, exitCode: code });
+        else reject(new Error(`Test50 CLI failed command=${args.slice(0, 2).join(' ')} code=${code ?? signal}`));
+      });
+      child.stdin.end(input ?? '');
+    });
+    await runDeletionBlock({ scenario, page, block: scenario.deletionBlock,
+      simulatorUdid, androidSerial, approvalCoordinator, startAndroidStepTest,
+      startIosJoinTest, startAndroidJoinTest, createWebSecret, createWebInitiatedVault,
+      createMetaCliRootDevice: async () => {
+        const cliDirectory = createCliActorDirectory(artifactsDirectory, scenario.runId, process.env.E2E_TEST_ATTEMPT ?? '1');
+        const deviceName = `${scenario.runId}-cli`;
+        const initialized = await runCli(cliDirectory, ['init', 'device', '--device-name', deviceName]);
+        const deviceId = initialized.stdout.match(/Device ID:\s*([^\s]+)/)?.[1];
+        if (!deviceId) throw new Error('CLI canonical device initialization did not return identity');
+        await runCli(cliDirectory, ['init', 'user', '--vault-name', scenario.vault.name]);
+        await runCli(cliDirectory, ['auth', 'sign-up']);
+        await runCli(cliDirectory, ['secret', 'split', '--pass-name', defaultSecret.name, '--stdin'], { input: `${defaultSecret.value}\n` });
+        return { cliDirectory, deviceId, deviceName };
+      }, joinWebToCliVault, approveJoinRequestOnWeb, acceptNextCliJoin,
+      waitForWebSecrets, waitForWebSecretNames, assertWebMembership, setJoinExpectedSecretNames,
+      stopAndroidApplication, stopIosApplication,
+      cancelOfflineActor: async (platform, actor) => {
+        if (platform === 'android') await stopAndroidApplication(androidSerial);
+        else { await stopIosApplication(simulatorUdid); actor.child.kill('SIGTERM'); }
+        await actor.result.catch(() => {});
+        if (actor.closed) await actor.closed;
+        writeDiagnostic(`[TEST50] intentional cold-offline boundary ${platform}; sandbox preserved`);
+      },
+      holdNetworkGate: (platform) => networkGateProcesses.get(platform).hold(),
+      waitForHeldNetworkRequest: (platform) => networkGateProcesses.get(platform).waitForHeld(),
+      nativeCanonicalMetadata: (platform) => networkGateProcesses.get(platform).metadata(),
+      showAndCloseWebSecret, unlockWithPasskeyIfNeeded, setNetworkGate, runCli,
+      secretValue: secretValueForName,
+      setSecretValue: (name, value) => { secretConfigFor(name).value = value; },
+      onCycle: (cycle) => { currentCycleForDiagnostics = cycle.number; const message = deletionCycleProgress(scenario.deletionBlock, cycle); console.log(message); writeDiagnostic(message); },
+      onDecisionPersisted: (cycle, requestId) => { const message = `🧪 Test50 cycle=${cycle.number} winner=${cycle.responder ?? cycle.requester} outcome=${cycle.outcome} requestHash=${createHash('sha256').update(requestId).digest('hex').slice(0, 16)} persisted-and-observed=true`; console.log(message); writeDiagnostic(message); },
+      onCycleComplete: (cycle) => { const message = `✅ Test50 block=${scenario.deletionBlock.id} cycle=${cycle.number} terminal PASS`; console.log(message); writeDiagnostic(message); },
+    });
+    console.log(`✅ Test #50 block ${scenario.deletionBlock.id} passed`);
+    await stopProcesses();
+    process.exit(0);
+  }
   if (
     [
       'android-secondary-creator-lifecycle',

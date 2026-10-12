@@ -12,6 +12,8 @@ namespace mobile_uniffi {
     string sign_up();
     string update_membership(string candidate, string action_update);
     string remove_member(string target_device_id);
+    string delete_secret(string secret_id);
+    string decide_delete_secret(string request_json);
     string approve_remove_member(string target_device_id);
     string decline_remove_member(string target_device_id);
     string clean_up_database();

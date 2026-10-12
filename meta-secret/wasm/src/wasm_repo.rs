@@ -91,6 +91,23 @@ impl WasmRepo {
 
 #[async_trait(? Send)]
 impl SaveCommand for WasmRepo {
+    async fn replace<T: ToGenericEvent>(&self, value: T) -> Result<ArtifactId> {
+        let value = value.to_generic();
+        let key = value.obj_id();
+        let tx = self
+            .rexie
+            .transaction(&[self.store_name.as_str()], TransactionMode::ReadWrite)?;
+        let store = tx.store(self.store_name.as_str())?;
+        let js_key = serde_wasm_bindgen::to_value(&key.clone().id_str())?;
+        if store.get(js_key.clone()).await?.is_none() {
+            anyhow::bail!("Cannot replace a missing record");
+        }
+        store
+            .put(&serde_wasm_bindgen::to_value(&value)?, Some(&js_key))
+            .await?;
+        tx.done().await?;
+        Ok(key)
+    }
     #[instrument(skip_all)]
     async fn save<T: ToGenericEvent>(&self, event: T) -> Result<ArtifactId> {
         let generic_event = event.to_generic();
@@ -171,6 +188,17 @@ impl FindOneQuery for WasmRepo {
 
 #[async_trait(? Send)]
 impl DeleteCommand for WasmRepo {
+    async fn try_delete(&self, key: ArtifactId) -> Result<()> {
+        let tx = self
+            .rexie
+            .transaction(&[self.store_name.as_str()], TransactionMode::ReadWrite)?;
+        let store = tx.store(self.store_name.as_str())?;
+        store
+            .delete(serde_wasm_bindgen::to_value(&key.id_str())?)
+            .await?;
+        tx.done().await?;
+        Ok(())
+    }
     #[instrument(skip_all)]
     async fn delete(&self, key: ArtifactId) {
         let store_name = self.store_name.as_str();

@@ -8,7 +8,7 @@ use meta_secret_core::node::db::events::object_id::ArtifactId;
 use meta_secret_core::node::db::repo::generic_db::{
     DbCleanUpCommand, DeleteCommand, FindOneQuery, KvLogEventRepo, SaveCommand,
 };
-use redb::{Database, ReadableDatabase, TableDefinition};
+use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use std::path::Path;
 use tracing::{error, instrument};
 
@@ -61,6 +61,21 @@ impl ReDbRepo {
 
 #[async_trait(? Send)]
 impl SaveCommand for ReDbRepo {
+    async fn replace<T: ToGenericEvent>(&self, value: T) -> Result<ArtifactId> {
+        let value = value.to_generic();
+        let key = value.obj_id();
+        let serialized = serde_json::to_vec(&value)?;
+        let transaction = self.db.begin_write()?;
+        {
+            let mut table = transaction.open_table(LOG_EVENTS_TABLE)?;
+            if table.get(key.clone().id_str())?.is_none() {
+                anyhow::bail!("Cannot replace a missing record");
+            }
+            table.insert(key.clone().id_str(), serialized)?;
+        }
+        transaction.commit()?;
+        Ok(key)
+    }
     async fn save<T: ToGenericEvent>(&self, value: T) -> Result<ArtifactId> {
         let generic_value = value.to_generic();
         let key = generic_value.obj_id();
@@ -109,6 +124,15 @@ impl FindOneQuery for ReDbRepo {
 
 #[async_trait(? Send)]
 impl DeleteCommand for ReDbRepo {
+    async fn try_delete(&self, key: ArtifactId) -> Result<()> {
+        let transaction = self.db.begin_write()?;
+        {
+            let mut table = transaction.open_table(LOG_EVENTS_TABLE)?;
+            table.remove(key.id_str())?;
+        }
+        transaction.commit()?;
+        Ok(())
+    }
     async fn delete(&self, key: ArtifactId) {
         let write_txn = self.db.begin_write().unwrap();
         {

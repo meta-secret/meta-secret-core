@@ -67,9 +67,30 @@ impl WasmApplicationManager {
         WasmApplicationManager { app_manager }
     }
 
-    pub async fn get_state(&self) -> WasmApplicationState {
-        let app_state = self.app_manager.get_state().await;
-        WasmApplicationState::from(app_state)
+    pub async fn get_state(&self) -> Result<WasmApplicationState, JsValue> {
+        self.app_manager
+            .get_state()
+            .await
+            .map(WasmApplicationState::from)
+            .map_err(|_| JsError::new("Vault synchronization failed").into())
+    }
+
+    pub async fn delete_secret(&self, pass_id: &MetaPasswordId) -> Result<(), JsValue> {
+        self.app_manager
+            .delete_secret(pass_id.clone())
+            .await
+            .map_err(|error| JsError::new(&error.to_string()).into())
+    }
+
+    pub async fn decide_delete_secret(
+        &self,
+        request_id: String,
+        accepted: bool,
+    ) -> Result<(), JsValue> {
+        self.app_manager
+            .decide_delete_secret(request_id, accepted)
+            .await
+            .map_err(|error| JsError::new(&error.to_string()).into())
     }
 
     pub async fn state_events_auth_token(&self, vault_name: String) -> Result<String, JsValue> {

@@ -1,7 +1,6 @@
 use crate::base_command::BaseCommand;
 use crate::cli_format::CliOutputFormat;
 use anyhow::{Result, bail};
-use meta_secret_core::node::common::model::meta_pass::MetaPasswordId;
 use meta_secret_core::node::common::model::secret::SsDistributionId;
 use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
 use meta_secret_core::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
@@ -37,7 +36,11 @@ impl ShowLocalSecretCommand {
                 VaultFullInfo::NotExists(_) => bail!("Vault does not exist."),
                 VaultFullInfo::Outsider(_) => bail!("Outsider: operation is not possible."),
                 VaultFullInfo::Member(member_info) => {
-                    let pass_id = MetaPasswordId::build(pass_name);
+                    let pass_id = client.resolve_secret(&pass_name).await?;
+                    member_info
+                        .member
+                        .vault
+                        .ensure_local_secret_available(user_creds.device_id(), &pass_id)?;
                     let desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
                         pass_id: pass_id.clone(),
                         receiver: user_creds.device_id().clone(),

@@ -127,7 +127,8 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                     self.update_membership(join_request, JoinActionUpdate::Accept)
                         .await?;
                 }
-                VaultActionRequestEvent::RemoveMember(_) => {
+                VaultActionRequestEvent::RemoveMember(_)
+                | VaultActionRequestEvent::DeleteSecret(_) => {
                     // Removal requires an explicit user action; never auto-approve it.
                 }
                 VaultActionRequestEvent::AddMetaPass(_) => {
@@ -260,7 +261,8 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                         }
                     }
                 }
-                VaultActionRequestEvent::RemoveMember(_) => {
+                VaultActionRequestEvent::RemoveMember(_)
+                | VaultActionRequestEvent::DeleteSecret(_) => {
                     // Handled by `request_remove_member` / `accept_remove_member`.
                 }
                 VaultActionRequestEvent::AddMetaPass(_) => {
@@ -843,7 +845,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                         "[CORE_DIAG] removal reshare local_distribution_lookup result=error class={}",
                         core_diag_error_class(&error)
                     ));
-                    return Err(error.into());
+                    return Err(error);
                 }
             };
             core_diag("[CORE_DIAG] removal reshare local_distribution_lookup result=found");
@@ -877,7 +879,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                         "[CORE_DIAG] removal reshare local_distribution_decrypt result=error class={}",
                         core_diag_error_class(&error)
                     ));
-                    return Err(error.into());
+                    return Err(error);
                 }
             };
             core_diag("[CORE_DIAG] removal reshare local_distribution_decrypt result=ok");
@@ -982,7 +984,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                         "[CORE_DIAG] removal reshare transfer_decrypt result=error class={}",
                         core_diag_error_class(&error)
                     ));
-                    return Err(error.into());
+                    return Err(error);
                 }
             };
             core_diag("[CORE_DIAG] removal reshare transfer_decrypt result=ok");
@@ -1072,7 +1074,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                             idx,
                             core_diag_error_class(&error)
                         ));
-                        return Err(error.into());
+                        return Err(error);
                     }
                 };
                 let dist_id = SsDistributionId {
@@ -1102,7 +1104,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                         idx + 1,
                         core_diag_error_class(&error)
                     ));
-                    return Err(error.into());
+                    return Err(error);
                 }
                 core_diag(&format!(
                     "[CORE_DIAG] removal reshare distribution_save index={} total={} result=ok",
@@ -1165,7 +1167,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                     "[CORE_DIAG] removal reshare claim_device_log_save result=error class={}",
                     core_diag_error_class(&error)
                 ));
-                return Err(error.into());
+                return Err(error);
             }
             core_diag("[CORE_DIAG] removal reshare claim_device_log_save result=ok");
             core_diag("[CORE_DIAG] removal reshare claim_ss_log_save result=begin");
@@ -1174,7 +1176,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                     "[CORE_DIAG] removal reshare claim_ss_log_save result=error class={}",
                     core_diag_error_class(&error)
                 ));
-                return Err(error.into());
+                return Err(error);
             }
             core_diag("[CORE_DIAG] removal reshare claim_ss_log_save result=ok");
             ss_log_data

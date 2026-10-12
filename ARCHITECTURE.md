@@ -17,6 +17,11 @@ Meta Secret core is organized as a **Cargo workspace** of crates. The **`meta-se
 
 ## Boundaries
 
+Vault-wide Secret deletion follows the [Core deletion contract](docs/secret-deletion.md):
+local confirmation for one/two devices, one other approver for three, authenticated
+request/decision events, persistent tombstones, and ciphertext cleanup before
+refreshed client state. Clients consume Core-computed deletion instructions.
+
 - **Core vs IO:** Keep pure protocol/crypto reasoning in `meta-secret-core` where possible; push filesystem/network/UI-specific code to the appropriate crate.
 - **Server vs client:** Server crates orchestrate transport and storage; they must not silently weaken crypto assumptions documented in code and [SECURITY.md](SECURITY.md).
 - **FFI:** UniFFI/mobile exports are a **public contract**. Changes require review for backward compatibility and parallel updates in **meta-secret-compose**.

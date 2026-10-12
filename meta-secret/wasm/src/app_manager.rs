@@ -122,7 +122,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
     #[instrument(skip(self))]
     pub async fn sign_up(&self) -> Result<ApplicationState> {
         info!("Sign Up");
-        let state = self.get_state().await;
+        let state = self.get_state().await?;
         let vault_name = resolve_signup_vault_name(&state)?;
         let sign_up = GenericAppStateRequest::SignUp(vault_name);
         let new_state = self.meta_client_service.send_request(sign_up).await?;
@@ -146,12 +146,11 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
             .unwrap();
     }
 
-    pub async fn get_state(&self) -> ApplicationState {
+    pub async fn get_state(&self) -> Result<ApplicationState> {
         let request = GenericAppStateRequest::GetState;
         self.meta_client_service
             .send_request(request)
             .await
-            .unwrap()
     }
 
     pub async fn state_events_auth_token(&self, vault_name: VaultName) -> Result<String> {
@@ -219,6 +218,16 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
             .await
     }
 
+    pub async fn delete_secret(&self, pass_id: MetaPasswordId) -> Result<()> {
+        self.meta_client_service.delete_secret(pass_id).await
+    }
+
+    pub async fn decide_delete_secret(&self, request_id: String, accepted: bool) -> Result<()> {
+        self.meta_client_service
+            .decide_delete_secret(request_id, accepted)
+            .await
+    }
+
     pub async fn approve_remove_member(&self, target_device_id: DeviceId) -> Result<()> {
         self.meta_client_service
             .approve_remove_member(target_device_id.to_string())
@@ -238,7 +247,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
     /// claims may exist for the same secret.
     pub async fn show_recovered(&self, claim_id: ClaimId) -> Result<PlainText> {
         let user_creds = self.meta_client_service.find_user_creds().await?;
-        let state = self.get_state().await;
+        let state = self.get_state().await?;
         match &state {
             ApplicationState::Local(_) => {
                 bail!("Show recovered is not allowed in local state");
@@ -324,6 +333,13 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
         user_creds: UserCreds,
         pass_id: MetaPasswordId,
     ) -> Result<PlainText> {
+        meta_secret_core::node::db::objects::persistent_vault::PersistentVault::from(
+            self.sync_gateway.p_obj.clone(),
+        )
+        .get_vault(user_creds.vault_name.clone())
+        .await?
+        .to_data()
+        .ensure_local_secret_available(user_creds.device_id(), &pass_id)?;
         let desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
             pass_id: pass_id.clone(),
             receiver: user_creds.device_id().clone(),
@@ -349,7 +365,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
     }
 
     pub async fn find_claim_by_pass_id(&self, pass_id: &MetaPasswordId) -> Option<ClaimId> {
-        let state = self.get_state().await;
+        let state = self.get_state().await.ok()?;
         let user_creds = self.meta_client_service.find_user_creds().await.ok()?;
         let ApplicationState::Vault(VaultFullInfo::Member(member)) = state else {
             return None;

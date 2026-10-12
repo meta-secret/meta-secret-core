@@ -402,6 +402,17 @@ n=2 (k=1) → remove 1 → n=1 (allowed with local confirmation; self-removal re
 
 ## 2. Approval & Consensus Rules
 
+### Secret deletion (#96)
+
+- One/two current devices: local user confirmation; the signed initiator request deletes Vault-wide.
+- Three current devices: one other current member approves; first server-processed approve/decline is terminal, as with recovery.
+- Core binds the exact Pass ID, request UUID and current membership. A membership change invalidates pending deletion approvals.
+- Deletion never recovers plaintext or transmits a Key Share. Persistent tombstones prevent stale additions, claims and workflows from reviving a deleted ID.
+- Synchronization removes all affected ciphertext revisions and device-removal transfer history before exposing refreshed state. Clients display loading during application of deletion, including startup/reconnect.
+- Clients consume Core deletion statuses and submit exact UUIDs. They do not calculate deletion quorum.
+
+See [the protocol and client contract](../docs/secret-deletion.md).
+
 ### 2.1 Actions Requiring Approval
 
 **All state-changing vault operations require approval from OTHER devices:**

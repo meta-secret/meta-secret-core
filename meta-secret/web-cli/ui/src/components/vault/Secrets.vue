@@ -5,6 +5,7 @@ import { AppState } from '@/stores/app-state';
 import { useAuthStore } from '@/stores/auth';
 import { vaultSecrets } from '@/locales/en';
 import AddSecretForm from './AddSecretForm.vue';
+import SecretDeletion from './SecretDeletion.vue';
 import { getAppManager, getMemberVaultData, getMemberVaultState } from '@/utils/wasmBridge';
 import { shouldShowRecoveryRequestIcon } from '@/utils/recoveryRequest';
 import { Button } from '@/components/ui/button';
@@ -156,6 +157,7 @@ const closeRecoveryDialog = () => {
 watch(
   () => appState.currState,
   () => {
+    if (activeSecretId.value && !passwords.value.some(secret => secret.id_str() === activeSecretId.value)) closeAllSecretModals();
     const secret = recoveryDialogSecret.value;
     if (!recoveryDialogOpen.value || !secret || recoveryActionInProgress.value) return;
     if (!getPendingIncomingRecoveryClaim(secret)) {
@@ -411,6 +413,7 @@ const revealModalOpen = computed(() => revealModalState.value !== 'closed');
                 </span>
               </p>
               <div class="flex items-center gap-2">
+                <SecretDeletion :secret="secret" />
                 <Button
                   v-if="hasPendingIncomingRecoveryRequest(secret)"
                   variant="outline"
@@ -439,7 +442,7 @@ const revealModalOpen = computed(() => revealModalState.value !== 'closed');
     <AddSecretForm :show="showAddForm" @added="showAddForm = false" @close="showAddForm = false" />
   </div>
 
-  <AlertDialog :open="recoveryDialogOpen" @update:open="(open) => !open && closeRecoveryDialog()">
+  <AlertDialog :open="recoveryDialogOpen && !appState.isSynchronizing && !appState.syncError" @update:open="(open) => !open && !appState.isSynchronizing && !appState.syncError && closeRecoveryDialog()">
     <AlertDialogContent>
       <AlertDialogHeader>
         <AlertDialogTitle>{{ vaultSecrets.recoveryRequestTitle }}</AlertDialogTitle>
@@ -469,10 +472,10 @@ const revealModalOpen = computed(() => revealModalState.value !== 'closed');
 
   <!-- Reveal modal -->
   <Dialog
-    :open="revealModalOpen"
+    :open="revealModalOpen && !appState.isSynchronizing && !appState.syncError"
     @update:open="
       (v) => {
-        if (!v) closeAllSecretModals();
+        if (!v && !appState.isSynchronizing && !appState.syncError) closeAllSecretModals();
       }
     "
   >

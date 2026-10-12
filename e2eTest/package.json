@@ -129,6 +129,9 @@
     ,"test-48:run": "node Test48/orchestrator.mjs --exit-on-success"
     ,"test-49": "node Test49/orchestrator.mjs"
     ,"test-49:run": "node Test49/orchestrator.mjs --exit-on-success"
+    ,"test-50": "node Test50/orchestrator.mjs"
+    ,"test-50:blocks": "node Test50/orchestrator.mjs --exit-on-success"
+    ,"test-50:f1": "node --test Test50/f1.test.mjs Test50/setup.test.mjs Test50/web-postcondition.test.mjs Test50/progress.test.mjs Test50/native-list.test.mjs Test50/ios-routing.test.mjs Test50/ios-scroll.test.mjs Test50/android-copy-baseline.test.mjs Test50/cli-workspace.test.mjs Test50/metadata.test.mjs Test50/cli-json.test.mjs Test50/network-gate.test.mjs"
     ,"test-range": "node run-ui-e2e-range.mjs"
   },
   "dependencies": {

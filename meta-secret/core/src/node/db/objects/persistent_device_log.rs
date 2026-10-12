@@ -24,6 +24,18 @@ pub struct PersistentDeviceLog<Repo: KvLogEventRepo> {
 }
 
 impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
+    pub async fn save_vault_action(
+        &self,
+        sender: &UserData,
+        action: VaultActionEvent,
+    ) -> Result<()> {
+        let event = DeviceLogObject(KvLogEvent {
+            key: self.get_device_log_free_key(sender).await?,
+            value: action,
+        });
+        self.p_obj.repo.save(event).await?;
+        Ok(())
+    }
     pub async fn find_tail_id(&self, user_id: &UserId) -> Result<Option<ArtifactId>> {
         let obj_desc = DeviceLogDescriptor::from(user_id.clone());
         self.p_obj.find_tail_id_by_obj_desc(obj_desc.clone()).await

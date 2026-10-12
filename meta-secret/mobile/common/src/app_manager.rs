@@ -374,6 +374,22 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
             .await
     }
 
+    pub async fn resolve_secret(&self, identifier: &str) -> Result<MetaPasswordId> {
+        self.get_state().await?;
+        self.meta_client_service.resolve_secret(identifier).await
+    }
+
+    pub async fn delete_secret(&self, identifier: String) -> Result<()> {
+        let pass_id = self.resolve_secret(&identifier).await?;
+        self.meta_client_service.delete_secret(pass_id).await
+    }
+
+    pub async fn decide_delete_secret(&self, request_id: String, accepted: bool) -> Result<()> {
+        self.meta_client_service
+            .decide_delete_secret(request_id, accepted)
+            .await
+    }
+
     pub async fn approve_remove_member(&self, target_device_id: String) -> Result<()> {
         self.meta_client_service
             .approve_remove_member(target_device_id)
@@ -503,6 +519,13 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
         user_creds: UserCreds,
         pass_id: MetaPasswordId,
     ) -> Result<PlainText> {
+        meta_secret_core::node::db::objects::persistent_vault::PersistentVault::from(
+            self.sync_gateway.p_obj.clone(),
+        )
+        .get_vault(user_creds.vault_name.clone())
+        .await?
+        .to_data()
+        .ensure_local_secret_available(user_creds.device_id(), &pass_id)?;
         use meta_secret_core::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
         use meta_secret_core::recover_from_shares;
         use meta_secret_core::secret::shared_secret::UserShareDto;

@@ -4,13 +4,17 @@ use crate::node::db::events::generic_log_event::{
     GenericKvLogEvent, GenericKvLogEventConvertible, ToGenericEvent,
 };
 use crate::node::db::events::object_id::ArtifactId;
-use anyhow::Result;
+use anyhow::{Result, bail};
 
 // https://blog.rust-lang.org/2023/12/21/async-fn-rpit-in-traits.html
 
 #[async_trait(? Send)]
 pub trait SaveCommand {
     async fn save<T: ToGenericEvent>(&self, value: T) -> Result<ArtifactId>;
+    /// Atomically replace one existing record during sensitive-data cleanup.
+    async fn replace<T: ToGenericEvent>(&self, _value: T) -> Result<ArtifactId> {
+        bail!("Atomic record replacement is not supported by this repository")
+    }
 }
 
 #[async_trait(? Send)]
@@ -36,6 +40,10 @@ pub trait FindOneQuery {
 #[async_trait(? Send)]
 pub trait DeleteCommand {
     async fn delete(&self, key: ArtifactId);
+    /// Fallible deletion for cleanup that must complete before exposing state.
+    async fn try_delete(&self, _key: ArtifactId) -> Result<()> {
+        bail!("Fallible deletion is not supported by this repository")
+    }
 }
 
 #[async_trait(? Send)]

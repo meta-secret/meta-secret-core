@@ -24,9 +24,11 @@ use meta_secret_core::node::db::actions::vault::vault_action::ServerVaultAction;
 use meta_secret_core::node::db::descriptors::shared_secret_descriptor::{
     SsDeviceLogDescriptor, SsLogDescriptor, SsWorkflowDescriptor,
 };
+use meta_secret_core::node::db::descriptors::vault_descriptor::DeviceLogDescriptor;
 use meta_secret_core::node::db::events::generic_log_event::{
     GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
 };
+use meta_secret_core::node::db::events::object_id::ArtifactId;
 use meta_secret_core::node::db::events::shared_secret_event::{
     SsDeviceLogObject, SsLogObject, SsWorkflowObject,
 };
@@ -242,6 +244,14 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
         let vault_name = event_vault_name(&event)?;
         let p_vault = PersistentVault::from(self.p_obj.clone());
+        if matches!(&event, GenericKvLogEvent::DeviceLog(object) if matches!(&object.0.value,
+            VaultActionEvent::Request(VaultActionRequestEvent::DeleteSecret(_)) | VaultActionEvent::Update(VaultActionUpdateEvent::DeleteSecret(_))))
+        {
+            let vault = p_vault.get_vault(vault_name.clone()).await?.to_data();
+            if !vault.is_member(&action.signer) {
+                bail!("Deletion signer is not a current Vault member");
+            }
+        }
         let signer_user = match p_vault.get_vault(vault_name.clone()).await {
             Ok(vault) => vault
                 .to_data()
@@ -263,6 +273,14 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         }
         action.verify(&signer_user.device.keys.dsa_pk)?;
         validate_event_actor(&event, &action.signer)?;
+        if matches!(&event, GenericKvLogEvent::DeviceLog(object) if matches!(&object.0.value,
+            VaultActionEvent::Request(VaultActionRequestEvent::DeleteSecret(_)) | VaultActionEvent::Update(VaultActionUpdateEvent::DeleteSecret(_))))
+        {
+            let expected = ArtifactId::from(DeviceLogDescriptor::from(signer_user.user_id()));
+            if object_id.fqdn != expected.fqdn {
+                bail!("Deletion action uses another device's stream");
+            }
+        }
 
         // The event's ArtifactId is the durable per-stream monotonic sequence.
         // Reject the same or an older sequence before the event can be applied.
@@ -284,9 +302,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                             .receiver()
                             .to_device_id();
                         let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
-                        let ss_log = p_ss
-                            .get_ss_log_obj(vault_name.clone())
-                            .await?;
+                        let ss_log = p_ss.get_ss_log_obj(vault_name.clone()).await?;
                         let sender_claims: Vec<SsDeviceLogObject> = self
                             .p_obj
                             .get_object_events_from_beginning(SsDeviceLogDescriptor::from(
@@ -339,6 +355,10 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         }
         let p_vault = PersistentVault::from(self.p_obj.clone());
         let vault = p_vault.get_vault(completion.vault_name.clone()).await?;
+        vault
+            .clone()
+            .to_data()
+            .ensure_secret_available(&completion.recovery_id.claim_id.pass_id)?;
         let member = vault
             .to_data()
             .find_user(&action.signer)
@@ -772,6 +792,9 @@ fn event_actor_user(event: &GenericKvLogEvent, signer: &DeviceId) -> Option<User
         VaultActionEvent::Request(VaultActionRequestEvent::AddMetaPass(event)) => {
             event.sender.user_data.clone()
         }
+        VaultActionEvent::Request(VaultActionRequestEvent::DeleteSecret(event)) => {
+            event.sender.user_data.clone()
+        }
         VaultActionEvent::Update(VaultActionUpdateEvent::UpdateMembership(event)) => {
             event.sender.user_data.clone()
         }
@@ -779,6 +802,9 @@ fn event_actor_user(event: &GenericKvLogEvent, signer: &DeviceId) -> Option<User
             event.sender.user_data.clone()
         }
         VaultActionEvent::Update(VaultActionUpdateEvent::AddMetaPass(event)) => {
+            event.sender.user_data.clone()
+        }
+        VaultActionEvent::Update(VaultActionUpdateEvent::DeleteSecret(event)) => {
             event.sender.user_data.clone()
         }
         VaultActionEvent::Update(VaultActionUpdateEvent::AddToPending { candidate }) => {
@@ -826,9 +852,11 @@ fn validate_event_actor(event: &GenericKvLogEvent, signer: &DeviceId) -> Result<
                     | VaultActionEvent::Request(VaultActionRequestEvent::JoinCluster(_))
                     | VaultActionEvent::Request(VaultActionRequestEvent::RemoveMember(_))
                     | VaultActionEvent::Request(VaultActionRequestEvent::AddMetaPass(_))
+                    | VaultActionEvent::Request(VaultActionRequestEvent::DeleteSecret(_))
                     | VaultActionEvent::Update(VaultActionUpdateEvent::UpdateMembership(_))
                     | VaultActionEvent::Update(VaultActionUpdateEvent::RemoveMember(_))
                     | VaultActionEvent::Update(VaultActionUpdateEvent::AddMetaPass(_))
+                    | VaultActionEvent::Update(VaultActionUpdateEvent::DeleteSecret(_))
                     | VaultActionEvent::Update(VaultActionUpdateEvent::AddToPending { .. })
             ) {
                 bail!("unsupported device log action")
@@ -840,7 +868,7 @@ fn validate_event_actor(event: &GenericKvLogEvent, signer: &DeviceId) -> Result<
 }
 
 impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
-    #[instrument(skip(self))]
+    #[instrument(skip_all)]
     async fn server_write_processing(
         &self,
         server_device: DeviceData,
@@ -854,6 +882,19 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             GenericKvLogEvent::SsDeviceLog(ss_device_log_obj) => {
                 let claim_preview = ss_device_log_obj.clone().to_distribution_request();
                 let vault_name = claim_preview.vault_name.clone();
+                let vault = PersistentVault::from(self.p_obj.clone())
+                    .get_vault(vault_name.clone())
+                    .await?
+                    .to_data();
+                if vault
+                    .deleted_secrets
+                    .iter()
+                    .any(|pass| pass.id == claim_preview.dist_claim_id.pass_id.id)
+                {
+                    // Preserve the metadata stream sequence without restoring a claim.
+                    self.p_obj.repo.save(ss_device_log_obj).await?;
+                    return Ok(());
+                }
                 debug!(
                     claim_id = ?claim_preview.id,
                     claim_sender = ?claim_preview.sender,
@@ -902,6 +943,19 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                 self.publish_invalidation(vault_name, StateInvalidationScope::SsClaims);
             }
             GenericKvLogEvent::SsWorkflow(ss_object) => {
+                if let Ok(data) = ss_object.clone().to_distribution_data() {
+                    let vault = PersistentVault::from(self.p_obj.clone())
+                        .get_vault(data.vault_name)
+                        .await?
+                        .to_data();
+                    if vault
+                        .deleted_secrets
+                        .iter()
+                        .any(|pass| pass.id == data.claim_id.pass_id.id)
+                    {
+                        return Ok(());
+                    }
+                }
                 if let SsWorkflowObject::Decline(decline_event) = &ss_object {
                     self.p_obj.repo.save(ss_object.clone()).await?;
                     let decline_data = decline_event.value.clone();
@@ -1083,15 +1137,13 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         Ok(())
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip_all)]
     async fn handle_device_log_request(
         &self,
         server_device: DeviceData,
         device_log_obj: DeviceLogObject,
     ) -> Result<()> {
-        self.p_obj.repo.save(device_log_obj.clone()).await?;
-
-        let vault_action_event = device_log_obj.0;
+        let vault_action_event = device_log_obj.0.clone();
         let vault_action = vault_action_event.value;
         let vault_name = vault_action.vault_name();
         let scope = state_scope_for_vault_action(&vault_action);
@@ -1166,6 +1218,13 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         };
 
         action.do_processing(vault_action).await?;
+        self.p_obj.repo.save(device_log_obj).await?;
+        let vault = PersistentVault::from(self.p_obj.clone())
+            .get_vault(vault_name.clone())
+            .await?
+            .to_data();
+        Box::pin(PersistentSharedSecret::from(self.p_obj.clone()).purge_deleted_secrets(&vault))
+            .await?;
         if join_resolution_was_pending && let Some((request_id, outcome)) = join_resolution {
             self.invalidation_publisher
                 .publish(StateInvalidation::join_result(
@@ -1230,11 +1289,23 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         request: SsRequest,
         server_device: DeviceId,
     ) -> Result<Vec<GenericKvLogEvent>> {
+        let deleted = PersistentVault::from(self.p_obj.clone())
+            .get_vault(request.sender.vault_name.clone())
+            .await?
+            .to_data()
+            .deleted_secrets;
         //sync SsLog
-        let ss_log_events = self
+        let mut ss_log_events = self
             .p_obj
             .find_object_events::<SsLogObject>(request.ss_log.clone())
             .await?;
+        for event in &mut ss_log_events {
+            event.0.value.claims.retain(|_, claim| {
+                !deleted
+                    .iter()
+                    .any(|pass| pass.id == claim.dist_claim_id.pass_id.id)
+            });
+        }
         debug!(
             ss_log_events_count = ss_log_events.len(),
             "ss_replication: events from find_object_events for request.ss_log"
@@ -1247,9 +1318,14 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                     .await?
             }
         };
-        let Some(latest_ss_log_state) = maybe_latest_ss_log_state else {
+        let Some(mut latest_ss_log_state) = maybe_latest_ss_log_state else {
             return Ok(vec![]);
         };
+        latest_ss_log_state.0.value.claims.retain(|_, claim| {
+            !deleted
+                .iter()
+                .any(|pass| pass.id == claim.dist_claim_id.pass_id.id)
+        });
 
         let mut commit_log = vec![];
         for ss_log_event in ss_log_events.clone() {
@@ -1361,12 +1437,14 @@ fn state_scope_for_vault_action(action: &VaultActionEvent) -> StateInvalidationS
             VaultActionRequestEvent::JoinCluster(_) => StateInvalidationScope::Devices,
             VaultActionRequestEvent::RemoveMember(_) => StateInvalidationScope::Devices,
             VaultActionRequestEvent::AddMetaPass(_) => StateInvalidationScope::Vault,
+            VaultActionRequestEvent::DeleteSecret(_) => StateInvalidationScope::Vault,
         },
         VaultActionEvent::Update(update) => match update {
             VaultActionUpdateEvent::AddToPending { .. }
             | VaultActionUpdateEvent::UpdateMembership(_)
             | VaultActionUpdateEvent::RemoveMember(_) => StateInvalidationScope::Devices,
             VaultActionUpdateEvent::AddMetaPass(_) => StateInvalidationScope::Vault,
+            VaultActionUpdateEvent::DeleteSecret(_) => StateInvalidationScope::Vault,
         },
     }
 }

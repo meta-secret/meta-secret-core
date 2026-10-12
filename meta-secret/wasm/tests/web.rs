@@ -51,7 +51,7 @@ async fn run_app() -> anyhow::Result<()> {
     info!("🔄 Verifying vault membership");
     app_manager.sync_gateway.sync().await?;
     app_manager.sync_gateway.sync().await?;
-    let state = app_manager.get_state().await;
+    let state = app_manager.get_state().await?;
     info!("✅ Application state retrieved");
 
     // Check if we're in a vault

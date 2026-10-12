@@ -1,3 +1,5 @@
+import { scenarioProgressLine } from './shared/scenario-progress.mjs';
+import { batchEnvironmentPaths, createBatchEnvironmentGuard, preflightBatchEnvironment } from './shared/batch-environment.mjs';
 import { spawn, spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -5,7 +7,7 @@ import { arch, platform, release, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-import { ensureIosFfi, iosArtifactRoots } from './shared/ios-ffi-provenance.mjs';
+import { ensureIosFfi } from './shared/ios-ffi-provenance.mjs';
 import { createDiagnosticRedactor } from './shared/diagnostic-redaction.mjs';
 import {
   prepareScenarioPlatforms,
@@ -26,14 +28,10 @@ const metaCliBinaryPath = resolve(metaCliRoot, 'target/debug/meta-cli');
 const androidFfiBuildScript = resolve(coreRoot, 'meta-secret/mobile/scripts/build-android.sh');
 const androidFfiProvenancePath = resolve(e2eRoot, '.artifacts/android-ffi-build-provenance.json');
 const androidFfiMarker = '[CORE_DIAG] sync_vault response events=';
-const androidFfiArtifactRoots = [
-  ...iosArtifactRoots(composeRoot),
-  resolve(composeRoot, 'composeApp/src/androidMain/jniLibs'),
-  resolve(composeRoot, 'composeApp/src/androidMain/kotlin/com/metasecret/core/uniffi'),
-];
 const diskThresholdGiB = 15;
 const postCleanupMinimumGiB = 12;
 let activeChild;
+let preparationKillTimer;
 let interruptedBy;
 let androidFfiSourcePrepared;
 
@@ -57,28 +55,6 @@ function fingerprintAndroidCoreSource() {
   return digest.digest('hex');
 }
 
-function snapshotAndroidFfiArtifacts() {
-  const directory = mkdtempSync(resolve(tmpdir(), 'metasecret-android-ffi-'));
-  return {
-    directory,
-    entries: androidFfiArtifactRoots.map((path, index) => {
-      const existed = existsSync(path);
-      const backup = resolve(directory, String(index));
-      if (existed) cpSync(path, backup, { recursive: true, dereference: false });
-      return { path, backup, existed };
-    }),
-  };
-}
-
-function restoreAndroidFfiArtifacts(snapshot) {
-  if (!snapshot) return;
-  for (const { path, backup, existed } of snapshot.entries) {
-    rmSync(path, { recursive: true, force: true });
-    if (existed) cpSync(backup, path, { recursive: true, dereference: false });
-  }
-  rmSync(snapshot.directory, { recursive: true, force: true });
-}
-
 function sha256(buffer) {
   return createHash('sha256').update(buffer).digest('hex');
 }
@@ -96,18 +72,7 @@ async function prepareAndroidFfiBeforePlatforms(entry, collector) {
   if (!existsSync(androidFfiBuildScript)) throw new Error(`Official Android FFI build script not found: ${androidFfiBuildScript}`);
   collector.writeEvent(`building Android Core FFI before platform startup for source=${sourceFingerprint}`);
   process.stdout.write(`🧭 TEST #${entry.testNumber}: building Android Core FFI before launching simulators\n`);
-  const child = spawn('bash', [androidFfiBuildScript], { cwd: coreRoot, stdio: ['ignore', 'pipe', 'pipe'] });
-  const tail = { stdout: '', stderr: '' };
-  for (const [stream, name] of [[child.stdout, 'stdout'], [child.stderr, 'stderr']]) {
-    stream.on('data', (chunk) => {
-      tail[name] = `${tail[name]}${chunk.toString()}`.slice(-6000);
-    });
-  }
-  const result = await new Promise((resolvePromise, reject) => {
-    child.once('error', reject);
-    child.once('close', (code, signal) => resolvePromise({ code, signal }));
-  });
-  if (result.code !== 0) throw new Error(`Android Core FFI preflight build failed (${result.code ?? result.signal}): ${collector.redactor.redactText(tail.stderr || tail.stdout)}`);
+  await runPreparationCommand('bash', [androidFfiBuildScript], { cwd: coreRoot, timeoutMs: 2400000, onOutput: (stream, chunk) => collector.writeOutput(stream, chunk) });
 
   const abiHashes = {};
   for (const [abi, folder] of [['arm64-v8a', 'arm64-v8a'], ['armeabi-v7a', 'armeabi-v7a'], ['x86_64', 'x86_64']]) {
@@ -132,7 +97,7 @@ async function prepareAndroidFfiBeforePlatforms(entry, collector) {
 
 async function prepareMetaCliBeforePlatforms(entry, collector) {
   const hasCliActor = entry.scenarios.some(({ value }) => (
-    value.setup?.initiator === 'cli'
+    value.cli?.required || value.setup?.initiator === 'cli'
       || (Array.isArray(value.postJoinRecoveryPlan)
         && value.postJoinRecoveryPlan.some(({ sender, approver }) => sender === 'cli' || approver === 'cli'))
   ));
@@ -140,26 +105,7 @@ async function prepareMetaCliBeforePlatforms(entry, collector) {
 
   collector.writeEvent('building meta-cli from current Core sources before platform startup for a declared CLI scenario actor');
   process.stdout.write(`🧭 TEST #${entry.testNumber}: building meta-cli before platform startup\n`);
-  const child = spawn('cargo', ['build', '-p', 'meta-cli'], {
-    cwd: metaCliRoot,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  const tail = { stdout: '', stderr: '' };
-  for (const [stream, name] of [[child.stdout, 'stdout'], [child.stderr, 'stderr']]) {
-    stream.on('data', (chunk) => {
-      tail[name] = `${tail[name]}${chunk.toString()}`.slice(-6000);
-    });
-  }
-  const result = await new Promise((resolvePromise, reject) => {
-    child.once('error', reject);
-    child.once('close', (code, signal) => resolvePromise({ code, signal }));
-  });
-  if (result.code !== 0) {
-    throw new Error(
-      `meta-cli preflight build failed (${result.code ?? result.signal}): `
-      + `${collector.redactor.redactText(tail.stderr || tail.stdout)}`,
-    );
-  }
+  await runPreparationCommand('cargo', ['build', '-p', 'meta-cli'], { cwd: metaCliRoot, timeoutMs: 1200000, onOutput: (stream, chunk) => collector.writeOutput(stream, chunk) });
   if (!existsSync(metaCliBinaryPath)) {
     throw new Error(`meta-cli preflight output missing: ${metaCliBinaryPath}`);
   }
@@ -188,8 +134,8 @@ function parseOptions(args) {
   }
   if (options.help) return options;
   if (!Number.isInteger(options.from) || !Number.isInteger(options.to)
-    || options.from < 1 || options.to > 49 || options.from > options.to) {
-    throw new Error('Expected an inclusive test range within 1..49, with --from <= --to');
+    || options.from < 1 || options.to > 50 || options.from > options.to) {
+    throw new Error('Expected an inclusive test range within 1..50, with --from <= --to');
   }
   if (options.runId && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(options.runId)) {
     throw new Error('--run-id may contain only letters, digits, dot, underscore, and hyphen');
@@ -403,14 +349,10 @@ function forwardScenarioProgress(channel, chunk, buffers, entry, collector) {
   const lines = value.split(/\r?\n/);
   buffers[channel] = lines.pop() ?? '';
   for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line) continue;
-    const isRoleChange = /^📱 Roles changed:/u.test(line);
-    const isMilestone = /^\d+(?:[a-z]\w*)?(?:\.\d+)*(?:[.)])?\s+\S/u.test(line);
-    const isExplicitProgress = /^(?:🚀|📱|📖|🧭|🧹|🧪|✅|❌|🏁|⏳|🔌|▶️|⏭️)\s/u.test(line);
-    if (!isRoleChange && !isMilestone && !isExplicitProgress) continue;
-    const redacted = collector.redactor.redactText(line).slice(0, 700);
-    const visible = isRoleChange || isExplicitProgress ? redacted : `🧪 ${redacted}`;
+    const progress = scenarioProgressLine(rawLine);
+    if (!progress) continue;
+    const redacted = collector.redactor.redactText(progress.line).slice(0, 700);
+    const visible = progress.kind === 'explicit' ? redacted : `🧪 ${redacted}`;
     process.stdout.write(`${visible}\n`);
     collector.writeEvent(`TEST #${entry.testNumber} progress: ${visible}`);
   }
@@ -473,6 +415,14 @@ function sendSignalToChild(signal) {
   try {
     if (activeChild.detached && process.platform !== 'win32') process.kill(-activeChild.pid, signal);
     else activeChild.kill(signal);
+    if (activeChild.preparation && signal !== 'SIGKILL' && !preparationKillTimer) {
+      const ownedChild = activeChild;
+      preparationKillTimer = setTimeout(() => {
+        if (activeChild !== ownedChild) return;
+        try { if (ownedChild.detached && process.platform !== 'win32') process.kill(-ownedChild.pid, 'SIGKILL'); else ownedChild.kill('SIGKILL'); } catch {}
+      }, 10000);
+      preparationKillTimer.unref();
+    }
   } catch (error) {
     if (error.code !== 'ESRCH') process.stderr.write(`Could not signal E2E runner: ${error.message}\n`);
   }
@@ -487,7 +437,23 @@ process.once('SIGTERM', () => {
   sendSignalToChild('SIGTERM');
 });
 
-async function runEntry(entry, attempt, collector, runId, onRuntimeStarted, preserveEvidence) {
+async function runPreparationCommand(command, args, { cwd = coreRoot, allowFailure = false, timeoutMs = 30000, onOutput } = {}) {
+  if (interruptedBy) throw new Error(`Preparation interrupted by ${interruptedBy}`);
+  const child = spawn(command, args, { cwd, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
+  child.detached = process.platform !== 'win32';
+  activeChild = child; child.preparation = true;
+  let stdout = ''; let stderr = ''; let timedOut = false;
+  child.stdout.on('data', (chunk) => { stdout = `${stdout}${chunk}`.slice(-65536); onOutput?.('stdout', chunk); });
+  child.stderr.on('data', (chunk) => { stderr = `${stderr}${chunk}`.slice(-65536); onOutput?.('stderr', chunk); });
+  const timer = setTimeout(() => { timedOut = true; sendSignalToChild('SIGTERM'); }, timeoutMs);
+  const result = await new Promise((resolveResult, reject) => {
+    child.once('error', reject); child.once('close', (exitCode, signal) => resolveResult({ exitCode, signal }));
+  }).finally(() => { clearTimeout(timer); clearTimeout(preparationKillTimer); preparationKillTimer = null; activeChild = null; });
+  if (timedOut || interruptedBy || (result.exitCode !== 0 && !allowFailure)) throw new Error(`Preparation command ${command} failed (${timedOut ? 'timeout' : interruptedBy ?? result.exitCode ?? result.signal}); raw output omitted`);
+  return { ...result, stdout, stderr };
+}
+
+async function runEntry(entry, attempt, collector, runId, onRuntimeStarted, preserveEvidence, environmentGuard) {
   const logPath = collector.startTest(entry.testNumber, attempt);
   const startedAt = new Date().toISOString();
   collector.writeEvent(`command: npm run ${entry.script}`);
@@ -496,10 +462,12 @@ async function runEntry(entry, attempt, collector, runId, onRuntimeStarted, pres
   let androidFfiPrebuilt = false;
   let metaCliPrebuilt = false;
   try {
+    await environmentGuard.prepare();
+    if (interruptedBy) throw new Error(`Preparation interrupted by ${interruptedBy}`);
     androidFfiPrebuilt = await prepareAndroidFfiBeforePlatforms(entry, collector);
     metaCliPrebuilt = await prepareMetaCliBeforePlatforms(entry, collector);
     if (entry.scenarios.some(({ value }) => value.ios)) {
-      await ensureIosFfi({ coreRoot, composeRoot, evidenceDirectory: resolve(collector.runDirectory, `ios-ffi-test-${entry.testNumber}-attempt-${attempt}`), onEvent: (message) => { collector.writeEvent(message); process.stdout.write(`${message}\n`); } });
+      await ensureIosFfi({ coreRoot, composeRoot, runAndWait: (command, args, options) => runPreparationCommand(command, args, { ...options, timeoutMs: 2400000, onOutput: (stream, chunk) => collector.writeOutput(stream, chunk) }), evidenceDirectory: resolve(collector.runDirectory, `ios-ffi-test-${entry.testNumber}-attempt-${attempt}`), onEvent: (message) => { collector.writeEvent(message); process.stdout.write(`${message}\n`); } });
     }
     reportTestStage(entry, collector, 'checking and starting the visible platforms required by this scenario');
     readiness = await prepareScenarioPlatforms({
@@ -691,9 +659,15 @@ async function main() {
 
 async function executeRange({ entries, options, runId, runDirectory, manifestPath, manifest, collector }) {
   manifest.runtimeOwnership ??= [];
-  const ffiArtifactSnapshot = entries.some((entry) => entry.scenarios.some(({ value }) => value.android || value.ios))
-    ? snapshotAndroidFfiArtifacts()
-    : null;
+  const allScenarios = entries.flatMap((entry) => entry.scenarios.map(({ value }) => value));
+  const environmentGuard = createBatchEnvironmentGuard({
+    ...batchEnvironmentPaths(coreRoot, composeRoot), repositories: [coreRoot, composeRoot],
+    evidencePath: resolve(runDirectory, `environment-repository-fingerprints-${Date.now()}.json`),
+    preflight: () => preflightBatchEnvironment(allScenarios, { runCommand: runPreparationCommand, onEvent: (message) => { collector.writeEvent(message); process.stdout.write(`🧭 ${message}\n`); } }),
+    setLocal: () => runPreparationCommand('/opt/homebrew/bin/task', ['set-env', '--', 'local'], { cwd: coreRoot, timeoutMs: 2400000, onOutput: (stream, chunk) => collector.writeOutput(stream, chunk) }),
+    isInterrupted: () => Boolean(interruptedBy),
+    onEvent: (message) => { collector.writeEvent(`[ENV] ${message}`); process.stdout.write(`🧭 ${message}\n`); },
+  });
   try {
     for (const entry of entries) {
       if (interruptedBy) break;
@@ -748,7 +722,7 @@ async function executeRange({ entries, options, runId, runDirectory, manifestPat
           writeManifest(manifestPath, manifest);
           collector.writeEvent(`range owns ${runtime.platform} runtime ${runtime.avdName ?? runtime.simulatorName}`);
         }
-      }, options.preserveEvidence);
+      }, options.preserveEvidence, environmentGuard);
       result.freeDiskAfterGiB = readFreeDiskGiB();
       manifest.diskChecks.push({ test: entry.testNumber, attempt, at: new Date().toISOString(), afterScenarioGiB: result.freeDiskAfterGiB });
       manifest.tests.push(result);
@@ -823,8 +797,14 @@ async function executeRange({ entries, options, runId, runDirectory, manifestPat
       manifest.updatedAt = new Date().toISOString();
       writeManifest(manifestPath, manifest);
     }
-    restoreAndroidFfiArtifacts(ffiArtifactSnapshot);
-    await collector.close();
+    try {
+      await environmentGuard.restore();
+      manifest.environmentRestoration = { status: 'passed', at: new Date().toISOString() };
+    } catch (error) {
+      manifest.environmentRestoration = { status: 'failed', error: error.message };
+      manifest.status = 'restore-failed';
+      throw error;
+    } finally { writeManifest(manifestPath, manifest); await collector.close(); }
   }
 }
 

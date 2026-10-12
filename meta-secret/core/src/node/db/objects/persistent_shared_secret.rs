@@ -3,15 +3,20 @@ use std::sync::Arc;
 use crate::node::common::model::device::common::DeviceId;
 use crate::node::common::model::secret::{SsClaim, SsDistributionId, SsLogData};
 use crate::node::common::model::vault::vault::VaultName;
+use crate::node::common::model::vault::vault_data::VaultData;
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::{
     SsDeviceLogDescriptor, SsLogDescriptor, SsWorkflowDescriptor,
 };
-use crate::node::db::events::generic_log_event::ToGenericEvent;
+use crate::node::db::descriptors::vault_descriptor::{DeviceLogDescriptor, VaultLogDescriptor};
+use crate::node::db::events::generic_log_event::{ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::events::shared_secret_event::{
     SsDeviceLogObject, SsLogObject, SsWorkflowObject,
+};
+use crate::node::db::events::vault::vault_log_event::{
+    RemoveMemberShareTransfer, VaultActionEvent, VaultActionRequestEvent, VaultActionUpdateEvent,
 };
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
@@ -26,6 +31,132 @@ pub struct PersistentSharedSecret<Repo: KvLogEventRepo> {
 }
 
 impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
+    /// Remove every ciphertext revision, not just the current workflow value.
+    /// Tombstones already exist when this runs, so interruption fails closed.
+    pub async fn purge_deleted_secrets(&self, vault: &VaultData) -> Result<()> {
+        if vault.deleted_secrets.is_empty() {
+            return Ok(());
+        }
+        let logs = self
+            .p_obj
+            .get_object_events_from_beginning(SsLogDescriptor::from(vault.vault_name.clone()))
+            .await?;
+        let mut claims = std::collections::HashMap::new();
+        for log in logs {
+            for (id, claim) in log.to_data().claims {
+                if vault
+                    .deleted_secrets
+                    .iter()
+                    .any(|pass| pass.id == claim.dist_claim_id.pass_id.id)
+                {
+                    claims.insert(id, claim);
+                }
+            }
+        }
+        // Include unuploaded local claims so deletion also clears offline work.
+        for device_id in vault.users.keys() {
+            let events = self
+                .p_obj
+                .get_object_events_from_beginning(SsDeviceLogDescriptor::from(device_id.clone()))
+                .await?;
+            for event in events {
+                let claim = event.to_distribution_request();
+                if vault
+                    .deleted_secrets
+                    .iter()
+                    .any(|pass| pass.id == claim.dist_claim_id.pass_id.id)
+                {
+                    claims.insert(claim.id.clone(), claim);
+                }
+            }
+        }
+        for pass in &vault.deleted_secrets {
+            for device_id in vault.users.keys() {
+                self.purge_workflow(SsWorkflowDescriptor::Distribution(SsDistributionId {
+                    pass_id: pass.clone(),
+                    receiver: device_id.clone(),
+                }))
+                .await?;
+            }
+        }
+        for claim in claims.into_values() {
+            for id in claim.recovery_db_ids() {
+                self.purge_workflow(SsWorkflowDescriptor::Recovery(id.clone()))
+                    .await?;
+                self.purge_workflow(SsWorkflowDescriptor::Decline(id))
+                    .await?;
+            }
+        }
+        for device in vault.users.values() {
+            let events = self
+                .p_obj
+                .get_object_events_from_beginning(DeviceLogDescriptor::from(
+                    device.user_data().user_id(),
+                ))
+                .await?;
+            for mut event in events {
+                let before = event.clone();
+                scrub_removal_transfers(&mut event.0.value, vault);
+                if before != event {
+                    self.p_obj.repo.replace(event).await?;
+                }
+            }
+        }
+        let logs = self
+            .p_obj
+            .get_object_events_from_beginning(VaultLogDescriptor::from(vault.vault_name.clone()))
+            .await?;
+        for mut log in logs {
+            let before = log.clone();
+            log.0.value.requests = log
+                .0
+                .value
+                .requests
+                .into_iter()
+                .map(|request| {
+                    let mut action = VaultActionEvent::Request(request);
+                    scrub_removal_transfers(&mut action, vault);
+                    let VaultActionEvent::Request(request) = action else {
+                        unreachable!()
+                    };
+                    request
+                })
+                .collect();
+            log.0.value.updates = log
+                .0
+                .value
+                .updates
+                .into_iter()
+                .map(|update| {
+                    let mut action = VaultActionEvent::Update(update);
+                    scrub_removal_transfers(&mut action, vault);
+                    let VaultActionEvent::Update(update) = action else {
+                        unreachable!()
+                    };
+                    update
+                })
+                .collect();
+            if before != log {
+                self.p_obj.repo.replace(log).await?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn purge_workflow(&self, descriptor: SsWorkflowDescriptor) -> Result<()> {
+        let events = self
+            .p_obj
+            .get_object_events_from_beginning(descriptor)
+            .await?;
+        for event in events.into_iter().rev() {
+            let id = event.obj_id();
+            self.p_obj.repo.try_delete(id.clone()).await?;
+            if self.p_obj.repo.find_one(id).await?.is_some() {
+                bail!("Secret ciphertext cleanup failed");
+            }
+        }
+        Ok(())
+    }
     pub async fn get_ss_workflow_events(&self, ss_claim: SsClaim) -> Result<Vec<SsWorkflowObject>> {
         let mut events = vec![];
 
@@ -86,6 +217,25 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
         } else {
             bail!("Distribution event not found: {:?}", id)
         }
+    }
+}
+
+fn scrub_removal_transfers(action: &mut VaultActionEvent, vault: &VaultData) {
+    let keep = |transfer: &RemoveMemberShareTransfer| {
+        !vault
+            .deleted_secrets
+            .iter()
+            .any(|pass| pass.id == transfer.pass_id.id)
+    };
+    match action {
+        VaultActionEvent::Request(VaultActionRequestEvent::RemoveMember(request)) => {
+            request.share_transfers.retain(keep)
+        }
+        VaultActionEvent::Update(VaultActionUpdateEvent::RemoveMember(update)) => {
+            update.request.share_transfers.retain(keep);
+            update.share_transfers.retain(keep);
+        }
+        _ => {}
     }
 }
 

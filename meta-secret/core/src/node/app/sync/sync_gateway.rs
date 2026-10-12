@@ -1,6 +1,6 @@
+use crate::node::app::sync::environment::{SELECTED_SERVER_ENVIRONMENT, ServerEnvironment};
 use std::sync::Arc;
 use std::time::Duration;
-use crate::node::app::sync::environment::{SELECTED_SERVER_ENVIRONMENT, ServerEnvironment};
 
 #[cfg(target_os = "android")]
 fn core_diag(message: &str) {
@@ -322,6 +322,22 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         let vault_sync_request = self.get_vault_request(user.clone()).await?;
         self.sync_vault(vault_sync_request, user_creds).await?;
 
+        if let Some(creds) = (PersistentCredentials {
+            p_obj: self.p_obj.clone(),
+            master_key: self.master_key.clone(),
+        })
+        .get_user_creds()
+        .await?
+            && let Ok(vault) = PersistentVault::from(self.p_obj.clone())
+                .get_vault(creds.vault_name)
+                .await
+        {
+            Box::pin(
+                PersistentSharedSecret::from(self.p_obj.clone())
+                    .purge_deleted_secrets(&vault.to_data()),
+            )
+            .await?;
+        }
         self.sync_shared_secrets(&server_tail, user).await?;
 
         Ok(())
@@ -353,7 +369,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         Ok(sync_request)
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip_all)]
     async fn sync_vault(
         &self,
         vault_sync_request: SyncRequest,
@@ -417,10 +433,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         ));
 
         for new_event in data_sync_events {
-            debug!(
-                "id: {:?}. Sync gateway. New event from server: {:?}",
-                self.id, new_event
-            );
+            debug!(object_id = ?new_event.obj_id(), "Sync gateway received Vault event");
 
             self.p_obj.repo.save(new_event).await?;
         }
@@ -594,10 +607,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
             "sync_ss_log: events received from server"
         );
         for new_event in data_sync_events {
-            debug!(
-                "id: {:?}. Sync gateway. New ss event from server: {:?}",
-                self.id, new_event
-            );
+            debug!(object_id = ?new_event.obj_id(), "Sync gateway received Secret event");
             match &new_event {
                 // Distribution objects are stored under a fixed key per (pass_id, receiver)
                 // and are intentionally re-issued with fresh content on redistribution (see

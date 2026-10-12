@@ -41,6 +41,20 @@ impl KvLogEventRepo for SqlIteRepo {}
 
 #[async_trait(? Send)]
 impl SaveCommand for SqlIteRepo {
+    async fn replace<T: ToGenericEvent>(&self, value: T) -> anyhow::Result<ArtifactId> {
+        let value = value.to_generic();
+        let key = value.obj_id();
+        let serialized = serde_json::to_string(&value)?;
+        let mut conn = establish_connection(self.conn_url.as_str())?;
+        let changed =
+            diesel::update(dsl::db_commit_log.filter(dsl::key_id.eq(key.clone().id_str())))
+                .set(dsl::event.eq(serialized))
+                .execute(&mut conn)?;
+        if changed != 1 {
+            anyhow::bail!("Cannot replace a missing record");
+        }
+        Ok(key)
+    }
     async fn save<T: ToGenericEvent>(&self, value: T) -> anyhow::Result<ArtifactId> {
         let generic_value = value.to_generic();
         let key = generic_value.obj_id();
@@ -84,6 +98,12 @@ impl FindOneQuery for SqlIteRepo {
 
 #[async_trait(? Send)]
 impl DeleteCommand for SqlIteRepo {
+    async fn try_delete(&self, key: ArtifactId) -> anyhow::Result<()> {
+        let mut conn = establish_connection(self.conn_url.as_str())?;
+        diesel::delete(dsl::db_commit_log.filter(dsl::key_id.eq(key.id_str())))
+            .execute(&mut conn)?;
+        Ok(())
+    }
     async fn delete(&self, key: ArtifactId) {
         let mut conn = establish_connection(self.conn_url.as_str()).unwrap();
 
