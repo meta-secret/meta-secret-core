@@ -422,7 +422,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
             Some(user_creds) => {
                 self.sync_gateway.sync(user_creds.user()).await?;
 
-                // A removal approval may carry encrypted shares for the
+                // A removal approval may carry Encrypted Key Shares for the
                 // initiator. Reconcile them after sync, before exposing the
                 // refreshed state to the client UI.
                 let orchestrator = MetaOrchestrator {
