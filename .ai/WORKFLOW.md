@@ -8,8 +8,8 @@ Single source of truth for `implement issue <id>` / `implement issue "<text>"` f
 
 **These stages MUST ALWAYS be executed and are NOT optional:**
 
-1. **Stage 6 (Security Review)** — Mandatory crypto audit + unsafe code check
-2. **Stage 7 (Code Review)** — Mandatory constraints validation + 80% coverage check
+1. **Stage 7 (Security Review)** — Mandatory crypto audit + unsafe code check
+2. **Stage 8 (Code Review)** — Mandatory constraints validation + 80% coverage check
 3. **Stage 10 (Coverage Verification)** — Mandatory `cargo tarpaulin`, verify >= 80%
 4. **Stage 12 (User Approval)** — Mandatory user approval before PR
 
@@ -138,7 +138,7 @@ Example:
 - Validate crypto assumptions (if touching cryptography)
 - Validate FFI boundary changes (if touching UniFFI exports)
 - Provide recommendations for each question
-- Get explicit user approval before proceeding
+- Reuse explicit session approvals; ask only unresolved decisions
 - Document all clarifications in artifact
 
 ---
@@ -534,3 +534,7 @@ If any artifact is missing or status is Failed → return to Stage 3.
 ---
 
 **Next:** See `.ai/ORCHESTRATOR.md` for command routing.
+
+## Workflow dependency preflight
+
+Before starting a workflow run `python3 .ai/scripts/check-workflow-dependencies.py`. Missing mandatory files block execution. Root UI E2E dependencies belong to the sibling workspace root and must be checked there before the final gate.

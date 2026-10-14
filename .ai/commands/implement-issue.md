@@ -18,11 +18,11 @@ Execute complete 14-stage automated workflow for meta-secret-core Rust backend,
 including the conditional final UI E2E release gate.
 
 **⚠️ CRITICAL:** All 14 stages are MANDATORY. Do NOT skip any stages:
-- **Stage 6 (Security Review)** is CRITICAL — must check crypto correctness + FFI changes
-- **Stage 7 (Code Review)** is CRITICAL — must check constraints + coverage
-- **Stage 8 (Design Review)** can be skipped only if no architecture changes
-- **Stage 9 (Coverage Verification)** is CRITICAL — must verify >= 80%
-- **Stage 11 (User Approval)** must ASK USER before creating PR
+- **Stage 7 (Security Review)** is CRITICAL — must check crypto correctness + FFI changes
+- **Stage 8 (Code Review)** is CRITICAL — must check constraints + coverage
+- **Stage 9 (Design Review)** can be skipped only if no architecture changes
+- **Stage 10 (Coverage Verification)** is CRITICAL — must verify >= 80%
+- **Stage 12 (User Approval)** must ASK USER before creating PR
 
 Even if task looks "trivial" or "1-line change", execute ALL stages.
 
@@ -31,7 +31,7 @@ Even if task looks "trivial" or "1-line change", execute ALL stages.
 1. **github-issue-coordinator** — Analyze Rust/crypto issue (with optional architecture diagrams)
 2. **requirements-clarifier** — Deep dive clarification (Grill Me - validate design implications)
 3. **feature-planner** — Create implementation plan (aligned with CONSTRAINTS.md)
-4. **constraint-validator** — Validate plan against CONSTRAINTS.md (MANDATORY GATE)
+3.5. **constraint-validator** — Validate plan against CONSTRAINTS.md (MANDATORY GATE)
 5. **TDD Implementation** (Test-Driven Development):
    - 5a. **tdd-test-author** — Write failing tests (unit + integration + property tests if crypto)
    - 5b. **tdd-implementer** — Red-Green-Refactor cycles (minimal code → pass tests)

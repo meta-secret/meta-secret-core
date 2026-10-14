@@ -14,8 +14,8 @@ Execute:
 1. **FIRST:** Read `.ai/rules/implement-issue-execution-checklist.md` (MANDATORY)
 2. **SECOND:** Read `.ai/rules/no-stage-skipping-even-for-simple-tasks.md` (ENFORCEMENT)
 3. Read `.ai/commands/implement-issue.md`
-4. Execute ALL 14 stages in strict order: 1 → 2 → 3 → 3.5 → 5a → 5b → 5c → 6 → 7 → 8 → 9 → 10 → 11 → 12
-5. Do NOT skip Stage 6 (Security Review), Stage 7 (Code Review), Stage 10 (Coverage)
+4. Execute ALL 14 stages in strict order: 1 → 2 → 3 → 3.5 → 5a → 5b → 5c → 6 → 7 → 8 → 9 → 10 → 11 → 11.5 (when applicable) → 12 → 13
+5. Do NOT skip Stage 7 (Security Review), Stage 8 (Code Review), Stage 10 (Coverage)
 6. For Stage 12: Use AskUserQuestion tool to get approval before PR
 7. Create artifacts for ALL stages in `.ai/artifacts/run/`
 
@@ -49,7 +49,9 @@ Do not duplicate stage logic in this file or IDE-specific files.
 | 9 | design-reviewer | Architecture | Design review or Skipped |
 | 10 | coverage-verifier | Code | Coverage report (>= 80%) |
 | 11 | test-runner | Code | Test results |
-| 12 | release-manager | All approved | PR created |
+| 11.5 | root UI E2E | All regular checks passed | UI E2E result |
+| 12 | release-manager | Verification evidence | User release approval |
+| 13 | release-manager | User approved | PR created |
 
 ---
 
@@ -77,7 +79,7 @@ If any stage fails:
 3. Run `debug-rca` agent to analyze root cause
 4. Return to Stage 3 (Planning) with failed artifact as input
 5. Create fix plan based on failure
-6. Re-execute stages 5a → 5b → 5c → 6 → 7 → 8 → 9 → 10 → 11 → 12
+6. Re-execute stages 5a → 5b → 5c → 6 → 7 → 8 → 9 → 10 → 11 → 11.5 (when applicable) → 12 → 13
 7. Max retries: 2 full loops
 
 **Critical failures (block recovery):**

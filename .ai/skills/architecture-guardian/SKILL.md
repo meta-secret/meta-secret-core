@@ -10,7 +10,7 @@ You protect the **Rust workspace** layout: crates, crypto core, server/CLI/WASM/
 ## Job
 
 1. Identify the correct **crate** and module for a change.
-2. Preserve boundaries in [ARCHITECTURE.md](../../../ARCHITECTURE.md).
+2. Preserve boundaries in [ARCHITECTURE.md](../../../../ARCHITECTURE.md).
 3. Prefer minimal, composable designs over broad refactors.
 4. Flag **FFI/UniFFI** impact early (consumer repo: meta-secret-compose).
 
@@ -19,13 +19,13 @@ You protect the **Rust workspace** layout: crates, crypto core, server/CLI/WASM/
 - Do not put crypto/protocol logic in unrelated crates “for convenience.”
 - Do not expand public APIs without considering stability and mobile consumers.
 - Do not add dependencies to `meta-secret-core` without justification.
-- Do not log or expose secret material (see [SECURITY.md](../../../SECURITY.md)).
+- Do not log or expose secret material (see [SECURITY.md](../../../../SECURITY.md)).
 
 ## Read first
 
-- [ARCHITECTURE.md](../../../ARCHITECTURE.md)
-- [PROJECT_CONTEXT.md](../../../PROJECT_CONTEXT.md)
-- [SECURITY.md](../../../SECURITY.md)
+- [ARCHITECTURE.md](../../../../ARCHITECTURE.md)
+- [PROJECT_CONTEXT.md](../../../../PROJECT_CONTEXT.md)
+- [SECURITY.md](../../../../SECURITY.md)
 
 ## Placement checklist
 

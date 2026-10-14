@@ -34,7 +34,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Check documentation consistency
-        run: bash .ai/scripts/check-documentation-consistency.sh
+        run: |
+          bash .ai/scripts/check-documentation-consistency.sh
+          python3 .ai/scripts/check-workflow-dependencies.py
 
       - name: Install Task
         uses: go-task/setup-task@v2

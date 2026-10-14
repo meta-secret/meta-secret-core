@@ -67,6 +67,7 @@ implement issue <payload>
 9. Design Review (if architecture changed, else Skipped)
 10. Coverage Verification (CRITICAL - cargo tarpaulin >= 80%)
 11. Test Run (cargo test)
+11.5. Final UI E2E when applicable (failure blocks release)
 12. User Approval (MANDATORY - ask before PR)
 13. release-manager (branch + commit + PR)
 

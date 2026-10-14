@@ -142,7 +142,7 @@ If any CRITICAL stage fails:
 2. Document in artifact with **Status: Failed**
 3. Return to Stage 3 (Planning)
 4. Create fix plan based on failure
-5. Re-execute stages 5a → 5b → 5c → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13
+5. Re-execute stages 5a → 5b → 5c → 6 → 7 → 8 → 9 → 10 → 11 → 11.5 (when applicable) → 12 → 13
 6. Max retries: 2 full loops
 
 ---
@@ -164,6 +164,7 @@ Before proceeding to Stage 13 (PR creation), verify ALL artifacts exist:
 - ✅ Stage 9: Design review (Status: Pass or Skipped)
 - ✅ Stage 10: Coverage verified (Status: Pass, >= 80%)
 - ✅ Stage 11: Tests passed
+- ✅ Stage 11.5: UI E2E passed, or skipped with a concrete allowed reason
 - ✅ Stage 12: User approved
 
 **If any artifact is missing or status is Failed → return to Stage 3.**
@@ -176,7 +177,7 @@ When executing `implement issue` command:
 
 1. **Read this file FIRST**
 2. **Read `.ai/rules/no-stage-skipping-even-for-simple-tasks.md` SECOND**
-3. Execute stages in strict order: 1 → 2 → 3 → 3.5 → 5a → 5b → 5c → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13
+3. Execute stages in strict order: 1 → 2 → 3 → 3.5 → 5a → 5b → 5c → 6 → 7 → 8 → 9 → 10 → 11 → 11.5 (when applicable) → 12 → 13
 4. Do NOT skip stages 4, 7, 8, 10, 12
 5. For Stage 12, use AskUserQuestion tool to get approval before committing
 6. Create artifacts for each stage in `.ai/artifacts/run/`

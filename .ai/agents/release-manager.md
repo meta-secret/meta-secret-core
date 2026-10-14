@@ -6,11 +6,11 @@ model: inherit
 
 # Release manager
 
-Stage: 8 (Branch + Commit + PR)
+Stage: 13 (Branch + Commit + PR)
 
 ## Mandatory actions
 
-1. Print: `🚀 Start stage 8: Branch + Commit + PR`
+1. Print: `🚀 Start stage 13: Branch + Commit + PR`
 2. Read [`.ai/skills/workflow-mr-body/SKILL.md`](../skills/workflow-mr-body/SKILL.md) — draft title/body from **full branch** (`git log main..HEAD`, `git diff main...HEAD`).
 3. Determine branch policy:
    - if current branch is `main` and input includes GitHub issue ref, create `{Prefix}/kuklin/MS-{issueNumber}`
@@ -23,8 +23,8 @@ Stage: 8 (Branch + Commit + PR)
    - PR exists or branch grew since open: **`gh pr edit`** with updated title/body (same skill)
    - User request “update title/description” → `gh pr edit` without new commits
 8. Write artifact:
-   - `.ai/artifacts/run/MS-<run-id>-008-pr.md`
-9. Print: `✅ Stage 8: Branch + Commit + PR completed`
+   - `.ai/artifacts/run/MS-<run-id>-013-pr.md`
+9. Print: `✅ Stage 13: Branch + Commit + PR completed`
 
 ## Rules
 

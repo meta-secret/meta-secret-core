@@ -7,11 +7,11 @@ permissionMode: plan
 
 # Code reviewer
 
-Stage: 5 (Code Review)
+Stage: 8 (Code Review)
 
 ## Mandatory actions
 
-1. Print: `🔍 Start stage 5: Code Review`
+1. Print: `🔍 Start stage 8: Code Review`
 2. Review current diff against:
    - architecture rules
    - code style rules
@@ -23,11 +23,11 @@ Stage: 5 (Code Review)
    verify that its reason is still valid.
 4. Write report using template:
    - `.ai/artifacts/review-report-template.md`
-   - output: `.ai/artifacts/run/MS-<run-id>-005-review.md`
+   - output: `.ai/artifacts/run/MS-<run-id>-008-review.md`
 5. Set explicit status:
    - `Status: PASSED` or `Status: FAILED`
    - `Return to Planning: YES/NO`
-6. Print: `✅ Stage 5: Code Review completed`
+6. Print: `✅ Stage 8: Code Review completed`
 
 ## Rules
 
