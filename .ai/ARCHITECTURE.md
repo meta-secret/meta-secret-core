@@ -24,21 +24,16 @@ Single source of truth for AI automation in `meta-secret-core`.
 
 ## Stage Model (core)
 
-Core follows the stage workflow defined in `.ai/WORKFLOW.md` (including the
-conditional documentation, UI-E2E, and approval gates):
+Core follows `.ai/WORKFLOW.md`, including constraint validation, TDD, build,
+security/code/design reviews, coverage reporting, regular tests, final applicable
+UI E2E and action-specific release authorization. The UI migration applicability
+profile in `.ai/rules/ui-migration-profile.md` selects client evidence for Web-only
+changes; `.ai/rules/coverage-policy.md` makes overall percentage goals advisory.
+Do not maintain a shortened alternate stage sequence here.
 
-1. Issue Intake
-2. Planning
-3. Implementation
-4. Build
-5. Code Review
-6. Test Authoring
-7. Test Run
-8. Branch + Commit + PR
-
-Core is Rust-first and FFI-sensitive; server-authentication changes are tested at
-the protocol/integration layer, while visual UI E2E is used only when a client
-contract visibly changes.
+Core repository also owns Vue Web UI under `meta-secret/web-cli/ui/`. Web UI
+changes do not themselves imply Rust protocol/FFI changes. Domain and security
+logic remains Rust-owned; browser components render typed presentation state.
 
 ## Authenticated Sync Boundary
 

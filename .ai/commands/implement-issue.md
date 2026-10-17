@@ -1,5 +1,9 @@
 # Command — Implement Issue
 
+Coverage follows [the advisory policy](../rules/coverage-policy.md); percentage-only failures in older examples are not release gates.
+
+For the approved registration migration, apply the [UI migration profile](../rules/ui-migration-profile.md) before command/stage examples below. It defines relevant client builds, advisory percentage coverage, mandatory visual/motion review and action-specific authorization; all existing stage artifacts remain required.
+
 ## Trigger
 
 ```
@@ -14,15 +18,15 @@ Where `<payload>`:
 
 ## Purpose
 
-Execute complete 14-stage automated workflow for meta-secret-core Rust backend,
+Execute complete 14-stage automated workflow for meta-secret-core Rust and Vue Web changes,
 including the conditional final UI E2E release gate.
 
 **⚠️ CRITICAL:** All 14 stages are MANDATORY. Do NOT skip any stages:
 - **Stage 7 (Security Review)** is CRITICAL — must check crypto correctness + FFI changes
 - **Stage 8 (Code Review)** is CRITICAL — must check constraints + coverage
-- **Stage 9 (Design Review)** can be skipped only if no architecture changes
-- **Stage 10 (Coverage Verification)** is CRITICAL — must verify >= 80%
-- **Stage 12 (User Approval)** must ASK USER before creating PR
+- **Stage 9 (Design Review)** can be skipped only if neither architecture nor client-visible UI/motion changes
+- **Stage 10 (Coverage Verification)** is CRITICAL — must report measured coverage; 80% advisory
+- **Stage 12 (User Approval)** records existing explicit authorization; asks only for a still unauthorized release action
 
 Even if task looks "trivial" or "1-line change", execute ALL stages.
 
@@ -38,12 +42,12 @@ Even if task looks "trivial" or "1-line change", execute ALL stages.
    - 5c. **tdd-refactorer** — Major refactoring after 3-5 cycles
 6. **Build** — Compile code with `cargo build` (no tests, max 10 minutes)
 7. **Security Review** — Crypto correctness + unsafe code audit + FFI boundary impact ⭐ NEW
-8. **Code Review** — Architecture, style, constraints, Documentation Impact, 80% coverage check
-9. **Design Review** — If architecture/protocol changed: create diagrams (else Skipped)
-10. **Coverage Verification** — Run `cargo tarpaulin`, verify >= 80% coverage
+8. **Code Review** — Architecture, style, constraints, Documentation Impact, coverage report (80% advisory)
+9. **Design Review** — Review approved visuals/motion for client-visible UI; diagrams for changed architecture/protocol; otherwise record non-applicability
+10. **Coverage Verification** — Run `cargo tarpaulin`, report coverage; 80% advisory
 11. **Test Run** — Execute `cargo test` (all tests pass)
 11.5. **Final UI E2E** — Run the visible cross-platform gate when applicable
-12. **User Approval** — **STOP and ASK USER** before release
+12. **User Approval** — Record authorization per release action; ask only if missing
 13. **release-manager** — Create branch, commit, pull request
 
 See `.ai/WORKFLOW.md` for complete 14-stage specification.
@@ -76,7 +80,7 @@ Each stage creates an artifact in `.ai/artifacts/run/`:
 - **Stage 7:** `MS-<run-id>-007-security-review.md` — Security review findings (Pass/Fail)
 - **Stage 8:** `MS-<run-id>-008-code-review.md` — Code review findings (Pass/Fail)
 - **Stage 9:** `MS-<run-id>-009-design-review.md` — Design review or "Skipped"
-- **Stage 10:** `MS-<run-id>-010-coverage.md` — Coverage verification (Pass/Fail, >= 80%)
+- **Stage 10:** `MS-<run-id>-010-coverage.md` — Coverage verification (Pass/Fail; percentage advisory)
 - **Stage 11:** `MS-<run-id>-011-test-run.md` — Test execution results (Pass/Fail)
 - **Stage 11.5:** `MS-<run-id>-0115-ui-e2e.md` — Final visible UI E2E gate
 - **Stage 12:** `MS-<run-id>-012-pr.md` — PR details (Success/Failed)
@@ -89,11 +93,16 @@ See `.ai/rules/artifact-writing-guide.md` for artifact specification.
 
 ## Build & Test Commands
 
+The commands below apply to Rust changes. For Web-only work, use the UI
+migration profile and `.ai/skills/web-guardian/SKILL.md`: build/typecheck the
+changed Web client and run relevant configured tests/reporting. Do not invoke
+Rust coverage or rebuild unchanged native libraries for Vue/CSS-only edits.
+
 ### Stage 6: Build
 ```bash
 cargo build --release
 ```
-- Compile entire workspace
+- Compile changed targets; use the UI profile client build for Web-only changes
 - No tests executed
 - Timeout: 10 minutes max
 - Fail if compilation errors
@@ -109,12 +118,12 @@ grep -n "unsafe" src/ crates/*/src/
 
 ### Stage 10: Coverage Verification
 ```bash
-cargo tarpaulin --out Html --timeout 300 --fail-under 80
+cargo tarpaulin --out Html --timeout 300
 ```
 - Generate HTML report in `target/tarpaulin/`
-- Minimum threshold: 80%
+- Overall goal: 80% advisory
 - Crypto modules preferred: >= 95%
-- Fail if coverage < 80%
+- Report coverage < 80% as advisory; fail on actual test/report validation errors
 
 ### Stage 11: Test Run
 ```bash
@@ -134,7 +143,7 @@ cargo test --all
 | **Test** | `./gradlew test` | `cargo test` |
 | **Coverage** | `./gradlew koverReport` | `cargo tarpaulin` |
 | **Security** | Not explicit | Stage 7: explicit crypto review |
-| **Design Review** | Figma (optional) | Figma (web) or diagrams (core) |
+| **Design Review** | Approved HTML/screenshots/motion; Figma optional | Approved Web visuals/motion; relevant Core diagrams |
 | **Language** | Kotlin (mobile) | Rust (backend) |
 
 ---
@@ -143,12 +152,12 @@ cargo test --all
 
 1. **All stages execute in strict order** — no skipping based on complexity
 2. **Security Review is mandatory** — crypto code must be audited
-3. **Coverage >= 80%** — non-negotiable threshold
+3. **Measured coverage** — overall 80% is advisory; required behavior tests must pass
 4. **FFI boundary changes** — must note impact on mobile (meta-secret-compose)
 5. **Constraint re-check** — Stage 8 validates against `.ai/CONSTRAINTS.md`
 6. **Documentation Impact** — Stage 3 records Required/Not required with a reason; final review verifies the decision
 7. **Final UI E2E** — Stage 11.5 runs after all regular checks and before approval/commit when applicable
-8. **User approval** — Stage 12 asks before PR creation
+8. **User approval** — Stage 12 records authorization for each release action; existing commit permission does not permit PR/push
 
 ---
 
@@ -177,7 +186,7 @@ When executing `implement issue`:
    - Check for `unsafe` blocks
    - If crypto code changed: audit algorithm correctness
    - If FFI changed: note impact on mobile
-6. **For Stage 12 (User Approval):** Use `AskUserQuestion` tool — do NOT auto-commit
+6. **For Stage 12 (User Approval):** Record existing explicit session permission; ask only for a still unauthorized release action
 7. **If failure:** Run debug-rca agent, return to Stage 3
 
 ---
