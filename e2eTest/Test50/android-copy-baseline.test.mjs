@@ -49,7 +49,7 @@ test('native accessibility is initialized and meaningfully ready before Show; nu
 
 test('F3 capability probe precedes Vault business and contains no mutation/explicit Core request', () => {
   const probe = source.slice(source.indexOf('    fun verifyTest50AccessibilityReady()'), source.indexOf('    private fun deletionAccessibilityNodes'));
-  assert(probe.includes('onboarding-skip')); assert(probe.includes('signin-email-manual'));
+  assert(probe.includes('onboarding-skip')); assert(probe.includes('orbit-enter')); assert(probe.includes('orbit-heading'));
   assert(probe.includes('ANDROID_TEST50_ACCESSIBILITY_READY'));
   assert(!/MetaSecretNative|refreshAppState|createVault|createSecret/.test(probe));
   const harness = readFileSync(new URL('../Test4/orchestrator.mjs', import.meta.url), 'utf8');

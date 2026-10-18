@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { createConnection } from 'node:net';
 import { discoverAndroidSdk } from './android-sdk.mjs';
 import { iosArtifactRoots } from './ios-ffi-provenance.mjs';
+import { provenanceManifestPaths } from './build-provenance-manifest.mjs';
 
 export function environmentModeFromSnapshot(snapshot) {
   if (!snapshot.existed) return null;
@@ -25,9 +26,11 @@ export function batchEnvironmentPaths(coreRoot, composeRoot) {
     resolve(composeRoot, 'composeApp/build/bin/iosArm64'),
     resolve(composeRoot, 'composeApp/build/bin/iosSimulatorArm64'),
     resolve(coreRoot, 'meta-secret/web-cli/ui/pkg'), resolve(coreRoot, 'meta-secret/target/debug/meta-cli'),
+    resolve(coreRoot, 'meta-secret/Cargo.lock'),
     resolve(coreRoot, 'e2eTest/.derivedData/iosApp'),
     resolve(composeRoot, 'composeApp/build/intermediates/stripped_native_libs'),
-    ...['ios-ffi-build-provenance.json', 'android-ffi-build-provenance.json', 'ui-e2e-build-provenance.json'].map((name) => resolve(coreRoot, 'e2eTest/.artifacts', name)),
+    ...['ios-ffi-build-provenance.json', 'android-ffi-build-provenance.json'].map((name) => resolve(coreRoot, 'e2eTest/.artifacts', name)),
+    ...provenanceManifestPaths(resolve(coreRoot, 'e2eTest/.artifacts')),
   ];
   return { configs, artifacts };
 }

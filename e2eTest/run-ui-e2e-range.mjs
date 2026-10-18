@@ -134,8 +134,8 @@ function parseOptions(args) {
   }
   if (options.help) return options;
   if (!Number.isInteger(options.from) || !Number.isInteger(options.to)
-    || options.from < 1 || options.to > 50 || options.from > options.to) {
-    throw new Error('Expected an inclusive test range within 1..50, with --from <= --to');
+    || options.from < 1 || options.to > 51 || options.from > options.to) {
+    throw new Error('Expected an inclusive test range within 1..51, with --from <= --to');
   }
   if (options.runId && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(options.runId)) {
     throw new Error('--run-id may contain only letters, digits, dot, underscore, and hyphen');

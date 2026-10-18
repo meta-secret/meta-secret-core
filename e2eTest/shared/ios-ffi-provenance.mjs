@@ -130,12 +130,12 @@ export async function prepareIosXcodeBuild({ coreRoot, composeRoot, derivedDataP
   if (!matches) rmSync(derivedDataPath, { recursive: true, force: true });
   return { ...inputs, linkerSettings: { simulatorArchive: archive, otherLdFlags: settings.OTHER_LDFLAGS } };
 }
-function iosAppProductHashes(derivedDataPath) {
+export function iosAppProductHashes(derivedDataPath, { hashTree = hashIosTree } = {}) {
   const products = resolve(derivedDataPath, 'Build/Products/Debug-iphonesimulator');
   if (!existsSync(products)) throw new Error('iOS build products missing');
   const apps = readdirSync(products).filter((name) => name.endsWith('.app')).sort();
   if (apps.length < 2) throw new Error('iOS app and XCTest runner products missing');
-  return Object.fromEntries(apps.map((name) => [name, hashIosTree(resolve(products, name))]));
+  return Object.fromEntries(apps.map((name) => [name, hashTree(resolve(products, name))]));
 }
 export function recordIosXcodeBuild({ coreRoot, composeRoot, derivedDataPath, inputs }) {
   const actual = xcodeInputs(coreRoot, composeRoot);

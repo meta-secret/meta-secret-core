@@ -1,0 +1,35 @@
+{
+  "testNumber": 51,
+  "name": "Test #51 — Orbit registration only: Create, Join, reset/retry, QR",
+  "mode": "registration-only",
+  "runId": "registration",
+  "repetitions": 1,
+  "expectedCases": 45,
+  "server": {
+    "environment": "local",
+    "url": "http://127.0.0.1:3000",
+    "image": "ghcr.io/meta-secret/meta-secret-core/meta-secret-server:latest",
+    "container": "meta-secret-e2e-server-test51",
+    "port": 3000
+  },
+  "web": { "url": "http://localhost:5174", "directory": "../meta-secret/web-cli/ui" },
+  "ios": {
+    "composeRoot": "../../meta-secret-compose",
+    "simulatorName": "iPhone 17",
+    "bundleId": "org.metasecret.vault",
+    "reuseBuildForTesting": true,
+    "testClass": "CaseEightIosBothOfflineUITest",
+    "testMethod": "handleRegistrationForTest51"
+  },
+  "android": {
+    "avdName": "Pixel_4a",
+    "bundleId": "metasecret.project.com",
+    "testClass": "metasecret.project.com.Case51AndroidRegistrationTest",
+    "testMethod": "handleRegistrationForTest51",
+    "directInstrumentationSetup": true
+  },
+  "vault": { "name": "registration@e2e.invalid" },
+  "secretCreation": { "initial": { "web": [] } },
+  "recovery": { "cyclePlan": [], "expectedCycles": 0 },
+  "secrets": {}
+}

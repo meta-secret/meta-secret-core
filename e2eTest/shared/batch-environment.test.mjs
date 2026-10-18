@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createBatchEnvironmentGuard, environmentTreeHash, preflightBatchEnvironment, batchEnvironmentPaths, assertSnapshotDiskBudget } from './batch-environment.mjs';
+import { provenanceManifestPath, provenanceManifestPaths } from './build-provenance-manifest.mjs';
 
 function fixture(mode = 'remote') {
   const root = mkdtempSync(resolve(tmpdir(), 'batch-env-test-'));
@@ -102,6 +103,29 @@ test('snapshot owns ignored client products as well as all four selectors and na
   const { configs, artifacts } = batchEnvironmentPaths('/core', '/compose');
   assert.equal(configs.length, 4);
   for (const suffix of ['/meta-secret/target/debug/meta-cli', '/meta-secret/web-cli/ui/pkg', '/e2eTest/.derivedData/iosApp', '/composeApp/build/outputs/apk', '/composeApp/build/bin/iosArm64', '/composeApp/build/bin/iosSimulatorArm64']) assert(artifacts.some((path) => path.endsWith(suffix)), suffix);
+});
+
+test('parent guard restores pre-existing scoped proofs and removes newly created proofs exactly', async () => {
+  for (const missingScope of ['web', 'native']) {
+    const f = fixture();
+    const directory = resolve(f.root, 'e2eTest/.artifacts');
+    const proofs = provenanceManifestPaths(directory);
+    const declared = batchEnvironmentPaths(f.root, resolve(f.root, 'compose')).artifacts;
+    assert(proofs.every((path) => declared.includes(path)), 'All scoped manifest paths must be owned by the real parent guard');
+    const missing = provenanceManifestPath(directory, missingScope);
+    mkdirSync(dirname(missing), { recursive: true });
+    for (const path of proofs.filter((path) => path !== missing)) writeFileSync(path, `original-proof:${path}`);
+    const baseline = proofs.map(environmentTreeHash);
+    const guard = createBatchEnvironmentGuard({ ...f, artifacts: proofs, preflight: async () => {}, setLocal: async () => f.put('local') });
+    try {
+      await guard.prepare();
+      for (const path of proofs) writeFileSync(path, 'fresh-run-proof');
+      await guard.restore();
+      assert.deepEqual(proofs.map(environmentTreeHash), baseline);
+      assert.equal(existsSync(missing), false);
+      f.assertRestored();
+    } finally { f.cleanup(); }
+  }
 });
 
 test('snapshot disk budget counts artifacts and rejects insufficient reserve before mutation', () => {

@@ -1,3 +1,4 @@
+import { requestWebVaultJoin, waitForWebEntry } from '../shared/web-orbit-registration.mjs';
 import { ensureIosFfi, prepareIosXcodeBuild, recordIosXcodeBuild } from '../shared/ios-ffi-provenance.mjs';
 import { appendFileSync, createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -731,7 +732,7 @@ async function unlockWithPasskeyIfNeeded(page) {
   const authenticateButton = page.getByRole('button', { name: 'Authenticate with Passkey' });
 
   await Promise.race([
-    page.getByPlaceholder('vault name').waitFor({ state: 'visible' }),
+    waitForWebEntry(page),
     createPasskeyButton.waitFor({ state: 'visible' }),
     authenticateButton.waitFor({ state: 'visible' }),
   ]);
@@ -744,7 +745,7 @@ async function unlockWithPasskeyIfNeeded(page) {
     await authenticateButton.click();
   }
 
-  await page.getByPlaceholder('vault name').waitFor({ state: 'visible' });
+  await waitForWebEntry(page);
 }
 
 async function approveJoinRequestOnWeb(page, deviceName) {
@@ -880,11 +881,9 @@ async function main() {
   console.log('Web joining iOS-created vault');
   await page.bringToFront();
   await unlockWithPasskeyIfNeeded(page);
-  await page.getByPlaceholder('vault name').fill(scenario.vault.name);
-  await page.getByRole('button', { name: 'Set Vault Name' }).click();
-  await page.getByRole('button', { name: 'Join', exact: true }).click();
+  await requestWebVaultJoin(page, scenario.vault.name);
   await iosTest.waitForMarker('E2E: IOS_WEB_JOIN_APPROVED', 120_000);
-  await page.getByText('Your request to join this vault is pending approval.', { exact: true })
+  await page.locator('.orbit-registration[data-step="4"][data-phase="pending"]')
     .waitFor({ state: 'hidden', timeout: 120_000 });
   await page.getByRole('button', { name: '+ Add Secret' }).waitFor({ timeout: 120_000 });
 

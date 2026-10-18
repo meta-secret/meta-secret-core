@@ -1,3 +1,4 @@
+import { createWebVault, waitForWebEntry } from '../shared/web-orbit-registration.mjs';
 import { ensureIosFfi, verifyIosXcodeBuild } from '../shared/ios-ffi-provenance.mjs';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -440,7 +441,7 @@ async function unlockWithPasskeyIfNeeded(page) {
   const authenticateButton = page.getByRole('button', { name: 'Authenticate with Passkey' });
 
   await Promise.race([
-    page.getByPlaceholder('vault name').waitFor({ state: 'visible' }),
+    waitForWebEntry(page),
     createPasskeyButton.waitFor({ state: 'visible' }),
     authenticateButton.waitFor({ state: 'visible' }),
   ]);
@@ -453,7 +454,7 @@ async function unlockWithPasskeyIfNeeded(page) {
     await authenticateButton.click();
   }
 
-  await page.getByPlaceholder('vault name').waitFor({ state: 'visible' });
+  await waitForWebEntry(page);
 }
 
 async function approveJoinRequestOnWeb(page, deviceName) {
@@ -576,10 +577,7 @@ async function main() {
   console.log(`✅ iOS app and XCTest runner are installed (${iosReadiness.appBundleId})`);
 
   console.log('5. Creating Vault');
-  await page.getByPlaceholder('vault name').fill(scenario.vault.name);
-  await page.getByRole('button', { name: 'Set Vault Name' }).click();
-  await page.getByText('Vault name is free!').waitFor();
-  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await createWebVault(page, scenario.vault.name);
 
   console.log('6. Creating Secret');
   await page.getByRole('button', { name: '+ Add Secret' }).waitFor();

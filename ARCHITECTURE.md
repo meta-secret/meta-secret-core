@@ -51,5 +51,13 @@ The web front-end is a Vue 3 SPA separate from the Rust workspace:
 
 ## Further reading
 
+Apple email selection uses an isolated optional RAM broker in the existing
+meta-server HTTP crate. Web and Android hold a per-attempt verifier and redeem
+a verified signed email once; browser return messages/Intents carry only an
+opaque request ID. This transport has no account, Vault authorization, domain
+or FFI authority. It is disabled without explicit HTTPS/Services ID/origin
+configuration and supports one server instance; restart loses pending attempts.
+See [Apple email provider](docs/apple-email-provider.md).
+
 - [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) — paths and commands.
 - [`.ai/skills/architecture-guardian/SKILL.md`](.ai/skills/architecture-guardian/SKILL.md) — short checklist for agents (align with this file).

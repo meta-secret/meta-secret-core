@@ -1,3 +1,4 @@
+import { requestWebVaultJoin, waitForWebEntry } from '../shared/web-orbit-registration.mjs';
 import { ensureIosFfi, verifyIosXcodeBuild } from '../shared/ios-ffi-provenance.mjs';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -435,7 +436,7 @@ async function unlockWithPasskeyIfNeeded(page) {
   const authenticateButton = page.getByRole('button', { name: 'Authenticate with Passkey' });
 
   await Promise.race([
-    page.getByPlaceholder('vault name').waitFor({ state: 'visible' }),
+    waitForWebEntry(page),
     createPasskeyButton.waitFor({ state: 'visible' }),
     authenticateButton.waitFor({ state: 'visible' }),
   ]);
@@ -448,7 +449,7 @@ async function unlockWithPasskeyIfNeeded(page) {
     await authenticateButton.click();
   }
 
-  await page.getByPlaceholder('vault name').waitFor({ state: 'visible' });
+  await waitForWebEntry(page);
 }
 
 async function approveJoinRequestOnWeb(page, deviceName) {
@@ -573,9 +574,7 @@ async function main() {
   console.log('Web joining Android-created vault');
   await page.goto(scenario.web.url, { waitUntil: 'networkidle' });
   await unlockWithPasskeyIfNeeded(page);
-  await page.getByPlaceholder('vault name').fill(scenario.vault.name);
-  await page.getByRole('button', { name: 'Set Vault Name' }).click();
-  await page.getByRole('button', { name: 'Join', exact: true }).click();
+  await requestWebVaultJoin(page, scenario.vault.name);
   await androidTest.waitForMarker('E2E: ANDROID_WEB_JOIN_APPROVED', 120_000);
   await page.getByRole('button', { name: '+ Add Secret' }).waitFor({ timeout: 120_000 });
 

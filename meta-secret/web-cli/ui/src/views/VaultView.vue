@@ -1,21 +1,21 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import RegistrationComponent from '@/components/vault/auth/Registration.vue';
+import RegistrationComponent from '@/components/registration/OrbitRegistration.vue';
 import VaultComponent from '@/components/vault/Vault.vue';
 import { AppState } from '@/stores/app-state';
 import { useAuthStore } from '@/stores/auth';
+import { registrationSurfaceActive } from '@/features/registration/registrationSurface';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { useRoute } from 'vue-router';
 import { createStateInvalidationController } from '@/utils/stateInvalidation';
-import { createJoinResultController } from '@/utils/joinResult';
-import { UserDataOutsiderStatus } from 'meta-secret-web-cli';
-import { toast } from 'vue-sonner';
 
 const jsAppState = AppState();
 const authStore = useAuthStore();
 const route = useRoute();
 const isInitialized = ref(false);
+let disposed = false;
+const registrationActive = registrationSurfaceActive;
 const vaultName = computed(() => jsAppState.getVaultName());
 let serverSyncInFlight: Promise<void> | null = null;
 const syncServerState = () => {
@@ -27,7 +27,6 @@ const syncServerState = () => {
     console.warn('[StateEvents] sync_now is unavailable in the loaded WASM module');
     return Promise.resolve();
   }
-  console.log('[StateEvents] syncing local events with server');
   jsAppState.beginSync();
   const sync = Promise.resolve()
     .then(() => manager.sync_now!())
@@ -46,35 +45,10 @@ const stateInvalidation = createStateInvalidationController({
   syncBeforeRefresh: syncServerState,
   getAuthorization: () => jsAppState.getStateEventsAuthToken(vaultName.value),
 });
-const joinResult = createJoinResultController({
-  refresh: () => jsAppState.updateState(),
-  getAuthorization: () => jsAppState.getJoinResultAuthToken(),
-  onError: (message, terminal) => {
-    console.warn('[JoinResult] stream error:', message);
-    if (terminal) {
-      toast.error(
-        'Live approval updates are unavailable. Refresh to reconnect; older join requests may need to be submitted again.',
-      );
-    }
-  },
-});
-const isPendingJoin = computed(() => {
-  if (!jsAppState.isOutsider || !jsAppState.currentState) return false;
-  return jsAppState.currentState.as_vault().as_outsider().status === UserDataOutsiderStatus.Pending;
-});
-
-const reconnectJoinResultWhenVisible = () => {
-  if (document.visibilityState !== 'visible' || !isPendingJoin.value || !vaultName.value) return;
-  joinResult.disconnect();
-  joinResult.connect(vaultName.value);
-};
-
 const handleBrowserOnline = async () => {
-  if (!authStore.isAuthenticated || !isInitialized.value) return;
-  console.log('[StateEvents] browser online; syncing local events and refreshing application state');
+  if (!authStore.isAuthenticated || !isInitialized.value || registrationActive.value) return;
   try {
     await syncServerState();
-    console.log('[StateEvents] reconnect sync_now finished');
   } catch (error) {
     console.warn('[StateEvents] reconnect sync deferred; background sync will retry', error);
   }
@@ -82,13 +56,13 @@ const handleBrowserOnline = async () => {
 };
 
 window.addEventListener('online', handleBrowserOnline);
-document.addEventListener('visibilitychange', reconnectJoinResultWhenVisible);
 
 onBeforeUnmount(() => {
+  disposed = true;
+  registrationActive.value = false;
   window.removeEventListener('online', handleBrowserOnline);
-  document.removeEventListener('visibilitychange', reconnectJoinResultWhenVisible);
+
   stateInvalidation.disconnect();
-  joinResult.disconnect();
 });
 
 watch(
@@ -97,6 +71,8 @@ watch(
     if (isAuthenticated && authStore.masterKey) {
       try {
         await jsAppState.appStateInit();
+        if (disposed) return;
+        registrationActive.value = !jsAppState.isMember;
         isInitialized.value = true;
       } catch (error) {
         console.error('Error initializing app state:', error);
@@ -110,21 +86,23 @@ watch(
 );
 
 watch(
-  () => [authStore.isAuthenticated, isInitialized.value, vaultName.value, isPendingJoin.value] as const,
-  ([isAuthenticated, initialized, currentVaultName, pending]) => {
-    if (isAuthenticated && initialized && pending && currentVaultName) {
-      joinResult.connect(currentVaultName);
-      return;
-    }
-    joinResult.disconnect();
+  () => jsAppState.isMember,
+  (member, wasMember) => {
+    if (isInitialized.value && wasMember && !member) registrationActive.value = true;
   },
-  { immediate: true },
 );
 
 watch(
-  () => [authStore.isAuthenticated, isInitialized.value, vaultName.value, jsAppState.isMember] as const,
-  ([isAuthenticated, initialized, currentVaultName, member]) => {
-    if (isAuthenticated && initialized && member && currentVaultName) {
+  () =>
+    [
+      authStore.isAuthenticated,
+      isInitialized.value,
+      vaultName.value,
+      jsAppState.isMember,
+      registrationActive.value,
+    ] as const,
+  ([isAuthenticated, initialized, currentVaultName, member, registering]) => {
+    if (isAuthenticated && initialized && member && currentVaultName && !registering) {
       stateInvalidation.connect(currentVaultName);
       return;
     }
@@ -136,7 +114,7 @@ watch(
 watch(
   () => route.path,
   () => {
-    if (authStore.isAuthenticated && isInitialized.value) {
+    if (authStore.isAuthenticated && isInitialized.value && !registrationActive.value) {
       void stateInvalidation.refreshNow();
     }
   },
@@ -154,13 +132,21 @@ watch(
     </div>
   </div>
 
-  <RegistrationComponent v-else-if="authStore.isAuthenticated && isInitialized && !jsAppState.isMember" />
+  <RegistrationComponent
+    v-else-if="authStore.isAuthenticated && isInitialized && registrationActive"
+    @ready="registrationActive = false"
+  />
   <VaultComponent
-    v-else-if="authStore.isAuthenticated && isInitialized && jsAppState.isMember"
+    v-else-if="authStore.isAuthenticated && isInitialized && !registrationActive && jsAppState.isMember"
     v-show="!jsAppState.isSynchronizing && !jsAppState.syncError"
   />
   <div
-    v-if="authStore.isAuthenticated && isInitialized && (jsAppState.isSynchronizing || jsAppState.syncError)"
+    v-if="
+      authStore.isAuthenticated &&
+      isInitialized &&
+      !registrationActive &&
+      (jsAppState.isSynchronizing || jsAppState.syncError)
+    "
     role="status"
     aria-live="polite"
     aria-busy="true"

@@ -18,7 +18,7 @@ describe('createJoinResultController', () => {
   it('subscribes with the scoped token and refreshes state once for a terminal event', async () => {
     const stream = makeStream();
     const refresh = vi.fn().mockResolvedValue(undefined);
-    const fetchImpl = vi.fn(async () => ({ ok: true, status: 200, body: stream.body }) as Response);
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue({ ok: true, status: 200, body: stream.body } as Response);
     const controller = createJoinResultController({
       refresh,
       getAuthorization: vi.fn().mockResolvedValue('request-scoped-secret-token'),
@@ -44,7 +44,7 @@ describe('createJoinResultController', () => {
   it('does not refresh for a result event missing a request id', async () => {
     const stream = makeStream();
     const refresh = vi.fn().mockResolvedValue(undefined);
-    const fetchImpl = vi.fn(async () => ({ ok: true, status: 200, body: stream.body }) as Response);
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue({ ok: true, status: 200, body: stream.body } as Response);
     const controller = createJoinResultController({
       refresh,
       getAuthorization: vi.fn().mockResolvedValue('token'),

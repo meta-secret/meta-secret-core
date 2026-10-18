@@ -1,20 +1,25 @@
+import { navigateTest51WebEntry } from '../Test51/web-navigation.mjs';
+import { createWebVault, requestWebVaultJoin, requestRejectedWebVaultJoin, retryWebVaultWithNewEmail, waitForWebAfterRemoval, webEntryReady, waitForWebEntry } from '../shared/web-orbit-registration.mjs';
 import { createCliActorDirectory } from '../Test50/cli-workspace.mjs';
 import { createScopedSecretIdCollector } from '../shared/scoped-secret-id.mjs';
 import { deletionCycleProgress } from '../Test50/progress.mjs';
 import { environmentModeFromSnapshot } from '../shared/batch-environment.mjs';
 import { runDeletionBlock } from '../Test50/business.mjs';
+import { runRegistrationCase } from '../Test51/business.mjs';
+import { resolveIosRegistrationKeychainIdentity, readIosRegistrationMasterKeyPresence } from '../shared/ios-registration-keychain-oracle.mjs';
+import { createIosSelectedSuiteActor } from '../shared/ios-selected-suite.mjs';
 import { createDeletionNetworkGate } from '../Test50/network-gate.mjs';
 import { ensureIosFfi, prepareIosXcodeBuild, recordIosXcodeBuild, verifyIosXcodeBuild } from '../shared/ios-ffi-provenance.mjs';
+import { hashArtifactTree } from '../shared/artifact-tree.mjs';
+import { iosBuildProvenanceIdentity } from '../shared/ios-consumer-provenance.mjs';
 import {
   appendFileSync,
   cpSync,
   existsSync,
-  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
-  readlinkSync,
   rmSync,
   statfsSync,
   writeFileSync,
@@ -50,6 +55,7 @@ import { createHarnessShutdown, formatHarnessShutdownError } from '../shared/har
 import { recycleWebPage, webPageRefreshCycles } from '../shared/web-page-recycle.mjs';
 import { createPostCycleActions } from '../shared/post-cycle-actions.mjs';
 import { bindIosStepSecret, createStepEnvironment } from '../shared/ios-step-secret.mjs';
+import { provenanceManifestPath, recordArtifactProvenance, verifyArtifactProvenance } from '../shared/build-provenance-manifest.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const e2eRoot = resolve(root, '..');
@@ -64,7 +70,9 @@ const diagnosticAndroidVerbose = process.env.E2E_DIAGNOSTIC_ANDROID_VERBOSE === 
 const scenarioPath = resolve(root, scenarioArgument ?? 'scenario.json');
 const scenario = JSON.parse(readFileSync(scenarioPath, 'utf8'));
 const testNumber = scenario.testNumber ?? 4;
-if (process.env.E2E_RANGE_RUN === '1') scenario.runId = scenario.deletionBlock ? `${process.env.E2E_RUN_ID}-${scenario.deletionBlock.id}` : process.env.E2E_RUN_ID;
+if (process.env.E2E_RANGE_RUN === '1') scenario.runId = scenario.deletionBlock ? `${process.env.E2E_RUN_ID}-${scenario.deletionBlock.id}` : scenario.registrationCase ? `${process.env.E2E_RUN_ID}-${scenario.registrationCase.id}` : process.env.E2E_RUN_ID;
+const registrationOnly = scenario.mode === 'registration-only';
+const registrationPlatforms = scenario.registrationPlatforms ?? [];
 const scenarioArtifactLabel = basename(scenarioPath, '.json');
 const secretConfigs = scenario.secrets ?? { default: scenario.secret };
 const defaultSecretKey = Object.keys(secretConfigs)[0];
@@ -74,7 +82,8 @@ const diagnosticFileName = scenario.runId
   : `test-${testNumber}.log`;
 const diagnosticLogPath = resolve(artifactsDirectory, diagnosticFileName);
 const iosStepConfigPath = '/tmp/metasecret-e2e-ios-step.json';
-const buildProvenancePath = resolve(artifactsDirectory, 'ui-e2e-build-provenance.json');
+const buildProvenanceScope = !registrationOnly ? 'full' : registrationPlatforms.every((platform) => platform === 'web') ? 'web' : 'native';
+const buildProvenancePath = provenanceManifestPath(artifactsDirectory, buildProvenanceScope);
 const reuseProvenArtifacts = process.env.E2E_REUSE_PROVEN_ARTIFACTS === '1';
 const bootstrapBuildProvenance = process.env.E2E_BOOTSTRAP_BUILD_PROVENANCE === '1';
 let buildProvenanceVerified = false;
@@ -311,21 +320,18 @@ async function reclaimBuildCacheForVisibleRun() {
   }
 }
 
-function removePassedIosTestResults() {
+function removePassedIosTestResults(ownedResultBundlePath) {
   if (process.env.E2E_PRESERVE_EVIDENCE === '1') {
     writeDiagnostic('[RESOURCE] retained iOS xcresult bundle(s) by --preserve-evidence');
     return;
   }
-  if (!existsSync(iosTestLogsPath)) return;
-  let removed = 0;
-  for (const entry of readdirSync(iosTestLogsPath)) {
-    if (!entry.endsWith('.xcresult')) continue;
-    rmSync(resolve(iosTestLogsPath, entry), { recursive: true, force: true });
-    removed += 1;
-  }
-  if (removed > 0) {
-    writeDiagnostic(`[RESOURCE] removed ${removed} passed iOS xcresult bundle(s)`);
-  }
+  // Only the explicit result bundle in this actor's newly created directory
+  // is owned. Never glob/delete historical failed bundles in DerivedData.
+  if (!ownedResultBundlePath || !resolve(ownedResultBundlePath).startsWith(`${artifactsDirectory}/`)
+      || basename(ownedResultBundlePath) !== 'selected.xcresult') return;
+  if (!existsSync(ownedResultBundlePath)) return;
+  rmSync(ownedResultBundlePath, { recursive: true, force: true });
+  writeDiagnostic(`[RESOURCE] removed owned passed iOS result ${ownedResultBundlePath}`);
 }
 
 const networkLossConfig = scenario.networkLoss ?? null;
@@ -620,7 +626,6 @@ const environmentArtifactRoots = [
   resolve(composeRoot, 'composeApp/src/androidMain/kotlin/com/metasecret/core/uniffi'),
 ];
 const wasmArtifactRoot = resolve(coreRoot, 'meta-secret/web-cli/ui/pkg');
-const iosBuildArtifactRoot = resolve(iosDerivedDataPath, 'Build');
 const androidAppApkPath = resolve(
   composeRoot,
   'composeApp/build/outputs/apk/debug/composeApp-debug.apk',
@@ -676,33 +681,6 @@ async function captureRepoDirtyState(repoRoot, { parentOwnsArtifacts = false } =
     if (existsSync(absolutePath)) digest.update(readFileSync(absolutePath));
   }
   return { status, digest: digest.digest('hex') };
-}
-
-function hashArtifactTree(rootPath) {
-  const digest = createHash('sha256');
-  if (!existsSync(rootPath)) {
-    digest.update('absent');
-    return digest.digest('hex');
-  }
-
-  const visit = (absolutePath, relativePath) => {
-    const stats = lstatSync(absolutePath);
-    const type = stats.isDirectory() ? 'directory' : stats.isSymbolicLink() ? 'symlink' : 'file';
-    digest.update(`${relativePath}\0${type}\0${stats.mode & 0o7777}\0`);
-    if (stats.isSymbolicLink()) {
-      digest.update(readlinkSync(absolutePath));
-      return;
-    }
-    if (stats.isDirectory()) {
-      for (const entry of readdirSync(absolutePath).sort()) {
-        visit(resolve(absolutePath, entry), relativePath ? `${relativePath}/${entry}` : entry);
-      }
-      return;
-    }
-    digest.update(readFileSync(absolutePath));
-  };
-  visit(rootPath, '.');
-  return digest.digest('hex');
 }
 
 async function hashGitWorkingFiles(repoRoot, scopes) {
@@ -835,6 +813,14 @@ async function verifyAndroidApkFfiProvenance() {
 }
 
 async function captureBuildProvenance() {
+  if (registrationOnly && registrationPlatforms.every((platform) => platform === 'web')) {
+    const [sourceFingerprint, image] = await Promise.all([
+      hashGitWorkingFiles(coreRoot, ['Taskfile.yml', 'docker-bake.hcl', 'meta-secret']),
+      runAndCapture('docker', ['image', 'inspect', serverImage, '--format', '{{.Id}}']),
+    ]);
+    return { version: 2, scope: ['web'], sourceFingerprint,
+      artifacts: { wasm: hashArtifactTree(wasmArtifactRoot), serverImageId: image.stdout.trim() } };
+  }
   const [coreSource, composeSource, androidFfiSource, image] = await Promise.all([
     hashGitWorkingFiles(coreRoot, ['Taskfile.yml', 'docker-bake.hcl', 'meta-secret']),
     hashGitWorkingFiles(
@@ -847,8 +833,9 @@ async function captureBuildProvenance() {
   const sourceFingerprint = createHash('sha256')
     .update(`core:${coreSource}\ncompose:${composeSource}\n`)
     .digest('hex');
+  const iosIdentity = iosBuildProvenanceIdentity({ derivedDataPath: iosDerivedDataPath, registrationOnly });
   return {
-    version: 1,
+    version: iosIdentity.version,
     sourceFingerprint,
     artifacts: {
       native: Object.fromEntries(
@@ -857,7 +844,7 @@ async function captureBuildProvenance() {
       androidFfiSourceFingerprint: androidFfiSource,
       androidJniLibs: hashArtifactTree(androidJniLibsRoot),
       wasm: hashArtifactTree(wasmArtifactRoot),
-      iosBuild: hashArtifactTree(iosBuildArtifactRoot),
+      iosBuild: iosIdentity.iosBuild,
       androidAppApk: hashArtifactTree(androidAppApkPath),
       androidTestApk: hashArtifactTree(androidTestApkPath),
       serverImageId: image.stdout.trim(),
@@ -867,32 +854,11 @@ async function captureBuildProvenance() {
 
 async function verifyOrBootstrapBuildProvenance() {
   const current = await captureBuildProvenance();
+  const evidence = process.env.E2E_BUILD_PROVENANCE_EVIDENCE?.trim();
+  verifyArtifactProvenance({ path: buildProvenancePath, current, bootstrap: bootstrapBuildProvenance, evidence, scope: buildProvenanceScope });
   if (bootstrapBuildProvenance) {
-    const evidence = process.env.E2E_BUILD_PROVENANCE_EVIDENCE?.trim();
-    if (!evidence) {
-      throw new Error('E2E_BUILD_PROVENANCE_EVIDENCE is required to bootstrap artifact provenance');
-    }
-    writeFileSync(buildProvenancePath, `${JSON.stringify({
-      ...current,
-      capturedAt: new Date().toISOString(),
-      evidence,
-    }, null, 2)}\n`);
     writeDiagnostic(
       `[BUILD] bootstrapped exact artifact provenance source=${current.sourceFingerprint} evidence=${evidence}`,
-    );
-  } else if (!existsSync(buildProvenancePath)) {
-    throw new Error(`Proven build artifact manifest not found: ${buildProvenancePath}`);
-  }
-
-  const expected = JSON.parse(readFileSync(buildProvenancePath, 'utf8'));
-  if (
-    expected.version !== current.version
-    || expected.sourceFingerprint !== current.sourceFingerprint
-    || JSON.stringify(expected.artifacts) !== JSON.stringify(current.artifacts)
-  ) {
-    throw new Error(
-      `Build artifact provenance mismatch: expected source=${expected.sourceFingerprint ?? '<missing>'} `
-        + `current source=${current.sourceFingerprint}`,
     );
   }
   buildProvenanceVerified = true;
@@ -904,11 +870,11 @@ async function verifyOrBootstrapBuildProvenance() {
 
 async function recordFreshBuildProvenance() {
   const current = await captureBuildProvenance();
-  writeFileSync(buildProvenancePath, `${JSON.stringify({
-    ...current,
-    capturedAt: new Date().toISOString(),
-    evidence: 'full local Core/Compose/WASM/server/iOS/Android build completed by UI E2E runner',
-  }, null, 2)}\n`);
+  recordArtifactProvenance(buildProvenancePath, current,
+    registrationOnly && registrationPlatforms.every((platform) => platform === 'web')
+      ? 'local Web WASM/server build only; native artifacts are not applicable and not proven'
+      : 'full local Core/Compose/WASM/server/iOS/Android build completed by UI E2E runner',
+  );
   writeDiagnostic(`[BUILD] fresh artifact provenance recorded source=${current.sourceFingerprint}`);
 }
 
@@ -1012,6 +978,10 @@ async function assertLocalServicesAvailableForOwnership() {
 }
 
 async function preflightSelectedRuntimes() {
+  if (registrationOnly && registrationPlatforms.every((platform) => platform === 'web')) {
+    writeDiagnostic('[PREFLIGHT] Web-only registration case: native runtime requirements not applicable');
+    return {};
+  }
   androidSdkTools = discoverAndroidSdk();
   const { stdout: avdOutput } = await runAndCapture(androidSdkTools.emulatorPath, ['-list-avds']);
   const avds = avdOutput.split(/\r?\n/).map((name) => name.trim()).filter(Boolean);
@@ -1963,7 +1933,7 @@ function startIosJoinTest(simulatorUdid, {
   secretValue = null,
   expectedDeviceNames = null,
 } = {}) {
-  const selectedSecret = bindIosStepSecret({
+  const selectedSecret = registrationOnly ? { name: '', value: '', environment } : bindIosStepSecret({
     secretName, secretValue, environment, defaultSecret,
     valueForName: (name) => Object.values(secretConfigs).find((config) => config.name === name)?.value,
   });
@@ -2003,8 +1973,13 @@ function startIosJoinTest(simulatorUdid, {
       expectedAndroidDeviceName: expectedDeviceNames?.android,
       expectedIosDeviceName: expectedDeviceNames?.ios,
       joinTarget: environment.E2E_JOIN_TARGET,
+      ...(environment.E2E_REGISTRATION_CASE ? { registrationCase: JSON.parse(environment.E2E_REGISTRATION_CASE) } : {}),
     }));
   }
+  const ownedResultDirectory = mkdtempSync(resolve(artifactsDirectory,
+    `test-${testNumber}-${scenario.runId ?? 'run'}-attempt-${process.env.E2E_TEST_ATTEMPT ?? '1'}-ios-selected-`));
+  const ownedResultBundlePath = resolve(ownedResultDirectory, 'selected.xcresult');
+  writeDiagnostic(`[IOS RESULT] actor=${testClass}/${testMethod} bundle=${ownedResultBundlePath}`);
   const xcodebuildArgs = [
     reuseIosBuildForTesting ? 'test-without-building' : 'test',
     '-project',
@@ -2017,6 +1992,8 @@ function startIosJoinTest(simulatorUdid, {
     `id=${simulatorUdid}`,
     '-derivedDataPath',
     iosDerivedDataPath,
+    '-resultBundlePath',
+    ownedResultBundlePath,
     `-only-testing:iosAppUITests/${testClass}/${testMethod}`,
   ];
   if (networkLossConfig) {
@@ -2060,27 +2037,22 @@ function startIosJoinTest(simulatorUdid, {
   // Keep a separate bounded result-flush allowance after the business work;
   // six-cycle blocks retain the shorter deadline.
   const selectedSuiteTimeoutMs = recoveryCycles.length >= 18 ? 600_000 : 360_000;
-  const selectedSuitePassed = watched.waitForMarker(
-    "Test Suite 'Selected tests' passed",
-    selectedSuiteTimeoutMs,
-  )
-    .then(async () => {
-      if (!watched.child.killed) watched.child.kill('SIGTERM');
-      await watched.closed;
-      removePassedIosTestResults();
-      return { stdout: watched.outputTail(), stderr: '' };
-    });
-  // The wrapper is deliberately terminated after the authoritative XCTest
-  // pass marker. Its low-level process promise therefore rejects with the
-  // expected SIGTERM even though the UI step passed; consume that internal
-  // lifecycle result while `selectedSuitePassed` remains the public result.
-  void watched.result.catch(() => {});
-  // waitForMarker already rejects if xcodebuild exits before the XCTest pass
-  // marker. Once the marker is seen, wait for the actual process close before
-  // allowing the next iOS step to start.
-  const result = Promise.all([coreRoutingVerified, selectedSuitePassed]).then(([, result]) => result);
+  const selectedSuiteActor = createIosSelectedSuiteActor({ watched,
+    selector: `${testClass}/${testMethod}`, timeoutMs: selectedSuiteTimeoutMs,
+  });
+  const selectedSuitePassed = selectedSuiteActor.result;
+  // Both terminal selected-suite outcomes stop/join the owned wrapper. Failure
+  // also cancels pending actor markers immediately and retains its xcresult.
+  const result = Promise.all([coreRoutingVerified, selectedSuitePassed]).then(([, result]) => {
+    removePassedIosTestResults(ownedResultBundlePath);
+    return result;
+  });
   void result.catch(() => {});
-  return { ...watched, result, waitForMarker: async (marker, timeoutMs) => { await coreRoutingVerified; return watched.waitForMarker(marker, timeoutMs); } };
+  return { ...watched, result, cancelAndJoin: selectedSuiteActor.cancelAndJoin, waitForMarker: async (marker, timeoutMs) => {
+    await coreRoutingVerified;
+    const observed = watched.waitForMarker(marker, timeoutMs);
+    return Promise.race([observed, result.then(() => observed)]);
+  } };
 }
 
 async function prepareAndroidEmulator() {
@@ -2575,6 +2547,7 @@ async function startAndroidStepTest(serial, {
   secretName = defaultSecret?.name ?? '',
   testMethod = scenario.android.stepTestMethod ?? 'handleRecoveryStep',
   label = 'Android recovery step',
+  registrationCase = null,
 } = {}) {
   console.log(`Starting ${label}: role=${role} cycle=${cycle} step=${step}`);
   const appApkPath = resolve(composeRoot, 'composeApp/build/outputs/apk/debug/composeApp-debug.apk');
@@ -2630,6 +2603,7 @@ async function startAndroidStepTest(serial, {
     ['expectedWebDeviceName', expectedDeviceNames?.web],
     ['expectedAndroidDeviceName', expectedDeviceNames?.android],
     ['expectedIosDeviceName', expectedDeviceNames?.ios],
+    ['registrationCase', registrationCase ? JSON.stringify(registrationCase) : ''],
   ];
   const runnerInsertAt = runnerArguments.length;
   runnerArguments.splice(
@@ -2870,10 +2844,7 @@ async function createWebInitiatedVault(page) {
   // take long enough for the authenticated browser session to lock again,
   // so re-check its live UI state at the actual first scenario action.
   await unlockWithPasskeyIfNeeded(page);
-  await page.getByPlaceholder('vault name').fill(scenario.vault.name);
-  await page.getByRole('button', { name: 'Set Vault Name' }).click();
-  await page.getByText('Vault name is free!').waitFor({ timeout: 120_000 });
-  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await createWebVault(page, scenario.vault.name);
   await page.getByRole('button', { name: '+ Add Secret', exact: true }).waitFor({ timeout: 180_000 });
   const initialSecretNames = secretCreationPlan?.initial?.web
     ?? Object.values(secretConfigs).map((config) => config.name);
@@ -2886,10 +2857,11 @@ async function createWebInitiatedVault(page) {
 
 async function preparePrimaryWebClient(page) {
   if (primaryWebClientReady) return;
-  await page.goto(scenario.web.url, { waitUntil: 'domcontentloaded' });
+  if (registrationOnly) await navigateTest51WebEntry(page, scenario.web.url);
+  else await page.goto(scenario.web.url, { waitUntil: 'domcontentloaded' });
   await unlockWithPasskeyIfNeeded(page);
   await Promise.race([
-    page.getByPlaceholder('vault name').waitFor({ state: 'visible', timeout: 30_000 }),
+    waitForWebEntry(page),
     page.getByRole('link', { name: 'Secrets', exact: true }).waitFor({ state: 'visible', timeout: 30_000 }),
   ]);
   primaryWebClientReady = true;
@@ -6429,9 +6401,7 @@ async function runIosDistributedCreatorDeclinedRemovalRecoveryLifecycle(
 }
 
 async function assertWebResetAfterOwnRemoval(page, secretNames) {
-  await page.getByPlaceholder('vault name').waitFor({ state: 'visible', timeout: 180_000 });
-  await page.getByRole('button', { name: 'Set Vault Name', exact: true })
-    .waitFor({ state: 'visible', timeout: 30_000 });
+  await waitForWebAfterRemoval(page);
   await Promise.all([
     page.getByRole('link', { name: 'Secrets', exact: true }).waitFor({ state: 'hidden', timeout: 30_000 }),
     page.getByRole('link', { name: 'Devices', exact: true }).waitFor({ state: 'hidden', timeout: 30_000 }),
@@ -8557,10 +8527,7 @@ async function runWebMultiSecretLifecycle(page, simulatorUdid, androidSerial) {
 async function submitWebJoinRequest(page) {
   await page.goto(scenario.web.url, { waitUntil: 'domcontentloaded' });
   await unlockWithPasskeyIfNeeded(page);
-  await page.getByPlaceholder('vault name').fill(scenario.vault.name);
-  await page.getByRole('button', { name: 'Set Vault Name' }).click();
-  await page.getByRole('button', { name: 'Join', exact: true }).waitFor({ timeout: 120_000 });
-  await page.getByRole('button', { name: 'Join', exact: true }).click();
+  await requestWebVaultJoin(page, scenario.vault.name);
   writeDiagnostic(`[TEST${testNumber}] Web join request submitted`);
 }
 
@@ -10813,10 +10780,7 @@ async function runAndroidSecondaryCreatorLifecycle(page, simulatorUdid, androidS
 async function joinWebToCliVault(page, cliDevice, platform) {
   await page.goto(scenario.web.url, { waitUntil: 'domcontentloaded' });
   await unlockWithPasskeyIfNeeded(page);
-  await page.getByPlaceholder('vault name').fill(scenario.vault.name);
-  await page.getByRole('button', { name: 'Set Vault Name' }).click();
-  await page.getByRole('button', { name: 'Join', exact: true }).waitFor({ timeout: 120_000 });
-  await page.getByRole('button', { name: 'Join', exact: true }).click();
+  await requestWebVaultJoin(page, scenario.vault.name);
   await acceptNextCliJoin(cliDevice, platform);
   // The Web confirmation screen can remain visible while its accepted member
   // state is persisted locally. The CLI acceptance is the authoritative
@@ -10827,38 +10791,19 @@ async function joinWebToCliVault(page, cliDevice, platform) {
 async function rejectFourthDeviceOnWeb(page, blockName) {
   await page.goto(scenario.web.url, { waitUntil: 'domcontentloaded' });
   await unlockWithPasskeyIfNeeded(page);
-  await page.getByPlaceholder('vault name').fill(scenario.vault.name);
-  await page.getByRole('button', { name: 'Set Vault Name' }).click();
-  await page.getByRole('button', { name: 'Join', exact: true }).waitFor({ timeout: 120_000 });
-  await page.getByRole('button', { name: 'Join', exact: true }).click();
-  const error = page.getByTestId('signup-error');
-  await error.waitFor({ state: 'visible', timeout: 120_000 });
+  const error = await requestRejectedWebVaultJoin(page, scenario.vault.name);
   await page.screenshot({
     path: resolve(artifactsDirectory, `test-21-${blockName}-web-rejection.png`),
     fullPage: true,
   });
   writeDiagnostic(`[SCREENSHOT] Web saved test-21-${blockName}-web-rejection.png`);
-  if (!(await error.innerText()).toLowerCase().includes('maximum of 3 devices')) {
+  if ((await error.innerText()).trim() !== 'This Vault already has 3 devices.') {
     throw new Error(`Web fourth-device error did not mention the device limit: ${await error.innerText()}`);
   }
   writeDiagnostic('[TEST21] Web fourth device rejected');
 
-  await page.getByRole('button', { name: 'Reset & Create New', exact: true }).click();
-  // The reset action clears IndexedDB and reinitializes the WASM manager before
-  // routing back to registration. Reload only after the reset control has
-  // disappeared so the next interaction cannot race the cleanup/re-init.
-  await error.waitFor({ state: 'hidden', timeout: 60_000 });
-  await page.reload({ waitUntil: 'domcontentloaded' });
-  await unlockWithPasskeyIfNeeded(page);
-  await page.getByPlaceholder('vault name').waitFor({ state: 'visible', timeout: 60_000 });
   const retryVaultName = scenario.vault.retryName;
-  const retryVaultInput = page.getByPlaceholder('vault name');
-  const retrySetVaultButton = page.getByRole('button', { name: 'Set Vault Name' });
-  await retryVaultInput.fill(retryVaultName);
-  await retrySetVaultButton.waitFor({ state: 'visible', timeout: 30_000 });
-  await retrySetVaultButton.click();
-  await page.getByText('Vault name is free!', { exact: true }).waitFor({ timeout: 120_000 });
-  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await retryWebVaultWithNewEmail(page, retryVaultName);
   await page.getByRole('link', { name: 'Secrets', exact: true }).waitFor({ timeout: 180_000 });
   writeDiagnostic('[TEST21] Web retry registration completed');
 }
@@ -12630,9 +12575,7 @@ async function runSenderOfflineSetup(page, simulatorUdid, androidSerial) {
 
     await page.goto(scenario.web.url, { waitUntil: 'domcontentloaded' });
     await unlockWithPasskeyIfNeeded(page);
-    await page.getByPlaceholder('vault name').fill(scenario.vault.name);
-    await page.getByRole('button', { name: 'Set Vault Name' }).click();
-    await page.getByRole('button', { name: 'Join', exact: true }).click();
+    await requestWebVaultJoin(page, scenario.vault.name);
     await androidTest.waitForMarker('E2E: ANDROID_WEB_JOIN_APPROVED', 180_000);
     await page.getByRole('button', { name: '+ Add Secret' }).waitFor({ timeout: 120_000 });
 
@@ -12673,9 +12616,7 @@ async function runSenderOfflineSetup(page, simulatorUdid, androidSerial) {
 
     await page.goto(scenario.web.url, { waitUntil: 'domcontentloaded' });
     await unlockWithPasskeyIfNeeded(page);
-    await page.getByPlaceholder('vault name').fill(scenario.vault.name);
-    await page.getByRole('button', { name: 'Set Vault Name' }).click();
-    await page.getByRole('button', { name: 'Join', exact: true }).click();
+    await requestWebVaultJoin(page, scenario.vault.name);
     await iosTest.waitForMarker('E2E: IOS_WEB_JOIN_APPROVED', 180_000);
     await page.getByRole('button', { name: '+ Add Secret' }).waitFor({ timeout: 120_000 });
 
@@ -13032,7 +12973,7 @@ async function cloneVirtualAuthenticator(targetPage) {
 async function unlockWithPasskeyIfNeeded(page) {
   const createPasskeyButton = page.getByRole('button', { name: 'Create Passkey' });
   const authenticateButton = page.getByRole('button', { name: 'Authenticate with Passkey' });
-  const vaultNameInput = page.getByPlaceholder('vault name');
+  const registrationReady = webEntryReady(page);
   const secretsLink = page.getByRole('link', { name: 'Secrets', exact: true });
   const authError = page.locator('[data-slot="dialog-content"] .text-destructive').first();
 
@@ -13078,7 +13019,7 @@ async function unlockWithPasskeyIfNeeded(page) {
       await authControl.click();
 
       const outcome = await Promise.race([
-        vaultNameInput.waitFor({ state: 'visible', timeout: 30_000 }).then(() => 'ready'),
+        registrationReady.waitFor({ state: 'visible', timeout: 30_000 }).then(() => 'ready'),
         secretsLink.waitFor({ state: 'visible', timeout: 30_000 }).then(() => 'ready'),
         authError.waitFor({ state: 'visible', timeout: 30_000 }).then(() => 'error'),
       ]);
@@ -13094,7 +13035,7 @@ async function unlockWithPasskeyIfNeeded(page) {
     }
 
     await Promise.race([
-      vaultNameInput.waitFor({ state: 'visible', timeout: 30_000 }),
+      registrationReady.waitFor({ state: 'visible', timeout: 30_000 }),
       secretsLink.waitFor({ state: 'visible', timeout: 30_000 }),
     ]);
   } catch (error) {
@@ -14361,8 +14302,13 @@ async function main() {
   }
 
   await prepareLocalEnvironmentGuard();
-  await ensureIosFfi({ coreRoot, composeRoot, runAndWait, evidenceDirectory: artifactsDirectory, onEvent: writeDiagnostic });
-  if (reuseProvenArtifacts) verifyIosXcodeBuild({ derivedDataPath: iosDerivedDataPath });
+  if (registrationOnly && registrationPlatforms.some((platform) => platform !== 'web') && !reuseProvenArtifacts) {
+    throw new Error('Test51 native cases require the parent one-time F2 native/app/test build handoff before any clients start');
+  }
+  if (!registrationOnly || registrationPlatforms.includes('ios')) {
+    await ensureIosFfi({ coreRoot, composeRoot, runAndWait, evidenceDirectory: artifactsDirectory, onEvent: writeDiagnostic });
+    if (reuseProvenArtifacts) verifyIosXcodeBuild({ derivedDataPath: iosDerivedDataPath });
+  }
 
   console.log(`\n=== ${scenario.name} ===`);
   approvalCoordinator = await startApprovalCoordinator();
@@ -14413,7 +14359,8 @@ async function main() {
   await startNetworkLossGates();
 
   console.log('5. Starting Web in a visible browser');
-  run('npm', ['run', 'dev', '--', '--host', 'localhost', '--port', '5173'], { cwd: webDirectory });
+  const webEndpoint = new URL(scenario.web.url);
+  run('npm', ['run', 'dev', '--', '--host', webEndpoint.hostname, '--port', webEndpoint.port || '5173', '--strictPort'], { cwd: webDirectory });
   await waitForHttp(scenario.web.url);
 
   browserInstance = await chromium.launch({ headless: false });
@@ -14426,6 +14373,53 @@ async function main() {
   await configurePrimaryTestPage(page);
   primaryVirtualAuthenticator = await setupVirtualAuthenticator(page);
   await preparePrimaryWebClient(page);
+
+  if (registrationOnly) {
+    let simulatorUdid = null;
+    let androidSerial = null;
+    if (registrationPlatforms.includes('ios')) {
+      simulatorUdid = await prepareIosSimulator();
+      verifyIosXcodeBuild({ derivedDataPath: iosDerivedDataPath });
+      await installBuiltIosTestApps({ simulatorUdid, derivedDataPath: iosDerivedDataPath,
+        appBundleId: scenario.ios.bundleId, runAndWait, runAndCapture });
+    }
+    if (registrationPlatforms.includes('android')) {
+      await verifyAndroidApkFfiProvenance();
+      androidSerial = await prepareAndroidEmulator();
+      await installAndVerifyAndroidE2eApps({ serial: androidSerial, appBundleId: scenario.android.bundleId,
+        composeRoot, prebuiltApks: { app: androidAppApkPath, test: androidTestApkPath }, runAndWait, runAndCapture });
+      await captureInstalledAndroidAppProvenance(androidSerial);
+    }
+    if (!reuseProvenArtifacts) await recordFreshBuildProvenance();
+    const result = await runRegistrationCase({ scenario, page, approvalCoordinator, artifactsDirectory,
+      proveIosLocalReset: async ({ expectPresent }) => {
+        if (!['declined-retry', 'back-retry'].includes(scenario.registrationCase.outcome)) throw new Error('iOS cleanup oracle applies only to an incomplete registration');
+        const { stdout } = await runAndCapture('xcrun', ['simctl', 'get_app_container', simulatorUdid, scenario.ios.bundleId, 'app']);
+        const identity = resolveIosRegistrationKeychainIdentity({ appBundlePath: stdout.trim(), expectedBundleId: scenario.ios.bundleId });
+        const present = readIosRegistrationMasterKeyPresence({ simulatorUdid, identity });
+        if (present !== expectPresent) throw new Error(expectPresent
+          ? 'iOS Pending identity did not expose its scoped Master Key presence; cleanup proof is unavailable'
+          : 'iOS Back reached01 but retained its scoped unregistered Master Key');
+      },
+      onEvent: (message) => { console.log(message); writeDiagnostic(message); },
+      startNativeActor: async (platform, registrationCase) => platform === 'ios'
+        ? startIosJoinTest(simulatorUdid, { testClass: 'CaseEightIosBothOfflineUITest', testMethod: 'handleRegistrationForTest51',
+          label: 'iOS registration-only actor', environment: { E2E_REGISTRATION_CASE: JSON.stringify(registrationCase) } })
+        : startAndroidStepTest(androidSerial, { testClass: 'metasecret.project.com.Case51AndroidRegistrationTest',
+          testMethod: 'handleRegistrationForTest51', label: 'Android registration-only actor',
+          role: registrationCase.actor, cycle: 0, step: registrationCase.stage, registrationCase }),
+      cancelActors: async (actors) => {
+        await Promise.all(actors.map((actor) => actor.cancelAndJoin ? actor.cancelAndJoin() : actor.child?.kill('SIGTERM')));
+        if (androidSerial) await stopAndroidApplication(androidSerial);
+        if (simulatorUdid) await stopIosApplication(simulatorUdid);
+        await Promise.allSettled(actors.filter((actor) => actor.child).map((actor) => actor.result));
+      },
+    });
+    writeDiagnostic(`[REGISTRATION RESULT] ${JSON.stringify(result)}`);
+    console.log(`✅ Test51 ${result.id} passed; ${result.markers} completed markers; no Secret operations`);
+    await stopProcesses();
+    process.exit(0);
+  }
 
   // Clean the iOS simulator before Android starts. The Android helper
   // approves the first pending join request, so a left-over iOS UI-test app
@@ -14995,9 +14989,7 @@ async function main() {
   // boundaries for this scenario.
   await page.goto(scenario.web.url, { waitUntil: 'domcontentloaded' });
   await unlockWithPasskeyIfNeeded(page);
-  await page.getByPlaceholder('vault name').fill(scenario.vault.name);
-  await page.getByRole('button', { name: 'Set Vault Name' }).click();
-  await page.getByRole('button', { name: 'Join', exact: true }).click();
+  await requestWebVaultJoin(page, scenario.vault.name);
   // The Android UI helper allows 180s for the pending join row to appear.
   // Keep the outer marker deadline longer so teardown does not kill it first.
   await androidTest.waitForMarker('E2E: ANDROID_WEB_JOIN_APPROVED', 210_000);
