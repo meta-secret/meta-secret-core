@@ -4,6 +4,62 @@ version: "3"
 # Never run docker buildx bake|build directly; use: task <target>
 
 tasks:
+  apple-infra-test:
+    desc: Test Apple infrastructure locally without remote effects
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    cmds:
+      - python3 -m unittest discover -s infra/apple -p 'test_*.py' -v
+
+  apple-config-check:
+    desc: Validate explicit Apple public profile (default disabled)
+    cmds:
+      - python3 infra/apple/apple_infra.py check
+
+  apple-prepare:
+    desc: Write ignored Apple-only exports and optional local tunnel config
+    cmds:
+      - python3 infra/apple/apple_infra.py prepare
+
+  apple-render:
+    desc: Render production/disabled Kubernetes manifest locally with KCL
+    cmds:
+      - python3 infra/apple/apple_infra.py render
+
+  apple-tunnel-check:
+    desc: Check real Cloudflared ingress and KCL offline (no connector/deploy)
+    cmds:
+      - python3 infra/apple/apple_infra.py verify
+
+  apple-local-server:
+    desc: Explicitly run existing local server with owned migrated SQLite
+    cmds:
+      - python3 infra/apple/apple_infra.py local-run
+
+  apple-local-smoke:
+    desc: Bounded real owned SQLite/server/broker smoke on free port3000
+    cmds:
+      - python3 infra/apple/apple_infra.py local-smoke
+
+  apple-infra-syntax:
+    desc: Check infrastructure Python and root wrapper syntax without builds
+    cmds:
+      - python3 -c "from pathlib import Path; [compile(p.read_text(), str(p), 'exec') for p in Path('infra/apple').glob('*.py')]"
+      - bash -n ../scripts/deploy-server.sh
+
+  apple-infra-coverage:
+    desc: Measure Python helper statements with stdlib trace (no Rust/branch metric)
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    cmds:
+      - python3 -m trace --count --missing --summary --coverdir infra/.apple/coverage --ignore-module importlib,encodings,unittest --module unittest discover -s infra/apple -p 'test_*.py'
+
+  apple-taskomatic-offline:
+    desc: Verify fresh taskomatic Task/helper/KCL disabled and synthetic env offline
+    cmds:
+      - docker run --rm --pull never --network none localhost/taskomatic:latest k8s:generate_meta_server_deployment_yaml
+      - docker run --rm --pull never --network none -e APPLE_EMAIL_SERVICE_ID=org.example.infra-image-check -e APPLE_EMAIL_CALLBACK_URL=https://api.meta-secret.org/apple/callback -e APPLE_EMAIL_WEB_ORIGINS=https://meta-secret.github.io localhost/taskomatic:latest k8s:generate_meta_server_deployment_yaml
+
   default:
     cmds:
       - task -l
@@ -84,6 +140,11 @@ tasks:
     desc: Build and load meta-server image
     cmds:
       - docker buildx bake --load meta-server-image
+
+  meta-server-push:
+    desc: Build and push only meta-server (requires explicit deployment authorization)
+    cmds:
+      - docker buildx bake --push meta-server-image
 
   web:
     desc: Build and load web image

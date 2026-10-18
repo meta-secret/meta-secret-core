@@ -41,6 +41,12 @@ After any `Cargo.toml` change: `task generate-recipe`.
 | Build all images | `task build` |
 | Build + push | `task push` |
 | Build meta-server | `task meta-server` |
+| Apple infra unit/config/syntax | `task apple-infra-test`, `task apple-config-check`, `task apple-infra-syntax` |
+| Real offline Cloudflared/KCL | `CLOUDFLARED_BIN=… KCL_BIN=… task apple-tunnel-check` |
+| Apple-only ignored exports / KCL | `task apple-prepare`, `task apple-render` (explicit profile pointers) |
+| Owned local HTTP smoke | `task apple-local-smoke` (free3000; no accounts/tunnel) |
+| Changed taskomatic image | `task taskomatic`, then `task apple-taskomatic-offline` |
+| Explicit future server push | `task meta-server-push` (separate authorization required) |
 | Build web image | `task web` |
 | Export web dist locally | `task web-local` |
 | Export wasm pkg locally | `task wasm-local` |

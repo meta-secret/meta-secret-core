@@ -34,6 +34,7 @@ meta-secret/web-cli/ui/bun.lock
 
 infra/.env
 infra/.secret
+infra/.apple/
 
 # Local ReDB databases and master key files (meta-secret CLI, any cwd)
 **/*.redb

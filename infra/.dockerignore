@@ -1,0 +1,5 @@
+.apple/
+.env
+.secret
+k8s/meta-secret-server/build/
+**/__pycache__/
