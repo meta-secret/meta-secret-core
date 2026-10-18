@@ -11,13 +11,28 @@ The owner approved the original five-path mark with fills `#2C2E2F`, `#555B5D`,
 | `meta-secret/web-cli/ui/public/favicon.ico` | Current HTML favicon; 256×256 PNG-backed ICO | `exports/web/favicon.ico` |
 | `meta-secret/web-cli/ui/public/favicon1.ico` | Served legacy alias | Same ICO |
 | `meta-secret/web-cli/ui/public/favicon2.ico` | Served legacy alias | Same ICO |
+| `meta-secret/web-cli/ui/public/metasecret-gray.svg` | Passkey setup/unlock dialog; 80px black backplate | Exact canonical `metasecret-gray.svg` |
 | `docs/img/meta-secret-logo.png` | Current README and technical presentation mark | Same 400px PNG |
 
 The exact manifest and maintenance instructions live at workspace-root
 `design-system/brand/manifest.json` and `design-system/brand/README.md`. Core
 builds and runtime do not depend on the sibling package or renderer. Files are
 copied only after shared integrity checks and independent mask/visual approval.
-The existing Orbit design package, client source, styles and lock stay unchanged.
+The existing Orbit design package, styles and lock stay unchanged.
+
+The Passkey dialog uses a finite local copy of the canonical five-path SVG:
+SHA-256 `ee3bcc2793983da575f7723703115b9c89c18267ed1c97f006226c84b354d69b`.
+Copy the source SVG directly; do not redraw, tint or modify the shared brand
+package/manifest. Web builds copy this public SVG unchanged into `dist`.
+
+Its wording distinguishes “Set up MetaSecret” for a new browser credential from
+“Unlock MetaSecret” for an existing one. It describes a passkey without promising
+an existing Vault or biometric hardware as the only method. The prompt remains
+in its existing position: authentication obtains the local Master Key before
+Core initialization and registration. Before that initialization, unknown
+membership does not prove that no Vault exists. Moving the prompt behind an
+Orbit-first entry remains an open product/security decision; this visual update
+does not change auth/store/router/Core/storage ordering or any button action.
 
 The 400px PNG keeps its original pixel geometry, glow support and opaque alpha;
 only brand tone changes. Public JPEG/ICO aliases deliberately replace older
