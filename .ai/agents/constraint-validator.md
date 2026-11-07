@@ -25,14 +25,17 @@ Validate implementation plan against architectural constraints (Stage 3.5). Acts
   - 3 devices: 3 SHARES (SSS with k=2); 4+ devices rejected
 - [ ] If device join planned: resharing will happen (Collect → Reshare → Distribute)
 - [ ] If device removal planned: resharing will happen + k stays same or decreases
-- [ ] If 2 devices: removal is blocked (no other device can survive alone)
+- [ ] Removal follows the current Core policy: 3→2 requires the remaining
+      eligible member's decision; 2→1 uses the initiator's local confirmation;
+      self-removal and 1→0 are forbidden
 - [ ] Transition logic correct (1→2→3 or reverse); 4+ joins rejected
 
 ### 2. Approval Requirements
 
 - [ ] Device JOIN requires approval from other device (biometric signature)
 - [ ] Secret RESTORE requires approval from other device (biometric signature)
-- [ ] Device REMOVE requires approval from other device (biometric signature)
+- [ ] Device REMOVE uses the required confirmation/signature for the current
+      transition (3→2 remote approval; 2→1 local confirmation)
 - [ ] 1-device case: no approval needed (trivial case)
 - [ ] All approval checks include biometric validation
 

@@ -124,6 +124,8 @@ build_so() {
 
     echo "  Creating $abi .so..."
     "$clang" -shared \
+      -Wl,-z,max-page-size=16384 \
+      -Wl,-z,common-page-size=16384 \
       -o "$so_file" \
       -Wl,--whole-archive "$static_lib" \
       -Wl,--no-whole-archive \

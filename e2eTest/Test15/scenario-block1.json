@@ -36,10 +36,10 @@
     "expectedCycles": 1,
     "cyclePlan": [
       {
-        "block": "old-recovery-declined-by-membership-removal",
+        "block": "old-recovery-declined-by-explicit-fifo-response",
         "count": 1,
         "senders": [{ "platform": "web", "secret": "default" }],
-        "approvals": [],
+        "approvals": [{"platform":"android","secret":"default","action":"decline"}],
         "expectedOutcome": "declined"
       }
     ]

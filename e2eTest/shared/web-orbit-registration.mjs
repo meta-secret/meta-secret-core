@@ -1,6 +1,6 @@
 const DEFAULT_TIMEOUT = 120_000;
 const region = (page) => page.getByRole('region', { name: 'Vault registration', exact: true });
-const secrets = (page) => page.getByRole('link', { name: 'Secrets', exact: true });
+const secrets = (page) => page.getByTestId('liveboard-secrets-open').or(page.locator('.secrets-screen')).first();
 const alert = (page) => region(page).getByRole('alert');
 const scene = (page) => page.locator('.orbit-registration .orbit-turn:not([inert])').first();
 

@@ -3,7 +3,7 @@
 Each block performs one membership-change scenario, then validates every surviving member:
 
 1. A member starts one recovery request.
-2. A different member approves removal of the selected old device. The pending recovery must become `Declined`.
+2. In block 1, Android explicitly declines Web’s visible Recover/count2 before approving the next Remove iOS/count1. The canonical B decline precedes membership change. Blocks 2/3 retain the unanswered Recover declined by membership removal.
 3. The CLI joins as the replacement third member and must observe its fresh `Split` claim.
 4. The remaining three members each initiate one recovery request. Another remaining member approves it, and the sender verifies the recovered secret.
 

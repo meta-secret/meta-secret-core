@@ -4,6 +4,34 @@ version: "3"
 # Never run docker buildx bake|build directly; use: task <target>
 
 tasks:
+  android-native-coverage:
+    desc: Measure focused verifier fixtures with stdlib trace (optional cover directory after --)
+    vars:
+      COVER_DIR: '{{default ".ai/artifacts/run/android-native-coverage" .CLI_ARGS}}'
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    cmds:
+      - python3 -m trace --count --summary --missing --coverdir "{{.COVER_DIR}}" --module unittest discover -s meta-secret/mobile/scripts -p 'test_verify_android_native.py'
+
+  android-native-build:
+    desc: Build existing Android native libraries and generate Compose bindings
+    cmds:
+      - bash meta-secret/mobile/scripts/build-android.sh
+
+  android-native-verify:
+    desc: Inspect native artifact (use -- --role app|instrumentation APK or --abi ABI ELF)
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    cmds:
+      - python3 meta-secret/mobile/scripts/verify-android-native.py {{.CLI_ARGS}}
+
+  android-native-test:
+    desc: Test Android native ELF and APK layout verifier without SDK builds
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    cmds:
+      - python3 -m unittest discover -s meta-secret/mobile/scripts -p 'test_verify_android_native.py' -v
+
   apple-infra-test:
     desc: Test Apple infrastructure locally without remote effects
     env:
@@ -204,7 +232,7 @@ tasks:
     desc: Verify Rust coverage with the workflow's 80 percent threshold
     dir: meta-secret
     env:
-      RUST_MIN_STACK: "8388608"
+      RUST_MIN_STACK: "33554432"
     cmds:
       - cargo tarpaulin --skip-clean --out Html --timeout 300 --fail-under 80
 
@@ -212,7 +240,7 @@ tasks:
     desc: Run all regular Rust workspace tests locally
     dir: meta-secret
     env:
-      RUST_MIN_STACK: "8388608"
+      RUST_MIN_STACK: "33554432"
     cmds:
       - cargo test --all
 

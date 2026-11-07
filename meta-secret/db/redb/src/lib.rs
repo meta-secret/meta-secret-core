@@ -1,3 +1,4 @@
+mod private_recovery_store;
 use anyhow::Result;
 use async_trait::async_trait;
 use meta_secret_core::node::common::model::IdString;
@@ -143,7 +144,15 @@ impl DeleteCommand for ReDbRepo {
     }
 }
 
-impl KvLogEventRepo for ReDbRepo {}
+impl KvLogEventRepo for ReDbRepo {
+    fn server_recovery_response_store(
+        &self,
+    ) -> Result<
+        &dyn meta_secret_core::node::db::repo::recovery_response_store::ServerRecoveryResponseStore,
+    > {
+        Ok(self)
+    }
+}
 
 #[async_trait(? Send)]
 impl DbCleanUpCommand for ReDbRepo {
@@ -157,6 +166,20 @@ impl DbCleanUpCommand for ReDbRepo {
             }
         };
 
+        if write_txn
+            .delete_table(private_recovery_store::PRIVATE_TABLE)
+            .is_err()
+        {
+            error!("Private Recovery cleanup unavailable");
+            return;
+        }
+        if write_txn
+            .open_table(private_recovery_store::PRIVATE_TABLE)
+            .is_err()
+        {
+            error!("Private Recovery cleanup unavailable");
+            return;
+        }
         // Try to clear the table by recreating it
         if let Err(err) = write_txn.delete_table(LOG_EVENTS_TABLE) {
             error!("Failed to delete table during cleanup: {:?}", err);

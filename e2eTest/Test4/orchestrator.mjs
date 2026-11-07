@@ -1,3 +1,12 @@
+import { prepareIosCallerIdentity, prepareScopedIosInvocation, iosGeneratedTemplateProof } from '../shared/ios-test-identity.mjs';
+import { loadBatchProducts, assertBatchProductsCurrent } from '../shared/batch-product-consumer.mjs';
+import { buildFifoContext, matchFifoHead, validateFifoTerminal, createFifoPublication, nativeHeadChoices } from '../shared/recovery-fifo.mjs';
+import { createMatchedMarkerChoices } from '../shared/matched-marker-choice.mjs';
+import { waitForFifoCanonicalSnapshot } from '../shared/web-recovery-fifo.mjs';
+import { openWebLiveboard, openWebSecrets, webSecretCard, createWebLiveboardSecret, waitWebSecretValue, hideWebSecret, waitWebCardAction, startWebLiveboardRecovery, assertWebSecretConcealed } from '../shared/web-liveboard-actions.mjs';
+import { approveWebJoin, openWebIncoming, decideWebIncoming, waitWebIncomingGone, observedWebIncoming, assertWebInboxEmpty, assertWebNoStaleIncomingKinds, waitWebIncomingActionOrGone } from '../shared/web-liveboard-inbox.mjs';
+import { inspectWebLiveboardMember, assertWebLiveboardMembers, removeWebLiveboardMember, declineWebLiveboardRemoval } from '../shared/web-liveboard-members.mjs';
+import { installWebOperationObserver, waitWebOperation, disposeWebOperationObserver } from '../shared/web-operation-observer.mjs';
 import { navigateTest51WebEntry } from '../Test51/web-navigation.mjs';
 import { createWebVault, requestWebVaultJoin, requestRejectedWebVaultJoin, retryWebVaultWithNewEmail, waitForWebAfterRemoval, webEntryReady, waitForWebEntry } from '../shared/web-orbit-registration.mjs';
 import { createCliActorDirectory } from '../Test50/cli-workspace.mjs';
@@ -5,9 +14,14 @@ import { createScopedSecretIdCollector } from '../shared/scoped-secret-id.mjs';
 import { deletionCycleProgress } from '../Test50/progress.mjs';
 import { environmentModeFromSnapshot } from '../shared/batch-environment.mjs';
 import { runDeletionBlock } from '../Test50/business.mjs';
+import { resolveDeletionAuthProfile, deletionCoverage } from '../Test50/plan.mjs';
 import { runRegistrationCase } from '../Test51/business.mjs';
 import { resolveIosRegistrationKeychainIdentity, readIosRegistrationMasterKeyPresence } from '../shared/ios-registration-keychain-oracle.mjs';
 import { createIosSelectedSuiteActor } from '../shared/ios-selected-suite.mjs';
+import { createRecoveryPhaseRegistry, handleRecoveryPhaseRequest, abortRecoveryPhaseHarness } from '../shared/recovery-phase.mjs';
+import { runTest22IosShow } from '../shared/test22-ios-show-phase.mjs';
+import { assertTest25ShowScope, runTest25IosShow } from '../shared/test25-ios-show-phase.mjs';
+import { assertRecoveryShowScope, runRecoveryIosShow } from '../shared/recovery-ios-show-phase.mjs';
 import { createDeletionNetworkGate } from '../Test50/network-gate.mjs';
 import { ensureIosFfi, prepareIosXcodeBuild, recordIosXcodeBuild, verifyIosXcodeBuild } from '../shared/ios-ffi-provenance.mjs';
 import { hashArtifactTree } from '../shared/artifact-tree.mjs';
@@ -19,6 +33,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   readdirSync,
   rmSync,
   statfsSync,
@@ -26,7 +41,7 @@ import {
 } from 'node:fs';
 import { resolve, dirname, basename, relative } from 'node:path';
 import { execFileSync, spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { createServer, request as httpRequest } from 'node:http';
 import { createConnection } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -44,13 +59,14 @@ import {
   androidInstrumentationAdbArguments,
   androidInstrumentationDiagnosticArguments,
   superviseAndroidInstrumentation,
+  assertAndroidInstrumentationPassed,
 } from '../shared/android-instrumentation.mjs';
 import { openVisibleIosDeviceUi } from '../shared/visible-ios-ui.mjs';
 import { installAndVerifyAndroidE2eApps, installBuiltIosTestApps } from '../shared/platform-readiness.mjs';
 import { resetE2eNativeAppState } from '../shared/e2e-state-reset.mjs';
 import { markerScan, markerScanStream, ssClaimsInvalidationMarker } from '../shared/process-marker.mjs';
-import { recoveryClaimIds, selectNewPendingRecoveryClaim } from '../shared/test15-recovery-claims.mjs';
-import { updateReadinessReport } from '../shared/platform-supervisor.mjs';
+import { recoveryClaimIds, selectNewPendingRecoveryClaim, test15FifoContext, assertTest15FifoTransition, waitForTest15FifoSnapshot, runTest15FifoDecisions } from '../shared/test15-recovery-claims.mjs';
+import { assertExistingDeviceRun, readExistingAndroidAvd, iosSerialTestArguments, updateReadinessReport, resolveIosScenarioSimulator, resolveAndroidScenarioAvdName, verifyOwnedAndroidScenarioRuntime } from '../shared/platform-supervisor.mjs';
 import { createHarnessShutdown, formatHarnessShutdownError } from '../shared/harness-shutdown.mjs';
 import { recycleWebPage, webPageRefreshCycles } from '../shared/web-page-recycle.mjs';
 import { createPostCycleActions } from '../shared/post-cycle-actions.mjs';
@@ -70,6 +86,8 @@ const diagnosticAndroidVerbose = process.env.E2E_DIAGNOSTIC_ANDROID_VERBOSE === 
 const scenarioPath = resolve(root, scenarioArgument ?? 'scenario.json');
 const scenario = JSON.parse(readFileSync(scenarioPath, 'utf8'));
 const testNumber = scenario.testNumber ?? 4;
+// Pure admission precedes identity, environment, server, install and actor ports.
+const deletionAuthProfile = scenario.mode === 'vault-secret-deletion' ? resolveDeletionAuthProfile(process.env, scenario) : undefined;
 if (process.env.E2E_RANGE_RUN === '1') scenario.runId = scenario.deletionBlock ? `${process.env.E2E_RUN_ID}-${scenario.deletionBlock.id}` : scenario.registrationCase ? `${process.env.E2E_RUN_ID}-${scenario.registrationCase.id}` : process.env.E2E_RUN_ID;
 const registrationOnly = scenario.mode === 'registration-only';
 const registrationPlatforms = scenario.registrationPlatforms ?? [];
@@ -87,6 +105,8 @@ const buildProvenancePath = provenanceManifestPath(artifactsDirectory, buildProv
 const reuseProvenArtifacts = process.env.E2E_REUSE_PROVEN_ARTIFACTS === '1';
 const bootstrapBuildProvenance = process.env.E2E_BOOTSTRAP_BUILD_PROVENANCE === '1';
 let buildProvenanceVerified = false;
+let batchProducts;
+let iosIdentity;
 
 function secretConfigFor(keyOrName) {
   if (keyOrName && secretConfigs[keyOrName]) return secretConfigs[keyOrName];
@@ -209,6 +229,73 @@ const recoveryCycles = rawRecoveryCycles.map((cycle, index) => {
     secondApprover: approvals[1]?.platform,
   };
 });
+// Closed TEST metadata only. These functions perform no UI, IO or domain action.
+function selectedCurrentRecoveryProfile(number = testNumber, mode = scenario.mode) {
+  const profiles = Object.freeze({
+    24: ['ios-multi-secret-lifecycle', 13, 39, 27],
+    25: ['web-secondary-creator-lifecycle', 13, 39, 27],
+    26: ['android-secondary-creator-lifecycle', 13, 39, 27],
+    27: ['ios-secondary-creator-lifecycle', 13, 39, 27],
+    28: ['web-secondary-creator-lifecycle', 1, 27, 27],
+    29: ['android-distributed-creator-lifecycle', 1, 27, 27],
+    30: ['ios-distributed-creator-lifecycle', 1, 27, 27],
+    31: ['web-secondary-creator-lifecycle', 1, 27, 27],
+    32: ['android-owner-creator-lifecycle', 1, 27, 27],
+    33: ['ios-two-secret-owner-lifecycle', 1, 27, 27],
+    34: ['web-secondary-creator-lifecycle', 1, 18, 18],
+    35: ['android-secondary-creator-lifecycle', 1, 27, 27],
+    36: ['ios-distributed-creator-lifecycle', 1, 27, 27],
+    46: ['web-distributed-creator-removal-rejoin-recovery-lifecycle', 7, 33, 27],
+    47: ['web-distributed-creator-declined-removal-recovery-lifecycle', 1, 27, 27],
+    48: ['android-distributed-creator-declined-removal-recovery-lifecycle', 1, 27, 27],
+    49: ['ios-distributed-creator-declined-removal-recovery-lifecycle', 1, 27, 27],
+  });
+  const spec = Number.isSafeInteger(number) && Object.hasOwn(profiles, number) ? profiles[number] : null;
+  return spec && mode === spec[0] ? {tag: `test${number}:${spec[0]}`, first: spec[1], last: spec[2]} : null;
+}
+
+function newCurrentRecoveryBinding(cycle, sender) {
+  const selected = selectedCurrentRecoveryProfile(), attempt = process.env.E2E_TEST_ATTEMPT;
+  const rows = recoveryCycles.filter(row => row.number === cycle.number);
+  if (!selected || rows.length !== 1 || rows[0] !== cycle || cycle.kind === 'direct-show'
+    || cycle.number < selected.first || cycle.number > selected.last || cycle.senders.length !== 1
+    || cycle.approvals.length !== 1 || cycle.senders[0] !== sender
+    || process.env.E2E_RANGE_RUN !== '1' || process.env.E2E_RUN_ID !== scenario.runId
+    || !/^[1-9][0-9]{0,8}(?![\s\S])/.test(attempt ?? '')) {
+    throw new Error('Scoped recovery requires the actual range owner and attempt');
+  }
+  return Object.freeze({version: 1, runId: scenario.runId, testNumber, attempt: Number(attempt),
+    blockId: cycle.block, cycle: cycle.number, logicalStep: 1, mode: scenario.mode,
+    contextId: randomBytes(16).toString('hex'), sender,
+    participants: Object.freeze(['web', 'android', 'ios'].map(platform => Object.freeze({platform,
+      role: platform === sender ? 'sender' : 'receiver', invocationId: randomBytes(16).toString('hex')})))});
+}
+
+function currentNativeRecoveryLaunch(phase, binding, launch) {
+  if (!phase || launch.testMethod !== 'handleRecoveryStep') return {};
+  const selected = selectedCurrentRecoveryProfile(), rows = recoveryCycles.filter(row => row.number === launch.cycle);
+  const row = rows[0], participant = binding?.participants.find(item => item.platform === launch.platform);
+  if (!selected || !binding || !participant || rows.length !== 1 || row.kind === 'direct-show'
+    || row.number !== binding.cycle || row.block !== binding.blockId
+    || row.senders[0] !== binding.sender || !['android', 'ios'].includes(launch.platform)
+    || launch.role !== (launch.platform === binding.sender ? 'sender' : 'receiver')) {
+    throw new Error('Current native recovery descriptor does not match the selected invocation');
+  }
+  // Independent registered primitives/current source tuple precede contextFor.
+  const actualNativeLaunchDescriptor = Object.freeze({version: 1, runId: scenario.runId,
+    testNumber, attempt: binding.attempt, blockId: row.block, cycle: row.number, logicalStep: 1,
+    mode: scenario.mode, contextId: binding.contextId, invocationId: participant.invocationId,
+    platform: launch.platform, role: launch.role});
+  const recoveryShowPhase = launch.platform === 'ios' && launch.role === 'sender'
+    && [26,27,28,29,30,31,32,33,34,35,36,46,47,48,49].includes(testNumber)
+    ? Object.freeze({testNumber,role:'sender',nonce:randomBytes(16).toString('hex'),
+      cycle:row.number,step:1,runId:actualNativeLaunchDescriptor.runId,
+      contextId:actualNativeLaunchDescriptor.contextId,invocationId:actualNativeLaunchDescriptor.invocationId}) : undefined;
+  return {recoveryPhase: phase, recoveryPhaseSelectedProfile: selected.tag,
+    recoveryPhaseExpected: JSON.stringify(actualNativeLaunchDescriptor),
+    ...(recoveryShowPhase ? {recoveryShowPhase} : {})};
+}
+
 // The native UI actor's showAcceptedRecoveryAfterOffline assertion waits up to
 // 180 seconds for the revealed-secret UI. Keep the parent marker deadline
 // beyond that child deadline so the coordinator does not cancel XCTest before
@@ -250,6 +337,8 @@ let activeServerProcess;
 let currentCycleForDiagnostics = null;
 let lastAnnouncedRoleAssignment = null;
 let browserInstance;
+let genericIosActor;
+let genericIosBusinessPromise;
 let primaryVirtualAuthenticator;
 let simulatorUdidForCleanup;
 let androidSerialForCleanup;
@@ -353,9 +442,21 @@ const maxWatchedOutputChars = 128_000;
 const maxBrowserDiagnosticEntries = 200;
 const maxBrowserDiagnosticLineChars = 8_000;
 
+function readDeclaredDevicePasscodes(environment) {
+  const result = {};
+  for (const platform of ['ANDROID', 'IOS']) {
+    const value = environment[`E2E_${platform}_DEVICE_PASSCODE`];
+    if (value !== undefined && !/^[0-9]{4,16}$/.test(value)) {
+      throw new Error(`Declared ${platform} E2E PIN must contain4..16 digits (value omitted)`);
+    }
+    result[platform.toLowerCase()] = value;
+  }
+  return Object.freeze(result);
+}
+const declaredDevicePasscodes = readDeclaredDevicePasscodes(process.env);
+
 const sensitiveDiagnosticValues = [...new Set(
-  Object.values(secretConfigs)
-    .map((config) => config?.value)
+  [...Object.values(secretConfigs).map((config) => config?.value), ...Object.values(declaredDevicePasscodes)]
     .filter((value) => typeof value === 'string' && value.length > 0),
 )].sort((left, right) => right.length - left.length);
 const diagnosticRedactor = createDiagnosticRedactor(sensitiveDiagnosticValues);
@@ -428,11 +529,62 @@ function waitForBrowserConsole(page, predicate, timeoutMs = 120_000) {
 
 function startApprovalCoordinator(port = 5180) {
   const allowedApprovals = new Set();
+  const selectedRecoveryProfiles = Object.freeze({
+    24: ['ios-multi-secret-lifecycle', 13, 39, 27],
+    25: ['web-secondary-creator-lifecycle', 13, 39, 27],
+    26: ['android-secondary-creator-lifecycle', 13, 39, 27],
+    27: ['ios-secondary-creator-lifecycle', 13, 39, 27],
+    28: ['web-secondary-creator-lifecycle', 1, 27, 27],
+    29: ['android-distributed-creator-lifecycle', 1, 27, 27],
+    30: ['ios-distributed-creator-lifecycle', 1, 27, 27],
+    31: ['web-secondary-creator-lifecycle', 1, 27, 27],
+    32: ['android-owner-creator-lifecycle', 1, 27, 27],
+    33: ['ios-two-secret-owner-lifecycle', 1, 27, 27],
+    34: ['web-secondary-creator-lifecycle', 1, 18, 18],
+    35: ['android-secondary-creator-lifecycle', 1, 27, 27],
+    36: ['ios-distributed-creator-lifecycle', 1, 27, 27],
+    46: ['web-distributed-creator-removal-rejoin-recovery-lifecycle', 7, 33, 27],
+    47: ['web-distributed-creator-declined-removal-recovery-lifecycle', 1, 27, 27],
+    48: ['android-distributed-creator-declined-removal-recovery-lifecycle', 1, 27, 27],
+    49: ['ios-distributed-creator-declined-removal-recovery-lifecycle', 1, 27, 27],
+  });
+  const selectedRecoverySpec = Number.isSafeInteger(testNumber) && Object.hasOwn(selectedRecoveryProfiles, testNumber)
+    ? selectedRecoveryProfiles[testNumber] : null;
+  const selectedRecoveryProfile = selectedRecoverySpec && scenario.mode === selectedRecoverySpec[0]
+    ? `test${testNumber}:${selectedRecoverySpec[0]}` : null;
+  const isRecoveryKey = key => key === 'web-sender' || /^(android|ios)-(sender|approve|dismiss|show)-1$/.test(key);
+  const isWrongRecoveryStep = key => !isRecoveryKey(key) && /^(android|ios)-(sender|approve|dismiss|show)-[0-9]+$/.test(key);
+  const assertCurrentRecoveryGrant = (key, cycle) => {
+    if (testNumber === 24 || testNumber === 25) {
+      if (Number.isInteger(cycle) && cycle >= 13 && cycle <= 39) recoveryPhases?.assertCycleActive(cycle);
+    } else if (selectedRecoveryProfile) {
+      if (isWrongRecoveryStep(key)) throw new Error('Unknown recovery grant step');
+      if (isRecoveryKey(key)) recoveryPhases.assertCycleActive(cycle);
+    }
+  };
+  const recoveryPhases = selectedRecoveryProfile ? createRecoveryPhaseRegistry({selectedProfile: selectedRecoveryProfile}) : null;
+  let grantsFrozen = false;
+  const admit = () => { if (grantsFrozen) throw new Error('Scenario grants are frozen after failure'); };
+  const fifo = createFifoPublication({ runId: scenario.runId ?? `test-${testNumber}`, testNumber, blockId: scenarioArtifactLabel });
+  const fifoDecisions = new Set();
   const server = createServer((request, response) => {
+    if (recoveryPhases && handleRecoveryPhaseRequest(request, response, recoveryPhases)) return;
     const url = new URL(request.url, `http://${request.headers.host}`);
+    if (url.pathname === '/fifo') {
+      const raw = url.searchParams.get('cycle');
+      if (!/^[1-9][0-9]*$/.test(raw ?? '')) { response.writeHead(400).end(); return; }
+      const context = fifo.read(Number(raw));
+      response.writeHead(context ? 200 : 425, { 'content-type': 'application/json' });
+      response.end(JSON.stringify(context ?? { ready: false }));
+      return;
+    }
     if (url.pathname === '/scenario') {
       response.writeHead(200, { 'content-type': 'application/json' });
       response.end(JSON.stringify({
+        runId: scenario.runId ?? `test-${testNumber}`,
+        blockId: scenarioArtifactLabel,
+        testNumber,
+        fifoVersion: 1,
         vaultName: scenario.vault.name,
         secretConfig: secretConfigs,
         recoveryPlan: recoveryCycles,
@@ -446,6 +598,13 @@ function startApprovalCoordinator(port = 5180) {
       return;
     }
 
+    if (recoveryPhases) {
+      try {
+        if (grantsFrozen) throw new Error('Current recovery grants are frozen');
+        const cycle = Number(url.searchParams.get('cycle'));
+        assertCurrentRecoveryGrant(url.searchParams.get('platform'), cycle);
+      } catch { response.writeHead(410).end(); return; }
+    }
     const key = `${url.searchParams.get('platform')}:${url.searchParams.get('cycle')}`;
     response.writeHead(200, { 'content-type': 'text/plain' });
     response.end(allowedApprovals.has(key) ? 'allowed' : 'waiting');
@@ -454,7 +613,26 @@ function startApprovalCoordinator(port = 5180) {
   return new Promise((resolvePromise, reject) => {
     server.once('error', reject);
     server.listen(port, '0.0.0.0', () => resolvePromise({
+      freezeGrants() { grantsFrozen = true; recoveryPhases?.freeze(new Error('Scenario grants frozen')); },
+      registerRecoveryPhase(binding, onAbort) {
+        admit(); if (!recoveryPhases) throw new Error('Recovery phase is only available for an exact selected recovery profile');
+        return recoveryPhases.register(binding, onAbort);
+      },
+      publishFifoIdentities: (identities) => { admit(); return fifo.publishIdentities(identities); },
+      publishFifo: (context) => { admit(); return fifo.publish(context); },
+      allowFifo(platform, cycle, logicalStep, requestId) {
+        admit();
+        const context = fifo.require(cycle);
+        const request = context.requests.find((entry) => entry.requestId === requestId);
+        const approval = context.approvals.find((entry) => entry.logicalStep === logicalStep);
+        if (!request || !approval || approval.approverPlatform !== platform || approval.passId !== request.passId || !request.eligiblePeerIds.includes(context.identities[platform].deviceId)) throw new Error('FIFO allow does not match one published addressed request/step');
+        const key = `${cycle}:${requestId}`;
+        if (fifoDecisions.has(key)) throw new Error('FIFO request already allowed');
+        fifoDecisions.add(key); allowedApprovals.add(`${platform}-approve-${logicalStep}:${cycle}`);
+      },
       allow(platform, cycle) {
+        admit();
+        assertCurrentRecoveryGrant(platform, cycle);
         allowedApprovals.add(`${platform}:${cycle}`);
       },
       close() {
@@ -554,7 +732,7 @@ function run(command, args, options = {}) {
     env: {
       ...process.env,
       PATH: withAndroidSdkPath(
-        `/opt/homebrew/bin:/usr/local/bin:${process.env.PATH ?? ''}`,
+        [process.env.PATH, '/opt/homebrew/bin', '/usr/local/bin'].filter(Boolean).join(':'),
         androidSdkTools ?? { pathPrefix: '' },
       ),
       ...(options.env ?? {}),
@@ -626,11 +804,11 @@ const environmentArtifactRoots = [
   resolve(composeRoot, 'composeApp/src/androidMain/kotlin/com/metasecret/core/uniffi'),
 ];
 const wasmArtifactRoot = resolve(coreRoot, 'meta-secret/web-cli/ui/pkg');
-const androidAppApkPath = resolve(
+let androidAppApkPath = resolve(
   composeRoot,
   'composeApp/build/outputs/apk/debug/composeApp-debug.apk',
 );
-const androidTestApkPath = resolve(
+let androidTestApkPath = resolve(
   composeRoot,
   'composeApp/build/outputs/apk/androidTest/debug/composeApp-debug-androidTest.apk',
 );
@@ -985,7 +1163,7 @@ async function preflightSelectedRuntimes() {
   androidSdkTools = discoverAndroidSdk();
   const { stdout: avdOutput } = await runAndCapture(androidSdkTools.emulatorPath, ['-list-avds']);
   const avds = avdOutput.split(/\r?\n/).map((name) => name.trim()).filter(Boolean);
-  if (!avds.includes(scenario.android.avdName)) {
+  if (!avds.includes(resolveAndroidScenarioAvdName(scenario.android.avdName))) {
     throw new Error(
       `Android AVD "${scenario.android.avdName}" is unavailable. Installed AVDs: ${avds.join(', ') || '<none>'}. `
         + `Create it in Android Studio Device Manager or install it with ${androidSdkTools.emulatorPath} tooling.`,
@@ -995,15 +1173,7 @@ async function preflightSelectedRuntimes() {
   const { stdout: simulatorOutput } = await runAndCapture(
     'xcrun', ['simctl', 'list', 'devices', 'available', '-j'],
   );
-  const simulators = Object.values(JSON.parse(simulatorOutput).devices).flat();
-  const simulator = simulators.find((device) => device.name === scenario.ios.simulatorName);
-  if (!simulator) {
-    const availableNames = [...new Set(simulators.map((device) => device.name))];
-    throw new Error(
-      `iOS Simulator "${scenario.ios.simulatorName}" is unavailable. Available simulators: `
-        + `${availableNames.join(', ') || '<none>'}. Install the required Xcode simulator runtime/device.`,
-    );
-  }
+  const simulator = resolveIosScenarioSimulator({ simulatorName: scenario.ios.simulatorName, inventory: JSON.parse(simulatorOutput) });
 
   const { stdout: developerDirectoryOutput } = await runAndCapture('xcode-select', ['-p']);
   const developerDirectory = developerDirectoryOutput.trim();
@@ -1019,7 +1189,7 @@ async function preflightSelectedRuntimes() {
     android: {
       sdkRoot: androidSdkTools.sdkRoot,
       avd: scenario.android.avdName,
-      onlineSerial: await findOnlineAndroidAvd(androidSdkTools, scenario.android.avdName, runAndCapture),
+      onlineSerial: await findOnlineAndroidAvd(androidSdkTools, resolveAndroidScenarioAvdName(scenario.android.avdName), runAndCapture),
     },
     ios: { name: simulator.name, udid: simulator.udid, state: simulator.state, visibleUi },
   };
@@ -1077,7 +1247,10 @@ async function prepareLocalEnvironmentGuard() {
     if (uniqueModes[0] !== 'local') {
       throw new Error(`The range coordinator must set local mode before launching Test #${testNumber}; found ${uniqueModes[0]}`);
     }
-    if (reuseProvenArtifacts) await verifyOrBootstrapBuildProvenance();
+    if (reuseProvenArtifacts) {
+      if (batchProducts) buildProvenanceVerified = true;
+      else await verifyOrBootstrapBuildProvenance();
+    }
     writeDiagnostic('[ENV] range coordinator already verified local mode; skipping duplicate task set-env rebuild');
     return;
   }
@@ -1330,11 +1503,14 @@ function watchProcessOutput(command, args, options = {}) {
   const {
     displayArgs: requestedDisplayArgs,
     diagnosticRole,
+    recoveryPhase,
+    recoveryPlatform,
     ...processOptions
   } = options;
   let stdoutTail = '';
   let stderrTail = '';
   const markerScanTails = { stdout: '', stderr: '' };
+  const matchedMarkers = createMatchedMarkerChoices({ initialStreams: () => ({ ...markerScanTails }) });
   const redactionStreams = {
     stdout: diagnosticRedactor.createStream(),
     stderr: diagnosticRedactor.createStream(),
@@ -1343,8 +1519,11 @@ function watchProcessOutput(command, args, options = {}) {
   const scopedSecretIds = scenario.mode === 'vault-secret-deletion' && command === 'adb' ? createScopedSecretIdCollector() : null;
   const markerWaiters = new Set();
   let markerWaiterSequence = 0;
+  let showEpochObserver;
 
   const child = run(command, args, { ...processOptions, stdio: ['ignore', 'pipe', 'pipe'] });
+  // Arm only this fresh actual child stream; never scan accumulated diagnostic tails.
+  const recoveryObserver = recoveryPhase?.observer(recoveryPlatform, child);
   const emitSafeOutput = (sink, text, flush = false) => {
     const safeText = flush
       ? redactionStreams[sink].flush()
@@ -1360,13 +1539,16 @@ function watchProcessOutput(command, args, options = {}) {
   };
   const processOutput = (chunk, sink) => {
     const text = chunk.toString();
+    try { recoveryObserver?.push(sink, text); } catch (error) { recoveryPhase.abort(error); }
+    showEpochObserver?.push(sink, text);
     try { scopedSecretIds?.push(sink, text); } catch (error) {
-      scopedIdentityError = error; scopedSecretIds.close(error);
+      scopedIdentityError = error; scopedSecretIds.close(error); matchedMarkers.fail(error);
       for (const waiter of markerWaiters) { clearTimeout(waiter.timeout); waiter.reject(error); }
       markerWaiters.clear();
     }
     const previousMarkerScanTail = markerScanTails[sink];
     markerScanTails[sink] = appendBounded(previousMarkerScanTail, text);
+    matchedMarkers.push(sink, text);
     emitSafeOutput(sink, text);
     for (const waiter of markerWaiters) {
       const scan = waiter.nextOnly
@@ -1408,10 +1590,12 @@ function watchProcessOutput(command, args, options = {}) {
 
   let processError;
   const result = new Promise((resolvePromise, reject) => {
-    child.once('error', reject);
+    child.once('error', (error) => { matchedMarkers.fail(error); reject(error); });
     child.once('exit', (code, signal) => {
       scopedSecretIds?.close(new Error('Native actor ended before its exact identity payload'));
       processError = code === 0 ? new Error(`${command} ended before expected E2E event`) : new Error(`${command} exited with ${code ?? signal}`);
+      showEpochObserver?.streamClosed();
+      matchedMarkers.fail(processError);
       for (const waiter of markerWaiters) {
         clearTimeout(waiter.timeout);
         waiter.reject(processError);
@@ -1438,13 +1622,16 @@ function watchProcessOutput(command, args, options = {}) {
     ));
     if (matches) return resolvePromise();
     if (processError) return reject(processError);
+    const selectedShowEpoch = showEpochObserver;
     const waiter = {
       marker,
       resolve: resolvePromise,
       reject: reject,
-      timeout: setTimeout(() => {
+      timeout: timeoutMs === null ? null : setTimeout(() => {
         markerWaiters.delete(waiter);
-        reject(new Error(`Timed out waiting for ${String(marker)}`));
+        const error = new Error(`Timed out waiting for ${String(marker)}`);
+        selectedShowEpoch?.timedOut(marker, timeoutMs, error);
+        reject(error);
       }, timeoutMs),
     };
     markerWaiters.add(waiter);
@@ -1493,12 +1680,53 @@ function watchProcessOutput(command, args, options = {}) {
     displayEnvironment: redactEnvironment(processOptions.env),
     child,
     waitForMarker,
+    waitForMarkerChoice: (choices, timeoutMs = 180_000) => matchedMarkers.wait(choices, { timeoutMs }),
     waitForSecretId: (key, timeoutMs) => { if (scopedIdentityError) return Promise.reject(scopedIdentityError); if (!scopedSecretIds) throw new Error('Scoped identity capture is unavailable for this actor'); return scopedSecretIds.wait(key, timeoutMs); },
     waitForNextMarker,
     result,
     closed,
+    armShowEpoch(epoch, expectedMarker, onTimeout) {
+      if (showEpochObserver) throw new Error('Show epoch already armed');
+      const phases = ['SHOW_ENTER', 'SHOW_RETURNED_VALUE_CHECKED', 'HIDE_ENTER', 'HIDE_RETURNED', 'RECOVER_WAIT_ENTER', 'RECOVER_WAIT_COMPLETE'];
+      let pending = '', count = 0, invalid = false, issued = false, disposed = false, streamClosed = false;
+      let complete, ended;
+      const completed = new Promise(resolve => { complete = resolve; });
+      const invalidated = new Promise(resolve => { ended = resolve; });
+      const observer = {
+        invalidate() { invalid = true; ended({ kind: 'OBSERVER_ENDED' }); },
+        streamClosed() { streamClosed = true; },
+        push(sink, text) {
+          if (disposed) return;
+          if (sink !== 'stdout') { if (text.includes('ANDROID_RECOVERY_PHASE_')) observer.invalidate(); return; }
+          const lines = (pending + text).split('\n'); pending = lines.pop();
+          if (pending.length > maxWatchedOutputChars || lines.some(line => line.length > maxWatchedOutputChars)) { pending = ''; observer.invalidate(); return; }
+          for (const line of lines) {
+            const match = line.replace(/\r$/, '').match(/^(?:[0-9]{2}-[0-9]{2}\s+[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}\s+[0-9]+\s+[0-9]+\s+I\s+MetaSecretE2E:\s+)?E2E: ANDROID_RECOVERY_PHASE_([A-Z_]+)$/);
+            if (!match) continue;
+            if (!issued || invalid || phases[count] !== match[1]) { observer.invalidate(); continue; }
+            count += 1;
+            if (count === phases.length) complete({ kind: 'CALL_COMPLETED' });
+          }
+        },
+        timedOut(marker, timeoutMs, error) {
+          if (disposed || showEpochObserver !== observer || marker !== expectedMarker || timeoutMs !== 45_000) return;
+          // This exact locally-created timer/Error is the only failure classification authority.
+          try { onTimeout(error, performance.now(), receipt); } catch { observer.invalidate(); }
+        },
+      };
+      const receipt = {
+        epoch, completed, invalidated,
+        issued(token) { if (token !== epoch || disposed) observer.invalidate(); else issued = true; },
+        state: () => ({ count, invalid, issued, disposed, streamClosed }),
+        dispose() { if (disposed) return; disposed = true; pending = ''; observer.invalidate(); if (showEpochObserver === observer) showEpochObserver = undefined; },
+      };
+      showEpochObserver = observer;
+      return receipt;
+    },
     cancelPendingWaits(error) {
+      showEpochObserver?.invalidate();
       processError ??= error;
+      matchedMarkers.fail(processError);
       scopedSecretIds?.close(error);
       for (const waiter of markerWaiters) {
         clearTimeout(waiter.timeout);
@@ -1524,7 +1752,9 @@ function watchAndroidInstrumentation(serial, instrumentationArguments, runnerCom
         serial,
         instrumentationArguments,
         runnerComponent,
-        redactCommandArguments,
+        logicalArguments => redactCommandArguments(logicalArguments).map((value, index) =>
+          ['recoveryPhase', 'recoveryPhaseExpected'].includes(logicalArguments[index - 1])
+            ? '[REDACTED_RECOVERY_PHASE]' : value),
       ),
     },
   );
@@ -1668,34 +1898,88 @@ async function terminateOwnedProcessTree() {
   writeDiagnostic(`[CLEANUP] process tree terminated roots=${pids.length}`);
 }
 
+async function finishDeletionBlock() {
+  await stopProcesses();
+  if (requestedSignalExitCode !== undefined) throw new Error(`Test50 cancelled by signal; exit=${requestedSignalExitCode}; no success receipt`);
+  const block = scenario.deletionBlock;
+  const receipt = { version: 1, runId: process.env.E2E_RUN_ID ?? scenario.runId, attempt: Number(process.env.E2E_TEST_ATTEMPT ?? '1'),
+    authProfile: deletionAuthProfile, stage: 'F4', blocks: [{ id: block.id, cycles: block.cycles.map(cycle => cycle.number),
+      configurationSha256: createHash('sha256').update(readFileSync(scenarioPath)).digest('hex') }],
+    business: { status: 'passed', blocks: 1, cycles: block.cycles.length }, outcome: { code: 0, signal: null, cleanupErrors: [] },
+    ...deletionCoverage(deletionAuthProfile, block.cycles.filter(cycle => ['android', 'ios'].includes(cycle.requester)).length) };
+  writeFileSync(resolve(dirname(scenarioPath), `block-${block.id}-attempt-${receipt.attempt}.result.json`), `${JSON.stringify(receipt, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+  console.log(deletionAuthProfile === 'controlled-business'
+    ? `✅ Test #50 block ${block.id} BUSINESS PASS; OS MANUAL UNRUN; fullAcceptance=false`
+    : `✅ Test #50 block ${block.id} passed`);
+  process.exit(0);
+}
+
 async function performCleanup() {
-  // Stop/wait for every owned platform actor before closing the visible Web
-  // session or shutting down simulators. On success their result promises
-  // have already settled; on failure this cancels siblings and waits for the
-  // owned process tree to exit before runtime teardown.
-  await terminateOwnedProcessTree();
-  await browserInstance?.close().catch(() => {});
+  const strictDeletion = scenario.mode === 'vault-secret-deletion';
+  const failures = [];
+  const settle = async (operation, historicallyIgnored = false) => {
+    try { await operation(); return true; }
+    catch (error) {
+      if (strictDeletion) failures.push(error);
+      else if (!historicallyIgnored) throw error;
+      return false;
+    }
+  };
+  // Every owned cleanup attempt settles even when a sibling fails. Other
+  // scenarios retain their existing soft/strict cleanup behavior.
+  await settle(terminateOwnedProcessTree);
+  await settle(() => browserInstance?.close(), true);
   browserInstance = undefined;
-  for (const gate of networkGateProcesses.values()) await gate.close().catch(() => {});
+  for (const gate of networkGateProcesses.values()) await settle(() => gate.close(), true);
   networkGateProcesses.clear();
-  await approvalCoordinator?.close().catch(() => {});
+  await settle(() => approvalCoordinator?.close(), true);
   approvalCoordinator = undefined;
-  if (exitOnSuccess) {
-    await runAndWait('./gradlew', ['--stop'], {
-      cwd: composeRoot,
-      stdio: 'ignore',
-    }).catch(() => {});
-  }
+  if (exitOnSuccess) await settle(() => runAndWait('./gradlew', ['--stop'], { cwd: composeRoot, stdio: 'ignore' }), true);
   if (serverContainerOwned) {
-    await runAndWait('docker', ['rm', '-f', serverContainer], { stdio: 'ignore' }).catch(() => {});
-    serverContainerOwned = false;
+    const removed = await settle(() => runAndWait('docker', ['rm', '-f', serverContainer], { stdio: 'ignore' }), true);
+    if (removed || !strictDeletion) serverContainerOwned = false;
   }
-  await restoreEnvironmentGuard();
+  await settle(restoreEnvironmentGuard);
+  if (failures.length) throw new AggregateError(failures, 'Test50 owned cleanup failed', { cause: failures[0] });
 }
 
 const harnessShutdown = createHarnessShutdown({
   async cancelActors(error = new Error('Scenario actors finished')) {
-    for (const watched of watchedProcessOutputs) watched.cancelPendingWaits(error);
+    for (const watched of watchedProcessOutputs) {
+      if (!genericIosActor || watched.child !== genericIosActor.child) watched.cancelPendingWaits(error);
+    }
+    if (genericIosActor) {
+      const failures = [];
+      // Retain the original owned tree before cancelling its root; the same
+      // existing cleanup consumes this snapshot after the iOS5/5/2 join.
+      try { cancelledActorPids = await ownedProcessTreePids(); } catch (failure) { failures.push(failure); }
+      const nativeJoin = genericIosActor.cancelAndJoin(error);
+      const ownedBrowser = browserInstance; browserInstance = undefined;
+      const browserClose = Promise.resolve().then(() => ownedBrowser?.close());
+      void browserClose.catch(() => {});
+      for (const child of processes) {
+        try { if (child !== genericIosActor.child && child.exitCode == null && child.signalCode == null) child.kill('SIGTERM'); }
+        catch (failure) { failures.push(failure); }
+      }
+      try { await nativeJoin; } catch (failure) { failures.push(failure); }
+      // Drain the captured owned tree before a browser port can stall teardown.
+      try { await terminateOwnedProcessTree(); } catch (failure) { failures.push(failure); }
+      const within = async promise => {
+        let timer;
+        try { return await Promise.race([promise.then(() => true), new Promise(done => { timer = setTimeout(() => done(false), 5_000); })]); }
+        finally { clearTimeout(timer); }
+      };
+      if (!await within(browserClose.catch(error => { failures.push(error); }))) {
+        failures.push(Object.assign(new Error('Owned browser close remains unproven after 5000ms'),
+          { code: 'OWNED_TEARDOWN_INCOMPLETE', stage: 'browser-close' }));
+      }
+      if (!await within(Promise.resolve(genericIosBusinessPromise).catch(() => {}))) {
+        failures.push(Object.assign(new Error('Owned generic iOS business continuation remains unjoined after 5000ms'),
+          { code: 'OWNED_TEARDOWN_INCOMPLETE', stage: 'business-join' }));
+      }
+      if (failures.length) throw new AggregateError(failures, 'Generic iOS business cancellation failed', { cause: failures[0] });
+      return;
+    }
     cancelledActorPids = await ownedProcessTreePids();
     for (const pid of cancelledActorPids) {
       try { process.kill(pid, 'SIGTERM'); }
@@ -1862,11 +2146,7 @@ async function captureFailureScreenshots() {
 
 async function findIosSimulator() {
   const { stdout } = await runAndCapture('xcrun', ['simctl', 'list', 'devices', 'available', '-j']);
-  const devicesByRuntime = JSON.parse(stdout).devices;
-  const devices = Object.values(devicesByRuntime).flat();
-  const device = devices.find((candidate) => candidate.name === scenario.ios.simulatorName);
-  if (!device) throw new Error(`iOS simulator not found: ${scenario.ios.simulatorName}`);
-  return device;
+  return resolveIosScenarioSimulator({ simulatorName: scenario.ios.simulatorName, inventory: JSON.parse(stdout) });
 }
 
 async function openIosDeviceUi(simulatorUdid) {
@@ -1876,6 +2156,7 @@ async function openIosDeviceUi(simulatorUdid) {
 
 async function prepareIosSimulator() {
   const simulator = await findIosSimulator();
+  assertExistingDeviceRun({ readiness: { platforms: [{ ...simulator, platform: 'iOS', simulatorName: scenario.ios.simulatorName }] } });
   simulatorUdidForCleanup = simulator.udid;
   console.log(`8. Preparing iOS simulator: ${simulator.name} (${simulator.udid})`);
   if (simulator.state !== 'Booted') {
@@ -1884,7 +2165,8 @@ async function prepareIosSimulator() {
   await runAndWait('xcrun', ['simctl', 'bootstatus', simulator.udid, '-b']);
   await resetE2eNativeAppState({
     scenario,
-    platforms: [{ platform: 'iOS', simulatorName: simulator.name, udid: simulator.udid }],
+    iosIdentityContext: iosIdentity.context,
+    platforms: [{ platform: 'iOS', simulatorName: simulator.name, udid: simulator.udid, ...(simulator.ownedIosProfile ? { ownedIosProfile: simulator.ownedIosProfile } : {}) }],
     onEvent: (message) => {
       console.log(`🧹 ${message}`);
       writeDiagnostic(`[BLOCK APP RESET] ${message}`);
@@ -1895,18 +2177,19 @@ async function prepareIosSimulator() {
 }
 
 async function prepareIosTestBundle(simulatorUdid) {
-  const nativeInputs = await prepareIosXcodeBuild({ coreRoot, composeRoot, derivedDataPath: iosDerivedDataPath, runAndCapture });
+  const nativeInputs = await prepareIosXcodeBuild({ coreRoot, composeRoot, derivedDataPath: iosDerivedDataPath, runAndCapture, identityRequired: true });
   console.log('8a. Building iOS app and UI tests once for the full scenario');
   const xcodebuildArgs = [
     'build-for-testing',
+    '-sdk', 'iphonesimulator', 'ARCHS=arm64', 'ONLY_ACTIVE_ARCH=YES',
+    'METASECRET_E2E_IDENTITY_REQUIRED=YES',
     '-project',
     iosProjectPath,
     '-scheme',
     'iosApp',
     '-configuration',
     'Debug',
-    '-destination',
-    `id=${simulatorUdid}`,
+    ...iosSerialTestArguments(simulatorUdid),
     '-derivedDataPath',
     iosDerivedDataPath,
   ];
@@ -1924,6 +2207,23 @@ async function prepareIosTestBundle(simulatorUdid) {
   writeDiagnostic('[IOS] build-for-testing completed; subsequent steps use test-without-building');
 }
 
+// Existing actor config protocol, private atomic replacement before XCTest starts.
+function writeIosStepConfiguration(configuration) {
+  const ownedDirectory = mkdtempSync(resolve(tmpdir(), 'metasecret-ios-step-'));
+  const temporaryPath = resolve(ownedDirectory, 'step.json');
+  let primary;
+  try {
+    writeFileSync(temporaryPath, JSON.stringify(configuration), { mode: 0o600, flag: 'wx' });
+    renameSync(temporaryPath, iosStepConfigPath);
+  } catch (error) { primary = error; }
+  try { rmSync(ownedDirectory, { recursive: true, force: true }); }
+  catch (error) {
+    if (primary) throw new AggregateError([primary, error], 'Private iOS actor config cleanup failed', { cause: primary });
+    throw error;
+  }
+  if (primary) throw primary;
+}
+
 function startIosJoinTest(simulatorUdid, {
   testClass = scenario.ios.testClass ?? 'CaseFourIosConcurrentRecoveryUITest',
   testMethod = iosTestMethod,
@@ -1932,12 +2232,88 @@ function startIosJoinTest(simulatorUdid, {
   secretName = '',
   secretValue = null,
   expectedDeviceNames = null,
+  deferCompletionTimeout = false,
+  test22ShowPhase,
+  test25ShowPhase,
+  recoveryShowPhase,
+  recoveryPhase,
+  recoveryPhaseExpected,
+  recoveryPhaseSelectedProfile,
 } = {}) {
   const selectedSecret = registrationOnly ? { name: '', value: '', environment } : bindIosStepSecret({
     secretName, secretValue, environment, defaultSecret,
     valueForName: (name) => Object.values(secretConfigs).find((config) => config.name === name)?.value,
   });
   environment = selectedSecret.environment;
+  // Metadata-only current25 admission precedes any install/config write.24 keeps
+  // its original contextFor evaluation point; its selected entry tag is actual scenario data.
+  let boundRecoveryPhaseJson;
+  const nativePhaseCycleInput = environment.E2E_CYCLE;
+  const nativePhaseCycle = typeof nativePhaseCycleInput === 'number' ? nativePhaseCycleInput
+    : typeof nativePhaseCycleInput === 'string' && /^[1-9][0-9]{0,8}(?![\s\S])/.test(nativePhaseCycleInput)
+      ? Number(nativePhaseCycleInput) : NaN;
+  const literal24Phase = typeof testNumber === 'number' && testNumber === 24 && scenario.mode === 'ios-multi-secret-lifecycle';
+  const literal25Phase = typeof testNumber === 'number' && testNumber === 25 && scenario.mode === 'web-secondary-creator-lifecycle';
+  const finiteRecoveryProfile = [26,27,28,29,30,31,32,33,34,35,36,46,47,48,49].includes(testNumber) ? selectedCurrentRecoveryProfile() : null;
+  const boundRecoveryPhaseSelectedProfile = literal24Phase
+    ? 'test24:ios-multi-secret-lifecycle' : recoveryPhaseSelectedProfile;
+  const required25Phase = literal25Phase && testMethod === 'handleRecoveryStep'
+    && Number.isSafeInteger(nativePhaseCycle) && nativePhaseCycle >= 13 && nativePhaseCycle <= 39;
+  const requiredFinitePhase = Boolean(finiteRecoveryProfile && testMethod === 'handleRecoveryStep'
+    && Number.isSafeInteger(nativePhaseCycle) && nativePhaseCycle >= finiteRecoveryProfile.first
+    && nativePhaseCycle <= finiteRecoveryProfile.last);
+  const required25Show = required25Phase && (environment.E2E_ROLE ?? environment.E2E_NETWORK_ROLE) === 'sender';
+  if (test25ShowPhase !== undefined && !required25Show) throw new Error('Test25 Show scope is forbidden for this selected invocation');
+  if (test25ShowPhase !== undefined && test22ShowPhase !== undefined) throw new Error('Test25 and legacy22 Show scopes cannot be combined');
+  const requiredFiniteShow = requiredFinitePhase && (environment.E2E_ROLE ?? environment.E2E_NETWORK_ROLE) === 'sender';
+  if (finiteRecoveryProfile && (test25ShowPhase !== undefined || test22ShowPhase !== undefined)) throw new Error('Legacy Show scope is forbidden for a finite recovery invocation');
+  if (recoveryShowPhase !== undefined && !requiredFiniteShow) throw new Error('Finite Show scope is forbidden for this selected invocation');
+  if (recoveryShowPhase !== undefined && (test25ShowPhase !== undefined || test22ShowPhase !== undefined)) throw new Error('Finite and legacy Show scopes cannot be combined');
+  if (literal24Phase) {
+    if (recoveryPhaseExpected !== undefined || recoveryPhaseSelectedProfile !== undefined
+      && (!recoveryPhase || recoveryPhaseSelectedProfile !== 'test24:ios-multi-secret-lifecycle')) {
+      throw new Error('Literal24 launch requires its independent selected profile and absent expected tuple');
+    }
+  } else if ((literal25Phase || finiteRecoveryProfile) && testMethod === 'handleRecoveryStep'
+    || recoveryPhase || recoveryPhaseExpected !== undefined || recoveryPhaseSelectedProfile !== undefined) {
+    const attempt = process.env.E2E_TEST_ATTEMPT;
+    if (!(required25Phase || requiredFinitePhase) || !recoveryPhase
+      || recoveryPhaseSelectedProfile !== (required25Phase ? 'test25:web-secondary-creator-lifecycle' : finiteRecoveryProfile.tag)
+      || typeof recoveryPhaseExpected !== 'string' || recoveryPhaseExpected.length > 2048
+      || !/^[\x20-\x7e]+(?![\s\S])/.test(recoveryPhaseExpected)
+      || process.env.E2E_RANGE_RUN !== '1' || process.env.E2E_RUN_ID !== scenario.runId
+      || !/^[1-9][0-9]{0,8}(?![\s\S])/.test(attempt ?? '')) {
+      throw new Error('Selected25 recovery requires exact current launch metadata');
+    }
+    let expected;
+    try { expected = JSON.parse(recoveryPhaseExpected); } catch { throw new Error('Invalid expected recovery tuple'); }
+    const keys = ['version', 'runId', 'testNumber', 'attempt', 'blockId', 'cycle', 'logicalStep',
+      'mode', 'contextId', 'invocationId', 'platform', 'role'];
+    const rows = recoveryCycles.filter(row => row.number === nativePhaseCycle);
+    const row = rows[0], nativeRole = environment.E2E_ROLE ?? environment.E2E_NETWORK_ROLE, nativeStep = environment.E2E_STEP;
+    const selectedClass = (scenario.ios.stepTestClass ?? scenario.ios.testClass ?? 'CaseEightIosBothOfflineUITest');
+    const suppliedSender = environment.E2E_SENDER, suppliedApprover = environment.E2E_APPROVAL_PLATFORM;
+    if (!expected || Object.getPrototypeOf(expected) !== Object.prototype
+      || Object.keys(expected).join() !== keys.join() || JSON.stringify(expected) !== recoveryPhaseExpected
+      || rows.length !== 1 || row.kind === 'direct-show' || row.senders.length !== 1 || row.approvals.length !== 1
+      || testClass !== selectedClass || suppliedSender !== row.senders[0] || suppliedApprover !== row.approvals[0].platform
+      || nativeRole !== ('ios' === suppliedSender ? 'sender' : 'receiver') || String(nativeStep) !== '1'
+      || selectedSecret.name !== row.senderSecrets[suppliedSender]
+      || expected.version !== 1 || expected.runId !== scenario.runId || expected.testNumber !== testNumber
+      || expected.attempt !== Number(attempt) || expected.blockId !== row.block || expected.cycle !== nativePhaseCycle
+      || expected.logicalStep !== 1 || expected.mode !== scenario.mode || expected.platform !== 'ios'
+      || expected.role !== nativeRole || typeof expected.contextId !== 'string' || typeof expected.invocationId !== 'string'
+      || !/^[a-f0-9]{32}(?![\s\S])/.test(expected.contextId) || !/^[a-f0-9]{32}(?![\s\S])/.test(expected.invocationId)) {
+      throw new Error('Expected recovery tuple does not match actual selected native invocation');
+    }
+    if (required25Phase && expected.role === 'sender') assertTest25ShowScope(test25ShowPhase, expected);
+    if (requiredFinitePhase && expected.role === 'sender') assertRecoveryShowScope(recoveryShowPhase, expected);
+    // The expected string came from the frozen actual caller descriptor BEFORE
+    // this first raw-context read. Never derive the expectation from contextFor.
+    boundRecoveryPhaseJson = JSON.stringify(recoveryPhase.contextFor('ios'));
+    if (boundRecoveryPhaseJson !== recoveryPhaseExpected) throw new Error('Raw recovery tuple conflicts with independent expectation');
+  }
+  assertBatchProductsCurrent({ products: batchProducts, coreRoot, composeRoot });
   verifyIosXcodeBuild({ derivedDataPath: iosDerivedDataPath });
   console.log(`9. Starting ${label}`);
   // xcodebuild does not reliably propagate per-invocation E2E_* variables to
@@ -1945,14 +2321,17 @@ function startIosJoinTest(simulatorUdid, {
   // iOS UI test can read the exact cycle/step without timing-based defaults.
   const persistedCoreServerUrl = networkLossConfig ? networkProxyUrl('ios') : (environment.E2E_CORE_SERVER_URL ?? '');
   if (scenario.mode === 'vault-secret-deletion' && persistedCoreServerUrl !== 'http://127.0.0.1:5202') throw new Error('Test50 iOS actor requires its verified loopback Core proxy before XCTest launch');
+  let stepConfiguration;
   { // Always replace the actor context; XCTest process environment is not authoritative.
     writeDiagnostic(`[IOS_STEP_BINDING] role=${environment.E2E_ROLE ?? environment.E2E_NETWORK_ROLE} `
       + `cycle=${environment.E2E_CYCLE ?? '?'} step=${environment.E2E_STEP ?? '?'} `
       + `selectorHash=${createHash('sha256').update(selectedSecret.name).digest('hex').slice(0, 12)} `
       + 'configAndLaunchSelectionEqual=true');
-    writeFileSync(iosStepConfigPath, JSON.stringify({
+    stepConfiguration = {
+      devicePasscode: declaredDevicePasscodes.ios,
       coreServerUrl: persistedCoreServerUrl,
       requireCoreRouting: scenario.mode === 'vault-secret-deletion',
+      ...(deletionAuthProfile ? { authProfile: deletionAuthProfile } : {}),
       role: environment.E2E_ROLE ?? environment.E2E_NETWORK_ROLE,
       cycle: environment.E2E_CYCLE,
       step: environment.E2E_STEP,
@@ -1973,41 +2352,21 @@ function startIosJoinTest(simulatorUdid, {
       expectedAndroidDeviceName: expectedDeviceNames?.android,
       expectedIosDeviceName: expectedDeviceNames?.ios,
       joinTarget: environment.E2E_JOIN_TARGET,
+      ...(test22ShowPhase ? { test22ShowPhase } : {}),
+      ...(test25ShowPhase ? { test25ShowPhase: JSON.stringify(test25ShowPhase) } : {}),
+      ...(recoveryShowPhase !== undefined ? { recoveryShowPhase: JSON.stringify(recoveryShowPhase) } : {}),
+      ...(recoveryPhase ? { recoveryPhase: boundRecoveryPhaseJson ?? JSON.stringify(recoveryPhase.contextFor('ios')),
+        recoveryPhaseRequired: true, recoveryPhaseSelectedProfile: boundRecoveryPhaseSelectedProfile,
+        ...(recoveryPhaseExpected !== undefined ? {recoveryPhaseExpected} : {}) } : {}),
       ...(environment.E2E_REGISTRATION_CASE ? { registrationCase: JSON.parse(environment.E2E_REGISTRATION_CASE) } : {}),
-    }));
+    };
+    writeIosStepConfiguration(stepConfiguration);
   }
   const ownedResultDirectory = mkdtempSync(resolve(artifactsDirectory,
     `test-${testNumber}-${scenario.runId ?? 'run'}-attempt-${process.env.E2E_TEST_ATTEMPT ?? '1'}-ios-selected-`));
   const ownedResultBundlePath = resolve(ownedResultDirectory, 'selected.xcresult');
   writeDiagnostic(`[IOS RESULT] actor=${testClass}/${testMethod} bundle=${ownedResultBundlePath}`);
-  const xcodebuildArgs = [
-    reuseIosBuildForTesting ? 'test-without-building' : 'test',
-    '-project',
-    iosProjectPath,
-    '-scheme',
-    'iosApp',
-    '-configuration',
-    'Debug',
-    '-destination',
-    `id=${simulatorUdid}`,
-    '-derivedDataPath',
-    iosDerivedDataPath,
-    '-resultBundlePath',
-    ownedResultBundlePath,
-    `-only-testing:iosAppUITests/${testClass}/${testMethod}`,
-  ];
-  if (networkLossConfig) {
-    xcodebuildArgs.push(
-      `META_SECRET_SOCKET_URL=${networkProxyUrl('ios')}`,
-      'META_SECRET_ENV=local',
-    );
-  }
-  const watched = watchProcessOutput(
-    'xcodebuild',
-    xcodebuildArgs,
-    {
-      cwd: resolve(composeRoot, 'iosApp'),
-      env: {
+  const actorEnvironment = {
         GRADLE_USER_HOME: iosGradleUserHome,
         E2E_VAULT_NAME: scenario.vault.name,
         E2E_SECRET_NAME: selectedSecret.name,
@@ -2021,9 +2380,30 @@ function startIosJoinTest(simulatorUdid, {
         E2E_IOS_APPROVAL_STEPS: iosApprovalSteps,
         E2E_SECRET_CREATION_PLAN: JSON.stringify(secretCreationPlan),
         E2E_APPROVAL_COORDINATOR_URL: 'http://127.0.0.1:5180',
+        ...(deletionAuthProfile ? { E2E_AUTH_PROFILE: deletionAuthProfile } : {}),
         ...(networkLossConfig ? { E2E_CORE_SERVER_URL: networkProxyUrl('ios') } : {}),
         ...environment,
-      },
+      };
+  const scoped = prepareScopedIosInvocation({ identityContext: iosIdentity.context,
+    templateProof: iosGeneratedTemplateProof(iosDerivedDataPath), selector: 'iosAppUITests/' + testClass + '/' + testMethod,
+    hostEnvironment: Object.fromEntries(Object.entries(actorEnvironment).filter(([key, value]) => key.startsWith('E2E_') && value !== undefined).map(([key, value]) => [key, String(value)])),
+    authPolicy: scenario.mode === 'vault-secret-deletion' ? deletionAuthProfile : 'controlled',
+    privateConfiguration: stepConfiguration, outputDirectory: resolve(iosIdentity.context.runRoot, 'ios-invocations') });
+  const xcodebuildArgs = [
+    'test-without-building', '-xctestrun', scoped.xctestrun,
+    ...iosSerialTestArguments(simulatorUdid),
+    '-resultBundlePath',
+    ownedResultBundlePath,
+    `-only-testing:iosAppUITests/${testClass}/${testMethod}`,
+  ];
+
+  const watched = watchProcessOutput(
+    'xcodebuild',
+    xcodebuildArgs,
+    {
+      cwd: resolve(composeRoot, 'iosApp'),
+      env: actorEnvironment,
+      ...(recoveryPhase ? { recoveryPhase, recoveryPlatform: 'ios' } : {}),
     },
   );
   const coreRoutingVerified = scenario.mode === 'vault-secret-deletion'
@@ -2038,8 +2418,14 @@ function startIosJoinTest(simulatorUdid, {
   // six-cycle blocks retain the shorter deadline.
   const selectedSuiteTimeoutMs = recoveryCycles.length >= 18 ? 600_000 : 360_000;
   const selectedSuiteActor = createIosSelectedSuiteActor({ watched,
-    selector: `${testClass}/${testMethod}`, timeoutMs: selectedSuiteTimeoutMs,
+    selector: `${testClass}/${testMethod}`, timeoutMs: selectedSuiteTimeoutMs, deferCompletionTimeout,
   });
+  if (recoveryPhase) {
+    const ordinaryDeadline = selectedSuiteActor.selectedSuiteDeadline;
+    if (!ordinaryDeadline || ordinaryDeadline.timeoutMs !== 600_000 || deferCompletionTimeout) throw new Error('Exact ordinary Test24 iOS deadline required');
+    recoveryPhase.setIosDeadline(ordinaryDeadline.deadlineAt);
+    void selectedSuiteActor.failure.catch(error => recoveryPhase.abort(error));
+  }
   const selectedSuitePassed = selectedSuiteActor.result;
   // Both terminal selected-suite outcomes stop/join the owned wrapper. Failure
   // also cancels pending actor markers immediately and retains its xcresult.
@@ -2048,7 +2434,14 @@ function startIosJoinTest(simulatorUdid, {
     return result;
   });
   void result.catch(() => {});
-  return { ...watched, result, cancelAndJoin: selectedSuiteActor.cancelAndJoin, waitForMarker: async (marker, timeoutMs) => {
+  if (recoveryPhase) void result.catch(error => recoveryPhase.abort(error));
+  return { ...watched, result, failure: selectedSuiteActor.failure, assertBusinessActive: selectedSuiteActor.assertBusinessActive,
+    get selectedSuiteDeadline() { return selectedSuiteActor.selectedSuiteDeadline; },
+    ...(test22ShowPhase ? { test22ShowPhase } : {}),
+    ...(test25ShowPhase ? { test25ShowPhase } : {}),
+    ...(recoveryShowPhase !== undefined ? { recoveryShowPhase } : {}),
+    complete: () => { selectedSuiteActor.complete(); return result; },
+    cancelAndJoin: selectedSuiteActor.cancelAndJoin, waitForMarker: async (marker, timeoutMs) => {
     await coreRoutingVerified;
     const observed = watched.waitForMarker(marker, timeoutMs);
     return Promise.race([observed, result.then(() => observed)]);
@@ -2058,9 +2451,12 @@ function startIosJoinTest(simulatorUdid, {
 async function prepareAndroidEmulator() {
   let serial = await findOnlineAndroidAvd(
     androidSdkTools,
-    scenario.android.avdName,
+    resolveAndroidScenarioAvdName(scenario.android.avdName),
     runAndCapture,
   );
+  if (process.env.E2E_ANDROID_OWNED_PROFILE !== undefined) {
+    await verifyOwnedAndroidScenarioRuntime(scenario.android.avdName, serial, { runCommand: runAndCapture });
+  }
 
   if (!serial) {
     console.log(`12. Starting Android emulator: ${scenario.android.avdName}`);
@@ -2093,7 +2489,9 @@ async function prepareAndroidEmulator() {
   await waitForAndroidStorage(serial);
   await resetE2eNativeAppState({
     scenario,
-    platforms: [{ platform: 'Android', avdName: scenario.android.avdName, serial }],
+    platforms: [process.env.E2E_ANDROID_OWNED_PROFILE !== undefined
+      ? await verifyOwnedAndroidScenarioRuntime(scenario.android.avdName, serial, { runCommand: runAndCapture })
+      : { platform: 'Android', avdName: scenario.android.avdName, serial }],
     onEvent: (message) => {
       console.log(`🧹 ${message}`);
       writeDiagnostic(`[BLOCK APP RESET] ${message}`);
@@ -2120,12 +2518,12 @@ async function waitForOnlineAndroidAvd(avdName, timeoutMs = 120_000) {
 async function unlockAndroidDevice(serial) {
   console.log(`13a. Unlocking Android emulator: ${serial}`);
   if (await androidUserIsUnlocked(serial)) return;
+  if (!declaredDevicePasscodes.android) throw new Error('Locked Android E2E device requires its declared PIN; no default is guessed');
   await runAdbWithRetry(['-s', serial, 'shell', 'input', 'keyevent', 'KEYCODE_WAKEUP']);
   await waitForAndroidPinPrompt(serial);
-  // The AVD is configured with PIN 1111. Key events are used instead of
-  // `input text`: secure PIN fields reject text injection on Android 36.
-  for (let digit = 0; digit < 4; digit += 1) {
-    await runAdbWithRetry(['-s', serial, 'shell', 'input', 'keyevent', 'KEYCODE_1']);
+  // Key events preserve the declared PIN; secure fields reject `input text`.
+  for (const digit of declaredDevicePasscodes.android) {
+    await runAdbWithRetry(['-s', serial, 'shell', 'input', 'keyevent', `KEYCODE_${digit}`], { sensitiveInput: true });
   }
   await runAdbWithRetry(['-s', serial, 'shell', 'input', 'keyevent', 'KEYCODE_ENTER']);
   await waitForAndroidUnlocked(serial);
@@ -2283,16 +2681,20 @@ async function waitForAndroidStorage(serial, timeoutMs = 120_000) {
   throw new Error(`Android shared storage did not become ready: ${lastError}; mount=${lastMountState}`);
 }
 
-async function runAdbWithRetry(args, { attempts = 5, delayMs = 1_000 } = {}) {
+async function runAdbWithRetry(args, { attempts = 5, delayMs = 1_000, sensitiveInput = false } = {}) {
   let lastError;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
       return await runAndCapture('adb', args);
     } catch (error) {
-      lastError = error;
-      console.warn(`ADB command failed (${attempt}/${attempts}): adb ${args.join(' ')}\n${error.message}`);
+      lastError = sensitiveInput
+        ? new Error('ADB credential input failed (details omitted)', { cause: error }) : error;
+      console.warn(sensitiveInput
+        ? `ADB credential input failed (${attempt}/${attempts}; details omitted)`
+        : `ADB command failed (${attempt}/${attempts}): adb ${args.join(' ')}\n${error.message}`);
       await runAndCapture('adb', ['reconnect', 'device']).catch((reconnectError) => {
-        console.warn(`ADB reconnect failed: ${reconnectError.message}`);
+        console.warn(sensitiveInput ? 'ADB reconnect failed during credential input (details omitted)'
+          : `ADB reconnect failed: ${reconnectError.message}`);
       });
       if (attempt < attempts) await wait(delayMs);
     }
@@ -2337,6 +2739,7 @@ async function startAndroidJoinTest(
     joinPlatforms = null,
   } = {},
 ) {
+  assertBatchProductsCurrent({ products: batchProducts, coreRoot, composeRoot });
   console.log('14. Starting Android UI test');
   // An emulator can briefly switch from `device` to `offline` after boot
   // while its services settle. AGP fails immediately in that state, so make
@@ -2373,6 +2776,7 @@ async function startAndroidJoinTest(
     : androidTestClass;
   const runnerArguments = [
     '-e', 'class', androidTestSelector,
+    ...(declaredDevicePasscodes.android ? ['-e', 'devicePasscode', declaredDevicePasscodes.android] : []),
     '-e', 'vaultName', scenario.vault.name,
     '-e', 'secretName', defaultSecret?.name ?? '',
     '-e', 'secretValue', defaultSecret?.value ?? '',
@@ -2389,29 +2793,15 @@ async function startAndroidJoinTest(
     '-e', 'approvalCoordinatorUrl', 'http://10.0.2.2:5180',
     '-e', 'setupOnly', scenario.android.setupOnly ? 'true' : 'false',
     ...(scenario.mode === 'vault-secret-deletion' ? ['-e', 'requiredE2eServerUrl', networkProxyUrl('android')] : []),
+    ...(deletionAuthProfile ? ['-e', 'authProfile', deletionAuthProfile] : []),
     ...(joinPlatforms ? ['-e', 'joinPlatforms', joinPlatforms.join(',')] : []),
   ];
-  // Android's `am` parser treats JSON punctuation as shell syntax when a
-  // long value is passed through `adb shell`. The Test #7 setup only needs
-  // these scalar values; keeping the JSON plan for the Gradle path avoids a
-  // fragile command-line encoding and does not reduce scenario coverage.
+  // The existing POSIX serializer preserves structured values through adb.
+  // Keep the complete canonical arguments plus Test #7's scalar-list inputs.
   const directRunnerArguments = [
-    '-e', 'class', androidTestSelector,
-    '-e', 'vaultName', scenario.vault.name,
-    '-e', 'secretName', defaultSecret?.name ?? '',
-    '-e', 'secretValue', defaultSecret?.value ?? '',
+    ...runnerArguments,
     '-e', 'secretNames', Object.values(secretConfigs).map((config) => config.name).join(','),
     '-e', 'secretValues', Object.values(secretConfigs).map((config) => config.value).join(','),
-    ...(expectedSecretNames.length > 0
-      ? ['-e', 'expectedSecretNames', expectedSecretNames.join(',')]
-      : []),
-    ...(directShowSecretNames.length > 0
-      ? ['-e', 'directShowSecretNames', directShowSecretNames.join(',')]
-      : []),
-    '-e', 'approvalCoordinatorUrl', 'http://10.0.2.2:5180',
-    '-e', 'setupOnly', scenario.android.setupOnly ? 'true' : 'false',
-    ...(scenario.mode === 'vault-secret-deletion' ? ['-e', 'requiredE2eServerUrl', networkProxyUrl('android')] : []),
-    ...(joinPlatforms ? ['-e', 'joinPlatforms', joinPlatforms.join(',')] : []),
   ];
   const androidNetworkGradleArgs = networkLossConfig
     ? [
@@ -2423,7 +2813,7 @@ async function startAndroidJoinTest(
 
   let test;
   let directInstrumentation = false;
-  if (scenario.android.directInstrumentationSetup) {
+  if (scenario.android.directInstrumentationSetup || reuseProvenArtifacts) {
     // Gradle's connected test task may uninstall the target application after
     // the test. Test #7 must keep its vault between the setup and assertion
     // instrumentation, so build/install both APKs and invoke the runner
@@ -2487,6 +2877,9 @@ async function startAndroidJoinTest(
         ':composeApp:installDebug',
         ':composeApp:connectedDebugAndroidTest',
         `-Pandroid.testInstrumentationRunnerArguments.class=${androidTestSelector}`,
+        ...(deletionAuthProfile ? [`-Pandroid.testInstrumentationRunnerArguments.authProfile=${deletionAuthProfile}`,
+          `-Pandroid.testInstrumentationRunnerArguments.requiredE2eServerUrl=${networkProxyUrl('android')}`] : []),
+        ...(declaredDevicePasscodes.android ? [`-Pandroid.testInstrumentationRunnerArguments.devicePasscode=${declaredDevicePasscodes.android}`] : []),
         `-Pandroid.testInstrumentationRunnerArguments.vaultName=${scenario.vault.name}`,
         `-Pandroid.testInstrumentationRunnerArguments.secretName=${defaultSecret?.name ?? ''}`,
         `-Pandroid.testInstrumentationRunnerArguments.secretConfig=${secretConfigJson}`,
@@ -2507,20 +2900,18 @@ async function startAndroidJoinTest(
     );
   }
 
-  return superviseAndroidInstrumentation({
+  const actor = superviseAndroidInstrumentation({
     instrumentationResult: directInstrumentation ? test.result : test,
     logcat,
     selector: androidTestSelector,
     validateOutput: directInstrumentation ? assertAndroidInstrumentationPassed : () => {},
   });
+  // A primary instrumentation failure must reject the SAME owned choice now,
+  // before its finally-triggered logcat shutdown can replace the causal error.
+  void actor.result.catch((error) => logcat.cancelPendingWaits(error));
+  return actor;
 }
 
-function assertAndroidInstrumentationPassed(output, selector) {
-  const text = `${output?.stdout ?? ''}\n${output?.stderr ?? ''}`;
-  if (/FAILURES!!!|There was\s+\d+ failure|There were\s+\d+ failures|INSTRUMENTATION_STATUS_CODE:\s*-\d+/.test(text)) {
-    throw new Error(`Android instrumentation failed for ${selector}\n${text.slice(-12_000)}`);
-  }
-}
 
 async function startAndroidStepTest(serial, {
   role,
@@ -2548,10 +2939,78 @@ async function startAndroidStepTest(serial, {
   testMethod = scenario.android.stepTestMethod ?? 'handleRecoveryStep',
   label = 'Android recovery step',
   registrationCase = null,
+  test15FifoContext = null,
+  recoveryShowPhase,
+  test25ShowPhase,
+  test22ShowPhase,
+  recoveryPhase,
+  recoveryPhaseExpected,
+  recoveryPhaseSelectedProfile,
 } = {}) {
+  // Metadata-only current25 admission precedes any install/config write.24 keeps
+  // its original contextFor evaluation point; its selected entry tag is actual scenario data.
+  if (recoveryShowPhase !== undefined || test25ShowPhase !== undefined || test22ShowPhase !== undefined) throw new Error('Show scope is forbidden on Android');
+  let boundRecoveryPhaseJson;
+  const nativePhaseCycleInput = cycle;
+  const nativePhaseCycle = typeof nativePhaseCycleInput === 'number' ? nativePhaseCycleInput
+    : typeof nativePhaseCycleInput === 'string' && /^[1-9][0-9]{0,8}(?![\s\S])/.test(nativePhaseCycleInput)
+      ? Number(nativePhaseCycleInput) : NaN;
+  const literal24Phase = typeof testNumber === 'number' && testNumber === 24 && scenario.mode === 'ios-multi-secret-lifecycle';
+  const literal25Phase = typeof testNumber === 'number' && testNumber === 25 && scenario.mode === 'web-secondary-creator-lifecycle';
+  const finiteRecoveryProfile = [26,27,28,29,30,31,32,33,34,35,36,46,47,48,49].includes(testNumber) ? selectedCurrentRecoveryProfile() : null;
+  const boundRecoveryPhaseSelectedProfile = literal24Phase
+    ? 'test24:ios-multi-secret-lifecycle' : recoveryPhaseSelectedProfile;
+  const required25Phase = literal25Phase && testMethod === 'handleRecoveryStep'
+    && Number.isSafeInteger(nativePhaseCycle) && nativePhaseCycle >= 13 && nativePhaseCycle <= 39;
+  const requiredFinitePhase = Boolean(finiteRecoveryProfile && testMethod === 'handleRecoveryStep'
+    && Number.isSafeInteger(nativePhaseCycle) && nativePhaseCycle >= finiteRecoveryProfile.first
+    && nativePhaseCycle <= finiteRecoveryProfile.last);
+  if (literal24Phase) {
+    if (recoveryPhaseExpected !== undefined || recoveryPhaseSelectedProfile !== undefined
+      && (!recoveryPhase || recoveryPhaseSelectedProfile !== 'test24:ios-multi-secret-lifecycle')) {
+      throw new Error('Literal24 launch requires its independent selected profile and absent expected tuple');
+    }
+  } else if ((literal25Phase || finiteRecoveryProfile) && testMethod === 'handleRecoveryStep'
+    || recoveryPhase || recoveryPhaseExpected !== undefined || recoveryPhaseSelectedProfile !== undefined) {
+    const attempt = process.env.E2E_TEST_ATTEMPT;
+    if (!(required25Phase || requiredFinitePhase) || !recoveryPhase
+      || recoveryPhaseSelectedProfile !== (required25Phase ? 'test25:web-secondary-creator-lifecycle' : finiteRecoveryProfile.tag)
+      || typeof recoveryPhaseExpected !== 'string' || recoveryPhaseExpected.length > 2048
+      || !/^[\x20-\x7e]+(?![\s\S])/.test(recoveryPhaseExpected)
+      || process.env.E2E_RANGE_RUN !== '1' || process.env.E2E_RUN_ID !== scenario.runId
+      || !/^[1-9][0-9]{0,8}(?![\s\S])/.test(attempt ?? '')) {
+      throw new Error('Selected25 recovery requires exact current launch metadata');
+    }
+    let expected;
+    try { expected = JSON.parse(recoveryPhaseExpected); } catch { throw new Error('Invalid expected recovery tuple'); }
+    const keys = ['version', 'runId', 'testNumber', 'attempt', 'blockId', 'cycle', 'logicalStep',
+      'mode', 'contextId', 'invocationId', 'platform', 'role'];
+    const rows = recoveryCycles.filter(row => row.number === nativePhaseCycle);
+    const row = rows[0], nativeRole = role, nativeStep = step;
+    const selectedClass = (scenario.android.stepTestClass ?? scenario.android.testClass);
+    const suppliedSender = sender, suppliedApprover = approvalPlatform;
+    if (!expected || Object.getPrototypeOf(expected) !== Object.prototype
+      || Object.keys(expected).join() !== keys.join() || JSON.stringify(expected) !== recoveryPhaseExpected
+      || rows.length !== 1 || row.kind === 'direct-show' || row.senders.length !== 1 || row.approvals.length !== 1
+      || testClass !== selectedClass || suppliedSender !== row.senders[0] || suppliedApprover !== row.approvals[0].platform
+      || nativeRole !== ('android' === suppliedSender ? 'sender' : 'receiver') || String(nativeStep) !== '1'
+      || secretName !== row.senderSecrets[suppliedSender]
+      || expected.version !== 1 || expected.runId !== scenario.runId || expected.testNumber !== testNumber
+      || expected.attempt !== Number(attempt) || expected.blockId !== row.block || expected.cycle !== nativePhaseCycle
+      || expected.logicalStep !== 1 || expected.mode !== scenario.mode || expected.platform !== 'android'
+      || expected.role !== nativeRole || typeof expected.contextId !== 'string' || typeof expected.invocationId !== 'string'
+      || !/^[a-f0-9]{32}(?![\s\S])/.test(expected.contextId) || !/^[a-f0-9]{32}(?![\s\S])/.test(expected.invocationId)) {
+      throw new Error('Expected recovery tuple does not match actual selected native invocation');
+    }
+    // The expected string came from the frozen actual caller descriptor BEFORE
+    // this first raw-context read. Never derive the expectation from contextFor.
+    boundRecoveryPhaseJson = JSON.stringify(recoveryPhase.contextFor('android'));
+    if (boundRecoveryPhaseJson !== recoveryPhaseExpected) throw new Error('Raw recovery tuple conflicts with independent expectation');
+  }
+  assertBatchProductsCurrent({ products: batchProducts, coreRoot, composeRoot });
   console.log(`Starting ${label}: role=${role} cycle=${cycle} step=${step}`);
-  const appApkPath = resolve(composeRoot, 'composeApp/build/outputs/apk/debug/composeApp-debug.apk');
-  const testApkPath = resolve(composeRoot, 'composeApp/build/outputs/apk/androidTest/debug/composeApp-debug-androidTest.apk');
+  const appApkPath = androidAppApkPath;
+  const testApkPath = androidTestApkPath;
   await runAdbWithRetry(['-s', serial, 'install', '-r', appApkPath]);
   await runAdbWithRetry(['-s', serial, 'install', '-r', testApkPath]);
   await captureInstalledAndroidAppProvenance(serial);
@@ -2562,13 +3021,13 @@ async function startAndroidStepTest(serial, {
   await runAdbWithRetry(['-s', serial, 'logcat', '-c']);
   const logcat = watchProcessOutput('adb', [
     '-s', serial, 'logcat',
-    ...(diagnosticAndroidVerbose ? ['-v', 'threadtime', 'System.out:I', 'System.err:W'] : []),
+    ...(diagnosticAndroidVerbose ? ['-v', 'threadtime', 'System.out:I', 'System.err:W'] : recoveryPhase ? ['-v', 'threadtime'] : []),
     'MetaSecretE2E:I',
     'AndroidRuntime:E',
     'ActivityManager:E',
     'libc:F',
     diagnosticAndroidVerbose ? '*:E' : '*:S',
-  ]);
+  ], recoveryPhase ? { recoveryPhase, recoveryPlatform: 'android' } : {});
   void logcat.result.catch(() => {});
   const androidTestClass = testClass
     ?? 'metasecret.project.com.CaseEightAndroidBothOfflineTest';
@@ -2586,11 +3045,13 @@ async function startAndroidStepTest(serial, {
     '-e', 'approvalCoordinatorUrl', 'http://10.0.2.2:5180',
   ];
   const optionalRunnerArguments = [
+    ['devicePasscode', declaredDevicePasscodes.android],
     ['approvalPlatform', approvalPlatform],
     ['sender', sender],
     ['expectedOutcome', expectedOutcome],
     ['expectRequest', String(expectRequest)],
     ['requiredE2eServerUrl', scenario.mode === 'vault-secret-deletion' ? networkProxyUrl('android') : ''],
+    ['authProfile', deletionAuthProfile],
     ['networkRole', networkRole],
     ['networkBlock', networkBlock],
     ['networkCycles', networkCycles],
@@ -2604,6 +3065,11 @@ async function startAndroidStepTest(serial, {
     ['expectedAndroidDeviceName', expectedDeviceNames?.android],
     ['expectedIosDeviceName', expectedDeviceNames?.ios],
     ['registrationCase', registrationCase ? JSON.stringify(registrationCase) : ''],
+    ['test15FifoContext', test15FifoContext ? JSON.stringify(test15FifoContext) : ''],
+    ['recoveryPhase', recoveryPhase ? boundRecoveryPhaseJson ?? JSON.stringify(recoveryPhase.contextFor('android')) : ''],
+    ['recoveryPhaseRequired', recoveryPhase ? 'true' : ''],
+    ['recoveryPhaseSelectedProfile', recoveryPhase ? boundRecoveryPhaseSelectedProfile : undefined],
+    ['recoveryPhaseExpected', recoveryPhaseExpected],
   ];
   const runnerInsertAt = runnerArguments.length;
   runnerArguments.splice(
@@ -2629,12 +3095,14 @@ async function startAndroidStepTest(serial, {
   // dedicated logcat watcher, not on `am instrument` stdout. Keep the
   // instrumentation result for pass/fail validation, but expose the logcat
   // marker waiter to the orchestrator.
-  return superviseAndroidInstrumentation({
+  const actor = superviseAndroidInstrumentation({
     instrumentationResult: test.result,
     logcat,
     selector,
     validateOutput: assertAndroidInstrumentationPassed,
   });
+  if (recoveryPhase) void actor.result.catch(error => recoveryPhase.abort(error));
+  return actor;
 }
 
 async function dismissAndroidCompatibilityDialog(serial, timeoutMs = 30_000) {
@@ -2713,16 +3181,11 @@ async function stopIosApplication(simulatorUdid) {
 }
 
 async function startAndroidRemainingRecoveryTest(serial) {
+  assertBatchProductsCurrent({ products: batchProducts, coreRoot, composeRoot });
   console.log('15c. Starting Android recovery cycles after offline restart');
   await waitForOnlineAndroidDevice(serial, 120_000);
-  const appApkPath = resolve(
-    composeRoot,
-    'composeApp/build/outputs/apk/debug/composeApp-debug.apk',
-  );
-  const testApkPath = resolve(
-    composeRoot,
-    'composeApp/build/outputs/apk/androidTest/debug/composeApp-debug-androidTest.apk',
-  );
+  const appApkPath = androidAppApkPath;
+  const testApkPath = androidTestApkPath;
   await runAdbWithRetry(['-s', serial, 'install', '-r', appApkPath]);
   await runAdbWithRetry(['-s', serial, 'install', '-r', testApkPath]);
   const selector = `${scenario.android.testClass}#handleRemainingRecoveryCycles`;
@@ -2760,6 +3223,7 @@ async function runIosStaleAlertAssertion(simulatorUdid) {
 }
 
 async function runOfflineReceiverRecovery(page, iosTest, androidTest, androidSerial, simulatorUdid) {
+  iosTest.assertBusinessActive();
   const cycleFor = (platform) => recoveryCycles.find((cycle) => cycle.offlineReceiver === platform);
   const androidCycle = cycleFor('android');
   const webCycle = cycleFor('web');
@@ -2775,38 +3239,49 @@ async function runOfflineReceiverRecovery(page, iosTest, androidTest, androidSer
   if (androidApprovalStep <= 0) throw new Error('Android-offline cycle requires an iOS approval');
   await androidTest.waitForMarker('E2E: ANDROID_OFFLINE_READY', 180_000);
   await androidTest.result;
+  iosTest.assertBusinessActive();
   await stopAndroidApplication(androidSerial);
   console.log(`15.${androidCycle.number} Web requests recovery while Android is offline`);
+  iosTest.assertBusinessActive();
   approvalCoordinator.allow('web-sender', androidCycle.number);
   await startWebRecovery(page, androidSecret);
+  iosTest.assertBusinessActive();
   approvalCoordinator.allow(`ios-approve-${androidApprovalStep}`, androidCycle.number);
   await iosTest.waitForMarker(
     `E2E: IOS_APPROVED_INCOMING_${androidCycle.number}_${androidApprovalStep}`,
     180_000,
   );
+  iosTest.assertBusinessActive();
   await revealAndCloseWebSecret(page, androidSecret, false);
+  iosTest.assertBusinessActive();
   await runAndroidStaleAlertAssertion(androidSerial);
   console.log('✅ Offline Android receiver did not show a stale recovery alert');
 
   // Cycle 2 — Web is offline: Android sends, iOS approves.
   setCurrentCycleForDiagnostics(webCycle);
   const webSecret = webCycle.senderSecrets.android ?? defaultSecret?.name;
+  iosTest.assertBusinessActive();
   await stopWebApplication(page);
+  iosTest.assertBusinessActive();
   const androidRemaining = await startAndroidRemainingRecoveryTest(androidSerial);
+  iosTest.assertBusinessActive();
   approvalCoordinator.allow('android-sender', webCycle.number);
   await androidRemaining.waitForMarker(`E2E: ANDROID_RECOVERY_REQUEST_SENT_${webCycle.number}`, 180_000);
   const webApprovalStep = webCycle.approvals.findIndex((approval) => approval.platform === 'ios') + 1;
   if (webApprovalStep <= 0) throw new Error('Web-offline cycle requires an iOS approval');
+  iosTest.assertBusinessActive();
   approvalCoordinator.allow(`ios-approve-${webApprovalStep}`, webCycle.number);
   await iosTest.waitForMarker(
     `E2E: IOS_APPROVED_INCOMING_${webCycle.number}_${webApprovalStep}`,
     180_000,
   );
+  iosTest.assertBusinessActive();
   approvalCoordinator.allow('android-show', webCycle.number);
   await androidRemaining.waitForMarker(
     `E2E: ANDROID_RECOVERY_CLOSED_${webCycle.number}`,
     180_000,
   );
+  iosTest.assertBusinessActive();
   await reopenWebAfterOffline(page);
   await assertNoStaleWebRecoveryAlert(page, webSecret);
   console.log('✅ Offline Web receiver did not show a stale recovery alert');
@@ -2817,10 +3292,13 @@ async function runOfflineReceiverRecovery(page, iosTest, androidTest, androidSer
   setCurrentCycleForDiagnostics(iosCycle);
   const iosSecret = iosCycle.senderSecrets.android ?? defaultSecret?.name;
   await iosTest.waitForMarker(`E2E: IOS_OFFLINE_READY_${iosCycle.number}`, 180_000);
+  iosTest.assertBusinessActive();
   await stopIosApplication(simulatorUdid);
+  iosTest.assertBusinessActive();
   approvalCoordinator.allow('ios-offline-stop', iosCycle.number);
-  await iosTest.result;
+  await iosTest.complete();
   await androidRemaining.waitForMarker('E2E: ANDROID_REMAINING_RECOVERY_READY', 180_000);
+  iosTest.assertBusinessActive();
   approvalCoordinator.allow('android-sender', iosCycle.number);
   await androidRemaining.waitForMarker(
     `E2E: ANDROID_RECOVERY_REQUEST_SENT_${iosCycle.number}`,
@@ -2828,13 +3306,16 @@ async function runOfflineReceiverRecovery(page, iosTest, androidTest, androidSer
   );
   const webApproverSecret = iosCycle.approvals.find((approval) => approval.platform === 'web')?.secret
     ?? iosSecret;
+  iosTest.assertBusinessActive();
   await approveIncomingRecoveryOnWeb(page, webApproverSecret, 1);
+  iosTest.assertBusinessActive();
   approvalCoordinator.allow('android-show', iosCycle.number);
   await androidRemaining.waitForMarker(
     `E2E: ANDROID_RECOVERY_CLOSED_${iosCycle.number}`,
     180_000,
   );
   await androidRemaining.result;
+  iosTest.assertBusinessActive();
   await runIosStaleAlertAssertion(simulatorUdid);
 }
 
@@ -2845,7 +3326,7 @@ async function createWebInitiatedVault(page) {
   // so re-check its live UI state at the actual first scenario action.
   await unlockWithPasskeyIfNeeded(page);
   await createWebVault(page, scenario.vault.name);
-  await page.getByRole('button', { name: '+ Add Secret', exact: true }).waitFor({ timeout: 180_000 });
+  await openWebLiveboard(page);
   const initialSecretNames = secretCreationPlan?.initial?.web
     ?? Object.values(secretConfigs).map((config) => config.name);
   for (const secretName of initialSecretNames) {
@@ -2862,7 +3343,7 @@ async function preparePrimaryWebClient(page) {
   await unlockWithPasskeyIfNeeded(page);
   await Promise.race([
     waitForWebEntry(page),
-    page.getByRole('link', { name: 'Secrets', exact: true }).waitFor({ state: 'visible', timeout: 30_000 }),
+    webEntryReady(page).waitFor({ state: 'visible', timeout: 30_000 }),
   ]);
   primaryWebClientReady = true;
   writeDiagnostic('[F3] primary Web client loaded, authenticated, and left Init before native clients boot');
@@ -3000,236 +3481,27 @@ async function runWebMultiSecretLifecycleIosJoin(
 }
 
 async function assertNoStaleWebMembershipUi(page, secretNames) {
-  await page.getByTestId('remove-device-dialog').waitFor({ state: 'hidden', timeout: 30_000 });
-  await page.getByTestId('pending-device-row').waitFor({ state: 'hidden', timeout: 30_000 });
-  await page.locator('[data-slot="alert-dialog-content"]').waitFor({ state: 'hidden', timeout: 30_000 });
-  await page.getByRole('link', { name: 'Secrets', exact: true }).click();
-  await waitForWebSecretNames(page, secretNames);
-  for (const secretName of secretNames) {
-    const action = page.getByTestId(`secret-primary-action-${secretName}`);
-    const row = page.locator('li').filter({ has: action });
-    await row.waitFor({ state: 'visible', timeout: 30_000 });
-    await row.getByTestId('recovery-request-badge').waitFor({ state: 'hidden', timeout: 30_000 });
-    await row.getByTestId(`open-recovery-request-${secretName}`).waitFor({ state: 'hidden', timeout: 30_000 });
-  }
+  await assertWebNoStaleIncomingKinds(page, ['join', 'recover']);
+  for (const secretName of secretNames) await assertWebSecretConcealed(page, secretName);
 }
 
-async function inspectWebMemberRow(page, category, {
-  current,
-  expectedDeviceName = null,
-  label,
-}) {
-  const categoryLabel = page.getByText(category, { exact: true });
-  await categoryLabel.first().waitFor({ state: 'visible', timeout: 120_000 });
-  const categoryCount = await categoryLabel.count();
-  if (categoryCount !== 1) {
-    throw new Error(`${label}: expected exactly one ${category} participant row, got ${categoryCount}`);
-  }
-  const row = categoryLabel.locator('xpath=ancestor::div[.//*[@data-slot="badge"]][1]');
-  await row.waitFor({ state: 'visible', timeout: 30_000 });
-  const rowCount = await row.count();
-  if (rowCount !== 1) throw new Error(`${label}: ${category} row is ambiguous: ${rowCount}`);
-
-  const nameElement = row.locator('p.font-semibold');
-  await nameElement.waitFor({ state: 'visible', timeout: 30_000 });
-  const nameCount = await nameElement.count();
-  const actualDeviceName = (await nameElement.textContent())?.trim() ?? '';
-  if (nameCount !== 1 || actualDeviceName.length === 0) {
-    throw new Error(
-      `${label}: ${category} row must expose exactly one non-empty nested device name; `
-        + `count=${nameCount}`,
-    );
-  }
-  if (expectedDeviceName && actualDeviceName !== expectedDeviceName) {
-    throw new Error(
-      `${label}: ${category} device name mismatch expected=${JSON.stringify(expectedDeviceName)} `
-        + `actual=${JSON.stringify(actualDeviceName)}`,
-    );
-  }
-
-  const expectedStatus = current ? 'Current' : 'Member';
-  const unexpectedStatus = current ? 'Member' : 'Current';
-  const expectedBadge = row.locator('[data-slot="badge"]').filter({
-    hasText: new RegExp(`^\\s*${expectedStatus}\\s*$`),
-  });
-  await expectedBadge.waitFor({ state: 'visible', timeout: 30_000 });
-  const [expectedBadgeCount, unexpectedBadgeCount, removeCount] = await Promise.all([
-    expectedBadge.count(),
-    row.locator('[data-slot="badge"]').filter({
-      hasText: new RegExp(`^\\s*${unexpectedStatus}\\s*$`),
-    }).count(),
-    row.getByTestId('remove-device').count(),
-  ]);
-  if (expectedBadgeCount !== 1 || unexpectedBadgeCount !== 0) {
-    throw new Error(
-      `${label}: ${category} row status mismatch expected=${expectedStatus} `
-        + `expectedCount=${expectedBadgeCount} unexpectedCount=${unexpectedBadgeCount}`,
-    );
-  }
-  const expectedRemoveCount = current ? 0 : 1;
-  if (removeCount !== expectedRemoveCount) {
-    throw new Error(
-      `${label}: ${category} row expected scoped trash count=${expectedRemoveCount}, got ${removeCount}`,
-    );
-  }
-  return { row, deviceName: actualDeviceName };
+async function inspectWebMemberRow(page, category, options) {
+  return inspectWebLiveboardMember(page, category, options);
 }
 
-async function assertWebMembership(
-  page,
-  expectedCategories,
-  secretNames,
-  label,
-  expectedDeviceNames = {},
-) {
-  await page.getByRole('link', { name: 'Devices', exact: true }).click();
-  await page.locator('[data-slot="card-title"]').getByText('Devices', { exact: true })
-    .waitFor({ state: 'visible', timeout: 60_000 });
-  const allCategories = ['Web', 'Android', 'iPhone'];
-  const categoryToPlatform = { Web: 'web', Android: 'android', iPhone: 'ios' };
-  const observedDeviceNames = {};
-  for (const category of expectedCategories) {
-    const platform = categoryToPlatform[category];
-    const member = await inspectWebMemberRow(page, category, {
-      current: platform === 'web',
-      expectedDeviceName: expectedDeviceNames[platform],
-      label,
-    });
-    observedDeviceNames[platform] = member.deviceName;
-  }
-  for (const category of allCategories.filter((candidate) => !expectedCategories.includes(candidate))) {
-    await page.getByText(category, { exact: true }).first()
-      .waitFor({ state: 'hidden', timeout: 120_000 });
-  }
-  const removeCount = await page.getByTestId('remove-device').count();
-  if (removeCount !== Math.max(0, expectedCategories.length - 1)) {
-    throw new Error(
-      `${label}: expected ${expectedCategories.length - 1} removable member rows, got ${removeCount}`,
-    );
-  }
-  const currentCount = await page.getByText('Current', { exact: true }).count();
-  const memberCount = await page.getByText('Member', { exact: true }).count();
-  if (currentCount !== 1 || memberCount !== expectedCategories.length - 1) {
-    throw new Error(
-      `${label}: member badge mismatch current=${currentCount} member=${memberCount} `
-        + `expected=${expectedCategories.length}`,
-    );
-  }
+async function assertWebMembership(page, expectedCategories, secretNames, label, expectedDeviceNames = {}) {
+  const observedDeviceNames = await assertWebLiveboardMembers(page, expectedCategories.map(category => category === 'CLI' ? 'Cli' : category), expectedDeviceNames);
   await assertNoStaleWebMembershipUi(page, secretNames);
-  writeDiagnostic(
-    `[TEST${testNumber}] ${label} memberCount=${expectedCategories.length} `
-      + `participants=${expectedCategories.join(',')} staleUi=false`,
-  );
+  writeDiagnostic(`[TEST${testNumber}] ${label} memberCount=${expectedCategories.length} participants=${expectedCategories.join(',')} staleUi=false`);
   return observedDeviceNames;
 }
 
-async function initiateWebDeviceRemoval(page, {
-  targetCategory,
-  expectedTargetDeviceName,
-  waitForTargetGone,
-  label,
-  requestVisibleMarker,
-  completionMarker,
-}) {
-  if (typeof expectedTargetDeviceName !== 'string' || expectedTargetDeviceName.length === 0) {
-    throw new Error(`${label}: exact observed registered target name is required`);
-  }
-  await page.getByRole('link', { name: 'Devices', exact: true }).click();
-  const target = await inspectWebMemberRow(page, targetCategory, {
-    current: false,
-    expectedDeviceName: expectedTargetDeviceName,
-    label,
-  });
-  const categoryText = page.getByText(targetCategory, { exact: true });
-  const targetRow = target.row;
-  const removeButton = targetRow.getByTestId('remove-device');
-  await removeButton.waitFor({ state: 'visible', timeout: 30_000 });
-  await removeButton.click();
-
-  const dialog = page.getByTestId('remove-device-dialog');
-  await dialog.waitFor({ state: 'visible', timeout: 30_000 });
-  await dialog.getByText(targetCategory, { exact: true }).waitFor({ state: 'visible', timeout: 30_000 });
-  const dialogDeviceName = dialog.locator('[data-slot="dialog-title"] span.text-primary');
-  await dialogDeviceName.waitFor({ state: 'visible', timeout: 30_000 });
-  const [dialogNameCount, dialogNameText] = await Promise.all([
-    dialogDeviceName.count(),
-    dialogDeviceName.textContent(),
-  ]);
-  if (dialogNameCount !== 1 || dialogNameText?.trim() !== target.deviceName) {
-    throw new Error(
-      `${label}: removal confirmation target mismatch row=${JSON.stringify(target.deviceName)} `
-        + `dialog=${JSON.stringify(dialogNameText?.trim() ?? null)} count=${dialogNameCount}`,
-    );
-  }
-  if (requestVisibleMarker) console.log(`E2E: ${requestVisibleMarker}`);
-  await dialog.getByTestId('confirm-remove-device').click();
-  await dialog.waitFor({ state: 'hidden', timeout: 120_000 });
-  writeDiagnostic(
-    `[TEST${testNumber}] ${label} visible Web trash+confirmation completed target=${targetCategory}`,
-  );
-
-  if (waitForTargetGone) {
-    await categoryText.waitFor({ state: 'hidden', timeout: 180_000 });
-    writeDiagnostic(`[TEST${testNumber}] ${label} target row removed from Web`);
-  }
-  if (completionMarker) console.log(`E2E: ${completionMarker}`);
-  return { row: targetRow, deviceName: target.deviceName, category: targetCategory };
+async function initiateWebDeviceRemoval(page, options) {
+  return removeWebLiveboardMember(page, options);
 }
 
-async function declinePendingWebDeviceRemoval(page, {
-  targetCategory,
-  expectedTargetDeviceName,
-  label,
-  requestVisibleMarker,
-  completionMarker,
-}) {
-  if (typeof expectedTargetDeviceName !== 'string' || expectedTargetDeviceName.length === 0) {
-    throw new Error(`${label}: exact observed registered target name is required`);
-  }
-  // The requester's completion marker proves persistence. Reload fetches that
-  // authoritative Core state before the Web decliner interacts with the row,
-  // avoiding any timing assumption about SSE delivery.
-  await page.reload({ waitUntil: 'domcontentloaded' });
-  await unlockWithPasskeyIfNeeded(page);
-  await page.getByRole('link', { name: 'Devices', exact: true }).click();
-  const target = await inspectWebMemberRow(page, targetCategory, {
-    current: false,
-    expectedDeviceName: expectedTargetDeviceName,
-    label,
-  });
-  const removeButton = target.row.getByTestId('remove-device');
-  await removeButton.waitFor({ state: 'visible', timeout: 30_000 });
-  await removeButton.click();
-
-  const dialog = page.getByTestId('remove-device-dialog');
-  await dialog.waitFor({ state: 'visible', timeout: 30_000 });
-  await dialog.getByText(targetCategory, { exact: true }).waitFor({ state: 'visible', timeout: 30_000 });
-  const dialogDeviceName = dialog.locator('[data-slot="dialog-title"] span.text-primary');
-  await dialogDeviceName.waitFor({ state: 'visible', timeout: 30_000 });
-  const [dialogNameCount, dialogNameText] = await Promise.all([
-    dialogDeviceName.count(),
-    dialogDeviceName.textContent(),
-  ]);
-  if (dialogNameCount !== 1 || dialogNameText?.trim() !== target.deviceName) {
-    throw new Error(
-      `${label}: decline target mismatch row=${JSON.stringify(target.deviceName)} `
-        + `dialog=${JSON.stringify(dialogNameText?.trim() ?? null)} count=${dialogNameCount}`,
-    );
-  }
-  if (requestVisibleMarker) console.log(`E2E: ${requestVisibleMarker}`);
-  const decline = dialog.getByTestId('decline-remove-device');
-  await decline.waitFor({ state: 'visible', timeout: 30_000 });
-  await decline.click();
-  await dialog.waitFor({ state: 'hidden', timeout: 120_000 });
-
-  // Fetch the terminal event, rather than treating a closed dialog as proof
-  // that the signed Decline reached Core.
-  await page.reload({ waitUntil: 'domcontentloaded' });
-  await unlockWithPasskeyIfNeeded(page);
-  writeDiagnostic(
-    `[TEST${testNumber}] ${label} visible Web decline completed target=${targetCategory}`,
-  );
-  if (completionMarker) console.log(`E2E: ${completionMarker}`);
+async function declinePendingWebDeviceRemoval(page, options) {
+  return declineWebLiveboardRemoval(page, options);
 }
 
 async function runWebMemberRemovalLifecycle(page, simulatorUdid, androidSerial) {
@@ -3317,6 +3589,20 @@ async function runWebMemberRemovalLifecycle(page, simulatorUdid, androidSerial) 
       + `ios=${JSON.stringify(expectedDeviceNames.ios)}`,
   );
 
+  const iosRemovalObserver = startIosJoinTest(simulatorUdid, {
+    testClass: scenario.ios.testClass,
+    testMethod: scenario.ios.removalObserverTestMethod,
+    label: 'iOS Test #37 observes own removal',
+    environment: stepEnvironment({ role: 'removal-target', cycle: 1, step: 1, sender: 'web' }),
+    secretName: thirdName,
+    secretValue: secretValueForName(thirdName),
+    expectedDeviceNames,
+  });
+  void iosRemovalObserver.result.catch(() => {});
+  // Android starts its incoming-request timer as soon as it is ready.
+  // Let iOS finish its topology checks before starting that timer.
+  await iosRemovalObserver.waitForMarker('E2E: IOS_TEST37_REMOVAL_TARGET_READY', 240_000);
+
   const androidRemovalApproval = await startAndroidStepTest(androidSerial, {
     testClass: scenario.android.lifecycleTestClass,
     testMethod: scenario.android.approveRemovalTestMethod,
@@ -3328,22 +3614,7 @@ async function runWebMemberRemovalLifecycle(page, simulatorUdid, androidSerial) 
     expectedDeviceNames,
     label: 'Android Test #37 approves iOS removal',
   });
-  const iosRemovalObserver = startIosJoinTest(simulatorUdid, {
-    testClass: scenario.ios.testClass,
-    testMethod: scenario.ios.removalObserverTestMethod,
-    label: 'iOS Test #37 observes own removal',
-    environment: stepEnvironment({ role: 'removal-target', cycle: 1, step: 1, sender: 'web' }),
-    secretName: thirdName,
-    secretValue: secretValueForName(thirdName),
-    expectedDeviceNames,
-  });
-  void iosRemovalObserver.result.catch(() => {});
-  await Promise.all([
-    androidRemovalApproval.waitForMarker('E2E: ANDROID_TEST37_REMOVAL_RECEIVER_READY', 180_000),
-    // XCTest owns a 180-second bounded UI predicate. Leave a full minute for
-    // its assertion/result diagnostics instead of terminating at the same edge.
-    iosRemovalObserver.waitForMarker('E2E: IOS_TEST37_REMOVAL_TARGET_READY', 240_000),
-  ]);
+  await androidRemovalApproval.waitForMarker('E2E: ANDROID_TEST37_REMOVAL_RECEIVER_READY', 180_000);
 
   await initiateWebDeviceRemoval(page, {
     targetCategory: 'iPhone',
@@ -3610,16 +3881,6 @@ async function runWebSecondaryCreatorMemberRemovalLifecycle(page, simulatorUdid,
       + `ios=${JSON.stringify(expectedDeviceNames.ios)}`,
   );
 
-  const androidRemovalTarget = await startAndroidStepTest(androidSerial, {
-    testClass: scenario.android.lifecycleTestClass,
-    testMethod: scenario.android.removalObserverTestMethod,
-    role: 'removal-target',
-    cycle: 1,
-    step: 1,
-    expectedSecretNames: allSecretNames,
-    expectedDeviceNames,
-    label: 'Android Test #40 observes own removal',
-  });
   const iosRemovalApproval = startIosAction({
     testMethod: scenario.ios.approveRemovalTestMethod,
     role: 'removal-approver',
@@ -3630,10 +3891,19 @@ async function runWebSecondaryCreatorMemberRemovalLifecycle(page, simulatorUdid,
     label: 'iOS Test #40 approves Android removal',
   });
   void iosRemovalApproval.result.catch(() => {});
-  await Promise.all([
-    androidRemovalTarget.waitForMarker('E2E: ANDROID_TEST40_REMOVAL_TARGET_READY', 180_000),
-    iosRemovalApproval.waitForMarker('E2E: IOS_TEST40_REMOVAL_RECEIVER_READY', 240_000),
-  ]);
+  // The Android reset timer starts as soon as the target is ready.
+  await iosRemovalApproval.waitForMarker('E2E: IOS_TEST40_REMOVAL_RECEIVER_READY', 240_000);
+  const androidRemovalTarget = await startAndroidStepTest(androidSerial, {
+    testClass: scenario.android.lifecycleTestClass,
+    testMethod: scenario.android.removalObserverTestMethod,
+    role: 'removal-target',
+    cycle: 1,
+    step: 1,
+    expectedSecretNames: allSecretNames,
+    expectedDeviceNames,
+    label: 'Android Test #40 observes own removal',
+  });
+  await androidRemovalTarget.waitForMarker('E2E: ANDROID_TEST40_REMOVAL_TARGET_READY', 180_000);
   await assertWebMembership(
     page,
     ['Web', 'Android', 'iPhone'],
@@ -3912,6 +4182,18 @@ async function runWebDistributedCreatorMemberRemovalLifecycle(page, simulatorUdi
       + `ios=${JSON.stringify(expectedDeviceNames.ios)}`,
   );
 
+  const iosRemovalRequester = startIosAction({
+    testMethod: scenario.ios.requestRemovalTestMethod,
+    role: 'removal-requester',
+    cycle: 1,
+    secretName: thirdName,
+    sender: 'ios',
+    expectedDeviceNames,
+    label: 'iOS Test #43 requests Web removal',
+  });
+  void iosRemovalRequester.result.catch(() => {});
+  // The Android incoming-request timer starts as soon as its UI is ready.
+  await iosRemovalRequester.waitForMarker('E2E: IOS_TEST43_WEB_REMOVAL_REQUESTER_READY', 240_000);
   const androidRemovalApproval = await startAndroidStepTest(androidSerial, {
     testClass: scenario.android.lifecycleTestClass,
     testMethod: scenario.android.approveRemovalTestMethod,
@@ -3923,20 +4205,7 @@ async function runWebDistributedCreatorMemberRemovalLifecycle(page, simulatorUdi
     expectedDeviceNames,
     label: 'Android Test #43 approves Web removal',
   });
-  const iosRemovalRequester = startIosAction({
-    testMethod: scenario.ios.requestRemovalTestMethod,
-    role: 'removal-requester',
-    cycle: 1,
-    secretName: thirdName,
-    sender: 'ios',
-    expectedDeviceNames,
-    label: 'iOS Test #43 requests Web removal',
-  });
-  void iosRemovalRequester.result.catch(() => {});
-  await Promise.all([
-    androidRemovalApproval.waitForMarker('E2E: ANDROID_TEST43_REMOVAL_RECEIVER_READY', 180_000),
-    iosRemovalRequester.waitForMarker('E2E: IOS_TEST43_WEB_REMOVAL_REQUESTER_READY', 240_000),
-  ]);
+  await androidRemovalApproval.waitForMarker('E2E: ANDROID_TEST43_REMOVAL_RECEIVER_READY', 180_000);
   await assertWebMembership(
     page,
     ['Web', 'Android', 'iPhone'],
@@ -4077,6 +4346,9 @@ async function runWebDistributedCreatorRemovalRejoinRecoveryLifecycle(
   simulatorUdid,
   androidSerial,
 ) {
+  const scopedRecoveryProfile = [46].includes(testNumber) && selectedCurrentRecoveryProfile();
+  let currentRecoveryPhase, currentRecoveryBinding;
+  const phaseAction = action => currentRecoveryPhase ? currentRecoveryPhase.run(action) : action();
   const allSecretNames = ['secret1', 'secret2', 'secret3'].map(secretNameFor);
   const [initialName, secondName, thirdName] = allSecretNames;
   const directShowCycles = recoveryCycles.filter((cycle) => cycle.kind === 'direct-show');
@@ -4212,6 +4484,8 @@ async function runWebDistributedCreatorRemovalRejoinRecoveryLifecycle(
     secretName,
     secretValue: secretValueForName(secretName),
     expectedDeviceNames,
+    ...currentNativeRecoveryLaunch(currentRecoveryPhase, currentRecoveryBinding,
+      {platform: 'ios', role, cycle, testMethod}),
   });
 
   setJoinExpectedSecretNames([initialName]);
@@ -4506,6 +4780,7 @@ async function runWebDistributedCreatorRemovalRejoinRecoveryLifecycle(
         secretName,
         approvalPlatform,
         sender,
+        expectedDeviceNames: finalDeviceNames,
         label: `iOS Test #46 ${role} cycle ${cycle.number}`,
       });
       void test.result.catch(() => {});
@@ -4523,6 +4798,8 @@ async function runWebDistributedCreatorRemovalRejoinRecoveryLifecycle(
       secretName,
       secretValue: secretValueForName(secretName),
       label: `Android Test #46 ${role} cycle ${cycle.number}`,
+      ...currentNativeRecoveryLaunch(currentRecoveryPhase, currentRecoveryBinding,
+        {platform: 'android', role, cycle: cycle.number, testMethod: scenario.android.stepTestMethod}),
     });
   };
 
@@ -4532,42 +4809,61 @@ async function runWebDistributedCreatorRemovalRejoinRecoveryLifecycle(
     const approver = cycle.approvals[0].platform;
     const observer = cycle.observer;
     const secretName = cycle.senderSecrets[sender];
-    let senderTest;
+    if (scopedRecoveryProfile) {
+      currentRecoveryBinding = newCurrentRecoveryBinding(cycle, sender);
+      currentRecoveryPhase = approvalCoordinator.registerRecoveryPhase(currentRecoveryBinding,
+        abortRecoveryPhaseHarness({coordinator: approvalCoordinator, shutdown: harnessShutdown}));
+    }
+    try {
+        let senderTest;
     let approverTest;
     let observerTest;
 
     if (approver !== 'web') {
-      approverTest = await startNativeRecoveryStep(
+      approverTest = await phaseAction(() => startNativeRecoveryStep(
         approver,
         'receiver',
         cycle,
         secretName,
         approver,
         sender,
-      );
+      ));
     }
     if (observer !== 'web') {
-      observerTest = await startNativeRecoveryStep(
+      observerTest = await phaseAction(() => startNativeRecoveryStep(
         observer,
         'receiver',
         cycle,
         secretName,
         approver,
         sender,
-      );
+      ));
     }
     if (sender !== 'web') {
-      senderTest = await startNativeRecoveryStep(
+      senderTest = await phaseAction(() => startNativeRecoveryStep(
         sender,
         'sender',
         cycle,
         secretName,
         approver,
         sender,
-      );
+      ));
     }
 
-    await waitForRecoveryParticipantsReady(page, {
+    for (const test of [senderTest, approverTest, observerTest]) if (currentRecoveryPhase && test) {
+      const phase = currentRecoveryPhase; void test.result.catch(error => phase.abort(error));
+    }
+    if (currentRecoveryPhase) {
+      const phase = currentRecoveryPhase;
+      await phaseAction(() => Promise.all([
+        phase.waitFor('READY', 240_000),
+        (async () => {
+          await waitForWebPreRequestUiReady(page, secretName, sender === 'web' ? 'sender' : 'receiver', 240_000,
+            { normalizeAcceptedShow: cycle.number !== recoveryOnlyCycles[0].number });
+          phase.web('READY');
+        })(),
+      ]));
+    } else await waitForRecoveryParticipantsReady(page, {
       cycleNumber: cycle.number,
       secretName,
       participants: [
@@ -4579,24 +4875,35 @@ async function runWebDistributedCreatorRemovalRejoinRecoveryLifecycle(
     });
     emitRecoveryMarker(cycle, 'PARTICIPANTS_READY');
 
-    if (sender === 'web') {
+    if (currentRecoveryPhase) {
+      const phase = currentRecoveryPhase; phase.releaseSender();
+      if (sender === 'web') {
+        await phaseAction(() => startWebRecovery(page, secretName)); phase.web('REQUEST_SENT');
+      } else await phaseAction(() => phase.waitFor('REQUEST_SENT', 180_000));
+    } else if (sender === 'web') {
       approvalCoordinator.allow('web-sender', cycle.number);
-      await startWebRecovery(page, secretName);
+      await phaseAction(() => startWebRecovery(page, secretName));
     } else {
       approvalCoordinator.allow(`${sender}-sender-1`, cycle.number);
-      await senderTest.waitForMarker(
+      await phaseAction(() => senderTest.waitForMarker(
         `E2E: ${sender.toUpperCase()}_RECOVERY_REQUEST_SENT_${cycle.number}_1`,
         180_000,
-      );
+      ));
     }
     emitRecoveryMarker(cycle, `${sender.toUpperCase()}_REQUEST_PERSISTED`);
 
+    const receiverPhase = currentRecoveryPhase;
     const waitForReceiverVisible = async (platform, test) => {
       if (platform === 'web') {
         await openStrictWebIncomingAlert(page, 1, secretName, {
           dismissWithoutDecision: platform === observer,
+            onIncomingVisible: receiverPhase ? () => receiverPhase.web('INCOMING_VISIBLE') : undefined,
         });
+        if (!verifyBothReceiverAlerts) receiverPhase?.web('INCOMING_VISIBLE');
         return;
+      }
+      if (receiverPhase && !verifyBothReceiverAlerts) {
+        await receiverPhase.waitFor('INCOMING_VISIBLE', 180_000, platform); return;
       }
       await test.waitForMarker(
         `E2E: ${platform.toUpperCase()}_INCOMING_ALERT_VISIBLE_${cycle.number}_1`,
@@ -4609,61 +4916,70 @@ async function runWebDistributedCreatorRemovalRejoinRecoveryLifecycle(
         );
       }
     };
-    await Promise.all([
+    await phaseAction(() => Promise.all([
       waitForReceiverVisible(approver, approverTest),
       waitForReceiverVisible(observer, observerTest),
-    ]);
+      ...(receiverPhase && verifyBothReceiverAlerts ? ['android', 'ios'].filter(platform => platform !== sender)
+        .map(platform => receiverPhase.waitFor('INCOMING_VISIBLE', 180_000, platform)) : []),
+    ]));
+    currentRecoveryPhase?.requireBothBadges();
     emitRecoveryMarker(cycle, 'BOTH_RECEIVERS_VISIBLE');
 
     if (approver === 'web') {
-      await approveOpenIncomingRecoveryOnWeb(page, secretName);
+      await phaseAction(() => approveOpenIncomingRecoveryOnWeb(page, secretName));
     } else {
       approvalCoordinator.allow(`${approver}-approve-1`, cycle.number);
-      await approverTest.waitForMarker(
+      await phaseAction(() => approverTest.waitForMarker(
         `E2E: ${approver.toUpperCase()}_APPROVED_INCOMING_${cycle.number}_1`,
         180_000,
-      );
+      ));
     }
     emitRecoveryMarker(cycle, `${approver.toUpperCase()}_APPROVAL_COMPLETED`);
 
     if (observer === 'web') {
-      await waitForWebIncomingRecoveryGone(page, secretName);
+      await phaseAction(() => waitForWebIncomingRecoveryGone(page, secretName));
     } else {
       approvalCoordinator.allow(`${observer}-dismiss-1`, cycle.number);
-      await observerTest.waitForMarker(
+      await phaseAction(() => observerTest.waitForMarker(
         `E2E: ${observer.toUpperCase()}_DISMISSED_INCOMING_${cycle.number}_1`,
         180_000,
-      );
+      ));
     }
     emitRecoveryMarker(cycle, `${observer.toUpperCase()}_OBSERVER_CLEARED`);
 
     if (sender === 'web') {
-      await revealAndCloseWebSecret(page, secretName, false);
+      await phaseAction(() => revealAndCloseWebSecret(page, secretName, false));
+    } else if (sender === 'ios' && [26,27,28,29,30,31,32,33,34,35,36,46,47,48,49].includes(testNumber)) {
+      await phaseAction(() => runRecoveryIosShow({actor:senderTest,scope:senderTest.recoveryShowPhase,
+        phase:currentRecoveryPhase,allowShow:()=>approvalCoordinator.allow('ios-show-1',cycle.number)}));
     } else {
       approvalCoordinator.allow(`${sender}-show-1`, cycle.number);
-      await senderTest.waitForMarker(
+      await phaseAction(() => senderTest.waitForMarker(
         `E2E: ${sender.toUpperCase()}_RECOVERY_SECRET_VISIBLE_${cycle.number}_1`,
         recoveryShowTimeoutMs,
-      );
-      await senderTest.waitForMarker(
+      ));
+      await phaseAction(() => senderTest.waitForMarker(
         `E2E: ${sender.toUpperCase()}_RECOVERY_CLOSED_${cycle.number}_1`,
         60_000,
-      );
+      ));
     }
     emitRecoveryMarker(cycle, `${sender.toUpperCase()}_VALUE_VERIFIED`);
     emitRecoveryMarker(cycle, `${sender.toUpperCase()}_DIALOG_CLOSED`);
 
-    if (senderTest) await senderTest.result;
-    if (approverTest) await approverTest.result;
-    if (observerTest) await observerTest.result;
+    if (senderTest) await phaseAction(() => senderTest.result);
+    if (approverTest) await phaseAction(() => approverTest.result);
+    if (observerTest) await phaseAction(() => observerTest.result);
     emitRecoveryMarker(cycle, 'CYCLE_COMPLETED');
     writeDiagnostic(
       `[TEST46][${cycle.block}][cycle=${cycle.number}] sender=${sender} `
         + `approver=${approver} observer=${observer} secret=${secretName} `
         + 'bothReceiversVisible=true observerGone=true exactValue=verified closed=true',
     );
-    page = await refreshWebForKnownNames(page, cycle.number, allSecretNames);
-  }
+    page = await phaseAction(() => refreshWebForKnownNames(page, cycle.number, allSecretNames));
+    currentRecoveryPhase?.complete();
+      } catch (error) { currentRecoveryPhase?.abort(error); throw error; }
+    finally { currentRecoveryPhase = undefined; currentRecoveryBinding = undefined; }
+}
 
   return { completedCycles: recoveryCycles.length };
 }
@@ -4673,6 +4989,9 @@ async function runWebDistributedCreatorDeclinedRemovalRecoveryLifecycle(
   simulatorUdid,
   androidSerial,
 ) {
+  const scopedRecoveryProfile = [47].includes(testNumber) && selectedCurrentRecoveryProfile();
+  let currentRecoveryPhase, currentRecoveryBinding;
+  const phaseAction = action => currentRecoveryPhase ? currentRecoveryPhase.run(action) : action();
   const allSecretNames = ['secret1', 'secret2', 'secret3'].map(secretNameFor);
   const [initialName, secondName, thirdName] = allSecretNames;
   const declinedRemovals = scenario.membership?.declinedRemovals ?? [];
@@ -4798,6 +5117,8 @@ async function runWebDistributedCreatorDeclinedRemovalRecoveryLifecycle(
     secretName,
     secretValue: secretValueForName(secretName),
     expectedDeviceNames,
+    ...currentNativeRecoveryLaunch(currentRecoveryPhase, currentRecoveryBinding,
+      {platform: 'ios', role, cycle, testMethod}),
   });
   const startNativeRecoveryStep = async (
     platform,
@@ -4815,6 +5136,7 @@ async function runWebDistributedCreatorDeclinedRemovalRecoveryLifecycle(
         secretName,
         approvalPlatform,
         sender,
+        expectedDeviceNames,
         label: `iOS Test #47 ${role} cycle ${cycle.number}`,
       });
       void test.result.catch(() => {});
@@ -4832,6 +5154,8 @@ async function runWebDistributedCreatorDeclinedRemovalRecoveryLifecycle(
       secretName,
       secretValue: secretValueForName(secretName),
       label: `Android Test #47 ${role} cycle ${cycle.number}`,
+      ...currentNativeRecoveryLaunch(currentRecoveryPhase, currentRecoveryBinding,
+        {platform: 'android', role, cycle: cycle.number, testMethod: scenario.android.stepTestMethod}),
     });
   };
   const runRecoveryPhase = async (phase) => {
@@ -4842,42 +5166,58 @@ async function runWebDistributedCreatorDeclinedRemovalRecoveryLifecycle(
       const approver = cycle.approvals[0].platform;
       const observer = cycle.observer;
       const secretName = cycle.senderSecrets[sender];
-      let senderTest;
+      if (scopedRecoveryProfile) {
+        currentRecoveryBinding = newCurrentRecoveryBinding(cycle, sender);
+        currentRecoveryPhase = approvalCoordinator.registerRecoveryPhase(currentRecoveryBinding,
+          abortRecoveryPhaseHarness({coordinator: approvalCoordinator, shutdown: harnessShutdown}));
+      }
+      try {
+            let senderTest;
       let approverTest;
       let observerTest;
 
       if (approver !== 'web') {
-        approverTest = await startNativeRecoveryStep(
+        approverTest = await phaseAction(() => startNativeRecoveryStep(
           approver,
           'receiver',
           cycle,
           secretName,
           approver,
           sender,
-        );
+        ));
       }
       if (observer !== 'web') {
-        observerTest = await startNativeRecoveryStep(
+        observerTest = await phaseAction(() => startNativeRecoveryStep(
           observer,
           'receiver',
           cycle,
           secretName,
           approver,
           sender,
-        );
+        ));
       }
       if (sender !== 'web') {
-        senderTest = await startNativeRecoveryStep(
+        senderTest = await phaseAction(() => startNativeRecoveryStep(
           sender,
           'sender',
           cycle,
           secretName,
           approver,
           sender,
-        );
+        ));
       }
 
-      await waitForRecoveryParticipantsReady(page, {
+      for (const test of [senderTest, approverTest, observerTest]) if (currentRecoveryPhase && test) {
+        const phase = currentRecoveryPhase; void test.result.catch(error => phase.abort(error));
+      }
+      if (currentRecoveryPhase) {
+        const phase = currentRecoveryPhase;
+        await phaseAction(() => Promise.all([
+          phase.waitFor('READY', 240_000),
+          (async () => { await waitForWebPreRequestUiReady(page, secretName,
+            sender === 'web' ? 'sender' : 'receiver', 240_000); phase.web('READY'); })(),
+        ]));
+      } else await waitForRecoveryParticipantsReady(page, {
         cycleNumber: cycle.number,
         secretName,
         participants: [
@@ -4889,24 +5229,35 @@ async function runWebDistributedCreatorDeclinedRemovalRecoveryLifecycle(
       });
       emitRecoveryMarker(cycle, 'PARTICIPANTS_READY');
 
-      if (sender === 'web') {
+      if (currentRecoveryPhase) {
+        const phase = currentRecoveryPhase; phase.releaseSender();
+        if (sender === 'web') {
+          await phaseAction(() => startWebRecovery(page, secretName)); phase.web('REQUEST_SENT');
+        } else await phaseAction(() => phase.waitFor('REQUEST_SENT', 180_000));
+      } else if (sender === 'web') {
         approvalCoordinator.allow('web-sender', cycle.number);
-        await startWebRecovery(page, secretName);
+        await phaseAction(() => startWebRecovery(page, secretName));
       } else {
         approvalCoordinator.allow(`${sender}-sender-1`, cycle.number);
-        await senderTest.waitForMarker(
+        await phaseAction(() => senderTest.waitForMarker(
           `E2E: ${sender.toUpperCase()}_RECOVERY_REQUEST_SENT_${cycle.number}_1`,
           180_000,
-        );
+        ));
       }
       emitRecoveryMarker(cycle, `${sender.toUpperCase()}_REQUEST_PERSISTED`);
 
+      const receiverPhase = currentRecoveryPhase;
       const waitForReceiverVisible = async (platform, test) => {
         if (platform === 'web') {
           await openStrictWebIncomingAlert(page, 1, secretName, {
             dismissWithoutDecision: platform === observer,
+              onIncomingVisible: receiverPhase ? () => receiverPhase.web('INCOMING_VISIBLE') : undefined,
           });
+          if (!verifyBothReceiverAlerts) receiverPhase?.web('INCOMING_VISIBLE');
           return;
+        }
+        if (receiverPhase && !verifyBothReceiverAlerts) {
+          await receiverPhase.waitFor('INCOMING_VISIBLE', 180_000, platform); return;
         }
         await test.waitForMarker(
           `E2E: ${platform.toUpperCase()}_INCOMING_ALERT_VISIBLE_${cycle.number}_1`,
@@ -4919,61 +5270,70 @@ async function runWebDistributedCreatorDeclinedRemovalRecoveryLifecycle(
           );
         }
       };
-      await Promise.all([
+      await phaseAction(() => Promise.all([
         waitForReceiverVisible(approver, approverTest),
         waitForReceiverVisible(observer, observerTest),
-      ]);
+        ...(receiverPhase && verifyBothReceiverAlerts ? ['android', 'ios'].filter(platform => platform !== sender)
+          .map(platform => receiverPhase.waitFor('INCOMING_VISIBLE', 180_000, platform)) : []),
+      ]));
+      currentRecoveryPhase?.requireBothBadges();
       emitRecoveryMarker(cycle, 'BOTH_RECEIVERS_VISIBLE');
 
       if (approver === 'web') {
-        await approveOpenIncomingRecoveryOnWeb(page, secretName);
+        await phaseAction(() => approveOpenIncomingRecoveryOnWeb(page, secretName));
       } else {
         approvalCoordinator.allow(`${approver}-approve-1`, cycle.number);
-        await approverTest.waitForMarker(
+        await phaseAction(() => approverTest.waitForMarker(
           `E2E: ${approver.toUpperCase()}_APPROVED_INCOMING_${cycle.number}_1`,
           180_000,
-        );
+        ));
       }
       emitRecoveryMarker(cycle, `${approver.toUpperCase()}_APPROVAL_COMPLETED`);
 
       if (observer === 'web') {
-        await waitForWebIncomingRecoveryGone(page, secretName);
+        await phaseAction(() => waitForWebIncomingRecoveryGone(page, secretName));
       } else {
         approvalCoordinator.allow(`${observer}-dismiss-1`, cycle.number);
-        await observerTest.waitForMarker(
+        await phaseAction(() => observerTest.waitForMarker(
           `E2E: ${observer.toUpperCase()}_DISMISSED_INCOMING_${cycle.number}_1`,
           180_000,
-        );
+        ));
       }
       emitRecoveryMarker(cycle, `${observer.toUpperCase()}_OBSERVER_CLEARED`);
 
       if (sender === 'web') {
-        await revealAndCloseWebSecret(page, secretName, false);
+        await phaseAction(() => revealAndCloseWebSecret(page, secretName, false));
+      } else if (sender === 'ios' && [26,27,28,29,30,31,32,33,34,35,36,46,47,48,49].includes(testNumber)) {
+        await phaseAction(() => runRecoveryIosShow({actor:senderTest,scope:senderTest.recoveryShowPhase,
+          phase:currentRecoveryPhase,allowShow:()=>approvalCoordinator.allow('ios-show-1',cycle.number)}));
       } else {
         approvalCoordinator.allow(`${sender}-show-1`, cycle.number);
-        await senderTest.waitForMarker(
+        await phaseAction(() => senderTest.waitForMarker(
           `E2E: ${sender.toUpperCase()}_RECOVERY_SECRET_VISIBLE_${cycle.number}_1`,
           recoveryShowTimeoutMs,
-        );
-        await senderTest.waitForMarker(
+        ));
+        await phaseAction(() => senderTest.waitForMarker(
           `E2E: ${sender.toUpperCase()}_RECOVERY_CLOSED_${cycle.number}_1`,
           60_000,
-        );
+        ));
       }
       emitRecoveryMarker(cycle, `${sender.toUpperCase()}_VALUE_VERIFIED`);
       emitRecoveryMarker(cycle, `${sender.toUpperCase()}_DIALOG_CLOSED`);
 
-      if (senderTest) await senderTest.result;
-      if (approverTest) await approverTest.result;
-      if (observerTest) await observerTest.result;
+      if (senderTest) await phaseAction(() => senderTest.result);
+      if (approverTest) await phaseAction(() => approverTest.result);
+      if (observerTest) await phaseAction(() => observerTest.result);
       emitRecoveryMarker(cycle, 'CYCLE_COMPLETED');
       writeDiagnostic(
         `[TEST47][phase=${phase}][${cycle.block}][cycle=${cycle.number}] sender=${sender} `
           + `approver=${approver} observer=${observer} secret=${secretName} `
           + 'bothReceiversVisible=true observerGone=true exactValue=verified closed=true',
       );
-      page = await refreshWebForKnownNames(page, cycle.number, allSecretNames);
-    }
+      page = await phaseAction(() => refreshWebForKnownNames(page, cycle.number, allSecretNames));
+      currentRecoveryPhase?.complete();
+          } catch (error) { currentRecoveryPhase?.abort(error); throw error; }
+      finally { currentRecoveryPhase = undefined; currentRecoveryBinding = undefined; }
+}
   };
 
   setJoinExpectedSecretNames([initialName]);
@@ -5051,6 +5411,18 @@ async function runWebDistributedCreatorDeclinedRemovalRecoveryLifecycle(
   );
 
   // Phase 1: iOS requests Web removal; Android declines.
+  const iosPhase1Requester = startIosAction({
+    testMethod: scenario.ios.requestWebRemovalTestMethod,
+    role: 'removal-requester',
+    cycle: 1,
+    secretName: thirdName,
+    sender: 'ios',
+    expectedDeviceNames,
+    label: 'iOS Test #47 requests Web removal',
+  });
+  void iosPhase1Requester.result.catch(() => {});
+  // The Android incoming-request timer starts as soon as its UI is ready.
+  await iosPhase1Requester.waitForMarker('E2E: IOS_TEST47_PHASE1_REQUESTER_READY', 240_000);
   const androidPhase1Decliner = await startAndroidStepTest(androidSerial, {
     testClass: scenario.android.lifecycleTestClass,
     testMethod: scenario.android.declineWebRemovalTestMethod,
@@ -5062,20 +5434,7 @@ async function runWebDistributedCreatorDeclinedRemovalRecoveryLifecycle(
     expectedDeviceNames,
     label: 'Android Test #47 declines iOS request to remove Web',
   });
-  const iosPhase1Requester = startIosAction({
-    testMethod: scenario.ios.requestWebRemovalTestMethod,
-    role: 'removal-requester',
-    cycle: 1,
-    secretName: thirdName,
-    sender: 'ios',
-    expectedDeviceNames,
-    label: 'iOS Test #47 requests Web removal',
-  });
-  void iosPhase1Requester.result.catch(() => {});
-  await Promise.all([
-    androidPhase1Decliner.waitForMarker('E2E: ANDROID_TEST47_PHASE1_DECLINER_READY', 180_000),
-    iosPhase1Requester.waitForMarker('E2E: IOS_TEST47_PHASE1_REQUESTER_READY', 240_000),
-  ]);
+  await androidPhase1Decliner.waitForMarker('E2E: ANDROID_TEST47_PHASE1_DECLINER_READY', 180_000);
   await assertWebMembership(
     page,
     ['Web', 'Android', 'iPhone'],
@@ -5173,16 +5532,6 @@ async function runWebDistributedCreatorDeclinedRemovalRecoveryLifecycle(
   await runRecoveryPhase(2);
 
   // Phase 3: Web requests Android removal; iOS declines.
-  const androidPhase3Target = await startAndroidStepTest(androidSerial, {
-    testClass: scenario.android.lifecycleTestClass,
-    testMethod: scenario.android.observeAndroidDeclineTestMethod,
-    role: 'removal-target',
-    cycle: 3,
-    step: 1,
-    expectedSecretNames: allSecretNames,
-    expectedDeviceNames,
-    label: 'Android Test #47 remains a member after iOS Decline',
-  });
   const iosPhase3Decliner = startIosAction({
     testMethod: scenario.ios.declineAndroidRemovalTestMethod,
     role: 'removal-decliner',
@@ -5193,10 +5542,18 @@ async function runWebDistributedCreatorDeclinedRemovalRecoveryLifecycle(
     label: 'iOS Test #47 declines Web request to remove Android',
   });
   void iosPhase3Decliner.result.catch(() => {});
-  await Promise.all([
-    androidPhase3Target.waitForMarker('E2E: ANDROID_TEST47_PHASE3_TARGET_READY', 180_000),
-    iosPhase3Decliner.waitForMarker('E2E: IOS_TEST47_PHASE3_DECLINER_READY', 240_000),
-  ]);
+  await iosPhase3Decliner.waitForMarker('E2E: IOS_TEST47_PHASE3_DECLINER_READY', 240_000);
+  const androidPhase3Target = await startAndroidStepTest(androidSerial, {
+    testClass: scenario.android.lifecycleTestClass,
+    testMethod: scenario.android.observeAndroidDeclineTestMethod,
+    role: 'removal-target',
+    cycle: 3,
+    step: 1,
+    expectedSecretNames: allSecretNames,
+    expectedDeviceNames,
+    label: 'Android Test #47 remains a member after iOS Decline',
+  });
+  await androidPhase3Target.waitForMarker('E2E: ANDROID_TEST47_PHASE3_TARGET_READY', 180_000);
   await assertWebMembership(
     page,
     ['Web', 'Android', 'iPhone'],
@@ -5211,12 +5568,12 @@ async function runWebDistributedCreatorDeclinedRemovalRecoveryLifecycle(
     waitForTargetGone: false,
     label: 'Test #47 phase-3 Web removal request',
     requestVisibleMarker: 'WEB_TEST47_PHASE3_REMOVAL_DIALOG_VISIBLE',
-    completionMarker: 'WEB_TEST47_PHASE3_REMOVAL_REQUESTED',
   });
   await iosPhase3Decliner.waitForMarker(
     'E2E: IOS_TEST47_PHASE3_REMOVAL_REQUEST_VISIBLE',
     180_000,
   );
+  console.log('E2E: WEB_TEST47_PHASE3_REMOVAL_REQUESTED'); // SAME exact receiver UI proves persisted request.
   approvalCoordinator.allow('ios-decline-android-test47', 3);
   await iosPhase3Decliner.waitForMarker(
     'E2E: IOS_TEST47_PHASE3_REMOVAL_DECLINED',
@@ -5248,6 +5605,9 @@ async function runAndroidDistributedCreatorDeclinedRemovalRecoveryLifecycle(
   simulatorUdid,
   androidSerial,
 ) {
+  const scopedRecoveryProfile = [48].includes(testNumber) && selectedCurrentRecoveryProfile();
+  let currentRecoveryPhase, currentRecoveryBinding;
+  const phaseAction = action => currentRecoveryPhase ? currentRecoveryPhase.run(action) : action();
   const allSecretNames = ['secret1', 'secret2', 'secret3'].map(secretNameFor);
   const [initialName, secondName, thirdName] = allSecretNames;
   const declinedRemovals = scenario.membership?.declinedRemovals ?? [];
@@ -5368,6 +5728,8 @@ async function runAndroidDistributedCreatorDeclinedRemovalRecoveryLifecycle(
     secretName,
     secretValue: secretValueForName(secretName),
     expectedDeviceNames,
+    ...currentNativeRecoveryLaunch(currentRecoveryPhase, currentRecoveryBinding,
+      {platform: 'ios', role, cycle, testMethod}),
   });
   const startNativeRecoveryStep = async (
     platform,
@@ -5385,6 +5747,7 @@ async function runAndroidDistributedCreatorDeclinedRemovalRecoveryLifecycle(
         secretName,
         approvalPlatform,
         sender,
+        expectedDeviceNames,
         label: `iOS Test #48 ${role} cycle ${cycle.number}`,
       });
       void test.result.catch(() => {});
@@ -5402,6 +5765,8 @@ async function runAndroidDistributedCreatorDeclinedRemovalRecoveryLifecycle(
       secretName,
       secretValue: secretValueForName(secretName),
       label: `Android Test #48 ${role} cycle ${cycle.number}`,
+      ...currentNativeRecoveryLaunch(currentRecoveryPhase, currentRecoveryBinding,
+        {platform: 'android', role, cycle: cycle.number, testMethod: scenario.android.stepTestMethod}),
     });
   };
   const runRecoveryPhase = async (phase) => {
@@ -5412,42 +5777,58 @@ async function runAndroidDistributedCreatorDeclinedRemovalRecoveryLifecycle(
       const approver = cycle.approvals[0].platform;
       const observer = cycle.observer;
       const secretName = cycle.senderSecrets[sender];
-      let senderTest;
+      if (scopedRecoveryProfile) {
+        currentRecoveryBinding = newCurrentRecoveryBinding(cycle, sender);
+        currentRecoveryPhase = approvalCoordinator.registerRecoveryPhase(currentRecoveryBinding,
+          abortRecoveryPhaseHarness({coordinator: approvalCoordinator, shutdown: harnessShutdown}));
+      }
+      try {
+            let senderTest;
       let approverTest;
       let observerTest;
 
       if (approver !== 'web') {
-        approverTest = await startNativeRecoveryStep(
+        approverTest = await phaseAction(() => startNativeRecoveryStep(
           approver,
           'receiver',
           cycle,
           secretName,
           approver,
           sender,
-        );
+        ));
       }
       if (observer !== 'web') {
-        observerTest = await startNativeRecoveryStep(
+        observerTest = await phaseAction(() => startNativeRecoveryStep(
           observer,
           'receiver',
           cycle,
           secretName,
           approver,
           sender,
-        );
+        ));
       }
       if (sender !== 'web') {
-        senderTest = await startNativeRecoveryStep(
+        senderTest = await phaseAction(() => startNativeRecoveryStep(
           sender,
           'sender',
           cycle,
           secretName,
           approver,
           sender,
-        );
+        ));
       }
 
-      await waitForRecoveryParticipantsReady(page, {
+      for (const test of [senderTest, approverTest, observerTest]) if (currentRecoveryPhase && test) {
+        const phase = currentRecoveryPhase; void test.result.catch(error => phase.abort(error));
+      }
+      if (currentRecoveryPhase) {
+        const phase = currentRecoveryPhase;
+        await phaseAction(() => Promise.all([
+          phase.waitFor('READY', 240_000),
+          (async () => { await waitForWebPreRequestUiReady(page, secretName,
+            sender === 'web' ? 'sender' : 'receiver', 240_000); phase.web('READY'); })(),
+        ]));
+      } else await waitForRecoveryParticipantsReady(page, {
         cycleNumber: cycle.number,
         secretName,
         participants: [
@@ -5459,24 +5840,35 @@ async function runAndroidDistributedCreatorDeclinedRemovalRecoveryLifecycle(
       });
       emitRecoveryMarker(cycle, 'PARTICIPANTS_READY');
 
-      if (sender === 'web') {
+      if (currentRecoveryPhase) {
+        const phase = currentRecoveryPhase; phase.releaseSender();
+        if (sender === 'web') {
+          await phaseAction(() => startWebRecovery(page, secretName)); phase.web('REQUEST_SENT');
+        } else await phaseAction(() => phase.waitFor('REQUEST_SENT', 180_000));
+      } else if (sender === 'web') {
         approvalCoordinator.allow('web-sender', cycle.number);
-        await startWebRecovery(page, secretName);
+        await phaseAction(() => startWebRecovery(page, secretName));
       } else {
         approvalCoordinator.allow(`${sender}-sender-1`, cycle.number);
-        await senderTest.waitForMarker(
+        await phaseAction(() => senderTest.waitForMarker(
           `E2E: ${sender.toUpperCase()}_RECOVERY_REQUEST_SENT_${cycle.number}_1`,
           180_000,
-        );
+        ));
       }
       emitRecoveryMarker(cycle, `${sender.toUpperCase()}_REQUEST_PERSISTED`);
 
+      const receiverPhase = currentRecoveryPhase;
       const waitForReceiverVisible = async (platform, test) => {
         if (platform === 'web') {
           await openStrictWebIncomingAlert(page, 1, secretName, {
             dismissWithoutDecision: platform === observer,
+              onIncomingVisible: receiverPhase ? () => receiverPhase.web('INCOMING_VISIBLE') : undefined,
           });
+          if (!verifyBothReceiverAlerts) receiverPhase?.web('INCOMING_VISIBLE');
           return;
+        }
+        if (receiverPhase && !verifyBothReceiverAlerts) {
+          await receiverPhase.waitFor('INCOMING_VISIBLE', 180_000, platform); return;
         }
         await test.waitForMarker(
           `E2E: ${platform.toUpperCase()}_INCOMING_ALERT_VISIBLE_${cycle.number}_1`,
@@ -5489,61 +5881,70 @@ async function runAndroidDistributedCreatorDeclinedRemovalRecoveryLifecycle(
           );
         }
       };
-      await Promise.all([
+      await phaseAction(() => Promise.all([
         waitForReceiverVisible(approver, approverTest),
         waitForReceiverVisible(observer, observerTest),
-      ]);
+        ...(receiverPhase && verifyBothReceiverAlerts ? ['android', 'ios'].filter(platform => platform !== sender)
+          .map(platform => receiverPhase.waitFor('INCOMING_VISIBLE', 180_000, platform)) : []),
+      ]));
+      currentRecoveryPhase?.requireBothBadges();
       emitRecoveryMarker(cycle, 'BOTH_RECEIVERS_VISIBLE');
 
       if (approver === 'web') {
-        await approveOpenIncomingRecoveryOnWeb(page, secretName);
+        await phaseAction(() => approveOpenIncomingRecoveryOnWeb(page, secretName));
       } else {
         approvalCoordinator.allow(`${approver}-approve-1`, cycle.number);
-        await approverTest.waitForMarker(
+        await phaseAction(() => approverTest.waitForMarker(
           `E2E: ${approver.toUpperCase()}_APPROVED_INCOMING_${cycle.number}_1`,
           180_000,
-        );
+        ));
       }
       emitRecoveryMarker(cycle, `${approver.toUpperCase()}_APPROVAL_COMPLETED`);
 
       if (observer === 'web') {
-        await waitForWebIncomingRecoveryGone(page, secretName);
+        await phaseAction(() => waitForWebIncomingRecoveryGone(page, secretName));
       } else {
         approvalCoordinator.allow(`${observer}-dismiss-1`, cycle.number);
-        await observerTest.waitForMarker(
+        await phaseAction(() => observerTest.waitForMarker(
           `E2E: ${observer.toUpperCase()}_DISMISSED_INCOMING_${cycle.number}_1`,
           180_000,
-        );
+        ));
       }
       emitRecoveryMarker(cycle, `${observer.toUpperCase()}_OBSERVER_CLEARED`);
 
       if (sender === 'web') {
-        await revealAndCloseWebSecret(page, secretName, false);
+        await phaseAction(() => revealAndCloseWebSecret(page, secretName, false));
+      } else if (sender === 'ios' && [26,27,28,29,30,31,32,33,34,35,36,46,47,48,49].includes(testNumber)) {
+        await phaseAction(() => runRecoveryIosShow({actor:senderTest,scope:senderTest.recoveryShowPhase,
+          phase:currentRecoveryPhase,allowShow:()=>approvalCoordinator.allow('ios-show-1',cycle.number)}));
       } else {
         approvalCoordinator.allow(`${sender}-show-1`, cycle.number);
-        await senderTest.waitForMarker(
+        await phaseAction(() => senderTest.waitForMarker(
           `E2E: ${sender.toUpperCase()}_RECOVERY_SECRET_VISIBLE_${cycle.number}_1`,
           recoveryShowTimeoutMs,
-        );
-        await senderTest.waitForMarker(
+        ));
+        await phaseAction(() => senderTest.waitForMarker(
           `E2E: ${sender.toUpperCase()}_RECOVERY_CLOSED_${cycle.number}_1`,
           60_000,
-        );
+        ));
       }
       emitRecoveryMarker(cycle, `${sender.toUpperCase()}_VALUE_VERIFIED`);
       emitRecoveryMarker(cycle, `${sender.toUpperCase()}_DIALOG_CLOSED`);
 
-      if (senderTest) await senderTest.result;
-      if (approverTest) await approverTest.result;
-      if (observerTest) await observerTest.result;
+      if (senderTest) await phaseAction(() => senderTest.result);
+      if (approverTest) await phaseAction(() => approverTest.result);
+      if (observerTest) await phaseAction(() => observerTest.result);
       emitRecoveryMarker(cycle, 'CYCLE_COMPLETED');
       writeDiagnostic(
         `[TEST48][phase=${phase}][${cycle.block}][cycle=${cycle.number}] sender=${sender} `
           + `approver=${approver} observer=${observer} secret=${secretName} `
           + 'bothReceiversVisible=true observerGone=true exactValue=verified closed=true',
       );
-      page = await refreshWebForKnownNames(page, cycle.number, allSecretNames);
-    }
+      page = await phaseAction(() => refreshWebForKnownNames(page, cycle.number, allSecretNames));
+      currentRecoveryPhase?.complete();
+          } catch (error) { currentRecoveryPhase?.abort(error); throw error; }
+      finally { currentRecoveryPhase = undefined; currentRecoveryBinding = undefined; }
+}
   };
 
   setJoinExpectedSecretNames([initialName]);
@@ -5628,16 +6029,6 @@ async function runAndroidDistributedCreatorDeclinedRemovalRecoveryLifecycle(
   );
 
   // Phase 1: Web requests Android removal; iOS declines.
-  const androidPhase1Target = await startAndroidStepTest(androidSerial, {
-    testClass: scenario.android.lifecycleTestClass,
-    testMethod: scenario.android.observeAndroidDeclineTestMethod,
-    role: 'removal-target',
-    cycle: 1,
-    step: 1,
-    expectedSecretNames: allSecretNames,
-    expectedDeviceNames,
-    label: 'Android Test #48 remains a member after iOS Decline',
-  });
   const iosPhase1Decliner = startIosAction({
     testMethod: scenario.ios.declineAndroidRemovalTestMethod,
     role: 'removal-decliner',
@@ -5648,10 +6039,18 @@ async function runAndroidDistributedCreatorDeclinedRemovalRecoveryLifecycle(
     label: 'iOS Test #48 declines Web request to remove Android',
   });
   void iosPhase1Decliner.result.catch(() => {});
-  await Promise.all([
-    androidPhase1Target.waitForMarker('E2E: ANDROID_TEST48_PHASE1_TARGET_READY', 180_000),
-    iosPhase1Decliner.waitForMarker('E2E: IOS_TEST48_PHASE1_DECLINER_READY', 240_000),
-  ]);
+  await iosPhase1Decliner.waitForMarker('E2E: IOS_TEST48_PHASE1_DECLINER_READY', 240_000);
+  const androidPhase1Target = await startAndroidStepTest(androidSerial, {
+    testClass: scenario.android.lifecycleTestClass,
+    testMethod: scenario.android.observeAndroidDeclineTestMethod,
+    role: 'removal-target',
+    cycle: 1,
+    step: 1,
+    expectedSecretNames: allSecretNames,
+    expectedDeviceNames,
+    label: 'Android Test #48 remains a member after iOS Decline',
+  });
+  await androidPhase1Target.waitForMarker('E2E: ANDROID_TEST48_PHASE1_TARGET_READY', 180_000);
   await assertWebMembership(
     page,
     ['Web', 'Android', 'iPhone'],
@@ -5666,12 +6065,12 @@ async function runAndroidDistributedCreatorDeclinedRemovalRecoveryLifecycle(
     waitForTargetGone: false,
     label: 'Test #48 phase-1 Web removal request',
     requestVisibleMarker: 'WEB_TEST48_PHASE1_REMOVAL_DIALOG_VISIBLE',
-    completionMarker: 'WEB_TEST48_PHASE1_REMOVAL_REQUESTED',
   });
   await iosPhase1Decliner.waitForMarker(
     'E2E: IOS_TEST48_PHASE1_REMOVAL_REQUEST_VISIBLE',
     180_000,
   );
+  console.log('E2E: WEB_TEST48_PHASE1_REMOVAL_REQUESTED'); // SAME exact receiver UI proves persisted request.
   approvalCoordinator.allow('ios-decline-android-test48', 1);
   await iosPhase1Decliner.waitForMarker(
     'E2E: IOS_TEST48_PHASE1_REMOVAL_DECLINED',
@@ -5696,6 +6095,18 @@ async function runAndroidDistributedCreatorDeclinedRemovalRecoveryLifecycle(
   await runRecoveryPhase(1);
 
   // Phase 2: iOS requests Web removal; Android declines.
+  const iosPhase2Requester = startIosAction({
+    testMethod: scenario.ios.requestWebRemovalTestMethod,
+    role: 'removal-requester',
+    cycle: 2,
+    secretName: secondName,
+    sender: 'ios',
+    expectedDeviceNames,
+    label: 'iOS Test #48 requests Web removal',
+  });
+  void iosPhase2Requester.result.catch(() => {});
+  // The Android incoming-request timer starts as soon as its UI is ready.
+  await iosPhase2Requester.waitForMarker('E2E: IOS_TEST48_PHASE2_REQUESTER_READY', 240_000);
   const androidPhase2Decliner = await startAndroidStepTest(androidSerial, {
     testClass: scenario.android.lifecycleTestClass,
     testMethod: scenario.android.declineWebRemovalTestMethod,
@@ -5707,20 +6118,7 @@ async function runAndroidDistributedCreatorDeclinedRemovalRecoveryLifecycle(
     expectedDeviceNames,
     label: 'Android Test #48 declines iOS request to remove Web',
   });
-  const iosPhase2Requester = startIosAction({
-    testMethod: scenario.ios.requestWebRemovalTestMethod,
-    role: 'removal-requester',
-    cycle: 2,
-    secretName: secondName,
-    sender: 'ios',
-    expectedDeviceNames,
-    label: 'iOS Test #48 requests Web removal',
-  });
-  void iosPhase2Requester.result.catch(() => {});
-  await Promise.all([
-    androidPhase2Decliner.waitForMarker('E2E: ANDROID_TEST48_PHASE2_DECLINER_READY', 180_000),
-    iosPhase2Requester.waitForMarker('E2E: IOS_TEST48_PHASE2_REQUESTER_READY', 240_000),
-  ]);
+  await androidPhase2Decliner.waitForMarker('E2E: ANDROID_TEST48_PHASE2_DECLINER_READY', 180_000);
   await assertWebMembership(
     page,
     ['Web', 'Android', 'iPhone'],
@@ -5825,6 +6223,9 @@ async function runIosDistributedCreatorDeclinedRemovalRecoveryLifecycle(
   simulatorUdid,
   androidSerial,
 ) {
+  const scopedRecoveryProfile = [49].includes(testNumber) && selectedCurrentRecoveryProfile();
+  let currentRecoveryPhase, currentRecoveryBinding;
+  const phaseAction = action => currentRecoveryPhase ? currentRecoveryPhase.run(action) : action();
   const allSecretNames = ['secret1', 'secret2', 'secret3'].map(secretNameFor);
   const [initialName, secondName, thirdName] = allSecretNames;
   const declinedRemovals = scenario.membership?.declinedRemovals ?? [];
@@ -5945,6 +6346,8 @@ async function runIosDistributedCreatorDeclinedRemovalRecoveryLifecycle(
     secretName,
     secretValue: secretValueForName(secretName),
     expectedDeviceNames,
+    ...currentNativeRecoveryLaunch(currentRecoveryPhase, currentRecoveryBinding,
+      {platform: 'ios', role, cycle, testMethod}),
   });
   const startNativeRecoveryStep = async (
     platform,
@@ -5962,6 +6365,7 @@ async function runIosDistributedCreatorDeclinedRemovalRecoveryLifecycle(
         secretName,
         approvalPlatform,
         sender,
+        expectedDeviceNames,
         label: `iOS Test #49 ${role} cycle ${cycle.number}`,
       });
       void test.result.catch(() => {});
@@ -5979,6 +6383,8 @@ async function runIosDistributedCreatorDeclinedRemovalRecoveryLifecycle(
       secretName,
       secretValue: secretValueForName(secretName),
       label: `Android Test #49 ${role} cycle ${cycle.number}`,
+      ...currentNativeRecoveryLaunch(currentRecoveryPhase, currentRecoveryBinding,
+        {platform: 'android', role, cycle: cycle.number, testMethod: scenario.android.stepTestMethod}),
     });
   };
   const runRecoveryPhase = async (phase) => {
@@ -5989,42 +6395,58 @@ async function runIosDistributedCreatorDeclinedRemovalRecoveryLifecycle(
       const approver = cycle.approvals[0].platform;
       const observer = cycle.observer;
       const secretName = cycle.senderSecrets[sender];
-      let senderTest;
+      if (scopedRecoveryProfile) {
+        currentRecoveryBinding = newCurrentRecoveryBinding(cycle, sender);
+        currentRecoveryPhase = approvalCoordinator.registerRecoveryPhase(currentRecoveryBinding,
+          abortRecoveryPhaseHarness({coordinator: approvalCoordinator, shutdown: harnessShutdown}));
+      }
+      try {
+            let senderTest;
       let approverTest;
       let observerTest;
 
       if (approver !== 'web') {
-        approverTest = await startNativeRecoveryStep(
+        approverTest = await phaseAction(() => startNativeRecoveryStep(
           approver,
           'receiver',
           cycle,
           secretName,
           approver,
           sender,
-        );
+        ));
       }
       if (observer !== 'web') {
-        observerTest = await startNativeRecoveryStep(
+        observerTest = await phaseAction(() => startNativeRecoveryStep(
           observer,
           'receiver',
           cycle,
           secretName,
           approver,
           sender,
-        );
+        ));
       }
       if (sender !== 'web') {
-        senderTest = await startNativeRecoveryStep(
+        senderTest = await phaseAction(() => startNativeRecoveryStep(
           sender,
           'sender',
           cycle,
           secretName,
           approver,
           sender,
-        );
+        ));
       }
 
-      await waitForRecoveryParticipantsReady(page, {
+      for (const test of [senderTest, approverTest, observerTest]) if (currentRecoveryPhase && test) {
+        const phase = currentRecoveryPhase; void test.result.catch(error => phase.abort(error));
+      }
+      if (currentRecoveryPhase) {
+        const phase = currentRecoveryPhase;
+        await phaseAction(() => Promise.all([
+          phase.waitFor('READY', 240_000),
+          (async () => { await waitForWebPreRequestUiReady(page, secretName,
+            sender === 'web' ? 'sender' : 'receiver', 240_000); phase.web('READY'); })(),
+        ]));
+      } else await waitForRecoveryParticipantsReady(page, {
         cycleNumber: cycle.number,
         secretName,
         participants: [
@@ -6036,24 +6458,35 @@ async function runIosDistributedCreatorDeclinedRemovalRecoveryLifecycle(
       });
       emitRecoveryMarker(cycle, 'PARTICIPANTS_READY');
 
-      if (sender === 'web') {
+      if (currentRecoveryPhase) {
+        const phase = currentRecoveryPhase; phase.releaseSender();
+        if (sender === 'web') {
+          await phaseAction(() => startWebRecovery(page, secretName)); phase.web('REQUEST_SENT');
+        } else await phaseAction(() => phase.waitFor('REQUEST_SENT', 180_000));
+      } else if (sender === 'web') {
         approvalCoordinator.allow('web-sender', cycle.number);
-        await startWebRecovery(page, secretName);
+        await phaseAction(() => startWebRecovery(page, secretName));
       } else {
         approvalCoordinator.allow(`${sender}-sender-1`, cycle.number);
-        await senderTest.waitForMarker(
+        await phaseAction(() => senderTest.waitForMarker(
           `E2E: ${sender.toUpperCase()}_RECOVERY_REQUEST_SENT_${cycle.number}_1`,
           180_000,
-        );
+        ));
       }
       emitRecoveryMarker(cycle, `${sender.toUpperCase()}_REQUEST_PERSISTED`);
 
+      const receiverPhase = currentRecoveryPhase;
       const waitForReceiverVisible = async (platform, test) => {
         if (platform === 'web') {
           await openStrictWebIncomingAlert(page, 1, secretName, {
             dismissWithoutDecision: platform === observer,
+              onIncomingVisible: receiverPhase ? () => receiverPhase.web('INCOMING_VISIBLE') : undefined,
           });
+          if (!verifyBothReceiverAlerts) receiverPhase?.web('INCOMING_VISIBLE');
           return;
+        }
+        if (receiverPhase && !verifyBothReceiverAlerts) {
+          await receiverPhase.waitFor('INCOMING_VISIBLE', 180_000, platform); return;
         }
         await test.waitForMarker(
           `E2E: ${platform.toUpperCase()}_INCOMING_ALERT_VISIBLE_${cycle.number}_1`,
@@ -6066,61 +6499,70 @@ async function runIosDistributedCreatorDeclinedRemovalRecoveryLifecycle(
           );
         }
       };
-      await Promise.all([
+      await phaseAction(() => Promise.all([
         waitForReceiverVisible(approver, approverTest),
         waitForReceiverVisible(observer, observerTest),
-      ]);
+        ...(receiverPhase && verifyBothReceiverAlerts ? ['android', 'ios'].filter(platform => platform !== sender)
+          .map(platform => receiverPhase.waitFor('INCOMING_VISIBLE', 180_000, platform)) : []),
+      ]));
+      currentRecoveryPhase?.requireBothBadges();
       emitRecoveryMarker(cycle, 'BOTH_RECEIVERS_VISIBLE');
 
       if (approver === 'web') {
-        await approveOpenIncomingRecoveryOnWeb(page, secretName);
+        await phaseAction(() => approveOpenIncomingRecoveryOnWeb(page, secretName));
       } else {
         approvalCoordinator.allow(`${approver}-approve-1`, cycle.number);
-        await approverTest.waitForMarker(
+        await phaseAction(() => approverTest.waitForMarker(
           `E2E: ${approver.toUpperCase()}_APPROVED_INCOMING_${cycle.number}_1`,
           180_000,
-        );
+        ));
       }
       emitRecoveryMarker(cycle, `${approver.toUpperCase()}_APPROVAL_COMPLETED`);
 
       if (observer === 'web') {
-        await waitForWebIncomingRecoveryGone(page, secretName);
+        await phaseAction(() => waitForWebIncomingRecoveryGone(page, secretName));
       } else {
         approvalCoordinator.allow(`${observer}-dismiss-1`, cycle.number);
-        await observerTest.waitForMarker(
+        await phaseAction(() => observerTest.waitForMarker(
           `E2E: ${observer.toUpperCase()}_DISMISSED_INCOMING_${cycle.number}_1`,
           180_000,
-        );
+        ));
       }
       emitRecoveryMarker(cycle, `${observer.toUpperCase()}_OBSERVER_CLEARED`);
 
       if (sender === 'web') {
-        await revealAndCloseWebSecret(page, secretName, false);
+        await phaseAction(() => revealAndCloseWebSecret(page, secretName, false));
+      } else if (sender === 'ios' && [26,27,28,29,30,31,32,33,34,35,36,46,47,48,49].includes(testNumber)) {
+        await phaseAction(() => runRecoveryIosShow({actor:senderTest,scope:senderTest.recoveryShowPhase,
+          phase:currentRecoveryPhase,allowShow:()=>approvalCoordinator.allow('ios-show-1',cycle.number)}));
       } else {
         approvalCoordinator.allow(`${sender}-show-1`, cycle.number);
-        await senderTest.waitForMarker(
+        await phaseAction(() => senderTest.waitForMarker(
           `E2E: ${sender.toUpperCase()}_RECOVERY_SECRET_VISIBLE_${cycle.number}_1`,
           recoveryShowTimeoutMs,
-        );
-        await senderTest.waitForMarker(
+        ));
+        await phaseAction(() => senderTest.waitForMarker(
           `E2E: ${sender.toUpperCase()}_RECOVERY_CLOSED_${cycle.number}_1`,
           60_000,
-        );
+        ));
       }
       emitRecoveryMarker(cycle, `${sender.toUpperCase()}_VALUE_VERIFIED`);
       emitRecoveryMarker(cycle, `${sender.toUpperCase()}_DIALOG_CLOSED`);
 
-      if (senderTest) await senderTest.result;
-      if (approverTest) await approverTest.result;
-      if (observerTest) await observerTest.result;
+      if (senderTest) await phaseAction(() => senderTest.result);
+      if (approverTest) await phaseAction(() => approverTest.result);
+      if (observerTest) await phaseAction(() => observerTest.result);
       emitRecoveryMarker(cycle, 'CYCLE_COMPLETED');
       writeDiagnostic(
         `[TEST49][phase=${phase}][${cycle.block}][cycle=${cycle.number}] sender=${sender} `
           + `approver=${approver} observer=${observer} secret=${secretName} `
           + 'bothReceiversVisible=true observerGone=true exactValue=verified closed=true',
       );
-      page = await refreshWebForKnownNames(page, cycle.number, allSecretNames);
-    }
+      page = await phaseAction(() => refreshWebForKnownNames(page, cycle.number, allSecretNames));
+      currentRecoveryPhase?.complete();
+          } catch (error) { currentRecoveryPhase?.abort(error); throw error; }
+      finally { currentRecoveryPhase = undefined; currentRecoveryBinding = undefined; }
+}
   };
 
   setJoinExpectedSecretNames([initialName]);
@@ -6270,16 +6712,6 @@ async function runIosDistributedCreatorDeclinedRemovalRecoveryLifecycle(
   await runRecoveryPhase(1);
 
   // Phase 2: Web requests Android removal; iOS declines.
-  const androidPhase2Target = await startAndroidStepTest(androidSerial, {
-    testClass: scenario.android.lifecycleTestClass,
-    testMethod: scenario.android.observeAndroidDeclineTestMethod,
-    role: 'removal-target',
-    cycle: 2,
-    step: 1,
-    expectedSecretNames: allSecretNames,
-    expectedDeviceNames,
-    label: 'Android Test #49 remains a member after iOS Decline',
-  });
   const iosPhase2Decliner = startIosAction({
     testMethod: scenario.ios.declineAndroidRemovalTestMethod,
     role: 'removal-decliner',
@@ -6290,10 +6722,18 @@ async function runIosDistributedCreatorDeclinedRemovalRecoveryLifecycle(
     label: 'iOS Test #49 declines Web request to remove Android',
   });
   void iosPhase2Decliner.result.catch(() => {});
-  await Promise.all([
-    androidPhase2Target.waitForMarker('E2E: ANDROID_TEST49_PHASE2_TARGET_READY', 180_000),
-    iosPhase2Decliner.waitForMarker('E2E: IOS_TEST49_PHASE2_DECLINER_READY', 240_000),
-  ]);
+  await iosPhase2Decliner.waitForMarker('E2E: IOS_TEST49_PHASE2_DECLINER_READY', 240_000);
+  const androidPhase2Target = await startAndroidStepTest(androidSerial, {
+    testClass: scenario.android.lifecycleTestClass,
+    testMethod: scenario.android.observeAndroidDeclineTestMethod,
+    role: 'removal-target',
+    cycle: 2,
+    step: 1,
+    expectedSecretNames: allSecretNames,
+    expectedDeviceNames,
+    label: 'Android Test #49 remains a member after iOS Decline',
+  });
+  await androidPhase2Target.waitForMarker('E2E: ANDROID_TEST49_PHASE2_TARGET_READY', 180_000);
   await assertWebMembership(
     page,
     ['Web', 'Android', 'iPhone'],
@@ -6308,12 +6748,12 @@ async function runIosDistributedCreatorDeclinedRemovalRecoveryLifecycle(
     waitForTargetGone: false,
     label: 'Test #49 phase-2 Web removal request',
     requestVisibleMarker: 'WEB_TEST49_PHASE2_REMOVAL_DIALOG_VISIBLE',
-    completionMarker: 'WEB_TEST49_PHASE2_REMOVAL_REQUESTED',
   });
   await iosPhase2Decliner.waitForMarker(
     'E2E: IOS_TEST49_PHASE2_REMOVAL_REQUEST_VISIBLE',
     180_000,
   );
+  console.log('E2E: WEB_TEST49_PHASE2_REMOVAL_REQUESTED'); // SAME exact receiver UI proves persisted request.
   approvalCoordinator.allow('ios-decline-android-test49', 2);
   await iosPhase2Decliner.waitForMarker(
     'E2E: IOS_TEST49_PHASE2_REMOVAL_DECLINED',
@@ -6338,6 +6778,18 @@ async function runIosDistributedCreatorDeclinedRemovalRecoveryLifecycle(
   await runRecoveryPhase(2);
 
   // Phase 3: iOS requests Web removal; Android declines.
+  const iosPhase3Requester = startIosAction({
+    testMethod: scenario.ios.requestWebRemovalTestMethod,
+    role: 'removal-requester',
+    cycle: 3,
+    secretName: initialName,
+    sender: 'ios',
+    expectedDeviceNames,
+    label: 'iOS Test #49 requests Web removal',
+  });
+  void iosPhase3Requester.result.catch(() => {});
+  // The Android incoming-request timer starts as soon as its UI is ready.
+  await iosPhase3Requester.waitForMarker('E2E: IOS_TEST49_PHASE3_REQUESTER_READY', 240_000);
   const androidPhase3Decliner = await startAndroidStepTest(androidSerial, {
     testClass: scenario.android.lifecycleTestClass,
     testMethod: scenario.android.declineWebRemovalTestMethod,
@@ -6349,20 +6801,7 @@ async function runIosDistributedCreatorDeclinedRemovalRecoveryLifecycle(
     expectedDeviceNames,
     label: 'Android Test #49 declines iOS request to remove Web',
   });
-  const iosPhase3Requester = startIosAction({
-    testMethod: scenario.ios.requestWebRemovalTestMethod,
-    role: 'removal-requester',
-    cycle: 3,
-    secretName: initialName,
-    sender: 'ios',
-    expectedDeviceNames,
-    label: 'iOS Test #49 requests Web removal',
-  });
-  void iosPhase3Requester.result.catch(() => {});
-  await Promise.all([
-    androidPhase3Decliner.waitForMarker('E2E: ANDROID_TEST49_PHASE3_DECLINER_READY', 180_000),
-    iosPhase3Requester.waitForMarker('E2E: IOS_TEST49_PHASE3_REQUESTER_READY', 240_000),
-  ]);
+  await androidPhase3Decliner.waitForMarker('E2E: ANDROID_TEST49_PHASE3_DECLINER_READY', 180_000);
   await assertWebMembership(
     page,
     ['Web', 'Android', 'iPhone'],
@@ -6403,26 +6842,14 @@ async function runIosDistributedCreatorDeclinedRemovalRecoveryLifecycle(
 async function assertWebResetAfterOwnRemoval(page, secretNames) {
   await waitForWebAfterRemoval(page);
   await Promise.all([
-    page.getByRole('link', { name: 'Secrets', exact: true }).waitFor({ state: 'hidden', timeout: 30_000 }),
-    page.getByRole('link', { name: 'Devices', exact: true }).waitFor({ state: 'hidden', timeout: 30_000 }),
-    page.getByTestId('pending-device-row').waitFor({ state: 'hidden', timeout: 30_000 }),
-    page.getByTestId('pending-removal-device-row').waitFor({ state: 'hidden', timeout: 30_000 }),
-    page.getByTestId('remove-device-dialog').waitFor({ state: 'hidden', timeout: 30_000 }),
-    page.locator('[data-slot="alert-dialog-content"]').waitFor({ state: 'hidden', timeout: 30_000 }),
+    page.getByTestId('liveboard-secrets-open').waitFor({ state: 'hidden', timeout: 30_000 }),
+    page.getByTestId('liveboard-notifications').waitFor({ state: 'hidden', timeout: 30_000 }),
+    page.locator('.device-slot[data-device-id]').first().waitFor({ state: 'hidden', timeout: 30_000 }),
+    page.locator('article.secret-card').first().waitFor({ state: 'hidden', timeout: 30_000 }),
   ]);
-  for (const secretName of secretNames) {
-    await Promise.all([
-      page.getByText(secretName, { exact: true }).waitFor({ state: 'hidden', timeout: 30_000 }),
-      page.getByTestId(`secret-primary-action-${secretName}`)
-        .waitFor({ state: 'hidden', timeout: 30_000 }),
-      page.getByTestId(`open-recovery-request-${secretName}`)
-        .waitFor({ state: 'hidden', timeout: 30_000 }),
-    ]);
-  }
+  for (const secretName of secretNames) await page.getByTestId(`secret-primary-action-${secretName}`).waitFor({ state: 'hidden', timeout: 30_000 });
   console.log(`E2E: WEB_TEST${testNumber}_REMOVED_RESET`);
-  writeDiagnostic(
-    `[TEST${testNumber}] Web reset to registration with no stale Vault/removal/recovery UI`,
-  );
+  writeDiagnostic(`[TEST${testNumber}] Web reset to registration with no stale Vault/removal/recovery UI`);
 }
 
 async function runAndroidMemberRemovalLifecycle(page, simulatorUdid, androidSerial) {
@@ -6933,6 +7360,7 @@ async function runAndroidSecondaryCreatorMemberRemovalLifecycle(page, simulatorU
     targetCategory: 'iPhone',
     expectedTargetDeviceName: expectedDeviceNames.ios,
     waitForTargetGone: true,
+    decision: 'approve',
     label: 'Test #41 Web approval of iOS removal',
     requestVisibleMarker: 'WEB_TEST41_REMOVAL_REQUEST_VISIBLE',
     completionMarker: 'WEB_TEST41_IOS_REMOVAL_APPROVED',
@@ -7199,16 +7627,6 @@ async function runAndroidDistributedCreatorMemberRemovalLifecycle(page, simulato
       + `ios=${JSON.stringify(expectedDeviceNames.ios)}`,
   );
 
-  const androidRemovalTarget = await startAndroidStepTest(androidSerial, {
-    testClass: scenario.android.lifecycleTestClass,
-    testMethod: scenario.android.removalObserverTestMethod,
-    role: 'removal-target',
-    cycle: 1,
-    step: 1,
-    expectedSecretNames: allSecretNames,
-    expectedDeviceNames,
-    label: 'Android Test #44 observes own removal',
-  });
   const iosRemovalApproval = startIosAction({
     testMethod: scenario.ios.approveRemovalTestMethod,
     role: 'removal-approver',
@@ -7219,10 +7637,19 @@ async function runAndroidDistributedCreatorMemberRemovalLifecycle(page, simulato
     label: 'iOS Test #44 approves Android removal',
   });
   void iosRemovalApproval.result.catch(() => {});
-  await Promise.all([
-    androidRemovalTarget.waitForMarker('E2E: ANDROID_TEST44_REMOVAL_TARGET_READY', 180_000),
-    iosRemovalApproval.waitForMarker('E2E: IOS_TEST44_REMOVAL_RECEIVER_READY', 240_000),
-  ]);
+  // The Android reset timer starts as soon as the target is ready.
+  await iosRemovalApproval.waitForMarker('E2E: IOS_TEST44_REMOVAL_RECEIVER_READY', 240_000);
+  const androidRemovalTarget = await startAndroidStepTest(androidSerial, {
+    testClass: scenario.android.lifecycleTestClass,
+    testMethod: scenario.android.removalObserverTestMethod,
+    role: 'removal-target',
+    cycle: 1,
+    step: 1,
+    expectedSecretNames: allSecretNames,
+    expectedDeviceNames,
+    label: 'Android Test #44 observes own removal',
+  });
+  await androidRemovalTarget.waitForMarker('E2E: ANDROID_TEST44_REMOVAL_TARGET_READY', 180_000);
   await assertWebMembership(
     page,
     ['Web', 'Android', 'iPhone'],
@@ -7496,6 +7923,18 @@ async function runIosSecondaryCreatorMemberRemovalLifecycle(page, simulatorUdid,
       + `ios=${JSON.stringify(expectedDeviceNames.ios)}`,
   );
 
+  const iosRemovalRequester = startIosAction({
+    testMethod: scenario.ios.requestRemovalTestMethod,
+    role: 'removal-requester',
+    cycle: 1,
+    secretName: thirdName,
+    sender: 'ios',
+    expectedDeviceNames,
+    label: 'iOS Test #42 requests Web removal',
+  });
+  void iosRemovalRequester.result.catch(() => {});
+  // The Android incoming-request timer starts as soon as its UI is ready.
+  await iosRemovalRequester.waitForMarker('E2E: IOS_TEST42_WEB_REMOVAL_REQUESTER_READY', 240_000);
   const androidRemovalApproval = await startAndroidStepTest(androidSerial, {
     testClass: scenario.android.lifecycleTestClass,
     testMethod: scenario.android.approveRemovalTestMethod,
@@ -7507,20 +7946,7 @@ async function runIosSecondaryCreatorMemberRemovalLifecycle(page, simulatorUdid,
     expectedDeviceNames,
     label: 'Android Test #42 approves Web removal',
   });
-  const iosRemovalRequester = startIosAction({
-    testMethod: scenario.ios.requestRemovalTestMethod,
-    role: 'removal-requester',
-    cycle: 1,
-    secretName: thirdName,
-    sender: 'ios',
-    expectedDeviceNames,
-    label: 'iOS Test #42 requests Web removal',
-  });
-  void iosRemovalRequester.result.catch(() => {});
-  await Promise.all([
-    androidRemovalApproval.waitForMarker('E2E: ANDROID_TEST42_REMOVAL_RECEIVER_READY', 180_000),
-    iosRemovalRequester.waitForMarker('E2E: IOS_TEST42_WEB_REMOVAL_REQUESTER_READY', 240_000),
-  ]);
+  await androidRemovalApproval.waitForMarker('E2E: ANDROID_TEST42_REMOVAL_RECEIVER_READY', 180_000);
   await assertWebMembership(
     page,
     ['Web', 'Android', 'iPhone'],
@@ -7870,6 +8296,7 @@ async function runIosDistributedCreatorMemberRemovalLifecycle(page, simulatorUdi
     targetCategory: 'iPhone',
     expectedTargetDeviceName: expectedDeviceNames.ios,
     waitForTargetGone: true,
+    decision: 'approve',
     label: 'Test #45 Web approval of iOS removal',
     requestVisibleMarker: 'WEB_TEST45_REMOVAL_REQUEST_VISIBLE',
     completionMarker: 'WEB_TEST45_IOS_REMOVAL_APPROVED',
@@ -8188,6 +8615,7 @@ async function runIosMemberRemovalLifecycle(page, simulatorUdid, androidSerial) 
     targetCategory: 'Android',
     expectedTargetDeviceName: expectedDeviceNames.android,
     waitForTargetGone: true,
+    decision: 'approve',
     label: 'Test #39 Web approval of Android removal',
     requestVisibleMarker: 'WEB_TEST39_REMOVAL_REQUEST_VISIBLE',
     completionMarker: 'WEB_TEST39_ANDROID_REMOVAL_APPROVED',
@@ -8316,7 +8744,9 @@ async function runWebMultiSecretLifecycle(page, simulatorUdid, androidSerial) {
     throw new Error(`Test #22 expected ${expectedRecoveryCycles} recovery cycles, got ${actualRecoveryCycles}`);
   }
   const stepTestMethod = 'handleRecoveryStep';
+  let expectedDeviceNames;
   const startNativeStep = async (platform, role, cycle, secretName, approvalPlatform, sender) => {
+    if (!expectedDeviceNames) throw new Error('Test #22 canonical recovery identities require the completed third Join');
     const environment = stepEnvironment({
       role,
       cycle: cycle.number,
@@ -8329,7 +8759,12 @@ async function runWebMultiSecretLifecycle(page, simulatorUdid, androidSerial) {
     // follow the cycle's sender/approval secret instead of the initial vault secret.
     environment.E2E_SECRET_NAME = secretName;
     if (platform === 'ios') {
+      const test22ShowPhase = role === 'sender' ? Object.freeze({
+        testNumber: 22, role: 'sender', nonce: randomBytes(16).toString('hex'), cycle: cycle.number, step: 1,
+      }) : undefined;
       const test = startIosJoinTest(simulatorUdid, {
+        test22ShowPhase,
+        expectedDeviceNames,
         testClass: scenario.ios.stepTestClass
           ?? scenario.ios.testClass
           ?? 'CaseEightIosBothOfflineUITest',
@@ -8343,6 +8778,7 @@ async function runWebMultiSecretLifecycle(page, simulatorUdid, androidSerial) {
       return test;
     }
     return startAndroidStepTest(androidSerial, {
+      expectedDeviceNames,
       role,
       cycle: cycle.number,
       step: 1,
@@ -8398,6 +8834,7 @@ async function runWebMultiSecretLifecycle(page, simulatorUdid, androidSerial) {
           [...new Set(namesBeforeIos)],
           androidSerial,
         );
+        expectedDeviceNames = await discoverCanonicalRecoveryDeviceNames(page);
         writeDiagnostic(`[TEST22] iOS joined after direct Show cycles=${cycle.number}`);
       }
       if (scenario.mode === 'web-multi-secret-lifecycle') {
@@ -8458,50 +8895,116 @@ async function runWebMultiSecretLifecycle(page, simulatorUdid, androidSerial) {
 
     let senderTest;
     let approverTest;
-    if (approver !== 'web') {
-      approverTest = await startNativeStep(approver, 'receiver', cycle, secretName, approver, sender);
-    }
-    if (sender !== 'web') {
+    let stagedIosReadiness;
+    if (sender === 'ios' && approver === 'android') {
       senderTest = await startNativeStep(sender, 'sender', cycle, secretName, approver, sender);
-    }
+      let firstFailure, rejectFailure, receiverEnded = false;
+      const failed = new Promise((_, reject) => { rejectFailure = reject; });
+      void failed.catch(() => {});
+      const latch = error => { if (!firstFailure) { firstFailure = error; rejectFailure(error); } };
+      void senderTest.failure.catch(latch);
+      void senderTest.result.catch(latch);
+      const receipt = senderTest.selectedSuiteDeadline;
+      if (!receipt || receipt.timeoutMs !== 600_000 || !Number.isFinite(receipt.deadlineAt)) {
+        throw new Error('Test22 staged readiness requires its ordinary600s iOS owner');
+      }
+      const readyUntil = Math.min(performance.now() + 240_000, receipt.deadlineAt);
+      const active = () => {
+        if (firstFailure) throw firstFailure;
+        senderTest.assertBusinessActive();
+        if (senderTest.child.exitCode != null || senderTest.child.signalCode != null
+            || senderTest.selectedSuiteDeadline !== receipt || performance.now() >= receipt.deadlineAt || receiverEnded) {
+          throw new Error('Test22 staged readiness actor ended or its original deadline expired');
+        }
+      };
+      const remaining = () => {
+        active();
+        const ms = readyUntil - performance.now();
+        if (!Number.isFinite(ms) || ms <= 0) throw new Error('Test22 staged readiness240s exhausted');
+        return ms;
+      };
+      stagedIosReadiness = { active, failed };
+      try {
+        // Retain this invocation's fulfilled proof; never search its bounded history again.
+        const senderReady = senderTest.waitForMarker(
+          new RegExp('E2E: IOS_SENDER_UI_READY_' + cycle.number + '_1\\r?\\n'), remaining(),
+        );
+        await Promise.race([senderReady, failed]);
+        await Promise.resolve();
+        remaining();
+        // Settle issued startup before propagating a peer failure; outer owned shutdown drains it.
+        approverTest = await startNativeStep(approver, 'receiver', cycle, secretName, approver, sender);
+        void approverTest.result.then(() => { receiverEnded = true; }, latch);
+        await Promise.resolve();
+        await Promise.race([
+          approverTest.waitForMarker(
+            new RegExp('E2E: ANDROID_RECEIVER_UI_READY_' + cycle.number + '_1\\r?\\n'), remaining(),
+          ), failed,
+        ]);
+        remaining();
+        writeDiagnostic(
+          '[TEST22] cycle=' + cycle.number + ' exact pre-request readiness complete '
+            + 'participants=android:receiver,ios:sender',
+        );
+      } catch (error) { throw firstFailure ?? error; }
+    } else {
+      if (approver !== 'web') {
+        approverTest = await startNativeStep(approver, 'receiver', cycle, secretName, approver, sender);
+      }
+      if (sender !== 'web') {
+        senderTest = await startNativeStep(sender, 'sender', cycle, secretName, approver, sender);
+      }
 
-    await waitForRecoveryParticipantsReady(page, {
-      cycleNumber: cycle.number,
-      secretName,
-      participants: [
-        { platform: approver, role: 'receiver', test: approverTest },
-        { platform: sender, role: 'sender', test: senderTest },
-      ],
-      label: 'TEST22',
-    });
+      await waitForRecoveryParticipantsReady(page, {
+        cycleNumber: cycle.number,
+        secretName,
+        participants: [
+          { platform: approver, role: 'receiver', test: approverTest },
+          { platform: sender, role: 'sender', test: senderTest },
+        ],
+        label: 'TEST22',
+      });
+    }
+    stagedIosReadiness?.active();
 
     if (sender === 'web') {
       approvalCoordinator.allow('web-sender', cycle.number);
       await startWebRecovery(page, secretName);
     } else {
       approvalCoordinator.allow(`${sender}-sender-1`, cycle.number);
-      await senderTest.waitForMarker(
+      const requestSent = senderTest.waitForMarker(
         `E2E: ${sender.toUpperCase()}_RECOVERY_REQUEST_SENT_${cycle.number}_1`,
         180_000,
       );
+      await (stagedIosReadiness ? Promise.race([requestSent, stagedIosReadiness.failed]) : requestSent);
+      stagedIosReadiness?.active();
     }
 
     if (approver === 'web') {
       await approveIncomingRecoveryOnWeb(page, secretName, 1);
     } else {
-      await approverTest.waitForMarker(
+      const incomingVisible = approverTest.waitForMarker(
         `E2E: ${approver.toUpperCase()}_INCOMING_VISIBLE_${cycle.number}_1`,
         180_000,
       );
+      await (stagedIosReadiness ? Promise.race([incomingVisible, stagedIosReadiness.failed]) : incomingVisible);
+      stagedIosReadiness?.active();
       approvalCoordinator.allow(`${approver}-approve-1`, cycle.number);
-      await approverTest.waitForMarker(
+      const approved = approverTest.waitForMarker(
         `E2E: ${approver.toUpperCase()}_APPROVED_INCOMING_${cycle.number}_1`,
         180_000,
       );
+      await (stagedIosReadiness ? Promise.race([approved, stagedIosReadiness.failed]) : approved);
     }
 
     if (sender === 'web') {
       await revealAndCloseWebSecret(page, secretName, false);
+    } else if (sender === 'ios') {
+      await runTest22IosShow({
+        actor: senderTest, scope: senderTest.test22ShowPhase,
+        allowShow: () => approvalCoordinator.allow('ios-show-1', cycle.number),
+        peerFailure: approverTest?.failure ?? approverTest?.result,
+      });
     } else {
       approvalCoordinator.allow(`${sender}-show-1`, cycle.number);
       await senderTest.waitForMarker(
@@ -8697,6 +9200,8 @@ async function runAndroidMultiSecretLifecycle(page, simulatorUdid, androidSerial
   await waitForWebSecretNames(page, namesBeforeWeb);
   writeDiagnostic('[TEST23] Web joined Android vault after direct-show block');
 
+  const expectedDeviceNames = await discoverCanonicalRecoveryDeviceNames(page);
+
   const startNativeStep = async (platform, role, cycle, secretName, approvalPlatform, sender) => {
     const environment = stepEnvironment({
       role,
@@ -8708,6 +9213,7 @@ async function runAndroidMultiSecretLifecycle(page, simulatorUdid, androidSerial
     });
     if (platform === 'ios') {
       const test = startIosJoinTest(simulatorUdid, {
+        expectedDeviceNames,
         testClass: scenario.ios.stepTestClass ?? scenario.ios.testClass ?? 'CaseEightIosBothOfflineUITest',
         testMethod: scenario.ios.stepTestMethod ?? 'handleRecoveryStep',
         label: `iOS Test #23 ${role} cycle ${cycle.number}`,
@@ -8719,6 +9225,7 @@ async function runAndroidMultiSecretLifecycle(page, simulatorUdid, androidSerial
       return test;
     }
     return startAndroidStepTest(androidSerial, {
+      expectedDeviceNames,
       testClass: scenario.android.stepTestClass ?? scenario.android.testClass,
       role,
       cycle: cycle.number,
@@ -8792,6 +9299,9 @@ async function runAndroidMultiSecretLifecycle(page, simulatorUdid, androidSerial
 
 async function runIosMultiSecretLifecycle(page, simulatorUdid, androidSerial) {
   const isTest33 = scenario.mode === 'ios-two-secret-owner-lifecycle';
+  const scopedTest24 = testNumber === 24 && scenario.mode === 'ios-multi-secret-lifecycle';
+  let currentRecoveryPhase, currentRecoveryBinding;
+  const phaseAction = action => currentRecoveryPhase ? currentRecoveryPhase.run(action) : action();
   const initialName = secretCreationPlan?.initial?.ios?.[0] ?? secretNameFor('secret1');
   const secondName = (isTest33
     ? secretCreationPlan?.afterWebJoin?.ios?.[0]
@@ -8827,10 +9337,12 @@ async function runIosMultiSecretLifecycle(page, simulatorUdid, androidSerial) {
     approvalPlatform = '',
     sender = '',
     label,
+    expectedDeviceNames,
   }) => startIosJoinTest(simulatorUdid, {
     testClass: scenario.ios.testClass ?? 'CaseEightIosBothOfflineUITest',
     testMethod,
     label,
+    expectedDeviceNames,
     environment: stepEnvironment({
       role,
       cycle,
@@ -8841,6 +9353,9 @@ async function runIosMultiSecretLifecycle(page, simulatorUdid, androidSerial) {
     }),
     secretName,
     secretValue,
+    recoveryPhase: currentRecoveryPhase,
+    ...(currentRecoveryBinding ? currentNativeRecoveryLaunch(currentRecoveryPhase, currentRecoveryBinding,
+      {platform: 'ios', role, cycle, testMethod}) : {}),
   });
 
   // A=iOS creates the Vault and Secret1 through the visible application UI.
@@ -8968,9 +9483,12 @@ async function runIosMultiSecretLifecycle(page, simulatorUdid, androidSerial) {
   await waitForWebSecretNames(page, [initialName, secondName]);
   writeDiagnostic(`[TEST${testNumber}] Android joined after the direct-Show block`);
 
+  const expectedDeviceNames = await discoverCanonicalRecoveryDeviceNames(page);
+
   const startNativeStep = async (platform, role, cycle, secretName, approvalPlatform, sender) => {
     if (platform === 'ios') {
       const test = startIosAction({
+        expectedDeviceNames,
         testMethod: scenario.ios.stepTestMethod ?? 'handleRecoveryStep',
         role,
         cycle: cycle.number,
@@ -8983,6 +9501,7 @@ async function runIosMultiSecretLifecycle(page, simulatorUdid, androidSerial) {
       return test;
     }
     return startAndroidStepTest(androidSerial, {
+      expectedDeviceNames,
       testClass: scenario.android.testClass,
       testMethod: scenario.android.stepTestMethod ?? 'handleRecoveryStep',
       role,
@@ -8993,6 +9512,9 @@ async function runIosMultiSecretLifecycle(page, simulatorUdid, androidSerial) {
       secretName,
       secretValue: secretValueForName(secretName),
       label: `Android Test #${testNumber} ${role} cycle ${cycle.number}`,
+      recoveryPhase: currentRecoveryPhase,
+      ...(currentRecoveryBinding ? currentNativeRecoveryLaunch(currentRecoveryPhase, currentRecoveryBinding,
+        {platform: 'android', role, cycle: cycle.number, testMethod: scenario.android.stepTestMethod ?? 'handleRecoveryStep'}) : {}),
     });
   };
 
@@ -9057,6 +9579,24 @@ async function runIosMultiSecretLifecycle(page, simulatorUdid, androidSerial) {
       writeDiagnostic(`[TEST${testNumber}] Secret3 created after Secret1/Secret2 recovery blocks`);
     }
 
+    if (scopedTest24) {
+      const attempt = process.env.E2E_TEST_ATTEMPT;
+      if (process.env.E2E_RANGE_RUN !== '1' || process.env.E2E_RUN_ID !== scenario.runId
+          || !/^[1-9][0-9]{0,8}(?![\s\S])/.test(attempt ?? '') || !Number.isSafeInteger(Number(attempt))) {
+        throw new Error('Scoped Test24 requires the actual range owner and attempt');
+      }
+      currentRecoveryPhase = approvalCoordinator.registerRecoveryPhase({
+        version: 1, runId: scenario.runId, testNumber: 24, attempt: Number(attempt), blockId: cycle.block,
+        cycle: cycle.number, logicalStep: 1, mode: scenario.mode, contextId: randomBytes(16).toString('hex'), sender,
+        participants: ['web', 'android', 'ios'].map(platform => ({platform,
+          role: platform === sender ? 'sender' : 'receiver', invocationId: randomBytes(16).toString('hex')})),
+      }, abortRecoveryPhaseHarness({coordinator: approvalCoordinator, shutdown: harnessShutdown}));
+    } else if (testNumber === 33 && selectedCurrentRecoveryProfile()) {
+      currentRecoveryBinding = newCurrentRecoveryBinding(cycle, sender);
+      currentRecoveryPhase = approvalCoordinator.registerRecoveryPhase(currentRecoveryBinding,
+        abortRecoveryPhaseHarness({coordinator: approvalCoordinator, shutdown: harnessShutdown}));
+    }
+    try {
     writeDiagnostic(
       `[TEST${testNumber}] cycle=${cycle.number} sender=${sender} approver=${approver} `
         + `observer=${observer} secret=${secretName}`,
@@ -9065,16 +9605,25 @@ async function runIosMultiSecretLifecycle(page, simulatorUdid, androidSerial) {
     let approverTest;
     let observerTest;
     if (approver !== 'web') {
-      approverTest = await startNativeStep(approver, 'receiver', cycle, secretName, approver, sender);
+      approverTest = await phaseAction(() => startNativeStep(approver, 'receiver', cycle, secretName, approver, sender));
     }
     if (observer !== 'web') {
-      observerTest = await startNativeStep(observer, 'receiver', cycle, secretName, approver, sender);
+      observerTest = await phaseAction(() => startNativeStep(observer, 'receiver', cycle, secretName, approver, sender));
     }
     if (sender !== 'web') {
-      senderTest = await startNativeStep(sender, 'sender', cycle, secretName, approver, sender);
+      senderTest = await phaseAction(() => startNativeStep(sender, 'sender', cycle, secretName, approver, sender));
+    }
+    for (const test of [senderTest, approverTest, observerTest]) if (currentRecoveryPhase && test) {
+      const phase = currentRecoveryPhase; void test.result.catch(error => phase.abort(error));
     }
 
-    await waitForRecoveryParticipantsReady(page, {
+    if (currentRecoveryPhase) {
+      const phase = currentRecoveryPhase;
+      await phaseAction(() => Promise.all([
+        phase.waitFor('READY', 240_000),
+        (async () => { await waitForWebPreRequestUiReady(page, secretName, sender === 'web' ? 'sender' : 'receiver', 240_000); phase.web('READY'); })(),
+      ]));
+    } else await waitForRecoveryParticipantsReady(page, {
       cycleNumber: cycle.number,
       secretName,
       participants: [
@@ -9085,7 +9634,12 @@ async function runIosMultiSecretLifecycle(page, simulatorUdid, androidSerial) {
       label: `TEST${testNumber}:${cycle.block}`,
     });
 
-    if (sender === 'web') {
+    if (currentRecoveryPhase) {
+      const phase = currentRecoveryPhase; phase.releaseSender();
+      if (sender === 'web') {
+        await phaseAction(() => startWebRecovery(page, secretName)); phase.web('REQUEST_SENT');
+      } else await phaseAction(() => phase.waitFor('REQUEST_SENT', 180_000));
+    } else if (sender === 'web') {
       approvalCoordinator.allow('web-sender', cycle.number);
       await startWebRecovery(page, secretName);
     } else {
@@ -9101,74 +9655,84 @@ async function runIosMultiSecretLifecycle(page, simulatorUdid, androidSerial) {
     // from hiding a missing notification on the non-approving device.
     const waitForReceiverVisible = async (platform, test) => {
       if (platform === 'web') {
-        await waitForWebIncomingRecoveryCount(page, 1, secretName);
-        await page.getByTestId(`open-recovery-request-${secretName}`).waitFor({
-          state: 'visible',
-          timeout: 120_000,
-        });
+        await phaseAction(() => waitForWebIncomingRecoveryCount(page, 1, secretName));
+        const exactHead = observedWebIncoming(page, 'recover', secretName);
+        await phaseAction(() => openWebIncoming(page, { kind: 'recover', requestId: exactHead.requestId, subject: secretName, count: 1 }));
         writeDiagnostic(`[TEST${testNumber}] cycle=${cycle.number} Web receiver badge/open action visible`);
+        currentRecoveryPhase?.web('INCOMING_VISIBLE');
         return;
       }
+      if (currentRecoveryPhase) { await currentRecoveryPhase.waitFor('INCOMING_VISIBLE', 180_000, platform); return; }
       await test.waitForMarker(
         `E2E: ${platform.toUpperCase()}_INCOMING_VISIBLE_${cycle.number}_1`,
         180_000,
       );
     };
-    await Promise.all([
+    await phaseAction(() => Promise.all([
       waitForReceiverVisible(approver, approverTest),
       waitForReceiverVisible(observer, observerTest),
-    ]);
+    ]));
+    currentRecoveryPhase?.requireBothBadges();
 
     if (approver === 'web') {
-      await approveIncomingRecoveryOnWeb(page, secretName, 1);
+      await phaseAction(() => approveIncomingRecoveryOnWeb(page, secretName, 1));
     } else {
       approvalCoordinator.allow(`${approver}-approve-1`, cycle.number);
-      await approverTest.waitForMarker(
+      await phaseAction(() => approverTest.waitForMarker(
         `E2E: ${approver.toUpperCase()}_APPROVED_INCOMING_${cycle.number}_1`,
         180_000,
-      );
+      ));
     }
 
     // The receiver that did not Approve must remove both its badge and open
     // action as a direct consequence of the terminal response.
     if (observer === 'web') {
-      await waitForWebIncomingRecoveryGone(page, secretName);
+      await phaseAction(() => waitForWebIncomingRecoveryGone(page, secretName));
     } else {
       approvalCoordinator.allow(`${observer}-dismiss-1`, cycle.number);
-      await observerTest.waitForMarker(
+      await phaseAction(() => observerTest.waitForMarker(
         `E2E: ${observer.toUpperCase()}_DISMISSED_INCOMING_${cycle.number}_1`,
         180_000,
-      );
+      ));
     }
     writeDiagnostic(`[TEST${testNumber}] cycle=${cycle.number} observer=${observer} request disappeared after Approve`);
 
     if (sender === 'web') {
-      await revealAndCloseWebSecret(page, secretName, false);
+      await phaseAction(() => revealAndCloseWebSecret(page, secretName, false));
+    } else if (sender === 'ios' && [26,27,28,29,30,31,32,33,34,35,36,46,47,48,49].includes(testNumber)) {
+      await phaseAction(() => runRecoveryIosShow({actor:senderTest,scope:senderTest.recoveryShowPhase,
+        phase:currentRecoveryPhase,allowShow:()=>approvalCoordinator.allow('ios-show-1',cycle.number)}));
     } else {
       approvalCoordinator.allow(`${sender}-show-1`, cycle.number);
-      await senderTest.waitForMarker(
+      await phaseAction(() => senderTest.waitForMarker(
         `E2E: ${sender.toUpperCase()}_RECOVERY_SECRET_VISIBLE_${cycle.number}_1`,
         recoveryShowTimeoutMs,
-      );
-      await senderTest.waitForMarker(
+      ));
+      await phaseAction(() => senderTest.waitForMarker(
         `E2E: ${sender.toUpperCase()}_RECOVERY_CLOSED_${cycle.number}_1`,
         60_000,
-      );
+      ));
     }
-    if (senderTest) await senderTest.result;
-    if (approverTest) await approverTest.result;
-    if (observerTest) await observerTest.result;
+    if (senderTest) await phaseAction(() => senderTest.result);
+    if (approverTest) await phaseAction(() => approverTest.result);
+    if (observerTest) await phaseAction(() => observerTest.result);
 
-    page = await refreshWebForKnownNames(page, cycle.number, [
+    page = await phaseAction(() => refreshWebForKnownNames(page, cycle.number, [
       initialName,
       secondName,
       ...(cycle.number > scenario.recovery.createSecret3AfterCycle ? [thirdName] : []),
-    ]);
+    ]));
+    currentRecoveryPhase?.complete();
     console.log(`✅ Test #24 cycle ${cycle.number}/${expectedCycles} passed: ${sender} recovery/show`);
+    } catch (error) { currentRecoveryPhase?.abort(error); throw error; }
+    finally { currentRecoveryPhase = undefined; currentRecoveryBinding = undefined; }
   }
 }
 
 async function runIosSecondaryCreatorLifecycle(page, simulatorUdid, androidSerial) {
+  const scopedRecoveryProfile = [27,30,36].includes(testNumber) && selectedCurrentRecoveryProfile();
+  let currentRecoveryPhase, currentRecoveryBinding;
+  const phaseAction = action => currentRecoveryPhase ? currentRecoveryPhase.run(action) : action();
   const initialName = secretCreationPlan?.initial?.ios?.[0] ?? secretNameFor('secret1');
   const secondName = secretCreationPlan?.afterWebJoin?.web?.[0] ?? secretNameFor('secret2');
   const thirdSecretCreator = scenario.setup?.thirdSecretCreator ?? 'web';
@@ -9452,6 +10016,16 @@ async function runIosSecondaryCreatorLifecycle(page, simulatorUdid, androidSeria
     );
   };
 
+  const expectedDeviceNames = await discoverCanonicalRecoveryDeviceNames(page);
+  const receiverMember = scopedRecoveryProfile
+    ? await inspectWebLiveboardMember(page, 'Web', { current: true, controls: false }) : null;
+  const receiverIdentity = scopedRecoveryProfile ? Object.freeze({
+    deviceId: receiverMember.deviceId, deviceName: receiverMember.deviceName,
+    credential: await page.evaluate(() => window.localStorage.getItem('credential_id')),
+    context: page.context(), origin: page.url().split('/').slice(0, 3).join('/'),
+  }) : null;
+  if (receiverIdentity && !receiverIdentity.credential) throw new Error('Established Web receiver credential missing');
+
   const startNativeStep = async (platform, role, cycle, secretName, approvalPlatform, sender) => {
     const environment = stepEnvironment({
       role,
@@ -9464,8 +10038,11 @@ async function runIosSecondaryCreatorLifecycle(page, simulatorUdid, androidSeria
     });
     environment.E2E_SECRET_NAME = secretName;
     environment.E2E_SECRET_VALUE = secretValueForName(secretName);
+    const phaseLaunch = currentNativeRecoveryLaunch(currentRecoveryPhase, currentRecoveryBinding,
+      {platform, role, cycle: cycle.number, testMethod: (platform === 'ios' ? scenario.ios.stepTestMethod : scenario.android.stepTestMethod) ?? 'handleRecoveryStep'});
     if (platform === 'ios') {
       const test = startIosJoinTest(simulatorUdid, {
+        expectedDeviceNames,
         testClass: scenario.ios.stepTestClass
           ?? scenario.ios.testClass
           ?? 'CaseEightIosBothOfflineUITest',
@@ -9474,11 +10051,13 @@ async function runIosSecondaryCreatorLifecycle(page, simulatorUdid, androidSeria
         environment,
         secretName,
         secretValue: secretValueForName(secretName),
+        ...phaseLaunch,
       });
       void test.result.catch(() => {});
       return test;
     }
     return startAndroidStepTest(androidSerial, {
+      expectedDeviceNames,
       testClass: scenario.android.stepTestClass ?? scenario.android.testClass,
       testMethod: scenario.android.stepTestMethod ?? 'handleRecoveryStep',
       role,
@@ -9490,6 +10069,7 @@ async function runIosSecondaryCreatorLifecycle(page, simulatorUdid, androidSeria
       secretName,
       secretValue: secretValueForName(secretName),
       label: `Android Test #${testNumber} ${role} cycle ${cycle.number}`,
+      ...phaseLaunch,
     });
   };
 
@@ -9531,20 +10111,36 @@ async function runIosSecondaryCreatorLifecycle(page, simulatorUdid, androidSeria
         + `approver=${approver} observer=${observer} secret=${secretName}`,
     );
 
-    let senderTest;
+    if (scopedRecoveryProfile) {
+      currentRecoveryBinding = newCurrentRecoveryBinding(cycle, sender);
+      currentRecoveryPhase = approvalCoordinator.registerRecoveryPhase(currentRecoveryBinding,
+        abortRecoveryPhaseHarness({coordinator: approvalCoordinator, shutdown: harnessShutdown}));
+    }
+    try {
+        let senderTest;
     let approverTest;
     let observerTest;
     if (approver !== 'web') {
-      approverTest = await startNativeStep(approver, 'receiver', cycle, secretName, approver, sender);
+      approverTest = await phaseAction(() => startNativeStep(approver, 'receiver', cycle, secretName, approver, sender));
     }
     if (observer !== 'web') {
-      observerTest = await startNativeStep(observer, 'receiver', cycle, secretName, approver, sender);
+      observerTest = await phaseAction(() => startNativeStep(observer, 'receiver', cycle, secretName, approver, sender));
     }
     if (sender !== 'web') {
-      senderTest = await startNativeStep(sender, 'sender', cycle, secretName, approver, sender);
+      senderTest = await phaseAction(() => startNativeStep(sender, 'sender', cycle, secretName, approver, sender));
     }
 
-    await waitForRecoveryParticipantsReady(page, {
+    for (const test of [senderTest, approverTest, observerTest]) if (currentRecoveryPhase && test) {
+      const phase = currentRecoveryPhase; void test.result.catch(error => phase.abort(error));
+    }
+    if (currentRecoveryPhase) {
+      const phase = currentRecoveryPhase;
+      await phaseAction(() => Promise.all([
+        phase.waitFor('READY', 240_000),
+        (async () => { await waitForWebPreRequestUiReady(page, secretName,
+          sender === 'web' ? 'sender' : 'receiver', 240_000); phase.web('READY'); })(),
+      ]));
+    } else await waitForRecoveryParticipantsReady(page, {
       cycleNumber: cycle.number,
       secretName,
       participants: [
@@ -9555,27 +10151,43 @@ async function runIosSecondaryCreatorLifecycle(page, simulatorUdid, androidSeria
       label: `TEST${testNumber}:${cycle.block}`,
     });
 
-    if (sender === 'web') {
+    if (currentRecoveryPhase) {
+      const phase = currentRecoveryPhase; phase.releaseSender();
+      if (sender === 'web') {
+        await phaseAction(() => startWebRecovery(page, secretName)); phase.web('REQUEST_SENT');
+      } else await phaseAction(() => phase.waitFor('REQUEST_SENT', 180_000));
+    } else if (sender === 'web') {
       approvalCoordinator.allow('web-sender', cycle.number);
-      await startWebRecovery(page, secretName);
+      await phaseAction(() => startWebRecovery(page, secretName));
     } else {
       approvalCoordinator.allow(`${sender}-sender-1`, cycle.number);
-      await senderTest.waitForMarker(
+      await phaseAction(() => senderTest.waitForMarker(
         `E2E: ${sender.toUpperCase()}_RECOVERY_REQUEST_SENT_${cycle.number}_1`,
         180_000,
-      );
+      ));
     }
 
+    const receiverPhase = currentRecoveryPhase;
     const waitForReceiverVisible = async (platform, test) => {
       if (platform === 'web') {
+        const budget = receiverPhase ? await authorizeWebReceiverAction(page, receiverIdentity, receiverPhase) : undefined;
+        try {
         if (verifyBothReceiverAlerts) {
           await openStrictWebIncomingAlert(page, 1, secretName, {
             dismissWithoutDecision: platform === observer,
+            onIncomingVisible: receiverPhase ? () => receiverPhase.web('INCOMING_VISIBLE') : undefined,
+            budget,
           });
         } else {
-          await waitForStrictWebIncomingVisible(page, 1, secretName);
+          await waitForStrictWebIncomingVisible(page, 1, secretName, budget);
         }
+        if (budget) await budget.check();
+        if (!verifyBothReceiverAlerts) receiverPhase?.web('INCOMING_VISIBLE');
+        } finally { if (budget) await budget.dispose(); }
         return;
+      }
+      if (receiverPhase && !verifyBothReceiverAlerts) {
+        await receiverPhase.waitFor('INCOMING_VISIBLE', 180_000, platform); return;
       }
       await test.waitForMarker(
         verifyBothReceiverAlerts
@@ -9590,70 +10202,82 @@ async function runIosSecondaryCreatorLifecycle(page, simulatorUdid, androidSeria
         );
       }
     };
-    await Promise.all([
+    await phaseAction(() => Promise.all([
       waitForReceiverVisible(approver, approverTest),
       waitForReceiverVisible(observer, observerTest),
-    ]);
+      ...(receiverPhase && verifyBothReceiverAlerts ? ['android', 'ios'].filter(platform => platform !== sender)
+        .map(platform => receiverPhase.waitFor('INCOMING_VISIBLE', 180_000, platform)) : []),
+    ]));
+    currentRecoveryPhase?.requireBothBadges();
     writeDiagnostic(`[TEST${testNumber}][${cycle.block}][cycle=${cycle.number}] bothReceiversVisible=true`);
 
     if (approver === 'web') {
       if (verifyBothReceiverAlerts) {
-        await approveOpenIncomingRecoveryOnWeb(page, secretName);
+        await phaseAction(() => approveOpenIncomingRecoveryOnWeb(page, secretName));
       } else {
-        await approveIncomingRecoveryOnWeb(page, secretName, 1);
+        await phaseAction(() => approveIncomingRecoveryOnWeb(page, secretName, 1));
       }
     } else {
       approvalCoordinator.allow(`${approver}-approve-1`, cycle.number);
-      await approverTest.waitForMarker(
+      await phaseAction(() => approverTest.waitForMarker(
         `E2E: ${approver.toUpperCase()}_APPROVED_INCOMING_${cycle.number}_1`,
         180_000,
-      );
+      ));
     }
 
     if (observer === 'web') {
-      await waitForWebIncomingRecoveryGone(page, secretName);
+      await phaseAction(() => waitForWebIncomingRecoveryGone(page, secretName));
     } else {
       approvalCoordinator.allow(`${observer}-dismiss-1`, cycle.number);
-      await observerTest.waitForMarker(
+      await phaseAction(() => observerTest.waitForMarker(
         `E2E: ${observer.toUpperCase()}_DISMISSED_INCOMING_${cycle.number}_1`,
         180_000,
-      );
+      ));
     }
     writeDiagnostic(
       `[TEST${testNumber}][${cycle.block}][cycle=${cycle.number}] observer=${observer} requestGone=true`,
     );
 
     if (sender === 'web') {
-      await revealAndCloseWebSecret(page, secretName, false);
+      await phaseAction(() => revealAndCloseWebSecret(page, secretName, false));
+    } else if (sender === 'ios' && [26,27,28,29,30,31,32,33,34,35,36,46,47,48,49].includes(testNumber)) {
+      await phaseAction(() => runRecoveryIosShow({actor:senderTest,scope:senderTest.recoveryShowPhase,
+        phase:currentRecoveryPhase,allowShow:()=>approvalCoordinator.allow('ios-show-1',cycle.number)}));
     } else {
       approvalCoordinator.allow(`${sender}-show-1`, cycle.number);
-      await senderTest.waitForMarker(
+      await phaseAction(() => senderTest.waitForMarker(
         `E2E: ${sender.toUpperCase()}_RECOVERY_SECRET_VISIBLE_${cycle.number}_1`,
         recoveryShowTimeoutMs,
-      );
-      await senderTest.waitForMarker(
+      ));
+      await phaseAction(() => senderTest.waitForMarker(
         `E2E: ${sender.toUpperCase()}_RECOVERY_CLOSED_${cycle.number}_1`,
         60_000,
-      );
+      ));
     }
 
-    if (senderTest) await senderTest.result;
-    if (approverTest) await approverTest.result;
-    if (observerTest) await observerTest.result;
+    if (senderTest) await phaseAction(() => senderTest.result);
+    if (approverTest) await phaseAction(() => approverTest.result);
+    if (observerTest) await phaseAction(() => observerTest.result);
 
     writeDiagnostic(
       `[TEST${testNumber}][${cycle.block}][cycle=${cycle.number}] sender=${sender} `
         + 'exactValue=verified action=closed',
     );
-    page = await refreshWebForKnownNames(page, cycle.number, [
+    page = await phaseAction(() => refreshWebForKnownNames(page, cycle.number, [
       ...twoDeviceNames,
       ...(cycle.number > scenario.recovery.createSecret3AfterCycle ? [thirdName] : []),
-    ]);
+    ]));
+    currentRecoveryPhase?.complete();
     console.log(`✅ Test #${testNumber} cycle ${cycle.number}/${expectedCycles} passed: ${sender} recovery/show`);
-  }
+      } catch (error) { currentRecoveryPhase?.abort(error); throw error; }
+    finally { currentRecoveryPhase = undefined; currentRecoveryBinding = undefined; }
+}
 }
 
 async function runWebSecondaryCreatorLifecycle(page, simulatorUdid, androidSerial) {
+  const scopedTest25 = [25,28,31,34].includes(testNumber) && selectedCurrentRecoveryProfile();
+  let currentRecoveryPhase, currentRecoveryBinding;
+  const phaseAction = action => currentRecoveryPhase ? currentRecoveryPhase.run(action) : action();
   const initialName = secretCreationPlan?.initial?.web?.[0] ?? secretNameFor('secret1');
   const secondarySecretCreator = scenario.setup?.secondarySecretCreator ?? 'android';
   const secondName = secretCreationPlan?.afterAndroidJoin?.[secondarySecretCreator]?.[0]
@@ -9870,6 +10494,8 @@ async function runWebSecondaryCreatorLifecycle(page, simulatorUdid, androidSeria
     `[TEST${testNumber}] iOS joined after cycle ${actualJoinBoundary} and received Secret1/Secret2`,
   );
 
+  const expectedDeviceNames = await discoverCanonicalRecoveryDeviceNames(page);
+
   const startNativeStep = async (platform, role, cycle, secretName, approvalPlatform, sender) => {
     const environment = stepEnvironment({
       role,
@@ -9882,8 +10508,28 @@ async function runWebSecondaryCreatorLifecycle(page, simulatorUdid, androidSeria
     });
     environment.E2E_SECRET_NAME = secretName;
     environment.E2E_SECRET_VALUE = secretValueForName(secretName);
+    let phaseLaunch = {}, test25ShowPhase;
+    if (currentRecoveryPhase) {
+      const participant = currentRecoveryBinding.participants.find(item => item.platform === platform);
+      if (!participant) throw new Error('Current native recovery participant missing');
+      const actualNativeLaunchDescriptor = Object.freeze({version: 1, runId: scenario.runId,
+        testNumber, attempt: currentRecoveryBinding.attempt, blockId: cycle.block,
+        cycle: cycle.number, logicalStep: 1, mode: scenario.mode,
+        contextId: currentRecoveryBinding.contextId, invocationId: participant.invocationId, platform, role});
+      if (testNumber === 25 && scenario.mode === 'web-secondary-creator-lifecycle' && platform === 'ios' && role === 'sender') {
+        test25ShowPhase = Object.freeze({testNumber: 25, role: 'sender', nonce: randomBytes(16).toString('hex'),
+          cycle: cycle.number, step: 1, runId: actualNativeLaunchDescriptor.runId,
+          contextId: actualNativeLaunchDescriptor.contextId, invocationId: actualNativeLaunchDescriptor.invocationId});
+      }
+      phaseLaunch = {recoveryPhase: currentRecoveryPhase,
+        recoveryPhaseSelectedProfile: selectedCurrentRecoveryProfile().tag,
+        recoveryPhaseExpected: JSON.stringify(actualNativeLaunchDescriptor)};
+      if (testNumber !== 25) phaseLaunch = currentNativeRecoveryLaunch(currentRecoveryPhase, currentRecoveryBinding,
+        {platform,role,cycle:cycle.number,testMethod:(platform === 'ios' ? scenario.ios.stepTestMethod : scenario.android.stepTestMethod) ?? 'handleRecoveryStep'});
+    }
     if (platform === 'ios') {
       const test = startIosJoinTest(simulatorUdid, {
+        expectedDeviceNames,
         testClass: scenario.ios.stepTestClass
           ?? scenario.ios.testClass
           ?? 'CaseEightIosBothOfflineUITest',
@@ -9892,11 +10538,14 @@ async function runWebSecondaryCreatorLifecycle(page, simulatorUdid, androidSeria
         environment,
         secretName,
         secretValue: secretValueForName(secretName),
+        ...phaseLaunch,
+        ...(test25ShowPhase ? {test25ShowPhase} : {}),
       });
       void test.result.catch(() => {});
       return test;
     }
     return startAndroidStepTest(androidSerial, {
+      expectedDeviceNames,
       testClass: scenario.android.stepTestClass ?? scenario.android.testClass,
       testMethod: scenario.android.stepTestMethod ?? 'handleRecoveryStep',
       role,
@@ -9908,6 +10557,7 @@ async function runWebSecondaryCreatorLifecycle(page, simulatorUdid, androidSeria
       secretName,
       secretValue: secretValueForName(secretName),
       label: `Android Test #${testNumber} ${role} cycle ${cycle.number}`,
+      ...phaseLaunch,
     });
   };
 
@@ -10022,6 +10672,21 @@ async function runWebSecondaryCreatorLifecycle(page, simulatorUdid, androidSeria
       );
     }
 
+    if (scopedTest25) {
+      const attempt = process.env.E2E_TEST_ATTEMPT;
+      if (process.env.E2E_RANGE_RUN !== '1' || process.env.E2E_RUN_ID !== scenario.runId
+        || !/^[1-9][0-9]{0,8}(?![\s\S])/.test(attempt ?? '') || !Number.isSafeInteger(Number(attempt))) {
+        throw new Error('Scoped Test25 requires the actual range owner and attempt');
+      }
+      currentRecoveryBinding = Object.freeze({version: 1, runId: scenario.runId, testNumber,
+        attempt: Number(attempt), blockId: cycle.block, cycle: cycle.number, logicalStep: 1,
+        mode: scenario.mode, contextId: randomBytes(16).toString('hex'), sender,
+        participants: Object.freeze(['web', 'android', 'ios'].map(platform => Object.freeze({platform,
+          role: platform === sender ? 'sender' : 'receiver', invocationId: randomBytes(16).toString('hex')})))});
+      currentRecoveryPhase = approvalCoordinator.registerRecoveryPhase(currentRecoveryBinding,
+        abortRecoveryPhaseHarness({coordinator: approvalCoordinator, shutdown: harnessShutdown}));
+    }
+    try {
     writeDiagnostic(
       `[TEST${testNumber}][${cycle.block}][cycle=${cycle.number}] `
         + `kind=recovery sender=${sender} approver=${approver} `
@@ -10032,16 +10697,26 @@ async function runWebSecondaryCreatorLifecycle(page, simulatorUdid, androidSeria
     let approverTest;
     let observerTest;
     if (approver !== 'web') {
-      approverTest = await startNativeStep(approver, 'receiver', cycle, secretName, approver, sender);
+      approverTest = await phaseAction(() => startNativeStep(approver, 'receiver', cycle, secretName, approver, sender));
     }
     if (observer !== 'web') {
-      observerTest = await startNativeStep(observer, 'receiver', cycle, secretName, approver, sender);
+      observerTest = await phaseAction(() => startNativeStep(observer, 'receiver', cycle, secretName, approver, sender));
     }
     if (sender !== 'web') {
-      senderTest = await startNativeStep(sender, 'sender', cycle, secretName, approver, sender);
+      senderTest = await phaseAction(() => startNativeStep(sender, 'sender', cycle, secretName, approver, sender));
     }
 
-    await waitForRecoveryParticipantsReady(page, {
+    for (const test of [senderTest, approverTest, observerTest]) if (currentRecoveryPhase && test) {
+      const phase = currentRecoveryPhase; void test.result.catch(error => phase.abort(error));
+    }
+    if (currentRecoveryPhase) {
+      const phase = currentRecoveryPhase;
+      await phaseAction(() => Promise.all([
+        phase.waitFor('READY', 240_000),
+        (async () => { await waitForWebPreRequestUiReady(page, secretName,
+          sender === 'web' ? 'sender' : 'receiver', 240_000); phase.web('READY'); })(),
+      ]));
+    } else await waitForRecoveryParticipantsReady(page, {
       cycleNumber: cycle.number,
       secretName,
       participants: [
@@ -10052,7 +10727,12 @@ async function runWebSecondaryCreatorLifecycle(page, simulatorUdid, androidSeria
       label: `TEST${testNumber}:${cycle.block}`,
     });
 
-    if (sender === 'web') {
+    if (currentRecoveryPhase) {
+      const phase = currentRecoveryPhase; phase.releaseSender();
+      if (sender === 'web') {
+        await phaseAction(() => startWebRecovery(page, secretName)); phase.web('REQUEST_SENT');
+      } else await phaseAction(() => phase.waitFor('REQUEST_SENT', 180_000));
+    } else if (sender === 'web') {
       approvalCoordinator.allow('web-sender', cycle.number);
       await startWebRecovery(page, secretName);
     } else {
@@ -10073,14 +10753,16 @@ async function runWebSecondaryCreatorLifecycle(page, simulatorUdid, androidSeria
             dismissWithoutDecision: platform === observer,
           });
         } else {
-          await waitForStrictWebIncomingVisible(page, 1, secretName);
+          await phaseAction(() => waitForStrictWebIncomingVisible(page, 1, secretName));
         }
         writeDiagnostic(
           `[TEST${testNumber}][${cycle.block}][cycle=${cycle.number}] `
             + 'Web receiver badge/open action visible',
         );
+        currentRecoveryPhase?.web('INCOMING_VISIBLE');
         return;
       }
+      if (currentRecoveryPhase) { await currentRecoveryPhase.waitFor('INCOMING_VISIBLE', 180_000, platform); return; }
       await test.waitForMarker(
         verifyBothReceiverAlerts
           ? `E2E: ${platform.toUpperCase()}_INCOMING_ALERT_VISIBLE_${cycle.number}_1`
@@ -10094,10 +10776,11 @@ async function runWebSecondaryCreatorLifecycle(page, simulatorUdid, androidSeria
         );
       }
     };
-    await Promise.all([
+    await phaseAction(() => Promise.all([
       waitForReceiverVisible(approver, approverTest),
       waitForReceiverVisible(observer, observerTest),
-    ]);
+    ]));
+    currentRecoveryPhase?.requireBothBadges();
     writeDiagnostic(
       `[TEST${testNumber}][${cycle.block}][cycle=${cycle.number}] bothReceiversVisible=true`,
     );
@@ -10106,24 +10789,24 @@ async function runWebSecondaryCreatorLifecycle(page, simulatorUdid, androidSeria
       if (verifyBothReceiverAlerts) {
         await approveOpenIncomingRecoveryOnWeb(page, secretName);
       } else {
-        await approveIncomingRecoveryOnWeb(page, secretName, 1);
+        await phaseAction(() => approveIncomingRecoveryOnWeb(page, secretName, 1));
       }
     } else {
       approvalCoordinator.allow(`${approver}-approve-1`, cycle.number);
-      await approverTest.waitForMarker(
+      await phaseAction(() => approverTest.waitForMarker(
         `E2E: ${approver.toUpperCase()}_APPROVED_INCOMING_${cycle.number}_1`,
         180_000,
-      );
+      ));
     }
 
     if (observer === 'web') {
-      await waitForWebIncomingRecoveryGone(page, secretName);
+      await phaseAction(() => waitForWebIncomingRecoveryGone(page, secretName));
     } else {
       approvalCoordinator.allow(`${observer}-dismiss-1`, cycle.number);
-      await observerTest.waitForMarker(
+      await phaseAction(() => observerTest.waitForMarker(
         `E2E: ${observer.toUpperCase()}_DISMISSED_INCOMING_${cycle.number}_1`,
         180_000,
-      );
+      ));
     }
     writeDiagnostic(
       `[TEST${testNumber}][${cycle.block}][cycle=${cycle.number}] `
@@ -10131,32 +10814,41 @@ async function runWebSecondaryCreatorLifecycle(page, simulatorUdid, androidSeria
     );
 
     if (sender === 'web') {
-      await revealAndCloseWebSecret(page, secretName, false);
+      await phaseAction(() => revealAndCloseWebSecret(page, secretName, false));
+    } else if (testNumber === 25 && scenario.mode === 'web-secondary-creator-lifecycle' && sender === 'ios') {
+      await phaseAction(() => runTest25IosShow({actor: senderTest, scope: senderTest.test25ShowPhase,
+        phase: currentRecoveryPhase, allowShow: () => approvalCoordinator.allow('ios-show-1', cycle.number)}));
+    } else if (sender === 'ios' && [26,27,28,29,30,31,32,33,34,35,36,46,47,48,49].includes(testNumber)) {
+      await phaseAction(() => runRecoveryIosShow({actor:senderTest,scope:senderTest.recoveryShowPhase,
+        phase:currentRecoveryPhase,allowShow:()=>approvalCoordinator.allow('ios-show-1',cycle.number)}));
     } else {
       approvalCoordinator.allow(`${sender}-show-1`, cycle.number);
-      await senderTest.waitForMarker(
+      await phaseAction(() => senderTest.waitForMarker(
         `E2E: ${sender.toUpperCase()}_RECOVERY_SECRET_VISIBLE_${cycle.number}_1`,
         recoveryShowTimeoutMs,
-      );
-      await senderTest.waitForMarker(
+      ));
+      await phaseAction(() => senderTest.waitForMarker(
         `E2E: ${sender.toUpperCase()}_RECOVERY_CLOSED_${cycle.number}_1`,
         60_000,
-      );
+      ));
     }
 
-    if (senderTest) await senderTest.result;
-    if (approverTest) await approverTest.result;
-    if (observerTest) await observerTest.result;
+    if (senderTest) await phaseAction(() => senderTest.result);
+    if (approverTest) await phaseAction(() => approverTest.result);
+    if (observerTest) await phaseAction(() => observerTest.result);
 
     writeDiagnostic(
       `[TEST${testNumber}][${cycle.block}][cycle=${cycle.number}] sender=${sender} `
         + 'exactValue=verified action=closed',
     );
-    page = await refreshWebForKnownNames(page, cycle.number, [
+    page = await phaseAction(() => refreshWebForKnownNames(page, cycle.number, [
       ...twoDeviceNames,
       ...(cycle.number > scenario.recovery.createSecret3AfterCycle ? [thirdName] : []),
-    ]);
+    ]));
+    currentRecoveryPhase?.complete();
     console.log(`✅ Test #${testNumber} cycle ${cycle.number}/${expectedCycles} passed: ${sender} recovery/show`);
+    } catch (error) { currentRecoveryPhase?.abort(error); throw error; }
+    finally { currentRecoveryPhase = undefined; currentRecoveryBinding = undefined; }
     if (Number.isInteger(diagnosticStopAfterCycle) && cycle.number >= diagnosticStopAfterCycle) {
       writeDiagnostic(
         `[TEST${testNumber}][DIAGNOSTIC] requested stop after completed cycle=${cycle.number}`,
@@ -10169,6 +10861,9 @@ async function runWebSecondaryCreatorLifecycle(page, simulatorUdid, androidSeria
 }
 
 async function runAndroidSecondaryCreatorLifecycle(page, simulatorUdid, androidSerial) {
+  const scopedRecoveryProfile = [26,29,32,35].includes(testNumber) && selectedCurrentRecoveryProfile();
+  let currentRecoveryPhase, currentRecoveryBinding;
+  const phaseAction = action => currentRecoveryPhase ? currentRecoveryPhase.run(action) : action();
   const initialName = secretCreationPlan?.initial?.android?.[0] ?? secretNameFor('secret1');
   const secondarySecretCreator = scenario.setup?.secondarySecretCreator ?? 'ios';
   const secondName = secretCreationPlan?.afterIosJoin?.[secondarySecretCreator]?.[0]
@@ -10549,6 +11244,8 @@ async function runAndroidSecondaryCreatorLifecycle(page, simulatorUdid, androidS
       + 'and received Secret1/Secret2',
   );
 
+  const expectedDeviceNames = await discoverCanonicalRecoveryDeviceNames(page);
+
   const startNativeStep = async (platform, role, cycle, secretName, approvalPlatform, sender) => {
     const environment = stepEnvironment({
       role,
@@ -10561,8 +11258,11 @@ async function runAndroidSecondaryCreatorLifecycle(page, simulatorUdid, androidS
     });
     environment.E2E_SECRET_NAME = secretName;
     environment.E2E_SECRET_VALUE = secretValueForName(secretName);
+    const phaseLaunch = currentNativeRecoveryLaunch(currentRecoveryPhase, currentRecoveryBinding,
+      {platform, role, cycle: cycle.number, testMethod: (platform === 'ios' ? scenario.ios.stepTestMethod : scenario.android.stepTestMethod) ?? 'handleRecoveryStep'});
     if (platform === 'ios') {
       const test = startIosJoinTest(simulatorUdid, {
+        expectedDeviceNames,
         testClass: scenario.ios.stepTestClass
           ?? scenario.ios.testClass
           ?? 'CaseEightIosBothOfflineUITest',
@@ -10571,11 +11271,13 @@ async function runAndroidSecondaryCreatorLifecycle(page, simulatorUdid, androidS
         environment,
         secretName,
         secretValue: secretValueForName(secretName),
+        ...phaseLaunch,
       });
       void test.result.catch(() => {});
       return test;
     }
     return startAndroidStepTest(androidSerial, {
+      expectedDeviceNames,
       testClass: scenario.android.stepTestClass ?? scenario.android.testClass,
       testMethod: scenario.android.stepTestMethod ?? 'handleRecoveryStep',
       role,
@@ -10587,6 +11289,7 @@ async function runAndroidSecondaryCreatorLifecycle(page, simulatorUdid, androidS
       secretName,
       secretValue: secretValueForName(secretName),
       label: `Android Test #${testNumber} ${role} cycle ${cycle.number}`,
+      ...phaseLaunch,
     });
   };
 
@@ -10653,20 +11356,36 @@ async function runAndroidSecondaryCreatorLifecycle(page, simulatorUdid, androidS
         + `approver=${approver} observer=${observer} secret=${secretName}`,
     );
 
-    let senderTest;
+    if (scopedRecoveryProfile) {
+      currentRecoveryBinding = newCurrentRecoveryBinding(cycle, sender);
+      currentRecoveryPhase = approvalCoordinator.registerRecoveryPhase(currentRecoveryBinding,
+        abortRecoveryPhaseHarness({coordinator: approvalCoordinator, shutdown: harnessShutdown}));
+    }
+    try {
+        let senderTest;
     let approverTest;
     let observerTest;
     if (approver !== 'web') {
-      approverTest = await startNativeStep(approver, 'receiver', cycle, secretName, approver, sender);
+      approverTest = await phaseAction(() => startNativeStep(approver, 'receiver', cycle, secretName, approver, sender));
     }
     if (observer !== 'web') {
-      observerTest = await startNativeStep(observer, 'receiver', cycle, secretName, approver, sender);
+      observerTest = await phaseAction(() => startNativeStep(observer, 'receiver', cycle, secretName, approver, sender));
     }
     if (sender !== 'web') {
-      senderTest = await startNativeStep(sender, 'sender', cycle, secretName, approver, sender);
+      senderTest = await phaseAction(() => startNativeStep(sender, 'sender', cycle, secretName, approver, sender));
     }
 
-    await waitForRecoveryParticipantsReady(page, {
+    for (const test of [senderTest, approverTest, observerTest]) if (currentRecoveryPhase && test) {
+      const phase = currentRecoveryPhase; void test.result.catch(error => phase.abort(error));
+    }
+    if (currentRecoveryPhase) {
+      const phase = currentRecoveryPhase;
+      await phaseAction(() => Promise.all([
+        phase.waitFor('READY', 240_000),
+        (async () => { await waitForWebPreRequestUiReady(page, secretName,
+          sender === 'web' ? 'sender' : 'receiver', 240_000); phase.web('READY'); })(),
+      ]));
+    } else await waitForRecoveryParticipantsReady(page, {
       cycleNumber: cycle.number,
       secretName,
       participants: [
@@ -10677,27 +11396,38 @@ async function runAndroidSecondaryCreatorLifecycle(page, simulatorUdid, androidS
       label: `TEST${testNumber}:${cycle.block}`,
     });
 
-    if (sender === 'web') {
+    if (currentRecoveryPhase) {
+      const phase = currentRecoveryPhase; phase.releaseSender();
+      if (sender === 'web') {
+        await phaseAction(() => startWebRecovery(page, secretName)); phase.web('REQUEST_SENT');
+      } else await phaseAction(() => phase.waitFor('REQUEST_SENT', 180_000));
+    } else if (sender === 'web') {
       approvalCoordinator.allow('web-sender', cycle.number);
-      await startWebRecovery(page, secretName);
+      await phaseAction(() => startWebRecovery(page, secretName));
     } else {
       approvalCoordinator.allow(`${sender}-sender-1`, cycle.number);
-      await senderTest.waitForMarker(
+      await phaseAction(() => senderTest.waitForMarker(
         `E2E: ${sender.toUpperCase()}_RECOVERY_REQUEST_SENT_${cycle.number}_1`,
         180_000,
-      );
+      ));
     }
 
+    const receiverPhase = currentRecoveryPhase;
     const waitForReceiverVisible = async (platform, test) => {
       if (platform === 'web') {
         if (verifyBothReceiverAlerts) {
           await openStrictWebIncomingAlert(page, 1, secretName, {
             dismissWithoutDecision: platform === observer,
+            onIncomingVisible: receiverPhase ? () => receiverPhase.web('INCOMING_VISIBLE') : undefined,
           });
         } else {
           await waitForStrictWebIncomingVisible(page, 1, secretName);
         }
+        if (!verifyBothReceiverAlerts) receiverPhase?.web('INCOMING_VISIBLE');
         return;
+      }
+      if (receiverPhase && !verifyBothReceiverAlerts) {
+        await receiverPhase.waitFor('INCOMING_VISIBLE', 180_000, platform); return;
       }
       await test.waitForMarker(
         verifyBothReceiverAlerts
@@ -10712,69 +11442,78 @@ async function runAndroidSecondaryCreatorLifecycle(page, simulatorUdid, androidS
         );
       }
     };
-    await Promise.all([
+    await phaseAction(() => Promise.all([
       waitForReceiverVisible(approver, approverTest),
       waitForReceiverVisible(observer, observerTest),
-    ]);
+      ...(receiverPhase && verifyBothReceiverAlerts ? ['android', 'ios'].filter(platform => platform !== sender)
+        .map(platform => receiverPhase.waitFor('INCOMING_VISIBLE', 180_000, platform)) : []),
+    ]));
+    currentRecoveryPhase?.requireBothBadges();
     writeDiagnostic(
       `[TEST${testNumber}][${cycle.block}][cycle=${cycle.number}] bothReceiversVisible=true`,
     );
 
     if (approver === 'web') {
       if (verifyBothReceiverAlerts) {
-        await approveOpenIncomingRecoveryOnWeb(page, secretName);
+        await phaseAction(() => approveOpenIncomingRecoveryOnWeb(page, secretName));
       } else {
-        await approveIncomingRecoveryOnWeb(page, secretName, 1);
+        await phaseAction(() => approveIncomingRecoveryOnWeb(page, secretName, 1));
       }
     } else {
       approvalCoordinator.allow(`${approver}-approve-1`, cycle.number);
-      await approverTest.waitForMarker(
+      await phaseAction(() => approverTest.waitForMarker(
         `E2E: ${approver.toUpperCase()}_APPROVED_INCOMING_${cycle.number}_1`,
         180_000,
-      );
+      ));
     }
 
     if (observer === 'web') {
-      await waitForWebIncomingRecoveryGone(page, secretName);
+      await phaseAction(() => waitForWebIncomingRecoveryGone(page, secretName));
     } else {
       approvalCoordinator.allow(`${observer}-dismiss-1`, cycle.number);
-      await observerTest.waitForMarker(
+      await phaseAction(() => observerTest.waitForMarker(
         `E2E: ${observer.toUpperCase()}_DISMISSED_INCOMING_${cycle.number}_1`,
         180_000,
-      );
+      ));
     }
     writeDiagnostic(
       `[TEST${testNumber}][${cycle.block}][cycle=${cycle.number}] observer=${observer} requestGone=true`,
     );
 
     if (sender === 'web') {
-      await revealAndCloseWebSecret(page, secretName, false);
+      await phaseAction(() => revealAndCloseWebSecret(page, secretName, false));
+    } else if (sender === 'ios' && [26,27,28,29,30,31,32,33,34,35,36,46,47,48,49].includes(testNumber)) {
+      await phaseAction(() => runRecoveryIosShow({actor:senderTest,scope:senderTest.recoveryShowPhase,
+        phase:currentRecoveryPhase,allowShow:()=>approvalCoordinator.allow('ios-show-1',cycle.number)}));
     } else {
       approvalCoordinator.allow(`${sender}-show-1`, cycle.number);
-      await senderTest.waitForMarker(
+      await phaseAction(() => senderTest.waitForMarker(
         `E2E: ${sender.toUpperCase()}_RECOVERY_SECRET_VISIBLE_${cycle.number}_1`,
         recoveryShowTimeoutMs,
-      );
-      await senderTest.waitForMarker(
+      ));
+      await phaseAction(() => senderTest.waitForMarker(
         `E2E: ${sender.toUpperCase()}_RECOVERY_CLOSED_${cycle.number}_1`,
         60_000,
-      );
+      ));
     }
 
-    if (senderTest) await senderTest.result;
-    if (approverTest) await approverTest.result;
-    if (observerTest) await observerTest.result;
+    if (senderTest) await phaseAction(() => senderTest.result);
+    if (approverTest) await phaseAction(() => approverTest.result);
+    if (observerTest) await phaseAction(() => observerTest.result);
 
     writeDiagnostic(
       `[TEST${testNumber}][${cycle.block}][cycle=${cycle.number}] sender=${sender} `
         + `exactValue=verified action=closed`,
     );
-    page = await refreshWebForKnownNames(page, cycle.number, [
+    page = await phaseAction(() => refreshWebForKnownNames(page, cycle.number, [
       ...twoDeviceNames,
       ...(cycle.number > scenario.recovery.createSecret3AfterCycle ? [thirdName] : []),
-    ]);
+    ]));
+    currentRecoveryPhase?.complete();
     console.log(`✅ Test #${testNumber} cycle ${cycle.number}/${expectedCycles} passed: ${sender} recovery/show`);
-  }
+      } catch (error) { currentRecoveryPhase?.abort(error); throw error; }
+    finally { currentRecoveryPhase = undefined; currentRecoveryBinding = undefined; }
+}
 }
 
 async function joinWebToCliVault(page, cliDevice, platform) {
@@ -10804,7 +11543,7 @@ async function rejectFourthDeviceOnWeb(page, blockName) {
 
   const retryVaultName = scenario.vault.retryName;
   await retryWebVaultWithNewEmail(page, retryVaultName);
-  await page.getByRole('link', { name: 'Secrets', exact: true }).waitFor({ timeout: 180_000 });
+  await webEntryReady(page).waitFor({ timeout: 180_000 });
   writeDiagnostic('[TEST21] Web retry registration completed');
 }
 
@@ -10886,6 +11625,20 @@ async function runFourthDeviceRejection(page, simulatorUdid, androidSerial) {
   console.log(`✅ Test #21 ${blockName}: ${rejected} fourth device rejected and retry registered`);
 }
 
+async function discoverCanonicalRecoveryDeviceNames(page) {
+  const expectedDeviceNames = {};
+  const canonicalDeviceIds = new Set();
+  for (const [platform, category] of [['web', 'Web'], ['android', 'Android'], ['ios', 'iPhone']]) {
+    const member = await inspectWebLiveboardMember(page, category, { current: platform === 'web', controls: false });
+    if (typeof member.deviceId !== 'string' || !member.deviceId.trim()
+      || typeof member.deviceName !== 'string' || !member.deviceName.trim()
+      || canonicalDeviceIds.has(member.deviceId)) throw new Error('Recovery canonical Device identities are missing or ambiguous');
+    canonicalDeviceIds.add(member.deviceId);
+    expectedDeviceNames[platform] = member.deviceName;
+  }
+  return Object.freeze(expectedDeviceNames);
+}
+
 async function runReceiverOfflineAfterAlertRecovery(page, simulatorUdid, androidSerial) {
   const expectedCycles = scenario.recovery.expectedCycles ?? recoveryCycles.length;
   if (recoveryCycles.length !== expectedCycles) {
@@ -10893,6 +11646,8 @@ async function runReceiverOfflineAfterAlertRecovery(page, simulatorUdid, android
       `Test #10 expected ${expectedCycles} recovery requests, got ${recoveryCycles.length}`,
     );
   }
+
+  const expectedDeviceNames = await discoverCanonicalRecoveryDeviceNames(page);
 
   for (const cycle of recoveryCycles) {
     setCurrentCycleForDiagnostics(cycle);
@@ -10946,6 +11701,7 @@ async function runReceiverOfflineAfterAlertRecovery(page, simulatorUdid, android
       });
       if (platform === 'ios') {
         const test = startIosJoinTest(simulatorUdid, {
+          expectedDeviceNames,
           testClass: scenario.ios.testClass,
           testMethod: scenario.ios.stepTestMethod ?? 'handleRecoveryStep',
           label: `iOS Test #10 ${role} cycle ${cycle.number}`,
@@ -10958,6 +11714,7 @@ async function runReceiverOfflineAfterAlertRecovery(page, simulatorUdid, android
       }
       if (platform === 'android') {
         const test = await startAndroidStepTest(androidSerial, {
+          expectedDeviceNames,
           role,
           cycle: cycle.number,
           step,
@@ -11115,6 +11872,8 @@ async function runApproveDeclineRaceRecovery(page, simulatorUdid, androidSerial)
     throw new Error(`Test #${testNumber} expected ${expectedCycles} recovery requests, got ${recoveryCycles.length}`);
   }
 
+  const expectedDeviceNames = await discoverCanonicalRecoveryDeviceNames(page);
+
   for (const cycle of recoveryCycles) {
     setCurrentCycleForDiagnostics(cycle);
     if (cycle.senders.length !== 1 || cycle.approvals.length !== 2) {
@@ -11161,6 +11920,7 @@ async function runApproveDeclineRaceRecovery(page, simulatorUdid, androidSerial)
       });
       if (platform === 'ios') {
         const test = startIosJoinTest(simulatorUdid, {
+          expectedDeviceNames,
           testClass: scenario.ios.testClass,
           testMethod: scenario.ios.raceStepTestMethod ?? 'handleApproveDeclineStep',
           label: `iOS Test #${testNumber} ${role} cycle ${cycle.number}`,
@@ -11171,6 +11931,7 @@ async function runApproveDeclineRaceRecovery(page, simulatorUdid, androidSerial)
         nativeProcesses.set(platform, { platform, role, test, approval });
       } else if (platform === 'android') {
         const test = await startAndroidStepTest(androidSerial, {
+          expectedDeviceNames,
           role,
           cycle: cycle.number,
           step,
@@ -11223,12 +11984,7 @@ async function runApproveDeclineRaceRecovery(page, simulatorUdid, androidSerial)
         await decideIncomingRecoveryOnWeb(page, secretName, approval.action, 1);
         return;
       }
-      const openRequest = page.getByTestId(`open-recovery-request-${secretName}`);
-      const badge = page.getByTestId(`recovery-request-badge-${secretName}`);
-      const state = await Promise.race([
-        openRequest.waitFor({ state: 'visible', timeout: 120_000 }).then(() => 'pending', () => null),
-        badge.waitFor({ state: 'hidden', timeout: 120_000 }).then(() => 'terminal', () => null),
-      ]);
+      const state = await waitWebIncomingActionOrGone(page, 'recover', secretName);
       if (state === 'terminal') {
         console.log(
           `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: `
@@ -11272,7 +12028,7 @@ async function runApproveDeclineRaceRecovery(page, simulatorUdid, androidSerial)
     // It should observe the terminal state and record
     // ACTION_SKIPPED_AFTER_TERMINAL instead of changing the result.
     if (second.platform === 'web') {
-      await runWebDecision(second, expectedOutcome === 'declined');
+      await runWebDecision(second, true);
     }
     else approvalCoordinator.allow(`${second.platform}-${second.action}-${step}`, cycle.number);
 
@@ -11325,6 +12081,8 @@ async function runRepeatApproveRecovery(page, simulatorUdid, androidSerial) {
     throw new Error(`Test #${testNumber} expected ${expectedCycles} recovery requests, got ${recoveryCycles.length}`);
   }
 
+  const expectedDeviceNames = await discoverCanonicalRecoveryDeviceNames(page);
+
   for (const cycle of recoveryCycles) {
     setCurrentCycleForDiagnostics(cycle);
     if (cycle.senders.length !== 1 || cycle.approvals.length !== 1) {
@@ -11369,6 +12127,7 @@ async function runRepeatApproveRecovery(page, simulatorUdid, androidSerial) {
       };
       if (platform === 'ios') {
         const test = startIosJoinTest(simulatorUdid, {
+          expectedDeviceNames,
           testClass: scenario.ios.testClass,
           testMethod: scenario.ios.repeatApproveTestMethod
             ?? scenario.ios.raceStepTestMethod
@@ -11383,6 +12142,7 @@ async function runRepeatApproveRecovery(page, simulatorUdid, androidSerial) {
       }
       if (platform === 'android') {
         const test = await startAndroidStepTest(androidSerial, {
+          expectedDeviceNames,
           role,
           cycle: cycle.number,
           step,
@@ -11473,6 +12233,8 @@ async function runDuplicateRecovery(page, simulatorUdid, androidSerial) {
     throw new Error(`Test #${testNumber} expected ${expectedCycles} duplicate-recovery cycles, got ${recoveryCycles.length}`);
   }
 
+  const expectedDeviceNames = await discoverCanonicalRecoveryDeviceNames(page);
+
   for (const cycle of recoveryCycles) {
     setCurrentCycleForDiagnostics(cycle);
     if (cycle.senders.length !== 1 || cycle.approvals.length !== 1) {
@@ -11517,6 +12279,7 @@ async function runDuplicateRecovery(page, simulatorUdid, androidSerial) {
       };
       if (platform === 'ios') {
         const test = startIosJoinTest(simulatorUdid, {
+          expectedDeviceNames,
           testClass: scenario.ios.testClass,
           testMethod: scenario.ios.duplicateRecoveryTestMethod
             ?? scenario.ios.raceStepTestMethod
@@ -11531,6 +12294,7 @@ async function runDuplicateRecovery(page, simulatorUdid, androidSerial) {
       }
       if (platform === 'android') {
         const test = await startAndroidStepTest(androidSerial, {
+          expectedDeviceNames,
           role,
           cycle: cycle.number,
           step,
@@ -11559,22 +12323,35 @@ async function runDuplicateRecovery(page, simulatorUdid, androidSerial) {
     if (sender === 'web') {
       await startWebDuplicateRecovery(page, secretName);
     } else {
+      const pendingCloseDeadline = performance.now() + 180_000;
+      const pendingCloseRemaining = (cap = 180_000) => {
+        const remaining = pendingCloseDeadline - performance.now();
+        if (!Number.isFinite(remaining) || remaining <= 0) {
+          throw new Error(`Test #${testNumber} native pending Close deadline exceeded`);
+        }
+        return Math.min(cap, remaining);
+      };
       approvalCoordinator.allow(`${sender}-sender-${step}`, cycle.number);
       const senderProcess = nativeProcesses.get(sender).test;
       await senderProcess.waitForMarker(
         `E2E: ${sender.toUpperCase()}_RECOVERY_REQUEST_SENT_${cycle.number}_${step}`,
-        180_000,
+        pendingCloseRemaining(),
       );
       await Promise.race([
         senderProcess.waitForMarker(
           `E2E: ${sender.toUpperCase()}_DUPLICATE_RECOVERY_SENT_${cycle.number}_${step}`,
-          30_000,
+          pendingCloseRemaining(30_000),
         ),
         senderProcess.waitForMarker(
           `E2E: ${sender.toUpperCase()}_DUPLICATE_RECOVERY_SKIPPED_AFTER_GUARD_${cycle.number}_${step}`,
-          30_000,
+          pendingCloseRemaining(30_000),
         ),
       ]);
+      await senderProcess.waitForMarker(
+        new RegExp(`E2E: ${sender.toUpperCase()}_DUPLICATE_RECOVERY_PENDING_CLOSED_${cycle.number}_${step}\\r?\\n`),
+        pendingCloseRemaining(),
+      );
+      pendingCloseRemaining();
     }
 
     if (receiver === 'web') {
@@ -11797,10 +12574,15 @@ async function runNewDeviceDuringRecoveryWithCli(page, simulatorUdid, androidSer
   }
 }
 
-async function runTest15PostJoinRecoveryPlan(page, simulatorUdid, androidSerial, cliDevice, persistentNativeCategory) {
+async function runTest15PostJoinRecoveryPlan(page, simulatorUdid, androidSerial, cliDevice, persistentNativeCategory, expectedDeviceNames) {
   const plan = scenario.postJoinRecoveryPlan;
   const persistentNativePlatform = persistentNativeCategory === 'iPhone' ? 'ios' : 'android';
   const survivingPlatforms = ['web', persistentNativePlatform, 'cli'];
+  const canonicalNames = survivingPlatforms.map(platform => expectedDeviceNames?.[platform]);
+  if (canonicalNames.some(name => typeof name !== 'string' || !name.trim())
+      || new Set(canonicalNames).size !== survivingPlatforms.length) {
+    throw new Error('Test15 postjoin requires distinct nonblank canonical survivor names');
+  }
   if (!Array.isArray(plan) || plan.length !== 3) {
     throw new Error('Test #15 requires exactly three post-join recovery validations');
   }
@@ -11852,6 +12634,7 @@ async function runTest15PostJoinRecoveryPlan(page, simulatorUdid, androidSerial,
       });
       if (platform === 'ios') {
         const test = startIosJoinTest(simulatorUdid, {
+          expectedDeviceNames,
           testClass: scenario.ios.testClass,
           testMethod: scenario.ios.stepTestMethod ?? 'handleRecoveryStep',
           label: `iOS Test #15 post-join ${role} cycle ${cycleNumber}`,
@@ -11864,6 +12647,7 @@ async function runTest15PostJoinRecoveryPlan(page, simulatorUdid, androidSerial,
         return test;
       }
       const test = await startAndroidStepTest(androidSerial, {
+        expectedDeviceNames,
         role,
         cycle: cycleNumber,
         step: 1,
@@ -11945,6 +12729,23 @@ async function runTest15PostJoinRecoveryPlan(page, simulatorUdid, androidSerial,
       await requestCommitted;
     }
 
+    let webObserverHead;
+    if (sender !== 'web' && approver !== 'web') {
+      const requester = expectedDeviceNames?.[sender];
+      if (!requester) throw new Error('Test15 Web observer requires the canonical current sender name');
+      webObserverHead = await openWebIncoming(page, { kind: 'recover', subject: secretName, requester,
+        count: 1, ...(senderClaimId ? { requestId: senderClaimId } : {}) });
+      if (sender === 'cli' && webObserverHead.requestId !== senderClaimId) throw new Error('Test15 Web observer and CLI sender claim differ');
+    }
+
+    for (const platform of nativePlatforms) {
+      if (platform === sender || platform === approver) continue;
+      await nativeProcesses.get(platform).test.waitForMarker(
+        `E2E: ${platform.toUpperCase()}_INCOMING_VISIBLE_${cycleNumber}_1`,
+        180_000,
+      );
+    }
+
     if (approver === 'web') {
       const approvedClaimId = await approveIncomingRecoveryOnWeb(page, secretName, 1, {
         senderSecretName: sender === 'web' ? secretName : null,
@@ -11968,6 +12769,7 @@ async function runTest15PostJoinRecoveryPlan(page, simulatorUdid, androidSerial,
         receiverId: cliDevice.deviceId,
       });
       if (!pending) throw new Error(`Test #15 CLI approver has no pending recovery claim at cycle ${cycleNumber}`);
+      if (webObserverHead && webObserverHead.requestId !== pending.id) throw new Error('Test15 Web observer and CLI approval target differ');
       writeDiagnostic(
         `TEST15 CLI approval target cycle=${cycleNumber} claimId=${pending.id} `
         + `sender=${pending.sender} cliReceiver=${cliDevice.deviceId} status=Pending`,
@@ -12103,6 +12905,8 @@ async function runNewDeviceDuringRecoveryWithCliFull(page, simulatorUdid, androi
   for (const cycle of recoveryCycles) {
     setCurrentCycleForDiagnostics(cycle);
     const sender = senderForCycle(cycle);
+    const explicitFifo = scenarioArtifactLabel === 'scenario-block1';
+    if (!explicitFifo && cycle.approvals.length) throw new Error('Test15 blocks2/3 preserve their original unanswered recovery');
     const secretName = cycle.senderSecrets[sender] ?? defaultSecret?.name;
     const oldReceivers = scenario.newDevice?.oldReceivers
       ?? ['web', 'ios', 'android'].filter((platform) => platform !== sender);
@@ -12194,6 +12998,46 @@ async function runNewDeviceDuringRecoveryWithCliFull(page, simulatorUdid, androi
       label: 'TEST15',
     });
 
+    let fifoOwner, fifoContext, fifoRecoveryId, fifoInitialRead, fifoPrimary;
+    const fifoWaits = new Set();
+    const observeFifo = (group, signal) => {
+      const abort = () => { void fifoOwner.evaluate((runtime) => runtime.controller.abort(new Error('Test15 actor cancelled'))).catch(() => {}); };
+      if (signal?.aborted) return Promise.reject(signal.reason);
+      signal?.addEventListener('abort', abort, { once: true });
+      const pending = fifoOwner.evaluate(waitForTest15FifoSnapshot, { ...group, timeoutMs: 180_000 });
+      fifoWaits.add(pending);
+      return pending.finally(() => { fifoWaits.delete(pending); signal?.removeEventListener('abort', abort); });
+    };
+    try {
+      if (explicitFifo) {
+        // Retain the SAME pre-mutation manager/generation across every phase.
+        // The handle owns only observer ports/cancellation, never app state.
+        fifoOwner = await page.evaluateHandle(async () => {
+          const { AppState } = await import('/src/stores/app-state.ts');
+          const { readOwnedMember } = await import('/src/features/liveboard/wasmOwnership.ts');
+          const { readCoreProjection } = await import('/src/features/liveboard/coreProjection.ts');
+          const state = AppState();
+          return { state, originalManager: state.appManager, originalGeneration: state.sessionGeneration,
+            readOwnedMember, readCoreProjection: (member) => readCoreProjection({ member, identity: 'test15-read-only' }),
+            controller: new AbortController(), setTimeout, clearTimeout };
+        });
+        const baseline = await observeFifo({ phase: 'snapshot' });
+        if (baseline.operations.some((op) => ['recover', 'removeDevice'].includes(op.kind) && !op.outcome && ['pending', 'needApprove'].includes(op.clientStatus))) throw new Error('Test15 initial canonical boundary is not clean');
+        const passes = baseline.secrets.filter((pass) => pass.name === secretName);
+        if (passes.length !== 1) throw new Error('Test15 exact initial Pass identity missing');
+        const devices = Object.fromEntries(['web', 'android', 'ios'].map((role) => {
+          const matches = baseline.devices.filter((device) => device.name === initialDeviceNames[role]);
+          if (matches.length !== 1 || matches[0].current !== (role === 'web')) throw new Error('Test15 original canonical role identity missing');
+          return [role, { id: matches[0].deviceId, name: matches[0].name }];
+        }));
+        fifoContext = test15FifoContext({ scope: { runId: scenario.runId ?? `test-${testNumber}`, testNumber,
+          block: scenarioArtifactLabel, cycle: cycle.number, step: 1 }, vaultId: baseline.session.vaultId,
+          sender, removalApprover, removalTarget: removalTargetPlatform, approvals: cycle.approvals,
+          secret: { passId: passes[0].passId, name: secretName }, devices,
+          baselineRequestIds: baseline.operations.map((op) => op.requestId) });
+        fifoInitialRead = observeFifo({ context: fifoContext, phase: 'recover-pending' });
+        void fifoInitialRead.catch(() => {});
+      }
     let serverRecoveryCommitted;
     if (sender === 'web') {
       await startWebRecovery(page, secretName);
@@ -12228,6 +13072,11 @@ async function runNewDeviceDuringRecoveryWithCliFull(page, simulatorUdid, androi
       );
     }
     if (sender !== 'web') await nativeProcesses.get(sender).test.result;
+    if (fifoContext) {
+      const group = { context: fifoContext, phase: 'recover-pending' };
+      fifoRecoveryId = assertTest15FifoTransition(group, await fifoInitialRead)?.recoveryId;
+      if (!fifoRecoveryId) throw new Error('Test15 actual initial Recovery UUID was not observed');
+    }
     writeDiagnostic(`TEST15 cycle=${cycle.number} pending recovery observed before removal`);
 
     await dismissWebRecoveryWaitingUi(page, secretName);
@@ -12239,6 +13088,58 @@ async function runNewDeviceDuringRecoveryWithCliFull(page, simulatorUdid, androi
       : removalTargetPlatform === 'ios' ? 'iPhone' : 'Android';
     if (!removalTargetName) throw new Error(`Test #15 could not resolve removal target ${removalTargetPlatform}`);
 
+    let removalApproval, removedTarget;
+    if (fifoContext) {
+      const ids = { recoveryId: fifoRecoveryId };
+      const prefixes = { ready: 'ANDROID_TEST15_REMOVAL_APPROVER_READY', 'recovery-head': 'ANDROID_TEST15_RECOVERY_HEAD_VISIBLE_1_1',
+        'recovery-declined': 'ANDROID_TEST15_RECOVERY_DECLINED_1_1', 'removal-head': 'ANDROID_TEST15_REMOVAL_REQUEST_VISIBLE',
+        'removal-approved': 'ANDROID_TEST15_REMOVAL_APPROVED_RECOVERY_CLEARED' };
+      try {
+        await runTest15FifoDecisions({ context: fifoContext, recoveryId: fifoRecoveryId }, {
+          passiveResult: nativeProcesses.get('android').test.result,
+          async startActor(context) {
+            removalApproval = await startAndroidStepTest(androidSerial, {
+              role: 'removal-approver', cycle: cycle.number, step: 1, joinTarget: removalTargetName,
+              expectedSecretNames: [secretName], expectedDeviceNames: initialDeviceNames,
+              testClass: 'metasecret.project.com.Case37AndroidMemberRemovalTest',
+              testMethod: 'approveRemovalDuringRecoveryForTest15',
+              test15FifoContext: { ...context, recoveryId: fifoRecoveryId },
+              label: `Android Test #15 FIFO decline then removal cycle ${cycle.number}`,
+            });
+            return removalApproval;
+          },
+          async requestRemoval() {
+            removedTarget = await initiateWebDeviceRemoval(page, { targetCategory: removalTargetCategory,
+              expectedTargetDeviceName: removalTargetName, waitForTargetGone: false,
+              label: `Test #15 cycle ${cycle.number} removal during recovery` });
+          },
+          async observe(group, signal) {
+            const projection = await observeFifo(group, signal);
+            Object.assign(ids, assertTest15FifoTransition(group, projection));
+            return projection;
+          },
+          waitMarker(stage, { signal }) {
+            const count = { ready: 0, 'recovery-head': 2, 'recovery-declined': 1, 'removal-head': 1, 'removal-approved': 0 }[stage];
+            const claimId = stage.startsWith('recovery') ? ids.recoveryId : stage.startsWith('removal') ? ids.removalId : undefined;
+            const line = `E2E: ${prefixes[stage]} ${JSON.stringify({ ...fifoContext.scope, ...(claimId ? { claimId } : {}), count })}`;
+            const abort = () => removalApproval.cancelPendingWaits(signal.reason);
+            if (signal.aborted) return Promise.reject(signal.reason);
+            signal.addEventListener('abort', abort, { once: true });
+            // Existing owned matcher proves this complete actual line, including
+            // the exact JSON suffix, rather than resolving a stem-only marker.
+            const pending = removalApproval.waitForMarkerChoice([{ marker: line, value: line }], 180_000);
+            fifoWaits.add(pending);
+            return pending.finally(() => { fifoWaits.delete(pending); signal.removeEventListener('abort', abort); });
+          },
+          allowGate({ name, cycle }) { approvalCoordinator.allow(name, cycle); },
+          async drain() { await Promise.allSettled([...fifoWaits]); },
+        });
+      } catch (error) {
+        try { await harnessShutdown.finish({ error, diagnostics: true }); }
+        catch (cleanup) { throw new AggregateError([error, cleanup], 'Test15 FIFO failed and shutdown failed', { cause: error }); }
+        throw error;
+      }
+    } else {
     const removalEnvironment = {
       ...stepEnvironment({
         role: 'removal-approver', cycle: cycle.number, step: 1,
@@ -12246,7 +13147,6 @@ async function runNewDeviceDuringRecoveryWithCliFull(page, simulatorUdid, androi
       }),
       E2E_JOIN_TARGET: removalTargetName,
     };
-    let removalApproval;
     if (removalApprover === 'android') {
       removalApproval = await startAndroidStepTest(androidSerial, {
         role: 'removal-approver', cycle: cycle.number, step: 1,
@@ -12271,7 +13171,7 @@ async function runNewDeviceDuringRecoveryWithCliFull(page, simulatorUdid, androi
       `E2E: ${removalApprover.toUpperCase()}_TEST15_REMOVAL_APPROVER_READY`,
       180_000,
     );
-    const removedTarget = await initiateWebDeviceRemoval(page, {
+    removedTarget = await initiateWebDeviceRemoval(page, {
       targetCategory: removalTargetCategory,
       expectedTargetDeviceName: removalTargetName,
       waitForTargetGone: false,
@@ -12286,11 +13186,12 @@ async function runNewDeviceDuringRecoveryWithCliFull(page, simulatorUdid, androi
       `E2E: ${removalApprover.toUpperCase()}_TEST15_REMOVAL_APPROVED_RECOVERY_CLEARED`,
       180_000,
     );
+    }
     await removedTarget.row.waitFor({
       state: 'hidden',
       timeout: 180_000,
     });
-    writeDiagnostic(`TEST15 cycle=${cycle.number} membership change declined active Recover before CLI join`);
+    writeDiagnostic(`TEST15 cycle=${cycle.number} ${fifoContext ? 'explicit B decline then removal' : 'membership change declined active Recover'} before CLI join`);
 
     const cliDevice = await createMetaCliDevice(cycle);
     await approveJoinRequestOnWeb(page, 'CLI');
@@ -12317,7 +13218,7 @@ async function runNewDeviceDuringRecoveryWithCliFull(page, simulatorUdid, androi
     approvalCoordinator.allow('test15-cli-redistribution-observed', cycle.number);
     await removalApproval.result;
     previousCliDevice = cliDevice;
-    await assertWebMembership(
+    const postJoinDeviceNames = await assertWebMembership(
       page,
       ['Web', persistentNativeCategory, 'CLI'],
       [secretName],
@@ -12338,7 +13239,7 @@ async function runNewDeviceDuringRecoveryWithCliFull(page, simulatorUdid, androi
       + JSON.stringify(activeRecoveryClaims),
     );
 
-    await waitForWebIncomingRecoveryGone(page, secretName);
+    if (sender !== 'web') await waitForWebIncomingRecoveryGone(page, secretName);
     await assertNoStaleWebRecoveryAlert(page, secretName);
     for (const { test } of nativeProcesses.values()) await test.result;
 
@@ -12377,11 +13278,22 @@ async function runNewDeviceDuringRecoveryWithCliFull(page, simulatorUdid, androi
       androidSerial,
       cliDevice,
       persistentNativeCategory,
+      postJoinDeviceNames,
     );
     console.log(
       `✅ Test #15 cycle ${cycle.number}/${expectedCycles} passed: one removal, one CLI rejoin, `
       + 'three approved post-join recovery checks',
     );
+    } catch (error) { fifoPrimary = error; throw error; }
+    finally {
+      if (fifoOwner) {
+        try {
+          await fifoOwner.evaluate((runtime) => runtime.controller.abort(new Error('Test15 observation scope closed')));
+          await Promise.allSettled([...fifoWaits]);
+          await fifoOwner.dispose();
+        } catch (cleanup) { if (!fifoPrimary) throw cleanup; }
+      }
+    }
   }
 }
 
@@ -12408,6 +13320,7 @@ async function runBothReceiversOfflineRecovery(page, simulatorUdid, androidSeria
   if (blocks.length !== expectedBlockCount) {
     throw new Error(`Test #8 requires ${expectedBlockCount} sender block(s)`);
   }
+  const expectedDeviceNames = await discoverCanonicalRecoveryDeviceNames(page);
   let cycle = 0;
 
   for (const block of blocks) {
@@ -12442,6 +13355,7 @@ async function runBothReceiversOfflineRecovery(page, simulatorUdid, androidSeria
             testClass: scenario.ios.testClass,
             testMethod: scenario.ios.stepTestMethod,
             label: `iOS sender cycle ${cycle}`,
+            expectedDeviceNames,
             environment: stepEnvironment({
               role: 'sender', cycle, step, approvalPlatform: approver, sender: block.sender,
             }),
@@ -12453,6 +13367,7 @@ async function runBothReceiversOfflineRecovery(page, simulatorUdid, androidSeria
           senderProcess = await startAndroidStepTest(androidSerial, {
             role: 'sender', cycle, step, approvalPlatform: approver, sender: block.sender,
             label: `Android sender cycle ${cycle}`,
+            expectedDeviceNames,
           });
           approvalCoordinator.allow(`android-sender-${step}`, cycle);
           await senderProcess.waitForMarker(`E2E: ANDROID_RECOVERY_REQUEST_SENT_${cycle}_${step}`, 180_000);
@@ -12469,6 +13384,7 @@ async function runBothReceiversOfflineRecovery(page, simulatorUdid, androidSeria
                 role: 'receiver', cycle, step, approvalPlatform: approver, sender: block.sender,
                 receiverRequestAlreadySent: true,
                 label: `Android receiver cycle ${cycle}`,
+                expectedDeviceNames,
               }),
             });
           } else if (receiver === 'ios') {
@@ -12476,6 +13392,7 @@ async function runBothReceiversOfflineRecovery(page, simulatorUdid, androidSeria
               testClass: scenario.ios.testClass,
               testMethod: scenario.ios.stepTestMethod,
               label: `iOS receiver cycle ${cycle}`,
+              expectedDeviceNames,
               environment: stepEnvironment({
                 role: 'receiver', cycle, step, approvalPlatform: approver, sender: block.sender,
                 receiverRequestAlreadySent: true,
@@ -12577,7 +13494,7 @@ async function runSenderOfflineSetup(page, simulatorUdid, androidSerial) {
     await unlockWithPasskeyIfNeeded(page);
     await requestWebVaultJoin(page, scenario.vault.name);
     await androidTest.waitForMarker('E2E: ANDROID_WEB_JOIN_APPROVED', 180_000);
-    await page.getByRole('button', { name: '+ Add Secret' }).waitFor({ timeout: 120_000 });
+    await openWebSecrets(page);
 
     let iosTest = null;
     if (joinPlatforms.includes('ios')) {
@@ -12618,7 +13535,7 @@ async function runSenderOfflineSetup(page, simulatorUdid, androidSerial) {
     await unlockWithPasskeyIfNeeded(page);
     await requestWebVaultJoin(page, scenario.vault.name);
     await iosTest.waitForMarker('E2E: IOS_WEB_JOIN_APPROVED', 180_000);
-    await page.getByRole('button', { name: '+ Add Secret' }).waitFor({ timeout: 120_000 });
+    await openWebSecrets(page);
 
     let androidTest = null;
     if (joinPlatforms.includes('android')) {
@@ -12644,6 +13561,8 @@ async function runSenderOfflineRecovery(page, simulatorUdid, androidSerial) {
   if (recoveryCycles.length !== expectedCycles) {
     throw new Error(`Test #9 expected ${expectedCycles} recovery requests, got ${recoveryCycles.length}`);
   }
+
+  const expectedDeviceNames = await discoverCanonicalRecoveryDeviceNames(page);
 
   for (const cycle of recoveryCycles) {
     setCurrentCycleForDiagnostics(cycle);
@@ -12679,6 +13598,7 @@ async function runSenderOfflineRecovery(page, simulatorUdid, androidSerial) {
       webSenderRequestPending = true;
     } else if (sender === 'ios') {
       senderRequest = startIosJoinTest(simulatorUdid, {
+        expectedDeviceNames,
         testClass: scenario.ios.testClass,
         testMethod: scenario.ios.requestTestMethod ?? 'sendRecoveryRequestAndExit',
         label: `iOS sender request cycle ${cycle.number}`,
@@ -12694,11 +13614,12 @@ async function runSenderOfflineRecovery(page, simulatorUdid, androidSerial) {
       await senderRequest.result;
       await stopIosApplication(simulatorUdid);
     } else {
-      // The Android native service emits a cycle-independent recover-result
-      // marker. Clear the emulator buffer before this sender step so the
-      // waiter cannot consume a result from an earlier cycle.
+      await reopenWebAfterOffline(page);
+      await assertNoStaleWebRecoveryAlert(page, secretName);
+      // Keep per-step Android diagnostics isolated before starting this sender.
       await runAdbWithRetry(['-s', androidSerial, 'logcat', '-c']);
       senderRequest = await startAndroidStepTest(androidSerial, {
+        expectedDeviceNames,
         role: 'sender-offline', cycle: cycle.number, step,
         approvalPlatform: approver, sender, secretName,
         testMethod: scenario.android.requestTestMethod ?? 'sendRecoveryRequestAndExit',
@@ -12706,13 +13627,8 @@ async function runSenderOfflineRecovery(page, simulatorUdid, androidSerial) {
       });
       approvalCoordinator.allow('android-sender-1', cycle.number);
       await senderRequest.waitForMarker(`E2E: ANDROID_RECOVERY_REQUEST_SENT_${cycle.number}_1`, 180_000);
-      await senderRequest.waitForMarker(`E2E: ANDROID_NATIVE_RECOVER_RESULT secret=${secretName}`, 180_000);
-      approvalCoordinator.allow('android-request-persisted', cycle.number);
-      await senderRequest.result;
-      // The marker is emitted immediately after the Compose click, while the
-      // socket event may still be in flight. Keep the sender app alive until
-      // a receiver observes the request; stopping it here can lose the event
-      // before the server persists it.
+      // A receiver must observe the request before releasing the native actor
+      // completion gate and taking the Android sender offline.
       androidSenderRequestPending = true;
     }
 
@@ -12723,6 +13639,7 @@ async function runSenderOfflineRecovery(page, simulatorUdid, androidSerial) {
         receiverProcesses.push({ platform: receiver, test: null });
       } else if (receiver === 'ios') {
         const test = startIosJoinTest(simulatorUdid, {
+          expectedDeviceNames,
           testClass: scenario.ios.testClass,
           testMethod: scenario.ios.receiverTestMethod ?? scenario.ios.stepTestMethod,
           label: `iOS receiver cycle ${cycle.number}`,
@@ -12738,6 +13655,7 @@ async function runSenderOfflineRecovery(page, simulatorUdid, androidSerial) {
         receiverProcesses.push({
           platform: receiver,
           test: await startAndroidStepTest(androidSerial, {
+            expectedDeviceNames,
             role: 'receiver', cycle: cycle.number, step,
             approvalPlatform: approver, sender, secretName, receiverRequestAlreadySent: true,
             testMethod: scenario.android.receiverTestMethod ?? scenario.android.stepTestMethod,
@@ -12764,6 +13682,12 @@ async function runSenderOfflineRecovery(page, simulatorUdid, androidSerial) {
         writeDiagnostic(`TEST9 cycle=${cycle.number} web request observed by ${receiverProcess.platform}; sender offline`);
       }
       if (androidSenderRequestPending) {
+        const observed = observedWebIncoming(page, 'recover', secretName);
+        if (observed.requester !== expectedDeviceNames.android) {
+          throw new Error('Android persisted request requires its canonical requester');
+        }
+        approvalCoordinator.allow('android-request-persisted', cycle.number);
+        await senderRequest.result;
         await stopAndroidApplication(androidSerial);
         androidSenderRequestPending = false;
         writeDiagnostic(`TEST9 cycle=${cycle.number} android request observed by ${receiverProcess.platform}; sender offline`);
@@ -12787,6 +13711,7 @@ async function runSenderOfflineRecovery(page, simulatorUdid, androidSerial) {
       await revealAndCloseWebSecret(page, secretName, true);
     } else if (sender === 'ios') {
       const show = startIosJoinTest(simulatorUdid, {
+        expectedDeviceNames,
         testClass: scenario.ios.testClass,
         testMethod: scenario.ios.showTestMethod ?? 'showAcceptedRecoveryAfterOffline',
         label: `iOS sender return cycle ${cycle.number}`,
@@ -12803,6 +13728,7 @@ async function runSenderOfflineRecovery(page, simulatorUdid, androidSerial) {
       await show.result;
     } else {
       const show = await startAndroidStepTest(androidSerial, {
+        expectedDeviceNames,
         role: 'sender-returned', cycle: cycle.number, step,
         approvalPlatform: approver, sender, secretName,
         testMethod: scenario.android.showTestMethod ?? 'showAcceptedRecoveryAfterOffline',
@@ -12842,10 +13768,11 @@ async function runSenderOfflineRecovery(page, simulatorUdid, androidSerial) {
 }
 
 async function runAndroidStaleAlertAssertion(serial) {
+  assertBatchProductsCurrent({ products: batchProducts, coreRoot, composeRoot });
   console.log('15b. Starting Android assertion after recovery');
   await waitForOnlineAndroidDevice(serial, 120_000);
-  const appApkPath = resolve(composeRoot, 'composeApp/build/outputs/apk/debug/composeApp-debug.apk');
-  const testApkPath = resolve(composeRoot, 'composeApp/build/outputs/apk/androidTest/debug/composeApp-debug-androidTest.apk');
+  const appApkPath = androidAppApkPath;
+  const testApkPath = androidTestApkPath;
   await runAdbWithRetry(['-s', serial, 'install', '-r', appApkPath]);
   await runAdbWithRetry(['-s', serial, 'install', '-r', testApkPath]);
   const assertionClass = scenario.android.assertionClass
@@ -12874,25 +13801,78 @@ async function reopenWebAfterOffline(page) {
 }
 
 async function assertNoStaleWebRecoveryAlert(page, secretName) {
-  const openRequest = page.getByTestId(`open-recovery-request-${secretName}`);
-  const badge = page.locator('li')
-    .filter({ has: page.getByTestId(`secret-primary-action-${secretName}`) })
-    .getByTestId('recovery-request-badge');
-  await openRequest.waitFor({ state: 'hidden', timeout: 30_000 }).catch(() => {});
-  await badge.waitFor({ state: 'hidden', timeout: 30_000 }).catch(() => {});
-  const openVisible = await openRequest.isVisible().catch(() => false);
-  const badgeVisible = await badge.isVisible().catch(() => false);
-  if (openVisible || badgeVisible) {
-    throw new Error(`Web receiver retained a stale recovery request for ${secretName}`);
-  }
+  await assertWebInboxEmpty(page);
+  await assertWebSecretConcealed(page, secretName);
 }
 
 async function waitForWebIncomingRecoveryGone(page, secretName) {
-  const openRequest = page.getByTestId(`open-recovery-request-${secretName}`);
-  await openRequest.waitFor({ state: 'hidden', timeout: 120_000 });
-  const row = page.locator('li').filter({ has: page.getByTestId(`secret-primary-action-${secretName}`) });
-  await row.getByTestId('recovery-request-badge').waitFor({ state: 'hidden', timeout: 120_000 });
+  await waitWebIncomingGone(page, 'recover', secretName);
   console.log(`[UI][Web] incoming recovery closed secret=${secretName}`);
+}
+
+async function createWebReceiverActionBudget(page, identity, phase) {
+  const deadline = Date.now() + 120_000;
+  const targetAuthenticator = primaryVirtualAuthenticator;
+  const documentHandle = await page.evaluateHandle(() => document);
+  const remaining = (cap = 120_000) => {
+    const left = deadline - Date.now();
+    if (!Number.isFinite(left) || left <= 0) throw new Error('Web receiver action deadline expired');
+    return Math.min(cap, left);
+  };
+  const check = async () => {
+    remaining(); phase.assertActive();
+    if (page.isClosed() || page.context() !== identity.context
+      || primaryVirtualAuthenticator !== targetAuthenticator || targetAuthenticator?.page !== page
+      || page.url().split('/').slice(0, 3).join('/') !== identity.origin) {
+      throw new Error('Web receiver target identity changed');
+    }
+    const state = await documentHandle.evaluate((original) => ({
+      same: original === document, credential: window.localStorage.getItem('credential_id'),
+    }));
+    remaining(); phase.assertActive();
+    if (!state.same || state.credential !== identity.credential) throw new Error('Web receiver document or stored credential changed');
+  };
+  const perform = async (operation, cap = 120_000) => {
+    await check(); const result = await operation(remaining(cap)); await check(); return result;
+  };
+  const click = async (locator, cap = 120_000) => {
+    // Pin a concrete DOM node. A Locator click can silently resolve another
+    // document during its internal actionability wait; a detached handle must
+    // fail rather than transferring this authorization to a replacement node.
+    let handle;
+    try {
+      await perform(async timeout => { handle = await locator.elementHandle({ timeout }); }, cap);
+      if (!handle) throw new Error('Web receiver input target missing');
+      const attached = await perform(() => handle.evaluate(node => node.isConnected && node.ownerDocument === document), cap);
+      if (!attached) throw new Error('Web receiver input target detached');
+      await perform(timeout => handle.click({ trial: true, timeout }), cap);
+      await check();
+      // Dispatch boundary: once this normal Playwright input is dispatched,
+      // an in-flight gesture cannot be undone. Any late failure below prevents
+      // publication/next input, never claims physical rollback of that gesture.
+      await handle.click({ timeout: remaining(cap) });
+      await check();
+    } finally { if (handle) await handle.dispose(); }
+  };
+  try { await check(); } catch (error) { await documentHandle.dispose(); throw error; }
+  return { remaining, check, perform, click, dispose: () => documentHandle.dispose() };
+}
+
+async function authorizeWebReceiverAction(page, identity, phase) {
+  const budget = await createWebReceiverActionBudget(page, identity, phase);
+  try {
+    await unlockWithPasskeyIfNeeded(page, { budget, existingMember: true });
+    await openWebLiveboard(page, budget.remaining(), budget);
+    // Exact original visible member identity, not a readiness marker or new registration.
+    const rows = page.locator('.device-slot[data-device-id]');
+    const current = await budget.perform(() => rows.evaluateAll(nodes => nodes
+      .filter(node => node.querySelector('.device-state')?.textContent?.trim() === 'This device')
+      .map(node => ({ id: node.getAttribute('data-device-id'), name: node.querySelector('.device-name')?.textContent?.trim() }))));
+    if (current.length !== 1 || current[0].id !== identity.deviceId || current[0].name !== identity.deviceName) {
+      throw new Error('Web receiver canonical member identity changed');
+    }
+    await budget.check(); return budget;
+  } catch (error) { await budget.dispose(); throw error; }
 }
 
 async function setupVirtualAuthenticator(page) {
@@ -12908,7 +13888,7 @@ async function setupVirtualAuthenticator(page) {
       automaticPresenceSimulation: true,
     },
   });
-  return { cdp, authenticatorId };
+  return { cdp, authenticatorId, page };
 }
 
 async function configurePrimaryTestPage(page) {
@@ -12967,18 +13947,20 @@ async function cloneVirtualAuthenticator(targetPage) {
       },
     });
   }
-  return { cdp: targetCdp, authenticatorId };
+  return { cdp: targetCdp, authenticatorId, page: targetPage };
 }
 
-async function unlockWithPasskeyIfNeeded(page) {
+async function unlockWithPasskeyIfNeeded(page, { budget, existingMember = false } = {}) {
+  const perform = async (operation, cap = 30_000) => budget ? budget.perform(operation, cap) : operation(cap);
+  const check = async () => { if (budget) await budget.check(); };
   const createPasskeyButton = page.getByRole('button', { name: 'Create Passkey' });
   const authenticateButton = page.getByRole('button', { name: 'Authenticate with Passkey' });
   const registrationReady = webEntryReady(page);
-  const secretsLink = page.getByRole('link', { name: 'Secrets', exact: true });
+  const secretsLink = webEntryReady(page);
   const authError = page.locator('[data-slot="dialog-content"] .text-destructive').first();
 
   const writeUnlockDiagnostic = async (prefix) => {
-    const bodyText = await page.locator('body').innerText().catch(() => '');
+    const surfaces = await page.evaluate(() => ({ registration: Boolean(document.querySelector('.orbit-registration')), liveboard: Boolean(document.querySelector('[data-testid=liveboard-secrets-open]')), secrets: Boolean(document.querySelector('.secrets-screen')) })).catch(() => ({}));
     const credentialCount = primaryVirtualAuthenticator
       ? await primaryVirtualAuthenticator.cdp
         .send('WebAuthn.getCredentials', {
@@ -12991,7 +13973,7 @@ async function unlockWithPasskeyIfNeeded(page) {
       `[UI][Web] ${prefix} url=${page.url()} `
       + `title=${JSON.stringify(await page.title().catch(() => ''))} `
       + `credentialCount=${credentialCount} `
-      + `body=${JSON.stringify(bodyText.slice(0, 2_000))}`,
+      + `surfaces=${JSON.stringify(surfaces)}`,
     );
   };
 
@@ -13001,43 +13983,49 @@ async function unlockWithPasskeyIfNeeded(page) {
     // dialog mounts. Do not treat that transient navigation as readiness.
     // The in-document marker is set only after this helper has observed the
     // authenticated UI; it naturally disappears on reload/navigation.
-    const authenticatedInThisDocument = await page.evaluate(
+    await check();
+    if (existingMember && !budget) throw new Error('Existing Web member requires finite receiver budget');
+    if (existingMember && !await perform(() => page.evaluate(() => Boolean(window.localStorage.getItem('credential_id'))))) throw new Error('Existing Web member credential missing');
+    const authenticatedInThisDocument = await perform(() => page.evaluate(
       () => window.__METASECRET_E2E_AUTHENTICATED === true,
-    );
-    const lockedAgain = await authenticateButton.isVisible().catch(() => false)
-      || await createPasskeyButton.isVisible().catch(() => false);
+    ));
+    const lockedAgain = await perform(() => budget ? authenticateButton.isVisible() : authenticateButton.isVisible().catch(() => false))
+      || await perform(() => budget ? createPasskeyButton.isVisible() : createPasskeyButton.isVisible().catch(() => false));
 
     if (!authenticatedInThisDocument || lockedAgain) {
-      const hasStoredCredential = await page.evaluate(
+      const hasStoredCredential = await perform(() => page.evaluate(
         () => Boolean(window.localStorage.getItem('credential_id')),
-      );
+      ));
+      if (existingMember && !hasStoredCredential) throw new Error('Existing Web member credential missing');
       const authControl = hasStoredCredential ? authenticateButton : createPasskeyButton;
       const actionLabel = hasStoredCredential ? 'Authenticating with' : 'Creating';
 
-      await authControl.waitFor({ state: 'visible', timeout: 30_000 });
+      await perform(timeout => authControl.waitFor({ state: 'visible', timeout }));
       console.log(`5a. ${actionLabel} test passkey`);
-      await authControl.click();
+      if (budget) await budget.click(authControl, 30_000);
+      else await authControl.click();
 
       const outcome = await Promise.race([
-        registrationReady.waitFor({ state: 'visible', timeout: 30_000 }).then(() => 'ready'),
-        secretsLink.waitFor({ state: 'visible', timeout: 30_000 }).then(() => 'ready'),
-        authError.waitFor({ state: 'visible', timeout: 30_000 }).then(() => 'error'),
+        perform(timeout => registrationReady.waitFor({ state: 'visible', timeout })).then(() => 'ready'),
+        perform(timeout => secretsLink.waitFor({ state: 'visible', timeout })).then(() => 'ready'),
+        perform(timeout => authError.waitFor({ state: 'visible', timeout })).then(() => 'error'),
       ]);
       if (outcome === 'error') {
         const message = await authError.innerText().catch(() => 'unknown WebAuthn error');
         throw new Error(`Web test passkey action failed: ${message}`);
       }
-      await authControl.waitFor({ state: 'hidden', timeout: 30_000 });
-      await page.evaluate(() => {
+      await perform(timeout => authControl.waitFor({ state: 'hidden', timeout }));
+      await perform(() => page.evaluate(() => {
         window.__METASECRET_E2E_AUTHENTICATED = true;
-      });
+      }));
       return;
     }
 
     await Promise.race([
-      registrationReady.waitFor({ state: 'visible', timeout: 30_000 }),
-      secretsLink.waitFor({ state: 'visible', timeout: 30_000 }),
+      perform(timeout => registrationReady.waitFor({ state: 'visible', timeout })),
+      perform(timeout => secretsLink.waitFor({ state: 'visible', timeout })),
     ]);
+    await check();
   } catch (error) {
     await writeUnlockDiagnostic('unlock readiness failed');
     throw error;
@@ -13045,93 +14033,31 @@ async function unlockWithPasskeyIfNeeded(page) {
 }
 
 async function approveJoinRequestOnWeb(page, deviceName, { strictCompletion = false } = {}) {
-  console.log(`Web approving ${deviceName} join request`);
-  await page.getByRole('link', { name: 'Devices', exact: true }).click();
-  const pendingDeviceRow = page.getByTestId('pending-device-row');
-  await pendingDeviceRow.waitFor({ state: 'visible', timeout: 120_000 });
-  await pendingDeviceRow.click();
-  await page.getByTestId('accept-join-request').click();
-  const completion = pendingDeviceRow.waitFor({ state: 'detached', timeout: 120_000 });
-  if (strictCompletion) {
-    await completion;
-    writeDiagnostic(`[TEST${testNumber}] Web Join approval completed for ${deviceName}; pending row detached`);
-  } else {
-    await completion.catch(() => {});
-  }
+  await approveWebJoin(page, deviceName);
+  if (strictCompletion) writeDiagnostic(`[TEST${testNumber}] Web Join approval persisted and exact connected requester rendered`);
 }
 
 async function closeWebSecret(page, secretValue = defaultSecret?.value) {
-  if (!secretValue) throw new Error('Web reveal close requires the exact expected secret value');
-  const revealedValue = page.getByText(secretValue, { exact: true });
-  await revealedValue.waitFor({ state: 'visible', timeout: recoveryShowTimeoutMs });
-  const dialog = page.locator('[data-slot="dialog-content"]').filter({ has: revealedValue });
-  await dialog.waitFor({ state: 'visible', timeout: 30_000 });
-  const closeButton = dialog.locator('[data-slot="dialog-close"]');
-  const closeCount = await closeButton.count();
-  if (closeCount !== 1 || !await closeButton.isVisible()) {
-    throw new Error(`Web reveal close control is missing or ambiguous: count=${closeCount}`);
-  }
-  await closeButton.click();
-  await Promise.all([
-    revealedValue.waitFor({ state: 'hidden', timeout: 30_000 }),
-    dialog.waitFor({ state: 'hidden', timeout: 30_000 }),
-  ]);
-  if (await revealedValue.isVisible().catch(() => false)) {
-    throw new Error('Web reveal exact secret value remained visible after Close');
-  }
+  const names = Object.values(secretConfigs).filter((config) => config.value === secretValue).map((config) => config.name);
+  if (names.length !== 1) throw new Error('Web Hide requires one exact configured Secret identity');
+  await hideWebSecret(page, names[0], secretValue, { timeout: recoveryShowTimeoutMs });
 }
 
-async function waitForWebPreRequestUiReady(page, secretName, role, timeoutMs) {
-  const row = page
-    .locator('li')
-    .filter({ has: page.getByTestId(`secret-primary-action-${secretName}`) });
-  const action = row.getByTestId(`secret-primary-action-${secretName}`);
-  const recover = action.filter({ hasText: /^\s*Recover\s*$/ });
-  const show = action.filter({ hasText: /^\s*Show\s*$/ });
-  const exactValue = page.getByText(secretValueForName(secretName), { exact: true });
-  const dialog = page.locator('[data-slot="dialog-content"]');
-  const alert = page.locator('[data-slot="alert-dialog-content"]');
-  const badge = row.getByTestId('recovery-request-badge');
-  const openRequest = row.getByTestId(`open-recovery-request-${secretName}`);
-
-  await Promise.all([
-    row.waitFor({ state: 'visible', timeout: timeoutMs }),
-    action.waitFor({ state: 'visible', timeout: timeoutMs }),
-  ]);
-
+async function waitForWebPreRequestUiReady(page, secretName, role, timeoutMs, { normalizeAcceptedShow = true } = {}) {
+  await assertWebInboxEmpty(page, timeoutMs);
+  const { card } = await webSecretCard(page, secretName, { timeout: timeoutMs });
   if (role === 'sender') {
-    const initialAction = await Promise.race([
-      recover.waitFor({ state: 'visible', timeout: timeoutMs }).then(() => 'recover'),
-      show.waitFor({ state: 'visible', timeout: timeoutMs }).then(() => 'show'),
-    ]);
-    if (initialAction === 'show') {
-      writeDiagnostic(
-        `[TEST${testNumber}] cycle=${currentCycleForDiagnostics ?? '?'} Web sender `
-          + `consuming stale Show before recovery secret=${secretName}`,
-      );
-      await show.click();
-      await exactValue.waitFor({ state: 'visible', timeout: recoveryShowTimeoutMs });
-      await closeWebSecret(page, secretValueForName(secretName));
+    if (normalizeAcceptedShow) {
+      const action = card.getByTestId(`secret-primary-action-${secretName}`);
+      const current = (await action.textContent()).trim();
+      if (current === 'Show') {
+        await action.click();
+        await hideWebSecret(page, secretName, secretValueForName(secretName), { timeout: recoveryShowTimeoutMs });
+      }
     }
-    await recover.waitFor({ state: 'visible', timeout: timeoutMs });
+    await waitWebCardAction(page, secretName, 'Recover', { timeout: timeoutMs });
   }
-
-  await Promise.all([
-    dialog.waitFor({ state: 'hidden', timeout: timeoutMs }),
-    exactValue.waitFor({ state: 'hidden', timeout: timeoutMs }),
-    badge.waitFor({ state: 'hidden', timeout: timeoutMs }),
-    openRequest.waitFor({ state: 'hidden', timeout: timeoutMs }),
-    alert.waitFor({ state: 'hidden', timeout: timeoutMs }),
-  ]);
-  if (role === 'sender') {
-    const [actionCount, actionText] = await Promise.all([action.count(), action.textContent()]);
-    if (actionCount !== 1 || actionText?.trim() !== 'Recover') {
-      throw new Error(
-        `Web sender did not reach exact Recover for ${secretName}: `
-          + `count=${actionCount} text=${JSON.stringify(actionText?.trim() ?? null)}`,
-      );
-    }
-  }
+  await assertWebSecretConcealed(page, secretName, timeoutMs);
 }
 
 async function waitForRecoveryParticipantsReady(
@@ -13161,223 +14087,69 @@ async function waitForRecoveryParticipantsReady(
 }
 
 async function waitForWebSecretValue(page, secretValue = defaultSecret?.value) {
-  await page.getByText(secretValue, { exact: true })
-    .waitFor({ state: 'visible', timeout: recoveryShowTimeoutMs });
+  const configs = Object.values(secretConfigs).filter((config) => config.value === secretValue);
+  if (configs.length !== 1) throw new Error('Web reveal requires one exact configured Secret identity');
+  await waitWebSecretValue(page, configs[0].name, secretValue, { timeout: recoveryShowTimeoutMs });
 }
 
-async function waitForWebRecoveryBadgeCount(page, count, secretName) {
-  const badge = page.getByTestId('recovery-request-badge');
-  // The Web UI keeps a shared badge test id, scoped to the <li> for each
-  // secret. Select that row through its secret-specific action instead of
-  // assuming a per-secret badge id (the Compose UI has the latter).
-  const scopedBadge = secretName
-    ? page
-      .locator('li')
-      .filter({ has: page.getByTestId(`secret-primary-action-${secretName}`) })
-      .getByTestId('recovery-request-badge')
-    : badge;
-  await scopedBadge.filter({ hasText: String(count) }).waitFor({ state: 'visible', timeout: 120_000 });
-  console.log(`[UI][Web] recovery badge secret=${secretName ?? '<default>'} count=${count}`);
+async function waitForWebRecoveryBadgeCount(page, count, secretName = defaultSecret?.name) {
+  await openWebIncoming(page, { kind: 'recover', subject: secretName, count });
+  console.log(`[UI][Web] recovery badge secret=${secretName} count=${count}`);
 }
 
 async function waitForWebRecoveryRequestCount(page, count, secretName) {
-  const row = page
-    .locator('li')
-    .filter({ has: page.getByTestId(`secret-primary-action-${secretName}`) });
-  const openRequest = row.getByTestId(`open-recovery-request-${secretName}`);
-  const badge = row.getByTestId('recovery-request-badge');
-  if (count === 0) {
-    await Promise.all([
-      openRequest.waitFor({ state: 'hidden', timeout: 120_000 }),
-      badge.waitFor({ state: 'hidden', timeout: 120_000 }),
-    ]);
-  } else {
-    await Promise.all([
-      openRequest.waitFor({ state: 'visible', timeout: 120_000 }),
-      badge.filter({ hasText: new RegExp(`^\\s*${count}\\s*$`) })
-        .waitFor({ state: 'visible', timeout: 120_000 }),
-    ]);
-  }
-  writeDiagnostic(
-    `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: recovery request state settled `
-      + `secret=${secretName} remaining=${count}`,
-  );
+  if (count === 0) await waitWebIncomingGone(page, 'recover', secretName);
+  else await openWebIncoming(page, { kind: 'recover', subject: secretName, count });
+  writeDiagnostic(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: recovery request state settled secret=${secretName} remaining=${count}`);
 }
 
-async function waitForWebIncomingRecoveryCount(page, count, secretName) {
-  const badge = secretName
-    ? page
-      .locator('li')
-      .filter({ has: page.getByTestId(`secret-primary-action-${secretName}`) })
-      .getByTestId('recovery-request-badge')
-    : page.getByTestId('recovery-request-badge');
-  try {
-    await badge.filter({ hasText: String(count) }).waitFor({ state: 'attached', timeout: 120_000 });
-  } catch (error) {
-    const badgeTexts = await badge.allTextContents().catch(() => []);
-    const requestText = await page
-      .getByTestId(`open-recovery-request-${secretName ?? defaultSecret?.name}`)
-      .textContent()
-      .catch(() => null);
-    writeDiagnostic(
-      `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: expected incoming badge ${count} `
-      + `for secret=${secretName ?? '<default>'}; `
-      + `visibleBadges=${JSON.stringify(badgeTexts).slice(0, 1_000)} `
-      + `openRequestText=${JSON.stringify(requestText).slice(0, 500)}`,
-    );
-    throw error;
-  }
-  console.log(`[UI][Web] incoming recovery secret=${secretName ?? '<default>'} count=${count}`);
+async function waitForWebIncomingRecoveryCount(page, count, secretName = defaultSecret?.name) {
+  await openWebIncoming(page, { kind: 'recover', subject: secretName, count });
+  console.log(`[UI][Web] incoming recovery secret=${secretName} count=${count}`);
 }
 
-async function waitForStrictWebIncomingVisible(page, count, secretName) {
-  const row = page
-    .locator('li')
-    .filter({ has: page.getByTestId(`secret-primary-action-${secretName}`) });
-  const badge = row
-    .getByTestId('recovery-request-badge')
-    .filter({ hasText: new RegExp(`^\\s*${count}\\s*$`) });
-  const openRequest = row.getByTestId(`open-recovery-request-${secretName}`);
-
-  try {
-    await Promise.all([
-      row.waitFor({ state: 'visible', timeout: 120_000 }),
-      badge.waitFor({ state: 'visible', timeout: 120_000 }),
-      openRequest.waitFor({ state: 'visible', timeout: 120_000 }),
-    ]);
-
-    const [rowCount, badgeCount, openCount, badgeText, badgeVisible, openVisible] = await Promise.all([
-      row.count(),
-      badge.count(),
-      openRequest.count(),
-      badge.textContent(),
-      badge.isVisible(),
-      openRequest.isVisible(),
-    ]);
-    if (
-      rowCount !== 1
-      || badgeCount !== 1
-      || openCount !== 1
-      || badgeText?.trim() !== String(count)
-      || !badgeVisible
-      || !openVisible
-    ) {
-      throw new Error(
-        `Test #${testNumber} Web incoming request is not uniquely visible for ${secretName}: `
-          + `rows=${rowCount} badges=${badgeCount} opens=${openCount} `
-          + `badgeText=${JSON.stringify(badgeText?.trim() ?? null)} `
-          + `badgeVisible=${badgeVisible} openVisible=${openVisible}`,
-      );
-    }
-  } catch (error) {
-    const [rowCount, badgeTexts, openCount] = await Promise.all([
-      row.count().catch(() => -1),
-      row.getByTestId('recovery-request-badge').allTextContents().catch(() => []),
-      openRequest.count().catch(() => -1),
-    ]);
-    writeDiagnostic(
-      `[TEST${testNumber}] cycle=${currentCycleForDiagnostics ?? '?'} Web receiver visibility failed `
-        + `secret=${secretName} expectedCount=${count} rows=${rowCount} `
-        + `badgeTexts=${JSON.stringify(badgeTexts).slice(0, 500)} opens=${openCount}`,
-    );
-    throw error;
-  }
+async function waitForStrictWebIncomingVisible(page, count, secretName, budget) {
+  return openWebIncoming(page, { kind: 'recover', subject: secretName, count }, budget ? budget.remaining() : 120_000, budget);
 }
 
-async function openStrictWebIncomingAlert(page, count, secretName, { dismissWithoutDecision = false } = {}) {
-  await waitForStrictWebIncomingVisible(page, count, secretName);
-  const row = page
-    .locator('li')
-    .filter({ has: page.getByTestId(`secret-primary-action-${secretName}`) });
-  const openRequest = row.getByTestId(`open-recovery-request-${secretName}`);
-  await openRequest.click();
-  const alert = page.locator('[data-slot="alert-dialog-content"]');
-  await alert.waitFor({ state: 'visible', timeout: 30_000 });
-  const [alertCount, secretCount, approveVisible, declineVisible] = await Promise.all([
-    alert.count(),
-    alert.getByText(secretName, { exact: true }).count(),
-    alert.getByRole('button', { name: 'Approve', exact: true }).isVisible(),
-    alert.getByRole('button', { name: 'Decline', exact: true }).isVisible(),
-  ]);
-  if (alertCount !== 1 || secretCount !== 1 || !approveVisible || !declineVisible) {
-    throw new Error(
-      `Web incoming alert is not exact for ${secretName}: alerts=${alertCount} `
-        + `secretLabels=${secretCount} approve=${approveVisible} decline=${declineVisible}`,
-    );
+async function openStrictWebIncomingAlert(page, count, secretName, { dismissWithoutDecision = false, onIncomingVisible, budget } = {}) {
+  const head = await openWebIncoming(page, { kind: 'recover', subject: secretName, count }, budget ? budget.remaining() : 120_000, budget);
+  writeDiagnostic(`[TEST${testNumber}] cycle=${currentCycleForDiagnostics ?? '?'} Web incoming alert visible secret=${secretName}`);
+  if (budget) await budget.check();
+  onIncomingVisible?.();
+  if (dismissWithoutDecision) {
+    // New04 has no collapse. Preserve observer zero-decision and the SAME pending identity.
+    await openWebIncoming(page, { kind: head.kind, requestId: head.requestId, requester: head.requester, subject: secretName, count }, budget ? budget.remaining() : 120_000, budget);
+    writeDiagnostic(`[TEST${testNumber}] cycle=${currentCycleForDiagnostics ?? '?'} Web observer04 remains expanded without decision; exact request remains pending`);
   }
-  writeDiagnostic(
-    `[TEST${testNumber}] cycle=${currentCycleForDiagnostics ?? '?'} Web incoming alert visible secret=${secretName}`,
-  );
-
-  if (!dismissWithoutDecision) return;
-  await page.keyboard.press('Escape');
-  await alert.waitFor({ state: 'hidden', timeout: 30_000 });
-  // Escape closes local alert state only. The unchanged badge/open action is
-  // strict evidence that the observer made no recovery business decision.
-  await waitForStrictWebIncomingVisible(page, count, secretName);
-  writeDiagnostic(
-    `[TEST${testNumber}] cycle=${currentCycleForDiagnostics ?? '?'} `
-      + `Web observer alert dismissed without decision; request remains pending`,
-  );
 }
 
 async function approveOpenIncomingRecoveryOnWeb(page, secretName) {
-  const alert = page.locator('[data-slot="alert-dialog-content"]');
-  await alert.waitFor({ state: 'visible', timeout: 30_000 });
-  const approve = alert.getByRole('button', { name: 'Approve', exact: true });
-  await approve.waitFor({ state: 'visible', timeout: 30_000 });
-  await approve.click();
-  await alert.waitFor({ state: 'hidden', timeout: 120_000 });
+  const head = observedWebIncoming(page, 'recover', secretName);
+  await decideWebIncoming(page, { kind: 'recover', requestId: head.requestId, subject: secretName }, true);
   console.log(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: incoming recovery approved`);
 }
 
 async function startWebRecovery(page, secretName = defaultSecret?.name) {
-  console.log(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: starting recovery request for ${secretName}`);
-  await page.getByRole('link', { name: 'Secrets', exact: true }).click();
-  await page.getByTestId(`secret-primary-action-${secretName}`).click();
-  await page.locator('[data-slot="dialog-content"]').waitFor({ state: 'visible', timeout: 30_000 });
-  console.log(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: recovery waiting dialog opened for ${secretName}`);
+  const stage = value => {
+    if (testNumber === 4) try { writeDiagnostic('E2E_WEB_RECOVER_STAGE_V1 ' + value); }
+    catch { /* Fixed diagnostics cannot alter the original operation. */ }
+  };
+  stage('ENTER');
+  try { await startWebLiveboardRecovery(page, secretName); }
+  catch (error) { stage('THROW'); throw error; }
+  stage('RETURN');
+  console.log(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: exact recovery waiting action disabled for ${secretName}`);
 }
 
 async function startWebDuplicateRecovery(page, secretName = defaultSecret?.name) {
-  console.log(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: starting duplicate recovery submit for ${secretName}`);
-  await page.getByRole('link', { name: 'Secrets', exact: true }).click();
-  const action = page.getByTestId(`secret-primary-action-${secretName}`);
-  await action.click();
-  await page.locator('[data-slot="dialog-content"]').waitFor({ state: 'visible', timeout: 30_000 });
-  writeDiagnostic(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: first recovery submit dispatched`);
-
-  // Issue the second submit immediately through the same UI action. If the
-  // modal has already removed/blocked the action, that is the expected guard;
-  // either outcome is recorded and the receiver-side count remains the
-  // authoritative duplicate-claim assertion.
-  let duplicateSent = false;
-  try {
-    await action.click({ timeout: 1_000 });
-    duplicateSent = true;
-  } catch (_) {
-    // The first click normally changes the action state before a second click
-    // can be delivered. This is a state-based guard, not a timing sleep.
-  }
-  writeDiagnostic(
-    `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: `
-    + (duplicateSent ? 'duplicate recovery submit dispatched' : 'duplicate recovery submit blocked by UI guard'),
-  );
+  await startWebLiveboardRecovery(page, secretName, { duplicate: true });
   await dismissWebRecoveryWaitingUi(page, secretName);
 }
 
 async function createWebSecret(page, secretName) {
   const config = secretConfigFor(secretName);
-  console.log(`[UI][Web] creating secret after join: ${config.name}`);
-  await page.getByRole('link', { name: 'Secrets', exact: true }).click();
-  await page.getByRole('button', { name: '+ Add Secret', exact: true }).click();
-  const dialog = page.locator('[data-slot="dialog-content"]');
-  await dialog.waitFor({ state: 'visible', timeout: 30_000 });
-  await page.getByPlaceholder('Secret name').fill(config.name);
-  await page.getByPlaceholder('Enter your secret').fill(config.value);
-  await page.getByRole('button', { name: 'Add Secret', exact: true }).click();
-  await page.getByText(config.name, { exact: true }).waitFor({ state: 'visible', timeout: 180_000 });
-  await dialog.waitFor({ state: 'hidden', timeout: 30_000 }).catch(() => {});
+  await createWebLiveboardSecret(page, config);
   console.log(`[UI][Web] secret added after join: ${config.name}`);
 }
 
@@ -13387,151 +14159,253 @@ async function createWebSecretsAfterJoin(page) {
   }
 }
 
-async function dismissWebRecoveryWaitingUi(
-  page,
-  secretName = defaultSecret?.name,
-) {
-  console.log(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: closing sender waiting dialog`);
-  const close = page.locator('[data-slot="dialog-content"] [data-slot="dialog-close"]');
-  if (!await close.isVisible().catch(() => false)) {
-    console.log(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: sender waiting dialog already closed`);
-    return;
+async function dismissWebRecoveryWaitingUi(page, secretName = defaultSecret?.name) {
+  const { card } = await webSecretCard(page, secretName);
+  if (await card.getAttribute('data-phase') === 'waiting') {
+    if (await card.getByTestId(`secret-primary-action-${secretName}`).isEnabled() || await card.getByTestId(`delete-secret-${secretName}`).isEnabled()) throw new Error('Recovery waiting controls are not disabled');
   }
-  await close.click();
-  await page.locator('[data-slot="dialog-content"]').waitFor({ state: 'hidden', timeout: 30_000 });
-  console.log(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: sender waiting dialog closed`);
+  // Waiting is inline. Back opens real04 without cancelling/resubmitting the Claim.
+  await openWebLiveboard(page);
 }
 
-async function approveIncomingRecoveryOnWeb(
-  page,
-  incomingSecretName = defaultSecret?.name,
-  expectedCount = null,
-  { senderSecretName = null, expectedRemainingCount = null } = {},
-) {
-  if (senderSecretName) {
-    await dismissWebRecoveryWaitingUi(page, senderSecretName);
-  }
-  if (expectedCount != null) {
-    await waitForWebRecoveryBadgeCount(page, expectedCount, incomingSecretName);
-  }
-  console.log(
-    `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: waiting for incoming recovery marker `
-    + `secret=${incomingSecretName}`,
-  );
-  const openRequest = page.getByTestId(`open-recovery-request-${incomingSecretName}`);
-  await openRequest.waitFor({ state: 'visible', timeout: 120_000 });
-  await openRequest.click();
-  const approveButton = page.getByTestId('approve-recovery-request');
-  let claimId;
-  let persistedDecision;
-  if (expectedRemainingCount != null) {
-    claimId = await approveButton.getAttribute('data-claim-id');
-    if (!claimId) {
-      throw new Error(`Web approval dialog did not expose its exact claimId for ${incomingSecretName}`);
-    }
-    persistedDecision = waitForBrowserConsole(
-      page,
-      (message) => message.type() === 'log'
-        && message.text().includes(`E2E_SSE_RECOVERY_DECISION claimId=${claimId} outcome=accepted`),
-    );
-  }
-  await approveButton.click();
-  if (persistedDecision) {
-    await persistedDecision;
-    writeDiagnostic(
-      `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: server SSE confirmed `
-        + `recovery approval claimId=${claimId}`,
-    );
-  }
-  if (expectedRemainingCount != null) {
-    await waitForWebRecoveryRequestCount(page, expectedRemainingCount, incomingSecretName);
-  }
+async function approveIncomingRecoveryOnWeb(page, incomingSecretName = defaultSecret?.name, expectedCount = null, { senderSecretName = null, expectedRemainingCount = null } = {}) {
+  if (senderSecretName) await dismissWebRecoveryWaitingUi(page, senderSecretName);
+  const head = await openWebIncoming(page, { kind: 'recover', subject: incomingSecretName, count: expectedCount });
+  const persisted = expectedRemainingCount != null ? waitForBrowserConsole(page, (message) => message.type() === 'log' && message.text().includes(`E2E_SSE_RECOVERY_DECISION claimId=${head.requestId} outcome=accepted`)) : null;
+  await decideWebIncoming(page, { kind: 'recover', requestId: head.requestId, subject: incomingSecretName, count: expectedCount }, true, { waitForGone: false });
+  if (persisted) await persisted;
+  if (expectedRemainingCount != null) await waitForWebRecoveryRequestCount(page, expectedRemainingCount, incomingSecretName);
+  else await waitWebIncomingGone(page, 'recover', incomingSecretName);
   console.log(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: incoming recovery approved`);
-  return claimId;
+  return head.requestId;
 }
 
-async function decideIncomingRecoveryOnWeb(
-  page,
-  incomingSecretName = defaultSecret?.name,
-  action = 'approve',
-  expectedCount = 1,
-) {
-  if (expectedCount != null) {
-    await waitForWebRecoveryBadgeCount(page, expectedCount, incomingSecretName);
+async function decideIncomingRecoveryOnWeb(page, incomingSecretName = defaultSecret?.name, action = 'approve', expectedCount = 1) {
+  await decideWebIncoming(page, { kind: 'recover', subject: incomingSecretName, count: expectedCount }, action !== 'decline');
+  console.log(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: incoming recovery ${action}d secret=${incomingSecretName}`);
+}
+
+async function withWebRecoveryTransportFault(page, options) {
+  const { origin, remaining, operation, onCleanupFailure = () => {} } = options;
+  const endpoint = new URL(origin);
+  if (endpoint.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(endpoint.hostname)
+      || !endpoint.port || endpoint.username || endpoint.password || endpoint.pathname !== '/'
+      || endpoint.search || endpoint.hash) throw new Error('Invalid Test16 Core origin');
+  const check = () => {
+    const left = remaining();
+    if (!Number.isFinite(left) || left <= 0) throw new Error('Test16 transport deadline exceeded');
+    return left;
+  };
+  const context = page.context();
+  const matches = url => url.origin === endpoint.origin && url.pathname === '/meta_request' && !url.search;
+  const pending = new Set();
+  let armed = true;
+  let installAttempted = false;
+  let aborted = false;
+  let faultError;
+  let faultFailed = false;
+  let wake;
+  let primary;
+  let failed = false;
+  let result;
+  let offline = false;
+  let edge;
+  const handler = route => {
+    const task = (async () => {
+      try {
+        if (!armed || route.request().method() !== 'POST') { await route.continue(); return; }
+        check();
+        await route.abort('failed');
+        check();
+        if (armed) aborted = true;
+      } catch (error) { if (!faultFailed) faultError = error; faultFailed = true; }
+      wake?.();
+    })();
+    pending.add(task);
+    void task.finally(() => pending.delete(task)).catch(() => {});
+    return task;
+  };
+  const waitForFault = async () => {
+    while (!aborted && !faultFailed) {
+      let timer;
+      try {
+        await new Promise((resolve, reject) => {
+          wake = resolve;
+          timer = setTimeout(() => reject(new Error('Test16 HTTP failure was not observed')), check());
+        });
+      } finally { clearTimeout(timer); wake = undefined; }
+    }
+    if (faultFailed) throw faultError;
+    check();
+  };
+  const remove = async () => {
+    armed = false;
+    if (installAttempted) { await context.unroute(matches, handler); installAttempted = false; }
+    if (pending.size) {
+      let timer;
+      try {
+        await Promise.race([Promise.all([...pending]), new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error('Test16 route cleanup deadline exceeded')), check());
+        })]);
+      } finally { clearTimeout(timer); }
+    }
+  };
+  try {
+    check();
+    installAttempted = true;
+    await context.route(matches, handler);
+    check();
+    result = await operation();
+    check();
+    await waitForFault();
+    edge = await page.evaluateHandle(() => {
+      const state = { offline: false, online: false, listeners: new Set(), closed: false, phase: 'offline' };
+      const offline = () => { if (state.phase === 'offline' && !navigator.onLine) { state.offline = true; for (const notify of state.listeners) notify(); } };
+      const online = () => { if (state.phase === 'online' && state.offline && navigator.onLine) { state.online = true; for (const notify of state.listeners) notify(); } };
+      window.addEventListener('offline', offline);
+      window.addEventListener('online', online);
+      state.close = () => {
+        state.closed = true;
+        window.removeEventListener('offline', offline);
+        window.removeEventListener('online', online);
+        for (const notify of state.listeners) notify();
+      };
+      return state;
+    });
+    const waitEdge = async kind => {
+      await edge.evaluate(async (state, { kind, timeout }) => {
+        let timer;
+        let notify;
+        try {
+          await new Promise((resolve, reject) => {
+            notify = () => {
+              if (state.closed) reject(new Error('Test16 connectivity observer closed'));
+              else if (state[kind] && navigator.onLine === (kind === 'online')) resolve();
+            };
+            state.listeners.add(notify);
+            timer = setTimeout(() => reject(new Error('Test16 actual connectivity event missing')), timeout);
+            notify();
+          });
+        } finally { clearTimeout(timer); state.listeners.delete(notify); }
+      }, { kind, timeout: check() });
+      check();
+    };
+    check();
+    offline = true;
+    await context.setOffline(true);
+    await waitEdge('offline');
+    await remove();
+    if (faultFailed) throw faultError;
+    check();
+    await edge.evaluate(state => { state.phase = 'online'; state.online = false; });
+    check();
+    await context.setOffline(false);
+    await waitEdge('online');
+    offline = false;
+    check();
+  } catch (error) { primary = error; failed = true; }
+  finally {
+    let cleanupError;
+    let cleanupFailed = false;
+    try { await remove(); } catch (error) { cleanupError = error; cleanupFailed = true; }
+    if (offline) {
+      try { await context.setOffline(false); offline = false; }
+      catch (error) { if (!cleanupFailed) cleanupError = error; cleanupFailed = true; }
+    }
+    if (edge) {
+      try { await edge.evaluate(state => state.close()); }
+      catch (error) { if (!cleanupFailed) cleanupError = error; cleanupFailed = true; }
+      try { await edge.dispose(); }
+      catch (error) { if (!cleanupFailed) cleanupError = error; cleanupFailed = true; }
+    }
+    if (cleanupFailed) {
+      try { onCleanupFailure(); } catch { /* Diagnostic failure cannot replace the primary error. */ }
+      if (!failed) { primary = cleanupError; failed = true; }
+    }
   }
-  const openRequest = page.getByTestId(`open-recovery-request-${incomingSecretName}`);
-  await openRequest.waitFor({ state: 'visible', timeout: 120_000 });
-  await openRequest.click();
-  const buttonName = action === 'decline' ? 'Decline' : 'Approve';
-  await page.getByRole('button', { name: buttonName, exact: true }).click();
-  await openRequest.waitFor({ state: 'hidden', timeout: 120_000 }).catch(() => {});
-  await page.getByTestId(`recovery-request-badge-${incomingSecretName}`)
-    .waitFor({ state: 'hidden', timeout: 120_000 }).catch(() => {});
-  console.log(
-    `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: incoming recovery ${action}d `
-    + `secret=${incomingSecretName}`,
-  );
+  if (failed) throw primary;
+  return result;
 }
 
-async function attemptWebApproveWhileOffline(page, secretName) {
-  const openRequest = page.getByTestId(`open-recovery-request-${secretName}`);
-  await openRequest.waitFor({ state: 'visible', timeout: 120_000 });
-  await openRequest.click();
-  const approve = page.getByRole('button', { name: 'Approve', exact: true });
-  await approve.waitFor({ state: 'visible', timeout: 30_000 });
-  // The click starts WebAuthn before the native recovery workflow is written.
-  // Keep the browser offline until the local decision is actually persisted;
-  // reconnecting immediately after click would test only the online path.
-  const actionSubmitted = waitForBrowserConsole(
-    page,
-    (message) => message.type() === 'log' && message.text().includes('[Recovery] accept_recover done'),
-  );
-  await approve.click();
-  await actionSubmitted;
-  writeDiagnostic(
-    `[NETWORK] Web offline approve dispatched secret=${secretName}; `
-      + 'the page remains offline until the reconnect boundary',
-  );
+async function finishWebRecoveryAfterReconnect(page, { head, document: capturedDocument, remaining }) {
+  const known = 'Could not synchronize Vault. Retry to apply pending changes.';
+  const current = async () => {
+    remaining();
+    if (!await page.evaluate(captured => captured === document, capturedDocument)) {
+      throw new Error('Test16 recovery document changed');
+    }
+    const observed = observedWebIncoming(page, head.kind, head.subject);
+    if (head.kind !== 'recover' || !head.requestId || !Number.isInteger(head.count) || head.count < 1
+        || ['kind', 'requestId', 'requester', 'subject', 'count'].some(key => observed[key] !== head[key])) {
+      throw new Error('Test16 recovery head changed');
+    }
+    remaining();
+  };
+  await current();
+  // Current UI only: count/head signals wake this barrier, never accept the result.
+  const barrier = await page.waitForFunction(({ id, count }) => {
+    const box = document.querySelector('[data-testid="liveboard-notifications"]');
+    if (!box) return false;
+    if (box.dataset.state === 'error') {
+      const details = box.querySelectorAll('.notification-detail');
+      return { error: true, text: details.length === 1 ? details[0].textContent?.trim() : null };
+    }
+    if (!['empty', 'request', 'actions'].includes(box.dataset.state)) return false;
+    const next = box.querySelector('.notification-actions')?.dataset.requestId;
+    const countNode = box.querySelector('.notification-count');
+    const nextCount = countNode ? Number(countNode.textContent) : 0;
+    return Number.isInteger(nextCount) && nextCount >= 0 && nextCount < count && next !== id
+      ? { error: false } : false;
+  }, { id: head.requestId, count: head.count }, { timeout: remaining() });
+  let state;
+  let readFailed = false;
+  let readError;
+  try { state = await barrier.jsonValue(); }
+  catch (error) { readFailed = true; readError = error; }
+  finally {
+    try { await barrier.dispose(); }
+    catch (error) {
+      if (!readFailed) throw error;
+      try { writeDiagnostic('TEST16_WEB_ERROR_BARRIER_CLEANUP_FAILED'); } catch { /* Keep the first failure. */ }
+    }
+  }
+  if (readFailed) throw readError;
+  await current();
+  if (state.error) {
+    if (state.text !== known) throw new Error('Test16 unexpected recovery error');
+    const box = page.getByTestId('liveboard-notifications').filter({ has: page.getByText(known, { exact: true }) });
+    if (await box.count() !== 1 || await box.getAttribute('data-state', { timeout: remaining() }) !== 'error'
+        || (await box.locator('.notification-detail').textContent({ timeout: remaining() }))?.trim() !== known) {
+      throw new Error('Test16 recovery error changed');
+    }
+    const dismiss = box.getByRole('button', { name: 'Dismiss error', exact: true });
+    if (!await dismiss.isVisible() || !await dismiss.isEnabled({ timeout: remaining() })) throw new Error('Test16 error dismissal unavailable');
+    await current();
+    remaining();
+    await dismiss.click({ timeout: remaining() }); // One real user action; no second Approve.
+    remaining();
+  }
+  await current();
+  await waitWebIncomingGone(page, head.kind, head.subject, remaining());
+  remaining(); // A late strict terminal cannot release the next scenario action.
+}
+
+async function attemptWebApproveWhileOffline(page, secretName, remaining = () => 120_000) {
+  const head = await openWebIncoming(page, { kind: 'recover', subject: secretName, count: 1 }, remaining());
+  const scope = `offline-recover-${currentCycleForDiagnostics}-${head.requestId}`;
+  await page.evaluate(installWebOperationObserver, { scope, method: 'accept_recover', expectedId: head.requestId, borrowed: true });
+  try {
+    await decideWebIncoming(page, { kind: 'recover', requestId: head.requestId, subject: secretName, count: 1 }, true, { waitForGone: false, timeout: remaining() });
+    const completion = await waitWebOperation(page, scope, { timeout: remaining() });
+    if (!completion.borrowedAlive) throw new Error('Offline approval consumed its actual borrowed Claim before completion');
+  } finally { await page.evaluate(disposeWebOperationObserver, { scope }); }
+  writeDiagnostic(`[NETWORK] Web offline approve dispatched secret=${secretName}; NEW Core HTTP requests remain faulted until the reconnect boundary`);
 }
 
 async function approveWebAfterReconnect(page, secretName) {
-  const approve = page.getByRole('button', { name: 'Approve', exact: true });
-  const outcome = await page.waitForFunction(
-    ({ name }) => {
-      const isVisible = (element) => Boolean(
-        element
-        && (element.offsetWidth || element.offsetHeight || element.getClientRects().length),
-      );
-      const approveButton = [...document.querySelectorAll('button')]
-        .find((button) => isVisible(button) && button.textContent?.trim() === 'Approve');
-      if (approveButton) return 'approve';
-      const openRequest = document.querySelector(`[data-testid="open-recovery-request-${name}"]`);
-      const badge = document.querySelector('[data-testid="recovery-request-badge"]');
-      return !isVisible(openRequest) && !isVisible(badge) ? 'resolved' : false;
-    },
-    { name: secretName },
-    { timeout: 120_000 },
-  ).then((handle) => handle.jsonValue());
-  if (outcome === 'approve') {
-    try {
-      // Reconnect refresh can remove this transient button between the
-      // visibility check and the click. The offline response is already
-      // persisted, so a detached locator means the refresh won the race;
-      // wait for the resolved state instead of issuing a duplicate action.
-      await approve.click({ timeout: 5_000 });
-    } catch (error) {
-      console.log(
-        `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: `
-          + `Approve detached during reconnect refresh; waiting for resolution (${error.message})`,
-      );
-    }
-  } else {
-    console.log(
-      `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: `
-      + 'recovery approval was retried automatically after reconnect',
-    );
-  }
-  await waitForWebIncomingRecoveryGone(page, secretName);
+  // The SAME actual local operation already completed offline. Reconnect/SSE owns
+  // its remote terminal result; never replay a retained submitted decision.
+  await waitWebIncomingGone(page, 'recover', secretName);
 }
 
 async function runNetworkLossRecovery(page, simulatorUdid, androidSerial) {
@@ -13542,6 +14416,8 @@ async function runNetworkLossRecovery(page, simulatorUdid, androidSerial) {
 
   const blocks = [...new Set(recoveryCycles.map((cycle) => cycle.block))];
   if (blocks.length !== 3) throw new Error(`Test #16 expected 3 blocks, got ${blocks.length}`);
+
+  const expectedDeviceNames = await discoverCanonicalRecoveryDeviceNames(page);
 
   for (const block of blocks) {
     const blockCycles = recoveryCycles.filter((cycle) => cycle.block === block);
@@ -13587,6 +14463,8 @@ async function runNetworkLossRecovery(page, simulatorUdid, androidSerial) {
       };
       if (platform === 'ios') {
         const test = startIosJoinTest(simulatorUdid, {
+          expectedDeviceNames,
+          deferCompletionTimeout: true,
           testClass: scenario.ios.testClass,
           testMethod: scenario.ios.networkStepTestMethod ?? 'runNetworkLossCycles',
           label: `iOS Test #16 ${role} block ${block}`,
@@ -13597,6 +14475,7 @@ async function runNetworkLossRecovery(page, simulatorUdid, androidSerial) {
         nativeProcesses.set(platform, { test, role });
       } else if (platform === 'android') {
         const test = await startAndroidStepTest(androidSerial, {
+          expectedDeviceNames,
           role,
           networkRole: role,
           networkBlock: block,
@@ -13612,103 +14491,164 @@ async function runNetworkLossRecovery(page, simulatorUdid, androidSerial) {
       }
     };
 
-    for (const platform of [sender, offlineReceiver, observer]) {
-      if (platform !== 'web') await startNative(platform, platform === sender ? 'sender' : platform === offlineReceiver ? 'offline-receiver' : 'observer');
-    }
-
-    // Do not release the first recovery request until each native runner has
-    // rendered its secret row. This is a state-driven startup barrier: without
-    // it a fast Web request can arrive while Android is still launching, and
-    // the test would wait forever for an alert that was missed by the UI.
-    for (const [platform, process] of nativeProcesses) {
-      await process.test.waitForMarker(
-        `E2E: ${platform.toUpperCase()}_NETWORK_READY`,
-        180_000,
-      );
-    }
-
-    for (const cycle of blockCycles) {
-      setCurrentCycleForDiagnostics(cycle);
-      if (sender === 'web') {
-        approvalCoordinator.allow('web-sender', cycle.number);
-        await startWebRecovery(page, secretName);
-      } else {
-        approvalCoordinator.allow(`${sender}-sender-1`, cycle.number);
-        await nativeProcesses.get(sender).test.waitForMarker(
-          `E2E: ${sender.toUpperCase()}_RECOVERY_REQUEST_SENT_${cycle.number}_1`,
-          180_000,
-        );
+    const assertIosActive = () => nativeProcesses.get('ios')?.test.assertBusinessActive();
+    const active = async (operation) => {
+      assertIosActive();
+      try {
+        const value = await operation();
+        assertIosActive();
+        return value;
+      } catch (error) {
+        assertIosActive();
+        throw error;
+      }
+    };
+    try {
+      for (const platform of [sender, offlineReceiver, observer]) {
+        if (platform !== 'web') await active(() => startNative(platform, platform === sender ? 'sender' : platform === offlineReceiver ? 'offline-receiver' : 'observer'));
       }
 
-      if (offlineReceiver === 'web') {
-        await waitForWebIncomingRecoveryCount(page, 1, secretName);
-      } else {
-        await nativeProcesses.get(offlineReceiver).test.waitForMarker(
-          `E2E: ${offlineReceiver.toUpperCase()}_INCOMING_VISIBLE_${cycle.number}_1`,
+      // Do not release the first recovery request until each native runner has
+      // rendered its secret row. This is a state-driven startup barrier: without
+      // it a fast Web request can arrive while Android is still launching, and
+      // the test would wait forever for an alert that was missed by the UI.
+      for (const [platform, process] of nativeProcesses) {
+        await active(() => process.test.waitForMarker(
+          `E2E: ${platform.toUpperCase()}_NETWORK_READY`,
           180_000,
-        );
+        ));
       }
-      if (observer === 'web') {
-        await waitForWebIncomingRecoveryCount(page, 1, secretName);
-      } else {
-        await nativeProcesses.get(observer).test.waitForMarker(
-          `E2E: ${observer.toUpperCase()}_INCOMING_VISIBLE_${cycle.number}_1`,
-          180_000,
-        );
-      }
-      writeDiagnostic(`TEST16 cycle=${cycle.number} both receiver alerts visible`);
 
-      if (offlineReceiver === 'web') {
-        await page.context().setOffline(true);
-        writeDiagnostic(`TEST16 cycle=${cycle.number} Web -> OFFLINE`);
-        await attemptWebApproveWhileOffline(page, secretName);
-        await page.context().setOffline(false);
-        writeDiagnostic(`TEST16 cycle=${cycle.number} Web -> ONLINE`);
-        await approveWebAfterReconnect(page, secretName);
+      for (const cycle of blockCycles) {
+        setCurrentCycleForDiagnostics(cycle);
+        if (sender === 'web') {
+          assertIosActive();
+          approvalCoordinator.allow('web-sender', cycle.number);
+          await active(() => startWebRecovery(page, secretName));
+        } else {
+          assertIosActive();
+          approvalCoordinator.allow(`${sender}-sender-1`, cycle.number);
+          await active(() => nativeProcesses.get(sender).test.waitForMarker(
+            `E2E: ${sender.toUpperCase()}_RECOVERY_REQUEST_SENT_${cycle.number}_1`,
+            180_000,
+          ));
+        }
+
+        if (offlineReceiver === 'web') {
+          await active(() => waitForWebIncomingRecoveryCount(page, 1, secretName));
+        } else {
+          await active(() => nativeProcesses.get(offlineReceiver).test.waitForMarker(
+            `E2E: ${offlineReceiver.toUpperCase()}_INCOMING_VISIBLE_${cycle.number}_1`,
+            180_000,
+          ));
+        }
+        if (observer === 'web') {
+          await active(() => waitForWebIncomingRecoveryCount(page, 1, secretName));
+        } else {
+          await active(() => nativeProcesses.get(observer).test.waitForMarker(
+            `E2E: ${observer.toUpperCase()}_INCOMING_VISIBLE_${cycle.number}_1`,
+            180_000,
+          ));
+        }
+        writeDiagnostic(`TEST16 cycle=${cycle.number} both receiver alerts visible`);
+
+        if (offlineReceiver === 'web') {
+          // NEW-request HTTP loss matches native proxy; established SSE stays open.
+          // WASM accept_recover is local-only: completion and HTTP fault are separate evidence.
+          const deadline = performance.now() + 120_000; // Existing Web operation timeout; never restart it.
+          const remaining = () => {
+            const left = deadline - performance.now();
+            if (left <= 0) throw new Error('Test16 Web recovery deadline exceeded');
+            return left;
+          };
+          const head = observedWebIncoming(page, 'recover', secretName);
+          const inboxBeforeFault = page.getByTestId('liveboard-notifications');
+          if (await inboxBeforeFault.getAttribute('data-state') === 'error') throw new Error('Test16 starts with an unrelated error');
+          const document = await page.evaluateHandle(() => document);
+          let failed = false;
+          try {
+            await active(() => withWebRecoveryTransportFault(page, {
+              origin: new URL(scenario.server.url).origin,
+              remaining,
+              operation: () => active(() => attemptWebApproveWhileOffline(page, secretName, remaining)),
+              onCleanupFailure: () => writeDiagnostic('TEST16_WEB_TRANSPORT_CLEANUP_FAILED'),
+            }));
+            // Reconnect may leave the known fault error pinned. Dismiss once via normal UI/read.
+            // No public error generation exists; identical-text generations are not distinguishable.
+            await active(() => finishWebRecoveryAfterReconnect(page, { head, document, remaining }));
+        } catch (error) { failed = true; throw error; }
+        finally {
+          try { await document.dispose(); }
+          catch (error) {
+            if (!failed) throw error;
+            try { writeDiagnostic('TEST16_WEB_ERROR_DOCUMENT_CLEANUP_FAILED'); } catch { /* Keep the first failure. */ }
+          }
+        }
+        remaining();
       } else {
-        await setNetworkGate(offlineReceiver, false);
+        await active(() => setNetworkGate(offlineReceiver, false));
+        assertIosActive();
         approvalCoordinator.allow(`${offlineReceiver}-offline-attempt-1`, cycle.number);
-        await nativeProcesses.get(offlineReceiver).test.waitForMarker(
+        await active(() => nativeProcesses.get(offlineReceiver).test.waitForMarker(
           `E2E: ${offlineReceiver.toUpperCase()}_OFFLINE_APPROVE_CLICKED_${cycle.number}`,
           120_000,
-        );
-        await setNetworkGate(offlineReceiver, true);
+        ));
+        await active(() => setNetworkGate(offlineReceiver, true));
+        assertIosActive();
         approvalCoordinator.allow(`${offlineReceiver}-offline-online-1`, cycle.number);
-        await nativeProcesses.get(offlineReceiver).test.waitForMarker(
+        await active(() => nativeProcesses.get(offlineReceiver).test.waitForMarker(
           `E2E: ${offlineReceiver.toUpperCase()}_APPROVED_AFTER_RECONNECT_${cycle.number}_1`,
           180_000,
-        );
+        ));
       }
 
       if (sender === 'web') {
-        await revealAndCloseWebSecret(page, secretName, false);
+        await active(() => revealAndCloseWebSecret(page, secretName, false));
       } else {
+        assertIosActive();
         approvalCoordinator.allow(`${sender}-show-1`, cycle.number);
-        await nativeProcesses.get(sender).test.waitForMarker(
+        await active(() => nativeProcesses.get(sender).test.waitForMarker(
           `E2E: ${sender.toUpperCase()}_RECOVERY_SECRET_VISIBLE_${cycle.number}_1`,
           recoveryShowTimeoutMs,
-        );
-        await nativeProcesses.get(sender).test.waitForMarker(
+        ));
+        await active(() => nativeProcesses.get(sender).test.waitForMarker(
           `E2E: ${sender.toUpperCase()}_RECOVERY_CLOSED_${cycle.number}_1`,
           60_000,
-        );
+        ));
       }
 
       if (observer === 'web') {
-        await waitForWebIncomingRecoveryGone(page, secretName);
+        await active(() => waitForWebIncomingRecoveryGone(page, secretName));
       } else {
+        assertIosActive();
         approvalCoordinator.allow(`${observer}-observer-finish-1`, cycle.number);
-        await nativeProcesses.get(observer).test.waitForMarker(
+        await active(() => nativeProcesses.get(observer).test.waitForMarker(
           `E2E: ${observer.toUpperCase()}_OBSERVER_CLOSED_${cycle.number}_1`,
           180_000,
-        );
+        ));
       }
       console.log(`✅ Test #16 cycle ${cycle.number}/${expectedCycles} passed`);
     }
 
+    const iosActor = nativeProcesses.get('ios')?.test;
+    if (iosActor) await iosActor.complete();
     for (const entry of nativeProcesses.values()) await entry.test.result;
-    if (nativeProcesses.has('android')) await stopAndroidApplication(androidSerial);
-    if (nativeProcesses.has('ios')) await stopIosApplication(simulatorUdid);
+    if (nativeProcesses.has('android')) await active(() => stopAndroidApplication(androidSerial));
+    if (nativeProcesses.has('ios')) await active(() => stopIosApplication(simulatorUdid));
+    } catch (error) {
+      const iosActor = nativeProcesses.get('ios')?.test;
+      let primary = error;
+      try { iosActor?.assertBusinessActive(); }
+      catch (ownerError) { primary = ownerError; }
+      if (iosActor) {
+        try { await iosActor.cancelAndJoin(primary); }
+        catch (cleanupError) {
+          throw new AggregateError([primary, cleanupError], 'Test16 iOS owner did not drain', { cause: primary });
+        }
+      }
+      throw primary;
+    }
+
   }
 }
 
@@ -13721,18 +14661,72 @@ async function restartRecoveryServer(cycleNumber, testLabel) {
 }
 
 async function revealWebAfterServerRestart(page, secretName) {
-  const secretValue = secretValueForName(secretName);
-  const primaryAction = page.getByTestId(`secret-primary-action-${secretName}`);
-  const visibleSecret = page.getByText(secretValue, { exact: true });
-  const state = await Promise.race([
-    visibleSecret.waitFor({ state: 'visible', timeout: 120_000 }).then(() => 'visible'),
-    primaryAction.filter({ hasText: /^\s*Show\s*$/ }).waitFor({ state: 'visible', timeout: 120_000 }).then(() => 'show'),
-  ]);
-  if (state === 'show') {
-    await primaryAction.click();
-    await visibleSecret.waitFor({ state: 'visible', timeout: recoveryShowTimeoutMs });
+  await waitWebSecretValue(page, secretName, secretValueForName(secretName), { timeout: recoveryShowTimeoutMs });
+  await hideWebSecret(page, secretName, secretValueForName(secretName), { timeout: recoveryShowTimeoutMs });
+}
+
+async function prepareWebReceiverAfterServerRestart(page, { head, document: capturedDocument, remaining }) {
+  const known = 'Could not synchronize Vault. Retry to apply pending changes.';
+  const current = async () => {
+    remaining();
+    if (!await page.evaluate(captured => captured === document, capturedDocument)) {
+      throw new Error('Test17 recovery document changed');
+    }
+    const observed = observedWebIncoming(page, head.kind, head.subject);
+    if (head.kind !== 'recover' || !head.requestId || !Number.isInteger(head.count) || head.count < 1
+        || ['kind', 'requestId', 'requester', 'subject', 'count'].some(key => observed[key] !== head[key])) {
+      throw new Error('Test17 recovery head changed');
+    }
+    remaining();
+  };
+  await current();
+  // UI readiness only wakes this barrier; the actual shared reader must prove the FULL same head.
+  const barrier = await page.waitForFunction(({ id, count }) => {
+    const box = document.querySelector('[data-testid="liveboard-notifications"]');
+    if (!box) return false;
+    if (box.dataset.state === 'error') {
+      const details = box.querySelectorAll('.notification-detail');
+      return { error: true, text: details.length === 1 ? details[0].textContent?.trim() : null };
+    }
+    if (!['request', 'actions'].includes(box.dataset.state)) return false;
+    const control = box.dataset.state === 'request'
+      ? box.querySelector('button.notification-hit')
+      : box.querySelector('[data-testid="approve-recover-request"]');
+    return control && control.getClientRects().length > 0 && !control.disabled ? { error: false } : false;
+  }, { id: head.requestId, count: head.count }, { timeout: remaining() });
+  let state;
+  let readFailed = false;
+  let readError;
+  try { state = await barrier.jsonValue(); }
+  catch (error) { readFailed = true; readError = error; }
+  finally {
+    try { await barrier.dispose(); }
+    catch (error) {
+      if (!readFailed) throw error;
+      try { writeDiagnostic('TEST17_WEB_ERROR_BARRIER_CLEANUP_FAILED'); } catch { /* Keep the first failure. */ }
+    }
   }
-  await closeWebSecret(page, secretValue);
+  if (readFailed) throw readError;
+  await current();
+  if (state.error) {
+    if (state.text !== known) throw new Error('Test17 unexpected recovery error');
+    const box = page.getByTestId('liveboard-notifications').filter({ has: page.getByText(known, { exact: true }) });
+    if (await box.count() !== 1 || await box.getAttribute('data-state', { timeout: remaining() }) !== 'error'
+        || (await box.locator('.notification-detail').textContent({ timeout: remaining() }))?.trim() !== known) {
+      throw new Error('Test17 recovery error changed');
+    }
+    const dismiss = box.getByRole('button', { name: 'Dismiss error', exact: true });
+    if (!await dismiss.isVisible() || !await dismiss.isEnabled({ timeout: remaining() })) throw new Error('Test17 error dismissal unavailable');
+    await current();
+    remaining();
+    await dismiss.click({ timeout: remaining() }); // One real user action; no second Approve.
+    remaining();
+  }
+  await current();
+  const ready = await openWebIncoming(page, { kind: head.kind, requestId: head.requestId,
+    requester: head.requester, subject: head.subject, count: head.count }, remaining());
+  remaining();
+  return ready;
 }
 
 async function runServerRestartRecovery(page, simulatorUdid, androidSerial) {
@@ -13740,6 +14734,8 @@ async function runServerRestartRecovery(page, simulatorUdid, androidSerial) {
   if (recoveryCycles.length !== expectedCycles) {
     throw new Error(`Test #17 expected ${expectedCycles} recovery requests, got ${recoveryCycles.length}`);
   }
+
+  const expectedDeviceNames = await discoverCanonicalRecoveryDeviceNames(page);
 
   for (const cycle of recoveryCycles) {
     setCurrentCycleForDiagnostics(cycle);
@@ -13777,6 +14773,7 @@ async function runServerRestartRecovery(page, simulatorUdid, androidSerial) {
       });
       if (platform === 'ios') {
         const test = startIosJoinTest(simulatorUdid, {
+          expectedDeviceNames,
           testClass: scenario.ios.testClass,
           testMethod: scenario.ios.serverRestartStepTestMethod ?? scenario.ios.stepTestMethod ?? 'handleRecoveryStep',
           label: `iOS Test #17 ${role} cycle ${cycle.number}`,
@@ -13787,6 +14784,7 @@ async function runServerRestartRecovery(page, simulatorUdid, androidSerial) {
         nativeProcesses.set(platform, { test, role });
       } else if (platform === 'android') {
         const test = await startAndroidStepTest(androidSerial, {
+          expectedDeviceNames,
           role,
           cycle: cycle.number,
           step,
@@ -13842,10 +14840,32 @@ async function runServerRestartRecovery(page, simulatorUdid, androidSerial) {
     }
     writeDiagnostic(`TEST17 cycle=${cycle.number}: all receiver alerts visible before restart`);
 
+    let webRestart = null;
+    let webRemaining;
+    let failed = false;
+    if (receivers.includes('web')) {
+      const head = observedWebIncoming(page, 'recover', secretName);
+      if (await page.getByTestId('liveboard-notifications').getAttribute('data-state') === 'error') {
+        throw new Error('Test17 receiver starts with an unrelated error');
+      }
+      webRestart = { head, document: await page.evaluateHandle(() => document) };
+    }
+    try {
     await restartRecoveryServer(cycle.number, 'TEST17');
+    if (webRestart) {
+      const deadline = performance.now() + 120_000; // Original shared Web readiness limit, never reset.
+      webRemaining = () => {
+        const left = deadline - performance.now();
+        if (left <= 0) throw new Error('Test17 Web receiver deadline exceeded');
+        return left;
+      };
+      await prepareWebReceiverAfterServerRestart(page, { ...webRestart, remaining: webRemaining });
+    }
 
     if (approver === 'web') {
-      await decideIncomingRecoveryOnWeb(page, secretName, 'approve', 1);
+      await decideWebIncoming(page, webRestart.head, true, { timeout: webRemaining() });
+      webRemaining();
+      console.log(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: incoming recovery approved secret=${secretName}`);
     } else {
       approvalCoordinator.allow(`${approver}-approve-${step}`, cycle.number);
       await nativeProcesses.get(approver).test.waitForMarker(
@@ -13869,7 +14889,9 @@ async function runServerRestartRecovery(page, simulatorUdid, androidSerial) {
     }
 
     if (nonApprover === 'web') {
-      await waitForWebIncomingRecoveryGone(page, secretName);
+      await waitWebIncomingGone(page, 'recover', secretName, webRemaining());
+      webRemaining();
+      console.log(`[UI][Web] incoming recovery closed secret=${secretName}`);
     } else {
       approvalCoordinator.allow(`${nonApprover}-dismiss-${step}`, cycle.number);
       await nativeProcesses.get(nonApprover).test.waitForMarker(
@@ -13882,6 +14904,17 @@ async function runServerRestartRecovery(page, simulatorUdid, androidSerial) {
     if (nativeProcesses.has('android')) await stopAndroidApplication(androidSerial);
     if (nativeProcesses.has('ios')) await stopIosApplication(simulatorUdid);
     if (receivers.includes('web') || sender === 'web') await stopWebApplication(page);
+    } catch (error) { failed = true; throw error; }
+    finally {
+      if (webRestart) {
+        try { await webRestart.document.dispose(); }
+        catch (error) {
+          if (!failed) throw error;
+          try { writeDiagnostic('TEST17_WEB_DOCUMENT_CLEANUP_FAILED'); } catch { /* Keep the first failure. */ }
+        }
+      }
+    }
+    if (webRemaining) webRemaining();
     console.log(`✅ Test #17 cycle ${cycle.number}/${expectedCycles} passed`);
   }
 }
@@ -13891,6 +14924,8 @@ async function runMultipleWebTabsRecovery(page, simulatorUdid, androidSerial) {
   if (recoveryCycles.length !== expectedCycles) {
     throw new Error(`Test #19 expected ${expectedCycles} recovery requests, got ${recoveryCycles.length}`);
   }
+  const expectedDeviceNames = await discoverCanonicalRecoveryDeviceNames(page);
+
   const secondPage = await page.context().newPage();
   await secondPage.setViewportSize({ width: 1100, height: 800 });
   secondPage.on('console', (message) => recordBrowserDiagnostic(`[web-tab-2][${message.type()}] ${message.text()}`, { important: !['debug', 'info'].includes(message.type()) }));
@@ -13928,6 +14963,7 @@ async function runMultipleWebTabsRecovery(page, simulatorUdid, androidSerial) {
         });
         if (platform === 'ios') {
           const test = startIosJoinTest(simulatorUdid, {
+            expectedDeviceNames,
             testClass: scenario.ios.testClass,
             testMethod: scenario.ios.multiTabStepTestMethod ?? scenario.ios.stepTestMethod ?? 'handleRecoveryStep',
             label: `iOS Test #19 ${role} cycle ${cycle.number}`,
@@ -13938,6 +14974,7 @@ async function runMultipleWebTabsRecovery(page, simulatorUdid, androidSerial) {
           nativeProcesses.set(platform, { test, role });
         } else if (platform === 'android') {
           const test = await startAndroidStepTest(androidSerial, {
+            expectedDeviceNames,
             role,
             cycle: cycle.number,
             step,
@@ -14006,134 +15043,44 @@ async function runMultipleWebTabsRecovery(page, simulatorUdid, androidSerial) {
 }
 
 async function decideIncomingRecoveryTwiceOnWeb(page, incomingSecretName = defaultSecret?.name) {
-  await waitForWebRecoveryBadgeCount(page, 1, incomingSecretName);
-  const openRequest = page.getByTestId(`open-recovery-request-${incomingSecretName}`);
-  await openRequest.waitFor({ state: 'visible', timeout: 120_000 });
-  await openRequest.click();
-  const approve = page.getByRole('button', { name: 'Approve', exact: true });
-  await approve.waitFor({ state: 'visible', timeout: 30_000 });
+  const head = await openWebIncoming(page, { kind: 'recover', subject: incomingSecretName, count: 1 });
+  const approve = head.actions.getByTestId('approve-recover-request');
   await approve.click();
-
-  // A second click is attempted only while the UI still exposes an enabled
-  // Approve control. Usually the first click closes the alert immediately;
-  // that disappearance is itself the expected duplicate-click guard.
-  const secondTapAvailable = await approve.isVisible().catch(() => false)
-    && await approve.isEnabled().catch(() => false);
+  const secondTapAvailable = await approve.isVisible().catch(() => false) && await approve.isEnabled().catch(() => false);
   if (secondTapAvailable) {
-    writeDiagnostic(
-      `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: repeat approve second click sent`,
-    );
+    writeDiagnostic(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: repeat approve second click sent`);
     await approve.click();
-    writeDiagnostic(
-      `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: repeat approve second click completed`,
-    );
-  } else {
-    writeDiagnostic(
-      `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: repeat approve second click skipped after dismiss`,
-    );
-  }
-  await openRequest.waitFor({ state: 'hidden', timeout: 120_000 }).catch(() => {});
-  await page.getByTestId(`recovery-request-badge-${incomingSecretName}`)
-    .waitFor({ state: 'hidden', timeout: 120_000 }).catch(() => {});
-  console.log(
-    `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: incoming recovery approved; `
-    + 'repeat-click guard checked',
-  );
+    writeDiagnostic(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: repeat approve second click completed`);
+  } else writeDiagnostic(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: repeat approve second click skipped after dismiss`);
+  await waitWebIncomingGone(page, 'recover', incomingSecretName);
 }
 
 async function assertWebRecoveryDeclined(page, secretName = defaultSecret?.name) {
-  const secretValue = secretValueForName(secretName);
-  await page.locator('[data-slot="dialog-content"]').waitFor({ state: 'hidden', timeout: 120_000 }).catch(() => {});
-  await page.getByText(secretValue, { exact: true }).waitFor({ state: 'hidden', timeout: 10_000 }).catch(() => {});
-  const primaryAction = page.getByTestId(`secret-primary-action-${secretName}`);
-  await primaryAction.filter({ hasText: /^\s*Recover\s*$/ }).waitFor({ state: 'visible', timeout: 120_000 });
-  const valueVisible = await page.getByText(secretValue, { exact: true }).isVisible().catch(() => false);
-  if (valueVisible) throw new Error(`Web unexpectedly revealed ${secretName} after declined recovery`);
+  await assertWebSecretConcealed(page, secretName);
+  await waitWebCardAction(page, secretName, 'Recover');
   console.log(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: declined recovery did not reveal ${secretName}`);
 }
 
 async function showAndCloseWebSecret(page, secretName = defaultSecret?.name) {
-  const secretValue = secretValueForName(secretName);
-  const primaryAction = page.getByTestId(`secret-primary-action-${secretName}`);
-  await primaryAction.filter({ hasText: /^\s*Show\s*$/ }).waitFor({
-    state: 'visible',
-    timeout: 120_000,
-  });
-  await primaryAction.click();
-  await waitForWebSecretValue(page, secretValue);
-  await closeWebSecret(page, secretValue);
-  await primaryAction.filter({ hasText: /^\s*Show\s*$/ }).waitFor({
-    state: 'visible',
-    timeout: 120_000,
-  });
+  const selected = await waitWebCardAction(page, secretName, 'Show');
+  await selected.card.getByTestId(`secret-primary-action-${secretName}`).click();
+  await hideWebSecret(page, secretName, secretValueForName(secretName), { timeout: recoveryShowTimeoutMs });
+  await waitWebCardAction(page, secretName, 'Show');
 }
 
 async function revealAndCloseWebSecret(page, secretName = defaultSecret?.name, reopenClaim = false) {
-  const secretValue = secretValueForName(secretName);
-  const primaryAction = page.getByTestId(`secret-primary-action-${secretName}`);
-  if (webSenderRevealCompletedCycles.delete(currentCycleForDiagnostics)) {
-    console.log(
-      `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: sender secret was already `
-      + 'revealed after the first approval',
-    );
-    return;
-  }
-  if (reopenClaim) {
-    console.log(`[UI][Web] reopening secret for reveal: ${secretName}`);
-    const actionBeforeWait = await primaryAction.textContent().catch(() => null);
-    console.log(
-      `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: waiting for primary action Show `
-      + `(current=${JSON.stringify(actionBeforeWait?.trim() ?? null)})`,
-    );
-    // State invalidation is asynchronous after another device accepts the
-    // sender's claim. Do not click while the button still says Recover: that
-    // would create a second, unapproved recovery claim for the same cycle.
-    await primaryAction.filter({ hasText: /^\s*Show\s*$/ }).waitFor({
-      state: 'visible',
-      timeout: 120_000,
-    });
-    const actionAfterWait = await primaryAction.textContent().catch(() => null);
-    console.log(
-      `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: primary action ready `
-      + `(current=${JSON.stringify(actionAfterWait?.trim() ?? null)})`,
-    );
-    await primaryAction.click();
-  } else {
-    console.log(`[UI][Web] waiting for the already-open sender dialog to reveal ${secretName}`);
-  }
-  try {
-    await waitForWebSecretValue(page, secretValue);
-  } catch (error) {
-    const actionText = await primaryAction.textContent().catch(() => null);
-    const waitingDialogVisible = await page
-      .locator('[data-slot="dialog-content"]')
-      .isVisible()
-      .catch(() => false);
-    const secretRowText = await page
-      .locator('li')
-      .filter({ has: primaryAction })
-      .textContent()
-      .catch(() => null);
-    writeDiagnostic(
-      `[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: reveal timeout `
-      + `secret=${secretName}; primaryAction=${JSON.stringify(actionText?.trim() ?? null)}; `
-      + `waitingDialogVisible=${waitingDialogVisible}; `
-      + `secretRow=${JSON.stringify(secretRowText?.trim() ?? null).slice(0, 1_000)}`,
-    );
-    throw error;
-  }
-  console.log('[UI][Web] secret revealed; closing reveal dialog');
-  await closeWebSecret(page, secretValue);
-  console.log('[UI][Web] reveal dialog closed');
+  if (webSenderRevealCompletedCycles.delete(currentCycleForDiagnostics)) return;
+  await waitWebSecretValue(page, secretName, secretValueForName(secretName), { timeout: recoveryShowTimeoutMs });
+  await hideWebSecret(page, secretName, secretValueForName(secretName), { timeout: recoveryShowTimeoutMs });
+  console.log(`[UI][Web] cycle ${currentCycleForDiagnostics ?? '?'}: exact value revealed and concealed`);
 }
 
 async function waitForWebSecretNames(page, secretNames) {
-  await page.getByRole('link', { name: 'Secrets', exact: true }).click();
-  for (const secretName of secretNames) {
-    const config = secretConfigFor(secretName);
-    if (!config?.name) continue;
-    await page.getByText(config.name, { exact: true }).waitFor({ state: 'visible', timeout: 180_000 });
-    await page.getByTestId(`secret-primary-action-${config.name}`).waitFor({ state: 'visible', timeout: 180_000 });
+  await openWebSecrets(page);
+  for (const key of secretNames) {
+    const config = secretConfigFor(key);
+    if (!config?.name) throw new Error('Missing cycle-selected Secret');
+    await webSecretCard(page, config.name);
     console.log(`[UI][Web] secret ready: ${config.name}`);
   }
 }
@@ -14158,116 +15105,333 @@ async function refreshWebForLongRun(page, cycleNumber) {
   return refreshWebForKnownNames(page, cycleNumber, [...new Set(expectedNames)], [12, 21, 30]);
 }
 
+async function concurrentFifoIdentities(page) {
+  const identities = {};
+  for (const [platform, category] of [['web', 'Web'], ['android', 'Android'], ['ios', 'iPhone']]) {
+    const member = await inspectWebLiveboardMember(page, category, { current: platform === 'web', controls: false });
+    identities[platform] = { deviceId: member.deviceId, deviceName: member.deviceName };
+  }
+  return approvalCoordinator.publishFifoIdentities(identities);
+}
+
+let genericFirstFailure;
+let genericPeerFailed = false;
+function latchGenericFailure(error, observedAt = performance.now(), drain) {
+  genericFirstFailure ??= { error, observedAt, drain };
+  return genericFirstFailure;
+}
+function prepareAndroidShowDrain(actor, cycle, context, settledRequestIds) {
+  if (testNumber !== 5 || scenarioArtifactLabel !== 'scenario-block1' || cycle.number !== 1 ||
+      cycle.senders.length !== 2 || !cycle.senders.includes('web') || !cycle.senders.includes('android') ||
+      cycle.approvals.length !== 2 || cycle.approvals.some(approval => approval.platform !== 'ios') ||
+      context.runId !== scenario.runId || context.testNumber !== 5 || context.blockId !== scenarioArtifactLabel || context.cycle !== 1 ||
+      context.approvals.some(approval => approval.approverPlatform !== 'ios') ||
+      !context.requests.every(request => Object.values(cycle.senderSecrets).includes(request.subject)) ||
+      context.requests.length !== 2 || new Set(context.requests.map(request => request.requestId)).size !== 2 ||
+      settledRequestIds.length !== 2 || new Set(settledRequestIds).size !== 2 ||
+      !context.requests.every(request => settledRequestIds.includes(request.requestId)) ||
+      context.approvals.some(approval => approval.action !== 'approve') || !actor.armShowEpoch) return null;
+  const drain = { actor, epoch: {}, ownerSettled: false, timedOut: false, eligible: false };
+  drain.owner = Promise.resolve(actor.result).then(
+    () => { drain.ownerSettled = true; return drain.ownerOutcome = { kind: 'OWNER_COMPLETED' }; },
+    error => { drain.ownerSettled = true; latchGenericFailure(error); return drain.ownerOutcome = { kind: 'OWNER_FAILED', error }; },
+  );
+  drain.receipt = actor.armShowEpoch(drain.epoch, 'E2E: ANDROID_RECOVERY_SECRET_VISIBLE_1', (error, at, receipt) => {
+    drain.timedOut = true;
+    const wasFirst = !genericFirstFailure;
+    latchGenericFailure(error, at, drain);
+    const state = receipt.state();
+    drain.eligible = receipt === drain.receipt && receipt.epoch === drain.epoch && state.issued &&
+      state.count === 1 && !state.invalid && !state.disposed && !state.streamClosed && !drain.ownerSettled && !genericPeerFailed &&
+      requestedSignalExitCode == null && wasFirst;
+    // Latch/freeze synchronously before the original timer rejects or any iOS failure race runs.
+    try { approvalCoordinator.freezeGrants(); } catch { drain.eligible = false; }
+  });
+  return drain;
+}
+async function drainFailedAndroidShow(first, iosTest) {
+  const drain = first?.drain;
+  if (!drain) return;
+  let cap;
+  try {
+    const state = drain.receipt.state();
+    const now = performance.now(), remaining = first.observedAt + 180_000 - now;
+    if (!drain.eligible || (state.invalid && !drain.ownerOutcome) || state.disposed || genericPeerFailed ||
+        requestedSignalExitCode != null || !Number.isFinite(remaining) || now < first.observedAt || remaining <= 0) return;
+    writeDiagnostic('[ANDROID_DIAGNOSTIC_DRAIN] START originalFailureRetained=true');
+    const observed = await Promise.race([
+      drain.owner, drain.receipt.completed, drain.receipt.invalidated,
+      Promise.resolve(iosTest.failure).then(() => ({ kind: 'PEER_FAILED' }), () => ({ kind: 'PEER_FAILED' })),
+      new Promise(resolve => { cap = setTimeout(() => resolve({ kind: 'DIAGNOSTIC_CAP' }), remaining); }),
+    ]);
+    const outcome = drain.ownerOutcome ?? observed;
+    writeDiagnostic(`[ANDROID_DIAGNOSTIC_DRAIN] END kind=${outcome.kind} originalFailureRetained=true`);
+    if (outcome.kind === 'OWNER_FAILED') writeDiagnostic(formatHarnessShutdownError(outcome.error, redactSensitiveText));
+  } finally { clearTimeout(cap); drain.receipt.dispose(); }
+}
+
+async function readFifoFailureCurrent(input, runtime) {
+  const roles = { V: 1, STAGE: 'POST_FAILURE_ROLE_PENDING', COVERAGE: 'UNKNOWN', WEB: 'UNKNOWN', ANDROID: 'UNKNOWN', IOS: 'UNKNOWN' };
+  const result = { roles, v: 1, stage: 'POST_FAILURE_CURRENT', coverage: 'UNAVAILABLE',
+    managerChanged: 'UNKNOWN', generationChanged: 'UNKNOWN', currentChanged: 'UNKNOWN',
+    syncError: 'UNKNOWN', busy: 'UNKNOWN', requiredSync: 'UNKNOWN', currState: 'UNKNOWN',
+    ready: 'UNKNOWN', member: 'UNKNOWN', recover: 'UNKNOWN', fresh: 'UNKNOWN', expected: 'UNKNOWN',
+    missingPending: 'UNKNOWN', pending: 'UNKNOWN', needApprove: 'UNKNOWN', terminal: 'UNKNOWN', unknownStatus: 'UNKNOWN' };
+  try {
+    const { expected, baselineRequestIds } = input;
+    if (!Array.isArray(expected) || !Array.isArray(baselineRequestIds)) return result;
+    if (expected.length > 8192 || baselineRequestIds.length > 8192) return { ...result, coverage: 'BUDGET' };
+    if (expected.some(item => typeof item?.requesterId !== 'string' || typeof item?.passId !== 'string') ||
+        baselineRequestIds.some(id => typeof id !== 'string')) return result;
+    result.expected = expected.length;
+    if (!runtime) {
+      const { AppState } = await import('/src/stores/app-state.ts');
+      const { readOwnedMember } = await import('/src/features/liveboard/wasmOwnership.ts');
+      const { readCoreProjection } = await import('/src/features/liveboard/coreProjection.ts');
+      runtime = { state: AppState(), readOwnedMember, readCoreProjection };
+    }
+    const { state, readOwnedMember, readCoreProjection } = runtime;
+    const manager = state.appManager, generation = state.sessionGeneration, current = state.currState;
+    result.syncError = Boolean(state.syncError); result.busy = Boolean(state.isSynchronizing);
+    result.requiredSync = Boolean(state.requiredSyncPending); result.currState = Boolean(current);
+    if (result.syncError) return { ...result, coverage: 'SYNC_ERROR' };
+    if (result.busy || result.requiredSync) return { ...result, coverage: 'BUSY' };
+    if (!current) return { ...result, coverage: 'NO_CURRENT' };
+    const projection = await readOwnedMember({ state: current }, member =>
+      readCoreProjection({ member, identity: 'e2e-fifo-post-failure' }));
+    const afterManager = state.appManager, afterGeneration = state.sessionGeneration, afterCurrent = state.currState;
+    result.managerChanged = afterManager !== manager; result.generationChanged = afterGeneration !== generation;
+    result.currentChanged = afterCurrent !== current;
+    result.syncError = Boolean(state.syncError); result.busy = Boolean(state.isSynchronizing);
+    result.requiredSync = Boolean(state.requiredSyncPending); result.currState = Boolean(afterCurrent);
+    if (result.managerChanged || result.generationChanged || result.currentChanged) return { ...result, coverage: 'STALE' };
+    if (result.syncError) return { ...result, coverage: 'SYNC_ERROR' };
+    if (result.busy || result.requiredSync) return { ...result, coverage: 'BUSY' };
+    if (typeof projection?.session?.ready !== 'boolean' || typeof projection.session.member !== 'boolean') return result;
+    result.ready = projection.session.ready; result.member = projection.session.member;
+    if (!result.ready || !result.member || !Array.isArray(projection.operations)) return result;
+    if (projection.operations.length > 8192) return { ...result, coverage: 'BUDGET' };
+    const baseline = new Set(baselineRequestIds), pendingPairs = new Map();
+    const knownStatuses = new Set(['pending', 'needApprove', 'accepted', 'declined', 'done', 'synchronizing']);
+    let recover = 0, fresh = 0, pending = 0, needApprove = 0, terminal = 0, unknownStatus = 0;
+    for (const op of projection.operations) {
+      if (!op || typeof op !== 'object') return result;
+      if (op.kind !== 'recover') continue;
+      if (typeof op.requestId !== 'string' || typeof op.requesterId !== 'string' || typeof op.secretId !== 'string' ||
+          typeof op.clientStatus !== 'string' || op.outcome !== undefined && !['accepted', 'declined'].includes(op.outcome)) return result;
+      recover++;
+      if (baseline.has(op.requestId)) continue;
+      fresh++;
+      const status = op.clientStatus, outcome = op.outcome;
+      if (status === 'pending') pending++;
+      if (status === 'needApprove') needApprove++;
+      if (outcome !== undefined) terminal++;
+      if (!knownStatuses.has(status)) unknownStatus++;
+      if (outcome === undefined && ['pending', 'needApprove'].includes(status)) {
+        if (!pendingPairs.has(op.requesterId)) pendingPairs.set(op.requesterId, new Set());
+        pendingPairs.get(op.requesterId).add(op.secretId);
+      }
+    }
+    const missingPending = expected.filter(item => !pendingPairs.get(item.requesterId)?.has(item.passId)).length;
+    const descriptor = Object.getOwnPropertyDescriptor(input, 'roles');
+    const names = descriptor && Object.hasOwn(descriptor, 'value') ? descriptor.value : null;
+    if (Array.isArray(names) && names.length === expected.length && names.length >= 1 && names.length <= 3 && unknownStatus === 0) {
+      const entries = Array.from({ length: names.length }, (_, index) => Object.getOwnPropertyDescriptor(names, String(index)));
+      const values = entries.map(entry => entry && Object.hasOwn(entry, 'value') ? entry.value : null);
+      if (values.every(name => ['web', 'android', 'ios'].includes(name)) && new Set(values).size === values.length &&
+          new Set(expected.map(item => item.requesterId)).size === expected.length &&
+          expected.every(item => item.requesterId.length > 0 && item.requesterId.length <= 4096 &&
+            item.passId.length > 0 && item.passId.length <= 4096)) {
+        roles.COVERAGE = 'OBSERVED'; roles.WEB = roles.ANDROID = roles.IOS = 'NOT_EXPECTED';
+        values.forEach((name, index) => {
+          const item = expected[index];
+          roles[name.toUpperCase()] = pendingPairs.get(item.requesterId)?.has(item.passId) ? 'PRESENT' : 'ABSENT';
+        });
+      }
+    }
+    return { ...result, coverage: 'OBSERVED', recover, fresh, missingPending, pending, needApprove, terminal, unknownStatus };
+  } catch { return result; }
+}
+
+function beginFifoFailureDiagnostic(page, input) {
+  const keys = ['v', 'stage', 'coverage', 'managerChanged', 'generationChanged', 'currentChanged',
+    'syncError', 'busy', 'requiredSync', 'currState', 'ready', 'member', 'recover', 'fresh', 'expected',
+    'missingPending', 'pending', 'needApprove', 'terminal', 'unknownStatus'];
+  const coverages = ['OBSERVED', 'BUSY', 'NO_CURRENT', 'STALE', 'SYNC_ERROR', 'UNAVAILABLE', 'TIMEOUT', 'BUDGET'];
+  const unknown = coverage => Object.assign(Object.create(null), Object.fromEntries(keys.map(key => [key, 'UNKNOWN'])),
+    { v: 1, stage: 'POST_FAILURE_CURRENT', coverage });
+  let finished = false, timer;
+  const finish = (value, coverage = 'UNAVAILABLE') => {
+    if (finished) return;
+    finished = true;
+    try { clearTimeout(timer); } catch { /* A diagnostic timer is never cleanup authority. */ }
+    let row = unknown(coverage);
+    try {
+      const names = Reflect.ownKeys(value).filter(key => key !== 'roles');
+      if (names.length !== keys.length || names.some(key => !keys.includes(key))) throw Error('Invalid diagnostic shape');
+      const candidate = Object.create(null);
+      for (const [index, key] of keys.entries()) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        if (!descriptor || !Object.hasOwn(descriptor, 'value')) throw Error('Invalid diagnostic property');
+        const entry = descriptor.value;
+        const valid = index === 0 ? entry === 1 : index === 1 ? entry === 'POST_FAILURE_CURRENT' :
+          index === 2 ? coverages.includes(entry) : index < 12 ? [true, false, 'UNKNOWN'].includes(entry) :
+            entry === 'UNKNOWN' || Number.isInteger(entry) && entry >= 0 && entry <= 8192;
+        if (!valid) throw Error('Invalid diagnostic primitive');
+        candidate[key] = entry;
+      }
+      row = candidate;
+    } catch { /* Only fixed primitives, never getters or raw failures, reach the sink. */ }
+    try {
+      const line = 'E2E_FIFO_POST_FAILURE_V1 ' + JSON.stringify(row);
+      if (Buffer.byteLength(line + '\n', 'utf8') <= 512) writeDiagnostic(line);
+    } catch { /* Output cannot replace the original canonical rejection. */ }
+    try {
+      // At most one extra fixed role row; original aggregate's independent512B cap stays unchanged.
+      const roleKeys = ['V', 'STAGE', 'COVERAGE', 'WEB', 'ANDROID', 'IOS'];
+      const roleRow = { V: 1, STAGE: 'POST_FAILURE_ROLE_PENDING', COVERAGE: 'UNKNOWN', WEB: 'UNKNOWN', ANDROID: 'UNKNOWN', IOS: 'UNKNOWN' };
+      const descriptor = Object.getOwnPropertyDescriptor(value ?? {}, 'roles');
+      const raw = descriptor && Object.hasOwn(descriptor, 'value') ? descriptor.value : null;
+      if (raw && Reflect.ownKeys(raw).length === roleKeys.length) {
+        const primitives = roleKeys.map(key => Object.getOwnPropertyDescriptor(raw, key));
+        if (primitives.every(entry => entry && Object.hasOwn(entry, 'value'))) {
+          const entries = primitives.map(entry => entry.value);
+          const flags = ['UNKNOWN', 'NOT_EXPECTED', 'PRESENT', 'ABSENT'];
+          if (entries[0] === 1 && entries[1] === roleRow.STAGE && ['UNKNOWN', 'OBSERVED'].includes(entries[2]) &&
+              entries.slice(3).every(entry => flags.includes(entry))) roleKeys.forEach((key, index) => { roleRow[key] = entries[index]; });
+        }
+      }
+      const line = 'E2E_FIFO_POST_FAILURE_ROLES_V1 ' + JSON.stringify(roleRow);
+      if (Buffer.byteLength(line + '\n', 'utf8') <= 512) writeDiagnostic(line);
+    } catch { /* Independent fixed role output cannot alter original failure or aggregate output. */ }
+  };
+  // Output cap only: late evaluate/WASM may still run until the ordinary owned browser close/join.
+  timer = setTimeout(() => finish(undefined, 'TIMEOUT'), 1_000);
+  try {
+    if (page.isClosed()) { finish(); return; }
+    void Promise.resolve(page.evaluate(readFifoFailureCurrent,
+      { expected: input.expected, baselineRequestIds: input.baselineRequestIds,
+        roles: Object.getOwnPropertyDescriptor(input, 'roles')?.value })).then(
+      value => finish(value), () => finish());
+  } catch { finish(); }
+}
+
 async function runConcurrentRecoveryCycles(page, iosTest, androidTest) {
-  await page.getByRole('link', { name: 'Secrets', exact: true }).click();
+  iosTest.assertBusinessActive();
+  const identities = await concurrentFifoIdentities(page);
+  iosTest.assertBusinessActive();
+  await openWebSecrets(page);
+  const native = { ios: iosTest, android: androidTest };
 
   for (const cycle of recoveryCycles) {
+    iosTest.assertBusinessActive();
     setCurrentCycleForDiagnostics(cycle);
-    const senderDescription = cycle.senders
-      .map((sender) => `${sender}:${cycle.senderSecrets[sender] ?? defaultSecret?.name}`)
-      .join(' + ');
-    console.log(
-      `15.${cycle.number} ${senderDescription} request recovery concurrently; `
-      + `${cycle.approvals.map((approval) => `${approval.platform}:${approval.secret}`).join(' then ')}`,
-    );
-
-    // These two actions intentionally overlap. Each creates a different
-    // sender-owned claim. Claims are bound to the sender and secret, so a
-    // request for Secret A can never consume the response for Secret B.
+    const baseline = await page.evaluate(waitForFifoCanonicalSnapshot, { mode: 'snapshot', timeoutMs: 120_000 });
+    iosTest.assertBusinessActive();
+    if (baseline.operations.some((op) => op.kind === 'recover' && !op.outcome && ['pending', 'needApprove'].includes(op.clientStatus))) throw new Error('Previous recovery is pending at the clean cycle boundary');
+    const passes = {};
+    for (const subject of new Set(Object.values(cycle.senderSecrets))) {
+      const selected = baseline.secrets.filter((secret) => secret.name === subject);
+      if (selected.length !== 1) throw new Error('FIFO cycle needs one exact existing Pass identity');
+      passes[subject] = selected[0].passId;
+      await webSecretCard(page, subject, { id: selected[0].passId });
+    }
+    const baselineRequestIds = baseline.operations.filter((op) => op.kind === 'recover').map((op) => op.requestId);
+    const expected = Object.entries(cycle.senderSecrets).map(([platform, subject]) => ({ requesterId: identities[platform].deviceId, passId: passes[subject] }));
+    // Subscribe before allowing either sender. Initial/current snapshots also catch
+    // already-delivered events; this never asks Core to refresh or submit anything.
+    const canonicalSubmissions = page.evaluate(waitForFifoCanonicalSnapshot, { mode: 'pending', expected, baselineRequestIds, timeoutMs: 180_000 });
+    void canonicalSubmissions.catch(() => {
+      if (testNumber === 4) {
+        try { beginFifoFailureDiagnostic(page, { expected, baselineRequestIds, cycle, roles: Object.keys(cycle.senderSecrets) }); }
+        catch { /* Detached diagnostics never change the original promise or failure. */ }
+      }
+    });
     const senderWaits = [];
     if (cycle.senders.includes('web')) {
+      iosTest.assertBusinessActive();
       approvalCoordinator.allow('web-sender', cycle.number);
       senderWaits.push(startWebRecovery(page, cycle.senderSecrets.web));
     }
     if (cycle.senders.includes('android')) {
+      iosTest.assertBusinessActive();
       approvalCoordinator.allow('android-sender', cycle.number);
       senderWaits.push(androidTest.waitForMarker(`E2E: ANDROID_RECOVERY_REQUEST_SENT_${cycle.number}`));
     }
     if (cycle.senders.includes('ios')) {
+      iosTest.assertBusinessActive();
       approvalCoordinator.allow('ios-sender', cycle.number);
       senderWaits.push(iosTest.waitForMarker(`E2E: IOS_RECOVERY_REQUEST_SENT_${cycle.number}`, 180_000));
     }
     await Promise.all(senderWaits);
-
-    // Do not grant any approver permission until every receiver has rendered
-    // its incoming request. Native tests publish readiness markers before
-    // they wait on the approval coordinator; Web is checked through its badge.
-    const webReadySecrets = new Set();
-    const nativeReadyPlatforms = new Set();
-    if (cycle.senderSecrets.web && cycle.approvals.some(({ platform }) => platform === 'web')) {
-      await dismissWebRecoveryWaitingUi(page, cycle.senderSecrets.web);
-    }
-    for (const [index, approval] of cycle.approvals.entries()) {
-      const step = index + 1;
-      if (approval.platform === 'web') {
-        if (webReadySecrets.has(approval.secret)) continue;
-        webReadySecrets.add(approval.secret);
-        const expectedCount = cycle.approvals.filter(
-          (pending) => pending.platform === 'web' && pending.secret === approval.secret,
-        ).length;
-        await waitForWebRecoveryBadgeCount(page, expectedCount, approval.secret);
-        writeDiagnostic(
-          `[TEST4] cycle=${cycle.number} Web receiver ready `
-            + `secret=${approval.secret} badge=${expectedCount}`,
-        );
-      } else if (approval.platform === 'ios') {
-        if (!nativeReadyPlatforms.has(approval.platform)) {
-          await iosTest.waitForMarker(`E2E: IOS_INCOMING_VISIBLE_${cycle.number}_${step}`, 180_000);
-          nativeReadyPlatforms.add(approval.platform);
-        }
-      } else if (approval.platform === 'android') {
-        if (!nativeReadyPlatforms.has(approval.platform)) {
-          await androidTest.waitForMarker(`E2E: ANDROID_INCOMING_VISIBLE_${cycle.number}_${step}`, 180_000);
-          nativeReadyPlatforms.add(approval.platform);
-        }
-      }
-    }
-
-    for (const [index, approval] of cycle.approvals.entries()) {
-      const step = index + 1;
-      const approver = approval.platform;
-      if (approver === 'web') {
-        // A single Web secret row can have multiple concurrent incoming
-        // recovery requests. Its badge counts all pending requests for that
-        // secret, so wait for the number still assigned to Web at this step.
-        const expectedWebBadgeCount = cycle.approvals
-          .slice(index)
-          .filter((pending) => pending.platform === 'web' && pending.secret === approval.secret)
-          .length;
-        const expectedRemainingCount = cycle.approvals
-          .slice(index + 1)
-          .filter((pending) => pending.secret === approval.secret)
-          .length;
-        const webSenderSecret = cycle.senderSecrets.web;
-        await approveIncomingRecoveryOnWeb(page, approval.secret, expectedWebBadgeCount, {
-          senderSecretName: webSenderSecret,
-          expectedRemainingCount,
-        });
-        console.log(`[UI][Web] cycle ${cycle.number}: approval ${step} for ${approval.secret} complete`);
+    const context = buildFifoContext({ runId: scenario.runId ?? `test-${testNumber}`, testNumber, blockId: scenarioArtifactLabel, cycle, identities, passes, baselineRequestIds, projection: await canonicalSubmissions });
+    // Both exact current-cycle Claims are canonical and pending before this
+    // immutable metadata endpoint can satisfy any native decision context.
+    iosTest.assertBusinessActive();
+    approvalCoordinator.publishFifo(context);
+    const remainingSteps = context.approvals.map((entry) => entry.logicalStep), settledRequestIds = [], bindings = {};
+    const readyHeads = new Map();
+    const observeHead = async (platform) => {
+      let matched;
+      if (platform === 'web') {
+        const count = context.requests.filter((request) => request.eligiblePeerIds.includes(identities.web.deviceId) && !settledRequestIds.includes(request.requestId)).length;
+        const head = await openWebIncoming(page, { kind: 'recover', count });
+        matched = matchFifoHead({ context, head, platform, remainingSteps, settledRequestIds, bindings });
       } else {
-        await (approver === 'ios' ? iosTest : androidTest).waitForMarker(
-          `E2E: ${approver.toUpperCase()}_INCOMING_VISIBLE_${cycle.number}_${step}`,
-          180_000,
-        );
-        approvalCoordinator.allow(`${approver}-approve-${step}`, cycle.number);
-        const test = approver === 'ios' ? iosTest : androidTest;
-        await test.waitForMarker(`E2E: ${approver.toUpperCase()}_APPROVED_INCOMING_${cycle.number}_${step}`, 180_000);
+        const choices = nativeHeadChoices(context, platform, remainingSteps, settledRequestIds, bindings);
+        // The actor emits this exact UUID/step only after its actual visible
+        // typed04 head, requester, subject and addressed count match the context.
+        matched = await native[platform].waitForMarkerChoice(choices, 180_000);
+        if (!choices.some((choice) => choice.value === matched)) throw new Error('Native FIFO choice escaped its exact allowed set');
       }
+      if (bindings[matched.logicalStep] && bindings[matched.logicalStep] !== matched.requestId) throw new Error('FIFO logical step changed its Claim UUID');
+      bindings[matched.logicalStep] = matched.requestId;
+      return matched;
+    };
+    // All assigned receivers really display one addressed head before the first
+    // decision. An unseen second head has no early INCOMING_VISIBLE producer.
+    for (const platform of new Set(context.approvals.map((entry) => entry.approverPlatform))) readyHeads.set(platform, await observeHead(platform));
+    while (remainingSteps.length) {
+      const original = context.approvals.find((entry) => entry.logicalStep === remainingSteps[0]);
+      const platform = original.approverPlatform;
+      const matched = readyHeads.get(platform) ?? await observeHead(platform);
+      if (![5, 6].includes(testNumber) && matched.logicalStep !== original.logicalStep) throw new Error('Unapproved FIFO logical-order change outside Test5/6');
+      if (platform === 'web') {
+        iosTest.assertBusinessActive();
+        await decideWebIncoming(page, { kind: 'recover', requestId: matched.requestId, requester: matched.requesterName, subject: matched.subject, count: matched.expectedCount }, matched.action === 'approve');
+      } else {
+        iosTest.assertBusinessActive();
+        approvalCoordinator.allowFifo(platform, cycle.number, matched.logicalStep, matched.requestId);
+        await native[platform].waitForMarker(`E2E: ${platform.toUpperCase()}_APPROVED_INCOMING_${cycle.number}_${matched.logicalStep}`, 180_000);
+      }
+      const pendingRequests = context.requests.filter((request) => !settledRequestIds.includes(request.requestId) && request.requestId !== matched.requestId);
+      const outcome = matched.action === 'approve' ? 'accepted' : 'declined';
+      const projection = await page.evaluate(waitForFifoCanonicalSnapshot, { mode: 'terminal', requestId: matched.requestId, expectedRequest: { requesterId: matched.requesterId, passId: matched.passId }, outcome, pendingRequests, timeoutMs: 180_000 });
+      validateFifoTerminal({ context, requestId: matched.requestId, outcome, settledRequestIds, projection });
+      settledRequestIds.push(matched.requestId); remainingSteps.splice(remainingSteps.indexOf(matched.logicalStep), 1); readyHeads.delete(platform);
+      writeDiagnostic(`[FIFO] cycle=${cycle.number} logicalStep=${matched.logicalStep} platform=${platform} exactCanonicalTerminal=true remaining=${remainingSteps.length}`);
     }
-
+    if (settledRequestIds.length !== context.requests.length) throw new Error('FIFO cycle did not settle every original submission');
+    await assertWebInboxEmpty(page);
     for (const sender of cycle.senders) {
       const secretName = cycle.senderSecrets[sender] ?? defaultSecret?.name;
       if (sender === 'web') {
+        iosTest.assertBusinessActive();
         await revealAndCloseWebSecret(
           page,
           secretName,
           cycle.approvals.some((approval) => approval.platform === 'web'),
         );
       } else {
-        approvalCoordinator.allow(`${sender}-show`, cycle.number);
+        iosTest.assertBusinessActive();
         const test = sender === 'ios' ? iosTest : androidTest;
-        await test.waitForMarker(`E2E: ${sender.toUpperCase()}_RECOVERY_SECRET_VISIBLE_${cycle.number}`, recoveryShowTimeoutMs);
-        await test.waitForMarker(`E2E: ${sender.toUpperCase()}_RECOVERY_CLOSED_${cycle.number}`, 60_000);
+        const drain = sender === 'android' ? prepareAndroidShowDrain(test, cycle, context, settledRequestIds) : null;
+        try {
+          approvalCoordinator.allow(`${sender}-show`, cycle.number);
+          drain?.receipt.issued(drain.epoch);
+          await test.waitForMarker(`E2E: ${sender.toUpperCase()}_RECOVERY_SECRET_VISIBLE_${cycle.number}`, recoveryShowTimeoutMs);
+          await test.waitForMarker(`E2E: ${sender.toUpperCase()}_RECOVERY_CLOSED_${cycle.number}`, 60_000);
+        } finally { if (genericFirstFailure?.drain !== drain) drain?.receipt.dispose(); }
       }
     }
     // Test #6 processes three Secrets through 18 recovery cycles in one
@@ -14275,6 +15439,7 @@ async function runConcurrentRecoveryCycles(page, iosTest, androidTest) {
     // boundary, as the long-running lifecycle tests do, to release renderer
     // memory without resetting the browser context, passkey, or IndexedDB.
     if (testNumber === 6) {
+      iosTest.assertBusinessActive();
       page = await refreshWebForKnownNames(
         page,
         cycle.number,
@@ -14287,7 +15452,40 @@ async function runConcurrentRecoveryCycles(page, iosTest, androidTest) {
   }
 }
 
+async function runGenericIosRecovery(page, iosTest, androidTest, androidSerial, simulatorUdid) {
+  iosTest.assertBusinessActive();
+  await iosTest.waitForMarker('E2E: IOS_JOIN_REQUEST_SENT');
+  iosTest.assertBusinessActive();
+  approvalCoordinator.allow('android-ios-join', 0);
+  await androidTest.waitForMarker('E2E: ANDROID_IOS_JOIN_APPROVED', 120_000);
+  // Let iOS finish its own join timeout (and emit a useful failure) before
+  // stopping the parallel Android instrumentation.
+  await iosTest.waitForMarker('E2E: IOS_SECRETS_READY', 210_000);
+  iosTest.assertBusinessActive();
+  await waitForWebSecrets(page);
+
+  if (scenario.offlineReceiver?.platform === 'android') {
+  iosTest.assertBusinessActive();
+    await runOfflineReceiverRecovery(page, iosTest, androidTest, androidSerial, simulatorUdid);
+  } else {
+  iosTest.assertBusinessActive();
+    await runConcurrentRecoveryCycles(page, iosTest, androidTest);
+  }
+  iosTest.assertBusinessActive();
+  await Promise.all([iosTest.complete(), androidTest.result]);
+
+}
+
 async function main() {
+  assertExistingDeviceRun({ scenarios: [scenario] });
+  if (scenario.ios) {
+    iosIdentity = prepareIosCallerIdentity({ scenario, scenarioPath, testNumber,
+      attemptToken: new Date().toISOString().replace(/[:.]/g, '-'), artifactsDirectory });
+    diagnosticRedactor.addSensitiveValues([iosIdentity.scope.namespace]);
+  }
+  if (scenario.android) readExistingAndroidAvd(scenario.android.avdName);
+  batchProducts = await loadBatchProducts({ coreRoot, composeRoot, scenario, testNumber, runAndCapture });
+  if (batchProducts?.android) { androidAppApkPath = batchProducts.android.products.app; androidTestApkPath = batchProducts.android.products.test; }
   mkdirSync(artifactsDirectory, { recursive: true });
   writeFileSync(diagnosticLogPath, `=== Test #${testNumber} started ${new Date().toISOString()} ===\n`);
   writeDiagnostic(`scenario=${scenario.name}; cycles=${recoveryCycles.length}`);
@@ -14317,7 +15515,7 @@ async function main() {
     console.log('1-2. Reusing exact fingerprint-verified WASM/native/server artifacts');
   } else {
     console.log('1. Rebuilding the Web WASM package');
-    await runAndWait('/opt/homebrew/bin/task', ['wasm-local'], { cwd: coreRoot });
+    await runAndWait('/opt/homebrew/bin/task', ['wasm-local'], { cwd: coreRoot, env: { PUSH_CACHE: '' } });
 
     console.log('2. Building local server image');
     await runAndWait('/opt/homebrew/bin/task', ['meta-server'], { cwd: coreRoot });
@@ -14381,13 +15579,13 @@ async function main() {
       simulatorUdid = await prepareIosSimulator();
       verifyIosXcodeBuild({ derivedDataPath: iosDerivedDataPath });
       await installBuiltIosTestApps({ simulatorUdid, derivedDataPath: iosDerivedDataPath,
-        appBundleId: scenario.ios.bundleId, runAndWait, runAndCapture });
+        appBundleId: scenario.ios.bundleId, verifiedBuild: batchProducts?.ios, runAndWait, runAndCapture });
     }
     if (registrationPlatforms.includes('android')) {
       await verifyAndroidApkFfiProvenance();
       androidSerial = await prepareAndroidEmulator();
       await installAndVerifyAndroidE2eApps({ serial: androidSerial, appBundleId: scenario.android.bundleId,
-        composeRoot, prebuiltApks: { app: androidAppApkPath, test: androidTestApkPath }, runAndWait, runAndCapture });
+        composeRoot, prebuiltApks: { app: androidAppApkPath, test: androidTestApkPath }, verifiedBuild: batchProducts?.android, runAndWait, runAndCapture });
       await captureInstalledAndroidAppProvenance(androidSerial);
     }
     if (!reuseProvenArtifacts) await recordFreshBuildProvenance();
@@ -14438,17 +15636,20 @@ async function main() {
       simulatorUdid,
       derivedDataPath: iosDerivedDataPath,
       appBundleId: scenario.ios.bundleId,
+      verifiedBuild: batchProducts?.ios,
       runAndWait,
       runAndCapture,
     });
   }
 
   const androidSerial = await prepareAndroidEmulator();
+  if (scenario.mode === 'vault-secret-deletion' && !reuseProvenArtifacts) await recordFreshBuildProvenance();
   await installAndVerifyAndroidE2eApps({
     serial: androidSerial,
     appBundleId: scenario.android.bundleId,
     composeRoot,
-    prebuiltApks: scenario.mode === 'vault-secret-deletion' ? { app: androidAppApkPath, test: androidTestApkPath } : null,
+    prebuiltApks: reuseProvenArtifacts || scenario.mode === 'vault-secret-deletion' ? { app: androidAppApkPath, test: androidTestApkPath } : null,
+    verifiedBuild: batchProducts?.android ?? (scenario.mode === 'vault-secret-deletion' ? { path: buildProvenancePath, current: await captureBuildProvenance() } : undefined),
     runAndWait,
     runAndCapture,
   });
@@ -14497,7 +15698,7 @@ async function main() {
       });
       child.stdin.end(input ?? '');
     });
-    await runDeletionBlock({ scenario, page, block: scenario.deletionBlock,
+    await runDeletionBlock({ scenario, page, virtualAuthenticator: primaryVirtualAuthenticator, block: scenario.deletionBlock,
       simulatorUdid, androidSerial, approvalCoordinator, startAndroidStepTest,
       startIosJoinTest, startAndroidJoinTest, createWebSecret, createWebInitiatedVault,
       createMetaCliRootDevice: async () => {
@@ -14528,11 +15729,11 @@ async function main() {
       setSecretValue: (name, value) => { secretConfigFor(name).value = value; },
       onCycle: (cycle) => { currentCycleForDiagnostics = cycle.number; const message = deletionCycleProgress(scenario.deletionBlock, cycle); console.log(message); writeDiagnostic(message); },
       onDecisionPersisted: (cycle, requestId) => { const message = `🧪 Test50 cycle=${cycle.number} winner=${cycle.responder ?? cycle.requester} outcome=${cycle.outcome} requestHash=${createHash('sha256').update(requestId).digest('hex').slice(0, 16)} persisted-and-observed=true`; console.log(message); writeDiagnostic(message); },
-      onCycleComplete: (cycle) => { const message = `✅ Test50 block=${scenario.deletionBlock.id} cycle=${cycle.number} terminal PASS`; console.log(message); writeDiagnostic(message); },
+      onCycleComplete: (cycle) => { const message = deletionAuthProfile === 'controlled-business'
+        ? `✅ Test50 block=${scenario.deletionBlock.id} cycle=${cycle.number} BUSINESS PASS; OS MANUAL UNRUN`
+        : `✅ Test50 block=${scenario.deletionBlock.id} cycle=${cycle.number} terminal PASS`; console.log(message); writeDiagnostic(message); },
     });
-    console.log(`✅ Test #50 block ${scenario.deletionBlock.id} passed`);
-    await stopProcesses();
-    process.exit(0);
+    await finishDeletionBlock();
   }
   if (
     [
@@ -14993,31 +16194,25 @@ async function main() {
   // The Android UI helper allows 180s for the pending join row to appear.
   // Keep the outer marker deadline longer so teardown does not kill it first.
   await androidTest.waitForMarker('E2E: ANDROID_WEB_JOIN_APPROVED', 210_000);
-  await page.getByRole('button', { name: '+ Add Secret' }).waitFor({ timeout: 120_000 });
+  await openWebSecrets(page);
 
   await createWebSecretsAfterJoin(page);
 
-  const iosTest = startIosJoinTest(simulatorUdid);
-  // Same as Android above: this test runs in parallel with the orchestrator.
-  // Keep its eventual rejection observable through `iosTest.result`, while
-  // preventing Node from reporting it as an unhandled rejection during
-  // cleanup.
-  void iosTest.result.catch(() => {});
-  await iosTest.waitForMarker('E2E: IOS_JOIN_REQUEST_SENT');
-  approvalCoordinator.allow('android-ios-join', 0);
-  await androidTest.waitForMarker('E2E: ANDROID_IOS_JOIN_APPROVED', 120_000);
-  // Let iOS finish its own join timeout (and emit a useful failure) before
-  // stopping the parallel Android instrumentation.
-  await iosTest.waitForMarker('E2E: IOS_SECRETS_READY', 210_000);
-  await waitForWebSecrets(page);
-
-  if (scenario.offlineReceiver?.platform === 'android') {
-    await runOfflineReceiverRecovery(page, iosTest, androidTest, androidSerial, simulatorUdid);
-  } else {
-    await runConcurrentRecoveryCycles(page, iosTest, androidTest);
+  const iosTest = genericIosActor = startIosJoinTest(simulatorUdid, { deferCompletionTimeout: true });
+  genericIosBusinessPromise = runGenericIosRecovery(page, iosTest, androidTest, androidSerial, simulatorUdid);
+  const businessFailure = genericIosBusinessPromise.catch(error => { throw latchGenericFailure(error).error; });
+  const peerFailure = iosTest.failure.catch(error => { genericPeerFailed = true; throw latchGenericFailure(error).error; });
+  try { await Promise.race([businessFailure, peerFailure]); }
+  catch (failure) {
+    const first = latchGenericFailure(failure), primary = first.error;
+    try { await drainFailedAndroidShow(first, iosTest); }
+    catch (diagnosticError) { try { console.error(formatHarnessShutdownError(diagnosticError, redactSensitiveText)); } catch { /* Original failure/cleanup still own the outcome. */ } }
+    try { await harnessShutdown.finish({ error: primary, diagnostics: true }); }
+    catch (cleanup) { throw new AggregateError([primary, cleanup], 'Generic iOS business failed and cancellation failed', { cause: primary }); }
+    throw primary;
   }
-  await Promise.all([iosTest.result, androidTest.result]);
 
+  iosTest.assertBusinessActive();
   console.log(`✅ Test #${testNumber} concurrent Web + iOS + Android recovery passed`);
   if (exitOnSuccess) {
     await stopProcesses();
@@ -15032,7 +16227,7 @@ async function finishAfterSignal(signal, exitCode) {
   const error = new Error(`Scenario cancelled by ${signal}`);
   writeDiagnostic(`CANCELLED: ${error.message}`);
   try {
-    await harnessShutdown.finish({ error, diagnostics: true });
+    await harnessShutdown.finish({ error: genericFirstFailure?.error ?? error, diagnostics: true });
     process.exitCode = requestedSignalExitCode;
   } catch (cleanupError) {
     const safeCleanupError = formatHarnessShutdownError(cleanupError, redactSensitiveText);
@@ -15046,14 +16241,16 @@ process.once('SIGINT', () => { void finishAfterSignal('SIGINT', 130); });
 process.once('SIGTERM', () => { void finishAfterSignal('SIGTERM', 143); });
 
 main().catch(async (error) => {
-  const safeError = redactSensitiveText(error.stack ?? error.message);
-  console.error(`\n❌ Test #${testNumber} failed: ${redactSensitiveText(error.message)}`);
+  const safeError = formatHarnessShutdownError(error, redactSensitiveText);
+  console.error(`\n❌ Test #${testNumber} failed: ${safeError}`);
   writeDiagnostic(`FAILED: ${safeError}`);
   try {
     await harnessShutdown.finish({ error, diagnostics: true });
     process.exitCode = requestedSignalExitCode ?? 1;
   } catch (cleanupError) {
-    const safeCleanupError = formatHarnessShutdownError(cleanupError, redactSensitiveText);
+    const failure = scenario.mode === 'vault-secret-deletion'
+      ? new AggregateError([error, cleanupError], 'Test50 scenario and cleanup failed', { cause: error }) : cleanupError;
+    const safeCleanupError = formatHarnessShutdownError(failure, redactSensitiveText);
     console.error(`Environment cleanup failed: ${safeCleanupError}`);
     writeDiagnostic(`CLEANUP BLOCKER: ${safeCleanupError}`);
     process.exitCode = 1;

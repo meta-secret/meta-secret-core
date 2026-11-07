@@ -26,7 +26,9 @@ export function verifyArtifactProvenance({ path, current, bootstrap = false, evi
     recordArtifactProvenance(path, current, evidence);
   } else if (!existsSync(path)) throw new Error(`Proven build artifact manifest not found: ${path}`);
   const expected = JSON.parse(readFileSync(path, 'utf8'));
+  // Legacy manifests remain compatible only when both sides omit the tuple.
   if (expected.version !== current.version || expected.sourceFingerprint !== current.sourceFingerprint
+    || ['configuration', 'target'].some((key) => JSON.stringify(expected[key]) !== JSON.stringify(current[key]))
     || JSON.stringify(expected.artifacts) !== JSON.stringify(current.artifacts)) {
     const artifactKeys = [...new Set([...Object.keys(expected.artifacts ?? {}), ...Object.keys(current.artifacts ?? {})])]
       .filter((key) => JSON.stringify(expected.artifacts?.[key]) !== JSON.stringify(current.artifacts?.[key]));

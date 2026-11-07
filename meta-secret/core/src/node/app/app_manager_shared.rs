@@ -1,13 +1,13 @@
-use anyhow::{Result, bail};
+use anyhow::{Result, bail, ensure};
 use std::sync::Arc;
 
 use crate::crypto::keys::TransportSk;
+use crate::node::app::meta_app::client_transfer::MetaClientRequestTransfer;
 use crate::node::app::meta_app::meta_client_service::{
     MetaClientDataTransfer, MetaClientService, MetaClientStateProvider,
 };
 use crate::node::app::sync::sync_gateway::SyncGateway;
 use crate::node::app::sync::sync_protocol::{HttpSyncProtocol, SyncProtocol};
-use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::common::model::device::common::{DeviceName, DeviceType};
 use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::secret::ClaimId;
@@ -61,6 +61,8 @@ pub async fn recover_plain_text<Repo: KvLogEventRepo, SyncP: SyncProtocol>(
     claim_id: ClaimId,
     pass_id: MetaPasswordId,
 ) -> Result<PlainText> {
+    let _owner = sync_gateway.p_obj.client_operation_guard.lock().await;
+    ensure_current_recovery_session(sync_gateway, &user_creds).await?;
     let recovery_handler = RecoveryHandler {
         p_obj: sync_gateway.p_obj.clone(),
     };
@@ -80,6 +82,8 @@ pub async fn recover_plain_text_by_claim<Repo: KvLogEventRepo, SyncP: SyncProtoc
     user_creds: UserCreds,
     claim_id: ClaimId,
 ) -> Result<PlainText> {
+    let _owner = sync_gateway.p_obj.client_operation_guard.lock().await;
+    ensure_current_recovery_session(sync_gateway, &user_creds).await?;
     let recovery_handler = RecoveryHandler {
         p_obj: sync_gateway.p_obj.clone(),
     };
@@ -87,6 +91,39 @@ pub async fn recover_plain_text_by_claim<Repo: KvLogEventRepo, SyncP: SyncProtoc
     recovery_handler
         .recover_by_claim_id(user_creds, claim_id)
         .await
+}
+
+/// Called only while the shared recovery entry holds the client owner.
+pub async fn recover_plain_text_by_claim_checked<Repo: KvLogEventRepo, SyncP: SyncProtocol>(
+    sync_gateway: &SyncGateway<Repo, SyncP>,
+    user_creds: UserCreds,
+    claim_id: ClaimId,
+) -> Result<crate::node::common::model::liveboard_reveal::RecoveredReveal> {
+    let _owner = sync_gateway.p_obj.client_operation_guard.lock().await;
+    ensure_current_recovery_session(sync_gateway, &user_creds).await?;
+    RecoveryHandler {
+        p_obj: sync_gateway.p_obj.clone(),
+    }
+    .recover_by_claim_id_checked(user_creds, claim_id)
+    .await
+}
+
+/// Called only while the shared recovery entry holds the client owner.
+async fn ensure_current_recovery_session<Repo: KvLogEventRepo, SyncP: SyncProtocol>(
+    sync_gateway: &SyncGateway<Repo, SyncP>,
+    expected: &UserCreds,
+) -> Result<()> {
+    let actual = PersistentCredentials {
+        p_obj: sync_gateway.p_obj.clone(),
+        master_key: sync_gateway.master_key.clone(),
+    }
+    .get_user_creds()
+    .await?;
+    ensure!(
+        actual.as_ref() == Some(expected),
+        "Recovery session is unavailable"
+    );
+    Ok(())
 }
 
 pub async fn build_client_components<Repo: KvLogEventRepo>(
@@ -122,7 +159,7 @@ pub async fn build_client_components<Repo: KvLogEventRepo>(
 
     let meta_client_service = Arc::new(MetaClientService {
         data_transfer: Arc::new(MetaClientDataTransfer {
-            dt: MpscDataTransfer::new(),
+            dt: MetaClientRequestTransfer::new(),
         }),
         sync_gateway: sync_gateway.clone(),
         state_provider,

@@ -1,3 +1,13 @@
+import { createIosSelectedSuiteActor } from '../shared/ios-selected-suite.mjs';
+import { createHarnessShutdown, formatHarnessShutdownError } from '../shared/harness-shutdown.mjs';
+import { createDiagnosticRedactor } from '../shared/diagnostic-redaction.mjs';
+import { resetE2eNativeAppState } from '../shared/e2e-state-reset.mjs';
+import { prepareIosCallerIdentity, prepareScopedIosInvocation, iosGeneratedTemplateProof } from '../shared/ios-test-identity.mjs';
+import { assertExistingDeviceRun, readExistingAndroidAvd, iosSerialTestArguments, resolveIosScenarioSimulator, resolveAndroidScenarioAvdName, verifyOwnedAndroidScenarioRuntime } from '../shared/platform-supervisor.mjs';
+import { loadBatchProducts, assertBatchProductsCurrent } from '../shared/batch-product-consumer.mjs';
+import { androidInstrumentationAdbArguments, instrumentationArgumentsFromGradle, superviseAndroidInstrumentation, assertAndroidInstrumentationPassed } from '../shared/android-instrumentation.mjs';
+import { openWebSecrets, hideWebSecret } from '../shared/web-liveboard-actions.mjs';
+import { approveWebJoin, openWebIncoming, decideWebIncoming, waitWebIncomingGone } from '../shared/web-liveboard-inbox.mjs';
 import { requestWebVaultJoin, waitForWebEntry } from '../shared/web-orbit-registration.mjs';
 import { ensureIosFfi, prepareIosXcodeBuild, recordIosXcodeBuild } from '../shared/ios-ffi-provenance.mjs';
 import { appendFileSync, createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -130,7 +140,16 @@ const androidSdkTools = discoverAndroidSdk();
 const androidEmulatorPath = androidSdkTools.emulatorPath;
 const serverContainer = scenario.server.container;
 const serverImage = scenario.server.image;
+let batchProducts;
+let iosIdentity;
+const namespaceRedactor = createDiagnosticRedactor();
 const processes = [];
+const ownedChildClosures = new Map();
+const iosSuiteActors = [];
+const errorRedactor = createDiagnosticRedactor([scenario.secret.value]);
+let browserInstance;
+let nativeBusinessPromise;
+let nativeBusinessFailure;
 const watchedProcessOutputs = [];
 const browserDiagnostics = [];
 let activeAndroidSerial;
@@ -181,12 +200,13 @@ async function waitForAndroidPendingRecovery(cycle, startCursor, timeoutMs = 45_
   );
 }
 function run(command, args, options = {}) {
+  harnessShutdown.assertCanSpawn();
   const stdio = options.stdio ?? ['ignore', 'pipe', 'pipe'];
   const child = spawn(command, args, {
     cwd: options.cwd ?? projectRoot,
     env: {
       ...process.env,
-      PATH: withAndroidSdkPath(`/opt/homebrew/bin:/usr/local/bin:${process.env.PATH ?? ''}`, androidSdkTools),
+      PATH: withAndroidSdkPath([process.env.PATH, '/opt/homebrew/bin', '/usr/local/bin'].filter(Boolean).join(':'), androidSdkTools),
       ...(options.env ?? {}),
     },
     stdio,
@@ -200,6 +220,7 @@ function run(command, args, options = {}) {
       else process[streamName].write(chunk);
     });
   }
+  ownedChildClosures.set(child, new Promise(resolveClose => child.once('close', resolveClose)));
   processes.push(child);
   return child;
 }
@@ -239,9 +260,12 @@ function watchProcessOutput(command, args, options = {}) {
   let stderr = '';
   const markerWaiters = new Set();
 
-  const child = run(command, args, { ...options, stdio: ['ignore', 'pipe', 'pipe'] });
-  const processOutput = (chunk, sink) => {
-    const text = chunk.toString();
+  const { iosIdentityRedactor, ...childOptions } = options;
+  const streams = iosIdentityRedactor ? { stdout: iosIdentityRedactor.createStream(), stderr: iosIdentityRedactor.createStream() } : null;
+  const child = run(command, args, { ...childOptions, stdio: ['ignore', 'pipe', 'pipe'] });
+  const processOutput = (chunk, sink, flushed = false) => {
+    const text = streams && !flushed ? streams[sink].push(chunk.toString()) : chunk.toString();
+    if (!text) return;
     if (sink === 'stdout') stdout += text;
     else stderr += text;
     const allOutput = `${stdout}\n${stderr}`;
@@ -256,21 +280,27 @@ function watchProcessOutput(command, args, options = {}) {
 
   child.stdout.on('data', (chunk) => processOutput(chunk, 'stdout'));
   child.stderr.on('data', (chunk) => processOutput(chunk, 'stderr'));
+  child.once('close', () => { if (streams) for (const sink of ['stdout', 'stderr']) processOutput(streams[sink].flush(), sink, true); });
 
   let processError;
+  const cancelPendingWaits = error => {
+    processError ??= error;
+    for (const waiter of markerWaiters) {
+      clearTimeout(waiter.timeout);
+      waiter.reject(processError);
+    }
+    markerWaiters.clear();
+  };
   const result = new Promise((resolvePromise, reject) => {
-    child.once('error', reject);
+    child.once('error', error => { cancelPendingWaits(error); reject(error); });
     child.once('close', (code, signal) => {
       processError = code === 0 ? new Error(`${command} ended before expected E2E event`) : new Error(`${command} exited with ${code ?? signal}`);
-      for (const waiter of markerWaiters) {
-        clearTimeout(waiter.timeout);
-        waiter.reject(processError);
-      }
-      markerWaiters.clear();
+      cancelPendingWaits(processError);
       if (code === 0) resolvePromise({ stdout, stderr });
       else reject(processError);
     });
   });
+  const closed = new Promise(resolvePromise => child.once('close', (code, signal) => resolvePromise({ code, signal })));
 
   const waitForMarker = (marker, timeoutMs = 300_000) => new Promise((resolvePromise, reject) => {
     if (`${stdout}\n${stderr}`.includes(marker)) return resolvePromise();
@@ -278,8 +308,8 @@ function watchProcessOutput(command, args, options = {}) {
     const waiter = {
       marker,
       resolve: resolvePromise,
-      reject: reject,
-      timeout: setTimeout(() => {
+      reject,
+      timeout: timeoutMs === null ? null : setTimeout(() => {
         markerWaiters.delete(waiter);
         reject(new Error(`Timed out waiting for ${marker}`));
       }, timeoutMs),
@@ -292,7 +322,9 @@ function watchProcessOutput(command, args, options = {}) {
     args,
     child,
     waitForMarker,
+    cancelPendingWaits,
     result,
+    closed,
     outputTail: () => `${stdout}\n${stderr}`.slice(-12_000),
   };
   watchedProcessOutputs.push(watched);
@@ -366,16 +398,20 @@ function startAndroidRecoveryDiagnosticLogcat(serial) {
   };
 }
 
-async function captureFailureArtifacts() {
+async function captureWebFailureArtifact() {
   const artifactsDirectory = resolve(e2eRoot, '.artifacts');
   mkdirSync(artifactsDirectory, { recursive: true });
-
   if (activeBrowserPage) {
     const screenshot = resolve(artifactsDirectory, 'test-2-cycle-1-failure-web.png');
     await activeBrowserPage.screenshot({ path: screenshot }).catch((error) => {
       console.warn(`Could not capture Web failure screenshot: ${error.message}`);
     });
   }
+}
+
+async function captureFailureArtifacts() {
+  const artifactsDirectory = resolve(e2eRoot, '.artifacts');
+  mkdirSync(artifactsDirectory, { recursive: true });
 
   if (activeAndroidSerial) {
     const remoteScreenshot = '/sdcard/Download/meta-secret-test-2-failure.png';
@@ -505,41 +541,75 @@ async function waitForHttp(url, timeoutMs = 120_000) {
   throw new Error(`Timed out waiting for ${url}: ${lastError?.message ?? 'server unavailable'}`);
 }
 
-async function stopProcesses() {
+async function performCleanup() {
   await approvalCoordinator?.close().catch(() => {});
   approvalCoordinator = undefined;
-  const ownedProcesses = processes.slice().reverse();
-  for (const child of ownedProcesses) {
-    if (child.exitCode == null && child.signalCode == null && !child.killed) child.kill('SIGTERM');
-  }
-  const waitForClose = (child) => child.exitCode != null || child.signalCode != null
-    ? Promise.resolve()
-    : onceEvent(child, 'close').catch(() => {});
-  await Promise.race([
-    Promise.all(ownedProcesses.map(waitForClose)),
-    wait(25_000),
-  ]);
-  const stillRunning = ownedProcesses.filter((child) => child.exitCode == null && child.signalCode == null);
-  for (const child of stillRunning) child.kill('SIGKILL');
-  await Promise.race([
-    Promise.all(stillRunning.map(waitForClose)),
-    wait(5_000),
-  ]);
-
-  // Only stop visible runtimes after the iOS XCTest and Android instrumentation
-  // processes have exited. Shutting a simulator down first can cut off a
-  // sibling platform that is still completing or reporting its failure.
-  await wait(500);
   await runAndWait('docker', ['rm', '-f', serverContainer], { stdio: 'ignore' }).catch(() => {});
 }
 
+const harnessShutdown = createHarnessShutdown({
+  async cancelActors(primary) {
+    const error = primary ?? new Error('Scenario actors finished');
+    nativeBusinessFailure ??= error;
+    const failures = [];
+    for (const watched of watchedProcessOutputs) watched.cancelPendingWaits(error);
+    const iosChildren = new Set(iosSuiteActors.map(actor => actor.child));
+    const joins = iosSuiteActors.map(actor => actor.cancelAndJoin(error));
+    const within = async (promise, duration) => {
+      let timer;
+      try { return await Promise.race([promise.then(() => true), new Promise(done => { timer = setTimeout(() => done(false), duration); })]); }
+      finally { clearTimeout(timer); }
+    };
+    // Preserve the existing Web screenshot before the browser is closed.
+    const webScreenshot = primary ? captureWebFailureArtifact() : Promise.resolve();
+    void webScreenshot.catch(() => {});
+    if (!await within(webScreenshot.catch(failure => { failures.push(failure); }), 5_000)) {
+      failures.push(new Error('Web failure screenshot did not settle before browser close'));
+    }
+    const ownedBrowser = browserInstance; browserInstance = undefined;
+    const closingBrowser = Promise.resolve().then(() => ownedBrowser?.close());
+    void closingBrowser.catch(() => {});
+    for (const child of processes) {
+      try { if (!iosChildren.has(child) && child.exitCode == null && child.signalCode == null) child.kill('SIGTERM'); }
+      catch (failure) { failures.push(failure); }
+    }
+
+    // iOS has its own original5/5/2 join, including any terminal result flush.
+    const closed = Promise.all([...ownedChildClosures].filter(([child]) => !iosChildren.has(child)).map(([, close]) => close));
+    if (!await within(closed, 5_000)) {
+      for (const child of processes) {
+        try { if (!iosChildren.has(child) && child.exitCode == null && child.signalCode == null) child.kill('SIGKILL'); }
+        catch (failure) { failures.push(failure); }
+      }
+      if (!await within(closed, 2_000)) failures.push(new Error('Exact owned scenario children did not close'));
+    }
+    for (const result of await Promise.allSettled(joins)) if (result.status === 'rejected') failures.push(result.reason);
+    if (!await within(closingBrowser.catch(error => { failures.push(error); }), 5_000)) {
+      failures.push(Object.assign(new Error('Owned browser close remains unproven after 5000ms'),
+        { code: 'OWNED_TEARDOWN_INCOMPLETE', stage: 'browser-close' }));
+    }
+    if (!await within(webScreenshot.catch(() => {}), 5_000)) {
+      failures.push(new Error('Web failure screenshot continuation remains unjoined'));
+    }
+    if (!await within(Promise.resolve(nativeBusinessPromise).catch(() => {}), 5_000)) {
+      failures.push(Object.assign(new Error('Owned native business continuation remains unjoined after 5000ms'),
+        { code: 'OWNED_TEARDOWN_INCOMPLETE', stage: 'business-join' }));
+    }
+    if (failures.length) throw new AggregateError(failures, 'Native business cancellation failed', { cause: failures[0] });
+  },
+  async captureDiagnostics() {
+    dumpWatchedProcessTails();
+    printFailureDiagnostics();
+    await captureFailureArtifacts();
+    await collectXcresultDiagnostics();
+  },
+  cleanup: performCleanup,
+});
+function stopProcesses() { return harnessShutdown.finish(); }
+
 async function findIosSimulator() {
   const { stdout } = await runAndCapture('xcrun', ['simctl', 'list', 'devices', 'available', '-j']);
-  const devicesByRuntime = JSON.parse(stdout).devices;
-  const devices = Object.values(devicesByRuntime).flat();
-  const device = devices.find((candidate) => candidate.name === scenario.ios.simulatorName);
-  if (!device) throw new Error(`iOS simulator not found: ${scenario.ios.simulatorName}`);
-  return device;
+  return resolveIosScenarioSimulator({ simulatorName: scenario.ios.simulatorName, inventory: JSON.parse(stdout) });
 }
 
 async function prepareIosSimulator() {
@@ -551,45 +621,49 @@ async function prepareIosSimulator() {
   }
   await runAndWait('xcrun', ['simctl', 'bootstatus', simulator.udid, '-b']);
   if (process.env.E2E_RANGE_RUN !== '1') {
-    await runAndWait('xcrun', ['simctl', 'uninstall', simulator.udid, scenario.ios.bundleId], { stdio: 'ignore' }).catch(() => {});
+    await resetE2eNativeAppState({ scenario, platforms: [{ platform: 'iOS', simulatorName: simulator.name, udid: simulator.udid }],
+      iosIdentityContext: iosIdentity.context, runCommand: runAndCapture });
   }
   await openVisibleIosDeviceUi({ runAndCapture, runAndWait, simulatorUdid: simulator.udid });
   return simulator.udid;
 }
 
 async function startIosJoinTest(simulatorUdid) {
-  const nativeInputs = await prepareIosXcodeBuild({ coreRoot, composeRoot, derivedDataPath: iosDerivedDataPath, runAndCapture });
-  const xcodebuildArgs = [
-    '-project',
-    iosProjectPath,
-    '-scheme',
-    'iosApp',
-    '-configuration',
-    'Debug',
-    '-destination',
-    `id=${simulatorUdid}`,
-    '-derivedDataPath',
-    iosDerivedDataPath,
-    '-only-testing:iosAppUITests/CaseTwoIosInitiatorUITest/testCreateVaultThenApproveAndroidAndWeb',
-  ];
-  const xcodebuildOptions = {
-    cwd: resolve(composeRoot, 'iosApp'),
-    env: {
+  assertBatchProductsCurrent({ products: batchProducts, coreRoot, composeRoot });
+  const nativeInputs = batchProducts ? null : await prepareIosXcodeBuild({ coreRoot, composeRoot, derivedDataPath: iosDerivedDataPath, runAndCapture, identityRequired: true });
+  const actorEnvironment = {
       E2E_VAULT_NAME: scenario.vault.name,
       E2E_SECRET_NAME: scenario.secret.name,
       E2E_SECRET_VALUE: scenario.secret.value,
       E2E_RECOVERY_CYCLES: String(recoveryCycles.length),
       E2E_IOS_RECOVERY_APPROVALS: iosRecoveryApprovalCycles.join(','),
       E2E_APPROVAL_COORDINATOR_URL: 'http://127.0.0.1:5180',
-    },
+    };
+  const xcodebuildArgs = [
+    'METASECRET_E2E_IDENTITY_REQUIRED=YES',
+    '-project',
+    iosProjectPath,
+    '-scheme',
+    'iosApp',
+    '-configuration',
+    'Debug',
+    ...iosSerialTestArguments(simulatorUdid),
+    '-derivedDataPath',
+    iosDerivedDataPath,
+    '-only-testing:iosAppUITests/CaseTwoIosInitiatorUITest/testCreateVaultThenApproveAndroidAndWeb',
+  ];
+  const xcodebuildOptions = {
+    cwd: resolve(composeRoot, 'iosApp'),
+    env: actorEnvironment,
   };
 
   console.log('9. Building iOS UI test once');
-  return runAndWait('xcodebuild', ['build-for-testing', ...xcodebuildArgs], xcodebuildOptions)
+  return (batchProducts ? Promise.resolve() : runAndWait('xcodebuild', ['build-for-testing', '-sdk', 'iphonesimulator', 'ARCHS=arm64', 'ONLY_ACTIVE_ARCH=YES', ...xcodebuildArgs], xcodebuildOptions))
     .then(async () => {
-      recordIosXcodeBuild({ coreRoot, composeRoot, derivedDataPath: iosDerivedDataPath, inputs: nativeInputs });
+      if (!batchProducts) recordIosXcodeBuild({ coreRoot, composeRoot, derivedDataPath: iosDerivedDataPath, inputs: nativeInputs });
       await installBuiltIosTestApps({
         simulatorUdid,
+        verifiedBuild: batchProducts?.ios,
         derivedDataPath: iosDerivedDataPath,
         appBundleId: scenario.ios.bundleId,
         runAndWait,
@@ -597,16 +671,31 @@ async function startIosJoinTest(simulatorUdid) {
       });
       console.log('10. Starting iOS UI test without building');
       console.log(`iOS result bundle: ${iosResultBundlePath}`);
-      return watchProcessOutput(
+      const scoped = prepareScopedIosInvocation({ identityContext: iosIdentity.context,
+        templateProof: iosGeneratedTemplateProof(iosDerivedDataPath),
+        selector: 'iosAppUITests/CaseTwoIosInitiatorUITest/testCreateVaultThenApproveAndroidAndWeb',
+        hostEnvironment: Object.fromEntries(Object.entries(actorEnvironment).map(([key, value]) => [key, String(value)])),
+        authPolicy: 'controlled', outputDirectory: resolve(iosIdentity.context.runRoot, 'ios-invocations') });
+      const watched = watchProcessOutput(
         'xcodebuild',
-        ['test-without-building', ...xcodebuildArgs, '-resultBundlePath', iosResultBundlePath],
-        xcodebuildOptions,
+        ['test-without-building', '-xctestrun', scoped.xctestrun, ...iosSerialTestArguments(simulatorUdid), '-resultBundlePath', iosResultBundlePath,
+          '-only-testing:iosAppUITests/CaseTwoIosInitiatorUITest/testCreateVaultThenApproveAndroidAndWeb'],
+        { ...xcodebuildOptions, iosIdentityRedactor: namespaceRedactor },
       );
+      const selected = createIosSelectedSuiteActor({ watched,
+        selector: 'iosAppUITests/CaseTwoIosInitiatorUITest/testCreateVaultThenApproveAndroidAndWeb',
+        timeoutMs: 600_000, deferCompletionTimeout: true });
+      const actor = { ...watched, ...selected };
+      iosSuiteActors.push(actor);
+      return actor;
     });
 }
 
 async function prepareAndroidEmulator() {
-  let serial = await findOnlineAndroidAvd(androidSdkTools, scenario.android.avdName, runAndCapture);
+  let serial = await findOnlineAndroidAvd(androidSdkTools, resolveAndroidScenarioAvdName(scenario.android.avdName), runAndCapture);
+  if (process.env.E2E_ANDROID_OWNED_PROFILE !== undefined) {
+    await verifyOwnedAndroidScenarioRuntime(scenario.android.avdName, serial, { runCommand: runAndCapture });
+  }
 
   if (!serial) {
     console.log(`12. Starting Android emulator: ${scenario.android.avdName}`);
@@ -628,7 +717,7 @@ async function waitForConfiguredAndroidAvd(timeoutMs = 120_000) {
   let lastError = `AVD ${scenario.android.avdName} is not online`;
   while (Date.now() < deadline) {
     try {
-      const serial = await findOnlineAndroidAvd(androidSdkTools, scenario.android.avdName, runAndCapture);
+      const serial = await findOnlineAndroidAvd(androidSdkTools, resolveAndroidScenarioAvdName(scenario.android.avdName), runAndCapture);
       if (serial) return serial;
     } catch (error) {
       lastError = error.message;
@@ -641,7 +730,7 @@ async function waitForConfiguredAndroidAvd(timeoutMs = 120_000) {
 async function preflightLocalRuntimes() {
   const { stdout } = await runAndCapture(androidEmulatorPath, ['-list-avds']);
   const avds = stdout.split(/\r?\n/).map((name) => name.trim()).filter(Boolean);
-  if (!avds.includes(scenario.android.avdName)) {
+  if (!avds.includes(resolveAndroidScenarioAvdName(scenario.android.avdName))) {
     throw new Error(`Android AVD "${scenario.android.avdName}" is unavailable; installed AVDs: ${avds.join(', ') || '<none>'}`);
   }
   const simulator = await findIosSimulator();
@@ -685,13 +774,15 @@ async function runAdbWithRetry(args, { attempts = 5, delayMs = 1_000 } = {}) {
 
 async function startAndroidJoinTest(serial) {
   console.log('14. Starting Android UI test');
+  if (batchProducts) {
+    batchProducts = await loadBatchProducts({ coreRoot, composeRoot, scenario, testNumber: 2, runAndCapture });
+    await installAndVerifyAndroidE2eApps({ serial, appBundleId: scenario.android.bundleId, composeRoot, prebuiltApks: batchProducts.android.products, verifiedBuild: batchProducts.android, runAndWait, runAndCapture });
+  }
   await runAdbWithRetry(['-s', serial, 'logcat', '-c']);
   const logcat = watchProcessOutput('adb', ['-s', serial, 'logcat', 'MetaSecretE2E:I', '*:S']);
   androidRecoveryDiagnostics = startAndroidRecoveryDiagnosticLogcat(serial);
   void logcat.result.catch(() => {}); // logcat is stopped deliberately when the instrumentation test ends
-  const test = runAndWait(
-    './gradlew',
-    [
+  const runnerGradleArguments = [
       ':composeApp:installDebug',
       ':composeApp:connectedDebugAndroidTest',
       '-Pandroid.testInstrumentationRunnerArguments.class=metasecret.project.com.CaseOneJoinFromAndroidTest',
@@ -701,7 +792,15 @@ async function startAndroidJoinTest(serial) {
       `-Pandroid.testInstrumentationRunnerArguments.androidRecoveryApprovals=${androidRecoveryApprovalCycles.join(',')}`,
       '-Pandroid.testInstrumentationRunnerArguments.approvalCoordinatorUrl=http://10.0.2.2:5180',
       '-Pandroid.testInstrumentationRunnerArguments.stateDrivenRecoveryWait=true',
-    ],
+    ];
+  if (batchProducts) {
+    const logical = instrumentationArgumentsFromGradle(runnerGradleArguments);
+    const actor = watchProcessOutput('adb', androidInstrumentationAdbArguments(serial, logical, `${scenario.android.bundleId}.test/androidx.test.runner.AndroidJUnitRunner`));
+    return superviseAndroidInstrumentation({ instrumentationResult: actor.result, logcat, selector: logical[logical.indexOf('class') + 1], validateOutput: assertAndroidInstrumentationPassed });
+  }
+  const test = runAndWait(
+    './gradlew',
+    runnerGradleArguments,
     { cwd: composeRoot, env: { ANDROID_SERIAL: serial } },
   );
   const result = test.finally(() => logcat.child.kill('SIGTERM'));
@@ -751,25 +850,19 @@ async function unlockWithPasskeyIfNeeded(page) {
 async function approveJoinRequestOnWeb(page, deviceName) {
   await page.bringToFront();
   console.log(`Web approving ${deviceName} join request`);
-  await page.getByRole('link', { name: 'Devices', exact: true }).click();
-  await page.getByTestId('pending-device-row').waitFor({ state: 'visible', timeout: 120_000 });
-  await page.getByTestId('pending-device-row').click();
-  await page.getByTestId('accept-join-request').click();
-  await page.getByTestId('pending-device-row').waitFor({ state: 'detached', timeout: 120_000 }).catch(() => {});
+  await approveWebJoin(page, deviceName);
 }
 
 async function closeWebSecret(page) {
-  const closeButton = page.getByRole('button', { name: /close/i }).first();
-  if (await closeButton.isVisible().catch(() => false)) {
-    await closeButton.click();
-    await page.getByText(scenario.secret.value, { exact: true }).waitFor({ state: 'hidden' }).catch(() => {});
-  }
+  await hideWebSecret(page, scenario.secret.name, scenario.secret.value, { timeout: recoveryShowTimeoutMs });
 }
 
 async function runRecoveryCyclesFromIos(page, iosTest, androidTest) {
-  await page.getByRole('link', { name: 'Secrets', exact: true }).click();
+  await openWebSecrets(page);
 
   for (const cycle of recoveryCycles) {
+    if (nativeBusinessFailure) throw nativeBusinessFailure;
+    iosTest.assertBusinessActive();
     const androidRole = cycle.approver === 'android' ? 'approver' : 'observer';
     const webRole = cycle.approver === 'web' ? 'approver' : 'observer';
     console.log(`📱 Roles changed: Device A — Web ${webRole}; Device B — iOS requester; Device C — Android ${androidRole}`);
@@ -778,10 +871,9 @@ async function runRecoveryCyclesFromIos(page, iosTest, androidTest) {
     approvalCoordinator.allow('ios-sender', cycle.number);
     await iosTest.waitForMarker(`E2E: IOS_RECOVERY_REQUEST_SENT_${cycle.number}`);
     // An incoming recovery request changes this <li>'s ARIA role from listitem
-    const openRequest = page.getByTestId(`open-recovery-request-${scenario.secret.name}`);
-    await openRequest.waitFor({ state: 'visible', timeout: 120_000 });
+    const openRequest = await openWebIncoming(page, { kind: 'recover', subject: scenario.secret.name, count: 1 });
     console.log(`Web received recovery ${cycle.number}; opening its recovery request`);
-    await openRequest.click();
+    // Real04 is expanded by openWebIncoming; observers make zero decisions.
 
     console.log(`Waiting for Android app-state to contain a pending recovery claim for cycle ${cycle.number}`);
     await waitForAndroidPendingRecovery(cycle.number, androidStateEventStart);
@@ -791,7 +883,7 @@ async function runRecoveryCyclesFromIos(page, iosTest, androidTest) {
     await androidTest.waitForMarker(`E2E: ANDROID_RECOVERY_REQUEST_ALERT_${cycle.number}`);
     if (cycle.approver === 'web') {
       console.log(`Web approving recovery ${cycle.number}`);
-      await page.getByRole('button', { name: 'Approve', exact: true }).click();
+      await decideWebIncoming(page, { kind: 'recover', requestId: openRequest.requestId, subject: scenario.secret.name, count: 1 }, true, { waitForGone: false });
     } else {
       approvalCoordinator.allow('android', cycle.number);
       await androidTest.waitForMarker(`E2E: ANDROID_RECOVERY_APPROVE_SUCCESS_${cycle.number}`);
@@ -800,12 +892,48 @@ async function runRecoveryCyclesFromIos(page, iosTest, androidTest) {
     await iosTest.waitForMarker(`E2E: IOS_RECOVERY_SECRET_VISIBLE_${cycle.number}`, recoveryShowTimeoutMs);
     console.log(`✅ Recovery ${cycle.number}/${recoveryCycles.length}: iOS show secret passed`);
     await iosTest.waitForMarker(`E2E: IOS_RECOVERY_CLOSED_${cycle.number}`);
-    await openRequest.waitFor({ state: 'hidden', timeout: 120_000 }).catch(() => {});
+    await waitWebIncomingGone(page, 'recover', scenario.secret.name);
 
   }
 }
 
+async function runIosInitiatorAndRecovery(page, iosTest, androidSerial) {
+  iosTest.assertBusinessActive();
+  await Promise.race([
+    iosTest.waitForMarker('E2E: IOS_INITIATOR_READY'),
+    iosTest.result.then(() => {
+      throw new Error('iOS UI test finished before join request marker');
+    }),
+  ]);
+
+  const androidTest = await startAndroidJoinTest(androidSerial);
+  await androidTest.waitForMarker('E2E: ANDROID_JOIN_REQUEST_SENT');
+  await iosTest.waitForMarker('E2E: IOS_ANDROID_JOIN_APPROVED', 120_000);
+  await androidTest.waitForMarker('E2E: ANDROID_SECRET_VISIBLE');
+
+  console.log('Web joining iOS-created vault');
+  await page.bringToFront();
+  await unlockWithPasskeyIfNeeded(page);
+  await requestWebVaultJoin(page, scenario.vault.name);
+  await iosTest.waitForMarker('E2E: IOS_WEB_JOIN_APPROVED', 120_000);
+  await page.locator('.orbit-registration[data-step="4"][data-phase="pending"]')
+    .waitFor({ state: 'hidden', timeout: 120_000 });
+  await openWebSecrets(page);
+
+  await runRecoveryCyclesFromIos(page, iosTest, androidTest);
+  iosTest.assertBusinessActive();
+  await Promise.all([iosTest.complete(), androidTest.result]);
+
+}
+
 async function main() {
+  assertExistingDeviceRun({ scenarios: [scenario] });
+  iosIdentity = prepareIosCallerIdentity({ scenario, scenarioPath, testNumber: 2,
+    attemptToken: new Date().toISOString().replace(/[:.]/g, '-'), artifactsDirectory });
+  namespaceRedactor.addSensitiveValues([iosIdentity.scope.namespace]);
+  errorRedactor.addSensitiveValues([iosIdentity.scope.namespace]);
+  if (scenario.android) readExistingAndroidAvd(scenario.android.avdName);
+  batchProducts = await loadBatchProducts({ coreRoot, composeRoot, scenario, testNumber: 2, runAndCapture });
   if (!existsSync(webDirectory)) throw new Error(`Web directory not found: ${webDirectory}`);
   if (!existsSync(composeRoot)) throw new Error(`Compose directory not found: ${composeRoot}`);
 
@@ -815,10 +943,10 @@ async function main() {
   await preflightLocalRuntimes();
   approvalCoordinator = await startApprovalCoordinator();
   console.log('1. Rebuilding the Web WASM package');
-  await runAndWait('/opt/homebrew/bin/task', ['wasm-local'], { cwd: coreRoot });
+  if (!batchProducts) await runAndWait('/opt/homebrew/bin/task', ['wasm-local'], { cwd: coreRoot, env: { PUSH_CACHE: '' } });
 
   console.log('2. Building local server image');
-  await runAndWait('/opt/homebrew/bin/task', ['meta-server'], { cwd: coreRoot });
+  if (!batchProducts) await runAndWait('/opt/homebrew/bin/task', ['meta-server'], { cwd: coreRoot });
 
   console.log('3. Cleaning server state');
   await runAndWait('docker', ['rm', '-f', serverContainer], { stdio: 'ignore' }).catch(() => {});
@@ -831,7 +959,7 @@ async function main() {
   run('npm', ['run', 'dev', '--', '--host', 'localhost', '--port', '5173'], { cwd: webDirectory });
   await waitForHttp(scenario.web.url);
 
-  const browser = await chromium.launch({ headless: false });
+  const browser = browserInstance = await chromium.launch({ headless: false });
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   activeBrowserPage = page;
   page.on('console', (message) => {
@@ -854,6 +982,7 @@ async function main() {
     serial: androidSerial,
     appBundleId: scenario.android.bundleId,
     composeRoot,
+    ...(batchProducts ? { prebuiltApks: batchProducts.android.products, verifiedBuild: batchProducts.android } : {}),
     runAndWait,
     runAndCapture,
   });
@@ -866,36 +995,20 @@ async function main() {
     console.log('📖 Scenario: Device A creates a Vault and Secret; Devices B and C join; Device A requests recovery across 18 cycles; Devices B and C approve in the declared order; Device A shows the recovered Secret.');
   }
   const iosTest = await startIosJoinTest(simulatorUdid);
-  await Promise.race([
-    iosTest.waitForMarker('E2E: IOS_INITIATOR_READY'),
-    iosTest.result.then(() => {
-      throw new Error('iOS UI test finished before join request marker');
-    }),
-  ]);
-
-  const androidTest = await startAndroidJoinTest(androidSerial);
-  await androidTest.waitForMarker('E2E: ANDROID_JOIN_REQUEST_SENT');
-  await iosTest.waitForMarker('E2E: IOS_ANDROID_JOIN_APPROVED', 120_000);
-  await androidTest.waitForMarker('E2E: ANDROID_SECRET_VISIBLE');
-
-  console.log('Web joining iOS-created vault');
-  await page.bringToFront();
-  await unlockWithPasskeyIfNeeded(page);
-  await requestWebVaultJoin(page, scenario.vault.name);
-  await iosTest.waitForMarker('E2E: IOS_WEB_JOIN_APPROVED', 120_000);
-  await page.locator('.orbit-registration[data-step="4"][data-phase="pending"]')
-    .waitFor({ state: 'hidden', timeout: 120_000 });
-  await page.getByRole('button', { name: '+ Add Secret' }).waitFor({ timeout: 120_000 });
-
-  await runRecoveryCyclesFromIos(page, iosTest, androidTest);
-  await Promise.all([iosTest.result, androidTest.result]);
+  nativeBusinessPromise = runIosInitiatorAndRecovery(page, iosTest, androidSerial);
+  try { await Promise.race([nativeBusinessPromise, iosTest.failure]); }
+  catch (primary) {
+    try { await harnessShutdown.finish({ error: primary, diagnostics: true }); }
+    catch (cleanup) { throw new AggregateError([primary, cleanup], 'Native business failed and cancellation failed', { cause: primary }); }
+    throw primary;
+  }
+  iosTest.assertBusinessActive();
 
   console.log('✅ Test #2 Web + iOS + Android scenario passed');
   await collectXcresultDiagnostics();
   if (exitOnSuccess) {
-    await browser.close();
-    await flushAndCloseRunLog();
     await stopProcesses();
+    await flushAndCloseRunLog();
     console.log('🏁 🟢 TEST SUCCESS');
     return;
   }
@@ -913,15 +1026,12 @@ process.once('SIGTERM', async () => {
 });
 
 main().catch(async (error) => {
-  console.error(`\n❌ Test #2 failed: ${error.message}`);
-  dumpWatchedProcessTails();
-  printFailureDiagnostics();
-  await captureFailureArtifacts();
+  console.error(`\n❌ Test #2 failed: ${formatHarnessShutdownError(error, errorRedactor.redactText)}`);
+  try { await harnessShutdown.finish({ error, diagnostics: true }); }
+  catch (cleanup) { console.error(`Owned cleanup failed after primary: ${formatHarnessShutdownError(cleanup, errorRedactor.redactText)}`); }
   console.error(`Durable runner log: ${runLogPath}`);
   console.error(`iOS result bundle (when xcodebuild produced it): ${iosResultBundlePath}`);
   await flushAndCloseRunLog();
-  await stopProcesses();
-  await collectXcresultDiagnostics();
   console.error('🏁 🔴 TEST FAILED — Test #2 stopped before all declared cycles completed; see the gate-specific diagnostics above.');
   process.exit(1);
 });

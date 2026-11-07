@@ -1,4 +1,4 @@
-const sensitiveField = String.raw`(?:E2E_SECRET_VALUE|secret[_ -]?value|master[_ -]?key|private[_ -]?key|key[_ -]?share)`;
+const sensitiveField = String.raw`(?:METASECRET_E2E_IDENTITY_NAMESPACE|E2E_SECRET_VALUE|(?:E2E_(?:ANDROID|IOS)_)?DEVICE_PASSCODE|LIVEBOARD_SIMULATOR_PASSCODE|device[_ -]?passcode|secret[_ -]?value|master[_ -]?key|private[_ -]?key|key[_ -]?share)`;
 const quotedSensitiveFieldPattern = new RegExp(
   `((?:["']?${sensitiveField}["']?)\\s*[:=]\\s*)(["'])(.*?)\\2`,
   'gi',
@@ -22,7 +22,10 @@ function normalizedSensitiveKey(value) {
 function isSensitiveArgumentKey(value) {
   const normalized = normalizedSensitiveKey(value);
   return [
+    'metasecrete2eidentitynamespace',
     'e2esecretvalue',
+    'devicepasscode',
+    'liveboardsimulatorpasscode',
     'secretvalue',
     'secretvalues',
     'secretconfig',
@@ -33,10 +36,15 @@ function isSensitiveArgumentKey(value) {
 }
 
 export function createDiagnosticRedactor(rawSensitiveValues = []) {
-  const sensitiveValues = [...new Set(
+  let sensitiveValues = [...new Set(
     rawSensitiveValues
       .filter((value) => typeof value === 'string' && value.length > 0),
   )].sort((left, right) => right.length - left.length);
+
+  const addSensitiveValues = values => {
+    if (!Array.isArray(values) || values.some(value => typeof value !== 'string' || !value || value.length > 4096)) throw Error('Invalid sensitive-value registration');
+    sensitiveValues = [...new Set([...sensitiveValues, ...values])].sort((a, b) => b.length - a.length);
+  };
 
   const redactText = (value) => {
     let redacted = String(value ?? '');
@@ -62,7 +70,7 @@ export function createDiagnosticRedactor(rawSensitiveValues = []) {
   const redactEnvironment = (environment = {}) => Object.fromEntries(
     Object.entries(environment).map(([key, value]) => [
       key,
-      /SECRET_(?:VALUE|CONFIG)|MASTER[_ -]?KEY|PRIVATE[_ -]?KEY|KEY[_ -]?SHARE/i.test(key)
+      /METASECRET_E2E_IDENTITY_NAMESPACE|SECRET_(?:VALUE|CONFIG)|DEVICE[_ -]?PASSCODE|SIMULATOR[_ -]?PASSCODE|MASTER[_ -]?KEY|PRIVATE[_ -]?KEY|KEY[_ -]?SHARE/i.test(key)
         ? '[REDACTED]'
         : redactText(value),
     ]),
@@ -303,6 +311,7 @@ export function createDiagnosticRedactor(rawSensitiveValues = []) {
   };
 
   return {
+    addSensitiveValues,
     redactText,
     redactArguments,
     redactEnvironment,

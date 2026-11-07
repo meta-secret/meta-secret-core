@@ -126,6 +126,35 @@ pub fn recover(secret_id: String) -> String {
     json_api::recover(secret_id)
 }
 
+pub fn cluster_distribution_checked(name: String, secret: String) -> String {
+    json_api::cluster_distribution_checked(name, secret)
+}
+
+pub fn recover_checked(secret_id: String) -> String {
+    json_api::recover_checked(secret_id)
+}
+
+pub fn delete_secret_checked(secret_id: String) -> String {
+    json_api::delete_secret_checked(secret_id)
+}
+pub fn remove_member_checked(target_device_id: String) -> String {
+    json_api::remove_member_checked(target_device_id)
+}
+pub fn reconcile_producer_receipt(reference_json: String) -> String {
+    json_api::reconcile_producer_receipt(reference_json)
+}
+pub fn continue_local_remove_checked(reference_json: String) -> String {
+    json_api::continue_local_remove_checked(reference_json)
+}
+
+pub fn decide_join_request(request_json: String) -> String {
+    json_api::decide_join_request(request_json)
+}
+
+pub fn decide_remove_member(request_json: String) -> String {
+    json_api::decide_remove_member(request_json)
+}
+
 pub fn accept_recover(claim_id: String) -> String {
     json_api::accept_recover(claim_id)
 }

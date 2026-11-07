@@ -18,7 +18,7 @@ use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
 
 #[wasm_bindgen]
 pub struct WasmApplicationManager {
-    app_manager: ApplicationManager<WasmRepo, HttpSyncProtocol>,
+    pub(crate) app_manager: ApplicationManager<WasmRepo, HttpSyncProtocol>,
 }
 
 #[wasm_bindgen]

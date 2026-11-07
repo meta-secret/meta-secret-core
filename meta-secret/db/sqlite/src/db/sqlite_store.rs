@@ -31,13 +31,21 @@ pub enum SqliteDbError {
     },
 }
 
-fn establish_connection(conn_url: &str) -> anyhow::Result<SqliteConnection> {
+pub(super) fn establish_connection(conn_url: &str) -> anyhow::Result<SqliteConnection> {
     let mut conn = SqliteConnection::establish(conn_url)?;
     diesel::sql_query("PRAGMA busy_timeout = 5000").execute(&mut conn)?;
     Ok(conn)
 }
 
-impl KvLogEventRepo for SqlIteRepo {}
+impl KvLogEventRepo for SqlIteRepo {
+    fn server_recovery_response_store(
+        &self,
+    ) -> anyhow::Result<
+        &dyn meta_secret_core::node::db::repo::recovery_response_store::ServerRecoveryResponseStore,
+    > {
+        Ok(self)
+    }
+}
 
 #[async_trait(? Send)]
 impl SaveCommand for SqlIteRepo {
@@ -127,6 +135,13 @@ impl DbCleanUpCommand for SqlIteRepo {
             }
         };
 
+        if diesel::sql_query("DELETE FROM server_recovery_response_private")
+            .execute(&mut conn)
+            .is_err()
+        {
+            // Client-only databases may not have initialized the server table.
+            error!("Private Recovery cleanup unavailable");
+        }
         // This deletes all records but preserves the table structure
         match diesel::delete(schema_log::table).execute(&mut conn) {
             Ok(count) => {

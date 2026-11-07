@@ -1,4 +1,12 @@
 pub mod api_url;
 pub mod environment;
+mod guarded_envelope_binding;
+mod guarded_preparation_reconcile;
+mod guarded_preparation_retirement;
+mod guarded_preparation_source;
+pub mod guarded_removal;
+mod guarded_signed_source;
+mod guarded_transport_noop;
+mod producer_observation;
 pub mod sync_gateway;
 pub mod sync_protocol;

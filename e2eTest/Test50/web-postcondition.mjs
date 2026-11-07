@@ -37,6 +37,11 @@ export function bindWebFailureGuard(page, fail) {
 }
 
 /** Serializable ownership postcondition for the exact object rendered by Secrets. */
-export function browserOwnedSecretUsable({ name, id, owned = globalThis.__TEST50_OWNED_DELETE_SECRET }) {
+export function browserOwnedSecretUsable({ name, id, scope, owned, registry = globalThis.__METASECRET_E2E_OPERATIONS }) {
+  if (scope) {
+    const actual = registry?.[scope];
+    return Boolean(actual && actual.phase === 'fulfilled' && actual.calls === 1 && actual.expectedId === id && actual.expectedName === name && actual.borrowedAlive === true);
+  }
+  // Explicit object mode remains a pure regression oracle, never the runtime binding.
   return Boolean(owned?.__wbg_ptr) && owned.name === name && owned.id_str() === id;
 }

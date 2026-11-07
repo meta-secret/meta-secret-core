@@ -116,10 +116,11 @@ function xcodeInputs(coreRoot, composeRoot) {
   };
 }
 const appManifest = (derivedDataPath) => resolve(derivedDataPath, 'ios-core-link-provenance.json');
-export async function prepareIosXcodeBuild({ coreRoot, composeRoot, derivedDataPath, runAndCapture }) {
-  const inputs = xcodeInputs(coreRoot, composeRoot);
-  const { stdout } = await runAndCapture('xcodebuild', ['-showBuildSettings', '-json', '-project', resolve(composeRoot, 'iosApp/iosApp.xcodeproj'), '-scheme', 'iosApp', '-configuration', 'Debug', '-sdk', 'iphonesimulator', '-destination', 'generic/platform=iOS Simulator'], { cwd: resolve(composeRoot, 'iosApp') });
+export async function prepareIosXcodeBuild({ coreRoot, composeRoot, derivedDataPath, runAndCapture, identityRequired = false }) {
+  const inputs = { ...xcodeInputs(coreRoot, composeRoot), identityRequired: identityRequired ? 'YES' : 'NO' };
+  const { stdout } = await runAndCapture('xcodebuild', ['-showBuildSettings', '-json', '-project', resolve(composeRoot, 'iosApp/iosApp.xcodeproj'), '-scheme', 'iosApp', '-configuration', 'Debug', '-sdk', 'iphonesimulator', '-destination', 'generic/platform=iOS Simulator', ...(identityRequired ? ['METASECRET_E2E_IDENTITY_REQUIRED=YES'] : [])], { cwd: resolve(composeRoot, 'iosApp') });
   const settings = JSON.parse(stdout).find((entry) => entry.target === 'iosApp')?.buildSettings;
+  if (identityRequired && settings?.METASECRET_E2E_IDENTITY_REQUIRED !== 'YES') throw Error('Effective isolated iOS build setting is not YES');
   const archive = resolve(composeRoot, 'iosApp/Libs/libmetasecret_mobile-ios-simulator-arm64.a');
   if (!settings?.OTHER_LDFLAGS?.includes(archive)) throw new Error('iOS Xcode simulator linker settings do not select the verified Core archive');
   const path = appManifest(derivedDataPath);
@@ -139,20 +140,27 @@ export function iosAppProductHashes(derivedDataPath, { hashTree = hashIosTree } 
 }
 export function recordIosXcodeBuild({ coreRoot, composeRoot, derivedDataPath, inputs }) {
   const actual = xcodeInputs(coreRoot, composeRoot);
-  const { linkerSettings, ...buildInputs } = inputs;
+  const { linkerSettings, identityRequired, ...buildInputs } = inputs;
   if (JSON.stringify(buildInputs) !== JSON.stringify(actual)) throw new Error('iOS Core inputs changed during Xcode build');
-  writeFileSync(appManifest(derivedDataPath), `${JSON.stringify({ inputs: actual, linkerSettings, apps: iosAppProductHashes(derivedDataPath), builtAt: new Date().toISOString() }, null, 2)}\n`);
+  const products = resolve(derivedDataPath, 'Build/Products');
+  const templates = readdirSync(products).filter(name => name.endsWith('.xctestrun') && !name.startsWith('.ms-'));
+  if (templates.length !== 1) throw Error('One owning generated xctestrun template required');
+  const original = resolve(products, templates[0]);
+  const generatedTemplate = { original, sha256: hashFile(original) };
+  writeFileSync(appManifest(derivedDataPath), `${JSON.stringify({ inputs: { ...actual, identityRequired: identityRequired ?? 'NO' }, linkerSettings, generatedTemplate, apps: iosAppProductHashes(derivedDataPath), builtAt: new Date().toISOString() }, null, 2)}\n`);
 }
 export function verifyIosXcodeBuild({ derivedDataPath }) {
   const path = appManifest(derivedDataPath);
   if (!existsSync(path)) throw new Error('iOS Xcode Core link provenance missing; rebuild before installing');
   const expected = JSON.parse(readFileSync(path, 'utf8'));
   const { coreRoot, composeRoot } = expected.inputs.native;
+  const { identityRequired, ...actualInputs } = expected.inputs;
   if (expected.linkerSettings?.simulatorArchive !== resolve(composeRoot, 'iosApp/Libs/libmetasecret_mobile-ios-simulator-arm64.a')
-    || JSON.stringify(expected.inputs) !== JSON.stringify(xcodeInputs(coreRoot, composeRoot))
+    || JSON.stringify(actualInputs) !== JSON.stringify(xcodeInputs(coreRoot, composeRoot))
     || JSON.stringify(expected.apps) !== JSON.stringify(iosAppProductHashes(derivedDataPath))) {
     throw new Error('iOS Xcode bundle no longer matches its verified Core link inputs; rebuild before installing');
   }
+  if (!expected.generatedTemplate || hashFile(expected.generatedTemplate.original) !== expected.generatedTemplate.sha256) throw Error('Owning generated xctestrun template drift');
   const runId = process.env.E2E_RUN_ID;
   if (runId && /^[a-zA-Z0-9_-]+$/.test(runId)) {
     const evidence = resolve(coreRoot, 'e2eTest/.artifacts/runs', runId);

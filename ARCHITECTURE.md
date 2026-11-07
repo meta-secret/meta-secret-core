@@ -26,6 +26,18 @@ refreshed client state. Clients consume Core-computed deletion instructions.
 - **Server vs client:** Server crates orchestrate transport and storage; they must not silently weaken crypto assumptions documented in code and [SECURITY.md](SECURITY.md).
 - **FFI:** UniFFI/mobile exports are a **public contract**. Changes require review for backward compatibility and parallel updates in **meta-secret-compose**.
 
+Checked recovered-disclosure metadata captures the actual reconstruction sources
+under the existing Core owner, before completion. Current Done exposes only an
+exact-source continuity candidate; it adds no reveal or replay authority. Legacy
+Show semantics and String ABI remain. See [Liveboard binding contract](docs/liveboard-bindings.md#checked-recovered-disclosure-continuity)
+for optional receipts, strict bounds and the preserved no-local limitation.
+
+The reveal-only Vault digest normalizes the order of the semantic `secrets` and
+`deletedSecrets` sets by complete-element canonical bytes. It still commits the
+full event, keys and all remaining Vault content. Generic canonical JSON and
+signed/stored events retain their existing ordering; v1 proofs grant no new
+authority, and differing old/new ephemeral proofs fail closed without migration.
+
 ## SOLID (practical)
 
 - Prefer small modules and traits over god-objects.

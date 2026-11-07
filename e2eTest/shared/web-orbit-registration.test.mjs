@@ -23,7 +23,7 @@ function fakePage({ taken = false, outcome = 'pending', step = '1', message = 'T
       getByRole: (role, options = {}) => locator(`${role}:${options.name ?? ''}`),
       getByPlaceholder: (placeholder) => locator(`field:${placeholder}`),
       filter: () => locator('status:availability'),
-      or: () => locator(name === 'link:Secrets' ? 'main-or-error' : name === 'outcome' ? 'outcome' : 'availability-or-error'),
+      or: () => locator(['link:Secrets', 'testid:liveboard-secrets-open', 'main-or-error'].includes(name) ? 'main-or-error' : name === 'outcome' ? 'outcome' : 'availability-or-error'),
       first: () => locator(name),
       async waitFor() {
         calls.push(`wait:${name}`);
@@ -44,7 +44,7 @@ function fakePage({ taken = false, outcome = 'pending', step = '1', message = 'T
       },
     };
   }
-  const page = { getByRole: (role, options = {}) => locator(`${role}:${options.name ?? ''}`), locator: (selector) => locator(selector.includes('pending') ? 'outcome' : selector.includes('choice') ? 'after-removal' : 'scene') };
+  const page = { getByRole: (role, options = {}) => locator(`${role}:${options.name ?? ''}`), getByTestId: (id) => locator(`testid:${id}`), locator: (selector) => locator(selector.includes('pending') ? 'outcome' : selector.includes('choice') ? 'after-removal' : 'scene') };
   return { page, calls, state, requestStarted, persistPending() { state.phase = 'pending'; settle(); } };
 }
 

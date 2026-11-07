@@ -1,10 +1,12 @@
+#[path = "secret_deletion_producer.rs"]
+mod producer_builder;
+
 use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::user::common::UserDataMember;
 use crate::node::common::model::user::user_creds::UserCreds;
 use crate::node::common::model::vault::vault_data::VaultData;
 use crate::node::db::events::vault::vault_log_event::{
-    DeleteSecretDecision, DeleteSecretRequest, VaultActionEvent, VaultActionRequestEvent,
-    VaultActionUpdateEvent,
+    DeleteSecretDecision, VaultActionEvent, VaultActionRequestEvent, VaultActionUpdateEvent,
 };
 use crate::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use crate::node::db::objects::persistent_object::PersistentObject;
@@ -33,18 +35,7 @@ impl<Repo: KvLogEventRepo> SecretDeletionAction<Repo> {
     }
 
     pub async fn request(&self, pass_id: MetaPasswordId) -> Result<()> {
-        let (vault, sender) = self.membership().await?;
-        let events = PersistentVault::from(self.p_obj.clone())
-            .get_vault_log_artifact(vault.vault_name.clone())
-            .await?
-            .0
-            .value;
-        if events.requests.iter().any(|event| matches!(event, VaultActionRequestEvent::DeleteSecret(request) if request.pass_id.id == pass_id.id
-            && !vault.deletion_results.contains_key(&request.request_id) && vault.ensure_can_delete_secret(request, None).is_ok())) {
-            bail!("Deletion is already pending for this Secret");
-        }
-        let request = DeleteSecretRequest::new(sender, pass_id, &vault);
-        vault.ensure_can_delete_secret(&request, None)?;
+        let request = self.build_request(pass_id).await?;
         PersistentDeviceLog::from(self.p_obj.clone())
             .save_vault_action(
                 &self.user_creds.user(),

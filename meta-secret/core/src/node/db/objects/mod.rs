@@ -1,4 +1,13 @@
+mod device_log_append;
+pub mod device_transport;
+mod guarded_claim_publication;
+mod guarded_device_log_append;
+mod guarded_preparation_publication;
+pub(crate) mod local_guarded_preparation;
+pub mod local_removal_envelope;
+mod local_remove_producer;
 pub mod persistent_device_log;
 pub mod persistent_object;
 pub mod persistent_shared_secret;
 pub mod persistent_vault;
+pub(crate) mod producer_append;

@@ -10,6 +10,7 @@ import { preparationCommands, iosSimulatorUdid } from './local-run.mjs';
 import * as localRunner from './local-run.mjs';
 import { batchEnvironmentPaths, createBatchEnvironmentGuard, environmentTreeHash, preflightBatchEnvironment } from '../shared/batch-environment.mjs';
 import { buildRegistrationPlan } from './plan.mjs';
+import {createEnvironmentTestRun} from '../shared/environment-test-fixture.mjs';
 
 test('preparation declares each app target once, local endpoints and exact approved iOS destination', () => {
   const commands = preparationCommands({ core: '/fixture/core', compose: '/fixture/compose', e2e: '/fixture/core/e2eTest' });
@@ -28,6 +29,7 @@ test('preparation declares each app target once, local endpoints and exact appro
 
 // All effects below target isolated files/stubs, never installed clients or services.
 function preparationFixture(t, { mode = 'remote', participants = ['web'], fail, drift, missing, interrupted = false } = {}) {
+  const persistent = createEnvironmentTestRun(); t.after(persistent.cleanup);
   const root = mkdtempSync(resolve(tmpdir(), 'test51-preparation-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const core = resolve(root, 'core'), compose = resolve(root, 'meta-secret-compose'), e2e = resolve(core, 'e2eTest');
@@ -101,7 +103,7 @@ function preparationFixture(t, { mode = 'remote', participants = ['web'], fail, 
   };
   const scenario = { server: { url: 'http://127.0.0.1:3000', port: 3000, container: 'test51-owned', image: 'fixture-server' }, web: { url: 'http://localhost:5174' }, ios: { simulatorName: 'iPhone 17' }, android: { avdName: 'Pixel_4a' } };
   const options = { core, compose, e2e, participants: new Set(participants), scenario, env,
-    runId: 'fixture', runDirectory: resolve(e2e, 'run'), checkpointPath: resolve(e2e, 'checkpoint.json'),
+    runId: 'fixture', runDirectory: persistent.runDirectory, checkpointPath: resolve(e2e, 'checkpoint.json'),
     runCommand, capture: runCommand, effects, isInterrupted: () => isInterrupted,
     recordStage: (stage) => stages.push(stage), onEvent: (event) => events.push(event),
     onGuard: (value) => { guard = value; },

@@ -1,3 +1,13 @@
+import { assertIosIdentityAdmission, createIosIdentityContext, prepareIosIdentityBoundary } from './shared/ios-test-identity.mjs';
+import { buildDeletionPlan, resolveDeletionAuthProfile, validateDeletionResult, requireDeletionResumeProfile, deletionEntryComplete } from './Test50/plan.mjs';
+import { capturePreparationCommand } from './shared/preparation-command.mjs';
+import { E2E_BUILD_PROFILE, e2eBuildEnvironment, measurePreparationInputs, planPreparationBudget, createPreparationResourceBudget, readPreparationObservation } from './shared/e2e-resource-budget.mjs';
+import { createPreparationMetrics } from './shared/preparation-metrics.mjs';
+import { createRunnerAudit } from './shared/runner-validation-audit.mjs';
+import { validateRunnerAudit, verifyRunnerAuditLineage } from './shared/batch-replay-identity.mjs';
+import { createScenarioRuntimeProfile, assertScenarioReadiness } from './shared/scenario-runtime-profile.mjs';
+import { createBatchProductPreparation } from './shared/batch-product-builders.mjs';
+import { parseUiE2eRangeOptions, selectUiE2eCommand } from './shared/ui-e2e-range-selection.mjs';
 import { scenarioProgressLine } from './shared/scenario-progress.mjs';
 import { batchEnvironmentPaths, createBatchEnvironmentGuard, preflightBatchEnvironment } from './shared/batch-environment.mjs';
 import { spawn, spawnSync } from 'node:child_process';
@@ -6,14 +16,17 @@ import { createHash } from 'node:crypto';
 import { arch, platform, release, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import process from 'node:process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { ensureIosFfi } from './shared/ios-ffi-provenance.mjs';
 import { createDiagnosticRedactor } from './shared/diagnostic-redaction.mjs';
 import {
   prepareScenarioPlatforms,
   startPlatformLivenessMonitor,
   stopRunnerOwnedRuntimes,
+  releaseHealthyRunnerOwnedRuntimes,
+  assertExistingDeviceRun,
 } from './shared/platform-supervisor.mjs';
+import { discoverAndroidSdk } from './shared/android-sdk.mjs';
 import { resetE2eScenarioState } from './shared/e2e-state-reset.mjs';
 import { RunArtifactCollector } from './shared/run-artifacts.mjs';
 
@@ -34,6 +47,7 @@ let activeChild;
 let preparationKillTimer;
 let interruptedBy;
 let androidFfiSourcePrepared;
+let metaCliSourcePrepared;
 
 function dirname(path) {
   return resolve(path, '..');
@@ -72,7 +86,7 @@ async function prepareAndroidFfiBeforePlatforms(entry, collector) {
   if (!existsSync(androidFfiBuildScript)) throw new Error(`Official Android FFI build script not found: ${androidFfiBuildScript}`);
   collector.writeEvent(`building Android Core FFI before platform startup for source=${sourceFingerprint}`);
   process.stdout.write(`🧭 TEST #${entry.testNumber}: building Android Core FFI before launching simulators\n`);
-  await runPreparationCommand('bash', [androidFfiBuildScript], { cwd: coreRoot, timeoutMs: 2400000, onOutput: (stream, chunk) => collector.writeOutput(stream, chunk) });
+  await runPreparationCommand('bash', [androidFfiBuildScript], { cwd: coreRoot, env: { CARGO_BUILD_JOBS: '2' }, timeoutMs: 2400000, onOutput: (stream, chunk) => collector.writeOutput(stream, chunk) });
 
   const abiHashes = {};
   for (const [abi, folder] of [['arm64-v8a', 'arm64-v8a'], ['armeabi-v7a', 'armeabi-v7a'], ['x86_64', 'x86_64']]) {
@@ -103,52 +117,32 @@ async function prepareMetaCliBeforePlatforms(entry, collector) {
   ));
   if (!hasCliActor) return false;
 
+  const source = fingerprintAndroidCoreSource();
+  if (metaCliSourcePrepared === source && existsSync(metaCliBinaryPath)) return true;
   collector.writeEvent('building meta-cli from current Core sources before platform startup for a declared CLI scenario actor');
   process.stdout.write(`🧭 TEST #${entry.testNumber}: building meta-cli before platform startup\n`);
-  await runPreparationCommand('cargo', ['build', '-p', 'meta-cli'], { cwd: metaCliRoot, timeoutMs: 1200000, onOutput: (stream, chunk) => collector.writeOutput(stream, chunk) });
+  await runPreparationCommand('cargo', ['build', '-p', 'meta-cli'], { cwd: metaCliRoot, env: { CARGO_BUILD_JOBS: '2' }, timeoutMs: 1200000, onOutput: (stream, chunk) => collector.writeOutput(stream, chunk) });
   if (!existsSync(metaCliBinaryPath)) {
     throw new Error(`meta-cli preflight output missing: ${metaCliBinaryPath}`);
   }
+  metaCliSourcePrepared = source;
   collector.writeEvent('meta-cli built and verified from current Core sources before platform startup');
   process.stdout.write(`🧭 TEST #${entry.testNumber}: meta-cli built and verified before platform startup\n`);
   return true;
 }
 
 function parseOptions(args) {
-  const options = { from: 1, to: 49, runId: null, preserveEvidence: false, help: false };
-  for (let index = 0; index < args.length; index += 1) {
-    const argument = args[index];
-    if (argument === '--help' || argument === '-h') options.help = true;
-    else if (argument === '--preserve-evidence') options.preserveEvidence = true;
-    else if (['--from', '--to', '--run-id'].includes(argument)) {
-      const value = args[index + 1];
-      if (!value || value.startsWith('--')) throw new Error(`${argument} requires a value`);
-      index += 1;
-      if (argument === '--from') options.from = Number(value);
-      else if (argument === '--to') options.to = Number(value);
-      else options.runId = value;
-    } else if (argument.startsWith('--from=')) options.from = Number(argument.slice('--from='.length));
-    else if (argument.startsWith('--to=')) options.to = Number(argument.slice('--to='.length));
-    else if (argument.startsWith('--run-id=')) options.runId = argument.slice('--run-id='.length);
-    else throw new Error(`Unknown option: ${argument}`);
-  }
-  if (options.help) return options;
-  if (!Number.isInteger(options.from) || !Number.isInteger(options.to)
-    || options.from < 1 || options.to > 51 || options.from > options.to) {
-    throw new Error('Expected an inclusive test range within 1..51, with --from <= --to');
-  }
-  if (options.runId && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(options.runId)) {
-    throw new Error('--run-id may contain only letters, digits, dot, underscore, and hyphen');
-  }
-  return options;
+  return parseUiE2eRangeOptions(args);
 }
 
 function printHelp() {
   process.stdout.write([
     'Run visible UI E2E scenarios sequentially; pause at a failed test for diagnosis and repair.',
     '',
-    'Usage: npm run test-range -- [--from 1] [--to 49] [--run-id ID]',
+    'Usage: npm run test-range -- [--from 1] [--to 50] [--run-id ID]',
+    'Diagnostic only: --from 9 --to 9 OR --from 11 --to 11, with --diagnostic-block 2 --run-id FRESH_ID (no whole-test/cursor credit).',
     'Use --preserve-evidence to retain per-test logs and XCTest artifacts after a green range.',
+    'Optional --pause-after-each-case checkpoints after each whole PASS (exit 75); resume the same run ID from its recorded pending test with the original --to.',
     'Test #18 is skipped only while its scenario/command remains absent.',
     'Below 15 GiB the runner invokes the allowlisted cleaner automatically.',
     'If cleanup leaves under 12 GiB, it pauses with code 75; free more space,',
@@ -195,31 +189,25 @@ function collectSensitiveValues(value, values, sensitiveContext = false) {
   }
 }
 
-function resolveTestCommand(testNumber) {
-  const scripts = packageJson.scripts ?? {};
-  const blockScript = `test-${testNumber}:blocks`;
-  const normalScript = `test-${testNumber}`;
-  const script = scripts[blockScript] ? blockScript : (scripts[normalScript] ? normalScript : null);
-  if (!script) {
-    if (testNumber === 18) return null;
-    throw new Error(`Test #${testNumber} has no registered npm script`);
-  }
-  if (!existsSync(resolve(e2eRoot, `Test${testNumber}`, 'orchestrator.mjs'))) {
-    throw new Error(`Test #${testNumber} has a script but no orchestrator.mjs`);
-  }
-  return script;
+function resolveTestCommand(testNumber, diagnosticBlock) {
+  return selectUiE2eCommand(testNumber, packageJson.scripts ?? {}, existsSync(resolve(e2eRoot, `Test${testNumber}`, 'orchestrator.mjs')), diagnosticBlock);
 }
 
 function resolveRange(options) {
   const entries = [];
   const skippedTests = [];
   for (let testNumber = options.from; testNumber <= options.to; testNumber += 1) {
-    const script = resolveTestCommand(testNumber);
+    const script = resolveTestCommand(testNumber, options.diagnosticBlock);
     if (!script) {
       skippedTests.push({ test: testNumber, reason: 'No registered test command or orchestrator exists' });
       continue;
     }
-    const scenarios = discoverTestScenarios(testNumber);
+    let scenarios = discoverTestScenarios(testNumber);
+    if (options.diagnosticBlock !== undefined) {
+      const selectedPath = resolve(e2eRoot, `Test${testNumber}`, `scenario-block${options.diagnosticBlock}.json`);
+      scenarios = scenarios.filter(scenario => scenario.path === selectedPath);
+      if (scenarios.length !== 1) throw new Error('Diagnostic block requires exactly its original canonical scenario');
+    }
     if (scenarios.length === 0) throw new Error(`Test #${testNumber} has no scenario JSON for safe announcements and redaction`);
     entries.push({ testNumber, script, scenarios });
   }
@@ -236,11 +224,9 @@ function readFreeDiskGiB() {
   return Math.round((availableKiB / 1024 / 1024) * 100) / 100;
 }
 
-function runDiskCleaner(entry, collector, beforeGiB) {
-  const avdName = entry.scenarios[0].value.android?.avdName;
+function runDiskCleaner(entry, collector, beforeGiB, preservePreparedBuilds = false) {
   const cleanerPath = resolve(e2eRoot, 'clean-ui-e2e-space.mjs');
-  const args = [cleanerPath];
-  if (avdName) args.push(`--avd=${avdName}`);
+  const args = [cleanerPath, ...(preservePreparedBuilds ? ['--preserve-prepared-builds'] : [])];
   collector.writeEvent(`disk space below ${diskThresholdGiB} GiB; invoking allowlisted disk cleaner before TEST #${entry.testNumber}`);
   process.stdout.write(`⏳ Disk space is low; running the approved cleaner before TEST #${entry.testNumber}.\n`);
   const result = spawnSync(process.execPath, args, { cwd: e2eRoot, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
@@ -327,6 +313,7 @@ function scenarioSummary(scenario, testNumber) {
 function announce(entry, collector) {
   const redactor = collector.redactor;
   const scenario = entry.scenarios[0].value;
+  const runtimeProfile = createScenarioRuntimeProfile({ testNumber: entry.testNumber, scenario });
   const participants = activeParticipants(scenario, redactor);
   const summary = redactor.redactText(scenarioSummary(scenario, entry.testNumber));
   const announcement = [
@@ -437,57 +424,124 @@ process.once('SIGTERM', () => {
   sendSignalToChild('SIGTERM');
 });
 
-async function runPreparationCommand(command, args, { cwd = coreRoot, allowFailure = false, timeoutMs = 30000, onOutput } = {}) {
-  if (interruptedBy) throw new Error(`Preparation interrupted by ${interruptedBy}`);
-  const child = spawn(command, args, { cwd, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
-  child.detached = process.platform !== 'win32';
-  activeChild = child; child.preparation = true;
-  let stdout = ''; let stderr = ''; let timedOut = false;
-  child.stdout.on('data', (chunk) => { stdout = `${stdout}${chunk}`.slice(-65536); onOutput?.('stdout', chunk); });
-  child.stderr.on('data', (chunk) => { stderr = `${stderr}${chunk}`.slice(-65536); onOutput?.('stderr', chunk); });
-  const timer = setTimeout(() => { timedOut = true; sendSignalToChild('SIGTERM'); }, timeoutMs);
-  const result = await new Promise((resolveResult, reject) => {
-    child.once('error', reject); child.once('close', (exitCode, signal) => resolveResult({ exitCode, signal }));
-  }).finally(() => { clearTimeout(timer); clearTimeout(preparationKillTimer); preparationKillTimer = null; activeChild = null; });
-  if (timedOut || interruptedBy || (result.exitCode !== 0 && !allowFailure)) throw new Error(`Preparation command ${command} failed (${timedOut ? 'timeout' : interruptedBy ?? result.exitCode ?? result.signal}); raw output omitted`);
-  return { ...result, stdout, stderr };
+export async function runPreparationCommand(command, args, { cwd = coreRoot, allowFailure = false, timeoutMs = 30000, onOutput, env = {}, maxCaptureBytes, ports = {} } = {}) {
+  return capturePreparationCommand(command, args, { cwd, allowFailure, timeoutMs, onOutput, env: { ...process.env, ...env }, maxCaptureBytes }, {
+    spawn: ports.spawn ?? spawn,
+    signal: ports.signal ?? ((_child, signal) => sendSignalToChild(signal)),
+    interrupted: () => interruptedBy,
+    started: (child) => { activeChild = child; },
+    settled: () => { clearTimeout(preparationKillTimer); preparationKillTimer = null; activeChild = null; },
+  });
+}
+const rangeExecutionServices = { spawn, prepareScenarioPlatforms, resetE2eScenarioState, startPlatformLivenessMonitor, discoverAttemptArtifacts };
+
+export function assertAcceptedRunnerLineage({ paths, runId, manifest, currentIdentity }, { readAudit = verifyRunnerAuditLineage } = {}) {
+  const executionIdentity = (identity, testNumber) => {
+    const noncompiled = Object.fromEntries(Object.entries(identity.noncompiled).filter(([path]) =>
+      path !== 'e2eTest/README.md' && !path.endsWith('.test.mjs')
+      && (!/^e2eTest\/Test[1-3]\/orchestrator\.mjs$/.test(path) || path === `e2eTest/Test${testNumber}/orchestrator.mjs`)));
+    return { membership: identity.membership, strict: identity.strict, scenario: identity.scenario, noncompiled };
+  };
+  for (const result of manifest.tests) {
+    if (!['passed', 'business-passed-manual-pending'].includes(result.status)) continue;
+    const previous = readAudit({ paths, runId, audit: result.runnerAudit });
+    if (JSON.stringify(executionIdentity(previous.before, result.test)) !== JSON.stringify(executionIdentity(currentIdentity, result.test))) {
+      throw Error(`Accepted Test #${result.test} execution inputs changed; previous evidence preserved, reviewed range disposition required`);
+    }
+  }
 }
 
-async function runEntry(entry, attempt, collector, runId, onRuntimeStarted, preserveEvidence, environmentGuard) {
+function expectedDeletionBlocks(runId, authProfile) {
+  return buildDeletionPlan(runId).blocks.map(block => {
+    const path = resolve(e2eRoot, '.artifacts', runId, 'test50-config', `scenario-${block.id}.json`);
+    const raw = readFileSync(path), configuration = JSON.parse(raw);
+    if (configuration.authProfile !== authProfile || JSON.stringify(configuration.deletionBlock) !== JSON.stringify(block)) throw Error('Test50 generated configuration changed');
+    return { id: block.id, cycles: block.cycles.map(cycle => cycle.number), configurationSha256: sha256(raw) };
+  });
+}
+
+function completedRangeEntry(result, authProfile, runId) {
+  if (result.scope?.kind === 'diagnostic-block' || result.fullAcceptance === false && result.diagnosticBlock !== undefined) return false;
+  if (!deletionEntryComplete(result, authProfile)) {
+    if (result.test === 50 && result.status === 'business-passed-manual-pending') throw Error('Invalid stored Test50 business acceptance');
+    return false;
+  }
+  if (result.test !== 50) return true;
+  // Old unprofiled realOS records keep their original meaning; scoped records need their exact receipt.
+  if (authProfile === 'real-os' && !result.authProfile) return true;
+  const path = resolve(e2eRoot, '.artifacts', runId, 'test50-config', `result-attempt-${result.attempt}.json`);
+  const raw = readFileSync(path);
+  if (sha256(raw) !== result.acceptanceSha256) throw Error('Test50 resume receipt changed');
+  validateDeletionResult(JSON.parse(raw), { runId, attempt: result.attempt, authProfile, blocks: expectedDeletionBlocks(runId, authProfile) });
+  return true;
+}
+
+export async function runEntry(entry, run, preparation, services = {}) {
+  const { attempt, collector, runId, onRuntimeStarted, preserveEvidence } = run;
+  const { environmentGuard, batchProducts, getIosProfile, getAndroidProfile, resourceBudget, preparationMetrics, runnerAudit } = preparation;
+  const measure = (phase, operation) => preparationMetrics ? preparationMetrics.measure(phase, operation) : operation();
+  const { spawn, prepareScenarioPlatforms, resetE2eScenarioState, startPlatformLivenessMonitor, discoverAttemptArtifacts } = { ...rangeExecutionServices, ...services };
+  const scenario = entry.scenarios[0].value;
+  const authProfile = entry.testNumber === 50 ? resolveDeletionAuthProfile(process.env, {
+    ...scenario, ...(run.test50AuthProfile !== undefined ? { authProfile: run.test50AuthProfile } : {}),
+  }) : undefined;
+  const keepEvidence = preserveEvidence || authProfile === 'controlled-business' || run.diagnosticScope?.kind === 'diagnostic-block';
+  assertExistingDeviceRun({ scenarios: [scenario] });
   const logPath = collector.startTest(entry.testNumber, attempt);
   const startedAt = new Date().toISOString();
   collector.writeEvent(`command: npm run ${entry.script}`);
-  const scenario = entry.scenarios[0].value;
+  assertIosIdentityAdmission({ testNumber: entry.testNumber, scenario });
+  const iosIdentityContexts = entry.scenarios.map(({ path, value }) => value.ios
+    ? createIosIdentityContext({ runRoot: collector.runDirectory, runId,
+      testNumber: entry.testNumber, attempt, scenarioPath: path,
+      scenario: value, udid: 'DB22263E-A8A3-49C5-ADD1-BAE4089E2E30' }) : undefined);
+  for (const context of iosIdentityContexts) {
+    if (context) collector.redactor.addSensitiveValues([prepareIosIdentityBoundary(context).namespace]);
+  }
+  const iosIdentityContext = iosIdentityContexts[0];
+  const runtimeProfile = createScenarioRuntimeProfile({ testNumber: entry.testNumber, scenario });
   let readiness;
   let androidFfiPrebuilt = false;
   let metaCliPrebuilt = false;
+  let productIndexPath;
   try {
-    await environmentGuard.prepare();
+    await resourceBudget?.check();
+    await measure('snapshot', () => environmentGuard.prepare());
+    if (resourceBudget && !resourceBudget.snapshot?.().snapshot) resourceBudget.complete('snapshot');
     if (interruptedBy) throw new Error(`Preparation interrupted by ${interruptedBy}`);
-    androidFfiPrebuilt = await prepareAndroidFfiBeforePlatforms(entry, collector);
-    metaCliPrebuilt = await prepareMetaCliBeforePlatforms(entry, collector);
-    if (entry.scenarios.some(({ value }) => value.ios)) {
-      await ensureIosFfi({ coreRoot, composeRoot, runAndWait: (command, args, options) => runPreparationCommand(command, args, { ...options, timeoutMs: 2400000, onOutput: (stream, chunk) => collector.writeOutput(stream, chunk) }), evidenceDirectory: resolve(collector.runDirectory, `ios-ffi-test-${entry.testNumber}-attempt-${attempt}`), onEvent: (message) => { collector.writeEvent(message); process.stdout.write(`${message}\n`); } });
-    }
+    productIndexPath = await batchProducts.prepare();
+    androidFfiPrebuilt ||= batchProducts.nativePreparation()?.android ?? false;
+    metaCliPrebuilt ||= batchProducts.nativePreparation()?.cli ?? false;
     reportTestStage(entry, collector, 'checking and starting the visible platforms required by this scenario');
-    readiness = await prepareScenarioPlatforms({
+    const ownedIosProfile = scenario.ios && getIosProfile ? await getIosProfile(scenario.ios.simulatorName) : undefined;
+    const ownedAndroidLease = scenario.android && getAndroidProfile ? await getAndroidProfile(scenario.android.avdName) : undefined;
+    await resourceBudget?.check();
+    readiness = await measure('platform-readiness', () => prepareScenarioPlatforms({
       scenario,
+      runtimeProfile,
       testNumber: entry.testNumber,
       attempt,
       runId,
       runDirectory: collector.runDirectory,
       onRuntimeStarted,
-    });
+      onDiagnostic: (line) => { collector.writeEvent(line); process.stdout.write(`${line}\n`); },
+      ownedIosProfile,
+      ownedAndroidLease,
+    }));
+    assertExistingDeviceRun({ scenarios: [scenario], readiness });
     collector.writeEvent(`platform readiness report: ${readiness.reportPath}`);
     reportTestStage(entry, collector, 'platforms are ready; resetting local server and app state');
-    const reset = await resetE2eScenarioState({
+    const reset = runtimeProfile.kind === 'core-http' ? { serverReset: false, platformsReset: [], ownership: 'child-owned Test20 isolated SQLite + actual meta-server' } : await measure('state-reset', () => resetE2eScenarioState({
       scenario,
       platforms: readiness.platforms,
+      runId,
+      readinessPath: readiness.reportPath,
+      iosIdentityContext,
       onEvent: (message) => {
         collector.writeEvent(`TEST #${entry.testNumber} state reset: ${message}`);
         process.stdout.write(`🧹 ${message}\n`);
       },
-    });
+    }));
     updateReadinessReset(readiness.reportPath, 'passed', reset);
     collector.writeEvent(`scenario state reset completed: ${JSON.stringify(reset)}`);
     reportTestStage(entry, collector, 'local server and participating app state are clean');
@@ -499,86 +553,106 @@ async function runEntry(entry, attempt, collector, runId, onRuntimeStarted, pres
       test: entry.testNumber, script: entry.script, attempt, startedAt, finishedAt,
       status: 'readiness-failed', exitCode: null, signal: null, error: collector.redactor.redactText(error.message),
       logPath, readinessPath: readiness?.reportPath ?? null,
+      ...(runnerAudit ? { runnerAudit } : {}),
       ownedArtifacts: discoverAttemptArtifacts(entry.testNumber, runId, attempt),
       harnessArtifacts: resolve(e2eRoot, '.artifacts'),
     };
   }
-  const child = spawn('npm', ['run', entry.script], {
-    cwd: e2eRoot,
-    env: {
-      ...process.env,
-      E2E_EXIT_ON_SUCCESS: '1',
-      E2E_RANGE_RUN: '1',
-      E2E_RUN_ID: runId,
-      E2E_TEST_NUMBER: String(entry.testNumber),
-      E2E_TEST_ATTEMPT: String(attempt),
-      E2E_READINESS_PATH: readiness.reportPath,
-      ...(androidFfiPrebuilt ? { E2E_ANDROID_FFI_PREBUILT: '1' } : {}),
-      ...(metaCliPrebuilt ? { E2E_META_CLI_PREBUILT: '1' } : {}),
-      ...(preserveEvidence ? { E2E_PRESERVE_EVIDENCE: '1' } : {}),
-    },
-    detached: process.platform !== 'win32',
-    stdio: ['ignore', 'pipe', 'pipe'],
-    shell: false,
-  });
-  activeChild = child;
-  reportTestStage(entry, collector, 'starting the test scenario; live milestone updates follow');
-  const progressBuffers = { stdout: '', stderr: '' };
   let readinessFailure = null;
-  const stopMonitor = startPlatformLivenessMonitor({
-    platforms: readiness.platforms,
-    testNumber: entry.testNumber,
-    // Runner-owned runtimes stay booted across tests/blocks. An unplanned
-    // device loss is therefore a readiness failure, not an expected reboot.
-    unavailableGraceMs: 0,
-    onEvent: (message) => collector.writeEvent(message),
-    onFailure: (error) => {
-      readinessFailure = error;
-      try {
-        if (child.detached && process.platform !== 'win32') process.kill(-child.pid, 'SIGTERM');
-        else child.kill('SIGTERM');
-      } catch {}
-      setTimeout(() => {
-        if (child.exitCode === null && child.signalCode === null) {
-          try {
-            if (child.detached && process.platform !== 'win32') process.kill(-child.pid, 'SIGKILL');
-            else child.kill('SIGKILL');
-          } catch {}
-        }
-      }, 15_000).unref();
-    },
-  });
-  child.stdout.on('data', (chunk) => {
-    collector.writeOutput('stdout', chunk);
-    forwardScenarioProgress('stdout', chunk, progressBuffers, entry, collector);
-  });
-  child.stderr.on('data', (chunk) => {
-    collector.writeOutput('stderr', chunk);
-    forwardScenarioProgress('stderr', chunk, progressBuffers, entry, collector);
-  });
+  const outcome = await measure('business-scenario', async () => {
+    const child = spawn('npm', ['run', entry.script], {
+      cwd: e2eRoot,
+      env: {
+        ...process.env,
+        E2E_EXIT_ON_SUCCESS: '1',
+        E2E_RANGE_RUN: '1',
+        E2E_RUN_ID: runId,
+        E2E_TEST_NUMBER: String(entry.testNumber),
+        E2E_TEST_ATTEMPT: String(attempt),
+        ...(runnerAudit ? { E2E_PARENT_RUNNER_PID: String(process.pid), E2E_RUNNER_AUDIT_PATH: runnerAudit.path, E2E_RUNNER_AUDIT_SHA256: runnerAudit.sha256 } : {}),
+        ...(authProfile ? { E2E_TEST50_AUTH_PROFILE: authProfile } : {}),
+        E2E_READINESS_PATH: readiness.reportPath,
+        ...(iosIdentityContext ? { E2E_IOS_IDENTITY_ROOT: iosIdentityContext.runRoot } : {}),
+        ...(readiness.platforms.find(platform => platform.ownedAndroidProfile)?.ownedAndroidProfile.privateEnv
+          ? { E2E_ANDROID_OWNED_PROFILE: '1', ...Object.fromEntries(Object.entries(readiness.platforms.find(platform => platform.ownedAndroidProfile).ownedAndroidProfile.privateEnv)
+            .filter(([key]) => key.startsWith('ANDROID_') || key === 'XDG_CACHE_HOME')) } : {}),
+        ...(runtimeProfile.kind === 'ui' ? { E2E_BATCH_PRODUCTS_PATH: productIndexPath, E2E_REUSE_PROVEN_ARTIFACTS: '1' } : {}),
+        ...(androidFfiPrebuilt ? { E2E_ANDROID_FFI_PREBUILT: '1' } : {}),
+        ...(metaCliPrebuilt ? { E2E_META_CLI_PREBUILT: '1' } : {}),
+        ...(keepEvidence ? { E2E_PRESERVE_EVIDENCE: '1' } : {}),
+      },
+      detached: process.platform !== 'win32',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      shell: false,
+    });
+    activeChild = child;
+    reportTestStage(entry, collector, 'starting the test scenario; live milestone updates follow');
+    const progressBuffers = { stdout: '', stderr: '' };
+    const stopMonitor = startPlatformLivenessMonitor({
+      platforms: readiness.platforms,
+      testNumber: entry.testNumber,
+      // Runner-owned runtimes stay booted across tests/blocks. An unplanned
+      // device loss is therefore a readiness failure, not an expected reboot.
+      unavailableGraceMs: 0,
+      onEvent: (message) => collector.writeEvent(message),
+      onFailure: (error) => {
+        readinessFailure = error;
+        try {
+          if (child.detached && process.platform !== 'win32') process.kill(-child.pid, 'SIGTERM');
+          else child.kill('SIGTERM');
+        } catch {}
+        setTimeout(() => {
+          if (child.exitCode === null && child.signalCode === null) {
+            try {
+              if (child.detached && process.platform !== 'win32') process.kill(-child.pid, 'SIGKILL');
+              else child.kill('SIGKILL');
+            } catch {}
+          }
+        }, 15_000).unref();
+      },
+    });
+    child.stdout.on('data', (chunk) => {
+      collector.writeOutput('stdout', chunk);
+      forwardScenarioProgress('stdout', chunk, progressBuffers, entry, collector);
+    });
+    child.stderr.on('data', (chunk) => {
+      collector.writeOutput('stderr', chunk);
+      forwardScenarioProgress('stderr', chunk, progressBuffers, entry, collector);
+    });
 
-  const outcome = await new Promise((resolvePromise) => {
-    child.once('error', (error) => resolvePromise({ exitCode: null, signal: null, error }));
-    child.once('close', (exitCode, signal) => resolvePromise({ exitCode, signal, error: null }));
+    const outcome = await new Promise((resolvePromise) => {
+      let actorError;
+      child.once('error', (error) => { actorError = error; });
+      child.once('close', (exitCode, signal) => resolvePromise({ exitCode, signal, error: actorError ?? null }));
+    });
+    stopMonitor();
+    activeChild = null;
+    return outcome;
   });
-  stopMonitor();
-  activeChild = null;
   reportTestStage(entry, collector, 'scenario process ended; validating readiness and final result');
-  if (!readinessFailure && outcome.exitCode === 0) {
+  if (!readinessFailure && outcome.exitCode === 0 && outcome.signal === null && !outcome.error) {
     try {
       const finalReadiness = JSON.parse(readFileSync(readiness.reportPath, 'utf8'));
-      if (finalReadiness.status !== 'ready') {
-        readinessFailure = new Error('Scenario exited successfully without verifying every participating app and test package before business actions');
-      }
+      assertScenarioReadiness({ profile: runtimeProfile, report: finalReadiness, outcome });
     } catch (error) {
       readinessFailure = new Error(`Could not validate platform readiness report: ${error.message}`);
     }
   }
-  const status = interruptedBy ? 'interrupted' : readinessFailure ? 'readiness-failed' : (outcome.exitCode === 0 ? 'passed' : 'failed');
+  let acceptance, acceptanceFailure;
+  const acceptancePath = authProfile ? resolve(e2eRoot, '.artifacts', runId, 'test50-config', `result-attempt-${attempt}.json`) : undefined;
+  if (authProfile && !readinessFailure && outcome.exitCode === 0 && outcome.signal === null) {
+    try {
+      acceptance = validateDeletionResult(JSON.parse(readFileSync(acceptancePath, 'utf8')), {
+        runId, attempt, authProfile, blocks: expectedDeletionBlocks(runId, authProfile),
+      });
+    } catch { acceptanceFailure = Error('Test50 full profile receipt is missing, partial or mismatched'); }
+  }
+  const status = interruptedBy ? 'interrupted' : readinessFailure ? 'readiness-failed' : acceptanceFailure || outcome.error ? 'failed'
+    : (outcome.exitCode === 0 && outcome.signal === null ? authProfile === 'controlled-business' ? 'business-passed-manual-pending' : 'passed' : 'failed');
   const failureSummary = status === 'failed' ? summarizeFailureFromLog(logPath) : null;
-  const errorSummary = readinessFailure?.message ?? outcome.error?.message ?? failureSummary
+  const errorSummary = readinessFailure?.message ?? acceptanceFailure?.message ?? outcome.error?.message ?? failureSummary
     ?? (status === 'failed' ? `scenario process exited with code ${outcome.exitCode ?? outcome.signal ?? 'unknown'}; see ${logPath}` : null);
-  await collector.finishTest({ status, ...outcome, error: errorSummary });
+  await collector.finishTest({ status: run.diagnosticScope ? (status === 'passed' ? 'diagnostic-completed' : 'diagnostic-failed') : status, ...outcome, error: errorSummary });
   return {
     test: entry.testNumber,
     script: entry.script,
@@ -586,11 +660,13 @@ async function runEntry(entry, attempt, collector, runId, onRuntimeStarted, pres
     startedAt,
     finishedAt: new Date().toISOString(),
     status,
+    ...(authProfile ? { authProfile, acceptance, acceptancePath, ...(acceptance ? { acceptanceSha256: sha256(readFileSync(acceptancePath)) } : {}) } : {}),
     exitCode: outcome.exitCode,
     signal: outcome.signal,
     error: errorSummary ? collector.redactor.redactText(errorSummary) : null,
     logPath,
     readinessPath: readiness.reportPath,
+    ...(runnerAudit ? { runnerAudit } : {}),
     ownedArtifacts: discoverAttemptArtifacts(entry.testNumber, runId, attempt),
     harnessArtifacts: resolve(e2eRoot, '.artifacts'),
   };
@@ -603,19 +679,33 @@ async function main() {
     return 0;
   }
   const { entries, skippedTests } = resolveRange(options);
+  const test50AuthProfile = entries.some(entry => entry.testNumber === 50) ? resolveDeletionAuthProfile(process.env) : undefined;
   if (entries.length === 0) throw new Error('The requested range contains no executable tests');
   const runId = options.runId ?? createRunId();
   const runDirectory = resolve(testsRoot, runId);
-  mkdirSync(runDirectory, { recursive: true });
+  if (options.diagnosticBlock !== undefined) {
+    mkdirSync(testsRoot, { recursive: true });
+    // Atomic exclusive reservation: every pre-existing path (including symlinks) is rejected.
+    mkdirSync(runDirectory);
+  } else mkdirSync(runDirectory, { recursive: true });
   const manifestPath = resolve(runDirectory, 'run.json');
   let manifest = { runId, range: { from: options.from, to: options.to }, status: 'running', tests: [], skippedTests };
+  if (options.diagnosticBlock !== undefined) {
+    manifest.scope = { kind: 'diagnostic-block', test: options.from, block: options.diagnosticBlock,
+      scenarioPath: entries[0].scenarios[0].path, scenarioSha256: sha256(readFileSync(entries[0].scenarios[0].path)), script: entries[0].script };
+    manifest.fullAcceptance = false; manifest.diagnostics = []; manifest.evidencePreserved = true;
+  }
+  if (test50AuthProfile) manifest.test50AuthProfile = test50AuthProfile;
   if (existsSync(manifestPath)) {
-    manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    const stored = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    if (options.diagnosticBlock !== undefined || stored.scope?.kind === 'diagnostic-block') throw new Error('Diagnostic block requires a fresh run ID and cannot grant range resume credit');
+    manifest = stored;
+    if (test50AuthProfile) { requireDeletionResumeProfile(manifest.test50AuthProfile, test50AuthProfile); manifest.test50AuthProfile = test50AuthProfile; }
     if (manifest.runId !== runId) throw new Error(`Run manifest id does not match ${runId}`);
     if (options.from < manifest.range.from || options.to !== manifest.range.to) {
       throw new Error('A resumed run must keep the original --to and may only move --from forward within the recorded range');
     }
-    if (manifest.status === 'completed') throw new Error(`Run ${runId} is already completed`);
+    if (['completed', 'business-completed-manual-pending'].includes(manifest.status)) throw new Error(`Run ${runId} is already completed in its declared scope`);
     if (!Number.isInteger(manifest.pendingTest) || options.from !== manifest.pendingTest) {
       throw new Error(`Resume must start at the recorded pending test #${manifest.pendingTest ?? 'unknown'}`);
     }
@@ -657,22 +747,117 @@ async function main() {
   return await executeRange({ entries, options, runId, runDirectory, manifestPath, manifest, collector });
 }
 
+async function finishRangeOwnership({ manifest, manifestPath, collector, environmentGuard, strictDeletion, primaryFailure, retainHealthyOnPause = false, services = {} }) {
+  const failures = [];
+  const stop = services.stopRunnerOwnedRuntimes ?? stopRunnerOwnedRuntimes;
+  const release = services.releaseHealthyRunnerOwnedRuntimes ?? releaseHealthyRunnerOwnedRuntimes;
+  const pendingResult = manifest.tests?.at(-1);
+  const technicalPause = manifest.status === 'paused-maintenance' || manifest.status === 'paused-low-disk'
+    || pendingResult?.test === manifest.pendingTest && pendingResult?.status === 'readiness-failed';
+  if (manifest.runtimeOwnership.length > 0) {
+    try {
+      const onEvent = (message) => {
+        collector.writeEvent(message); process.stdout.write(`🧹 ${message}\n`);
+      };
+      if (retainHealthyOnPause && !primaryFailure && technicalPause && Number.isInteger(manifest.pendingTest)
+        && ['failed', 'paused-low-disk', 'paused-maintenance'].includes(manifest.status)) {
+        try {
+          const receipts = await release(manifest.runtimeOwnership, { reason: 'pending-test', onEvent });
+          manifest.runtimeReleases ??= [];
+          manifest.runtimeReleases.push(...receipts);
+        } catch {
+          manifest.runtimeRetentionWarning = 'Healthy runtime release unavailable; applied existing owned cleanup';
+          collector.writeEvent(manifest.runtimeRetentionWarning);
+          await stop(manifest.runtimeOwnership, onEvent);
+        }
+      } else await stop(manifest.runtimeOwnership, onEvent);
+      manifest.runtimeOwnership = [];
+    } catch (error) {
+      manifest.runtimeCleanupWarning = error.message;
+      if (strictDeletion || manifest.scope?.kind === 'diagnostic-block' || manifest.runtimeOwnership.some(runtime => runtime.ownedIosProfile || runtime.ownedAndroidLease || runtime.ownedAndroidProfile)) {
+        failures.push(error); manifest.status = 'owned-runtime-cleanup-failed';
+        manifest.evidencePreserved = true; manifest.fullAcceptance = false;
+      }
+      collector.writeEvent(`runtime cleanup warning: ${error.message}`);
+      process.stderr.write(`⚠️ Runtime cleanup warning: ${error.message}\n`);
+    }
+    manifest.updatedAt = new Date().toISOString();
+  }
+  try {
+    await environmentGuard.restore();
+    manifest.environmentRestoration = { status: 'passed', at: new Date().toISOString() };
+  } catch (error) {
+    manifest.environmentRestoration = { status: 'failed', error: error.message };
+    manifest.status = 'restore-failed'; failures.push(error);
+  }
+  try { writeManifest(manifestPath, manifest); } catch (error) { failures.push(error); }
+  try { await collector.close(); } catch (error) { failures.push(error); }
+  if (failures.length) {
+    if (!primaryFailure && failures.length === 1) throw failures[0];
+    throw new AggregateError([primaryFailure, ...failures].filter(Boolean), 'Range execution/owned cleanup failed', { cause: primaryFailure ?? failures[0] });
+  }
+}
+
 async function executeRange({ entries, options, runId, runDirectory, manifestPath, manifest, collector }) {
-  manifest.runtimeOwnership ??= [];
-  const allScenarios = entries.flatMap((entry) => entry.scenarios.map(({ value }) => value));
+  const strictDeletion = entries.some(entry => entry.testNumber === 50) || manifest.tests.some(result => result.test === 50);
+  let primaryFailure;
+  if (manifest.runtimeOwnership === undefined) manifest.runtimeOwnership = [];
+  const registeredScenarios = entries.flatMap((entry) => entry.scenarios.map(({ value }) => ({ testNumber: entry.testNumber, scenario: value })));
+  const allScenarios = registeredScenarios.map(({ scenario }) => scenario);
+  // Refuse legacy creation/resume before guard preparation and before profile-cleaning finally.
+  assertExistingDeviceRun({ scenarios: allScenarios, manifest });
+  const runtimeProfiles = registeredScenarios.map(createScenarioRuntimeProfile);
+  const resourceInputs = measurePreparationInputs({ paths: { coreRoot, composeRoot, runDirectory }, scenarios: registeredScenarios });
+  const budget = planPreparationBudget(resourceInputs);
+  const observe = () => readPreparationObservation({ path: runDirectory, runAndCapture: runPreparationCommand });
+  const resourceBudget = createPreparationResourceBudget({ budget, observe });
+  const metricPath = resolve(runDirectory, `phase-metrics-${Date.now()}.jsonl`);
+  const preparationMetrics = createPreparationMetrics({ observe, write: record => writeFileSync(metricPath, `${JSON.stringify(record)}\n`, { flag: 'a', mode: 0o600 }) });
+  manifest.preparationBudget = budget;
+  manifest.preparationProfile = { ...E2E_BUILD_PROFILE, cargoJobs: 2 };
+  const runnerAudit = await preparationMetrics.measure('f1-validation', () => createRunnerAudit({
+    paths: { coreRoot, composeRoot, runDirectory }, runId, runAndCapture: runPreparationCommand,
+    redactText: value => collector.redactor.redactText(value),
+  }));
+  manifest.runnerAudits ??= [];
+  manifest.runnerAudits.push(runnerAudit);
+  writeManifest(manifestPath, manifest);
+  try {
+    assertAcceptedRunnerLineage({ paths: { coreRoot, composeRoot, runDirectory }, runId, manifest,
+      currentIdentity: validateRunnerAudit({ paths: { coreRoot, composeRoot, runDirectory }, runId, audit: runnerAudit }) });
+  } catch (error) {
+    manifest.status = 'runner-lineage-review-required';
+    manifest.pendingTest = options.diagnosticBlock !== undefined ? null : entries[0].testNumber;
+    manifest.runnerLineageError = collector.redactor.redactText(error.message);
+    writeManifest(manifestPath, manifest);
+    throw error;
+  }
   const environmentGuard = createBatchEnvironmentGuard({
+    runDirectory,
     ...batchEnvironmentPaths(coreRoot, composeRoot), repositories: [coreRoot, composeRoot],
     evidencePath: resolve(runDirectory, `environment-repository-fingerprints-${Date.now()}.json`),
-    preflight: () => preflightBatchEnvironment(allScenarios, { runCommand: runPreparationCommand, onEvent: (message) => { collector.writeEvent(message); process.stdout.write(`🧭 ${message}\n`); } }),
-    setLocal: () => runPreparationCommand('/opt/homebrew/bin/task', ['set-env', '--', 'local'], { cwd: coreRoot, timeoutMs: 2400000, onOutput: (stream, chunk) => collector.writeOutput(stream, chunk) }),
+    preflight: () => preflightBatchEnvironment(allScenarios, { runtimeProfiles, ownedIosProfile: false, runCommand: runPreparationCommand, onEvent: (message) => { collector.writeEvent(message); process.stdout.write(`🧭 ${message}\n`); } }),
+    setLocal: () => runPreparationCommand('/opt/homebrew/bin/task', ['set-env', '--', 'local', '--selectors-only'], { cwd: coreRoot, timeoutMs: 2400000, onOutput: (stream, chunk) => collector.writeOutput(stream, chunk) }),
     isInterrupted: () => Boolean(interruptedBy),
     onEvent: (message) => { collector.writeEvent(`[ENV] ${message}`); process.stdout.write(`🧭 ${message}\n`); },
+  });
+  const batchProducts = createBatchProductPreparation({ paths: { coreRoot, composeRoot, runDirectory },
+    commands: { runAndCapture: runPreparationCommand, runAndWait: (file, args, options) => runPreparationCommand(file, args, { ...options, timeoutMs: 2400000, onOutput: (stream, chunk) => collector.writeOutput(stream, chunk) }) },
+    runId, scenarios: registeredScenarios, environmentGuard, resourceBudget, preparationMetrics, newProofVersion: 5, runnerAudit,
+    prepareNative: async () => {
+      const combined = { testNumber: entries[0].testNumber, scenarios: registeredScenarios.map(({ scenario: value }) => ({ value })) };
+      const android = await prepareAndroidFfiBeforePlatforms(combined, collector);
+      const cli = await prepareMetaCliBeforePlatforms(combined, collector);
+      if (registeredScenarios.some(({ scenario }) => scenario.ios)) await ensureIosFfi({ coreRoot, composeRoot,
+        runAndWait: (file, args, options) => runPreparationCommand(file, args, { ...options, env: { ...e2eBuildEnvironment(), CARGO_BUILD_JOBS: '2', ...options?.env }, timeoutMs: 2400000 }), evidenceDirectory: resolve(runDirectory, 'ios-ffi-batch') });
+      return { android, cli, ios: registeredScenarios.some(({ scenario }) => scenario.ios) };
+    },
   });
   try {
     for (const entry of entries) {
       if (interruptedBy) break;
       const completedAttempts = manifest.tests.filter((result) => result.test === entry.testNumber);
-      const passedBefore = completedAttempts.some((result) => result.status === 'passed');
+      const passedBefore = completedAttempts.some((result) => completedRangeEntry(result, manifest.test50AuthProfile ?? 'real-os', runId));
       if (passedBefore) continue;
       announce(entry, collector);
       reportTestStage(entry, collector, 'checking available disk space before platform startup');
@@ -681,7 +866,8 @@ async function executeRange({ entries, options, runId, runDirectory, manifestPat
       manifest.diskChecks ??= [];
       manifest.diskChecks.push({ test: entry.testNumber, at: new Date().toISOString(), beforeGiB: freeDiskGiB });
       if (freeDiskGiB < diskThresholdGiB) {
-        const cleanup = runDiskCleaner(entry, collector, freeDiskGiB);
+        const cleanup = runDiskCleaner(entry, collector, freeDiskGiB,
+          batchProducts.hasPersistedProof || Boolean(batchProducts.nativePreparation()));
         Object.assign(manifest.diskChecks.at(-1), {
           cleanupExitCode: cleanup.status,
           afterGiB: cleanup.afterGiB,
@@ -689,8 +875,8 @@ async function executeRange({ entries, options, runId, runDirectory, manifestPat
         });
         writeManifest(manifestPath, manifest);
         if (cleanup.status !== 0 || cleanup.afterGiB < postCleanupMinimumGiB) {
-          manifest.status = 'paused-low-disk';
-          manifest.pendingTest = entry.testNumber;
+          manifest.status = options.diagnosticBlock !== undefined ? 'diagnostic-blocked-low-disk' : 'paused-low-disk';
+          manifest.pendingTest = options.diagnosticBlock !== undefined ? null : entry.testNumber;
           manifest.freeDiskGiB = cleanup.afterGiB;
           manifest.cleanupExitCode = cleanup.status;
           manifest.updatedAt = new Date().toISOString();
@@ -708,26 +894,37 @@ async function executeRange({ entries, options, runId, runDirectory, manifestPat
       }
       if (passedBefore) continue;
       const attempt = completedAttempts.length + 1;
-      const result = await runEntry(entry, attempt, collector, runId, (platform) => {
-        const runtime = {
-          platform: platform.platform,
-          avdName: platform.avdName,
-          simulatorName: platform.simulatorName,
-          serial: platform.serial,
-          udid: platform.udid,
-        };
+      const result = await runEntry(entry, { attempt, collector, runId, onRuntimeStarted: (platform) => {
+        const runtime = platform;
+        if (platform.ownedAndroidLease) {
+          const own = manifest.runtimeOwnership.find(item => item.ownedAndroidLease === platform.ownedAndroidLease);
+          if (!own) throw new Error('Android profile intent missing before runtime publication');
+          Object.assign(own, runtime); writeManifest(manifestPath, manifest); return;
+        }
         const identity = runtime.serial ?? runtime.udid;
         if (!manifest.runtimeOwnership.some((owned) => (owned.serial ?? owned.udid) === identity)) {
           manifest.runtimeOwnership.push(runtime);
           writeManifest(manifestPath, manifest);
           collector.writeEvent(`range owns ${runtime.platform} runtime ${runtime.avdName ?? runtime.simulatorName}`);
         }
-      }, options.preserveEvidence, environmentGuard);
+      }, preserveEvidence: options.preserveEvidence || options.diagnosticBlock !== undefined, test50AuthProfile: manifest.test50AuthProfile, diagnosticScope: manifest.scope?.kind === 'diagnostic-block' ? manifest.scope : undefined }, { environmentGuard, batchProducts, resourceBudget, preparationMetrics, runnerAudit });
       result.freeDiskAfterGiB = readFreeDiskGiB();
       manifest.diskChecks.push({ test: entry.testNumber, attempt, at: new Date().toISOString(), afterScenarioGiB: result.freeDiskAfterGiB });
+      if (options.diagnosticBlock !== undefined) {
+        const succeeded = result.status === 'passed' && result.exitCode === 0 && result.signal === null;
+        manifest.diagnostics.push({ ...result, scope: manifest.scope, originalActorStatus: result.status,
+          status: succeeded ? 'diagnostic-completed' : 'diagnostic-failed', fullAcceptance: false });
+        manifest.status = interruptedBy ? 'diagnostic-interrupted' : succeeded ? 'diagnostic-completed' : 'diagnostic-failed';
+        manifest.pendingTest = null; manifest.failedTest = null;
+        manifest.finishedAt = new Date().toISOString(); manifest.updatedAt = manifest.finishedAt;
+        writeManifest(manifestPath, manifest);
+        collector.writeEvent(`BLOCK DIAGNOSTIC ${manifest.status}; whole Test #${entry.testNumber} UNRUN; no cursor credit`);
+        process.stdout.write(`🔎 BLOCK DIAGNOSTIC ${manifest.status}; whole Test #${entry.testNumber} UNRUN; fullAcceptance=false\n`);
+        return interruptedBy ? 130 : succeeded ? 0 : result.exitCode > 0 ? result.exitCode : 1;
+      }
       manifest.tests.push(result);
       manifest.updatedAt = new Date().toISOString();
-      if (result.status !== 'passed') {
+      if (!deletionEntryComplete(result, manifest.test50AuthProfile ?? 'real-os')) {
         manifest.status = interruptedBy ? 'interrupted' : 'failed';
         manifest.failedTest = entry.testNumber;
         manifest.pendingTest = entry.testNumber;
@@ -740,11 +937,35 @@ async function executeRange({ entries, options, runId, runDirectory, manifestPat
         return result.exitCode && result.exitCode > 0 ? result.exitCode : 1;
       }
       manifest.failedTest = null;
-      process.stdout.write(`🏁 🟢 TEST SUCCESS — Test #${entry.testNumber}\n`);
+      process.stdout.write(result.status === 'business-passed-manual-pending'
+        ? `🏁 Test #50 BUSINESS PASS — OS confirmation/Cancel MANUAL UNRUN; fullAcceptance=false\n`
+        : `🏁 🟢 TEST SUCCESS — Test #${entry.testNumber}\n`);
       writeManifest(manifestPath, manifest);
+      if (options.pauseAfterEachCase && !interruptedBy && options.diagnosticBlock === undefined
+        && result.status === 'passed' && result.exitCode === 0 && result.signal === null && !result.error) {
+        const next = entries.slice(entries.indexOf(entry) + 1).find(candidate => !manifest.tests.some(previous =>
+          previous.test === candidate.testNumber && completedRangeEntry(previous, manifest.test50AuthProfile ?? 'real-os', runId)));
+        if (next) {
+          manifest.status = 'paused-maintenance';
+          manifest.pendingTest = next.testNumber;
+          manifest.failedTest = null;
+          manifest.updatedAt = new Date().toISOString();
+          collector.writeEvent(`maintenance pause after TEST #${entry.testNumber}; next whole test #${next.testNumber} has not started`);
+          writeManifest(manifestPath, manifest);
+          process.stdout.write(`⏸️ Maintenance pause after Test #${entry.testNumber}; resume the same run ID from Test #${next.testNumber} with the original --to.\n`);
+          return 75;
+        }
+      }
     }
 
-    manifest.status = interruptedBy ? 'interrupted' : 'completed';
+    if (options.diagnosticBlock !== undefined) {
+      manifest.status = 'diagnostic-interrupted'; manifest.pendingTest = null; manifest.failedTest = null;
+      manifest.finishedAt = new Date().toISOString(); writeManifest(manifestPath, manifest);
+      return 130;
+    }
+    const manualPending = manifest.tests.some(result => result.status === 'business-passed-manual-pending');
+    manifest.status = interruptedBy ? 'interrupted' : manualPending ? 'business-completed-manual-pending' : 'completed';
+    if (manualPending) { manifest.fullAcceptance = false; manifest.manualOs = { status: 'unrun', confirmation: 'unrun', cancel: 'unrun' }; manifest.evidencePreserved = true; }
     manifest.finishedAt = new Date().toISOString();
     manifest.updatedAt = new Date().toISOString();
     manifest.pendingTest = null;
@@ -752,9 +973,9 @@ async function executeRange({ entries, options, runId, runDirectory, manifestPat
     writeManifest(manifestPath, manifest);
     collector.writeEvent(`run ${runId} ${manifest.status}`);
     if (manifest.status === 'completed') {
-      if (options.preserveEvidence) {
+      if (options.preserveEvidence || strictDeletion) {
         manifest.evidencePreserved = true;
-        collector.writeEvent('successful-run artifact pruning skipped by --preserve-evidence');
+        collector.writeEvent(strictDeletion ? 'Test50 evidence retained through owned-runtime cleanup' : 'successful-run artifact pruning skipped by --preserve-evidence');
         process.stdout.write('📁 Evidence preserved; successful-run artifact pruning was skipped.\n');
       } else {
         const cleanerPath = resolve(e2eRoot, 'clean-ui-e2e-space.mjs');
@@ -781,34 +1002,22 @@ async function executeRange({ entries, options, runId, runDirectory, manifestPat
     }
     process.stdout.write(`📁 Run artifacts: ${runDirectory}\n`);
     return interruptedBy ? 130 : 0;
-  } finally {
-    if (manifest.status !== 'paused-low-disk' && manifest.runtimeOwnership.length > 0) {
-      try {
-        await stopRunnerOwnedRuntimes(manifest.runtimeOwnership, (message) => {
-          collector.writeEvent(message);
-          process.stdout.write(`🧹 ${message}\n`);
-        });
-        manifest.runtimeOwnership = [];
-      } catch (error) {
-        manifest.runtimeCleanupWarning = error.message;
-        collector.writeEvent(`runtime cleanup warning: ${error.message}`);
-        process.stderr.write(`⚠️ Runtime cleanup warning: ${error.message}\n`);
-      }
-      manifest.updatedAt = new Date().toISOString();
+  } catch (error) {
+    primaryFailure = error;
+    if (options.diagnosticBlock !== undefined) {
+      manifest.status = 'diagnostic-failed'; manifest.pendingTest = null; manifest.failedTest = null;
+      manifest.primaryFailure = collector.redactor.redactText(error.message);
       writeManifest(manifestPath, manifest);
     }
-    try {
-      await environmentGuard.restore();
-      manifest.environmentRestoration = { status: 'passed', at: new Date().toISOString() };
-    } catch (error) {
-      manifest.environmentRestoration = { status: 'failed', error: error.message };
-      manifest.status = 'restore-failed';
-      throw error;
-    } finally { writeManifest(manifestPath, manifest); await collector.close(); }
+    if (strictDeletion) manifest.primaryFailure = collector.redactor.redactText(error.stack ?? error.message);
+    throw error;
+  } finally {
+    await finishRangeOwnership({ manifest, manifestPath, collector, environmentGuard, strictDeletion, primaryFailure,
+      retainHealthyOnPause: !interruptedBy && options.diagnosticBlock === undefined });
   }
 }
 
-main().then((code) => {
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main().then((code) => {
   process.exitCode = code;
 }).catch((error) => {
   process.stderr.write(`E2E range runner failed before/around a test: ${error.stack ?? error.message}\n`);

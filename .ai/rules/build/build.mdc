@@ -35,7 +35,7 @@ After any `Cargo.toml` change: `task generate-recipe`.
 | Build native Rust workspace (release gate) | `task rust-build-release` |
 | Rust workspace lint/security gate | `task rust-clippy` |
 | Rust coverage gate (>=80%) | `task rust-coverage` |
-| Local regular Rust tests (8 MiB CI stack setting) | `task rust-test` |
+| Local regular Rust tests (32 MiB test-stack setting) | `task rust-test` |
 | Warm Rust test deps image | `task warm-cache` |
 | Warm WASM deps image | `task warm-cache-wasm` |
 | Build all images | `task build` |
@@ -56,3 +56,29 @@ After any `Cargo.toml` change: `task generate-recipe`.
 | Add shadcn-vue component | `cd meta-secret/web-cli/ui && npx shadcn-vue@latest add <name>` |
 
 List all targets: `task -l` from repo root.
+
+### Android native layout gate
+
+From Core root, `task android-native-test` runs the focused stdlib ELF/ZIP fixture bank.
+`task android-native-coverage -- /absolute/run-artifacts/coverage` runs the same
+bank through stdlib trace with count/summary/missing-line reports. With no argument,
+reports go to `.ai/artifacts/run/android-native-coverage`; no .cover files go beside
+source. Record verifier-specific statement coverage separately from imported stdlib
+files. This reruns the focused bank and does not measure Rust/native/UI coverage.
+`task android-native-verify -- --role app /absolute/app.apk` requires exactly one
+own library for arm64-v8a, armeabi-v7a and x86_64; `--role instrumentation` permits
+zero native entries. `--abi arm64-v8a /absolute/library.so` checks a standalone ELF.
+All packaged native paths are scanned, including legacy x86/armeabi/MIPS/MIPS64;
+only arm64-v8a and x86_64 require16KiB PT_LOAD alignment. Stored ZIP data alignment
+is separate from ELF alignment; compressed entries explicitly have no mmap verdict.
+Report errors block acceptance. No permissive invalid-ELF mode exists.
+
+After old immutable artifact semantic RED and source review, Root may run
+`task android-native-build`: this invokes existing Android script, installs Rust
+targets, builds three mobile archives, regenerates Kotlin and copies native files
+directly into sibling Compose. Serialize with runtime/build ownership. Preserve
+old provenance; new binaries require a new generation. Independent owning NDK
+readelf and SDK zipalign on actual signed APKs, exported ABI/dependency/UniFFI
+identity, byte-identical generated Kotlin, NX/WX/GNU_RELRO baseline comparison
+and genuine native runtime gates remain necessary. A verifier pass is no UI E2E
+acceptance. No unrelated full Rust suite is implied by a shell-only layout fix.

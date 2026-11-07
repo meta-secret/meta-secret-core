@@ -23,7 +23,7 @@
     "role": "A",
     "scheme": "iosApp",
     "composeRoot": "../../meta-secret-compose",
-    "simulatorName": "iPhone 17",
+    "simulatorName": "iPhone 17 Pro Max",
     "bundleId": "org.metasecret.vault",
     "reuseBuildForTesting": true,
     "testClass": "CaseEightIosBothOfflineUITest",

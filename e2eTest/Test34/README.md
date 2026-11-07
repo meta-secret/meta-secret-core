@@ -38,3 +38,15 @@ Run locally with `npm run test-34:run`. The shared Test #4 lifecycle records the
 local mode, server/native tails, browser diagnostics, marker timeline,
 screenshots on failure, and cleanup status. It must never print Secret values,
 keys, or raw Shares.
+
+
+## Scoped recovery orchestration
+
+Exact `test34:web-secondary-creator-lifecycle` uses the actual current source descriptor and
+independent expected12 before raw metadata. Its iOS sender uses the distinct
+`recoveryShowPhase` procedure at the original input-return/already-visible
+boundary. Same ordinary600/currentD clips prep180/value45/close60; no business
+or security rule changes. Launch through normal range owner, for example
+`npm run test-range -- --from 34 --to 34 --run-id <fresh-ascii-owner> --preserve-evidence`. Original
+actions/roles/repetitions/value/Copy/Hide/results stay mandatory. Host controls
+are not whole UI or SDK/provenance acceptance.

@@ -30,3 +30,15 @@ is sender, approver, and observer exactly nine times.
 come from authoritative Web rows. All waits are bounded by visible UI,
 persisted state, or completion markers; there are no sleeps, `slowMo`, reduced
 cycles, remote services, or direct Core business actions.
+
+
+## Scoped recovery orchestration
+
+Exact `test48:android-distributed-creator-declined-removal-recovery-lifecycle` uses the actual current source descriptor and
+independent expected12 before raw metadata. Its iOS sender uses the distinct
+`recoveryShowPhase` procedure at the original input-return/already-visible
+boundary. Same ordinary600/currentD clips prep180/value45/close60; no business
+or security rule changes. Launch through normal range owner, for example
+`npm run test-range -- --from 48 --to 48 --run-id <fresh-ascii-owner> --preserve-evidence`. Original
+actions/roles/repetitions/value/Copy/Hide/results stay mandatory. Host controls
+are not whole UI or SDK/provenance acceptance.

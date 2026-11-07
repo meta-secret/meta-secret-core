@@ -345,6 +345,14 @@ pub struct SsDeclineData {
 #[serde(rename_all = "camelCase")]
 pub struct SsLogData {
     pub claims: HashMap<ClaimId, SsClaim>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_recovery_request_intake:
+        Option<crate::node::db::events::vault::recovery_request_intake::RecoveryRequestIntake>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub liveboard_recovery_results: HashMap<
+        ClaimId,
+        crate::node::db::events::vault::liveboard_metadata::RecoveryDecisionRecord,
+    >,
 }
 
 impl SsLogData {
@@ -621,7 +629,10 @@ impl SsLogData {
     pub fn new(claim: SsClaim) -> Self {
         let mut claims = HashMap::new();
         claims.insert(claim.id.clone(), claim);
-        Self { claims }
+        Self {
+            claims,
+            ..Self::default()
+        }
     }
 
     pub fn insert(mut self, claim: SsClaim) -> Self {

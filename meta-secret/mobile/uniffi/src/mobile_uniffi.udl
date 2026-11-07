@@ -21,6 +21,14 @@ namespace mobile_uniffi {
     string find_claim_by(string secret_id);
     string find_claim_id_by(string secret_id);
     string recover(string secret_id);
+    string cluster_distribution_checked(string name, string secret);
+    string recover_checked(string secret_id);
+    string delete_secret_checked(string secret_id);
+    string remove_member_checked(string target_device_id);
+    string reconcile_producer_receipt(string reference_json);
+    string continue_local_remove_checked(string reference_json);
+    string decide_join_request(string request_json);
+    string decide_remove_member(string request_json);
     string accept_recover(string claim_id);
     string decline_recover(string claim_id);
     string send_decline_completion(string claim_id);

@@ -33,3 +33,15 @@ test('active or unverifiable builds prevent destructive cache fallback', () => {
   assert.equal(reclaimBuildCaches({ measureFreeGiB: () => 9, minimumGiB: 12,
     buildersIdle: () => false, cleanups: [() => { throw new Error('build active'); }], report: () => {} }), 9);
 });
+
+
+test('active prepared products block every build-cache fallback below the unchanged disk floor', () => {
+  const calls = []; const messages = [];
+  const available = reclaimBuildCaches({ measureFreeGiB: () => 11, minimumGiB: 12,
+    preservePreparedBuilds: true, buildersIdle: () => { calls.push('idle'); return true; },
+    cleanups: [() => calls.push('xcode'), () => calls.push('gradle'), () => calls.push('cargo')],
+    report: (message) => messages.push(message) });
+  assert.equal(available, 11, 'The floor is not weakened and no fictitious reclaimed bytes appear');
+  assert.deepEqual(calls, [], 'An active batch must retain its prepared outputs even when builders are idle');
+  assert.match(messages.join('\n'), /active prepared products.*pause/i);
+});

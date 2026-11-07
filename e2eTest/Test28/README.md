@@ -19,3 +19,15 @@ The approval rotation is balanced: Web, Android, and iOS each act nine times
 as sender, nine times as approver, and nine times as observer. The scenario has
 no direct-Show phase and does not use fixed sleeps or `slowMo`; synchronization
 uses persisted UI/native markers with bounded diagnostic deadlines.
+
+
+## Scoped recovery orchestration
+
+Exact `test28:web-secondary-creator-lifecycle` uses the actual current source descriptor and
+independent expected12 before raw metadata. Its iOS sender uses the distinct
+`recoveryShowPhase` procedure at the original input-return/already-visible
+boundary. Same ordinary600/currentD clips prep180/value45/close60; no business
+or security rule changes. Launch through normal range owner, for example
+`npm run test-range -- --from 28 --to 28 --run-id <fresh-ascii-owner> --preserve-evidence`. Original
+actions/roles/repetitions/value/Copy/Hide/results stay mandatory. Host controls
+are not whole UI or SDK/provenance acceptance.

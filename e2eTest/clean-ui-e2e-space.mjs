@@ -1,9 +1,9 @@
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readdirSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, relative, resolve, sep } from 'node:path';
 import process from 'node:process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { reclaimBuildCaches } from './shared/build-cache-cleanup.mjs';
 
 const e2eRoot = resolve(fileURLToPath(new URL('.', import.meta.url)));
@@ -280,66 +280,11 @@ function pruneKonanVersions() {
   // ~/.konan/dependencies is intentionally never touched.
 }
 
-async function resetRequestedAndroidAvd(avdName) {
-  if (avdName !== 'Pixel_4a') {
-    if (avdName) results.push(`skipped Android userdata reset: ${avdName} is not the approved Pixel_4a AVD`);
-    return;
-  }
-  const sdk = process.env.ANDROID_SDK_ROOT || process.env.ANDROID_HOME || join(home, 'Library/Android/sdk');
-  const adb = join(sdk, 'platform-tools/adb');
-  const emulator = join(sdk, 'emulator/emulator');
-  if (!existsSync(adb) || !existsSync(emulator)) {
-    results.push('skipped Pixel_4a userdata reset: Android SDK tools are unavailable');
-    return;
-  }
-  const processList = run('ps', ['-axo', 'command='], { allowFailure: true });
-  if (processList.ok && processList.output.split(/\r?\n/).some((line) => /(?:^|\s)-avd\s+Pixel_4a(?:\s|$)/.test(line))) {
-    results.push('skipped Pixel_4a userdata reset: emulator process for this AVD already exists');
-    return;
-  }
-  const devices = run(adb, ['devices'], { allowFailure: true });
-  if (!devices.ok) {
-    results.push(`skipped Pixel_4a userdata reset: adb devices failed: ${devices.output}`);
-    return;
-  }
-  for (const line of devices.output.split(/\r?\n/)) {
-    const serial = line.trim().split(/\s+/)[0];
-    if (!serial?.startsWith('emulator-')) continue;
-    const avd = run(adb, ['-s', serial, 'emu', 'avd', 'name'], { allowFailure: true });
-    if (avd.ok && avd.output.includes('Pixel_4a')) {
-      results.push(`skipped Pixel_4a userdata reset: AVD is already online (${serial})`);
-      return;
-    }
-  }
-  const userdataImage = join(home, '.android/avd/Pixel_4a.avd/userdata-qemu.img.qcow2');
-  const qemuCandidates = [
-    join(sdk, 'emulator/qemu/darwin-aarch64/qemu-img'),
-    join(sdk, 'emulator/qemu/darwin-x86_64/qemu-img'),
-    'qemu-img',
-  ];
-  const qemuImg = qemuCandidates.find((candidate) => candidate === 'qemu-img' || existsSync(candidate));
-  if (!qemuImg || !existsSync(userdataImage) || lstatSync(userdataImage).isSymbolicLink()) {
-    results.push('skipped Pixel_4a userdata reset: writable userdata image or qemu-img could not be safely verified');
-    return;
-  }
-  const info = run(qemuImg, ['info', userdataImage], { allowFailure: true });
-  if (!info.ok) {
-    results.push(`skipped Pixel_4a userdata reset: qemu-img info failed: ${info.output}`);
-    return;
-  }
-  results.push(`inspected Pixel_4a writable userdata image with qemu-img info: ${info.output.trim().replace(/\r?\n/g, '; ')}`);
-  const launched = spawn(emulator, ['-avd', 'Pixel_4a', '-wipe-data'], { detached: true, stdio: 'ignore' });
-  launched.unref();
-  const launch = await new Promise((resolvePromise) => {
-    launched.once('spawn', () => resolvePromise({ ok: true }));
-    launched.once('error', (error) => resolvePromise({ ok: false, error }));
-  });
-  results.push(launch.ok
-    ? 'started the approved visible Pixel_4a AVD with -wipe-data'
-    : `warning: Pixel_4a wipe-data launch failed: ${launch.error.message}`);
+export async function resetRequestedAndroidAvd(avdName) {
+  if (avdName) throw new Error('AVD data wipe is forbidden; preserve existing device settings and credentials');
 }
 
-async function automaticCleanup(avdName, force = false) {
+async function automaticCleanup(avdName, force = false, preservePreparedBuilds = false) {
   const beforeGiB = freeSpaceGiB();
   process.stdout.write(`💽 Free space before cleanup: ${beforeGiB} GiB\n`);
   if (!force && beforeGiB >= lowSpaceThresholdGiB) {
@@ -377,6 +322,7 @@ async function automaticCleanup(avdName, force = false) {
   reclaimBuildCaches({
     measureFreeGiB: freeSpaceGiB,
     minimumGiB: requiredPostCleanupGiB,
+    preservePreparedBuilds,
     buildersIdle: () => {
       const processes = run('ps', ['-axo', 'command='], { allowFailure: true });
       return processes.ok && !/(?:^|\s)(?:\S*\/)?(?:cargo|rustc|xcodebuild)(?:\s|$)|GradleWrapperMain|GradleWorkerMain|KotlinCompileDaemon/m.test(processes.output);
@@ -462,7 +408,7 @@ function pruneSuccessfulRun(runId) {
   }
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });
   // Only remove the now-empty directory; failed attempts remain for analysis.
-  if (existsSync(testLogs) && readdirSync(testLogs).length === 0) rmSync(testLogs);
+  if (existsSync(testLogs) && readdirSync(testLogs).length === 0) rmdirSync(testLogs);
   const afterGiB = freeSpaceGiB();
   const measuredByFilesGiB = Number((bytesRemoved / (1024 ** 3)).toFixed(4));
   process.stdout.write(`🧹 Successful run ${runId}: removed passing-attempt logs and registered passing-attempt artifacts; failed-attempt evidence, readiness reports, run.json, and run.log preserved.\n`);
@@ -471,16 +417,18 @@ function pruneSuccessfulRun(runId) {
 }
 
 async function main(args) {
+  if (args.some(arg => arg.startsWith('--avd='))) throw new Error('AVD reset requests are forbidden; cache cleanup only');
   if (args[0] === '--prune-success-run' && args[1]) {
     pruneSuccessfulRun(args[1]);
     return 0;
   }
   const avdArgument = args.find((arg) => arg.startsWith('--avd='));
-  const report = await automaticCleanup(avdArgument?.slice('--avd='.length), args.includes('--force'));
+  const report = await automaticCleanup(avdArgument?.slice('--avd='.length), args.includes('--force'),
+    args.includes('--preserve-prepared-builds'));
   return report.belowMinimum ? 1 : 0;
 }
 
-main(process.argv.slice(2)).then((code) => {
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main(process.argv.slice(2)).then((code) => {
   process.exitCode = code;
 }).catch((error) => {
   process.stderr.write(`Disk cleaner stopped safely: ${error.stack ?? error.message}\n`);

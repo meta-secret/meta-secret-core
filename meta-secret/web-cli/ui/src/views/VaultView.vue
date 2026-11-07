@@ -1,163 +1,114 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import RegistrationComponent from '@/components/registration/OrbitRegistration.vue';
-import VaultComponent from '@/components/vault/Vault.vue';
+import LiveboardShell from '@/components/liveboard/LiveboardShell.vue';
+import InviteQrDialog from '@/components/liveboard/InviteQrDialog.vue';
+import CreateSecretDialog from '@/components/liveboard/CreateSecretDialog.vue';
+import ResetLocalDialog from '@/components/liveboard/ResetLocalDialog.vue';
 import { AppState } from '@/stores/app-state';
 import { useAuthStore } from '@/stores/auth';
 import { registrationSurfaceActive } from '@/features/registration/registrationSurface';
+import { useVaultSession } from '@/features/liveboard/useVaultSession';
+import { provideLiveboardRouteSession } from '@/features/liveboard/routeContext';
+import type { LiveboardRoute } from '@/features/liveboard/controller';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Button } from '@/components/ui/button';
-import { useRoute } from 'vue-router';
-import { createStateInvalidationController } from '@/utils/stateInvalidation';
 
 const jsAppState = AppState();
 const authStore = useAuthStore();
 const route = useRoute();
-const isInitialized = ref(false);
-let disposed = false;
+const session = useVaultSession({ store: jsAppState, auth: authStore });
+const { controller, runWrite } = provideLiveboardRouteSession(session);
 const registrationActive = registrationSurfaceActive;
-const vaultName = computed(() => jsAppState.getVaultName());
-let serverSyncInFlight: Promise<void> | null = null;
-const syncServerState = () => {
-  if (serverSyncInFlight) return serverSyncInFlight;
-  const manager = jsAppState.appManager as typeof jsAppState.appManager & {
-    sync_now?: () => Promise<void>;
-  };
-  if (typeof manager?.sync_now !== 'function') {
-    console.warn('[StateEvents] sync_now is unavailable in the loaded WASM module');
-    return Promise.resolve();
-  }
-  jsAppState.beginSync();
-  const sync = Promise.resolve()
-    .then(() => manager.sync_now!())
-    .catch((error) => {
-      jsAppState.syncError = 'Could not synchronize Vault. Retry to apply pending changes.';
-      throw error;
-    });
-  serverSyncInFlight = sync.finally(() => {
-    jsAppState.endSync();
-    serverSyncInFlight = null;
-  });
-  return serverSyncInFlight;
-};
-const stateInvalidation = createStateInvalidationController({
-  refresh: () => jsAppState.updateState(),
-  syncBeforeRefresh: syncServerState,
-  getAuthorization: () => jsAppState.getStateEventsAuthToken(vaultName.value),
+const view = computed(() => controller.value.state.value);
+const inviteAnchor = computed(() => {
+  const anchor = view.value.inviteAnchor;
+  return anchor instanceof HTMLElement ? anchor : null;
 });
-const handleBrowserOnline = async () => {
-  if (!authStore.isAuthenticated || !isInitialized.value || registrationActive.value) return;
-  try {
-    await syncServerState();
-  } catch (error) {
-    console.warn('[StateEvents] reconnect sync deferred; background sync will retry', error);
-  }
-  await stateInvalidation.refreshNow();
-};
-
-window.addEventListener('online', handleBrowserOnline);
-
-onBeforeUnmount(() => {
-  disposed = true;
-  registrationActive.value = false;
-  window.removeEventListener('online', handleBrowserOnline);
-
-  stateInvalidation.disconnect();
-});
-
-watch(
-  () => authStore.isAuthenticated,
-  async (isAuthenticated) => {
-    if (isAuthenticated && authStore.masterKey) {
-      try {
-        await jsAppState.appStateInit();
-        if (disposed) return;
-        registrationActive.value = !jsAppState.isMember;
-        isInitialized.value = true;
-      } catch (error) {
-        console.error('Error initializing app state:', error);
-      }
-    } else {
-      stateInvalidation.disconnect();
-      isInitialized.value = false;
-    }
-  },
-  { immediate: true },
+const creation = computed(() => controller.value.create.state.value);
+const routeIntent = computed<LiveboardRoute>(() =>
+  route.name === 'homeSecrets' ? 'secrets' : route.name === 'homeProfile' ? 'profile' : 'home',
 );
-
-watch(
-  () => jsAppState.isMember,
-  (member, wasMember) => {
-    if (isInitialized.value && wasMember && !member) registrationActive.value = true;
-  },
+const memberSurface = computed(
+  () =>
+    authStore.isAuthenticated &&
+    !registrationActive.value &&
+    ((session.state.value.initialized && jsAppState.isMember && session.state.value.member) ||
+      session.state.value.resetting),
 );
 
 watch(
   () =>
     [
       authStore.isAuthenticated,
-      isInitialized.value,
-      vaultName.value,
+      session.state.value.initialized,
       jsAppState.isMember,
-      registrationActive.value,
+      session.state.value.resetting,
     ] as const,
-  ([isAuthenticated, initialized, currentVaultName, member, registering]) => {
-    if (isAuthenticated && initialized && member && currentVaultName && !registering) {
-      stateInvalidation.connect(currentVaultName);
-      return;
-    }
-    stateInvalidation.disconnect();
+  ([authenticated, initialized, member, resetting]) => {
+    if (authenticated && initialized && !resetting && !member) registrationActive.value = true;
   },
-  { immediate: true },
+  { immediate: true, flush: 'sync' },
 );
-
 watch(
-  () => route.path,
-  () => {
-    if (authStore.isAuthenticated && isInitialized.value && !registrationActive.value) {
-      void stateInvalidation.refreshNow();
-    }
+  () => [routeIntent.value, session.controller] as const,
+  ([intent]) => {
+    session.controller.navigate(intent);
+    if (session.state.value.ready && !registrationActive.value) void session.refresh().catch(() => undefined);
   },
+  { immediate: true, flush: 'sync' },
 );
+function registrationReady() {
+  if (jsAppState.isMember) registrationActive.value = false;
+}
+const createSecret = () => runWrite((owner) => owner.create.submit());
+onBeforeUnmount(() => {
+  registrationActive.value = false;
+});
 </script>
 
 <template>
   <div
-    v-if="authStore.isAuthenticated && !isInitialized"
+    v-if="authStore.isAuthenticated && !session.state.value.initialized && !session.state.value.resetting"
     class="flex min-h-[calc(100vh-3.5rem)] items-center justify-center p-6"
+    role="status"
+    aria-label="Initializing Vault"
+    aria-busy="true"
   >
     <div class="w-full max-w-md space-y-3">
       <Skeleton class="h-4 w-48 mx-auto" />
       <Skeleton class="h-2 w-64 mx-auto" />
     </div>
   </div>
-
   <RegistrationComponent
-    v-else-if="authStore.isAuthenticated && isInitialized && registrationActive"
-    @ready="registrationActive = false"
+    v-else-if="authStore.isAuthenticated && session.state.value.initialized && registrationActive"
+    @ready="registrationReady"
   />
-  <VaultComponent
-    v-else-if="authStore.isAuthenticated && isInitialized && !registrationActive && jsAppState.isMember"
-    v-show="!jsAppState.isSynchronizing && !jsAppState.syncError"
-  />
-  <div
-    v-if="
-      authStore.isAuthenticated &&
-      isInitialized &&
-      !registrationActive &&
-      (jsAppState.isSynchronizing || jsAppState.syncError)
-    "
-    role="status"
-    aria-live="polite"
-    aria-busy="true"
-    data-testid="vault-sync-loader"
-    class="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-4 bg-background p-6"
-  >
-    <Skeleton v-if="jsAppState.isSynchronizing" class="h-4 w-48" />
-    <p v-if="jsAppState.syncError" role="alert">{{ jsAppState.syncError }}</p>
-    <p v-else>Synchronizing Vault and applying pending changes…</p>
-    <Button v-if="jsAppState.syncError" :disabled="jsAppState.isSynchronizing" @click="stateInvalidation.refreshNow()"
-      >Retry</Button
-    >
-  </div>
+  <LiveboardShell v-else-if="memberSurface">
+    <RouterView />
+    <template #dialogs>
+      <InviteQrDialog
+        :open="view.inviteOpen"
+        :anchor="inviteAnchor"
+        :vault-name="view.profile.vaultName"
+        @close="controller.closeInvite()"
+        @error="controller.showError($event)"
+      />
+      <CreateSecretDialog
+        :view="creation"
+        :blocked="!session.state.value.ready || !view.canCreateSecret"
+        @change="controller.create.change($event)"
+        @paste="controller.create.paste()"
+        @paste-text="controller.create.pasteText($event)"
+        @submit="createSecret"
+        @cancel="controller.create.cancel()"
+      />
+      <ResetLocalDialog
+        :open="view.resetOpen"
+        :busy="view.resetBusy"
+        @cancel="controller.cancelReset()"
+        @confirm="controller.confirmReset()"
+      />
+    </template>
+  </LiveboardShell>
 </template>

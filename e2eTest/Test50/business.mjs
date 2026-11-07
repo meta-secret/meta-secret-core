@@ -1,3 +1,7 @@
+import { openWebSecrets, webSecretCard } from '../shared/web-liveboard-actions.mjs';
+import { openWebIncoming, decideWebIncoming, assertWebInboxEmpty } from '../shared/web-liveboard-inbox.mjs';
+import { installWebOperationObserver, waitWebOperation, releaseWebOperationObserver, disposeWebOperationObserver } from '../shared/web-operation-observer.mjs';
+import { cancelWebDeletionAuthentication } from '../shared/web-authentication-abort.mjs';
 import assert from 'node:assert/strict';
 import { parseCliEnvelope } from './cli-json.mjs';
 import { waitForCanonicalTerminal, bindWebFailureGuard, browserOwnedSecretUsable } from './web-postcondition.mjs';
@@ -86,8 +90,11 @@ async function runBusiness(h) {
       expectedStatus: cycle.outcome === 'accepted' ? 'Done' : 'Declined', allowExistingSyncError,
     });
     cycle.requestId = terminal.requestId;
-    await webRow(cycle.secretName).waitFor({ state: cycle.outcome === 'accepted' ? 'hidden' : 'visible', timeout: 120_000 });
-    await page.getByTestId('approve-secret-deletion').waitFor({ state: 'hidden', timeout: 120_000 });
+    // Receiver04 is checked while actually open. An offline late-Show actor stays
+    // in Secrets until tombstone, so navigation cannot revoke its held owner first.
+    if (await page.getByTestId('liveboard-secrets-open').isVisible()) await assertWebInboxEmpty(page, 120_000);
+    await openWebSecrets(page);
+    await page.locator('article.secret-card').filter({ has: page.getByTestId(`secret-primary-action-${cycle.secretName}`) }).waitFor({ state: cycle.outcome === 'accepted' ? 'hidden' : 'visible', timeout: 120_000 });
     if (cycle.outcome === 'declined') {
       await page.getByTestId(`delete-secret-${cycle.secretName}`).waitFor({ state: 'visible', timeout: 120_000 });
       assert.equal(await page.getByTestId(`delete-secret-${cycle.secretName}`).isEnabled(), true);
@@ -153,18 +160,18 @@ async function runBusiness(h) {
     // Local cancellation must preserve identity and not create a request.
     const beforeCancel = await coreState();
     if (requester === 'web') {
-      await page.getByTestId(`delete-secret-${cycle.secretName}`).click();
-      await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-      await page.getByTestId('confirm-delete-secret').waitFor({ state: 'hidden' });
+      const cancellation = await cancelWebDeletionAuthentication(page, h.virtualAuthenticator, { name: cycle.secretName, id: oldId, scope: `${block.runId}-${cycle.number}` });
+      assert.equal(cancellation.kind, 'browser-webauthn-api-abort', 'Browser API abort is distinct from native OS Cancel-button evidence');
     } else if (requester === 'cli') {
       const refused = await cli(['secret', 'delete', '--pass-name', cycle.secretName], { allowFailure: true });
       assert.notEqual(refused.exitCode, 0, 'Noninteractive unconfirmed CLI deletion must refuse');
     } else {
       const actor = await native(requester, 'cancel', cycle, 'cancel');
       release(requester, 'action', cycle, 'cancel');
-      await wait(actor, requester, 'CANCELLED', cycle, 'cancel'); await finish(actor);
+      await wait(actor, requester, scenario.authProfile === 'controlled-business' ? 'AUTH_MANUAL_PENDING' : 'CANCELLED', cycle, 'cancel'); await finish(actor);
     }
-    assert.deepEqual(await coreState(), beforeCancel, 'Cancel must leave canonical state unchanged');
+    assert.deepEqual(await coreState(), beforeCancel, scenario.authProfile === 'controlled-business' && ['android', 'ios'].includes(requester)
+      ? 'Untriggered manual-pending boundary must leave canonical state unchanged' : 'Cancel must leave canonical state unchanged');
 
     // At 1/2 members all local Show actors test real reveal and its own refresh.
     if (block.members.length <= 2) for (const platform of block.members) {
@@ -200,31 +207,19 @@ async function runBusiness(h) {
         await h.cancelOfflineActor(cycle.offline, offlineActor);
       }
     } else if (cycle.offline === 'web') {
-      await page.evaluate(async () => {
-        const { AppState } = await import('/src/stores/app-state.ts');
-        const manager = AppState().appManager;
-        const original = manager.show_local_secret.bind(manager);
-        manager.show_local_secret = async (secret) => {
-          const value = await original(secret);
-          window.__TEST50_LATE_REVEAL_READY = true;
-          return new Promise((resolve) => { window.__TEST50_RELEASE_LATE_REVEAL = () => { manager.show_local_secret = original; resolve(value); }; });
-        };
-      });
-      await webRow(cycle.secretName).click();
-      await page.waitForFunction(() => window.__TEST50_LATE_REVEAL_READY === true, null, { timeout: 120_000 });
+      await page.evaluate(installWebOperationObserver, { scope: `late-show-${cycle.number}`, method: 'show_local_secret', expectedId: oldId, holdResult: true });
+      const selected = await webSecretCard(page, cycle.secretName, { id: oldId });
+      await selected.card.getByTestId(`secret-primary-action-${cycle.secretName}`).click();
+      await waitWebOperation(page, `late-show-${cycle.number}`, { held: true });
       await page.context().setOffline(true);
     }
     // An offline CLI makes no commands until the reconnect boundary.
     let requestId;
     if (requester === 'web') {
-      await page.evaluate(async ({ name, id }) => {
-        const { AppState } = await import('/src/stores/app-state.ts');
-        const owned = AppState().passwords.find((secret) => secret.id_str() === id);
-        if (!owned || owned.name !== name) throw new Error('Web current Secret binding did not match the exact identity');
-        window.__TEST50_OWNED_DELETE_SECRET = owned;
-      }, { name: cycle.secretName, id: oldId });
-      await page.getByTestId(`delete-secret-${cycle.secretName}`).click();
-      await page.getByTestId('confirm-delete-secret').click();
+      const selected = await webSecretCard(page, cycle.secretName, { id: oldId });
+      await page.evaluate(installWebOperationObserver, { scope: `delete-${cycle.number}`, method: 'delete_secret_checked', expectedId: oldId, expectedName: cycle.secretName, borrowed: true });
+      await selected.card.getByTestId(`delete-secret-${cycle.secretName}`).click();
+      await waitWebOperation(page, `delete-${cycle.number}`);
     } else if (requester === 'cli') {
       const result = normalizedState(json((await cli(['secret', 'delete', '--pass-name', cycle.secretName, '--yes'])).stdout));
       requestId = result.requestId;
@@ -243,8 +238,8 @@ async function runBusiness(h) {
       // Two receivers independently observe exactly this pending request before any response.
       for (const platform of block.members.filter((platform) => platform !== requester)) {
         if (platform === 'web') {
-          await page.getByTestId('approve-secret-deletion').waitFor({ state: 'visible', timeout: 120_000 });
-          requestId = await page.getByTestId('approve-secret-deletion').getAttribute('data-request-id');
+          const head = await openWebIncoming(page, { kind: 'delete-secret', subject: cycle.secretName, count: 1 });
+          requestId = head.requestId;
         } else if (platform === 'cli') {
           const pending = json((await cli(['secret', 'deletion-requests'])).stdout).map(normalizedState).find((state) => state.id === oldId && state.status === 'NeedApprove');
           assert(pending?.requestId, 'CLI must observe exact incoming request'); requestId = pending.requestId;
@@ -255,7 +250,7 @@ async function runBusiness(h) {
       const pending = states.find((state) => state.id === oldId && ['Pending', 'NeedApprove'].includes(state.status));
       assert(pending?.requestId, 'Exact persisted pending UUID is required'); requestId = pending.requestId;
       const responder = cycle.responder;
-      if (responder === 'web') await page.getByTestId(cycle.outcome === 'accepted' ? 'approve-secret-deletion' : 'decline-secret-deletion').click();
+      if (responder === 'web') await decideWebIncoming(page, { kind: 'delete-secret', requestId, subject: cycle.secretName, count: 1 }, cycle.outcome === 'accepted');
       else if (responder === 'cli') await cli(['secret', cycle.outcome === 'accepted' ? 'approve-deletion' : 'decline-deletion', '--request-id', requestId, ...(cycle.outcome === 'accepted' ? ['--yes'] : [])]);
       else {
         release(responder, 'action', cycle, 'main');
@@ -266,8 +261,8 @@ async function runBusiness(h) {
     cycle.requestId = requestId;
     if (block.members.includes('web') && cycle.offline !== 'web') await assertWebTerminal(cycle);
     if (requester === 'web') {
-      const usable = await page.evaluate(browserOwnedSecretUsable, { name: cycle.secretName, id: oldId });
-      assert.equal(usable, true, 'Awaited deletion must not consume the browser-owned Secret binding');
+      const usable = await page.evaluate(browserOwnedSecretUsable, { name: cycle.secretName, id: oldId, scope: `delete-${cycle.number}` });
+      assert.equal(usable, true, 'Awaited deletion must preserve its actual borrowed binding until withOwnedPass releases it');
     }
     if (cliDevice && cycle.offline !== 'cli') {
       const terminal = (await coreState()).states.map(normalizedState).find((state) => state.requestId === requestId || (state.id === oldId && state.status === 'Done'));
@@ -287,7 +282,8 @@ async function runBusiness(h) {
         await page.context().setOffline(false);
         // Actual reconnect/SSE drives this terminal UI; no fixture updateState call.
         await assertWebTerminal(cycle, { allowExistingSyncError: true });
-        await page.evaluate(() => window.__TEST50_RELEASE_LATE_REVEAL());
+        await page.evaluate(releaseWebOperationObserver, { scope: `late-show-${cycle.number}` });
+        await page.evaluate(disposeWebOperationObserver, { scope: `late-show-${cycle.number}` });
         await page.getByText(h.secretValue(cycle.secretName), { exact: true }).waitFor({ state: 'hidden', timeout: 30_000 });
         await page.reload(); await h.unlockWithPasskeyIfNeeded(page); await assertWebTerminal(cycle);
       }
@@ -342,6 +338,7 @@ async function runBusiness(h) {
       // Current row/controls bind the newly created Secret, never prior terminal history.
       if (block.members.includes('web')) assert.equal(await page.getByTestId(`delete-secret-${cycle.secretName}`).isEnabled(), true);
     }
+    if (requester === 'web') await page.evaluate(disposeWebOperationObserver, { scope: `delete-${cycle.number}` });
     h.onCycleComplete(cycle);
   }
   assert.equal(actors.size, 0, 'Every native actor must reach its terminal suite result');

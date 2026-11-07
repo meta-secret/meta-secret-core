@@ -1,6 +1,7 @@
 use anyhow::{Result, bail};
 use meta_db_redb::ReDbRepo;
 use meta_secret_core::crypto::key_utils::load_or_create_master_key;
+use meta_secret_core::node::app::meta_app::client_transfer::MetaClientRequestTransfer;
 use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
 use meta_secret_core::node::app::meta_app::meta_client_service::{
     MetaClientDataTransfer, MetaClientService, MetaClientStateProvider,
@@ -8,7 +9,6 @@ use meta_secret_core::node::app::meta_app::meta_client_service::{
 use meta_secret_core::node::app::sync::api_url::ApiUrl;
 use meta_secret_core::node::app::sync::sync_gateway::SyncGateway;
 use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
-use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::db::objects::persistent_object::PersistentObject;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
 use meta_secret_core::node::db::repo::persistent_credentials::PersistentCredentials;
@@ -175,7 +175,7 @@ impl BaseCommand {
 
         Ok(MetaClientService {
             data_transfer: Arc::new(MetaClientDataTransfer {
-                dt: MpscDataTransfer::new(),
+                dt: MetaClientRequestTransfer::new(),
             }),
             sync_gateway,
             state_provider,

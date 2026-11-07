@@ -20,3 +20,15 @@ and open action, and the sender reveals the exact expected synthetic value.
 The complete scenario is 12 direct-Show cycles plus 27 recovery cycles. The
 shared orchestrator recycles only the Web renderer after completed cycles 21
 and 30 while preserving the same Web device storage and passkey.
+
+
+## Scoped recovery orchestration
+
+Exact `test26:android-secondary-creator-lifecycle` uses the actual current source descriptor and
+independent expected12 before raw metadata. Its iOS sender uses the distinct
+`recoveryShowPhase` procedure at the original input-return/already-visible
+boundary. Same ordinary600/currentD clips prep180/value45/close60; no business
+or security rule changes. Launch through normal range owner, for example
+`npm run test-range -- --from 26 --to 26 --run-id <fresh-ascii-owner> --preserve-evidence`. Original
+actions/roles/repetitions/value/Copy/Hide/results stay mandatory. Host controls
+are not whole UI or SDK/provenance acceptance.

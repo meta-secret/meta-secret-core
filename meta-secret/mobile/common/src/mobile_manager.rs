@@ -1,12 +1,20 @@
 // Tests intentionally remain colocated with the mobile manager implementation.
 #![allow(clippy::items_after_test_module)]
 
+#[path = "mobile_manager_liveboard.rs"]
+mod liveboard;
+#[path = "mobile_manager_producer.rs"]
+mod producer;
+#[path = "producer_runtime.rs"]
+mod producer_runtime;
+
 use crate::app_manager::ApplicationManager;
 use anyhow::{Result, bail};
 use meta_db_sqlite::db::sqlite_migration::EmbeddedMigrationsTool;
 use meta_db_sqlite::db::sqlite_store::SqlIteRepo;
 use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::crypto::utils::sha256_hex;
+use meta_secret_core::node::app::meta_app::RecoveryApproveAttempt;
 use meta_secret_core::node::app::sync::api_url::ApiUrl;
 use meta_secret_core::node::app::sync::sync_protocol::HttpSyncProtocol;
 use meta_secret_core::node::common::model::ApplicationState;
@@ -29,11 +37,10 @@ static GLOBAL_APP_MANAGER: Lazy<Mutex<Option<Arc<MobileApplicationManager>>>> =
     Lazy::new(|| Mutex::new(None));
 
 // The UniFFI surface is synchronous, while the Kotlin/Swift clients can call
-// several operations concurrently (state refresh, claim lookup and recovery
-// approval).  All of those operations share one Tokio runtime and one
-// MpscDataTransfer response channel.  Letting block_on calls overlap allows a
-// response to be consumed by the wrong caller and can leave an approval stuck
-// indefinitely.  Serialize calls at the FFI boundary per mobile process.
+// several operations concurrently. Keep synchronous block_on calls serialized
+// at the FFI boundary for coordination of the shared process runtime. Core
+// separately owns one FIFO executor and a private reply channel per queued call;
+// caller cancellation cannot redirect its response to another operation.
 static FFI_CALL_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 static RUNTIME: Lazy<tokio::runtime::Runtime> = Lazy::new(|| {
@@ -264,6 +271,12 @@ impl MobileApplicationManager {
         self.app_manager.recover_js(meta_pass_id.clone()).await;
     }
 
+    pub async fn accept_recover_mobile_attempt(&self, claim_id: ClaimId) -> RecoveryApproveAttempt {
+        self.app_manager
+            .accept_recover_mobile_attempt(claim_id)
+            .await
+    }
+
     pub async fn accept_recover_mobile(&self, claim_id: ClaimId) -> Result<()> {
         info!(claim_id = ?claim_id, "accept_recover_mobile: accepting recovery request");
         let result = self
@@ -306,6 +319,15 @@ impl MobileApplicationManager {
     pub async fn show_recovered(&self, claim_id: &ClaimId) -> Result<String> {
         let plain_text = self.app_manager.show_recovered(claim_id.clone()).await?;
         Ok(plain_text.text)
+    }
+
+    pub async fn show_recovered_checked(
+        &self,
+        claim_id: &ClaimId,
+    ) -> Result<meta_secret_core::node::common::model::liveboard_reveal::RecoveredReveal> {
+        self.app_manager
+            .show_recovered_checked(claim_id.clone())
+            .await
     }
 
     pub async fn show_local_secret(&self, pass_id: &MetaPasswordId) -> Result<String> {

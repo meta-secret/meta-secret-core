@@ -15,11 +15,12 @@ const appState = AppState();
 const registrationEntry = computed(
   () => route.matched.some((record) => record.path === '/') && (!appState.isMember || registrationSurfaceActive.value),
 );
+const liveboardEntry = computed(() => route.matched.some((record) => record.meta.liveboard) && appState.isMember);
 </script>
 
 <template>
   <div class="min-h-screen bg-background text-foreground">
-    <NavBar v-if="!registrationEntry" />
+    <NavBar v-if="!registrationEntry && !liveboardEntry" />
     <div id="content">
       <router-view />
     </div>

@@ -1,7 +1,9 @@
+import { prepareIosIdentityBoundary } from './ios-test-identity.mjs';
 import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { discoverAndroidSdk, findOnlineAndroidAvd } from './android-sdk.mjs';
+import { assertExistingDeviceRun, verifyOwnedIosResetTarget, verifyIosRuntimeHealth, verifyOwnedAndroidResetTarget } from './platform-supervisor.mjs';
 
 const execFileAsync = promisify(execFile);
 const E2E_SERVER_CONTAINER = /^meta-secret-e2e-server(?:-[a-zA-Z0-9_.-]+)?$/;
@@ -62,7 +64,7 @@ async function waitForAndroidReady(platform, sdk, runCommand = command, timeoutM
   let lastError = 'Android AVD is offline or not in adb state=device';
   while (Date.now() < deadline) {
     try {
-      const serial = await findOnlineAndroidAvd(sdk, platform.avdName, (file, args) =>
+      const serial = await findOnlineAndroidAvd(sdk, platform.ownedAndroidProfile?.physicalAvdName ?? platform.avdName, (file, args) =>
         runCommand(file, args, { timeout: 10_000 }));
       if (serial !== platform.serial) {
         lastError = serial ? `AVD resolved to unexpected serial ${serial}` : 'Android AVD is offline';
@@ -154,58 +156,76 @@ async function uninstallAndroid(platform, appBundleId, onEvent, runCommand = com
   onEvent(`verified Android AVD ${platform.avdName} is healthy after app reset`);
 }
 
-async function uninstallIos(platform, appBundleId, onEvent, runCommand = command) {
-  if (!appBundleId) return;
-  const installed = await runCommand('xcrun', [
-    'simctl', 'get_app_container', platform.udid, appBundleId,
-  ]).then(() => true, (error) => {
-    if (/not installed|No such file|not found|No matching applications/i.test(error.message)) return false;
-    throw new Error(`Could not inspect iOS app ${appBundleId}: ${error.message}`);
-  });
-  if (!installed) {
-    onEvent(`iOS app ${appBundleId} was already absent`);
-    return;
+function prepareIosScope(scenario, platforms, context) {
+  const ios = platforms.filter(item => item.platform === 'iOS');
+  if (!ios.length) return null;
+  if (!context || ios.length !== 1 || ios[0].udid !== context.udid || scenario.ios?.bundleId !== context.bundleId) {
+    throw Error('Isolated iOS identity context is required before reset');
   }
-  try {
-    await runCommand('xcrun', ['simctl', 'uninstall', platform.udid, appBundleId]);
-    await runCommand('xcrun', ['simctl', 'get_app_container', platform.udid, appBundleId]);
-    throw new Error(`iOS app ${appBundleId} is still installed after uninstall`);
-  } catch (error) {
-    if (/not installed|No such file|not found|No matching applications/i.test(error.message)) {
-      onEvent(`uninstalled and verified iOS app ${appBundleId}`);
-      return;
-    }
-    throw new Error(`Could not reset iOS app ${appBundleId}: ${error.message}`);
+  return prepareIosIdentityBoundary(context);
+}
+async function stopIosApp(platform, appBundleId, onEvent, runCommand) {
+  try { await runCommand('xcrun', ['simctl', 'terminate', platform.udid, appBundleId]); }
+  catch (error) {
+    if (!/not running|not installed|No such process|found nothing to terminate/i.test(error.message)) throw error;
   }
+  onEvent('selected isolated iOS identity; stopped only the exact app, all stored scopes preserved');
 }
 
 /**
  * Reset only the selected scenario's local E2E state. Runtimes must already be
  * booted; the scenario orchestrator installs and verifies clients afterward.
  */
-export async function resetE2eScenarioState({ scenario, platforms, onEvent = () => {}, runCommand = command, discoverSdk = discoverAndroidSdk }) {
+export async function resetE2eScenarioState({ scenario, platforms, onEvent = () => {}, runCommand = command, discoverSdk = discoverAndroidSdk, runId = process.env.E2E_RUN_ID, readinessPath = process.env.E2E_READINESS_PATH, iosIdentityContext }) {
+  assertExistingDeviceRun({ scenarios: [scenario], readiness: { platforms } });
+  if (process.env.E2E_ANDROID_OWNED_PROFILE !== undefined && platforms.some(item => item.platform === 'Android' && !item.ownedAndroidProfile)) {
+    throw new Error('Declared owned Android reset lost its profile handoff');
+  }
+  for (const platform of platforms.filter((item) => item.platform === 'Android' && item.ownedAndroidProfile)) {
+    await verifyOwnedAndroidResetTarget(platform, { runId, readinessPath, runCommand });
+  }
+  for (const platform of platforms.filter((item) => item.platform === 'iOS' && item.ownedIosProfile)) {
+    await verifyOwnedIosResetTarget(platform, { runId, readinessPath, runCommand });
+  }
   if (scenario.server?.url && !scenario.server.container) {
     throw new Error('Scenario declares a server URL but no E2E container name; cannot prove a clean server state');
   }
+  prepareIosScope(scenario, platforms, iosIdentityContext);
   await resetServerContainer(scenario.server, onEvent, runCommand);
-  const reset = await resetE2eNativeAppState({ scenario, platforms, onEvent, runCommand, discoverSdk });
+  const reset = await resetE2eNativeAppState({ scenario, platforms, onEvent, runCommand, discoverSdk, runId, readinessPath, iosIdentityContext });
   return { serverReset: Boolean(scenario.server?.container), ...reset };
 }
 
-/** Reset participating native app sandboxes while preserving simulator state. */
+/** Rotate the iOS test scope or reset Android app packages; preserve device state. */
 export async function resetE2eNativeAppState({
   scenario,
   platforms,
   onEvent = () => {},
   runCommand = command,
   discoverSdk = discoverAndroidSdk,
+  runId = process.env.E2E_RUN_ID,
+  readinessPath = process.env.E2E_READINESS_PATH,
+  iosIdentityContext,
 }) {
+  assertExistingDeviceRun({ scenarios: [scenario], readiness: { platforms } });
+  // A claimed owned target must be verified before any app or device mutation.
+  if (process.env.E2E_ANDROID_OWNED_PROFILE !== undefined && platforms.some(item => item.platform === 'Android' && !item.ownedAndroidProfile)) {
+    throw new Error('Declared owned Android reset lost its profile handoff');
+  }
+  for (const platform of platforms.filter((item) => item.platform === 'Android' && item.ownedAndroidProfile)) {
+    await verifyOwnedAndroidResetTarget(platform, { runId, readinessPath, runCommand });
+  }
+  for (const platform of platforms.filter((item) => item.platform === 'iOS' && item.ownedIosProfile)) {
+    await verifyOwnedIosResetTarget(platform, { runId, readinessPath, runCommand });
+  }
+  prepareIosScope(scenario, platforms, iosIdentityContext);
   const sdk = platforms.some(({ platform }) => platform === 'Android') ? discoverSdk() : null;
   for (const platform of platforms) {
     if (platform.platform === 'Android') {
       await uninstallAndroid(platform, scenario.android?.bundleId, onEvent, runCommand, sdk);
     } else if (platform.platform === 'iOS') {
-      await uninstallIos(platform, scenario.ios?.bundleId, onEvent, runCommand);
+      await stopIosApp(platform, scenario.ios?.bundleId, onEvent, runCommand);
+
     }
   }
   for (const platform of platforms.filter(({ platform: name }) => name === 'iOS')) {

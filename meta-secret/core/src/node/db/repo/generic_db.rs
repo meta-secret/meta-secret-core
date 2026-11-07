@@ -55,6 +55,11 @@ pub trait DbCleanUpCommand {
 pub trait KvLogEventRepo:
     FindOneQuery + SaveCommand + DeleteCommand + DbCleanUpCommand + 'static
 {
+    fn server_recovery_response_store(
+        &self,
+    ) -> Result<&dyn super::recovery_response_store::ServerRecoveryResponseStore> {
+        Err(super::recovery_response_store::RecoveryResponseStoreError::UnsupportedBackend.into())
+    }
 }
 
 pub trait CommitLogDbConfig {

@@ -1,0 +1,1649 @@
+{
+  "keyframes": {
+    "recovery-device-glow": [
+      {
+        "offset": 0,
+        "properties": {
+          "opacity": ".7"
+        }
+      },
+      {
+        "offset": 0.5,
+        "properties": {
+          "opacity": "1",
+          "filter": "drop-shadow(0 0 5px #e3edce33)"
+        }
+      },
+      {
+        "offset": 1,
+        "properties": {
+          "opacity": ".7"
+        }
+      }
+    ],
+    "device-current-turn": [
+      {
+        "offset": 0,
+        "properties": {
+          "transform": "rotate(0)"
+        }
+      },
+      {
+        "offset": 0.15,
+        "properties": {
+          "transform": "rotate(0)"
+        }
+      },
+      {
+        "offset": 0.8,
+        "properties": {
+          "transform": "rotate(360deg)"
+        }
+      },
+      {
+        "offset": 1,
+        "properties": {
+          "transform": "rotate(360deg)"
+        }
+      }
+    ],
+    "device-current-trace": [
+      {
+        "offset": 0,
+        "properties": {
+          "stroke-dasharray": "1 0"
+        }
+      },
+      {
+        "offset": 0.35,
+        "properties": {
+          "stroke-dasharray": ".65 .12 .02 .12 .02 .09"
+        }
+      },
+      {
+        "offset": 0.55,
+        "properties": {
+          "stroke-dasharray": ".65 .12 .02 .12 .02 .09"
+        }
+      },
+      {
+        "offset": 1,
+        "properties": {
+          "stroke-dasharray": "1 0"
+        }
+      }
+    ],
+    "device-bin-tip": [
+      {
+        "offset": 0,
+        "properties": {
+          "transform": "translateY(0) rotate(0)"
+        }
+      },
+      {
+        "offset": 0.25,
+        "properties": {
+          "transform": "translateY(0) rotate(0)"
+        }
+      },
+      {
+        "offset": 0.45,
+        "properties": {
+          "transform": "translateY(-2px) rotate(-12deg)"
+        }
+      },
+      {
+        "offset": 0.6,
+        "properties": {
+          "transform": "translateY(-2px) rotate(-12deg)"
+        }
+      },
+      {
+        "offset": 0.8,
+        "properties": {
+          "transform": "translateY(0) rotate(0)"
+        }
+      },
+      {
+        "offset": 1,
+        "properties": {
+          "transform": "translateY(0) rotate(0)"
+        }
+      }
+    ],
+    "device-bin-mark": [
+      {
+        "offset": 0,
+        "properties": {
+          "opacity": "1"
+        }
+      },
+      {
+        "offset": 0.3,
+        "properties": {
+          "opacity": "1"
+        }
+      },
+      {
+        "offset": 0.5,
+        "properties": {
+          "opacity": ".4"
+        }
+      },
+      {
+        "offset": 0.6,
+        "properties": {
+          "opacity": ".4"
+        }
+      },
+      {
+        "offset": 0.85,
+        "properties": {
+          "opacity": "1"
+        }
+      },
+      {
+        "offset": 1,
+        "properties": {
+          "opacity": "1"
+        }
+      }
+    ],
+    "device-clock-tick": [
+      {
+        "offset": 1,
+        "properties": {
+          "transform": "rotate(360deg)"
+        }
+      }
+    ],
+    "invite-shade": [
+      {
+        "offset": 0,
+        "properties": {
+          "background": "transparent",
+          "-webkit-backdrop-filter": "blur(0)",
+          "backdrop-filter": "blur(0)"
+        }
+      },
+      {
+        "offset": 1,
+        "properties": {
+          "background": "#080b0b20",
+          "-webkit-backdrop-filter": "blur(8px)",
+          "backdrop-filter": "blur(8px)"
+        }
+      }
+    ],
+    "notification-wash": [
+      {
+        "offset": 0,
+        "properties": {
+          "background-position": "150% 0"
+        }
+      },
+      {
+        "offset": 0.8,
+        "properties": {
+          "background-position": "-150% 0"
+        }
+      },
+      {
+        "offset": 1,
+        "properties": {
+          "background-position": "-150% 0"
+        }
+      }
+    ],
+    "notification-appear": [
+      {
+        "offset": 0,
+        "properties": {
+          "opacity": "0",
+          "transform": "translateY(3px)"
+        }
+      },
+      {
+        "offset": 1,
+        "properties": {
+          "opacity": "1",
+          "transform": "none"
+        }
+      }
+    ],
+    "notification-check": [
+      {
+        "offset": 0,
+        "properties": {
+          "stroke-dashoffset": "1",
+          "opacity": ".3"
+        }
+      },
+      {
+        "offset": 0.08,
+        "properties": {
+          "stroke-dashoffset": "1",
+          "opacity": ".3"
+        }
+      },
+      {
+        "offset": 0.3,
+        "properties": {
+          "stroke-dashoffset": "0",
+          "opacity": "1"
+        }
+      },
+      {
+        "offset": 0.88,
+        "properties": {
+          "stroke-dashoffset": "0",
+          "opacity": "1"
+        }
+      },
+      {
+        "offset": 1,
+        "properties": {
+          "stroke-dashoffset": "1",
+          "opacity": ".3"
+        }
+      }
+    ],
+    "notification-cross": [
+      {
+        "offset": 0,
+        "properties": {
+          "stroke-dashoffset": "1",
+          "opacity": ".3"
+        }
+      },
+      {
+        "offset": 0.1,
+        "properties": {
+          "stroke-dashoffset": "1",
+          "opacity": ".3"
+        }
+      },
+      {
+        "offset": 0.33,
+        "properties": {
+          "stroke-dashoffset": "0",
+          "opacity": "1"
+        }
+      },
+      {
+        "offset": 0.88,
+        "properties": {
+          "stroke-dashoffset": "0",
+          "opacity": "1"
+        }
+      },
+      {
+        "offset": 1,
+        "properties": {
+          "stroke-dashoffset": "1",
+          "opacity": ".3"
+        }
+      }
+    ],
+    "notification-loading": [
+      {
+        "offset": 0,
+        "properties": {
+          "transform": "scaleY(.35)",
+          "opacity": ".4"
+        }
+      },
+      {
+        "offset": 1,
+        "properties": {
+          "transform": "scaleY(1)",
+          "opacity": "1"
+        }
+      }
+    ],
+    "secret-bin-lid": [
+      {
+        "offset": 0,
+        "properties": {
+          "transform": "none"
+        }
+      },
+      {
+        "offset": 0.12,
+        "properties": {
+          "transform": "none"
+        }
+      },
+      {
+        "offset": 0.28,
+        "properties": {
+          "transform": "translateY(-1.5px) rotate(-17deg)"
+        }
+      },
+      {
+        "offset": 0.58,
+        "properties": {
+          "transform": "translateY(-1.5px) rotate(-17deg)"
+        }
+      },
+      {
+        "offset": 0.8,
+        "properties": {
+          "transform": "none"
+        }
+      },
+      {
+        "offset": 1,
+        "properties": {
+          "transform": "none"
+        }
+      }
+    ],
+    "secret-bin-cross": [
+      {
+        "offset": 0,
+        "properties": {
+          "stroke-dashoffset": "20",
+          "opacity": ".45"
+        }
+      },
+      {
+        "offset": 0.15,
+        "properties": {
+          "stroke-dashoffset": "20",
+          "opacity": ".45"
+        }
+      },
+      {
+        "offset": 0.35,
+        "properties": {
+          "stroke-dashoffset": "0",
+          "opacity": "1"
+        }
+      },
+      {
+        "offset": 0.62,
+        "properties": {
+          "stroke-dashoffset": "0",
+          "opacity": "1"
+        }
+      },
+      {
+        "offset": 0.82,
+        "properties": {
+          "stroke-dashoffset": "20",
+          "opacity": ".45"
+        }
+      },
+      {
+        "offset": 1,
+        "properties": {
+          "stroke-dashoffset": "20",
+          "opacity": ".45"
+        }
+      }
+    ],
+    "secret-key-turn": [
+      {
+        "offset": 0,
+        "properties": {
+          "transform": "rotateY(0) rotate(0)"
+        }
+      },
+      {
+        "offset": 0.12,
+        "properties": {
+          "transform": "rotateY(0) rotate(0)"
+        }
+      },
+      {
+        "offset": 0.4,
+        "properties": {
+          "transform": "rotateY(180deg) rotate(-24deg)"
+        }
+      },
+      {
+        "offset": 0.72,
+        "properties": {
+          "transform": "rotateY(360deg) rotate(0)"
+        }
+      },
+      {
+        "offset": 1,
+        "properties": {
+          "transform": "rotateY(360deg) rotate(0)"
+        }
+      }
+    ],
+    "secret-key-slash": [
+      {
+        "offset": 0,
+        "properties": {
+          "stroke-dashoffset": "1",
+          "opacity": "0"
+        }
+      },
+      {
+        "offset": 0.26,
+        "properties": {
+          "stroke-dashoffset": "1",
+          "opacity": "0"
+        }
+      },
+      {
+        "offset": 0.46,
+        "properties": {
+          "stroke-dashoffset": "0",
+          "opacity": "1"
+        }
+      },
+      {
+        "offset": 0.74,
+        "properties": {
+          "stroke-dashoffset": "0",
+          "opacity": "1"
+        }
+      },
+      {
+        "offset": 0.9,
+        "properties": {
+          "stroke-dashoffset": "1",
+          "opacity": "0"
+        }
+      },
+      {
+        "offset": 1,
+        "properties": {
+          "stroke-dashoffset": "1",
+          "opacity": "0"
+        }
+      }
+    ],
+    "secret-clock-turn": [
+      {
+        "offset": 1,
+        "properties": {
+          "transform": "rotate(360deg)"
+        }
+      }
+    ],
+    "secret-copy-expand": [
+      {
+        "offset": 0,
+        "properties": {
+          "transform": "none"
+        }
+      },
+      {
+        "offset": 0.16,
+        "properties": {
+          "transform": "none"
+        }
+      },
+      {
+        "offset": 0.4,
+        "properties": {
+          "transform": "translate(-3px,3px) scale(1.65)"
+        }
+      },
+      {
+        "offset": 0.65,
+        "properties": {
+          "transform": "translate(-3px,3px) scale(1.65)"
+        }
+      },
+      {
+        "offset": 0.88,
+        "properties": {
+          "transform": "none"
+        }
+      },
+      {
+        "offset": 1,
+        "properties": {
+          "transform": "none"
+        }
+      }
+    ],
+    "create-cancel-step": [
+      {
+        "offset": 0,
+        "properties": {
+          "transform": "translateX(0)"
+        }
+      },
+      {
+        "offset": 0.3,
+        "properties": {
+          "transform": "translateX(-2px)"
+        }
+      },
+      {
+        "offset": 0.65,
+        "properties": {
+          "transform": "translateX(0)"
+        }
+      },
+      {
+        "offset": 1,
+        "properties": {
+          "transform": "translateX(0)"
+        }
+      }
+    ],
+    "create-plus-breathe": [
+      {
+        "offset": 0,
+        "properties": {
+          "transform": "scale(.8)"
+        }
+      },
+      {
+        "offset": 0.1,
+        "properties": {
+          "transform": "scale(.92)"
+        }
+      },
+      {
+        "offset": 0.2,
+        "properties": {
+          "transform": "scale(1.18)"
+        }
+      },
+      {
+        "offset": 0.3,
+        "properties": {
+          "transform": "scale(1.09)"
+        }
+      },
+      {
+        "offset": 0.4,
+        "properties": {
+          "transform": "scale(.98)"
+        }
+      },
+      {
+        "offset": 0.55,
+        "properties": {
+          "transform": "scale(1.03)"
+        }
+      },
+      {
+        "offset": 0.7,
+        "properties": {
+          "transform": "scale(1)"
+        }
+      },
+      {
+        "offset": 0.9,
+        "properties": {
+          "transform": "scale(.8)"
+        }
+      },
+      {
+        "offset": 1,
+        "properties": {
+          "transform": "scale(.8)"
+        }
+      }
+    ],
+    "create-loader-wave": [
+      {
+        "offset": 0,
+        "properties": {
+          "transform": "scaleY(.4)",
+          "opacity": ".25"
+        }
+      },
+      {
+        "offset": 0.5,
+        "properties": {
+          "transform": "scaleY(1.2)",
+          "opacity": ".9"
+        }
+      },
+      {
+        "offset": 1,
+        "properties": {
+          "transform": "scaleY(.4)",
+          "opacity": ".25"
+        }
+      }
+    ]
+  },
+  "bindings": [
+    {
+      "condition": "@media (prefers-reduced-motion: reduce)",
+      "selector": "*, *::before, *::after",
+      "animation": "none !important",
+      "origin": "",
+      "delay": ""
+    },
+    {
+      "condition": "",
+      "selector": ".is-recovery-requester .device-art",
+      "animation": "recovery-device-glow 3s ease-in-out infinite",
+      "origin": "",
+      "delay": ""
+    },
+    {
+      "condition": "",
+      "selector": ".is-recovery-preview[data-recovery-phase=\"approved\"] .is-recovery-requester .device-art, .is-recovery-preview[data-recovery-phase=\"declined\"] .is-recovery-requester .device-art",
+      "animation": "none",
+      "origin": "",
+      "delay": ""
+    },
+    {
+      "condition": "@media (prefers-reduced-motion: reduce)",
+      "selector": ".is-recovery-requester .device-art",
+      "animation": "none",
+      "origin": "",
+      "delay": ""
+    },
+    {
+      "condition": "",
+      "selector": ".current-glyph",
+      "animation": "device-current-turn 2.4s ease-in-out infinite",
+      "origin": "12px 12px",
+      "delay": ""
+    },
+    {
+      "condition": "",
+      "selector": ".current-glyph path",
+      "animation": "device-current-trace 2.4s ease-in-out infinite",
+      "origin": "",
+      "delay": ""
+    },
+    {
+      "condition": "",
+      "selector": ".device-bin-lid",
+      "animation": "device-bin-tip 2.4s ease-in-out infinite",
+      "origin": "12px 6px",
+      "delay": ""
+    },
+    {
+      "condition": "",
+      "selector": ".device-bin-cross",
+      "animation": "device-bin-mark 2.4s ease-in-out infinite",
+      "origin": "",
+      "delay": ""
+    },
+    {
+      "condition": "",
+      "selector": ".device-clock-hands",
+      "animation": "device-clock-tick 4s linear infinite",
+      "origin": "12px 12px",
+      "delay": ""
+    },
+    {
+      "condition": "",
+      "selector": ".vault-control:disabled .current-glyph, .vault-control:disabled .current-glyph path, .vault-control:disabled .device-bin-lid, .vault-control:disabled .device-bin-cross",
+      "animation": "none",
+      "origin": "",
+      "delay": ""
+    },
+    {
+      "condition": "@media (prefers-reduced-motion: reduce)",
+      "selector": ".vault-control *, .vault-control:disabled *",
+      "animation": "none !important",
+      "origin": "",
+      "delay": ""
+    },
+    {
+      "condition": "",
+      "selector": ".invite-popover::backdrop",
+      "animation": "invite-shade .24s ease both",
+      "origin": "",
+      "delay": ""
+    },
+    {
+      "condition": "@media (prefers-reduced-motion: reduce)",
+      "selector": ".invite-popover::backdrop",
+      "animation": "none",
+      "origin": "",
+      "delay": ""
+    },
+    {
+      "condition": "",
+      "selector": ".tile-notifications:not([data-state=\"empty\"])::before",
+      "animation": "notification-wash 4.4s ease-in-out infinite",
+      "origin": "",
+      "delay": ""
+    },
+    {
+      "condition": "",
+      "selector": ".tile-notifications[data-state=\"error\"]::before",
+      "animation": "duration: 3.8s",
+      "origin": "",
+      "delay": ""
+    },
+    {
+      "condition": "",
+      "selector": ".notification-copy",
+      "animation": "notification-appear .22s ease both",
+      "origin": "",
+      "delay": ""
+    },
+    {
+      "condition": "",
+      "selector": ".approve-glyph",
+      "animation": "notification-check 3.5s ease infinite",
+      "origin": "",
+      "delay": ""
+    },
+    {
+      "condition": "",
+      "selector": ".decline-glyph",
+      "animation": "notification-cross 3.5s ease infinite",
+      "origin": "",
+      "delay": ""
+    },
+    {
+      "condition": "",
+      "selector": ".notice-control:disabled svg path",
+      "animation": "none",
+      "origin": "",
+      "delay": ""
+    },
+    {
+      "condition": "",
+      "selector": ".notice-loader i",
+      "animation": "notification-loading .8s ease-in-out infinite alternate",
+      "origin": "",
+      "delay": ""
+    },
+    {
+      "condition": "@media (prefers-reduced-motion: reduce)",
+      "selector": ".tile-notifications::before, .notification-copy, .approve-glyph, .decline-glyph, .notice-loader i",
+      "animation": "none !important",
+      "origin": "",
+      "delay": ""
+    },
+    {
+      "condition": "",
+      "selector": ".secret-control:disabled .secret-key, .secret-control:disabled .secret-key-slash, .secret-control:disabled .secret-bin-lid, .secret-control:disabled .secret-bin-cross",
+      "animation": "none",
+      "origin": "",
+      "delay": ""
+    },
+    {
+      "condition": "",
+      "selector": ".secret-key",
+      "animation": "secret-key-turn 4.2s ease-in-out infinite",
+      "origin": "12px 12px",
+      "delay": "calc(var(--secret-index) * -.21s)"
+    },
+    {
+      "condition": "",
+      "selector": ".secret-key-slash",
+      "animation": "secret-key-slash 4.2s ease-in-out infinite",
+      "origin": "",
+      "delay": ""
+    },
+    {
+      "condition": "",
+      "selector": ".secret-clock-hands",
+      "animation": "secret-clock-turn 5s linear infinite",
+      "origin": "12px 12px",
+      "delay": ""
+    },
+    {
+      "condition": "",
+      "selector": ".secret-copy-sheet",
+      "animation": "secret-copy-expand 3.4s ease-in-out infinite",
+      "origin": "15px 10px",
+      "delay": ""
+    },
+    {
+      "condition": "",
+      "selector": ".secret-bin-lid",
+      "animation": "secret-bin-lid 3.6s ease-in-out infinite",
+      "origin": "7px 6px",
+      "delay": "calc(var(--secret-index) * -.21s)"
+    },
+    {
+      "condition": "",
+      "selector": ".secret-bin-cross",
+      "animation": "secret-bin-cross 3.6s ease-in-out infinite",
+      "origin": "",
+      "delay": "calc(var(--secret-index) * -.21s)"
+    },
+    {
+      "condition": "@media (prefers-reduced-motion: reduce)",
+      "selector": ".secret-key, .secret-key-slash, .secret-clock-hands, .secret-copy-sheet, .secret-bin-lid, .secret-bin-cross",
+      "animation": "none",
+      "origin": "",
+      "delay": ""
+    },
+    {
+      "condition": "",
+      "selector": ".create-control:not(:disabled) .create-cancel-arrow",
+      "animation": "create-cancel-step 2.4s ease-in-out infinite",
+      "origin": "",
+      "delay": ""
+    },
+    {
+      "condition": "",
+      "selector": ".create-control:not(:disabled) .create-plus",
+      "animation": "create-plus-breathe 2s linear infinite",
+      "origin": "center",
+      "delay": ""
+    },
+    {
+      "condition": "",
+      "selector": ".create-loader i",
+      "animation": "create-loader-wave 1.1s ease-in-out infinite",
+      "origin": "",
+      "delay": ""
+    },
+    {
+      "condition": "@media (prefers-reduced-motion: reduce)",
+      "selector": ".create-cancel-arrow, .create-plus, .create-loader i",
+      "animation": "none!important",
+      "origin": "",
+      "delay": ""
+    }
+  ],
+  "timelines": {
+    "schemaVersion": 2,
+    "transitions": {
+      "inviteOpen": {
+        "timing": {
+          "duration": {
+            "kind": "fixed",
+            "ms": 520
+          },
+          "delay": {
+            "kind": "fixed",
+            "ms": 0
+          },
+          "easing": "cubic-bezier(.22,.8,.24,1)",
+          "fill": "none",
+          "loop": "once"
+        },
+        "frames": [
+          {
+            "offset": 0,
+            "bounds": {
+              "width": "anchorWidth",
+              "height": "anchorHeight",
+              "radius": 21,
+              "clip": "none"
+            }
+          },
+          {
+            "offset": 1,
+            "bounds": {
+              "width": "inviteWidth",
+              "height": "inviteHeight",
+              "radius": 22,
+              "clip": "none"
+            }
+          }
+        ]
+      },
+      "inviteContent": {
+        "timing": {
+          "duration": {
+            "kind": "fixed",
+            "ms": 280
+          },
+          "delay": {
+            "kind": "fixed",
+            "ms": 170
+          },
+          "easing": "ease-out",
+          "fill": "backwards",
+          "loop": "once"
+        },
+        "frames": [
+          {
+            "offset": 0,
+            "opacity": 0,
+            "transform": {
+              "base": "identity",
+              "x": 0,
+              "y": -5,
+              "unit": "dp",
+              "scale": 1
+            }
+          },
+          {
+            "offset": 1,
+            "opacity": 1,
+            "transform": {
+              "base": "identity",
+              "x": 0,
+              "y": 0,
+              "unit": "dp",
+              "scale": 1
+            }
+          }
+        ]
+      },
+      "inviteClose": {
+        "timing": {
+          "duration": {
+            "kind": "fixed",
+            "ms": 360
+          },
+          "delay": {
+            "kind": "fixed",
+            "ms": 0
+          },
+          "easing": "cubic-bezier(.5,0,.7,.2)",
+          "fill": "forwards",
+          "loop": "once"
+        },
+        "frames": [
+          {
+            "offset": 0,
+            "bounds": {
+              "width": "currentWidth",
+              "height": "currentHeight",
+              "radius": "currentRadius",
+              "clip": "none"
+            }
+          },
+          {
+            "offset": 1,
+            "bounds": {
+              "width": "anchorWidth",
+              "height": "anchorHeight",
+              "radius": 21,
+              "clip": "none"
+            }
+          }
+        ]
+      },
+      "inviteContentClose": {
+        "timing": {
+          "duration": {
+            "kind": "fixed",
+            "ms": 130
+          },
+          "delay": {
+            "kind": "fixed",
+            "ms": 0
+          },
+          "easing": "linear",
+          "fill": "forwards",
+          "loop": "once"
+        },
+        "frames": [
+          {
+            "offset": 0,
+            "opacity": "currentOpacity"
+          },
+          {
+            "offset": 1,
+            "opacity": 0
+          }
+        ]
+      },
+      "sheetOpen": {
+        "timing": {
+          "duration": {
+            "kind": "fixed",
+            "ms": 480
+          },
+          "delay": {
+            "kind": "fixed",
+            "ms": 0
+          },
+          "easing": "cubic-bezier(.22,.8,.24,1)",
+          "fill": "none",
+          "loop": "once"
+        },
+        "frames": [
+          {
+            "offset": 0,
+            "opacity": 0.5,
+            "transform": {
+              "base": "identity",
+              "x": 0,
+              "y": 100,
+              "unit": "percent",
+              "scale": 1
+            }
+          },
+          {
+            "offset": 1,
+            "opacity": 1,
+            "transform": {
+              "base": "identity",
+              "x": 0,
+              "y": 0,
+              "unit": "percent",
+              "scale": 1
+            }
+          }
+        ]
+      },
+      "sheetClose": {
+        "timing": {
+          "duration": {
+            "kind": "fixed",
+            "ms": 320
+          },
+          "delay": {
+            "kind": "fixed",
+            "ms": 0
+          },
+          "easing": "ease-in",
+          "fill": "forwards",
+          "loop": "once"
+        },
+        "frames": [
+          {
+            "offset": 0,
+            "opacity": 1,
+            "transform": {
+              "base": "current",
+              "x": 0,
+              "y": 0,
+              "unit": "dp",
+              "scale": 1
+            }
+          },
+          {
+            "offset": 1,
+            "opacity": 0.4,
+            "transform": {
+              "base": "identity",
+              "x": 0,
+              "y": 100,
+              "unit": "percent",
+              "scale": 1
+            }
+          }
+        ]
+      },
+      "createOpen": {
+        "timing": {
+          "duration": {
+            "kind": "fixed",
+            "ms": 340
+          },
+          "delay": {
+            "kind": "fixed",
+            "ms": 0
+          },
+          "easing": "cubic-bezier(.22,.8,.24,1)",
+          "fill": "none",
+          "loop": "once"
+        },
+        "frames": [
+          {
+            "offset": 0,
+            "opacity": 0,
+            "transform": {
+              "base": "identity",
+              "x": 0,
+              "y": 22,
+              "unit": "dp",
+              "scale": 0.97
+            }
+          },
+          {
+            "offset": 1,
+            "opacity": 1,
+            "transform": {
+              "base": "identity",
+              "x": 0,
+              "y": 0,
+              "unit": "dp",
+              "scale": 1
+            }
+          }
+        ]
+      },
+      "createClose": {
+        "timing": {
+          "duration": {
+            "kind": "fixed",
+            "ms": 220
+          },
+          "delay": {
+            "kind": "fixed",
+            "ms": 0
+          },
+          "easing": "ease-in",
+          "fill": "forwards",
+          "loop": "once"
+        },
+        "frames": [
+          {
+            "offset": 0,
+            "opacity": 1,
+            "transform": {
+              "base": "identity",
+              "x": 0,
+              "y": 0,
+              "unit": "dp",
+              "scale": 1
+            }
+          },
+          {
+            "offset": 1,
+            "opacity": 0,
+            "transform": {
+              "base": "identity",
+              "x": 0,
+              "y": 18,
+              "unit": "dp",
+              "scale": 0.98
+            }
+          }
+        ]
+      },
+      "createHeight": {
+        "timing": {
+          "duration": {
+            "kind": "fixed",
+            "ms": 300
+          },
+          "delay": {
+            "kind": "fixed",
+            "ms": 0
+          },
+          "easing": "cubic-bezier(.22,.8,.24,1)",
+          "fill": "none",
+          "loop": "once"
+        },
+        "frames": [
+          {
+            "offset": 0,
+            "bounds": {
+              "height": "previousHeight",
+              "clip": "none"
+            }
+          },
+          {
+            "offset": 1,
+            "bounds": {
+              "height": "contentHeight",
+              "clip": "none"
+            }
+          }
+        ]
+      },
+      "createFields": {
+        "timing": {
+          "duration": {
+            "kind": "fixed",
+            "ms": 240
+          },
+          "delay": {
+            "kind": "fixed",
+            "ms": 0
+          },
+          "easing": "linear",
+          "fill": "none",
+          "loop": "once"
+        },
+        "frames": [
+          {
+            "offset": 0,
+            "opacity": 0.4,
+            "transform": {
+              "base": "identity",
+              "x": 0,
+              "y": 4,
+              "unit": "dp",
+              "scale": 1
+            }
+          },
+          {
+            "offset": 1,
+            "opacity": 1,
+            "transform": {
+              "base": "identity",
+              "x": 0,
+              "y": 0,
+              "unit": "dp",
+              "scale": 1
+            }
+          }
+        ]
+      },
+      "notificationHeight": {
+        "timing": {
+          "duration": {
+            "kind": "fixed",
+            "ms": 280
+          },
+          "delay": {
+            "kind": "fixed",
+            "ms": 0
+          },
+          "easing": "cubic-bezier(.22,.8,.24,1)",
+          "fill": "none",
+          "loop": "once"
+        },
+        "frames": [
+          {
+            "offset": 0,
+            "bounds": {
+              "height": "previousHeight",
+              "clip": "none"
+            }
+          },
+          {
+            "offset": 1,
+            "bounds": {
+              "height": "contentHeight",
+              "clip": "none"
+            }
+          }
+        ]
+      },
+      "secretHeight": {
+        "timing": {
+          "duration": {
+            "kind": "fixed",
+            "ms": 580
+          },
+          "delay": {
+            "kind": "fixed",
+            "ms": 0
+          },
+          "easing": "cubic-bezier(.22,.8,.24,1)",
+          "fill": "none",
+          "loop": "once"
+        },
+        "frames": [
+          {
+            "offset": 0,
+            "bounds": {
+              "height": "previousHeight",
+              "clip": "hidden"
+            }
+          },
+          {
+            "offset": 1,
+            "bounds": {
+              "height": "contentHeight",
+              "clip": "hidden"
+            }
+          }
+        ]
+      },
+      "cipherFade": {
+        "timing": {
+          "duration": {
+            "kind": "fixed",
+            "ms": 820
+          },
+          "delay": {
+            "kind": "fixed",
+            "ms": 0
+          },
+          "easing": "ease-in-out",
+          "fill": "none",
+          "loop": "once"
+        },
+        "frames": [
+          {
+            "offset": 0,
+            "opacity": 1
+          },
+          {
+            "offset": 0.58,
+            "opacity": 0.9
+          },
+          {
+            "offset": 1,
+            "opacity": 0
+          }
+        ]
+      },
+      "cipherConcealFade": {
+        "timing": {
+          "duration": {
+            "kind": "fixed",
+            "ms": 820
+          },
+          "delay": {
+            "kind": "fixed",
+            "ms": 0
+          },
+          "easing": "ease-in-out",
+          "fill": "none",
+          "loop": "once"
+        },
+        "frames": [
+          {
+            "offset": 0,
+            "opacity": 0.7
+          },
+          {
+            "offset": 1,
+            "opacity": 1
+          }
+        ]
+      },
+      "cipherParticle": {
+        "timing": {
+          "duration": {
+            "kind": "fixed",
+            "ms": 640
+          },
+          "delay": {
+            "kind": "indexed",
+            "modulo": 7,
+            "stepMs": 10
+          },
+          "easing": "cubic-bezier(.4,0,.2,1)",
+          "fill": "forwards",
+          "loop": "once"
+        },
+        "frames": [
+          {
+            "offset": 0,
+            "opacity": "maskOpacity",
+            "transform": {
+              "base": "identity",
+              "x": 0,
+              "y": 0,
+              "unit": "dp",
+              "scale": 1
+            }
+          },
+          {
+            "offset": 1,
+            "opacity": 0.85,
+            "transform": {
+              "base": "identity",
+              "x": "particleDx",
+              "y": "particleDy",
+              "unit": "dp",
+              "scale": 1
+            }
+          }
+        ]
+      },
+      "cipherParticleHide": {
+        "timing": {
+          "duration": {
+            "kind": "fixed",
+            "ms": 640
+          },
+          "delay": {
+            "kind": "indexed",
+            "modulo": 7,
+            "stepMs": 10
+          },
+          "easing": "cubic-bezier(.4,0,.2,1)",
+          "fill": "forwards",
+          "loop": "once"
+        },
+        "frames": [
+          {
+            "offset": 0,
+            "opacity": 0.85,
+            "transform": {
+              "base": "identity",
+              "x": "particleDx",
+              "y": "particleDy",
+              "unit": "dp",
+              "scale": 1
+            }
+          },
+          {
+            "offset": 1,
+            "opacity": "maskOpacity",
+            "transform": {
+              "base": "identity",
+              "x": 0,
+              "y": 0,
+              "unit": "dp",
+              "scale": 1
+            }
+          }
+        ]
+      },
+      "valueReveal": {
+        "timing": {
+          "duration": {
+            "kind": "fixed",
+            "ms": 920
+          },
+          "delay": {
+            "kind": "fixed",
+            "ms": 0
+          },
+          "easing": "ease-out",
+          "fill": "none",
+          "loop": "once"
+        },
+        "frames": [
+          {
+            "offset": 0,
+            "opacity": 0,
+            "blur": 2
+          },
+          {
+            "offset": 0.48,
+            "opacity": 0,
+            "blur": 2
+          },
+          {
+            "offset": 1,
+            "opacity": 1,
+            "blur": 0
+          }
+        ]
+      },
+      "copyReveal": {
+        "timing": {
+          "duration": {
+            "kind": "fixed",
+            "ms": 400
+          },
+          "delay": {
+            "kind": "fixed",
+            "ms": 380
+          },
+          "easing": "ease-out",
+          "fill": "backwards",
+          "loop": "once"
+        },
+        "frames": [
+          {
+            "offset": 0,
+            "opacity": 0,
+            "transform": {
+              "base": "identity",
+              "x": -8,
+              "y": 0,
+              "unit": "dp",
+              "scale": 0.8
+            }
+          },
+          {
+            "offset": 1,
+            "opacity": 1,
+            "transform": {
+              "base": "identity",
+              "x": 0,
+              "y": 0,
+              "unit": "dp",
+              "scale": 1
+            }
+          }
+        ]
+      },
+      "request": {
+        "timing": {
+          "duration": {
+            "kind": "peer",
+            "peerTwoMs": 3150,
+            "peerThreeMs": 3600
+          },
+          "delay": {
+            "kind": "fixed",
+            "ms": 0
+          },
+          "easing": "linear",
+          "fill": "none",
+          "loop": "whilePending"
+        },
+        "frames": []
+      },
+      "reply": {
+        "timing": {
+          "duration": {
+            "kind": "fixed",
+            "ms": 1800
+          },
+          "delay": {
+            "kind": "fixed",
+            "ms": 0
+          },
+          "easing": "linear",
+          "fill": "forwards",
+          "loop": "whileUnread"
+        },
+        "frames": []
+      },
+      "notificationReceipt": {
+        "timing": {
+          "duration": {
+            "kind": "fixed",
+            "ms": 1400
+          },
+          "delay": {
+            "kind": "fixed",
+            "ms": 0
+          },
+          "easing": "linear",
+          "fill": "none",
+          "loop": "once"
+        },
+        "frames": []
+      },
+      "createSuccessReceipt": {
+        "timing": {
+          "duration": {
+            "kind": "fixed",
+            "ms": 520
+          },
+          "delay": {
+            "kind": "fixed",
+            "ms": 0
+          },
+          "easing": "linear",
+          "fill": "none",
+          "loop": "once"
+        },
+        "frames": []
+      }
+    },
+    "inviteLayout": {
+      "maxSize": {
+        "width": 304,
+        "height": 344
+      },
+      "placement": {
+        "edgeInset": 12,
+        "minimumSpaceBelow": 360,
+        "scrollTopInset": 12
+      },
+      "code": {
+        "maxSize": 208,
+        "minSize": 96,
+        "widthInset": 44,
+        "heightInset": 136
+      },
+      "radii": {
+        "collapsed": 21,
+        "expanded": 22
+      },
+      "anchor": "topRight"
+    },
+    "requestPath": {
+      "anchorFractionY": 0.2,
+      "lifts": {
+        "peerTwo": 26,
+        "peerThree": 47
+      },
+      "radii": {
+        "request": 2,
+        "reply": 3
+      },
+      "replySamples": 36,
+      "shape": "quadratic"
+    },
+    "replyPolicy": {
+      "recover": "untilMatchingShow",
+      "removeDevice": "settled",
+      "deleteSecret": "listUpdateInPlace",
+      "applyCoreImmediately": true
+    },
+    "cipher": {
+      "grid": {
+        "rows": 3,
+        "columns": 45
+      },
+      "viewport": {
+        "width": 300,
+        "height": 28
+      },
+      "origin": {
+        "x": 4,
+        "y": 9
+      },
+      "step": {
+        "x": 6.6,
+        "y": 5
+      },
+      "appearance": {
+        "radius": 1.05,
+        "opacity": {
+          "base": 0.23,
+          "modulo": 11,
+          "divisor": 15,
+          "rowMultiplier": 17,
+          "columnMultiplier": 13,
+          "indexMultiplier": 7,
+          "roundDigits": 2
+        }
+      }
+    },
+    "particleSampling": {
+      "alphaThreshold": 65,
+      "stepPx": 3,
+      "originPx": 1,
+      "assignment": "floorProportional"
+    },
+    "reducedMotion": {
+      "loops": false,
+      "spatialMotion": false,
+      "stateUpdateDelayMs": 0,
+      "meaning": "Retain static status and colored path; Core readiness and OS authorization never depend on animation."
+    },
+    "disabled": {
+      "actionGlyphMotion": false,
+      "pendingClockMayAnimate": true
+    },
+    "rights": "Reconstructed internally from owner recording; not an asserted third-party license.",
+    "createLayout": {
+      "width": {
+        "max": 610,
+        "viewportInset": 32,
+        "embeddedInset": 24
+      },
+      "embedded": {
+        "maxFrameWidthExclusive": 560,
+        "minViewportWidthExclusive": 600
+      },
+      "height": {
+        "min": 210,
+        "shortViewportHeightExclusive": 500,
+        "shortInset": 24,
+        "regularInset": 32
+      }
+    }
+  }
+}

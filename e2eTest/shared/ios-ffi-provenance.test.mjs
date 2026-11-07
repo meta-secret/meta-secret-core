@@ -69,11 +69,35 @@ test('Xcode must select simulator archive; prior bundle is invalidated and produ
   assert.equal(existsSync(resolve(derivedDataPath, 'stale-marker')), false);
   f.put(resolve(derivedDataPath, 'Build/Products/Debug-iphonesimulator/iosApp.app/iosApp'), 'app executable');
   f.put(resolve(derivedDataPath, 'Build/Products/Debug-iphonesimulator/iosAppUITests-Runner.app/runner'), 'test executable');
+  const template = resolve(derivedDataPath, 'Build/Products/current.xctestrun');
+  f.put(template, 'owning generated template');
   recordIosXcodeBuild({ ...f, derivedDataPath, inputs });
   assert.equal(verifyIosXcodeBuild({ derivedDataPath }).linkerSettings.simulatorArchive, archive);
   const manifest = JSON.parse(readFileSync(resolve(derivedDataPath, 'ios-core-link-provenance.json')));
   assert.notEqual(manifest.apps['iosApp.app'], manifest.inputs.native.simulatorArchiveSha256);
+  assert.equal(manifest.generatedTemplate.original, template);
+  f.put(template, 'foreign template');
+  assert.throws(() => verifyIosXcodeBuild({ derivedDataPath }), /template drift/);
+  f.put(template, 'owning generated template');
   f.put(resolve(derivedDataPath, 'Build/Products/Debug-iphonesimulator/iosApp.app/iosApp'), 'unrelated old binary');
   assert.throws(() => verifyIosXcodeBuild({ derivedDataPath }), /no longer matches/);
   await assert.rejects(prepareIosXcodeBuild({ ...f, derivedDataPath, runAndCapture: async () => ({ stdout: JSON.stringify([{ target: 'iosApp', buildSettings: { OTHER_LDFLAGS: 'wrong.a' } }]) }) }), /linker settings/);
+});
+
+
+test('required identity build setting is passed to actual show-settings and must be effective YES', async t => {
+  const f = fixture(t); await ensureIosFfi(f.options);
+  const derivedDataPath = resolve(f.coreRoot, 'e2eTest/.derivedData/iosApp');
+  const archive = resolve(f.composeRoot, 'iosApp/Libs/libmetasecret_mobile-ios-simulator-arm64.a');
+  for (const marker of [undefined, 'NO', 'YES']) {
+    const inputs = () => prepareIosXcodeBuild({ ...f, derivedDataPath, identityRequired: true,
+      runAndCapture: async (command, args) => {
+        assert.equal(command, 'xcodebuild'); assert(args.includes('METASECRET_E2E_IDENTITY_REQUIRED=YES'));
+        return { stdout: JSON.stringify([{ target: 'iosApp', buildSettings: {
+          OTHER_LDFLAGS: archive, METASECRET_E2E_IDENTITY_REQUIRED: marker,
+        } }]) };
+      } });
+    if (marker === 'YES') assert.equal((await inputs()).identityRequired, 'YES');
+    else await assert.rejects(inputs(), /not YES/);
+  }
 });

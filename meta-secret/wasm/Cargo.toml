@@ -21,6 +21,7 @@ anyhow.workspace = true
 
 async-trait.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 
 tracing.workspace = true
 tracing-subscriber = { workspace = true, default-features = false, features = ["fmt", "ansi", "time"] }
@@ -49,6 +50,17 @@ async-lock.workspace = true
 async-std.workspace = true
 futures-lite = "2.6.0"
 wasm-bindgen-test = "0.3.75"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+meta-secret-core = { path = "../core", features = ["test-framework"] }
+meta-db-sqlite = { path = "../db/sqlite" }
+tempfile = "=3.27.0"
+mobile-common = { path = "../mobile/common" }
+mobile-uniffi = { path = "../mobile/uniffi" }
+tokio.workspace = true
+axum.workspace = true
+hyper = { version = "=1.8.1", default-features = false, features = ["server", "http1"] }
+hyper-util = { version = "=0.1.20", features = ["tokio", "service"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 meta-secret-core = { path = "../core" }

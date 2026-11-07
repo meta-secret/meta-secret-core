@@ -1,6 +1,12 @@
 # UI migration applicability profile
 
-Use this profile with the existing repository WORKFLOW.md stages for the approved registration migration. It changes applicability and evidence, not stage ownership or Core contracts. Record `Profile: ui-migration` and each stage's Required/Not applicable decision in the plan. This scoped profile takes precedence over Rust-only commands, mandatory percentage wording and Figma-only review conditions in older agent examples.
+Use this profile with the existing repository WORKFLOW.md stages for the approved registration and Liveboard migrations. It changes applicability and evidence, not stage ownership or Core contracts. Record `Profile: ui-migration` and each stage's Required/Not applicable decision in the plan. This scoped profile takes precedence over Rust-only commands, mandatory percentage wording and Figma-only review conditions in older agent examples.
+
+Liveboard run20261019210543 is authorized20October2026: validated root shared
+design exports first, then Web, then shared Compose Android/iOS. Root brief:
+`UxRevolution/implementation/liveboard-task.md`. All settled UI/motion states
+must match; business/protocol/persistence changes require the owner's applicable
+agreement and Core-first contract handoff. Existing stages/gates remain intact.
 
 ## Scope and order
 

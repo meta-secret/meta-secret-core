@@ -95,21 +95,66 @@ async fn deletion_tombstone_blocks_server_share_delivery_even_when_cleanup_was_i
 #[tokio::test]
 async fn deletion_cleanup_sanitizes_every_removal_history_without_removing_metadata() -> Result<()>
 {
+    use anyhow::ensure;
     use meta_secret_core::node::common::model::user::common::{
         UserDataOutsider, UserDataOutsiderStatus,
     };
-    use meta_secret_core::node::db::descriptors::vault_descriptor::{
-        DeviceLogDescriptor, VaultLogDescriptor,
+    use meta_secret_core::node::db::descriptors::{
+        local_removal_envelope::LocalRemovalEnvelopeDescriptor,
+        vault_descriptor::{DeviceLogDescriptor, VaultLogDescriptor},
     };
     use meta_secret_core::node::db::events::vault::vault_log_event::{
         RemoveMemberDecision, RemoveMemberEvent, RemoveMemberRequestEvent,
         RemoveMemberShareTransfer, VaultLogObject,
     };
+    use meta_secret_core::node::db::events::{
+        generic_log_event::{GenericKvLogEvent, ObjIdExtractor},
+        local_removal_envelope::RemovalEnvelopeMode,
+    };
     use meta_secret_core::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
+
+    // Independent fixture expectation: no production scrub/retain helper is reused.
+    fn expected_action(
+        action: &mut VaultActionEvent,
+        request: &RemoveMemberRequestEvent,
+        update: &RemoveMemberEvent,
+        retained: &RemoveMemberShareTransfer,
+    ) -> Result<usize> {
+        match action {
+            VaultActionEvent::Request(VaultActionRequestEvent::RemoveMember(actual)) => {
+                ensure!(
+                    *actual == *request,
+                    "unexpected request fixture identity/transfers"
+                );
+                ensure!(
+                    actual.share_transfers.len() == 2,
+                    "both original transfers required"
+                );
+                actual.share_transfers = vec![retained.clone()];
+                Ok(1)
+            }
+            VaultActionEvent::Update(VaultActionUpdateEvent::RemoveMember(actual)) => {
+                ensure!(*actual == *update, "unexpected update fixture metadata");
+                ensure!(
+                    actual.request == *request && actual.request.share_transfers.len() == 2,
+                    "both original nested request transfers required"
+                );
+                ensure!(
+                    actual.share_transfers == request.share_transfers,
+                    "both original update transfers required"
+                );
+                actual.request.share_transfers = vec![retained.clone()];
+                actual.share_transfers = vec![retained.clone()];
+                Ok(2)
+            }
+            _ => bail!("unexpected transfer-bearing action in finite cleanup fixture"),
+        }
+    }
     let fixture = FixtureRegistry::empty();
     let member = fixture.state.vault_data.client_vault_member;
     let a = member.member;
     let b = UserDataMember::from(fixture.state.user_creds.client_b.user());
+    let b_owner = b.user_data.user_id();
     let c = UserDataMember::from(fixture.state.user_creds.vd.user());
     let pass = MetaPasswordId::build_from_str("deleted-history");
     let other = MetaPasswordId::build_from_str("retained-history");
@@ -119,12 +164,13 @@ async fn deletion_cleanup_sanitizes_every_removal_history_without_removing_metad
         claim_id: None,
         encrypted_share: encrypted_share.into(),
     };
+    let retained = transfer(other.clone(), "retained-ciphertext");
     let request = RemoveMemberRequestEvent {
         sender: a.clone(),
         target: c.clone(),
         share_transfers: vec![
             transfer(pass.clone(), "deleted-ciphertext"),
-            transfer(other.clone(), "retained-ciphertext"),
+            retained.clone(),
         ],
     };
     let update = RemoveMemberEvent {
@@ -148,29 +194,148 @@ async fn deletion_cleanup_sanitizes_every_removal_history_without_removing_metad
     log.0.value = log
         .0
         .value
-        .request(VaultActionRequestEvent::RemoveMember(request));
+        .request(VaultActionRequestEvent::RemoveMember(request.clone()));
     p_obj.repo.save(log.clone()).await?;
     log.0.key.obj_id = log.0.key.obj_id.next();
     log.0.value = log
         .0
         .value
-        .apply(VaultActionUpdateEvent::RemoveMember(update));
+        .apply(VaultActionUpdateEvent::RemoveMember(update.clone()));
     p_obj.repo.save(log).await?;
     let before = p_obj.repo.get_db().await;
+    let update_ids: Vec<_> = before
+        .values()
+        .filter_map(|event| match event {
+            GenericKvLogEvent::DeviceLog(body)
+                if body.0.value
+                    == VaultActionEvent::Update(VaultActionUpdateEvent::RemoveMember(
+                        update.clone(),
+                    )) =>
+            {
+                Some(body.obj_id())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(update_ids.len(), 1, "exact actual B update ID required");
+    let update_id = &update_ids[0];
+    let mut expected = before.clone();
+    let mut kinds = [0usize; 5];
+    let mut transfer_vectors = 0;
+    for (id, event) in &mut expected {
+        ensure!(*id == event.obj_id(), "physical key/event identity differs");
+        match event {
+            GenericKvLogEvent::DeviceLog(body) => {
+                match &body.0.value {
+                    VaultActionEvent::Request(VaultActionRequestEvent::RemoveMember(_)) => {
+                        kinds[0] += 1
+                    }
+                    VaultActionEvent::Update(VaultActionUpdateEvent::RemoveMember(_)) => {
+                        kinds[1] += 1
+                    }
+                    _ => bail!("unexpected DeviceLog action in cleanup fixture"),
+                }
+                transfer_vectors +=
+                    expected_action(&mut body.0.value, &request, &update, &retained)?;
+            }
+            GenericKvLogEvent::VaultLog(log) => {
+                match (log.0.value.requests.len(), log.0.value.updates.len()) {
+                    (1, 0) => kinds[2] += 1,
+                    (0, 1) => kinds[3] += 1,
+                    _ => bail!("unexpected VaultLog history shape in cleanup fixture"),
+                }
+                let request_count = log.0.value.requests.len();
+                let mut requests = std::collections::HashSet::new();
+                for original in std::mem::take(&mut log.0.value.requests) {
+                    let mut action = VaultActionEvent::Request(original);
+                    transfer_vectors += expected_action(&mut action, &request, &update, &retained)?;
+                    let VaultActionEvent::Request(sanitized) = action else {
+                        bail!("expected request shape changed")
+                    };
+                    requests.insert(sanitized);
+                }
+                ensure!(
+                    requests.len() == request_count,
+                    "pending request count collapsed"
+                );
+                log.0.value.requests = requests;
+                let update_count = log.0.value.updates.len();
+                let mut updates = std::collections::HashSet::new();
+                for original in std::mem::take(&mut log.0.value.updates) {
+                    let mut action = VaultActionEvent::Update(original);
+                    transfer_vectors += expected_action(&mut action, &request, &update, &retained)?;
+                    let VaultActionEvent::Update(sanitized) = action else {
+                        bail!("expected update shape changed")
+                    };
+                    updates.insert(sanitized);
+                }
+                ensure!(updates.len() == update_count, "update count collapsed");
+                log.0.value.updates = updates;
+            }
+            GenericKvLogEvent::LocalRemovalEnvelope(registry) => {
+                kinds[4] += 1;
+                ensure!(
+                    registry.0.value.owner == b_owner
+                        && registry.0.value.producer_context.is_none(),
+                    "registry owner/context differs"
+                );
+                ensure!(
+                    registry.0.value.first_managed_removal_nonce == update_id.id.curr as u64
+                        && registry.0.value.entries.len() == 1,
+                    "registry boundary/entry count differs"
+                );
+                let entry = &registry.0.value.entries[0];
+                ensure!(
+                    entry.event_id == *update_id
+                        && entry.mode == RemovalEnvelopeMode::Legacy
+                        && entry.request_id.is_none(),
+                    "registry must bind exact Legacy B update"
+                );
+                let metadata = serde_json::to_string(registry)?;
+                ensure!(
+                    !metadata.contains("deleted-ciphertext")
+                        && !metadata.contains("retained-ciphertext"),
+                    "registry is payload-free metadata"
+                );
+                // Expected registry remains ENTIRELY unchanged, not exempted.
+            }
+            _ => bail!("unexpected physical row in finite cleanup fixture"),
+        }
+    }
+    assert_eq!(
+        kinds, [1; 5],
+        "both device rows, both history revisions and one registry required"
+    );
+    assert_eq!(
+        transfer_vectors, 6,
+        "all six request/nested/output vectors required"
+    );
+    assert_eq!(before.len(), 5);
     let vault = member.vault.add_secret(other).delete_secret(pass);
     let cleanup = PersistentSharedSecret::from(p_obj.clone());
     cleanup.purge_deleted_secrets(&vault).await?;
+    let once = p_obj.repo.get_db().await;
     cleanup.purge_deleted_secrets(&vault).await?;
     let after = p_obj.repo.get_db().await;
+    assert!(
+        once == after,
+        "second actual purge must be exactly idempotent"
+    );
     assert_eq!(before.len(), after.len());
     assert!(
         before.keys().all(|id| after.contains_key(id)),
         "metadata stream IDs must survive sanitization"
     );
-    for event in after.values() {
+    for (id, event) in &after {
         let serialized = serde_json::to_string(event)?;
-        assert!(!serialized.contains("deleted-ciphertext"));
-        assert!(serialized.contains("retained-ciphertext"));
+        assert!(
+            !serialized.contains("deleted-ciphertext"),
+            "deleted material must be absent from EVERY physical row"
+        );
+        assert!(
+            Some(event) == expected.get(id),
+            "retained transfer/whole metadata/history/registry differs"
+        );
     }
     assert_eq!(
         p_obj
@@ -181,10 +346,24 @@ async fn deletion_cleanup_sanitizes_every_removal_history_without_removing_metad
     );
     assert_eq!(
         p_obj
+            .get_object_events_from_beginning(DeviceLogDescriptor::from(b_owner.clone()))
+            .await?
+            .len(),
+        1
+    );
+    assert_eq!(
+        p_obj
             .get_object_events_from_beginning(VaultLogDescriptor::from(vault.vault_name))
             .await?
             .len(),
         2
+    );
+    assert_eq!(
+        p_obj
+            .get_object_events_from_beginning(LocalRemovalEnvelopeDescriptor(b_owner))
+            .await?
+            .len(),
+        1
     );
     Ok(())
 }

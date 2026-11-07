@@ -24,3 +24,15 @@ The recovery matrix is the same balanced matrix as Tests #47–48: every
 platform is sender, approver, and observer exactly nine times. All work is
 local-only and bounded by visible/persisted readiness; there are no sleeps,
 `slowMo`, reduced cycles, or direct Core business actions.
+
+
+## Scoped recovery orchestration
+
+Exact `test49:ios-distributed-creator-declined-removal-recovery-lifecycle` uses the actual current source descriptor and
+independent expected12 before raw metadata. Its iOS sender uses the distinct
+`recoveryShowPhase` procedure at the original input-return/already-visible
+boundary. Same ordinary600/currentD clips prep180/value45/close60; no business
+or security rule changes. Launch through normal range owner, for example
+`npm run test-range -- --from 49 --to 49 --run-id <fresh-ascii-owner> --preserve-evidence`. Original
+actions/roles/repetitions/value/Copy/Hide/results stay mandatory. Host controls
+are not whole UI or SDK/provenance acceptance.

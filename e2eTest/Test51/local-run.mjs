@@ -68,7 +68,7 @@ export async function prepareRegistrationEnvironment({ participants, scenario, r
     checkDisk(`after ${stage}`);
     recordStage({ stage, status: 'passed', finishedAt: new Date().toISOString(), checkpointPath }); officialBuilt = true;
   };
-  const guard = operations.createBatchEnvironmentGuard({ ...paths, repositories: [core, compose],
+  const guard = operations.createBatchEnvironmentGuard({ ...paths, runDirectory, repositories: [core, compose],
     evidencePath: resolve(runDirectory, 'repository-fingerprints.json'),
     preflight: async () => {
       checkDisk('initial preflight');

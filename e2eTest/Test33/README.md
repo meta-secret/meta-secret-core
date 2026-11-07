@@ -43,3 +43,15 @@ orchestrator records the local mode, server/native process tails, browser
 console/page errors, E2E marker timeline, screenshots on failure, and cleanup
 status. It must be invoked through the local UI E2E command so the environment
 is restored in `finally`.
+
+
+## Scoped recovery orchestration
+
+Exact `test33:ios-two-secret-owner-lifecycle` uses the actual current source descriptor and
+independent expected12 before raw metadata. Its iOS sender uses the distinct
+`recoveryShowPhase` procedure at the original input-return/already-visible
+boundary. Same ordinary600/currentD clips prep180/value45/close60; no business
+or security rule changes. Launch through normal range owner, for example
+`npm run test-range -- --from 33 --to 33 --run-id <fresh-ascii-owner> --preserve-evidence`. Original
+actions/roles/repetitions/value/Copy/Hide/results stay mandatory. Host controls
+are not whole UI or SDK/provenance acceptance.

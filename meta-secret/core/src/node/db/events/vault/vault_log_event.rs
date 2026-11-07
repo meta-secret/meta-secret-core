@@ -77,6 +77,16 @@ pub struct VaultActionEvents {
     pub join_results: HashSet<JoinResultRecord>,
     #[serde(default)]
     pub deletion_results: HashSet<DeleteSecretDecision>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub liveboard_removal_pending: Vec<super::liveboard_metadata::PendingRemovalBinding>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub liveboard_removal_results: Vec<super::liveboard_metadata::RemovalResultRecord>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub liveboard_removal_applications: Vec<super::liveboard_metadata::RemovalApplicationReceipt>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub producer_source_refs: Vec<super::producer_metadata::VerifiedProducerSourceRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub automatic_delete_application: Option<super::producer_metadata::AutomaticDeleteApplication>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]

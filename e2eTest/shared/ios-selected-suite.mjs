@@ -4,14 +4,25 @@ export function superviseIosSelectedSuite(options) {
 }
 
 export function createIosSelectedSuiteActor({ watched, selector, timeoutMs,
-  naturalExitMs = 5_000, closeTimeoutMs = 5_000, killTimeoutMs = 2_000, onPassed = () => {} }) {
-  let firstFailure;
+  naturalExitMs = 5_000, closeTimeoutMs = 5_000, killTimeoutMs = 2_000, onPassed = () => {},
+  deferCompletionTimeout = false }) {
+  let firstFailure, rejectFailure, rejectDeadline, completionTimer;
+  let selectedSuiteDeadline;
   let terminalSuite = false;
   let intentionallyTerminated = false;
-  const preserve = (error) => firstFailure ??= error;
-  // Intentional wrapper termination after a terminal suite line must not turn
-  // its lower-level process rejection into an unhandled/false actor failure.
-  void watched.result.catch(() => {});
+  let completionStarted = false;
+  const failure = new Promise((_, reject) => { rejectFailure = reject; });
+  const deadline = new Promise((_, reject) => { rejectDeadline = reject; });
+  void failure.catch(() => {});
+  void deadline.catch(() => {});
+  const preserve = error => {
+    if (!firstFailure) { firstFailure = error; rejectFailure(error); }
+    return firstFailure;
+  };
+  const assertBusinessActive = () => { if (firstFailure) throw firstFailure; };
+  // Observe real process failure immediately, without turning our own bounded
+  // post-terminal wrapper termination into another actor failure.
+  void watched.result.catch(error => { if (!intentionallyTerminated) preserve(error); });
 
   const within = async (promise, deadlineMs) => {
     let timer;
@@ -35,13 +46,19 @@ export function createIosSelectedSuiteActor({ watched, selector, timeoutMs,
   };
 
   const result = (async () => {
-    let outcome;
     try {
-      // Arm both before any continuation. A failed selected suite is terminal
-      // even when xcodebuild/testmanagerd remains alive after app termination.
-      outcome = await Promise.race([
-        watched.waitForMarker("Test Suite 'Selected tests' failed", timeoutMs).then(() => 'failed'),
-        watched.waitForMarker("Test Suite 'Selected tests' passed", timeoutMs).then(() => 'passed'),
+      // Explicit-mode observations have no timer. Their exact owner must call
+      // complete or cancel; ordinary callers retain their original deadlines.
+      const markerDeadline = deferCompletionTimeout ? null : timeoutMs;
+      // Read-only receipt from immediately before the earliest original ordinary arm.
+      if (markerDeadline !== null) selectedSuiteDeadline = Object.freeze({
+        timeoutMs: markerDeadline, deadlineAt: performance.now() + markerDeadline,
+      });
+      const outcome = await Promise.race([
+        watched.waitForMarker("Test Suite 'Selected tests' failed", markerDeadline).then(() => 'failed'),
+        watched.waitForMarker("Test Suite 'Selected tests' passed", markerDeadline).then(() => 'passed'),
+        failure,
+        deadline,
       ]);
       terminalSuite = true;
       if (outcome === 'failed') {
@@ -50,9 +67,8 @@ export function createIosSelectedSuiteActor({ watched, selector, timeoutMs,
         throw error;
       }
     } catch (error) { preserve(error); }
+    finally { clearTimeout(completionTimer); }
 
-    // Cancel all actor marker waits with the first selected-suite/process
-    // failure before terminating the wrapper; SIGTERM cannot replace it.
     const terminal = firstFailure ?? new Error(`XCTest selected suite passed; owned wrapper closing: ${selector}`);
     watched.cancelPendingWaits(terminal);
     try { await stopAndJoin(); }
@@ -62,19 +78,33 @@ export function createIosSelectedSuiteActor({ watched, selector, timeoutMs,
       throw cleanupError;
     }
     if (firstFailure) throw firstFailure;
-    // A passing test cannot hide a natural result-writer/process failure.
-    // Only our own termination after the flush deadline is intentional.
     if (!intentionallyTerminated) await watched.result;
     await onPassed();
     return { stdout: watched.outputTail(), stderr: '' };
   })();
-  void result.catch(() => {});
-  return { result, async cancelAndJoin() {
-    // A sibling's failure may reach cancellation before the selected suite.
-    // Once terminal, join the existing bounded flush instead of killing it early.
-    if (!terminalSuite) watched.cancelPendingWaits(new Error(`iOS actor cancelled before its selected-suite result: ${selector}`));
-    await result.catch((error) => {
-      if (watched.child.exitCode == null && watched.child.signalCode == null) throw error;
-    });
-  } };
+  void result.catch(error => preserve(error));
+  return { result, failure, assertBusinessActive,
+    get selectedSuiteDeadline() {
+      assertBusinessActive();
+      return terminalSuite || deferCompletionTimeout ? null : selectedSuiteDeadline ?? null;
+    },
+    complete() {
+      if (deferCompletionTimeout && !completionStarted && !terminalSuite && !firstFailure) {
+        completionStarted = true;
+        completionTimer = setTimeout(() => rejectDeadline(new Error(
+          `Timed out waiting for Test Suite 'Selected tests' passed: ${selector}`)), timeoutMs);
+      }
+      return result;
+    },
+    async cancelAndJoin(error) {
+      if (error || !terminalSuite) {
+        preserve(error ?? new Error(`iOS actor cancelled before its selected-suite result: ${selector}`));
+        watched.cancelPendingWaits(firstFailure);
+      }
+      // Terminal flush belongs to the original actor, never to a sibling kill.
+      await result.catch(failure => {
+        if (failure instanceof AggregateError || (watched.child.exitCode == null && watched.child.signalCode == null)) throw failure;
+      });
+    },
+  };
 }
