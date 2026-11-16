@@ -11,9 +11,16 @@ use crate::node::db::events::vault::vault_status::VaultStatusObject;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-// Persisted event envelope; boxing would alter the serialized database format.
+// Keep existing inline Rust variant constructors and their layout/API tradeoff.
+// Serde Box would preserve JSON; no wire/signature rationale requires this choice.
 #[allow(clippy::large_enum_variant)]
 pub enum GenericKvLogEvent {
+    DeviceTransportNoop(super::device_transport_noop::DeviceTransportNoopObject),
+    LocalGuardedPreparationIndex(
+        super::local_guarded_preparation::LocalGuardedPreparationIndexObject,
+    ),
+    LocalGuardedPreparation(super::local_guarded_preparation::LocalGuardedPreparationObject),
+    LocalRemovalEnvelope(super::local_removal_envelope::LocalRemovalEnvelopeObject),
     DeviceCreds(DeviceCredsObject),
     UserCreds(UserCredsObject),
 
@@ -107,6 +114,10 @@ pub trait KeyExtractor {
 impl ObjIdExtractor for GenericKvLogEvent {
     fn obj_id(&self) -> ArtifactId {
         match self {
+            GenericKvLogEvent::DeviceTransportNoop(obj) => obj.obj_id(),
+            GenericKvLogEvent::LocalGuardedPreparationIndex(obj) => obj.obj_id(),
+            GenericKvLogEvent::LocalGuardedPreparation(obj) => obj.obj_id(),
+            GenericKvLogEvent::LocalRemovalEnvelope(obj) => obj.obj_id(),
             GenericKvLogEvent::Vault(obj) => obj.obj_id(),
             GenericKvLogEvent::SsWorkflow(obj) => obj.obj_id(),
             GenericKvLogEvent::DeviceCreds(obj) => obj.obj_id(),
@@ -124,6 +135,10 @@ impl ObjIdExtractor for GenericKvLogEvent {
 impl KeyExtractor for GenericKvLogEvent {
     fn key(&self) -> KvKey {
         match self {
+            GenericKvLogEvent::DeviceTransportNoop(obj) => obj.key(),
+            GenericKvLogEvent::LocalGuardedPreparationIndex(obj) => obj.key(),
+            GenericKvLogEvent::LocalGuardedPreparation(obj) => obj.key(),
+            GenericKvLogEvent::LocalRemovalEnvelope(obj) => obj.key(),
             GenericKvLogEvent::Vault(obj) => obj.key(),
             GenericKvLogEvent::SsWorkflow(obj) => obj.key(),
             GenericKvLogEvent::DeviceCreds(obj) => obj.key(),

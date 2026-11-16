@@ -33,3 +33,15 @@ are discovered from authoritative Web rows before removal and again after
 each re-Join. Every wait is bounded by persisted UI/Core state or a marker.
 There are no sleeps, `slowMo`, reduced cycles, remote services, or direct Core
 business actions.
+
+
+## Scoped recovery orchestration
+
+Exact `test46:web-distributed-creator-removal-rejoin-recovery-lifecycle` uses the actual current source descriptor and
+independent expected12 before raw metadata. Its iOS sender uses the distinct
+`recoveryShowPhase` procedure at the original input-return/already-visible
+boundary. Same ordinary600/currentD clips prep180/value45/close60; no business
+or security rule changes. Launch through normal range owner, for example
+`npm run test-range -- --from 46 --to 46 --run-id <fresh-ascii-owner> --preserve-evidence`. Original
+actions/roles/repetitions/value/Copy/Hide/results stay mandatory. Host controls
+are not whole UI or SDK/provenance acceptance.

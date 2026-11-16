@@ -40,7 +40,7 @@ Deep dive clarification of requirements. Ask probing questions to resolve ambigu
 - "Does this change affect K-of-N sharing? (1→2→3 devices; 4+ joins are rejected)"
 - "Do we need redistribution? If yes, how do we handle it?"
 - "Does this add new approval steps?"
-- "Can 2 devices still remove each other? (should be NO)"
+- "Does removal preserve the existing rule: 2→1 is allowed after local confirmation, self-removal and 1→0 are forbidden, and 3→2 requires the remaining member?"
 
 ### For Cryptography Changes:
 - "Does this change Shamir Secret Sharing (SSS)?"

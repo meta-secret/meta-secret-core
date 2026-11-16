@@ -3,17 +3,45 @@ use std::sync::Arc;
 use tracing::instrument;
 
 use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
-use crate::node::db::events::generic_log_event::{GenericKvLogEventConvertible, ObjIdExtractor};
+use crate::node::db::events::generic_log_event::{
+    GenericKvLogEventConvertible, ObjIdExtractor, ToGenericEvent,
+};
 use crate::node::db::events::object_id::{ArtifactId, Next};
 use crate::node::db::in_mem_db::InMemKvLogEventRepo;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use anyhow::Result;
 
+#[derive(Debug)]
+pub(crate) struct AppendOutcomeUnknown;
+impl std::fmt::Display for AppendOutcomeUnknown {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("AppendOutcomeUnknown")
+    }
+}
+impl std::error::Error for AppendOutcomeUnknown {}
+
 pub struct PersistentObject<Repo: KvLogEventRepo> {
     pub repo: Arc<Repo>,
+    /// One append owner shared by every wrapper of this local DB object.
+    pub device_log_append_guard: Arc<async_lock::Mutex<()>>,
+    pub client_operation_guard: Arc<async_lock::Mutex<()>>,
+    pub device_sync_guard: Arc<async_lock::Mutex<()>>,
 }
 
 impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
+    /// Insert-only repositories may return a key for a dropped/conflicting
+    /// write. A canonical transition is committed only after exact readback.
+    pub async fn save_verified<T: ToGenericEvent>(&self, value: T) -> Result<ArtifactId> {
+        let intended = value.to_generic();
+        let key = intended.obj_id();
+        let saved = self.repo.save(intended.clone()).await?;
+        anyhow::ensure!(
+            saved == key && self.repo.find_one(key.clone()).await? == Some(intended),
+            "canonical record persistence readback failed"
+        );
+        Ok(key)
+    }
+
     #[instrument(skip_all)]
     pub async fn get_object_events_from_beginning<ObjDesc: ToObjectDescriptor>(
         &self,
@@ -138,7 +166,12 @@ impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
 
 impl<Repo: KvLogEventRepo> PersistentObject<Repo> {
     pub fn new(repo: Arc<Repo>) -> Self {
-        PersistentObject { repo }
+        PersistentObject {
+            repo,
+            device_log_append_guard: Arc::new(async_lock::Mutex::new(())),
+            client_operation_guard: Arc::new(async_lock::Mutex::new(())),
+            device_sync_guard: Arc::new(async_lock::Mutex::new(())),
+        }
     }
 }
 

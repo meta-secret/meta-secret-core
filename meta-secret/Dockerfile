@@ -18,11 +18,19 @@ COPY --from=chef-planner /recipe.json /recipe.json
 # --- Builder Base: Rust tooling only, no dep pre-compilation ---
 FROM rust:${RUST_VERSION}-bookworm AS builder-base
 
+ARG TARGETARCH
+
 RUN rustup component add rustfmt
 
 COPY --from=chef-planner /usr/local/cargo/bin/cargo-chef /usr/local/cargo/bin/cargo-chef
 
-RUN curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C /usr/local/bin
+RUN case "${TARGETARCH:-$(dpkg --print-architecture)}" in \
+      amd64) NEXTEST_PLATFORM="linux" ;; \
+      arm64) NEXTEST_PLATFORM="linux-arm" ;; \
+      *) echo "Unsupported nextest architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && curl -LsSf "https://get.nexte.st/latest/${NEXTEST_PLATFORM}" | tar zxf - -C /usr/local/bin \
+    && cargo nextest --version
 
 RUN curl https://wasm-bindgen.github.io/wasm-pack/installer/init.sh -sSf | sh
 
@@ -113,8 +121,16 @@ RUN cargo chef cook --release --target wasm32-unknown-unknown --recipe-path reci
 FROM builder-wasm AS wasm-builder
 
 ARG WASM_BINDGEN_VERSION=0.2.125
-RUN curl -LsSf "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/${WASM_BINDGEN_VERSION}/wasm-bindgen-${WASM_BINDGEN_VERSION}-x86_64-unknown-linux-musl.tar.gz" | \
-    tar xz -C /usr/local/bin --strip-components=1 "wasm-bindgen-${WASM_BINDGEN_VERSION}-x86_64-unknown-linux-musl/wasm-bindgen"
+RUN case "${TARGETARCH:-$(dpkg --print-architecture)}" in \
+      amd64) BINDGEN_ARCH="x86_64" ;; \
+      arm64) BINDGEN_ARCH="aarch64" ;; \
+      *) echo "Unsupported wasm-bindgen architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && curl -LsSf "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/${WASM_BINDGEN_VERSION}/wasm-bindgen-${WASM_BINDGEN_VERSION}-${BINDGEN_ARCH}-unknown-linux-musl.tar.gz" | \
+    tar xz -C /usr/local/bin --strip-components=1 "wasm-bindgen-${WASM_BINDGEN_VERSION}-${BINDGEN_ARCH}-unknown-linux-musl/wasm-bindgen" \
+    && BINDGEN_ACTUAL_VERSION="$(wasm-bindgen --version)" \
+    && printf '%s\n' "${BINDGEN_ACTUAL_VERSION}" \
+    && test "${BINDGEN_ACTUAL_VERSION}" = "wasm-bindgen ${WASM_BINDGEN_VERSION}"
 
 WORKDIR /meta-secret-build
 COPY . .
@@ -135,12 +151,12 @@ FROM builder-debug AS test-compiler
 
 WORKDIR /meta-secret-build
 COPY . .
-RUN cargo nextest run --no-run --profile ci
+RUN CARGO_BUILD_JOBS=1 cargo nextest run --no-run --profile ci
 
 # --- Test Runner: execute pre-compiled tests ---
 FROM test-compiler AS test-runner
 # RUST_MIN_STACK: split/redistribution tests have deep async stacks that overflow the 2MiB default
-RUN RUST_MIN_STACK=8388608 cargo nextest run --profile ci
+RUN RUST_MIN_STACK=33554432 cargo nextest run --profile ci
 
 # --- Web Build: Vue.js + WASM ---
 # web-cli comes from the `webcli` bake context (see docker-bake.hcl), not the Rust context.

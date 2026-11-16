@@ -14,11 +14,13 @@ export type StateInvalidationEvent = {
   };
 };
 
-export type StateRefresh = () => Promise<unknown>;
+export type StateRefresh = (options?: { requiredSync?: boolean }) => Promise<unknown>;
 
 export type StateInvalidationControllerOptions = {
   refresh: StateRefresh;
   syncBeforeRefresh?: StateRefresh;
+  onInvalidate?: () => void;
+  onUnavailable?: () => void;
   getAuthorization: () => Promise<string>;
   debounceMs?: number;
   reconnectDelayMs?: number;
@@ -30,6 +32,11 @@ export type StateInvalidationController = {
   connect: (vaultName: string) => void;
   disconnect: () => void;
   refreshNow: () => Promise<void>;
+  restartReady: (vaultName: string) => Promise<StateEventsReadyLease>;
+};
+export type StateEventsReadyLease = {
+  isCurrent(): boolean;
+  onLoss(listener: () => void): () => void;
 };
 
 export const STATE_INVALIDATION_DEBOUNCE_MS = 150;
@@ -68,6 +75,7 @@ async function consumeSseStream(
     while (true) {
       if (signal.aborted) return;
       const { done, value } = await reader.read();
+      if (signal.aborted) return;
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       const messages = buffer.split(/\r?\n\r?\n/);
@@ -77,6 +85,7 @@ async function consumeSseStream(
         if (parsed) onEvent(parsed);
       }
     }
+    if (signal.aborted) return;
     buffer += decoder.decode();
     const parsed = parseSseMessage(buffer);
     if (parsed) onEvent(parsed);
@@ -103,6 +112,8 @@ function waitForReconnect(delayMs: number, signal: AbortSignal): Promise<void> {
 export function createStateInvalidationController({
   refresh,
   syncBeforeRefresh,
+  onInvalidate,
+  onUnavailable,
   getAuthorization,
   debounceMs = STATE_INVALIDATION_DEBOUNCE_MS,
   reconnectDelayMs = DEFAULT_RECONNECT_DELAY_MS,
@@ -117,6 +128,8 @@ export function createStateInvalidationController({
   let pendingSync = false;
   let scheduledSync = false;
   let streamGeneration = 0;
+  let loseLease: (() => void) | null = null;
+  let rejectReady: (() => void) | null = null;
 
   const clearRefreshTimer = () => {
     if (refreshTimer === null) return;
@@ -133,21 +146,15 @@ export function createStateInvalidationController({
     }
 
     isRefreshing = true;
+    const generation = streamGeneration;
     try {
       if (syncFirst && syncBeforeRefresh) {
-        console.log('[StateEvents] syncing invalidated server state');
-        try {
-          await syncBeforeRefresh();
-          console.log('[StateEvents] invalidated server state sync finished');
-        } catch (error) {
-          console.warn('[StateEvents] invalidated server state sync failed:', error);
-        }
+        await syncBeforeRefresh();
       }
-      console.log('[StateEvents] getAppState refresh started');
-      await refresh();
-      console.log('[StateEvents] getAppState refresh finished');
-    } catch (error) {
-      console.warn('[StateEvents] getAppState refresh failed:', error);
+      if (generation !== streamGeneration) return;
+      await refresh({ requiredSync: syncFirst && !syncBeforeRefresh });
+    } catch {
+      console.warn('[StateEvents] state synchronization unavailable');
     } finally {
       isRefreshing = false;
       if (pendingRefresh) {
@@ -181,18 +188,32 @@ export function createStateInvalidationController({
     pendingSync = false;
     scheduledSync = false;
     streamGeneration += 1;
+    rejectReady?.();
+    rejectReady = null;
+    loseLease?.();
+    loseLease = null;
     if (!streamAbortController) return;
     console.log('[StateEvents] socket disconnected', { vaultName: connectedVaultName });
     streamAbortController.abort();
     streamAbortController = null;
   };
 
-  const runStream = async (vaultName: string, generation: number, abortController: AbortController) => {
+  const runStream = async (
+    vaultName: string,
+    generation: number,
+    abortController: AbortController,
+    ready?: { resolve(lease: StateEventsReadyLease): void; reject(): void },
+  ) => {
     let hasConnected = false;
+    let hasLost = false;
+    const current = () =>
+      generation === streamGeneration && !abortController.signal.aborted && connectedVaultName === vaultName;
     while (generation === streamGeneration && !abortController.signal.aborted) {
       try {
         console.log('[StateEvents] requesting authorization', { vaultName });
         const authorization = await getAuthorization();
+        if (generation !== streamGeneration || abortController.signal.aborted || connectedVaultName !== vaultName)
+          return;
         const response = await fetchImpl(resolveUrl(vaultName), {
           headers: {
             Accept: 'text/event-stream',
@@ -201,20 +222,44 @@ export function createStateInvalidationController({
           },
           signal: abortController.signal,
         });
+        if (generation !== streamGeneration || abortController.signal.aborted || connectedVaultName !== vaultName)
+          return;
         if (!response.ok) {
           console.warn('[StateEvents] authorization rejected', { vaultName, status: response.status });
           throw new Error(`state events HTTP ${response.status}`);
         }
         if (!response.body) throw new Error('state events response has no body');
-
+        let live = true;
+        const listeners = new Set<() => void>();
+        loseLease = () => {
+          if (!live) return;
+          live = false;
+          for (const listener of listeners) listener();
+          listeners.clear();
+        };
+        const lease: StateEventsReadyLease = {
+          isCurrent: () => live && current(),
+          onLoss(listener) {
+            if (!live || !current()) listener();
+            else listeners.add(listener);
+            return () => listeners.delete(listener);
+          },
+        };
         console.log(hasConnected ? '[StateEvents] socket reconnected' : '[StateEvents] socket connected', {
           vaultName,
         });
+        // HTTP headers/body follow the server's subscription. There is no initial ready frame.
+        if (ready) {
+          ready.resolve(lease);
+          ready = undefined;
+          rejectReady = null;
+        } else scheduleRefresh(hasLost);
         hasConnected = true;
-        scheduleRefresh();
         await consumeSseStream(
           response.body,
           (message) => {
+            if (generation !== streamGeneration || abortController.signal.aborted || connectedVaultName !== vaultName)
+              return;
             if (message.event !== 'state_invalidated') return;
             try {
               const event = JSON.parse(message.data) as StateInvalidationEvent;
@@ -230,17 +275,28 @@ export function createStateInvalidationController({
                     `outcome=${event.e2eSignal.outcome}`,
                 );
               }
+              onInvalidate?.();
+              if (generation !== streamGeneration || abortController.signal.aborted || connectedVaultName !== vaultName)
+                return;
               scheduleRefresh(true);
-            } catch (error) {
-              console.warn('[StateEvents] invalid invalidation payload:', error);
+            } catch {
+              console.warn('[StateEvents] invalid invalidation payload');
             }
           },
           abortController.signal,
         );
-      } catch (error) {
+      } catch {
         if (abortController.signal.aborted || generation !== streamGeneration) return;
-        console.warn('[StateEvents] socket disconnected', { vaultName, error });
+        console.warn('[StateEvents] socket disconnected', { vaultName });
       }
+      if (!current()) return;
+      loseLease?.();
+      loseLease = null;
+      ready?.reject();
+      ready = undefined;
+      rejectReady = null;
+      hasLost = true;
+      onUnavailable?.();
       await waitForReconnect(reconnectDelayMs, abortController.signal);
     }
   };
@@ -261,6 +317,17 @@ export function createStateInvalidationController({
     const generation = streamGeneration;
     void runStream(nextVaultName, generation, abortController);
   };
-
-  return { connect, disconnect, refreshNow };
+  const restartReady = (vaultName: string): Promise<StateEventsReadyLease> => {
+    disconnect(); // Retire the old generation/timers before any authorization await.
+    connectedVaultName = vaultName.trim();
+    if (!connectedVaultName) return Promise.reject(new Error('StateEventsUnavailable'));
+    const abortController = new AbortController();
+    streamAbortController = abortController;
+    return new Promise((resolve, reject) => {
+      const fail = () => reject(new Error('StateEventsUnavailable'));
+      rejectReady = fail;
+      void runStream(connectedVaultName, streamGeneration, abortController, { resolve, reject: fail });
+    });
+  };
+  return { connect, disconnect, refreshNow, restartReady };
 }

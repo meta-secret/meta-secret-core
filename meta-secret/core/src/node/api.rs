@@ -7,6 +7,7 @@ use crate::node::common::model::user::common::UserData;
 use crate::node::common::model::vault::vault::VaultName;
 use crate::node::db::events::generic_log_event::GenericKvLogEvent;
 use crate::node::db::events::object_id::ArtifactId;
+use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::objects::persistent_vault::VaultTail;
 use crate::node::join_events::{JoinResultStatus, JoinResultSubscription};
 use crate::node::security::canonical_json;
@@ -20,18 +21,24 @@ use serde::{Deserialize, Serialize};
 // Public wire enum: keep the inline variants to preserve the existing API shape.
 #[allow(clippy::large_enum_variant)]
 pub enum ReadSyncRequest {
+    JoinAdmission(UserData),
     Vault(VaultRequest),
     SsRequest(SsRequest),
     SsRecoveryCompletion(SignedAction),
     ServerTail(ServerTailRequest),
     StateEventsSubscription(StateEventsSubscription),
     JoinResultSubscription(JoinResultSubscription),
+    LiveboardCapabilities(LiveboardCapabilitiesRequest),
 }
 
 #[derive(Clone, Debug, PartialEq, From, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+// Preserve existing Rust Event(SignedAction) constructors; SyncRequest::Write
+// already boxes this public enum. This layout choice does not affect wire JSON.
+#[allow(clippy::large_enum_variant)]
 pub enum WriteSyncRequest {
     Event(SignedAction),
+    DeviceTransportNoop(crate::node::device_transport_noop::DeviceTransportNoop),
 }
 
 #[derive(Clone, Debug, PartialEq, From, Serialize, Deserialize)]
@@ -70,6 +77,59 @@ pub struct SignedAction {
 pub enum SignedActionPayload {
     Event(GenericKvLogEvent),
     RecoveryCompletion(SsRecoveryCompletion),
+    GuardedRemovalDecision(GuardedRemovalDecision),
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GuardedRemovalDecision {
+    pub version: u32,
+    pub request_id: String,
+    pub event: DeviceLogObject,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveboardCapabilitiesRequest {
+    pub version: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveboardCapabilities {
+    pub projection_version: u32,
+    pub guarded_removal_version: u32,
+    #[serde(default)]
+    pub producer_correlation_version: u32,
+    #[serde(default)]
+    pub device_transport_noop_version: u32,
+}
+
+pub fn is_liveboard_request_id(id: &str) -> bool {
+    uuid::Uuid::parse_str(id).is_ok()
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CanonicalDecisionInput {
+    pub request_id: String,
+    pub accepted: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemovalDecisionReceipt {
+    pub request_id: String,
+    pub event_id: ArtifactId,
+    #[serde(default = "default_removal_receipt_phase")]
+    pub phase: crate::node::common::model::liveboard::LiveboardOperationPhase,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_code: Option<String>,
+}
+
+fn default_removal_receipt_phase() -> crate::node::common::model::liveboard::LiveboardOperationPhase
+{
+    crate::node::common::model::liveboard::LiveboardOperationPhase::Queued
 }
 
 #[derive(Serialize)]
@@ -117,7 +177,8 @@ impl SignedAction {
     pub fn event(&self) -> Result<&GenericKvLogEvent> {
         match &self.payload {
             SignedActionPayload::Event(event) => Ok(event),
-            SignedActionPayload::RecoveryCompletion(_) => {
+            SignedActionPayload::RecoveryCompletion(_)
+            | SignedActionPayload::GuardedRemovalDecision(_) => {
                 Err(anyhow!("signed action does not contain an event"))
             }
         }
@@ -126,9 +187,9 @@ impl SignedAction {
     pub fn completion(&self) -> Result<&SsRecoveryCompletion> {
         match &self.payload {
             SignedActionPayload::RecoveryCompletion(completion) => Ok(completion),
-            SignedActionPayload::Event(_) => Err(anyhow!(
-                "signed action does not contain recovery completion"
-            )),
+            SignedActionPayload::Event(_) | SignedActionPayload::GuardedRemovalDecision(_) => Err(
+                anyhow!("signed action does not contain recovery completion"),
+            ),
         }
     }
 }
@@ -155,6 +216,9 @@ pub struct SsRequest {
 #[serde(rename_all = "camelCase")]
 pub struct ServerTailRequest {
     pub sender: UserData,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub producer_reference:
+        Option<crate::node::common::model::liveboard_producer::ProducerReference>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -162,9 +226,11 @@ pub struct ServerTailRequest {
 pub enum DataSyncResponse {
     Empty,
     Data(DataEventsResponse),
-    ServerTailResponse(ServerTailResponse),
+    ServerTailResponse(Box<ServerTailResponse>),
     Error { msg: String },
     JoinResult(JoinResultStatus),
+    LiveboardCapabilities(LiveboardCapabilities),
+    DeviceTransportNoop(crate::node::device_transport_noop::DeviceTransportNoopReceipt),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -178,6 +244,9 @@ pub struct ServerTailResponse {
     pub device_log_tail: Option<ArtifactId>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ss_device_log_tail: Option<ArtifactId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub producer_observation:
+        Option<crate::node::common::model::liveboard_producer::ProducerCanonicalObservation>,
 }
 
 impl DataSyncResponse {
@@ -198,7 +267,7 @@ impl DataSyncResponse {
 
     pub fn to_server_tail(&self) -> Result<ServerTailResponse> {
         match self {
-            DataSyncResponse::ServerTailResponse(server_tail) => Ok(server_tail.clone()),
+            DataSyncResponse::ServerTailResponse(server_tail) => Ok(server_tail.as_ref().clone()),
             _ => Err(anyhow!("Invalid response type")),
         }
     }

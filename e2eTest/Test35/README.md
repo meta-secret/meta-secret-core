@@ -40,3 +40,15 @@ keys, or raw Shares. To keep the 27-cycle run within the workstation memory
 budget, the iOS target is built once with `build-for-testing`; every visible
 iOS action then uses `test-without-building` and waits for the preceding
 `xcodebuild` process to close before starting the next action.
+
+
+## Scoped recovery orchestration
+
+Exact `test35:android-secondary-creator-lifecycle` uses the actual current source descriptor and
+independent expected12 before raw metadata. Its iOS sender uses the distinct
+`recoveryShowPhase` procedure at the original input-return/already-visible
+boundary. Same ordinary600/currentD clips prep180/value45/close60; no business
+or security rule changes. Launch through normal range owner, for example
+`npm run test-range -- --from 35 --to 35 --run-id <fresh-ascii-owner> --preserve-evidence`. Original
+actions/roles/repetitions/value/Copy/Hide/results stay mandatory. Host controls
+are not whole UI or SDK/provenance acceptance.

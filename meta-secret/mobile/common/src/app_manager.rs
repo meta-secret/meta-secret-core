@@ -1,10 +1,14 @@
+#[path = "app_manager_recovery_attempt.rs"]
+mod recovery_attempt;
+#[path = "app_manager_reveal.rs"]
+mod reveal;
 use crate::log_timestamp;
 use anyhow::Result;
 use anyhow::bail;
 use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::node::api::{ReadSyncRequest, SsRecoveryCompletion, SyncRequest};
 use meta_secret_core::node::app::app_manager_shared::{
-    build_client_components, recover_plain_text_by_claim, resolve_signup_vault_name,
+    build_client_components, resolve_signup_vault_name,
 };
 use meta_secret_core::node::app::meta_app::messaging::GenericAppStateRequest;
 use meta_secret_core::node::app::meta_app::meta_client_service::MetaClientService;
@@ -176,8 +180,17 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
     }
 
     pub async fn get_state(&self) -> Result<ApplicationState> {
-        if let Ok(user_creds) = self.meta_client_service.find_user_creds().await {
-            self.sync_gateway.sync(user_creds.user()).await?;
+        if let Ok(user_creds) = self.meta_client_service.find_user_creds().await
+            && let Err(original) = self.sync_gateway.sync(user_creds.user()).await
+        {
+            if let Ok(Some(local @ ApplicationState::Local(_))) = self
+                .meta_client_service
+                .try_removed_state_after_failed_sync(&user_creds)
+                .await
+            {
+                return Ok(local);
+            }
+            return Err(original);
         }
 
         let request = GenericAppStateRequest::GetState;
@@ -402,112 +415,6 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
             .await
     }
 
-    /// Show a recovered secret for the exact claim selected by Core.
-    ///
-    /// The Pass ID is derived from that claim, so a client cannot combine a
-    /// Claim ID belonging to one secret with another secret identifier.
-    pub async fn show_recovered(&self, claim_id: ClaimId) -> Result<PlainText> {
-        let user_creds = self.meta_client_service.find_user_creds().await?;
-        let state = self.get_state().await?;
-
-        match state {
-            ApplicationState::Local(_) => {
-                bail!("Show recovered is not allowed in local state");
-            }
-            ApplicationState::Vault(vault_info) => match vault_info {
-                VaultFullInfo::NotExists(_) => {
-                    bail!("Show recovered is not allowed in not exists state");
-                }
-                VaultFullInfo::Outsider(_) => {
-                    bail!("Show recovered is not allowed in outsider state");
-                }
-                VaultFullInfo::Member(member) => {
-                    let vault_members_count = member.member.vault.members().len();
-                    if vault_members_count <= 2 {
-                        bail!("Recovery claim is not required for a replicated vault");
-                    }
-
-                    let claim = member
-                        .ss_claims
-                        .claims
-                        .get(&claim_id)
-                        .ok_or_else(|| anyhow::anyhow!("Claim id not found"))?;
-                    if claim.distribution_type != SecretDistributionType::Recover {
-                        bail!("Claim is not a recovery claim");
-                    }
-                    if claim.sender != *user_creds.device_id() {
-                        bail!("Recovery claim belongs to another device");
-                    }
-                    if claim.client_status != Some(RecoveryClientStatus::Accepted) {
-                        bail!("Recovery claim is not accepted");
-                    }
-                    let pass_id = claim.dist_claim_id.pass_id.clone();
-
-                    info!(
-                        pass_id = %pass_id.name,
-                        sender = ?user_creds.device_id(),
-                        claim_id = ?claim_id,
-                        "mobile selected recovery claim for show_recovered"
-                    );
-
-                    let pass = recover_plain_text_by_claim(
-                        self.sync_gateway.as_ref(),
-                        user_creds.clone(),
-                        claim_id.clone(),
-                    )
-                    .await?;
-
-                    // Send recovery completion to mark claim as Delivered
-                    let ts = log_timestamp::log_timestamp_utc();
-                    println!(
-                        "[{ts}] 🦀 App Manager: Send recovery completion to mark claim as Delivered"
-                    );
-                    let receiver = claim.approved_recovery_receiver()?;
-                    let vault_name = user_creds.vault_name.clone();
-
-                    let recovery_id = SsRecoveryId {
-                        claim_id: claim.dist_claim_id.clone(),
-                        sender: claim.sender.clone(),
-                        distribution_id: SsDistributionId {
-                            pass_id: pass_id.clone(),
-                            receiver,
-                        },
-                    };
-
-                    let completion = SsRecoveryCompletion {
-                        vault_name,
-                        recovery_id,
-                        receiver_status: SsDistributionStatus::Sent,
-                    };
-
-                    let key_manager = user_creds.device_creds.key_manager()?;
-                    let signed = sign_recovery_completion(
-                        completion,
-                        user_creds.device_id().clone(),
-                        &key_manager.dsa,
-                    )?;
-                    let sync_request =
-                        SyncRequest::Read(Box::from(ReadSyncRequest::SsRecoveryCompletion(signed)));
-
-                    self.server.send(sync_request).await?;
-
-                    // The sender's local claim is marked Delivered while
-                    // recovering the secret.  Flush that terminal state before
-                    // returning to the UI so the next Recover action cannot see
-                    // the previous claim as still Accepted and reuse it.
-                    self.sync_gateway.sync(user_creds.user()).await?;
-                    info!(
-                        pass_id = %pass_id.name,
-                        claim_id = ?claim_id,
-                        "mobile recovery completion synchronized"
-                    );
-
-                    Ok(pass)
-                }
-            },
-        }
-    }
-
     /// Show a locally replicated secret (one or two devices, no recovery claim).
     pub async fn show_local_secret(&self, pass_id: MetaPasswordId) -> Result<PlainText> {
         let user_creds = self.meta_client_service.find_user_creds().await?;
@@ -526,26 +433,20 @@ impl<Repo: KvLogEventRepo + Send + Sync + 'static, SyncP: SyncProtocol + Send + 
         .await?
         .to_data()
         .ensure_local_secret_available(user_creds.device_id(), &pass_id)?;
-        use meta_secret_core::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
         use meta_secret_core::recover_from_shares;
-        use meta_secret_core::secret::shared_secret::UserShareDto;
 
-        let desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
-            pass_id: pass_id.clone(),
-            receiver: user_creds.device_id().clone(),
-        });
-
-        let dist = self
-            .sync_gateway
-            .p_obj
-            .find_tail_event(desc)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("Distribution not found for single device"))?
-            .to_distribution_data()?;
-
-        let transport_sk = &user_creds.device_creds.secret_box.transport.sk;
-        let decrypted = dist.secret_message.cipher_text().decrypt(transport_sk)?;
-        let share = UserShareDto::try_from(&decrypted.msg)?;
+        let data = meta_secret_core::secret::local_share::load_local_distribution(
+            &self.sync_gateway.p_obj,
+            &user_creds,
+            &pass_id,
+        )
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Distribution not found for local Secret"))?;
+        let share = meta_secret_core::secret::local_share::decode_local_share(
+            &data,
+            &user_creds,
+            meta_secret_core::secret::local_share::LocalShareProfile::WholeCopy,
+        )?;
 
         let plain_text = recover_from_shares(vec![share])?;
 

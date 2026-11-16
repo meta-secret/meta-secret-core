@@ -1,5 +1,39 @@
 # Test50 — Vault-wide Secret deletion
 
+## Authentication profiles and result scope
+
+Default `real-os` retains the original native system-authentication and Cancel
+assertions. The owner-approved unattended business selection is explicit:
+
+```sh
+E2E_TEST50_AUTH_PROFILE=controlled-business npm run test-range -- --from 50 --to 50 --run-id OWNER_ASSIGNED_ID --preserve-evidence
+```
+
+Both profiles require the same real local Core routes, existing Pixel_4a and
+iPhone17 DB222 simulator, marked isolated iOS identity, eight blocks/60 cycles
+and original roles. The override changes no original scenario JSON. Android
+uses its existing emulator autoSuccess; XCTest adds MODE only to its admitted
+app. It is not a physical-device authentication profile. Host-known MODE,
+credential and force-auth conflicts fail before identity/environment/reset/
+server/install/spawn; invalid supplied iOS config cannot fall back to a launch.
+
+The36 native cancellation actors still reach their READY/action boundary but
+controlled-business returns `AUTH_MANUAL_PENDING` **before Delete**, never
+`CANCELLED`. This proves an untriggered no-mutation boundary, not actual OS
+cancellation. Web12 browser API abort and CLI12 unconfirmed refusal checks stay
+automatic. All later business actions and Core/terminal UI assertions remain.
+
+Fresh block/aggregate receipts bind profile/run/attempt/config hashes and exact
+cycles after strict actor completion/cleanup. A complete business run reports
+`business-passed-manual-pending`; the range ends
+`business-completed-manual-pending`, with genuine native confirmation/Cancel
+`manualOs=unrun` and `fullAcceptance=false`. It may continue the approved
+business queue, but is never original full Test50/OS PASS. Missing/partial/
+failed receipts cannot qualify; resumes cannot switch profile or adopt a
+controlled result as realOS. Pending manual evidence is retained. F3/focused
+diagnostics remain partial/nonacceptance. This profile does not complete the
+historical Saved48→OS chain or establish native compilation/runtime acceptance.
+
 Run the complete local scenario through the existing range coordinator:
 
 ```sh
@@ -78,3 +112,25 @@ plaintext are never emitted or persisted. Missing/unknown metadata fails.
 F4 must still establish actual native compilation, Copy accessibility mapping,
 full-window overlay stacking, startup holds, and all declared terminal UI
 assertions. F1 does not claim those runtime results.
+
+
+## Declared real-OS PIN input
+
+The owning isolated-device transaction may declare `E2E_ANDROID_DEVICE_PASSCODE`
+and `E2E_IOS_DEVICE_PASSCODE` in memory after proving its own known device setup.
+These are PIN strings of4..16 digits, never scenario fields, public receipts or
+proof of enrollment. The existing Android argv and iOS private actor context
+transport them without changing a scenario. Missing input never implies1111:
+an observed PIN prompt or locked Android device fails before credential entry.
+Even1111 must be explicitly declared after known owned setup; unrelated or
+unknown credentials must never be guessed. Current Simulator enrollment and
+prompt-scoped Matching Face still require an admitted supported UI operator;
+no authentication bypass or automatic enrollment is introduced here.
+
+For both Test50 auth profiles, owned cleanup errors are terminal: every existing
+actor/browser/gate/coordinator/server/environment cleanup attempt settles, and
+an interrupted block cannot write its success receipt. The parent joins child
+`close`, retains SIGINT/SIGTERM, and refuses later blocks or aggregate acceptance
+if interrupted, including a racing child0. A Test50-containing range preserves
+evidence and fails if its own existing runtime cannot stop; borrowed runtime
+ownership and other scenario modes retain their existing behavior.

@@ -40,7 +40,7 @@ Unified vocabulary for meta-secret-core Rust backend. All communication (AI, cod
 | **Claim** | Request object: distribute or recover a pass among vault members | Protocol | `ClaimObject` in API, `Claim` in core |
 | **Claim ID** | Unique identifier for a claim | Claim tracking | 32-byte hash |
 | **Claim Status** | Enum: `Pending`, `Sent`, `Delivered`, `Accepted`, `Declined` | Claim lifecycle | Per-device status |
-| **Terminal Recovery Decision** | Immutable receiver outcome for a recovery claim: `Declined` or `Sent`/`Delivered` | Recovery race handling | Stale snapshots cannot restore `Pending` |
+| **Terminal Recovery Decision** | Immutable receiver outcome for an exact Recovery Claim: `Declined` or `Sent`/`Delivered`; actual verified responder metadata is persisted and synchronized with that Claim, otherwise responder provenance is unknown | Recovery race handling | Requester/current membership is not evidence of who responded; stale snapshots cannot restore `Pending` |
 | **First-Response-Wins** | The first receiver decision processed by the server determines the recovery claim outcome | Recovery consensus | First decline blocks reveal; first approve permits recovery; late opposite action is ignored |
 | **Membership-Change Invalidation** | Accepting a new vault member invalidates pending recovery claims created for the previous membership set; pending receiver statuses become `Declined` | Recovery + membership synchronization | The new member receives a redistributed `Split` claim, not the stale `Recover` request |
 | **Distribution Type** | Enum: `Split` (share) or `Recover` (combine shares) | Claim type | Sets claim behavior |
@@ -79,7 +79,7 @@ Unified vocabulary for meta-secret-core Rust backend. All communication (AI, cod
 | **Device Type** | Enum: `Android`, `Iphone`, `Tablet`, `Desktop`, `Cli`, `Web` | Device classification | Used for UI icons |
 | **Device Offline** | Device unable to respond (network down or app closed) | Claim operation | Doesn't block if k shares available |
 | **Device Removal** | Core-authorized transition of a member to `Outsider/Declined`, invalidation of active Recovery claims, and resharing for the remaining members | Vault ops | `3 → 2` needs another current member's approval; `2 → 1` needs local confirmation; self-removal is forbidden |
-| **Removal Decision** | Signed terminal response to a pending Device Removal request: `Accepted` removes the target; `Declined` consumes the request without changing membership or Key Shares | Vault ops | First valid response wins; late or duplicate responses are ignored |
+| **Removal Decision** | Signed terminal response: `Accepted` removes the target; `Declined` consumes the request without changing membership or Key Shares. Liveboard checked/exact-decision calls bind the original exact request UUID and target | Vault ops | Checked route: exact UUID + Boolean, no target-only/first-pending fallback; existing explicit legacy wrappers stay compatible. First valid response wins; late or duplicate responses are ignored |
 | **Primary Device** | First device to join vault; initiator of vault creation | Vault lifecycle | Ownership marker |
 | **Secondary Device** | Any device added after vault creation | Vault lifecycle | Via join flow |
 | **Active Session** | Current device with valid auth state and socket connection | Runtime | Can participate in claims |
@@ -114,12 +114,17 @@ Unified vocabulary for meta-secret-core Rust backend. All communication (AI, cod
 | **Share Record** | Stored Key Share record: Claim ID + Encrypted Key Share + device target | Storage | Per-device, one per Vault |
 | **Local Share Retention** | A device retains its own Key Share. Encrypted outbound copies for other devices are temporary local workflows and are deleted after successful server upload | Storage security | A 3-device sender cannot keep or decrypt B/C shares after sync |
 | **Join Reshare Idempotency** | Reprocessing an already accepted join recognizes the receiver's distribution when it matches the current sender claim generation and skips another random split | Membership redistribution | The immediate approval path and later sync reconciliation do not produce competing polynomials |
+| **Local Removal Producer Context** | One compact active local2→1 R/U identity and observed material stages, kept separately from selector entries in the existing local-only registry | Persistence metadata, never a command or approval grant | Original R/U survive uncertain writes/reopen; no automatic restart or replacement IDs |
+| **Guarded Publication Lifetime** | Current applicability of one original Applied frozen generation; distinct from its immutable source/ownership proof | Private synchronization context, not a new command or permission | A proven later Join, or exact canonical A+B→A lineage for an already Published/None record, leaves a monotonic Blocked/None compact after readback. Selected result history is cumulative and immutable except Prepared→Applied, with agreeing receipts. Ordinary sourceNone is valid; optional cleared producer context is not authority. Exact terminal canonical empty-profile WholeCopy remains ordinary Join input across accepted Join/reopen, not old publication authority. Tombstoning only one Pass retains other active ownership |
+| **Applied Producer Completion** | Explicit same-context bookkeeping after an exact local removal already Applied; fresh acknowledged R/U, current actor, unique canonical outcome and actual local readiness precede verified clear | Completion, separate from decision authorization | No new body/signature, sync or material generation |
+| **Ciphertext Origin** | The source recorded in an existing encrypted distribution channel; it can differ from mutable canonical Split ownership after2→1 | Immutable material identity, not current membership or signing authority | A surviving encrypted k1 copy can keep its removed creator as origin |
+| **Stored Whole-copy Shape** | Coherent original n1/k1 or n2/k1 encoded share profile, separate from current1/2 member count | Read-only availability under existing local-secret eligibility | Current1 may keep storedn2; block metadata lengths64+1 remain valid |
 | **Single-device Claim Canonicalization** | After a `2 → 1` removal, Core assigns every surviving `Split` claim to the sole remaining device and clears removed receivers/statuses. The local `k=1` Key Share is unchanged. | Membership redistribution | A later Join redistributes Secrets even when they were originally created by a removed device |
 | **Pass Record** | Stored secret: ID, name, type, creation metadata | Storage | Encrypted at rest |
 | **Claim Record** | Stored claim: ID, type, targets, status per device, created at | Storage | Audit trail |
 | **Event Log** | Sequence of vault operations (join, claim, removal) | Audit | For replay/recovery |
 | **JSON Model** | Model serialized to/from JSON for FFI boundary | Mobile interface | All FFI args/returns |
-| **Error Result** | Variant type: `Ok(T)` or `Err(Error)` — operation outcome | Rust idiomatic | Explicit error handling |
+| **Error Result** | Variant type: `Ok(T)` or `Err(Error)` — operation outcome, mapped through the existing JSON boundary for clients; expected errors are not panic-based UI responses | Rust idiomatic | Checked uncertainty preserves known identity/Unknown/errorCode; a success envelope is not canonical completion |
 
 ---
 
@@ -129,6 +134,9 @@ Unified vocabulary for meta-secret-core Rust backend. All communication (AI, cod
 |---|---|---|
 | **Secret Deletion Request** | Core-generated UUID-bound request to delete an exact Pass ID from every Vault device; signed by a current member and bound to the current membership | Local confirmation at 1–2 devices; one other approver at 3 |
 | **Secret Deletion Decision** | Signed approve/decline response to an exact pending request; the first server-processed response is terminal | Deletion authorization |
+| **Automatic Deletion Retirement** | Core terminal metadata for an invalid pending deletion; a log-only marker does not prove that its synthetic sender signed a Decline | Liveboard keeps outcome/identity but reports unknown responder |
+| **Checked Operation Receipt** | Actual queued identity and Queued/Unknown classification, with optional errorCode on an uncertain result; neither phase nor native success proves canonical completion or authorizes reveal, approval or an automatic replacement request | Missing exact Recover canonical confirmation preserves its Claim ID with `RecoverCanonicalUnknown`; raw-only history is not healed |
+| **Initial Recovery Intake** | Temporary server-owned metadata committed with the exact immutable initial claim before raw persistence, then atomically cleared at the same target after readback; original receivers need not equal current members at admission | Only a unique current-head Prepared receipt can continue under the exact captured admission Vault; not a response/authorization token or historical orphan healing |
 | **Secret Tombstone** | Durable canonical marker that a Pass ID was deleted; stale additions/workflows cannot revive it | Offline synchronization and ciphertext cleanup |
 | **Deletion Client Status** | Core-computed instruction: Pending, NeedApprove, Done or Declined, scoped to a Pass ID and request UUID | Clients render and submit decisions |
 
@@ -136,7 +144,11 @@ Unified vocabulary for meta-secret-core Rust backend. All communication (AI, cod
 
 `clientStatus` is a per-device instruction computed by core from a recovery claim.
 The UI consumes it; it does not determine whether a claim is active, stale, or has
-enough approvals. `clientStatus` is meaningful only for `Recover` claims.
+enough approvals. `clientStatus` is meaningful only for `Recover` claims. It is
+distinct from per-device delivery status and operation readiness: a historical
+`Done` operation can retain readiness `waiting`. Neither waiting alone nor a queue
+receipt proves completion; genuine same-identity Declined/Done permits the next
+explicit operation under the [existing checked contract](../docs/liveboard-bindings.md#receipt-json).
 
 For concurrent receiver actions, “first” means the first decision processed by
 the server's ordered event stream. Once a receiver or claim reaches a terminal
@@ -151,7 +163,7 @@ supported 3-device state `k=2`. In a 3-device vault, the sender already has one 
 | Sender | `Pending` | No receiver has sent a usable share and not all receivers declined | Keep the recovery flow waiting. |
 | Sender | `Accepted` | At least one receiver has sent a usable share | Recover and reveal the secret. |
 | Sender | `Declined` | All receivers declined | End the flow and show a recovery-declined error. |
-| Sender | `Done` | Sender retrieved the secret and completion was persisted | End the flow and dismiss loading/UI. |
+| Sender | `Done` | Core recovery completed and completion was persisted; not a pixel-render acknowledgement | End the request/loading flow; this does not automatically Hide an authorized displayed value, which follows existing Hide/privacy/continuity rules. Operation readiness need not be done/settled. |
 | Receiver | `NeedApprove` | The claim targets this device and its receiver status is `Pending` | Show an approve/decline recovery alert. |
 | Receiver | `Done` | Sender completed recovery | Dismiss any recovery alert or loader. |
 | Receiver | `None` | This receiver already approved or declined, while sender has not completed recovery yet | Do nothing; this device has no further action. |

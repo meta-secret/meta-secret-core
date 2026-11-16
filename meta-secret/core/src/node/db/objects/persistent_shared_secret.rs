@@ -8,7 +8,7 @@ use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::shared_secret_descriptor::{
     SsDeviceLogDescriptor, SsLogDescriptor, SsWorkflowDescriptor,
 };
-use crate::node::db::descriptors::vault_descriptor::{DeviceLogDescriptor, VaultLogDescriptor};
+use crate::node::db::descriptors::vault_descriptor::VaultLogDescriptor;
 use crate::node::db::events::generic_log_event::{ObjIdExtractor, ToGenericEvent};
 use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::ArtifactId;
@@ -24,6 +24,9 @@ use anyhow::{Ok, Result, bail};
 use derive_more::From;
 use tracing::info;
 use tracing_attributes::instrument;
+
+#[path = "persistent_shared_secret_cleanup.rs"]
+mod cleanup;
 
 #[derive(From)]
 pub struct PersistentSharedSecret<Repo: KvLogEventRepo> {
@@ -87,57 +90,20 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
                     .await?;
             }
         }
-        for device in vault.users.values() {
-            let events = self
-                .p_obj
-                .get_object_events_from_beginning(DeviceLogDescriptor::from(
-                    device.user_data().user_id(),
-                ))
-                .await?;
-            for mut event in events {
-                let before = event.clone();
-                scrub_removal_transfers(&mut event.0.value, vault);
-                if before != event {
-                    self.p_obj.repo.replace(event).await?;
-                }
-            }
-        }
+        self.purge_removal_transfer_sources(vault).await?;
         let logs = self
             .p_obj
             .get_object_events_from_beginning(VaultLogDescriptor::from(vault.vault_name.clone()))
             .await?;
         for mut log in logs {
             let before = log.clone();
-            log.0.value.requests = log
-                .0
-                .value
-                .requests
-                .into_iter()
-                .map(|request| {
-                    let mut action = VaultActionEvent::Request(request);
-                    scrub_removal_transfers(&mut action, vault);
-                    let VaultActionEvent::Request(request) = action else {
-                        unreachable!()
-                    };
-                    request
-                })
-                .collect();
-            log.0.value.updates = log
-                .0
-                .value
-                .updates
-                .into_iter()
-                .map(|update| {
-                    let mut action = VaultActionEvent::Update(update);
-                    scrub_removal_transfers(&mut action, vault);
-                    let VaultActionEvent::Update(update) = action else {
-                        unreachable!()
-                    };
-                    update
-                })
-                .collect();
+            cleanup::scrub_vault_log(&mut log.0.value, vault)?;
             if before != log {
-                self.p_obj.repo.replace(log).await?;
+                self.p_obj.repo.replace(log.clone()).await?;
+                anyhow::ensure!(
+                    self.p_obj.repo.find_one(log.obj_id()).await? == Some(log.to_generic()),
+                    "removal cleanup readback failed"
+                );
             }
         }
         Ok(())
@@ -284,7 +250,7 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
         Ok(())
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip_all)]
     pub async fn create_new_ss_log_object(
         &self,
         ss_log_data: SsLogData,
@@ -307,10 +273,15 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
 }
 
 impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
-    #[instrument(skip(self))]
+    #[instrument(skip_all)]
     pub async fn save_claim_in_ss_device_log(&self, claim: SsClaim) -> Result<()> {
-        info!("Saving claim in_ss_device_log");
+        let _owner = self.p_obj.device_log_append_guard.lock().await;
+        self.append_claim_owned(claim).await?;
+        Ok(())
+    }
 
+    /// The caller holds the shared append owner; returns the actual persisted ID.
+    pub(super) async fn append_claim_owned(&self, claim: SsClaim) -> Result<ArtifactId> {
         let obj_desc = SsDeviceLogDescriptor::from(claim.sender.clone());
         let free_id = self
             .p_obj
@@ -318,13 +289,23 @@ impl<Repo: KvLogEventRepo> PersistentSharedSecret<Repo> {
             .await?;
 
         let obj = SsDeviceLogObject(KvLogEvent {
-            key: KvKey::artifact(obj_desc.to_obj_desc(), free_id),
+            key: KvKey::artifact(obj_desc.to_obj_desc(), free_id.clone()),
             value: claim,
         });
 
-        self.p_obj.repo.save(obj.to_generic()).await?;
-
-        Ok(())
+        let intended = obj.to_generic();
+        let saved = self.p_obj.repo.save(intended.clone()).await;
+        let observed = self
+            .p_obj
+            .repo
+            .find_one(free_id.clone())
+            .await
+            .map_err(|_| super::persistent_object::AppendOutcomeUnknown)?;
+        anyhow::ensure!(observed == Some(intended), "ClaimNotQueued");
+        if let std::result::Result::Ok(key) = saved {
+            anyhow::ensure!(key == free_id, "ClaimSaveKeyMismatch");
+        }
+        Ok(free_id)
     }
 }
 

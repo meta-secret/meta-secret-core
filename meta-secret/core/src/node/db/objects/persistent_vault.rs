@@ -195,7 +195,7 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
             value: events,
         });
 
-        self.p_obj.repo.save(vault_log_event).await?;
+        self.p_obj.save_verified(vault_log_event).await?;
 
         Ok(())
     }
@@ -211,10 +211,14 @@ impl<Repo: KvLogEventRepo> PersistentVault<Repo> {
 
         let vault_log_event = VaultLogObject(KvLogEvent {
             key: next_key,
-            value: kv.0.value.request(action_event),
+            value: {
+                let mut events = kv.0.value.request(action_event);
+                events.initialize_removal_bindings()?;
+                events
+            },
         });
 
-        self.p_obj.repo.save(vault_log_event).await?;
+        self.p_obj.save_verified(vault_log_event).await?;
 
         Ok(())
     }

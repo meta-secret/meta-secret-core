@@ -10,7 +10,6 @@ tasks:
     - task: generate_meta_server_deployment_yaml
     - kubectl apply -f meta-secret-server/build/meta-server.yaml
   generate_meta_server_deployment_yaml:
-    desc: Deploy meta-secret server
+    desc: Validate Apple env and render current KCL before any apply
     cmds:
-    - mkdir -p meta-secret-server/build
-    - kcl meta-secret-server/main.k -D imageName=ghcr.io/meta-secret/meta-secret-core/meta-secret-server:latest > meta-secret-server/build/meta-server.yaml
+    - python3 ../apple/apple_infra.py render-process

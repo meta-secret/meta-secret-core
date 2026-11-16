@@ -19,7 +19,18 @@ test('all 60 real cycle role messages are explicit live milestones', () => {
 test('every new range child verifies full provenance before reuse early return', () => {
   const source = readFileSync(new URL('../Test4/orchestrator.mjs', import.meta.url), 'utf8');
   const guard = source.slice(source.indexOf('async function prepareLocalEnvironmentGuard()'), source.indexOf('async function restoreEnvironmentGuard()'));
-  const branch = guard.slice(guard.indexOf("if (process.env.E2E_RANGE_RUN === '1')"), guard.indexOf('  if (reuseProvenArtifacts) {'));
-  assert(branch.includes('if (reuseProvenArtifacts) await verifyOrBootstrapBuildProvenance();'));
+  const start = guard.indexOf("if (process.env.E2E_RANGE_RUN === '1')");
+  const branch = guard.slice(start, guard.indexOf("  if (reuseProvenArtifacts) {\n    if (uniqueModes[0]", start));
+  assert(branch.includes('if (batchProducts) buildProvenanceVerified = true;'));
+  assert(branch.includes('else await verifyOrBootstrapBuildProvenance();'));
   assert(branch.indexOf('await verifyOrBootstrapBuildProvenance()') < branch.indexOf('    return;'));
+  const main = source.slice(source.indexOf('async function main()'));
+  assert(main.indexOf('batchProducts = await loadBatchProducts(') >= 0);
+  assert(main.indexOf('batchProducts = await loadBatchProducts(') < main.indexOf('await prepareLocalEnvironmentGuard()'));
+  const consumer = readFileSync(new URL('../shared/batch-product-consumer.mjs', import.meta.url), 'utf8');
+  const load = consumer.slice(consumer.indexOf('export async function loadBatchProducts('), consumer.indexOf('export function assertBatchProductsCurrent('));
+  assert(load.includes('!index.sealed || index.runId !== process.env.E2E_RUN_ID'));
+  assert(load.indexOf('await verifyPreparedProduct(') > 0);
+  assert(load.indexOf('await verifyPreparedProduct(') < load.indexOf('selected[product] ='));
+  assert(load.indexOf('selected[product] =') < load.indexOf('return { ...selected'));
 });

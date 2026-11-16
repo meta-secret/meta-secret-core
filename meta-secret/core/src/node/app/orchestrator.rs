@@ -1,3 +1,6 @@
+#[path = "orchestrator_producer_builders.rs"]
+mod producer_builders;
+
 use crate::crypto::utils::{Id48bit, sha256_hex};
 use crate::node::app::sync::environment::{SELECTED_SERVER_ENVIRONMENT, ServerEnvironment};
 use crate::node::common::model::crypto::aead::EncryptedMessage;
@@ -35,6 +38,19 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use tracing::{debug, info};
 
+#[path = "orchestrator_join_reconcile.rs"]
+mod join_reconcile;
+#[path = "orchestrator_join_source.rs"]
+mod join_source;
+#[path = "orchestrator_legacy_cleanup.rs"]
+mod legacy_cleanup;
+#[path = "orchestrator_legacy_guard.rs"]
+mod legacy_guard;
+#[path = "orchestrator_liveboard.rs"]
+mod liveboard;
+#[path = "orchestrator_removal_compute.rs"]
+mod removal_compute;
+
 #[cfg(target_os = "android")]
 fn core_diag(message: &str) {
     if !matches!(SELECTED_SERVER_ENVIRONMENT, ServerEnvironment::Local) {
@@ -53,21 +69,6 @@ fn core_diag(message: &str) {
     };
     unsafe {
         __android_log_write(4, c"MetaSecretE2E".as_ptr().cast(), message.as_ptr().cast());
-    }
-}
-
-fn core_diag_error_class(error: &impl std::fmt::Display) -> &'static str {
-    let message = error.to_string().to_ascii_lowercase();
-    if message.contains("decrypt") || message.contains("encrypt") || message.contains("crypto") {
-        "crypto"
-    } else if message.contains("share") || message.contains("threshold") {
-        "share"
-    } else if message.contains("parse") || message.contains("json") || message.contains("decode") {
-        "decode"
-    } else if message.contains("save") || message.contains("database") || message.contains("repo") {
-        "storage"
-    } else {
-        "other"
     }
 }
 
@@ -311,6 +312,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
     /// Approve the pending removal for the target device. Core checks that the
     /// local device is a different current member when three devices remain.
     pub async fn accept_remove_member(&self, target_device_id: String) -> Result<()> {
+        let _sync_owner = self.p_obj.device_sync_guard.lock().await;
         let member = self.get_member().await?;
         let vault = self.get_vault(member.clone()).await?;
         let Some(VaultLogObject(log)) = self.get_vault_log_event(&member).await? else {
@@ -482,6 +484,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
     /// approval update. New approvals are reshared immediately by the approver
     /// in `accept_remove_member`, before the completed Vault event is cleared.
     pub async fn finalize_pending_removal_resharing(&self) -> Result<()> {
+        let _sync_owner = self.p_obj.device_sync_guard.lock().await;
         // The removed device receives the same signed update and immediately
         // becomes an Outsider/Declined. It must still be able to build its
         // next app state, so a non-member simply has nothing to reshare.
@@ -499,6 +502,9 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
             return Ok(());
         }
         if vault.members().len() != 2 {
+            return Ok(());
+        }
+        if self.retry_legacy_target_cleanup(&vault, None).await? {
             return Ok(());
         }
         let Some(VaultLogObject(log)) = self.get_vault_log_event(&member).await? else {
@@ -784,404 +790,55 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
         transfers: Vec<RemoveMemberShareTransfer>,
         is_initiator: bool,
     ) -> Result<()> {
-        let local_device_id = self.user_creds.device_id().clone();
-        let mut members = vault.members();
-        members.sort_by_key(|member| member.user().device.device_id.to_string());
-        let remaining_ids: HashSet<_> = members
-            .iter()
-            .map(|member| member.user().device.device_id.clone())
-            .collect();
         let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
-        let mut ss_log_data = self.get_ss_log_data().await?;
-        let removal_generation_event = serde_json::to_string(update)?;
-        let reshare_cfg = vault.sss_cfg();
-        core_diag(&format!(
-            "[CORE_DIAG] removal reshare start actor_type={} is_initiator={} remaining_members={} transfers={} threshold={}",
-            self.user_creds.device_creds.device.device_type.as_str(),
-            is_initiator,
-            members.len(),
-            transfers.len(),
-            reshare_cfg.threshold
-        ));
-
+        let mut claims = self.get_ss_log_data().await?;
         for transfer in &transfers {
-            core_diag(&format!(
-                "[CORE_DIAG] removal reshare transfer actor_type={} claim_count={} is_initiator={}",
-                self.user_creds.device_creds.device.device_type.as_str(),
-                ss_log_data.claims.len(),
-                is_initiator
-            ));
-            if is_initiator {
-                let initiator_id = &update.request.sender.user_data.device.device_id;
-                let initiator_owns_claim = ss_log_data.claims.values().any(|claim| {
-                    claim.distribution_type == SecretDistributionType::Split
-                        && &claim.sender == initiator_id
-                        && claim.dist_claim_id.pass_id == transfer.pass_id
-                });
-                if !initiator_owns_claim {
-                    core_diag(&format!(
-                        "[CORE_DIAG] removal reshare skipped actor_type={} reason=initiator_does_not_own_claim",
-                        self.user_creds.device_creds.device.device_type.as_str()
-                    ));
-                    continue;
-                }
-            }
-
-            let local_desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
-                pass_id: transfer.pass_id.clone(),
-                receiver: local_device_id.clone(),
-            });
-            core_diag("[CORE_DIAG] removal reshare local_distribution_lookup begin");
-            let local_distribution = match self.p_obj.find_tail_event(local_desc).await {
-                Ok(Some(SsWorkflowObject::Distribution(distribution))) => distribution,
-                Ok(_) => {
-                    core_diag(
-                        "[CORE_DIAG] removal reshare local_distribution_lookup result=missing",
-                    );
-                    bail!("Local share for {} is missing", transfer.pass_id.name);
-                }
-                Err(error) => {
-                    core_diag(&format!(
-                        "[CORE_DIAG] removal reshare local_distribution_lookup result=error class={}",
-                        core_diag_error_class(&error)
-                    ));
-                    return Err(error);
-                }
+            let context = removal_compute::RemovalPassContext {
+                vault,
+                update,
+                claims: &claims,
+                is_initiator,
             };
-            core_diag("[CORE_DIAG] removal reshare local_distribution_lookup result=found");
-            let generation_matches_transfer = transfer
-                .claim_id
-                .as_ref()
-                .is_none_or(|claim_id| claim_id == &local_distribution.value.claim_id.id);
-            core_diag(&format!(
-                "[CORE_DIAG] removal reshare generations local={} transfer={} matches={}",
-                claim_generation_alias(&local_distribution.value.claim_id.id),
-                transfer
-                    .claim_id
-                    .as_ref()
-                    .map(claim_generation_alias)
-                    .as_deref()
-                    .unwrap_or("legacy-unknown"),
-                generation_matches_transfer
-            ));
-            if !generation_matches_transfer {
-                bail!("Removal transfer share belongs to a different Split generation");
-            }
-            let local_plain = match local_distribution
-                .value
-                .secret_message
-                .cipher_text()
-                .decrypt(&self.user_creds.device_creds.secret_box.transport.sk)
-            {
-                Ok(plain) => plain,
-                Err(error) => {
-                    core_diag(&format!(
-                        "[CORE_DIAG] removal reshare local_distribution_decrypt result=error class={}",
-                        core_diag_error_class(&error)
-                    ));
-                    return Err(error);
-                }
-            };
-            core_diag("[CORE_DIAG] removal reshare local_distribution_decrypt result=ok");
-            let local_share = match UserShareDto::try_from(&local_plain.msg) {
-                Ok(share) => share,
-                Err(error) => {
-                    core_diag(&format!(
-                        "[CORE_DIAG] removal reshare local_distribution_parse result=error class={}",
-                        core_diag_error_class(&error)
-                    ));
-                    return Err(error.into());
-                }
-            };
-            core_diag("[CORE_DIAG] removal reshare local_distribution_parse result=ok");
-            let local_threshold = local_share
-                .share_blocks
-                .first()
-                .map(|block| block.config.threshold)
-                .unwrap_or(0);
-
-            // Select the Split claim referenced by the actual local share. The
-            // claim map contains historical generations, and the actor may be a
-            // receiver whose device log does not contain the current sender claim.
-            let Some(previous_split_claim) = ss_log_data
-                .claims
-                .get(&local_distribution.value.claim_id.id)
-                .cloned()
-            else {
-                bail!("Current local share references a missing Split claim");
-            };
-            if previous_split_claim.distribution_type != SecretDistributionType::Split
-                || previous_split_claim.dist_claim_id.pass_id != transfer.pass_id
-            {
-                bail!("Current local share references an invalid Split claim");
-            }
-            let topology_matches = previous_split_claim
-                .receivers
-                .iter()
-                .all(|id| remaining_ids.contains(id))
-                && previous_split_claim.receivers.len() == remaining_ids.len() - 1;
-            // Matching receiver topology is not enough to prove that the
-            // surviving local share belongs to the target K-of-N generation.
-            // A two-member vault requires threshold 1; if the local share still
-            // requires threshold 2, it must be regenerated even when the claim's
-            // receiver list already has the right shape.
-            let generation_matches_target =
-                topology_matches && local_threshold == reshare_cfg.threshold;
-            core_diag(&format!(
-                "[CORE_DIAG] removal reshare topology actor_type={} receivers={} remaining_members={} local_threshold={} target_threshold={} topology_matches={} generation_matches_target={}",
-                self.user_creds.device_creds.device.device_type.as_str(),
-                previous_split_claim.receivers.len(),
-                remaining_ids.len(),
-                local_threshold,
-                reshare_cfg.threshold,
-                topology_matches,
-                generation_matches_target
-            ));
-            if generation_matches_target {
-                core_diag(&format!(
-                    "[CORE_DIAG] removal reshare skipped actor_type={} reason=current_generation_matches_target",
-                    self.user_creds.device_creds.device.device_type.as_str()
-                ));
+            let Some(prepared) = self.compute_removal_pass(&context, transfer).await? else {
+                self.retry_legacy_target_cleanup(vault, Some(update))
+                    .await?;
                 continue;
-            }
-
-            // A fresh, event-derived ID identifies this polynomial generation;
-            // all devices processing the same canonical removal derive the same ID.
-            let local_member = members
-                .iter()
-                .find(|member| member.user().device.device_id == local_device_id)
-                .cloned()
-                .ok_or_else(|| anyhow::anyhow!("Local device is not in remaining members"))?;
-            let generation_id =
-                reshare_generation_claim_id(&previous_split_claim.id, &removal_generation_event);
-            let mut split_claim = VaultMember {
-                member: local_member,
-                vault: vault.clone(),
-            }
-            .create_split_claim(transfer.pass_id.clone());
-            split_claim.id = generation_id.clone();
-            split_claim.dist_claim_id.id = generation_id;
-            split_claim.vault_name = previous_split_claim.vault_name.clone();
-
-            let transfer_message: EncryptedMessage =
-                match serde_json::from_str(&transfer.encrypted_share) {
-                    Ok(message) => message,
-                    Err(error) => {
-                        core_diag(
-                            "[CORE_DIAG] removal reshare transfer_parse result=error class=decode",
-                        );
-                        return Err(error.into());
-                    }
-                };
-            core_diag("[CORE_DIAG] removal reshare transfer_parse result=ok");
-            let transferred_plain = match transfer_message
-                .cipher_text()
-                .decrypt(&self.user_creds.device_creds.secret_box.transport.sk)
-            {
-                Ok(plain) => plain,
-                Err(error) => {
-                    core_diag(&format!(
-                        "[CORE_DIAG] removal reshare transfer_decrypt result=error class={}",
-                        core_diag_error_class(&error)
-                    ));
-                    return Err(error);
-                }
             };
-            core_diag("[CORE_DIAG] removal reshare transfer_decrypt result=ok");
-            let transferred_share = match UserShareDto::try_from(&transferred_plain.msg) {
-                Ok(share) => share,
-                Err(error) => {
-                    core_diag(&format!(
-                        "[CORE_DIAG] removal reshare transfer_share_parse result=error class={}",
-                        core_diag_error_class(&error)
-                    ));
-                    return Err(error.into());
-                }
-            };
-            core_diag("[CORE_DIAG] removal reshare transfer_share_parse result=ok");
-            let transferred_threshold = transferred_share
-                .share_blocks
-                .first()
-                .map(|block| block.config.threshold)
-                .unwrap_or(0);
-            core_diag(&format!(
-                "[CORE_DIAG] removal reshare inputs actor_type={} local_threshold={} transferred_threshold={} target_threshold={}",
-                self.user_creds.device_creds.device.device_type.as_str(),
-                local_threshold,
-                transferred_threshold,
-                reshare_cfg.threshold
-            ));
-
-            let plain_secret = match recover_from_shares(vec![local_share, transferred_share]) {
-                Ok(secret) => secret,
-                Err(error) => {
-                    core_diag(&format!(
-                        "[CORE_DIAG] removal reshare recover result=error class={}",
-                        core_diag_error_class(&error)
-                    ));
-                    return Err(error.into());
-                }
-            };
-            core_diag("[CORE_DIAG] removal reshare recover result=ok");
-            let secure_pass = SecurePassInfo::from(PlainPassInfo {
-                pass_id: transfer.pass_id.clone(),
-                pass: plain_secret.text,
-            });
-            let re_split = match split2(secure_pass, reshare_cfg) {
-                Ok(split) => split,
-                Err(error) => {
-                    core_diag(&format!(
-                        "[CORE_DIAG] removal reshare split result=error class={}",
-                        core_diag_error_class(&error)
-                    ));
-                    return Err(error.into());
-                }
-            };
-            core_diag(&format!(
-                "[CORE_DIAG] removal reshare split result=ok shares={} threshold={}",
-                re_split.shares.len(),
-                reshare_cfg.threshold
-            ));
-            if re_split.shares.len() != members.len() {
-                bail!("Removal resharing produced an invalid share count");
+            let cleanup = self
+                .prepare_legacy_target_cleanup(vault, update, transfer, &prepared)
+                .await?;
+            // Legacy publication keeps its original per-Pass write/claim order.
+            for workflow in &prepared.distributions {
+                self.p_obj.repo.delete(workflow.obj_id()).await;
+                self.p_obj.save_verified(workflow.clone()).await?;
             }
-
-            for (idx, receiver) in members.iter().enumerate() {
-                let share_json = match re_split.shares[idx].as_json() {
-                    Ok(json) => json,
-                    Err(error) => {
-                        core_diag(&format!(
-                            "[CORE_DIAG] removal reshare share_serialize index={} result=error class={}",
-                            idx,
-                            core_diag_error_class(&error)
-                        ));
-                        return Err(error.into());
-                    }
-                };
-                let encrypted = match self
-                    .user_creds
-                    .device_creds
-                    .key_manager()?
-                    .transport
-                    .encrypt_string(
-                        PlainText::from(share_json),
-                        &receiver.user().device.keys.transport_pk,
-                    ) {
-                    Ok(encrypted) => encrypted,
-                    Err(error) => {
-                        core_diag(&format!(
-                            "[CORE_DIAG] removal reshare share_encrypt index={} result=error class={}",
-                            idx,
-                            core_diag_error_class(&error)
-                        ));
-                        return Err(error);
-                    }
-                };
-                let dist_id = SsDistributionId {
-                    pass_id: transfer.pass_id.clone(),
-                    receiver: receiver.user().device.device_id.clone(),
-                };
-                let wf = SsWorkflowObject::Distribution(KvLogEvent {
-                    key: KvKey::from(SsWorkflowDescriptor::Distribution(dist_id)),
-                    value: SecretDistributionData {
-                        vault_name: update.request.sender.user_data.vault_name(),
-                        claim_id: split_claim.dist_claim_id.clone(),
-                        secret_message: EncryptedMessage::CipherShare { share: encrypted },
-                    },
-                });
-                core_diag(&format!(
-                    "[CORE_DIAG] removal reshare distribution_save index={} total={} result=begin",
-                    idx + 1,
-                    members.len()
-                ));
-                // Distribution is a replaceable current-generation value at this
-                // descriptor. Replacing it locally lets the sender retain its own
-                // newly generated share while older claim history remains in SsLog.
-                self.p_obj.repo.delete(wf.obj_id()).await;
-                if let Err(error) = self.p_obj.repo.save(wf).await {
-                    core_diag(&format!(
-                        "[CORE_DIAG] removal reshare distribution_save index={} result=error class={}",
-                        idx + 1,
-                        core_diag_error_class(&error)
-                    ));
-                    return Err(error);
-                }
-                core_diag(&format!(
-                    "[CORE_DIAG] removal reshare distribution_save index={} total={} result=ok",
-                    idx + 1,
-                    members.len()
-                ));
-            }
-
-            let local_desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
-                pass_id: transfer.pass_id.clone(),
-                receiver: local_device_id.clone(),
-            });
-            // Diagnostics must never affect the removal/reshare behavior. Treat a
-            // failed re-read or decode as unavailable diagnostic data.
-            let (local_tail_threshold, reread_ok) =
-                match self.p_obj.find_tail_event(local_desc).await {
-                    Ok(Some(SsWorkflowObject::Distribution(saved_local))) => {
-                        match saved_local
-                            .value
-                            .secret_message
-                            .cipher_text()
-                            .decrypt(&self.user_creds.device_creds.secret_box.transport.sk)
-                        {
-                            Ok(saved_plain) => match UserShareDto::try_from(&saved_plain.msg) {
-                                Ok(share) => (
-                                    share
-                                        .share_blocks
-                                        .first()
-                                        .map(|block| block.config.threshold)
-                                        .unwrap_or(0),
-                                    true,
-                                ),
-                                Err(_) => (0, false),
-                            },
-                            Err(_) => (0, false),
-                        }
-                    }
-                    _ => (0, false),
-                };
-            core_diag(&format!(
-                "[CORE_DIAG] removal reshare saved actor_type={} refreshed_members={} target_threshold={} local_tail_threshold={} reread_ok={}",
-                self.user_creds.device_creds.device.device_type.as_str(),
-                members.len(),
-                reshare_cfg.threshold,
-                local_tail_threshold,
-                reread_ok
-            ));
-
-            split_claim.receivers = members
-                .iter()
-                .filter_map(|member| {
-                    let device_id = member.user().device.device_id.clone();
-                    (device_id != local_device_id).then_some(device_id)
-                })
-                .collect();
-            split_claim.status = SsDistributionCompositeStatus::from(split_claim.receivers.clone());
-            core_diag("[CORE_DIAG] removal reshare claim_device_log_save result=begin");
-            if let Err(error) = p_ss.save_claim_in_ss_device_log(split_claim.clone()).await {
-                core_diag(&format!(
-                    "[CORE_DIAG] removal reshare claim_device_log_save result=error class={}",
-                    core_diag_error_class(&error)
-                ));
-                return Err(error);
-            }
-            core_diag("[CORE_DIAG] removal reshare claim_device_log_save result=ok");
-            core_diag("[CORE_DIAG] removal reshare claim_ss_log_save result=begin");
-            if let Err(error) = p_ss.save_ss_log_event(split_claim.clone()).await {
-                core_diag(&format!(
-                    "[CORE_DIAG] removal reshare claim_ss_log_save result=error class={}",
-                    core_diag_error_class(&error)
-                ));
-                return Err(error);
-            }
-            core_diag("[CORE_DIAG] removal reshare claim_ss_log_save result=ok");
-            ss_log_data
+            p_ss.save_claim_in_ss_device_log(prepared.claim.clone())
+                .await?;
+            let own_claim = p_ss
+                .find_ss_device_log_tail_event(prepared.claim.sender.clone())
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("LegacyCleanupClaimUnavailable"))?;
+            Self::validate_legacy_claim_object(&prepared.claim, &own_claim)?;
+            // Preserve the original helper's freshest full aggregate merge.
+            let fresh = p_ss
+                .find_ss_log_tail_event(prepared.claim.vault_name.clone())
+                .await?;
+            let intended = p_ss
+                .create_new_ss_log_object(
+                    fresh
+                        .map(|object| object.0.value)
+                        .unwrap_or_default()
+                        .insert(prepared.claim.clone()),
+                    prepared.claim.vault_name.clone(),
+                )
+                .await?;
+            self.p_obj.save_verified(intended.clone()).await?;
+            self.verify_legacy_final_readbacks(&prepared, &own_claim, &intended)
+                .await?;
+            self.finish_legacy_target_cleanup(cleanup).await?;
+            claims
                 .claims
-                .insert(split_claim.id.clone(), split_claim);
+                .insert(prepared.claim.id.clone(), prepared.claim);
         }
         Ok(())
     }
@@ -1246,7 +903,6 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
     ) -> Result<()> {
         vault.ensure_valid_member_count()?;
 
-        let joined_device_id = join_request.candidate.device.device_id.clone();
         let local_device_id = self.user_creds.device_id().clone();
         let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
         let mut ss_log_data = self.get_ss_log_data().await?;
@@ -1276,56 +932,20 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
         ));
 
         for pass_id in vault.secrets.iter() {
-            // The current local share identifies the active claim generation. Only
-            // that claim's canonical sender may create the next generation; allowing
-            // every member with a share to re-split concurrently mixes polynomials.
-            let source_desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
-                pass_id: pass_id.clone(),
-                receiver: local_device_id.clone(),
-            });
-            let Some(source_event) = self.p_obj.find_tail_event(source_desc.clone()).await? else {
-                info!(
-                    actor_type = %self.user_creds.device_creds.device.device_type.as_str(),
-                    owns_split_claim = true,
-                    local_source_share_found = false,
-                    "join_reconcile: local source share missing; skipped"
-                );
-                core_diag(&format!(
-                    "[CORE_DIAG] redistribute skipped actor_type={} reason=missing_local_source_share",
-                    self.user_creds.device_creds.device.device_type.as_str()
-                ));
-                continue;
-            };
-            let SsWorkflowObject::Distribution(source_dist) = source_event else {
-                continue;
-            };
-            let Some(split_claim) = ss_log_data
-                .claims
-                .get(&source_dist.value.claim_id.id)
-                .cloned()
-            else {
-                info!(
-                    actor_type = %self.user_creds.device_creds.device.device_type.as_str(),
-                    owns_split_claim = false,
-                    "join_reconcile: current distribution references no Split claim; skipped"
-                );
-                continue;
-            };
-            if split_claim.distribution_type != SecretDistributionType::Split
-                || split_claim.dist_claim_id.pass_id != *pass_id
-                || split_claim.sender != local_device_id
-            {
-                core_diag(&format!(
-                    "[CORE_DIAG] redistribute skipped actor_type={} reason=not_canonical_split_sender",
-                    self.user_creds.device_creds.device.device_type.as_str()
-                ));
+            if vault.deleted_secrets.contains(pass_id) {
                 continue;
             }
-            let target_desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
-                pass_id: pass_id.clone(),
-                receiver: joined_device_id.clone(),
-            });
-            let target_distribution = self.p_obj.find_tail_event(target_desc).await?;
+            let Some(source) = self.audit_join_source(vault, pass_id, &ss_log_data).await? else {
+                continue;
+            };
+            if source.missing.is_empty() {
+                // Historical Pending/absent delivery is unknown; coverage needs no new polynomial.
+                continue;
+            }
+            let SsWorkflowObject::Distribution(source_dist) = source.source else {
+                bail!("JoinResharingUnavailable");
+            };
+            let split_claim = source.claim;
             let generation_id =
                 reshare_generation_claim_id(&split_claim.id, &join_request.request_id);
             core_diag(&format!(
@@ -1336,36 +956,6 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                 claim_generation_alias(&split_claim.id),
                 claim_generation_alias(&generation_id)
             ));
-            let target_matches_join_generation = matches!(
-                &target_distribution,
-                Some(SsWorkflowObject::Distribution(event))
-                    if event.value.claim_id.id == generation_id
-            );
-            let target_matches_current_generation = matches!(
-                &target_distribution,
-                Some(SsWorkflowObject::Distribution(event))
-                    if event.value.claim_id.id == source_dist.value.claim_id.id
-            );
-            let claim_already_contains_joined = split_claim
-                .receivers
-                .iter()
-                .any(|d| d.eq(&joined_device_id));
-            if (target_matches_join_generation || target_matches_current_generation)
-                && claim_already_contains_joined
-            {
-                info!(
-                    actor_type = %self.user_creds.device_creds.device.device_type.as_str(),
-                    target_distribution_exists = true,
-                    claim_contains_target = true,
-                    "join_reconcile: target already distributed; skipped"
-                );
-                core_diag(&format!(
-                    "[CORE_DIAG] redistribute skipped actor_type={} reason=target_already_distributed current_generation_match={}",
-                    self.user_creds.device_creds.device.device_type.as_str(),
-                    target_matches_current_generation
-                ));
-                continue;
-            }
 
             let source_plain = source_dist
                 .value
@@ -1493,6 +1083,7 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
             split_claim.dist_claim_id.id = generation_id;
             split_claim.vault_name = source_dist.value.vault_name.clone();
 
+            let mut intended_outputs = Vec::with_capacity(members.len());
             for (idx, receiver) in members.iter().enumerate() {
                 let receiver_pk = &receiver.user().device.keys.transport_pk;
                 let share_json = re_split.shares[idx].as_json()?;
@@ -1519,7 +1110,8 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
                 // Delete any stale distribution before saving the new one so all members'
                 // shares always come from the same polynomial after redistribution.
                 self.p_obj.repo.delete(wf.obj_id()).await;
-                self.p_obj.repo.save(wf).await?;
+                self.p_obj.save_verified(wf.clone()).await?;
+                intended_outputs.push(wf);
             }
 
             // create_split_claim populated the exact current receiver set as Pending.
@@ -1528,6 +1120,8 @@ impl<Repo: KvLogEventRepo> MetaOrchestrator<Repo> {
             p_ss.save_claim_in_ss_device_log(split_claim.clone())
                 .await?;
             p_ss.save_ss_log_event(split_claim.clone()).await?;
+            self.verify_new_join_outputs(vault, &split_claim, &intended_outputs)
+                .await?;
             ss_log_data
                 .claims
                 .insert(split_claim.id.clone(), split_claim);
@@ -1662,6 +1256,10 @@ fn should_retry_removal_reshare(
 ) -> bool {
     approver_device_id == local_device_id && has_request_share_transfers
 }
+
+#[cfg(test)]
+#[path = "orchestrator/legacy_target_cleanup_tests/mod.rs"]
+mod legacy_target_cleanup_tests;
 
 #[cfg(test)]
 mod tests {

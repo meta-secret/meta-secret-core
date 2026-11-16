@@ -29,3 +29,15 @@ earlier completed boundary avoids retaining the original renderer until cycle
 The resulting 27-cycle matrix gives each platform nine sender, nine approver,
 and nine observer roles. There is no direct-Show phase, fixed sleep, `slowMo`,
 or weakened assertion.
+
+
+## Scoped recovery orchestration
+
+Exact `test31:web-secondary-creator-lifecycle` uses the actual current source descriptor and
+independent expected12 before raw metadata. Its iOS sender uses the distinct
+`recoveryShowPhase` procedure at the original input-return/already-visible
+boundary. Same ordinary600/currentD clips prep180/value45/close60; no business
+or security rule changes. Launch through normal range owner, for example
+`npm run test-range -- --from 31 --to 31 --run-id <fresh-ascii-owner> --preserve-evidence`. Original
+actions/roles/repetitions/value/Copy/Hide/results stay mandatory. Host controls
+are not whole UI or SDK/provenance acceptance.

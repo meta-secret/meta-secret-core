@@ -128,3 +128,19 @@ export function superviseAndroidInstrumentation({
 
   return { ...logcat, waitForMarker, result };
 }
+
+export function assertAndroidInstrumentationPassed(output, selector) {
+  const text = `${output?.stdout ?? ''}\n${output?.stderr ?? ''}`;
+  if (/FAILURES!!!|There was\s+\d+ failure|There were\s+\d+ failures|INSTRUMENTATION_STATUS_CODE:\s*-\d+/.test(text)) {
+    throw new Error(`Android instrumentation failed for ${selector}\n${text.slice(-12_000)}`);
+  }
+}
+
+export function instrumentationArgumentsFromGradle(argumentsList) {
+  const prefix = '-Pandroid.testInstrumentationRunnerArguments.';
+  return argumentsList.filter((argument) => argument.startsWith(prefix)).flatMap((argument) => {
+    const entry = argument.slice(prefix.length); const separator = entry.indexOf('=');
+    if (separator < 1) throw new Error('Malformed Android instrumentation Gradle argument');
+    return ['-e', entry.slice(0, separator), entry.slice(separator + 1)];
+  });
+}

@@ -8,6 +8,25 @@
 - **Crypto changes are high-risk:** Require clear threat model, minimal diff, and tests. Avoid “quick” algorithm or parameter tweaks.
 - **Operational files:** `master_key.json` and similar runtime secrets belong only in controlled environments—never commit them.
 
+## Native approval retry evidence
+
+Recover-Approve `notSubmitted` metadata is invocation evidence, never authority.
+It may be emitted only after the first pre-sync failed before response production
+and the same native owner validated complete pending receiver statuses and absent
+exact local Recovery/Decline slots. Errors or uncertainty in that audit refuse
+evidence while preserving the original operation error. An acknowledged response
+may already have disappeared locally; source absence alone cannot prove that no
+historical server outcome exists.
+
+The final native approval path rechecks authoritative current state under the
+same client-operation owner through source validation, response generation and
+post-sync. Preserve client→device-sync lock order, existing authentication and
+Core permissions. Clients require an exact original-intent/scope binding, fresh
+post-return canonical evidence, a new explicit action and fresh authentication;
+generic errors, stale callbacks and metadata from another owner cannot unlock
+retry. Never automatically resubmit or rewrite a retained uncertain outcome as
+success. See [the binding contract](docs/liveboard-bindings.md).
+
 ## Code review checklist (AI and humans)
 
 - [ ] No `println!` / `tracing` of sensitive payloads.

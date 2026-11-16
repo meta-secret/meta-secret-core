@@ -60,10 +60,9 @@ use crate::node::db::events::object_id::ArtifactId;
 use crate::node::db::events::shared_secret_event::{
     SsDeviceLogObject, SsLogObject, SsWorkflowObject,
 };
-use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::events::vault::vault_event::VaultObject;
 use crate::node::db::events::vault::vault_log_event::{
-    JoinClusterEvent, RemoveMemberDecision, VaultActionEvent, VaultActionUpdateEvent,
+    RemoveMemberDecision, VaultActionEvent, VaultActionUpdateEvent,
 };
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -79,7 +78,7 @@ pub struct SyncGateway<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub p_obj: Arc<PersistentObject<Repo>>,
     pub sync: Arc<Sync>,
     pub master_key: TransportSk,
-    sync_guard: Mutex<()>,
+    pub(super) sync_guard: Arc<Mutex<()>>,
 }
 
 impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
@@ -89,13 +88,23 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         sync: Arc<Sync>,
         master_key: TransportSk,
     ) -> Self {
+        let sync_guard = p_obj.device_sync_guard.clone();
         Self {
             id,
             p_obj,
             sync,
             master_key,
-            sync_guard: Mutex::new(()),
+            sync_guard,
         }
+    }
+
+    pub async fn check_join_admission(&self, user: UserData) -> Result<()> {
+        self.sync
+            .send(SyncRequest::Read(Box::new(ReadSyncRequest::JoinAdmission(
+                user,
+            ))))
+            .await?
+            .ensure_success()
     }
 
     /// Persist successful recovery completion on the server for the exact local claim.
@@ -166,7 +175,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         Ok(())
     }
 
-    async fn signed_event(
+    pub(super) async fn signed_event(
         &self,
         event: GenericKvLogEvent,
         user: &UserData,
@@ -314,36 +323,40 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         }
         .get_user_creds()
         .await?;
+        let previous_members = match user_creds.as_ref() {
+            Some(creds) => self.local_vault_members(creds.vault_name.clone()).await?,
+            None => Vec::new(),
+        };
         let server_tail = self.get_server_tail(user.clone()).await?;
-
-        self.sync_device_log(&server_tail, user.user_id(), &user)
+        let preflush = self.get_vault_request(user.clone()).await?;
+        self.import_vault_records(preflush, user_creds.as_ref())
             .await?;
+        self.retire_guarded_preparations(&user).await?;
+
+        if let Err(original_error) = self
+            .sync_device_log(&server_tail, user.user_id(), &user)
+            .await
+        {
+            if let Ok(request) = self.get_vault_request(user.clone()).await {
+                let _ = self
+                    .import_vault_records(request, user_creds.as_ref())
+                    .await;
+            }
+            let _ = self.retire_guarded_preparations(&user).await;
+            return Err(original_error);
+        }
 
         let vault_sync_request = self.get_vault_request(user.clone()).await?;
-        self.sync_vault(vault_sync_request, user_creds).await?;
-
-        if let Some(creds) = (PersistentCredentials {
-            p_obj: self.p_obj.clone(),
-            master_key: self.master_key.clone(),
-        })
-        .get_user_creds()
-        .await?
-            && let Ok(vault) = PersistentVault::from(self.p_obj.clone())
-                .get_vault(creds.vault_name)
-                .await
-        {
-            Box::pin(
-                PersistentSharedSecret::from(self.p_obj.clone())
-                    .purge_deleted_secrets(&vault.to_data()),
-            )
+        self.sync_vault(vault_sync_request, user_creds, previous_members)
             .await?;
-        }
-        self.sync_shared_secrets(&server_tail, user).await?;
+        self.sync_shared_secrets(&server_tail, user.clone()).await?;
+        self.reconcile_guarded_preparations(&user, true).await?;
+        self.retire_guarded_preparations(&user).await?;
 
         Ok(())
     }
 
-    async fn get_server_tail(&self, user_data: UserData) -> Result<ServerTailResponse> {
+    pub(super) async fn get_server_tail(&self, user_data: UserData) -> Result<ServerTailResponse> {
         let server_tail = {
             let server_tail_sync_request = self.get_server_tail_request(user_data).await?;
             self.get_tail(server_tail_sync_request).await?
@@ -364,36 +377,18 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
     async fn get_server_tail_request(&self, user_data: UserData) -> Result<SyncRequest> {
         let sync_request =
             SyncRequest::Read(Box::from(ReadSyncRequest::ServerTail(ServerTailRequest {
+                producer_reference: None,
                 sender: user_data,
             })));
         Ok(sync_request)
     }
 
-    #[instrument(skip_all)]
-    async fn sync_vault(
+    /// Import only; publication and membership reconciliation remain in the success path.
+    async fn import_vault_records(
         &self,
         vault_sync_request: SyncRequest,
-        user_creds: Option<UserCreds>,
+        user_creds: Option<&UserCreds>,
     ) -> Result<()> {
-        let previous_members = if let Some(creds) = user_creds.as_ref() {
-            self.local_vault_members(creds.vault_name.clone()).await?
-        } else {
-            Vec::new()
-        };
-
-        if let Some(creds) = user_creds.as_ref() {
-            core_diag(&format!(
-                "[CORE_DIAG] membership snapshot actor_type={} previous_members={}",
-                creds.device_creds.device.device_type.as_str(),
-                previous_members.len()
-            ));
-            info!(
-                actor_type = %creds.device_creds.device.device_type.as_str(),
-                previous_member_count = previous_members.len(),
-                "join_reconcile: captured pre-sync membership snapshot"
-            );
-        }
-
         let DataEventsResponse(data_sync_events) =
             self.sync.send(vault_sync_request).await?.to_data()?;
 
@@ -436,6 +431,40 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
             debug!(object_id = ?new_event.obj_id(), "Sync gateway received Vault event");
 
             self.p_obj.repo.save(new_event).await?;
+        }
+
+        Ok(())
+    }
+
+    #[instrument(skip_all)]
+    async fn sync_vault(
+        &self,
+        vault_sync_request: SyncRequest,
+        user_creds: Option<UserCreds>,
+        previous_members: Vec<UserDataMember>,
+    ) -> Result<()> {
+        if let Some(creds) = user_creds.as_ref() {
+            core_diag(&format!(
+                "[CORE_DIAG] membership snapshot actor_type={} previous_members={}",
+                creds.device_creds.device.device_type.as_str(),
+                previous_members.len()
+            ));
+            info!(
+                actor_type = %creds.device_creds.device.device_type.as_str(),
+                previous_member_count = previous_members.len(),
+                "join_reconcile: captured pre-sync membership snapshot"
+            );
+        }
+
+        self.import_vault_records(vault_sync_request, user_creds.as_ref())
+            .await?;
+        if let Some(creds) = user_creds.as_ref() {
+            self.retire_guarded_preparations(&creds.user()).await?;
+        }
+
+        if let Some(creds) = user_creds.as_ref() {
+            self.reconcile_guarded_preparations(&creds.user(), false)
+                .await?;
         }
 
         // The approver's local update_membership path only has access to the
@@ -485,36 +514,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                 user_creds,
             };
 
-            for member in current_members {
-                let member_id = member.user().device.device_id.clone();
-                if previous_member_ids.contains(&member_id) {
-                    continue;
-                }
-
-                info!(
-                    actor_type = %orchestrator.user_creds.device_creds.device.device_type.as_str(),
-                    accepted_member_type = %member.user().device.device_type.as_str(),
-                    "join_reconcile: processing newly accepted member"
-                );
-                core_diag(&format!(
-                    "[CORE_DIAG] accepted member actor_type={} accepted_member_type={}",
-                    orchestrator
-                        .user_creds
-                        .device_creds
-                        .device
-                        .device_type
-                        .as_str(),
-                    member.user().device.device_type.as_str()
-                ));
-
-                let join_request = JoinClusterEvent {
-                    candidate: member.user_data.clone(),
-                    request_id: String::new(),
-                };
-                orchestrator
-                    .redistribute_existing_secrets_for_join(&join_request)
-                    .await?;
-            }
+            // Durable sender material, not the RAM snapshot, retains unfinished Join work.
+            // Do not run this from the original-error import/retirement branch.
+            orchestrator.reconcile_unfinished_join_resharing().await?;
         }
 
         Ok(())
@@ -608,6 +610,12 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         );
         for new_event in data_sync_events {
             debug!(object_id = ?new_event.obj_id(), "Sync gateway received Secret event");
+            if let GenericKvLogEvent::SsWorkflow(packet @ SsWorkflowObject::Distribution(_)) =
+                &new_event
+                && self.retain_guarded_own_packet(&user, packet).await?
+            {
+                continue;
+            }
             match &new_event {
                 // Distribution objects are stored under a fixed key per (pass_id, receiver)
                 // and are intentionally re-issued with fresh content on redistribution (see
@@ -675,12 +683,15 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                             let receiver = Self::split_workflow_receiver(&wf_event);
                             let request = {
                                 let event = WriteSyncRequest::Event(
-                                    self.signed_event(wf_event.to_generic(), &user).await?,
+                                    self.signed_event(wf_event.clone().to_generic(), &user)
+                                        .await?,
                                 );
                                 SyncRequest::Write(Box::from(event))
                             };
                             self.sync.send(request).await?.ensure_success()?;
-                            if receiver.as_ref() != Some(&user.device.device_id) {
+                            if !self.guarded_packet_handed_off(&user, &wf_event).await?
+                                && receiver.as_ref() != Some(&user.device.device_id)
+                            {
                                 self.p_obj.repo.delete(obj_id).await;
                             }
                         }
@@ -839,7 +850,8 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                     let obj_id = wf_event.obj_id();
                     let receiver = Self::split_workflow_receiver(&wf_event);
                     let request = SyncRequest::Write(Box::from(WriteSyncRequest::Event(
-                        self.signed_event(wf_event.to_generic(), &user).await?,
+                        self.signed_event(wf_event.clone().to_generic(), &user)
+                            .await?,
                     )));
                     let response = self.sync.send(request).await?;
                     response.ensure_success()?;
@@ -853,7 +865,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
                         user.device.device_type.as_str(),
                         receiver.as_ref() == Some(&user.device.device_id)
                     ));
-                    if receiver.as_ref() != Some(&user.device.device_id) {
+                    if !self.guarded_packet_handed_off(&user, &wf_event).await?
+                        && receiver.as_ref() != Some(&user.device.device_id)
+                    {
                         self.p_obj.repo.delete(obj_id).await;
                     }
                 }
@@ -939,9 +953,27 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         user_id: UserId,
         user: &UserData,
     ) -> Result<()> {
-        let device_log_events_to_sync = self.device_log_sync_request(server_tail, user_id).await?;
+        let confirmed_tail = self.sync_guarded_transport_noops(user, server_tail).await?;
+        let device_log_events_to_sync = self
+            .device_log_sync_request(&confirmed_tail, user_id)
+            .await?;
         for device_log_event in device_log_events_to_sync {
-            let signed = self.signed_event(device_log_event, user).await?;
+            let id = device_log_event.obj_id();
+            if self.has_guarded_transport_noop(user, &id).await? {
+                let fresh = self.get_server_tail(user.clone()).await?;
+                let confirmed = self.sync_guarded_transport_noops(user, &fresh).await?;
+                anyhow::ensure!(
+                    confirmed
+                        .device_log_tail
+                        .as_ref()
+                        .is_some_and(|tail| tail.fqdn == id.fqdn && tail.id.curr > id.id.curr),
+                    "GuardedPreparationUnavailable"
+                );
+                continue;
+            }
+            let signed = self
+                .sign_queued_device_event_owned(device_log_event.device_log()?, user)
+                .await?;
             let request = SyncRequest::Write(Box::from(WriteSyncRequest::Event(signed)));
             self.sync.send(request).await?.ensure_success()?;
         }
@@ -955,16 +987,18 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> SyncGateway<Repo, Sync> {
         user_id: UserId,
     ) -> Result<Vec<GenericKvLogEvent>> {
         let tail_to_sync = match &server_tail.device_log_tail {
-            None => ArtifactId::from(DeviceLogDescriptor::from(user_id)),
+            None => ArtifactId::from(DeviceLogDescriptor::from(user_id.clone())),
             Some(server_tail_id) => server_tail_id.clone(),
         };
-
-        let device_log_events_to_sync: Vec<GenericKvLogEvent> = self
-            .p_obj
-            .find_object_events::<DeviceLogObject>(tail_to_sync)
+        let device_log_events_to_sync =
+            crate::node::db::objects::persistent_device_log::PersistentDeviceLog::from(
+                self.p_obj.clone(),
+            )
+            .transport_slots(&user_id, tail_to_sync)
             .await?
             .into_iter()
-            .map(|device_log_event| device_log_event.to_generic())
+            .filter_map(|slot| slot.business())
+            .map(|event| event.to_generic())
             .collect();
         Ok(device_log_events_to_sync)
     }
@@ -1091,14 +1125,23 @@ mod tests {
                         // attempt to upload the same signed event.
                         tokio::task::yield_now().await;
 
-                        Ok(DataSyncResponse::ServerTailResponse(ServerTailResponse {
-                            device_log_tail,
-                            ss_device_log_tail: None,
-                        }))
+                        Ok(DataSyncResponse::ServerTailResponse(Box::new(
+                            ServerTailResponse {
+                                producer_observation: None,
+                                device_log_tail,
+                                ss_device_log_tail: None,
+                            },
+                        )))
                     }
                     ReadSyncRequest::Vault(_) | ReadSyncRequest::SsRequest(_) => {
                         Ok(DataSyncResponse::Data(DataEventsResponse(Vec::new())))
                     }
+                    ReadSyncRequest::JoinAdmission(_) => Ok(DataSyncResponse::Error {
+                        msg: "JOIN admission unsupported by legacy test protocol".into(),
+                    }),
+                    ReadSyncRequest::LiveboardCapabilities(_) => Ok(DataSyncResponse::Error {
+                        msg: "Liveboard unsupported by legacy test protocol".into(),
+                    }),
                     ReadSyncRequest::SsRecoveryCompletion(_)
                     | ReadSyncRequest::StateEventsSubscription(_)
                     | ReadSyncRequest::JoinResultSubscription(_) => Ok(DataSyncResponse::Empty),
@@ -1119,6 +1162,9 @@ mod tests {
                         *stored_tail = Some(next_tail);
                         Ok(DataSyncResponse::Empty)
                     }
+                    WriteSyncRequest::DeviceTransportNoop(_) => Ok(DataSyncResponse::Error {
+                        msg: "UnsupportedNoop in legacy test protocol".into(),
+                    }),
                 },
             }
         }
@@ -1249,6 +1295,57 @@ mod tests {
         assert_eq!(completion.receiver_status, SsDistributionStatus::Sent);
         signed.verify(&user_creds.device_creds.device.keys.dsa_pk)?;
 
+        Ok(())
+    }
+    #[tokio::test]
+    async fn join_admission_client_accepts_only_empty_and_never_writes_or_retries() -> Result<()> {
+        for response in [
+            DataSyncResponse::Empty,
+            DataSyncResponse::Error {
+                msg: "Vault supports at most 3 devices".into(),
+            },
+            DataSyncResponse::Error {
+                msg: "Join admission unavailable".into(),
+            },
+            DataSyncResponse::Data(DataEventsResponse(vec![])),
+            DataSyncResponse::ServerTailResponse(Box::new(ServerTailResponse {
+                device_log_tail: None,
+                ss_device_log_tail: None,
+                producer_observation: None,
+            })),
+        ] {
+            let fixture = FixtureRegistry::empty().state;
+            let candidate = fixture.user_creds.client.user();
+            let protocol = Arc::new(CapturingSyncProtocol::default());
+            *protocol.response.lock().expect("response mutex") = Some(response.clone());
+            PersistentDeviceLog::from(fixture.p_obj.client.clone())
+                .save_join_request(&candidate)
+                .await?;
+            let before = fixture.p_obj.client.repo.get_db().await;
+            let gateway = SyncGateway::new(
+                "join-admission-client-test".into(),
+                fixture.p_obj.client.clone(),
+                protocol.clone(),
+                fixture.device_creds.client_master_key,
+            );
+            let result = gateway.check_join_admission(candidate.clone()).await;
+            assert_eq!(
+                result.is_ok(),
+                response == DataSyncResponse::Empty,
+                "unknown/nonempty response must never authorize Join"
+            );
+            assert_eq!(
+                *protocol.requests.lock().expect("request mutex"),
+                vec![SyncRequest::Read(Box::new(ReadSyncRequest::JoinAdmission(
+                    candidate
+                )))]
+            );
+            assert_eq!(
+                fixture.p_obj.client.repo.get_db().await,
+                before,
+                "admission alone must never persist Join, credentials or cleanup"
+            );
+        }
         Ok(())
     }
 }

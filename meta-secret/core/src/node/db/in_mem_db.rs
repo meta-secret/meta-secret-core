@@ -15,12 +15,14 @@ use anyhow::Result;
 use tracing::instrument;
 
 pub struct InMemKvLogEventRepo {
+    private_recovery: super::repo::in_mem_recovery_store::InMemRecoveryStore,
     pub db: Arc<Mutex<HashMap<ArtifactId, GenericKvLogEvent>>>,
 }
 
 impl Default for InMemKvLogEventRepo {
     fn default() -> Self {
         InMemKvLogEventRepo {
+            private_recovery: Default::default(),
             db: Arc::new(Mutex::new(HashMap::default())),
         }
     }
@@ -89,10 +91,17 @@ impl DbCleanUpCommand for InMemKvLogEventRepo {
     async fn db_clean_up(&self) {
         let mut db = self.db.lock().await;
         db.clear();
+        self.private_recovery.clear().await;
     }
 }
 
-impl KvLogEventRepo for InMemKvLogEventRepo {}
+impl KvLogEventRepo for InMemKvLogEventRepo {
+    fn server_recovery_response_store(
+        &self,
+    ) -> Result<&dyn super::repo::recovery_response_store::ServerRecoveryResponseStore> {
+        Ok(&self.private_recovery)
+    }
+}
 
 impl InMemKvLogEventRepo {
     pub async fn get_db(&self) -> HashMap<ArtifactId, GenericKvLogEvent> {

@@ -8,8 +8,9 @@ import DocumentationView from '../views/tools/DocumentationView.vue';
 import SettingsView from '../views/SettingsView.vue';
 import InformationView from '../views/InformationView.vue';
 
-import VaultDevices from '../components/vault/Devices.vue';
-import VaultSecrets from '../components/vault/Secrets.vue';
+import LiveboardHomeView from '../views/liveboard/LiveboardHomeView.vue';
+import LiveboardSecretsView from '../views/liveboard/LiveboardSecretsView.vue';
+import LiveboardProfileView from '../views/liveboard/LiveboardProfileView.vue';
 import { useAuthStore } from '@/stores/auth';
 
 const router = createRouter({
@@ -24,17 +25,25 @@ const router = createRouter({
         {
           path: '',
           name: 'home-default',
-          component: VaultSecrets,
+          component: LiveboardHomeView,
+          meta: { liveboard: true },
         },
         {
           path: 'secrets',
           name: 'homeSecrets',
-          component: VaultSecrets,
+          component: LiveboardSecretsView,
+          meta: { liveboard: true },
+        },
+        {
+          path: 'profile',
+          name: 'homeProfile',
+          component: LiveboardProfileView,
+          meta: { liveboard: true },
         },
         {
           path: 'devices',
           name: 'homeDevices',
-          component: VaultDevices,
+          redirect: { name: 'home-default' },
         },
       ],
     },

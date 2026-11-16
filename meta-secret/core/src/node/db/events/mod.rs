@@ -1,7 +1,11 @@
+pub mod device_transport_noop;
 pub mod error;
 pub mod generic_log_event;
 pub mod kv_log_event;
 pub mod local_event;
+pub mod local_guarded_preparation;
+pub mod local_removal_envelope;
+pub mod local_remove_producer;
 pub mod object_id;
 pub mod shared_secret_event;
 pub mod vault;

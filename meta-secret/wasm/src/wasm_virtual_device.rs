@@ -1,11 +1,11 @@
 use crate::wasm_repo::WasmSyncProtocol;
 use meta_secret_core::crypto::keys::TransportSk;
+use meta_secret_core::node::app::meta_app::client_transfer::MetaClientRequestTransfer;
 use meta_secret_core::node::app::meta_app::meta_client_service::{
     MetaClientAccessProxy, MetaClientDataTransfer, MetaClientService, MetaClientStateProvider,
 };
 use meta_secret_core::node::app::sync::sync_gateway::SyncGateway;
 use meta_secret_core::node::app::virtual_device::VirtualDevice;
-use meta_secret_core::node::common::data_transfer::MpscDataTransfer;
 use meta_secret_core::node::common::meta_tracing::vd_span;
 use meta_secret_core::node::common::model::device::common::DeviceName;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
@@ -38,7 +38,7 @@ pub async fn virtual_device_setup<Repo: KvLogEventRepo>(
     let device_creds = Arc::new(user_creds.device_creds.clone());
 
     let dt_meta_client = Arc::new(MetaClientDataTransfer {
-        dt: MpscDataTransfer::new(),
+        dt: MetaClientRequestTransfer::new(),
     });
 
     let gateway = Arc::new(SyncGateway::new(

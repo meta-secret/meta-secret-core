@@ -35,6 +35,7 @@ jobs:
 
       - name: Check documentation consistency
         run: |
+          python3 .ai/scripts/check-documentation-consistency.test.py
           bash .ai/scripts/check-documentation-consistency.sh
           python3 .ai/scripts/check-workflow-dependencies.py
 

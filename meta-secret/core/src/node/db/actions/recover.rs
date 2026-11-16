@@ -1,8 +1,9 @@
+#[path = "recovery_capture.rs"]
+mod capture;
 use crate::PlainText;
 use crate::node::common::model::meta_pass::MetaPasswordId;
 use crate::node::common::model::secret::{ClaimId, SecretDistributionData, SsDistributionId};
 use crate::node::common::model::user::user_creds::UserCreds;
-use crate::node::common::model::vault::vault::VaultStatus;
 use crate::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
@@ -22,61 +23,14 @@ pub struct RecoveryAction<Repo: KvLogEventRepo> {
 }
 
 impl<Repo: KvLogEventRepo> RecoveryAction<Repo> {
-    /// Send recover request to all vault members except current user
-    #[instrument(skip_all)]
     pub async fn recovery_request(
         &self,
-        user_creds: UserCreds,
-        pass_id: MetaPasswordId,
+        creds: UserCreds,
+        pass: MetaPasswordId,
     ) -> anyhow::Result<()> {
-        let vault_repo = PersistentVault::from(self.p_obj.clone());
-
-        let vault_status = vault_repo.find(user_creds.user()).await?;
-
-        match vault_status {
-            VaultStatus::NotExists(_) => {
-                bail!("Vault not exists")
-            }
-            VaultStatus::Outsider(outsider) => {
-                bail!("Outsider status: {:?}", outsider)
-            }
-            VaultStatus::Member(member) => {
-                vault_repo
-                    .get_vault(member.user().vault_name())
-                    .await?
-                    .to_data()
-                    .ensure_secret_available(&pass_id)?;
-                let sender_device_id = user_creds.device_id();
-                let vault_name = user_creds.vault_name.clone();
-
-                let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
-
-                // Reuse an active claim. It remains valid after a sender restart until a real
-                // completion or all-receiver decline; never rewrite it to a terminal status.
-                let ss_log = p_ss
-                    .get_ss_log_obj(vault_name)
-                    .await?
-                    .with_client_status(sender_device_id);
-                if let Some(claim_id) =
-                    ss_log.find_unique_active_recovery_claim_id(sender_device_id, &pass_id)?
-                {
-                    info!(?claim_id, ?pass_id, "recovery_request reused active claim");
-                    return Ok(());
-                }
-
-                let vault_member = vault_repo
-                    .get_vault(member.user().vault_name())
-                    .await?
-                    .to_data()
-                    .to_vault_member(member)?;
-                vault_member.vault.ensure_secret_available(&pass_id)?;
-                let claim = vault_member.create_recovery_claim(pass_id);
-                info!(claim_id = ?claim.id, pass_id = ?claim.dist_claim_id.pass_id, "recovery_request created claim");
-                p_ss.save_claim_in_ss_device_log(claim).await?;
-            }
-        }
-
-        Ok(())
+        self.recovery_request_checked(creds, pass)
+            .await?
+            .require_queued()
     }
 }
 
@@ -98,6 +52,17 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
         user_creds: UserCreds,
         claim_id: ClaimId,
     ) -> anyhow::Result<PlainText> {
+        Ok(self
+            .recover_by_claim_id_checked(user_creds, claim_id)
+            .await?
+            .plaintext)
+    }
+
+    pub async fn recover_by_claim_id_checked(
+        &self,
+        user_creds: UserCreds,
+        claim_id: ClaimId,
+    ) -> anyhow::Result<crate::node::common::model::liveboard_reveal::RecoveredReveal> {
         let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
         let ss_log_data = p_ss.get_ss_log_obj(user_creds.vault_name.clone()).await?;
         let claim = ss_log_data
@@ -119,7 +84,7 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
             .to_data()
             .ensure_secret_available(&claim.dist_claim_id.pass_id)?;
 
-        self.recover(user_creds, claim_id, claim.dist_claim_id.pass_id.clone())
+        self.recover_captured(user_creds, claim_id, claim.dist_claim_id.pass_id.clone())
             .await
     }
 
@@ -130,119 +95,10 @@ impl<Repo: KvLogEventRepo> RecoveryHandler<Repo> {
         claim_id: ClaimId,
         pass_id: MetaPasswordId,
     ) -> anyhow::Result<PlainText> {
-        PersistentVault::from(self.p_obj.clone())
-            .get_vault(user_creds.vault_name.clone())
+        Ok(self
+            .recover_captured(user_creds, claim_id, pass_id)
             .await?
-            .to_data()
-            .ensure_secret_available(&pass_id)?;
-        info!(
-            "🔑 [recover v2] claim_id={:?} pass_id={:?}",
-            claim_id, pass_id
-        );
-
-        // Create PersistentSharedSecret to access shared secret data
-        let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
-
-        // 2. Get the SS log to find the claim
-        let vault_name = user_creds.vault_name.clone();
-        let ss_log_data = p_ss.get_ss_log_obj(vault_name).await?;
-
-        // Find the claim using the ID in the recovery_id
-        let claim = ss_log_data
-            .claims
-            .get(&claim_id)
-            .ok_or_else(|| anyhow::anyhow!("Claim not found for recovery ID"))?
-            .clone();
-
-        info!(
-            "🔑 [recover v2] claim statuses: {:?}",
-            claim.status.statuses
-        );
-
-        // Get recoveries and distributions from the claim
-        let recoveries = p_ss.get_recoveries(claim.clone()).await?;
-        info!(
-            "🔑 [recover v2] recovery shares count: {}",
-            recoveries.len()
-        );
-
-        let desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
-            pass_id,
-            receiver: user_creds.device_id().clone(),
-        });
-        let maybe_dist = self.p_obj.find_tail_event(desc).await?;
-
-        // Extract all SecretDistributionData objects from recoveries and dists
-        let recovery_data: Vec<SecretDistributionData> = recoveries
-            .into_iter()
-            .map(|r| r.to_distribution_data())
-            .collect::<Result<Vec<_>, _>>()?;
-
-        let distribution_data: Vec<SecretDistributionData> = maybe_dist
-            .map(|dist| dist.to_distribution_data())
-            .transpose()?
-            .into_iter()
-            .collect();
-
-        info!(
-            "🔑 [recover v2] own local share found: {}, distribution_data count: {}, recovery_data count: {}",
-            !distribution_data.is_empty(),
-            distribution_data.len(),
-            recovery_data.len()
-        );
-
-        if recovery_data.is_empty() && distribution_data.is_empty() {
-            bail!("No recovery shares found for selected claim");
-        }
-
-        // Decrypt the secret shares using the transport key
-        let transport_sk = &user_creds.device_creds.secret_box.transport.sk;
-
-        // Prepare vectors to collect all shares
-        let mut user_shares = Vec::new();
-
-        // Process recovery shares
-        for data in recovery_data {
-            let decrypted = data.secret_message.cipher_text().decrypt(transport_sk)?;
-            let share = UserShareDto::try_from(&decrypted.msg)?;
-            if let Some(block) = share.share_blocks.first() {
-                info!(
-                    "🔑 [recover v2] recovery share diag: share_id={}, blocks={}, threshold={}, number_of_shares={}",
-                    share.share_id,
-                    share.share_blocks.len(),
-                    block.config.threshold,
-                    block.config.number_of_shares
-                );
-            }
-            user_shares.push(share);
-        }
-
-        // Process distribution shares
-        for data in distribution_data {
-            let decrypted = data.secret_message.cipher_text().decrypt(transport_sk)?;
-            let share = UserShareDto::try_from(&decrypted.msg)?;
-            if let Some(block) = share.share_blocks.first() {
-                info!(
-                    "🔑 [recover v2] own distribution share diag: share_id={}, blocks={}, threshold={}, number_of_shares={}",
-                    share.share_id,
-                    share.share_blocks.len(),
-                    block.config.threshold,
-                    block.config.number_of_shares
-                );
-            }
-            user_shares.push(share);
-        }
-
-        // Recover the secret using the collected shares
-        let plain_text = recover_from_shares(user_shares)?;
-
-        // Mark the sender as Delivered so compute_client_status returns Done only after
-        // this device has actually recovered the secret.
-        // The server intentionally skips this transition for Recovery claims (see
-        // server_data_sync.rs — "Completion event needs to be sent by the recovery claim creator").
-        self.mark_claim_delivered(&user_creds, &claim_id).await?;
-
-        Ok(plain_text)
+            .plaintext)
     }
 
     async fn mark_claim_delivered(

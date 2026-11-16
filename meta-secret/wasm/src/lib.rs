@@ -7,9 +7,13 @@ use tracing_subscriber::layer::SubscriberExt;
 use wasm_bindgen::prelude::*;
 
 pub mod app_manager;
+mod app_manager_liveboard;
+mod app_manager_producer;
 pub mod objects;
 pub mod utils;
 pub mod wasm_app_manager;
+mod wasm_liveboard;
+mod wasm_producer;
 pub mod wasm_repo;
 mod wasm_virtual_device;
 

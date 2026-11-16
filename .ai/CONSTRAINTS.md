@@ -12,7 +12,7 @@ Mandatory architectural rules for the Rust backend cryptography and protocol imp
 | Constraint | Rule | Scope |
 |---|---|---|
 | **K-of-N Sharing** | 1 device→k=1 (trivial); 2 devices→k=1 (full replication); 3 devices→k=2 (SSS) | Core |
-| **Device Limit** | A Vault may contain at most 3 devices. Core rejects a fourth and later join. | Membership |
+| **Device Limit** | A Vault may contain at most 3 devices. Before appending a fresh NonMember/Declined JOIN, Core checks capacity through a server-owned read without disclosing the Vault/member list. Unsupported/unavailable reads fail closed. This preflight reserves no slot and never repairs old queued requests; the server retains final admission validation. | Membership |
 | **Redistribution** | Required on every device add/remove | Vault ops |
 | **Approval Required** | JOIN, RESTORE SECRET, and `3 → 2` DELETE DEVICE need a different-device biometric signature; `2 → 1` uses local confirmation | Consensus |
 | **Resharing** | Join resharing is finalized before membership; removal resharing is retryable after the signed removal update and never targets the removed device | Transactions |
@@ -22,8 +22,15 @@ Mandatory architectural rules for the Rust backend cryptography and protocol imp
 | **Recovery Status Ownership** | Core alone computes recovery lifecycle and `clientStatus`; UI only executes the resulting instruction | Recovery |
 | **Shared Logic Ownership** | Core alone owns cryptography, Key Share operations, quorum, claims, recovery decisions, JOIN/DELETE/resharing, synchronization, conflicts, and Secret reveal eligibility; clients only adapt and render Core results | Cross-platform architecture |
 | **First Response Wins** | The first server-processed receiver decision terminalizes the recovery claim; a late opposite decision is ignored | Recovery consensus |
+| **Recovery Response Actor** | Only a current canonical addressed receiver may Approve/Decline an exact remote Recover claim; the requester cannot answer its own request. Requester consumption/completion after an approved share follows its separate existing role policy. | Recovery authorization |
+| **Initial Recovery Durability** | An ordinarily verified Core-shaped initial request preserves its original receivers across pre-admission topology changes, proves canonical claim+temporary intake before raw advancement, then clears the same fixed record. Reopen requires the exact captured admission Vault. All affected history/addressed receipts are audited before effects; old/conflicting Prepared is unavailable. No new command/replay right or historical orphan healing. | Server persistence |
 | **Reconnect Flush** | A client must upload locally queued recovery decisions before reading refreshed canonical state after connectivity returns | Offline recovery |
+| **Whole-copy Availability Compatibility** | Existing current1/2 local-secret authorization accepts exact own stored n1/k1 or n2/k1 material independently of current N and historical ciphertext origin versus mutable Split owner. Shared non-revealing loading preserves Pass/Vault/descriptor/recipient/structure; projection additionally keeps exact canonical Split binding. Old public Show gains no canonical/history gate. Current3/recovery stays strict k2; availability cannot reconstruct, sync, write, re-encrypt or create a generation. | Core eligibility / legacy compatibility |
+| **Local Removal Producer Completion** | Before an unfinished local2→1 U, preserve exact captured two-member authority. After exact R/U Applied, completion-only cleanup requires current surviving actor, actual bodies, one fresh successful atomic BOTH-source raw ACK, unique exact accepted canonical result and actual material/readiness; only verified same-context metadata save/clear is permitted. Read-only reconcile and failed fresh observation never clear; no sync/new signature/U/material is authorized. | Client persistence / authorization |
 | **Sensitive Logging** | Never log Master Keys, plaintext Secrets, Key Shares (Доли), encrypted Key Shares, or recovery material in debug or production builds. Log only opaque IDs, statuses, and counts. | Security |
+| **Guarded Publication Lifetime** | Original exact own Applied/source proof does not alone authorize current publication. A proven later canonical Join ends that lifetime monotonically with existing Blocked/None and exact readback before compute; current/previous compact ownership remains. Already Published/None may also terminate after exact later canonical A+B→A: contiguous typed history, unique complete Pending/Prepared/Applied, unchanged ancestor membership and exact own raw R/U content are mandatory. Both selected result UUIDs remain cumulative with immutable actors/outcome/source, agreeing full Prepared receipts and only Prepared→Applied; disappearance, regression and later Pending fail closed. Ordinary source=None is valid, not an envelope-digest proof; present local context must agree and legitimate clear does not invalidate the full proof. Only the exact old clone becomes terminal after existing-only replace/readback, with no new command/material authority. Exact Blocked/None receiver normalization is input-only: actual canonical locally owned Split, empty receivers/status/client marker, unchanged identity and same committed own WholeCopy with persisted full membership. Queued fallback and every other receiver change fail closed; later accepted Join/reopen does not reactivate publication. A Published/None positive canonical Pass tombstone preserves exact sequential metadata and proves raw absence without weakening still-active Pass proofs. Prospective membership, count and payload/context absence alone grant no authority. | Client persistence / authorization |
+| **Technical DeviceLog Noop** | The owner-approved distinct signed purpose permits only a current canonical member's own next empty contiguous slot; it applies no Business action. Canonical outcome/source stays authoritative and the marker is never original Business raw ACK. Typed readers/purge continue across it; exact replay preserves stable receipt identity. Honest-client origin/private-staging integration remains separately gated. | Transport / persistence |
+| **Addressed Workflow Delivery** | Validate the complete actual addressed packet set before any delete/completion/SsLog/publication effect: exact physical key/sequence/subtype/Vault/Pass/recipient, existing Recovery responder/channel binding. Preserve Split current-value semantics without new historical-generation/current-N/sender gates. Canonical SsLog history/fallback is typed before discovery/repair. | Privacy / synchronization |
 | **Database Filename** | Mobile local databases use `meta-secret-db-<SHA-256(master_key)>.db` with lowercase hexadecimal digest; the raw Master Key is never part of a filename or path log. | Device storage |
 | **Authenticated State Events** | `/state-events` accepts only a short-lived Core-signed subscription credential for a current Vault member; client query/device IDs are not authorization inputs. | Synchronization |
 | **Signal-Only SSE** | State-event payloads contain only opaque invalidation metadata. Clients fetch canonical state through Core after a signal. | Synchronization |
@@ -37,6 +44,19 @@ Mandatory architectural rules for the Rust backend cryptography and protocol imp
 For every `Recover` claim, core computes the per-device `clientStatus` from the
 claim state and the current device identity. This is the only authority for whether
 a recovery is active, ready, declined, or complete.
+
+Checked queue receipts preserve the actual operation identity but never authorize
+reveal or a replacement command. After ordinary synchronization, absent/mismatched/
+unreadable exact Recover confirmation is Unknown (`RecoverCanonicalUnknown`), not
+proof of remote acceptance; this does not authorize healing raw-only history.
+
+A Recovery outcome carries the actual verified responder, persisted and synchronized
+for the exact Claim. Without that evidence, responder provenance remains unknown;
+requester identity or the current Vault member list cannot supply it.
+
+Automatic log-only Secret Delete retirement is not a signed device response.
+Its responder stays unknown; only the actual authoritative exact deletion result
+supplies responder provenance, including legitimate local requester decisions.
 
 - Web, iOS, and Android UI must react to `clientStatus`; they must not infer
   lifecycle state or implement K-of-N/quorum rules. They may technically choose
@@ -272,6 +292,12 @@ No new share is generated and the existing three-device state is unchanged.
 
 ### 1.3 Redistribution on Device Removal
 
+In the Liveboard checked/exact-decision route, a Removal Decision is bound to the
+original exact request UUID and its target. Clients submit that UUID and the Boolean
+decision, never a target-only or first-pending substitute; stale or mismatched requests
+must not select another pending request. Existing explicit legacy wrappers retain
+their compatibility contract ([bindings](../docs/liveboard-bindings.md)).
+
 **Flow: 3 devices (A, B, C) + remove C**
 
 ```
@@ -457,7 +483,7 @@ See [the protocol and client contract](../docs/secret-deletion.md).
   durable event sequence (and terminal recovery state for completion), so an old
   or replayed command cannot be applied twice.
 - Unsigned write events and unsigned recovery completions are invalid protocol
-  messages. DELETE DEVICE remains a separate implementation task.
+  messages. Device removal follows the existing signed-action and signer/target role checks; 2→1 removal uses local signed confirmation.
 
 **No Approval Needed:**
 - 1 device vault (no other device to approve)
@@ -746,8 +772,7 @@ new shares.
   membership (with only the explicit bootstrap JOIN exception), verifies the
   signature, enforces authorization, and advances the sequence before applying
   state.
-- DELETE DEVICE is intentionally tracked separately and is not claimed as
-  covered by this issue.
+- Device removal is covered by the existing SignedAction and role-validation path, including local signed confirmation for 2→1 removal.
 
 ---
 
@@ -783,7 +808,7 @@ pub fn collect_secret(vault_json: String) -> String {
 
 ### 7.3 Error Propagation
 
-**All errors returned as JSON:**
+**One existing JSON error envelope (not the universal checked-operation shape):**
 ```json
 {
   "success": false,
@@ -793,6 +818,22 @@ pub fn collect_secret(vault_json: String) -> String {
   }
 }
 ```
+
+Expected operation failures return through the existing Result/JSON boundary; a panic
+is not a UI response. If a checked Create/Recover already has an actual operation
+identity, an uncertain later failure preserves that exact identity with Unknown and
+any existing errorCode, never interpreted as canonical success or an automatic
+replacement request. Native success/Queued is not canonical completion; see [Receipt JSON](../docs/liveboard-bindings.md#receipt-json).
+
+Native Recover-Approve retry evidence is invocation-scoped, not a decision or
+server-absence certificate. Only a proven first pre-sync failure with complete
+pending receiver/status binding and absent exact owned response slots may carry
+`notSubmitted`; unreadable, malformed, partial, foreign or post-dispatch state
+must not. A new manual attempt still requires fresh canonical permission under
+the same native client owner through response creation, plus client-side exact
+intent/scope binding, a post-return successful read and new authentication.
+Error dismissal alone never submits or clears an immutable uncertain outcome.
+See [the native contract](../docs/liveboard-bindings.md#native-recover-approval-failure-evidence).
 
 **Mobile error handling:**
 - Parse error code

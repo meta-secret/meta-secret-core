@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: task set-env -- local|remote" >&2
+  echo "Usage: task set-env -- local|remote [--selectors-only]" >&2
 }
 
 mode="${1:-}"
@@ -20,6 +20,12 @@ case "$mode" in
     exit 2
     ;;
 esac
+
+if [ "$#" -gt 2 ] || { [ "$#" -eq 2 ] && [ "$2" != "--selectors-only" ]; }; then
+  usage
+  exit 2
+fi
+selectors_only="${2:-}"
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 compose_root="$(cd "$repo_root/.." && pwd)/meta-secret-compose"
@@ -55,5 +61,7 @@ fi
 
 echo "MetaSecret environment set to: $env_value"
 
-echo "Rebuilding mobile Rust libraries..."
-bash "$repo_root/meta-secret/mobile/scripts/build-mobile.sh" all
+if [ "$selectors_only" != "--selectors-only" ]; then
+  echo "Rebuilding mobile Rust libraries..."
+  bash "$repo_root/meta-secret/mobile/scripts/build-mobile.sh" all
+fi

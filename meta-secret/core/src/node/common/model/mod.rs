@@ -11,6 +11,10 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 pub mod crypto;
 pub mod device;
+pub mod liveboard;
+pub mod liveboard_producer;
+pub mod liveboard_reveal;
+mod liveboard_state;
 pub mod meta_pass;
 pub mod secret;
 pub mod secret_deletion;
@@ -46,6 +50,8 @@ pub enum VaultFullInfo {
 #[serde(rename_all = "camelCase")]
 pub struct UserMemberFullInfo {
     pub member: VaultMember,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub liveboard_state: Option<liveboard::LiveboardState>,
     pub ss_claims: SsLogData,
     pub vault_events: VaultActionEvents,
     #[serde(default)]
@@ -173,6 +179,33 @@ impl WasmVaultFullInfo {
 
 #[wasm_bindgen]
 impl WasmUserMemberFullInfo {
+    /// Resolve an owned snapshot key; action authorization remains in Core ports.
+    pub fn recovery_claim_by_id(&self, id: &str) -> Option<ClaimId> {
+        if id.is_empty() || id.len() > 512 {
+            return None;
+        }
+        let mut matching = self
+            .0
+            .ss_claims
+            .claims
+            .iter()
+            .filter(|(key, _)| key.0.text == id);
+        let (key, claim) = matching.next()?;
+        if matching.next().is_some()
+            || claim.id != *key
+            || claim.dist_claim_id.id != *key
+            || claim.vault_name != self.0.member.vault.vault_name
+            || claim.distribution_type != SecretDistributionType::Recover
+        {
+            return None;
+        }
+        Some(key.clone())
+    }
+
+    pub fn liveboard_state_json(&self) -> Result<String, wasm_bindgen::JsError> {
+        serde_json::to_string(&self.0.liveboard_state)
+            .map_err(|_| wasm_bindgen::JsError::new("LiveboardSerializationUnavailable"))
+    }
     pub fn deletion_states_json(&self) -> Result<String, wasm_bindgen::JsError> {
         serde_json::to_string(&self.0.deletion_states)
             .map_err(|error| wasm_bindgen::JsError::new(&error.to_string()))
@@ -360,6 +393,7 @@ mod test {
             ss_claims: SsLogData::new(done_claim).insert(need_approve_claim),
             vault_events: VaultActionEvents::default(),
             deletion_states: vec![],
+            liveboard_state: None,
         });
 
         assert_eq!(

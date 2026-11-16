@@ -6,7 +6,7 @@
 
 FROM debian:bookworm AS taskomatic
 
-RUN apt update && apt install -y build-essential curl wget gnupg2 ca-certificates lsb-release apt-transport-https
+RUN apt update && apt install -y build-essential curl wget gnupg2 ca-certificates lsb-release apt-transport-https python3
 
 # Install k3d
 RUN wget -q -O - https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
@@ -29,6 +29,7 @@ WORKDIR ${TASKOMATIC_DIR}
 COPY Taskfile.yml Taskfile.yml
 COPY k3d k3d
 COPY k8s k8s
+COPY apple apple
 
 WORKDIR ${TASKOMATIC_DIR}
 

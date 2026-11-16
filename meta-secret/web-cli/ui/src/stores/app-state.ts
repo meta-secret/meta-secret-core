@@ -7,16 +7,33 @@ import init, {
 } from 'meta-secret-web-cli';
 import { useAuthStore } from '@/stores/auth';
 import { META_SECRET_ENVIRONMENT } from '@/config/metaSecretEnvironment';
+import { createAppStateLane, type AppStateLaneStore } from './appStateLane';
+
+const lanes = new WeakMap<AppStateLaneStore, ReturnType<typeof createAppStateLane>>();
+function stateLane(store: AppStateLaneStore) {
+  let lane = lanes.get(store);
+  if (!lane) {
+    lane = createAppStateLane({
+      store,
+      identity: () => {
+        const auth = useAuthStore();
+        return { key: auth.masterKey, authenticated: auth.isAuthenticated };
+      },
+    });
+    lanes.set(store, lane);
+  }
+  return lane;
+}
 
 export const AppState = defineStore('app_state', {
   state: () => {
-    console.log('App state. Init');
-
     return {
       appManager: null as WasmApplicationManager | null,
       currState: null as WasmApplicationState | null,
       pendingSyncCount: 0,
       syncError: '',
+      sessionGeneration: 0,
+      requiredSyncPending: false,
     };
   },
 
@@ -82,18 +99,10 @@ export const AppState = defineStore('app_state', {
     },
 
     async cleanDatabase() {
-      if (!this.appManager) {
-        await this.clearAllMetaSecretIndexedDb();
-        return;
-      }
-      const manager = this.appManager as WasmApplicationManager & {
-        clean_up_database?: () => Promise<void>;
-      };
-      if (typeof manager.clean_up_database === 'function') {
-        await manager.clean_up_database();
-      } else {
-        await this.clearAllMetaSecretIndexedDb();
-      }
+      return stateLane(this).clean(async (manager) => {
+        if (manager && typeof manager.clean_up_database === 'function') await manager.clean_up_database();
+        else await this.clearAllMetaSecretIndexedDb();
+      });
     },
 
     resolveWebDeviceInfo() {
@@ -117,90 +126,54 @@ export const AppState = defineStore('app_state', {
     },
 
     async appStateInit() {
-      console.log('Js: App state, start initialization');
-      await init();
-
-      const authStore = useAuthStore();
-      const transportSk = MasterKeyManager.from_pure_sk(authStore.masterKey);
-      const { deviceName, deviceType } = this.resolveWebDeviceInfo();
-      let appManager;
-      const managerClass = WasmApplicationManager as typeof WasmApplicationManager & {
-        init_wasm_with_device_and_environment: (
-          masterKey: ReturnType<typeof MasterKeyManager.from_pure_sk>,
-          deviceName: string,
-          deviceType: string,
-          environment: string,
-        ) => Promise<WasmApplicationManager>;
-      };
-      const initWithEnvironment = managerClass.init_wasm_with_device_and_environment;
-      try {
-        appManager = await initWithEnvironment(transportSk, deviceName, deviceType, META_SECRET_ENVIRONMENT);
-      } catch (error) {
-        if (this.shouldResetDbOnInitError(error)) {
-          console.warn('Detected legacy IndexedDB data without deviceType. Cleaning DB and retrying init.');
+      return stateLane(this).initialize(async (key, current) => {
+        await init();
+        if (!current()) throw new Error('OperationUnavailable');
+        const { deviceName, deviceType } = this.resolveWebDeviceInfo();
+        const create = () =>
+          WasmApplicationManager.init_wasm_with_device_and_environment(
+            MasterKeyManager.from_pure_sk(key),
+            deviceName,
+            deviceType,
+            META_SECRET_ENVIRONMENT,
+          );
+        try {
+          return await create();
+        } catch (error) {
+          if (!current() || !this.shouldResetDbOnInitError(error)) throw new Error('OperationUnavailable');
           await this.clearAllMetaSecretIndexedDb();
-          appManager = await initWithEnvironment(transportSk, deviceName, deviceType, META_SECRET_ENVIRONMENT);
-        } else {
-          throw error;
+          if (!current()) throw new Error('OperationUnavailable');
+          return create();
         }
-      }
-      console.log('Js: Initial App State!!!!');
-
-      this.appManager = appManager;
-      await this.updateState();
-
-      // Temporary disabled: reactive app state!
-      /*const subscribe = async (appManager: WasmApplicationManager) => {
-        const state = await appManager.get_state();
-        console.log('Js: Updated State: ', state);
-        this.metaSecretAppState = state;
-
-        await subscribe(appManager);
-      };
-
-      subscribe(appManager).then(() => console.log('Finished subscribing'));*/
+      });
     },
 
     async updateState() {
-      if (!this.appManager) return null;
-      this.beginSync();
-      try {
-        this.currState = await this.appManager.get_state();
-        this.syncError = '';
-        return this.currState;
-      } catch (error) {
-        this.syncError = 'Could not synchronize Vault. Retry to apply pending changes.';
-        throw error;
-      } finally {
-        this.endSync();
-      }
+      return stateLane(this).refresh({ coalesce: false });
+    },
+    refreshState(options: { requiredSync?: boolean } = {}) {
+      return stateLane(this).refresh(options);
+    },
+    invalidateSession() {
+      stateLane(this).invalidate();
     },
 
     async getStateEventsAuthToken(vaultName = this.getVaultName()) {
-      if (!this.appManager) throw new Error('App manager is not initialized');
-      const manager = this.appManager as WasmApplicationManager & {
-        state_events_auth_token?: (name: string) => Promise<string>;
-      };
-      if (typeof manager.state_events_auth_token !== 'function') {
-        throw new Error('State events authorization is unavailable in the loaded WASM module');
-      }
-      return manager.state_events_auth_token(vaultName);
+      return stateLane(this).authorize((manager) => {
+        if (typeof manager.state_events_auth_token !== 'function') throw new Error('OperationUnavailable');
+        return manager.state_events_auth_token(vaultName);
+      });
     },
 
     async getJoinResultAuthToken() {
-      if (!this.appManager) throw new Error('App manager is not initialized');
-      const manager = this.appManager as WasmApplicationManager & {
-        join_result_auth_token?: () => Promise<string>;
-      };
-      if (typeof manager.join_result_auth_token !== 'function') {
-        throw new Error('Join result authorization is unavailable in the loaded WASM module');
-      }
-      return manager.join_result_auth_token();
+      return stateLane(this).authorize((manager) => {
+        if (typeof manager.join_result_auth_token !== 'function') throw new Error('OperationUnavailable');
+        return manager.join_result_auth_token();
+      });
     },
 
     updateStateWith(newState: WasmApplicationState) {
-      this.currState = newState;
-      return this.currState;
+      return stateLane(this).publish(newState);
     },
 
     getVaultName() {

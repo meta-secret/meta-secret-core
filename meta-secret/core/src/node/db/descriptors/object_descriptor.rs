@@ -12,6 +12,11 @@ use crate::node::db::events::object_id::Next;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ObjectDescriptor {
+    LocalGuardedPreparationIndex(
+        super::local_guarded_preparation::LocalGuardedPreparationIndexDescriptor,
+    ),
+    LocalGuardedPreparation(super::local_guarded_preparation::LocalGuardedPreparationDescriptor),
+    LocalRemovalEnvelope(super::local_removal_envelope::LocalRemovalEnvelopeDescriptor),
     /// Describes device and user credentials
     DeviceCreds(DeviceCredsDescriptor),
     UserCreds(UserCredsDescriptor),
@@ -110,6 +115,9 @@ impl ObjectDescriptor {
 impl ObjectName for ObjectDescriptor {
     fn object_name(&self) -> String {
         match self {
+            ObjectDescriptor::LocalGuardedPreparationIndex(desc) => desc.object_name(),
+            ObjectDescriptor::LocalGuardedPreparation(desc) => desc.object_name(),
+            ObjectDescriptor::LocalRemovalEnvelope(desc) => desc.object_name(),
             ObjectDescriptor::DeviceCreds(desc) => desc.object_name(),
             ObjectDescriptor::UserCreds(desc) => desc.object_name(),
 
@@ -128,6 +136,9 @@ impl ObjectName for ObjectDescriptor {
 impl ObjectType for ObjectDescriptor {
     fn object_type(&self) -> String {
         match self {
+            ObjectDescriptor::LocalGuardedPreparationIndex(desc) => desc.object_type(),
+            ObjectDescriptor::LocalGuardedPreparation(desc) => desc.object_type(),
+            ObjectDescriptor::LocalRemovalEnvelope(desc) => desc.object_type(),
             ObjectDescriptor::Vault(vault_desc) => vault_desc.object_type(),
             ObjectDescriptor::SharedSecret(ss_desc) => ss_desc.object_type(),
             ObjectDescriptor::DeviceCreds(creds) => creds.object_type(),

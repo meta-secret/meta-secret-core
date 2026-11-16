@@ -52,6 +52,11 @@ export const vaultSecrets = {
 } as const;
 
 export const vaultDevices = {
+  addDevice: 'Add device',
+  qrDescription: 'Scan on another device to request to join this Vault. You will still need to approve it.',
+  qrLabel: 'Vault name QR code',
+  qrError: 'Could not create QR code. Close and try again.',
+  qrClose: 'Close',
   statusCurrent: 'Current',
   statusMember: 'Member',
   statusPending: 'Pending',

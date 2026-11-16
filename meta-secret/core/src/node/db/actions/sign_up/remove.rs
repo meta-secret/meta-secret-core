@@ -1,3 +1,6 @@
+#[path = "remove_producer.rs"]
+mod producer_builder;
+
 use crate::node::common::model::user::common::{
     UserDataMember, UserDataOutsider, UserDataOutsiderStatus, UserMembership,
 };
@@ -28,15 +31,7 @@ impl<Repo: KvLogEventRepo> RemoveAction<Repo> {
         target: UserDataMember,
         share_transfers: Vec<RemoveMemberShareTransfer>,
     ) -> Result<RemoveMemberRequestEvent> {
-        let request = RemoveMemberRequestEvent {
-            sender: self.member.member.clone(),
-            target,
-            share_transfers,
-        };
-        self.member.vault.ensure_can_remove_member(&request, None)?;
-        self.member
-            .vault
-            .ensure_valid_removal_transfers(&request, &request.share_transfers)?;
+        let request = self.build_request(target, share_transfers)?;
         PersistentDeviceLog::from(self.p_obj.clone())
             .save_remove_member_request(request.clone())
             .await?;
@@ -44,6 +39,21 @@ impl<Repo: KvLogEventRepo> RemoveAction<Repo> {
     }
 
     pub async fn update(
+        &self,
+        request: RemoveMemberRequestEvent,
+        upd: RemoveActionUpdate,
+        share_transfers: Vec<RemoveMemberShareTransfer>,
+    ) -> Result<RemoveMemberEvent> {
+        let update = self.build_update(request, upd, share_transfers)?;
+        PersistentDeviceLog::from(self.p_obj.clone())
+            .save_remove_member_update(update.clone())
+            .await?;
+        Ok(update)
+    }
+
+    /// Validate/build without appending. The exact producer must confirm the
+    /// endpoint contract before any local preparation or persisted command.
+    pub fn build_update(
         &self,
         request: RemoveMemberRequestEvent,
         upd: RemoveActionUpdate,
@@ -85,9 +95,6 @@ impl<Repo: KvLogEventRepo> RemoveAction<Repo> {
             decision,
             share_transfers,
         };
-        PersistentDeviceLog::from(self.p_obj.clone())
-            .save_remove_member_update(update.clone())
-            .await?;
         Ok(update)
     }
 }

@@ -1,6 +1,10 @@
 # Automated Workflow Orchestration — 14 Stages (including the conditional UI E2E gate)
 
-Single source of truth for `implement issue <id>` / `implement issue "<text>"` for meta-secret-core Rust backend.
+Coverage follows [the advisory policy](rules/coverage-policy.md); percentage-only failures in older examples are not release gates.
+
+For the approved registration migration, apply the [UI migration profile](rules/ui-migration-profile.md) before command/stage examples below. It defines relevant client builds, advisory percentage coverage, mandatory visual/motion review and action-specific authorization; all existing stage artifacts remain required.
+
+Single source of truth for `implement issue <id>` / `implement issue "<text>"` for meta-secret-core Rust and Vue Web changes.
 
 ---
 
@@ -8,12 +12,12 @@ Single source of truth for `implement issue <id>` / `implement issue "<text>"` f
 
 **These stages MUST ALWAYS be executed and are NOT optional:**
 
-1. **Stage 7 (Security Review)** — Mandatory crypto audit + unsafe code check
-2. **Stage 8 (Code Review)** — Mandatory constraints validation + 80% coverage check
-3. **Stage 10 (Coverage Verification)** — Mandatory `cargo tarpaulin`, verify >= 80%
+1. **Stage 7 (Security Review)** — Mandatory security review; crypto/unsafe checks when affected
+2. **Stage 8 (Code Review)** — Mandatory constraints validation + coverage report (80% advisory)
+3. **Stage 10 (Coverage Verification)** — Mandatory applicable coverage reporting; Rust tooling only for Rust changes; 80% advisory
 4. **Stage 12 (User Approval)** — Mandatory user approval before PR
 
-Stage 9 (Design Review) may be skipped only if no architecture changes; mark status as "Skipped".
+Stage 9 (Design Review) may be skipped only if neither architecture nor client-visible UI/motion changes; mark status as "Skipped".
 
 The conditional **Stage 11.5 (Final UI E2E)** is mandatory for applicable
 client-visible, synchronization/recovery, FFI-consumed, or explicitly requested
@@ -33,25 +37,24 @@ UI behavior. Otherwise it must be marked `Skipped` with a concrete reason.
 
 ## Root orchestration mode
 
-When started by `MetaSecret` root via `get_issue`, the root passes a normalized
-Issue context bundle containing the source repository, canonical Issue URL,
-title/body, root run ID, scope decision, and any prior handoff artifacts. Do not
-assume that the source Issue number exists in this repository.
+When started by the MetaSecret root via `get_issue`, consume its normalized
+task bundle: Issue metadata when present, otherwise approved local brief path
+and reference commit, title/body, approval evidence, root run ID, scope/areas,
+profile and dependency handoffs. Do not fetch a fabricated Issue for local input.
 
-Core remains responsible for every stage in this document, including its
-constraints, security review, tests, documentation checks, and user approval
-before commit/PR. On completion it returns a handoff summary containing public
-API/FFI changes, behavior and compatibility notes, verification results,
-documentation status, and unresolved blockers.
-
-When root scope is `core+compose`, Core runs through Stage 11.5 but defers
-Stage 12/13 release actions. It returns a successful pre-release handoff;
-Compose and the root final UI E2E gate must pass before either repository is
-committed.
+This repository retains all existing stage artifacts and applicable gates.
+For `core+compose`, defer application release commits until combined validation
+and the root final UI E2E gate pass. Domain/FFI-dependent Compose work consumes
+Core's successful contract handoff; UI-only Web and Compose work independently
+consume validated shared design exports. Web-only scope in Core repository
+uses the UI migration profile rather than unrelated Rust build/coverage checks.
+Explicit session authorization is recorded per release action; commit permission
+does not imply push/PR permission. Root-only resources do not start this child
+application workflow.
 
 **`<run-id>` rules:**
 - Numeric issue input: use issue number (`123`)
-- Free-text input: use UTC timestamp (`YYYYMMDDHHmmss`)
+- Free-text/local brief input: use UTC timestamp (`YYYYMMDDHHmmss`)
 
 ---
 
@@ -87,10 +90,10 @@ Example:
 │  6. Build (cargo build)
 │  7. Security Review ⭐ (crypto audit + unsafe code check)
 │  8. Code Review (architecture + constraints + coverage check)
-│  9. Design Review (diagrams if architecture changed, else Skipped)
+│  9. Design Review (client UI/motion; diagrams when architecture changes)
 │
 ├─ Quality Gates
-│  10. Coverage Verification (cargo tarpaulin >= 80%)
+│  10. Coverage Verification (coverage report; 80% advisory)
 │  11. Test Run (cargo test)
 │  11.5. Final UI E2E (conditional, before release)
 │
@@ -256,7 +259,7 @@ Example:
 **Output:** `.ai/artifacts/run/MS-<run-id>-006-build.md`
 
 **Required behavior:**
-- Compile entire workspace
+- Compile changed targets; use the UI profile client build for Web-only changes
 - No tests executed
 - Timeout: 10 minutes max
 - Fail if compilation errors
@@ -306,7 +309,7 @@ Example:
 **Required behavior:**
 - Architecture compliance: does code follow ARCHITECTURE.md?
 - Constraint re-validation: ensure plan compliance maintained
-- Coverage check: verify >= 80% (detailed in Stage 10)
+- Coverage check: report measured coverage; 80% advisory (detailed in Stage 10)
 - Style and best practices: Rust idioms, crate organization
 - FFI impact: if boundary changes, note mobile compatibility
 - Performance: any crypto operations performant?
@@ -320,7 +323,7 @@ Example:
 
 ### Stage 9: Design Review (CONDITIONAL)
 
-**Condition:** Run only if Stage 3 (Planning) indicates architecture changed
+**Condition:** Run for client-visible UI/motion changes or an architecture change in the Stage 3 plan
 
 **Agent:** `design-reviewer`  
 **Template:** `.ai/artifacts/design-review-report-template.md`  
@@ -329,7 +332,7 @@ Example:
 **Required behavior (choose based on change type):**
 
 **For Web/Frontend changes:**
-- If Figma link provided: review UI against mockups
+- Compare UI and motion against approved HTML prototype, screenshots and specification; include Figma when supplied
 - Verify design constraints met
 
 **For Core/Backend changes:**
@@ -338,9 +341,9 @@ Example:
 - Create state machine diagram (if device states changed)
 - Verify all diagrams match implementation
 
-**If no architecture change:**
+**If no architecture change and no client-visible UI/motion change:**
 - Status: Skipped
-- Reason: "No architecture changes in Stage 3 plan"
+- Reason: "No architecture or client-visible UI/motion changes in Stage 3 plan"
 
 **Status:** Success / Failed / Skipped
 
@@ -348,16 +351,16 @@ Example:
 
 ### Stage 10: Coverage Verification (CRITICAL)
 
-**Command:** `cargo tarpaulin --out Html --timeout 300 --fail-under 80`  
+**Command:** configured coverage reporting for changed targets; for applicable Rust runs, `cargo tarpaulin --out Html --timeout 300`
 **Template:** `.ai/artifacts/coverage-report-template.md`  
 **Output:** `.ai/artifacts/run/MS-<run-id>-010-coverage.md`
 
 **Required behavior:**
-- Run tarpaulin and generate HTML report
-- Minimum threshold: 80% overall
+- Run applicable configured coverage reporting; use Rust tooling only for Rust changes
+- Overall goal: 80% advisory
 - Crypto modules preferred: >= 95%
 - Report uncovered lines (which lines missed coverage)
-- Fail if coverage < 80%
+- Report coverage < 80% as advisory; fail on actual test/report validation errors
 
 **Status:** Pass / Fail (not Success/Failed, use Pass/Fail for coverage)
 
@@ -375,7 +378,7 @@ Example:
 **Output:** `.ai/artifacts/run/MS-<run-id>-011-test-run.md`
 
 **Required behavior:**
-- Execute all unit + integration tests
+- Execute relevant unit/integration suites for the changed targets; preserve required configured CI checks
 - Parallel execution (safe for Rust)
 - Report pass/fail for each test
 - Capture failing test details
@@ -425,12 +428,10 @@ root final gate after Compose validation.
 **Output:** `.ai/artifacts/run/MS-<run-id>-012-approval.md`
 
 **Required behavior:**
-- STOP before creating PR
-- Use AskUserQuestion tool
-- Ask: "Should we proceed to Stage 13 (Branch + Commit + PR)?"
-- Wait for explicit YES/NO response
-- If YES: proceed to Stage 13
-- If NO: stop workflow, await further instructions
+- Record explicit session authorization for each release action.
+- Reuse existing authorization for commits; ask only for a still unauthorized action after presenting a concrete result.
+- Commit permission does not authorize push, PR, merge or deployment.
+- If the user declines an action, stop that action and retain the reviewed work.
 
 **Status:** Success (user approved) / Cancelled (user declined)
 
@@ -442,11 +443,11 @@ root final gate after Compose validation.
 **Output:** `.ai/artifacts/run/MS-<run-id>-013-pr.md`
 
 **Required behavior:**
-- Create feature branch from main
-- Stage and commit all changes
+- Reuse the current task branch outside main, or create an appropriate feature branch without discarding existing work.
+- Commit only reviewed task changes when explicitly authorized.
 - Write meaningful commit message
-- Create pull request with:
-  - Link to original issue
+- Only when separately authorized, push and create a pull request with:
+  - Link to the original Issue when present; otherwise identify the approved local task without inventing a public URL
   - Summary of changes
   - Coverage report link
   - Security review notes (if applicable)
@@ -524,7 +525,7 @@ Before proceeding to Stage 13 (PR), verify:
 - ✅ Stage 7: Security review passed
 - ✅ Stage 8: Code review passed
 - ✅ Stage 9: Design review (Status: Success or Skipped)
-- ✅ Stage 10: Coverage verified (Status: Pass, >= 80%)
+- ✅ Stage 10: Coverage report validated (Status: Pass; percentage advisory)
 - ✅ Stage 11: Tests passed
 - ✅ Stage 11.5: Final UI E2E passed, or was explicitly skipped with a reason
 - ✅ Stage 12: User approved

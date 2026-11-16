@@ -26,7 +26,6 @@ use meta_secret_core::node::common::model::user::user_creds::UserCreds;
 use meta_secret_core::node::common::model::vault::vault::VaultName;
 use meta_secret_core::node::common::model::{ApplicationState, VaultFullInfo};
 use meta_secret_core::node::db::actions::sign_up::join::JoinActionUpdate;
-use meta_secret_core::node::db::descriptors::shared_secret_descriptor::SsWorkflowDescriptor;
 use meta_secret_core::node::db::events::vault::vault_log_event::JoinClusterEvent;
 use meta_secret_core::node::db::objects::persistent_device_log::PersistentDeviceLog;
 use meta_secret_core::node::db::repo::generic_db::KvLogEventRepo;
@@ -35,7 +34,6 @@ use meta_secret_core::node::security::sign_recovery_completion;
 use meta_secret_core::node::state_events::StateEventsSubscription;
 use meta_secret_core::recover_from_shares;
 use meta_secret_core::secret::shared_secret::PlainText;
-use meta_secret_core::secret::shared_secret::UserShareDto;
 
 pub struct ApplicationManager<Repo: KvLogEventRepo, Sync: SyncProtocol> {
     pub meta_client_service: Arc<MetaClientService<Repo, Sync>>,
@@ -148,9 +146,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
 
     pub async fn get_state(&self) -> Result<ApplicationState> {
         let request = GenericAppStateRequest::GetState;
-        self.meta_client_service
-            .send_request(request)
-            .await
+        self.meta_client_service.send_request(request).await
     }
 
     pub async fn state_events_auth_token(&self, vault_name: VaultName) -> Result<String> {
@@ -340,22 +336,18 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> ApplicationManager<Repo, Sync> {
         .await?
         .to_data()
         .ensure_local_secret_available(user_creds.device_id(), &pass_id)?;
-        let desc = SsWorkflowDescriptor::Distribution(SsDistributionId {
-            pass_id: pass_id.clone(),
-            receiver: user_creds.device_id().clone(),
-        });
-
-        let dist = self
-            .sync_gateway
-            .p_obj
-            .find_tail_event(desc)
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("Distribution not found for single device"))?
-            .to_distribution_data()?;
-
-        let transport_sk = &user_creds.device_creds.secret_box.transport.sk;
-        let decrypted = dist.secret_message.cipher_text().decrypt(transport_sk)?;
-        let share = UserShareDto::try_from(&decrypted.msg)?;
+        let data = meta_secret_core::secret::local_share::load_local_distribution(
+            &self.sync_gateway.p_obj,
+            &user_creds,
+            &pass_id,
+        )
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Distribution not found for local Secret"))?;
+        let share = meta_secret_core::secret::local_share::decode_local_share(
+            &data,
+            &user_creds,
+            meta_secret_core::secret::local_share::LocalShareProfile::WholeCopy,
+        )?;
 
         Ok(recover_from_shares(vec![share])?)
     }

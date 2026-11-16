@@ -5,12 +5,12 @@ use std::time::Duration;
 use tracing::{debug, info, instrument};
 
 use crate::crypto::keys::TransportSk;
+use crate::node::app::meta_app::client_transfer::MetaClientRequestTransfer;
 use crate::node::app::meta_app::messaging::{GenericAppStateRequest, GenericAppStateResponse};
 use crate::node::app::orchestrator::MetaOrchestrator;
 use crate::node::app::sync::sync_gateway::SyncGateway;
 use crate::node::app::sync::sync_protocol::SyncProtocol;
 use crate::node::common::actor::ServiceState;
-use crate::node::common::data_transfer::MpscDataTransfer;
 use crate::node::common::model::device::common::{DeviceData, DeviceId};
 use crate::node::common::model::meta_pass::{MetaPasswordId, SecurePassInfo};
 use crate::node::common::model::secret::ClaimId;
@@ -26,9 +26,11 @@ use crate::node::db::actions::recover::RecoveryAction;
 use crate::node::db::actions::secret_deletion::SecretDeletionAction;
 use crate::node::db::actions::sign_up::claim::SignUpClaim;
 use crate::node::db::actions::sign_up::join::JoinActionUpdate;
+use crate::node::db::descriptors::vault_descriptor::VaultStatusDescriptor;
 use crate::node::db::events::vault::vault_log_event::{
     JoinClusterEvent, VaultActionEvents, VaultActionUpdateEvent, VaultLogObject,
 };
+use crate::node::db::events::vault::vault_status::VaultStatusObject;
 use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::objects::persistent_shared_secret::PersistentSharedSecret;
 use crate::node::db::objects::persistent_vault::PersistentVault;
@@ -48,7 +50,7 @@ pub struct MetaClientService<Repo: KvLogEventRepo, Sync: SyncProtocol> {
 }
 
 pub struct MetaClientDataTransfer {
-    pub dt: MpscDataTransfer<GenericAppStateRequest, GenericAppStateResponse>,
+    pub dt: MetaClientRequestTransfer,
 }
 
 fn vault_contains_member(vault: &VaultData, device_id: &DeviceId) -> bool {
@@ -59,11 +61,25 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
     #[instrument(skip_all)]
     pub async fn run(&self) -> Result<()> {
         info!("Run meta_app service");
-
+        let run = self.data_transfer.dt.claim_run()?;
         let mut service_state = self.build_service_state().await?;
 
         loop {
-            let request = self.data_transfer.dt.service_receive().await?;
+            let (request, reply) = run.receive_call().await?.into_parts();
+            if request.is_producer() {
+                let response = self.execute_producer_request(request).await;
+                if let Some(reply) = reply {
+                    reply.respond(response);
+                }
+                continue;
+            }
+            if request.is_checked() {
+                let response = self.execute_checked_request(request).await;
+                if let Some(reply) = reply {
+                    reply.respond(response);
+                }
+                continue;
+            }
             let new_app_state_result = self
                 .handle_client_request(service_state.app_state.clone(), request)
                 .await;
@@ -72,10 +88,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                 Ok(new_state) => new_state,
                 Err(err) => {
                     error!("Error while handling request: {:?}", err);
-                    self.data_transfer
-                        .dt
-                        .send_to_client(GenericAppStateResponse::Error(err.to_string()))
-                        .await;
+                    if let Some(reply) = reply {
+                        reply.respond(GenericAppStateResponse::Error(err.to_string()));
+                    }
                     continue;
                 }
             };
@@ -83,7 +98,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
             service_state.app_state = new_app_state;
             //self.state_provider.push(&service_state.app_state).await?;
             let response_state = GenericAppStateResponse::AppState(service_state.app_state.clone());
-            self.data_transfer.dt.send_to_client(response_state).await;
+            if let Some(reply) = reply {
+                reply.respond(response_state);
+            }
 
             async_std::task::sleep(Duration::from_millis(100)).await;
         }
@@ -95,9 +112,18 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         app_state: ApplicationState,
         request: GenericAppStateRequest,
     ) -> Result<ApplicationState> {
+        let _owner = self.p_obj.client_operation_guard.lock().await;
         debug!(action = request.kind(), "Action execution");
 
         match &request {
+            GenericAppStateRequest::DeleteSecretChecked(_)
+            | GenericAppStateRequest::RemoveMemberChecked(_)
+            | GenericAppStateRequest::ReconcileProducerReceipt(_)
+            | GenericAppStateRequest::ContinueLocalRemoveChecked(_)
+            | GenericAppStateRequest::ClusterDistributionChecked(_)
+            | GenericAppStateRequest::RecoverChecked(_)
+            | GenericAppStateRequest::DecideJoinRequest(_)
+            | GenericAppStateRequest::DecideRemoveRequest(_) => bail!("CheckedResponseRequired"),
             GenericAppStateRequest::DeleteSecret(_)
             | GenericAppStateRequest::DecideDeleteSecret { .. } => {
                 let creds = self.find_user_creds().await?;
@@ -119,7 +145,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                 self.sync_gateway.sync(creds.user()).await?;
             }
             GenericAppStateRequest::GetState => {
-                return self.get_app_state().await;
+                return self.get_app_state_owned().await;
             }
             GenericAppStateRequest::GenerateUserCreds(_) => {
                 self.get_user_creds(&request).await?;
@@ -222,7 +248,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
 
                 // A sender may close the reveal dialog and request the same secret again.
                 // Reuse its still-active accepted claim instead of creating a second claim.
-                let state = self.get_app_state().await?;
+                let state = self.get_app_state_owned().await?;
                 if let ApplicationState::Vault(VaultFullInfo::Member(member)) = &state {
                     let existing_claim = member
                         .ss_claims
@@ -325,7 +351,7 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         }
 
         //Update app state
-        let app_state = self.get_app_state().await?;
+        let app_state = self.get_app_state_owned().await?;
         Ok(app_state)
     }
 
@@ -334,6 +360,21 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
             vault_name: user_creds.vault_name.clone(),
             device: user_creds.device(),
         };
+
+        let status = PersistentVault::from(self.p_obj.clone())
+            .find(user_data.clone())
+            .await?;
+        if let VaultStatus::Outsider(outsider) = &status {
+            anyhow::ensure!(outsider.user_data == user_data, "Join candidate mismatch");
+            if matches!(
+                outsider.status,
+                UserDataOutsiderStatus::NonMember | UserDataOutsiderStatus::Declined
+            ) {
+                self.sync_gateway
+                    .check_join_admission(user_data.clone())
+                    .await?;
+            }
+        }
 
         let sign_up_claim = SignUpClaim::from(self.p_obj.clone());
         sign_up_claim.sign_up(user_data.clone()).await?;
@@ -379,7 +420,17 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
             | GenericAppStateRequest::DecideDeleteSecret { .. } => self.find_user_creds().await?,
             GenericAppStateRequest::RemoveMember(_) => self.find_user_creds().await?,
             GenericAppStateRequest::ApproveRemoveMember(_) => self.find_user_creds().await?,
-            GenericAppStateRequest::DeclineRemoveMember(_) => self.find_user_creds().await?,
+            GenericAppStateRequest::DeclineRemoveMember(_)
+            | GenericAppStateRequest::ClusterDistributionChecked(_)
+            | GenericAppStateRequest::RecoverChecked(_)
+            | GenericAppStateRequest::DecideJoinRequest(_)
+            | GenericAppStateRequest::DecideRemoveRequest(_)
+            | GenericAppStateRequest::DeleteSecretChecked(_)
+            | GenericAppStateRequest::RemoveMemberChecked(_)
+            | GenericAppStateRequest::ReconcileProducerReceipt(_)
+            | GenericAppStateRequest::ContinueLocalRemoveChecked(_) => {
+                self.find_user_creds().await?
+            }
         };
         Ok(user_creds)
     }
@@ -411,6 +462,12 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
     }
 
     pub async fn get_app_state(&self) -> Result<ApplicationState> {
+        let _owner = self.p_obj.client_operation_guard.lock().await;
+        self.get_app_state_owned().await
+    }
+
+    /// The caller holds the client owner; public sync/finalizer own sync separately.
+    pub(super) async fn get_app_state_owned(&self) -> Result<ApplicationState> {
         let creds_repo = PersistentCredentials {
             p_obj: self.p_obj.clone(),
             master_key: self.master_key.clone(),
@@ -420,7 +477,14 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         let app_state = match maybe_user_creds {
             None => ApplicationState::Local(self.device_data.clone()),
             Some(user_creds) => {
-                self.sync_gateway.sync(user_creds.user()).await?;
+                let sync_result = self.sync_gateway.sync(user_creds.user()).await;
+                let removed = self.reset_removed_session_owned(&user_creds).await;
+                if removed.as_ref().is_ok_and(|removed| *removed) {
+                    return Ok(ApplicationState::Local(self.device_data.clone()));
+                }
+                // Proof failure must never replace the original synchronization error.
+                sync_result?;
+                removed?;
 
                 // A removal approval may carry Encrypted Key Shares for the
                 // initiator. Reconcile them after sync, before exposing the
@@ -429,7 +493,13 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                     p_obj: self.p_obj.clone(),
                     user_creds: user_creds.clone(),
                 };
-                orchestrator.finalize_pending_removal_resharing().await?;
+                let finalized = orchestrator.finalize_pending_removal_resharing().await;
+                let removed = self.reset_removed_session_owned(&user_creds).await;
+                if removed.as_ref().is_ok_and(|removed| *removed) {
+                    return Ok(ApplicationState::Local(self.device_data.clone()));
+                }
+                finalized?;
+                removed?;
 
                 let p_vault = PersistentVault::from(self.p_obj());
                 let vault_status = p_vault.find(user_creds.user()).await?;
@@ -440,14 +510,8 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                     }
                     VaultStatus::Outsider(outsider) => {
                         if matches!(outsider.status, UserDataOutsiderStatus::Declined)
-                            && self.was_removed_from_vault(&outsider).await?
+                            && self.reset_removed_session_owned(&user_creds).await?
                         {
-                            // A removed device must not keep the old vault
-                            // credentials or shares. Clear only this local
-                            // database after the signed removal update has
-                            // been synchronized; a future join starts with
-                            // fresh credentials and requires approval again.
-                            self.p_obj.repo.db_clean_up().await;
                             ApplicationState::Local(self.device_data.clone())
                         } else {
                             ApplicationState::Vault(VaultFullInfo::Outsider(outsider))
@@ -465,7 +529,8 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                         .await?;
                         let ss_claims = {
                             let p_ss = PersistentSharedSecret::from(self.p_obj());
-                            let mut log = p_ss.get_ss_log_obj(user_creds.vault_name).await?;
+                            let mut log =
+                                p_ss.get_ss_log_obj(user_creds.vault_name.clone()).await?;
                             let deleted = &vault.0.value.deleted_secrets;
                             log.claims.retain(|_, claim| {
                                 !deleted
@@ -499,7 +564,21 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
                             &vault_action_events,
                             &member_user.user_data.device.device_id,
                         );
+                        let actual_member = VaultMember {
+                            member: member_user.clone(),
+                            vault: vault.clone().to_data(),
+                        };
+                        let liveboard_state = super::liveboard_projection::project(
+                            self.p_obj(),
+                            &user_creds,
+                            &actual_member,
+                            &vault,
+                            &vault_action_events,
+                            &ss_claims,
+                        )
+                        .await?;
                         let user_full_info = UserMemberFullInfo {
+                            liveboard_state: Some(liveboard_state),
                             deletion_states,
                             member: VaultMember {
                                 member: member_user,
@@ -514,6 +593,55 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
             }
         };
         Ok(app_state)
+    }
+
+    /// Terminal-only handoff after a caller's failed sync; never runs another sync.
+    pub async fn try_removed_state_after_failed_sync(
+        &self,
+        expected: &UserCreds,
+    ) -> Result<Option<ApplicationState>> {
+        let _owner = self.p_obj.client_operation_guard.lock().await;
+        if self.reset_removed_session_owned(expected).await? {
+            Ok(Some(ApplicationState::Local(self.device_data.clone())))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Client owner is already held. Revalidate the same session through cleanup.
+    async fn reset_removed_session_owned(&self, expected: &UserCreds) -> Result<bool> {
+        let _sync_owner = self.p_obj.device_sync_guard.lock().await;
+        let descriptor = VaultStatusDescriptor::from(expected.user_id());
+        let status: Option<VaultStatusObject> =
+            self.p_obj.find_tail_event(descriptor.clone()).await?;
+        let Some(status) = status else {
+            return Ok(false);
+        };
+        let VaultStatus::Outsider(outsider) = status.clone().status() else {
+            return Ok(false);
+        };
+        if outsider.status != UserDataOutsiderStatus::Declined
+            || outsider.user_data != expected.user()
+            || !self.was_removed_from_vault(&outsider).await?
+        {
+            return Ok(false);
+        }
+        let current = PersistentCredentials {
+            p_obj: self.p_obj.clone(),
+            master_key: self.master_key.clone(),
+        }
+        .get_user_creds()
+        .await?;
+        if current.as_ref() != Some(expected) {
+            return Ok(false);
+        }
+        let fresh: Option<VaultStatusObject> = self.p_obj.find_tail_event(descriptor).await?;
+        if fresh.as_ref() != Some(&status) {
+            return Ok(false);
+        }
+        // A future Join starts with fresh credentials and requires approval again.
+        self.p_obj.repo.db_clean_up().await;
+        Ok(true)
     }
 
     async fn was_removed_from_vault(&self, outsider: &UserDataOutsider) -> Result<bool> {
@@ -551,10 +679,19 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         match resp {
             GenericAppStateResponse::AppState(app_state) => Ok(app_state),
             GenericAppStateResponse::Error(message) => anyhow::bail!(message),
+            GenericAppStateResponse::OperationReceipt(_)
+            | GenericAppStateResponse::ProducerReceipt(_) => {
+                anyhow::bail!("UnexpectedOperationReceipt")
+            }
         }
     }
 
     pub async fn accept_recover(&self, claim_id: ClaimId) -> Result<()> {
+        let _owner = self.p_obj.client_operation_guard.lock().await;
+        self.accept_recover_owned(claim_id).await
+    }
+
+    pub(super) async fn accept_recover_owned(&self, claim_id: ClaimId) -> Result<()> {
         info!(claim_id = ?claim_id, "accept_recover: started");
 
         // The mobile caller has already synchronized and validated the claim.
@@ -575,8 +712,9 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
     }
 
     pub async fn decline_recover(&self, claim_id: ClaimId) -> Result<()> {
+        let _owner = self.p_obj.client_operation_guard.lock().await;
         println!("🦀 Meta Client Service: decline claim_id: {:?}", claim_id);
-        match &self.get_app_state().await? {
+        match &self.get_app_state_owned().await? {
             ApplicationState::Local(_) => {
                 bail!("Invalid state. Local App State")
             }
@@ -607,7 +745,8 @@ impl<Repo: KvLogEventRepo, Sync: SyncProtocol> MetaClientService<Repo, Sync> {
         join_request: JoinClusterEvent,
         upd: JoinActionUpdate,
     ) -> Result<()> {
-        match self.get_app_state().await? {
+        let _owner = self.p_obj.client_operation_guard.lock().await;
+        match self.get_app_state_owned().await? {
             ApplicationState::Local(_) => {
                 bail!("Invalid state. Local App State")
             }
@@ -733,12 +872,12 @@ impl Default for MetaClientStateProvider {
 #[cfg(any(test, feature = "test-framework"))]
 pub mod fixture {
     use crate::meta_tests::fixture_util::fixture::states::BaseState;
+    use crate::node::app::meta_app::client_transfer::MetaClientRequestTransfer;
     use crate::node::app::meta_app::meta_client_service::{
         MetaClientDataTransfer, MetaClientService, MetaClientStateProvider,
     };
     use crate::node::app::sync::sync_gateway::fixture::SyncGatewayFixture;
     use crate::node::app::sync::sync_protocol::SyncProtocol;
-    use crate::node::common::data_transfer::MpscDataTransfer;
     use crate::node::db::in_mem_db::InMemKvLogEventRepo;
     use std::sync::Arc;
 
@@ -810,10 +949,10 @@ pub mod fixture {
         pub fn generate() -> Self {
             Self {
                 client: Arc::new(MetaClientDataTransfer {
-                    dt: MpscDataTransfer::new(),
+                    dt: MetaClientRequestTransfer::new(),
                 }),
                 vd: Arc::new(MetaClientDataTransfer {
-                    dt: MpscDataTransfer::new(),
+                    dt: MetaClientRequestTransfer::new(),
                 }),
             }
         }

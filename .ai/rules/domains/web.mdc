@@ -16,6 +16,10 @@ Apply these rules when editing `meta-secret/web-cli/ui`.
 - Do NOT write bespoke CSS for layout, spacing, or colour — use Tailwind utility classes. The only exception is minimal non-utility CSS for third-party SVG or QR canvas containers.
 - Icons: use `lucide-vue-next` only. Import individual icons as named exports.
 
+## Approved registration migration exception
+
+The scoped Orbit registration module uses the versioned shared design-system exports, custom source SVG icons and component-scoped CSS/motion needed to match the approved prototype. This exception overrides the shadcn-only, Tailwind-only and lucide-only rules above for that module. Use generated tokens rather than hand-copied hex values; preserve accessible semantics, keyboard behavior and reduced motion. Keep existing shadcn/Tailwind defaults on unrelated legacy screens. Vue components render typed state and emit intents; controller/store adapters invoke existing WASM/Core contracts.
+
 ## Vue Conventions
 
 - Always use Composition API (`<script setup lang="ts">`). Avoid Options API except in legacy `SplitView.vue` / `RecoverView.vue` which use third-party DOM manipulation.

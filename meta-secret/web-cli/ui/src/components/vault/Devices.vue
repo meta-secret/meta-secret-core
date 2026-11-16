@@ -1,14 +1,35 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { AppState } from '@/stores/app-state';
 import Device from '@/components/vault/Device.vue';
+import VaultNameQrDialog from '@/components/vault/VaultNameQrDialog.vue';
 import { UserDataOutsiderStatus, WasmUserMembership } from 'meta-secret-web-cli';
 import { getMemberVaultData, getMemberVaultState } from '@/utils/wasmBridge';
-import { vaultSecrets } from '@/locales/en';
+import { vaultDevices, vaultSecrets } from '@/locales/en';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
 const appState = AppState();
+const vaultName = computed(() => appState.getVaultName());
+const qrVaultName = ref('');
+const isQrOpen = computed(() => !!qrVaultName.value && qrVaultName.value === vaultName.value);
+watch(
+  vaultName,
+  () => {
+    qrVaultName.value = '';
+  },
+  { flush: 'sync' },
+);
+
+function openQr() {
+  if (vaultName.value) qrVaultName.value = vaultName.value;
+}
+
+function closeQr() {
+  qrVaultName.value = '';
+}
+
 const users = computed(() => getMemberVaultData(appState.currState)?.users() ?? []);
 
 const memberDevices = computed(() => users.value.filter((m: WasmUserMembership) => m.is_member()));
@@ -44,8 +65,9 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
     </Alert>
 
     <Card>
-      <CardHeader class="border-b pb-4">
+      <CardHeader class="flex flex-row flex-wrap items-center justify-between gap-3 border-b pb-4">
         <CardTitle class="text-base">Devices</CardTitle>
+        <Button data-testid="add-device" :disabled="!vaultName" @click="openQr">{{ vaultDevices.addDevice }}</Button>
       </CardHeader>
 
       <CardContent class="p-0">
@@ -70,5 +92,7 @@ const shouldShowDevicesWarning = computed(() => requiredDevicesToSafety.value > 
         </template>
       </CardContent>
     </Card>
+
+    <VaultNameQrDialog :open="isQrOpen" :vault-name="qrVaultName" @close="closeQr" />
   </div>
 </template>

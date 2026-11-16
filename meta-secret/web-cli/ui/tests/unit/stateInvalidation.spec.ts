@@ -27,6 +27,28 @@ describe('createStateInvalidationController', () => {
     vi.useRealTimers();
   });
 
+  it('cannot open a stale authenticated stream after disconnect while authorization was pending', async () => {
+    let authorize!: (token: string) => void;
+    const authorization = new Promise<string>((resolve) => {
+      authorize = resolve;
+    });
+    const fetchImpl = vi.fn(async () => ({ ok: true, body: fakeStream().body }) as Response);
+    const controller = createStateInvalidationController({
+      refresh: vi.fn(async () => {}),
+      getAuthorization: () => authorization,
+      fetchImpl,
+      resolveUrl: () => 'http://localhost/state-events',
+      reconnectDelayMs: 0,
+    });
+    controller.connect('vault-a');
+    controller.disconnect();
+    authorize('stale-credential');
+    await Promise.resolve();
+    await Promise.resolve();
+    controller.disconnect();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it('authenticates the stream and coalesces invalidation bursts', async () => {
     vi.useFakeTimers();
     const streams: FakeStream[] = [];
@@ -208,5 +230,52 @@ describe('createStateInvalidationController', () => {
       }),
     );
     controller.disconnect();
+  });
+
+  it('cannot reschedule a retired stream when onInvalidate disconnects before the initial debounce', async () => {
+    vi.useFakeTimers();
+    const stream = fakeStream();
+    const refresh = vi.fn(async () => {});
+    const syncBeforeRefresh = vi.fn(async () => {});
+    const getAuthorization = vi.fn(async () => 'unit-test-token');
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async () => ({ ok: true, status: 200, body: stream.body }) as Response);
+    const onInvalidate = vi.fn(() => controller.disconnect());
+    const controller = createStateInvalidationController({
+      refresh,
+      syncBeforeRefresh,
+      getAuthorization,
+      fetchImpl,
+      onInvalidate,
+      debounceMs: 150,
+      reconnectDelayMs: 1_000,
+      resolveUrl: () => 'http://localhost/state-events',
+    });
+    try {
+      controller.connect('vault-a');
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(fetchImpl).toHaveBeenCalledOnce();
+      const signal = fetchImpl.mock.calls[0]?.[1]?.signal;
+      expect(signal?.aborted).toBe(false);
+      expect(refresh).not.toHaveBeenCalled();
+      stream.push('event: state_invalidated\ndata: {"type":"state_invalidated","vaultName":"vault-a"}\n\n');
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(onInvalidate).toHaveBeenCalledOnce();
+      expect(signal?.aborted).toBe(true);
+      await vi.advanceTimersByTimeAsync(150);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect({
+        refresh: refresh.mock.calls.length,
+        sync: syncBeforeRefresh.mock.calls.length,
+        authorization: getAuthorization.mock.calls.length,
+        fetch: fetchImpl.mock.calls.length,
+      }).toEqual({ refresh: 0, sync: 0, authorization: 1, fetch: 1 });
+    } finally {
+      controller.disconnect();
+      stream.close();
+    }
   });
 });

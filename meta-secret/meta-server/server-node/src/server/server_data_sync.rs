@@ -1,7 +1,6 @@
 // Tests intentionally live next to the server data-sync implementation.
 #![allow(clippy::items_after_test_module)]
 
-use std::cmp::PartialEq;
 use std::sync::Arc;
 
 use crate::server::state_invalidation::{
@@ -9,30 +8,36 @@ use crate::server::state_invalidation::{
     StateInvalidationPublisher, StateInvalidationScope,
 };
 use anyhow::Result;
-use anyhow::bail;
-use meta_secret_core::node::api::{SignedAction, SignedActionPayload, SsRequest, VaultRequest};
+use anyhow::{bail, ensure};
+use meta_secret_core::node::api::{
+    ReadSyncRequest, SignedAction, SignedActionPayload, SsRequest, SyncRequest, VaultRequest,
+};
 use meta_secret_core::node::common::model::IdString;
 use meta_secret_core::node::common::model::device::common::{DeviceData, DeviceId};
-use meta_secret_core::node::common::model::secret::{
-    SecretDistributionType, SsDistributionId, SsDistributionStatus,
-};
+use meta_secret_core::node::common::model::secret::{SecretDistributionType, SsDistributionStatus};
 use meta_secret_core::node::common::model::user::common::UserData;
-use meta_secret_core::node::common::model::user::common::{UserDataOutsiderStatus, UserMembership};
+use meta_secret_core::node::common::model::user::common::{
+    UserDataMember, UserDataOutsiderStatus, UserMembership,
+};
 use meta_secret_core::node::common::model::vault::vault::{VaultName, VaultStatus};
 use meta_secret_core::node::common::model::vault::vault_data::VaultData;
 use meta_secret_core::node::db::actions::vault::vault_action::ServerVaultAction;
+use meta_secret_core::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use meta_secret_core::node::db::descriptors::shared_secret_descriptor::{
-    SsDeviceLogDescriptor, SsLogDescriptor, SsWorkflowDescriptor,
+    SsDeviceLogDescriptor, SsLogDescriptor,
 };
-use meta_secret_core::node::db::descriptors::vault_descriptor::DeviceLogDescriptor;
+use meta_secret_core::node::db::descriptors::vault_descriptor::{
+    DeviceLogDescriptor, VaultDescriptor, VaultLogDescriptor, VaultStatusDescriptor,
+};
 use meta_secret_core::node::db::events::generic_log_event::{
     GenericKvLogEvent, ObjIdExtractor, ToGenericEvent,
 };
 use meta_secret_core::node::db::events::object_id::ArtifactId;
 use meta_secret_core::node::db::events::shared_secret_event::{
-    SsDeviceLogObject, SsLogObject, SsWorkflowObject,
+    SsDeviceLogObject, SsWorkflowObject,
 };
 use meta_secret_core::node::db::events::vault::device_log_event::DeviceLogObject;
+use meta_secret_core::node::db::events::vault::liveboard_metadata::DecisionOutcome;
 use meta_secret_core::node::db::events::vault::vault_log_event::{
     RemoveMemberDecision, VaultActionEvent, VaultActionInitEvent, VaultActionRequestEvent,
     VaultActionUpdateEvent,
@@ -59,6 +64,61 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             p_obj,
             invalidation_publisher,
         }
+    }
+
+    pub async fn check_join_admission(&self, candidate: &UserData) -> Result<bool> {
+        const UNAVAILABLE: &str = "Join admission unavailable";
+        ensure!(
+            !candidate.vault_name.0.trim().is_empty()
+                && candidate.device.device_id == DeviceId::from(&candidate.device.keys),
+            UNAVAILABLE
+        );
+        candidate
+            .device
+            .keys
+            .transport_pk
+            .as_recipient()
+            .map_err(|_| anyhow::anyhow!(UNAVAILABLE))?;
+        let descriptor = VaultDescriptor::from(candidate.vault_name());
+        let records = super::public_reads::read_stream(
+            &self.p_obj,
+            ArtifactId::from(descriptor.clone()),
+            descriptor.to_obj_desc(),
+        )
+        .await
+        .map_err(|_| anyhow::anyhow!(UNAVAILABLE))?;
+        let Some(GenericKvLogEvent::Vault(vault)) = records.into_iter().last() else {
+            bail!(UNAVAILABLE)
+        };
+        let vault = vault.to_data();
+        ensure!(vault.vault_name == candidate.vault_name(), UNAVAILABLE);
+        for (id, membership) in &vault.users {
+            let user = membership.user_data();
+            ensure!(
+                *id == user.device.device_id
+                    && user.vault_name == vault.vault_name
+                    && user.device.device_id == DeviceId::from(&user.device.keys),
+                UNAVAILABLE
+            );
+        }
+        ensure!(!vault.members().is_empty(), UNAVAILABLE);
+        vault
+            .ensure_valid_member_count()
+            .map_err(|_| anyhow::anyhow!(UNAVAILABLE))?;
+        let UserMembership::Outsider(outsider) = vault.membership(candidate.clone()) else {
+            bail!(UNAVAILABLE)
+        };
+        ensure!(
+            outsider.user_data == *candidate
+                && matches!(
+                    outsider.status,
+                    UserDataOutsiderStatus::NonMember | UserDataOutsiderStatus::Declined
+                ),
+            UNAVAILABLE
+        );
+        Ok(vault
+            .ensure_can_add_member(&UserDataMember::from(candidate.clone()))
+            .is_ok())
     }
 
     /// Verify that a state invalidation subscriber is a current member of the
@@ -164,6 +224,19 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
     #[instrument(skip(self))]
     pub async fn vault_replication(&self, request: VaultRequest) -> Result<Vec<GenericKvLogEvent>> {
+        super::public_reads::validate_request(&SyncRequest::Read(Box::new(
+            ReadSyncRequest::Vault(request.clone()),
+        )))?;
+        super::recovery_intake_audit::ensure_clean(
+            self,
+            &SyncRequest::Read(Box::new(ReadSyncRequest::Vault(request.clone()))),
+        )
+        .await?;
+        super::producer_public::ensure_readable(
+            self,
+            &SyncRequest::Read(Box::new(ReadSyncRequest::Vault(request.clone()))),
+        )
+        .await?;
         let mut commit_log = vec![];
 
         let p_vault = PersistentVault::from(self.p_obj.clone());
@@ -174,11 +247,14 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
 
         //sync vault status (available to any user - just by definition)
         {
-            let vault_status_events = self
-                .p_obj
-                .find_object_events::<GenericKvLogEvent>(request.tail.vault_status.clone())
-                .await?;
+            let vault_status_events = super::public_reads::read_stream(
+                &self.p_obj,
+                request.tail.vault_status.clone(),
+                VaultStatusDescriptor::from(request.sender.user_id()).to_obj_desc(),
+            )
+            .await?;
 
+            super::recovery_intake_audit::guard_events(&vault_status_events)?;
             commit_log.extend(vault_status_events);
         }
 
@@ -193,25 +269,36 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             VaultStatus::Member(_) => {
                 //sync VaultLog
                 {
-                    let vault_log_events = self
-                        .p_obj
-                        .find_object_events::<GenericKvLogEvent>(request.tail.vault_log.clone())
-                        .await?;
+                    let vault_log_events = super::public_reads::read_stream(
+                        &self.p_obj,
+                        request.tail.vault_log.clone(),
+                        VaultLogDescriptor::from(request.sender.vault_name()).to_obj_desc(),
+                    )
+                    .await?;
+                    super::recovery_intake_audit::guard_events(&vault_log_events)?;
                     commit_log.extend(vault_log_events);
                 }
 
                 //sync Vault
                 {
-                    let vault_events = self
-                        .p_obj
-                        .find_object_events::<GenericKvLogEvent>(request.tail.vault.clone())
-                        .await?;
+                    let vault_events = super::public_reads::read_stream(
+                        &self.p_obj,
+                        request.tail.vault.clone(),
+                        VaultDescriptor::from(request.sender.vault_name()).to_obj_desc(),
+                    )
+                    .await?;
+                    super::recovery_intake_audit::guard_events(&vault_events)?;
                     commit_log.extend(vault_events);
                 }
             }
         }
 
-        Ok(commit_log)
+        super::recovery_intake_audit::guard_events(&commit_log)?;
+        super::public_reads::guard_response(&commit_log)?;
+        Ok(commit_log
+            .into_iter()
+            .map(super::producer_public::public_event)
+            .collect())
     }
 
     /// Handle request: all types of requests will be handled
@@ -222,6 +309,30 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         action: SignedAction,
     ) -> Result<()> {
         let generic_event = self.verify_event_action(&action).await?;
+        if self
+            .try_apply_producer_source(&action, &generic_event)
+            .await?
+        {
+            return Ok(());
+        }
+        if matches!(
+            action.payload,
+            SignedActionPayload::GuardedRemovalDecision(_)
+        ) {
+            return self.apply_guarded_removal(&action).await;
+        }
+        if self
+            .try_apply_recovery_response(&action, &generic_event)
+            .await?
+        {
+            return Ok(());
+        }
+        if self
+            .try_initial_recovery_intake(&action, &generic_event)
+            .await?
+        {
+            return Ok(());
+        }
         self.server_write_processing(server_device, generic_event)
             .await
     }
@@ -230,6 +341,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
     pub async fn verify_event_action(&self, action: &SignedAction) -> Result<GenericKvLogEvent> {
         let event = match &action.payload {
             SignedActionPayload::Event(event) => event.clone(),
+            SignedActionPayload::GuardedRemovalDecision(guard) => guard.event.clone().to_generic(),
             SignedActionPayload::RecoveryCompletion(_) => {
                 bail!("recovery completion cannot be sent as a write event")
             }
@@ -273,6 +385,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         }
         action.verify(&signer_user.device.keys.dsa_pk)?;
         validate_event_actor(&event, &action.signer)?;
+        self.verify_raw_recovery_response(action, &event).await?;
         if matches!(&event, GenericKvLogEvent::DeviceLog(object) if matches!(&object.0.value,
             VaultActionEvent::Request(VaultActionRequestEvent::DeleteSecret(_)) | VaultActionEvent::Update(VaultActionUpdateEvent::DeleteSecret(_))))
         {
@@ -336,7 +449,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             } else {
                 false
             };
-            if !pending_split_replacement {
+            if !pending_split_replacement && !self.exact_recovery_replay(action, &event).await? {
                 bail!(
                     "replayed or out-of-order signed action: stream={} nonce={} server_tail={}",
                     object_id.fqdn.clone().id_str(),
@@ -345,6 +458,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                 )
             }
         }
+        super::server_liveboard::validate_guard(self.p_obj.clone(), action).await?;
         Ok(event)
     }
 
@@ -761,7 +875,7 @@ mod join_result_contract_tests {
     }
 }
 
-fn event_vault_name(event: &GenericKvLogEvent) -> Result<VaultName> {
+pub(super) fn event_vault_name(event: &GenericKvLogEvent) -> Result<VaultName> {
     Ok(match event {
         GenericKvLogEvent::DeviceLog(object) => object.0.value.vault_name(),
         GenericKvLogEvent::SsDeviceLog(object) => object.0.value.vault_name.clone(),
@@ -875,6 +989,9 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         generic_event: GenericKvLogEvent,
     ) -> Result<()> {
         match generic_event {
+            GenericKvLogEvent::DeviceTransportNoop(_) => {
+                bail!("transport marker requires its dedicated signed purpose")
+            }
             GenericKvLogEvent::DeviceLog(device_log_obj) => {
                 self.handle_device_log_request(server_device, device_log_obj)
                     .await?;
@@ -968,7 +1085,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                     let Some(ss_event) = maybe_ss_log_event else {
                         bail!("No claim found for decline: {:?}", decline_data)
                     };
-                    let ss_log_data = ss_event.to_data();
+                    let mut ss_log_data = ss_event.to_data();
                     let Some(current_claim) = ss_log_data.claims.get(&decline_data.claim_id) else {
                         bail!("No claim found for decline: {:?}", decline_data)
                     };
@@ -979,6 +1096,13 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                         )
                     });
                     let decline_applied = !has_prior_approval;
+                    if decline_applied {
+                        ss_log_data.record_verified_recovery_decision(
+                            &decline_data.claim_id,
+                            &decline_data.receiver_id,
+                            DecisionOutcome::Declined,
+                        );
+                    }
                     let new_ss_log_data = if has_prior_approval {
                         debug!(
                             claim_id = ?decline_data.claim_id,
@@ -994,7 +1118,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                     let new_ss_log_event = p_ss_log
                         .create_new_ss_log_object(new_ss_log_data, decline_data.vault_name)
                         .await?;
-                    self.p_obj.repo.save(new_ss_log_event).await?;
+                    self.p_obj.save_verified(new_ss_log_event).await?;
                     self.publish_invalidation(vault_name.clone(), StateInvalidationScope::SsClaims);
                     if decline_applied {
                         self.publish_recovery_decision(
@@ -1088,12 +1212,20 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
                                         self.p_obj.repo.delete(ss_object_to_save.obj_id()).await;
                                     }
                                     self.p_obj.repo.save(ss_object_to_save).await?;
+                                    let mut ss_log_data = ss_log_data;
+                                    if distribution_type == SecretDistributionType::Recover {
+                                        ss_log_data.record_verified_recovery_decision(
+                                            &wf.claim_id.id,
+                                            &device_id,
+                                            DecisionOutcome::Accepted,
+                                        );
+                                    }
                                     let new_ss_log_data =
                                         ss_log_data.sent(wf.claim_id.id, device_id);
                                     let new_ss_log_event = p_ss_log
                                         .create_new_ss_log_object(new_ss_log_data, wf.vault_name)
                                         .await?;
-                                    self.p_obj.repo.save(new_ss_log_event).await?;
+                                    self.p_obj.save_verified(new_ss_log_event).await?;
                                     self.publish_invalidation(
                                         vault_name.clone(),
                                         StateInvalidationScope::SsClaims,
@@ -1131,6 +1263,13 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             }
             GenericKvLogEvent::DbError(_) => {
                 bail!("Invalid event type: {:?}", generic_event);
+            }
+            GenericKvLogEvent::LocalRemovalEnvelope(_) => {
+                bail!("local removal envelope is not a network event");
+            }
+            GenericKvLogEvent::LocalGuardedPreparationIndex(_)
+            | GenericKvLogEvent::LocalGuardedPreparation(_) => {
+                bail!("local guarded preparation is not a network event");
             }
         }
 
@@ -1246,11 +1385,9 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             false
         };
         let membership_changed = join_accepted || removal_changed_membership;
-        if membership_changed
-            && self
-                .decline_pending_recovery_claims(vault_name.clone())
-                .await?
-        {
+        if membership_changed {
+            self.decline_pending_recovery_claims(vault_name.clone())
+                .await?;
             self.publish_invalidation(vault_name.clone(), StateInvalidationScope::SsClaims);
         }
         self.publish_invalidation(vault_name, scope);
@@ -1289,17 +1426,36 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         request: SsRequest,
         server_device: DeviceId,
     ) -> Result<Vec<GenericKvLogEvent>> {
+        super::public_reads::validate_request(&SyncRequest::Read(Box::new(
+            ReadSyncRequest::SsRequest(request.clone()),
+        )))?;
+        super::recovery_intake_audit::ensure_clean(
+            self,
+            &SyncRequest::Read(Box::new(ReadSyncRequest::SsRequest(request.clone()))),
+        )
+        .await?;
+        super::producer_public::ensure_readable(
+            self,
+            &SyncRequest::Read(Box::new(ReadSyncRequest::SsRequest(request.clone()))),
+        )
+        .await?;
         let deleted = PersistentVault::from(self.p_obj.clone())
             .get_vault(request.sender.vault_name.clone())
             .await?
             .to_data()
             .deleted_secrets;
         //sync SsLog
-        let mut ss_log_events = self
-            .p_obj
-            .find_object_events::<SsLogObject>(request.ss_log.clone())
-            .await?;
+        let mut ss_log_events = super::public_reads::read_stream(
+            &self.p_obj,
+            request.ss_log.clone(),
+            SsLogDescriptor::from(request.sender.vault_name()).to_obj_desc(),
+        )
+        .await?
+        .into_iter()
+        .map(|event| event.ss_log())
+        .collect::<Result<Vec<_>>>()?;
         for event in &mut ss_log_events {
+            super::recovery_intake_audit::guard_log(event)?;
             event.0.value.claims.retain(|_, claim| {
                 !deleted
                     .iter()
@@ -1312,15 +1468,14 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
         );
         let maybe_latest_ss_log_state = match ss_log_events.last() {
             Some(latest_ss_log_state) => Some(latest_ss_log_state.clone()),
-            None => {
-                self.p_obj
-                    .find_tail_event(SsLogDescriptor::from(request.sender.vault_name.clone()))
-                    .await?
-            }
+            None => super::public_reads::ss_history(&self.p_obj, &request.sender.vault_name)
+                .await?
+                .pop(),
         };
         let Some(mut latest_ss_log_state) = maybe_latest_ss_log_state else {
             return Ok(vec![]);
         };
+        super::recovery_intake_audit::guard_log(&latest_ss_log_state)?;
         latest_ss_log_state.0.value.claims.retain(|_, claim| {
             !deleted
                 .iter()
@@ -1342,65 +1497,21 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             "ss_replication: iterating claims"
         );
 
-        for (_, claim) in ss_log_data.claims.iter() {
-            if claim.sender.eq(&server_device) {
-                bail!("Invalid state. Server can't manage Encrypted Key Shares");
-            };
-
-            let request_sender_device = request.sender.device.device_id.clone();
-
-            debug!(
-                claim_id = ?claim.id,
-                dist_type = ?claim.distribution_type,
-                pass_id_name = %claim.dist_claim_id.pass_id.name,
-                "ss_replication: processing claim"
-            );
-
-            match claim.distribution_type {
-                SecretDistributionType::Split => {
-                    // Directly look up the distribution by (pass_id, requesting_device).
-                    // Bypasses claim.receivers, which may be stale/empty when distributions
-                    // arrive at the server before the ss_log is updated with the full receiver list.
-                    let dist_id = SsDistributionId {
-                        pass_id: claim.dist_claim_id.pass_id.clone(),
-                        receiver: request_sender_device.clone(),
-                    };
-                    let desc = SsWorkflowDescriptor::Distribution(dist_id.clone());
-                    let dist_obj = self.p_obj.find_tail_event(desc).await?;
-                    debug!(
-                        found = dist_obj.is_some(),
-                        dist_id = ?dist_id,
-                        "ss_replication: Split — find_tail_event result"
-                    );
-
-                    if let Some(dist_event) = dist_obj {
-                        let ss_dist_obj_id = dist_event.obj_id();
-                        commit_log.push(dist_event.to_generic());
-                        updated_ss_log_data = updated_ss_log_data
-                            .complete(claim.id.clone(), request_sender_device.clone());
-                        updated_state = true;
-                        self.p_obj.repo.delete(ss_dist_obj_id).await;
-                    }
-                }
-                SecretDistributionType::Recover => {
-                    for dist_id in claim.recovery_db_ids() {
-                        if !dist_id.sender.eq(&request_sender_device) {
-                            continue;
-                        }
-                        let desc = SsWorkflowDescriptor::Recovery(dist_id.clone());
-                        let dist_obj = self.p_obj.find_tail_event(desc).await?;
-                        if let Some(dist_event) = dist_obj {
-                            let ss_dist_obj_id = dist_event.obj_id();
-                            commit_log.push(dist_event.to_generic());
-                            //skip: we can't complete the claim, otherwise we won't know
-                            //on the sender device that the claim exists.
-                            //Completion event needs to be sent by the recovery claim creator
-                            updated_state = true;
-                            self.p_obj.repo.delete(ss_dist_obj_id).await;
-                        }
-                    }
-                }
+        // The entire addressed set is read and validated before even the first
+        // packet deletion or canonical completion/status mutation.
+        let deliveries =
+            super::public_workflows::addressed(&self.p_obj, &request, ss_log_data, &server_device)
+                .await?;
+        for delivery in deliveries {
+            let id = delivery.event.obj_id();
+            commit_log.push(delivery.event.to_generic());
+            if let Some(claim) = delivery.split_claim {
+                updated_ss_log_data =
+                    updated_ss_log_data.complete(claim, request.sender.device.device_id.clone());
             }
+            // Recovery completion remains the requester's explicit action.
+            updated_state = true;
+            self.p_obj.repo.delete(id).await;
         }
 
         let p_ss = PersistentSharedSecret::from(self.p_obj.clone());
@@ -1408,6 +1519,7 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             let new_ss_log_obj = p_ss
                 .create_new_ss_log_object(updated_ss_log_data, request.sender.vault_name.clone())
                 .await?;
+            super::recovery_intake_audit::guard_log(&new_ss_log_obj)?;
             self.p_obj
                 .repo
                 .save(new_ss_log_obj.clone().to_generic())
@@ -1420,7 +1532,12 @@ impl<Repo: KvLogEventRepo> ServerSyncGateway<Repo> {
             commit_log_len = commit_log.len(),
             "ss_replication: returning commit_log to client"
         );
-        Ok(commit_log)
+        super::recovery_intake_audit::guard_events(&commit_log)?;
+        super::public_reads::guard_response(&commit_log)?;
+        Ok(commit_log
+            .into_iter()
+            .map(super::producer_public::public_event)
+            .collect())
     }
 }
 

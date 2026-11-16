@@ -9,8 +9,8 @@ use anyhow::{Result, bail};
 use flume::{Receiver, RecvError, Sender};
 use meta_secret_core::crypto::keys::TransportSk;
 use meta_secret_core::node::api::{
-    DataEventsResponse, DataSyncResponse, ReadSyncRequest, ServerTailRequest, ServerTailResponse,
-    SyncRequest, WriteSyncRequest,
+    DataEventsResponse, DataSyncResponse, ReadSyncRequest, ServerTailResponse, SyncRequest,
+    WriteSyncRequest,
 };
 use meta_secret_core::node::common::model::device::common::DeviceName;
 use meta_secret_core::node::common::model::device::device_creds::DeviceCreds;
@@ -71,6 +71,7 @@ pub struct ServerApp<Repo: KvLogEventRepo> {
     creds_repo: Arc<PersistentCredentials<Repo>>,
     data_transfer: Arc<MetaServerDataTransfer>,
     invalidation_publisher: Arc<dyn StateInvalidationPublisher>,
+    request_guard: async_std::sync::Mutex<()>,
 }
 
 impl<Repo: KvLogEventRepo> ServerApp<Repo> {
@@ -104,6 +105,7 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
             creds_repo,
             data_transfer,
             invalidation_publisher,
+            request_guard: async_std::sync::Mutex::new(()),
         })
     }
 
@@ -114,7 +116,7 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
     pub async fn run(&self) -> Result<()> {
         info!("Run server_app service");
 
-        let device_creds = self.get_creds().await?;
+        let device_creds = self.init().await?;
         info!("Server initialized with device: {:?}", &device_creds.device);
 
         loop {
@@ -147,6 +149,11 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
     }
 
     pub async fn init(&self) -> Result<DeviceCreds> {
+        self.p_obj
+            .repo
+            .server_recovery_response_store()?
+            .ensure_ready()
+            .await?;
         let device_creds = self.get_creds().await?;
         Ok(device_creds)
     }
@@ -156,15 +163,46 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
         &self,
         sync_message: SyncRequest,
     ) -> Result<DataSyncResponse> {
+        let _ordered = self.request_guard.lock().await;
+        super::public_reads::validate_request(&sync_message)?;
+        if let SyncRequest::Read(read) = &sync_message
+            && let ReadSyncRequest::JoinAdmission(candidate) = read.as_ref()
+        {
+            let response = match self.data_sync.check_join_admission(candidate).await {
+                Ok(true) => DataSyncResponse::Empty,
+                Ok(false) => DataSyncResponse::Error {
+                    msg: "Vault supports at most 3 devices".into(),
+                },
+                Err(_) => DataSyncResponse::Error {
+                    msg: "Join admission unavailable".into(),
+                },
+            };
+            return Ok(response);
+        }
         let init_result = self.init().await;
         if let Err(err) = &init_result {
             error!("ServerApp failed to start: {:?}", err);
         }
 
         let server_creds = init_result?;
+        super::server_liveboard::before_request(&self.data_sync, &sync_message).await?;
 
-        match sync_message {
+        let response: Result<DataSyncResponse> = match sync_message {
             SyncRequest::Read(read_request) => match *read_request {
+                ReadSyncRequest::JoinAdmission(_) => {
+                    bail!("JOIN admission requires read-only dispatch")
+                }
+                ReadSyncRequest::LiveboardCapabilities(request) => {
+                    anyhow::ensure!(request.version == 1, "unsupported Liveboard contract");
+                    Ok(DataSyncResponse::LiveboardCapabilities(
+                        meta_secret_core::node::api::LiveboardCapabilities {
+                            device_transport_noop_version: 1,
+                            producer_correlation_version: 1,
+                            projection_version: 1,
+                            guarded_removal_version: 1,
+                        },
+                    ))
+                }
                 ReadSyncRequest::Vault(request) => {
                     let new_events = self.data_sync.vault_replication(request).await?;
                     Ok(DataSyncResponse::Data(DataEventsResponse(new_events)))
@@ -196,6 +234,7 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                             bail!("No SS log found for vault: {:?}", &vault_name)
                         }
                         Some(ss_log_event) => {
+                            super::recovery_intake_audit::guard_log(&ss_log_event)?;
                             let ss_log_data = ss_log_event.to_data();
                             let Some(current_claim) = ss_log_data.claims.get(&claim_id) else {
                                 bail!(
@@ -230,6 +269,7 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                             let new_ss_log_obj = p_ss
                                 .create_new_ss_log_object(updated_ss_log_data, vault_name.clone())
                                 .await?;
+                            super::recovery_intake_audit::guard_log(&new_ss_log_obj)?;
                             self.p_obj
                                 .repo
                                 .save(new_ss_log_obj.clone().to_generic())
@@ -243,7 +283,8 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                         }
                     }
                 }
-                ReadSyncRequest::ServerTail(ServerTailRequest { sender }) => {
+                ReadSyncRequest::ServerTail(request) => {
+                    let sender = &request.sender;
                     let p_device_log = PersistentDeviceLog {
                         p_obj: self.p_obj.clone(),
                     };
@@ -262,11 +303,16 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                         .map(|tail_id| tail_id.next());
 
                     let response = ServerTailResponse {
+                        producer_observation: self
+                            .data_sync
+                            .producer_observation(&request, device_log_tail.clone())
+                            .await?,
                         device_log_tail,
                         ss_device_log_tail: ss_device_log_free_id,
                     };
 
-                    let data_sync_response = DataSyncResponse::ServerTailResponse(response);
+                    let data_sync_response =
+                        DataSyncResponse::ServerTailResponse(Box::new(response));
                     Ok(data_sync_response)
                 }
                 ReadSyncRequest::StateEventsSubscription(subscription) => {
@@ -284,6 +330,11 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                 }
             },
             SyncRequest::Write(write_request) => match *write_request {
+                WriteSyncRequest::DeviceTransportNoop(authorization) => {
+                    Ok(DataSyncResponse::DeviceTransportNoop(
+                        self.data_sync.apply_transport_noop(authorization).await?,
+                    ))
+                }
                 WriteSyncRequest::Event(event) => {
                     // Event payloads can contain encrypted Key Shares. Never log the payload.
                     info!("Received sync event");
@@ -293,7 +344,17 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
                     Ok(DataSyncResponse::Empty)
                 }
             },
+        };
+        let mut response = response?;
+        if let DataSyncResponse::Data(events) = &mut response {
+            super::public_reads::guard_response(&events.0)?;
+            super::recovery_intake_audit::guard_events(&events.0)?;
+            events.0 = std::mem::take(&mut events.0)
+                .into_iter()
+                .map(super::producer_public::public_event)
+                .collect();
         }
+        Ok(response)
     }
 
     pub async fn get_creds(&self) -> Result<DeviceCreds> {
@@ -304,66 +365,5 @@ impl<Repo: KvLogEventRepo> ServerApp<Repo> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::MetaServerDataTransfer;
-    use meta_secret_core::meta_tests::fixture_util::fixture::FixtureRegistry;
-    use meta_secret_core::node::api::{
-        DataSyncResponse, ReadSyncRequest, ServerTailRequest, SyncRequest,
-    };
-    use std::sync::Arc;
-
-    fn server_tail_request(
-        sender: meta_secret_core::node::common::model::user::common::UserData,
-    ) -> SyncRequest {
-        SyncRequest::Read(Box::new(ReadSyncRequest::ServerTail(ServerTailRequest {
-            sender,
-        })))
-    }
-
-    #[tokio::test]
-    async fn concurrent_requests_receive_their_own_responses() {
-        let registry = FixtureRegistry::empty();
-        let request_a = server_tail_request(registry.state.user_creds.client.user());
-        let request_b = server_tail_request(registry.state.user_creds.client_b.user());
-        let transport = Arc::new(MetaServerDataTransfer::default());
-
-        let first_transport = transport.clone();
-        let first_request = request_a.clone();
-        let first = tokio::spawn(async move { first_transport.send_request(first_request).await });
-
-        let second_transport = transport.clone();
-        let second_request = request_b.clone();
-        let second =
-            tokio::spawn(async move { second_transport.send_request(second_request).await });
-
-        let first_envelope = transport.receive_request().await.unwrap();
-        let second_envelope = transport.receive_request().await.unwrap();
-
-        for envelope in [second_envelope, first_envelope] {
-            let response = if envelope.request == request_a {
-                DataSyncResponse::Error {
-                    msg: "response-a".to_owned(),
-                }
-            } else {
-                assert_eq!(envelope.request, request_b);
-                DataSyncResponse::Error {
-                    msg: "response-b".to_owned(),
-                }
-            };
-            envelope.response_sender.send_async(response).await.unwrap();
-        }
-
-        assert_eq!(
-            first.await.unwrap().unwrap(),
-            DataSyncResponse::Error {
-                msg: "response-a".to_owned()
-            }
-        );
-        assert_eq!(
-            second.await.unwrap().unwrap(),
-            DataSyncResponse::Error {
-                msg: "response-b".to_owned()
-            }
-        );
-    }
-}
+#[path = "server_app_tests.rs"]
+mod tests;

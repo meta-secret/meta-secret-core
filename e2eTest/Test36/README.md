@@ -101,3 +101,15 @@ following value as well.
 The harness builds the iOS test bundle once with
 `build-for-testing`, then uses `test-without-building` for each iOS step to
 bound memory use. It must never print Secret values, keys, or raw Shares.
+
+
+## Scoped recovery orchestration
+
+Exact `test36:ios-distributed-creator-lifecycle` uses the actual current source descriptor and
+independent expected12 before raw metadata. Its iOS sender uses the distinct
+`recoveryShowPhase` procedure at the original input-return/already-visible
+boundary. Same ordinary600/currentD clips prep180/value45/close60; no business
+or security rule changes. Launch through normal range owner, for example
+`npm run test-range -- --from 36 --to 36 --run-id <fresh-ascii-owner> --preserve-evidence`. Original
+actions/roles/repetitions/value/Copy/Hide/results stay mandatory. Host controls
+are not whole UI or SDK/provenance acceptance.

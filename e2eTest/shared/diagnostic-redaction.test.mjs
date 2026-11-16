@@ -157,3 +157,30 @@ test('streaming redaction never resynchronizes an uncertain PEM before stream cl
   }
   assert.match(outputs.join(''), /\[REDACTED_STREAM_RECORD\]/);
 });
+
+
+test('declared device PIN fields are redacted without relying on known-value registration', () => {
+  const safe = createDiagnosticRedactor(); const pin = '240681';
+  assert.deepEqual(safe.redactArguments(['-e', 'devicePasscode', pin,
+    `-Pandroid.testInstrumentationRunnerArguments.devicePasscode=${pin}`]),
+    ['-e', 'devicePasscode', '[REDACTED]', '-Pandroid.testInstrumentationRunnerArguments.devicePasscode=[REDACTED]']);
+  assert.deepEqual(safe.redactEnvironment({ E2E_ANDROID_DEVICE_PASSCODE: pin, E2E_IOS_DEVICE_PASSCODE: pin,
+    LIVEBOARD_SIMULATOR_PASSCODE: pin, SAFE_METADATA: 'ready' }),
+    { E2E_ANDROID_DEVICE_PASSCODE: '[REDACTED]', E2E_IOS_DEVICE_PASSCODE: '[REDACTED]',
+      LIVEBOARD_SIMULATOR_PASSCODE: '[REDACTED]', SAFE_METADATA: 'ready' });
+  assert.ok(!safe.redactText(JSON.stringify({ devicePasscode: pin })).includes(pin), 'PIN field leaked');
+});
+
+test('split device PIN assignment is removed before stream persistence', () => {
+  const stream = createDiagnosticRedactor().createStream();
+  const safe = [stream.push('{"devicePass'), stream.push('code":"240'),
+    stream.push('681"}\nmetadata-only\n'), stream.flush()].join('');
+  assert.ok(!safe.includes('240681'), 'Split PIN field leaked');
+  assert.match(safe, /metadata-only/);
+});
+
+test('registered device PIN removes XCTest typing text while preserving safe output', () => {
+  const pin = '240681'; const stream = createDiagnosticRedactor([pin]).createStream();
+  const safe = [stream.push('Type "240'), stream.push('681" into SecureTextField\nready\n'), stream.flush()].join('');
+  assert.ok(!safe.includes(pin), 'XCTest typed PIN leaked'); assert.match(safe, /ready/);
+});

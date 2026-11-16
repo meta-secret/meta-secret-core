@@ -54,6 +54,14 @@ test('the exact browser-owned Secret must remain readable after the awaited oper
   assert.equal(browserOwnedSecretUsable({ name: 'label', id: 'opaque-id', owned }), false);
 });
 
+test('runtime ownership binds actual awaited callback metadata to exact name/ID/scope without retaining a freed wrapper', () => {
+  const registry = { selected: { phase: 'fulfilled', calls: 1, expectedId: 'opaque', expectedName: 'label', borrowedAlive: true } };
+  assert.equal(browserOwnedSecretUsable({ name: 'label', id: 'opaque', scope: 'selected', registry }), true);
+  for (const changed of [{ phase: 'entered' }, { calls: 2 }, { expectedId: 'foreign' }, { expectedName: 'other' }, { borrowedAlive: false }]) {
+    assert.equal(browserOwnedSecretUsable({ name: 'label', id: 'opaque', scope: 'selected', registry: { selected: { ...registry.selected, ...changed } } }), false);
+  }
+});
+
 
 test('reconnect permits only captured initial offline error until fresh synchronization and exact terminal', async () => {
   const store = fakeStore(); store.isSynchronizing = false; store.syncError = 'offline';

@@ -1,0 +1,740 @@
+{
+  "testNumber": 51,
+  "runId": "registration",
+  "repetitions": 1,
+  "expectedCases": 45,
+  "cases": [
+    {
+      "id": "create-web-manual",
+      "kind": "create",
+      "platform": "web",
+      "provider": "manual",
+      "number": 1,
+      "repetition": 1,
+      "approver": "ios",
+      "retryApprover": "android",
+      "vaultName": "vcf55f8a805a4ba788d583d6f@e2e.invalid",
+      "retryVaultName": "vdf8ba0fa7819a4aa61bc5588@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": []
+    },
+    {
+      "id": "create-web-apple",
+      "kind": "create",
+      "platform": "web",
+      "provider": "apple",
+      "number": 2,
+      "repetition": 1,
+      "approver": "ios",
+      "retryApprover": "android",
+      "vaultName": "vcc62ba6c1051ec926e5aa1e0@e2e.invalid",
+      "retryVaultName": "v4893448ca92f102bc26c6f95@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-web-apple-account"
+      ]
+    },
+    {
+      "id": "create-web-google",
+      "kind": "create",
+      "platform": "web",
+      "provider": "google",
+      "number": 3,
+      "repetition": 1,
+      "approver": "ios",
+      "retryApprover": "android",
+      "vaultName": "vdcd1f9bbae6e0734d21c42f7@e2e.invalid",
+      "retryVaultName": "vd1f25650464455fb137c938f@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-web-google-account"
+      ]
+    },
+    {
+      "id": "create-ios-manual",
+      "kind": "create",
+      "platform": "ios",
+      "provider": "manual",
+      "number": 4,
+      "repetition": 1,
+      "approver": "android",
+      "retryApprover": "web",
+      "vaultName": "v6c36a05f9e4df4833bbfbb90@e2e.invalid",
+      "retryVaultName": "v74d73af20f2fbb71344357f9@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": []
+    },
+    {
+      "id": "create-ios-apple",
+      "kind": "create",
+      "platform": "ios",
+      "provider": "apple",
+      "number": 5,
+      "repetition": 1,
+      "approver": "android",
+      "retryApprover": "web",
+      "vaultName": "ve8cfe398b8a3a1a0c4ae879d@e2e.invalid",
+      "retryVaultName": "vb02ce2f08d242698e16154c6@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-ios-apple-account"
+      ]
+    },
+    {
+      "id": "create-ios-google",
+      "kind": "create",
+      "platform": "ios",
+      "provider": "google",
+      "number": 6,
+      "repetition": 1,
+      "approver": "android",
+      "retryApprover": "web",
+      "vaultName": "vd415e32c0de830bce7108318@e2e.invalid",
+      "retryVaultName": "v3ca06532b0470fedf09277bc@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-ios-google-account"
+      ]
+    },
+    {
+      "id": "create-android-manual",
+      "kind": "create",
+      "platform": "android",
+      "provider": "manual",
+      "number": 7,
+      "repetition": 1,
+      "approver": "web",
+      "retryApprover": "ios",
+      "vaultName": "v4bc511dc2f777909553532c8@e2e.invalid",
+      "retryVaultName": "v7aa5f67761ad325fdee2d1dd@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": []
+    },
+    {
+      "id": "create-android-apple",
+      "kind": "create",
+      "platform": "android",
+      "provider": "apple",
+      "number": 8,
+      "repetition": 1,
+      "approver": "web",
+      "retryApprover": "ios",
+      "vaultName": "vc2229505b969653c0e346f48@e2e.invalid",
+      "retryVaultName": "vd93b9bf0ac9fa98a60bd090d@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-android-apple-account"
+      ]
+    },
+    {
+      "id": "create-android-google",
+      "kind": "create",
+      "platform": "android",
+      "provider": "google",
+      "number": 9,
+      "repetition": 1,
+      "approver": "web",
+      "retryApprover": "ios",
+      "vaultName": "vcb65629f9eaede8f4c0beb03@e2e.invalid",
+      "retryVaultName": "va84ece148f9eab60eeba0b75@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-android-google-account"
+      ]
+    },
+    {
+      "id": "join-web-manual-accepted",
+      "kind": "join",
+      "platform": "web",
+      "provider": "manual",
+      "outcome": "accepted",
+      "number": 10,
+      "repetition": 1,
+      "approver": "ios",
+      "retryApprover": "android",
+      "vaultName": "v2d8c0f8a60acb3049a562f12@e2e.invalid",
+      "retryVaultName": "v99884b03ff929efbca650727@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": []
+    },
+    {
+      "id": "join-web-apple-accepted",
+      "kind": "join",
+      "platform": "web",
+      "provider": "apple",
+      "outcome": "accepted",
+      "number": 11,
+      "repetition": 1,
+      "approver": "ios",
+      "retryApprover": "android",
+      "vaultName": "v8c8ae52b979ccf73afa8643e@e2e.invalid",
+      "retryVaultName": "vee157641bbd06e877dc782c2@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-web-apple-account"
+      ]
+    },
+    {
+      "id": "join-web-google-accepted",
+      "kind": "join",
+      "platform": "web",
+      "provider": "google",
+      "outcome": "accepted",
+      "number": 12,
+      "repetition": 1,
+      "approver": "ios",
+      "retryApprover": "android",
+      "vaultName": "va8f14649fe3a10fda176c80a@e2e.invalid",
+      "retryVaultName": "v8ecd525db81a0b9f1a1d6763@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-web-google-account"
+      ]
+    },
+    {
+      "id": "join-ios-manual-accepted",
+      "kind": "join",
+      "platform": "ios",
+      "provider": "manual",
+      "outcome": "accepted",
+      "number": 13,
+      "repetition": 1,
+      "approver": "android",
+      "retryApprover": "web",
+      "vaultName": "va5c820269e9f039937ebdcd8@e2e.invalid",
+      "retryVaultName": "v034e6f9f9bc2357988511566@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": []
+    },
+    {
+      "id": "join-ios-apple-accepted",
+      "kind": "join",
+      "platform": "ios",
+      "provider": "apple",
+      "outcome": "accepted",
+      "number": 14,
+      "repetition": 1,
+      "approver": "android",
+      "retryApprover": "web",
+      "vaultName": "vb74d77a14413e40c18ae7d34@e2e.invalid",
+      "retryVaultName": "vc59e9400e42af94cf5b3d50c@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-ios-apple-account"
+      ]
+    },
+    {
+      "id": "join-ios-google-accepted",
+      "kind": "join",
+      "platform": "ios",
+      "provider": "google",
+      "outcome": "accepted",
+      "number": 15,
+      "repetition": 1,
+      "approver": "android",
+      "retryApprover": "web",
+      "vaultName": "v116093f1440f5b9563504f44@e2e.invalid",
+      "retryVaultName": "v1263c9d757e898c2b5213ff6@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-ios-google-account"
+      ]
+    },
+    {
+      "id": "join-android-manual-accepted",
+      "kind": "join",
+      "platform": "android",
+      "provider": "manual",
+      "outcome": "accepted",
+      "number": 16,
+      "repetition": 1,
+      "approver": "web",
+      "retryApprover": "ios",
+      "vaultName": "v9bcd8826da7ae76ee325c0ba@e2e.invalid",
+      "retryVaultName": "vefd9fde88eea08fcdfea49d9@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": []
+    },
+    {
+      "id": "join-android-apple-accepted",
+      "kind": "join",
+      "platform": "android",
+      "provider": "apple",
+      "outcome": "accepted",
+      "number": 17,
+      "repetition": 1,
+      "approver": "web",
+      "retryApprover": "ios",
+      "vaultName": "v7e30cc916e67f876d2e8e9c0@e2e.invalid",
+      "retryVaultName": "v039f67ee16ba6a6f9da75c85@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-android-apple-account"
+      ]
+    },
+    {
+      "id": "join-android-google-accepted",
+      "kind": "join",
+      "platform": "android",
+      "provider": "google",
+      "outcome": "accepted",
+      "number": 18,
+      "repetition": 1,
+      "approver": "web",
+      "retryApprover": "ios",
+      "vaultName": "vae98fad3298b5e1a8dc22a8c@e2e.invalid",
+      "retryVaultName": "v1319551424a8681bc6d05efe@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-android-google-account"
+      ]
+    },
+    {
+      "id": "join-web-manual-declined-retry",
+      "kind": "join",
+      "platform": "web",
+      "provider": "manual",
+      "outcome": "declined-retry",
+      "number": 19,
+      "repetition": 1,
+      "approver": "ios",
+      "retryApprover": "android",
+      "vaultName": "v8be80e2ed46a487ef00fad8b@e2e.invalid",
+      "retryVaultName": "v0ee076897998c985dd5632a3@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": []
+    },
+    {
+      "id": "join-web-apple-declined-retry",
+      "kind": "join",
+      "platform": "web",
+      "provider": "apple",
+      "outcome": "declined-retry",
+      "number": 20,
+      "repetition": 1,
+      "approver": "ios",
+      "retryApprover": "android",
+      "vaultName": "vff1da0f452aec694348d6d3e@e2e.invalid",
+      "retryVaultName": "v6a69a6709374278aed65a8a9@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-web-apple-account"
+      ]
+    },
+    {
+      "id": "join-web-google-declined-retry",
+      "kind": "join",
+      "platform": "web",
+      "provider": "google",
+      "outcome": "declined-retry",
+      "number": 21,
+      "repetition": 1,
+      "approver": "ios",
+      "retryApprover": "android",
+      "vaultName": "v8b0c17016b463d3969ff4189@e2e.invalid",
+      "retryVaultName": "v29747e7aa3c477d1cc7f4837@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-web-google-account"
+      ]
+    },
+    {
+      "id": "join-ios-manual-declined-retry",
+      "kind": "join",
+      "platform": "ios",
+      "provider": "manual",
+      "outcome": "declined-retry",
+      "number": 22,
+      "repetition": 1,
+      "approver": "android",
+      "retryApprover": "web",
+      "vaultName": "vc3cfbe514587914ffc1f762a@e2e.invalid",
+      "retryVaultName": "v81b39b96e4f453edec73eb75@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": []
+    },
+    {
+      "id": "join-ios-apple-declined-retry",
+      "kind": "join",
+      "platform": "ios",
+      "provider": "apple",
+      "outcome": "declined-retry",
+      "number": 23,
+      "repetition": 1,
+      "approver": "android",
+      "retryApprover": "web",
+      "vaultName": "v0c20ea04919ac38e18f8f16f@e2e.invalid",
+      "retryVaultName": "vf62213480d28aa22aa3cc32a@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-ios-apple-account"
+      ]
+    },
+    {
+      "id": "join-ios-google-declined-retry",
+      "kind": "join",
+      "platform": "ios",
+      "provider": "google",
+      "outcome": "declined-retry",
+      "number": 24,
+      "repetition": 1,
+      "approver": "android",
+      "retryApprover": "web",
+      "vaultName": "v59775afa4ceba2677c32f250@e2e.invalid",
+      "retryVaultName": "vd018c801fd4a3f870975e574@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-ios-google-account"
+      ]
+    },
+    {
+      "id": "join-android-manual-declined-retry",
+      "kind": "join",
+      "platform": "android",
+      "provider": "manual",
+      "outcome": "declined-retry",
+      "number": 25,
+      "repetition": 1,
+      "approver": "web",
+      "retryApprover": "ios",
+      "vaultName": "v3b82ba47b1bc87ec3879589e@e2e.invalid",
+      "retryVaultName": "v896c78406038d00fb342e62f@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": []
+    },
+    {
+      "id": "join-android-apple-declined-retry",
+      "kind": "join",
+      "platform": "android",
+      "provider": "apple",
+      "outcome": "declined-retry",
+      "number": 26,
+      "repetition": 1,
+      "approver": "web",
+      "retryApprover": "ios",
+      "vaultName": "v7429691a93ef8565368bef55@e2e.invalid",
+      "retryVaultName": "va79138fafae1b83fbac68a12@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-android-apple-account"
+      ]
+    },
+    {
+      "id": "join-android-google-declined-retry",
+      "kind": "join",
+      "platform": "android",
+      "provider": "google",
+      "outcome": "declined-retry",
+      "number": 27,
+      "repetition": 1,
+      "approver": "web",
+      "retryApprover": "ios",
+      "vaultName": "v764d9104ffb7dd5801d6a1c7@e2e.invalid",
+      "retryVaultName": "v41d8832248b22b69846f8cdb@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-android-google-account"
+      ]
+    },
+    {
+      "id": "join-web-manual-back-retry",
+      "kind": "join",
+      "platform": "web",
+      "provider": "manual",
+      "outcome": "back-retry",
+      "number": 28,
+      "repetition": 1,
+      "approver": "ios",
+      "retryApprover": "android",
+      "vaultName": "v0e7dc201e073b7ba69fe0e32@e2e.invalid",
+      "retryVaultName": "v99d327653808c59ec099c693@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": []
+    },
+    {
+      "id": "join-web-apple-back-retry",
+      "kind": "join",
+      "platform": "web",
+      "provider": "apple",
+      "outcome": "back-retry",
+      "number": 29,
+      "repetition": 1,
+      "approver": "ios",
+      "retryApprover": "android",
+      "vaultName": "v61c61821c370caa5dc25ff44@e2e.invalid",
+      "retryVaultName": "v86a60f5e24020796b54d2ca2@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-web-apple-account"
+      ]
+    },
+    {
+      "id": "join-web-google-back-retry",
+      "kind": "join",
+      "platform": "web",
+      "provider": "google",
+      "outcome": "back-retry",
+      "number": 30,
+      "repetition": 1,
+      "approver": "ios",
+      "retryApprover": "android",
+      "vaultName": "v075ed16addb2e98ec98412c5@e2e.invalid",
+      "retryVaultName": "vf980352268a1306a2fc61767@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-web-google-account"
+      ]
+    },
+    {
+      "id": "join-ios-manual-back-retry",
+      "kind": "join",
+      "platform": "ios",
+      "provider": "manual",
+      "outcome": "back-retry",
+      "number": 31,
+      "repetition": 1,
+      "approver": "android",
+      "retryApprover": "web",
+      "vaultName": "v0f081aa9214246fce33c1136@e2e.invalid",
+      "retryVaultName": "v7608476b4512f8566c3ac441@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": []
+    },
+    {
+      "id": "join-ios-apple-back-retry",
+      "kind": "join",
+      "platform": "ios",
+      "provider": "apple",
+      "outcome": "back-retry",
+      "number": 32,
+      "repetition": 1,
+      "approver": "android",
+      "retryApprover": "web",
+      "vaultName": "va9be1c374409fee98400103d@e2e.invalid",
+      "retryVaultName": "vd544e4527230690a6e39dfd1@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-ios-apple-account"
+      ]
+    },
+    {
+      "id": "join-ios-google-back-retry",
+      "kind": "join",
+      "platform": "ios",
+      "provider": "google",
+      "outcome": "back-retry",
+      "number": 33,
+      "repetition": 1,
+      "approver": "android",
+      "retryApprover": "web",
+      "vaultName": "vd7f65379dbe580eede9c20e3@e2e.invalid",
+      "retryVaultName": "v97ffec3ef52660b77f907d00@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-ios-google-account"
+      ]
+    },
+    {
+      "id": "join-android-manual-back-retry",
+      "kind": "join",
+      "platform": "android",
+      "provider": "manual",
+      "outcome": "back-retry",
+      "number": 34,
+      "repetition": 1,
+      "approver": "web",
+      "retryApprover": "ios",
+      "vaultName": "v3bca16c91fbac10a6fec8cda@e2e.invalid",
+      "retryVaultName": "v37f17acaf1a6a8922c37d5af@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": []
+    },
+    {
+      "id": "join-android-apple-back-retry",
+      "kind": "join",
+      "platform": "android",
+      "provider": "apple",
+      "outcome": "back-retry",
+      "number": 35,
+      "repetition": 1,
+      "approver": "web",
+      "retryApprover": "ios",
+      "vaultName": "v3c3e9fbd962e4277d7bd5d77@e2e.invalid",
+      "retryVaultName": "v86a5020870bde9e60195450e@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-android-apple-account"
+      ]
+    },
+    {
+      "id": "join-android-google-back-retry",
+      "kind": "join",
+      "platform": "android",
+      "provider": "google",
+      "outcome": "back-retry",
+      "number": 36,
+      "repetition": 1,
+      "approver": "web",
+      "retryApprover": "ios",
+      "vaultName": "vc304df9b4b9f7c02f7b2310e@e2e.invalid",
+      "retryVaultName": "v38f11999aa5c91b5d285b3c1@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-android-google-account"
+      ]
+    },
+    {
+      "id": "qr-web-accepted",
+      "kind": "qr",
+      "platform": "web",
+      "provider": "manual",
+      "outcome": "accepted",
+      "number": 37,
+      "repetition": 1,
+      "approver": "ios",
+      "retryApprover": "android",
+      "vaultName": "v7f5650c3d60777df49445a41@e2e.invalid",
+      "retryVaultName": "v41f807cf2f381663b4e06a3c@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-web-camera"
+      ]
+    },
+    {
+      "id": "qr-web-declined-retry",
+      "kind": "qr",
+      "platform": "web",
+      "provider": "manual",
+      "outcome": "declined-retry",
+      "number": 38,
+      "repetition": 1,
+      "approver": "ios",
+      "retryApprover": "android",
+      "vaultName": "v06fe4e6c672c05c70e2ccf49@e2e.invalid",
+      "retryVaultName": "v0a28a1ba38b1c87449b80442@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-web-camera"
+      ]
+    },
+    {
+      "id": "qr-web-back-retry",
+      "kind": "qr",
+      "platform": "web",
+      "provider": "manual",
+      "outcome": "back-retry",
+      "number": 39,
+      "repetition": 1,
+      "approver": "ios",
+      "retryApprover": "android",
+      "vaultName": "vdf0d1941467814762c9c4c75@e2e.invalid",
+      "retryVaultName": "v0be00742277f964964ca22d6@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-web-camera"
+      ]
+    },
+    {
+      "id": "qr-ios-accepted",
+      "kind": "qr",
+      "platform": "ios",
+      "provider": "manual",
+      "outcome": "accepted",
+      "number": 40,
+      "repetition": 1,
+      "approver": "android",
+      "retryApprover": "web",
+      "vaultName": "v256665203ace2e99494ecd4a@e2e.invalid",
+      "retryVaultName": "v3fc413acde51d02783111263@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-ios-camera"
+      ]
+    },
+    {
+      "id": "qr-ios-declined-retry",
+      "kind": "qr",
+      "platform": "ios",
+      "provider": "manual",
+      "outcome": "declined-retry",
+      "number": 41,
+      "repetition": 1,
+      "approver": "android",
+      "retryApprover": "web",
+      "vaultName": "v9d893787894595717f9834e8@e2e.invalid",
+      "retryVaultName": "ve75a85e9c2d0837f4c8c72b2@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-ios-camera"
+      ]
+    },
+    {
+      "id": "qr-ios-back-retry",
+      "kind": "qr",
+      "platform": "ios",
+      "provider": "manual",
+      "outcome": "back-retry",
+      "number": 42,
+      "repetition": 1,
+      "approver": "android",
+      "retryApprover": "web",
+      "vaultName": "vd35d5a94d5bc214cca508f65@e2e.invalid",
+      "retryVaultName": "v8ee557655eb082afb817d97b@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-ios-camera"
+      ]
+    },
+    {
+      "id": "qr-android-accepted",
+      "kind": "qr",
+      "platform": "android",
+      "provider": "manual",
+      "outcome": "accepted",
+      "number": 43,
+      "repetition": 1,
+      "approver": "web",
+      "retryApprover": "ios",
+      "vaultName": "vc73b8461bfa31f3a95f8d530@e2e.invalid",
+      "retryVaultName": "v8e5da535c9feb9bd38e704e9@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-android-camera"
+      ]
+    },
+    {
+      "id": "qr-android-declined-retry",
+      "kind": "qr",
+      "platform": "android",
+      "provider": "manual",
+      "outcome": "declined-retry",
+      "number": 44,
+      "repetition": 1,
+      "approver": "web",
+      "retryApprover": "ios",
+      "vaultName": "vbd43c1e691a4e766b0c4cb8d@e2e.invalid",
+      "retryVaultName": "v74c2bd110d982f3e5efcd01a@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-android-camera"
+      ]
+    },
+    {
+      "id": "qr-android-back-retry",
+      "kind": "qr",
+      "platform": "android",
+      "provider": "manual",
+      "outcome": "back-retry",
+      "number": 45,
+      "repetition": 1,
+      "approver": "web",
+      "retryApprover": "ios",
+      "vaultName": "v9b94288533319b2341946f0d@e2e.invalid",
+      "retryVaultName": "v49af813cc242eb9b791b3170@e2e.invalid",
+      "cleanBoundary": "fresh-server-container-and-app-sandboxes-and-browser-context",
+      "requires": [
+        "real-android-camera"
+      ]
+    }
+  ]
+}

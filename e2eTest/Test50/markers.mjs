@@ -1,5 +1,6 @@
 /** Exact native producer/consumer ledger; diagnostic markers are explicitly passive. */
-export function deletionMarkerLedger(plan) {
+export function deletionMarkerLedger(plan, authProfile = 'real-os') {
+  if (!['real-os', 'controlled-business'].includes(authProfile)) throw Error('Unknown Test50 ledger profile');
   const ledger = [];
   const add = (block, platform, cycle, step, actions, diagnostics = true) => {
     for (const action of actions) ledger.push({
@@ -36,7 +37,7 @@ export function deletionMarkerLedger(plan) {
         marker: `E2E: ${initiator.toUpperCase()}_TEST50_SECRET_CREATED_${cycle.number}_${block.runId}-${generation}`,
         producer: `${initiator}.createSecretForTest50:${generation}`, consumer: 'Test50.business (fresh owned process)',
       });
-      if (['android', 'ios'].includes(cycle.requester)) add(block, cycle.requester, cycle.number, 'cancel', ['READY', 'CANCELLED']);
+      if (['android', 'ios'].includes(cycle.requester)) add(block, cycle.requester, cycle.number, 'cancel', ['READY', authProfile === 'controlled-business' ? 'AUTH_MANUAL_PENDING' : 'CANCELLED']);
       if (block.members.length <= 2) for (const platform of block.members.filter((platform) => ['android', 'ios'].includes(platform))) add(block, platform, cycle.number, `show-${platform}`, ['READY', 'SHOW_VALID']);
       for (const platform of block.members.filter((platform) => ['android', 'ios'].includes(platform))) {
         if (platform === cycle.offline) add(block, platform, cycle.number, 'main', ['READY', 'SYNC_BLOCKED']);
@@ -48,6 +49,7 @@ export function deletionMarkerLedger(plan) {
       if (['android', 'ios'].includes(cycle.offline)) add(block, cycle.offline, cycle.number, 'startup', ['READY', 'TERMINAL'], false);
     }
   }
+  for (const entry of ledger) if (entry.marker.includes('_AUTH_MANUAL_PENDING_')) entry.consumer += ' (manual coverage only; not OS acceptance)';
   const iosInvocations = new Set(ledger.filter(({ producer }) => producer.startsWith('ios.')).map(({ key }) => key.slice(0, key.lastIndexOf('/'))));
   for (const invocation of iosInvocations) ledger.push({ key: `${invocation}/CORE_ROUTING_VERIFIED`, marker: 'E2E: IOS_TEST50_CORE_ROUTING_VERIFIED', producer: 'ios.setUpWithError', consumer: 'Test50.business routing gate (fresh owned actor)' });
   if (new Set(ledger.map(({ key }) => key)).size !== ledger.length) throw new Error('Duplicate scoped marker producer');

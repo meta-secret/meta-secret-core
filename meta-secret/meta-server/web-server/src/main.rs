@@ -1,6 +1,12 @@
 // Keep colocated endpoint tests below the production handlers.
 #![allow(clippy::items_after_test_module)]
 
+mod apple_email;
+
+#[cfg(test)]
+#[path = "apple_email/tests.rs"]
+mod apple_email_contract_tests;
+
 use axum::extract::{Query, State};
 use axum::http::HeaderMap;
 use axum::response::sse::{Event, KeepAlive, Sse};
@@ -139,7 +145,8 @@ async fn main() -> Result<()> {
         .with_state(app_state)
         .layer(cors)
         .layer(TraceLayer::new_for_http())
-        .fallback(not_found_handler);
+        .fallback(not_found_handler)
+        .merge(apple_email::configured_router()?);
 
     let port = 3000;
     info!("Run axum server, on port: {}", port);

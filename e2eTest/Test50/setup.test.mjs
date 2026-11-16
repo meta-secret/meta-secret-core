@@ -28,3 +28,26 @@ test('every full Web block reaches cycle one after waiting only for the already-
     assert.equal(block.cycles.length, block.members.length === 3 ? 18 : block.members.length === 2 ? 6 : 3);
   }
 });
+
+
+test('single-native setup invokes the owning real actor and waits for the created seed before cycle one', async () => {
+  for (const platform of ['android', 'ios']) {
+    const block = buildDeletionPlan('native-setup-regression').blocks.find(({ id }) => id === `one-${platform}`);
+    const seed = { name: `${block.runId}-seed`, value: 'synthetic-seed' };
+    const invocations = [], markers = [];
+    const actor = { waitForMarker: async (marker) => markers.push(marker), result: Promise.resolve() };
+    const h = {
+      block, scenario: { secret: seed, android: { testClass: 'CaseEightAndroidBothOfflineTest' }, ios: { testClass: 'CaseEightIosBothOfflineUITest' } },
+      page: new EventEmitter(), approvalCoordinator: {},
+      setJoinExpectedSecretNames: (names) => assert.deepEqual(names, [seed.name]),
+      startAndroidJoinTest: async (_, options) => { invocations.push(options); return actor; },
+      startIosJoinTest: (_, options) => { invocations.push(options); return actor; },
+      onCycle: () => { throw new Error('First business boundary reached'); },
+    };
+    await assert.rejects(runDeletionBlock(h), /First business boundary reached/);
+    assert.equal(invocations.length, 1);
+    assert.equal(invocations[0].testMethod, 'createVaultForTest50');
+    assert.equal(invocations[0].testClass, h.scenario[platform].testClass);
+    assert.deepEqual(markers, [`E2E: ${platform.toUpperCase()}_TEST50_INITIATOR_SETUP_READY`]);
+  }
+});

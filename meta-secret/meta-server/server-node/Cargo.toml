@@ -28,4 +28,9 @@ async-std.workspace = true
 
 [dev-dependencies]
 meta-secret-core = { path = "../../core", features = ["test-framework"] }
+meta-db-sqlite = { path = "../../db/sqlite" }
+meta-db-redb = { path = "../../db/redb" }
+tempfile = "3.25.0"
+diesel = { workspace = true, features = ["sqlite"] }
+redb = "3.1.0"
 tokio.workspace = true

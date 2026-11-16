@@ -1,14 +1,23 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { mkdtempSync, realpathSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { resolve } from 'node:path';
 
-import { resetE2eNativeAppState } from './e2e-state-reset.mjs';
+import { resetE2eNativeAppState, resetE2eScenarioState } from './e2e-state-reset.mjs';
 
-test('iOS app reset removes only the app sandbox and preserves the booted simulator', async () => {
+test('iOS scoped reset preserves all app data and the booted simulator', async t => {
+  const runRoot = realpathSync(mkdtempSync(resolve(tmpdir(), 'ios-reset-scope-')));
+  t.after(() => rmSync(runRoot, { recursive: true, force: true }));
+  const scenarioPath = resolve(runRoot, 'scenario.json'); writeFileSync(scenarioPath, '{}');
+  const iosIdentityContext = { runRoot, runId: 'reset-fixture', testNumber: 1, attempt: 1,
+    scenarioKey: 'file:' + scenarioPath, udid: 'DB22263E-A8A3-49C5-ADD1-BAE4089E2E30', bundleId: 'org.metasecret.vault' };
   let installed = true;
   const calls = [];
   const events = [];
   const runCommand = async (file, args) => {
     calls.push([file, ...args]);
+    if (args[0] === 'simctl' && args[1] === 'terminate') return { stdout: '' };
     if (args[0] === 'simctl' && args[1] === 'get_app_container') {
       if (!installed) throw new Error('Application is not installed');
       return { stdout: '/simulator/app-container' };
@@ -18,21 +27,24 @@ test('iOS app reset removes only the app sandbox and preserves the booted simula
       return { stdout: '' };
     }
     if (args[0] === 'simctl' && args[1] === 'list') {
-      return { stdout: JSON.stringify({ devices: { runtime: [{ udid: 'ios-udid', state: 'Booted' }] } }) };
+      return { stdout: JSON.stringify({ devices: { runtime: [{ udid: 'DB22263E-A8A3-49C5-ADD1-BAE4089E2E30', state: 'Booted' }] } }) };
     }
     throw new Error(`Unexpected command: ${file} ${args.join(' ')}`);
   };
 
   const result = await resetE2eNativeAppState({
     scenario: { ios: { bundleId: 'org.metasecret.vault' } },
-    platforms: [{ platform: 'iOS', simulatorName: 'iPhone 17', udid: 'ios-udid' }],
+    iosIdentityContext,
+    platforms: [{ platform: 'iOS', simulatorName: 'iPhone 17', udid: 'DB22263E-A8A3-49C5-ADD1-BAE4089E2E30' }],
     onEvent: (event) => events.push(event),
     runCommand,
   });
 
   assert.deepEqual(result, { platformsReset: ['iOS'] });
-  assert.equal(installed, false);
-  assert.ok(events.includes('uninstalled and verified iOS app org.metasecret.vault'));
+  assert.equal(installed, true);
+  assert.equal(calls.filter(call => call[2] === 'terminate').length, 1);
+  assert.equal(calls.some(call => call.includes('uninstall')), false);
+  assert.ok(events.includes('selected isolated iOS identity; stopped only the exact app, all stored scopes preserved'));
   assert.ok(events.includes('verified iOS simulator iPhone 17 remains healthy after app reset'));
   assert.equal(calls.some((call) => call.includes('erase') || call.includes('shutdown')), false);
 });
@@ -79,4 +91,15 @@ test('Android app reset removes app and instrumentation packages from the same r
   assert.ok(events.includes('verified Android AVD Pixel_4a is healthy after app reset'));
   assert.equal(calls.some((args) => args.includes('emu') && args.includes('kill')), false);
   assert.equal(calls.some((args) => args.includes('-wipe-data')), false);
+});
+
+test('F2 current: participant-only Test20 reset is already a no-op and cannot touch Docker or an SDK', async () => {
+  const scenario = { cli: { participant: 'Rust Core and HTTP integration' }, server: { participant: 'isolated local meta-server' } };
+  const before = structuredClone(scenario); const calls = [];
+  const result = await resetE2eScenarioState({ scenario, platforms: [],
+    runCommand: async (...args) => { calls.push(args); throw new Error('No parent-owned Test20 runtime'); },
+    discoverSdk: () => { calls.push('SDK'); throw new Error('No Test20 native platforms'); },
+  });
+  assert.deepEqual(result, { serverReset: false, platformsReset: [] });
+  assert.deepEqual(calls, []); assert.deepEqual(scenario, before);
 });

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Review architectural and design changes when implementation touches protocol, crypto, or device state machines. For Rust backend, focus on architecture diagrams, algorithm correctness, and state machine design. May be skipped if no architecture changes in implementation plan.
+Review architectural and design changes when implementation touches protocol, crypto, or device state machines. For Rust backend, focus on architecture diagrams, algorithm correctness, and state machine design. Client-visible Web changes always require visual and motion review against the approved reference even without architecture changes or Figma; backend-only diagram review may be skipped when inapplicable.
 
 ## Input
 
@@ -21,6 +21,7 @@ Review architectural and design changes when implementation touches protocol, cr
 ## When to Run
 
 **Run if implementation plan indicates:**
+- ✅ Client-visible Web UI or motion changes (compare approved HTML prototype, screenshots, states, supported widths/orientations and reduced motion)
 - ✅ Protocol/communication changes
 - ✅ Crypto algorithm changes (SSS, key derivation)
 - ✅ Device state machine changes (join, remove, resharing)
@@ -29,7 +30,7 @@ Review architectural and design changes when implementation touches protocol, cr
 
 **Skip if:**
 - ❌ Only bug fixes
-- ❌ Only style/refactoring
+- ❌ Backend-only style/refactoring with no client-visible effect
 - ❌ Only test additions
 - Mark status as "Skipped"
 

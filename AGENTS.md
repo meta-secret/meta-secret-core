@@ -1,5 +1,7 @@
 # AGENTS.md
 
+For the approved registration migration, apply the [UI migration profile](.ai/rules/ui-migration-profile.md) before command/stage examples below. It defines relevant client builds, advisory percentage coverage, mandatory visual/motion review and action-specific authorization; all existing stage artifacts remain required.
+
 This file guides Codex (Codex.ai/code) in **meta-secret-core**. **Canonical detail** lives in the linked documents at this repository root.
 
 ## Project documents (read these)
@@ -19,7 +21,7 @@ This file guides Codex (Codex.ai/code) in **meta-secret-core**. **Canonical deta
 
 - **Cryptography:** Treat crypto and protocol code as high-risk; minimal diffs; no speculative algorithm changes.
 - **FFI / UniFFI:** Mobile-facing API changes affect `meta-secret-compose`; coordinate contract changes and version artifacts.
-- **Scope:** This repository owns **Rust** (core library, CLI, server, WASM, mobile Rust targets). It does **not** own Kotlin/Swift app UI—that lives in the compose repo.
+- **Scope:** This repository owns **Rust** (core library, CLI, server, WASM, mobile Rust targets) and the Vue Web UI under `meta-secret/web-cli/ui/`. It does **not** own Kotlin/Swift app UI—that lives in the compose repo.
 
 ## Priorities
 
@@ -64,8 +66,8 @@ implement issue <payload>
 6. Build (cargo build)
 7. Security Review (CRITICAL - crypto audit)
 8. Code Review (CRITICAL - constraints + coverage)
-9. Design Review (if architecture changed, else Skipped)
-10. Coverage Verification (CRITICAL - cargo tarpaulin >= 80%)
+9. Design Review (client-visible UI/motion or architecture changes)
+10. Coverage Verification (CRITICAL - coverage report; 80% advisory)
 11. Test Run (cargo test)
 11.5. Final UI E2E when applicable (failure blocks release)
 12. User Approval (MANDATORY - ask before PR)

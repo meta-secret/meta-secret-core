@@ -1,8 +1,12 @@
 // Keep reusable suite outputs unless cheaper approved cleanup cannot make room.
-export function reclaimBuildCaches({ measureFreeGiB, minimumGiB, buildersIdle, cleanups, report }) {
+export function reclaimBuildCaches({ measureFreeGiB, minimumGiB, buildersIdle, cleanups, report, preservePreparedBuilds = false }) {
   let freeGiB = measureFreeGiB();
   if (freeGiB >= minimumGiB) {
     report(`preserved reusable build caches: ${freeGiB} GiB meets ${minimumGiB} GiB minimum`);
+    return freeGiB;
+  }
+  if (preservePreparedBuilds) {
+    report(`preserved active prepared products: build-cache fallback blocked below ${minimumGiB} GiB; pause required`);
     return freeGiB;
   }
   if (!buildersIdle()) {

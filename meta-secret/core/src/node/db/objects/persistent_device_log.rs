@@ -1,11 +1,6 @@
-use std::sync::Arc;
-
 use crate::node::common::model::user::common::{UserData, UserDataMember, UserId};
-use crate::node::db::descriptors::object_descriptor::ToObjectDescriptor;
 use crate::node::db::descriptors::vault_descriptor::DeviceLogDescriptor;
-use crate::node::db::events::kv_log_event::{KvKey, KvLogEvent};
 use crate::node::db::events::object_id::ArtifactId;
-use crate::node::db::events::vault::device_log_event::DeviceLogObject;
 use crate::node::db::events::vault::vault_log_event::{
     AddMetaPassEvent, CreateVaultEvent, JoinClusterEvent, RemoveMemberEvent,
     RemoveMemberRequestEvent, UpdateMembershipEvent, VaultActionEvent, VaultActionInitEvent,
@@ -15,8 +10,7 @@ use crate::node::db::objects::persistent_object::PersistentObject;
 use crate::node::db::repo::generic_db::KvLogEventRepo;
 use anyhow::Result;
 use derive_more::From;
-use tracing::{debug, info};
-use tracing_attributes::instrument;
+use std::sync::Arc;
 
 #[derive(From)]
 pub struct PersistentDeviceLog<Repo: KvLogEventRepo> {
@@ -29,141 +23,91 @@ impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
         sender: &UserData,
         action: VaultActionEvent,
     ) -> Result<()> {
-        let event = DeviceLogObject(KvLogEvent {
-            key: self.get_device_log_free_key(sender).await?,
-            value: action,
-        });
-        self.p_obj.repo.save(event).await?;
+        self.append_owned(sender, action, None).await?;
         Ok(())
     }
     pub async fn find_tail_id(&self, user_id: &UserId) -> Result<Option<ArtifactId>> {
-        let obj_desc = DeviceLogDescriptor::from(user_id.clone());
-        self.p_obj.find_tail_id_by_obj_desc(obj_desc.clone()).await
+        Ok(self
+            .transport_slots(
+                user_id,
+                ArtifactId::from(DeviceLogDescriptor::from(user_id.clone())),
+            )
+            .await?
+            .last()
+            .map(|slot| slot.obj_id()))
     }
-
-    /// Return the latest locally persisted JOIN request for this exact user.
-    /// The Core-generated request ID lets a pending joiner subscribe to that
-    /// attempt and prevents an old credential observing a later rejoin.
     pub async fn latest_join_request(&self, user: &UserData) -> Result<Option<JoinClusterEvent>> {
         let events = self
-            .p_obj
-            .get_object_events_from_beginning(DeviceLogDescriptor::from(user.user_id()))
+            .transport_slots(
+                &user.user_id(),
+                ArtifactId::from(DeviceLogDescriptor::from(user.user_id())),
+            )
             .await?;
-        Ok(events.into_iter().rev().find_map(|object| {
-            let VaultActionEvent::Request(VaultActionRequestEvent::JoinCluster(request)) =
-                object.0.value
-            else {
-                return None;
-            };
-            (request.candidate == *user).then_some(request)
-        }))
+        Ok(events
+            .into_iter()
+            .rev()
+            .filter_map(|slot| slot.business())
+            .find_map(|object| {
+                let VaultActionEvent::Request(VaultActionRequestEvent::JoinCluster(request)) =
+                    object.0.value
+                else {
+                    return None;
+                };
+                (request.candidate == *user).then_some(request)
+            }))
     }
-}
-
-impl<Repo: KvLogEventRepo> PersistentDeviceLog<Repo> {
-    #[instrument(skip_all)]
     pub async fn save_updated_membership_event(&self, update: UpdateMembershipEvent) -> Result<()> {
-        info!("Update membership");
-
-        let member_user = update.sender.user();
-
-        let free_key = self.get_device_log_free_key(member_user).await?;
-
-        let join_request = DeviceLogObject(KvLogEvent {
-            key: free_key,
-            value: VaultActionEvent::Update(VaultActionUpdateEvent::UpdateMembership(update)),
-        });
-
-        self.p_obj.repo.save(join_request).await?;
-
-        Ok(())
+        let sender = update.sender.user_data.clone();
+        self.save_vault_action(
+            &sender,
+            VaultActionEvent::Update(VaultActionUpdateEvent::UpdateMembership(update)),
+        )
+        .await
     }
-
-    #[instrument(skip(self))]
     pub async fn save_create_vault_request(&self, user: &UserData) -> Result<()> {
-        debug!("Save event: CreateVault request");
-
-        let create_request = {
-            let create_action = VaultActionInitEvent::CreateVault(CreateVaultEvent {
+        self.save_vault_action(
+            user,
+            VaultActionEvent::Init(VaultActionInitEvent::CreateVault(CreateVaultEvent {
                 owner: UserDataMember::from(user.clone()),
-            });
-            let upd = VaultActionEvent::Init(create_action);
-            DeviceLogObject(KvLogEvent {
-                key: self.get_device_log_free_key(user).await?,
-                value: upd,
-            })
-        };
-        self.p_obj.repo.save(create_request).await?;
-
-        Ok(())
+            })),
+        )
+        .await
     }
-
-    #[instrument(skip_all)]
-    pub async fn save_add_meta_pass_request(
-        &self,
-        meta_pass_event: AddMetaPassEvent,
-    ) -> Result<()> {
-        let meta_pass = {
-            let add_meta_pass = VaultActionRequestEvent::AddMetaPass(meta_pass_event.clone());
-
-            DeviceLogObject(KvLogEvent {
-                key: self
-                    .get_device_log_free_key(meta_pass_event.sender.user())
-                    .await?,
-                value: VaultActionEvent::Request(add_meta_pass),
-            })
-        };
-
-        self.p_obj.repo.save(meta_pass).await?;
-
-        Ok(())
+    pub async fn save_add_meta_pass_request(&self, event: AddMetaPassEvent) -> Result<()> {
+        let sender = event.sender.user_data.clone();
+        self.save_vault_action(
+            &sender,
+            VaultActionEvent::Request(VaultActionRequestEvent::AddMetaPass(event)),
+        )
+        .await
     }
-
-    #[instrument(skip_all)]
     pub async fn save_join_request(&self, user: &UserData) -> Result<()> {
-        info!("Save event: Join request");
-        let request = VaultActionRequestEvent::JoinCluster(JoinClusterEvent::from(user.clone()));
-        let join_request = DeviceLogObject(KvLogEvent {
-            key: self.get_device_log_free_key(user).await?,
-            value: VaultActionEvent::Request(request),
-        });
-        self.p_obj.repo.save(join_request).await?;
-
-        Ok(())
+        self.save_vault_action(
+            user,
+            VaultActionEvent::Request(VaultActionRequestEvent::JoinCluster(
+                JoinClusterEvent::from(user.clone()),
+            )),
+        )
+        .await
     }
-
     pub async fn save_remove_member_request(
         &self,
         request: RemoveMemberRequestEvent,
     ) -> Result<()> {
-        let sender = request.sender.user();
-        let event = DeviceLogObject(KvLogEvent {
-            key: self.get_device_log_free_key(sender).await?,
-            value: VaultActionEvent::Request(VaultActionRequestEvent::RemoveMember(request)),
-        });
-        self.p_obj.repo.save(event).await?;
-        Ok(())
+        let sender = request.sender.user_data.clone();
+        self.save_vault_action(
+            &sender,
+            VaultActionEvent::Request(VaultActionRequestEvent::RemoveMember(request)),
+        )
+        .await
     }
-
     pub async fn save_remove_member_update(&self, update: RemoveMemberEvent) -> Result<()> {
-        let sender = update.sender.user();
-        let event = DeviceLogObject(KvLogEvent {
-            key: self.get_device_log_free_key(sender).await?,
-            value: VaultActionEvent::Update(VaultActionUpdateEvent::RemoveMember(update)),
-        });
-        self.p_obj.repo.save(event).await?;
-        Ok(())
-    }
-
-    async fn get_device_log_free_key(&self, user: &UserData) -> Result<KvKey> {
-        let obj_desc = DeviceLogDescriptor::from(user.user_id());
-
-        let free_id = self
-            .p_obj
-            .find_free_id_by_obj_desc(obj_desc.clone())
-            .await?;
-
-        Ok(KvKey::artifact(obj_desc.to_obj_desc(), free_id))
+        let sender = update.sender.user_data.clone();
+        self.save_vault_action(
+            &sender,
+            VaultActionEvent::Update(VaultActionUpdateEvent::RemoveMember(update)),
+        )
+        .await
     }
 }
 

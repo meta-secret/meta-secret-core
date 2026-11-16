@@ -1,5 +1,13 @@
 //! Single JSON-string API for mobile targets (UniFFI, thin JNI/C wrappers).
 
+pub use crate::liveboard_json_api::{
+    cluster_distribution_checked, decide_join_request, decide_remove_member, recover_checked,
+};
+pub use crate::producer_json_api::{
+    continue_local_remove_checked, delete_secret_checked, reconcile_producer_receipt,
+    remove_member_checked,
+};
+
 use meta_secret_core::crypto::key_pair::MasterKeyManager;
 use meta_secret_core::crypto::utils::Id48bit;
 use meta_secret_core::node::common::model::device::common::{DeviceName, DeviceType};
@@ -419,11 +427,18 @@ async fn async_accept_recover(claim_id: String) -> String {
     match MobileApplicationManager::get_global_instance() {
         Some(app_manager) => {
             let meta_claim_id = ClaimId::from(Id48bit::from(claim_id));
-            match app_manager.accept_recover_mobile(meta_claim_id).await {
+            let attempt = app_manager
+                .accept_recover_mobile_attempt(meta_claim_id)
+                .await;
+            match attempt.result {
                 Ok(_) => json!({"success": true}).to_string(),
                 Err(e) => {
-                    json!({"success": false, "error": format!("Accept recover failed: {}", e)})
-                        .to_string()
+                    let mut response = json!({"success": false,
+                        "error": format!("Accept recover failed: {}", e)});
+                    if let Some(proof) = attempt.not_submitted {
+                        response["decisionAttempt"] = json!(proof);
+                    }
+                    response.to_string()
                 }
             }
         }
@@ -476,8 +491,14 @@ async fn async_show_recovered(claim_id: String) -> String {
     match MobileApplicationManager::get_global_instance() {
         Some(app_manager) => {
             let meta_claim_id = ClaimId::from(Id48bit::from(claim_id));
-            match app_manager.show_recovered(&meta_claim_id).await {
-                Ok(secret) => json!({"success": true, "message": {"secret": secret}}).to_string(),
+            match app_manager.show_recovered_checked(&meta_claim_id).await {
+                Ok(recovered) => {
+                    let mut message = json!({"secret": recovered.plaintext.text});
+                    if let Some(receipt) = recovered.reveal_receipt {
+                        message["revealReceipt"] = json!(receipt);
+                    }
+                    json!({"success": true, "message": message}).to_string()
+                }
                 Err(e) => json!({"success": false, "error": format!("{}", e)}).to_string(),
             }
         }
